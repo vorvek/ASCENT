@@ -1,0 +1,1729 @@
+# Creature behavior in DTUGAME.EXE (ai.c, brain.c, dialogue.c)
+
+This document describes the creature AI of Descent to Undermountain 1.3 as the
+executable shows it. It compares the code with the Descent 1 source
+(`engine/main/ai.c`, `aistruct.h`, `robot.h`).
+
+All addresses are linear addresses in `gamedata/re/dtu_flat.bin` (base 0x10000).
+Numbers with `.0` are 16.16 fixed point values (30.0 is 0x1E0000).
+
+Facts are marked as follows.
+
+- Verified (code): read from the disassembly.
+- Verified (data): checked against game files.
+- Guess: a reading that the code suggests but does not prove.
+
+Unless a line says "Guess", the statements below are "Verified (code)".
+
+## Coverage
+
+Covered in depth:
+
+- `do_ai_frame` (0x13BF4 to 0x15FBB), every branch.
+- The morale function (0x10ADF).
+- `init_ai_object` (0x1038B), the animation step (0x11018), the melee test
+  (0x1153A), `ai_fire` (0x11B06), `do_firing_stuff` (0x12916),
+  `compute_vis_and_vec` (0x12BE8), `ai_do_actual_firing_stuff` (0x1396E), the
+  alert function (0x160AB), the to-hit roll (0x2A7F3) and the damage dice
+  (0x2AF5E).
+- The monster table layout and the brain file (sections near the end).
+- The script system in outline (last section).
+
+Not covered:
+
+- `aipath.c` (path creation and `ai_follow_path`, 0x16FD9 to 0x17FFF). Only the
+  call sites are named.
+- `ai_move_relative_to_player` (0x125B9) and the turn functions, beyond their
+  arguments.
+- The spell casting functions of creatures (0x92D99, 0x91FDC, 0x9002C).
+- The damage function 0x29A9C beyond the calls named here.
+- Boss and gate code (0x13407, 0x1374D). It is the Descent 1 code with new
+  texts.
+
+## Main differences from Descent 1
+
+1. A creature has an activity byte (object +0x1CC). 0 is inactive, 2 is active.
+   An inactive creature only plays idle animations. It becomes active when the
+   brain matrix and a ray cast both say that it sees the player.
+2. `player_is_visible_from_object` does not cast a ray. It returns the brain
+   matrix bit for (creature segment, player segment). So `player_visibility` is
+   0 or 1. The Descent 1 value 2 never occurs. The field of view of the monster
+   table is passed to the function and ignored.
+3. Each creature has a morale value. It is one of three numbers from the
+   `$MONSTER_AI` line: the flee value, the attack value, or their mean. Nearly
+   every attack decision tests "morale >= attack value".
+4. Each creature has a hostile flag (object +0x1B0 bit 22). A creature that is
+   not hostile never attacks. Scripts and the morale function set it.
+5. The `Ai_transition_table` of Descent 1 is gone. Explicit code picks the goal
+   state.
+6. There is no `next_fire` timer, no `firing_wait` and no `rapidfire_count`.
+   The attack animation paces attacks. A ranged creature fires on a fixed frame
+   of the attack animation. A melee creature hits when its weapon polygon
+   touches the player during the attack animation.
+7. Melee hits use an AD&D to-hit roll (d20 against THAC0 minus armor class) and
+   damage dice.
+8. Dead creatures with `regeneration` get up again.
+9. The time slicing by distance, the awareness decay, the door opener code and
+   the mode switch are still the Descent 1 code with small changes.
+
+## Globals
+
+| Address | Size | Name (Descent 1 name where it exists) |
+|---|---|---|
+| 0x2B0614 | 479 * N | `Objects[]` |
+| 0x13D324 | 4 | `Highest_object_index` |
+| 0x38E344 | 242 * 40 | `Robot_info[]` |
+| 0x13DA54 | 4 | `N_robot_types` |
+| 0x153EB0 | 47 * N | `Ai_local_info[]` |
+| 0x153A30 | 16 * 8 | `Ai_cloak_info[]`: fix last_time, vector last_position |
+| 0x2206A4 | 536 * N | `Segments[]` |
+| 0x13CD44 | 4 | `Highest_segment_index` |
+| 0x30DF14 | 4 | `ConsoleObject` |
+| 0x13B924 | 4 | `Player_num` |
+| 0x13CD30 | 4 | `GameTime` |
+| 0x13CD2C | 4 | `FrameTime` |
+| 0x13CD34 | 4 | `FrameCount` |
+| 0x13CDCA | 4 | `Difficulty_level` (0 to 4) |
+| 0x167174 | 4 | `Overall_agitation` (0 to 100) |
+| 0x167168 | 12 | `Believed_player_pos` |
+| 0x16715C | 12 | `Hit_pos` |
+| 0x142958 | 4 | `we_have_a_brain` |
+| 0x13A820 | 4 | monster type that has the `rat=` keyword |
+| 0x13A6B4 | 4 | attack switch. 0 stops all creature attacks |
+| 0x13D3FF | 4 | `Player_is_dead` (guess) |
+| 0x13D9E0 | 2 * 12 | first frame of each animation state. Entry N + 1 is the end of state N |
+| 0x3880D0 | 4 * N | pointer to the animation record of a model |
+
+Statics of `do_ai_frame`: `robptr` 0x1671B4, `objnum` 0x1671D4, `aip` 0x1671D0,
+`ailp` 0x1671CC, `dist_to_player` 0x1671C8, `vec_to_player` 0x1671BC,
+`vis_vec_pos` 0x167194, `gun_point` 0x1671A0, `player_visibility` 0x13A7B8,
+`previous_visibility` 0x13A7BC, `visibility_and_vec_computed` 0x1671AC,
+`obj_ref` 0x1671B0 (objnum XOR FrameCount), `circle_distance` 0x1671B8.
+
+Player data is addressed with `Player_num * 0x1B37`. The addresses below are
+those of player 0.
+
+| Address | Size | Meaning |
+|---|---|---|
+| 0x1D3333 | 4 | object number of the player |
+| 0x1D338D | 1 | current level number |
+| 0x1D339F | 4 | a clock in 16.16 seconds, not a frame counter: 0x4D81A adds `FrameTime` each frame and wraps at 3600.0. The AI tests `(clock + objnum) % N == 0`, which is true in about one game frame of N. This document calls that "every Nth tick". The rate of these tests rises with the frame rate (see models.md, "Timing") |
+| 0x1D33BC | 1 | flags. Bit 0: invisible. Bit 2: the creature cannot notice the player from behind (guess: sneaking) |
+| 0x1D33C9 | 2 | armor class of the player |
+| 0x1D33CB | 2 | compared with the creature level in the morale sum (guess: player level) |
+| 0x1D3373 | 4 | start time of the attack animation of the player |
+
+## Names in the executable
+
+The debug texts give the DTU names.
+
+| Table | Address | Entries |
+|---|---|---|
+| AI state (5 bytes each) | 0x13A73C | NONE, REST, SRCH, LOCK, FLIN, ATAK, RECO, DEAD |
+| AI mode (9 bytes each) | 0x13A6D0 | STILL, WANDER, FOL_PATH, CHASE_OB, RUN_FROM, HOME, OPENDOOR |
+| Behavior (9 bytes each) | 0x13A70F | GUARD, WANDER, HOME, PATROL, STATION |
+| Animation state (pointers) | 0x13A764 | REST, STAND, WALK, SIDLE_R, SIDLE_L, RUN, ATTACK, ATTACK2, FLINCH, DIE, FIDGET |
+| Unknown (pointers) | 0x13A7A0 | 360, BKWD, ARND, TWRD, AWAY |
+
+The debug print at 0x127F3 uses them: "%2d Goal %s", "Cur %s", "Awr %d Morl %d",
+"st %s fr %2d", "md %s bh %s". The table at 0x13A7A0 has no reference from the
+AI code that was read. Its use is unknown.
+
+### AI states (AIS_*)
+
+| Value | DTU | Descent 1 |
+|---|---|---|
+| 0 | NONE | AIS_NONE |
+| 1 | REST | AIS_REST |
+| 2 | SRCH | AIS_SRCH |
+| 3 | LOCK | AIS_LOCK |
+| 4 | FLIN | AIS_FLIN |
+| 5 | ATAK | AIS_FIRE |
+| 6 | RECO | AIS_RECO |
+| 7 | DEAD | AIS_ERR_ |
+
+AIS_MAX is 8 (assert at 0x1581B).
+
+### AI modes (AIM_*)
+
+| Value | DTU | Descent 1 |
+|---|---|---|
+| 0 | STILL | AIM_STILL |
+| 1 | WANDER | AIM_WANDER |
+| 2 | FOL_PATH | AIM_FOLLOW_PATH |
+| 3 | CHASE_OB | AIM_CHASE_OBJECT |
+| 4 | RUN_FROM | AIM_RUN_FROM_OBJECT |
+| 5 | HOME | AIM_HIDE |
+| 6 | OPENDOOR | AIM_OPEN_DOOR (7 in Descent 1) |
+
+Descent 1 mode 6 (AIM_FOLLOW_PATH_2) does not exist.
+
+### Behaviors (AIB_*)
+
+| Value | DTU | Start mode (0x10370) |
+|---|---|---|
+| 0x80 | GUARD | STILL |
+| 0x81 | WANDER | STILL |
+| 0x82 | HOME | STILL |
+| 0x83 | PATROL | FOL_PATH |
+| 0x84 | STATION | STILL |
+
+A value outside 0x80 to 0x84 becomes 0x81 (0x1438B, 0x10492). A melee creature
+with behavior STATION becomes WANDER at init (0x10622).
+
+### Awareness
+
+`ailp->player_awareness_type` has the values 0 to 5. The values 1 to 4 are
+those of Descent 1. Value 5 is new: it forces a flinch (see "Goal state choice"). Scripts
+use the same byte as an "anger" counter (see the script section).
+
+## Structures
+
+### ai_static (object +0x140)
+
+The first 24 bytes are the AI part of the level record. The layout is the
+Descent 1 `ai_static`.
+
+| Object offset | Size | Field |
+|---|---|---|
+| +0x140 | 1 | behavior |
+| +0x141 | 1 | flags[0] CURRENT_GUN |
+| +0x142 | 1 | flags[1] CURRENT_STATE |
+| +0x143 | 1 | flags[2] GOAL_STATE |
+| +0x144 | 1 | flags[3] PATH_DIR |
+| +0x145 | 1 | flags[4]. Set to 1 at init |
+| +0x146 | 1 | flags[5] GOALSIDE (door side for mode OPENDOOR) |
+| +0x147 | 1 | flags[6]. Tested by 0x16636 (to-hit penalty) |
+| +0x148 to +0x14B | 4 | flags[7] to flags[10]. Init: 0, 0, 0xFF, not set |
+| +0x14C | 2 | hide_segment (home or station segment) |
+| +0x14E | 2 | hide_index |
+| +0x150 | 2 | path_length |
+| +0x152 | 2 | cur_path_index |
+| +0x154 | 2 | follow_path_start_seg |
+| +0x156 | 2 | follow_path_end_seg |
+| +0x158 | 4 | danger_laser_signature |
+| +0x15C | 2 | danger_laser_num |
+| +0x15E | 4 | DTU flags. Zero at init. Must be nonzero for spell casting. Bits 2, 3, 4 of the low byte are set by the alert function. Bit 1 of +0x15F is set on wake up. Bit 6 of +0x15F is set on a failed morale check |
+
+### Other object fields that the AI uses
+
+| Offset | Size | Meaning |
+|---|---|---|
+| +0x0D | 1 | object flags. Bit 1: should be dead. Bit 6: not rendered and not processed |
+| +0x6C | 4 | shields (hit points, fix) |
+| +0x88 | 4 | status flags, see below |
+| +0x8C | 4 | time of the last regeneration step |
+| +0xFC | 12 | velocity |
+| +0x136 | 4 | high word (+0x138): object that blocks the path, -1 = none. Guess |
+| +0x13A | 2 | count of frames with a blocked path. Guess |
+| +0x162 | 4 | model number, index of the animation record |
+| +0x170 | 2 | animation state (0 to 10) |
+| +0x172 | 4 | animation frame |
+| +0x176 | 4 | goal animation state |
+| +0x19E | 1 | mage spell points left |
+| +0x19F | 1 | cleric spell points left |
+| +0x1A2 | 4 | target object. 0 = the player, -1 = none |
+| +0x1A8 | 4 | spell timer |
+| +0x1AE | 1 | copy of the `pass_thru` byte of the monster table |
+| +0x1B0 | 4 | script word, see below |
+| +0x1C0 | 4 | spell timer |
+| +0x1CC | 1 | activity: 0 = inactive, 2 = active |
+| +0x1DB | 4 | a time stamp. Set to `GameTime + (256 - iq)` at init, wake up and each melee swing. 60.0 is added by "stands confused". The reader was not found |
+
+Status flags at +0x88 that the AI reads. The names are guesses. The tests are
+verified.
+
+| Mask | Use in the AI |
+|---|---|
+| 0x00000004 | The creature cannot see. No wake up. Believed position is used in place of the real one |
+| 0x00000010 | The creature notices nothing behind it |
+| 0x00000020 | Confused. The morale function rolls a d10 first |
+| 0x00000100 | Afraid. Morale value 0, and mode RUN_FROM in the goal state choice. Set by the damage function at 0x29F12 |
+| 0x00000800 | Treated as flying for wake up and revive |
+| 0x00002000, 0x08000000 | `+0x1DB` gets a second `256 - iq` |
+| 0x00004000, 0x04000000 | Held. `do_ai_frame` returns before the animation step |
+| 0x01000000 | Set at creation if `regeneration` is not 0. Needed for the revive code |
+| 0x40000000 | Plus 1 to hit and plus 1 damage |
+
+Script word at +0x1B0 (the script section has the full layout).
+
+| Mask | Meaning in the AI |
+|---|---|
+| 0x000001FF | script id |
+| 0x00000200 | peaceful. Never alerted. Set by "wanders" and "stands confused" |
+| 0x00400000 | hostile |
+| 0x00800000 | fleeing. Set by a failed morale check, cleared by a passed one |
+
+### ai_local (0x153EB0, 47 bytes per object)
+
+This is not the Descent 1 layout after offset 8.
+
+| Offset | Size | Field |
+|---|---|---|
+| +0x00 | 1 | player_awareness_type (0 to 5) |
+| +0x01 | 1 | retry_count. Nonzero means the last move was blocked |
+| +0x02 | 1 | consecutive_retries (not seen in the code that was read) |
+| +0x03 | 1 | mode |
+| +0x04 | 1 | previous_visibility |
+| +0x05 | 1 | flags. Bit 1: play the animation backward (revive). Bit 5: the melee hit landed, end the animation state early |
+| +0x06 | 2 | goal_segment |
+| +0x08 | 4 | set to GameTime on wake up. Use unknown |
+| +0x10 | 4 | player_awareness_time |
+| +0x14 | 4 | time_player_seen |
+| +0x18 | 4 | time of the last attack sound (guess) |
+| +0x1C | 4 | next_misc_sound_time (guess) |
+| +0x20 | 4 | time_since_processed |
+| +0x24 | 4 | start time of the current animation state |
+| +0x28 | 4 | morale (integer) |
+| +0x2C | 1 | signed. -1 at init. -2 makes a ranged creature use the melee reach test. A negative value selects the spell function 0x92D99, else 0x91FDC |
+| +0x2D | 1 | "spell ready" flag. A spell caster goes to ATAK only if it is set. The code clears it then |
+
+## init_ai_object (0x1038B)
+
+Arguments: eax = object number, edx = behavior, ebx = hide segment.
+
+1. The object must be of type 2 (robot). Else "RLH: trying to init a
+   non-critter!".
+2. Store the y position in the table at 0x30E2D4.
+3. If the render type is 1: animation state STAND, first frame, blocker fields
+   cleared.
+4. Activity (+0x1CC) = 0. Mode = STILL. previous_visibility = 0.
+5. Behavior 0 becomes WANDER. A behavior other than -1 is stored and gives the
+   mode (table above).
+6. Velocity = 0. CURRENT_STATE and GOAL_STATE come from the animation state
+   (0x102B8).
+7. Awareness = 0, awareness time = 3.0.
+8. Morale = (flee value + attack value) / 2 for the difficulty level.
+9. All time fields = GameTime. `+0x1DB` = GameTime + (256 - iq).
+10. For GUARD, HOME, PATROL and STATION: hide_segment = the argument,
+    goal_segment = the argument, hide_index = -1, cur_path_index = 0.
+11. Spell points are copied from the monster table (+0xE4, +0xE5).
+12. `ailp[0x2C]` = -1, `ailp[0x2D]` = 0.
+13. A HUMANOID monster type gets the door opener bit (monster table +0x63 bit
+    0). So all humanoids open doors.
+14. STATION plus melee attack becomes WANDER.
+
+State conversion helpers:
+
+- 0x102B8, animation state to AI state: REST gives REST(1). WALK, SIDLE_R,
+  SIDLE_L and RUN give SRCH(2) if hostile, else NONE. ATTACK and ATTACK2 give
+  ATAK(5), or REST for a spell caster whose spell timers are not due. FLINCH
+  gives FLIN(4). DIE gives DEAD(7). STAND and FIDGET give NONE.
+- 0x10148, AI state to animation state: NONE, REST and RECO give STAND. SRCH
+  gives WALK (STAND for STATION). LOCK gives RUN if the player is farther than
+  30.0 and was seen in the last 0.5 seconds, else WALK (STAND for STATION).
+  FLIN gives FLINCH. ATAK gives ATTACK or ATTACK2 at random (STAND for a spell
+  caster whose timers are not due). DEAD gives DIE.
+
+## do_ai_frame (0x13BF4)
+
+Called from the object move function at 0x69981 for control type 1. Order of
+operations:
+
+1. Set `robptr`, `objnum`, `aip`, `ailp`. Set `player_visibility` = -1.
+2. Return if the object has flag bit 6 at +0x0D, the monster has no
+   `regeneration` and it is not the rat type.
+3. If the animation state is DIE: activity = 2, go to step 8.
+4. If the activity is not 2 (wake up test, 0x13CE0):
+   - Assert `we_have_a_brain`.
+   - The test runs only if the target (+0x1A2) is not -1, status bit 0x04 is
+     clear, the player is not hidden (0x165C4) and the brain bit (creature
+     segment, target segment) is set.
+   - `dot` = (player position - creature position) dot forward vector.
+   - If `dot` <= 0 (player behind): fail if player flag bit 2 or status bit
+     0x10 is set. Else fail if `(tick + objnum + dot) % 255 > iq`.
+   - Ray cast 0x10815 from the creature to the player. The start point is 5.0
+     higher for a creature that does not fly. A free ray passes. A blocked ray
+     passes only for a melee creature closer than 100.0 (for a spell caster
+     only while its spell timers are not due).
+   - On success: target = 0 if hostile, else -1. Activity = 2. Play
+     `see_sound` with volume `str << 12`. Animation state STAND. If hostile:
+     awareness 4, mode CHASE_OB, CURRENT_STATE REST, GOAL_STATE SRCH. Else
+     awareness 0 and both states NONE. Call the alert function (0x160AB, level
+     1). Call the morale function.
+5. If the activity is still not 2 (0x13F7E):
+   - Unless the control type is 11 or the creature dies: set y to the floor
+     height of the segment. If the point is outside the mine, delete the
+     object ("pushed critter %d through mine").
+   - Idle animation: add 1 to the frame on every 10th tick (every frame for
+     WALK and for states above SIDLE_L). At the end of the state pick the next
+     one: FIDGET if `(FrameTime + objnum) % (iq >> (awareness + 1))` is 0, else
+     STAND.
+6. In both cases (0x14134): reset the timers of `ailp` to GameTime, awareness
+   time = 3.0, `+0x1DB` = GameTime + (256 - iq), danger laser = none, copy
+   `pass_thru`. Then go to step 8.
+7. If the activity is 2 (0x14206), on every 20th tick only: set the activity
+   to 0 and repeat the test of step 4 against the player (brain bit, dot or
+   player flag, ray cast). On success the activity is 2 again. If it stays 0,
+   the creature is not dying and is not the rat type: both states NONE,
+   animation state REST. So a creature that loses sight of the player goes to
+   rest within 20 ticks.
+8. Unless dying: call 0x9002C(object, 0) (spell effects on the creature, not
+   read).
+9. Fix an invalid behavior. Assert segnum and id.
+10. Regeneration (0x1440C). Runs if `regeneration` is not 0 and status bit
+    0x01000000 is set:
+    - Every `regeneration` seconds add 1.0 to the shields while they are below
+      `max_hit_points`.
+    - When the shields are full, the DIE animation is on its last frame and
+      the player is farther away than the sum of both radii: the creature
+      revives. `ailp` flag bit 1 (backward animation), CURRENT_STATE REST,
+      GOAL_STATE SRCH, animation state REST, activity 0, hostile flag set,
+      fleeing flag clear, awareness 4, morale check, alert level 4, turn to
+      face the player.
+11. Danger laser: Descent 1 code (0x14655).
+12. `time_since_processed` += FrameTime. Believed player position: the real
+    position, or `Ai_cloak_info[objnum % 8]` if the player is hidden (0x165C4).
+    `dist_to_player` is the distance to it.
+13. Agitation path (0x1473A), Descent 1 code with new conditions: not dying,
+    not STATION, mode STILL, morale >= attack value, target is the player,
+    activity 2, `Overall_agitation` > 70, distance < 200.0, two random tests.
+    Then `create_path_to_player(obj, 4 + agitation / 8 + difficulty, 1)`
+    (0x170BC) and return.
+14. Awareness decay (0x14825): Descent 1 code. Every 2.0 seconds the type
+    drops by 1.
+15. If awareness >= 1, the target is not -1 and the fleeing flag is clear:
+    mode = CHASE_OB. If GOAL_STATE and CURRENT_STATE are both FLIN:
+    GOAL_STATE = LOCK.
+16. Return if a held bit (0x04004000) is set and the creature is not dying.
+17. If one of the two AI states is not NONE: call the animation step
+    (0x11018). Return if the creature is dying.
+18. Spell casting (0x1490B): active, mage or cleric level above 0, object
+    flags +0x0D bits 0 to 2 clear, `aip` flags at +0x15E not zero. If
+    `ailp[0x2C]` is negative and the timer +0x1A8 is due: 0x92D99(object,
+    distance). Else if the timer +0x1C0 is due: 0x91FDC(object).
+19. Time slicing (0x1498B), Descent 1 code. With awareness below 3: return if
+    the distance is above 150.0 and `time_since_processed` <= 1.0, or above
+    100.0 and <= 0.5. A HOME or GUARD creature in mode FOL_PATH that is not in
+    its home segment is always processed. The 250.0 tier of Descent 1 is gone.
+    Then `time_since_processed = -((objnum & 3) * FrameTime) / 2`.
+20. Inactive creature (0x14A1C; activity 0, not the rat type, not dying): both
+    states NONE, animation state from 0x10148. Compute visibility. If visible
+    now or before: turn toward the player with `turn_time`. Else turn randomly
+    (0x10763). Return.
+21. Door opener (0x14AF2), Descent 1 "brain" code for every creature with the
+    door bit, unless the behavior is STATION or the mode is CHASE_OB. Mode
+    STILL and player visible: path to a door (0x172DE, 8 + difficulty
+    segments). Other modes: if the segment has a door that can open (0x132AA),
+    mode = OPENDOOR and GOALSIDE = the side. Else, unless the mode is FOL_PATH,
+    path to a door.
+22. Blocked move (0x14BA1). Runs if `retry_count` is not 0, the animation
+    state is WALK or RUN, the creature is not the rat type and the blocker
+    field +0x138 is not 0. See "Blocked move" below. Then go to step 24.
+23. Mode switch (0x15074, jump table 0x13BBC). See "Mode switch" below.
+24. After the switch (0x157BF): compute visibility. If it is 2 (never true,
+    see difference 2), awareness is 0 and the creature is hostile: awareness =
+    3. Assert both states.
+25. Goal state choice (0x15876). See "Goal state choice" below.
+26. Return if GOAL_STATE is FLIN. Else switch on CURRENT_STATE (jump table
+    0x13BD8). See "Current state switch" below.
+
+### Blocked move (step 22)
+
+- The blocker is the player, or the object in +0x138 if that is not negative.
+- If the blocker has object type 18 and the path was blocked for 5 or more
+  frames: turn toward it and set the animation state to ATTACK or ATTACK2 (by
+  tick parity). If the type table entry (0x19B340 + id * 32) has bit 2, the
+  object number goes to the list at 0x30F10C. Else, after 10 frames, call
+  0xA6ACB(blocker, creature, 10.0) and set GOAL_STATE = SRCH. Guess: the
+  creature breaks or damages the obstacle. Then move relative to the player
+  with the circle distance of the table.
+- Else by mode: RUN_FROM calls 0x123EF (move away). STILL does nothing. All
+  other modes: if the player is not visible or the creature is inactive, set
+  goal_segment to the believed player segment (0x2AA9A4), make a path
+  (0x16FD9) and set mode FOL_PATH ("AI: %s looking for player!"). STATION does
+  nothing here.
+- Else pick a way around by `(tick + GameTime + objnum) % 100`: 0 = keep the
+  direction, WALK. 1 = a random direction, WALK. 2 = move relative to the
+  player with twice the circle distance. 3 = turn to the side, WALK. 4 =
+  GOAL_STATE SRCH. 5 to 99 = side step: animation state SIDLE_R (3) or SIDLE_L
+  (4), chosen by the side of the player. The velocity is set to the direction
+  times the animation speed (0x74AA7). A creature that does not fly also gets
+  this as thrust (+0x108).
+
+### Mode switch (step 23)
+
+`A` is the flee value and `B` is the attack value of the difficulty level.
+
+- STILL (0x154BC). If (distance < 120.0 + 20.0 * difficulty, or awareness >=
+  3) and the creature is hostile: compute visibility. If visible now or
+  before, or a random test passes, and morale >= B: turn toward the player.
+  If morale >= B: `do_firing_stuff`. If visible: a melee creature moves toward
+  the player (0x125B9 with circle distance 0), a ranged one only evades. If
+  not visible, not in its home segment, farther than 80.0 and the behavior is
+  PATROL or HOME: path to the home segment (0x171F0, 15 segments), mode
+  FOL_PATH. If the first condition fails: only turn toward the player when it
+  is visible. So a peaceful creature looks at the player.
+- WANDER (0x15096). Hostile: same as CHASE_OB. Not hostile: goal_segment =
+  random segment, make a path (0x16FD9), follow it (0x17505).
+- FOL_PATH (0x153B0). Compute visibility, `ai_follow_path`. Unless the
+  behavior is PATROL: if morale >= B, GOAL_STATE = LOCK and `do_firing_stuff`.
+- CHASE_OB (0x150DD). Circle distance = player radius for melee. For ranged it
+  is the third `$MONSTER_AI` group plus the player radius plus `objnum & 15`
+  (raw fix units, so nothing). Then the Descent 1 code:
+  - visibility dropped from 2 and morale >= B: path to the player (8
+    segments), GOAL_STATE SRCH. Never true, see difference 2.
+  - not visible and farther than 80.0 (not STATION): HOME and GUARD go home
+    (0x171F0), others get a 5 segment path (0x172DE). GOAL_STATE SRCH.
+  - both states REST, visible, morale >= B and two random tests: GOAL_STATE
+    SRCH ("Setting to search.").
+  - player not seen for 8.0 seconds: if morale >= B, path to the player (10
+    segments).
+  - else if neither state is REST: move relative to the player (0x125B9). Then
+    if morale >= B: `do_firing_stuff`. Else "Bad moralle (%d)": activity = 0
+    and a new morale check.
+- RUN_FROM (0x14D65). Compute visibility. Call 0x123EF(object,
+  vec_to_player). The Descent 1 path following and bomb dropping are gone.
+- HOME (0x1541A). Compute visibility, `ai_follow_path`. If morale >= B:
+  GOAL_STATE = LOCK (a ranged creature keeps ATAK).
+- OPENDOOR (0x156A5). Descent 1 code: turn and move to the center of the door
+  side.
+- Any other value: "Unknown mode = %i in NPC %i, behavior = %i". Then mode =
+  CHASE_OB if morale >= B, or RUN_FROM if morale <= A.
+
+### Goal state choice (step 25)
+
+Runs only if awareness is not 0. It replaces `Ai_transition_table`.
+
+1. Awareness 5: GOAL_STATE = FLIN (LOCK if CURRENT_STATE is FLIN already).
+   Awareness becomes 2, awareness time 3.0.
+2. CURRENT_STATE DEAD: GOAL_STATE = DEAD.
+3. Status bit 0x100 set, or morale <= A: mode = RUN_FROM.
+4. GOAL_STATE is REST, SRCH, LOCK or ATAK, and morale >= B:
+   - melee (or `ailp[0x2C]` is -2): ATAK if distance <= creature radius +
+     player radius + 2.0, else LOCK.
+   - ranged without spell levels: ATAK.
+   - spell caster: ATAK if `ailp[0x2D]` is set. The flag is cleared.
+5. GOAL_STATE and CURRENT_STATE both FLIN: LOCK.
+6. Both RECO and morale >= B: the same choice as in 4.
+
+The same melee reach test (sum of radii + 2.0) is in `do_firing_stuff`,
+`compute_vis_and_vec`, `ai_fire` and the current state switch.
+
+### Current state switch (step 26)
+
+- NONE (0x15B2F). Only if the segment of the creature is flagged in the table
+  at 0x38C060 (index from 0x389A06, meaning not traced). Hostile: GOAL_STATE =
+  SRCH. Else the idle animation of step 5.
+- REST (0x15C56). If GOAL_STATE is REST, the player is visible and morale >=
+  B: the choice of step 25 point 4 ("Went from rest to attack!"). Else, if not
+  hostile: GOAL_STATE = NONE.
+- SRCH (0x15DF0) and LOCK (0x15E6A). Visible and morale >= B: turn toward the
+  player with `turn_time`. Else turn randomly.
+- FLIN: nothing.
+- ATAK (0x15ED4). Visible and morale >= B: turn toward the player. A ranged
+  creature uses `turn_time[4]` (the fastest value), a melee one the value of
+  the difficulty level. Else turn randomly. Then
+  `ai_do_actual_firing_stuff`.
+- RECO (0x15F9F). Every 4th frame (`obj_ref & 3`): same as SRCH.
+
+## Sight
+
+- 0x109E7 is `player_is_visible_from_object`. It returns the brain bit of
+  (creature segment, player segment). Callers: 0x12CEA, 0x12D3F in
+  `compute_vis_and_vec`.
+- 0x109FE is the Descent 1 function with the ray cast. It has no caller.
+- 0x165C4 "player is hidden from this creature". True if the player object
+  has status bits 0x00030000 or player flag bit 0 (invisible), and the monster
+  is not BLIND, and status bit 0x04 of the creature is clear, and (iq < 130 or
+  creature level (0xAE3BB) < 10). So a BLIND creature and a smart creature of
+  level 10 or more ignore invisibility.
+- `compute_vis_and_vec` (0x12BE8). If the player is hidden or the creature has
+  status bit 0x04: every 2.0 seconds move the believed position of
+  `Ai_cloak_info` by a random vector, and use it. Else use the real position.
+  Then call 0x109E7. Then store previous_visibility. If the result is not 0:
+  time_player_seen = GameTime. The block for result 2 (goal state, attack
+  sound, Descent 1 "see sound" timers) cannot run.
+- `do_firing_stuff` (0x12916). Needs visibility >= 1. `dot` = forward vector
+  dot vec_to_player. If `dot` >= 0.75 or the player is hidden, and GOAL_STATE
+  is NONE, REST, SRCH, LOCK or ATAK: a creature that is not hostile gets
+  GOAL_STATE NONE. A hostile one gets the choice of step 25 point 4, and
+  awareness at least 1 with time 3.0. If `dot` >= 0.5 and GOAL_STATE is NONE,
+  REST or SRCH: LOCK if hostile, else NONE. Descent 1 uses 7/8 in place of
+  0.75.
+
+Guess: because the shipped BRN files are copies of one matrix (see
+`docs/formats/brn.md`), sight in the original game is wrong in most levels.
+
+## Alert function (0x160AB)
+
+Arguments: eax = object, edx = level (1 to 5). Called on wake up (1), on fire
+(1), on revive (4) and by scripts (5).
+
+1. Descent 1 `create_awareness_event`: add the event (0x16055). A random test
+   adds 1 to `Overall_agitation`, limit 100.
+2. If the level is 3 or more, for each other robot that is not active, not
+   peaceful (bit 9) and not fleeing: if the brain bit (robot segment, caller
+   segment) is set, a random test against `iq` passes and the ray cast 0x10815
+   is free (a robot with status bit 0x10 must also face the caller): turn the
+   robot to the caller, set its hostile flag, call 0xA6505 and set bit 3 or 4 of
+   its +0x15E for level 3 or 4.
+
+The function 0x16366 is the Descent 1 awareness spread (segment awareness to
+objects). It raises the awareness of hostile creatures only, sets the time to
+3.0 and calls the morale function for each raised creature.
+
+## Animation step (0x11018)
+
+Arguments: eax = object, edx = distance, ebx = `vis_vec_pos`, ecx =
+`gun_point`. This is where the AI sets the animation state. Other places:
+wake up (STAND), idle code (STAND, FIDGET, REST), blocked move (WALK, SIDLE,
+ATTACK), morale (RUN and the 0x10148 mapping).
+
+1. If hostile, not dead, melee, distance > 30.0 and the player was seen in the
+   last 0.5 seconds: animation state RUN (not for STATION), GOAL_STATE LOCK.
+2. Frame = first frame + `elapsed * (frames - 1) / state_time`, rounded.
+   `elapsed` is GameTime minus `ailp[0x24]`. `state_time` is the fix value at
+   animation record +0xE4 + state * 4. With `ailp` flag bit 1 the frame runs
+   backward from the last frame.
+3. Ranged creature in CURRENT_STATE ATAK: the fire frame is the word at record
+   +0xB8 for ATTACK and +0xBA for ATTACK2 (`fire_frames=`). If the step would
+   jump over it, the frame is set to it.
+4. Animation state DIE: turn the creature to lie on the floor (floor normal of
+   the segment).
+5. The state ends when the frame passes the end. It also ends early if
+   GOAL_STATE is FLIN and differs from CURRENT_STATE, or if `ailp` flag bit 5
+   is set.
+6. At the end of DIE: stay on the last frame. Without status bit 0x04000000
+   call 0x6A3CC(objnum).
+7. At the end of another state: clear `ailp` flag bits 1 to 5. CURRENT_STATE =
+   GOAL_STATE. Animation state = 0x10148 mapping. Mode RUN_FROM forces RUN. For
+   ATTACK: use ATTACK2 if the height difference to the player is more than
+   half the horizontal distance. Frame = first frame. `ailp[0x24]` = GameTime.
+8. An animation state outside 0 to 10 prints "state INVALID (%d)" and becomes
+   STAND.
+9. Ranged creature closer than 200.0 on a fire frame: `gun_point` = position +
+   forward vector * 1.0.
+
+## Melee attack
+
+### Hit test: do_ai_robot_hit_attack (0x1153A)
+
+Arguments: eax = creature, edx = player object, ebx = collision point. It
+handles both directions. It returns 0 at once if the player object has type
+12.
+
+Player hits creature. If the animation state of the player is 6, 7, 11 or 12:
+
+1. Get the weapon polygon of the player for the current attack frame (0x748D9,
+   frame from the attack start time 0x1D3373).
+2. Test it against the body of the creature (0x7473F, 0x4F7D5).
+3. On a hit call 0x278B5 (collide.c).
+4. If the creature now has GOAL_STATE DEAD ("Another AIS_DEAD one, you killed
+   him."): both states DEAD, mode STILL, animation restart. A flying creature
+   starts to fall. Return 1.
+5. Else GOAL_STATE = FLIN, player flag bit 3 at 0x1D335F is set (one hit per
+   swing).
+
+Creature hits player. If the monster is melee (attack_type 1), its animation
+state is ATTACK or ATTACK2 and the attack switch 0x13A6B4 is not 0:
+
+1. Play `attack_sound` (monster table +0x66).
+2. `+0x1DB` = GameTime + (256 - iq), plus the same again with status bits
+   0x2000 or 0x08000000.
+3. Test the weapon polygon of the creature against the body of the player
+   (two tries, 0x7473F).
+4. On a hit call 0x28B34(player, creature, collision point, hit point). Set
+   `ailp` flag bit 5 and GOAL_STATE = RECO.
+
+0x28B34: play `claw_sound`, push the player (0x25DE6), set the creature
+active, apply the spell of the weapon if it has one, then call the damage
+function 0x29A9C(player, creature, (difficulty + 1) * 1.0, weapon).
+
+### To-hit roll (0x2A7F3)
+
+Arguments: eax = target, edx = attacker, ebx = weapon number (negative =
+natural weapon). Result: 2 = critical hit, 1 = hit, 0 = miss, -1 = fumble.
+
+1. `roll` = rand % 20 + 1.
+2. A roll of 20 is a critical hit. A roll of 1 is a fumble. A creature that
+   fumbles rolls a second d20 against `str`. If it is higher, the creature
+   goes to CURRENT_STATE FLIN. The player gets one of three texts and the
+   FIDGET animation, or loses the weapon (0xAE837).
+3. Attacker with status bit 0x00200000: subtract min(speed / 0.25 + 1, 5).
+4. Creature as attacker: `thac0` = monster table +0x74. Add `to_hit_bonus`
+   (+0x70) for a natural weapon, or the bonus of the weapon (weapon table
+   0x1E9D12, 217 bytes per entry, s16 at +0x2A). Add the strength bonus
+   0x2A789(`str`, 100): a table lookup at 0x13A956 + 4 * str, str limited to 1
+   to 19 (values start -5, -3, -3, -2, -2, -1, -1, 0). Add 1 with status bit
+   0x40000000.
+5. Player as attacker: `thac0` is the signed byte at 0x1D4D78 ("COL: thac0 =
+   %d"). Weapon and skill bonuses are added (not read in detail).
+6. Target is the player: `ac` = word at 0x1D33C9. Subtract 4 from the roll if
+   the player is hidden from the attacker (0x165C4).
+7. Target is a creature: `ac` = monster table +0x76. Some status bits limit
+   `ac` (0x2ADAF to 0x2AE1D).
+8. Attacker with status bit 0x02: add 1. Attacker with status bit 0x08000000:
+   subtract 4.
+9. Miss if `thac0 - ac > roll`. Else hit.
+
+### Damage dice (0x2AF5E)
+
+For a creature with a natural weapon: sum of `#damage_dice` (+0x6E) rolls of
+`rand % damage_dice + 1` (+0x6C), plus `damage_bonus` (+0x72), plus 1 with
+status bit 0x40000000. Assert `RF.damage_dice > 0`.
+
+## Ranged attack
+
+### ai_do_actual_firing_stuff (0x1396E)
+
+1. Return if the creature is not hostile.
+2. Player visible and forward dot >= 0.75:
+   - melee: nothing here if the player is in reach or dead. The hit test does
+     the work.
+   - ranged: only on a fire frame call `ai_fire`.
+   - Unless the behavior is PATROL: in mode STILL or FOL_PATH set mode
+     CHASE_OB if morale >= B, or RUN_FROM if morale <= A.
+3. Player not visible: if the weapon has byte +1 = 1 in the weapon table (the
+   Descent 1 homing test), the frame is a fire frame, CURRENT_STATE is ATAK
+   and `Hit_pos` is farther than 40.0: `ai_fire`.
+4. GOAL_STATE = RECO.
+
+### ai_fire (0x11B06)
+
+Arguments: eax = creature, edx = fire point, ebx = distance. Text: "AI:
+critter fires.".
+
+1. Return if the attack switch is 0, the creature is not hostile or the
+   monster is melee.
+2. Target = the player object, or the object in +0x1A2 if it is above 0.
+3. `weapon_type` < 0: if the target is in reach (sum of radii + 2.0), touch
+   attack 0x27D82(target, creature, weapon_type, point) ("AI: melee attack
+   1!!!"). Else call 0x10040(-weapon_type, target, creature). Guess: it casts
+   spell number `-weapon_type`.
+4. `weapon_type` >= 0: return if the control type is 11 or the player is
+   dead. With a hidden player the Descent 1 cloak test applies.
+5. Aim. If the target is slower than 1.0 on x and z: aim at the believed
+   position. Else lead the target: `t = distance / weapon speed`, aim at
+   believed position + velocity * t / 2. The weapon speed is the fix at weapon
+   table +0x6E + 4 * difficulty.
+6. A monster with mage or cleric levels does not shoot. It does the touch
+   attack if the target is in reach ("AI: melee attack 2!!!").
+7. Else create the projectile (0x55B23, `Laser_create_new_easy`).
+8. Call the alert function with level 1.
+
+## Morale (0x10ADF)
+
+Argument: eax = object. Texts: "can't do morale on %d", "AI: NPC (%d) mor =
+%d", "AI: (%d) failed morale!".
+
+### When it runs
+
+| Call | Place |
+|---|---|
+| 0x13F65 | `do_ai_frame`, wake up |
+| 0x145FB | `do_ai_frame`, revive |
+| 0x153A6 | `do_ai_frame`, CHASE_OB with morale below the attack value ("Bad moralle") |
+| 0x163D7 | awareness spread 0x16366, for each creature whose awareness rises |
+| 0x178AE | `ai_follow_path` 0x17505, with awareness set to 1 |
+| 0x29F1B | damage function 0x29A9C, after it sets status bit 0x100 (afraid) |
+| 0x13736 | gate in a robot (0x13407) |
+| 0x5F3A9, 0x8E430, 0x8F660, 0x9001F to 0x90645 | spell and effect code (not read) |
+| 0xA94AD | script code: make hostile |
+| 0xAE100, 0xAE212, 0xAE24F | turn undead (0xADC46) |
+
+### Refusals
+
+The function prints a text and returns if: the object is not a robot, the
+control type is not 1 ("no AI"), `max_hit_points` <= 0, or the creature is
+dead (GOAL_STATE or CURRENT_STATE DEAD, flag bit 1 at +0x0D, or animation
+state DIE).
+
+### Confusion
+
+If status bit 0x20 is set, roll `rand % 10`:
+
+| Roll | Text | Effect |
+|---|---|---|
+| 0 | "%d wanders" | morale = mean, GOAL_STATE NONE, peaceful bit set, hostile and fleeing clear |
+| 1 to 5 | "%d stands confused" | the same, and activity = 0, `+0x1DB` = GameTime + 60.0 |
+| 6 to 8 | "%d attacks" | the "pass" result below with the hostile flag set |
+| 9 | "%d acts normal" | go on with the normal check |
+
+### Morale number
+
+`mor` is built as follows.
+
+1. Status bit 0x100 (afraid): `mor` = 0. Skip the rest.
+2. UNDEAD monster: `mor` = 0 if the fleeing flag is set (turned), else 20.
+   Skip the rest.
+3. `mor` = (300 - iq) / 8.
+4. Subtract the wound level: `(1.0 - shields / max_hit_points) * 4`, rounded
+   down (0 to 4).
+5. Subtract 2 if 0x359F4 returns true (meaning not traced).
+6. Subtract 4 if the player object has one of the status bits 0x21060000, or
+   the creature has status bit 0x04.
+7. Add `(level(creature) - (player value at 0x1D33CB + 1)) / 2`. 0xAE3BB gives
+   the creature level.
+8. Add 3 unless the behavior is WANDER or HOME.
+9. Add the mage level and the cleric level of the monster.
+10. Add 2 * awareness.
+11. Add 4 if the creature has one of the status bits 0x21060000, or the player
+    object has status bit 0x04.
+12. Add `(player armor class - monster armor class) / 2`.
+13. Add `level number / 2`.
+
+### Roll and result
+
+`roll` = rand % 19 + 2 (2 to 20).
+
+- Pass (`roll <= mor`): clear the fleeing flag. If the creature is hostile or
+  has a target: morale = attack value, mode CHASE_OB, GOAL_STATE SRCH, hostile
+  flag set. Else: morale = mean, GOAL_STATE NONE.
+- Fail: morale = flee value, mode RUN_FROM, hostile flag clear, fleeing flag
+  set, animation state RUN, bit 6 of +0x15F set.
+
+In both cases the animation state is set from CURRENT_STATE (0x10148).
+
+So the stored morale has three values only. The tests in `do_ai_frame`
+("morale >= attack value", "morale <= flee value") read the result of the last
+check.
+
+### Monster flags and morale
+
+- UNDEAD: fixed morale 20, or 0 when turned. Verified.
+- `iq`: a higher value lowers the morale number. Verified.
+- NO_SCARE and NO_SLEEP: not read by the morale function. They are bits of the
+  flag word +0x98. The spell function 0x92D99 tests that word with a mask
+  (guess: scare and sleep spells check them).
+- `pain_flee`, `patient`, `impatient`, `dark_lover`, `light_lover`,
+  `prison_boy`, `jumping_jack`: the reader stores them in monster table +0xD0.
+  0x69E66 copies the dword to object +0x1D7. No test of these bits was found in
+  the executable. The patience byte (+0xD8) has no reader either.
+- LIGHT_SENSITIVE: no reader found.
+- BLIND: only in 0x165C4 (ignores invisibility).
+- FLYING: start height of the sight ray, random direction in 3D, no thrust
+  copy in the side step, falling on death.
+- `noattack`: stored in +0xD9 bit 0. No reader found.
+
+## Monster table values in the AI
+
+The full table layout is in the next section. This is what the AI does with
+the `$MONSTER_AI` numbers.
+
+| Numbers | Offset | Use |
+|---|---|---|
+| 1 | none | read and dropped |
+| 2 to 6 | +0x20 | field of view cosine. Passed to 0x109E7, which ignores it |
+| 7 to 11 | +0x34 | turn time. Third argument of `ai_turn_towards_vector` (0x106BA) and of the random turn (0x10763). `docs/formats/tbl.md` calls it `firing_wait`. That is wrong |
+| 12 to 16 | +0x48 | circle distance of a ranged creature in mode CHASE_OB (0x1511C). `docs/formats/tbl.md` calls it `turn_time`. That is wrong |
+| 17 to 21 | +0x5C | no reader found |
+| 22 to 26 | +0x80 | flee value `A` of the morale system |
+| 27 to 31 | +0x8A | attack value `B` of the morale system |
+
+Verified (data): in BANE.BIN group 2 is 0.8 to 0.4 and group 3 is 7.0 or 3.0.
+These fit a turn time in seconds and a distance.
+
+Other values: `iq` (+0xD4) is used for the notice test from behind, the FIDGET
+rate, the morale number, the `+0x1DB` stamp and the invisibility test. `str`
+(+0xDE) is the volume of the see sound, the fumble test and the to-hit bonus.
+`regeneration` (+0x7E) is the number of seconds per hit point of a dead
+creature. `speeds=` and `state_times=` go to the animation record of the model
+and are read there (0x74AA7 for the speed, record +0xE4 for the times).
+
+## Unknown
+
+- The reader of object +0x1DB.
+- The meaning of 0x359F4 in the morale number.
+- The meaning of most status bits at object +0x88.
+- The table at 0x13A7A0 ("360", "BKWD", "ARND", "TWRD", "AWAY").
+- The segment table at 0x38C060 that gates the NONE state code.
+- The inside of `ai_move_relative_to_player` (0x125B9), 0x123EF and the path
+  code.
+- The creature spell functions.
+
+The two sections below were written from separate passes over the reader code
+(bm.c), brain.c and dialogue.c.
+
+## Monster table (Robot_info)
+
+All addresses are linear addresses in `dtu_flat.bin` (base 0x10000).
+
+### Summary
+
+- `Robot_info[]` base is 0x38E344. One entry is 242 bytes (0xF2). The limit is 40 entries (assert `N_robot_types < MAX_ROBOT_TYPES`).
+- There is no separate `Monster_info[]` array in the executable. All AD&D fields are inside the 242-byte entry.
+- `$MONSTER` reader: 0x1DDE6 to 0x1F490 (bm.c). It parses into stack variables, then copies them into the entry at 0x1EF9F to 0x1F35E.
+- `$MONSTER_AI` reader: 0x1DC02 to 0x1DCA8.
+- Dispatcher: 0x1C3AE calls the `$MONSTER_AI` reader, 0x1C3CB calls the `$MONSTER` reader (function 0x1B2F5).
+- The entry index for `$MONSTER` is `N_robot_types` (0x13DA54). The entry index for `$MONSTER_AI` is its own counter (0x13A847).
+
+### Verified (code): entry layout
+
+"Default" is the value the reader sets before it parses the line. Fix means 16.16 fixed point (`value * 65536.0`, constant at 0x121B3D).
+
+| Offset | Size | Type | Filled by | Default | Conversion |
+|---|---|---|---|---|---|
+| +0x00 | 4 | int | `model=` (first model) | none | model number returned by the model loader 0x72DC5 |
+| +0x04 | 2 | s16 | no keyword | -1 | Descent 1 place of `exp1_vclip_num` |
+| +0x06 | 2 | s16 | no keyword | -1 | Descent 1 place of `exp1_sound_num` (guess) |
+| +0x08 | 1 | byte | `contains_id` | 0 | integer |
+| +0x09 | 1 | byte | `contains_count` | 0 | integer |
+| +0x0A | 1 | byte | `contains_prob` | 0 | integer |
+| +0x0B | 1 | byte | `contains_type` | 0 | word to object type: `monster` 2, `armor` 15, `misc` 16, `spell` 17 |
+| +0x0C | 4 | int | `score_value` | 1000 | integer |
+| +0x10 | 4 | fix | `lighting` | 0x8000 | fix. Must be 0 to 1.0 |
+| +0x14 | 4 | fix | `mass` or `weight` | 0x40000 | fix |
+| +0x18 | 4 | fix | `drag` | 0x8000 | fix |
+| +0x1C | 4 | fix | `gravity` | 0x10000 | fix |
+| +0x20 | 5 x 4 | fix | `$MONSTER_AI` numbers 2 to 6 | none | degrees to cosine (see below) |
+| +0x34 | 5 x 4 | fix | `$MONSTER_AI` numbers 7 to 11 | none | fix. Turn time |
+| +0x48 | 5 x 4 | fix | `$MONSTER_AI` numbers 12 to 16 | none | fix. Circle distance of ranged creatures (see "Monster table values in the AI") |
+| +0x5C | 5 x 1 | byte | `$MONSTER_AI` numbers 17 to 21 | none | integer (`rapidfire_count`) |
+| +0x61 | 1 | byte | `cloak_type` | 0 | integer |
+| +0x62 | 1 | byte | `attack_type` | -1 | `projectile` 0, `melee` 1. -1 gives the error "Creature %s attack_type not specified" |
+| +0x63 | 1 | byte | `door_opening` | 0 | 1 if the number is 1, bit 0 |
+| +0x64 | 2 | s16 | `see_sound` | 170 | integer |
+| +0x66 | 2 | s16 | `attack_sound` | 171 | integer |
+| +0x68 | 2 | s16 | `claw_sound` | 190 | integer |
+| +0x6A | 2 | s16 | `weapon_type` | -1 | integer |
+| +0x6C | 2 | s16 | `damage_dice` | 6 | integer |
+| +0x6E | 2 | s16 | `#damage_dice` | 1 | integer |
+| +0x70 | 2 | s16 | `to_hit_bonus` | 0 | integer |
+| +0x72 | 2 | s16 | `damage_bonus` | 0 | integer |
+| +0x74 | 2 | s16 | `thaco` or `thac0` | 5 | integer. Replaced by the NPC table (see below) |
+| +0x76 | 2 | s16 | `armor_class` | 0 | integer. Replaced by the NPC table |
+| +0x78 | 2 | s16 | `max_hit_points` | 24 | integer |
+| +0x7A | 2 | s16 | `max_hit_points` (second copy) | 24 | integer |
+| +0x7C | 2 | s16 | no keyword | -1 | code sets it to 0x16 for the lich (0xACA16, 0xAD189) |
+| +0x7E | 2 | s16 | `regeneration` | 0 | integer |
+| +0x80 | 5 x 2 | s16 | `$MONSTER_AI` numbers 22 to 26 | none | integer (group A, -100 to -500). Flee value of the morale system |
+| +0x8A | 5 x 2 | s16 | `$MONSTER_AI` numbers 27 to 31 | none | integer (group B, 0 to -400). Attack value of the morale system |
+| +0x94 | 4 | int | `picture=` | 0 | value returned by 0x19DEF (bitmap index) |
+| +0x98 | 2 | u16 | flag words, set 1 | 0 | see the flag table |
+| +0x9A | 2 | s16 | `hit_sound` | 10000 | integer |
+| +0x9C | 2 | s16 | `die_sound` | 10000 | integer |
+| +0x9E | 1 | byte | `see_sound_max` | -1 | integer |
+| +0x9F | 1 | byte | `bossiness` | 0 | integer |
+| +0xA0 | 4 | int | `hit_vclip` | -1 | integer |
+| +0xA4 | 4 | int | `blood` | -1 | integer |
+| +0xA8 | 4 | u32 | flag word `pass_thru` | 0 | bit 0x02 |
+| +0xAC | 3 x 4 | fix | `speeds=` (3 numbers) | 0 | fix, then times 2 |
+| +0xB8 | 3 x 4 | fix | `speeds=` (copy) | 0 | same values as +0xAC |
+| +0xC4 | 3 x 4 | fix | `speeds=` (copy) | 0 | same values as +0xAC |
+| +0xD0 | 4 | u32 | flag words, set 2 | 0 | see the flag table |
+| +0xD4 | 4 | int | `iq` | 70 | integer |
+| +0xD8 | 1 | byte | computed | 100 | 100, plus 75 if `patient`, minus 75 if `impatient` |
+| +0xD9 | 1 | byte | flag words, set 3 | 0 | see the flag table |
+| +0xDA | 4 | int | `monster_hit_vclip` (3 spellings) | 9 | integer |
+| +0xDE | 4 | int | `str` | 10 | integer |
+| +0xE2 | 1 | byte | `spell_level` | 0 | integer. Replaced by the NPC table (mage level) |
+| +0xE3 | 1 | byte | `spell_level`, only if `cleric_points` is not 0 | 0 | Replaced by the NPC table (cleric level) |
+| +0xE4 | 1 | byte | `spell_points` | 0 | integer. Replaced by the NPC table (mage points) |
+| +0xE5 | 1 | byte | `cleric_points` | 0 | integer. Replaced by the NPC table (cleric points) |
+| +0xE6 | 4 | fix | `dead_adjust` | 0 | fix |
+| +0xEA | 4 | int | `moola` | 0 | integer |
+| +0xEE | 4 | fix | `regonzo` | 0 | fix |
+
+The bytes +0x60 and +0x92 to +0x93 are not written by the reader.
+
+The keyword at 0x121659 (between `weapon_type` and `mass`) is `iq`.
+
+The keyword `spell=` is accepted and ignored (0x1EAAB).
+
+### Verified (code): flag words
+
+A flag word is a word of the line without `=`. The compare ignores case (0xD89C1), so `UNDEAD` and `undead` are the same.
+
+| Word | Offset | Bit |
+|---|---|---|
+| `blind` | +0x98 | 0x0001 |
+| `electricity_immune` | +0x98 | 0x0002 |
+| `extraplanar` | +0x98 | 0x0004 |
+| `fire_immune` | +0x98 | 0x0008 |
+| `fire_resistant` | +0x98 | 0x0010 |
+| `flying` | +0x98 | 0x0020 |
+| `humanoid` | +0x98 | 0x0040 |
+| `infravision` | +0x98 | 0x0080 |
+| `light_sensitive` | +0x98 | 0x0100 (byte +0x99 bit 0x01) |
+| `light_sensitive_2` | +0x98 | 0x0200 (byte +0x99 bit 0x02) |
+| `magic_resistant` | +0x98 | 0x0400 (byte +0x99 bit 0x04) |
+| `no_scare` | +0x98 | 0x0800 (byte +0x99 bit 0x08) |
+| `no_sleep` | +0x98 | 0x1000 (byte +0x99 bit 0x10) |
+| `undead` | +0x98 | 0x2000 (byte +0x99 bit 0x20) |
+| `weapon_resistant` | +0x98 | 0x4000 (byte +0x99 bit 0x40) |
+| `pass_thru` | +0xA8 | 0x02 |
+| `dark_lover` | +0xD0 | 0x01 |
+| `light_lover` | +0xD0 | 0x02 |
+| `prison_boy` | +0xD0 | 0x04 |
+| `pain_flee` | +0xD0 | 0x08 |
+| `jumping_jack` | +0xD0 | 0x10 |
+| `impatient` | +0xD0 | 0x20 |
+| `patient` | +0xD0 | 0x40 |
+| `noattack` | +0xD9 | 0x01. Also prints "NO ATTACK FLAG (%s)" |
+| `rat=` | +0xD9 | 0x04. Also stores the entry index in the global 0x13A820 |
+| (name test) | +0xD9 | 0x08. Set at 0x1F448 if the name starts with `rf`, `rm`, `av` or `dro` |
+
+### Verified (code): $MONSTER_AI (0x1DC02)
+
+Order of operations:
+
+1. Read number 1 with atoi (0xDD9BB). The value is thrown away.
+2. Take the index from the counter 0x13A847 and add 1 to the counter. Assert `robotnum < MAX_ROBOT_TYPES` (40). Add 1 to 0x13A887.
+3. Read 5 fix values to +0x20 (0x1D861).
+4. Read 5 fix values to +0x34 (0x1D861).
+5. Read 5 fix values to +0x48 (0x1D861).
+6. Read 5 bytes to +0x5C (0x1D8CB).
+7. Read 5 s16 values to +0x80 (0x1D8A2). Group A.
+8. Read 5 s16 values to +0x8A (0x1D8A2). Group B.
+9. Convert the 5 values at +0x20 from degrees to a cosine (0x1D8F1). An angle over 179 gives "Warning: Bogus field of view" and is set to 179. Then `angle / 360 * 65536` is a fixed angle, and the sine and cosine function 0xD7E82 gives the result.
+
+All five-value groups are indexed by the difficulty level (global 0x13CDCA). Example: 0x15916 loads 0x13CDCA and reads `[entry + level*2 + 0x88]`, then shifts right by 16. That is group B.
+
+Warning for readers of the listing: Watcom loads an s16 field as a dword two bytes lower and then does `sar reg, 16`. So `mov eax, [edi+0x7E]` plus `sar eax, 16` reads +0x80, and `[edi+0x88]` plus `sar` reads +0x8A. The tables below already have the corrected offset.
+
+### Verified (code): data that is not in the 242-byte entry
+
+| Data | Base | Element | Note |
+|---|---|---|---|
+| `Robot_names[]` | 0x1B50EC | 32 bytes | `name=`. The byte 0x84 in the name becomes a space. Assert on an empty name |
+| `ObjType[]` | 0x1B75E6 | 1 byte | set to 2 (robot) for the new entry, index is the counter 0x1B5650 |
+| `ObjId[]` | 0x1B7438 | 1 byte | set to the entry index |
+| NPC table | 0xA504A | 26 bytes | 191 compiled-in rows. Ends at 0xA63B0 with a negative byte at +20 |
+| Animation data | pointers at 0x3880D0, one per model | | `state_times=`, `speeds=` and `fire_frames=` go to the model loader 0x72DC5 |
+| Model names | 0x3878B0 | 13 bytes | used in error texts |
+
+- `state_times=` fills entries 1 to 10 of a list of 19 fix values. The defaults of the 19 values come from 0x13DA08. The list is an argument of 0x72DC5 for the first model only.
+- `fire_frames=` has 2 numbers (defaults 56 and 72). They are also arguments of 0x72DC5.
+- `simple_model=` is the second model. Its number goes to `+0x50` of the animation record of the first model.
+- NPC table row: name (16 bytes), a pointer (4 bytes), then 6 bytes: THAC0, armor class, mage level, mage points, cleric level, cleric points. At the end of the `$MONSTER` reader, 0xA7E97 finds the row by name (0xA7E47) and writes the 6 bytes to +0x74, +0x76, +0xE2, +0xE4, +0xE3, +0xE5. So the `thaco`, `armor_class`, `spell_level`, `spell_points` and `cleric_points` keywords are replaced for every monster that is in the table. A name that is not in the table prints "RLH: NPC [%s] not found!" and keeps the table values of the line.
+
+### Verified (code): the game changes entries after load
+
+The function 0xAC7B2 (called from 0xAD716, object setup by creature name) writes into the entry of the object type. Examples:
+
+- `fmephit`, `imephit`, `lmephit`, `flayer`, `flaynpc`, `hatchlng`: weapon_type 0x21, damage dice 4.
+- `spectatr`: attack_type 0, weapon_type 0, dice 3 and 2.
+- `hatchlng`: flags `|= 0x18` (fire immune and fire resistant), score 7000.
+- `flayer`: attack_type 0, weapon_type -22, score 3000, regeneration 0.
+- `lich`: flags `|= 0x7042`, dice 1 and 10, +0x7C = 0x16.
+- 0xACC3C: door_opening bit, str 19, score 10000, max_hit_points 200 (boss creature, name not traced).
+
+The function 0xACCDB (called from 0xAD7A1) does the same for some single creatures (0xAD16B to 0xAD561: flags `|= 0x7042`, `|= 0x5CBA`, `|= 0x5C01`, max_hit_points 256, regeneration 1).
+
+A port that reads only the table will miss these values.
+
+### Verified (code): readers of the flag bits
+
+Scan method: a script followed registers loaded from 0x1671B4 or made from 0x38E344, and absolute operands inside 0x38E344 to 0x38E435. It does not follow a pointer that is passed to another function. So "none found" is not a proof.
+
+| Flag | Readers in the AI code (0x10000 to 0x18000) | Other readers |
+|---|---|---|
+| blind 0x0001 | 0x16602 | none found |
+| electricity_immune 0x0002 | none | 0x91D90 (spells.c) |
+| extraplanar 0x0004 | none | 0x2AD55, 0x2AD8F (collide.c, to-hit function 0x2A849), 0x6A5B1 (object.c) |
+| fire_immune 0x0008 | none | 0x2634B, 0x2B3B3 (collide.c damage), 0x3D2DA, 0x91DAF (spells.c) |
+| fire_resistant 0x0010 | none | none found |
+| flying 0x0020 | 0x1084B, 0x11835, 0x11EE4, 0x11F8A, 0x1247A, 0x1457F, 0x14EB7, 0x14F2F, 0x14FD7, 0x15053, 0x16A14, 0x16C60, 0x17CF3 | 0x25D35, 0x2A21D (collide.c), 0x6C770 (physics.c), 0x76E6C (render.c), 0x90A6F, 0x91706 (spells.c), 0x9F379, 0x9F4BF, 0x9F53C, 0x9FD41 (pmon.c), 0xBB0FF (state.c) |
+| humanoid 0x0040 | 0x10612 | 0x6A435 (object.c), 0xAE54E, 0xB33E1 |
+| infravision 0x0080 | none | none found |
+| light_sensitive 0x0100, light_sensitive_2 0x0200 | none | none found as a byte test |
+| magic_resistant 0x0400 | none | 0xAE77F |
+| no_scare 0x0800, no_sleep 0x1000 | none | none found as a byte test. 0x92F5D (spells.c, function 0x92D99) tests the whole word against a mask in edx. This is the likely reader (guess) |
+| undead 0x2000 | 0x10D53 (morale function) | 0x29EA0, 0x2ABC7, 0x2B221, 0x2B262 (collide.c), 0xAC4B4, 0xADDDD (turn undead) |
+| weapon_resistant 0x4000 | none | 0x29D9D (collide.c, apply damage) |
+| pass_thru (+0xA8) | 0x141D3 copies the byte to object +0x1AE. 0x12C83 tests object +0x1AE bit 0x80 | 0x47825 (gamesave.c), 0x6A0F1 (object.c): same copy to object +0x1AE |
+| set 2 (+0xD0), all 7 words | none | 0x69E66 (object.c) copies the dword to object +0x1D7 and sets object +0x1D6 = 100 and object +0x1DB = 100. No bit test of object +0x1D7 was found |
+| patience byte (+0xD8) | none | none found |
+| noattack (+0xD9 0x01) | none | none found |
+| rat (+0xD9 0x04) | none | 0x26FE0 (collide.c), 0x9F919 (pmon.c) |
+| name flag (+0xD9 0x08) | none | 0x27905, 0x2ABFB, 0x2B31B (collide.c), 0x38695 (displays.c), 0x59D8D (mission.c), 0x8F528, 0x8F840 (spells), 0xAC22E |
+
+Other whole-word users of +0x98: 0x9E66E (pcons.c, loads the word).
+
+Object +0x1DB is set to 100 at creation and is changed by the AI (0x10551, 0x10CBD, 0x119A7, 0x11A03, 0x1271A, 0x13EE0, 0x1416D, 0x141A5, 0x1658C, 0x165BA). It is a time stamp (see "Other object fields that the AI uses").
+
+### Verified (code): readers of the fields in the AI code (0x10000 to 0x18000)
+
+| Offset | Field | Address | Instruction |
+|---|---|---|---|
+| +0x00 | model number | 0x1344C | `mov eax, dword [esi]` |
+| +0x00 | model number | 0x1345E | `mov eax, dword [esi]` |
+| +0x00 | model number | 0x134F9 | `mov eax, dword [esi]` |
+| +0x00 | model number | 0x135CD | `mov eax, dword [esi]` |
+| +0x14 | mass | 0x13613 | `mov eax, dword [esi+0x14]` |
+| +0x18 | drag | 0x1361C | `mov eax, dword [esi+0x18]` |
+| +0x1C | gravity | 0x13625 | `mov eax, dword [esi+0x1c]` |
+| +0x34 | turn time[level] | 0x12526 | `mov ebx, dword [ebp+ebx*4+0x34]` |
+| +0x34 | turn time[level] | 0x14AC3 | `mov ebx, dword [ebx+eax*4+0x34]` |
+| +0x34 | turn time[level] | 0x14AE9 | `mov ebx, dword [ebx+eax*4+0x34]` |
+| +0x34 | turn time[level] | 0x14C58 | `mov ebx, dword [edx+eax*4+0x34]` |
+| +0x34 | turn time[level] | 0x14EDF | `mov ebx, dword [eax+edx*4+0x34]` |
+| +0x34 | turn time[level] | 0x14F88 | `mov ebx, dword [eax+ebx*4+0x34]` |
+| +0x34 | turn time[level] | 0x15565 | `mov ebx, dword [eax+edx*4+0x34]` |
+| +0x34 | turn time[level] | 0x15690 | `mov ebx, dword [ebx+eax*4+0x34]` |
+| +0x34 | turn time[level] | 0x15731 | `mov ebx, dword [edx+eax*4+0x34]` |
+| +0x34 | turn time[level] | 0x15E55 | `mov ebx, dword [eax+ebx*4+0x34]` |
+| +0x34 | turn time[level] | 0x15ECE | `mov ebx, dword [eax+edx*4+0x34]` |
+| +0x34 | turn time[level] | 0x15F59 | `mov ebx, dword [edx+eax*4+0x34]` |
+| +0x34 | turn time[level] | 0x17E14 | `mov ecx, dword [ebp+eax*4+0x34]` |
+| +0x44 | turn time[4] | 0x15F2B | `mov ebx, dword [eax+0x44]` |
+| +0x44 | turn time[4] | 0x17DFF | `mov eax, dword [ebp+0x44]` |
+| +0x48 | circle distance[level] | 0x14D3D | `mov edi, dword [edx+eax*4+0x48]` |
+| +0x48 | circle distance[level] | 0x14EFD | `mov eax, dword [eax+edx*4+0x48]` |
+| +0x48 | circle distance[level] | 0x1511C | `mov edx, dword [eax+edx*4+0x48]` |
+| +0x62 | attack_type | 0x1063C | `cmp byte [eax*2+0x38e3a6],0x1` |
+| +0x62 | attack_type | 0x1093A | `cmp byte [ecx+0x62],0x1` |
+| +0x62 | attack_type | 0x110F0 | `cmp byte [eax*2+0x38e3a6],0x1` |
+| +0x62 | attack_type | 0x111D1 | `cmp byte [eax*2+0x38e3a6],0x0` |
+| +0x62 | attack_type | 0x114E2 | `cmp byte [eax*2+0x38e3a6],0x0` |
+| +0x62 | attack_type | 0x11F93 | `cmp byte [eax+0x38e3a6],0x1` |
+| +0x62 | attack_type | 0x129C0 | `cmp byte [eax+0x62],0x1` |
+| +0x62 | attack_type | 0x15110 | `cmp byte [eax+0x62],0x0` |
+| +0x62 | attack_type | 0x15486 | `cmp byte [eax+0x62],0x0` |
+| +0x62 | attack_type | 0x155B4 | `cmp byte [eax+0x62],0x1` |
+| +0x62 | attack_type | 0x15933 | `cmp byte [edx+0x62],0x1` |
+| +0x62 | attack_type | 0x15A60 | `cmp byte [eax+0x62],0x1` |
+| +0x62 | attack_type | 0x15CB7 | `cmp byte [edx+0x62],0x1` |
+| +0x62 | attack_type | 0x15F25 | `cmp byte [eax+0x62],0x0` |
+| +0x63 | door_opening | 0x1061B | `or byte [eax+0x38e3a7],0x1` |
+| +0x63 | door_opening | 0x13260 | `test byte [eax*2+0x38e3a7],0x1` |
+| +0x63 | door_opening | 0x14B03 | `test byte [eax*2+0x38e3a7],0x1` |
+| +0x63 | door_opening | 0x156B6 | `mov al, byte [eax*2+0x38e3a7]` |
+| +0x63 | door_opening | 0x16A99 | `test byte [eax*2+0x38e3a7],0x1` |
+| +0x64 | see_sound | 0x13E25 | `mov ax, word [eax+0x64]` |
+| +0x64 | see_sound | 0x13E3D | `mov ax, word [eax+0x64]` |
+| +0x6A | weapon_type | 0x13AD6 | `mov ecx, dword [edx+0x38e3ac] ; then sar 16` |
+| +0x6A | weapon_type | 0x13B09 | `cmp word [edx+0x38e3ae],0x0` |
+| +0x76 | armor_class | 0x10EE6 | `mov edx, dword [edi+0x74] ; then sar 16` |
+| +0x78 | max_hit_points | 0x10B74 | `cmp word [edi+0x78],0x0` |
+| +0x78 | max_hit_points | 0x10DCB | `mov ebx, dword [edi+0x76] ; then sar 16` |
+| +0x78 | max_hit_points | 0x13635 | `mov eax, dword [esi+0x76] ; then sar 16` |
+| +0x78 | max_hit_points | 0x14444 | `mov eax, dword [eax+0x76] ; then sar 16` |
+| +0x78 | max_hit_points | 0x14466 | `mov eax, dword [eax+0x76] ; then sar 16` |
+| +0x7E | regeneration | 0x13641 | `cmp word [esi+0x7e],0x0` |
+| +0x7E | regeneration | 0x13C96 | `cmp word [eax+0x7e],0x1` |
+| +0x7E | regeneration | 0x14411 | `cmp word [eax+0x7e],0x0` |
+| +0x7E | regeneration | 0x14429 | `mov edx, dword [eax+0x7c] ; then sar 16` |
+| +0x80 | flee value (group A) | 0x104FD | `mov esi, dword [eax+0x38e3c2] ; then sar 16` |
+| +0x80 | flee value (group A) | 0x10C07 | `mov eax, dword [edi+0x7e] ; then sar 16` |
+| +0x80 | flee value (group A) | 0x10C65 | `mov edx, dword [edi+eax*2+0x7e] ; then sar 16` |
+| +0x80 | flee value (group A) | 0x10F87 | `mov eax, dword [edi+0x7e] ; then sar 16` |
+| +0x80 | flee value (group A) | 0x10FD3 | `mov eax, dword [edi+eax*2+0x7e] ; then sar 16` |
+| +0x80 | flee value (group A) | 0x157B1 | `mov edx, dword [edx+0x7e] ; then sar 16` |
+| +0x80 | flee value (group A) | 0x158DB | `mov ebx, dword [ecx+ebx*2+0x7e] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x10506 | `mov eax, dword [eax+0x38e3cc] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x10C0D | `mov edx, dword [edi+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x10C6C | `mov eax, dword [edi+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x10CE2 | `mov eax, dword [edi+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x10F8D | `mov edx, dword [edi+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x12B39 | `mov edx, dword [edx+ecx*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x14778 | `mov edx, dword [ebx+edx*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15183 | `mov edx, dword [edx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15260 | `mov edx, dword [edx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x152E6 | `mov eax, dword [ebx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x1534E | `mov edx, dword [eax+edx*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x153F8 | `mov ebx, dword [ebx+edx*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x1546D | `mov ebx, dword [eax+edx*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x1554A | `mov ebx, dword [eax+edx*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15580 | `mov edx, dword [edx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15798 | `mov ebx, dword [edx+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x1591B | `mov ebx, dword [edx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15A47 | `mov ecx, dword [eax+edx*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15C9F | `mov ebx, dword [edx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15E2C | `mov edx, dword [ebx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15EA5 | `mov edx, dword [ebx+eax*2+0x88] ; then sar 16` |
+| +0x8A | attack value (group B) | 0x15F10 | `mov ebx, dword [eax+edx*2+0x88] ; then sar 16` |
+| +0x98 | flags set 1 (low byte) | 0x10612 | `test byte [eax+0x38e3dc],0x40` |
+| +0x98 | flags set 1 (low byte) | 0x1084B | `test byte [ecx+0x98],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x11835 | `test byte [eax*2+0x38e3dc],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x11EE4 | `test byte [eax*2+0x38e3dc],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x11F8A | `test byte [eax+0x38e3dc],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x1247A | `test byte [ebp+0x98],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x1457F | `test byte [eax*2+0x38e3dc],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x14EB7 | `test byte [eax+0x98],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x14F2F | `test byte [eax+0x98],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x14FD7 | `test byte [eax+0x98],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x15053 | `test byte [edx+0x98],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x16602 | `test byte [eax+0x98],0x1` |
+| +0x98 | flags set 1 (low byte) | 0x16A14 | `test byte [eax*2+0x38e3dc],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x16C60 | `test byte [eax*2+0x38e3dc],0x20` |
+| +0x98 | flags set 1 (low byte) | 0x17CF3 | `test byte [eax+0x38e3dc],0x20` |
+| +0x99 | flags set 1 (high byte) | 0x10D53 | `test byte [eax*2+0x38e3dd],0x20` |
+| +0xA8 | pass_thru | 0x141D3 | `mov al, byte [eax*2+0x38e3ec]` |
+| +0xAC | speeds | 0x135FF | `mov ebx, dword [esi+eax*4+0xac]` |
+| +0xD4 | iq | 0x10543 | `sub esi, dword [eax*2+0x38e418]` |
+| +0xD4 | iq | 0x10DBF | `sub eax, dword [edi+0xd4]` |
+| +0xD4 | iq | 0x11999 | `sub edx, dword [eax*2+0x38e418]` |
+| +0xD4 | iq | 0x119CC | `mov edi, dword [eax*2+0x38e418]` |
+| +0xD4 | iq | 0x119F8 | `mov ebx, dword [eax*2+0x38e418]` |
+| +0xD4 | iq | 0x13DC7 | `cmp edx, dword [eax+0xd4]` |
+| +0xD4 | iq | 0x140A6 | `mov ebx, dword [eax+0xd4]` |
+| +0xD4 | iq | 0x1415F | `sub ebx, dword [eax+0xd4]` |
+| +0xD4 | iq | 0x14181 | `mov esi, dword [eax+0xd4]` |
+| +0xD4 | iq | 0x142DF | `mov eax, dword [eax+0xd4]` |
+| +0xD4 | iq | 0x15C02 | `mov ebx, dword [eax+0xd4]` |
+| +0xD4 | iq | 0x1618B | `mov eax, dword [eax*2+0x38e418]` |
+| +0xD4 | iq | 0x165B0 | `sub ebx, dword [eax*2+0x38e418]` |
+| +0xD4 | iq | 0x16614 | `cmp dword [eax+0xd4],0x82` |
+| +0xDE | str | 0x13E10 | `mov edx, dword [eax+0xde]` |
+| +0xE2 | mage level | 0x10229 | `cmp byte [eax+0x38e426],0x0` |
+| +0xE2 | mage level | 0x10321 | `cmp byte [edx+0x38e426],0x0` |
+| +0xE2 | mage level | 0x10957 | `cmp byte [eax+0x38e426],0x0` |
+| +0xE2 | mage level | 0x10E4C | `mov dl, byte [edi+0xe2]` |
+| +0xE2 | mage level | 0x11DE9 | `cmp byte [eax+0x38e426],0x0` |
+| +0xE2 | mage level | 0x12A49 | `cmp byte [ecx+0x38e426],0x0` |
+| +0xE2 | mage level | 0x12E14 | `cmp byte [eax+0x38e426],0x0` |
+| +0xE2 | mage level | 0x1492B | `cmp byte [eax+0x38e426],0x0` |
+| +0xE2 | mage level | 0x159DB | `cmp byte [eax+0x38e426],0x0` |
+| +0xE2 | mage level | 0x15AE6 | `cmp byte [eax+0x38e426],0x0` |
+| +0xE2 | mage level | 0x15D7D | `cmp byte [eax+0x38e426],0x0` |
+| +0xE3 | cleric level | 0x10232 | `cmp byte [eax+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x1032A | `cmp byte [edx+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x10960 | `cmp byte [eax+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x10E56 | `mov al, byte [edi+0xe3]` |
+| +0xE3 | cleric level | 0x11DF2 | `cmp byte [eax+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x12A52 | `cmp byte [ecx+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x12E1D | `cmp byte [eax+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x14934 | `cmp byte [eax+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x159E4 | `cmp byte [eax+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x15AF3 | `cmp byte [eax+0x38e427],0x0` |
+| +0xE3 | cleric level | 0x15D86 | `cmp byte [eax+0x38e427],0x0` |
+| +0xE4 | mage points | 0x105C7 | `mov al, byte [esi+0x38e428]` |
+| +0xE5 | cleric points | 0x105E5 | `mov al, byte [esi+0x38e429]` |
+
+### Verified (code): readers of the fields outside the AI code
+
+| Offset | Field | Readers (function, source file if known) |
+|---|---|---|
+| +0x00 | model number | 0x3DA7D, 0x3DB13, 0x47849 (gamesave.c), 0x5FE5F, 0x5FE84 (newdemo.c), 0x6A092 (object.c), 0x7B52E, 0x7B55A (titles.c), 0xBE387 to 0xBE45D, 0xCA120, 0xCA1E1, 0xCD0F3 |
+| +0x04 | s16, no keyword | 0x3C984 (compare with -1) |
+| +0x08 to +0x0B | contains | 0x3CDBE (count), 0x3CDD1 (prob), 0x3CDDB (count), 0x3CDF0 (type), 0x3CDF6 (id). fireball.c, function 0x3CC0B, drop on death |
+| +0x0C | score_value | 0x2A120 (collide.c, apply damage), 0x9163C (spells.c) |
+| +0x14, +0x18, +0x1C | mass, drag, gravity | 0x3DB3B to 0x3DB77, 0x4787A to 0x478B6 (gamesave.c), 0xBE485 to 0xBE4C1. Copy to the physics data of the object |
+| +0x48 | circle distance | 0x25D43 (collide.c) |
+| +0x61 | cloak_type | 0x5FEAC (newdemo.c) |
+| +0x62 | attack_type | 0x67812 (object.c), 0x93261 (spells), 0xAE4CE |
+| +0x63 | door_opening | 0x25CC7 (collide.c), 0x5F3FB, 0xAE55B |
+| +0x64 | see_sound | 0xA656C |
+| +0x66 | attack_sound | 0xA9EF8, 0xAAB4D |
+| +0x68 | claw_sound | 0x28B56, 0x28B6D |
+| +0x6A | weapon_type | 0x671A1, 0x671AB, 0x677FE, 0x6781B (object.c), 0x6AE15 (paging.c), 0x6D1D3 (physics.c), 0x74777 |
+| +0x6C, +0x6E | damage dice | 0x2AFE8, 0x2B00B, 0x2B03B (collide.c, damage function 0x2AF5E) |
+| +0x70, +0x74, +0x76 | to_hit_bonus, thaco, armor_class | 0x2AC7B, 0x2AC5F, 0x2AD1D (collide.c, to-hit function 0x2A849) |
+| +0x72 | damage_bonus | 0x2B048 |
+| +0x78 | max_hit_points | 0x29ED5, 0x3DB9C, 0x8DED0, 0x8DFBF, 0x90156, 0xBE4E6, 0xCA14F, 0xCA210, 0xAE3CD |
+| +0x7C | s16, no keyword | 0x2A64A, 0x2A654 (collide.c, apply damage: test for value 0x16) |
+| +0x7E | regeneration | 0x3DBBD, 0xBE507: if not 0, object +0x88 = 0x1000000 |
+| +0x80, +0x8A | groups A and B | 0x59DF8 (mission.c), 0xAA846, 0xAA850 |
+| +0x9A | hit_sound | 0x25C25, 0x275A7, 0x275FD, 0x27B22, 0x27C0E, 0x27EA7 (collide.c), 0x90F44, 0x9102A (spells.c), 0xA9F39 |
+| +0x9C | die_sound | 0x27661, 0x276C3, 0x27C3A, 0x27ED5, 0x2A157 (collide.c), 0x915CC (spells.c), 0xA6BE1 |
+| +0xA0 | hit_vclip | 0x27567 |
+| +0xAC | speeds | 0x6A0CE, 0x6A7E3 (object.c) |
+| +0xD4 | iq | 0x29000 (collide.c, item pick up), 0x45A06 |
+| +0xDA | monster_hit_vclip | 0x27546, 0x27BCF, 0x27E5C (collide.c) |
+| +0xDE | str | 0x2AA10, 0x2AC9B (collide.c), 0x9FA5C, 0x9FC44 (pmon.c), 0xA6557 |
+| +0xE2, +0xE3 | mage and cleric level | 0x921F8, 0x92EF8, 0x92F1D, 0x93206, 0x93215, 0x93247 (spells), 0x8F531, 0xAE6FD, 0xAE717 |
+| +0xE4, +0xE5 | mage and cleric points | 0x92E67, 0x92E73 (spells, "%s's spells were recharged!"), 0xAE4FA, 0xAE506 |
+| +0xEA | moola | 0x6A677 (object.c, "make gold") |
+
+No reader was found for: +0x06, +0x10 (lighting), +0x20 (field of view), +0x5C (rapidfire_count), +0x7A, +0x94 (picture), +0x9E (see_sound_max), +0x9F (bossiness), +0xA4 (blood), +0xB8 and +0xC4 (speed copies), +0xD8, +0xE6 (dead_adjust), +0xEE (regonzo).
+
+### Verified (data)
+
+- `BANE.BIN` (decoded with `tools/egg.py bin`): each `$MONSTER_AI` line has number 1 = 4, 5 or 6, then 150/150/135/135/179 style degrees, 0.8 to 0.4, 7.0 or 3.0, 0 0 1 1 3, -100 to -500, 0 to -400. This matches the read order above.
+- `BANE.BIN` has `iq=` values 70, 80, 100, 140, `str=` values 3 to 16, `dead_adjust=` 2, 6, 8, `regonzo=2.5`, `blood=32` or `33`, `regeneration=0`.
+- NPC table: `xabash` is 5, -3, 4, 64, 1, 10. `halaster` is 1, -10, 4, 127, 0, 0. `goblin` is 20, 10, 0, 0, 0, 0.
+
+### Guess
+
+- +0x7C is a spell or special attack number. Only code sets it (0x16 for the lich).
+- Groups A and B are no longer a guess. A is the flee value and B is the attack value of the morale system (see "Morale").
+- The +0xD9 bit 0x08 marks people (name prefixes `rf`, `rm`, `av`, `dro`: race or class codes of human-like creatures).
+- Field of view (+0x20) is dead data. This is verified: 0x109E7 receives it and ignores it.
+
+## brain.c and the BRN file
+
+### Verified (code): functions
+
+| Address | Function | Callers |
+|---|---|---|
+| 0x97774 | load the brain file | 0x421F4 (game.c, level start, after "fix obj segs"), 0x49B2A (gamesave.c, level load) |
+| 0x9784C | free the buffer (pointer 0x14295C) | 0x42667 (game.c, end of game), 0x49B25 (gamesave.c, just before the load) |
+| 0x9786A | build the brain file | none. No call, no jump, no stored address |
+| 0x9810D | bit lookup (entry with register saves, body at 0x98110) | 8 calls and 1 tail jump, see below |
+| 0x9816B | 3-bit lookup (body at 0x9816D) | none. No call, no jump, no stored address |
+| 0x981BA | ray test of the builder | 0x97FCE (builder only) |
+
+Globals: buffer pointer 0x14295C, have-brain flag 0x142958, last byte address 0x142960, count of set bits 0x142978.
+
+The have-brain flag 0x142958 has one reader: the assert `we_have_a_brain` at 0x13CE0 in `do_ai_frame` (ai.c line 0xE7D). So a level without a BRN file stops a debug build and runs with an all-zero matrix in a release build.
+
+### Verified (code): loader 0x97774
+
+1. Print "Do we have a brain file for this level?".
+2. Allocate 80000 bytes (0x13880) and clear them.
+3. Build the file name: level name, then `brn`.
+4. Print "Brain file is %s". Open the file.
+5. If it opens: read 80000 bytes, print "Yes we do!", close, set 0x142958 = 1.
+6. If not: print "No we don't!", set 0x142958 = 0. The buffer stays allocated and zero.
+
+### Verified (code): bit lookup 0x9810D
+
+`eax` = segment A, `edx` = segment B. Result = `(buf[A*100 + B/8] >> (B%8)) & 1`. It means "A sees B".
+
+Callers. In every case A and B are the segment numbers of two objects (object +0x0E).
+
+| Call | Function | A | B | Use of the answer |
+|---|---|---|---|---|
+| 0x13D48 | `do_ai_frame` 0x13BF4 | the creature | its target object (object +0x1A2) | Gate before the vector to the target is made (0xD7110, 0xD71E0) and before the see and notice code. Skipped if the target is -1, if object +0x88 bit 4 is set, or if 0x165C4 returns true. Result 0: jump to 0x13F71, target is not seen |
+| 0x14271 | `do_ai_frame` (step 7, periodic recheck) | the creature | the player object (0x30DF14) | Same gate, with the player as the target. Result 0: jump to 0x14300 |
+| 0x1616D | 0x160AB (ai.c) | the creature | another object (pointer on the stack) | Gate before a random roll against `iq` (+0xD4, shifted left 16). Notice or hearing test (guess) |
+| 0x109F9 (jump) | wrapper 0x109E7 | object in eax | the player object | Called from 0x12CEA and 0x12D3F (ai.c), with a field of view value from +0x20 loaded before. Line of sight shortcut |
+| 0x386B6 | 0x37A6A (displays.c, item use) | an object | the player or user object | Only for creatures with +0xD9 bit 0x08. Then a vector between the two objects. Result 0: skip the creature |
+| 0x42AFE | 0x42757 (game.c, cheat "They were sick anyway....") | each robot object | the player object | Loop over all objects. Each robot that sees the player segment gets damage from 0x29A9C (kill) |
+| 0x90D81 | 0x90CEF (spells.c, blind and deaf effect) | the spell source | each object | Area effect. Only objects in a segment that the source sees are hit |
+| 0xADE2A | 0xADC46 (turn undead) | the creature | the player object | Only undead (+0x99 bit 0x20) that see the player segment are tested |
+| 0xAE045 | 0xADC46 (turn undead) | the creature | the player object | Second pass, counts the creatures |
+
+The matrix is a pre-filter on segment level. No caller uses it for path finding or for door or object activation. The exact ray cast, where one exists, comes after it.
+
+### Verified (code): the 3-bit lookup 0x9816B is dead code
+
+- It has no caller and no reference in the image.
+- It reads `buf[A*400 + B/2]` and returns `byte & 0x07` for even B, `byte & 0x70` for odd B (not shifted). So it is a 3-bit value per segment pair, two per byte.
+- A row of 400 bytes times 800 segments is 320000 bytes. The buffer has 80000 bytes. The function does not fit the loaded file.
+- No code writes such values into the buffer.
+
+### Verified (code): builder 0x9786A
+
+The builder is not reachable in this executable. Order of operations:
+
+1. Print "Building a brainfile.". Set object 0 as the viewer (0x3B9CF4 = 0x2B0614) and object 1 as the probe (0x3B9CFC = 0x2B07F3).
+2. "Flipping Trapdoors": for each trap print "Flippin' Trap #%d seg:%d, side %d." and switch it (0x4ADEE).
+3. "Opening ALL doors" (0x7CFEE in a loop over the walls).
+4. "Gorping out objects...": set the object list head of each segment (segment +0x210) to -1.
+5. "Objects are setting up...": link object 0 into a segment, put it at the segment center (0x4AD9C), reset it (0x6B9B0).
+6. "Building Robot Map": see below.
+7. "Building Visibility Matrix": for each segment A (outer loop) and each segment B (inner loop):
+   - set the highest object index to 2, clear all segment object lists,
+   - put object 0 at the center of A and object 1 at the center of B (if both x values are equal, add 1 to the x of object 1), set byte +0x1CC of object 1 to 2,
+   - call 0x981BA(object 1, position of object 1, vector). It finds the segment of the point (0x4BE0B) and casts a ray with radius 0x4000 from object 1 to object 0 (0x3EFD9, the fvi function). It returns true if the hit type is 2 (hit an object),
+   - if true, or if A equals B: set bit B of row A (`buf[A*100 + B/8] |= 1 << (B%8)`), add 1 to 0x142978, and print "/%d & %d/" for A not equal to B.
+   - Every 25 rows it prints progress and sometimes plays a sound (random).
+8. Write 80000 bytes to the file `NAME.brn`. Print "Saws %d" (count of set bits) and "I just created a brain file, DON'T SAVE this level!!!".
+
+The ray goes from the center of B to the center of A and hits a real object. This explains why the matrix is not symmetric.
+
+### Verified (code): what "Building Robot Map" builds
+
+Nothing that is kept. The loop at 0x97BBE to 0x97D81:
+
+- Outer loop over all segments (only used for the progress text "(%d").
+- Inner loop over all segments S. For 4 sides, taken from the table at 0x142968 (values 5, 2, 4, 0):
+  - set `dist[k]` = 0x7FFFFFFF,
+  - if the object list of S is empty and the child segment on that side exists: move object 1 to the center of the child, then store the distance between object 1 and object 0 in `dist[k]` (array of 4 at 0x3B9CE4) and in 0x3B9CF8.
+- The 4 distances are never read and never written to the buffer. The only writes to the buffer are in step 7.
+
+So the robot map (a 3-bit "which side leads to the player" code per segment pair, read by 0x9816B) was removed or never finished. Only its distance loop is left.
+
+### Guess
+
+- The planned robot map stored one of the 4 horizontal sides (5, 2, 4, 0 are the sides that are not floor and ceiling) for each segment pair, as a direction to walk. The 3-bit lookup would give that side.
+- The builder was run from the level editor or from a debug key that is not in the release build.
+
+## Scripts and NPCs
+
+This section covers the script and dialogue code of DTUGAME.EXE 1.3. The debug
+strings of this code start with `RLH:`. The assert file name is `dialogue.c`
+(string at 0x131B8E). The code is at about 0xA6500 to 0xAE400. All addresses
+are linear addresses in `dtu_flat.bin`.
+
+Facts are marked as follows.
+
+- Verified (code): read from the disassembly.
+- Verified (data): checked against GABE.RLH, GABE.DAT and the 35 .LVL files.
+- Guess: a reading that the code or data suggests but does not prove.
+
+Coverage. The loader, the object binding, the entry points, the full statement
+dispatch, the condition evaluator and the say loop are read. Most statement
+handlers are read in outline only. The dialogue window functions (0xB1xxx,
+0xB2FA2), the spell functions (0x8CFFF, 0x90CEF) and the sound functions
+(0x2Dxxx, 0x2Exxx) are not read.
+
+### Files
+
+Verified (code and data).
+
+- The scripts are in `GABx.RLH` (index) and `GABx.DAT` (data). The layout and
+  the encryption are in `docs/formats/jrg.md`.
+- The file name templates are `gabe.dat` (0xA6467) and `gabe.rlh` (0xA6477).
+  The string `efgisnm` (0xA6470 and 0xA6480) holds one letter per language.
+  The code copies both strings to the stack and writes
+  `efgisnm[language]` over the fourth character of the name. The language
+  number comes from 0xAEC4A. The open call is 0xA08C2 with mode string 0x131A40.
+- The .RLH index has no header. A record is 8 bytes: u16 id, u16 size, u32
+  offset in the .DAT file.
+- GABE.RLH has 87 records. The ids are 1 to 8, then groups of `level * 10 + n`
+  (20 to 26, 30 to 33, ... 320 to 323), then 508 to 511 (0x1FC to 0x1FF).
+
+Relation to other files. Verified (code): this code does not read .SAY files.
+.SAY lines are shown by triggers through `say_index` (see `tig.md`). The only
+link is the trigger field `object_num` (see "Entry points" below). The stream
+dialogue code (`str_dlg.c`, 0xA2AB7 and on) was not traced to the script code.
+
+### Loader
+
+| Address | Function | What it does |
+|---|---|---|
+| 0xAD84D | init dialogue system | Prints "RLH: Init dialogue system". Clears the state. Reads GABx.RLH record by record (8 bytes each) into table1 until a read fails. Reached by a jump at 0x40202 |
+| 0xAD5BF | level init | Called from 0x494C9. Frees old scripts (0xAD992). Opens GABx.DAT (handle in 0x145521). Walks all objects and registers NPCs (see below). Loads scripts 0x1FC, 0x1FD, 0x1FE, 0x1FF. Closes the file. Prints "found %d objects, %d NPCs and %d scripts" |
+| 0xAB96E | find script | Linear search of table1 for an id (low 9 bits). Sets the current slot from bits 9 to 12. Returns the table1 index or -1 |
+| 0xAB9C9 | load script | "Script %d not in table1" if the search fails. Returns at once if bit 13 (loaded) is set. Fails with "Too many GABs" if 20 scripts are loaded. Allocates `size` bytes, seeks to `offset`, reads, decrypts (0xA74F8), stores the slot number and the loaded bit in the table1 id word |
+| 0xA74F8 | decrypt | See `jrg.md` |
+| 0xAD983 | close dialogue system | Called from 0x42749 |
+
+"table1" is the in-memory copy of the .RLH index. The messages "not in table1"
+(loader) and "not in table2" (runner, 0xABC9D) both mean that the search in
+this one table failed.
+
+Globals. Verified (code).
+
+| Address | Size | Meaning |
+|---|---|---|
+| 0x3CE0FC | 8 * 100 | table1: the .RLH records. In memory the id word also holds the slot (bits 9 to 12) and the loaded flag (bit 13) |
+| 0x14552C | u8 | number of table1 records |
+| 0x3CE41C | ptr * 20 | start of each loaded script, by slot |
+| 0x3D03AC | ptr * 20 | end of each loaded script, by slot |
+| 0x14552B | u8 | number of loaded scripts (max 20) |
+| 0x14552A | u8 | current slot |
+| 0x145526 | ptr | script read pointer |
+| 0x145525 | u8 | IF nesting depth |
+| 0x145532 | u16 | current label |
+| 0x145537 | ptr | current object |
+| 0x145536 | u8 | current run mode (0 to 4) |
+| 0x145534 | u8 | 1 while the dialogue window is open |
+| 0x145535 | u8 | value written to object flag 0 after the run |
+| 0x145531 | s8 | number of collected replies minus 1 |
+| 0x3CE46C | | reply table (target label word and text per reply, max 10) |
+| 0x3D42CC | 7 * 100 | NPC list (see below). Count in 0x145520 |
+| 0x3D42C8 | ptr | temporary object of 0xAC055, or 0 |
+| 0x3D03FC | 0x31E * 20 | buffers for the text alternatives |
+| 0x3D4588 | 0x31E | expanded text |
+
+### How an object gets its script
+
+Verified (code and data).
+
+- The script id is in the low 9 bits of the object field at +0x1B0.
+- The level file stores this field (object record offset 201, level versions
+  above 40, see `lvl.md`). The loader copies it.
+- In the level files every robot has 0x400000 set. Plain monsters have id 0.
+  Talking characters have an id from the .RLH file. Example: KOBOLDS.LVL uses
+  ids 20 to 26, THIEF0.LVL uses 50 to 55.
+
+Layout of the object field +0x1B0. Verified (code).
+
+| Bits | Meaning |
+|---|---|
+| 0 to 8 | script id. 0 = no script |
+| 9 | "never turns hostile" flag. Also makes the object count as a talker at level init |
+| 10 to 19 | resume label (statement 0xDF, condition 0xDF) |
+| 20 to 27 | object flags 0 to 7 (statements 0xC5 and 0xC6, conditions 0x00 to 0x07) |
+| 24 to 27 | 4-bit object variable (statement 0xE0, value 0xE0). Overlaps flags 4 to 7 |
+| 28 to 31 | talk counter (condition 0x97). Plus 1 after each run in mode 0, max 15 |
+
+Object flags with a fixed meaning. Verified (code).
+
+| Flag | Bit | Meaning |
+|---|---|---|
+| 0 | 20 | The AI calls the script when the object reaches the end of its path (mode 2). Set by statement 0xE5 |
+| 1 | 21 | Wary. The object talks only if `rand % 20 + 1 <= player stat at 0x1D33DB`. Else it shows a line from label 0x3E9 |
+| 2 | 22 | Hostile. The object does not talk. It shows a line from label 0x3EA |
+| 3 | 23 | Blocks the change to hostile. Selects label 0x3EB. Setting it calls 0x160AB(object, 5) |
+
+Level init per object (0xAD786 loop, then 0xAC431). Verified (code).
+
+1. For a robot (type 2) call 0xAC7B2 (per monster setup, not read).
+2. Skip the object if it is not a robot and its script id is 0.
+3. Skip it if 0xAC3C3 finds the same signature and id in the NPC list.
+4. 0xAC431 adds it to the NPC list. The limit is 100 ("I can't handle more
+   than %d NPCs in a level").
+5. If `Robot_info[id] + 0x99` has bit 0x20 (undead), the name is matched
+   against 9 prefixes (table 0x145602: `ske_`, `zombie`, `ghoul`, `banegard`,
+   `ghast`, `mummy`, `gskel`, `lich`, `sfiend`). The index goes to the low
+   nibble of the list entry. This is for turn undead.
+6. The script id is cleared if `id / 10` is not the current level number
+   (player byte at 0x1D338D). Exceptions: 0, 0x37, 0x3F, 0x1FC to 0x1FF.
+   Verified (data): ids 55 and 63 are the only level ids used in more than
+   one level (THIEF0, THIEF1, THIEF2).
+7. If the id is 1 to 0x3E7 the script is loaded.
+8. The object is peaceful if its script has a say statement (0xCD) or bit 9 is
+   set. Then the anger byte is 0, flag 2 is cleared and +0x1A2 is -1.
+9. Else the object is hostile: anger byte 4, flag 2 set, +0x1A2 is 0.
+
+NPC list entry (7 bytes, base 0x3D42CC): u16 object number at +0, sort index at
++2 (0xADB7D sorts by the low nibble of +3), at +3 the turn undead class (low
+nibble) and bit 4 (undead name found).
+
+The "anger" byte is at `0x153EB0 + object_number * 47`. Values are 0 to 5.
+Statements 0xC2 and 0xC3 change it. When it reaches 5 the object turns hostile
+(0xA9418) unless flag 3 is set. The name "anger" is a guess.
+
+### What makes an object an NPC
+
+Verified (code).
+
+- There is no NPC object type. In this code "NPC" means any entry of the NPC
+  list: every robot of the level and every other object with a script id.
+- A character that talks is a robot with a script id whose script has a say
+  statement. A monster is a robot with id 0 or with a script without a say
+  statement.
+- 0xA9418 makes an object hostile: anger 4, flag 2 set, flag 3 and bit 9
+  cleared, +0x1A2 = 0, `ai +3` = 2, +0x170 = 5, then 0x160AB(object, 4) and
+  the morale function 0x10ADF.
+- The message "Cannot gate in an NPC until you kill one" (0x134A6, function
+  0x13407) is the Descent 1 gate limit. It counts robots whose byte at +0x7F
+  is -1 and refuses if the count is above `2 * difficulty + 3`. It has
+  nothing to do with scripts. After a gate the function sets +0x1B0 to 0 and
+  calls 0xAC431, so a gated robot enters the NPC list as hostile.
+
+Critter table at 0xA504A. Verified (code and data in the exe).
+
+- 191 records of 26 bytes. A record with a negative byte at +0x14 ends it.
+- +0x00: name, 16 bytes (`banegard`, `beetle`, ... `fmtnpc`, `Daspel`).
+- +0x10: pointer to a pointer to the display name.
+- +0x14 to +0x19: six bytes. 0xA7E97 (called from 0x1F3C9) copies them to the
+  object: +0x14 to word +0x74, +0x15 to word +0x76, +0x16 to +0xE2, +0x17 to
+  +0xE4, +0x18 to +0xE3, +0x19 to +0xE5. Guess: THAC0, armor class, mage
+  level and spell points, priest level and spell points.
+- 0xA7E47 finds a record by name. It prints "NPC [%s] not found!" on failure.
+- 0xA7F03 returns the display name of an object (36 callers). For a robot it
+  looks up the robot name (table 0x1B50EC, 32 bytes per robot id) in this
+  table. On failure it prints "NPC name [%s] not found" and returns the robot
+  name.
+- Scripts address a kind of critter by the index in this table (one raw byte).
+  0xA7F9B and 0xA8016 turn the index into a robot id by a prefix compare of
+  the names.
+
+### Entry points
+
+`run_script(object, mode)` is 0xABBE5. Verified (code).
+
+| Mode | Caller | When |
+|---|---|---|
+| 0 | 0xAC155 (from 0x951D1 in the player action function 0x95050), 0xAC055 | The player talks to the object |
+| 1 | no caller found | Shows a line from the status label |
+| 2 | 0x174FC (AI path code, function 0x17411) | The object reached the end of its path and flag 0 is set |
+| 3 | 0x93EB3 (trigger code, function 0x93B29) | A trigger with `object_num` above 1 fired |
+| 4 | 0xAA9E3 (statement 0xEE) | Another script calls this object's script |
+
+Talk (0xAC155). Verified (code).
+
+1. Return if the player object field +0x170 is 6, 7, 11 or 12.
+2. 0xB30FD(player object, 7, 30) finds the target. The object number is at
+   +0x1C of the result.
+3. If the target has script id 0 and is a robot, show the text at 0x396C24.
+4. Return if the target is dead (0xA66C9).
+5. Special case: if the current item of the player has type 5 and id 13, set
+   global flags 0x81 (if the robot has bit 8 at `Robot_info + 0xD9`) and 0x8F,
+   run script 0x1FD, and stop if global flag 0xA0 is then set.
+6. Call `run_script(target, 0)`.
+
+`run_script` in order. Verified (code).
+
+1. Fail if the object has script id 0, or is dead (modes 0 and 2, ids below
+   0x1FC), or the script is not loaded.
+2. Apply the level rule of step 6 above. If the id is from another level,
+   clear the id and make the object hostile.
+3. Set the current object and mode.
+4. 0xAAA32 picks the start label (see below). Stop if it returns 0.
+5. Mode 0 with a live robot and id below 0x14A: turn the robot to face the
+   player, with frames drawn in between.
+6. If the object byte +0x89 has bit 0x40, show "%s tries to speak, but
+   nothing happens." and stop. Guess: silenced.
+7. Set flag 0. Run the interpreter 0xAAE3E.
+8. Write 0x145535 to flag 0. In mode 0 add 1 to the talk counter.
+9. Close the dialogue window if it is open (0xA74D0).
+10. If the object has less than 1.0 hit points, kill it (0xA6ACB).
+
+Start label (0xAAA32). Verified (code).
+
+- Status label: 0x3EA if flag 2, else 0x3EB if flag 3, else 0x3E9 if flag 1,
+  else 0x3E8.
+- If the status label is 0x3EA, or 0x3E9 and the wary roll fails: go to that
+  label, show one of its lines half of the time (0xA8D72), play the robot
+  sound for 0x3EA, and do not run the script.
+- Modes 0, 3, 4: go to the resume label (bits 10 to 19) if it is not 0. Else
+  take the first label below 0x3E8 in the script.
+- Mode 1: go to the status label and show one of its lines.
+- Mode 2: go to the label of the form `CB E7 <segment>` that matches the
+  segment of the object (0xA78CF).
+
+Verified (data): 54 of the scripts start with label 0x3E7. Labels 0x3E9
+(17 scripts), 0x3EA (19), 0x3EB (15) and 0x3EC (7) hold only text lines.
+
+`run_script_id(object, id)` is 0xAC055 (14 callers). With object 0 it creates
+a temporary object at the player, gives it the id and runs it in mode 0. The
+engine uses it for the global scripts: 0x1FC (0x3846A), 0x1FD (seven
+callers), 0x1FE (0x37DEE), 0x1FF (0x429DA, after "Ready or not, here we go!").
+Verified (data): script 0x1FC raises one ability score by class.
+
+### Script byte code
+
+Verified (code and data).
+
+- A script is a byte stream. Bytes of 0x7A and above are codes. Text and
+  numbers are NUL terminated ASCII strings.
+- A number is a hex string, read with `sscanf("%hx")` (0xA76B9). Example:
+  `3e7`.
+- A text operand is a list of one or more strings. The list ends at the first
+  byte of 0x7A or above. The game picks one string at random (0xA77BE, max 20).
+- Inside text the bytes 0x09 to 0x11 are replaced (0xA7582): 0x09 = player
+  name, 0x0A and 0x0B = a word for the player class, 0x0C and 0x0D = a word
+  for the player race, 0x0E to 0x11 = a word for the player sex.
+- A script is a list of blocks: `CB <label> statements CC`.
+
+Number operand (0xA7DF0).
+
+| Form | Value |
+|---|---|
+| hex string | the number |
+| `D2 a b` | random. If b is 0: 1 to a. Else: a to b |
+| `E0` | 4-bit variable of the current object |
+| `E0 15 n` | 4-bit variable of object number n |
+
+Operand bytes.
+
+| Bytes | Meaning |
+|---|---|
+| 0x15 | prefix: the next number is an object number (index in Objects) |
+| 0x7A to 0x7E | arithmetic: add, subtract, multiply, divide, set (0xA8DB2) |
+| 0x7F to 0x84 | compare: <, <=, ==, !=, >, >= (0xA7BEE) |
+| 0xA4 to 0xA8 | item class: WEAPON (type 5), ARMOR (15), MISC (16), SPELL (17), GOLD |
+| 0xA9 to 0xAC | facing, value minus 0xA9 |
+| 0xAD to 0xB2 | segment side 0 to 5 |
+| 0xCA | "all" or "any" in 0xC3 |
+| 0xEF | right side of a compare: player word at 0x1D33BD |
+
+### Statement codes
+
+Dispatch: 0xAAE3E, loop head at 0xAB5AB. The loop ends when the read pointer
+reaches the end of the script. The code byte passes through 0xA8CA6 (0xF5 to
+0xF8 become 0xF4, 0xFA to 0xFD become 0xF9). Then
+`jmp cs:[(code - 0x99) * 4 + 0xAAC6E]` (97 entries). Unknown codes print
+"Don't know statement code" and end the run. Verified (code). The "Seen"
+column is the count in GABE.DAT.
+
+| Code | Handler | Operands | Meaning | Seen |
+|---|---|---|---|---|
+| 99 | 0xAB4D5 | op n | player word 0x1D33D3. Handles the step to 18 with a percent roll (0x1D33D5). Guess: strength | 12 |
+| 9A | 0xAB5F1 | op n | player word 0x1D33DF | 78 |
+| 9B | 0xAB61F | op n | player word 0x1D33DD, then adds 0x8C01B(value, ...) to word 0x1D33BD | 16 |
+| 9C | 0xAB683 | op n | player word 0x1D33D9 | 29 |
+| 9D | 0xAB6B4 | op n | player word 0x1D33D7 | 28 |
+| 9E | 0xAB6E7 | op n | player word 0x1D33DB | 55 |
+| 9F | 0xAB71A | op n | player level (the higher of words 0x1D33CB and 0x1D33CD, plus 1), set through 0x8BA3A | 15 |
+| A0 | 0xAB7AA | op n | player hit points (0x1D336F). A loss goes through the damage function 0x29A9C. A gain is capped at 0x1D33BB | 49 |
+| B3 to BD | 0xAB2C4 | none | set the animation state of the object to code minus 0xB3 (0xA9E2B, object +0x170). State 9 also sets the hit points to 0. States 6, 7, 8 play a robot sound | 75 |
+| BE | 0xAAE51 | text | narration. In the dialogue window if it is open, else as a HUD message. Opens the window in mode 0 (0xA79FD) | 268 |
+| BF | 0xAAE5B | class id [E4 seg] [E3 seg] | give an item to the player (0xA8F77). `E4 ffff` creates it (0xB6390). `E4 seg` takes the item object that lies in the segment. Without E4 the object must carry it. GOLD adds to 0x1D33F7 | 290 |
+| C0 | 0xAAE77 | class id [E4 seg] [E3 seg] | take an item from the player (0xA9191). The object then carries it, or `E3` puts it into a segment (0xFFFE: into a random robot or dressing object). GOLD subtracts if the player has enough | 64 |
+| C1 | 0xAAE93 | op n | experience points (0xA8E77). Only add and subtract. Split in two for a dual class player | 57 |
+| C2 | 0xAAE9D | op n | anger of the current object, capped at 5. 5 makes it hostile. 0 clears flag 2 | 61 |
+| C3 | 0xAAF8C | who range op n | anger of other NPCs (0xA94CE). who = critter table index or CA. range = distance or CA | 38 |
+| C4 | 0xAAF96 | seg side | operate the trigger of that wall (0xA9755). Calls check_trigger 0x939AD(seg, side, 2, object) or 0xA8324 if the trigger is off | 96 |
+| C5 | 0xAAFAA | k [15 n] or F1 n | set object flag k (0 to 7), or set global flag n | 644 |
+| C6 | 0xAAFAA | same | clear the flag | 133 |
+| C7 | 0xAB242 | label | goto (0xA7872 searches the script from its start) | 982 |
+| C8 | 0xAB256 | none | end. Goes to the exit label (0x3EC, or 0x3EA, 0x3EB, 0x3E9 by flag) and shows one of its lines half of the time (0xA7A57) | 699 |
+| CC | 0xAB256 | none | end of block. Same handler as C8 | 1540 |
+| CD | 0xAB469 | text, then reply list | say. See below | 1816 |
+| D3 | 0xAB260 | sound volume [D8] | play a sound (0xA97B3). Volume 1 to 10. Sounds 0x2710 to 0x271B come from the player record (0x1D4E23 and on). Sound 0xFFFF starts a sequence with the movie FLAM1.MVE | 48 |
+| D4 | 0xAB274 | sound volume object n [D9] | sound at an object (0xA9BE6, 0x2E627) | 9 |
+| D5 | 0xAB288 | sound, more numbers [D9] | sound in a segment (0xA9CBE, 0x2E94B). Operands not decoded | 2 |
+| D6 | 0xAB29C | object | stop the sound of an object (0x2E816) | 2 |
+| D7 | 0xAB2B0 | seg | stop the sound of a segment (0x2EB77) | 1 |
+| DA | 0xAB2DD | seg facing | teleport the current object. seg 0xFFFF removes it (0xA9F58) | 44 |
+| DB | 0xAB2F1 | level seg facing | teleport the player (0xAA1FC, level change through 0x59C3C). seg 0xFFFF runs the special sequence 0xAA3F3: the player loses his items and goes to level 7 | 69 |
+| DC | 0xAB32E | object seg facing | teleport another object. seg 0xFFFF removes it | 109 |
+| DD | 0xAB367 | class id seg1 seg2 | move the item that lies in seg1 to seg2. seg2 0xFFFF deletes it | 10 |
+| DE | 0xAB382 | who seg facing | summon a critter (0xAA14D). who = critter table index (one byte). Creates it with 0x1374D. who of 0xBE and above calls a stub | 45 |
+| DF | 0xAB3C0 | [15 n] op n, or nothing | set the resume label (0xAA670). With no operand: the current label | 216 |
+| E0 | 0xAB3CA | [15 n] op n | 4-bit object variable | 233 |
+| E5 | 0xAB435 | seg ... E6 | walk a path through the segments (0xAA79F, 0xAA74E, 0x16FD9). Sets flag 0 | 16 |
+| EA | 0xAB47B | n object | n up to 50. Calls 0x8CFFF. Guess: cast spell n on the object | 130 |
+| EB | 0xAB48F | n seg | n up to 50. Calls 0x90CEF. Guess: cast spell n at the segment | 87 |
+| EC | 0xAB4A3 | n | wait n timer ticks. The game keeps drawing (0x4391D) | 206 |
+| ED | 0xAB4B7 | object, or C4 seg side | kill the object (0xA6ACB), or switch the trigger off (0xA83BD) | 39 |
+| EE | 0xAB4C1 | object | run the script of another object in mode 4, then go on | 10 |
+| F2 | 0xAB43F | condition F3 | IF. See below | 1931 |
+| F4 to F8 | 0xAB449 | none | ELSE of depth 1 to 5. Reached after a true branch: skip to the ENDIF | 809 |
+| F9 to FD | 0xAB45E | none | ENDIF of depth 1 to 5. Depth minus 1 | 1931 |
+
+All other codes from 0x99 to 0xF9 go to the error at 0xAB94B.
+
+### Conditions
+
+`F2 term [E1 term | E2 term]... F3`. 0xA8BDB evaluates it. E1 is AND, E2 is
+OR, strictly left to right. F3 adds 1 to the depth. If the result is false,
+0xA8C49 skips to the ELSE or ENDIF byte of this depth. Verified (code and
+data): ELSE is `0xF4 + depth - 1`, ENDIF is `0xF9 + depth - 1`.
+
+A term (0xA8516) may start with E9 (NOT). A value term is followed by a
+compare byte and a number.
+
+| Code | Kind | Meaning |
+|---|---|---|
+| 00 to 07 [15 n] | flag | object flag |
+| 85 to 8A | flag | player word at 0x1D33FF equals code minus 0x85 |
+| 8B to 8E | flag | player class (bytes 0x1D33B3 and 0x1D33B4) equals code minus 0x8B |
+| 8F to 94 | flag | player race (byte 0x1D33B6, or 5 if 0x1D33FB bit 0) equals code minus 0x8F |
+| 95, 96 | flag | player sex (byte 0x1D33B7) equals code minus 0x95 |
+| 97 [15 n] | value | talk counter |
+| 98 | value | word at `0x153ED8 + object * 47`, plus 500 |
+| 99 to 9E | value | the player words of statements 99 to 9E |
+| 9F | value | player level |
+| A0 | value | player hit points |
+| A1 | value | 0x8445A() + 1. Guess: level number |
+| A2 | value | number of the current object |
+| A3 | value | run mode |
+| C2 | value | anger of the current object |
+| C3 who range cmp n | flag | true if any matching NPC in range has that anger (0xA80F6) |
+| C4 seg side | flag | the trigger of that wall is on (trigger +0x0E) |
+| C9 n | flag | object n is dead or gone (0xA66C9) |
+| D0 class id | flag | the current object carries the item (+0x7C, +0x7D, +0x7E) |
+| D1 class id | flag | the player has the item (0xB6BB3). GOLD: the player has at least that much |
+| DF [15 n] | value | resume label |
+| E0 [15 n] | value | 4-bit object variable |
+| E7 | value | segment of the current object |
+| E8 seg side | value | `fire_count` of the trigger (trigger +0x2E) |
+| F0 n | flag | byte at 0x185FEC + n is not 0. Guess: segment n was visited |
+| F1 n | flag | global flag n |
+| number | value | a number, for example `D2 2 0 81 1` |
+
+The names class, race and sex are guesses from the value ranges and the text
+tokens.
+
+Global flags. Verified (code). 0xADAFE(n) reads and 0xADB3B(n, value) writes
+bit `n - 1` of a 32-byte array in the player record at 0x1D4D4F. Flags 0x21 to
+0x33 are also copied to the dwords at 0x13CDD4 to 0x13CE1C.
+
+### Say and replies
+
+0xA8CBC handles `CD`. Verified (code and data).
+
+1. Open the dialogue window if needed (0xA74AA).
+2. Show the text as speech (0xA7A22(1), 0xB1F5F).
+3. Read the reply list. Dispatch by compare chain:
+
+| Code | Handler | Meaning |
+|---|---|---|
+| CF | 0xA7B56 | `CF label text`: add a reply. Max 10. Shown with 0xB1D99 |
+| F2 | 0xA8C3A | IF, as above. Replies can be conditional |
+| F4 to F8 | 0xA8C49 | ELSE |
+| F9 to FD | | ENDIF |
+| CE | 0xA7ADC | end of the list. 0xB2FA2 returns the choice. Goto the label of the reply. A negative choice ends the script (0xA7A57) |
+
+Any other code prints "Don't know say code" and ends the run. `CD 00 CE` with
+no replies is used after a `BE` text to wait for the player.
+
+### Not covered
+
+- The meaning of the player words of 99 to 9E and of 85 to 8A.
+- Object flag 3, the byte at +0x1A2 and the word at 0x153ED8.
+- The handlers 0xAC7B2 and 0xACCDB of the level init.
+- The operands of D5 and the optional bytes D8 and D9.
+- The dialogue window code and how the choice is read.
+- Whether speech audio is tied to a say statement.
+- Mode 1 has no caller that passes a constant 1.

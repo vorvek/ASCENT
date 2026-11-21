@@ -78,6 +78,9 @@ Unknown: which entry number is used for which screen. The exe message
 `JRG: Error loading PCX file %u  (LZ %u)` shows that the game addresses entries
 by number.
 
+Known entries of the in-game interface (screens of each mode, icons, cursor,
+portraits, button sheets): see [../re/ingame-ui.md](../re/ingame-ui.md).
+
 ## FESEQ.JRG and FESEQ.DAT (front end animations)
 
 Index:

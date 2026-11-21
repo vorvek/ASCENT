@@ -5,7 +5,8 @@ and against the loader code in `DTUGAME.EXE` (function at linear address 0x6DD20
 the header tables, 0x6E972 for the model page-in; addresses are for the LE image with
 object 1 at 0x10000).
 
-Tool: `tools/egg.py` (list, check, extract, bin).
+Tools: `tools/egg.py` (list, check, extract, bin), `tools/model.py` (model info, OBJ
+export and pictures of animation frames, checks of the model data).
 
 The port loads these files with `engine/main/piggy.c` (archive), `polyobj.c` (models),
 `acm.c` (sounds) and `bmread.c` (tables). `engine/main/test_dtudata.c` is the check
@@ -92,7 +93,9 @@ Flag 0x40: the 149 bitmaps with this flag are exactly the 149 bitmaps that `YPIN
 lists between the lines `!BITMAP_REMAP_OFF` and `!BITMAP_REMAP_ON` (second `$TEXTURES`
 section). So the tool that built the archive did not remap these bitmaps to the game
 palette. They decode to the correct shapes but show wrong colors with `PALETTE.256`.
-The palette for them is not identified yet.
+They are front end art. Each one uses the palette that is stored with the
+`FEBGND` background of its front end screen (table in
+[../re/ingame-ui.md](../re/ingame-ui.md), partly verified).
 
 One bitmap of the 57 archives is damaged: `bless#6` in `MULHOR.EGG`. Its data block
 has 27904 bytes (the size field says so too), but the row sizes add up to 1851 and
@@ -178,20 +181,21 @@ fields into a 332 byte memory struct.
 | 0x20 | 4 | `rad` | fix |
 | 0x24 | 4 | `n_textures` | |
 | 0x28 | 4 | `first_texture` | index into a global table of 4 byte entries (Descent 1: `ObjBitmapPtrs`), see below |
-| 0x2C | 4 | unknown | -1 in all 100 models |
-| 0x30 | 4 | unknown | -1 in all 100 models |
+| 0x2C | 4 | `simpler_model` | model number, -1 for none (memory 0x50). -1 in all models: no table uses `simple_model=` |
+| 0x30 | 4 | `mirror_model` | model number, -1 for none (memory 0x54). -1 in all models |
 | 0x34 | 4 | `n_frames` | animation frame count (assert text: `pm->n_frames <= N_ANIM_FRAMES`) |
 | 0x38 | 4 | `offset` | relative to `data_start` |
-| 0x3C | 1 | `flags` | bits 1, 2, 4, 8 select optional arrays in the data block |
+| 0x3C | 1 | `box_flags` | 1 body box, 2 weapon box, 4 second weapon box, 8 torso box. They also select optional arrays in the data block |
 | 0x3D | 13 | `name` | POF file name, NUL terminated, for example `hmc__p.pof` |
-| 0x4A | 1 | unknown | copied by the loader (memory 0xB6) |
-| 0x4B | 1 | unknown | copied by the loader (memory 0xB7) |
-| 0x4C | 2 | unknown | s16, copied by the loader (memory 0x130) |
-| 0x4E | 12 | unknown | vec, copied by the loader (memory 0x134) |
-| 0x5A | 12 | unknown | vec, copied by the loader (memory 0x140) |
-| 0x66 | 8 | `fire_frames` | four s16, the values of `fire_frames=` of the table line, -1 if not given |
-| 0x6E | 32 | `speeds` | eight fix, the first eight values of `speeds=` of the table line |
-| 0x8E | 76 | `state_times` | nineteen fix. Entry 0 is 0. Entries 1 to 18 are the values of `state_times=` of the table line |
+| 0x4A | 2 | `gun_submodels` | two u8 (memory 0xB6). Garbage if `n_guns` is 0 |
+| 0x4C | 2 | `n_guns` | s16 (memory 0x130), 0 to 2 |
+| 0x4E | 24 | `gun_points` | two vec (memory 0x134). Garbage if `n_guns` is 0 |
+| 0x66 | 8 | `fire_frames` | four s16 (memory 0xB8): the frame of the hit or shot in the animation states 6, 7, 11 and 12. The values of `fire_frames=` of the table line, -1 if not given |
+| 0x6E | 32 | `speeds` | eight fix (memory 0xC0), the first eight values of `speeds=` of the table line |
+| 0x8E | 76 | `state_times` | nineteen fix (memory 0xE4), seconds, one for each animation state. Entry 0 is 0. Entries 1 to 18 are the values of `state_times=` of the table line |
+
+The meaning of these fields and of the animation states is in
+[../re/models.md](../re/models.md).
 
 Verified for 0x66 to 0x8E: `hmc__p.pof` holds 45, 61, 109, 125, then 10, 4, 20, 5, 7,
 25, 2, 10, then 0, 0.5, 2, 0.5, ... which are the values of the `$PLAYER` line of
@@ -200,8 +204,9 @@ in DTUGAME.EXE (0x72DC5) takes three arrays of 4, 9 and 19 values and stores the
 these places of the memory struct. A model whose table line has no such keywords
 (scenery) holds -1 in 0x66 and garbage in the last nine entries of 0x8E.
 
-The fields 0x4A to 0x65 are copied but their meaning is unknown. In scenery models
-these bytes look like uninitialized memory.
+The fields 0x4A to 0x65 are the gun data of Descent 1 (two guns at most, no gun
+directions). In models without guns these bytes are uninitialized memory. Three models
+of `PORTAL.EGG` have `n_guns` 1 (`dlf_ffk.pof`, `elf_p.pof`, `min_b.pof`).
 
 `first_texture` is the number of the first object bitmap slot of the model, as the
 table parser counted the slots when the archive was built (see tbl.md, "Object bitmap
@@ -243,18 +248,19 @@ Order and sizes come from the page-in code and match every model in all three fi
 | 7 | n | `submodel_parents` (0xFF for the root) | always |
 | 8 | 12n | `submodel_mins` | always |
 | 9 | 12n | `submodel_maxs` | always |
-| 10 | 12(F+1) | vec per frame | always |
-| 11 | 12(F+1) | vec per frame | always |
-| 12 | 6nF | animation angles, one angvec (3 x s16) per submodel per frame | F > 0 |
-| 13 | 7 x 12F | seven arrays of one vec per frame | F > 0 |
-| 14 | 12(F+1), 4(F+1), 4(F+1) | three arrays | flags & 1 |
-| 15 | 12F, 4F, 4F | three arrays | flags & 8 |
-| 16 | 12F, 4F | two arrays | flags & 2 |
-| 17 | 12F, 4F | two arrays | flags & 4 |
-| 18 | n(n+1) | child lists | always |
-| 19 | n | one byte per submodel | always |
+| 10 | 12(F+1) | body box minimum. Entry 0: rest pose. Entry f + 1: frame f | always |
+| 11 | 12(F+1) | body box maximum | always |
+| 12 | 6nF | animation angles, one angvec (3 x s16: pitch, bank, heading) per submodel, frame after frame: entry `frame * n + submodel` | F > 0 |
+| 13 | 7 x 12F | seven arrays of one vec per frame: eye offset (y is used), weapon box minimum and maximum, second weapon box minimum and maximum, torso box minimum and maximum | F > 0 |
+| 14 | 12(F+1), 4(F+1), 4(F+1) | body: center of the box, half height, radius in the xz plane | flags & 1 |
+| 15 | 12F, 4F, 4F | torso: center relative to the body center, half height, radius in the xz plane | flags & 8 |
+| 16 | 12F, 4F | weapon: center relative to the body center, radius | flags & 2 |
+| 17 | 12F, 4F | second weapon: center, radius | flags & 4 |
+| 18 | n(n+1) | child lists: row s (n bytes) holds the children of submodel s, ended by 0xFF | always |
+| 19 | n | submodel flags: 0x10 hidden (the missile in the hand), 0x20 magic effect part, see models.md | always |
 
-Note the order of the flag tests: 1, 8, 2, 4.
+Note the order of the flag tests: 1, 8, 2, 4. A box array whose flag is not set holds
+garbage.
 
 Verified by data: every `submodel_ptrs` value lies inside the interpreter data. The
 interpreter data starts with opcode 4 (SORTNORM) or 7 (DEFP_START), as in Descent 1.
@@ -264,11 +270,15 @@ size. The port draws models with these arrays and the interpreter data (pictures
 the opcode stream is the Descent 1 one: only the opcodes 0 to 8 occur in the
 archives, with the Descent 1 record sizes. The port does not call
 `g3_init_polygon_model` on the data. Guess: the flat polygon colors are already
-palette indexes, as in the Descent 1 PIG file. Guess: arrays 10 and 11 are per-frame bounding box mins and maxs (the values
-repeat the model bounds). Guess: array 18 holds, for each submodel, a list of child
-submodel numbers ended by 0xFF (checked by hand against `submodel_parents` for
-`kettle3.pof` and `bed_rd.pof`), the row width was not confirmed in code. The meaning
-of arrays 13 to 17 and 19 is unknown.
+palette indexes, as in the Descent 1 PIG file.
+
+Arrays 10 to 19 are named from the code that uses them (models.md, "The model struct
+in memory") and checked with `tools/model.py`: the values of arrays 14 to 17 follow
+from the boxes of arrays 10, 11 and 13 for `durnan.pof`. The row width of array 18 is
+`n_models` in the code (0x67020). For all 1142 models with more than one submodel each
+row lists exactly the submodels whose parent is the row number. In a model with one
+submodel the row is not initialized. No model has a SUBCALL opcode: the executable
+walks the submodel tree with arrays 3, 12 and 18 and draws each submodel on its own.
 
 ## BIN files
 
@@ -327,11 +337,11 @@ identity table. Verified by size, value range, and by rendering in-game textures
   HMC and HMT it is `BF 05 00 FF` repeated.
 - The palette for the bitmaps with flag 0x40.
 - Sound flag 2. The sample rate of the raw sounds of the old layout.
-- Model header fields 0x2C, 0x30 and 0x4A to 0x65, and model data arrays 13 to 17
-  and 19. The order of array 12 (frame by frame or submodel by submodel).
-- Where a model keeps its gun points (Descent 1 read them from the POF file).
+- The bits 0x01 to 0x08 of the submodel flags (array 19).
 - How the object bitmap slots of a player archive and of a level archive stay apart
-  in DTUGAME.EXE (see "Model header").
+  in DTUGAME.EXE for weapon and spell models (see "Model header" and models.md,
+  "Textures"). For creature and scenery models the table reader replaces the header
+  value by the slots of the table line.
 - The old loader path of DTUGAME.EXE for `DEMO.EGG`, `FRONTEND.EGG`, `SHORT.EGG` and
   `DTU.EGG`.
 

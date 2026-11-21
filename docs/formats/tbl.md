@@ -255,6 +255,12 @@ name of an archive bitmap (`g_a01`).
 | 22 to 26 | s16 | unknown, `Monster_info[].ai_values[0]` (-100 to -500) |
 | 27 to 31 | s16 | unknown, `Monster_info[].ai_values[1]` (0 to -400) |
 
+Correction from the code that uses the values (`docs/re/ai.md`, "The monster table
+values"): numbers 7 to 11 are the turn time, numbers 12 to 16 are the circle distance of
+a ranged creature, numbers 22 to 26 are the flee value and 27 to 31 the attack value of
+the morale test. The names in the "Port" column above are those of the port code and are
+wrong for these groups.
+
 One group has five numbers, one for each difficulty level. The comment at the end of
 each line says "attack value". The Descent 1 values `fire_power`, `shield`,
 `max_speed`, `circle_distance` and `evade_speed` are not in the line. The port leaves

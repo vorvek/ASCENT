@@ -466,6 +466,10 @@ Render part, by `render_type`:
 Render type 4 (hostage) stops the loader. Version 41 files store no animation angles
 in the polyobj part (versions below 30 did).
 
+The fields 0x170, 0x172 and 0x176 are the animation state, the animation frame and the
+goal state of the model (see `docs/re/models.md`). State 1 is STAND. Frame -1 means no
+animation.
+
 Polyobj values seen: 0x16E is 0 (twice 5). 0x170, 0x172, 0x176 are 1, 0, 1 for all
 robots and players and 0, -1, -1 for type 18 scenery (one type 18 record has 1, 0, -1). `subobj_flags` is 0. `tmap_override` is -1
 in 281 of 292 records, else a texture index that the loader translates.
