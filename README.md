@@ -2,20 +2,20 @@
 
 ASCENT is a source port of Descent to Undermountain (Interplay, 1997).
 
-The original game runs on DOS and uses a modified Descent engine.
-Version 1.3 of the game still has many defects.
-The goal of this project is a modern engine that reads the original game files and corrects those defects.
+The original game runs on DOS and uses a modified Descent engine. It had a troubled development, not helped by using an engine meant for spaceships flying mining tunnels instead of
+dungeon crawling humanoids. Version 1.3 of the game still has many defects.
 
-## Status
+ASCENT aims to make the game playable in modern Windows, alongside bugfixes and optional improvements.
 
-The project is in the research phase. No playable build exists.
+## New features
 
-## Goals
-
-- Read the original game files without changes.
-- Run on modern operating systems without an emulator.
-- Correct the controls, the animations, and the physics.
-- Make the game speed independent of the frame rate.
+* Gamepad support
+* A new 32-bit color GPU based renderer allowing for higher resolutions, alongside a depth buffer (no more enemies clipping through walls!).
+* Upscaled textures and movies.
+* Content-id-safe streaming and gameplay recordings. Originally, the Yawning Portal uses "Return From The Hunt" as a theme. It's been replaced with the "Seedy Tavern" theme by Jeremy Soule, from Neverwinter Nights.
+* Improved physics, untied to the framerate. No more floating corpses or cursed ladders. Jumping no longer pulls you back down in a microsecond.
+* Animation interpolation.
+* Full screen shaders.
 
 ## Game files
 
@@ -24,11 +24,14 @@ You must own a copy of Descent to Undermountain to use this project.
 
 ## Downloads during installation
 
-The installer and the content manager (`ascent-content`) download the 1.3 patch and the optional upscaled textures and movies from `ascent-content.generalsimulationworks.com`.
-This server uses Cloudflare.
+The installer and the content manager (`ascent-content`) can download the 1.3 patch and the optional upscaled textures and movies.
+The server they download this content from uses Cloudflare.
+
 Some internet providers block Cloudflare addresses at some times. For example, providers in Spain block them during football matches.
 If a download stops with a timeout, try again later or use a VPN.
 Then start "ASCENT Content" from the Start menu to download the files that are missing.
+
+The upscaled files are not necessary to play. The 1.3 patch is also available at [The Patches Scrolls](https://www.patches-scrolls.de/patch/1215/7/41518/download).
 
 ## Source layout
 
