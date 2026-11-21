@@ -1643,6 +1643,13 @@ static void bm_read_monster()
 	ri->claw_sound = ROBOT_CLAW_SOUND_DEFAULT;
 	ri->contains_type = OBJ_POWERUP;
 	mi->die_sound = mi->hit_sound = -1;
+	// ASCENT: the defaults of the monster reader of DTUGAME.EXE (0x1DDE6,
+	// docs/re/ai.md): thaco 5, max_hit_points 24, iq 70, str 10.
+	mi->thaco = 5;
+	mi->max_hit_points = 24;
+	ri->strength = i2f(24);
+	mi->iq = 70;
+	mi->str = 10;
 
 	line_models_start();
 
@@ -1680,7 +1687,7 @@ static void bm_read_monster()
 			mi->max_hit_points = atoi(val);
 			ri->strength = i2f(mi->max_hit_points);		// Guess: the hit points are the Descent 1 "strength"
 		}
-		else if (!stricmp( key, "thaco" ))			mi->thaco = atoi(val);
+		else if (!stricmp( key, "thaco" ) || !stricmp( key, "thac0" ))			mi->thaco = atoi(val);
 		else if (!stricmp( key, "armor_class" ))	mi->armor_class = atoi(val);
 		else if (!stricmp( key, "str" ))				mi->str = atoi(val);
 		else if (!stricmp( key, "iq" ))				mi->iq = atoi(val);

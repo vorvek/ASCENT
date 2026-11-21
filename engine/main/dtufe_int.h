@@ -99,12 +99,13 @@ typedef struct fe_seq {
 #define FE_MI_CHECK	2
 #define FE_MI_INPUT	3
 #define FE_MI_TEXT	4
+#define FE_MI_INPUT_MENU	5	// NM_TYPE_INPUT_MENU: a menu item that becomes an input field
 
 typedef struct fe_menu_item {
 	int	type;
 	char	*text;
 	int	value, min_value, max_value;
-	char	*buf;				// FE_MI_INPUT
+	char	*buf;				// FE_MI_INPUT, FE_MI_INPUT_MENU
 	int	buf_len;			// most characters
 	void	(*changed)(struct fe_menu_item *item);
 	// set by fe_menu
@@ -178,6 +179,13 @@ int fe_input_box(char *title, char *buf, int max_len);
 
 int fe_rand(void);
 
+// Save games (0xBA99F, 0xBB780). fe_load_game returns 0 if nothing was
+// loaded, else the next FE_GO_ mode: FE_GO_WATERDEEP, or FE_GO_LEVEL with
+// the level in Fe_load_level. in_game: 1 from the death menu.
+int fe_load_game(int in_game);
+void fe_save_game(void);
+extern int Fe_load_level;
+
 //------------------------------------------------------------------------
 // dtufe_char.c
 
@@ -186,6 +194,7 @@ int fe_new_character(void);			// the four screens. 1: a character was made
 // dtufe_town.c
 extern int Fe_khelben_mission, Fe_khelben_blurb;
 #define FE_GO_MENU			1
+#define FE_GO_LEVEL			2		// Function_mode 2: the game
 #define FE_GO_WATERDEEP		4
 #define FE_GO_BLACKSTAFF	5
 #define FE_GO_MARKET			7

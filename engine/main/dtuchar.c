@@ -34,6 +34,7 @@
 #include "dtudisp.h"
 #include "dtutrig.h"
 #include "dtuchar.h"
+#include "dtuspell.h"	// ASCENT: the spell effects of the armor class and the slots of a rest
 
 _Static_assert(sizeof(dtu_player_attr) == 80, "dtu_player_attr");
 _Static_assert(offsetof(dtu_player_attr, max_hit_points) == 0x0A, "dtu_player_attr");
@@ -534,14 +535,16 @@ void dtu_char_update(void)
 	#undef CLAMP95
 
 	// 0xB05C5. The spell effects that change the armor class (0xB05D4 to
-	// 0xB0696 and 0xB0702) are not in the port.
+	// 0xB0696 and 0xB0702) are in dtuspell.c.
 	ac = 10 + (signed char) sum;
+	ac = dtu_spell_player_ac(ac, 0);
 	dex = pa->dexterity;
 	if (dex < 1) dex = 1;
 	if (dex > 19) dex = 19;
 	pa->dexterity = dex;
 	pa->dex_ac_adjust = Dex_ac[dex];
 	ac += pa->dex_ac_adjust;
+	ac = dtu_spell_player_ac(ac, 1);
 	if (ac < -10) ac = -10;
 	if (ac > 10) ac = 10;
 	pa->armor_class = ac;
@@ -881,6 +884,15 @@ int dtu_char_use(int index)
 }
 
 // 0x3614B and 0x2FAF0: the item in the hand is used if it is a misc item.
+// 0xB7084: one item of a stack, or one charge, is used. A count of -1 has
+// no limit. At 0 the entry goes away and the references follow the list.
+void dtu_char_use_up(int index)
+{
+	if (index < 0 || index >= Dtu_n_inventory || Dtu_inventory[index].count < 0)
+		return;
+	inv_remove(index, 1);
+}
+
 int dtu_char_use_current(void)
 {
 	dtu_inv_item *e = ref_entry(Dtu_char.current);
@@ -987,6 +999,7 @@ int dtu_char_rest(void)
 	set_hit_points(Dtu_char.pa.max_hit_points);
 	Rest_time[seg] = GameTime + i2f(300);
 	HUD_init_message("You feel refreshed");
+	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
 	// The executable also calls 0x160AB(player, 5) and 0x92FF2, plays sound
 	// 62 and removes the fire of the rest place. These are not in the port.
 	return 1;

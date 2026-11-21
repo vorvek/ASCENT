@@ -346,7 +346,9 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "network.h"
 #include "gamefont.h"
 #include "dtugame.h"		// ASCENT: the direct start, Dtu_objects_enabled
-#include "dtuobj.h"		// ASCENT: the attack of the player
+#include "dtuobj.h"		// ASCENT: the objects of the target game
+#include "dtucombat.h"	// ASCENT: the attack of the player
+#include "dtufe.h"		// ASCENT: the front end ends the game
 #include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtufoot.h"		// ASCENT: the footstep sounds
 #include "dtudisp.h"		// ASCENT: the interface of the target game
@@ -2818,6 +2820,13 @@ void game()
 			// ASCENT: the death of the player (dtuobj.c)
 			dtu_player_death_frame();
 
+			// ASCENT: the front end ends the game after this frame: the
+			// death screen, or the exit of the Yawning Portal (dtufe.c).
+			if (dtufe_game_frame()) {
+				Function_mode = FMODE_MENU;
+				longjmp(LeaveGame,0);
+			}
+
 			// ASCENT: the direct start (-level) has no menu. Escape leaves
 			// the program without the "abort game" question.
 			if (Dtu_direct_start && Function_mode != FMODE_GAME) {
@@ -3012,7 +3021,7 @@ void ReadControls()
 			// The fire key starts the attack of the player (dtuobj.c).
 			if (Dtu_direct_start || !Dtu_objects_enabled) {
 				if (Controls.fire_primary_down_count)
-					dtu_player_attack();
+					dtu_combat_player_attack();		// ASCENT: dtucombat.c
 				Controls.fire_flare_down_count = 0;
 				Controls.drop_bomb_down_count = 0;
 				Global_missile_firing_count = 0;

@@ -35,6 +35,7 @@
 #include "dtudisp.h"
 #include "dtuobj.h"
 #include "dtuchar.h"
+#include "dtuspell.h"		// ASCENT: the spell list of the statistics screen
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -1228,7 +1229,7 @@ int dtu_display_owns_key(int key)
 	case KEY_ENTER:
 	case KEY_U:
 	case KEY_BACKSP:
-		return inventory_mode();
+		return inventory_mode() || Dtu_interface_mode == DTU_IM_STATS;
 	}
 	return 0;
 }
@@ -1289,6 +1290,12 @@ static void do_input(int mx, int my)
 		}
 		if (key_acts(KEY_U) && Inv_sel < Dtu_n_inventory) dtu_char_use(Inv_sel);
 		if (key_acts(KEY_BACKSP) && Inv_sel < Dtu_n_inventory) dtu_char_drop(Inv_sel);
+	} else if (Dtu_interface_mode == DTU_IM_STATS) {
+		// ASCENT: the spell list of the statistics screen: comma and period
+		// choose a spell, Enter takes it in the hand (dtuspell.c)
+		int prev = key_acts(KEY_COMMA), next = key_acts(KEY_PERIOD), take = key_acts(KEY_ENTER);
+		dtu_spell_screen_keys(prev, next, take);
+		key_acts(KEY_U); key_acts(KEY_BACKSP);
 	} else {
 		// keep the key state current, so that a held key does not act when
 		// the screen opens
@@ -1365,8 +1372,10 @@ void dtu_display_frame(void)
 			draw_info_areas();
 			if (inventory_mode())
 				draw_inventory();
-			else if (Dtu_interface_mode == DTU_IM_STATS)
+			else if (Dtu_interface_mode == DTU_IM_STATS) {
 				draw_stats();
+				dtu_spell_screen_draw(Dtu_hires);	// ASCENT: the spell books (dtuspell.c)
+			}
 		}
 		draw_hot_keys();
 		draw_buttons();

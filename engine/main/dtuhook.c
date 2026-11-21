@@ -722,7 +722,8 @@ void dtu_hook_trap_gate_robot(int robot_type, int robot_arg, int segnum, vms_vec
 
 // Step 11 of a trap (0x94598): whole hit points for the player, up to the
 // maximum and down to 0. The executable has no death test here: its
-// status display finds the death in the next frame (0x33C5E).
+// status display finds the death in the next frame (0x33C5E,
+// dtu_player_check_death).
 void dtu_hook_trap_hit_points(object *obj, int delta)
 {
 	fix hp;
@@ -732,8 +733,7 @@ void dtu_hook_trap_hit_points(object *obj, int delta)
 		return;
 	hp = dtu_player_damage(-i2f(delta));
 	dtu_obj_log("trap: %d hit points for the player, hp %d",delta,f2i(hp));
-	if (hp < F1_0)
-		dtu_damage_player(ConsoleObject,NULL,F1_0);
+	dtu_player_check_death(NULL);
 }
 
 // 0x9493A

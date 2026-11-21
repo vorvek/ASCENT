@@ -207,6 +207,8 @@ Only the fields that object setup uses.
 | 0x38 | u8 | render type of the missile: 2 for `weapon_pof`, 3 for `weapon_vclip` |
 | 0x4E | fix | `duration`, default 30.0 |
 | 0x56 | fix | `size` |
+| 0x39 | u8 | `level` |
+| 0x3A to 0x48 | 5 x 3 u8 | damage dice: `damage_dice`, `fire_`, `cold_`, `acid_`, `elec_damage_dice`, each as sides, `#` number, `_damage_level` add per level (addresses 0x1B56B0 to 0x1B56BE for entry 0; the table starts at 0x1B5676). The reader stores at 0x24E87 to 0x25049, the damage function is 0x91BC3 (see ai.md, "Spell damage") |
 
 ### Weapon_info (217 bytes), reader 0x209F3
 

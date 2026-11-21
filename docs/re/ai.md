@@ -595,25 +595,106 @@ Verified (code), added with the port.
 - 0x106BA `ai_turn_towards_vector` is the Descent 1 function, but the new
   forward vector keeps the y part of the old one.
 
-## Port status (engine/main/dtuobj.c)
+## Port status (engine/main/dtuobj.c, dtuhook.c)
 
-In the port: the wake up test, the idle animation, the animation step, the
-modes STILL, CHASE_OB and RUN_FROM, the goal state choice, the current state
-switch, the morale check (without the level values), the weapon test, the
-to-hit roll, the damage dice and the death animation.
+In the port: the wake up test, the idle animation, the animation step, all
+modes (STILL, WANDER, FOL_PATH, CHASE_OB, RUN_FROM, HOME, OPENDOOR), the goal
+state choice, the current state switch, the morale check (without the level
+values), paths (0x1686D and its callers), the door opener and the door that a
+creature opens when it walks into it (0x25CAA), the blocked move with the
+attack on scenery, the random turn, the weapon test, the to-hit roll, the
+damage dice, ranged attacks (0x11B06, 0x1396E) with missiles, the special
+attack of a monster with a weapon_type below 0 (a spell missile, 0x10040),
+the damage of a spell (0x91BC3), regeneration of hit points, the death with
+drops, gold and experience, the corpse, the sounds of a creature, the trap
+hooks and the death of the player.
 
-Not in the port: paths (FOL_PATH, HOME, the path to the player), the door
-opener, the blocked move, the random turn, `move_around_player`, the evasion of
-weapons, ranged attacks and spells (a ranged creature goes through its attack
-animation and no missile comes), regeneration, the alert function and the
-awareness events, scripts, the push of scenery. A creature with a script
-number is not hostile in the port.
+Not in the port: the push of scenery (0x9FA41, see below), the evasion of
+weapons, the spells of a monster with a mage or cleric level (0x92D99,
+0x91FDC), the effects of a spell other than its damage (sleep, hold, fear,
+poison and the rest of 0x8CFFF and 0x90CEF), the saving throw (0xAE596), the
+alert function and the awareness events, the revive of a regenerating
+creature.
 
 Rules of the port that are not in the executable (marked "guess" in the
 code): a hostile creature that sees the player keeps the awareness 1 at least
 (the awareness events are missing), a creature that the player hits becomes
-hostile, a dead creature stays as a corpse on the last frame of DIE, a dead
-player stays in place.
+hostile, a dead player stays in place, a creature breaks the scenery that it
+attacks (0xA6ACB is not read).
+
+### Paths (0x1686D), verified
+
+The segment filter at 0x16999 to 0x16AEE marks a segment as used (no path
+goes through it), but for the start and the end segment:
+
+- a segment with `special` 1 or 2;
+- for a robot whose monster entry does not have the door bit (+0x63 bit 0):
+  each segment with a wall on any side;
+- a branch for an object without flag 0x08 at +0x89 and with a value at
+  +0x11C, not a FLYING monster: a segment whose byte at +0x214 has bit 0
+  clear, whose vector at +0x204 is not zero (vm_vec_mag 0xD707D), and whose
+  value at +0x208 is not -1.5. In the level files the byte at +0x214 is 1
+  exactly where the value at +0x208 is -1.5, and the vector is (0, 0, 0)
+  elsewhere (docs/formats/lvl.md), so this branch never marks a segment.
+
+So a creature with no door bit takes no path through a segment that has a
+wall of any type, an open one too. The loop runs to `Highest_segment_index`
+minus 1, so the last segment is never marked.
+
+### Push of scenery (0x9FA41), verified, not in the port
+
+When the movement of a creature hits an object of type 18 (scenery) and the
+`str` of the monster (+0xDE) is above `pushable` of the scenery entry
+(Dressing_info +0x14, table at 0x19B340, 32 bytes): the scenery gets 8 times
+the x and z parts of the velocity (+0xFC, +0x104) and of the thrust (+0x108,
++0x110) of the creature, and movement type 1 (physics). After that, a hit on
+the player adds 1 to the creature value +0x1CD. Above 100 the creature is put
+at the position 0x30F478. A hit robot goes to the list at 0x30F10C. The port
+has no movement for scenery, so the push is left out. The creature breaks the
+scenery after 10 blocked frames instead.
+
+### Spell damage (0x91BC3), verified
+
+Arguments: edx = target, ebx = spell, ecx = level. Four groups of dice of the
+spell entry (Spell_info, 127 bytes): sides, number and the add for each
+level.
+
+| Bytes | Keywords |
+|---|---|
+| +0x3A, +0x3B, +0x3C | `damage_dice`, `#damage_dice`, `damage_level` |
+| +0x3D, +0x3E, +0x3F | `fire_damage_dice`, `#fire_damage_dice`, `fire_damage_level` |
+| +0x40, +0x41, +0x42 | `cold_damage_dice`, `#cold_damage_dice`, `cold_damage_level` (not used by 0x91BC3) |
+| +0x43, +0x44, +0x45 | `acid_damage_dice`, `#acid_damage_dice`, `acid_damage_level` |
+| +0x46, +0x47, +0x48 | `elec_damage_dice`, `#elec_damage_dice`, `elec_damage_level` |
+
+(The offsets are from the stores of the reader at 0x24E87 to 0x25049. The
+table starts at 0x1B5676, so the bytes of entry 0 are at 0x1B56B0 to
+0x1B56BE.)
+
+A group counts if its sides or its number is not 0: `number` rolls of
+`rand % sides + 1`, plus `add * level`. Fire damage sets bit 0 of target
++0x15E. Then: a monster with `electricity_immune` takes no electric damage, a
+monster with `fire_immune` no fire damage, one with `fire_resistant` one half.
+The effect Resist Fire (bit 10 of +0x88) halves the fire damage. Protection
+From Fire (bit 9) takes the fire damage from the counter +0x82 and only what
+is left over goes through. Fire or acid damage clears bit 24 of +0x88
+(regeneration). The result is the sum of the four groups. The two callers in
+the spell function (0x91374, 0x917A0) take one half of it if the saving throw
+0xAE596(target, 4) passes, and subtract it from the shields.
+
+The port: `dtu_spell_damage_roll()`. `dtu_spell_hit()` (weak) applies it with
+no saving throw when a spell missile hits. Which spells of the spell function
+take this path is not read (guess: each spell with damage dice).
+
+### Monster table defaults
+
+The reader of the port used 0 where the reader of the executable has a
+default (see the entry layout): `max_hit_points` 24, `thaco` 5, `iq` 70, `str`
+10. A monster line with no `max_hit_points` (the mephits of MYRKUL) then had
+no morale check, and the creature stayed inactive. The keyword `thac0` is now
+read too. Fixed in `bmread.c`.
+
+### Settings
 
 Settings of the port (globals of `dtuobj.h`, 1 is the corrected rule and the
 default, the option `-origobj` clears them):
@@ -622,26 +703,50 @@ default, the option `-origobj` clears them):
 |---|---|---|
 | `Dtu_fix_idle_anim` | one idle step (0x14013) per game frame | one step per 3/64 second |
 | `Dtu_fix_ai_ticks` | the tests "(clock + objnum) % N == 0" are true in one game frame of N | true one time in N periods of 3/64 second. The test with 255 for a player behind the creature is a random number |
-| `Dtu_fix_creature_move` | velocity * 0.5 per frame, two steps of 1/64 second at most, lift out of the floor 2.0 per frame | the same per 3/64 second, all steps |
+| `Dtu_fix_creature_move` | velocity * 0.5 per frame, two steps of 1/64 second at most, lift out of the floor 2.0 per frame, blocked counters per frame | the same per 3/64 second, all steps |
 | `Dtu_fix_brain` | sight by the BRN matrix | sight by a ray (the BRN files of the disc fit no level) |
+| `Dtu_fix_path_follow` | a walking creature on a path walks to the player (0x17CA8) | it walks to the next point of the path. A hostile creature in CHASE_OB that does not see the player takes a path to the player |
+| `Dtu_fix_fire_once` | one missile in each frame that the fire frame lasts (0x13A2A) | one missile for each attack animation |
+| `Dtu_fix_attack_sound` | the attack sound of compute_vis_and_vec needs visibility 2, which never comes | the sound plays by the rules of that code |
 
 `Dtu_idle_anim_near` (default 0, option `-idleanim`) leaves out the reset of
 step 20. `Dtu_creatures_attack` (default 1, option `-noattack`) is the attack
 switch 0x13A6B4.
 
 Test options: `-objlog FILE` writes each change of the state of a creature,
-each attack roll, each damage and each pickup with the game time and the frame
-number. `-objlogframes` adds a line for each animation frame. `-testpos
-X,Y,Z[,HEADING]` puts the player at a point of the level. The action `attack`
-of `-testmove` is the attack key (left Ctrl in the game).
+each attack roll, each damage, each missile, each path and each pickup with
+the game time and the frame number. `-objlogframes` adds a line for each
+animation frame. `-objlogpos N` adds the place, the mode and the path of each
+active creature each N frames. `-testpos X,Y,Z[,HEADING]` puts the player at
+a point of the level. The action `attack` of `-testmove` is the attack key.
 
-Measured with `-level BANE -testpos 25,-1,205,0` and the player standing, 16
-seconds of game time, at 20, 60 and 200 frames per second with the corrected
-rules: the skeleton sees the player at 0.02 s in all three runs, walks at 1.07,
-1.07 and 1.06 s, starts its first attack at 3.17, 3.15 and 3.13 s, swings at
-3.82, 3.80 and 3.76 s, and then swings each 1.65, 1.65 and 1.62 s. All
-creatures together hit 19, 22 and 25 times for 104, 100 and 101 hit points
-(the dice differ from run to run).
+### Measured
+
+`-level BANE -testpos 25,-1,205,0`, the player standing, 16 seconds, at 20,
+60 and 200 frames per second (before the paths): the skeleton sees the player
+at 0.02 s in all three runs, walks at 1.07, 1.07 and 1.06 s, starts its first
+attack at 3.17, 3.15 and 3.13 s, swings at 3.82, 3.80 and 3.76 s, and then
+swings each 1.65, 1.65 and 1.62 s. All creatures together hit 19, 22 and 25
+times for 104, 100 and 101 hit points.
+
+`-level BANE -testpos -260.4,17.8,99.2,0`, 30 seconds at 20, 60 and 200
+frames per second: the archer (obj 7) fires at 1.57, 1.53, 1.50 s and then
+each 1.65 s. The first melee hit is at 4.32, 4.32, 3.98 s. The player dies two
+times in each run. The creatures hit 11 times in each run for 44, 39 and 41
+hit points. In the same place with `-noattack`, the axe skeleton (obj 8)
+takes a path of 5 segments around the wall, attacks and breaks a bench in its
+way at 4.5 s and reaches the player at 9 s.
+
+`-level CRYPTS -testpos -45,5,195,270`: the orc Orcascim (door bit) takes a
+path of 7 segments, enters the mode OPENDOOR and opens the closed door (wall
+28, seg 40 side 4) at 8.2 s. Two orcs reach the player.
+
+`-level MYRKUL -testpos 145.9,-23.5,256.9,180`: the mephits cast Burning
+Hands (spell 4, 1d3 fire plus 2 per level) as a missile. Each hit does 4.
+
+`-level BONES -testpos -20,-5,0,90`: trigger 1 runs trap 0, which gates a
+skeleton (type 0) in segment 1. It kills the player in 6.1 s. The death
+music plays 3 s later and the level starts again at 13.3 s.
 
 ## Animation step (0x11018)
 

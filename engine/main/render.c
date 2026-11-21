@@ -339,6 +339,7 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "mem.h"
 #include "piggy.h"
 #include "dtugame.h"		// ASCENT: the flat color of a side with no texture, Dtu_objects_enabled
+#include "dtucombat.h"	// ASCENT: dtu_combat_draw_view()
 
 #define	INITIAL_LOCAL_LIGHT	(F1_0/4)		// local light value in segment of occurence (of light emission)
 
@@ -1792,6 +1793,11 @@ void render_frame(fix eye_offset)
 	}
 
 	render_mine(start_seg_num,eye_offset);
+
+	// ASCENT: the arms and the weapon of the player of the target game
+	// (render_object 0x67C5A draws the viewer, see dtucombat.c)
+	if (Viewer == ConsoleObject)
+		dtu_combat_draw_view();
 
 	if (Use_player_head_angles ) 
 		draw_3d_reticle(eye_offset);

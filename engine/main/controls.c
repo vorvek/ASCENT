@@ -219,7 +219,8 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include <stdio.h>
 #include <string.h>
 #include "physics.h"
-#include "dtuobj.h"		// ASCENT: dtu_player_attack()
+#include "dtuobj.h"		// ASCENT: the objects of the target game
+#include "dtucombat.h"	// ASCENT: the attack of the player
 #include "dtutrig.h"		// ASCENT: dtu_player_use()
 #include "bm.h"
 #include "key.h"
@@ -634,10 +635,11 @@ void dtu_read_controls(void)
 	if (keyd_pressed[KEY_A] || (t & TM_USE))
 		dtu_player_use();
 
-	// The attack with the weapon in the hand (pweapon.c of the executable,
-	// not read). The key is a guess.
-	if (keyd_pressed[KEY_LCTRL] || (t & TM_ATTACK))
-		dtu_player_attack();
+	// The attack with the item in the hand: Left Ctrl and Right Ctrl
+	// (keyboard items 18 and 19 of the key table, 0x13C010), on the key
+	// down (0x2FCBE). See dtucombat.c.
+	dtu_combat_attack_key(keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL] || (t & TM_ATTACK));
+	dtu_combat_frame();
 
 	// 0x54033: the move mode. A run is 1.5 times the walk.
 	run = keyd_pressed[KEY_LSHIFT] || autorun || (t & TM_RUN);

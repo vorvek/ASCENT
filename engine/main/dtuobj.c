@@ -217,7 +217,7 @@ static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 static item_info *item_table_entry(int type,int id);
 static fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
 static fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
-static void spell_hit(int spell,object *target,object *attacker);
+static fix spell_hit(int spell,object *target,object *attacker);
 static int is_hostile(object *obj);
 
 // The attack of the player
@@ -226,6 +226,7 @@ static int Player_swing_done = 0;
 
 static FILE *Obj_log = NULL;
 static int Obj_log_frames = 0;		// option -objlogframes: a line for each change of the animation frame
+static int Obj_log_pos = 0;			// option -objlogpos N: the place of each active creature each N frames
 static int Test_pos_pending;
 
 #define MAX_IGNORE_OBJS 100		// as in physics.c
@@ -647,6 +648,8 @@ void dtu_objects_init(void)
 		Obj_log = fopen(Args[t+1],"w");
 	if (FindArg("-objlogframes"))
 		Obj_log_frames = 1;
+	if ((t = FindArg("-objlogpos")) != 0 && t+1 < Num_args)
+		Obj_log_pos = atoi(Args[t+1]);
 
 	if (!Dtu_objects_enabled)
 		return;
@@ -1387,14 +1390,109 @@ static void creature_dies(object *obj,object *attacker)
 	log_creature_state(obj,"death");
 }
 
-// 0x8CFFF and 0x90CEF: the effect of a spell on a target. The spell
-// effects of the executable are not read, but for Hold Person. The port
-// has none of them.
-static void spell_hit(int spell,object *target,object *attacker)
+// The weapon number of the damage functions for damage with no to-hit
+// roll and no dice (spells, traps, dtu_damage_creature_direct).
+#define DTU_DIRECT	(-2)
+
+// The dice of a spell: "count" rolls of rand() % sides + 1, plus
+// per_level * level (0x91BC3). The executable divides by 0 for a count
+// with no sides. The port counts 0.
+static int spell_dice(int record,char *sides_key,char *count_key,char *level_key,int level)
 {
-	(void)attacker;
-	dtu_obj_log("spell: spell %d '%s' hits %s: the effect is not in the port",spell,
-		(spell >= 0 && spell < N_spell_types) ? Spell_info[spell].name : "?",dtu_object_name(target));
+	int sides = tbl_int(record,sides_key,0), count = tbl_int(record,count_key,0), sum = 0, i;
+
+	if (sides == 0 && count == 0)
+		return 0;
+	if (sides > 0)
+		for (i=0;i<count;i++)
+			sum += rand() % sides + 1;
+	return sum + tbl_int(record,level_key,0) * level;
+}
+
+// 0x91BC3 (spells.c), verified: the damage of a spell on a target. Four
+// groups of dice of the spell table: damage_dice, fire_damage_dice,
+// acid_damage_dice and elec_damage_dice (Spell_info +0x3A, +0x3D, +0x43,
+// +0x46: sides, number, plus for each level). cold_damage_dice (+0x40) is
+// not used here. Fire: 0 for a monster with fire_immune, one half with
+// fire_resistant, one half with the effect Resist Fire (bit 10), and the
+// effect Protection From Fire (bit 9) takes it from its counter (+0x82).
+// Electricity: 0 for a monster with electricity_immune. Fire or acid
+// damage ends the regeneration (bit 24) of the target.
+int dtu_spell_damage_roll(int spell, object *target, int level)
+{
+	int rec, base, fire, acid, elec;
+
+	if (spell < 0 || spell >= N_spell_types || target == NULL)
+		return 0;
+	rec = Spell_info[spell].record;
+	base = spell_dice(rec,"damage_dice","#damage_dice","damage_level",level);
+	fire = spell_dice(rec,"fire_damage_dice","#fire_damage_dice","fire_damage_level",level);
+	acid = spell_dice(rec,"acid_damage_dice","#acid_damage_dice","acid_damage_level",level);
+	elec = spell_dice(rec,"elec_damage_dice","#elec_damage_dice","elec_damage_level",level);
+
+	if (target->type == OBJ_ROBOT && target->id < N_robot_types) {
+		monster_info *mi = &Monster_info[target->id];
+
+		if (mi->flags & MONSTER_F_ELECTRICITY_IMMUNE)
+			elec = 0;
+		if (mi->flags & MONSTER_F_FIRE_IMMUNE)
+			fire = 0;
+		else if (bm_tbl_has_flag(mi->record,"fire_resistant"))
+			fire /= 2;
+	}
+	if (target->dtu.m_88 & (1 << 10))			// Resist Fire
+		fire /= 2;
+	if (target->dtu.m_88 & (1 << 9)) {			// Protection From Fire
+		target->dtu.m_82 -= fire;
+		fire = (target->dtu.m_82 < 0) ? -target->dtu.m_82 : 0;
+	}
+	if (fire || acid)
+		target->dtu.m_88 &= ~0x01000000;
+	return base + fire + acid + elec;
+}
+
+// The level of the caster of a spell missile: the mage level of the
+// monster table for a creature, the level of the character for the
+// player, 1 for a trap.
+static int caster_level(object *caster)
+{
+	if (caster && caster->type == OBJ_ROBOT && caster->id < N_robot_types && Monster_ext[caster->id].spell_level > 0)
+		return Monster_ext[caster->id].spell_level;
+	if (caster && caster->type == OBJ_PLAYER)
+		return dtu_player_level();
+	return 1;
+}
+
+static fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
+static fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
+
+// spells.c 0x8CFFF and 0x90CEF: the effect of a spell on a target. The
+// weak definition has the damage of the spell (0x91BC3, through the
+// damage function with no to-hit roll) and none of the other effects
+// (sleep, hold, fear, poison and the rest), which belong to the spell
+// code (dtuspell.c can define this function). The saving throw of the
+// executable (0xAE596, one half of the damage) is not read.
+DTU_WEAK fix dtu_spell_hit(int spell, object *target, object *caster, int level)
+{
+	fix damage;
+
+	if (spell < 0 || spell >= N_spell_types || target == NULL)
+		return 0;
+	damage = i2f(dtu_spell_damage_roll(spell,target,level));
+	dtu_obj_log("spell: spell %d '%s' level %d hits %s: damage %d (the other effects are not in the port)",spell,
+		Spell_info[spell].name,level,dtu_object_name(target),f2i(damage));
+	if (damage <= 0)
+		return 0;
+	if (target->type == OBJ_PLAYER)
+		return damage_player_w(target,caster,damage,DTU_DIRECT);
+	if (target->type == OBJ_ROBOT)
+		return damage_creature_w(target,caster,damage,DTU_DIRECT);
+	return 0;
+}
+
+static fix spell_hit(int spell,object *target,object *attacker)
+{
+	return dtu_spell_hit(spell,target,attacker,caster_level(attacker));
 }
 
 // 0x29A9C for a creature as the target. damage is used if there is no
@@ -1408,7 +1506,7 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 	if (creature->type != OBJ_ROBOT || creature->shields < F1_0 || (creature->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
 		return 0;
 
-	if (attacker || weapon >= 0) {
+	if (weapon != DTU_DIRECT && (attacker || weapon >= 0)) {
 		int roll, hit = to_hit_roll(creature,attacker,weapon,&roll);
 
 		if (hit <= 0) {
@@ -1464,6 +1562,11 @@ void dtu_damage_creature(object *creature, object *attacker, fix damage)
 	damage_creature_w(creature,attacker,damage,attack_weapon(attacker));
 }
 
+fix dtu_damage_creature_direct(object *creature, object *attacker, fix damage)
+{
+	return damage_creature_w(creature,attacker,damage,DTU_DIRECT);
+}
+
 // The death of the player in the damage function (0x2A4D0 and after): the
 // sound land_and_die_sound of the player type, the hit points and the
 // status flags become 0, and the object is taken out of the game
@@ -1482,6 +1585,18 @@ static void player_dies(object *player,object *attacker)
 	Player_death_stage = 1;
 	Player_death_time = GameTime;
 	dtu_obj_log("player: dies, killed by %s",attacker ? dtu_object_name(attacker) : "nothing");
+}
+
+// 0x33C5E: the status display finds the hit points of the player below
+// 1.0 in the next frame and starts the death. This catches the damage
+// that does not go through the damage function (the hit points of a trap,
+// the code of other files).
+void dtu_player_check_death(object *killer)
+{
+	if (!Dtu_objects_enabled || Dtu_player_dead || Player_is_dead || ConsoleObject == NULL || ConsoleObject->type != OBJ_PLAYER)
+		return;
+	if (dtu_player_hit_points() < F1_0)
+		player_dies(ConsoleObject,killer);
 }
 
 // The game after the death of the player (game() 0x423F5): the streams
@@ -1541,7 +1656,7 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 	if (player->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead || dtu_player_hit_points() < F1_0)
 		return 0;
 
-	if ((attacker && attacker != player) || weapon >= 0) {
+	if (weapon != DTU_DIRECT && ((attacker && attacker != player) || weapon >= 0)) {
 		int roll, hit = to_hit_roll(player,attacker,weapon,&roll);
 
 		if (hit <= 0) {
@@ -1578,6 +1693,11 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 void dtu_damage_player(object *player, object *attacker, fix damage)
 {
 	damage_player_w(player,attacker,damage,attack_weapon(attacker));
+}
+
+fix dtu_damage_player_direct(object *player, object *attacker, fix damage)
+{
+	return damage_player_w(player,attacker,damage,DTU_DIRECT);
 }
 
 // 0x27D82. A melee weapon touched the target.
@@ -1949,7 +2069,7 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	weapon_info *wi = &Weapon_info[obj->id];
 	int weapon = obj->id, spell, sound;
 	object *parent = NULL;
-	fix dealt, hp;
+	fix dealt, hp, spell_dealt;
 
 	if (m->parent >= 0 && Objects[m->parent].signature == m->parent_sig)
 		parent = &Objects[m->parent];
@@ -1962,14 +2082,14 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	if (m->harmless)
 		return;
 
+	// A spell missile does the damage of the spell (dtu_spell_hit). A
+	// weapon with enemy_spell does the effect of the spell and the damage
+	// of the weapon.
 	spell = (m->spell >= 0) ? m->spell : weapon_int(weapon,"enemy_spell",-1);
-	if (spell >= 0)
-		spell_hit(spell,other,parent);
+	spell_dealt = (spell >= 0) ? spell_hit(spell,other,parent) : 0;
 
 	if (other->type == OBJ_PLAYER) {
-		// A spell missile carries no dice of a weapon: the damage of a
-		// spell is in the spell code, which the port does not have.
-		dealt = (m->spell >= 0) ? 0 : damage_player_w(other,parent,0,weapon);
+		dealt = (m->spell >= 0) ? spell_dealt : damage_player_w(other,parent,0,weapon);
 		hp = dtu_player_hit_points();
 		if (dealt > 0) {
 			sound = weapon_int(weapon,"monster_hit_sound",-1);
@@ -1985,7 +2105,7 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	}
 	else if (other->type == OBJ_ROBOT) {
 		Ail[other-Objects].activity = 2;
-		dealt = (m->spell >= 0) ? 0 : damage_creature_w(other,parent,0,weapon);
+		dealt = (m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);
@@ -4456,6 +4576,21 @@ void dtu_objects_frame(void)
 		Ref_ticks_now = 8;
 	Ref_tick_count += Ref_ticks_now;
 
+	dtu_player_check_death(NULL);
 	player_animation();
 	missiles_frame();
+
+	// The option -objlogpos N (test): the place of each active creature
+	if (Obj_log && Obj_log_pos > 0 && (FrameCount % Obj_log_pos) == 0) {
+		int i;
+
+		for (i=0;i<=Highest_object_index;i++) {
+			object *o = &Objects[i];
+
+			if (o->type == OBJ_ROBOT && o->control_type == CT_AI && Ail[i].activity == 2)
+				dtu_obj_log("pos: obj %d %s: seg %d pos %.1f %.1f %.1f dist %.1f mode %s path %d/%d player seg %d",i,dtu_object_name(o),o->segnum,
+					f2fl(o->pos.x),f2fl(o->pos.y),f2fl(o->pos.z),f2fl(vm_vec_dist(&o->pos,&ConsoleObject->pos)),
+					Ai_mode_names[Ail[i].mode % 7],Ail[i].path_idx,Ail[i].path_len,ConsoleObject->segnum);
+		}
+	}
 }

@@ -124,23 +124,50 @@ Magic `DGSS`, written by the state code derived from Descent 1 `state.c`
 | 0 | 4 | `DGSS` | verified |
 | 4 | 4 | u32 version, 12 | verified |
 | 8 | 20 | description, NUL terminated ("Empezamos") | verified |
-| 28 | 4 | u32, 0 (Descent 1: between-levels flag) | value verified, name is a guess |
+| 28 | 4 | u32 "between levels": 1 = saved in Waterdeep, 0 = saved in a level (the loader 0xBB780 goes to Waterdeep or starts the level) | value verified, meaning read in the loader |
 | 32 | 9 | mission name, "DTU" | verified |
-| 41 | 4 | u32, 1 (Descent 1: level number) | value verified, name is a guess |
+| 41 | 4 | u32 Current_level_num (0x13B91C), 1 = YPINN | value verified |
 | 45 | 4 | u32, 0 | name unknown |
 | 49 | 4 | u32, 933299 (Descent 1: game time as fix, 14.24 s) | name is a guess |
-| 53 | 88 | 0x13 (19) at 53, 1 at 137, else 0 | not decoded |
+| 53 | 4 | u32 count of the mission flags, 19 | verified |
+| 57 | 76 | 19 u32 mission flags (0x13CDD4 on), all 0 | values verified, names unknown |
+| 133 | 8 | u32 Khelben mission (0x13E588), u32 blurb (0x13E58C): 0, 1 | verified (writer 0x83D27, reader 0x83D5E) |
 | 141 | 6967 | the player record: one element of the player array, 0x1B37 bytes. The layout is in `docs/re/character.md`: name at +0, hit points at +0x53, the 80 attribute bytes at +0x97, the item list at +0x103 (16 bytes for each entry, count at +0xF3), hot keys at +0x1AC1 | verified: name, attributes, item lists and references decode to a consistent new character |
 | 7108 | 80 | a second copy of the 80 attribute bytes: the values without the effect of items (0x187B90 in the executable) | verified (equal to the first copy in this file) |
-| 7188 | 198 | starts with `RLPD`, has the mission name `DTU` again | not decoded |
+| 7188 | 20 | `RLPD`, u16 14, u16 25, u32 count of mission records (1), u32 difficulty (2), u32 (1) | values verified |
+| 7208 | 10 | per mission record: name, 9 bytes ("DTU"), u8 (1) | values verified |
+| 7218 | 144 | all 0 | not decoded |
+| 7362 | 12 | u32 difficulty (0x13CDCA, 2), u32 0, u32 0 | values verified |
+| 7374 | 12 | only when "between levels" is 0: three u32 counts, each followed by its records (54, 16 and 40 bytes each). All three are 0 in this file | values verified, the records are not decoded |
 
 Unlike Descent 1 there is no thumbnail image in the file.
 The level state is not in this file. It is stored in `SAVE\SGn.LS`,
 `SAVE\SGn_m.LVL`, `SAVE\SGn_m.TIG` and `SAVE\SGn_m.TAP`.
 
-Unexplained ranges: 53..140, the fields of the player record that `character.md` does not list, 7188..7385.
+Unexplained ranges: the names of the 19 mission flags, the fields of the player record that `character.md` does not list, 7218..7361 and the records after 7374.
+
+A file with "between levels" 1 ends at 7374. The port writes such a file for the saves of the main menu and of Waterdeep (`engine/main/dtufe.c`) and reads both kinds (docs/re/frontend.md).
 
 Correction: an earlier version of this table put the player record at 53. The writer stores 6967 bytes, but the record starts at 141.
+
+## SAVE\CSUF.LS, SAVE\SGn.LS: level state table
+
+600 bytes: 100 records of 6 bytes, one for each level of the mission (the
+index in DTU.MSN). The executable reads it with `fread(buf, 6, 100)`
+(0xBC2A7, 0x5A7AD). `CSUF.LS` belongs to the running game, `SGn.LS` to save
+slot n - 1 (the slot in the menu plus 1).
+
+| Offset | Size | Meaning | Status |
+|---|---|---|---|
+| 0 | 1 | u8: 1 = the current state of the level is in `SAVE	emp<level>.*` (changed since the last save) | meaning from the save code 0xBC1EC |
+| 1 | 1 | u8: 1 = a saved level file exists | meaning from the save code |
+| 2 | 4 | s32: the slot number + 1 whose `SAVE\sg<s>_<level>.LVL`, `.TIG`, `.TAP` hold the level | meaning from the save code |
+
+Verified: both files of the install are 600 bytes; record 0 is (0, 1, 1) and
+records 1 to 99 are (0, 0, 1). The only level files are `SG1_0.*`. Character
+generation (0x87D73) deletes `CSUF.LS` and the `temp*` files and writes a new
+`CSUF.LS` with 100 records (0, 0, -1) (0x5AC6F, 0x5ABC6). The port does not
+read or write these files.
 
 ## *.FNT: fonts
 

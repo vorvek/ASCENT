@@ -379,6 +379,7 @@ static char rcsid[] = "$Id: piggy.c 2.10 1995/10/07 13:17:26 john Exp $";
 #include "mem.h"			// ASCENT: malloc and free of the game, as in dtufile.c and acm.c
 #include "dtufile.h"		// ASCENT: the game data files
 #include "acm.h"			// ASCENT: the sounds of an EGG archive are ACM streams
+#include "platform.h"		// ASCENT: plat_audio_flush
 #include "polyobj.h"
 
 // ASCENT: from here on this file is new. Descent 1 read one PIG file
@@ -651,6 +652,10 @@ void piggy_free_all()
 	// archive bitmaps are not valid any more.
 	texmerge_flush();
 	rle_cache_flush();
+
+	// ASCENT: the mixer thread reads the sound data. Stop all sounds
+	// before the data is freed.
+	plat_audio_flush();
 
 	for (i=0; i<Num_sound_files; i++ )	{
 		if ( GameSounds[i].data && GameSounds[i].data != bogus_data )
@@ -1051,6 +1056,9 @@ void piggy_close()
 
 	if ( !Piggy_initialized )
 		return;
+
+	// ASCENT: stop the mixer before the sound data is freed (see above).
+	plat_audio_flush();
 
 	for (i=0; i<Num_sound_files; i++ )	{
 		if ( GameSounds[i].data && GameSounds[i].data != bogus_data )

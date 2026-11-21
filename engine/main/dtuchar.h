@@ -268,6 +268,8 @@ void dtu_char_select_hot_key(int key);			// the keys 1 to 0: the item becomes th
 int dtu_char_use(int index);
 // Uses the item in the hand (the USE button, 0x3614B).
 int dtu_char_use_current(void);
+// One item of the stack, or one charge, is used (0xB7084).
+void dtu_char_use_up(int index);
 // Drops the whole entry in front of the player (0xB717B). Returns the
 // number of the new object, or -1.
 int dtu_char_drop(int index);

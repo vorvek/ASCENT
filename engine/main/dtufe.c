@@ -42,6 +42,13 @@
 #include "dtudisp.h"
 #include "dtumusic.h"
 #include "dtuobj.h"
+#include "dtuchar.h"
+#include "object.h"
+#include "player.h"
+#include "game.h"
+#include "gameseq.h"
+#include "newmenu.h"
+#include "dtutrig.h"
 #include "gamefont.h"
 #include "dtufe.h"
 #include "dtufe_int.h"
@@ -65,6 +72,7 @@ static int Fe_ready;
 static int Fe_frame_count;
 static int Fe_mode = FE_GO_MENU;		// Function_mode of the executable (0x1468CC)
 static int Fe_have_character;			// 0x141BBB
+static int Fe_in_game;					// the front end started the game that runs
 static int Fe_was_relative;
 
 // screen number -> FEBGND entry (0x13E3D7), and the entry of the stone
@@ -418,10 +426,42 @@ int fe_load_screen(int number)
 	return Fe_bg != NULL;
 }
 
+static int Hue_picture_valid;
+static ubyte Hue_picture[FE_HUE_MAX + 1];
+
 void fe_show_picture(int febgnd_entry)
 {
 	set_background(febgnd_entry);
 	Fe_screen_num = -1;
+	Hue_picture_valid = 0;
+}
+
+// ASCENT: a picture that is no screen of the table (the death picture) has
+// no colors for the text in its palette. The port takes the colors of the
+// Waterdeep screen and uses the closest colors of the picture.
+static void hue_picture_colors(void)
+{
+	ubyte wd[768];
+	grs_bitmap *bm = fe_febgnd(Screen_febgnd[FE_SCR_WATERDEEP], wd);
+	int h, c, best, best_d;
+
+	if (bm)
+		gr_free_bitmap(bm);
+	for (h = 0; h <= FE_HUE_MAX; h++) {
+		int i = h == 8 ? Hue8[0] : h == 10 ? Hue10[0] : Hue_color[h];
+		best = 0;
+		best_d = 1 << 30;
+		for (c = 0; c < 256; c++) {
+			int dr = wd[i*3] - Fe_pal[c*3], dg = wd[i*3+1] - Fe_pal[c*3+1], db = wd[i*3+2] - Fe_pal[c*3+2];
+			int d = dr * dr + dg * dg + db * db;
+			if (d < best_d) {
+				best_d = d;
+				best = c;
+			}
+		}
+		Hue_picture[h] = (ubyte) (bm ? best : Hue_color[h]);
+	}
+	Hue_picture_valid = 1;
 }
 
 int fe_hue(int hue)
@@ -430,6 +470,11 @@ int fe_hue(int hue)
 
 	if (hue < 0 || hue > FE_HUE_MAX)
 		hue = 0;
+	if (Fe_screen_num < 0 && Fe_bg) {
+		if (!Hue_picture_valid)
+			hue_picture_colors();
+		return Hue_picture[hue];
+	}
 	if (hue == 8)
 		return Hue8[s];
 	if (hue == 10)
@@ -1236,11 +1281,24 @@ static int key_repeat(int scancode, fix *next)
 
 #define SLIDER_W	96
 
+// The start of the edit of an input menu item: the text "-empty-" becomes
+// an empty field (newmenu.c of Descent 1).
+static int start_edit(fe_menu_item *m, char *save, int index)
+{
+	strncpy(save, m->buf, 79);
+	save[79] = 0;
+	if (!strcmp(m->buf, fe_text(67)))
+		m->buf[0] = 0;
+	return index;
+}
+
 int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, int box)
 {
 	grs_bitmap *box_bm = NULL;
 	int tw = 0, th = 0, sw = 0, sh = 0, iw = 0, w, h, x, y, i, ih, ix, top;
 	int last_mx = Fe_mx, last_my = Fe_my, result = -2, border = 15;
+	int editing = -1;				// the FE_MI_INPUT_MENU item that is edited, or -1
+	char edit_save[80];
 	fix rep_l = 0, rep_r = 0;
 	ubyte pal[768];
 	fe_seq *cursor = fe_seq_get(0);
@@ -1255,9 +1313,13 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 		fe_string_size(Fe_font_m, items[i].text ? items[i].text : "", &a, &b);
 		if (items[i].type == FE_MI_SLIDER) a += 12 + SLIDER_W;
 		if (items[i].type == FE_MI_CHECK) a += 22;
-		if (items[i].type == FE_MI_INPUT) {
-			fe_string_size(Fe_font_m, "W", &a, &b);
-			a *= items[i].buf_len + 1;
+		if (items[i].type == FE_MI_INPUT || items[i].type == FE_MI_INPUT_MENU) {
+			int c;
+			if (items[i].type == FE_MI_INPUT_MENU)
+				fe_string_size(Fe_font_m, items[i].buf, &a, &b);
+			fe_string_size(Fe_font_m, "W", &c, &b);
+			c *= items[i].buf_len + 1;
+			if (c > a) a = c;
 		}
 		items[i].w = a;
 		items[i].h = ih;
@@ -1297,6 +1359,20 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 		k = Fe_key;
 		it = &items[cur];
 
+		// An input menu item that is edited (newmenu of Descent 1): Esc
+		// gives the old text back and ends the edit, Enter ends the menu.
+		if (editing >= 0) {
+			if (k == KEY_ESC) {
+				strcpy(items[editing].buf, edit_save);
+				editing = -1;
+				k = 0;
+			} else if (k == KEY_ENTER) {
+				result = editing;
+				k = 0;
+			} else if (k == KEY_UP || k == KEY_DOWN)
+				k = 0;
+		}
+
 		if (k == KEY_ESC)
 			result = -1;
 		else if (k == KEY_UP || k == KEY_DOWN) {
@@ -1307,12 +1383,14 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 			if (it->type == FE_MI_CHECK) {
 				it->value = !it->value;
 				if (it->changed) it->changed(it);
-			} else if (it->type != FE_MI_SLIDER)
+			} else if (it->type == FE_MI_INPUT_MENU)
+				editing = start_edit(it, edit_save, cur);
+			else if (it->type != FE_MI_SLIDER)
 				result = cur;
 		} else if (k == KEY_SPACEBAR && it->type == FE_MI_CHECK) {
 			it->value = !it->value;
 			if (it->changed) it->changed(it);
-		} else if (it->type == FE_MI_INPUT && k) {
+		} else if ((it->type == FE_MI_INPUT || (it->type == FE_MI_INPUT_MENU && editing == cur)) && k) {
 			int len = (int) strlen(it->buf), c = key_to_ascii(k);
 			if (k == KEY_BACKSP) {
 				if (len > 0) it->buf[len - 1] = 0;
@@ -1337,11 +1415,15 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 			fe_menu_item *m = &items[i];
 			if (m->type == FE_MI_TEXT || Fe_mx < m->x || Fe_mx >= m->x + iw || Fe_my < m->y || Fe_my >= m->y + ih)
 				continue;
+			if (editing >= 0 && editing != i)
+				continue;
 			if (Fe_mx != last_mx || Fe_my != last_my || Fe_press)
 				cur = i;
 			if (Fe_press || (Dtu_fe_original_input && Fe_down)) {
 				if (m->type == FE_MI_MENU)
 					result = i;
+				else if (m->type == FE_MI_INPUT_MENU && editing < 0)
+					editing = start_edit(m, edit_save, i);
 				else if (m->type == FE_MI_CHECK) {
 					m->value = !m->value;
 					if (m->changed) m->changed(m);
@@ -1379,7 +1461,11 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 		for (i = 0; i < n; i++) {
 			fe_menu_item *m = &items[i];
 			int hue = (i == cur && m->type != FE_MI_TEXT) ? FE_HUE_7 : FE_HUE_5;
-			if (m->type == FE_MI_INPUT) {
+			if (m->type == FE_MI_INPUT_MENU && editing != i) {
+				fe_string(Fe_font_m, m->x, m->y, hue, FE_HUE_BLACK, m->buf);
+				continue;
+			}
+			if (m->type == FE_MI_INPUT || m->type == FE_MI_INPUT_MENU) {
 				char buf[80];
 				sprintf(buf, "%.60s%s", m->buf, (i == cur && ((fe_time() >> 14) & 1)) ? "_" : "");
 				fe_rect(m->x - 2, m->y - 1, iw + 4, ih, fe_hue(FE_HUE_BLACK));
@@ -1461,23 +1547,28 @@ static void opt_reverse(fe_menu_item *it)
 	Config_channels_reversed = (ubyte) it->value;
 }
 
-static void opt_gamma(fe_menu_item *it)
-{
-	gr_palette_set_gamma(it->value);
-}
-
+// While the front end is active (byte 0x13E338) the executable builds:
+// Music Volume (slider 0 to 8), a blank line, FX Volume, a blank line,
+// Reverse Stereo, two blank lines, Hires Dungeon Graphics (0x13A94B), and
+// "Hear Khelben In English" when the language is not English. Brightness,
+// Detail levels, Controls, the sensitivity and the joystick are items of
+// the menu in the game only. The port leaves out Hires Dungeon Graphics:
+// its form of the dungeon is chosen at the start (option -lowres) and
+// cannot change while the program runs. The language is English.
 static void fe_options(void)
 {
-	fe_menu_item m[4];
+	fe_menu_item m[7];
+	int n = 0;
 
 	memset(m, 0, sizeof(m));
-	m[0].type = FE_MI_SLIDER; m[0].text = fe_text(352); m[0].value = gr_palette_get_gamma(); m[0].max_value = 8; m[0].changed = opt_gamma;
-	m[1].type = FE_MI_SLIDER; m[1].text = fe_text(350); m[1].value = Config_midi_volume; m[1].max_value = 8; m[1].changed = opt_music;
-	m[2].type = FE_MI_SLIDER; m[2].text = fe_text(349); m[2].value = Config_digi_volume; m[2].max_value = 8; m[2].changed = opt_fx;
-	m[3].type = FE_MI_CHECK; m[3].text = fe_text(351); m[3].value = Config_channels_reversed; m[3].changed = opt_reverse;
-	if (m[1].value > 8) m[1].value = 8;
+	m[n].type = FE_MI_SLIDER; m[n].text = fe_text(350); m[n].value = Config_midi_volume; m[n].max_value = 8; m[n++].changed = opt_music;
+	m[n].type = FE_MI_TEXT; m[n++].text = "";
+	m[n].type = FE_MI_SLIDER; m[n].text = fe_text(349); m[n].value = Config_digi_volume; m[n].max_value = 8; m[n++].changed = opt_fx;
+	m[n].type = FE_MI_TEXT; m[n++].text = "";
+	m[n].type = FE_MI_CHECK; m[n].text = fe_text(351); m[n].value = Config_channels_reversed; m[n++].changed = opt_reverse;
+	if (m[0].value > 8) m[0].value = 8;
 	if (m[2].value > 8) m[2].value = 8;
-	fe_menu(fe_text(208), NULL, m, 4, 1, 1);
+	fe_menu(fe_text(208), NULL, m, n, 0, 1);
 }
 
 //------------------------------------------------------------------------
@@ -1506,7 +1597,7 @@ static void fe_credits(void)
 		if (*p == '\r') *p++ = 0;
 		if (*p == '\n') *p++ = 0;
 	}
-	total = n * (Fe_font_m->ft_h + 3);
+	total = n * Fe_font_m->ft_h;
 
 	dtumusic_play(DTUMUSIC_CREDITS, DTUMUSIC_LOOP_FOREVER, 100);
 	fe_input_clear();
@@ -1518,13 +1609,15 @@ static void fe_credits(void)
 		int scroll = (int) (((int64_t) (fe_time() - start) * 60) >> 16);
 		int y0 = 470 - scroll;
 
+		// 0x2CEA7: the lines have one row height (the medium font), the
+		// medium font, hue 7, no shadow, and are centered. A line can
+		// change that with "~" commands (0x2CBD1: ~Sl/~Ss font, ~Jc/~Jl/~Jr,
+		// ~cN hue) or be a comment (";"), but IPHOF.TXT has none.
 		for (i = 0; i < n; i++) {
-			int y = y0 + i * (Fe_font_m->ft_h + 3);
-			// A heading is a line after an empty line that is followed by a name (guess from the file).
-			int heading = lines[i][0] && (i == 0 || !lines[i-1][0]);
+			int y = y0 + i * Fe_font_m->ft_h;
 			if (y < 5 || y > 470 - Fe_font_m->ft_h)
 				continue;
-			fe_string_in(Fe_font_m, 112, y, 416, 0, heading ? FE_HUE_7 : FE_HUE_5, FE_HUE_BLACK, lines[i]);
+			fe_string_in(Fe_font_m, 112, y, 416, 0, FE_HUE_7, -1, lines[i]);
 		}
 		fe_frame_end();
 		if (Fe_key || Fe_press)
@@ -1542,6 +1635,203 @@ static void fe_credits(void)
 }
 
 //------------------------------------------------------------------------
+// Save games (autosave.c of the executable: save 0xBA99F with the slot
+// menu 0xBA486, load 0xBB780 with the slot menu 0xBA647). The file of slot
+// n (0 to 9) is SG<n>.sg (docs/formats/misc.md). The port reads a slot in
+// the current directory first and then in the directories of the game
+// data, and writes it in the current directory. It writes and reads only
+// the parts that it has: the header, the Khelben state, the player record
+// and the attribute block. The level files of the SAVE directory and the
+// market stock (TheStore.<n+1>) are not written or read, the 19 mission
+// flags are written as 0, and a game that was saved in a level starts
+// that level again from its start.
+
+#define SG_VERSION			12
+#define SG_BETWEEN			28		// u32: 1 = saved in Waterdeep
+#define SG_LEVEL				41		// u32: Current_level_num
+#define SG_KHELBEN			133	// u32 mission, u32 blurb
+#define SG_ATTR				(DTU_SG_PLAYER_OFFSET + DTU_PLAYER_RECORD_SIZE)	// 7108
+#define SG_RLPD				7188
+#define SG_SIZE_BETWEEN		7374	// the size of a file with "between levels" 1
+
+int Fe_load_level;
+
+static void put_u32(ubyte *p, uint v)
+{
+	p[0] = (ubyte) v; p[1] = (ubyte) (v >> 8); p[2] = (ubyte) (v >> 16); p[3] = (ubyte) (v >> 24);
+}
+
+// Finds the file of a slot. Returns 1 if it exists.
+static int sg_find(int slot, char *path, int size)
+{
+	char name[16];
+	FILE *f;
+
+	sprintf(name, "SG%d.sg", slot);
+	f = fopen(name, "rb");
+	if (f) {
+		fclose(f);
+		snprintf(path, size, "%s", name);
+		return 1;
+	}
+	return dtu_find_file(name, path, size);
+}
+
+// The description of a slot (0xBA647: "DGSS", version 12, 20 bytes), or
+// 0 if the slot has no file of this version.
+static int sg_description(int slot, char *desc)
+{
+	char path[600];
+	ubyte h[28];
+	FILE *f;
+	int ok = 0;
+
+	if (!sg_find(slot, path, sizeof(path)) || (f = fopen(path, "rb")) == NULL)
+		return 0;
+	if (fread(h, 1, 28, f) == 28 && !memcmp(h, "DGSS", 4) && get_u32(h + 4) == SG_VERSION) {
+		memcpy(desc, h + 8, 20);
+		desc[20] = 0;
+		ok = 1;
+	}
+	fclose(f);
+	return ok;
+}
+
+// The model archive of the player (race, sex, first class) and the other
+// copies of the name and the portrait, as make_player sets them.
+static void loaded_character(void)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int race = pa->race >= 0 && pa->race <= 4 ? pa->race : 0;
+	int cls = pa->class1 >= 0 && pa->class1 <= 3 ? pa->class1 : DTU_CLASS_FIGHTER;
+
+	sprintf(Dtu_player_archive, "%c%c%c", "hdekf"[race], pa->female ? 'f' : 'm', "cmft"[cls]);
+	strncpy(Players[Player_num].callsign, Dtu_char.name, CALLSIGN_LEN);
+	Players[Player_num].callsign[CALLSIGN_LEN] = 0;
+	Dtu_player_portrait = Dtu_char.portrait;
+}
+
+int fe_load_game(int in_game)
+{
+	fe_menu_item m[10];
+	char desc[10][24], path[600];
+	ubyte b[DTU_SG_PLAYER_OFFSET];
+	FILE *f;
+	int i, n_valid = 0, choice, mode;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < 10; i++) {
+		if (sg_description(i, desc[i])) {
+			m[i].type = FE_MI_MENU;
+			n_valid++;
+		} else {
+			m[i].type = FE_MI_TEXT;
+			snprintf(desc[i], sizeof(desc[i]), "%s", fe_text(67));	// "-empty-"
+		}
+		m[i].text = desc[i];
+	}
+	if (!n_valid) {
+		fe_message_box(NULL, fe_text(797), 1, fe_text(34), NULL);	// "No saved games were found"
+		return 0;
+	}
+	// 0xBA647 puts a text item of four empty lines first. The port
+	// leaves it out.
+	choice = fe_menu(NULL, fe_text(798), m, 10, 0, 1);			// "Select Game to Restore"
+	if (choice < 0 || Fe_quit)
+		return 0;
+	if (in_game && fe_message_box(NULL, fe_text(801), 2, fe_text(32), fe_text(33)) != 0)	// "Restore Game?"
+		return 0;
+
+	if (!sg_find(choice, path, sizeof(path)) || (f = fopen(path, "rb")) == NULL)
+		return 0;
+	i = (int) fread(b, 1, sizeof(b), f);
+	fclose(f);
+	if (i != (int) sizeof(b) || !dtu_char_load_save(path)) {
+		fe_message_box(NULL, fe_text(802), 1, fe_text(34), NULL);	// "Incompatible save file version"
+		return 0;
+	}
+	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
+	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
+	mode = get_u32(b + SG_BETWEEN) ? FE_GO_WATERDEEP : FE_GO_LEVEL;
+	Fe_load_level = (int) get_u32(b + SG_LEVEL);
+	if (Fe_load_level < 1)
+		Fe_load_level = 1;
+	loaded_character();
+	Fe_have_character = 1;				// 0x141BBB
+	dtu_log("Front end: loaded %s: '%s', %s\n", path, Dtu_char.name,
+		mode == FE_GO_WATERDEEP ? "in Waterdeep" : "in a level");
+	return mode;
+}
+
+// Writes the character as a save game "between levels" (the saves of the
+// main menu and of Waterdeep, 0xBA99F(1)).
+static int sg_write(int slot, char *desc)
+{
+	char name[16];
+	ubyte *b;
+	FILE *f;
+	int ok, level = Current_level_num > 0 ? Current_level_num : 1;
+
+	b = calloc(1, SG_SIZE_BETWEEN);
+	if (!b)
+		return 0;
+	memcpy(b, "DGSS", 4);
+	put_u32(b + 4, SG_VERSION);
+	strncpy((char *) b + 8, desc, 19);
+	put_u32(b + SG_BETWEEN, 1);
+	strcpy((char *) b + 32, "DTU");				// the mission
+	put_u32(b + SG_LEVEL, level);
+	put_u32(b + 49, GameTime);
+	put_u32(b + 53, 19);							// the count of the mission flags (0x13CDD4)
+	put_u32(b + SG_KHELBEN, Fe_khelben_mission);
+	put_u32(b + SG_KHELBEN + 4, Fe_khelben_blurb);
+	dtu_char_pack(b + DTU_SG_PLAYER_OFFSET);
+	put_u32(b + DTU_SG_PLAYER_OFFSET + DTU_P_HIT_POINTS, (uint) Dtu_char.pa.hit_points << 16);
+	memcpy(b + SG_ATTR, &Dtu_char.base, sizeof(dtu_player_attr));
+	// The block of playsave.c (0x71729), with the values of SG0.SG
+	memcpy(b + SG_RLPD, "RLPD", 4);
+	b[SG_RLPD + 4] = 14;
+	b[SG_RLPD + 6] = 25;
+	put_u32(b + SG_RLPD + 8, 1);					// one mission record
+	put_u32(b + SG_RLPD + 12, 2);				// the difficulty
+	put_u32(b + SG_RLPD + 16, 1);
+	strcpy((char *) b + SG_RLPD + 20, "DTU");
+	b[SG_RLPD + 29] = (ubyte) level;
+	put_u32(b + 7362, 2);						// the difficulty (0x13CDCA)
+
+	sprintf(name, "SG%d.sg", slot);
+	f = fopen(name, "wb");
+	ok = f && fwrite(b, 1, SG_SIZE_BETWEEN, f) == SG_SIZE_BETWEEN;
+	if (f && fclose(f))
+		ok = 0;
+	free(b);
+	dtu_log("Front end: %s %s: '%s'\n", ok ? "wrote" : "cannot write", name, Dtu_char.name);
+	return ok;
+}
+
+void fe_save_game(void)
+{
+	fe_menu_item m[10];
+	char desc[10][24];
+	int i, choice;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < 10; i++) {
+		if (!sg_description(i, desc[i]))
+			snprintf(desc[i], sizeof(desc[i]), "%s", fe_text(67));	// "-empty-"
+		m[i].type = FE_MI_INPUT_MENU;				// 0xBA486: type 6, 19 characters
+		m[i].text = "";
+		m[i].buf = desc[i];
+		m[i].buf_len = 19;
+	}
+	choice = fe_menu(NULL, fe_text(796), m, 10, 0, 1);				// "Save Game"
+	if (choice < 0 || Fe_quit)
+		return;
+	if (!sg_write(choice, desc[choice]))
+		fe_message_box(NULL, fe_text(800), 1, fe_text(34), NULL);	// "Error writing character data"
+}
+
+//------------------------------------------------------------------------
 // The main menu (0x58075, items 0x57F28, actions 0x582CC). It is drawn on
 // the Waterdeep picture with no box: the executable asks for the picture
 // "scroll2.pcx", which is not in its picture table (0x631D2).
@@ -1555,24 +1845,36 @@ static void main_menu_backdrop(void)
 	fe_string_in(Fe_font_s, 0, FE_H - h - 15, FE_W, 0, FE_HUE_2, FE_HUE_BLACK, fe_text(964));
 }
 
+static int Main_menu_choice;
+
 static void fe_main_menu(void)
 {
-	fe_menu_item m[6];
-	int action[6], n = 0, choice;
+	fe_menu_item m[7];
+	int action[7], n = 0, choice, mode;
+	// 0x57F28: "Save Game" and "Return to Game" are there when the full
+	// list of Waterdeep is used (0x8C4B6: Khelben was visited) or a
+	// character was made or loaded (0x141BBB).
+	int playing = Fe_have_character || Fe_khelben_mission || Fe_khelben_blurb;
 
 	fe_load_screen(FE_SCR_WATERDEEP);
 	memset(m, 0, sizeof(m));
 	m[n].text = fe_text(323); action[n++] = 5;			// Load Game...
+	if (playing) {
+		m[n].text = fe_text(436); action[n++] = 6;		// Save Game
+	}
 	m[n].text = fe_text(0);   action[n++] = 0;			// New game
-	if (Fe_have_character) {
+	if (playing) {
 		m[n].text = fe_text(782); action[n++] = 26;		// Return to Game
 	}
 	m[n].text = fe_text(325); action[n++] = 13;			// Options...
 	m[n].text = fe_text(328); action[n++] = 23;			// Credits
 	m[n].text = fe_text(2);   action[n++] = 4;				// Quit
 
+	// The first item that is selected is the last choice (0x13CCE9, 0 at
+	// the start: "Load Game...").
 	Menu_backdrop = main_menu_backdrop;
-	choice = fe_menu("", fe_text(963), m, n, 1, 0);
+	choice = fe_menu("", fe_text(963), m, n, Main_menu_choice < n ? Main_menu_choice : 0, 0);
+	Main_menu_choice = choice;
 	if (Fe_quit) {
 		Menu_backdrop = NULL;
 		return;
@@ -1581,6 +1883,7 @@ static void fe_main_menu(void)
 		// "Are you sure you want to leave the game?"
 		if (fe_message_box(NULL, fe_text(195), 2, fe_text(32), fe_text(33)) == 0)
 			Fe_quit = 1;
+		Main_menu_choice = 0;
 		Menu_backdrop = NULL;
 		return;
 	}
@@ -1593,10 +1896,13 @@ static void fe_main_menu(void)
 			Fe_mode = FE_GO_WATERDEEP;
 		}
 		break;
-	case 5:
-		// The port does not read the save games. This is the text of
-		// the executable for an empty list.
-		fe_message_box(NULL, fe_text(797), 1, fe_text(34), NULL);
+	case 5:					// 0xBB780(0)
+		mode = fe_load_game(0);
+		if (mode)
+			Fe_mode = mode;
+		break;
+	case 6:					// 0xBA99F(1)
+		fe_save_game();
 		break;
 	case 26:
 		Fe_mode = FE_GO_WATERDEEP;
@@ -1736,8 +2042,17 @@ int dtufe_run(void)
 			Fe_mode = FE_GO_MENU;
 			Dtu_fe_return_waterdeep = 0;
 			fe_leave();
+			Fe_in_game = 1;
 			return level ? level : 1;
 			}
+		case FE_GO_LEVEL:
+			// A save game of a level: 0xBB780 starts the level
+			// (0x4E33D) and the game goes on in Function_mode 2.
+			Fe_mode = FE_GO_MENU;
+			Dtu_fe_return_waterdeep = 0;
+			fe_leave();
+			Fe_in_game = 1;
+			return Fe_load_level;
 		default:
 			Fe_mode = FE_GO_MENU;
 		}
@@ -1746,11 +2061,61 @@ int dtufe_run(void)
 	return 0;
 }
 
+// The ends of the game that go to the front end.
+
+static int Fe_leave_game;				// 1: the game ends after this frame
+static int Fe_portal_exit;				// the player entered the exit of the inn
+static int Fe_portal_frame = -10;		// FrameCount of the last call of command 0
+
+// The death sequence of dtuobj.c is at the death screen (0x423F5).
+int dtu_hook_player_death_screen(void)
+{
+	if (!Fe_in_game)
+		return 0;
+	Fe_leave_game = 1;
+	return 1;
+}
+
+// 0x5B3AC: a command line of DTU.WRP. Command 0 ("YPInn to Waterdeep")
+// sets Function_mode 4 and the byte 0x13B254, and game() then asks "Leave
+// the\nYawning Portal?" (text 795, 0x42639). The trigger code calls this
+// in each frame while the player is in the segment: the port asks once
+// each time the player enters it. The mission checks (commands 1 to 19)
+// set the quest flags (0x13CDD4) that Khelben reads; the port does not
+// have them yet.
+void dtu_hook_warp_command(int code, int value)
+{
+	if (code == 0 && Fe_in_game) {
+		if (FrameCount != Fe_portal_frame + 1 && FrameCount != Fe_portal_frame)
+			Fe_portal_exit = 1;
+		Fe_portal_frame = FrameCount;
+	}
+}
+
+int dtufe_game_frame(void)
+{
+	if (!Fe_in_game)
+		return 0;
+	if (Fe_portal_exit) {
+		Fe_portal_exit = 0;
+		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
+			Dtu_fe_return_waterdeep = 1;
+			Fe_leave_game = 1;
+		}
+	}
+	if (Fe_leave_game) {
+		Fe_leave_game = 0;
+		return 1;
+	}
+	return 0;
+}
+
 // After game(). The death of the player (0x423F5): the picture FEBGND 161
-// with track 7, then the "Death Menu". The port has no load of a save
-// game, so the menu has only "Abort Game".
+// with track 7, then the "Death Menu".
 int dtufe_game_ended(void)
 {
+	Fe_in_game = 0;
+	Fe_leave_game = Fe_portal_exit = 0;
 	if (Dtu_frames_done || Fe_quit || !plat_pump())
 		return 0;
 
@@ -1763,7 +2128,8 @@ int dtufe_game_ended(void)
 		gr_palette_clear();
 		fe_show_picture(161);
 		fe_fade_in();
-		dtumusic_play(DTUMUSIC_DEATH, 0, 100);
+		if (dtumusic_current() != DTUMUSIC_DEATH)		// dtuobj.c may have started it
+			dtumusic_play(DTUMUSIC_DEATH, 0, 100);
 		Fe_cursor_bm = NULL;
 		while (fe_frame_begin()) {
 			fe_frame_end();
@@ -1772,6 +2138,25 @@ int dtufe_game_ended(void)
 		}
 		dtumusic_stop();
 		Fe_mode = FE_GO_MENU;
+
+		// 0x42593: the "Death Menu" message box: "Load Game" (0xBB780(1))
+		// or "Abort Game" with the question "Abort Game?" (text 103). A
+		// load that is not done and "No" show the menu again. The
+		// executable shows the box after it loads PALETTE.256; the port
+		// shows it over the death picture.
+		while (!Fe_quit) {
+			int c = fe_message_box(NULL, "Death Menu", 2, "Load Game", "Abort Game");
+			if (Fe_quit)
+				break;
+			if (c == 0) {
+				int mode = fe_load_game(1);
+				if (mode) {
+					Fe_mode = mode;
+					break;
+				}
+			} else if (fe_message_box(NULL, fe_text(103), 2, fe_text(32), fe_text(33)) == 0)
+				break;
+		}
 	} else if (Dtu_fe_return_waterdeep)
 		Fe_mode = FE_GO_WATERDEEP;
 	else

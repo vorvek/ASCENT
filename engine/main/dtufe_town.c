@@ -52,11 +52,30 @@ static fe_control Wd_controls[5] = {
 	{ 38, 24, "btnwdprg" }, { 492, 271, "btnwdcg" } };
 
 // 0x141D48: all places
-static fe_feature Wd_features[4] = {
+// 0x8C4C4 (Alt-F2): 0xBA99F(1), the save. 0x8C4D3 (Alt-F3): 0xBB780(0), the
+// load; Waterdeep is left when the load changed Function_mode.
+static void wd_save(fe_screen *s, int id)
+{
+	fe_save_game();
+}
+
+static void wd_load(fe_screen *s, int id)
+{
+	int mode = fe_load_game(0);
+
+	if (mode) {
+		Wd_result = mode;
+		s->running = 0;
+	}
+}
+
+static fe_feature Wd_features[6] = {
 	{ 275, 120, 334, 189, 0, 0, 0, 1, 0, KEY_B, KEY_K, 566, NULL, NULL, wd_go, FE_GO_BLACKSTAFF, 0 },
 	{ 10, 180, 90, 260, 0, 0, 0, 0, 0, KEY_Y, KEY_P, 567, NULL, NULL, wd_go, FE_GO_PORTAL, 0 },
 	{ 215, 190, 304, 264, 0, 0, 0, 2, 0, KEY_M, KEY_4, 568, NULL, NULL, wd_go, FE_GO_MARKET, 0 },
-	{ 492, 271, 635, 345, 0, 0, 0, 4, 0, KEY_X, KEY_ESC, 569, NULL, NULL, wd_go, FE_GO_MENU, 0 } };
+	{ 492, 271, 635, 345, 0, 0, 0, 4, 0, KEY_X, KEY_ESC, 569, NULL, NULL, wd_go, FE_GO_MENU, 0 },
+	{ 800, 600, 801, 601, 0, 0, 0, 4, 0, KEY_ALTED | KEY_F2, 0, 569, NULL, NULL, wd_save, 0, 0 },
+	{ 800, 600, 801, 601, 0, 0, 0, 4, 0, KEY_ALTED | KEY_F3, 0, 569, NULL, NULL, wd_load, 0, 0 } };
 
 // 0x141F10: before the first visit of Khelben
 static fe_feature Wd_first_features[2] = {
@@ -76,7 +95,7 @@ int fe_waterdeep(void)
 	// number and the blurb number are 0.
 	if (Fe_khelben_mission || Fe_khelben_blurb) {
 		Wd.features = Wd_features;
-		Wd.n_features = 4;
+		Wd.n_features = 6;
 	} else {
 		Wd.features = Wd_first_features;
 		Wd.n_features = 2;

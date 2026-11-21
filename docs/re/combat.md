@@ -1,0 +1,1365 @@
+# Combat and magic of the player (DTUGAME.EXE 1.3)
+
+Status: read from the code of DTUGAME.EXE 1.3 (static reading of
+`gamedata/re/dtu_flat.bin`, object 1 at 0x10000, with `tools/dtudis.py` and
+`gamedata/re/all.asm`). Nothing here was tested in the running original. Spell
+lines are from the decoded tables `BANE.BIN` and `YPINN.BIN` (`tools/egg.py bin`).
+
+Marks: "verified" or "Code" means read in the disassembly at the given address.
+"(guess)" marks an interpretation that is not proven.
+
+Related documents: [models.md](models.md) (player models, animation, weapon sphere),
+[ai.md](ai.md) (to-hit 0x2A7F3, damage 0x29A9C, creature side), [character.md](character.md)
+(player record, item lists, combat values), [objects.md](objects.md) (the 124 byte
+effect block; corrected below), [physics.md](physics.md) (controls, reference frame
+time), [../formats/tbl.md](../formats/tbl.md) (`$WEAPON`, `$SPELL` keywords).
+
+Part A is the weapon attack and missile weapons. Part B is the spell system, items
+and thief skills. Part C is the port.
+
+Corrections to other documents:
+
+- objects.md: 0x8ED49 is not a function, it is an instruction in the Jump case of
+  0x8CFFF. Bit 4 of the effect word 0x88 is Deaf, bit 7 Feather Fall, bit 16
+  Improved Invisibility, bit 17 Invisibility, bit 24 regeneration (Part B, section 4).
+- The `$SPELL` names of the lines 42 ("Resist Cold") and 51 ("Burning Hands") do not
+  match their code: 42 is Cure Blindness or Deafness and 51 is Find Traps.
+- The player attack is always state 6 (ATTACK); the states 7, 11 and 12 are never
+  chosen by the input of 1.3 (Part A, section 1). The comment of dtuobj.h ("11 and 12
+  are attacks of the player") holds for the model data only.
+
+# Part A. The weapon attack and missile weapons
+
+## A0. Shorthand and data used below
+
+- `P` = player record of the current player: the 0x1D3xxx / 0x1D4xxx
+  addresses below are indexed with `[0x13B924] * 0x1B37`.
+- `Objects` base 0x2B0614, stride 0x1DF. Player object pointer `[0x30DF14]`,
+  `Viewer` `[0x13D628]`. Player object number: `P+0x1D3333`.
+- Object fields used: +0x04 type, +0x05 id, +0x0C render type (byte), +0x0D
+  flags, +0x14 position, +0x20 orientation, +0x44 transposed orientation,
+  +0x6C hit points, +0xFC velocity, +0x108 thrust, +0x114 mass, +0x118 drag,
+  +0x11C gravity, +0x13E physics flags, +0x140/+0x142 parent type/number,
+  +0x162 model, +0x170 animation state (s16), +0x172 frame, +0x176 goal
+  state, +0x1AF per-swing byte.
+- `Weapon_info`: base 0x1E9D08, stride 0xD9 (217). Offsets verified from the
+  `$WEAPON` parser 0x209F3 (table below).
+- `Robot_info`: base 0x38E344, stride 0xF2 (ai.md table).
+- `Polygon_models[]` pointers at 0x3880D0. Model header: `fire_frames[4]` s16
+  at +0xB8, `state_times[19]` fix at +0xE4 (so `state_times[6]` = +0xFC).
+- First frame of a state: s16 at `0x13D9E0 + 2*state` (verified 0x4455D).
+  States 6, 7, 11, 12 start at frames 44, 60, 108, 124 and have 16 frames.
+- GameTime `[0x13CD30]`, FrameTime `[0x13CD2C]`, Difficulty `[0x13CDCA]`.
+- `Controls` (control_info) at 0x1E9A68, 0x20 bytes, cleared each frame at
+  0x43934. +0x19 (0x1E9A81) is the attack state, +0x18 (0x1E9A80) the key
+  down time.
+
+### Weapon_info offsets (verified, parser 0x209F3)
+
+| Off | Address | Key | Type |
+|---|---|---|---|
+| +0x00 | 0x1E9D08 | render type (-1 none, 1 blob, 2 `weapon_pof`, 3 vclip) | byte |
+| +0x01 | 0x1E9D09 | `flash_vclip` | byte |
+| +0x02 | 0x1E9D0A | `monster_hit_vclip` | byte |
+| +0x03 | 0x1E9D0B | `monster_miss_vclip` | byte |
+| +0x04 | 0x1E9D0C | `wall_hit_vclip` | byte |
+| +0x07 | 0x1E9D0F | `ammo_usage` | byte |
+| +0x0A | 0x1E9D12 | `bounce=1` -> 1, `stick=1` -> 2, `thrown=1` -> 3 (value must be non-zero, 0xDD9BB) | byte |
+| +0x0B | 0x1E9D13 | `homing` | byte |
+| +0x0D, +0x0E | 0x1E9D15/16 | `damage_dice`, `#damage_dice` | byte |
+| +0x12 | 0x1E9D1A | `attack_type`: 1 melee, 0 projectile | byte |
+| +0x13 | 0x1E9D1B | `weapon_char` | byte |
+| +0x1C | 0x1E9D24 | `ammo_initial` | s16 |
+| +0x20 | 0x1E9D28 | `flash_sound` | s16 |
+| +0x22 | 0x1E9D2A | `POV_clip` | s16 |
+| +0x24 | 0x1E9D2C | `monster_hit_sound` | s16 |
+| +0x26 | 0x1E9D2E | `monster_miss_sound` | s16 |
+| +0x28 | 0x1E9D30 | `monster_kill_sound` | s16 |
+| +0x2A | 0x1E9D32 | `wall_hit_sound` | s16 |
+| +0x2C | 0x1E9D34 | `armor_hit_sound` | s16 |
+| +0x36 | 0x1E9D3E | `to_hit_bonus` | s16 |
+| +0x38 | 0x1E9D40 | `damage_bonus` | s16 |
+| +0x3A | 0x1E9D42 | `PC_spell` | s16 |
+| +0x3C | 0x1E9D44 | `enemy_spell` | s16 |
+| +0x3E | 0x1E9D46 | flags: 0x01 `2_handed_weapon`, 0x02 `stackable`, 0x04 `arrow`, 0x08 `bolt`, 0x10 `magic`, 0x20 `bonus_exempt`, 0x40 `auto_hit`, 0x80 `non_hotkey_item` | byte |
+| +0x60 | 0x1E9D68 | `reach` | fix |
+| +0x64 | 0x1E9D6C | `fire_wait` (values below 0xCCD = 0.05 become 0.05, 0x21660) | fix |
+| +0x68 | 0x1E9D70 | `fire_delay` | fix |
+| +0x6C, +0x70 | 0x1E9D74/78 | `blob_size`, `flash_size` | fix |
+| +0x74 | 0x1E9D7C | `impact_size` | fix |
+| +0x78 | 0x1E9D80 | `speed[5]` (one per difficulty) | fix |
+| +0x8C..+0x98 | 0x1E9D94.. | `mass`, `drag`, `thrust`, `gravity` | fix |
+| +0xA8 | 0x1E9DB0 | `lifetime` | fix |
+| +0xBC | 0x1E9DC4 | `damage_percent` | fix |
+| +0xCF | 0x1E9DD7 | `combustion` | s16 |
+
+`reach` (+0x60) is written by the parser and read nowhere by direct address
+(grep of all.asm). So `reach=` has no effect in 1.3 (verified for direct
+addressing).
+
+## A1. Input and the start of the attack
+
+### Key, button and the read (verified)
+
+- Key config items are 22 bytes (0x16) with the type at +0x14 and the value
+  at +0x15 (0x515AB). Arrays: keyboard 0x13C190 (62 items), joystick 0x13C6E4
+  (27), mouse 0x13C978 (29) (0x5225D). Defaults: 6 rows of 64 bytes at
+  0x13C010, copied to `kconfig_settings` 0x1E9A88 (0x71A0E); `kconfig.dat`
+  saves 0x180 bytes of it (0x7190F).
+- Attack action: text number 0x186 (390). Keyboard items 18 and 19, default
+  scan codes 0x1D (Left Ctrl) and 0x9D (Right Ctrl) (bytes 18 and 19 of
+  0x13C010). Joystick item 0, default button 0 (row 1, 0x13C050). Mouse item
+  0, default button 0, the left button (row 5, 0x13C150; (guess) row 5 is the
+  mouse row as in Descent 1).
+- Read in `controls_read_all` (around 0x52740): keyboard 0x538CC, while
+  `keyd_pressed[key]` (0x467B40) of item 18 or 19 is set: Controls+0x18 =
+  `key_down_time` (0xDA650), Controls+0x19 = 1. Joystick 0x529C3 (button
+  state 0xDF360), mouse 0x52DFF (`mouse_button_state` 0xE8ADC, ORed into
+  +0x19). So Controls+0x19 is 1 on every frame the input is held.
+- Edge: the game control function 0x2FB10 (called at 0x4378B from the game
+  frame 0x435A6), code 0x2FCBE: while Controls+0x19 is set, a request is made
+  only if it was not held on the last frame (`[0x13AD7E]`, set while held,
+  cleared on release). A misc item (type 0x10) in the hand is used instead
+  (0x2FAF0, 0x37A6A). Else the request `[0x13B69F] = 2` (0x2FD41). So the
+  attack starts on key down. Holding the key does not repeat it.
+
+### Order in a game frame (verified, 0x435A6)
+
+1. 0x2FB10 controls (0x4378B), sets the request.
+2. 0x4450C player animation (0x43835).
+3. 0x69C5C moves all objects (0x4389A): the player 0x9DC66 calls the hit test
+   0x6CFF8 once (0x9DD69, no loop around it); weapon objects move with
+   0xA03A8.
+4. 0x44300 starts the attack (0x438B1).
+
+### 0x44300 (start attack) and 0x41A4D (gate), verified
+
+0x44300 does nothing unless 0x41A4D returns non-zero. 0x41A4D:
+
+1. Clear the request if the hand slot index (byte `P+0x1D4DF4`) is negative
+   and the word 0x13AD15 is not negative. Return 0 if there is no request or
+   if `[0x13D3F7]` is not 0 (request kept).
+2. Spell (item type 0x11): casting checks and texts (other agent).
+3. Weapon with flag `arrow` (4) and no bow in `P+0x1D4DD6` (signed byte < 0),
+   or flag `bolt` (8) and no crossbow in `P+0x1D4DD8`: message (text pointer
+   0x396A10 or 0x396A14), clear the request, return 0.
+4. Melee weapon (`attack_type` 1, not a spell) (0x41E36): with `st` =
+   `state_times[6]` of the current player model (model +0xFC),
+   `|GameTime - last|` must be greater than `st` (`last` = `[0x13B74B]`), and
+   Controls+0x19 must still be 1. Else clear the request, return 0. On
+   success `last = GameTime`; if player object byte 0x89 bit 0x20 is set
+   (flag word 0x88 bit 0x2000), `last += st / 2`, so the next attack is
+   allowed only 1.5 `st` later. Return 1.
+5. Other items (missile weapons, empty hand of a projectile type): return 1
+   with no time gate.
+
+0x44300:
+
+1. `esi = [0x13B69F] - 1` (= 1, the hand). If the state is not 6, 11, 7 or
+   12: byte 0x1AF = 0, and the goal state becomes 6 if `esi == [0x13B62A]`
+   (debug text " right"), else 11 (" left"). With `[0x13B6A3]` not 0 it would
+   be 7 or 12. If the state is already an attack state the goal is not
+   changed.
+2. `[0x13B62A]` is 1 in the image and has no write in the code. `[0x13B6A3]`
+   is only ever written with 0 (0x2A9AA, 0x4447B, 0x56C5D, ...). The only
+   request value is 2 (0x2FD41). So the player attack of 1.3 is always state 6
+   (ATTACK). States 7, 11 and 12 are never chosen by the input (verified for
+   direct writes; no indirect write was looked for).
+3. Item type 5: `P+0x1D33BC &= 0xEC`; if player byte 0x8A bit 2 is set,
+   object +0xC8 = 0 ((guess) attacking ends an invisibility).
+4. Spell, or weapon with `attack_type` 0: call 0x56A0D (fire, section 5).
+   Then if the stack count (+8) of the item is 0 and 0x13AD15 >= 0: goal =
+   state = 1 and 0x544F2. The request is kept until 0x56A0D fires.
+5. Melee: the request is cleared here (0x44479). So a press that fails the
+   gate of 0x41A4D or that is accepted is consumed in the same frame. No
+   buffer.
+
+### Attack rate (verified)
+
+- The weapon change 0x43A5A (0x441E9 to 0x44258): for a melee weapon,
+  `t = max(fire_wait, 1.0)`; if player object byte 0x8B bit 0x08 is set (flag
+  word bit 0x08000000, (guess) a slow effect) `t = 2 * t`. `t` is written to
+  `state_times[6]`, `[7]`, `[11]`, `[12]` of the current player model
+  (+0xFC, +0x100, +0x110, +0x114).
+- So the swing lasts `t` seconds (0x4450C uses `state_times[s]`) and the gate
+  of 0x41A4D allows a new swing after more than `t` seconds. Every melee
+  `fire_wait` of the tables is 0.5 to 1.5: every weapon below 1.0 swings at
+  1.0 s. Long Sword 1.0, Bastard Sword 1.3, Warhammer 1.5 (BANE.BIN).
+- Missile weapons have no gate in 0x41A4D. Their rate: section 5.
+
+### What else stops an attack
+
+- 0x43A5A returns without a model change while the state is 6 or 11.
+- The to-hit roll fumble can take the weapon away (0xAE837, character.md).
+- In an attack state 0x44300 does not restart the attack.
+
+## A2. The first person view
+
+### Call path (verified)
+
+`render_frame` 0x76C7C -> `render_mine` 0x77845 -> `render_segment` 0x75F10
+(walls of the segment, then each object of the segment) -> `do_render_object`
+0x75D25 (no viewer test, only "already rendered") -> `render_object` 0x67C5A
+-> `draw_polygon_object` 0x6746A -> `draw_polygon_model` 0x727A5 with argument
+7 = (object == Viewer and Viewer type != 5) (0x679B6).
+
+So the arms are drawn as an ordinary object of the segment that holds the
+player, after the walls of that segment, in the painter order of
+`render_mine`. There is no separate pass, no depth clear and no special
+clipping (Descent 1 has `if (obj == Viewer) return;` in `render_object`; the
+1.3 code has no such test).
+
+### render_object 0x67C5A, only for the player object (verified)
+
+Before the draw, the position of the player object is changed and it is
+restored after the draw (0x67EBD):
+
+1. Floor type 1 under the player (segment byte +0xF5 `& 3 == 1`, after the
+   segment redirect at +0x1E8): `y -= 0x1388` (0.0763).
+2. If `[0x13B250]` is not 0: `y += 0x13880 - 16 * look_pitch`
+   (`look_pitch` = s16 at 0x13D9AE, fixang). 0x13880 = 1.2207. At the limits
+   of `look_pitch` (-0x3000, 0x2FA0) the change is +4.22 and -1.76.
+3. If also `look_pitch > 0`: `k = 2 * look_pitch` (as fix, at most 0x5F40 =
+   0.372), with s, c = sin, cos of (heading - 0x2000): `x -= fixmul(s,k) +
+   fixmul(c,k)`, `z += fixmul(s,k) - fixmul(c,k)`. That moves the model back
+   along the heading by `k * sqrt(2)` (at most 0.526).
+4. `[0x13B250]` is set to 1 at the start of every model change 0x43A5A
+   (0x43A8D) and to 0 when the weapon in the hand has the flag `arrow` or
+   `bolt` (0x43BDA to 0x43BEA). So the pitch offset is off for missile
+   weapons with a launcher.
+
+The orientation is the object orientation (+0x20) without the look pitch, so
+the arms do not tilt with the view; they only move up, down and back. (guess)
+positive `look_pitch` looks down.
+
+### Inside draw_polygon_model 0x727A5 (verified)
+
+Argument 7 is read at one place only (0x72889): the choice of the simpler
+model. With argument 7 = 0 a model with a simpler model always uses it; with
+1 it uses it by depth (Descent 1 rule). No model of the disc has a simpler
+model, so argument 7 changes nothing. The sorted draw 0x66E13 does not get
+argument 7 (its stack arguments are glow, argument 3, 0, argument 6, argument
+8; 0x72A66). The position rule (step 7 of models.md, body center) applies to
+the player as to any object. All submodels are drawn but the hidden ones
+(flag 0x10) while "show hidden" is 0: the missile in the hand vanishes from
+the fire frame on (models.md, "The missile in the hand").
+
+### Camera (verified, 0x76C7C)
+
+- `eye = pos + uvec * eye_offset` (`[0x30DF04]`, 5.0 for the human male
+  fighter of HMC.BIN) `+ frame_eye[frame].y` (model +0x60, 12 bytes a frame).
+- View bob when byte 0x14530D (move mode 1 walk, 2 run) is not 0:
+  `eye.y += 0.325 * sin(phase)` (0x5333), angle = `phase * 65536.0` (float at
+  0x12AF07), `phase += FrameTime * 2^-16 * mode` (double at 0x12AF0B). So one
+  bob period per second walking, two running. Time based.
+- View matrix = `angles_2_matrix(look_pitch, 0, 0) * orient` for the player
+  (0x76FC4), the head tracker angles at 0x38E338 otherwise.
+- The model is not bobbed: the bob changes only the eye.
+
+## A3. The swing and the hit test
+
+### Hit window (verified, 0x6CFF8, called each game frame from 0x9DD69)
+
+1. The object position is moved forward by `sqrt(2)` (1.414) along the
+   heading for the test and restored at the end (0x6D017 to 0x6D066, 0x6D5C6).
+2. Not in state 6, 7, 11 or 12: byte 0x1AF = 0, return.
+3. `rel = frame - first[state]`, `n = first[state+1] - first[state]` (16).
+   The player tests when `rel >= 6` and `rel <= n - rel`: frames 6, 7, 8 of
+   the state, that is from 6/16 to 9/16 of `t`.
+4. Lolth special case (level byte `P+0x1D338D == 0x20` and object number
+   0x24): damage to the player, text "Lolth struck you with a mighty blow!".
+5. Weapon sphere 0x7473F(object, frame, which 0): center = position +
+   rotate(`weapon_center[frame]`), radius `weapon_radius[frame]`; returns the
+   weapon type (the item in the hand for the player). Radius times 8.0 for
+   the weapon types 0x12, 0x13, 0x22, 0x23, 0x2B, 0x2C, 0x2D, 0x45 (BANE.BIN:
+   Dagger, Short Sword, Short Sword +1, +2, Dagger +1, +2, Dagger of
+   Impaling, Short Sword of Quickness).
+6. `find_vector_intersection` 0x3EFD9 from the center to `center + r *
+   normalize(center - position)`, radius r, flags 1 (objects), this object
+   = the attacker.
+7. Player only (0x6D3D0): if the query hit an object, or a wall whose side
+   number (dword at hit data +0x14) is not 1 and not 3 ((guess) not the
+   ceiling, not the floor): byte 0x1AF = 0, `[0x13D430]` = hit object, and the
+   animation start `P+0x1D3373 += (2*rel - n) * fixdiv(n, t)` (as fix
+   seconds, 0x6D430 to 0x6D47A). For `t` = 1.0: rel 6 gives -64 s, rel 7
+   -32 s, rel 8 0. A negative shift makes the next 0x4450C jump past the end
+   of the state: the swing ends at once. At rel 8 nothing changes. A wall hit
+   then calls the trigger touch 0x95019(segment, side, 4, object)
+   (triggers.md).
+8. Object hit ("I hit something."):
+   - scenery (type 18): if bit 4 of the byte at `0x19B340 + 32 * id`
+     (`Dressing_info`, 32-byte entries) is set: no effect. Else hit points limited to 20.0, damage function
+     0x29A9C(scenery, no attacker, 100.0, weapon = attacker id). Without an
+     attacker the damage function subtracts the 100.0 directly (0x29BCA), so
+     the scenery always drops below 1.0 and breaks: 0xA6ACB(scenery, 0,
+     10.0). The push branch 0x25D4F is reached only if the hit points stay at
+     1.0 or more.
+   - creature (type 2), attacker not a creature: 0x278B5(creature, player,
+     weapon type, hit point 0x30EF58), then byte 0x1AF = 0.
+   - player (type 4): creatures only (ai.md).
+
+### One hit per swing? (verified, a defect of 1.3)
+
+0x278B5 has a guard: if byte 0x1AF of the attacker is not 0 it prints
+"Register only one collision per smack" and returns; else it sets the byte
+to 8. But step 7 above sets the byte to 0 just before every call. For a first
+contact at rel 6 or 7 the swing ends at once (one hit). For a first contact
+at rel 8 the shift is 0 and the test repeats on every game frame while the
+frame stays 8: one hit roll per game frame for `t / 16` seconds (1/16 s at
+`t` = 1.0: about 4 rolls at 60 frames per second, 1 at 16). 0x4450C counts
+the byte down by 1 per game frame while above 1 (8 to 1); the branch that
+would force the end frame when it reaches 0 cannot run, since a decrement
+from above 1 never gives 0 (0x445B5 to 0x445D6).
+
+### 0x278B5 (player hits creature), verified
+
+1. Player goal state = 10 (0xA).
+2. Weapon type 13 with the creature flag `Robot_info+0xD9` bit 0x08 clear:
+   plot code (quest bits 0x82 to 0x8D through 0xADB3B, text 0x1FD).
+3. Creature byte 0x1CC = 2 (active). Return if the creature flags 0x0D have
+   bit 1 or 2.
+4. Guard byte 0x1AF (above). Return with "Player aint using a weapon???" if
+   the player state is not 6 or 11. Byte 0x1AF = 8.
+5. Weapon item: `monster_hit_sound` linked to the creature, volume 0x8000
+   (0.5) (0x2E600). Then the creature `hit_sound` (+0x9A), volume 0.5.
+6. Alert 0x160AB(player, 3); 0x12AD9(creature, 5).
+7. Damage function 0x29A9C(creature, player, 0, weapon type).
+8. `enemy_spell` (+0x3C) of the weapon >= 0: cast it on the creature
+   (0x90CEF or 0x8CFFF by spell flag bit 1).
+9. Hit points went down: blood 0x25C76 (`Robot_info+0xDA`); sound: creature
+   `hit_sound` at 0.5 if hit points >= 1.0, else `die_sound` (+0x9C) at 1.0;
+   push: `v = creature.pos - player.pos`, `v.y = 0`, normalized, times 20.0
+   (0x140000), 0x6B70D (adds v / mass to the thrust, ai.md);
+   `monster_hit_vclip` (+0x02) explosion at the hit point, size
+   `impact_size`; `monster_hit_sound` (alive) or `monster_kill_sound` (dead)
+   at the hit point, volume 0.5 (0x2E900).
+10. No damage (miss): `monster_miss_vclip` (+0x03) explosion, size
+    `impact_size`; `monster_miss_sound` at the hit point, volume 0.5.
+
+### Damage function 0x29A9C for a creature target (verified)
+
+- Return if the target has less than 1.0 hit points or flags 0x0D & 7.
+- Backstab flag `[0x13A955]` = 0xB337E(target, attacker, weapon).
+- To-hit 0x2A7F3 (ai.md, character.md section 11). Result <= 0: no damage.
+- 0x9305D(target, 1); target +0x15E |= 0x80.
+- Creature with `weapon_resistant` (+0x99 bit 0x40): no damage unless the
+  weapon has the flag `magic` (0x10).
+- Damage = 0x2AF5E(target, attacker, weapon, 5). Critical hit (roll result
+  2): a second 0x2AF5E roll is added (two rolls, not double).
+- Target flag 0x8B bit 0x20: decrement +0x80, text, no damage ((guess) a
+  protection spell).
+- Attacker flag 0x88 bit 0x08 with melee or natural weapon, failed save
+  0xAE596(target, 4): `undead` target is held for `(rand % 4 + 1 + level) *
+  15` s (bit 0x89 |= 1), else damage += `rand % 4 + 1` ((guess) a touch
+  spell).
+- Hit points -= damage. Damage > 0: the FLIN rule of ai.md, damage level
+  `+0x16E = clamp(10 - hp * 10 / max_hp, 0, 10)`, text with the damage when
+  the attacker id equals the player number.
+- Below 1.0: kill text "%s %s %s.", experience (below), kill counters
+  `P+0x1D33AB` and `P+0x1D33AD` + 1, `die_sound` at 1.0, DIE state, egg
+  (ai.md).
+
+Player values (to-hit and damage), from 0x2A7F3 and 0x2AF5E (character.md
+section 11, verified again here for the weapon type tests):
+
+- Melee (`attack_type` 1) or thrown (+0x0A == 3): +4 to the roll on a
+  backstab; strength to-hit bonus 0x2A789(`P+0x1D33D3`, `P+0x1D33D5`)
+  (0x2AB4F to 0x2AB91); strength damage bonus table 0x13A9A2 (0x2B475).
+- Projectile not thrown: the to-hit bonus of the launcher: the bow
+  (`P+0x1D4DD6`) for `arrow`, else the crossbow (`P+0x1D4DD8`); its misc
+  item bonus at 0x19BAC6 + 0x44 * id (0x2AB0A to 0x2AB4D).
+- Weapon `to_hit_bonus` (+0x36) is added (0x2AAE7).
+
+### Experience (verified)
+
+On a kill, if the attacker id byte equals the player number `[0x13B924]`
+(0x2A0C5) and the creature flag 0x8B bit 0x01 is clear: 0x4EA50(`score_value`
+= `Robot_info+0x0C`) -> 0xAF3CF (character.md section 10). (Note: the test
+compares only the id byte. A missile passes its parent as attacker, so a
+player missile kill also gives experience.)
+
+## A4. Sounds (verified)
+
+| When | Sound | Volume | Where |
+|---|---|---|---|
+| Swing | none found | | no sound call in 0x2FB10, 0x44300, 0x4450C, 0x9DC66, 0x6CFF8 |
+| Melee contact with a creature (before the roll) | weapon `monster_hit_sound` | 0.5 | linked to the creature, 0x27AF5 |
+| same | creature `hit_sound` (+0x9A) | 0.5 | linked, 0x27B38 |
+| Melee hit, alive | creature `hit_sound`; weapon `monster_hit_sound` | 0.5; 0.5 | creature; hit point |
+| Melee kill | creature `die_sound` (+0x9C) 1.0 (0x27C4B) and again 1.0 in 0x29A9C; weapon `monster_kill_sound` 0.5 | | |
+| Melee miss | weapon `monster_miss_sound` | 0.5 | hit point |
+| Missile fired | weapon `flash_sound` | 1.0 | 0x2D955 when the parent is the viewer, else at the missile |
+| Missile hits creature, damage, alive above 2.0 | creature `hit_sound` 1.0, or weapon `monster_hit_sound` 0.25 if the creature has none | | 0x275DF, 0x27641 |
+| Missile, creature at 2.0 or less | creature `die_sound` 1.0, only below 1.0; if the creature has no `die_sound` (0): weapon `monster_kill_sound` 0.25 and creature goal state 9, both only if that sound is set | | 0x27650 to 0x27709 |
+| Missile miss | weapon `monster_miss_sound` 0.25 | | 0x277F9 |
+| Missile hits wall | `wall_hit_sound` 0.5 at the hit point and 0.5 at the object (special sounds 0x8AC.. and 0x8B0.. on side types 3 and 1); alert level 2 | | 0x26C2F |
+
+`armor_hit_sound` is read only at 0x28573 and 0x86D27 (creature hits the
+player, not part of this task). The tables of BANE.BIN set no
+`monster_miss_sound`, `monster_kill_sound`, `monster_miss_vclip`, `POV_clip`
+or `reach` on any weapon line (decoded table, grep), so those sounds are
+silent in practice (the parser default was not checked).
+
+## A5. Missile and thrown weapons
+
+### When the player fires (verified, 0x56A0D, called by 0x44300 each frame while the request is pending)
+
+1. Return 0 if `[0x13D3F7]` is not 0.
+2. Item = hand item `P+0x1D4DF3`. A weapon with `PC_spell` != -1 is handled as
+   a spell (wand).
+3. Not a spell: the state must be 6, 7, 11 or 12 and the frame at or after
+   the fire frame of that state (`fire_frames[0..3]` at model +0xB8..+0xBE).
+   Else return 0 and keep the request. HMC.BIN `fire_frames=45 61 109 125`:
+   frame 45 is `rel` 1 of state 6, so the missile leaves at 1/16 of the
+   animation.
+4. Projectile weapon: if `ammo_usage` (+0x07) < `ammo_initial` (+0x1C, signed)
+   the text "Oops.  Out of arrows!" (flag 4), "...bolts!" (flag 8) or
+   "...ammo!" and no shot. With the table values (`ammo_usage` 1,
+   `ammo_initial` -1 or 1) this only stops lines with `ammo_initial=8`
+   (verified compare; meaning (guess)).
+5. Fire timer per hand `h` (D1 style): if `last[h] + 2 * FrameTime < GameTime`
+   then `next[h] = GameTime`; `last[h] = GameTime` (0x215D74, 0x215D7C).
+   While `next[h] <= GameTime`: `next[h] += fire_wait`, fire one missile
+   0x56EB0(player, weapon, 0, count 1, h) -> 0x56516 -> 0x564F7 -> 0x561DA.
+6. If at least one was fired: use one item 0xB7084(hand item), clear the
+   request, player goal state = 10. Return 1.
+
+Rate: `next` is reset to now whenever 0x56A0D was not called during the last
+two frames, which is the case for every new key press (the request is cleared
+after a shot). So `fire_wait` limits only shots of one held request. Between
+presses the limit is only "state 6 at or after the fire frame". A second
+press while the same state 6 is still after its fire frame fires again at
+once (verified code reading; not tested).
+
+### Missile creation 0x561DA -> Laser_create_new 0x55511 (verified)
+
+- Start point: player position + (0, 2.0, 0) (0x562BB). Not a gun point and
+  not the eye (the eye is 3.0 higher with `eye_offset` 5.0).
+- Direction: `rotate((0, 0, d), angles_2_matrix(look_pitch, 0, 0) * orient)`
+  with d = 1.0; d = 3.0 if `enemy_spell` is 0x20, 2.0 if it is 0x10 or 0x11.
+  So the aim follows the look pitch.
+- 0x55511(dir, pos, segment, parent, weapon, make sound): object type 5;
+  render type from +0x00 (2 `weapon_pof` -> polygon object 1, radius from the
+  model / `lw_ratio`; 1 blob and 3 vclip -> radius `blob_size`); mass, drag,
+  gravity copied to +0x114, +0x118, +0x11C; physics flag 4 for `bounce`, 0x10
+  for `stick` and for weapon id 1, 0x80 for `thrown`; hit points = those of
+  the parent; lifetime +0xA8 (infinite lifetime of a polygon object that is
+  not thrown becomes 30.0); `flash_vclip` explosion of `flash_size`;
+  `flash_sound`; velocity = dir * `speed[Difficulty]`, halved and copied to
+  the thrust if `thrust` != 0; weapon id 1 or physics flag 0x10 (all `stick`
+  weapons, the arrows and bolts): lifetime += `rand * 4 - 1.0` (plus or minus
+  1 s).
+- `enemy_spell` 6: random velocity change of `(rand % 5 - 2) * 16.0` on each
+  axis of the thrust. `homing`: tracking target (0x55D91).
+- BANE.BIN: Arrow speed 80 (all difficulties), Bolt 80, Throwing Axe, Dart,
+  Throwing Dagger, Throwing Hammer `speed=30 40 50 60 80`, `gravity` 0 on all.
+
+### Flight: pweapon.c 0xA03A8 (verified)
+
+- Moves with `velocity * FrameTime` in one `find_vector_intersection` (flags
+  5, ignore list 0x30F10C), up to 3 tries. It does not read +0x11C (gravity)
+  or apply drag: weapon objects fly straight in 1.3.
+- Result wall (1 or 5): 0xA0731; then trigger touch 0x95019(segment, side, 4)
+  unless flag 0x40 or byte 0x1AE bit 2. Object (2): 0x6CDC5. 4: 0x29455
+  (`collide_two_objects`).
+
+### On hit
+
+- Wall: 0xA0731 restores the position, calls `collide_object_with_wall`
+  0x29802 -> 0x26C2F, which plays the wall sounds and queues the weapon for
+  deletion (0x6A3CC) unless `enemy_spell` is 0x20. Then bounce reverses the
+  velocity (all three axes negated, no reflection), object flag 0x10 makes it
+  stick (`add_stuck_object` 0x7EBDD), else it is removed. No instruction sets
+  object flag 0x10 on an object by direct address (checked `or [reg+0xd],
+  0x10` and `[reg+0x2B0621]`).
+- Creature: `collide_robot_and_weapon` 0x272DD (table at 0x29355, key 0x401):
+  return if the weapon has zero velocity, flag 0x40, or byte 0x1AE bit 2;
+  creature active; `enemy_spell` cast; `combustion` explosion and delete if
+  byte 0x1AE bit 0; stick, persistent or thrown (0xB0) hit a creature only
+  once (+0x14C); alert or 0xBA3B1; unless flag 0x20: 0x29A9C(creature,
+  parent, 0, weapon id) and push 0x25DE6. Then the sounds of section 4.
+  Stick: stop at the hit point, gravity 1.0, flags 0x44. Thrown: velocity
+  reversed, y = 0, normalized (speed 1.0), gravity 1.0, flag 0x40. Else hit
+  vclip and 0x2709A. Finally a polygon object (render type 1) is always
+  queued for deletion (0x27883).
+
+### Can a thrown weapon be picked up? (verified for the paths read)
+
+No. A polygon-model weapon object is deleted when it hits a wall (0x26C2F)
+and when it hits a creature (0x27883). No path turns it back into an item.
+The "Skipping" branch of 0xA03A8 (flag 0x80 and position unchanged since the
+last frame) only clears the parent fields.
+
+### Ammunition (verified)
+
+- The missile item is the item in the hand: the "Arrow", "Bolt", "Dart" ...
+  stack (`stack_limit` 100 or 30 to 50). The bow or crossbow is equipped in
+  `P+0x1D4DD6` / `P+0x1D4DD8` and only gives the to-hit bonus and the check of
+  0x41A4D.
+- 0xB7084 ("Decrement list %d n %d uses %d"): the stack count (+8) goes down
+  by 1 per shot (not by `ammo_usage`); -1 is endless; at 0 or less the entry
+  is removed (0xB6F01).
+- End of the attack state (0x4450C, 0x44653 to 0x446DF): weapon in the hand
+  with +0x0A == 3 (thrown) and count <= 0: 0x43A5A(-3) (empty hand model,
+  letter `_`), then 0x4448D "Autoarming anything": the first non-empty hot
+  key slot (`P+0x1D4DDB`, 10 slots) is armed. The -4 branch needs
+  `[0x13B62A] == 0`, which never happens.
+
+## A6. pweapon.c
+
+The string 0x130626 is used only in 0xA03A8. The function before it
+(0x9FE68) uses "pmon.c", the one after it (0xA0802) "dtuio.c". pweapon.c holds:
+
+| Address | Role |
+|---|---|
+| 0xA03A8 | Move a weapon object (type 5, from `object_move_one` 0x697F7): asserts `!(PF_USES_THRUST) || drag != 0`, velocity * FrameTime, up to 3 query tries, dispatch of the result. No gravity, no drag. |
+| 0xA0731 | Weapon hits a wall: restore position, `collide_object_with_wall`, then bounce (negate velocity) or stick (object flag 0x10) or delete. |
+
+Nothing in pweapon.c is about the player's melee weapon.
+
+## A7. Rules that count game frames
+
+1. The melee test 0x6CFF8 runs once per game frame. At `rel` = n/2 (frame 8)
+   it rolls once per game frame (section 3). Number of hit rolls depends on
+   the frame rate.
+2. The anim shift `(2*rel - n) * n / t` mixes frames with a rate (frames per
+   second), not a time; at rel 8 it is 0.
+3. Byte 0x1AF counts down 1 per game frame (0x4450C), 8 to 1.
+4. The forward offset of the melee test (`sqrt(2)`) and of the arms (look
+   pitch) are per frame positions, not speeds: no frame rate effect.
+5. Missile fire timer reset: "not called during the last 2 * FrameTime"
+   (0x56BB0): depends on the frame time.
+6. The attack edge detection (0x13AD7E) is per frame: a press and release
+   inside one frame is lost (input sampled per frame).
+7. View wobble when player byte 0x1AE bit 0x10 is set ((guess) drunk or
+   confused): counters 0x13D9C4 (-4..4) and 0x13D9CC (-3..2) step by 1 per
+   rendered frame (the 0x13D9D4 time step is GameTime + 0x14, about every
+   frame) and are added to two columns of the view matrix (0x76D4C to
+   0x76E2A).
+8. The texture pulse of `draw_polygon_model` counts draw calls (models.md).
+9. Not frame based: the swing length and the melee gate (time), the view bob
+   (time), the missile `fire_wait` accumulator (time).
+
+# Part B. Spells, usable items, saving throws, thief skills
+
+## B0. Spell_info (127 bytes, base 0x1B5676, index * 127), reader 0x242F6
+
+Keyword to offset, Code (stores in 0x242F6 to 0x25550). Offsets are relative to
+0x1B5676 as in objects.md. `damage_bonus` is stored at -2 (0x1B5674 + n*127), so the
+real start of the record is probably 0x1B5674 (guess).
+
+| Off | Type | Keyword | Default |
+|---|---|---|---|
+| -0x02 | s16 | `damage_bonus` | 0 |
+| 0x00 | u8 | class: `cleric_use` 1, `mage_use` 2 | 0 |
+| 0x02 | s16 | `icon` | 0 |
+| 0x04 | s16 | `cast_time` | 0 |
+| 0x06 | s16 | `range` | 0 |
+| 0x08 | s16 | `radius` | 0 |
+| 0x0A | s16 | `level_range` | 0 |
+| 0x0C | s16 | `level_radius` | 0 |
+| 0x0E | s16 | `cast_sound` | 10 |
+| 0x10..0x18 | s16 | `monster_hit_sound`, `monster_miss_sound`, `monster_kill_sound`, `wall_hit_sound`, `armor_hit_sound` | -1 |
+| 0x1A..0x22 | s16 | `cast_vclip`, `monster_hit_vclip`, `monster_miss_vclip`, `wall_hit_vclip`, `armor_hit_vclip` | -1 |
+| 0x24 | s16 | bitmap of `picture` | -1 |
+| 0x26 | u8 | `plot_item` | 0 |
+| 0x27 | u8 | `sub_use_count` | 1 |
+| 0x28 | s16 | `uses` | 1 |
+| 0x2A | s16 | `uses_per_level` | 0 |
+| 0x2C | s16 | `levels_per_use` | 0 |
+| 0x2E | s16 | `to_hit_bonus` | 0 |
+| 0x30 | s16 | weapon model (pof) number; `weapon_vclip` sets -1 | -1 |
+| 0x32 | s16 | `weapon_vclip` | -1 |
+| 0x34 | s16 | ? | -1 |
+| 0x36 | u8 | flags: 1 `area` (`type=AREA`; `target` clears it), 2 `stackable`, bits 2..4 cast with: 0 `cast_with_hands`, 4 `cast_with_wand`, 8 `cast_with_scroll`, 0x10 `cast_with_arrow`; 0x20 `potion`, 0x40 `always`, 0x80 `homing` | 0 |
+| 0x37 | u8 | flags: 1 `self_cast_ok`, 2 `non_hotkey_item`, `cast_in_front` sets 5 (bits 0 and 2) | 0 |
+| 0x38 | u8 | missile render type: 2 `weapon_pof`, 3 `weapon_vclip` | 0xFF |
+| 0x39 | u8 | `level` (spell level) | 1 |
+| 0x3A, 0x3B, 0x3C | u8 | `damage_dice`, `#damage_dice` (die count), `damage_level` | 0 |
+| 0x3D, 0x3E, 0x3F | u8 | `fire_damage_dice`, `#fire_damage_dice`, `fire_damage_level` | 0 |
+| 0x40, 0x41, 0x42 | u8 | cold: same three | 0 |
+| 0x43, 0x44, 0x45 | u8 | acid: same three | 0 |
+| 0x46, 0x47, 0x48 | u8 | elec: same three | 0 |
+| 0x4E | fix | `duration` (negative becomes 0x3FFFFFFF) | 30.0 |
+| 0x52 | fix | `level_duration` | 0 |
+| 0x56 | fix | `size` (integer << 16) | 3.0 |
+| 0x5A | fix | `player_light` | 0 |
+| 0x5E | fix | `modifier` | 1.0 |
+| 0x62 | fix | `cast_size` | 0 |
+| 0x66 | fix | `weapon_vclip_size` | 1.0 |
+| 0x6A | fix | `damage_percent` (value * a constant at 0x122B06 * 65536) | 0x1999 (0.1) |
+| 0x6E | s16 | `combustion` | -1 |
+| 0x70 | s16 | `value` | 10000 |
+| 0x72 | s16 | `inv_icon` | 0 |
+| 0x74 | s16 | `vclip_trail` | -1 |
+| 0x76 | u8 | flags: 2 set by `cast_on_top` | 0xFF |
+| 0x77 | fix | `speed` (integer << 16) | 100.0 |
+| 0x7B | s16 | `cast_on_top` (vclip) | -1 |
+
+Notes: `range`, `radius`, `cast_time` are integers. In the text, `#damage_dice=1`
+means the die count, `damage_dice=4` the die size: Magic Missile is 1d4+1 (guess
+from the AD&D rule; the code check is in section 3).
+
+Note: code that walks Spell_info with a pointer uses the base 0x1B5674 (0x56D43,
+0x570BE, 0x920FD, 0x923BC, 0x92ED0, 0x93199). So the record starts at 0x1B5674 and
+the offsets of section 0 are 2 less than the record offsets. This document keeps
+the objects.md convention (base 0x1B5676) unless it says "record offset".
+
+## B1. Casting by the player
+
+### Spell lists, slots and rest (Code)
+
+- The two spell lists (P+0x8F3 mage, P+0x10E3 cleric, counts P+0xF7, P+0xFB; P =
+  0x1D331C) are the spell book: picking up a spell object (type 17) calls 0xB69AD,
+  which adds the spell to the mage list if the spell has the mage bit and the
+  character is a mage (0x35A2B), else to the cleric list if it has the cleric bit
+  and the character is a cleric (0x35A09). A spell already in the list is refused
+  (result 2). The 16 byte entry: byte 0 = 17, byte 1 = spell number, byte 3 =
+  class bits, byte 4 = Spell_info flags (+0x36), byte 5 letter: `K` (hands), `Q`
+  (wand, flag 4), `N` (scroll, flag 8), `B` (arrow, flag 0x10), word 6 = spell
+  level (read by 0x35573), byte 0x0B = Spell_info `sub_use_count` (+0x27, default
+  1). A spell that no list takes stays in the item list (character.md insert rule)
+  and is cast as a "scroll" (see below).
+- Memorization is the AD&D slot count per spell level, not a list of memorized
+  copies:
+  - P+0x23 .. P+0x2B: mage slots per spell level 1..9 (maximum); P+0x2C .. P+0x34:
+    mage slots left.
+  - P+0x35 .. P+0x3B: cleric slots per level 1..7 (maximum); P+0x3C .. P+0x42:
+    cleric slots left.
+  - 0x3575B(P, class level, ...) (displays.c, called at level up 0x8BFAC):
+    mage maximum = table 0x145CD8[mage_level * 9 + i] (18 rows of 9 bytes, the AD&D
+    wizard table: 1 / 2 / 2,1 / 3,2 / 4,2,1 / 4,2,2 / 4,3,2,1 / 4,3,3,2 /
+    4,3,3,2,1 / 4,4,3,2,2 / 4,4,4,3,3 / 4,4,4,4,4,1 / 5,5,5,4,4,2 / 5,5,5,4,4,2,1 /
+    5,5,5,5,5,2,1 / 5,5,5,5,5,3,2,1 / 5,5,5,5,5,3,3,2 / 5,5,5,5,5,3,3,2,1). No
+    intelligence bonus. Cleric maximum = table 0x145DF8[cleric_level * 7 + i] (the
+    AD&D priest table: 1 / 2 / 2,1 / 3,2 / 3,3,1 / 3,3,2 / 3,3,2,1 / 3,3,3,2 /
+    4,4,3,2,1 / 4,4,3,3,2 / 5,4,4,3,2,1 / 6,5,5,3,2,2 / 6,6,6,4,2,2 /
+    6,6,6,5,3,2,1 / 6,6,6,6,4,2,1 / 7,7,7,6,4,3,1 / 7,7,7,7,5,3,2 /
+    8,8,8,8,6,4,2) plus, for spell levels 1 to 4 when the base is > 0, the wisdom
+    bonus: int tables at 0x1403D2, 0x140422, 0x140472, 0x1404C2 (pointer table
+    0x140512) indexed by wisdom 0..19:
+    level 1: 0 for 0..12, 1 (13), 2 (14..18), 3 (19); level 2: 1 (15), 2 (16..19);
+    level 3: 1 (17, 18), 2 (19); level 4: 1 (18, 19). Asserts "PA.wisdom > 0",
+    "PA.wisdom <= 19". Slots left are cut to the new maximum.
+  - 0x3551B restores all slots left = maximum. Callers: the rest action 0x360D5
+    (via 0x36049), level start 0x4225A (0x42284), level up 0x8BEBC (0x8BFFE).
+- Rest: button R (main screen) action 0x360D5: 0x3E137(segment of the player)
+  tests whether the segment is a rest stop (the Descent fuel center code,
+  fuelcen.c). No: "You can not rest here". Yes: "You feel refreshed" (HUD, or a
+  message box 0x655FE when 0x13B616 is set), slots restored (0x3551B), then
+  0x3E1F6 (fuelcen.c "Rest Stop Reenergization": calls 0x160AB(player, 5) and
+  0x92FF2 ("randomizing spell table", recharges creature spells)).
+- Rary's Mnemonic Enhancer (spell 41) on the player: a box "Which additional spell
+  levels would you like to cast?" with the strings "One 3rd", "One 1st and one
+  2nd", "Three 1st" (pushed in this order; 0x655FE returns the index; which index
+  belongs to which string was not checked): 0: P+0x23 += 3; 1: P+0x23 += 1 and
+  P+0x24 += 1; other: P+0x25 += 1. So 0 is "Three 1st" and 2 "One 3rd" (guess from
+  the amounts). Choice saved at P+0x1A54. Only the maximum is raised (the next
+  rest fills it). Effect bit 22, no timer set in the cast; 0x9002C (0x90890)
+  takes the same amounts back.
+
+### Selecting and casting (Code)
+
+- The spell to cast is the "current item" reference P+0x1AD7 (2 bytes: list 0
+  items / 1 mage / 2 cleric, index). Spells are shown as a view of the inventory
+  list (ingame-ui.md: "BrowseItemType <= JRG_VIEWING_PRIEST" 0x35ABD) and can sit
+  in the hot keys P+0x1AC1. The S button of the main screen opens the statistics
+  screen (mode 5, ingame-ui.md), which has the spell tables. The UI code that puts
+  a spell into P+0x1AD7 was not traced.
+- Fire key / button: game.c 0x44300 calls 0x41A4D (may fire?) and then 0x56A0D
+  (fire) for a spell (type 17) or a weapon.
+- 0x41A4D for a spell from a spell list (game.c):
+  1. Cast timer 0x153EBC is 0x3FFFFFFF (no cast running): 0x356E0(spell) checks the
+     class and slots (0x35683: mage bit: 0x35A2B and P+0x2C+level-1 > 0; cleric
+     bit: 0x35A09 and P+0x3C+level-1 > 0). On failure: sound 3000 (0xBB8) and one
+     of "You are not a spell caster." (0x359F4), "You are not a Mage.",
+     "You are not a Cleric.", "Spell is of too high a level." (spell level - 1 >
+     class level, 0x3598C / 0x359C0), "Out of spell points for this spell level.".
+  2. Mage spell with armor worn whose Armor_info+0x10 flag 2 (`MAGIC_OK`) is clear:
+     "You cannot cast a spell while wearing %s.". Player object +0x1AE bit 0x80
+     (set by Levitate, guess: also by climbing): "You cannot cast a spell while
+     climbing.".
+  3. Start: 0x153EBC = GameTime + `cast_time` (+0x04, integer seconds). Message
+     "Casting time: %d minutes ..." (> 60), "Casting time: %d seconds ..." (> 1) or
+     "Casting time: 1 second ...". Returns 0.
+  4. Later frames: while 0x153EBC > GameTime returns 0. Then 0x153EBC =
+     0x3FFFFFFF and the spell fires.
+  A spell from the item list (a scroll) skips the cast time and the slot check.
+  A cast is ended by 0x9305D ("Your spell was interrupted!", "Your spell was
+  aborted.") when the caster takes spell damage without a save (0x911AA).
+- 0x44300 sets the player's requested animation +0x176 = 6 or 7 (fire button 1) or
+  11 or 12 (fire button 2), by the flag 0x13B6A3, unless the animation +0x16E is
+  already 6, 7, 11 or 12. A weapon attack clears bits of P+0xA0 (mask 0xEC) and
+  ends Invisibility (bit 17: timer 0xC8 = 0).
+- 0x56A0D(hand) (laser.c, fire): spell path (also a weapon with `PC_spell`, a
+  wand):
+  - Missile template: byte 4 of the entry: flag 4 -> weapon 3, 8 -> 4, 0x10 -> 5,
+    else weapon 2 ("LASER: id = %d"). A spell from the item list sets Spell_info
+    flag 8 (`cast_with_scroll`, "LASER: scroll spell"), from a spell list clears it.
+  - `self_cast_ok` (+0x37 bit 0) spells are always cast on the player himself:
+    Haste stores the caster level in the counter +0x49 (record +0x4B), Prayer
+    sets the flag word +0x36 to 0x102 (area + self). Then 0x90CEF (area flag) or
+    0x8CFFF(spell, player, player), 0x8CAD3(spell, player) (cast light/vclip),
+    player +0x176 = 10, P+0x57 = GameTime, 0xB7084 (use up).
+  - Other spells: a fire rate loop with the per hand times 0x215D74[hand],
+    0x215D7C[hand] and Weapon_info[template].+0x64 (fire wait of weapon 2..5), each
+    shot 0x56FF6(player, spell, template, hand); then 0xB7084, +0x176 = 10.
+- 0xB7084(ref) (use up one): spell entry: byte 0x0B -= 1; at 0 it is set back to
+  `sub_use_count` and 0x35573 takes one slot of the spell level (mage P+0x2C+lvl-1
+  or cleric P+0x3C+lvl-1, not below 0). P+0x1AB7 keeps the last spell reference.
+  Item list entry: word +8 (charges, -1 none) -= 1, at 0 the entry is removed
+  (0xB6F01).
+
+### Missile: 0x56FF6(caster, spell, template weapon 2..5, hand) (Code)
+
+Copies the spell into Weapon_info[template] (record offsets of Spell_info, base
+0x1B5674): W+0x3C = spell number (the impact code casts it), sounds +0x10..+0x1A
+to W+0x20..0x2C, vclips +0x1C..+0x24 to W+1..5, render type +0x3A to W+0, model
++0x32 to W+0x18, `weapon_vclip` +0x34 to W+0x14, `to_hit_bonus` +0x30 to W+0x36,
+`speed` +0x79 to the 5 speeds W+0x78, `weapon_vclip_size` +0x68 to W+0x6C,
+`vclip_trail` to W+0xD5, `combustion` to W+0xCF, `player_light` +0x5C to W+0xA0,
+dice to W+0x0D..0x10, homing (flag 0x80) to W+0x0B, lifetime W+0xA8 = 30.0, flags
+W+0x3E = 0x10. No reader of `range` (+0x06) was found besides debug prints.
+Per spell (missile count n, default 1; L = caster level):
+
+| Spell | Rule |
+|---|---|
+| 4 Burning Hands | n = 6 |
+| 6 Color Spray | vclip 175 + rand % 6; n = 1d6 |
+| 7 Confusion | n = 1d4 + L |
+| 22, 52 Hold Person | counter +0x49 = 1d4 |
+| 23 Hold Undead | counter = 1d3, HD pool +0x76 = L |
+| 32 Lightning Bolt | lifetime 2.0, W+0x0A = 1 |
+| 33 Magic Missile | n = min(L / 2 + 1, 5); homing: finds a target (0x55D91) and fires n homing missiles at it (0x56F3A); for the player homing only if 0x35A2B() (is a mage) |
+| 34 Magical Stone | n = 1d3 |
+| 36 Melf's Acid Arrow | lifetime = (L / 3 + 1) * 60.0 |
+| 37 Minute Meteors | n = min(L, 5) |
+| 46 Sleep | HD pool +0x49 = 2 * (rand % 7) + 4 (4..16) |
+| 47 Slow | counter +0x49 = L |
+
+Then 0x56EB0(caster, spell, 0, n, hand) creates the n missiles. On impact the
+collision code (collide.c, ai.md: 0x27D82 and others) calls 0x8CFFF (target
+spell) or 0x90CEF (area spell) with W+0x3C.
+
+## B2. The spell effect function 0x8CFFF (spells.c)
+
+Correction of objects.md: 0x8ED49 is not a function. It is an instruction inside
+the Jump case of 0x8CFFF. All effects are set by 0x8CFFF (0x8CFFF to 0x9002B).
+
+### Arguments and globals (Code 0x8CFFF to 0x8D28F)
+
+`apply_spell(int spell /*eax*/, object *target /*edx*/, object *caster /*ebx*/)`.
+
+- Returns at once if spell < 0 or >= `N_spell_types` (0x13A853), if target or
+  caster is NULL, or if either is dead (`flags & 7`, object +0x0D).
+- Unless Spell_info+0x37 bit 3 is set (no reader sets it), the target must be the
+  player (type 4) or a creature (type 2); a creature with control type
+  (+0x0A) not 1 prints "SPELLS: not a critter!!!!!" and returns.
+- Text buffers for the messages: target name at 0x3A6584 ("You" / "a trap" /
+  creature name 0xA7F03 / object name 0xB8C0F), verb 0x3A6514 ("were"/"was");
+  caster name 0x3A6548, verbs 0x3A6528 ("are"), 0x3A6500 ("have"/"has").
+- Target level 0x3A6544: the player: 0x91EC1(spell); a creature: 0xAE3BB(target).
+  For a creature target that is not the caster: 0xA6505(target,1) if its AI mode
+  +0x1CC < 2, then 0x12AD9(target,5) (wake it and make it react, guess).
+- Caster level 0x3A6540: the player: 0x91EC1(spell); a trap (type 13):
+  2 * (max(class1_level, class2_level of the player) + 1) (P+0xAD, P+0xAF are
+  read as fix, Code 0x8D23F); a creature: 0xAE3BB(caster).
+- 0x3A65C4 = 0x8CEAE(target, caster): 1 if target or caster is the player; else
+  1 if the caster segment is in the visible list (0x38C060) and not 0x16636(),
+  and d20 <= wisdom - 2 (P+0xBB). When set, the message goes to the HUD (0x347A2).
+- `switch (spell)` jump table at 0x8CF1F, 56 entries (0 to 0x37). Default:
+  "Invalid spell id = %d".
+- Common end 0x8FFE5: if Spell_info `cast_on_top` (+0x7B) >= 0, 0x8CCED(spell,
+  target, duration 0x3A653C) attaches that vclip to the target for the duration.
+  Then the player: 0xAFB55 (recompute armor class and attributes); a creature:
+  0x10ADF. The early return 0x90024 (effect already active, save made, etc.)
+  skips this.
+
+### 0x91EC1: caster level of the player for a spell (Code)
+
+Class bytes: P+0x97 class 1, P+0x98 class 2 (-1 none). Level words P+0xAD and
+P+0xAF (0 based, read as fix >> 16). If class1 == 0 (cleric) the cleric level is
+class1_level, else the mage level is class1_level; the same for class 2 (P+0x98).
+Spell class bits (Spell_info +0x00): both cleric and mage: max(cleric, mage) + 1;
+cleric only: cleric level + 1; else mage level + 1. So a level 1 character casts
+at level 1. A thief/mage casts mage spells with the mage level (class 2).
+
+### Durations
+
+All timers are absolute values of `GameTime` (fix, 0x13CD30): timer = GameTime +
+duration. 60.0 is one AD&D round: the messages divide by 60 ("minutes") or 3600
+("hours"). L is the caster level 0x3A6540. Durations multiply by 15 << 18 = 60.0 per
+unit (Code: the pattern `x*16 - x` then `<< 0x12`).
+For the player as the target of Fear, Scare, Hold Person and the stun of Color
+Spray the duration is divided by (wisdom / 2): `fixdiv(d, wisdom << 15)` with
+wisdom P+0xBB (Code 0x8DAA2, 0x8E338, 0x8E8FA, 0x8F57F).
+
+### Damage: 0x911AA(target, caster, spell, level) and 0x91BC3 (Code)
+
+0x91BC3(caster, target, spell, level) rolls (each die `rand() % sides + 1`):
+
+| Part | count | sides | per level |
+|---|---|---|---|
+| normal | +0x3B `#damage_dice` | +0x3A `damage_dice` | +0x3C `damage_level` * level |
+| fire | +0x3E | +0x3D | +0x3F |
+| acid | +0x44 | +0x43 | +0x45 |
+| electric | +0x47 | +0x46 | +0x48 |
+
+Cold (+0x40..0x42) is never rolled. `damage_bonus` is not added here. A part is
+rolled if its sides or count byte is not 0. Open problem: 0 sides with count > 0
+divides by zero (`rand() % 0`, plain `idiv` at 0x91C8E): Fireball and Lightning Bolt
+have `fire_damage_dice=0` / `elec_damage_dice=0` and Melf's Acid Arrow has no
+`acid_damage_dice` in all 92 tables, and their cases set the count to 1 or more.
+As read, these spells would fault on a hit. Check in the game (DOSBox) before
+porting; the intended damage is probably only the per level part (6 L, 4 L). A fire part sets target
++0x15E bit 0.
+Creature target: Robot_info+0x98 bit 1 (electricity_immune): electric 0; bit 3
+(fire_immune): fire 0; else bit 4: fire / 2. Effect bit 10 (Resist Fire / Flame
+Walk): fire / 2. Effect bit 9 (Protection From Fire): fire is taken from the pool
++0x82 (s16); only the rest goes through. A fire or acid part > 0 clears bit 24
+(regeneration). Debug print "Damage: %d ( Normal %d Fire %d Acid %d Electric %d )".
+
+0x911AA:
+- Creature: plays Spell_info `monster_hit_sound` (+0x10, read as the high word of the
+  dword at +0x0E, Code 0x91354), rolls,
+  then saving throw 0xAE596(target, 4): made gives damage / 2, else 0x9305D(target,
+  1) (interrupts its spell, guess). shields -= damage. If Armor (bit 0) is active,
+  the Armor pool +0x90 is reduced too (to 0 at < 1.0). Message to the player
+  "You cast %s on %s for %d damage.". Death: `monster_kill_sound` (+0x14), the creature
+  becomes dying (+0x170 = 9), its effect word +0x88 and +0x15E cleared, it drops
+  its item (0x3C4BD) when +0x7E > 0.
+- Player: no damage while Invulnerability (bit 18). Same roll and save (half).
+  Messages "You took %d damage." (self or no caster), "%s cast Cause Serious
+  Wounds on you for %d damage." (spell 0 from a creature), "A trap hit you with %s
+  for %d damage.", "%s cast %s on you for %d damage.". Hurt sound P+0x1B0B when
+  damage > max_hp / 16, else P+0x1B0F (Code 0x918B4). Screen flash. At hp < 0 the
+  player dies (P+0x73 = killer object).
+- Misc object (type 11): 0x3CA7E. Dressing (18): shields -= Dressing_info+0x0C
+  * `damage_percent`, breaks below 1.0.
+
+### Area: 0x90CEF(spell, source object, caster) (Code)
+
+Caster level as above. Radius = `radius` (+0x08) + level * `level_radius` (+0x0C),
+integer units. For each object 0 to Highest_object_index (0x13D320): alive, its
+segment visible from the source segment by the brain bit table 0x9810D (ai.md),
+player or creature (or any type if +0x37 bit 3), distance (0xD705C) <= radius:
+0x8CFFF(spell, obj, caster). The caster is included (the cases exclude self where
+they need to).
+Fireball (16) extra, for the player and creatures within 6.0: if not blind and the
+save 4 fails: blind for 1..1800 s (rand % 1800 + 1, timer 0x98, bit 2; player
+"You lost your eyesight!"); then if not deaf and the save 2 (petrification/polymorph) fails: deaf
+(bit 4, no timer, the player's digital volume becomes rand % 0x1800 via 0x2DF7E,
+"You lost your hearing!").
+A source of type weapon (missile) is deleted (0x6A3CC).
+Light spells 8, 9, 30, 31: create a light object (0x68AC8 type 13) at the source
+point with flags +0x0D |= 0xC0, +0x1AE |= 2, +0x144 |= 1 (dispellable); lifetime
++0x84: 30: 10 L minutes, 31: 10 (L+6) minutes, 8 and 9: 0x3FFFFFFF; light +0x140:
+20.0 (30, 31), 60.0 (8, 9).
+
+## B3. Each spell (Code: the cases of 0x8CFFF, jump table 0x8CF1F)
+
+Names, class and level from `YPINN.BIN` (the 92 level tables have the same
+`$SPELL` lines for the spells checked). L = caster level (0x3A6540), T = target
+level (0x3A6544; a creature: Robot_info max hp / 8, 1..18, 0xAE3BB). "min" =
+duration in units of 60.0 GameTime seconds (one AD&D round). Save = 0xAE596(target,
+category), section 5. Every timed effect returns at once if its bit is already set.
+"Area" = `type=AREA` (flag +0x36 bit 0): the impact calls 0x90CEF, which calls the
+case for every player or creature in the radius.
+
+| # | Name | Class, lvl | Kind | What the case does | Case address |
+|---|---|---|---|---|---|
+| 0 | Abjure | C4 | target | Creature caster (not self): damage roll 0x911AA with level 1 (the "Cause Serious Wounds" message; the line has no dice, guess: the roll is 0). Else only an `extraplanar` creature (Robot_info+0x98 bit 2): d20 >= clamp(11 - L + T, 1, 20) or "%s was not affected by abjure."; then d100 >= 2T + 70: the creature dies (0x29A9C with its full shields), else hit sound and 0xA9F58 (sent away, guess) | 0x8D297 |
+| 1 | Aid | C2 | target | +1d8 hit points (fix, P+0x53 for the player); sets Bless (bit 1) with timer 0x94 = (L+1) min; message "%d aid hit points ... for %d minutes". The extra hit points go when Bless ends (hp cut to max) | 0x8D3F7 |
+| 2 | Armor | M1 | self | bit 0, pool +0x90 = (8 + L) hit points (fix). No timer: ends when the pool reaches 0 (each hit lowers it). Effect: AC at most 6 (0xB05D9 player, 0x2ADF9 creature) | 0x8D4E7 |
+| 3 | Bless | C1 | target | bit 1, timer 0x94 = 360 s fixed (0x1680000, 6 min). Effect +1 to hit (0x2AD27) | 0x8D58E |
+| 4 | Burning Hands | M1 | 6 missiles (area line) | not self: 0x911AA(target, caster, 4, L): fire 1d3 + 2 per level (`fire_damage_dice=3`, count 1, `fire_damage_level=2`) | 0x8D614 |
+| 5 | Chill Touch | M1 | self | caster only (target == caster). bit 3, timer 0x9C = (L+3) min; object +0x16A = 0x13A873. Effect in melee (0x29E3D): the target saves (4) or: undead: Fear (bit 8) for (1d4 + L) min; else +1d4 damage. Line has `cold_damage_dice=4` (not used, cold is never rolled) | 0x8D62F |
+| 6 | Color Spray | M1 | 1d6 missiles, vclip 175..180 | not self, not `blind` creatures, not already blinded. If T > L or T >= 6: save 4 or nothing. T <= L: unconscious = Sleep bit 26, timer 0xE8 = (2 + rand % 7) min, for a creature AI mode 7 (+0x142), for the player also blind (bit 2) with the same timer, screen shake, controls cleared. T <= L + 2: blind (bit 2) 1d4 min. Else: stunned = Hold bit 14 for 60 s (player: / (wisdom/2), and Confusion bit 5 with +0x1B0 timer); not with Free Action or Hold | 0x8D6D4 |
+| 7 | Confusion | M4 | 1d4+L missiles | save 4. bit 5, timer 0xA0 = (L+2) min; player: +0x1B0 = 0x3FFFFFFF and +0x1AE bit 0x10 | 0x8DB82 |
+| 8 | Continual Light (Cleric) | C3 | area | creature or player in radius, not self, not blind, not `blind` type: save 4 or blind (bit 2) forever (0x3FFFFFFF). Adds `player_light` to +0x1A6, 0x8CAD3. `light_sensitive_2` creature: also damage 0x911AA. Area code makes a light object, light 60.0, no end | 0x8DC1D |
+| 9 | Continual Light (Mage) | M2 | area | same as 8 | 0x8DC1D |
+| 10 | Cure Light Wounds | C1 | self/target | not undead or extraplanar creatures (mask 0x2004): +1d8 hp, at most max hp (player P+0xA1, creature Robot_info+0x78) | 0x8DE4B |
+| 11 | Cure Serious Wounds | C4 | self/target | as 10 with +(rand % 15 + 3) (3..17) | 0x8DF37 |
+| 12 | Detect Magic (mage) | M1 | self | bit 6, timer 0xA4 = 2L min. Read by the renderer (0x670DB, 0x75726; guess: magic items shown) | 0x8E019 |
+| 13 | Dispel Magic (mage) | M3 | target | by object type: player: 0x9002C(obj, 1) (all effects end) and 0x396B2(1); creature: 0x9002C(obj, 1); a missile (type 5) of another spell whose Weapon_info has `PC_spell` and flag `magic`: save 4 or destroyed; misc item named "*otion" not plot: d20 >= clamp(23 - L, 2, 20) destroys it (sound 2702); dressing with `magic`: save 5 or 0xA6ACB(obj, caster, 10.0) (break); other object with +0x144 bit 0 (spell lights): save 4 or destroyed. No save for creatures and the player | 0x8E0B5 |
+| 14 | Fear | M4 | target | not self, not `no_scare`/`undead`, save 4. bit 8, timer 0xAC = L min (player / (wisdom/2)). d100 <= 65 - 5T: drops the weapon (player 0xAE837, creature 0x3C4BD). Player: also Hold (bit 14) for the same time and the view is moved to another object (0x13407, 0x13D628; not decoded) | 0x8E2D8 |
+| 15 | Feather Fall | M1 | self/target | bit 7, timer 0xA8 = L min. Effect: no gravity flag in physics (0x6C77A), fall speed limited to -15.0 (0x9DEDD) | 0x8E464 |
+| 16 | Fireball | M3 | missile, impact area radius 10 | sets count `#fire_damage_dice` = min(L, 10), then 0x911AA: fire count d(`fire_damage_dice`=0, see section 2) + 6 * L (`fire_damage_level=6`); save 4 for half. Area extra: blind and deaf within 6.0 (section 2) | 0x8E55C |
+| 17 | Flaming Sphere | M2 | missile | player/creature: same path as Fireball without the count change (0x911AA, the line has no dice: guess 0 damage); dressing: as 37 | 0x8E5B1 |
+| 18 | Flame Walk | C3 | self/target | bit 10, timer 0xB0 = (L+1) min. Effect: fire damage / 2 (0x91DD0 and collide.c 0x2609D, 0x26399) | 0x8E5D1 |
+| 19 | Fly | M3 | self | bit 11, timer 0xB4 = 10 (1d6 + L) min. Effect: flying physics (0x6C77A), fly movement (0x9DDA4) | 0x8E665 |
+| 20 | Free Action | C4 | self only | bit 12, ends Hold (timer 0xC0 = 0), timer 0xB8 = 10 L min. Effect: no slow down (0x9DDB4, 0x9F39B) | 0x8E6F2 |
+| 21 | Haste | M3 | self | needs counter +0x49 > 0 (set to L at the self cast), -1. Ends Slow (timer 0xEC = 0). bit 13, timer 0xBC = (L+3) min. Effect: move speed x2 (0x9DE13), attack delay / 2 (0x41EC3) | 0x8E79C |
+| 22 | Hold Person | M3 | missile | not self, not held, no Free Action, not undead, save 4, only `humanoid` creatures or the player, counter +0x49 > 0 (1d4 at launch), -1. bit 14, timer 0xC0 = 2L min (player / (wisdom/2)), +0x1AE bit 0x20, 0x6C662 (stop). Message in seconds below 60 | 0x8E85A |
+| 23 | Hold Undead | M3 | missile | not self, not held; T > 2: save 4; only `undead` creatures with T <= L; counter > 0, -1; HD pool +0x76 -= T. bit 14, timer 0xC0 = (1d4 + L) min | 0x8EA21 |
+| 24 | Improved Invisibility | M4 | self | bit 16, timer 0xC8 = (L+4) min; creature +0x147 = 1. Not ended by attacks | 0x8EB53 |
+| 25 | Infravision | M3 | self | not for a player of a race other than human (P+0x9A != 0) or an `infravision` creature. bit 15, timer 0xC4 = (6L + 12) * 10 min (2 h + 1 h per level); message in hours | 0x8EBE8 |
+| 26 | Invisibility | M2 | self | not with bit 16 or 17. bit 17, timer 0xC8 = 0x3FFFFFFF (no end); creature +0x147 = 1. Ended by a weapon attack (0x4440E) and by casting a spell missile (0x5705B) | 0x8ECB4 |
+| 27 | Jump | M1 | self | bit 19, timer 0xD0 = (1d3 + L) min. Effect: jump speed 2.0 instead of 1.5 (0x9EA62) | 0x8ED20 |
+| 28 | Knock | M2 | target | the case does nothing (jump table entry = 0x8FFE5, the common end). Guess: doors are opened by the door code that the missile hits | 0x8FFE5 |
+| 29 | Levitate | M2 | self/target | bit 21, timer 0xD8 = 10 L min; +0x1AE bit 0x80 set, bit 0x20 cleared. Effect: no gravity, vertical speed 0 and / 4 (0x9DEAE); "cannot cast while climbing" while +0x1AE bit 0x80 | 0x8EDB2 |
+| 30 | Light (Mage) | M1 | area | as 8 but blind for 10 L min; area light object 20.0 for 10 L min | 0x8DC1D |
+| 31 | Light (Cleric) | C1 | area | as 8 but blind for 10 (L + 6) min; light object 10 (L+6) min | 0x8DC1D |
+| 32 | Lightning Bolt | M3 | missile, lifetime 2.0 | count `#elec_damage_dice` = min(L, 10), 0x911AA: electric count d(`elec_damage_dice`=0) + 6 L; `electricity_immune` creatures 0. A dressing whose Dressing_info flags (+0x04) bit 2 (0x04) is clear: save 6 or 0xA6ACB(obj, caster, 10.0) | 0x8EE76 |
+| 33 | Magic Missile | M1 | min(L/2+1, 5) homing missiles | not self, not Shield (bit 25): 0x911AA(target, caster, 33, 1): 1d4 + 1 (normal dice 4, count 1, `damage_level` 0? The line has `damage_bonus=1`, which 0x91BC3 does not add; guess: 1d4) | 0x8EED5 |
+| 34 | Magical Stone | C1 | 1d3 missiles | not self: count = 2 against `undead`, else 1; 0x911AA: count d4 | 0x8EEFE |
+| 35 | Magical Vestment | C3 | self | bit 31, timer 0xF8 = 5 L min. Effect: AC at most max(5 - (L-5)/3, 1) (0xB0606, 0x2ADAF) | 0x8EF49 |
+| 36 | Melf's Acid Arrow | M2 | missile, lifetime (L/3+1) min | not self: `#acid_damage_dice` = 2 (L/3) + 2, then 0x911AA with level L: acid count d(`acid_damage_dice`, not in the line, so 0 sides: the same division problem as Fireball) + 4 L (`acid_damage_level=4`) | 0x8EFE0 |
+| 37 | Melf's Minute Meteors | M3 | min(L,5) missiles | player/creature: 0x911AA: 1d4 (+0 per level); a dressing whose Dressing_info flags bit 2 (0x04) is clear: save 5 or 0xA6ACB(obj, caster, 10.0) | 0x8F021 |
+| 38 | Prayer | C3 | self area (flag set to 0x102 at the cast) | the caster, and others whose +0x1B0 bit 0x200 (`not hostile`, objects.md) is clear: Bless bit 1, timer 0x94 = L min | 0x8F078 |
+| 39 | Protection From Evil (mage) | M1 | self | bit 23, timer 0xE0 = 2L min. Effect: attacks of `extraplanar` creatures always miss, other creatures -2 to hit (0x2AD36); attacking an extraplanar creature ends it (0x2AD70) | 0x8F116 |
+| 40 | Protection From Fire | C3 | self | bit 9, pool +0x82 += 12 L hit points. No timer: ends when the pool < 1 (0x90489) | 0x8F1B2 |
+| 41 | Rary's Mnemonic Enhancer | M4 | self | bit 22, the player gets extra mage slots (section 1). No timer: ends only by Dispel (0x9002C force) | 0x8F21D |
+| 42 | Resist Cold (name in the table) | C2 | self | The code is Cure Blindness or Deafness: needs bit 2 or 4; ends blindness (timer 0x98 = 0, the timer code clears bit 2) and deafness (bit 4 cleared, the player's volume set back from 0x13BFEB). Messages "%s %s no longer blind.", "... no longer deaf.", "Cure Blindness or Deafness cast on %s by %s." | 0x8F2FA |
+| 43 | Resist Fire | C2 | self | bit 10, timer 0xB0 = L min (same bit as 18) | 0x8F3CD |
+| 44 | Scare | M2 | missile | not self, T <= 6, not Fear, a creature not of the caster type (creature vs creature) and not `no_scare`/`undead`/`extraplanar`. Save 4 only for: player elf (race 2) or half-elf (5) or cleric (0x35A09); creature with Robot_info+0xD9 bit 3 or a cleric level (+0xE3). Fear bit 8, timer 0xAC = (1d4 + L) min (player / (wisdom/2)); 50% drops the weapon; player as 14 | 0x8F467 |
+| 45 | Shield | M1 | self | bit 25, timer 0xE4 = 5 L min. Effect: AC at most 3 (0xB0659, 0x2ADE9), blocks Magic Missile | 0x8F6AE |
+| 46 | Sleep | M1 | missile, HD pool 4..16 | not self, not asleep, not `no_sleep`/`undead`, T <= 3. Player elf: d10 <= 9 immune; half-elf: d10 <= 3 immune; creature with +0xD9 bit 3: d10 <= 9 immune. Cost: creature max hp / 4 (Robot_info+0x78 >> 2), player 2 T; pool +0x49 must be >= cost, pool -= cost. bit 26, timer 0xE8 = 5 L min; +0x1AE bit 0x20, +0xF8 = 0; creature AI mode 7; player: blind too, +0x170 = 9, controls cleared. A melee hit on a sleeper wakes it (0x2A839) | 0x8F766 |
+| 47 | Slow | M3 | missile, area radius 80 | not self, not slowed, counter > 0 (L at launch), save 4. Ends Haste (timer 0xBC = 0). bit 27, timer 0xEC = (L+3) min, counter -1. Player: the model animation time (Polygon_model+0xFC) doubled. Effect: AC +4 (max 10), -4 to hit, move speed / 2 | 0x8FAD8 |
+| 48 | Spider Climb | M1 | self | bit 28, timer 0xF0 = (L+3) min. End: P+0xA0 bit 0x20 cleared, +0x1AE bit 0x80 moved to 0x20 | 0x8FBEE |
+| 49 | Stone Skin | M4 | self | Writes +0x88 = 0x20000000: all other effect bits are cleared (bug or design). Count +0x80 = 1d4 + L/2 attacks. Each melee hit on the target takes one and does no damage (0x29DF9, 0x2AE44). Ends at count 0 | 0x8FC7A |
+| 50 | Strength | M2 | self | player only for the gain: warrior (0x35A6F) 1d8, at 18 the rest goes to the percent in steps of 10 (at most 100, then 0); not when 18/00 already; thief (0x35A4D) 1d6, cleric (0x35A09) 1d6, else (mage) 1d4, at most 18. Gains kept at P+0x1A55, P+0x1A56 for the end. bit 30, timer 0xF4 = L hours (3600 L s). Effect +1 to hit (0x2ACBA) | 0x8FCFA |
+| 51 | "Burning Hands" (cold, `ice.bbm`, in the table) | M1 | self | The code is Find Traps: bit 20, timer 0xD4 = 1800 s (30 min). Effect: Find/Remove Traps = 100 (0xB032F) and 0xB4040 each frame (game.c 0x43901, thiefpts.c) | 0x8E4F6 |
+| 52 | Hold Person (cleric) | C2 | missile | as 22 (the line has `cast_on_top=130`) | 0x8E85A |
+| 53 | Protection From Evil (cleric) | C1 | self | as 39 with timer 3L min | 0x8F116 |
+| 54 | Detect Magic (cleric) | C1 | self | as 12 with timer 600 s (10 min) | 0x8E019 |
+| 55 | Dispel Magic (cleric) | C3 | target | as 13 | 0x8E0B5 |
+
+Missile data (`weapon_vclip`, `speed`, size) comes from the line through the copy
+in 0x56FF6 (section 1). `speed` is not in any `$SPELL` line of YPINN.BIN, so the
+default 100.0 (0x640000) is used for all. `range` and `level_range` are stored but
+no reader was found. `level_radius` is read by 0x90CEF; no line sets it.
+
+Spell number 0 from a creature caster is reported as "Cause Serious Wounds"
+(0x91987). Creature casters (0x92D99, ai.md) use the same 0x8CFFF / 0x90CEF.
+
+## B4. Duration effects: 0x8CFFF sets, 0x9002C ends (Code)
+
+Units: every timer holds an absolute `GameTime` (0x13CD30, fix seconds, the
+Descent game clock). Set: timer = GameTime + duration. 0x3FFFFFFF means "no end".
+So the timers count time, not frames.
+
+0x9002C(object, force): returns at once if +0x88 == 0 and +0x1AE bit 0x10 is
+clear. For each bit: when force != 0, or the timer is not 0x3FFFFFFF and
+timer < GameTime: clear the bit, set +0x15F bit 3, run the end action, and for the
+player print "NAME expired." on the HUD. Callers: every frame for the player
+(game.c 0x438BD in the frame function 0x435A6, and 0x43A4A), every frame for each
+creature (ai.md, 0x14386), with force = 1 from Dispel Magic (0x8E0F2, 0x8E10D) and
+the item use code (0x38AFD).
+
+Corrected bit list (replaces objects.md where it differs):
+
+| Bit | Effect | Timer | End rule and action (0x9002C) | Read by (effect while set) |
+|---|---|---|---|---|
+| 0 | Armor | none (+0x90 is a pool) | pool +0x90 <= 0; player 0xAFB55 | AC <= 6 (0xB05D9, 0x2ADF9); damage lowers the pool (0x29F3E, 0x913AF) |
+| 1 | Bless (also Aid, Prayer) | 0x94 | hp cut to max (removes Aid hp) | +1 to hit (0x2AD27) |
+| 2 | Blinded | 0x98 | light +0x1A6 -= Light (Cleric) `player_light`; player screen values restored | 0x10DA1, 0x12C1E, 0x13D0B ... (AI sight, guess) |
+| 3 | Chill Touch | 0x9C | +0x16A = -1 | melee extra 1d4 or Fear on undead (0x29E3D) |
+| 4 | Deaf (Fireball) | none | only by spell 42 | 0x13D9B, 0x161E2, 0x58B82 (hearing, guess) |
+| 5 | Confusion | 0xA0 | player: +0x1B0 = 0, +0x1AE bit 0x10 off; creature: hostile again (+0x1B0) and 0x10ADF | 0x10BC4 (AI) |
+| 6 | Detect Magic | 0xA4 | | 0x670DB, 0x75726 (render) |
+| 7 | Feather Fall | 0xA8 | no message | physics (0x6C77A), fall speed >= -15.0 (0x9DEDD) |
+| 8 | Fear | 0xAC | player: view object restored (0x13D628); creature hostile again | 0x10D32, 0x158C6, 0x59DB3 (AI, talk) |
+| 9 | Protection From Fire | none (+0x82 pool) | pool < 1 | fire damage taken from the pool (0x91DE6, 0x2605D, 0x26359, 0x2B3FE) |
+| 10 | Resist Fire / Flame Walk | 0xB0 | | fire / 2 (0x91DD0, 0x2609D, 0x26399, 0x26629, 0x2B3E0) |
+| 11 | Fly | 0xB4 | | flying physics and movement |
+| 12 | Free Action | 0xB8 | | no slow down (0x9DDB4, 0x9F39B) |
+| 13 | Haste | 0xBC | | speed x2 (0x9DE13), attack delay / 2 (0x41EC3), AI 0x119AD, 0x14173 |
+| 14 | Hold (Hold Person/Undead, Color Spray stun, Fear on the player) | 0xC0 | creature +0x1DB = GameTime, 0x10ADF | no move (0x9DC84 mask 0x4004000), AI stops (ai.md) |
+| 15 | Infravision | 0xC4 | | render (guess) |
+| 16 | Improved Invisibility | 0xC8 (shared) | bits 16 and 17 end together; creature +0x147 = 0; player sound 161 | AC/skills 0xB0310: P+0xD7 -= 15 |
+| 17 | Invisibility | 0xC8 | as 16 | ended by attacking (0x4440E, 0x5705B) |
+| 18 | Invulnerability | 0xCC | sound 163 | no spell damage (0x9178B), AC - 2 (0xB0707), 0x2A270 |
+| 19 | Jump | 0xD0 | | jump speed 2.0 (0x9EA62) |
+| 20 | Find Traps (spell 51) | 0xD4 | | F/R Traps 100 (0xB032F), trap search each frame 0xB4040 (0x43901) |
+| 21 | Levitate | 0xD8 | | physics, vertical speed (0x9DEAE); cleared by 0x546D0 |
+| 22 | Rary's Mnemonic Enhancer | none | only by force; extra slots taken back | |
+| 23 | Protection From Evil | 0xE0 | 0xAFB55 | 0x2AD36, 0x2AD70 |
+| 24 | Regeneration (creatures) | none | not handled; cleared by fire or acid damage (0x91E3D) | ai.md revive code |
+| 25 | Shield | 0xE4 | 0xAFB55 | AC <= 3, no Magic Missile |
+| 26 | Sleep / unconscious | 0xE8 | also clears bit 2; player +0x170 = 1, controls back; creature: AI wake (0xA6505) | auto hit and wake (0x2A839), no move |
+| 27 | Slow | 0xEC | 0xAFB55 | AC + 4, -4 to hit, speed / 2 |
+| 28 | Spider Climb | 0xF0 | P+0xA0 bit 0x20 off; +0x1AE 0x80 -> 0x20 | climbing (guess, P+0xA0) |
+| 29 | Stoneskin | none (+0x80 count) | count <= 0 | melee hit absorbed (0x29DF9, 0x2AE44) |
+| 30 | Strength | 0xF4 | strength and percent gains taken back | +1 to hit (0x2ACBA) |
+| 31 | Magical Vestment | 0xF8 | 0xAFB55 | AC limit (0xB0606, 0x2ADAF) |
+
+Also: the timer +0x1B0 of the player (Confusion) is checked at the end of
+0x9002C (clears +0x1AE bit 0x10).
+
+Items that give effects (worn): 0xAFB55 keeps the bits that the worn items give
+in 0x1458AC and, when an item is taken off, ends the matching effect with
+0xB0A98(timer address, bit): item bit 0 -> Chill Touch (bit 3), 1 -> Resist
+Fire (10), 3 -> Feather Fall (7), 4 -> Fly (11), 5 -> Free Action (12), 6 ->
+Infravision (15, not for non-human races), 7 -> Jump (19), 8 -> Detect Magic (6),
+9 -> Haste (13), 11 -> Levitate (21), 12 -> Improved Invisibility (16), 13 ->
+Invisibility (17), 10 -> Shield (25), 14 -> Protection From Evil (23).
+
+Armor class (0xAFB55, player): AC = 10 + items; Armor: min(AC, 6); Magical
+Vestment: min(AC, max(5 - (L - 5) / 3, 1)) with L = 0x91EC1(35); Shield:
+min(AC, 3); Slow: AC + 4; then the dexterity table 0x14019A; Invulnerability:
+AC - 2; limit -10 to 10.
+
+To hit (collide.c 0x2A849, d20 roll in 0x1B7AA4, attacker ebp, target ecx):
+attacker Strength +1, Bless +1, attacker Slow -4; target with Protection From
+Evil: an `extraplanar` attacker rolls 0, other creatures -2; creature target AC
+limits by Vestment, Shield (3), Armor (6) and +4 for Slow (max 10); a sleeping
+target is hit at once and wakes (0x2A839).
+
+## B5. Saving throws: 0xAE596(object, category) (Code)
+
+Returns 1 (saved) when d20 (`rand() % 20 + 1`) >= the save number. A debug line
+prints the result. Categories (the AD&D order of the table rows): 0
+paralyzation/poison/death, 1 rod/staff/wand, 2 petrification/polymorph, 3 breath
+weapon, 4 spell. The spell code uses 4 for all spell saves, 2 for the Fireball
+deafness, 5 and 6 for dressings.
+
+- Player: level = max(class1_level + 1, class2_level + 1) (P+0xAD, P+0xAF), at
+  most 12. Row = (level - 1) / divisor[class]; divisors (bytes 0x1456E2): cleric
+  3, mage 5, fighter 2, thief 4. Row pointer tables 0x1456D2[class] (cleric
+  0x145692, mage 0x1456C6, fighter 0x1456AE, thief 0x1456A2), each row 5 bytes.
+  Two classes: the lower (better) of the two numbers, both with the same level.
+- Creature: level = 0xAE3BB (max hp / 8, 1..18), at most 12. Cleric table if
+  Robot_info+0xE3 (cleric level) > 0, else the fighter table. `magic_resistant`
+  (Robot_info+0x98 bit 0x400): save number - level / 3.
+- Dressing (type 18): table by its `explode_sound`: 2702 -> 0x1456E6, 2218 ->
+  0x1456E8, other -> 0x1456EA, byte [category - 5] (bytes 3,2 / 3,14 / 7,9);
+  `magic` dressing: number / 2.
+- No modifiers for race, constitution, wisdom or magic items were found in this
+  function.
+
+Tables (rows by level band, columns 0..4):
+
+| Class | Rows |
+|---|---|
+| cleric (levels 1-3, 4-6, 7-9, 10-12) | 10 14 13 16 15 / 9 13 12 15 14 / 7 11 10 13 12 / 6 10 9 12 11 |
+| mage (1-5, 6-10, 11-12) | 14 11 13 15 12 / 13 9 11 13 10 / 11 7 9 11 8 |
+| fighter (1-2, 3-4, ..., 11-12) | 14 16 15 17 17 / 13 15 14 16 16 / 11 13 12 13 14 / 10 12 11 12 13 / 8 10 9 9 11 / 7 9 8 8 10 |
+| thief (1-4, 5-8, 9-12) | 13 14 12 16 15 / 12 12 11 15 13 / 11 10 10 14 11 |
+
+These are the AD&D 2nd edition saving throw tables.
+
+## B6. Usable items: 0x37A6A(index) (displays.c, Code)
+
+Called from the inventory input (0x2FCC0), the inventory browser (0x35ABD) and the
+USE button (0x360DA). Argument: index in the item list (asserts "Index >= 0",
+"Index < P.inventory_count"). The behavior is hard coded by item type and table
+line number; the `pc_spell`, `pc_spell2`, `duration`, `set_*` keywords of the
+`$OBJECT` lines are not read here (the numbers in the code differ from them, see
+"Potion of Agility" 0x53). L in this section is not used: potions do not depend on
+a level. "vclip of spell n" = 0x8CAD3(n, player), the cast light/vclip only.
+All timers are GameTime based; a new potion keeps the later of the old and the
+new end time.
+
+Weapon (type 5): only weapon line 13 when it is the current item and the
+player has none of the effect bits 0xC004124: script events (0xADB3B 0x86, 0x91;
+0xAC055 0x1FD) and if alignment P+0xE3 == 0 (Lawful Good): area spell 8
+(Continual Light), spell 20 (Free Action) and spell 53 (Protection From Evil) on
+the player. Other weapons: nothing here (a weapon with `PC_spell`, a wand, fires
+its spell through 0x56A0D, section 1).
+
+Armor (type 15): only armor line 45: area spell 8 on the player.
+
+Misc (type 16), by line number (`YPINN.BIN` names; the same in all tables):
+
+| Line | Name | Action |
+|---|---|---|
+| 0x02 | Gem of Curing | uses counter P+0x1A57 must be <= 0x8445A() ("You cannot use the Gem Of Curing at this time."); if blind: blindness cured "...And now you can see!"; else if hp < max: spell 11 (Cure Serious Wounds); counter + 1. Not used up |
+| 0x12 | Spider Piece | charges (+8) > 0: turn undead (0xADC46) as a cleric of level 2 (class2_level + 1); charges - 1. Else "Nothing happens..." |
+| 0x13 | Spider Piece | charges: whole map known (0x185FEC[] = 1); charges - 1 |
+| 0x14 | Spider Piece | charges: for each creature with Robot_info+0xD9 bit 3 that the player sees: one of three at random: save (category from edx, 0) or killed; a random spell of the list 4, 6, 7, 9, 13, 16, 22, 32, 33, 34, 36, 37, 44, 47 (table 0x2FA94) fired at it (0x56FF6, homing); save or frozen (+0x0B = 3, +0x84 = level seconds) |
+| 0x16 | Spider Piece | charges: area spell 14 (Fear) and spells 1, 35, 19, 40, 43, 18, 50 on the player |
+| 0x17 | Spider Piece | charges: the view moves to each creature in turn for 1 to 3 s (rand % 2.0 + 1.0, frames drawn with 0x435A6) |
+| 0x18 | Spider Piece | charges: script event 0x1FC, vclip of spell 41 |
+| 0x19 | Assembled Spider | charges: spells 48, 20, 21, 25 on the player, then their timers (Spider Climb, Free Action, Haste, Infravision) = 0x3FFFFFFF (permanent) |
+| 0x1A | Spider Piece | charges: hp = max, spells 1, 45, 15, 24, 35, 38, 39, 43, 49 on the player; then spell 42 (cure blind/deaf) if blind or deaf |
+| 0x48 | Potion of Agility | dexterity < 18: dexterity = 18 until GameTime + 600 s (P+0x1A9F); vclip of 21 |
+| 0x49 | Potion of Anti-Magic | if any effect or potion timer is set: 0x9002C(player, 1) (all effects end) and 0x396B2(1); vclip of 13 |
+| 0x4A | Potion of Dragon's Blood | strength < 18: strength 18 for (rand % (class1_level + 1) + 1) min (P+0x1A9B); a warrior also gets a percent rand % 100; vclip of 50 |
+| 0x4B | Potion of Extra-Healing | hp < max: + (rand % 22 + 6) (6..27), "You feel much better."; vclip of 11 |
+| 0x4C | Potion of Fire Resistance | bit 10 for 600 s; vclip of 43 |
+| 0x4D | Potion of Flying | spell 19 (Fly) on the player |
+| 0x4E | Potion of Freedom | bit 12 (Free Action) for (rand % 4 + 5) * 600 s, "You are immune to paralysis for awhile." |
+| 0x4F | Potion of Healing | hp < max: + (rand % 7 + 4) (4..10), "You feel better."; vclip of 10 |
+| 0x50 | Potion of Hill Giant Strength | strength < 19: strength 19, percent 0, for (rand % 4 + 5) * 600 s (P+0x1A97), "You have Hill Giant strength for awhile." |
+| 0x51 | Poshun uv Hil Gient Inteljuns | intelligence = rand % 3 + 5 for (rand % 4 + 5) * 600 s (P+0x1A93); then a random vclip and screen flash for each point of intelligence |
+| 0x52 | Potion of Infravision | bit 15 for (rand % 8 + 1) * 600 s; vclip of 25 |
+| 0x53 | "Potion of Agility" (second line) | Invisibility: bit 17 for (rand % 4 + 3) * 600 s; vclip of 26 |
+| 0x54 | Potion of Invulnerability | bit 18 for (rand % 16 + 5) * 60 s; screen flash; vclip of 28 |
+| 0x55 | Potion of Jumping | spell 27 (Jump) on the player |
+| 0x56 | Potion of Luck | P+0x1A58 = GameTime + 3600 s; vclips 1, 3, 38; script flag 0x4D; "You feel lucky today." (P+0x1A58 is read by the hit roll 0x2A87B: then some rolls become a natural 20, guess) |
+| 0x57 | Potion of Speed | bit 13 (Haste) for (rand % 16 + 5) * 60 s; vclip of 21 |
+| 0x58 | Potion of Toughening | if max hp < current hp (already toughened): "You don't feel so good." and a system shock roll: d100 > table 0x2FACC[constitution - 1] (25 30 35 40 45 50 55 60 65 70 75 80 85 88 90 95 97 99 99) kills the player. Else Bless bit on object 0 with timer GameTime + (rand % 6 + 7) * 600 s and shields += rand % 17 + 2, "You feel tougher." (the extra hp go when Bless ends) |
+| 0x65 | Orb of Insight | script event 0x1FE |
+| 0x66 | Scroll | 0x9DC42(word +8 of the entry): shows a scroll text (guess: the number selects the text) |
+| 0x6A | Cursed Scroll | screen shake; each with 50%: spells 7, 9, 44, 22, 16 on the player, map forgotten, and strength, dexterity, constitution, intelligence, wisdom, charisma each set to rand % value + 1; then damage rand % hp; "You no longer think that reading the scroll was such a good idea..." |
+| 0x7F | thief scroll | 0x9DC42(1) |
+
+The end of the function (0x39694) calls 0xB7084 (use up one, section 1) for the
+cases that jump there (potions, Gem not).
+
+Scrolls of spells: a spell object picked up by a character that cannot learn it
+stays in the item list; selecting it and firing casts it with flag
+`cast_with_scroll` and missile template 4, without cast time and slot, and uses
+one count (+8) per cast (sections 1). Wands: weapons with `PC_spell` (Weapon_info
++0x3A): the fire code casts that spell with template 3 (`cast_with_wand`). Their
+charges are the weapon entry count +8 (0xB7084, guess for wands: the same path).
+Rings, cloaks and other worn items: their effects are bits of the item tables
+(0x1458B8 weapons, 0x145A04 misc, armor table) applied by 0xAFB55 (section 4).
+
+## B7. Thief skills (Code)
+
+thiefpts.c (0xB4419 to 0xB5B49, main 0xB5BB9) is only the screen where a thief
+spends skill points at level up (strings "SkillIndex < NUM_SKILLS",
+"Difference >= 0", "AddArrowUp", "SubArrowDn", "ScrollImage", "%d%%", "555%%"):
+
+| Function | What it does |
+|---|---|
+| 0xB5BB9 | the screen loop (calls the others) |
+| 0xB4419, 0xB44B4, 0xB457D | read / add / subtract points of one skill (asserts SkillIndex, "Difference >= 0") |
+| 0xB46FA | move the highlight ("Hilighted < NUM_SKILLS") |
+| 0xB476D, 0xB4843, 0xB48B6, 0xB4947 | draw one skill line and its value "%d%%" |
+| 0xB4A52 | mode 0..2 ("Mode <= 2") |
+| 0xB4BFC, 0xB5AA1, 0xB5B0B | canvas and bitmap helpers |
+| 0xB4DDE, 0xB4E74, 0xB4ECF | set up the skill array and the player ("Skills != NULL", "Plr != NULL") |
+| 0xB4F32, 0xB503D, 0xB5619, 0xB587A, 0xB598F | the scroll picture, the arrows and the font |
+
+The point budget per level was not read (it is in 0xB5BB9).
+
+The skill use code is in the file before it (0xB3038 to 0xB43B9; no source name
+string found) and in the player movement code:
+
+- 0xB3038(skill, &roll): roll = `rand() % 100 + 1`; success if skill >= roll.
+  Skill index (jump table 0xB3024): 0 Hide In Shadows P+0xC7, 1 Move Silently
+  P+0xCB, 2 Open Locks P+0xD7, 3 Find/Remove Traps P+0xCF (100 while the Find
+  Traps effect, bit 20, is on), 4 Climb Walls P+0xD3 (100 while Levitate bit 21
+  or Spider Climb bit 28 is on). The values are the derived ones of 0xAFB55
+  (items, armor, limit 0..95, character.md).
+- Open Locks 0xB31BD (key action "Open locks", from 0x52737): at most once per 0.5
+  s of the day clock P+0x83; skill 0: a message. Looks for a wall within 20.0
+  (0xB30FD). A locked door (wall type 2, flag 8) that can be picked (door flag
+  +0x15 bit 0, else a message) and that the thief has not failed at this level
+  (+0x17 == thief level + 1 blocks: one try per experience level): sound 2500,
+  roll skill 2. Fail: +0x17 = level, message. Success: lock flag cleared and the
+  door opens (0x7D77E). "Strong magic prevents you from unlocking this door."
+  is printed elsewhere (0x7E916).
+- Find / Remove Traps: the key "Find and remove traps" toggles search mode
+  P+0xA0 bit 0x10 (0xB3400: messages 0x396C54 / 0x396C58; it also sets byte +3 of
+  every trap record back to -1). While search mode or the Find Traps spell is on,
+  game.c calls 0xB4040 every frame: for each side of the segment within 40.0 in
+  front:
+  - 0xB365F (triggers, records of 0x59 bytes at 0x142214) and 0xB396C
+    (traps, records of 0x5F bytes at 0x142218): a trigger or trap within 40.0 whose state
+    byte is not the current thief level: roll skill 3; fail: the state byte =
+    level (no new roll until the next level); a magical trap (spell fields +0x2D
+    or +0x33 >= 0) halves P+0xCF first. Found: sound 3001, "You found a
+    trigger!", "You found a trap!" or "You found a magical trap!" (sound 2130),
+    then a yes/no box: remove? Yes: roll skill 3 again; fail: state = level, and a
+    roll >= 96 sets the trap off (0x93B29(trap, 0xFF, player)); success: disarmed.
+  - without the Find Traps spell: 0xB3ECE, a racial roll `rand() % 6 + 1 <=
+    table 0x1466E8[race]` (human 3, dwarf 6, elf 5, dark elf 5, halfling 3,
+    half-elf 5) for special walls (0xB3D1E); a dwarf that is not a thief also
+    gets the trap search (flag to 0xB365F, 0xB396C).
+- Move Silently, key "Toggle Move Silently", 0xB4196: at most once per 0.5 s.
+  Elf, dark elf and halfling may use it without the skill. Already on: off
+  (P+0xA0 bits 0x0C cleared). Body armor check (0xB0AC2, "You cannot perform
+  this action while wearing %s."; for a non-thief race user armor lines 3, 4, 7,
+  8, 9, 10, 11 refuse). Roll skill 1 (races without skill: success). Success and
+  no NPC watching (0xAC2F5, guess for its meaning): P+0xA0 |= 4 (silent); else
+  P+0xA0 |= 8 (the player is not told: the same message 0x396C8C). AI tests bit 4
+  (0x13D8E, 0x142BF).
+- Hide In Shadows 0xB333F, from the movement code 0x9DFDE: once per request
+  (flag 0x14534A) when the player stands still (speed <= 0x72) and the skill is
+  > 0: roll skill 0; success and 0xAC2F5() == 0: P+0xA0 |= 1, else |= 2. AI tests
+  bit 1 (0x165F9). An attack clears P+0xA0 bits 0, 1, 4 (mask 0xEC at 0x44402).
+- Movement while P+0xA0 & 0x1C (sneaking or searching): speed / 3 (0x9DDE3).
+- Climb Walls 0x951DE: armor check (same message), roll skill 4, then the object
+  +0x1AE bit 0x80 (climbing) and P+0xA0 bit 0x20. 0x9EBEB (physics) handles the
+  climb and "PCONS: you fell!".
+- Backstab (collide.c, weapon damage 0x2AF5E, flag 0x13A955 set by code not
+  read here): damage x (thief level + 1 + 7) / 4 (x2 at levels 1..4, x3 at 5..8,
+  ...); weapon 45 with a roll >= 19: + 1d4 + 3, "Your backstab was very
+  successful!", else "Your backstab was successful!".
+- Turn undead (key "Turning undead", 0xADC46) and the Spider Piece 0x12 use it.
+
+## B8. Frame rate rules in these paths
+
+Verified time based (GameTime 0x13CD30 or FrameTime 0x13CD2C), no change needed:
+all effect timers (0x8CFFF, 0x9002C), the cast time 0x153EBC (0x41A4D), the fire
+rate times 0x215D74 / 0x215D7C (0x56A0D), potion timers (0x37A6A, 0x396B2), the
+0.5 s limits of Open Locks and Move Silently (day clock P+0x83 += FrameTime,
+0x4D83C), the view loops of Fear and Spider Piece 0x17 (they draw frames until a
+GameTime limit), the light object lifetimes (+0x84).
+
+Frame dependent (Code):
+
+1. 0xB3ECE, called through 0xB4040 every frame while search mode (P+0xA0 bit
+   0x10) is on and the Find Traps spell is off: a new d6 racial roll each frame
+   for each special wall side within 40.0. At a higher frame rate special walls
+   are found sooner.
+2. 0xB4040 itself runs every frame, but its trap rolls are stored per level, so
+   the result does not depend on the frame rate (except that toggling search
+   mode resets the state bytes).
+3. 0x9002C runs once per frame per object; it only compares times.
+4. Not a frame count but frame time dependent: the Luck test reads the lowest
+   bit of the day clock P+0x83 (`P+0x83 % 2`, 0x2A889, 0x2B11F) as a coin flip.
+
+Not found in these paths: a counter of frames for spell effects. The 0x8CEAE
+message test is one d20 per cast.
+
+## B9. Open points
+
+- The divide by zero of the Fireball, Lightning Bolt and Melf's Acid Arrow rolls
+  (section 2): test in the original game.
+- The UI that puts a spell into the current item P+0x1AD7 (statistics screen,
+  inventory browser 0x35ABD, hot keys) was not traced.
+- The game manual on the disc was not read for this note.
+- 0xAC2F5 (NPC table loop with 0xAC297) is read as "an NPC watches" (guess).
+- The thief skill points per level (0xB5BB9) and the creature spell code
+  (0x92D99, 0x91FDC, ai.md) were not read here.
+- Knock (28) has no case code; its effect on doors was not found.
+
+# Part C. The port
+
+Files: `engine/main/dtucombat.c`, `dtucombat.h` (Part A), `engine/main/dtuspell.c`,
+`dtuspell.h` (Part B). The placeholder attack of `dtuobj.c` (`dtu_player_attack`) is no
+longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_frame()`,
+`game.c` calls `dtu_combat_player_attack()` for the fire button of the key table.
+
+## C1. The weapon attack
+
+- Input: Left Ctrl, Right Ctrl and the `-testmove` action `attack`, on the key down
+  (0x2FCBE). The mouse button goes through the fire button of `game.c`. A misc item in
+  the hand is used, not swung (0x2FAF0).
+- Order of a frame as 0x435A6: the animation of the arms (0x4450C), the hit test of the
+  swing (0x6CFF8), the start of an attack (0x44300 with the gate 0x41A4D).
+- The swing time is `max(fire_wait, 1.0)`, two times with Slow (0x441E9). The gate needs
+  more than one swing time since the last start and the key still down. The attack is
+  always state 6. The animation frame is computed from the time as in 0x4450C, a state
+  time below 1.0 does not animate.
+- The hit test runs on frames 6 to 8 of the state: the weapon sphere of the frame
+  (`weapon_center`, `weapon_radius`, 8 times for the dagger and short sword numbers),
+  from the body position moved forward by the square root of 2, against the walls and
+  the bodies of creatures and scenery. A hit on frame 6 or 7 ends the swing. A wall that
+  is not side 1 or 3 ends the swing and touches the trigger of the side
+  (`dtu_trig_touch`, type 4).
+- The hit (0x278B5, 0x29A9C): the sounds of the contact, the to-hit roll of the
+  character (`dtu_char_attack_roll`) against the armor class of the creature with its
+  spell effects and the bonus of the effects of the player (Bless, Strength, Slow), a
+  sleeping creature is hit and wakes, `weapon_resistant`, Stoneskin, the damage roll of
+  the character (a second roll on a critical hit), Chill Touch, then
+  `dtu_damage_creature_direct` of `dtuobj.c` (message, flinch, death, experience). A push
+  of 20.0 divided by the mass is added to the thrust of the creature. Hit and miss
+  vclips and sounds of the weapon.
+- Missile and thrown weapons: the attack plays state 6 and the missile leaves at the fire
+  frame of the model (0x56A0D) from the position plus 2.0 up, along the view with the
+  look pitch, with `dtu_create_missile` of `dtuobj.c` (flight, hit, damage). One item of
+  the stack in the hand is used (`dtu_char_use_up`, 0xB7084). An arrow needs a bow, a
+  bolt a crossbow. A thrown stack that is used up gives the empty hand and arms the
+  first hot key (0x4448D).
+- The arms: the model `<archive><letter>_p.pof` with the fallbacks of 0x43A5A, drawn by
+  `dtu_combat_draw_view()` from `render.c` after `render_mine`, at the player position
+  plus `1.2207 - 16 * look_pitch` up and moved back when looking down (0x67C5A), with
+  the orientation of the player object (no pitch), in the frame of the arm animation. A
+  thrown weapon is hidden from the fire frame on. The executable draws the player object
+  in the painter order of its segment; the segment of the viewer is drawn last, so the
+  picture is the same.
+
+## C2. Spells
+
+- Books: the two spell lists of a save game of the original (`-char FILE`). New spells
+  go in with `dtu_spell_learn` (0xB69AD). Slots: the maximum from the tables 0x145CD8 and
+  0x145DF8 with the wisdom bonus, full at each level start and at a rest
+  (`dtu_char_rest` calls `dtu_spell_restore_slots`).
+- Selection: the statistics screen (the S button) shows the books and the slots in the
+  empty panel at the lower left (the place is a guess, the original layout of the spell
+  tables was not decoded). Comma and period choose, Enter takes the spell in the hand
+  (the original uses the mouse on the list view of the inventory). Taking an item in the
+  hand puts the spell away.
+- Cast: the attack key with a spell in the hand: the checks of 0x356E0 and 0x41A4D with
+  the messages, the cast time of the line (integer seconds), then the cast and one slot.
+  A scroll (a spell item in the hand) and a wand (a weapon with `pc_spell`) cast at once
+  and use one item or charge.
+- `self_cast_ok` spells are cast on the player (Prayer and area spells as an area around
+  him). The others fire missiles with `dtu_create_missile` (templates 2 hands, 3 wand, 4
+  scroll, 5 arrow), the speed of the line (default 100.0), the number of 0x56FF6.
+  Homing missiles turn to the target (the rule of the turn is a guess).
+- Effects: `dtu_spell_hit` (the strong definition of the weak function of `dtuobj.c`)
+  runs the case of 0x8CFFF, or the area 0x90CEF for an area spell. An area spell whose
+  missile hits a wall or ends has its area at the last point. The area test uses a ray
+  in place of the brain table.
+- Duration effects are bits of `dtu.m_88` with absolute game time timers in the 124 byte
+  block (0x8C to 0xF8); `dtu_spell_frame` ends them for the player and the creatures
+  (0x9002C) with "NAME expired.". The movement reads the bits through `physics.h`
+  (`DTU_OF_`), the armor class through `dtu_char_update` (`dtu_spell_player_ac`).
+- Saving throws: 0xAE596 with the tables of B5. The key of the cleric level of a
+  creature (`cleric_level`) is a guess.
+
+### Spells in the port
+
+Complete as read: 1 Aid (the hit points are capped at the maximum), 2 Armor, 3 Bless, 4
+Burning Hands, 5 Chill Touch, 6 Color Spray, 7 Confusion, 10 Cure Light Wounds, 11 Cure
+Serious Wounds, 12 and 54 Detect Magic (the effect bit only, the renderer does not read
+it), 15 Feather Fall, 16 Fireball (without the blindness and deafness within 6.0), 18
+Flame Walk, 19 Fly, 20 Free Action, 21 Haste, 22 and 52 Hold Person (no counter of
+targets), 23 Hold Undead (no pool), 24 Improved Invisibility, 25 Infravision, 26
+Invisibility, 27 Jump, 28 Knock (no effect, as in the executable), 29 Levitate, 30 and 31
+Light, 8 and 9 Continual Light (blindness and a light object), 32 Lightning Bolt
+(not the scenery part), 33 Magic Missile, 34 Magical Stone, 35 Magical Vestment, 36
+Melf's Acid Arrows, 37 Melf's Minute Meteors (not the scenery part), 38 Prayer, 39 and 53
+Protection From Evil (the bit only: the to-hit rules are in the creature attack), 40
+Protection From Fire, 42 Cure Blindness or Deafness, 43 Resist Fire, 45 Shield, 46 Sleep
+(no hit dice pool), 47 Slow, 48 Spider Climb, 49 Stone Skin, 51 Find Traps (the bit
+only).
+
+Partial: 13 and 55 Dispel Magic (the effects of the target end; missiles, potions,
+scenery and light objects are not handled), 14 Fear and 44 Scare (no weapon drop, no
+change of the view of the player), 17 Flaming Sphere (no dice in the line, no scenery
+part), 50 Strength (the bit and the to-hit bonus, not the gain of strength).
+
+Not in the port, the cast stops with "NAME is not in this version." before a slot is
+used: 0 Abjure, 41 Rary's Mnemonic Enhancer (needs the choice box).
+
+Not in the port: the interruption of a cast by damage (0x9305D), the cast vclips of
+0x8CAD3 and `cast_on_top` (0x8CCED), the 0x8CEAE message rule, the item use cases of B6
+other than the two healing potions of `dtuchar.c`, the thief skills of B7.
+
+## C3. Settings
+
+All are global variables, 1 by default; the option `-origcombat` clears them.
+
+| Setting | File | Rule of the executable (0) | Corrected rule (1) |
+|---|---|---|---|
+| `Dtu_fix_one_hit` | dtucombat.c | a first contact on frame 8 rolls once in each game frame while frame 8 lasts (frame rate) | one roll for each swing |
+| `Dtu_fix_haste_attack` | dtucombat.c | Haste adds half a swing time to the wait (Haste is slower) | Haste halves the swing time (guess of the intent) |
+| `Dtu_fix_zero_dice` | dtuspell.c | Fireball, Lightning Bolt, Acid Arrows divide by 0 sides (the executable faults); the port does no damage and logs it | a group with 0 sides throws no dice, the part for each level counts |
+| `Dtu_fix_stoneskin_word` | dtuspell.c | Stone Skin clears all other effect bits | only its bit is set |
+
+## C4. Test options
+
+`-testspell N` puts spell N into the book of the character and into the hand.
+`-testslots N` gives N slots for each spell level. `-objlog FILE` has the lines
+`combat:` (model, swing start and end, test frames with the sphere, hits with the
+result, armor class, damage and hit points) and `spell:`/`save:`. `-charlog FILE` has the
+d20 of each attack roll.
+
+## C5. Verification
+
+- Screenshots (BANE, `-testpos 25,-1,205,0`): at rest the long sword stands at the right
+  edge of the view, close to the eye (frame 0 of `hmch_p.pof`); in the middle of the
+  swing (frame 6) the blade crosses the lower middle of the view towards the skeleton.
+  With SG0.SG the dagger model `hmcd_p.pof` and the blue Magic Missile (`miss2.pof`) in
+  flight to the skeleton.
+- Fight, `-level BANE -noattack -testpos 25,-1,233,0` with a step forward and an attack
+  each 1.2 s, the default fighter with a long sword (THAC0 19, +1): the skeleton (8 hit
+  points, AC 7) dies at 5.62 s (20 frames per second, 5 contacts), 1.93 s (60, 2
+  contacts) and 5.49 s (200, 5 contacts), 35 experience points each time. The first
+  contact is at 0.82, 0.73 and 0.69 s. The difference of the kill time is the dice.
+- Swing time, 32 swings in 40 s at each rate: 1.100 s at 20 frames per second, 1.066 at
+  60, 1.068 at 200 (the frame of the end is reached at 15.5/16 of the time, rounded to
+  the frame time); the swings start each 1.200 s (the key script).
+- SG0.SG, Magic Missile: the cast at 1.05 s, the homing missile hits the skeleton at
+  1.38 s: save failed (d20 4 against 17), 3 damage. Burning Hands: 6 missiles, each hit
+  is an area of radius 10 (three hits, one save made), the skeleton dies. Shield: the
+  cast time of 10 s, the effect at 11.05 s for 300 s, armor class 6 to -1 (Shield gives
+  3 before the dexterity adjustment).

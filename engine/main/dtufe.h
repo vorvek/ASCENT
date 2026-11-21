@@ -33,6 +33,14 @@ void dtufe_title(void);
 // tables and the sound must be loaded.
 int dtufe_run(void);
 
+// The game calls it after each frame. It asks "Leave the Yawning Portal?"
+// after the player entered the exit of the inn (command 0 of DTU.WRP).
+// Returns 1 if the game must end and the front end must run: the player
+// leaves the inn, or the player is dead. The front end defines the hooks
+// dtu_hook_warp_command (dtutrig.h) and dtu_hook_player_death_screen
+// (dtuobj.h) for this.
+int dtufe_game_frame(void);
+
 // Call it after game() has returned. It shows the death screen if the
 // player is dead. Returns 1 if the front end must run again, and 0 if the
 // program must stop (the window was closed, or the option -frames).

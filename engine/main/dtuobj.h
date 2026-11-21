@@ -131,6 +131,12 @@ extern int Dtu_fix_path_follow;
 // lasts. Corrected: one shot for each attack animation.
 extern int Dtu_fix_fire_once;
 
+// The attack sound of a creature that sees the player (compute_vis_and_vec
+// 0x12E2F to 0x12F3C). Original: the code needs the visibility 2, which the
+// sight function never gives, so the sound never plays. Corrected: it
+// plays by the rules of that code.
+extern int Dtu_fix_attack_sound;
+
 // Seconds from the death of the player to the death screen (3.0 in the
 // executable, 0x423F5), and from there to the new start of the level in
 // the port (the executable shows the death menu there).
@@ -200,9 +206,39 @@ void dtu_draw_dressing_vclip(object *obj);
 // handled the pair.
 int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point);
 
-// Damage (0x29A9C). "attacker" can be NULL.
+// Damage (0x29A9C). "attacker" can be NULL. With an attacker these two
+// functions throw the to-hit roll and the dice of the weapon of the
+// attacker (the weapon in the hand for the player) and do not use
+// "damage". Without an attacker "damage" is taken as it is.
 void dtu_damage_player(object *player, object *attacker, fix damage);
 void dtu_damage_creature(object *creature, object *attacker, fix damage);
+
+// Damage with no to-hit roll and no dice: the caller has rolled already
+// (the attacks and spells of the player in dtucombat.c and dtuspell.c,
+// traps). "attacker" can be NULL. With the player as the attacker the
+// creature gets hostile, the player gets the message, and the experience
+// if the creature dies. The creature flinches, and dies below 1.0 (drops,
+// sound, corpse). Returns the damage that was done (0 for a dead target).
+fix dtu_damage_creature_direct(object *creature, object *attacker, fix damage);
+fix dtu_damage_player_direct(object *player, object *attacker, fix damage);
+
+// The effect of a spell on a target (spells.c 0x8CFFF, 0x90CEF). The
+// missile code calls it when a missile that carries a spell hits an
+// object (the spell of dtu_create_missile, or enemy_spell of the weapon).
+// "caster" can be NULL. "level" is the level of the caster: the mage level
+// of a monster, dtu_player_level() for the player, 1 for a trap. Returns
+// the damage that was done. dtuobj.c has a weak definition with only the
+// damage (dtu_spell_damage_roll and dtu_damage_*_direct). The spell code
+// can define it with all effects.
+fix dtu_spell_hit(int spell, object *target, object *caster, int level);
+
+// 0x91BC3: the damage of a spell on a target in hit points: the dice
+// damage_dice, fire_damage_dice, acid_damage_dice and elec_damage_dice of
+// the spell table, each plus its *_damage_level times "level", with the
+// immunity and resistance of the target. It changes the counter of
+// Protection From Fire and ends the regeneration of the target on fire or
+// acid damage.
+int dtu_spell_damage_roll(int spell, object *target, int level);
 
 // The player starts a melee attack (pweapon.c). Returns 1 if it started.
 int dtu_player_attack(void);
@@ -243,6 +279,11 @@ int dtu_hook_player_death_screen(void);
 // Called by the game loop after each frame: the death sequence of the
 // player. Returns 1 if it started the level again.
 int dtu_player_death_frame(void);
+
+// Starts the death of the player if the hit points are below 1.0 (0x33C5E:
+// the status display tests them each frame). dtu_objects_frame() calls it
+// on each frame. "killer" can be NULL.
+void dtu_player_check_death(object *killer);
 
 //------------------------------------------------------------------------
 // Calls from dtuhook.c (traps, triggers, the use action).
