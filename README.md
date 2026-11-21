@@ -15,6 +15,7 @@ ASCENT-DTU aims to make the game playable in modern Windows, alongside bugfixes 
 * Content-id-safe streaming and gameplay recordings. Originally, the Yawning Portal uses "Return From The Hunt" as a theme. It's been replaced with the "Seedy Tavern" theme by Jeremy Soule, from Neverwinter Nights.
 * Improved physics, untied to the framerate. No more floating corpses or cursed ladders. Jumping no longer pulls you back down in a microsecond.
 * Animation interpolation.
+* Target hint: the cursor turns a little red when your attack would reach an enemy.
 * Full screen shaders.
 
 ## Game files

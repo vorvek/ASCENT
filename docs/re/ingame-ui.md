@@ -353,6 +353,15 @@ wheel moves the selection, changes a slider or a number, or scrolls a list.
 The cursor of the play screen is taken out of the frame under a menu. The
 setting `Dtu_fe_original_input` turns all of this off.
 
+Port addition (not in the executable): with the Improvements setting "Target
+hint" (`Dtu_target_hint`, `TargetHint` in `ascent.cfg`, on by default) the cursor
+of the play screen has a warm red tint while the attack of the item in the hand
+would reach a hostile creature that it can hurt. The test is the attack code
+itself, see combat.md, C1. The tint is a remap of the cursor colors to the nearest
+palette colors, so it shows in the 8-bit frame of both renderers and over the
+upscaled interface pictures. The cursor that holds an item, the cursor over the
+conversation window and the immersive mode (no cursor) have no hint.
+
 ## Input defect
 
 Not traced in the code. The port task states that the original repeats a
