@@ -24,6 +24,7 @@
 #include "gr.h"
 #include "texmap.h"
 #include "texmapl.h"
+#include "tmapfx.h"
 
 // --------------------------------------------------------------------------------------------------
 // Enter:
@@ -87,6 +88,29 @@ void asm_tmap_scanline_lin_lighted(void)
 	l = fx_l >> 8;
 
 	tmap_guard_light(&l, &dl, n - 1);
+
+	// ASCENT: the effect colors of a merged texture (tmapfx.c, the rules of
+	// the linear mapper 0xEC4D7). The pixels are drawn in order, so the
+	// pointers read the screen as the original reads it.
+	if (Tmap_fx) {
+		tmap_fx_span s;
+
+		tmap_fx_span_begin(&s, dest, fx_y);
+		do {
+			c = src[TMAP_UV_INDEX(uv)];
+			uv += duv;
+			if (c != 255 || !Transparency_on) {
+				if (c != 255 && tmap_fx_color_code(c)) {
+					int behind = *++s.behind;
+					*dest = (ubyte) tmap_fx_color(c, behind, tmap_fx_next_below(&s), 1);
+				} else
+					*dest = fade[(l & 0xff00) | c];
+				l += dl;
+			}
+			dest++;
+		} while (--n);
+		return;
+	}
 
 	if (!Transparency_on) {
 		do {

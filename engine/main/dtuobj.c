@@ -227,6 +227,7 @@ static dtu_missile Missile[MAX_OBJECTS];
 // pcons.c 0x9FE68 moves it.
 static ubyte Dressing_fall[MAX_OBJECTS];
 static int Dressing_sig[MAX_OBJECTS];
+static ubyte Dressing_pushed[MAX_OBJECTS];	// pushed in this frame (Dtu_fix_push_frame)
 // The push of scenery depends on the frame rate: 0x9FE68 halves the
 // velocity and divides x and z by 4 in each frame. 1 (default): once in
 // each reference frame (3/64 second). 0 (-origobj): in each frame.
@@ -264,6 +265,7 @@ static void morale_check(object *obj);
 static void player_dies(object *player,object *attacker);
 static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 static item_info *item_table_entry(int type,int id);
+static int dressing_pushable(object *d);
 static fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
 static fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
 static fix spell_hit(int spell,object *target,object *attacker);
@@ -1032,6 +1034,15 @@ void dtu_objects_level_setup(void)
 		dtu_obj_log("level %s (number %d): %d creatures, %d dressing, %d misc, %d armor, %d spell, %d weapon objects, brain %s",
 			Gamesave_current_filename,Current_level_num,n[OBJ_ROBOT],n[OBJ_DRESSING],n[OBJ_MISC],n[OBJ_ARMOR],n[OBJ_SPELL],n[OBJ_WEAPON],
 			Brain ? (Dtu_fix_brain ? "loaded, not used" : "used") : "none");
+		for (i=0;i<=Highest_object_index;i++)
+			if (Objects[i].type == OBJ_DRESSING)
+				dtu_obj_log("obj %d %s: dressing %d pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f",
+					i,dtu_object_name(&Objects[i]),Objects[i].id,dressing_pushable(&Objects[i]),
+					f2fl(Objects[i].mtype.phys_info.mass),f2fl(Objects[i].mtype.phys_info.drag),f2fl(Objects[i].size),
+					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
+			else if (Objects[i].type == OBJ_MISC || Objects[i].type == OBJ_ARMOR || Objects[i].type == OBJ_SPELL || Objects[i].type == OBJ_WEAPON)
+				dtu_obj_log("obj %d %s: item type %d id %d seg %d pos %.2f %.2f %.2f",i,dtu_object_name(&Objects[i]),Objects[i].type,Objects[i].id,
+					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
 		for (i=0;i<=Highest_object_index;i++)
 			if (Objects[i].type == OBJ_ROBOT)
 				dtu_obj_log("obj %d %s: hp %d hostile %d behavior 0x%x attack %d weapon %d spell_level %d door %d seg %d contains %d/%d/%d script %d model %d size %.2f pos %.2f %.2f %.2f",
@@ -5469,6 +5480,56 @@ void dtu_drop_objects_in_segment(int segnum)
 //------------------------------------------------------------------------
 // Collisions
 
+// Bit 0x10 of the flag word that the pickup passes to 0xB772D. Misc: the
+// flag that the table fixup 0x1A344 sets for a plot item, a name with '+'
+// and nine name parts. Armor: "stackable". Weapon: "magic", also set by
+// 0x1A344 for a plot item or a name with '+'. Spell: "cast_with_arrow",
+// the last cast_with_ word of the line wins (0x253A8 to 0x2545D).
+static int pickup_flag_10(int type,item_info *it)
+{
+	static char *misc_names[] = {"uring","yrkul","rystal","carab","speed",
+		"nsight","anegem","ursed","lamesword","otion"};
+	static char *cast_with[] = {"cast_with_hands","cast_with_wand",
+		"cast_with_scroll","cast_with_arrow"};
+	int i,best,pos,arrow;
+
+	switch (type) {
+		case OBJ_MISC:
+			if (tbl_int(it->record,"plot_item",0) != 0 || strchr(it->name,'+'))
+				return 1;
+			for (i=0;i<(int)(sizeof(misc_names)/sizeof(misc_names[0]));i++)
+				if (strstr(it->name,misc_names[i]))
+					return 1;
+			return 0;
+		case OBJ_ARMOR:
+			return bm_tbl_has_flag(it->record,"stackable");
+		case OBJ_WEAPON:
+			return bm_tbl_has_flag(it->record,"magic") || tbl_int(it->record,"plot_item",0) != 0
+				|| strchr(it->name,'+') != NULL;
+		case OBJ_SPELL:
+			best = -1;
+			arrow = 0;
+			for (i=0;i<4;i++) {
+				pos = bm_tbl_flag_pos(it->record,cast_with[i]);
+				if (pos > best) {
+					best = pos;
+					arrow = (i == 3);
+				}
+			}
+			return arrow;
+	}
+	return 0;
+}
+
+// 0xB772D, called by each pickup: sound 2216 if bit 0x10 of the flag word
+// is set, then sound 2215, both with the volume 0.5 (0x2D955).
+static void pickup_sound(int flag_10)
+{
+	if (flag_10)
+		digi_play_sample(0x8A8,F1_0/2);
+	digi_play_sample(0x8A7,F1_0/2);
+}
+
 // The four pickup functions of collide.c (0x2805B misc, 0x283DC armor,
 // 0x28273 spell, 0x284E0 weapon).
 static void pick_up_item(object *player,object *item)
@@ -5479,6 +5540,21 @@ static void pick_up_item(object *player,object *item)
 
 	if (player->id != Player_num || (item->flags & OF_SHOULD_BE_DEAD) || it == NULL)
 		return;
+
+	// Gold is misc id 1 (0x2806B). The amount is the hit points. The gold
+	// path comes before the pickup delay, and it passes the flag word 0 to
+	// the sound function 0xB772D (0x28089).
+	if (item->type == OBJ_MISC && item->id == 1) {
+		int amount = f2i(item->shields);
+
+		Dtu_gold += amount;
+		HUD_init_message("You pick up %d gold.",amount);
+		pickup_sound(0);
+		item->flags |= OF_SHOULD_BE_DEAD;
+		dtu_obj_log("pickup: obj %d, %d gold, sound 2215",(int)(item-Objects),amount);
+		return;
+	}
+
 	// 0x31A0E: no pick up for 5 seconds after a drop
 	if (!dtu_char_pickup_allowed())
 		return;
@@ -5486,17 +5562,6 @@ static void pick_up_item(object *player,object *item)
 	// A weapon is an item only if it does not move (0x28502).
 	if (item->type == OBJ_WEAPON && (item->render_type != RT_ITEM || item->lifeleft != IMMORTAL_TIME))
 		return;
-
-	// Gold is misc id 1 (0x2806B). The amount is the hit points.
-	if (item->type == OBJ_MISC && item->id == 1) {
-		int amount = f2i(item->shields);
-
-		Dtu_gold += amount;
-		HUD_init_message("You pick up %d gold.",amount);
-		item->flags |= OF_SHOULD_BE_DEAD;
-		dtu_obj_log("pickup: obj %d, %d gold",(int)(item-Objects),amount);
-		return;
-	}
 
 	if (count == 0) {
 		if (item_is_stackable(it) || item->type == OBJ_ARMOR)
@@ -5511,10 +5576,13 @@ static void pick_up_item(object *player,object *item)
 
 	index = dtu_inventory_add(item->type,item->id,count);
 	if (index >= 0) {
+		int flag_10 = pickup_flag_10(item->type,it);
+
 		item->flags |= OF_SHOULD_BE_DEAD;
 		HUD_init_message("You pick up %s.",it->name);
-		dtu_obj_log("pickup: obj %d type %d id %d '%s' count %d, inventory entry %d",(int)(item-Objects),
-			item->type,item->id,it->name,count,index);
+		pickup_sound(flag_10);
+		dtu_obj_log("pickup: obj %d type %d id %d '%s' count %d, inventory entry %d, sound %s",(int)(item-Objects),
+			item->type,item->id,it->name,count,index,flag_10 ? "2216 2215" : "2215");
 	}
 	else {
 		static fix last_message = 0;
@@ -5528,9 +5596,6 @@ static void pick_up_item(object *player,object *item)
 
 //------------------------------------------------------------------------
 // Pushed scenery (pmon.c 0x9FA41, pcons.c 0x9E5BE, the move 0x9FE68)
-
-static object *Push_last = NULL;
-static int Push_count = 0;
 
 static int dressing_pushable(object *d)
 {
@@ -5557,6 +5622,7 @@ static void push_dressing(object *mover,object *d,int strength)
 	pi->thrust.z = 8 * mover->mtype.phys_info.thrust.z;
 	Dressing_fall[n] = 1;
 	Dressing_sig[n] = d->signature;
+	Dressing_pushed[n] = 1;
 	dtu_obj_log("push: obj %d %s (strength %d) pushes obj %d %s (pushable %d), velocity %.1f %.1f",(int)(mover-Objects),
 		dtu_object_name(mover),strength,n,dtu_object_name(d),dressing_pushable(d),f2fl(pi->velocity.x),f2fl(pi->velocity.z));
 }
@@ -5581,7 +5647,7 @@ static void dressing_move_frame(void)
 		fvi_query fq;
 		fvi_info hit;
 		fix speed;
-		int k, fate;
+		int k, fate, n_ticks;
 
 		if (!Dressing_fall[i])
 			continue;
@@ -5589,7 +5655,18 @@ static void dressing_move_frame(void)
 			Dressing_fall[i] = 0;
 			continue;
 		}
-		for (k=0;k<ticks;k++) {
+		// ASCENT: Dtu_fix_push_frame. The push gives 8 times the velocity
+		// of the mover, and the slow down before the move of the frame
+		// divides it by 8, so that the scenery moves with the mover in
+		// that frame. Then the velocity goes down by 8 times in each
+		// reference frame. A frame of a push has that one slow down at each
+		// frame rate (without it, a frame that has no reference tick moved
+		// the scenery with 8 times the velocity of the mover).
+		n_ticks = ticks;
+		if (Dtu_fix_push_frame && Dressing_pushed[i])
+			n_ticks = 1;
+		Dressing_pushed[i] = 0;
+		for (k=0;k<n_ticks;k++) {
 			pi->velocity.x = (pi->velocity.x / 2) >> 2;
 			pi->velocity.z = (pi->velocity.z / 2) >> 2;
 			pi->velocity.y /= 2;
@@ -5675,16 +5752,12 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 				break;
 			case OBJ_DRESSING:
 				// 0x9E5BE (pcons.c): the player pushes scenery when the
-				// strength (P+0xB7) is above "pushable"; the push stops after
-				// 9 hits of the same object in a row (0x1452F1, 0x1452F5)
-				if (b == Push_last)
-					Push_count++;
-				else {
-					Push_last = b;
-					Push_count = 1;
-				}
-				if (Push_count < 9)
-					push_dressing(a,b,Dtu_char.created ? Dtu_char.pa.strength : 18);
+				// strength (P+0xB7) is above "pushable", at each hit. The
+				// count of 0x1452F1 (hits of the object 0x1452F5 in a row)
+				// decides only whether the player goes back to the start of
+				// the frame (0x9E598), not the push. The player stays out
+				// of the scenery (physics.c).
+				push_dressing(a,b,Dtu_char.created ? Dtu_char.pa.strength : 18);
 				break;
 		}
 	}

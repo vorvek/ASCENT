@@ -66,6 +66,17 @@ TILE_PAD = 64        # the same for a tiling bitmap, by wrapping: a 64x64
                      # the receptive field of the model never reaches the end
                      # of the padding and the edges of the result match
 
+# The effect colors (docs/re/effectcolors.md): the game draws these texels
+# with a color from the screen, not with their palette color (a bright red,
+# 63 0 0 for most of them). The upscale fills them with the colors around
+# them, as the transparent pixels, so that the red does not bleed into the
+# texels next to them. The game marks them from the original pixels.
+EFFECT_COLORS = (0x4E, 0x4F, 0x6D, 0x6E, 0x6F, 0xBE, 0xBF, 0xCF)
+
+
+def has_effect_colors(m):
+    return any(c in m.pix for c in EFFECT_COLORS)
+
 # name -> (file, url, sha256, source, license)
 MODELS = {
     "ultrasharp": ("4x-UltraSharp.pth",
@@ -434,11 +445,12 @@ def make_job(m, pal, tiling, method):
         opaque = idx != 255
     else:
         opaque = np.ones(idx.shape, bool)
+    effect = np.isin(idx, EFFECT_COLORS) & opaque
     j = Job()
     j.w, j.h, j.tiling = m.w, m.h, tiling
     j.has_alpha = not opaque.all()
     j.opaque = opaque
-    j.rgb = fill_transparent(rgb, opaque, tiling) if j.has_alpha else rgb
+    j.rgb = fill_transparent(rgb, opaque & ~effect, tiling) if j.has_alpha or effect.any() else rgb
     h = hashlib.sha1()
     h.update(("%s|%d|%d|%d|%d|%d|" % (method, CACHE_VERSION, m.w, m.h, tiling,
                                       j.has_alpha)).encode())
@@ -446,6 +458,11 @@ def make_job(m, pal, tiling, method):
         h.update(("wrap%d|" % TILE_PAD).encode())
     h.update(opaque.tobytes())
     h.update(np.ascontiguousarray(rgb).tobytes())
+    if effect.any():
+        # a new key for the bitmaps with effect colors only: the others
+        # keep their files and cache entries
+        h.update(b"effect|")
+        h.update(effect.tobytes())
     j.key = h.hexdigest()
     j.result = None
     j.meth = method
@@ -635,7 +652,8 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats):
             continue
         dst = os.path.join(outdir, out_name(m.name) + ".png")
         index.append((m, dst))
-        if not args.force and not stale and os.path.isfile(dst) and os.path.getmtime(dst) > src_mtime:
+        if (not args.force and not stale and os.path.isfile(dst) and os.path.getmtime(dst) > src_mtime
+                and not (args.redo_effects and has_effect_colors(m))):
             kept += 1
             continue
         todo.append((m, dst))
@@ -893,6 +911,8 @@ def main():
                     help="upscale method: combo (default), detail, %s" % ", ".join(list(MODELS) + PLAIN_METHODS))
     ap.add_argument("--out", default=HD_DIR, help="hd directory (default gamedata/hd)")
     ap.add_argument("--force", action="store_true", help="redo existing files")
+    ap.add_argument("--redo-effects", action="store_true",
+                    help="redo the files of the bitmaps with effect colors (a set made before the fill of these colors)")
     ap.add_argument("--compare", action="store_true", help="make comparison sheets in <hd>/work/texcompare")
     ap.add_argument("--compare-methods", default="nearest,scale4x,bicubic," + ",".join(MODELS) + ",combo")
     ap.add_argument("--check", help="check finished archives (comma separated)")

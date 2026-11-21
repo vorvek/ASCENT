@@ -195,6 +195,9 @@ typedef struct _grs_font {
 #define BM_FLAG_NO_LIGHTING			4
 #define BM_FLAG_RLE						8			// A run-length encoded bitmap.
 #define BM_FLAG_PAGED_OUT				16			// This bitmap's data is paged out.
+// ASCENT: DTUGAME.EXE flag 0x20: a merged wall texture (texmerge.c). The
+// port sets it only when the merged bitmap has an effect color (tmapfx.c).
+#define BM_FLAG_DTU_EFFECTS			0x20
 
 typedef struct _grs_bitmap {
 	short       bm_x,bm_y;      // Offset from parent's origin

@@ -51,7 +51,8 @@ color, AH the light row. The table 0x463CB0 is the fade table (row * 256 + color
 - **G** Which other bitmaps have flag 0x20 was not found. The port applies the rule to
   all lit textures.
 - **V** The colors 0xCF, 0xBF, 0xBE, 0x6F, 0x6E, 0x6D, 0x4F, 0x4E and 0xFF are handled
-  before the infravision test (animated colors and transparency).
+  before the infravision test (the effect colors, see effectcolors.md, and
+  transparency).
 - **V** The rule (0xEC5E5 to 0xEC62D), with `lit = fade[row][color]` and `step = lit &
   0x0F`:
   - 0x14C4DA = 0: the color is `lit`.

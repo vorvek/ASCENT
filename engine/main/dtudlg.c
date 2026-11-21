@@ -468,14 +468,37 @@ static void frame_rect(int x0, int y0, int x1, int y1, int color)
 	gr_rect(x1, y0, x1, y1);
 }
 
+// 0xB1B9E: an area of height h with the margin m (0x1466AC: 10 low, 16
+// high resolution) holds (h - 2m) / ft_h lines. The lines are centered in
+// the height without the margins. Returns the number of lines; *top is the
+// first row of the lines from the top of the area.
+static int area_lines(int h, int m, int fh, int *top)
+{
+	int wh = h - 2 * m, n;
+
+	n = (wh > 0 && fh > 0) ? wh / fh : 0;
+	*top = m + (wh - n * fh) / 2;
+	return n;
+}
+
+// The executable draws each part into a sub-canvas of the screen, which
+// clips the text (0xB17EB to 0xB1891).
+static void sub_canvas(grs_canvas *c, int x, int y, int w, int h)
+{
+	gr_init_sub_canvas(c, &VR_screen_pages[0], x, y, w > 0 ? w : 1, h > 0 ? h : 1);
+	gr_set_current_canvas(c);
+	gr_set_curfont(GAME_FONT);
+}
+
 void dtu_dlg_draw(void)
 {
 	dlg_layout *L;
 	const char *starts[DLG_MAX_LINES];
 	int lens[DLG_MAX_LINES], kinds[DLG_MAX_LINES];
-	int n_lines = 0, line_h, i, y, visible, num_w, h, aw;
+	int n_lines = 0, fh, i, y, visible, num_w, text_x, text_w, h, aw;
 	int c_speech, c_narr, c_sel, c_reply, c_frame;
-	int ry, rbottom;
+	int ry, rbottom, margin, ty, rty, rh, n_num;
+	grs_canvas text_canv, num_canv, reply_canv, area_canv;
 
 	// ASCENT: the immersive mode comes back when the window has not
 	// waited for a choice for half a second (dtu_dlg_close restores it at
@@ -487,7 +510,8 @@ void dtu_dlg_draw(void)
 	L = layout();
 	gr_set_current_canvas(&VR_screen_pages[0]);
 	gr_set_curfont(GAME_FONT);
-	line_h = GAME_FONT->ft_h + 1;
+	fh = GAME_FONT->ft_h;
+	margin = Dtu_hires ? 16 : 10;
 
 	// 0xB19A2 to 0xB19F1
 	c_speech = rgb6(0, 63, 0);
@@ -498,7 +522,24 @@ void dtu_dlg_draw(void)
 
 	darken(L->x - 3, L->y, L->x + L->w + 4, L->y + L->h1 + L->h2);
 
-	// the text area
+	// 0xB170B: the column of the numbers is as wide as the widest "%d) "
+	// of the MaxDialogResponses (0x1465A8: 8) numbers. The text column
+	// starts 10 pixels after it and ends at the right edge (0xB1778).
+	num_w = 0;
+	n_num = Dlg_n_replies > 8 ? Dlg_n_replies : 8;
+	for (i = 1; i <= n_num; i++) {
+		char num[16];
+		int w;
+		sprintf(num, "%d) ", i);
+		gr_get_string_size(num, &w, &h, &aw);
+		if (w > num_w)
+			num_w = w;
+	}
+	text_w = L->w - num_w - 10;
+	text_x = L->x + L->w - text_w;
+
+	// the text area: the lines from the scroll position, in a canvas of
+	// whole lines in the middle of the area (0xB2D0D)
 	{
 		int pos = 0;
 
@@ -513,17 +554,20 @@ void dtu_dlg_draw(void)
 			pos += (int) strlen(s) + 1;
 		}
 	}
-	visible = L->h1 / line_h;
+	visible = area_lines(L->h1, margin, fh, &ty);
 	if (Dlg_scroll > n_lines - visible)
 		Dlg_scroll = n_lines - visible > 0 ? n_lines - visible : 0;
-	for (i = Dlg_scroll, y = L->y; i < n_lines && y + line_h <= L->y + L->h1; i++, y += line_h) {
+	sub_canvas(&text_canv, L->x, L->y + ty, L->w, visible * fh);
+	for (i = Dlg_scroll, y = 0; i < n_lines && y < visible * fh; i++, y += fh) {
 		gr_set_fontcolor(kinds[i] == 2 ? c_narr : c_speech, -1);
-		draw_line(L->x, y, starts[i], lens[i]);
+		draw_line(0, y, starts[i], lens[i]);
 	}
 
 	// the reply area
 	ry = L->y + L->h1;
 	rbottom = ry + L->h2;
+	rh = area_lines(L->h2, margin, fh, &rty) * fh;
+	rty += ry;
 	Area_x0 = L->x - 3;
 	Area_x1 = L->x + L->w + 3;
 	Area_y0 = L->y;
@@ -531,35 +575,47 @@ void dtu_dlg_draw(void)
 	Area_ry = ry;
 	Reply_shown = 0;
 	if (Dlg_waiting && Dlg_n_replies == 0) {
+		// 0xB2E91: centered in the canvas of the whole reply area
 		int w;
+		sub_canvas(&area_canv, L->x, rty, L->w, rh);
 		gr_set_fontcolor(c_sel, -1);
 		gr_get_string_size("Press Enter...", &w, &h, &aw);
-		gr_string(L->x + (L->w - w) / 2, ry + (L->h2 - line_h) / 2, "Press Enter...");
+		gr_string((L->w - w) / 2, (rh - fh) / 2, "Press Enter...");
 	} else {
-		gr_get_string_size("10) ", &num_w, &h, &aw);
-		y = ry;
-		for (i = 0; i < Dlg_n_replies && y + line_h <= rbottom; i++) {
+		// 0xB2D90: the number "%d)" in the number column and the reply in
+		// the text column at the same row; the next reply starts one empty
+		// line (ft_h) after the last line of the reply
+		sub_canvas(&num_canv, L->x, rty, num_w, rh);
+		sub_canvas(&reply_canv, text_x, rty, text_w, rh);
+		y = 0;
+		for (i = 0; i < Dlg_n_replies && y < rh; i++) {
 			char num[16];
 			const char *rs[20];
 			int rl[20], k, n;
 
 			sprintf(num, "%d)", i + 1);
+			gr_set_current_canvas(&num_canv);
 			gr_set_fontcolor(i == Dlg_sel ? c_sel : c_reply, -1);
-			gr_string(L->x, y, num);
-			Reply_y0[i] = y;
-			n = wrap(Dlg_reply[i], L->w - num_w, rs, rl, 20);
-			for (k = 0; k < n && y + line_h <= rbottom; k++, y += line_h)
-				draw_line(L->x + num_w, y, rs[k], rl[k]);
-			Reply_y1[i] = y;
+			gr_string(0, y, num);
+			gr_set_current_canvas(&reply_canv);
+			gr_set_fontcolor(i == Dlg_sel ? c_sel : c_reply, -1);
+			n = wrap(Dlg_reply[i], text_w, rs, rl, 20);
+			for (k = 0; k < n; k++)
+				draw_line(0, y + k * fh, rs[k], rl[k]);
+			Reply_y0[i] = rty + y;
+			Reply_y1[i] = rty + y + n * fh;
 			Reply_shown = i + 1;
+			y += n * fh + fh;
 		}
 	}
+	gr_set_current_canvas(&VR_screen_pages[0]);
 
-	// 0xB2EDD: the frame around the active area
+	// 0xB2EDD: the frame around the active area, the lines at the top and
+	// the bottom row of the area
 	if (Dlg_focus_replies)
-		frame_rect(L->x - 3, ry, L->x + L->w + 3, rbottom - 1, c_frame);
+		frame_rect(L->x - 3, ry, L->x + L->w + 3, rbottom, c_frame);
 	else
-		frame_rect(L->x - 3, L->y, L->x + L->w + 3, ry - 1, c_frame);
+		frame_rect(L->x - 3, L->y, L->x + L->w + 3, ry, c_frame);
 
 	// ASCENT: the cursor over the window (dtu_display_frame leaves it out
 	// while the window is open)

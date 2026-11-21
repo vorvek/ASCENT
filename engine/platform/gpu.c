@@ -160,23 +160,30 @@ static int load_gl(void)
 // Shaders
 
 // The 3D view. The position is the canvas position of the 3d library times
-// the depth, so that the GPU interpolates u and v with perspective. The
-// light is interpolated in screen space, as the software texture mapper
-// does it.
+// the depth (homogeneous, see plat_gpu_vertex), so that the GPU clips the
+// polygons and interpolates u and v with perspective. The light is
+// interpolated with perspective too, so the light of a point of a face does
+// not depend on the view (see the comment at gpu_tmap in gpu3d.c). v_lq: the
+// corner lights of a quad (bilinear at v_st), or -1.
 static const char *Scene_vs =
 	"#version 330 core\n"
 	"layout(location = 0) in vec3 a_pos;\n"
 	"layout(location = 1) in vec3 a_uvl;\n"
+	"layout(location = 2) in vec2 a_st;\n"
+	"layout(location = 3) in vec4 a_lq;\n"
 	"uniform vec2 u_canvas;\n"
 	"uniform float u_znear;\n"
 	"out vec2 v_uv;\n"
-	"noperspective out float v_l;\n"
+	"out float v_l;\n"
+	"out vec2 v_st;\n"
+	"flat out vec4 v_lq;\n"
 	"void main() {\n"
-	"	float z = max(a_pos.z, 1.0 / 65536.0);\n"
-	"	vec2 ndc = vec2(a_pos.x / u_canvas.x * 2.0 - 1.0, 1.0 - a_pos.y / u_canvas.y * 2.0);\n"
-	"	gl_Position = vec4(ndc * z, z - 2.0 * u_znear, z);\n"
+	"	float z = a_pos.z;\n"
+	"	gl_Position = vec4(a_pos.x / u_canvas.x * 2.0 - z, z - a_pos.y / u_canvas.y * 2.0, z - 2.0 * u_znear, z);\n"
 	"	v_uv = a_uvl.xy;\n"
 	"	v_l = a_uvl.z;\n"
+	"	v_st = a_st;\n"
+	"	v_lq = a_lq;\n"
 	"}\n";
 
 // The light of the RGB form (see the comment at the top). u_near: the
@@ -216,6 +223,9 @@ static const char *Scene_fs =
 	"uniform sampler2D u_dest;\n"
 	"uniform int u_infra;\n"
 	"uniform int u_heat;\n"
+	"uniform int u_fx;\n"
+	"uniform int u_fxrow;\n"
+	"uniform int u_fxdy;\n"
 	LIGHT_GLSL
 	// The improved infravision (plat_gpu_set_infravision): c is the lit
 	// color, b the color without light. A cold polygon is a dark blue of
@@ -238,18 +248,68 @@ static const char *Scene_fs =
 	"	return cold;\n"
 	"}\n"
 	"in vec2 v_uv;\n"
-	"noperspective in float v_l;\n"
+	"in float v_l;\n"
+	"in vec2 v_st;\n"
+	"flat in vec4 v_lq;\n"
 	"out vec4 o_color;\n"
 	"int idx(vec4 c) { return int(c.r * 255.0 + 0.5); }\n"
+	// The effect colors of a merged wall texture (texmap/tmapfx.c): the
+	// color comes from the image under the face (behind) and one canvas
+	// row lower (below). k: 1 to 8 for 0xCF, 0xBF, 0xBE, 0x6F, 0x6E, 0x6D,
+	// 0x4F, 0x4E. The RGB form finds the brightness step (the low 4 bits of
+	// a palette index) of a color by the nearest palette color.
+	"int fxcode(int c) {\n"
+	"	if (c == 0xCF) return 1; if (c == 0xBF) return 2; if (c == 0xBE) return 3; if (c == 0x6F) return 4;\n"
+	"	if (c == 0x6E) return 5; if (c == 0x6D) return 6; if (c == 0x4F) return 7; if (c == 0x4E) return 8;\n"
+	"	return 0;\n"
+	"}\n"
+	"int fxrow() { return (u_fxrow - 1) & 31; }\n"
+	"ivec2 fxbelow() { ivec2 p = ivec2(gl_FragCoord.xy); return ivec2(p.x, max(p.y - u_fxdy, 0)); }\n"
+	"int fxramp(int k) { return (k == 2 || k == 5) ? 0x50 : ((k == 3 || k == 6) ? 0xA0 : 0x20); }\n"
+	"int fxstep(vec3 c) {\n"
+	"	ivec3 q = clamp(ivec3(c * 255.0 + 0.5), ivec3(0), ivec3(255)) >> 2;\n"
+	"	return int(texelFetch(u_near, q, 0).r) & 15;\n"
+	"}\n"
+	"vec3 fxrgb(int k) {\n"
+	"	vec3 b = texelFetch(u_dest, ivec2(gl_FragCoord.xy), 0).rgb;\n"
+	"	vec3 d = texelFetch(u_dest, fxbelow(), 0).rgb;\n"
+	"	float r = float(fxrow());\n"
+	"	if (k == 1) return light(light(b, r), r);\n"
+	"	if (k == 8) return d;\n"
+	"	return vpal(fxramp(k) | fxstep(k <= 4 ? b : d));\n"
+	"}\n"
+	"int fxidx(int k) {\n"
+	"	int b = idx(texelFetch(u_dest, ivec2(gl_FragCoord.xy), 0));\n"
+	"	int d = idx(texelFetch(u_dest, fxbelow(), 0));\n"
+	"	if (k == 1) {\n"
+	"		int f = fade(b, fxrow());\n"
+	"		int kk = fxcode(f);\n"
+	"		if (kk < 2) return fade(f, fxrow());\n"
+	"		k = kk;\n"
+	"	}\n"
+	"	if (k == 8) return d;\n"
+	"	return fxramp(k) | ((k <= 4 ? b : d) & 15);\n"
+	"}\n"
 	"void main() {\n"
+	"	float l = v_lq.x >= 0.0 ? mix(mix(v_lq.x, v_lq.y, v_st.x), mix(v_lq.w, v_lq.z, v_st.x), v_st.y) : v_l;\n"
 	"	if (u_rgb != 0) {\n"
 	"		vec3 c, b;\n"
-	"		if (u_mode == 0) {\n"
+		"		if (u_mode == 0) {\n"
+	"			if (u_fx != 0) {\n"
+	"				ivec2 ts = textureSize(u_tex, 0);\n"
+	"				ivec2 tc = ivec2(floor(v_uv * vec2(ts)));\n"
+	"				tc = ((tc % ts) + ts) % ts;\n"
+	"				int a = int(texelFetch(u_tex, tc, 0).a * 255.0 + 0.5);\n"
+	"				if (a > 0 && a < 255 && (255 - a) % 8 == 0 && (255 - a) / 8 <= 8) {\n"
+	"					o_color = vec4(fxrgb((255 - a) / 8), 1.0);\n"
+	"					return;\n"
+	"				}\n"
+	"			}\n"
 	"			vec4 t = texture(u_tex, v_uv);\n"
 	"			if (u_transparent != 0 && t.a < 0.5) discard;\n"
 	"			c = b = t.rgb;\n"
 	"			if (u_lit != 0)\n"
-	"				c = light(c, clamp(v_l * 32.0 - 0.5, 0.0, 31.0));\n"
+	"				c = light(c, clamp(l * 32.0 - 0.5, 0.0, 31.0));\n"
 	"		} else if (u_mode == 1) {\n"
 	"			c = b = vpal(u_color);\n"
 	"		} else {\n"
@@ -263,8 +323,12 @@ static const char *Scene_fs =
 	"	if (u_mode == 0) {\n"
 	"		c = idx(texture(u_tex, v_uv));\n"
 	"		if (u_transparent != 0 && c == 255) discard;\n"
+	"		if (u_fx != 0 && fxcode(c) != 0) {\n"
+	"			o_color = vec4(float(fxidx(fxcode(c))) / 255.0, 0.0, 0.0, 1.0);\n"
+	"			return;\n"
+	"		}\n"
 	"		if (u_lit != 0) {\n"
-	"			int row = int(clamp(v_l * 32.0, 0.0, 31.5));\n"
+	"			int row = int(clamp(l * 32.0, 0.0, 31.5));\n"
 	"			c = fade(c, row);\n"
 	"		}\n"
 	"	} else if (u_mode == 1) {\n"
@@ -685,7 +749,7 @@ static SDL_Window *Gpu_window;
 static GLuint Scene_prog, Comp_prog, Down_prog, Blur_prog, Final_prog;
 static struct {
 	GLint canvas, znear, mode, lit, transparent, color, rgb, tex, fade, dest, vpal, nearc, levels, rowk;
-	GLint infra, heat;
+	GLint infra, heat, fx, fxrow, fxdy;
 } Su;
 static struct {
 	GLint frame, pal, view, fade, plut, vpal, nearc, levels, rowk, dst, fsize, vrect, vsize, key, vrgb;
@@ -770,7 +834,7 @@ static int64_t Tex_bytes;
 
 // The batch of polygons
 typedef struct {
-	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat;
+	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row;
 } draw_state;
 
 typedef struct {
@@ -954,6 +1018,9 @@ int gpu_init(SDL_Window *window)
 	Su.levels = qglGetUniformLocation(Scene_prog, "u_levels");
 	Su.infra = qglGetUniformLocation(Scene_prog, "u_infra");
 	Su.heat = qglGetUniformLocation(Scene_prog, "u_heat");
+	Su.fx = qglGetUniformLocation(Scene_prog, "u_fx");
+	Su.fxrow = qglGetUniformLocation(Scene_prog, "u_fxrow");
+	Su.fxdy = qglGetUniformLocation(Scene_prog, "u_fxdy");
 	Cu.frame = qglGetUniformLocation(Comp_prog, "u_frame");
 	Cu.pal = qglGetUniformLocation(Comp_prog, "u_pal");
 	Cu.view = qglGetUniformLocation(Comp_prog, "u_view");
@@ -1014,8 +1081,12 @@ int gpu_init(SDL_Window *window)
 	qglBindBuffer(GL_ARRAY_BUFFER, Scene_vbo);
 	qglVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(plat_gpu_vertex), (void *) 0);
 	qglVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(plat_gpu_vertex), (void *) (3 * sizeof(float)));
+	qglVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(plat_gpu_vertex), (void *) (6 * sizeof(float)));
+	qglVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(plat_gpu_vertex), (void *) (8 * sizeof(float)));
 	qglEnableVertexAttribArray(0);
 	qglEnableVertexAttribArray(1);
+	qglEnableVertexAttribArray(2);
+	qglEnableVertexAttribArray(3);
 	qglGenVertexArrays(1, &Comp_vao);
 	qglBindVertexArray(0);
 
@@ -1534,6 +1605,10 @@ static void apply_state(const draw_state *st)
 		qglUniform1i(Su.color, st->color);
 	if (!Cur_state_valid || st->heat != Cur_state.heat)
 		qglUniform1i(Su.heat, st->heat);
+	if (!Cur_state_valid || st->fx != Cur_state.fx)
+		qglUniform1i(Su.fx, st->fx);
+	if (!Cur_state_valid || st->fx_row != Cur_state.fx_row)
+		qglUniform1i(Su.fxrow, st->fx_row);
 	if (st->mode == PLAT_GPU_TEXTURED && (!Cur_state_valid || st->texture != Cur_state.texture)) {
 		qglActiveTexture(GL_TEXTURE0);
 		qglBindTexture(GL_TEXTURE_2D, (GLuint) st->texture);
@@ -1625,6 +1700,8 @@ void plat_gpu_begin_view(int canvas_w, int canvas_h, int target_w, int target_h,
 	qglUniform1i(Su.tex, 0);
 	qglUniform1i(Su.fade, 1);
 	qglUniform1i(Su.dest, 2);
+	// the image rows of one canvas row: the pixel "below" of the effect colors
+	qglUniform1i(Su.fxdy, Canvas_h > 0 && View_h > Canvas_h ? (View_h + Canvas_h / 2) / Canvas_h : 1);
 	qglUniform1i(Su.vpal, 3);
 	qglUniform1i(Su.nearc, 4);
 	qglUniform1i(Su.levels, Fade_levels);
@@ -1669,6 +1746,10 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 		if (!ti || ti->rgba != View_rgb)
 			return;
 		st.smooth = (ti->flags & PLAT_GPU_TEX_SMOOTH) != 0;
+		if (m->effects) {
+			st.fx = 1;
+			st.fx_row = m->fx_row;
+		}
 	} else
 		st.color = m->color & 255;
 	if (m->mode == PLAT_GPU_DARKEN && st.color >= Fade_levels)
@@ -1677,14 +1758,16 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 	if (m->mode == PLAT_GPU_DARKEN) {
 		// The darkening reads the image under the polygon: draw the batch,
 		// then copy the bounding box of the polygon to Dest_tex.
-		float x0 = v[0].x, x1 = v[0].x, y0 = v[0].y, y1 = v[0].y;
+		// (a flat polygon of the 3d library: clipped, z more than 0)
+		float x0 = v[0].x / v[0].z, x1 = x0, y0 = v[0].y / v[0].z, y1 = y0;
 		int ix0, ix1, iy0, iy1;
 
 		for (i = 1; i < n; i++) {
-			if (v[i].x < x0) x0 = v[i].x;
-			if (v[i].x > x1) x1 = v[i].x;
-			if (v[i].y < y0) y0 = v[i].y;
-			if (v[i].y > y1) y1 = v[i].y;
+			float x = v[i].x / v[i].z, y = v[i].y / v[i].z;
+			if (x < x0) x0 = x;
+			if (x > x1) x1 = x;
+			if (y < y0) y0 = y;
+			if (y > y1) y1 = y;
 		}
 		ix0 = (int) (x0 / Canvas_w * View_w) - 1;
 		ix1 = (int) (x1 / Canvas_w * View_w) + 2;
@@ -1702,6 +1785,42 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 		qglBindTexture(GL_TEXTURE_2D, Dest_tex);
 		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, ix0, iy0, ix0, iy0, ix1 - ix0, iy1 - iy0);
 		qglActiveTexture(GL_TEXTURE0);
+	}
+
+	if (st.fx) {
+		// The effect colors read the image under the face (and one canvas
+		// row below it): draw the batch, then copy the bounding box of the
+		// face, or the whole view when a corner is near or behind the eye.
+		int ix0 = 0, ix1 = View_w, iy0 = 0, iy1 = View_h, all = 0;
+
+		for (i = 0; i < n; i++)
+			if (v[i].z <= 1.0f / 16.0f)
+				all = 1;
+		if (!all) {
+			float x0 = v[0].x / v[0].z, x1 = x0, y0 = v[0].y / v[0].z, y1 = y0;
+			for (i = 1; i < n; i++) {
+				float x = v[i].x / v[i].z, y = v[i].y / v[i].z;
+				if (x < x0) x0 = x;
+				if (x > x1) x1 = x;
+				if (y < y0) y0 = y;
+				if (y > y1) y1 = y;
+			}
+			ix0 = (int) (x0 / Canvas_w * View_w) - 1;
+			ix1 = (int) (x1 / Canvas_w * View_w) + 2;
+			iy0 = View_h - ((int) (y1 / Canvas_h * View_h) + 2) - 8;
+			iy1 = View_h - ((int) (y0 / Canvas_h * View_h) - 1);
+			if (ix0 < 0) ix0 = 0;
+			if (iy0 < 0) iy0 = 0;
+			if (ix1 > View_w) ix1 = View_w;
+			if (iy1 > View_h) iy1 = View_h;
+		}
+		if (ix1 > ix0 && iy1 > iy0) {
+			flush();
+			qglActiveTexture(GL_TEXTURE2);
+			qglBindTexture(GL_TEXTURE_2D, Dest_tex);
+			qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, ix0, iy0, ix0, iy0, ix1 - ix0, iy1 - iy0);
+			qglActiveTexture(GL_TEXTURE0);
+		}
 	}
 
 	ntri = n - 2;

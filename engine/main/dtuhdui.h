@@ -26,4 +26,14 @@ void dtu_hdui_blit_key(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitm
 // darkened rectangles in the current canvas, with the darkening level.
 void dtu_hdui_menu_shadow(int x1, int y1, int x2, int y2, int level);
 
+// The upscaled pictures that the screen shows now, for a screen that is
+// saved and drawn again later (the key screen of kconfig.c draws the
+// whole screen over them). dtu_hdui_save returns NULL if the upscaled
+// pictures are not used. dtu_hdui_restore(state) shows them again after
+// the pixels of the screen were copied back, and frees state (NULL does
+// nothing).
+typedef struct dtu_hdui_state dtu_hdui_state;
+dtu_hdui_state *dtu_hdui_save(void);
+void dtu_hdui_restore(dtu_hdui_state *state);
+
 #endif

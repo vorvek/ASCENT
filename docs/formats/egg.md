@@ -83,6 +83,7 @@ Flags:
 | 0x04 | NO_LIGHTING | | Descent 1 meaning, copied by the loader. Set on one bitmap (`miss` in `PORTAL.EGG`). |
 | 0x08 | RLE | data is run length encoded | verified by decoding |
 | 0x10 | PAGED_OUT | Descent 1 `BM_FLAG_PAGED_OUT`. The Descent 1 archive writer sets it on a frame that its low memory mode replaces by the frame before it. The header loader ignores it. | verified by data, see below |
+| 0x20 | (not in the files) | No bitmap of the 57 archives has it (60432 bitmaps checked). DTUGAME.EXE sets it on a merged wall texture (`../re/effectcolors.md`). | verified by data |
 | 0x40 | not remapped | set on 149 bitmaps of `PORTAL.EGG` (interface art: buttons, portraits). The loader copies it to the in-memory bitmap flags. | verified by data, see below |
 
 Flag 0x10: in `PORTAL.EGG` it is on 1143 bitmaps. These are exactly the animation
@@ -328,6 +329,13 @@ went into `PORTAL.EGG` (the 0x40 flag bitmaps).
 9472 bytes: 768 bytes of palette (256 x RGB, 6 bit VGA values, maximum value 63) and
 34 fade tables of 256 bytes, same layout as Descent 1. The last fade table is the
 identity table. Verified by size, value range, and by rendering in-game textures.
+
+The palette is 16 ramps of 16 colors; in each ramp index 0 is the brightest. The
+seven entries 0x4E, 0x4F, 0x6D, 0x6E, 0x6F, 0xBE, 0xBF are all 63 0 0 (bright red),
+and 0xCF is 7 0 0, a copy of 0xFD. These are the effect colors
+(`../re/effectcolors.md`). Ramps used by them: 0x20 blue (45 51 63 to 0 1 5), 0x50
+green (44 50 37 to 2 4 0), 0xA0 warm (63 53 50 to 7 1 0), 0xC0 red (57 29 29 to
+7 0 0). Verified against the file.
 
 ## Unknown
 

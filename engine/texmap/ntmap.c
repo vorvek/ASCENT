@@ -146,6 +146,7 @@ static char rcsid[] = "$Id: ntmap.c 1.52 1995/03/14 15:13:06 john Exp $";
 
 #include "texmap.h"
 #include "texmapl.h"
+#include "tmapfx.h"		// ASCENT: the effect colors
 #include "rle.h"
 #include "scanline.h"
 
@@ -1061,6 +1062,7 @@ void draw_tmap(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 	Transparency_on = bp->bm_flags & BM_FLAG_TRANSPARENT;
 	if (bp->bm_flags & BM_FLAG_NO_LIGHTING)
 		Lighting_on = 0;
+	Tmap_fx = (bp->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;	// ASCENT: tmapfx.c
 
 	// ASCENT: no selector for the texture map. The scanline renderers read
 	// 64 rows of 64 pixels from bm_data and wrap u and v. If the bitmap is

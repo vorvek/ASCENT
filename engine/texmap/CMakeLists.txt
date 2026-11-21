@@ -10,7 +10,8 @@ set(TEXMAP_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/tmap_ll.c
   ${CMAKE_CURRENT_SOURCE_DIR}/tmap_flt.c
   ${CMAKE_CURRENT_SOURCE_DIR}/tmapfade.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/tmap_fl1.c)
+  ${CMAKE_CURRENT_SOURCE_DIR}/tmap_fl1.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/tmapfx.c)
 
 # Libraries whose headers or symbols the texture mapper uses.
 set(TEXMAP_DEPS fix vecmat misc 2d 3d)

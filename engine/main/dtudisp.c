@@ -41,6 +41,8 @@
 #include "3d.h"			// ASCENT: g3_gpu_view_dest
 #include "dtuhdui.h"		// ASCENT: the upscaled interface pictures
 #include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
+#include "segment.h"
+#include "automap.h"		// ASCENT: the map of the map screen
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -619,6 +621,29 @@ static dtu_button *mode_buttons(int mode)
 	return NULL;
 }
 
+// 0x142F18 (high) and 0x142F28 (low): the rectangle of the map in the
+// circle of the map screen (0x340D5). The map is drawn there, then the part
+// of the picture that is not color 255 (the frame around the circle) is
+// drawn over it (0x344ED).
+static void map_rect(dtu_rect *r)
+{
+	if (Dtu_hires) {
+		r->x = 45; r->y = 25; r->w = 345; r->h = 350;
+	} else {
+		r->x = 30; r->y = 20; r->w = 160; r->h = 160;
+	}
+}
+
+static void draw_map(void)
+{
+	dtu_rect r;
+
+	map_rect(&r);
+	dtu_automap_frame(grd_curcanv, r.x, r.y, r.w, r.h);
+	if (Interface_bm)
+		blit(Interface_bm, r.x, r.y, r.w, r.h, r.x, r.y, 1);
+}
+
 // 0x4052F (init_game_screen): the view rectangle of a mode
 static void mode_view(int mode, dtu_rect *v)
 {
@@ -659,6 +684,7 @@ void dtu_display_select_mode(int mode)
 	if (mode < 0 || mode > DTU_IM_LETTERBOX || mode == 1 || mode == 2)
 		return;
 	Dtu_interface_mode = mode;
+	Dtu_automap_active = 0;		// 0x40922: a new map screen follows the player
 	Button_pressed = -1;
 	Button_list = NULL;
 	Inv_held = -1;				// 0x361BF: the cursor lets go of the item
@@ -777,6 +803,15 @@ void dtu_display_end_render(void)
 	grd_curscreen->sc_aspect = Saved_aspect;
 }
 
+// ASCENT: the rectangle of the last draw_view, for dtu_display_view_again.
+static int View_dest[4], View_dest_set;
+
+void dtu_display_view_again(void)
+{
+	if (View_dest_set)
+		g3_gpu_view_dest(View_dest[0], View_dest[1], View_dest[2], View_dest[3]);
+}
+
 // Copies the rendered view to the screen. High resolution shows each line
 // twice (0x40729).
 static void draw_view(void)
@@ -790,6 +825,11 @@ static void draw_view(void)
 	if (View.x + w > dest->bm_w) w = dest->bm_w - View.x;
 	// ASCENT: the GPU image of the view (gpu3d.c) shows in this rectangle
 	g3_gpu_view_dest(View.x, View.y, w, Dtu_hires ? 2 * h : h);
+	View_dest[0] = View.x;
+	View_dest[1] = View.y;
+	View_dest[2] = w;
+	View_dest[3] = Dtu_hires ? 2 * h : h;
+	View_dest_set = 1;
 	for (y = 0; y < h; y++) {
 		ubyte *s = src->bm_data + y * src->bm_rowsize;
 		if (Dtu_hires) {
@@ -1529,6 +1569,12 @@ static void do_input(int mx, int my)
 					do_action(Button_list[i].action);
 				return;
 			}
+		// 0x305C9: in the map screen a click in the map gives it the
+		// controls, a click outside it takes them back
+		if (Dtu_interface_mode == DTU_IM_MAP) {
+			dtu_rect r;
+			map_rect(&r);
+			Dtu_automap_active = in_rect(mx, my, r.x, r.y, r.w, r.h);		}
 		if (inv_click(mx, my))
 			return;
 		if (Inv_held >= 0)
@@ -1582,7 +1628,8 @@ void dtu_display_frame(void)
 			else if (Dtu_interface_mode == DTU_IM_STATS) {
 				draw_stats();
 				dtu_spell_screen_draw(Dtu_hires);	// ASCENT: the spell books (dtuspell.c)
-			}
+			} else if (Dtu_interface_mode == DTU_IM_MAP)
+				draw_map();				// 0x414FD
 		}
 		draw_hot_keys();
 		draw_buttons();
