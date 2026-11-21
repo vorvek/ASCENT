@@ -75,4 +75,11 @@ void dtu_display_add_message(char *text);
 // Adds the message of a trigger: the color of the player and an empty line after it.
 void dtu_display_add_trigger_message(char *text);
 
+// Loads picture n of FEBGND.DAT and the palette of the entry (768 bytes,
+// values 0 to 63). Returns NULL if the picture is not available. The
+// caller releases the bitmap with gr_free_bitmap(). pal can be NULL.
+// The front end uses it (dtufe.c).
+struct _grs_bitmap;
+struct _grs_bitmap *dtu_febgnd_load(int n, ubyte *pal);
+
 #endif

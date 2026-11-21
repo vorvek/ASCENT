@@ -129,14 +129,18 @@ Magic `DGSS`, written by the state code derived from Descent 1 `state.c`
 | 41 | 4 | u32, 1 (Descent 1: level number) | value verified, name is a guess |
 | 45 | 4 | u32, 0 | name unknown |
 | 49 | 4 | u32, 933299 (Descent 1: game time as fix, 14.24 s) | name is a guess |
-| 53 | 6967 | player record. The writer stores one element of the player array, 0x1B37 bytes. The player name "Elmac" is at file offset 141 | size from code, content not decoded |
-| 7020 | 366 | written by two helper functions (0x4E8C0, 0x71729) and an optional tail of three counted arrays. Contains the strings `hmtd_p.pof` and `RLPD` | not decoded |
+| 53 | 88 | 0x13 (19) at 53, 1 at 137, else 0 | not decoded |
+| 141 | 6967 | the player record: one element of the player array, 0x1B37 bytes. The layout is in `docs/re/character.md`: name at +0, hit points at +0x53, the 80 attribute bytes at +0x97, the item list at +0x103 (16 bytes for each entry, count at +0xF3), hot keys at +0x1AC1 | verified: name, attributes, item lists and references decode to a consistent new character |
+| 7108 | 80 | a second copy of the 80 attribute bytes: the values without the effect of items (0x187B90 in the executable) | verified (equal to the first copy in this file) |
+| 7188 | 198 | starts with `RLPD`, has the mission name `DTU` again | not decoded |
 
 Unlike Descent 1 there is no thumbnail image in the file.
 The level state is not in this file. It is stored in `SAVE\SGn.LS`,
 `SAVE\SGn_m.LVL`, `SAVE\SGn_m.TIG` and `SAVE\SGn_m.TAP`.
 
-Unexplained ranges: 53..7385 (structure known only as described above).
+Unexplained ranges: 53..140, the fields of the player record that `character.md` does not list, 7188..7385.
+
+Correction: an earlier version of this table put the player record at 53. The writer stores 6967 bytes, but the record starts at 141.
 
 ## *.FNT: fonts
 

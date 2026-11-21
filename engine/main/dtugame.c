@@ -197,6 +197,10 @@ int dtu_write_screenshot(char *filename)
 	return 1;
 }
 
+// ASCENT: 1 after the frame limit of -frames was reached. The start code
+// with the front end reads it (inferno.c).
+int Dtu_frames_done = 0;
+
 int dtu_frame_done(void)
 {
 	static int frame_count = 0;
@@ -212,6 +216,7 @@ int dtu_frame_done(void)
 	frame_count++;
 
 	if (frame_limit > 0 && frame_count >= frame_limit) {
+		Dtu_frames_done = 1;
 		if ((t = FindArg("-screenshot")) != 0 && t+1 < Num_args) {
 			if (dtu_write_screenshot(Args[t+1]))
 				printf("Wrote %s after %d frames\n", Args[t+1], frame_count);

@@ -274,6 +274,7 @@ static char rcsid[] = "$Id: gauges.c 2.7 1995/12/19 16:18:33 john Exp $";
 #include "text.h"
 #include "render.h"
 #include "piggy.h"
+#include "dtuchar.h"		// ASCENT: the character of the target game
 
 bitmap_index Gauges[MAX_GAUGE_BMS];   // Array of all gauge bitmaps.
 
@@ -1189,6 +1190,10 @@ void add_points_to_score(int points)
 
 	if (points == 0 || Cheats_enabled)
 		return;
+
+	// ASCENT: the score of the target game is the experience of the
+	// character (0x4EA50 of DTUGAME.EXE calls 0xAF3CF), see dtuchar.c.
+	dtu_char_award_xp(points);
 
 	if ((Game_mode & GM_MULTI) && !(Game_mode & GM_MULTI_COOP))
 		return;

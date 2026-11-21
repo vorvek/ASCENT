@@ -909,7 +909,7 @@ void render_object(object *obj)
 
 		// ASCENT: scenery of the target game can be a vclip (0x7C734)
 		case RT_WEAPON_VCLIP:
-			if (obj->type == OBJ_DRESSING)
+			if (obj->type == OBJ_DRESSING || Dtu_objects_enabled)		// a missile has its vclip in the object too
 				dtu_draw_dressing_vclip(obj);
 			else
 				draw_weapon_vclip(obj);

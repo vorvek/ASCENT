@@ -81,6 +81,7 @@ int dtu_find_level_num(char *level_name);
 // -frames N (leave the game after N frames) and -screenshot FILE (write
 // the last frame to a PPM file). Returns 1 if the game must stop.
 int dtu_frame_done(void);
+extern int Dtu_frames_done;		// 1 after the frame limit of -frames was reached
 
 // Writes the current screen to a PPM file (P6). Returns 1 if successful.
 int dtu_write_screenshot(char *filename);

@@ -720,6 +720,7 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtudisp.h"		// ASCENT: the interface of the target game
+#include "dtufe.h"		// ASCENT: the front end of the target game
 #include "gamefont.h"
 #include "playsave.h"
 
@@ -1131,7 +1132,9 @@ static int dtu_run_level(char *level_name)
 	build_mission_list(0);		// This also loads mission 0.
 
 	// A level that is not in the mission gets a place after the last level.
-	level_num = dtu_find_level_num(level_name);
+	// ASCENT: with no level name (the program was started without -level)
+	// the front end of the target game gives the level (dtufe.c).
+	level_num = level_name ? dtu_find_level_num(level_name) : 1;
 	if (!level_num) {
 		if (Last_level >= MAX_LEVELS_PER_MISSION || strlen(level_name) > 8 || strchr(level_name,'.'))
 			Error("The level %s is not in the mission", level_name);
@@ -1151,18 +1154,31 @@ static int dtu_run_level(char *level_name)
 		Player_ship->max_rotthrust = fl2f(0.14);
 	}
 
-	StartNewGame(level_num);
+	// ASCENT: the front end (title picture, main menu, character
+	// generation, Waterdeep) runs before the game and again after it.
+	if (!level_name)
+		dtufe_title();
 
-	// The size of the player is the one of the level file. A level with
-	// no size gets the size of the ship of Descent 1.
-	if (ConsoleObject->size <= 0)
-		ConsoleObject->size = fl2f(4.5);
+	do {
+		if (!level_name) {
+			level_num = dtufe_run();
+			if (!level_num)
+				break;
+		}
 
-	while (Function_mode == FMODE_GAME) {
-		if (!plat_pump())
-			break;
-		game();
-	}
+		StartNewGame(level_num);
+
+		// The size of the player is the one of the level file. A level with
+		// no size gets the size of the ship of Descent 1.
+		if (ConsoleObject->size <= 0)
+			ConsoleObject->size = fl2f(4.5);
+
+		while (Function_mode == FMODE_GAME) {
+			if (!plat_pump())
+				break;
+			game();
+		}
+	} while (!level_name && dtufe_game_ended());
 
 	return 0;
 }
@@ -1193,6 +1209,12 @@ int main(int argc,char **argv)
 
 	if ((t = FindArg( "-level" )) != 0 && t+1 < Num_args)
 		return dtu_run_level(Args[t+1]);
+
+	// ASCENT: without -level the front end of the target game runs. The
+	// title screens and the menus of Descent 1 below need the data of
+	// Descent 1; the option -d1menu keeps that path for tests.
+	if (!FindArg( "-d1menu" ))
+		return dtu_run_level(NULL);
 
 	if ( FindArg( "-verbose" ) )
 		Inferno_verbose = 1;

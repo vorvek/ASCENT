@@ -33,6 +33,8 @@
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtudisp.h"
+#include "dtuobj.h"
+#include "dtuchar.h"
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -153,6 +155,28 @@ static grs_bitmap *febgnd_load(int n)
 	}
 	free(src);
 	return bm;
+}
+
+// ASCENT: for the front end (dtufe.c), which shows each picture with the
+// palette of its entry. pal gets the 768 bytes of the palette (values 0 to
+// 63), or stays as it is if the entry is not available.
+grs_bitmap *dtu_febgnd_load(int n, ubyte *pal)
+{
+	FILE *f;
+
+	if (!febgnd_open() || n < 0 || n >= N_febgnd || Febgnd[n].size <= 768)
+		return NULL;
+	if (pal) {
+		f = fopen(Febgnd_dat_path, "rb");
+		if (!f)
+			return NULL;
+		if (fseek(f, Febgnd[n].offset, SEEK_SET) != 0 || fread(pal, 1, 768, f) != 768) {
+			fclose(f);
+			return NULL;
+		}
+		fclose(f);
+	}
+	return febgnd_load(n);
 }
 
 //------------------------------------------------------------------------
@@ -285,6 +309,7 @@ static int Msg_count = 0;
 static int Msg_first = 0;				// the line at the bottom of the box
 
 static ubyte Key_was_down[256];
+static int Inv_held = -1;					// see the inventory screen
 static int Mouse_was_down = 0;
 
 //------------------------------------------------------------------------
@@ -387,31 +412,53 @@ static void area_hit_points(int x, int y, int w, int h, int hp, int max_hp)
 
 static char *player_name(void)
 {
+	if (Dtu_char.created && Dtu_char.name[0])
+		return Dtu_char.name;
 	return Players[Player_num].callsign;
 }
 
+// Player record +0x53 and +0x9F of the original
 static int player_hit_points(void)
 {
-	// ASCENT: the port has no character record yet. The shields of the
-	// Descent player structure are the hit points for now.
-	return f2i(Players[Player_num].shields);
+	return dtu_char_hit_points();
 }
 
 static int player_max_hit_points(void)
 {
-	// ASCENT: missing source: the maximum hit points of the character
-	// (player record +0x9F in the original). 100 is the start value of the
-	// shields.
-	return 100;
+	return dtu_char_max_hit_points();
 }
 
+// The icon of an entry of the inventory (byte 2 of the item record of the
+// original), 0: none.
+static int entry_icon(int index)
+{
+	if (index < 0 || index >= Dtu_n_inventory || Dtu_inventory[index].icon < 0)
+		return 0;
+	return Dtu_inventory[index].icon;
+}
+
+// The item in the hand (player record +0x1AD7 of the original)
 static int current_item_icon(void)
 {
-	// ASCENT: missing source: the current item of the character (player
-	// record +0x1AD7 in the original). The Descent primary weapon stands
-	// for it.
-	int w = Primary_weapon_to_weapon_info[Primary_weapon];
-	return Weapon_item_info[w].icon;
+	return entry_icon(Dtu_char.current.n);
+}
+
+// A text of the string table of the game
+static char *gtext(int n, char *def)
+{
+	if (n >= 0 && n < N_TEXT_STRINGS && Text_string[n] && Text_string[n][0])
+		return Text_string[n];
+	return def;
+}
+
+// Area type 2 (0x9B761) with x 0 and y 0x8000: the string at the left edge
+static void area_text_left(int x, int y, int w, int h, char *s, int color)
+{
+	area_restore(x, y, w, h);
+	if (!s || !*s || !GAME_FONT) return;
+	gr_set_curfont(GAME_FONT);
+	gr_set_fontcolor(color, -1);
+	gr_string(x, y + (h - GAME_FONT->ft_h) / 2, s);
 }
 
 //------------------------------------------------------------------------
@@ -605,6 +652,7 @@ void dtu_display_select_mode(int mode)
 	Dtu_interface_mode = mode;
 	Button_pressed = -1;
 	Button_list = NULL;
+	Inv_held = -1;				// 0x361BF: the cursor lets go of the item
 
 	if (mode_has_interface(mode)) {
 		entry = mode_picture(mode);
@@ -650,9 +698,24 @@ static void do_action(int action)
 		}
 		return;
 	}
-	// ASCENT: missing source: rest areas (0x360D5), use (0x3614B) and drop
-	// (0x35FD6) need the character and the inventory. The buttons show the
-	// pressed image and do nothing.
+	switch (action) {
+	case ACT_REST:			// 0x360D5
+		dtu_char_rest();
+		break;
+	case ACT_USE:			// 0x3614B: the held item, or the item in the hand
+		if (Inv_held >= 0) {
+			dtu_char_use(Inv_held);
+			Inv_held = -1;
+		} else
+			dtu_char_use_current();
+		break;
+	case ACT_DROP:			// 0x35FD6: the held item
+		if (Inv_held >= 0) {
+			dtu_char_drop(Inv_held);
+			Inv_held = -1;
+		}
+		break;
+	}
 }
 
 //------------------------------------------------------------------------
@@ -772,26 +835,308 @@ static void draw_main_areas(void)
 // The hot key boxes (0x995BE create, 0x329CB update). High resolution has
 // them on the main screen and on the screens, low resolution on the hot
 // key screen only.
+static int hot_keys_visible(void)
+{
+	if (!mode_has_interface(Dtu_interface_mode))
+		return 0;
+	return Dtu_hires ? (Dtu_interface_mode != DTU_IM_HOTKEYS) : (Dtu_interface_mode == DTU_IM_HOTKEYS);
+}
+
+static void hot_key_pos(int i, int *x, int *y, int *qy)
+{
+	if (Dtu_hires) {
+		*x = 14 + 55 * i; *y = 411; *qy = 449;		// 0x1446D0, 0x1446F8
+	} else {
+		*x = Hotkey_lo_x[i]; *y = Hotkey_lo_y[i]; *qy = Hotkey_lo_qty_y[i];
+	}
+}
+
 static void draw_hot_keys(void)
 {
 	int i, size = SC(16);
+	char text[16];
 
-	if (Dtu_hires ? (Dtu_interface_mode == DTU_IM_HOTKEYS) : (Dtu_interface_mode != DTU_IM_HOTKEYS))
+	if (!hot_keys_visible())
 		return;
-	for (i = 0; i < 10; i++) {
-		int x, y, qy;
-		if (Dtu_hires) {
-			x = 14 + 55 * i; y = 411; qy = 449;		// 0x1446D0, 0x1446F8
-		} else {
-			x = Hotkey_lo_x[i]; y = Hotkey_lo_y[i]; qy = Hotkey_lo_qty_y[i];
+	for (i = 0; i < DTU_N_HOT_KEYS; i++) {
+		int x, y, qy, n = Dtu_char.hot_key[i].n;
+
+		hot_key_pos(i, &x, &y, &qy);
+		// 0x329CB: a box with no item is cleared. A box with an item shows
+		// the icon and the quantity. The box of the item in the hand gets a
+		// border of thickness 1 in the color (63,63,0).
+		if (n < 0 || n >= Dtu_n_inventory) {
+			area_icon(x, y, 0);
+			area_text(x, qy, size, SC(6), "", rgb6(32, 0, 0));
+			continue;
 		}
-		// ASCENT: missing source: the hot keys of the character (player
-		// record +0x1AC1 in the original). All boxes are empty: the icon
-		// area and the quantity area are restored and nothing is printed.
-		area_icon(x, y, 0);
-		area_text(x, qy, size, SC(6), "", rgb6(32, 0, 0));
-		(void) area_border;		// the box of the current item gets a (63,63,0) border
+		area_icon(x, y, entry_icon(n));
+		sprintf(text, "%d", Dtu_inventory[n].count);
+		area_text(x, qy, size, SC(6), text, rgb6(32, 0, 0));
+		if (n == Dtu_char.current.n)
+			area_border(x, y, size, size, rgb6(63, 63, 0), 1);
 	}
+}
+
+//------------------------------------------------------------------------
+// The inventory screen (modes 3 and 6)
+
+// The list shows ten entries in two columns (0x144540 high, 0x144590 low).
+static int Inv_first = 0;				// the first entry that is shown (0x13AD9F)
+static int Inv_sel = 0;					// ASCENT: the entry that the keys act on
+// Inv_held (above): the entry that the cursor holds (0x13ADAF, 0x1BD694), or -1
+static int Inv_known = 0;
+static char Desc_text[80];				// the text of the description bar (area 0x3BC524)
+
+static short Inv_lo_y[5] = { 2, 31, 61, 90, 119 };
+
+static void inv_cell_pos(int cell, int *x, int *y, int *qy)
+{
+	int col = cell & 1, row = cell >> 1;
+
+	if (Dtu_hires) {
+		*x = col ? 51 : 9; *y = 9 + 58 * row; *qy = *y + 36;
+	} else {
+		*x = col ? 26 : 5; *y = Inv_lo_y[row]; *qy = *y + 20;
+	}
+}
+
+// The boxes of the paper doll (0x1443E0 x, 0x144440 y), in the order of
+// DTU_SLOT_. [0] low resolution, [1] high resolution.
+static short Slot_pos[2][DTU_N_SLOTS][2] = {
+	{ { 67, 92 }, { 193, 51 }, { 67, 52 }, { 191, 72 }, { 191, 92 }, { 67, 72 }, { 73, 123 }, { 187, 123 },
+	  { 72, 162 }, { 186, 162 }, { 164, 11 }, { 193, 11 } },
+	{ { 133, 184 }, { 383, 103 }, { 133, 103 }, { 383, 143 }, { 383, 183 }, { 133, 143 }, { 141, 244 }, { 374, 246 },
+	  { 132, 326 }, { 374, 317 }, { 328, 22 }, { 384, 22 } },
+};
+// "Put ... here" of the string table (0x3147D to 0x3167C)
+static short Slot_text[DTU_N_SLOTS] = { 787, 665, 666, 667, 668, 669, 670, 671, 672, 673, 785, 786 };
+
+static int inventory_mode(void)
+{
+	return Dtu_interface_mode == DTU_IM_INVENTORY || Dtu_interface_mode == DTU_IM_HOTKEYS;
+}
+
+static void inv_show_entry(int index)
+{
+	if (index < 0) return;
+	Inv_first = (index / 10) * 10;
+}
+
+static void inv_check(void)
+{
+	// 0xB6926: a new entry shows its page
+	if (Dtu_n_inventory > Inv_known)
+		inv_show_entry(Dtu_n_inventory - 1);
+	Inv_known = Dtu_n_inventory;
+	if (Inv_held >= Dtu_n_inventory) Inv_held = -1;
+	if (Inv_sel >= Dtu_n_inventory) Inv_sel = Dtu_n_inventory - 1;
+	if (Inv_sel < 0) Inv_sel = 0;
+	if (Inv_first >= Dtu_n_inventory) Inv_first = Dtu_n_inventory > 0 ? ((Dtu_n_inventory - 1) / 10) * 10 : 0;
+}
+
+static void draw_inventory(void)
+{
+	int cell, slot, size = SC(16), x, y, qy;
+	char text[16];
+
+	if (Dtu_hires || Dtu_interface_mode == DTU_IM_INVENTORY)
+		for (cell = 0; cell < 10; cell++) {
+			int n = Inv_first + cell;
+
+			inv_cell_pos(cell, &x, &y, &qy);
+			if (n >= Dtu_n_inventory) {
+				area_icon(x, y, 0);
+				area_text(x, qy, size, SC(6), "", rgb6(32, 0, 0));
+				continue;
+			}
+			// The entry that the cursor holds is drawn at the cursor.
+			area_icon(x, y, n == Inv_held ? 0 : entry_icon(n));
+			sprintf(text, "%d", Dtu_inventory[n].count);
+			area_text(x, qy, size, SC(6), text, rgb6(32, 0, 0));
+			// ASCENT: the mark of the entry that the keys act on. The original
+			// has the mouse only.
+			if (n == Inv_sel)
+				area_border(x - 1, y - 1, size + 2, size + 2, rgb6(48, 48, 48), 1);
+		}
+	if (Dtu_hires ? 1 : (Dtu_interface_mode == DTU_IM_INVENTORY))
+		for (slot = 0; slot < DTU_N_SLOTS; slot++) {
+			int n = Dtu_char.slot[slot].n;
+
+			x = Slot_pos[Dtu_hires][slot][0];
+			y = Slot_pos[Dtu_hires][slot][1];
+			area_icon(x, y, (n >= 0 && n != Inv_held) ? entry_icon(n) : 0);
+		}
+}
+
+// Sets the text of the description bar for the place under the cursor.
+static void inv_describe(int mx, int my)
+{
+	int cell, slot, size = SC(16), x, y, qy, i;
+
+	Desc_text[0] = 0;
+	if (hot_keys_visible())
+		for (i = 0; i < DTU_N_HOT_KEYS; i++) {
+			hot_key_pos(i, &x, &y, &qy);
+			if (mx >= x && my >= y && mx < x + size && my < y + size && Dtu_char.hot_key[i].n >= 0
+					&& Dtu_char.hot_key[i].n < Dtu_n_inventory)
+				strncpy(Desc_text, Dtu_inventory[Dtu_char.hot_key[i].n].name, sizeof(Desc_text) - 1);
+		}
+	if (!inventory_mode())
+		return;
+	for (cell = 0; cell < 10; cell++) {
+		inv_cell_pos(cell, &x, &y, &qy);
+		if (mx >= x && my >= y && mx < x + size && my < y + size && Inv_first + cell < Dtu_n_inventory)
+			strncpy(Desc_text, Dtu_inventory[Inv_first + cell].name, sizeof(Desc_text) - 1);
+	}
+	for (slot = 0; slot < DTU_N_SLOTS; slot++) {
+		x = Slot_pos[Dtu_hires][slot][0];
+		y = Slot_pos[Dtu_hires][slot][1];
+		if (mx >= x && my >= y && mx < x + size && my < y + size) {
+			int n = Dtu_char.slot[slot].n;
+			if (n >= 0 && n < Dtu_n_inventory)
+				strncpy(Desc_text, Dtu_inventory[n].name, sizeof(Desc_text) - 1);
+			else
+				strncpy(Desc_text, gtext(Slot_text[slot], ""), sizeof(Desc_text) - 1);
+		}
+	}
+	// ASCENT: with the cursor on no item the bar shows the entry of the keys
+	if (!Desc_text[0] && Inv_held >= 0 && Inv_held < Dtu_n_inventory)
+		strncpy(Desc_text, Dtu_inventory[Inv_held].name, sizeof(Desc_text) - 1);
+	if (!Desc_text[0] && Inv_sel < Dtu_n_inventory)
+		strncpy(Desc_text, Dtu_inventory[Inv_sel].name, sizeof(Desc_text) - 1);
+	Desc_text[sizeof(Desc_text) - 1] = 0;
+}
+
+// A click of the mouse on the inventory screen (0x2FB10, 0x30650 and the
+// next blocks). Returns 1 if the click was on an item place.
+static int inv_click(int mx, int my)
+{
+	int cell, slot, size = SC(16), x, y, qy, i;
+
+	if (hot_keys_visible())
+		for (i = 0; i < DTU_N_HOT_KEYS; i++) {
+			hot_key_pos(i, &x, &y, &qy);
+			if (mx >= x && my >= y && mx < x + size && my < y + size) {
+				// 0x3058E: the held item goes into the box. With no held item
+				// the box works like its key.
+				if (Inv_held >= 0) {
+					dtu_char_set_hot_key(i, Inv_held);
+					Inv_held = -1;
+				} else
+					dtu_char_select_hot_key(i);
+				return 1;
+			}
+		}
+	if (!inventory_mode())
+		return 0;
+	for (slot = 0; slot < DTU_N_SLOTS; slot++) {
+		x = Slot_pos[Dtu_hires][slot][0];
+		y = Slot_pos[Dtu_hires][slot][1];
+		if (mx >= x && my >= y && mx < x + size && my < y + size) {
+			if (Inv_held >= 0) {
+				// 0x3067C: the slot takes the held item if the wear bits fit
+				if (dtu_char_equip(Inv_held, slot))
+					Inv_held = -1;
+			} else if (Dtu_char.slot[slot].n >= 0) {
+				// 0x306C4: the cursor takes the item out of the slot
+				Inv_held = Dtu_char.slot[slot].n;
+				dtu_char_unequip(slot);
+			}
+			return 1;
+		}
+	}
+	for (cell = 0; cell < 10; cell++) {
+		inv_cell_pos(cell, &x, &y, &qy);
+		if (mx >= x && my >= y && mx < x + size && my < y + size) {
+			int n = Inv_first + cell;
+			if (Inv_held >= 0)
+				Inv_held = -1;				// the item goes back to the list
+			else if (n < Dtu_n_inventory) {
+				Inv_held = n;
+				Inv_sel = n;
+			}
+			return 1;
+		}
+	}
+	return 0;
+}
+
+//------------------------------------------------------------------------
+// The statistics screen (mode 5). The areas are created at 0x99B11 with the
+// rectangles of the tables at 0x144938 to 0x144B40, and printed at 0x32BE0.
+
+static void draw_stats(void)
+{
+	static short label_lo[6][2] = { { 11, 101 }, { 11, 109 }, { 11, 117 }, { 43, 101 }, { 43, 109 }, { 43, 117 } };
+	static short label_hi[6][2] = { { 20, 200 }, { 20, 216 }, { 20, 232 }, { 87, 200 }, { 87, 216 }, { 87, 232 } };
+	static char *label_def[6] = { "STR:", "DEX:", "CON:", "INT:", "WIS:", "CHA:" };
+	static char *class_def[4] = { "Cleric", "Mage", "Fighter", "Thief" };
+	static short class_text[4] = { 642, 643, 644, 647 };
+	static char *skill_def[5] = { "Hide In Shadows", "Move Silently", "Open Locks", "Find/remove traps", "Climb Walls" };
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int gray = rgb6(50, 50, 50), white = rgb6(63, 63, 63);
+	int value[6], skill[5], i, x, y, w, h;
+	char text[80];
+
+	if (!Dtu_char.created)
+		return;
+
+	// The portrait (0x99ADD, area type 5): low (15,10) 50x45, high (32,22)
+	// 100x90 (the words at 0x144728).
+	load_portrait();
+	if (Portrait_bm)
+		blit(Portrait_bm, 0, 0, Portrait_bm->bm_w, Portrait_bm->bm_h,
+			(Dtu_hires ? 32 : 15) + (SC(50) - Portrait_bm->bm_w) / 2, (Dtu_hires ? 22 : 10) + (SC(45) - Portrait_bm->bm_h) / 2, 0);
+
+	// alignment, race, class and level (0x32BE0 to 0x32E3B)
+	x = Dtu_hires ? 20 : 11;
+	w = Dtu_hires ? 108 : 60;
+	h = Dtu_hires ? 13 : 7;
+	i = (pa->alignment < 0 || pa->alignment > 5) ? 3 : pa->alignment;
+	area_text_left(x, Dtu_hires ? 131 : 63, w, h, gtext(636 + i, ""), gray);
+	if (pa->race == 0 && (pa->flags & DTU_PF_HALF_ELF)) {
+		strncpy(text, gtext(917, "Half-elf"), sizeof(text) - 1);
+		text[sizeof(text) - 1] = 0;
+		if (text[0] >= 'a' && text[0] <= 'z') text[0] -= 'a' - 'A';
+	} else
+		strcpy(text, gtext(649 + ((pa->race < 0 || pa->race > 4) ? 5 : pa->race), "Human"));
+	area_text_left(x, Dtu_hires ? 147 : 72, w, h, text, gray);
+	if (pa->class1 >= 0 && pa->class1 <= 3) {
+		sprintf(text, Dtu_hires ? "Lvl %d %s" : " %d %s", pa->class1_level + 1, gtext(class_text[pa->class1], class_def[pa->class1]));
+		area_text_left(x, Dtu_hires ? 163 : 81, w, h, text, gray);
+	}
+	if (pa->class2 >= 0 && pa->class2 <= 3) {
+		sprintf(text, Dtu_hires ? "Lvl %d %s" : " %d %s", pa->class2_level + 1, gtext(class_text[pa->class2], class_def[pa->class2]));
+		area_text_left(x, Dtu_hires ? 179 : 90, w, h, text, gray);
+	}
+
+	// the six abilities (0x32E3B to 0x330C3)
+	value[0] = pa->strength; value[1] = pa->dexterity; value[2] = pa->constitution;
+	value[3] = pa->intelligence; value[4] = pa->wisdom; value[5] = pa->charisma;
+	for (i = 0; i < 6; i++) {
+		x = Dtu_hires ? label_hi[i][0] : label_lo[i][0];
+		y = Dtu_hires ? label_hi[i][1] : label_lo[i][1];
+		area_text_left(x, y, Dtu_hires ? 26 : 19, h, gtext(655 + i, label_def[i]), gray);
+		sprintf(text, "%d", value[i]);
+		area_text_left(x + (Dtu_hires ? 27 : 19), y, Dtu_hires ? 14 : 9, h, text, white);
+	}
+
+	// the thief skills (0x330C3 with 0x32172). The colors are a guess.
+	skill[0] = pa->hide_in_shadows; skill[1] = pa->move_silently; skill[2] = pa->open_locks;
+	skill[3] = pa->find_traps; skill[4] = pa->climb_walls;
+	h = Dtu_hires ? 20 : 11;
+	for (i = 0; i < 5; i++) {
+		int thief = (pa->class1 == DTU_CLASS_THIEF || pa->class2 == DTU_CLASS_THIEF);
+
+		y = Dtu_hires ? 62 + 20 * i : 30 + 11 * i;
+		area_text_left(Dtu_hires ? 218 : 108, y, Dtu_hires ? 120 : 75, h,
+			(i == 3 && !Dtu_hires) ? "Find Traps" : gtext(678 + i, skill_def[i]), thief ? white : gray);
+		sprintf(text, "%d%c", skill[i], '%');
+		area_text_left(Dtu_hires ? 338 : 183, y, Dtu_hires ? 50 : 24, h, text, thief ? white : gray);
+	}
+	// The spell tables of the screen (areas 0x3BA134 to 0x3BA584) are not in
+	// the port.
 }
 
 // The character information of the screens (0x99449): name, hit points,
@@ -799,22 +1144,22 @@ static void draw_hot_keys(void)
 static void draw_info_areas(void)
 {
 	int x = SC(227), w = SC(81), h = SC(6);
-	char text[40];
+	char text[80];
 
 	area_text(x, SC(97), w, h, player_name(), rgb6(48, 48, 48));
 	area_hit_points(x, SC(108), w, h, player_hit_points(), player_max_hit_points());
-	// ASCENT: missing source: armor class, experience and gold of the
-	// character. The labels "AC" and "GOLD" are read from the manual picture
-	// (the original takes them from the string table), the values are
-	// neutral.
-	sprintf(text, "%s %d", "AC", 10);
+	// 0x3BC18C: "%s %d" with the armor class (0xB0A92). That the label is
+	// string 675 ("AC:") is a guess from the order of the strings.
+	sprintf(text, "%s %d", gtext(675, "AC:"), dtu_char_armor_class());
 	area_text(x, SC(119), w, h, text, rgb6(63, 63, 0));
-	sprintf(text, "%d Exp", 0);
+	// 0x3BC3B4, area type 6: the experience (the result of 0x37253)
+	sprintf(text, "%d Exp", dtu_char_next_level(NULL, NULL));
 	area_text(x, SC(130), w, h, text, rgb6(63, 63, 0));
-	sprintf(text, "%s %d", "GOLD", 0);
+	// 0x32657: "%s %d" with string 674 ("Gold:") and the gold
+	sprintf(text, "%s %d", gtext(674, "Gold:"), Dtu_gold);
 	area_text(x, SC(141), w, h, text, rgb6(63, 48, 32));
-	// The item description bar (area 0x3BC524, red text) stays empty.
-	area_restore(SC(5), SC(188), SC(208), SC(7));
+	// The item description bar (area 0x3BC524, red text)
+	area_text(SC(5), SC(188), SC(208), SC(7), Desc_text, rgb6(63, 0, 0));
 }
 
 static void draw_buttons(void)
@@ -832,6 +1177,12 @@ static void draw_cursor(int mx, int my)
 	grs_bitmap *dest = &grd_curcanv->cv_bitmap;
 	int x, y, half = Cursor_size / 2;
 
+	// 0x3074A: the cursor that holds an item is the icon of the item
+	if (Inv_held >= 0 && Inv_held < Dtu_n_inventory && entry_icon(Inv_held) > 0 && Icons_bm) {
+		int icon = entry_icon(Inv_held), size = SC(16);
+		blit(Icons_bm, (icon & 7) * size, (icon / 8) * size, size, size, mx - size / 2, my - size / 2, 1);
+		return;
+	}
 	if (!Cursor_src) return;
 	for (y = 0; y < Cursor_size; y++)
 		for (x = 0; x < Cursor_size; x++) {
@@ -869,7 +1220,15 @@ int dtu_display_owns_key(int key)
 	case KEY_V:
 	case KEY_R:
 	case KEY_F3:
+	case KEY_1: case KEY_2: case KEY_3: case KEY_4: case KEY_5:
+	case KEY_6: case KEY_7: case KEY_8: case KEY_9: case KEY_0:
 		return 1;
+	case KEY_COMMA:
+	case KEY_PERIOD:
+	case KEY_ENTER:
+	case KEY_U:
+	case KEY_BACKSP:
+		return inventory_mode();
 	}
 	return 0;
 }
@@ -909,6 +1268,35 @@ static void do_input(int mx, int my)
 			dtu_display_select_mode(DTU_IM_FULL_SCREEN);
 	}
 
+	// The keys 1 to 0 arm the item of a hot key box (help text 760 of the
+	// game). The key code of the original was not read.
+	{
+		static int number_keys[DTU_N_HOT_KEYS] = { KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0 };
+		for (i = 0; i < DTU_N_HOT_KEYS; i++)
+			if (key_acts(number_keys[i]))
+				dtu_char_select_hot_key(i);
+	}
+	// ASCENT: keys for the inventory screen. The original has the mouse
+	// only. Comma and period choose an entry, Enter wears it or takes it
+	// off or takes it in the hand, U uses it, Backspace drops it.
+	if (inventory_mode()) {
+		if (key_acts(KEY_COMMA) && Inv_sel > 0) inv_show_entry(--Inv_sel);
+		if (key_acts(KEY_PERIOD) && Inv_sel < Dtu_n_inventory - 1) inv_show_entry(++Inv_sel);
+		if (key_acts(KEY_ENTER) && Inv_sel < Dtu_n_inventory) {
+			int slot = dtu_char_slot_of(Inv_sel);
+			if (slot >= 0) dtu_char_unequip(slot);
+			else dtu_char_equip_auto(Inv_sel);
+		}
+		if (key_acts(KEY_U) && Inv_sel < Dtu_n_inventory) dtu_char_use(Inv_sel);
+		if (key_acts(KEY_BACKSP) && Inv_sel < Dtu_n_inventory) dtu_char_drop(Inv_sel);
+	} else {
+		// keep the key state current, so that a held key does not act when
+		// the screen opens
+		key_acts(KEY_COMMA); key_acts(KEY_PERIOD); key_acts(KEY_ENTER); key_acts(KEY_U); key_acts(KEY_BACKSP);
+	}
+	inv_check();
+	inv_describe(mx, my);
+
 	down = !Dtu_immersive && (mouse_get_btns() & 1);
 	pressed = down && (!Mouse_was_down || Dtu_ui_key_repeat);
 	released = !down && Mouse_was_down;
@@ -927,6 +1315,10 @@ static void do_input(int mx, int my)
 					do_action(Button_list[i].action);
 				return;
 			}
+		if (inv_click(mx, my))
+			return;
+		if (Inv_held >= 0)
+			Inv_held = -1;					// a click on no place: the item goes back to the list
 		if (Dtu_interface_mode == DTU_IM_MAIN) {
 			dtu_rect *sb = Sbar_def[Dtu_hires];
 			if (in_rect(mx, my, sb[1].x, sb[1].y, sb[1].w, sb[1].h)) msg_scroll(1);
@@ -950,6 +1342,7 @@ void dtu_display_frame(void)
 {
 	int mx = 0, my = 0;
 
+	dtu_char_frame();
 	if (!Dtu_display_active) return;
 
 	mouse_get_pos(&mx, &my);
@@ -968,8 +1361,13 @@ void dtu_display_frame(void)
 		if (Dtu_interface_mode == DTU_IM_MAIN) {
 			draw_main_areas();
 			msg_draw();
-		} else
+		} else {
 			draw_info_areas();
+			if (inventory_mode())
+				draw_inventory();
+			else if (Dtu_interface_mode == DTU_IM_STATS)
+				draw_stats();
+		}
 		draw_hot_keys();
 		draw_buttons();
 	}

@@ -2815,6 +2815,9 @@ void game()
 				longjmp(LeaveGame,0);
 			}
 
+			// ASCENT: the death of the player (dtuobj.c)
+			dtu_player_death_frame();
+
 			// ASCENT: the direct start (-level) has no menu. Escape leaves
 			// the program without the "abort game" question.
 			if (Dtu_direct_start && Function_mode != FMODE_GAME) {

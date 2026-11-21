@@ -45,8 +45,17 @@
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtuobj.h"
+#include "digi.h"
+#include "sounds.h"
+#include "fireball.h"
+#include "palette.h"
+#include "dtumusic.h"
+#include "dtuchar.h"
+
+#define DTU_WEAK __attribute__((weak))
 
 int check_and_fix_matrix(vms_matrix *m);		// gamesave.c
+void make_random_vector(vms_vector *vec);		// ai.c
 
 //------------------------------------------------------------------------
 // Settings
@@ -57,6 +66,16 @@ int Dtu_fix_creature_move = 1;
 int Dtu_creatures_attack = 1;
 int Dtu_idle_anim_near = 0;
 int Dtu_player_dead = 0;
+int Dtu_fix_path_follow = 1;
+int Dtu_fix_fire_once = 1;
+
+// The sound of a creature that sees the player (attack_sound of the monster
+// table). Original: the code is in compute_vis_and_vec (0x12E2F to 0x12F3C)
+// and needs the visibility 2, which the sight function 0x109E7 never gives.
+// So the sound is never played by the AI. Corrected (1, default): the sound
+// is played by the rules of that code when the creature sees the player in
+// its field of view. The option -origobj clears it.
+int Dtu_fix_attack_sound = 1;
 
 // 1: a creature sees the player if a ray from it to the player is free.
 // 0: the rule of the executable: the bit of the BRN file of the level for
@@ -84,8 +103,10 @@ static char *Ai_mode_names[] = { "STILL", "WANDER", "FOL_PATH", "CHASE_OB", "RUN
 typedef struct monster_ext {
 	int	damage_dice, n_damage_dice, to_hit_bonus, damage_bonus;
 	int	regeneration;
-	int	weapon_type;			// -1 if the line has none (guess: a natural weapon)
+	int	weapon_type;			// -1 if the line has none (a natural weapon). Below 0: the spell with the number -weapon_type
 	int	spell_level;
+	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
+	int	blood_vclip;			// monster_hit_vclip, +0xDA
 } monster_ext;
 
 static monster_ext Monster_ext[MAX_ROBOT_TYPES];
@@ -97,6 +118,8 @@ static monster_ext Monster_ext[MAX_ROBOT_TYPES];
 #define AILF_TOWARD		0x08
 #define AILF_AWAY			0x10
 #define AILF_HIT			0x20		// the hit landed, end the animation state early
+
+#define DTU_PATH_MAX		32
 
 typedef struct dtu_ai_local {
 	ubyte		awareness;				// +0x00
@@ -125,9 +148,40 @@ typedef struct dtu_ai_local {
 	vms_vector move_add;
 	int		has_move;
 	int		last_logged_state;
+	// The path (the executable keeps the points in Point_segs, 0x16FD9).
+	// path[] has the segments, the first is the segment of the creature.
+	short		path[DTU_PATH_MAX];
+	short		path_len, path_idx;
+	signed char	path_dir;			// object +0x144 PATH_DIR
+	signed char	path_flag;			// object +0x145: 1 after create_path, 0 path to the player, -1 path of n segments
+	short		goal_segment;			// +0x06
+	fix		path_fail_time;		// corrected rule: the time of the last search with no result
+	fix		time_attack_sound;	// +0x18
+	fix		next_misc_sound;		// +0x1C
+	fix		spell_time;				// object +0x1C0
+	ubyte		fired;					// corrected rule: the shot of this attack animation is done
+	ubyte		gated;					// made by a trap (matcen_creator -1 of the executable)
+	ubyte		prev_fov;				// corrected rule: the player was in the field of view (visibility 2 of Descent 1)
+	// 0x123EF: the executable has one counter, position and direction for
+	// all creatures (0x13A79C, 0x13A790, 0x167184)
+	int		flee_counter;
+	vms_vector flee_pos, flee_dir;
 } dtu_ai_local;
 
 static dtu_ai_local Ail[MAX_OBJECTS];
+
+// A missile (object type OBJ_WEAPON that flies). The entry belongs to the
+// object with the same number while the signature is the same.
+typedef struct dtu_missile {
+	int		signature;				// 0: no missile
+	int		parent, parent_sig;	// object +0x142, +0x144. -1: no parent
+	short		spell;					// the spell that the missile carries (enemy_spell), or -1
+	ubyte		bounce;					// weapon +0x0A: 1 bounce, 2 stick, 3 thrown
+	ubyte		harmless;				// object flag 0x20
+	fix		tumble_acc;
+} dtu_missile;
+
+static dtu_missile Missile[MAX_OBJECTS];
 
 dtu_inv_item Dtu_inventory[DTU_MAX_INVENTORY];
 int Dtu_n_inventory = 0;
@@ -143,6 +197,28 @@ static fix Ref_tick_acc = 0;
 
 static ubyte *Brain = NULL;			// 800 rows of 100 bytes, or NULL
 static int Player_armor_class = 10;
+static fix Player_max_hp = 0;
+
+// The death of the player: 0 alive, 1 dead and waiting for the death
+// screen, 2 after the death screen.
+static int Player_death_stage = 0;
+static fix Player_death_time = 0;
+
+static void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
+static void sound_on_object(int sound,object *obj,fix volume);
+static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip);
+static int weapon_int(int w,char *key,int def);
+static int player_type_sound(char *key);
+static void blood(object *obj);
+static void setup_creature(object *obj);
+static void morale_check(object *obj);
+static void player_dies(object *player,object *attacker);
+static fix creature_floor_dist(object *obj,fix radius,fix half_height);
+static item_info *item_table_entry(int type,int id);
+static fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
+static fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
+static void spell_hit(int spell,object *target,object *attacker);
+static int is_hostile(object *obj);
 
 // The attack of the player
 static fix Player_anim_start = 0;
@@ -561,7 +637,8 @@ void dtu_objects_init(void)
 	if (FindArg("-noobjects"))
 		Dtu_objects_enabled = 0;
 	if (FindArg("-origobj"))
-		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain = 0;
+		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
+			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = 0;
 	if (FindArg("-noattack"))
 		Dtu_creatures_attack = 0;
 	if (FindArg("-idleanim"))
@@ -593,6 +670,9 @@ void dtu_objects_init(void)
 
 // init_ai_object (0x1038B) for a creature of a level, with the values that
 // place_creatures (0x6A6FB) and add_npc (0xAC431) set.
+static int ail_keep_bits = 0;		// 1 while a creature is made in the game
+static int Dtu_script_level = 0;	// the level byte of the player (0x1D338D): the number of the level in DTU.MSN, from 0
+
 static void init_creature_ai(object *obj)
 {
 	int objnum = obj-Objects;
@@ -620,18 +700,37 @@ static void init_creature_ai(object *obj)
 	vm_vec_zero(&obj->mtype.phys_info.thrust);
 	vm_vec_zero(&obj->mtype.phys_info.rotvel);
 
-	// add_npc: a creature with the bit "peaceful" is not hostile. The
-	// executable also asks the script of the creature (0xA8C49). The
-	// scripts are not in the port, so a creature with a script number is
-	// not hostile here. (guess)
-	if ((obj->dtu.m_1b0 & DTU_PEACEFUL) || (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) || !(obj->dtu.m_1b0 & DTU_HOSTILE)) {
-		obj->dtu.m_1b0 &= ~DTU_HOSTILE;
-		ail->target = -1;
+	// add_npc (0xAC431, code):
+	// 1. A script id that does not belong to the level is cleared: the id
+	//    divided by 10 is the number of the level in the mission file. The
+	//    ids 0x37, 0x3F and 0x1FC to 0x1FF belong to each level.
+	// 2. The creature is peaceful only if it has a script id and the
+	//    script has a "say" statement (a byte 0xCD), or the bit "peaceful"
+	//    is set.
+	// 3. Each other creature is hostile, with the awareness 4.
+	// A creature that is made in the game (a trap, a drop) has no level
+	// record and keeps its bits.
+	if (!ail_keep_bits) {
+		int id = obj->dtu.m_1b0 & DTU_SCRIPT_MASK;
+		int has_say;
+
+		if (id != 0 && id != 0x37 && id != 0x3f && id < 0x1fc && id / 10 != Dtu_script_level) {
+			obj->dtu.m_1b0 &= ~DTU_SCRIPT_MASK;
+			id = 0;
+		}
+		// With no script file each creature with a script id is peaceful.
+		has_say = (id != 0) ? dtu_script_has_say(id) : 0;
+		if (id != 0 && (has_say != 0 || (obj->dtu.m_1b0 & DTU_PEACEFUL)))
+			obj->dtu.m_1b0 &= ~DTU_HOSTILE;
+		else
+			obj->dtu.m_1b0 |= DTU_HOSTILE;
 	}
-	else {
-		obj->dtu.m_1b0 |= DTU_HOSTILE;
+	if (is_hostile(obj)) {
 		ail->target = 0;
+		ail->awareness = ail_keep_bits ? 0 : 4;
 	}
+	else
+		ail->target = -1;
 
 	aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
 }
@@ -683,6 +782,11 @@ static void setup_creature(object *obj)
 	if (obj->control_type == CT_AI)
 		init_creature_ai(obj);
 
+	// The status bit of a creature that regenerates (set at creation if
+	// "regeneration" of the monster table is not 0).
+	if (Monster_ext[obj->id].regeneration)
+		obj->dtu.m_88 |= 0x01000000;
+
 	// A creature with less than one hit point is loaded dead (0x4787A).
 	if (obj->shields < F1_0) {
 		obj->ctype.ai_info.CURRENT_STATE = obj->ctype.ai_info.GOAL_STATE = DAIS_DEAD;
@@ -722,7 +826,15 @@ void dtu_objects_level_setup(void)
 		Monster_ext[i].regeneration = tbl_int(rec,"regeneration",0);
 		Monster_ext[i].weapon_type = tbl_int(rec,"weapon_type",-1);
 		Monster_ext[i].spell_level = tbl_int(rec,"spell_level",0);
+		Monster_ext[i].door_opening = (tbl_int(rec,"door_opening",0) == 1) || (Monster_info[i].flags & MONSTER_F_HUMANOID);
+		Monster_ext[i].blood_vclip = tbl_int(rec,"monster_hit_vclip",9);
 	}
+	memset(Missile,0,sizeof(Missile));
+	Player_death_stage = 0;
+	if (dtu_player_hit_points() > Player_max_hp)
+		Player_max_hp = dtu_player_hit_points();
+
+	Dtu_script_level = Current_level_num - 1;
 
 	Player_armor_class = 10;
 	if (N_player_types > 0)
@@ -817,14 +929,16 @@ void dtu_objects_level_setup(void)
 		for (i=0;i<=Highest_object_index;i++)
 			if (Objects[i].type < MAX_OBJECT_TYPES)
 				n[Objects[i].type]++;
-		dtu_obj_log("level %s: %d creatures, %d dressing, %d misc, %d armor, %d spell, %d weapon objects, brain %s",
-			Gamesave_current_filename,n[OBJ_ROBOT],n[OBJ_DRESSING],n[OBJ_MISC],n[OBJ_ARMOR],n[OBJ_SPELL],n[OBJ_WEAPON],
+		dtu_obj_log("level %s (number %d): %d creatures, %d dressing, %d misc, %d armor, %d spell, %d weapon objects, brain %s",
+			Gamesave_current_filename,Current_level_num,n[OBJ_ROBOT],n[OBJ_DRESSING],n[OBJ_MISC],n[OBJ_ARMOR],n[OBJ_SPELL],n[OBJ_WEAPON],
 			Brain ? (Dtu_fix_brain ? "loaded, not used" : "used") : "none");
 		for (i=0;i<=Highest_object_index;i++)
 			if (Objects[i].type == OBJ_ROBOT)
-				dtu_obj_log("obj %d %s: hp %d hostile %d behavior 0x%x script %d model %d size %.2f pos %.2f %.2f %.2f",
+				dtu_obj_log("obj %d %s: hp %d hostile %d behavior 0x%x attack %d weapon %d spell_level %d door %d seg %d contains %d/%d/%d script %d model %d size %.2f pos %.2f %.2f %.2f",
 					i,dtu_object_name(&Objects[i]),f2i(Objects[i].shields),is_hostile(&Objects[i]),
-					Objects[i].ctype.ai_info.behavior,Objects[i].dtu.m_1b0 & DTU_SCRIPT_MASK,
+					Objects[i].ctype.ai_info.behavior,Robot_info[Objects[i].id].attack_type,Monster_ext[Objects[i].id].weapon_type,
+					Monster_ext[Objects[i].id].spell_level,Monster_ext[Objects[i].id].door_opening,Objects[i].segnum,
+					Objects[i].contains_type,Objects[i].contains_id,Objects[i].contains_count,Objects[i].dtu.m_1b0 & DTU_SCRIPT_MASK,
 					Objects[i].rtype.pobj_info.model_num,f2fl(Objects[i].size),
 					f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
 	}
@@ -856,7 +970,7 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 			show_hidden = 0;
 	}
 
-	if (obj->type == OBJ_DRESSING)
+	if (obj->type != OBJ_ROBOT && obj->type != OBJ_PLAYER)
 		frame = -1;
 
 	draw_polygon_model_frame(&obj->pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
@@ -905,7 +1019,7 @@ static int str_bonus(int str)
 
 // 0x2A7F3. The to-hit roll. Returns 2 for a critical hit, 1 for a hit, 0
 // for a miss, -1 for a fumble.
-static int to_hit_roll(object *target,object *attacker,int *roll_out)
+static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 {
 	int roll = rand() % 20 + 1;
 	int thac0, ac;
@@ -916,28 +1030,32 @@ static int to_hit_roll(object *target,object *attacker,int *roll_out)
 	if (roll == 1)
 		return -1;
 
-	if (attacker->type == OBJ_PLAYER) {
-		// The byte at 0x1D4D78 of the player structure. The port has no
-		// character record. 20 is the value of a first level character. (guess)
+	if (attacker == NULL || (attacker->type != OBJ_PLAYER && attacker->type != OBJ_ROBOT)) {
+		// The missile of a trap is its own parent (0x934A8). What the
+		// executable reads as the THAC0 of a weapon object is not known. 20
+		// is the value of an attacker of the lowest level. (guess)
 		thac0 = 20;
-		if (N_player_types > 0)
-			roll += str_bonus(tbl_int(Player_type_info[0].record,"strength",10));
+		roll += weapon_int(weapon,"to_hit_bonus",0);
+	}
+	else if (attacker->type == OBJ_PLAYER) {
+		// The byte at 0x1D4D78 of the player structure and the bonuses of
+		// the strength, the weapon and the skill: the character code.
+		thac0 = dtu_player_thac0();
+		roll += dtu_player_to_hit_bonus();
 	}
 	else {
-		int w = Monster_ext[attacker->id].weapon_type;
-
 		thac0 = Monster_info[attacker->id].thaco;
 		// the bonus of the weapon (Weapon_info + 0x36), or of the creature
 		// for a natural weapon
-		if (w >= 0 && w < N_weapon_types && Weapon_item_info[w].record >= 0)
-			roll += tbl_int(Weapon_item_info[w].record,"to_hit_bonus",0);
+		if (weapon >= 0 && weapon < N_weapon_types && Weapon_item_info[weapon].record >= 0)
+			roll += tbl_int(Weapon_item_info[weapon].record,"to_hit_bonus",0);
 		else
 			roll += Monster_ext[attacker->id].to_hit_bonus;
 		roll += str_bonus(Monster_info[attacker->id].str);
 	}
 
 	if (target->type == OBJ_PLAYER)
-		ac = Player_armor_class;
+		ac = dtu_player_armor_class();
 	else
 		ac = Monster_info[target->id].armor_class;
 
@@ -945,51 +1063,235 @@ static int to_hit_roll(object *target,object *attacker,int *roll_out)
 	return (thac0 - ac > roll) ? 0 : 1;
 }
 
-// 0x2AF5E for a natural weapon. Returns the damage as an integer.
-static int damage_dice(object *attacker)
+// The weapon of a melee attack of an object: the weapon_type of the
+// monster table, or -1 for a natural weapon.
+static int attack_weapon(object *attacker)
+{
+	if (attacker && attacker->type == OBJ_ROBOT)
+		return Monster_ext[attacker->id].weapon_type;
+	return -1;
+}
+
+// 0x2AF5E. Returns the damage as an integer. A weapon of 0 or more gives
+// the dice of the weapon table (+0x0D sides, +0x0E number, +0x38 bonus) and
+// the fire dice (+0x0F, +0x10). Else the dice of the creature.
+static int damage_dice(object *attacker,int weapon)
 {
 	int n, sides, bonus, i, sum = 0;
 
-	if (attacker->type == OBJ_PLAYER) {
-		// The dice of the empty hand are in the player structure (0x1D33C1
-		// to 0x1D33C7). 1d2 is the fist of the rules of the game. (guess)
-		n = 1; sides = 2; bonus = 0;
-	}
-	else {
-		int w = Monster_ext[attacker->id].weapon_type;
+	if (weapon >= 0 && weapon < N_weapon_types && Weapon_item_info[weapon].record >= 0) {
+		int fn = weapon_int(weapon,"#fire_damage_dice",0), fs = weapon_int(weapon,"fire_damage_dice",0);
 
-		if (w >= 0 && w < N_weapon_types && Weapon_item_info[w].record >= 0) {
-			// The dice of the weapon (Weapon_info + 0x0A and + 0x0B). That
-			// the bonus of the weapon line is added is a guess.
-			int rec = Weapon_item_info[w].record;
-
-			n = tbl_int(rec,"#damage_dice",1);
-			sides = tbl_int(rec,"damage_dice",1);
-			bonus = tbl_int(rec,"damage_bonus",0);
-		}
-		else {
-			n = Monster_ext[attacker->id].n_damage_dice;
-			sides = Monster_ext[attacker->id].damage_dice;
-			bonus = Monster_ext[attacker->id].damage_bonus;
-		}
-		// The executable stops with "RF.damage_dice > 0".
-		if (sides < 1) sides = 1;
-		if (n < 1) n = 1;
+		n = weapon_int(weapon,"#damage_dice",1);
+		sides = weapon_int(weapon,"damage_dice",6);
+		bonus = weapon_int(weapon,"damage_bonus",0);
+		// The fire part. The executable gives none of it to a creature
+		// with fire_immune (not in the port).
+		if (fn > 0 && fs > 0)
+			for (i=0;i<fn;i++)
+				sum += rand() % fs + 1;
 	}
+	else if (attacker && attacker->type == OBJ_PLAYER) {
+		// The dice of the hand of the player are in the player structure
+		// (0x1D33C1 to 0x1D33C7): the character code.
+		return dtu_player_damage_roll();
+	}
+	else if (attacker && attacker->type == OBJ_ROBOT) {
+		n = Monster_ext[attacker->id].n_damage_dice;
+		sides = Monster_ext[attacker->id].damage_dice;
+		bonus = Monster_ext[attacker->id].damage_bonus;
+	}
+	else
+		return 0;
+	// The executable stops with "RF.damage_dice > 0".
+	if (sides < 1) sides = 1;
+	if (n < 1) n = 1;
 	for (i=0;i<n;i++)
 		sum += rand() % sides + 1;
 	return sum + bonus;
 }
 
+//------------------------------------------------------------------------
+// The values of the player character: the calls of the fight code go
+// through these functions to the character code (dtuchar.c).
+
+DTU_WEAK int dtu_player_thac0(void)
+{
+	int t = dtu_char_thac0();
+
+	return (t > 0) ? t : 20;
+}
+
+DTU_WEAK int dtu_player_armor_class(void)
+{
+	return dtu_char_armor_class();
+}
+
+DTU_WEAK int dtu_player_to_hit_bonus(void)
+{
+	dtu_attack a;
+
+	dtu_char_get_attack(&a);
+	return a.to_hit_bonus;
+}
+
+DTU_WEAK int dtu_player_damage_roll(void)
+{
+	return dtu_char_damage_roll();
+}
+
+DTU_WEAK int dtu_player_level(void)
+{
+	return 1;
+}
+
+DTU_WEAK fix dtu_player_hit_points(void)
+{
+	return Players[Player_num].shields;
+}
+
+DTU_WEAK fix dtu_player_max_hit_points(void)
+{
+	int m = dtu_char_max_hit_points();
+
+	return (m > 0) ? i2f(m) : Player_max_hp;
+}
+
+DTU_WEAK fix dtu_player_damage(fix amount)
+{
+	fix hp = Players[Player_num].shields - amount;
+
+	if (amount < 0 && hp > dtu_player_max_hit_points())
+		hp = dtu_player_max_hit_points();
+	if (hp < 0)
+		hp = 0;
+	Players[Player_num].shields = hp;
+	return hp;
+}
+
+DTU_WEAK void dtu_player_award_xp(int amount)
+{
+	// 0xAF3CF adds the points to the experience of the character
+	// (0x1D3393) and tests the level.
+	dtu_char_award_xp(amount);
+	dtu_obj_log("player: %d experience points",amount);
+}
+
+DTU_WEAK int dtu_hook_player_death_screen(void)
+{
+	return 0;
+}
+
+//------------------------------------------------------------------------
+// Sounds and effects
+
+// 0x2E900 digi_link_sound_to_pos: the sound can be heard as far as 256.0,
+// and the volume is 0.5 at most (0x2E967).
+static void sound_at(int sound,int segnum,vms_vector *pos,fix volume)
+{
+	if (sound < 0 || sound >= MAX_SOUNDS || segnum < 0 || segnum > Highest_segment_index)
+		return;
+	if (volume > F1_0/2)
+		volume = F1_0/2;
+	digi_link_sound_to_pos2(sound,segnum,0,pos,0,volume,i2f(256));
+}
+
+// 0x2E600 digi_link_sound_to_object: 200.0, volume 0.5 at most (0x2E639).
+static void sound_on_object(int sound,object *obj,fix volume)
+{
+	if (sound < 0 || sound >= MAX_SOUNDS)
+		return;
+	if (volume > F1_0/2)
+		volume = F1_0/2;
+	digi_link_sound_to_object2(sound,obj-Objects,0,volume,i2f(200));
+}
+
+// 0x3BD4C: a vclip that plays one time at a point.
+static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip)
+{
+	if (vclip < 0 || vclip >= VCLIP_MAXNUM || size <= 0 || segnum < 0)
+		return;
+	if (Vclip[vclip].num_frames <= 0 || Vclip[vclip].play_time <= 0)
+		return;
+	object_create_explosion(segnum,pos,size,vclip);
+}
+
+// A number of the line of a weapon ($WEAPON).
+static int weapon_int(int w,char *key,int def)
+{
+	if (w < 0 || w >= N_weapon_types)
+		return def;
+	return tbl_int(Weapon_item_info[w].record,key,def);
+}
+
+// 0x25C76: the blood of a creature that is hit, the vclip
+// monster_hit_vclip of the monster table with the size 5.0. Nothing for
+// the player.
+static void blood(object *obj)
+{
+	if (obj->type == OBJ_ROBOT)
+		vclip_at(obj->segnum,&obj->pos,i2f(5),Monster_ext[obj->id].blood_vclip);
+}
+
+// A sound of the line of the player type (land_and_die_sound, 0x1D4E3B).
+static int player_type_sound(char *key)
+{
+	if (N_player_types <= 0)
+		return -1;
+	return tbl_int(Player_type_info[0].record,key,-1);
+}
+
+// A new item object (object_create_egg 0x3C4BD for the types 5, 15, 16 and
+// 17): no control, no movement, render type 8, the byte 0x1D5 is the count.
+// The executable puts it at the position of the creature plus half of a
+// size in y. The port puts it on the floor under the point. (guess for y)
+int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos)
+{
+	item_info *it = item_table_entry(type,id);
+	int objnum;
+	object *obj;
+	fix size = i2f(2);
+	char value[32];
+
+	if (it == NULL || segnum < 0 || segnum > Highest_segment_index)
+		return -1;
+	if (it->record >= 0 && bm_tbl_get(it->record,"size",value,sizeof(value)) && atof(value) > 0)
+		size = fl2f(atof(value));
+
+	objnum = obj_create(type,id,segnum,pos,&vmd_identity_matrix,size,CT_NONE,MT_NONE,RT_ITEM);
+	if (objnum < 0)
+		return -1;
+	obj = &Objects[objnum];
+	obj->dtu.item_bitmap = it->obj_bitmap;
+	if (obj->dtu.item_bitmap < 0)
+		obj->render_type = RT_NONE;
+	obj->dtu.m_1d5 = count;
+	obj->shields = F1_0;
+
+	{
+		fix d = creature_floor_dist(obj,0,size);
+
+		if (d != DTU_FLOOR_PROBE && d > 0) {
+			vms_vector p = obj->pos;
+
+			p.y -= d;
+			if (find_point_seg(&p,obj->segnum) == obj->segnum)
+				obj->pos = p;
+		}
+	}
+	return objnum;
+}
+
 // The end of the DIE animation (0x6A3CC): the creature is a corpse. The
-// executable puts it into a list of dead creatures and can take it away
-// later (0x696E9, not read). In the port the corpse stays.
+// executable puts it into the list at 0x2AEF54 and never takes it away
+// (0x695E5 only holds it on the last frame of DIE). So the corpse stays.
 static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 
 static void creature_is_corpse(object *obj)
 {
 	polymodel *po = obj_model(obj);
 	int frame = DTU_ANIM_FRAME(obj);
+	monster_info *mi = &Monster_info[obj->id];
 
 	// 0x6A48B to 0x6A510: the body is put on the floor ("RLH: pushing (%d)
 	// into floor by %.2f"). The executable measures with the cylinder of
@@ -1001,6 +1303,27 @@ static void creature_is_corpse(object *obj)
 		if (d != DTU_FLOOR_PROBE)
 			obj->pos.y -= d;
 	}
+
+	// 0x6A639: a HUMANOID leaves gold in 4 of 10 cases (clock % 10 >= 6,
+	// here a random number): 1 to moola / 4 pieces, a misc object with
+	// the id 1 and the amount as its hit points.
+	if ((mi->flags & MONSTER_F_HUMANOID) && (mi->moola >> 2) > 0) {
+		int r = Dtu_fix_ai_ticks ? (rand() % 10) : (int)((uint)Dtu_clock % 10);
+
+		if (r >= 6) {
+			int amount = rand() % (mi->moola >> 2) + 1;
+			int n = dtu_create_item(OBJ_MISC,1,1,obj->segnum,&obj->pos);
+
+			if (n >= 0) {
+				Objects[n].shields = i2f(amount);
+				dtu_obj_log("drop: obj %d %s leaves %d gold (obj %d)",(int)(obj-Objects),dtu_object_name(obj),amount,n);
+			}
+		}
+	}
+
+	// MONSTER_F_EXTRAPLANAR: the body is not drawn (0x6A5A0)
+	if (mi->flags & MONSTER_F_EXTRAPLANAR)
+		obj->render_type = RT_NONE;
 
 	obj->shields = 0;
 	obj->flags |= OF_DESTROYED;
@@ -1014,13 +1337,22 @@ static void creature_dies(object *obj,object *attacker)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	ai_static *aip = &obj->ctype.ai_info;
+	monster_info *mi = &Monster_info[obj->id];
 
 	if (attacker && attacker->type == OBJ_PLAYER) {
 		HUD_init_message("You killed %s.",dtu_object_name(obj));
-		Players[Player_num].score += Robot_info[obj->id].score_value;
-		Players[Player_num].num_kills_level++;
-		Players[Player_num].num_kills_total++;
+		// 0x4EA50 with the score value. Not for a creature that
+		// regenerates (status bit 0x01000000).
+		if (!(obj->dtu.m_88 & 0x01000000))
+			dtu_player_award_xp(Robot_info[obj->id].score_value);
 	}
+	// the words at 0x1D33AB and 0x1D33AD count each death
+	Players[Player_num].num_kills_level++;
+	Players[Player_num].num_kills_total++;
+
+	// 0x2A157: the die sound, if the number is not 0
+	if (mi->die_sound > 0)
+		sound_at(mi->die_sound,obj->segnum,&obj->pos,F1_0);
 
 	aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_DEAD;
 	DTU_ANIM_GOAL(obj) = DAS_DIE;
@@ -1029,128 +1361,280 @@ static void creature_dies(object *obj,object *attacker)
 	ail->anim_start = GameTime;
 	ail->mode = DAIM_STILL;
 	ail->activity = 2;
+	ail->path_len = 0;
 	obj->dtu.m_88 = 0;
 	obj->shields = 0;
 	vm_vec_zero(&obj->mtype.phys_info.velocity);
 
 	dtu_obj_log("obj %d %s: dies",(int)(obj-Objects),dtu_object_name(obj));
+
+	// object_create_egg (0x3C4BD): what the object of the level file
+	// contains. One object with the count in its byte 0x1D5. The defaults
+	// of the monster table are not used. The weapons 10, 28, 40, 74 and 75
+	// are not dropped.
+	if (obj->contains_count > 0) {
+		int type = obj->contains_type, id = obj->contains_id, count = obj->contains_count, n = -1;
+
+		if (type == OBJ_ROBOT)
+			n = dtu_gate_in_creature(id,obj->segnum);
+		else if (!(type == OBJ_WEAPON && (id == 10 || id == 0x1c || id == 0x28 || id == 0x4a || id == 0x4b)))
+			n = dtu_create_item(type,id,count,obj->segnum,&obj->pos);
+		dtu_obj_log("drop: obj %d %s leaves type %d id %d count %d (obj %d)",(int)(obj-Objects),dtu_object_name(obj),type,id,count,n);
+		obj->contains_type = obj->contains_id = -1;
+		obj->contains_count = 0;
+	}
+
 	log_creature_state(obj,"death");
 }
 
+// 0x8CFFF and 0x90CEF: the effect of a spell on a target. The spell
+// effects of the executable are not read, but for Hold Person. The port
+// has none of them.
+static void spell_hit(int spell,object *target,object *attacker)
+{
+	(void)attacker;
+	dtu_obj_log("spell: spell %d '%s' hits %s: the effect is not in the port",spell,
+		(spell >= 0 && spell < N_spell_types) ? Spell_info[spell].name : "?",dtu_object_name(target));
+}
+
 // 0x29A9C for a creature as the target. damage is used if there is no
-// attacker. With an attacker the function throws the dice.
-void dtu_damage_creature(object *creature, object *attacker, fix damage)
+// roll. With an attacker or a weapon the function throws the dice.
+// Returns the damage that was done.
+static fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon)
 {
 	dtu_ai_local *ail = &Ail[creature-Objects];
 	ai_static *aip = &creature->ctype.ai_info;
 
 	if (creature->type != OBJ_ROBOT || creature->shields < F1_0 || (creature->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
-		return;
+		return 0;
 
-	if (attacker) {
-		int roll, hit = to_hit_roll(creature,attacker,&roll);
+	if (attacker || weapon >= 0) {
+		int roll, hit = to_hit_roll(creature,attacker,weapon,&roll);
 
 		if (hit <= 0) {
-			dtu_obj_log("attack: %s misses obj %d %s (roll %d, result %d)",dtu_object_name(attacker),
+			dtu_obj_log("attack: %s misses obj %d %s (roll %d, result %d)",attacker ? dtu_object_name(attacker) : "a missile",
 				(int)(creature-Objects),dtu_object_name(creature),roll,hit);
-			return;
+			return 0;
 		}
-		damage = i2f(damage_dice(attacker));
+		// 0x29D9D: a creature with weapon_resistant takes no damage from
+		// a natural weapon or from a weapon that is not magic.
+		if ((Monster_info[creature->id].flags & MONSTER_F_WEAPON_RESISTANT) &&
+			 (weapon < 0 || !bm_tbl_has_flag(Weapon_item_info[weapon].record,"magic"))) {
+			dtu_obj_log("attack: obj %d %s is weapon resistant",(int)(creature-Objects),dtu_object_name(creature));
+			return 0;
+		}
+		damage = i2f(damage_dice(attacker,weapon));
 		if (hit == 2)
-			damage += i2f(damage_dice(attacker));
+			damage += i2f(damage_dice(attacker,weapon));
 	}
+
+	if (damage <= 0)
+		return 0;
 
 	creature->shields -= damage;
 
 	dtu_obj_log("damage: obj %d %s takes %d from %s, hp %d",(int)(creature-Objects),dtu_object_name(creature),
 		f2i(damage),attacker ? dtu_object_name(attacker) : "nothing",f2i(creature->shields));
 
-	if (damage > 0) {
-		// 0x29FB8: the creature flinches
-		if (aip->CURRENT_STATE != DAIS_DEAD) {
-			aip->CURRENT_STATE = DAIS_FLIN;
-			ail->anim_start = GameTime + FrameTime;
-		}
-		if (attacker && attacker->type == OBJ_PLAYER)
-			HUD_init_message("You hit %s for %d.",dtu_object_name(creature),f2i(damage));
+	// 0x29FB8: the creature flinches
+	if (aip->CURRENT_STATE != DAIS_DEAD) {
+		aip->CURRENT_STATE = DAIS_FLIN;
+		ail->anim_start = GameTime + FrameTime;
+	}
+	if (attacker && attacker->type == OBJ_PLAYER) {
+		HUD_init_message("You hit %s for %d.",dtu_object_name(creature),f2i(damage));
 		// A creature that is hit knows where the player is, and a creature
 		// that was not hostile is hostile now. (guess: the executable does
 		// this in the script code 0xA94AD and in the alert function)
-		if (attacker && attacker->type == OBJ_PLAYER) {
-			creature->dtu.m_1b0 |= DTU_HOSTILE;
-			creature->dtu.m_1b0 &= ~(DTU_PEACEFUL|DTU_FLEEING);
-			ail->target = 0;
-			if (ail->awareness < 4) ail->awareness = 4;
-			ail->awareness_time = i2f(3);
-			ail->morale = Monster_info[creature->id].ai_values[1][Difficulty_level];
-		}
+		creature->dtu.m_1b0 |= DTU_HOSTILE;
+		creature->dtu.m_1b0 &= ~(DTU_PEACEFUL|DTU_FLEEING);
+		ail->target = 0;
+		if (ail->awareness < 4) ail->awareness = 4;
+		ail->awareness_time = i2f(3);
+		ail->morale = Monster_info[creature->id].ai_values[1][Difficulty_level];
 	}
 
 	if (creature->shields < F1_0)
 		creature_dies(creature,attacker);
+	return damage;
 }
 
-// 0x29A9C for the player as the target (0x2A24A).
-void dtu_damage_player(object *player, object *attacker, fix damage)
+void dtu_damage_creature(object *creature, object *attacker, fix damage)
 {
-	if (player->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead || Players[Player_num].shields <= 0)
-		return;
+	damage_creature_w(creature,attacker,damage,attack_weapon(attacker));
+}
 
-	if (attacker && attacker != player) {
-		int roll, hit = to_hit_roll(player,attacker,&roll);
+// The death of the player in the damage function (0x2A4D0 and after): the
+// sound land_and_die_sound of the player type, the hit points and the
+// status flags become 0, and the object is taken out of the game
+// (0x6A3CC). The executable has no death camera. The rest of the
+// sequence is dtu_player_death_frame().
+static void player_dies(object *player,object *attacker)
+{
+	sound_at(player_type_sound("land_and_die_sound"),player->segnum,&player->pos,F1_0);
+	Players[Player_num].killer_objnum = attacker ? (int)(attacker-Objects) : -1;
+	dtu_player_damage(dtu_player_hit_points());
+	player->dtu.m_88 = 0;
+	player->control_type = CT_NONE;
+	player->movement_type = MT_NONE;
+	vm_vec_zero(&player->mtype.phys_info.velocity);
+	Dtu_player_dead = 1;
+	Player_death_stage = 1;
+	Player_death_time = GameTime;
+	dtu_obj_log("player: dies, killed by %s",attacker ? dtu_object_name(attacker) : "nothing");
+}
+
+// The game after the death of the player (game() 0x423F5): the streams
+// stop, the game waits 3.0 seconds or for a key, the screen fades out, the
+// death picture comes (febgnd.jrg record 161), the death music plays
+// (0x4249D) and the death menu offers "Load Game" and "Abort Game". The
+// port waits 3.0 seconds, fades out and plays the music. Then the front
+// end takes over (dtu_hook_player_death_screen), or the level starts
+// again after DTU_DEATH_RESTART_WAIT.
+int dtu_player_death_frame(void)
+{
+	if (!Dtu_objects_enabled || !Dtu_player_dead || Player_death_stage == 0)
+		return 0;
+
+	if (GameTime < Player_death_time)
+		Player_death_time = GameTime;
+
+	if (Player_death_stage == 1) {
+		if (GameTime - Player_death_time < DTU_DEATH_WAIT)
+			return 0;
+		dtu_obj_log("player: death screen: fade out, death music");
+		digi_stop_all();
+		gr_palette_fade_out(gr_palette,32,0);
+		dtumusic_play(DTUMUSIC_DEATH,0,100);
+		Player_death_time = GameTime;
+		if (dtu_hook_player_death_screen()) {
+			dtu_obj_log("player: the front end has the death screen");
+			Player_death_stage = 3;
+			return 0;
+		}
+		Player_death_stage = 2;
+		return 0;
+	}
+
+	if (Player_death_stage == 2 && GameTime - Player_death_time >= DTU_DEATH_RESTART_WAIT) {
+		int level = Current_level_num;
+
+		Player_death_stage = 0;
+		Dtu_player_dead = 0;
+		init_player_stats_new_ship();
+		dtu_player_damage(-dtu_player_max_hit_points());
+		StartNewLevelSub(level,0);
+		gr_palette_load(gr_palette);
+		dtu_obj_log("player: the level starts again, hp %d",f2i(dtu_player_hit_points()));
+		return 1;
+	}
+	return 0;
+}
+
+// 0x29A9C for the player as the target (0x2A24A). Without an attacker and
+// without a weapon the damage is taken as it is: no roll, no armor. Returns
+// the damage that was done.
+static fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
+{
+	fix hp;
+
+	if (player->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead || dtu_player_hit_points() < F1_0)
+		return 0;
+
+	if ((attacker && attacker != player) || weapon >= 0) {
+		int roll, hit = to_hit_roll(player,attacker,weapon,&roll);
 
 		if (hit <= 0) {
-			dtu_obj_log("attack: obj %d %s misses the player (roll %d, result %d)",(int)(attacker-Objects),
-				dtu_object_name(attacker),roll,hit);
-			return;
+			dtu_obj_log("attack: %s misses the player (roll %d, result %d)",
+				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);
+			return 0;
 		}
-		damage = i2f(damage_dice(attacker));
+		damage = i2f(damage_dice(attacker,weapon));
 		if (hit == 2)
-			damage += i2f(damage_dice(attacker));
+			damage += i2f(damage_dice(attacker,weapon));
 	}
 
 	if (damage <= 0)
-		return;
+		return 0;
 
 	if (attacker && attacker != player)
 		HUD_init_message("%s hits you for %d.",dtu_object_name(attacker),f2i(damage));
 	else
 		HUD_init_message("You took %d damage.",f2i(damage));
 
-	// The rest of the function of the executable (the death of the
-	// player, 0x2A577 and after) is not read. The death sequence of
-	// Descent 1 (the ship explodes, the level starts again) does not fit
-	// the target game. The port takes the hit points away, and at less
-	// than one hit point the player stays where he is and can do nothing.
-	Players[Player_num].shields -= damage;
+	// 0x2A3C0: red plus 4 for each point, green and blue minus one half
+	hp = dtu_player_damage(damage);
 	PALETTE_FLASH_ADD(f2i(damage)*4,-f2i(damage/2),-f2i(damage/2));
-	if (Players[Player_num].shields < F1_0) {
-		Players[Player_num].shields = 0;
-		Dtu_player_dead = 1;
-		player->control_type = CT_NONE;
-		player->movement_type = MT_NONE;
-		HUD_init_message("You have died.");
-		dtu_obj_log("player: dies");
-	}
 
-	dtu_obj_log("damage: the player takes %d from %s, hp %d",f2i(damage),
-		attacker ? dtu_object_name(attacker) : "nothing",f2i(Players[Player_num].shields));
+	dtu_obj_log("damage: the player takes %d from %s%s%s, hp %d",f2i(damage),
+		attacker ? dtu_object_name(attacker) : "nothing",weapon >= 0 ? ", weapon " : "",
+		weapon >= 0 ? Weapon_item_info[weapon].name : "",f2i(hp));
+
+	if (hp < F1_0)
+		player_dies(player,attacker);
+	return damage;
+}
+
+void dtu_damage_player(object *player, object *attacker, fix damage)
+{
+	damage_player_w(player,attacker,damage,attack_weapon(attacker));
 }
 
 // 0x27D82. A melee weapon touched the target.
 static void melee_hit(object *target,object *attacker)
 {
+	int weapon = attack_weapon(attacker);
+	fix dealt, hp;
+	int sound = -1;
+
 	if (target->flags & OF_EXPLODING)
 		return;
+
+	if (weapon >= 0 && weapon_int(weapon,"enemy_spell",-1) >= 0)
+		spell_hit(weapon_int(weapon,"enemy_spell",-1),target,attacker);
+
 	if (target->type == OBJ_PLAYER) {
-		dtu_damage_player(target,attacker,0);
+		dealt = damage_player_w(target,attacker,0,weapon);
+		hp = dtu_player_hit_points();
 		if (attacker->type == OBJ_ROBOT) {
 			// The creature is active after a hit (0x28B34)
 			Ail[attacker-Objects].activity = 2;
 		}
 	}
-	else if (target->type == OBJ_ROBOT)
-		dtu_damage_creature(target,attacker,0);
+	else if (target->type == OBJ_ROBOT) {
+		dealt = damage_creature_w(target,attacker,0,weapon);
+		hp = target->shields;
+	}
+	else
+		return;
+
+	// The push of 0.2 along the line of the attack (0x6B70D) is not in
+	// the port.
+	if (dealt > 0) {
+		blood(target);
+		if (weapon < 0) {
+			// A natural weapon: the hit sound of the target. The die sound
+			// of a creature is played by its death. The key of the hit
+			// sound of a player type (0x1D4E2B) is a guess.
+			if (target->type == OBJ_ROBOT)
+				sound = (hp >= F1_0) ? Monster_info[target->id].hit_sound : -1;
+			else
+				sound = player_type_sound("hit_sound");
+		}
+		else {
+			sound = weapon_int(weapon,"monster_hit_sound",-1);
+			if (hp < F1_0 && weapon_int(weapon,"monster_kill_sound",-1) >= 0)
+				sound = weapon_int(weapon,"monster_kill_sound",-1);
+		}
+		if (attacker->type == OBJ_PLAYER && target->type == OBJ_ROBOT)
+			sound_on_object(sound,target,F1_0/2);		// 0x27C0E
+		else
+			sound_at(sound,target->segnum,&target->pos,F1_0);
+	}
+	else if (weapon >= 0) {
+		vclip_at(target->segnum,&target->pos,Weapon_info[weapon].impact_size,weapon_int(weapon,"monster_miss_vclip",-1));
+		sound_at(weapon_int(weapon,"monster_miss_sound",-1),target->segnum,&target->pos,F1_0/4);
+	}
 }
 
 // 0x6CFF8 (physics.c of the executable). The test of the weapon in an
@@ -1299,6 +1783,449 @@ static void weapon_test(object *obj)
 			}
 		}
 	}
+}
+
+//------------------------------------------------------------------------
+// Missiles (laser.c 0x55511, pweapon.c 0xA03A8, collide.c 0x284E0, 0x272DD,
+// 0x26C2F). A missile is an object of the type OBJ_WEAPON. The port moves
+// it here and not with the weapon code of Descent 1: it flies in a
+// straight line with the same speed, with no gravity and no drag.
+
+static void missile_remove(object *obj)
+{
+	Missile[obj-Objects].signature = 0;
+	obj->flags |= OF_SHOULD_BE_DEAD;
+}
+
+static fix Missile_life[MAX_OBJECTS];		// lifeleft (object +0x84)
+
+// Laser_create_new (0x55511)
+int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent, int weapon_type, int spell, int make_sound)
+{
+	weapon_info *wi;
+	int objnum, rtype = RT_NONE, model = -1, vclip = -1, bounce;
+	fix size = F1_0, speed;
+	object *obj;
+	dtu_missile *m;
+	vms_matrix orient = vmd_identity_matrix;
+
+	if (weapon_type < 0 || weapon_type >= N_weapon_types)
+		weapon_type = 0;
+	if (N_weapon_types <= 0 || segnum < 0 || segnum > Highest_segment_index)
+		return -1;
+	wi = &Weapon_info[weapon_type];
+
+	if (wi->render_type == WEAPON_RENDER_POLYMODEL)
+		model = wi->model_num;
+	else if (wi->render_type == WEAPON_RENDER_VCLIP)
+		vclip = wi->weapon_vclip;
+
+	// A spell missile has the look of the spell: the executable copies
+	// the render values of the spell to a weapon entry (0x56FF6, 0x946FA).
+	if (spell >= 0 && spell < N_spell_types) {
+		if (Spell_info[spell].model_num >= 0) {
+			model = Spell_info[spell].model_num;
+			vclip = -1;
+		}
+		else if (Spell_info[spell].vclip_num >= 0) {
+			vclip = Spell_info[spell].vclip_num;
+			model = -1;
+		}
+	}
+
+	if (model >= 0 && model < N_polygon_models && Polygon_models[model].dtu_block) {
+		// the radius of the model divided by lw_ratio
+		rtype = RT_POLYOBJ;
+		size = fixdiv(Polygon_models[model].rad,wi->po_len_to_width_ratio > 0 ? wi->po_len_to_width_ratio : i2f(10));
+		vm_vector_2_matrix(&orient,dir,(parent >= 0) ? &Objects[parent].orient.uvec : NULL,NULL);
+	}
+	else if (vclip >= 0 && vclip < VCLIP_MAXNUM) {
+		rtype = RT_WEAPON_VCLIP;
+		size = wi->blob_size;
+	}
+	if (size < F1_0/16)
+		size = F1_0/16;
+
+	objnum = obj_create(OBJ_WEAPON,weapon_type,segnum,pos,&orient,size,CT_NONE,MT_NONE,rtype);
+	if (objnum < 0)
+		return -1;
+	obj = &Objects[objnum];
+	if (rtype == RT_POLYOBJ) {
+		obj->rtype.pobj_info.model_num = model;
+		obj->rtype.pobj_info.tmap_override = -1;
+	}
+	else if (rtype == RT_WEAPON_VCLIP)
+		obj->rtype.vclip_info.vclip_num = vclip;
+
+	// weapon +0x0A: bounce 1, stick 2, thrown 3
+	bounce = 0;
+	if (weapon_int(weapon_type,"bounce",0)) bounce = 1;
+	if (weapon_int(weapon_type,"stick",0)) bounce = 2;
+	if (weapon_int(weapon_type,"thrown",0)) bounce = 3;
+
+	m = &Missile[objnum];
+	memset(m,0,sizeof(*m));
+	m->signature = obj->signature;
+	m->parent = parent;
+	m->parent_sig = (parent >= 0) ? Objects[parent].signature : -1;
+	m->spell = spell;
+	m->bounce = bounce;
+
+	// The time to live. The port keeps it here: the object code of
+	// Descent 1 would explode a weapon with a damage radius at its end.
+	Missile_life[objnum] = wi->lifetime;
+	if (bounce == 2)
+		Missile_life[objnum] += (rand() * 4) - F1_0;
+
+	// The speed of the difficulty level, one half for a weapon with
+	// thrust. The velocity of the parent is not added.
+	speed = wi->speed[Difficulty_level];
+	if (wi->thrust)
+		speed /= 2;
+	vm_vec_copy_scale(&obj->mtype.phys_info.velocity,dir,speed);
+
+	vclip_at(obj->segnum,&obj->pos,wi->flash_size,wi->flash_vclip);
+	if (make_sound && wi->flash_sound > -1)
+		sound_at(wi->flash_sound,obj->segnum,&obj->pos,F1_0);
+
+	dtu_obj_log("missile: obj %d weapon %d '%s' spell %d from obj %d, render %d size %.2f speed %.1f life %.1f, at %.1f %.1f %.1f",
+		objnum,weapon_type,Weapon_item_info[weapon_type].name,spell,parent,rtype,f2fl(size),f2fl(speed),f2fl(Missile_life[objnum]),
+		f2fl(pos->x),f2fl(pos->y),f2fl(pos->z));
+	return objnum;
+}
+
+// 0x93294: the burst of a weapon with a min_speed (the bomb of a trap):
+// "magnitude" fragments that are drawn as the vclip, with a size of 8.0 to
+// 17.0, in random directions. They bounce.
+void dtu_create_burst(int weapon_type, int segnum, vms_vector *pos)
+{
+	int n = weapon_int(weapon_type,"magnitude",0), i;
+	int min_speed = weapon_int(weapon_type,"min_speed",0), range = weapon_int(weapon_type,"speed_range",0);
+
+	if (n > 40)
+		n = 40;
+	for (i=0;i<n;i++) {
+		vms_vector dir;
+		int objnum;
+
+		make_random_vector(&dir);
+		objnum = dtu_create_missile(&dir,pos,segnum,-1,weapon_type,-1,0);
+		if (objnum < 0)
+			break;
+		vm_vec_copy_scale(&Objects[objnum].mtype.phys_info.velocity,&dir,i2f(min_speed + (range > 0 ? rand() % range : 0)) / 4);
+		Objects[objnum].size = i2f(8 + rand() % 10);
+		Missile[objnum].bounce = 1;
+		Missile_life[objnum] -= rand() * 2;
+	}
+	dtu_obj_log("burst: weapon %d, %d fragments",weapon_type,n);
+}
+
+// collide_weapon_and_wall (0x26C2F) and the end of 0xA0731
+static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,int segnum)
+{
+	dtu_missile *m = &Missile[obj-Objects];
+	weapon_info *wi = &Weapon_info[obj->id];
+
+	if (m->bounce == 1 && wallnorm) {
+		// 0xA07D7 negates the velocity of a missile that bounces
+		vm_vec_negate(&obj->mtype.phys_info.velocity);
+		return;
+	}
+	// A missile that is not a model goes away with no sound and no vclip.
+	if (obj->render_type == RT_POLYOBJ) {
+		sound_at(wi->wall_hit_sound,segnum,point,F1_0/2);
+		vclip_at(segnum,point,obj->size*2,wi->wall_hit_vclip);
+	}
+	dtu_obj_log("missile: obj %d hits a wall at %.1f %.1f %.1f",(int)(obj-Objects),f2fl(point->x),f2fl(point->y),f2fl(point->z));
+	missile_remove(obj);
+}
+
+// collide_player_and_weapon (0x284E0) and collide_robot_and_weapon
+// (0x272DD). The executable lets a missile with "stick" or "thrown" drop
+// after the hit. The port takes each missile away.
+static void missile_hit_object(object *obj,object *other,vms_vector *point)
+{
+	dtu_missile *m = &Missile[obj-Objects];
+	weapon_info *wi = &Weapon_info[obj->id];
+	int weapon = obj->id, spell, sound;
+	object *parent = NULL;
+	fix dealt, hp;
+
+	if (m->parent >= 0 && Objects[m->parent].signature == m->parent_sig)
+		parent = &Objects[m->parent];
+
+	if (other->type == OBJ_DRESSING) {
+		// Scenery stops a missile like a wall. (guess)
+		missile_hit_wall(obj,point,NULL,obj->segnum);
+		return;
+	}
+	if (m->harmless)
+		return;
+
+	spell = (m->spell >= 0) ? m->spell : weapon_int(weapon,"enemy_spell",-1);
+	if (spell >= 0)
+		spell_hit(spell,other,parent);
+
+	if (other->type == OBJ_PLAYER) {
+		// A spell missile carries no dice of a weapon: the damage of a
+		// spell is in the spell code, which the port does not have.
+		dealt = (m->spell >= 0) ? 0 : damage_player_w(other,parent,0,weapon);
+		hp = dtu_player_hit_points();
+		if (dealt > 0) {
+			sound = weapon_int(weapon,"monster_hit_sound",-1);
+			if (hp < F1_0 && weapon_int(weapon,"monster_kill_sound",-1) >= 0)
+				sound = weapon_int(weapon,"monster_kill_sound",-1);
+			sound_at(sound,other->segnum,point,0x5555);
+			vclip_at(obj->segnum,point,wi->impact_size,wi->robot_hit_vclip);
+		}
+		else {
+			sound_at(weapon_int(weapon,"monster_miss_sound",-1),other->segnum,point,0x5555);
+			vclip_at(obj->segnum,point,wi->impact_size,weapon_int(weapon,"monster_miss_vclip",-1));
+		}
+	}
+	else if (other->type == OBJ_ROBOT) {
+		Ail[other-Objects].activity = 2;
+		dealt = (m->spell >= 0) ? 0 : damage_creature_w(other,parent,0,weapon);
+		hp = other->shields;
+		if (dealt > 0) {
+			blood(other);
+			if (hp > i2f(2) && Monster_info[other->id].hit_sound > 0)
+				sound_at(Monster_info[other->id].hit_sound,other->segnum,point,F1_0);
+			else if (hp >= F1_0)
+				sound_at(weapon_int(weapon,"monster_hit_sound",-1),other->segnum,point,F1_0/4);
+		}
+		else
+			sound_at(weapon_int(weapon,"monster_miss_sound",-1),other->segnum,point,F1_0/4);
+	}
+	missile_remove(obj);
+}
+
+// The movement of all missiles for one frame (0xA03A8 and 0x5656C).
+static void missiles_frame(void)
+{
+	int i, j;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *obj = &Objects[i];
+		dtu_missile *m = &Missile[i];
+		vms_vector p1, end, ip, best_ip, *vel;
+		fvi_query fq;
+		fvi_info hit;
+		int fate, best = -1;
+		fix best_d = 0x7fffffff, step;
+
+		if (m->signature == 0)
+			continue;
+		if (obj->type != OBJ_WEAPON || obj->signature != m->signature || (obj->flags & OF_SHOULD_BE_DEAD)) {
+			m->signature = 0;
+			continue;
+		}
+
+		Missile_life[i] -= FrameTime;
+		if (Missile_life[i] < 0) {
+			missile_remove(obj);
+			continue;
+		}
+
+		vel = &obj->mtype.phys_info.velocity;
+		// 0x5656C: a missile that is slower than 2.0 goes away
+		if (m->bounce < 2 && vm_vec_mag_quick(vel) < i2f(2)) {
+			missile_remove(obj);
+			continue;
+		}
+
+		// A thrown weapon turns by 45 degrees in each frame (0x6BD68). The
+		// corrected rule: in each reference frame time.
+		if (m->bounce == 3 && obj->render_type == RT_POLYOBJ) {
+			int turns = 1;
+
+			if (Dtu_fix_creature_move) {
+				m->tumble_acc += FrameTime;
+				turns = m->tumble_acc / DTU_REF_FRAMETIME;
+				m->tumble_acc -= turns * DTU_REF_FRAMETIME;
+			}
+			while (turns-- > 0) {
+				vms_angvec a;
+				vms_matrix rot, t;
+
+				a.p = 0x2000; a.b = a.h = 0;
+				vm_angles_2_matrix(&rot,&a);
+				vm_matrix_x_matrix(&t,&obj->orient,&rot);
+				obj->orient = t;
+			}
+		}
+
+		vm_vec_scale_add(&p1,&obj->pos,vel,FrameTime);
+		step = vm_vec_dist(&p1,&obj->pos);
+
+		fq.p0 = &obj->pos;
+		fq.p1 = &p1;
+		fq.startseg = obj->segnum;
+		fq.rad = (obj->size < F1_0) ? obj->size : F1_0;
+		fq.thisobjnum = i;
+		fq.ignore_obj_list = NULL;
+		fq.flags = 0;
+		fate = find_vector_intersection(&fq,&hit);
+		end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
+
+		// The objects on the way. The executable does this in the same
+		// query. The port tests each body, see weapon_test().
+		for (j=0;j<=Highest_object_index;j++) {
+			object *o = &Objects[j];
+			fix d;
+
+			if (j == i || (o->type != OBJ_ROBOT && o->type != OBJ_PLAYER && o->type != OBJ_DRESSING))
+				continue;
+			if (j == m->parent && o->signature == m->parent_sig)
+				continue;
+			if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
+				continue;
+			if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) == DAS_DIE)
+				continue;
+			if (o->type == OBJ_DRESSING && (o->id >= N_dressing_types || Dressing_info[o->id].pass_thru))
+				continue;
+			if (vm_vec_dist_quick(&o->pos,&obj->pos) > step + o->size + i2f(30))
+				continue;
+			d = dtu_object_hit_test(&ip,&obj->pos,&end,obj->size,o,obj);
+			if (d > 0 && d < best_d) {
+				best_d = d;
+				best = j;
+				best_ip = ip;
+			}
+		}
+
+		if (best >= 0) {
+			missile_hit_object(obj,&Objects[best],&best_ip);
+			if (obj->flags & OF_SHOULD_BE_DEAD)
+				continue;
+		}
+
+		if (fate == HIT_WALL)
+			missile_hit_wall(obj,&hit.hit_pnt,&hit.hit_wallnorm,hit.hit_seg >= 0 ? hit.hit_seg : obj->segnum);
+		else if (fate == HIT_NONE) {
+			int seg = (hit.hit_seg >= 0) ? hit.hit_seg : find_point_seg(&p1,obj->segnum);
+
+			if (seg < 0)
+				missile_remove(obj);
+			else {
+				obj->pos = p1;
+				if (seg != obj->segnum)
+					obj_relink(i,seg);
+			}
+		}
+		else
+			missile_remove(obj);
+	}
+}
+
+// 0x10040: the special attack of a creature with a weapon_type below 0. It
+// casts the spell with the number -weapon_type as a missile with the
+// weapon entry 5 (0x56FF6). The next cast: 180.0 seconds later for the
+// spell 16 (Fireball), else 0 to 10 seconds plus 4 seconds for each level
+// of the spell.
+static void creature_cast(object *obj,int spell,vms_vector *dir,vms_vector *fire_point)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	int seg;
+
+	if (!is_hostile(obj) || ail->spell_time > GameTime || ail->activity != 2)
+		return;
+	if (spell < 0 || spell >= N_spell_types)
+		return;
+	seg = find_point_seg(fire_point,obj->segnum);
+	if (seg < 0)
+		return;
+	dtu_obj_log("attack: obj %d %s casts spell %d '%s'",(int)(obj-Objects),dtu_object_name(obj),spell,Spell_info[spell].name);
+	dtu_create_missile(dir,fire_point,seg,obj-Objects,5,spell,1);
+	if (spell == 16)
+		ail->spell_time = GameTime + i2f(180);
+	else
+		ail->spell_time = GameTime + (rand() % 11) * F1_0 + tbl_int(Spell_info[spell].record,"level",1) * 4 * F1_0;
+}
+
+static void melee_hit(object *target,object *attacker);
+
+// 0x11B06 ai_fire. "AI: critter fires."
+static void ai_fire(object *obj,fix dist)
+{
+	int objnum = obj-Objects;
+	robot_info *ri = &Robot_info[obj->id];
+	int w = Monster_ext[obj->id].weapon_type;
+	object *target = ConsoleObject;
+	vms_vector fire_point, aim, dir;
+	fix reach, r1, h1, r2, h2;
+	fvi_query fq;
+	fvi_info hit;
+	int fate;
+
+	if (!Dtu_creatures_attack || !is_hostile(obj) || ri->attack_type == 1)
+		return;
+
+	dtu_get_body_size(obj,&r1,&h1);
+	dtu_get_body_size(target,&r2,&h2);
+	reach = r1 + r2 + i2f(2);
+
+	// The fire point: 1.0 in front of the creature (0x11018, step 9)
+	vm_vec_scale_add(&fire_point,&obj->pos,&obj->orient.fvec,F1_0);
+
+	// The aim. A target that is slower than 1.0 in x and z: its position.
+	// Else the position plus the velocity (x and z) times one half of the
+	// time of the flight. The y part of the lead is not set in the
+	// executable (0x11CC4). It is 0 here.
+	aim = target->pos;
+	if (w >= 0 && !(target->mtype.phys_info.velocity.x < F1_0 && target->mtype.phys_info.velocity.z < F1_0)) {
+		fix speed = Weapon_info[w < N_weapon_types ? w : 0].speed[Difficulty_level];
+
+		if (speed > 0) {
+			fix t = fixdiv(dist,speed) / 2;
+
+			aim.x += fixmul(target->mtype.phys_info.velocity.x,t);
+			aim.z += fixmul(target->mtype.phys_info.velocity.z,t);
+		}
+	}
+	vm_vec_sub(&dir,&aim,&fire_point);
+	if (vm_vec_normalize(&dir) < 0x100)
+		dir = obj->orient.fvec;
+
+	if (w < 0) {
+		if (dist <= reach) {
+			dtu_obj_log("attack: obj %d %s touches the player",objnum,dtu_object_name(obj));
+			melee_hit(target,obj);
+		}
+		else
+			creature_cast(obj,-w,&dir,&fire_point);
+		return;
+	}
+
+	if (obj->control_type == CT_MORPH || Dtu_player_dead || Player_is_dead)
+		return;
+
+	// A monster with a mage or cleric level does not shoot (0x11DE9). It
+	// touches a target in reach. Its spells come from 0x92D99 and 0x91FDC,
+	// which are not in the port.
+	if (Monster_ext[obj->id].spell_level > 0) {
+		if (dist <= reach)
+			melee_hit(target,obj);
+		return;
+	}
+
+	// Laser_create_new_easy (0x55B23): the way from the creature to the
+	// fire point must be free.
+	fq.p0 = &obj->pos;
+	fq.p1 = &fire_point;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = objnum;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	fate = find_vector_intersection(&fq,&hit);
+	if (fate != HIT_NONE || hit.hit_seg < 0) {
+		dtu_obj_log("attack: obj %d %s cannot fire, the fire point is in a wall",objnum,dtu_object_name(obj));
+		return;
+	}
+
+	dtu_obj_log("attack: obj %d %s fires weapon %d, frame %d",objnum,dtu_object_name(obj),w,DTU_ANIM_FRAME(obj));
+	dtu_create_missile(&dir,&fire_point,hit.hit_seg,objnum,w,-1,1);
 }
 
 //------------------------------------------------------------------------
@@ -1477,6 +2404,18 @@ void dtu_creature_physics_sim(object *obj)
 
 		vm_vec_add(&new_pos,&obj->pos,&frame_vec);
 
+		// 0x9F757: after more than 30 blocked frames the creature can walk
+		// through its blocker if the step leads away from it.
+		if (ail->blocked_count > 30 && ail->blocker >= 0 && n_ignore_objs < MAX_IGNORE_OBJS-1) {
+			vms_vector np = new_pos;
+
+			np.y = obj->pos.y;
+			if (vm_vec_dist(&np,&Objects[ail->blocker].pos) > vm_vec_dist(&obj->pos,&Objects[ail->blocker].pos))
+				ignore_obj_list[n_ignore_objs++] = ail->blocker;
+			else
+				ail->retry_count = 1;
+		}
+
 		ignore_obj_list[n_ignore_objs] = -1;
 
 		// The radius of the query is one fourth of the radius of the body
@@ -1528,8 +2467,30 @@ void dtu_creature_physics_sim(object *obj)
 				vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,-d);
 			}
 		}
+		else if (fate == HIT_WALL && hit.hit_side == WTOP) {
+			// 0x9F97A: a hit on a top side (or a bottom side, above) is
+			// not a wall hit.
+			obj->pos = start_pos;
+			ail->retry_count = 0;
+			break;
+		}
 		else if (fate == HIT_WALL) {		// 0x9E88D
 			fix d = vm_vec_dot(&pi->velocity,&hit.hit_wallnorm);
+
+			// collide_robot_and_wall (0x25CAA): a creature with the door
+			// bit opens a door that it walks into. The door must be closed,
+			// with no key and no lock. This is the only place where a
+			// creature opens a door.
+			if (Monster_ext[obj->id].door_opening && hit.hit_side_seg >= 0 && hit.hit_side >= 0) {
+				int wn = Segments[hit.hit_side_seg].sides[hit.hit_side].wall_num;
+
+				if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE &&
+					 Walls[wn].state == WALL_DOOR_CLOSED && !(Walls[wn].flags & WALL_DOOR_LOCKED)) {
+					dtu_obj_log("obj %d %s: opens the door seg %d side %d (wall %d)",objnum,dtu_object_name(obj),
+						hit.hit_side_seg,hit.hit_side,wn);
+					wall_open_door(&Segments[hit.hit_side_seg],hit.hit_side);
+				}
+			}
 
 			vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,fixmul(-d,DTU_WALL_BOUNCE));
 			obj->pos = start_pos;
@@ -1719,13 +2680,735 @@ static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_play
 		ail->flags |= AILF_AWAY;
 	}
 	else if (dist < circle_distance*2 || (ail->flags & AILF_AROUND)) {
-		// 0x12000 move_around_player is not in the port: the creature stays.
+		// 0x12000 move_around_player with fast_flag -1: the creature moves
+		// across the line to the player and looks at the player, or walks
+		// that way. The executable takes one of four directions from the
+		// frame count. The port takes it from the game time: a new one each
+		// 1.5 seconds. (the timing is a rule of the port)
+		if (obj->ctype.ai_info.CURRENT_STATE != DAIS_ATAK) {
+			int d = ((GameTime / (F1_0*3/2)) + (int)(obj-Objects)*13) & 3;
+			vms_vector e, b;
+
+			e.y = 0;
+			switch (d) {
+				case 0:	e.x = vec_to_player->z;		e.z = -vec_to_player->x;	break;
+				case 1:	e.x = -vec_to_player->z;	e.z = vec_to_player->x;		break;
+				case 2:	e.x = -vec_to_player->x;	e.z = vec_to_player->z;		break;
+				default:	e.x = vec_to_player->x;		e.z = -vec_to_player->z;	break;
+			}
+			b.x = vec_to_player->x; b.y = 0; b.z = vec_to_player->z;
+			if (vm_vec_normalize(&e) > 0x100 && vm_vec_normalize(&b) > 0x100) {
+				fix dot = vm_vec_dot(&e,&b);
+				int limit = (Robot_info[obj->id].attack_type == 1) ? -F1_0/2 : F1_0/2;		// 120 or 60 degrees
+
+				if (dot > limit) {
+					// in front: step to the side with the face to the player
+					int s = (vm_vec_dot(&e,&obj->orient.rvec) < 0) ? DAS_SIDLE_L : DAS_SIDLE_R;
+
+					if (DTU_ANIM_STATE(obj) != s)
+						set_anim(obj,s);
+					b.y = obj->orient.fvec.y;
+					vm_vector_2_matrix(&obj->orient,&b,NULL,NULL);
+				}
+				else {
+					if (DTU_ANIM_STATE(obj) != DAS_WALK)
+						set_anim(obj,DAS_WALK);
+					e.y = obj->orient.fvec.y;
+					vm_vector_2_matrix(&obj->orient,&e,NULL,NULL);
+				}
+				check_and_fix_matrix(&obj->orient);
+				e.y = 0;
+				add_move(obj,&e);
+			}
+		}
 		ail->flags |= AILF_AROUND;
 	}
 	else {
 		move_towards(obj,vec_to_player);
 		ail->flags = (ail->flags & ~(AILF_BACKWARD|AILF_TOWARD)) | AILF_TOWARD;
 	}
+}
+
+//------------------------------------------------------------------------
+// Paths (aipath.c of the executable, 0x1686D to 0x17FFF)
+
+// 0x1320F ai_door_is_openable: a creature with the door bit can go through
+// a door with no key and no lock. The state of the door is not tested.
+static int door_is_openable(object *obj,segment *segp,int side)
+{
+	int wn = segp->sides[side].wall_num;
+
+	if (wn < 0 || obj->type != OBJ_ROBOT || !Monster_ext[obj->id].door_opening)
+		return 0;
+	return Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE && !(Walls[wn].flags & WALL_DOOR_LOCKED);
+}
+
+// 0x132AA openable_doors_in_segment: the first side of the segment of the
+// object with a closed door that has no key and no lock, or -1.
+static int openable_door_in_segment(object *obj)
+{
+	int side;
+
+	for (side=0;side<MAX_SIDES_PER_SEGMENT;side++) {
+		int wn = Segments[obj->segnum].sides[side].wall_num;
+
+		if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE &&
+			 Walls[wn].state == WALL_DOOR_CLOSED && !(Walls[wn].flags & WALL_DOOR_LOCKED))
+			return side;
+	}
+	return -1;
+}
+
+// 0x1686D create_path_points. A breadth first search from "start" to
+// "end". end -2: the search ends at the depth max_depth. As in Descent 1
+// the last segment of the queue is the end if the depth is reached or the
+// queue is empty, so the caller must test the last segment of the path.
+// New in the executable: a segment with special 1 or 2 is never on a
+// path, and a creature with no door bit gets no path through a segment
+// that has a wall on any side (but for the first and the last segment).
+// Returns the number of segments in out[], 0 if there is no path.
+static int find_path(object *obj,int start,int end,short *out,int max_out,int max_depth,int random_flag,int avoid_seg)
+{
+	static ubyte visited[MAX_SEGMENTS];
+	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
+	int head = 0, tail = 0, found = -1, i, n, cur;
+	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening;
+
+	if (start < 0 || start > Highest_segment_index)
+		return 0;
+
+	// 0x168D9: a creature in the mode RUN_FROM takes a random way that
+	// does not go through the segment of the player.
+	if (obj->type == OBJ_ROBOT && Ail[obj-Objects].mode == DAIM_RUN_FROM) {
+		random_flag = 1;
+		avoid_seg = ConsoleObject->segnum;
+	}
+	if (max_depth < 0)
+		max_depth = 30;
+
+	memset(visited,0,Highest_segment_index+1);
+	if (avoid_seg >= 0 && avoid_seg != start && avoid_seg != end)
+		visited[avoid_seg] = 1;
+
+	// 0x16999 to 0x16AEE. The loop of the executable leaves out the last
+	// segment of the level.
+	for (i=0;i<Highest_segment_index;i++) {
+		if (i == start || i == end)
+			continue;
+		if (Segments[i].special == 1 || Segments[i].special == 2)
+			visited[i] = 1;
+		else if (!has_door_bit) {
+			int side;
+
+			for (side=0;side<MAX_SIDES_PER_SEGMENT;side++)
+				if (Segments[i].sides[side].wall_num != -1)
+					visited[i] = 1;
+		}
+	}
+
+	queue[tail++] = start;
+	visited[start] = 1;
+	depth[start] = 0;
+	parent[start] = -1;
+
+	while (head < tail) {
+		segment *segp;
+		int k, first_side = random_flag ? rand() % MAX_SIDES_PER_SEGMENT : 0;
+
+		cur = queue[head++];
+		if (cur == end) {
+			found = cur;
+			break;
+		}
+		if (depth[cur] >= max_depth) {
+			found = queue[tail-1];
+			break;
+		}
+		segp = &Segments[cur];
+		for (k=0;k<MAX_SIDES_PER_SEGMENT;k++) {
+			int side = (first_side + k) % MAX_SIDES_PER_SEGMENT;
+			int child = segp->children[side];
+
+			if (child < 0 || visited[child])
+				continue;
+			if ((WALL_IS_DOORWAY(segp,side) & WID_FLY_FLAG) || door_is_openable(obj,segp,side)) {
+				visited[child] = 1;
+				parent[child] = cur;
+				depth[child] = depth[cur] + 1;
+				queue[tail++] = child;
+			}
+		}
+	}
+	if (found < 0) {
+		if (tail < 2)
+			return 0;
+		found = queue[tail-1];
+	}
+
+	n = depth[found] + 1;
+	while (n > max_out) {			// keep the first part
+		found = parent[found];
+		n--;
+	}
+	for (i=n-1,cur=found;i>=0;i--,cur=parent[cur])
+		out[i] = cur;
+	return n;
+}
+
+static void path_set(object *obj,int len,int flag)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	ail->path_len = len;
+	ail->path_idx = 0;
+	ail->path_dir = 1;
+	if (flag != 2)
+		ail->path_flag = flag;
+}
+
+// 0x172DE create_n_segment_path
+static void create_n_segment_path(object *obj,int n,int avoid_seg)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	int len = 0;
+
+	while (n > 0 && (len = find_path(obj,obj->segnum,-2,ail->path,DTU_PATH_MAX,n,1,avoid_seg)) == 0) {
+		n--;
+		avoid_seg = -1;
+	}
+	path_set(obj,len,-1);
+	ail->mode = DAIM_FOL_PATH;
+}
+
+// 0x16FD9 create_path: to the goal segment, 30 segments at most
+static void create_path(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	if (ail->goal_segment < 0) {
+		create_n_segment_path(obj,3,-1);
+		return;
+	}
+	path_set(obj,find_path(obj,obj->segnum,ail->goal_segment,ail->path,DTU_PATH_MAX,-1,0,-1),1);
+}
+
+// 0x170BC create_path_to_player
+static void create_path_to_player(object *obj,int max_length)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	if (max_length < 0)
+		max_length = 10;
+	ail->time_player_seen = GameTime;
+	ail->goal_segment = ConsoleObject->segnum;
+	path_set(obj,find_path(obj,obj->segnum,ail->goal_segment,ail->path,DTU_PATH_MAX,max_length,1,-1),0);
+	ail->mode = DAIM_FOL_PATH;
+	ail->awareness = 0;
+}
+
+// 0x171F0 create_path_to_station: the way home
+static void create_path_to_station(object *obj,int max_length)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	int home = obj->ctype.ai_info.hide_segment;
+
+	if (home < 0 || home > Highest_segment_index)
+		return;
+	ail->time_player_seen = GameTime;
+	ail->goal_segment = home;
+	path_set(obj,find_path(obj,obj->segnum,home,ail->path,DTU_PATH_MAX,max_length,1,-1),2);
+	ail->mode = DAIM_FOL_PATH;
+	ail->awareness = 0;
+}
+
+// The point of entry k of a path. The executable has the centers of the
+// segments. The port has the center of the side to the next segment, and
+// the center of the last segment: a straight line from a point of a
+// segment to the center of the next segment can leave the two segments.
+static void path_point(dtu_ai_local *ail,int k,vms_vector *p)
+{
+	if (k < ail->path_len-1) {
+		segment *segp = &Segments[ail->path[k]];
+		int side;
+
+		for (side=0;side<MAX_SIDES_PER_SEGMENT;side++)
+			if (segp->children[side] == ail->path[k+1]) {
+				compute_center_point_on_side(p,segp,side);
+				return;
+			}
+	}
+	compute_segment_center(p,&Segments[ail->path[k]]);
+}
+
+static void move_towards(object *obj,vms_vector *vec_to_player);
+static void add_move(object *obj,vms_vector *dir);
+static void turn_towards_vector(vms_vector *goal,object *obj,fix rate);
+
+// 1 if the corrected rule of Dtu_fix_path_follow holds for this creature:
+// a creature that is not hostile and does not flee keeps the rule of the
+// executable (it turns to the player), so that the people of a level stay
+// where they are.
+static int path_fix_applies(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	if (!Dtu_fix_path_follow)
+		return 0;
+	return is_hostile(obj) || ail->mode == DAIM_RUN_FROM || obj->ctype.ai_info.behavior == DAIB_PATROL;
+}
+
+// 0x17CA8 ai_path_set_orient_and_vel. A creature that does not fly walks
+// to the player and not to the point (0x17CFC). The corrected rule: it
+// walks to the point.
+static void path_steer(object *obj,vms_vector *goal)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	robot_info *ri = &Robot_info[obj->id];
+	physics_info *pi = &obj->mtype.phys_info;
+	vms_vector to_goal, vel;
+
+	if (DTU_ANIM_STATE(obj) == DAS_DIE)
+		return;
+
+	if (!(Monster_info[obj->id].flags & MONSTER_F_FLYING)) {
+		if (path_fix_applies(obj))
+			vm_vec_sub(&to_goal,goal,&obj->pos);
+		else
+			vm_vec_sub(&to_goal,&ConsoleObject->pos,&obj->pos);
+		to_goal.y = 0;
+		if (vm_vec_normalize(&to_goal) > 0x100)
+			move_towards(obj,&to_goal);
+		return;
+	}
+
+	vm_vec_sub(&to_goal,goal,&obj->pos);
+	vm_vec_normalize_quick(&to_goal);
+	vel = pi->velocity;
+	vm_vec_normalize_quick(&vel);
+	if (vm_vec_dot(&to_goal,&obj->orient.fvec) < -15*F1_0/16)
+		vel = to_goal;
+	else
+		vm_vec_scale_add2(&vel,&to_goal,F1_0/2);
+	vm_vec_normalize_quick(&vel);
+	add_move(obj,&vel);
+	turn_towards_vector(&to_goal,obj,(ail->mode == DAIM_RUN_FROM) ? ri->firing_wait[4]/2 : ri->firing_wait[Difficulty_level]);
+}
+
+// Moves the index of the path to the point that the creature walks to
+// next. Returns 0 at the end of the path.
+static int path_advance(object *obj,vms_vector *goal)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	fix threshold = fixmul(vm_vec_mag_quick(&obj->mtype.phys_info.velocity),FrameTime)*2 + i2f(2);
+	int tries = 0, k;
+
+	// A creature that is in a later segment of the path is past the
+	// points before it. (port)
+	if (ail->path_dir > 0)
+		for (k=ail->path_len-1;k>ail->path_idx;k--)
+			if (ail->path[k] == obj->segnum) {
+				ail->path_idx = k;
+				break;
+			}
+
+	while (tries++ <= DTU_PATH_MAX) {
+		vms_vector v;
+
+		if (ail->path_idx < 0 || ail->path_idx >= ail->path_len)
+			return 0;
+		path_point(ail,ail->path_idx,goal);
+		vm_vec_sub(&v,goal,&obj->pos);
+		// The executable takes the distance in three dimensions. A
+		// creature that walks is never as near as that to the center of a
+		// high segment.
+		if (!is_flying(obj))
+			v.y = 0;
+		if (vm_vec_mag(&v) >= threshold)
+			return 1;
+		ail->path_idx += ail->path_dir;
+	}
+	return 0;
+}
+
+// 0x17505 ai_follow_path
+static void follow_path(object *obj,int visible,fix dist_to_player)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	ai_static *aip = &obj->ctype.ai_info;
+	int A = Monster_info[obj->id].ai_values[0][Difficulty_level];
+	int afraid = (ail->mode == DAIM_RUN_FROM || A >= ail->morale);
+	int pseg = ConsoleObject->segnum, beh = aip->behavior, k;
+	vms_vector goal;
+
+	if (ail->path_len == 0) {
+		if (afraid) {
+			create_n_segment_path(obj,5,-1);
+			ail->mode = DAIM_RUN_FROM;
+		}
+		else
+			create_path(obj);
+	}
+
+	if (ail->path_len < 2) {
+		if (ail->mode == DAIM_RUN_FROM) {
+			create_n_segment_path(obj,7,(obj->segnum == pseg) ? -1 : pseg);
+			ail->mode = DAIM_RUN_FROM;
+		}
+		else
+			ail->mode = DAIM_STILL;
+		return;
+	}
+
+	if (ail->path_flag == 1 && (beh == DAIB_GUARD || beh == DAIB_HOME || (beh == DAIB_STATION && !visible)))
+		return;
+
+	// 0x17734: a creature that is farther than 200.0 from the player does
+	// not move. The executable still counts its path index up (0x17411).
+	if (dist_to_player > i2f(200)) {
+		if (ail->mode == DAIM_HOME)
+			ail->mode = DAIM_STILL;
+		return;
+	}
+
+	if (ail->mode == DAIM_RUN_FROM) {
+		if (!visible && ail->awareness == 0) {
+			fix f = F1_0 - FrameTime/2;
+
+			vm_vec_scale(&obj->mtype.phys_info.velocity,f < F1_0/2 ? F1_0/2 : f);
+			return;
+		}
+		for (k=ail->path_idx;k<ail->path_len;k++)
+			if (k >= 0 && ail->path[k] == pseg) {
+				create_n_segment_path(obj,7,(obj->segnum == pseg) ? -1 : pseg);
+				ail->mode = DAIM_RUN_FROM;
+				break;
+			}
+		if (visible) {
+			ail->awareness = 1;
+			ail->awareness_time = F1_0;
+			morale_check(obj);			// 0x178AE
+		}
+		if (ail->path_len < 2)
+			return;
+	}
+
+	if (ail->path_idx < 0)
+		ail->path_idx = 0;
+
+	if (!path_advance(obj,&goal)) {
+		// 0x179C0: the end of the path
+		if (ail->mode == DAIM_HOME) {
+			ail->mode = DAIM_STILL;
+			return;
+		}
+		if (beh == DAIB_GUARD || beh == DAIB_HOME || (beh == DAIB_STATION && !visible)) {
+			create_path_to_station(obj,15);
+			if (ail->path_len == 0 || ail->path[ail->path_len-1] != aip->hide_segment)
+				ail->mode = DAIM_STILL;
+			return;
+		}
+		if (ail->mode == DAIM_FOL_PATH && beh != DAIB_PATROL) {
+			create_path_to_player(obj,10);
+			return;
+		}
+		if (afraid) {
+			create_n_segment_path(obj,7,(obj->segnum == pseg) ? -1 : pseg);
+			ail->mode = DAIM_RUN_FROM;
+			return;
+		}
+		// PATROL: back along the path
+		ail->path_dir = -ail->path_dir;
+		ail->path_idx += 2*ail->path_dir;
+		if (ail->path_idx < 0) ail->path_idx = 0;
+		if (ail->path_idx >= ail->path_len) ail->path_idx = ail->path_len-1;
+		path_point(ail,ail->path_idx,&goal);
+	}
+
+	path_steer(obj,&goal);
+}
+
+// The corrected rule of Dtu_fix_path_follow for the mode CHASE_OB: a
+// creature that does not see the player walks along a path to the segment
+// of the player. The executable walks along the straight line and stops
+// at the wall. Returns 1 if the creature has a path and moves on it.
+static int chase_by_path(object *obj)
+{
+	int objnum = obj-Objects;
+	dtu_ai_local *ail = &Ail[objnum];
+	int pseg = ConsoleObject->segnum, need, k, len;
+	vms_vector goal;
+
+	if (obj->segnum == pseg) {
+		ail->path_len = 0;
+		return 0;
+	}
+
+	need = (ail->path_len < 2 || ail->path[ail->path_len-1] != pseg || ail->path_dir != 1);
+	if (!need) {
+		need = 1;
+		for (k=0;k<ail->path_len;k++)
+			if (ail->path[k] == obj->segnum)
+				need = 0;
+	}
+	if (need) {
+		if (ail->path_fail_time && GameTime >= ail->path_fail_time && GameTime - ail->path_fail_time < F1_0)
+			return 0;
+		len = find_path(obj,obj->segnum,pseg,ail->path,DTU_PATH_MAX,-1,0,-1);
+		if (len < 2 || ail->path[len-1] != pseg) {
+			dtu_obj_log("path: obj %d %s: no way from %d to the player in %d",objnum,dtu_object_name(obj),obj->segnum,pseg);
+			ail->path_len = 0;
+			ail->path_fail_time = GameTime ? GameTime : 1;
+			return 0;
+		}
+		path_set(obj,len,0);
+		ail->path_fail_time = 0;
+		dtu_obj_log("path: obj %d %s: %d segments from %d to the player in %d",objnum,dtu_object_name(obj),len,obj->segnum,pseg);
+	}
+
+	if (!path_advance(obj,&goal))
+		return 0;
+	path_steer(obj,&goal);
+	return 1;
+}
+
+// 0x123EF: the creature runs away from the player. If it moved less than
+// 3.0 in three calls it walks to the side for 27 calls. The executable
+// has one counter for all creatures and counts calls. The port has one
+// for each creature, and with Dtu_fix_creature_move it counts reference
+// frame times.
+static void flee_from_player(object *obj,vms_vector *vec_to_player)
+{
+	int objnum = obj-Objects;
+	dtu_ai_local *ail = &Ail[objnum];
+	static int shared_counter;
+	static vms_vector shared_pos, shared_dir;
+	int *counter = Dtu_fix_creature_move ? &ail->flee_counter : &shared_counter;
+	vms_vector *pos = Dtu_fix_creature_move ? &ail->flee_pos : &shared_pos;
+	vms_vector *dir = Dtu_fix_creature_move ? &ail->flee_dir : &shared_dir;
+	int steps = Dtu_fix_creature_move ? Ref_ticks_now : 1;
+
+	if (steps == 0 && vm_vec_mag_quick(dir) < 0x100) {
+		*dir = *vec_to_player;
+		vm_vec_negate(dir);
+	}
+
+	while (steps-- > 0) {
+		if (*counter >= 30) {
+			*pos = obj->pos;
+			*counter = 0;
+			DTU_ANIM_STATE(obj) = DAS_RUN;
+		}
+		if (*counter < 3) {
+			if (vm_vec_dist(pos,&obj->pos) < i2f(3))
+				(*counter)++;
+			else {
+				*pos = obj->pos;
+				*counter = 0;
+			}
+			*dir = *vec_to_player;
+			vm_vec_negate(dir);
+		}
+		else if (*counter == 3) {
+			ail->retry_count = 1;
+			if (is_flying(obj))
+				make_random_vector(dir);
+			else {
+				*dir = obj->orient.rvec;
+				if (rand() & 1)
+					vm_vec_negate(dir);
+				DTU_ANIM_STATE(obj) = DAS_WALK;
+			}
+			(*counter)++;
+		}
+		else
+			(*counter)++;
+	}
+
+	turn_towards_vector(dir,obj,Robot_info[obj->id].firing_wait[Difficulty_level]);
+	add_move(obj,dir);
+}
+
+// 0xA6ACB (not read): a creature breaks the scenery that blocks its way.
+// The port plays the sound and the vclip of the table line and takes the
+// object away. (guess)
+static void break_dressing(object *d,object *by)
+{
+	if (d->type != OBJ_DRESSING || d->id >= N_dressing_types)
+		return;
+	sound_at(Dressing_info[d->id].explode_sound,d->segnum,&d->pos,F1_0);
+	vclip_at(d->segnum,&d->pos,d->size,Dressing_info[d->id].break_vclip);
+	d->flags |= OF_SHOULD_BE_DEAD;
+	dtu_obj_log("obj %d %s breaks obj %d %s",(int)(by-Objects),dtu_object_name(by),(int)(d-Objects),dtu_object_name(d));
+}
+
+static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_player,fix circle_distance,int evade_only);
+static int ai_to_anim_state(object *obj,int ai_state,fix dist);
+
+// The blocked move of do_ai_frame (0x14BA1). Returns 1: the mode switch
+// does not run in this frame.
+static int blocked_move(object *obj,fix dist,vms_vector *vec_to_player,int visible)
+{
+	int objnum = obj-Objects;
+	dtu_ai_local *ail = &Ail[objnum];
+	ai_static *aip = &obj->ctype.ai_info;
+	robot_info *ri = &Robot_info[obj->id];
+	physics_info *pi = &obj->mtype.phys_info;
+	object *blocker = (ail->blocker < 0) ? ConsoleObject : &Objects[ail->blocker];
+	fix rate = ri->firing_wait[Difficulty_level];
+	vms_vector vec;
+	int have_vec = 0, r, left;
+
+	ail->retry_count = 0;
+
+	// Scenery in the way for 5 blocked frames: the creature attacks it,
+	// and after 10 it breaks.
+	if (blocker->type == OBJ_DRESSING && ail->blocked_count >= 5) {
+		vm_vec_sub(&vec,&blocker->pos,&obj->pos);
+		vm_vec_normalize_quick(&vec);
+		turn_towards_vector(&vec,obj,rate);
+		set_anim(obj,ai_tick(objnum,2) ? DAS_ATTACK2 : DAS_ATTACK);
+		ail->anim_start = GameTime;
+		if (blocker->id < N_dressing_types && !(Dressing_info[blocker->id].flags & DRESSING_F_CANT_BREAK) && ail->blocked_count >= 10) {
+			break_dressing(blocker,obj);
+			aip->GOAL_STATE = DAIS_SRCH;
+			ail->blocker = -1;
+			ail->blocked_count = 0;
+		}
+		move_relative_to_player(obj,dist,vec_to_player,ri->turn_time[Difficulty_level],0);
+		return 1;
+	}
+
+	if (ail->mode == DAIM_STILL)
+		return 1;
+	if (ail->mode == DAIM_RUN_FROM) {
+		flee_from_player(obj,vec_to_player);
+		return 1;
+	}
+	if (aip->behavior == DAIB_STATION)
+		return 1;
+
+	if (!visible || ail->activity == 0) {
+		// "AI: %s looking for player!"
+		ail->goal_segment = ConsoleObject->segnum;
+		create_path(obj);
+		ail->mode = DAIM_FOL_PATH;
+		dtu_obj_log("obj %d %s: blocked, looks for the player, path of %d segments",objnum,dtu_object_name(obj),ail->path_len);
+		return 1;
+	}
+
+	// The player is on the left side of the creature
+	left = vm_vec_dot(vec_to_player,&obj->orient.rvec) < 0;
+
+	r = Dtu_fix_ai_ticks ? rand() % 100 : (int)(((uint)Dtu_clock + (uint)GameTime + objnum) % 100);
+	switch (r) {
+		case 0:		// 0x14E8D: a new orientation with the right vector in front (guess: a turn of 90 degrees)
+			vec = obj->orient.rvec;
+			vm_vector_2_matrix(&obj->orient,&vec,NULL,NULL);
+			check_and_fix_matrix(&obj->orient);
+			DTU_ANIM_STATE(obj) = DAS_WALK;
+			break;
+		case 1:		// a random direction
+			make_random_vector(&vec);
+			if (!is_flying(obj))
+				vec.y = 0;
+			vm_vec_normalize_quick(&vec);
+			turn_towards_vector(&vec,obj,rate);
+			DTU_ANIM_STATE(obj) = DAS_WALK;
+			have_vec = 1;
+			break;
+		case 2:
+			move_relative_to_player(obj,dist,vec_to_player,ri->turn_time[Difficulty_level]*2,0);
+			break;
+		case 3:		// a turn to the side of the player
+			if (is_flying(obj))
+				make_random_vector(&vec);
+			else {
+				vec = obj->orient.rvec;
+				if (left)
+					vm_vec_negate(&vec);
+				vec.y = 0;
+			}
+			DTU_ANIM_STATE(obj) = DAS_WALK;
+			turn_towards_vector(&vec,obj,rate);
+			have_vec = 1;
+			break;
+		case 4:
+			aip->GOAL_STATE = DAIS_SRCH;
+			DTU_ANIM_GOAL(obj) = ai_to_anim_state(obj,aip->CURRENT_STATE,dist);
+			ail->anim_start = GameTime;
+			break;
+		default:		// 5 to 99: the step to the side
+			if (is_flying(obj))
+				make_random_vector(&vec);
+			else {
+				vec = obj->orient.rvec;
+				DTU_ANIM_STATE(obj) = DAS_SIDLE_R;
+				if (left) {
+					vm_vec_negate(&vec);
+					DTU_ANIM_STATE(obj) = DAS_SIDLE_L;
+				}
+				vec.y = 0;
+			}
+			have_vec = 1;
+			break;
+	}
+
+	// 0x15030: the velocity is the vector times the speed of the
+	// animation state (set, not added). The executable does this for the
+	// cases 0, 2 and 4 too, with a vector that it did not set.
+	if (have_vec) {
+		vm_vec_normalize_quick(&vec);
+		vm_vec_copy_scale(&pi->velocity,&vec,anim_speed(obj,-1));
+		ail->move_add = pi->velocity;
+		ail->has_move = 1;
+		if (!is_flying(obj))
+			pi->thrust = pi->velocity;
+	}
+	return 1;
+}
+
+// The sound of a creature that sees the player, see Dtu_fix_attack_sound
+// (compute_vis_and_vec 0x12E2F to 0x12F3C). Call it before the time of the
+// last sight is set for this frame.
+static void creature_sight_sound(object *obj,int visible,vms_vector *vec_to_player)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	robot_info *ri = &Robot_info[obj->id];
+	int in_fov;
+
+	if (!Dtu_fix_attack_sound || !is_hostile(obj) || Dtu_player_dead)
+		return;
+	in_fov = visible && vm_vec_dot(&obj->orient.fvec,vec_to_player) > ri->field_of_view[Difficulty_level];
+
+	if (in_fov && !ail->prev_fov) {
+		if (!ail->previous_visibility) {
+			if (ail->time_player_seen + F1_0/2 < GameTime) {
+				ail->time_attack_sound = GameTime;
+				ail->next_misc_sound = GameTime + F1_0 + rand()*4;
+			}
+		}
+		else if (ail->time_attack_sound + F1_0/4 < GameTime) {
+			sound_at(ri->attack_sound,obj->segnum,&obj->pos,F1_0);
+			ail->time_attack_sound = GameTime;
+		}
+	}
+	if (in_fov && ail->next_misc_sound < GameTime) {
+		ail->next_misc_sound = GameTime + (7 - Difficulty_level) * (rand() + F1_0) / 2;
+		sound_at(ri->attack_sound,obj->segnum,&obj->pos,F1_0);
+		dtu_obj_log("sound: obj %d %s attack sound %d",(int)(obj-Objects),dtu_object_name(obj),ri->attack_sound);
+	}
+	ail->prev_fov = in_fov;
+}
+
+// 0x10763: the "random turn". In 9 of 100 calls the creature turns to the
+// player if it saw the player before. The rest of the function changes a
+// rotation velocity that is 0 and stays 0.
+static void random_turn(object *obj,vms_vector *vec_to_player)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	if (ail->previous_visibility && rand() > 0x7400)
+		turn_towards_vector(vec_to_player,obj,Robot_info[obj->id].firing_wait[Difficulty_level]);
 }
 
 // 0x10ADF. The morale check. The parts with values that the port does not
@@ -1845,6 +3528,15 @@ static void ai_animation_step(object *obj,fix dist)
 			DTU_ANIM_FRAME(obj) = last - 1 - step;
 		else
 			DTU_ANIM_FRAME(obj) = first + step;
+
+		// 0x110F0: a ranged creature that attacks does not jump over the
+		// fire frame of the state.
+		if (Robot_info[obj->id].attack_type != 1 && aip->CURRENT_STATE == DAIS_ATAK && (s == DAS_ATTACK || s == DAS_ATTACK2)) {
+			int ff = po->fire_frames[s - DAS_ATTACK];
+
+			if (old_frame < ff && DTU_ANIM_FRAME(obj) > ff && old_frame >= first)
+				DTU_ANIM_FRAME(obj) = ff;
+		}
 	}
 	else
 		DTU_ANIM_FRAME(obj) = (ail->flags & AILF_BACKWARD) ? first - 1 : last;
@@ -1872,6 +3564,7 @@ static void ai_animation_step(object *obj,fix dist)
 	ail->flags &= ~(AILF_BACKWARD|AILF_AROUND|AILF_TOWARD|AILF_AWAY|AILF_HIT);
 	aip->CURRENT_STATE = aip->GOAL_STATE;
 	ail->swing_done = 0;
+	ail->fired = 0;
 
 	s = ai_to_anim_state(obj,aip->CURRENT_STATE,dist);
 	if (ail->mode == DAIM_RUN_FROM)
@@ -2001,7 +3694,7 @@ void dtu_do_ai_frame(object *obj)
 	monster_info *mi;
 	vms_vector vec_to_player;
 	fix dist;
-	int A, B, visible = -1, dying;
+	int A, B, visible = -1, dying, blocked;
 
 	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
 		return;
@@ -2032,6 +3725,8 @@ void dtu_do_ai_frame(object *obj)
 				aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
 			}
 			dtu_obj_log("obj %d %s: sees the player",objnum,dtu_object_name(obj));
+			// 0x13E25: the see sound, volume str * 0x1000
+			sound_at(ri->see_sound,obj->segnum,&obj->pos,mi->str * 0x1000);
 			morale_check(obj);
 		}
 
@@ -2074,7 +3769,21 @@ void dtu_do_ai_frame(object *obj)
 		}
 	}
 
-	// Regeneration (0x1440C) is not in the port.
+	// 0x1440C: a creature with "regeneration" gets one hit point each
+	// "regeneration" seconds. The damage function clears the status bit
+	// when the creature dies (0x2A1D0), so the part of this code that lets
+	// a dead creature get up never runs for a creature that was killed.
+	if (Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000) && !dying) {
+		if (GameTime < ail->regen_time)
+			ail->regen_time = GameTime;
+		if (GameTime - ail->regen_time >= i2f(Monster_ext[obj->id].regeneration)) {
+			ail->regen_time = GameTime;
+			if (obj->shields < i2f(mi->max_hit_points)) {
+				obj->shields += F1_0;
+				dtu_obj_log("obj %d %s: regenerates, hp %d",objnum,dtu_object_name(obj),f2i(obj->shields));
+			}
+		}
+	}
 
 	// 0x146D0: the distance to the player
 	ail->time_since_processed += FrameTime;
@@ -2139,17 +3848,15 @@ void dtu_do_ai_frame(object *obj)
 			ail->time_player_seen = GameTime;
 		if (visible || ail->previous_visibility)
 			turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
-		// else: a random turn (0x10763), not in the port
+		// else: the random turn (0x10763), which does nothing here
 		ail->previous_visibility = visible;
 		log_creature_state(obj,"idle");
 		return;
 	}
 
-	// The door opener (0x14AF2) and the blocked move (0x14BA1) are not in
-	// the port.
-
-	// 0x15074: the mode
+	// 0x15074: the sight
 	visible = player_is_visible(obj);
+	creature_sight_sound(obj,visible,&vec_to_player);
 	if (visible)
 		ail->time_player_seen = GameTime;
 
@@ -2162,14 +3869,76 @@ void dtu_do_ai_frame(object *obj)
 		ail->awareness_time = i2f(3);
 	}
 
+	// 0x14AF2: the door opener, for each creature with the door bit. It
+	// only sends the creature to a door. The door opens when the creature
+	// walks into it (dtu_creature_physics_sim).
+	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB) {
+		if (ail->mode == DAIM_STILL) {
+			if (visible)
+				create_n_segment_path(obj,8+Difficulty_level,-1);
+		}
+		else {
+			int side = openable_door_in_segment(obj);
+
+			if (side != -1) {
+				ail->mode = DAIM_OPENDOOR;
+				aip->GOALSIDE = side;
+			}
+			else if (ail->mode != DAIM_FOL_PATH)
+				create_n_segment_path(obj,8+Difficulty_level,-1);
+		}
+	}
+
+	// 0x14BA1: the blocked move. The corrected rule runs it one time for
+	// each reference frame time.
+	blocked = 0;
+	if (ail->retry_count && (DTU_ANIM_STATE(obj) == DAS_WALK || DTU_ANIM_STATE(obj) == DAS_RUN) && ail->blocker != 0 &&
+		 (!Dtu_fix_creature_move || Ref_ticks_now > 0))
+		blocked = blocked_move(obj,dist,&vec_to_player,visible);
+
+	// 0x15074: the mode
+	if (!blocked)
 	switch (ail->mode) {
 
 		case DAIM_RUN_FROM:			// 0x14D65, 0x123EF
-			move_away(obj,&vec_to_player);
+			flee_from_player(obj,&vec_to_player);
 			break;
 
+		case DAIM_FOL_PATH:			// 0x153B0
+			follow_path(obj,visible,dist);
+			if (aip->behavior != DAIB_PATROL && ail->morale >= B && is_hostile(obj) && aip->GOAL_STATE != DAIS_FLIN)
+				aip->GOAL_STATE = DAIS_LOCK;
+			break;
+
+		case DAIM_HOME:				// 0x1541A
+			follow_path(obj,visible,dist);
+			if (ail->morale >= B && is_hostile(obj) && !(ri->attack_type != 1 && aip->GOAL_STATE == DAIS_ATAK))
+				aip->GOAL_STATE = DAIS_LOCK;
+			break;
+
+		case DAIM_OPENDOOR: {		// 0x156A5
+			vms_vector c, v;
+
+			compute_center_point_on_side(&c,&Segments[obj->segnum],aip->GOALSIDE % MAX_SIDES_PER_SEGMENT);
+			vm_vec_sub(&v,&c,&obj->pos);
+			vm_vec_normalize_quick(&v);
+			turn_towards_vector(&v,obj,ri->firing_wait[Difficulty_level]);
+			add_move(obj,&v);
+			break;
+		}
+
+		case DAIM_WANDER:				// 0x15096
+			if (!is_hostile(obj)) {
+				if (ail->path_len == 0) {
+					ail->goal_segment = rand() % (Highest_segment_index+1);
+					create_path(obj);
+				}
+				follow_path(obj,visible,dist);
+				break;
+			}
+			// a hostile creature: as CHASE_OB
+
 		case DAIM_CHASE_OB:			// 0x150DD
-		case DAIM_WANDER:
 		default: {
 			fix circle = ConsoleObject->size;
 
@@ -2178,10 +3947,27 @@ void dtu_do_ai_frame(object *obj)
 			if (ri->attack_type != 1)
 				circle = ri->turn_time[Difficulty_level] + ConsoleObject->size;		// the third group of $MONSTER_AI
 
-			if (aip->CURRENT_STATE == DAIS_REST && aip->GOAL_STATE == DAIS_REST && visible && ail->morale >= B)
+			if (!visible && dist > i2f(80) && aip->behavior != DAIB_STATION) {
+				if (aip->behavior == DAIB_HOME || aip->behavior == DAIB_GUARD)
+					create_path_to_station(obj,15);
+				else
+					create_n_segment_path(obj,5,-1);
 				aip->GOAL_STATE = DAIS_SRCH;
+			}
+			else if (aip->CURRENT_STATE == DAIS_REST && aip->GOAL_STATE == DAIS_REST && visible && ail->morale >= B)
+				aip->GOAL_STATE = DAIS_SRCH;
+			else if (GameTime - ail->time_player_seen > i2f(8)) {
+				if (ail->morale >= B)
+					create_path_to_player(obj,10);
+			}
 			else if (aip->CURRENT_STATE != DAIS_REST && aip->GOAL_STATE != DAIS_REST) {
-				move_relative_to_player(obj,dist,&vec_to_player,circle,0);
+				if (Dtu_fix_path_follow && !visible && aip->behavior != DAIB_STATION && chase_by_path(obj)) {
+					// as in the mode FOL_PATH (0x153F0)
+					if (ail->morale >= B && aip->GOAL_STATE != DAIS_FLIN)
+						aip->GOAL_STATE = DAIS_LOCK;
+				}
+				else
+					move_relative_to_player(obj,dist,&vec_to_player,circle,0);
 				if (ail->morale < B) {
 					// "Bad moralle (%d)"
 					ail->activity = 0;
@@ -2197,6 +3983,9 @@ void dtu_do_ai_frame(object *obj)
 					turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
 				if (visible && ri->attack_type == 1)
 					move_relative_to_player(obj,dist,&vec_to_player,0,0);
+				else if (!visible && obj->segnum != aip->hide_segment && dist > i2f(80) &&
+							(aip->behavior == DAIB_PATROL || aip->behavior == DAIB_HOME))
+					create_path_to_station(obj,15);
 			}
 			else if (visible)
 				turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
@@ -2266,20 +4055,198 @@ void dtu_do_ai_frame(object *obj)
 		case DAIS_RECO:
 			if (visible && ail->morale >= B)
 				turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
+			else
+				random_turn(obj,&vec_to_player);
 			break;
 
 		case DAIS_ATAK:
 			if (visible && ail->morale >= B)
 				turn_towards_vector(&vec_to_player,obj,ri->firing_wait[(ri->attack_type == 1) ? Difficulty_level : 4]);
+			else
+				random_turn(obj,&vec_to_player);
 			// ai_do_actual_firing_stuff (0x1396E): a melee creature hits in
-			// weapon_test(). The shot of a ranged creature (ai_fire 0x11B06)
-			// is not in the port. The goal is the same in both cases.
-			if (is_hostile(obj))
+			// weapon_test(). A ranged creature fires in each call in which
+			// the animation is on a fire frame of the model (0x13A2A). The
+			// corrected rule of Dtu_fix_fire_once: one shot for each attack.
+			if (is_hostile(obj)) {
+				if (visible && vm_vec_dot(&obj->orient.fvec,&vec_to_player) >= 3*F1_0/4) {
+					polymodel *po = obj_model(obj);
+
+					if (ri->attack_type != 1 && po &&
+						 (DTU_ANIM_FRAME(obj) == po->fire_frames[0] || DTU_ANIM_FRAME(obj) == po->fire_frames[1]) &&
+						 !(Dtu_fix_fire_once && ail->fired)) {
+						ail->fired = 1;
+						ai_fire(obj,dist);
+					}
+					if (aip->behavior != DAIB_PATROL && (ail->mode == DAIM_STILL || ail->mode == DAIM_FOL_PATH)) {
+						if (ail->morale >= B)
+							ail->mode = DAIM_CHASE_OB;
+						else if (ail->morale <= A)
+							ail->mode = DAIM_RUN_FROM;
+					}
+				}
 				aip->GOAL_STATE = DAIS_RECO;
+			}
 			break;
 	}
 
 	log_creature_state(obj,"ai");
+}
+
+//------------------------------------------------------------------------
+// Calls from dtuhook.c
+
+// 0xA6505 (not read in full): makes a creature active, as the wake up of
+// do_ai_frame does (0x13D80).
+void dtu_creature_wake(object *obj, int make_hostile)
+{
+	dtu_ai_local *ail;
+	ai_static *aip;
+
+	if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI || obj->id >= N_robot_types || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return;
+	ail = &Ail[obj-Objects];
+	aip = &obj->ctype.ai_info;
+
+	if (make_hostile) {
+		obj->dtu.m_1b0 |= DTU_HOSTILE;
+		obj->dtu.m_1b0 &= ~(DTU_PEACEFUL|DTU_FLEEING);
+	}
+	if (ail->activity == 2)
+		return;
+
+	ail->target = is_hostile(obj) ? 0 : -1;
+	ail->activity = 2;
+	set_anim(obj,DAS_STAND);
+	ail->anim_start = ail->time_player_seen = GameTime;
+	ail->awareness_time = i2f(3);
+	sound_at(Robot_info[obj->id].see_sound,obj->segnum,&obj->pos,Monster_info[obj->id].str * 0x1000);
+	if (is_hostile(obj)) {
+		ail->awareness = 4;
+		ail->mode = DAIM_CHASE_OB;
+		aip->CURRENT_STATE = DAIS_REST;
+		aip->GOAL_STATE = DAIS_SRCH;
+		morale_check(obj);
+	}
+	else {
+		ail->awareness = 0;
+		aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
+	}
+	dtu_obj_log("obj %d %s: woken, hostile %d",(int)(obj-Objects),dtu_object_name(obj),is_hostile(obj));
+}
+
+// gate_in_robot (0x1374D, 0x13407): a new creature at the center of the
+// segment. The limit is 2 * difficulty + 3 creatures that were made this
+// way. The executable does not set the hostile bit of the new creature
+// here and what sets it was not found. The port makes it hostile. (guess)
+int dtu_gate_in_creature(int type, int segnum)
+{
+	int i, count = 0, objnum;
+	vms_vector pos, v;
+	object *obj;
+
+	if (segnum < 0 || segnum > Highest_segment_index || type < 0 || type >= N_robot_types)
+		return -1;
+
+	for (i=0;i<=Highest_object_index;i++)
+		if (Objects[i].type == OBJ_ROBOT && Ail[i].gated && Objects[i].control_type == CT_AI)
+			count++;
+	if (count > 2*Difficulty_level + 3) {
+		dtu_obj_log("gate: no creature, %d gated creatures live",count);
+		return -1;
+	}
+
+	compute_segment_center(&pos,&Segments[segnum]);
+
+	// the place must be free
+	for (i=Segments[segnum].objects;i!=-1;i=Objects[i].next)
+		if ((Objects[i].type == OBJ_ROBOT || Objects[i].type == OBJ_PLAYER) && !(Objects[i].flags & OF_DESTROYED) &&
+			 vm_vec_dist_quick(&Objects[i].pos,&pos) < Objects[i].size + i2f(4)) {
+			dtu_obj_log("gate: no creature, obj %d is at the center of segment %d",i,segnum);
+			return -1;
+		}
+
+	objnum = obj_create(OBJ_ROBOT,type,segnum,&pos,&vmd_identity_matrix,i2f(4),CT_AI,MT_PHYSICS,RT_POLYOBJ);
+	if (objnum < 0)
+		return -1;
+	obj = &Objects[objnum];
+	obj->shields = i2f(Monster_info[type].max_hit_points > 0 ? Monster_info[type].max_hit_points : 1);
+	obj->ctype.ai_info.behavior = DAIB_WANDER;
+	obj->ctype.ai_info.hide_segment = segnum;
+	obj->dtu.m_1b0 = DTU_HOSTILE;
+	obj->contains_count = 0;
+	ail_keep_bits = 1;
+	setup_creature(obj);
+	ail_keep_bits = 0;
+	if (obj->control_type != CT_AI) {
+		obj->flags |= OF_SHOULD_BE_DEAD;
+		return -1;
+	}
+	Ail[objnum].gated = 1;
+
+	vm_vec_sub(&v,&ConsoleObject->pos,&pos);
+	v.y = 0;
+	if (vm_vec_normalize(&v) > 0x100)
+		vm_vector_2_matrix(&obj->orient,&v,NULL,NULL);
+
+	dtu_obj_log("gate: obj %d %s (type %d) in segment %d at %.1f %.1f %.1f, hp %d",objnum,dtu_object_name(obj),type,segnum,
+		f2fl(pos.x),f2fl(pos.y),f2fl(pos.z),f2i(obj->shields));
+	return objnum;
+}
+
+// 0x9493A: the floor of the segment opened. A creature that lives wakes up
+// and falls by its gravity. The executable gives the other objects a
+// movement with gravity. The port puts them on the floor below at once.
+void dtu_drop_objects_in_segment(int segnum)
+{
+	int objnum, next;
+	vms_vector floor;
+
+	if (segnum < 0 || segnum > Highest_segment_index)
+		return;
+	compute_center_point_on_side(&floor,&Segments[segnum],WBOTTOM);
+
+	for (objnum=Segments[segnum].objects;objnum!=-1;objnum=next) {
+		object *obj = &Objects[objnum];
+		fvi_query fq;
+		fvi_info hit;
+		vms_vector p0, p1;
+
+		next = obj->next;
+		if (obj->type == OBJ_PLAYER || (obj->flags & OF_SHOULD_BE_DEAD))
+			continue;
+		if (obj->type == OBJ_ROBOT && obj->control_type == CT_AI) {
+			dtu_creature_wake(obj,0);
+			continue;
+		}
+		if (obj->type != OBJ_ROBOT && obj->type != OBJ_DRESSING && obj->type != OBJ_MISC && obj->type != OBJ_ARMOR &&
+			 obj->type != OBJ_SPELL && obj->type != OBJ_WEAPON)
+			continue;
+
+		p0 = obj->pos;
+		p0.y = floor.y + F1_0/4;
+		if (find_point_seg(&p0,segnum) < 0)
+			p0 = obj->pos;
+		p1 = p0;
+		p1.y -= i2f(400);
+		fq.p0 = &p0;
+		fq.p1 = &p1;
+		fq.startseg = find_point_seg(&p0,segnum);
+		fq.rad = 0;
+		fq.thisobjnum = objnum;
+		fq.ignore_obj_list = NULL;
+		fq.flags = 0;
+		if (fq.startseg >= 0 && find_vector_intersection(&fq,&hit) == HIT_WALL && hit.hit_seg >= 0) {
+			vms_vector np = obj->pos;
+
+			np.y += hit.hit_pnt.y - floor.y;
+			if (find_point_seg(&np,hit.hit_seg) >= 0) {
+				obj->pos = np;
+				obj_relink(objnum,find_point_seg(&np,hit.hit_seg));
+				dtu_obj_log("drop: obj %d %s falls by %.1f",objnum,dtu_object_name(obj),f2fl(floor.y - hit.hit_pnt.y));
+			}
+		}
+	}
 }
 
 //------------------------------------------------------------------------
@@ -2294,6 +4261,9 @@ static void pick_up_item(object *player,object *item)
 	int index;
 
 	if (player->id != Player_num || (item->flags & OF_SHOULD_BE_DEAD) || it == NULL)
+		return;
+	// 0x31A0E: no pick up for 5 seconds after a drop
+	if (!dtu_char_pickup_allowed())
 		return;
 
 	// A weapon is an item only if it does not move (0x28502).
@@ -2487,4 +4457,5 @@ void dtu_objects_frame(void)
 	Ref_tick_count += Ref_ticks_now;
 
 	player_animation();
+	missiles_frame();
 }

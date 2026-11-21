@@ -364,17 +364,27 @@ box, the character information areas of the screens, the hot key boxes
 (empty), the buttons M, I, S, R and their screen changes with both images,
 the cursor, the modes 0, 3, 4, 5, 6, 7, 8.
 
-Frame and neutral values only (the data source does not exist in the port):
-maximum hit points, current item, hot keys, armor class, experience, gold,
-portrait number, inventory list, paper doll, map picture, statistics values,
-rest, use, drop, spells, the pressed image of the SPELLS button
+Connected to the character of `dtuchar.c` (see `character.md`, section 13, for
+the verified positions): name, hit points and maximum, the icon of the item in
+the hand, the ten hot key boxes with icon, count and the border of the item in
+the hand, armor class, experience and gold of the screens, the item
+description bar, the inventory list (ten entries, two columns), the twelve
+places of the paper doll, the cursor that holds an item, the buttons USE, DROP
+and R (rest), the statistics screen (portrait, alignment, race, classes and
+levels, the six abilities, the five thief skills), the portrait number.
+
+Frame only: the map picture, the spell tables of the statistics screen, the
+SPELLS button and the spell lists, the scroll bar of the inventory list
 (`HRISBTN.PCH` is not read).
 
 Guesses in the port: the keys (I, Tab, V, R, F3 from the manual, the key
 code of the original was not read), F3 changes between mode 0 and mode 7,
 the start in non-immersive mode, the color of the message text, the place of
 the slider of the scroll bar, the mouse position at the view center after a
-mode change, the labels "AC" and "GOLD".
+mode change, the colors of the texts of the statistics screen, the keys of the
+inventory screen (comma, period, Enter, U, Backspace: an addition, the original
+has the mouse), the keys 1 to 0 for the hot key boxes (from the help text, the
+key code was not read).
 
 Settings (global variables in dtudisp.c): `Dtu_hires` (option `-lowres`
 clears it), `Dtu_immersive`, `Dtu_ui_key_repeat` (1 restores the repeat of

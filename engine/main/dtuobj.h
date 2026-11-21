@@ -110,12 +110,32 @@ extern int Dtu_fix_brain;
 extern int Dtu_idle_anim_near;
 
 // 1 after the player has less than one hit point. The player object stays
-// in the level and does not move. The death of the executable is not ported.
+// in the level and does not move, see dtu_player_death_frame().
 extern int Dtu_player_dead;
 
 // 0 stops all attacks of creatures (the switch at 0x13A6B4 of the
 // executable). Option -noattack.
 extern int Dtu_creatures_attack;
+
+// A walking creature on a path. Original (0x17CA8): it does not walk to the
+// point of the path, it walks to the player, and so into the wall. Only a
+// flying creature follows the path. Corrected: a walking creature walks to
+// the point of the path, and a hostile creature in the mode CHASE_OB that
+// does not see the player takes a path to the segment of the player in
+// place of the straight line.
+extern int Dtu_fix_path_follow;
+
+// The shot of a ranged creature. Original (0x13A2A): a shot in each game
+// frame in which the animation is on the fire frame, so the number of
+// missiles of one attack is the number of game frames that the fire frame
+// lasts. Corrected: one shot for each attack animation.
+extern int Dtu_fix_fire_once;
+
+// Seconds from the death of the player to the death screen (3.0 in the
+// executable, 0x423F5), and from there to the new start of the level in
+// the port (the executable shows the death menu there).
+#define DTU_DEATH_WAIT			(3*F1_0)
+#define DTU_DEATH_RESTART_WAIT	(4*F1_0)
 
 //------------------------------------------------------------------------
 // The inventory of the player. The executable keeps it in the player
@@ -194,6 +214,77 @@ void dtu_get_body_size(object *obj, fix *radius, fix *half_height);
 
 // The name of an object for messages ("a chair", "durnan").
 char *dtu_object_name(object *obj);
+
+//------------------------------------------------------------------------
+// The values of the player character that the fight needs. dtuobj.c has a
+// weak definition of each function with the values of a first level
+// fighter with no weapon. The character code defines them for real.
+
+int dtu_player_thac0(void);				// the byte at 0x1D4D78
+int dtu_player_armor_class(void);		// the word at 0x1D33C9
+int dtu_player_to_hit_bonus(void);		// strength, weapon and skill bonus of the roll
+int dtu_player_damage_roll(void);		// the dice of the weapon in the hand plus the bonus
+int dtu_player_level(void);				// the word at 0x1D33CB plus 1
+fix dtu_player_hit_points(void);			// 0x1D336F
+fix dtu_player_max_hit_points(void);	// the word at 0x1D33BD as a fix
+// Takes "amount" hit points (a negative amount gives hit points, up to the
+// maximum). Returns the hit points that are left. The caller starts the
+// death of the player below 1.0.
+fix dtu_player_damage(fix amount);
+// Experience points for a kill (0x4EA50 with the score value of the monster)
+void dtu_player_award_xp(int amount);
+
+// The front end can define this function. It is called one time when the
+// death screen of the executable would come (0x423F5: the picture, the
+// death menu "Load Game", "Abort Game"). Return 1 if the front end takes
+// over. The weak definition returns 0, and the port starts the level again.
+int dtu_hook_player_death_screen(void);
+
+// Called by the game loop after each frame: the death sequence of the
+// player. Returns 1 if it started the level again.
+int dtu_player_death_frame(void);
+
+//------------------------------------------------------------------------
+// Calls from dtuhook.c (traps, triggers, the use action).
+
+// 0xA6505: makes a creature active. With make_hostile it attacks the player.
+void dtu_creature_wake(object *obj, int make_hostile);
+
+// gate_in_robot (0x1374D): a new creature of the type at the center of the
+// segment. Returns the object number or -1.
+int dtu_gate_in_creature(int type, int segnum);
+
+// Laser_create_new (0x55511). parent is an object number or -1. spell is
+// the number of the spell that the missile carries, or -1. Returns the
+// object number of the missile or -1.
+int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent, int weapon_type, int spell, int make_sound);
+
+// The burst of a weapon with a min_speed (0x93294): fragments in random
+// directions.
+void dtu_create_burst(int weapon_type, int segnum, vms_vector *pos);
+
+// A new item object (object_create_egg 0x3C4BD). Returns the object number.
+int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos);
+
+// 0x9493A: the floor of the segment opened. Its objects fall.
+void dtu_drop_objects_in_segment(int segnum);
+
+// The script of a creature (dtuhook.c): 1 if the script with this id has a
+// "say" statement, 0 if it has none, -1 if there is no script.
+int dtu_script_has_say(int id);
+
+// Values of the character for the use action and the scripts (weak
+// definitions in dtuhook.c): the skill "climb walls" in percent
+// (0x1D33EF), the class (0 to 3), the race (0 to 5) and the sex (0, 1) as
+// the terms of a script count them.
+int dtu_player_climb_skill(void);
+int dtu_player_script_class(void);
+int dtu_player_script_race(void);
+int dtu_player_script_sex(void);
+
+// The use action on an object (0xAC155): the ray of 30.0 along the view of
+// the player. Returns 1 if it hit a creature (talk or "No response...").
+int dtu_use_object(object *player);
 
 // The log of the option -objlog (state changes of creatures, damage,
 // pickup). The text starts with the game time and the frame number.

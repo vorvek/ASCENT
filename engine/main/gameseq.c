@@ -334,6 +334,7 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtutrig.h"		// ASCENT: dtu_trig_load_level()
 #include "dtumusic.h"	// ASCENT: the streamed music
+#include "dtuchar.h"		// ASCENT: the character of the target game
 #ifdef NETWORK
 #include "netmisc.h"
 #endif
@@ -1507,6 +1508,10 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 	}
 	#endif
 	init_player_stats_level();
+
+	// ASCENT: new. The character of the target game: the hit points go from
+	// level to level, the first level makes the character (dtuchar.c).
+	dtu_char_level_start();
 
 #ifndef SHAREWARE
 #ifdef NETWORK
