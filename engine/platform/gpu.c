@@ -75,6 +75,7 @@
 	X(void, Clear, (GLbitfield)) \
 	X(void, Enable, (GLenum)) \
 	X(void, Disable, (GLenum)) \
+	X(void, BlendFuncSeparate, (GLenum, GLenum, GLenum, GLenum)) \
 	X(void, DepthFunc, (GLenum)) \
 	X(void, DepthMask, (GLboolean)) \
 	X(void, PixelStorei, (GLenum, GLint)) \
@@ -692,7 +693,7 @@ static const char *Ui_fs =
 	"in vec2 v_uv;\n"
 	"out vec4 o_color;\n"
 	"void main() {\n"
-	"	o_color = vec4(texture(u_tex, v_uv).rgb, 1.0);\n"
+	"	o_color = texture(u_tex, v_uv);\n"
 	"}\n";
 
 static GLuint compile(GLenum type, const char *src)
@@ -1959,6 +1960,7 @@ typedef struct ui_op {
 	int pic;					// index in Ui_pic, -1 for a darkening
 	int sx, sy, sw, sh;
 	int dx, dy, dw, dh;
+	int key;					// the transparent index of the draw, or -1
 	uint8_t table[256];			// the darkening
 } ui_op;
 
@@ -2096,6 +2098,11 @@ static void ui_add(const ui_op *op)
 
 void plat_gpu_ui_draw(int id, int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh)
 {
+	plat_gpu_ui_draw_key(id, sx, sy, sw, sh, dx, dy, dw, dh, -1);
+}
+
+void plat_gpu_ui_draw_key(int id, int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int key)
+{
 	ui_pic *p;
 	ui_op op;
 	int i, n;
@@ -2118,6 +2125,7 @@ void plat_gpu_ui_draw(int id, int sx, int sy, int sw, int sh, int dx, int dy, in
 	op.pic = (int) (p - Ui_pic);
 	op.sx = sx; op.sy = sy; op.sw = sw; op.sh = sh;
 	op.dx = dx; op.dy = dy; op.dw = dw; op.dh = dh;
+	op.key = key;
 	ui_add(&op);
 }
 
@@ -2129,6 +2137,7 @@ void plat_gpu_ui_darken(int x0, int y0, int x1, int y1, const uint8_t *table)
 		return;
 	memset(&op, 0, sizeof(op));
 	op.pic = -1;
+	op.key = -1;
 	op.dx = x0; op.dy = y0; op.dw = x1 - x0; op.dh = y1 - y0;
 	memcpy(op.table, table, 256);
 	ui_add(&op);
@@ -2188,6 +2197,8 @@ static void ui_build(int w, int h)
 				const uint8_t *src = p->pix + (size_t) (o->sy + (y - o->dy) * o->sh / o->dh) * p->w;
 				for (x = x0; x < x1; x++) {
 					uint8_t c = src[o->sx + (x - o->dx) * o->sw / o->dw];
+					if (c == o->key)
+						continue;		// the draw left the pixel below
 					Ui_exp[row + x] = Ui_org[row + x] = c;
 					Ui_own[row + x] = (uint8_t) (i + 1);
 				}
@@ -2354,6 +2365,10 @@ static int ui_layer(int fw, int fh, int w, int h)
 	qglClearColor(0, 0, 0, 1);
 	qglClear(GL_COLOR_BUFFER_BIT);
 	qglUseProgram(Ui_prog);
+	// A file of a draw with a transparent index has alpha 0 there (the
+	// draws below show). The alpha of the layer stays 1.
+	qglEnable(GL_BLEND);
+	qglBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
 	qglUniform1i(Uu.tex, 0);
 	qglActiveTexture(GL_TEXTURE0);
 	qglBindSampler(0, Sampler_rgb[1][1][1]);
@@ -2370,6 +2385,7 @@ static int ui_layer(int fw, int fh, int w, int h)
 		qglBindTexture(GL_TEXTURE_2D, p->tex);
 		qglDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	}
+	qglDisable(GL_BLEND);
 	qglBindVertexArray(0);
 	qglBindSampler(0, 0);
 	return 1;

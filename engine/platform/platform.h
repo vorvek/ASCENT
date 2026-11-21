@@ -399,6 +399,10 @@ void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char
 // most of its pixels still have the picture colors, or until a later draw
 // covers its rectangle.
 void plat_gpu_ui_draw(int id, int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh);
+// The same for a draw that skipped the picture pixels of index key (the
+// frame keeps the pixels below there). The file has alpha 0 at those
+// pixels, so the upscaled draws below show through.
+void plat_gpu_ui_draw_key(int id, int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh, int key);
 // The frame pixels in the rectangle (x1, y1 not included) went through the
 // table (256 palette indexes): the darkening of the 2d library.
 void plat_gpu_ui_darken(int x0, int y0, int x1, int y1, const uint8_t *table);

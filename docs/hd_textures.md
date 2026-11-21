@@ -74,10 +74,15 @@ For each bitmap:
 1. Palette colors. Transparent pixels (flag 0x01, color 255) and the pixels of the
    effect colors get the mean color of their already filled 8 neighbors, ring after
    ring, until the picture is full.
-2. Padding of 16 source pixels on each side. Tiling bitmaps are padded by wrapping:
-   every 64 x 64 bitmap and every bitmap that a table uses as a wall texture
-   (`$TEXTURES` outside `!BITMAP_REMAP_OFF`, `$WCLIP`, `$ECLIP` without
-   `obj_eclip=1`; 691 names over all tables). The others are padded by mirroring.
+2. Padding. Tiling bitmaps are padded by wrapping with 64 source pixels on each
+   side (`TILE_PAD`): a 64 x 64 texture is upscaled as the center of a 3 x 3
+   tiling of itself. Tiling bitmaps are every 64 x 64 bitmap and every bitmap that
+   a table uses as a wall texture (`$TEXTURES` outside `!BITMAP_REMAP_OFF`,
+   `$WCLIP`, `$ECLIP` without `obj_eclip=1`; 691 names over all tables). The
+   others are padded by mirroring with 16 source pixels. Before version 3 the
+   tiling bitmaps had 16 pixels of wrapping too; the receptive field of the
+   models is larger than that, so the result depended on where the picture ended
+   (see Seams below).
 3. Upscale x4 on the GPU (fp16, batches of equal size), then crop the padding.
 4. Alpha: the opaque mask, padded the same way, upscaled bicubic and cut at 0.5.
 5. Mean color: the mean RGB of the opaque output pixels is moved to the mean of the
@@ -179,7 +184,30 @@ shows double edges.
 The seam check upscales each opaque 64 x 64 wall texture again, rolled by half its
 size, so that its wrap seam lies inside the picture, and rolls the result back. With
 wrapping the two results agree at the seam about as well as inside. The control does
-the same with mirror padding.
+the same with mirror padding. (The figures above are of version 2, 16 pixels of
+wrapping.)
+
+### Seams with the 3 x 3 tiling (version 3)
+
+The lava flipbooks of `PORTAL.EGG` and `BAT.EGG` (`lava` 6 frames, `lava02` 12,
+`lavaflo` 15, `magma` 6; 39 bitmaps each) were upscaled with 16 and with 64
+pixels of wrapping, each once as it is and once rolled by half and rolled back.
+Mean difference of the two results (of 255), in a band of 4 output pixels at the
+edges and inside:
+
+| Wrapping | At the edges | Inside |
+|---|---|---|
+| 16 pixels | 0.95 | 0.86 |
+| 64 pixels (3 x 3) | 0.08 | 0.06 |
+
+With 16 pixels the result depends on the place of the picture edge by about 1 of
+255 everywhere, and the edge rows are made from a padding that ends 16 pixels
+away: the step across the seam of `lava02` was up to 2 times the mean step inside
+the file (the worst file of all 702 lava and magma files of the set). With 64
+pixels the result is nearly independent of the place of the edge, so the edges of
+a frame match each other as any two neighbor pixels inside do. A 2 x 2 tiling of
+`lavaflo#7`, `magma#2` and `lava#4` shows no seam, and the lava floor of HUB1 and
+the lava fall of BAT (segment 114) render with the new files.
 
 The halo check compares the mean brightness of the opaque pixels next to transparent
 pixels in the output and in the original. A dark halo would give a large negative
@@ -189,6 +217,58 @@ and green backgrounds shows no fringe.
 The animation check compares the mean difference between consecutive frames before
 (nearest 4x) and after. Large ratios occur only where the original frames differ
 very little (0.05 of 255).
+
+## Textures that stayed 8-bit in the game
+
+The set has a file for every bitmap of every archive (checked: 60282 files,
+each with its `index.txt` line, the size of the line times 4, RGBA, readable).
+A texture that shows 8-bit pixels in the game is a fault of the lookup, not of
+the set. `ASCENT_GPU_HDLOG=1` prints each request of an upscaled texture, and
+"no source" or "not in the set" when there is none; `-testtour` makes the
+player visit every segment with 4 headings.
+
+- The source of a bitmap is found by the address of its pixels in a table of
+  GameBitmaps (render.c `gpu_refs_update`). The table was made again only when
+  the number of archives or of bitmaps changed. A level change that loads an
+  archive with the same counts at new addresses (CLAN3 to CLAN1, both with
+  CLAN.EGG; a level loaded again from a saved game) kept the old addresses: the
+  bitmaps whose pixels moved had no source and stayed 8-bit among upscaled
+  walls (CLAN3 tour with the warp to CLAN1: 67 to 81 requests with no source,
+  for example `wood14`, `chair_03` and RLE bitmaps). Now piggy.c counts each
+  change of its tables (`Piggy_generation`) and the table is made again after
+  each one: 0 requests with no source in the same run.
+- The edge of a wall overlay (a door or a sign over a wall, `merge_top` of
+  gputex.c) was cut with the mask of the original pixels, so the outline of
+  `dleft2` (KOBOLDS segment 469) and of the sign `plate21` (segment 3) was
+  made of 4 x 4 blocks. The merge now uses the alpha of the upscaled overlay;
+  the holes of a super transparent overlay (color 254) still follow the
+  original pixels.
+
+The red and brown double doors near the sign "Flood Control Unit 3" (HUB1
+segment 150: `gdor2` on `wood12`, segments 148, 149; KOBOLDS: `glasdr1` on
+`wall1`, segments 0, 71; `hdor5` in HUB1 segments 141, 143) are upscaled in a
+fresh start of the level, also during the opening of the door: no rule skips
+them, they are not interface bitmaps and their names match. The fault above is
+the cause found for a texture that stays 8-bit; the exact game state of the
+report (a level change or a load) was not reproduced.
+
+## Making a set of version 2 again
+
+One run does it: `python -I tools/textures_hd.py` (all archives, no `--force`).
+Version 3 marks every archive directory as stale, so every file is linked again
+from the cache. A bitmap whose cache key changed is upscaled again:
+
+- every tiling bitmap (the 3 x 3 padding is in its key): 56916 files of the 57
+  archives, 3653 distinct bitmaps (2083 64 x 64 wall textures with the detail
+  method, 1534 64 x 64 bitmaps with x4plus, 36 wall textures of other sizes),
+- every bitmap with an effect color (the fill of those colors is in its key; the
+  same files as `--redo-effects`).
+
+All other bitmaps come from the cache. Measured at the 3 x 3 padding: 7.7 detail
+and 15 x4plus bitmaps of 64 x 64 per second, so the tiling bitmaps take about 6
+to 7 minutes; with the effect bitmaps and the links of 60282 files, 10 to 15
+minutes. Then the interface: `python -I tools/ui_hd.py --force --only
+10,195,27,...,56` (32 pictures, about 30 s).
 
 ## Time and size
 
@@ -224,6 +304,8 @@ setting Upscaled textures (`engine/main/dtuhdui.c`, the compose step of
 | 26 | 640x480 | screen 2 | x4plus |
 | 12, 155 to 160 | 640x480 | loading pictures | x4plus |
 | 161 | 640x480 | death picture | x4plus |
+| 195 | 620x122 | Khelben, the talking head of the Blackstaff screen: 7 mouth pictures of 82x117 | face, RGBA |
+| 27 to 56 | 160x160 | Blackstaff screen, the pictures that the speech shows (`~pN`) | x4plus |
 
 Picture 10 (Waterdeep) was made with x4plus first: the model made the grass a flat
 green. The grass of the original is a fine grain of green, brown and red pixels.
@@ -231,9 +313,8 @@ green. The grass of the original is a fine grain of green, brown and red pixels.
 difference max 3.7, mean 0.74, against 12.8 and 2.49 for the detail method). Make
 it again with `python -I tools/ui_hd.py --only 10 --force`.
 
-Not upscaled: the portraits (87 to 150), icons (22 to 24), buttons (69 to 84),
-cursors, the Blackstaff pictures (27 to 56) and faces (195): they are drawn as
-the changing part of the interface. Picture 13 (the menu box stone of screen 5)
+Not upscaled: the portraits (87 to 150), icons (22 to 24), buttons (69 to 84) and
+cursors: they are drawn as the changing part of the interface. Picture 13 (the menu box stone of screen 5)
 has a palette that differs from the palette of its screen (picture 12), and
 picture 16 is a flat blue screen; both are left out.
 
@@ -242,7 +323,44 @@ Palette: the in-game pictures have the colors of PALETTE.256 in their entries
 picture that is drawn over a screen is shown with the palette of the screen: the
 menu box stones 1, 6 to 9, 11 and 15 have the same colors as their screens for
 every used index, and 25 has the colors of 14. The tool uses the palette of the
-entry, and the palette of 14 for picture 25.
+entry, and the palette of 14 for picture 25. The Blackstaff screen shows 195 and
+27 to 56 with the palette of picture 0: 195 has the colors of 0 for every used
+index, 27 to 56 differ in one used index; the tool uses the palette of 0.
+
+### The talking head of Khelben
+
+The Blackstaff screen (picture 0) has the face of Khelben in its mouth picture 2.
+While the speech plays, `bs_frame` (dtufe_town.c) draws one of the 7 mouth
+pictures of 195 over it each 0.1 to 0.15 seconds with `fe_blit_part`, with color
+255 not drawn. Before the fix only the draws with no transparent color went to the
+upscaled layer, and 195 had no file: the compose showed the upscaled picture 0
+where a frame pixel still had the color of picture 0 and the 8-bit frame
+elsewhere, so mouth picture 2 looked upscaled and the others were a mix of
+upscaled and 8-bit pixels.
+
+Now `fe_blit_part` passes its transparent color (`dtu_hdui_blit_key`,
+`plat_gpu_ui_draw_key`). The map of the frame keeps the pixels below where the
+picture has that color, and the layer draws the file of 195 with alpha
+blending. ui_hd.py makes 195 as RGBA: color 255 gets the colors of its opaque
+neighbors before the upscale (as the transparent pixels of the textures), the
+alpha is the mask upscaled bicubic and cut at 0.5, and each 82 pixel wide cell is
+upscaled alone, so no mouth picture takes colors from the next one. A draw with
+a transparent color needs such an RGBA file; 195 is the only picture of the list
+that the game draws so.
+
+Method `face`: x4plus plus 0.15 times the fine detail of UltraSharp (the method
+`detail` with 0.6 for the stone and wood art). Compared on the 7 mouth pictures
+at the 3x output: nearest shows the palette dither; x4plus alone is clean but
+flat (forehead wrinkles and the beard become smooth areas); detail 0.6 and
+UltraSharp bring the dither back as a grain and a grid on the skin;
+animevideov3 makes blotches; 0.3 and 0.15 keep wrinkles and the beard, 0.15 with
+no grain. The 7 frames are made with the same method in one file, so they match
+each other.
+
+Other faces: the portraits of the character creation (FESEQ, drawn at 245, 145)
+and the portraits 87 to 150 have no upscaled file and are drawn over no
+upscaled picture of the same face, so all their frames stay 8-bit alike. No
+other screen animates a face over an upscaled picture.
 
 Size: 3 times for the pictures of the 640x480 screen (1920x1440 at 1:1, a 1440p
 monitor; at 1080p the image is reduced to 2.25 times, at 4K enlarged 1.5 times
@@ -251,7 +369,7 @@ models is resized with bicubic filtering (with antialias for the reduction).
 The mean color is moved back to the mean of the original; the mean color of 8x8
 blocks of the original differs by 1 to 5 (of 255) on average.
 
-Time and disk: 38 pictures in 67 s, 115 MB.
+Time and disk: 38 pictures in 67 s, 115 MB; the 31 pictures of the Blackstaff screen (195, 27 to 56) add 27 s and 9 MB.
 
 The presentation: the engine calls `dtu_hdui_loaded` when a picture is loaded
 (the reference pixels, before the buttons are drawn into the play screen) and

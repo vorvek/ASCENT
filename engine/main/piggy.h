@@ -129,6 +129,7 @@ void piggy_read_sounds();
 int piggy_load_egg( char * filename );
 void piggy_free_all();
 int piggy_get_num_eggs();
+extern int Piggy_generation;	// ASCENT: changes when the tables change
 const char *piggy_get_egg_name( int egg_num );		// ASCENT: the file name of an archive
 int piggy_get_egg_counts( int egg_num, int *n_bitmaps, int *n_sounds, int *n_models, int *first_bitmap, int *first_sound, int *first_model );
 

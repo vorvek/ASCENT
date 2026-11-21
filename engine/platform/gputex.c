@@ -173,8 +173,9 @@ uint8_t *gputex_load_png(const char *path, int *w, int *h)
 
 // A layer at scale times the original size: the PNG file if it is valid,
 // else the original pixels repeated. The alpha is 0 where the original
-// pixel has alpha 0. *from_file is 1 for the file.
-static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file)
+// pixel has alpha 0, unless file_alpha: then a file keeps its own alpha (the
+// mask upscaled with smooth edges). *from_file is 1 for the file.
+static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file, int file_alpha)
 {
 	int w = l->w * scale, h = l->h * scale, x, y, fw = 0, fh = 0, n = 0;
 	uint8_t *img = NULL;
@@ -193,8 +194,10 @@ static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file
 			for (y = 0; y < h; y++)
 				for (x = 0; x < w; x++) {
 					int o = (y / scale) * l->w + x / scale;
-					if (l->rgba[o * 4 + 3] == 0)
-						img[(y * w + x) * 4 + 3] = 0;
+					if (l->rgba[o * 4 + 3] == 0) {
+						if (!file_alpha)
+							img[(y * w + x) * 4 + 3] = 0;
+					}
 					// an effect color keeps its palette color, as in the
 					// original bitmap (a texture that is not merged shows
 					// it; plat_gpu_fx_mark replaces it in a merged one)
@@ -215,6 +218,8 @@ static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file
 
 // The top layer over the base (merge_textures_new and
 // merge_textures_super_xparent of texmerge.c, at scale times the size).
+// The holes of a super transparent top (color 254) follow the original
+// pixels.
 static void merge_top(uint8_t *base, const uint8_t *top, const plat_gpu_hd_layer *tl, int size, int scale, int orient, int super)
 {
 	int x, y;
@@ -229,7 +234,10 @@ static void merge_top(uint8_t *base, const uint8_t *top, const plat_gpu_hd_layer
 			default: tr = size - 1 - x; tc = y; break;
 			}
 			oi = (tr / scale) * tl->w + tc / scale;
-			if (tl->rgba[oi * 4 + 3] == 0)
+			// ASCENT: the alpha of the upscaled top (its file keeps the
+			// smooth edges of its mask), so that the outline of a door or
+			// a sign is not made of the 4x4 blocks of the original pixels
+			if (top[(tr * size + tc) * 4 + 3] == 0)
 				continue;			// color 255: the base shows
 			if (super && tl->index && tl->index[oi] == 254) {
 				base[(y * size + x) * 4 + 3] = 0;		// a hole
@@ -353,13 +361,13 @@ static gputex_result *run_job(job_item *it)
 	plat_gpu_hd_job *j = &it->job;
 	int scale = j->scale > 0 ? j->scale : 1, from_base = 0, from_top = 0;
 	int w = j->base.w * scale, h = j->base.h * scale;
-	uint8_t *img = load_layer(&j->base, scale, &from_base);
+	uint8_t *img = load_layer(&j->base, scale, &from_base, 0);
 	gputex_result *r;
 
 	if (!img)
 		return NULL;
 	if (j->top.rgba && j->top.w == j->base.w && j->top.h == j->base.h && j->base.w == j->base.h) {
-		uint8_t *top = load_layer(&j->top, scale, &from_top);
+		uint8_t *top = load_layer(&j->top, scale, &from_top, 1);
 		if (top) {
 			merge_top(img, top, &j->top, w, scale, j->orient, j->super);
 			free(top);

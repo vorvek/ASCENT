@@ -194,6 +194,7 @@ void dtu_creature_physics_sim(object *obj);
 // Called one time per frame before the objects move (the animation and the
 // melee attack of the player).
 void dtu_objects_frame(void);
+void dtu_test_place_player(void);	// -testpos (dtu_trig_frame)
 
 // Rendering. dtu_draw_polygon_object() is the normal case of
 // draw_polygon_object (0x676ED). dtu_draw_item() is render type 8

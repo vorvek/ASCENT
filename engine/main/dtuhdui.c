@@ -47,6 +47,7 @@ static int Was_on;
 typedef struct hdui_op {
 	int n;						// the picture, -1 for a darkening
 	int sx, sy, sw, sh, dx, dy, dw, dh;
+	int key;					// the transparent index of the draw, or -1
 	ubyte table[256];
 } hdui_op;
 static hdui_op Log[MAX_LOG];
@@ -156,6 +157,11 @@ static int screen_pos(grs_bitmap *dest, int *x, int *y)
 
 void dtu_hdui_blit(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *dest, int dx, int dy, int dw, int dh)
 {
+	dtu_hdui_blit_key(src, sx, sy, sw, sh, dest, dx, dy, dw, dh, -1);
+}
+
+void dtu_hdui_blit_key(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *dest, int dx, int dy, int dw, int dh, int key)
+{
 	int n, ox, oy;
 
 	if (!enabled() || (n = picture_of(src)) < 0 || !screen_pos(dest, &ox, &oy))
@@ -171,12 +177,13 @@ void dtu_hdui_blit(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *
 	}
 	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
 		return;
-	plat_gpu_ui_draw(n, sx, sy, sw, sh, dx + ox, dy + oy, dw, dh);
+	plat_gpu_ui_draw_key(n, sx, sy, sw, sh, dx + ox, dy + oy, dw, dh, key);
 	{
 		hdui_op op;
 		op.n = n;
 		op.sx = sx; op.sy = sy; op.sw = sw; op.sh = sh;
 		op.dx = dx + ox; op.dy = dy + oy; op.dw = dw; op.dh = dh;
+		op.key = key;
 		log_add(&op);
 	}
 }
@@ -192,6 +199,7 @@ static void darken(int x0, int y0, int x1, int y1, const ubyte *table)
 	op.n = -1;
 	op.sx = op.sy = op.sw = op.sh = 0;
 	op.dx = x0; op.dy = y0; op.dw = x1 - x0; op.dh = y1 - y0;
+	op.key = -1;
 	memcpy(op.table, table, 256);
 	log_add(&op);
 }
@@ -240,7 +248,7 @@ void dtu_hdui_restore(dtu_hdui_state *st)
 			if (o->n < 0)
 				darken(o->dx, o->dy, o->dx + o->dw, o->dy + o->dh, o->table);
 			else {
-				plat_gpu_ui_draw(o->n, o->sx, o->sy, o->sw, o->sh, o->dx, o->dy, o->dw, o->dh);
+				plat_gpu_ui_draw_key(o->n, o->sx, o->sy, o->sw, o->sh, o->dx, o->dy, o->dw, o->dh, o->key);
 				log_add(o);
 			}
 		}

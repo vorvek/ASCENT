@@ -23,7 +23,8 @@ Steps for each bitmap (interface art, flag 0x40, is skipped):
      opaque neighbors, filled outward ring by ring, so the upscale makes no
      dark halo,
   2. padding: tiling textures (wall textures of the tables, and every 64x64
-     bitmap) are padded by wrapping, the others by mirroring,
+     bitmap) are padded by wrapping with TILE_PAD pixels (a 3x3 tiling of a
+     64x64 texture), the others by mirroring with PAD pixels,
   3. upscale x4 (the method, on the GPU), crop the padding,
   4. alpha: the opaque mask is upscaled (bicubic, same padding) and cut at
      50 percent,
@@ -51,10 +52,19 @@ UNPACKED = os.path.join(ROOT, "gamedata", "unpacked")
 sys.path.insert(0, HERE)
 import egg  # noqa: E402
 
-VERSION = 2          # bump when the processing changes; part of the cache key
+VERSION = 3          # bump when the processing changes; written to .method, so
+                     # that a run makes the files of an archive again
                      # 2: wall textures use the "detail" method
+                     # 3: tiling textures padded by TILE_PAD (a 3x3 tiling)
+CACHE_VERSION = 2    # part of the cache key of every bitmap; the key of a
+                     # tiling bitmap also has TILE_PAD, so a change of the
+                     # tiling padding does not redo the other bitmaps
 SCALE = 4
 PAD = 16             # source pixels of padding on each side
+TILE_PAD = 64        # the same for a tiling bitmap, by wrapping: a 64x64
+                     # texture is upscaled as the center of a 3x3 tiling, so
+                     # the receptive field of the model never reaches the end
+                     # of the padding and the edges of the result match
 
 # The effect colors (docs/re/effectcolors.md): the game draws these texels
 # with a color from the screen, not with their palette color (a bright red,
@@ -289,6 +299,10 @@ COMBO = ("detail", "x4plus")   # (wall textures, everything else)
 # stay seamless.
 DETAIL_STRENGTH = 0.6
 DETAIL_SIGMA = 2.0
+# The "face" method: the same with less of the UltraSharp detail. On the
+# dithered faces of the interface 0.6 brings back the dither as a grain,
+# x4plus alone loses the wrinkles and the beard (docs/hd_textures.md).
+FACE_DETAIL_STRENGTH = 0.15
 
 
 def sub_method(method, wall):
@@ -328,7 +342,8 @@ class Upscaler:
             return np.stack([scale4x(b) for b in batch])
         x = torch.from_numpy(np.ascontiguousarray(batch.transpose(0, 3, 1, 2))).cuda()
         with torch.no_grad():
-            if method == "detail":
+            if method in ("detail", "face"):
+                strength = DETAIL_STRENGTH if method == "detail" else FACE_DETAIL_STRENGTH
                 base = self.model("x4plus")(x.half()).float()
                 sharp = self.model("ultrasharp")(x.half()).float()
                 r = int(DETAIL_SIGMA * 3 + 0.5)
@@ -342,7 +357,7 @@ class Upscaler:
                 blur = torch.nn.functional.conv2d(blur, kh, groups=c)
                 blur = torch.nn.functional.pad(blur, (0, 0, r, r), mode="reflect")
                 blur = torch.nn.functional.conv2d(blur, kv, groups=c)
-                y = base + DETAIL_STRENGTH * (sharp - blur)
+                y = base + strength * (sharp - blur)
             elif method == "bicubic":
                 y = torch.nn.functional.interpolate(x, scale_factor=SCALE, mode="bicubic",
                                                     align_corners=False)
@@ -406,9 +421,15 @@ def fill_transparent(rgb, opaque, wrap):
     return rgb
 
 
+def pad_of(tiling):
+    """Source pixels of padding on each side."""
+    return TILE_PAD if tiling else PAD
+
+
 def pad_img(a, tiling):
     import numpy as np
-    pw = ((PAD, PAD), (PAD, PAD)) + ((0, 0),) * (a.ndim - 2)
+    p = pad_of(tiling)
+    pw = ((p, p), (p, p)) + ((0, 0),) * (a.ndim - 2)
     return np.pad(a, pw, mode="wrap" if tiling else "symmetric")
 
 
@@ -431,8 +452,10 @@ def make_job(m, pal, tiling, method):
     j.opaque = opaque
     j.rgb = fill_transparent(rgb, opaque & ~effect, tiling) if j.has_alpha or effect.any() else rgb
     h = hashlib.sha1()
-    h.update(("%s|%d|%d|%d|%d|%d|" % (method, VERSION, m.w, m.h, tiling,
+    h.update(("%s|%d|%d|%d|%d|%d|" % (method, CACHE_VERSION, m.w, m.h, tiling,
                                       j.has_alpha)).encode())
+    if tiling:
+        h.update(("wrap%d|" % TILE_PAD).encode())
     h.update(opaque.tobytes())
     h.update(np.ascontiguousarray(rgb).tobytes())
     if effect.any():
@@ -451,7 +474,7 @@ def finish(j, up_rgb, method):
     import numpy as np
     import torch
     W, H = j.w * SCALE, j.h * SCALE
-    c = PAD * SCALE
+    c = pad_of(j.tiling) * SCALE
     rgb = up_rgb[c:c + H, c:c + W] * 255.0
     if j.has_alpha:
         if method == "nearest":
@@ -486,7 +509,7 @@ def upscale_jobs(jobs, ups, progress=None):
         groups.setdefault((j.meth, j.h, j.w, j.tiling), []).append(j)
     done = 0
     for (meth, h, w, tiling), lst in sorted(groups.items()):
-        ph, pw = h + 2 * PAD, w + 2 * PAD
+        ph, pw = h + 2 * pad_of(tiling), w + 2 * pad_of(tiling)
         n = max(1, min(64, 400000 // (ph * pw)))
         for i in range(0, len(lst), n):
             part = lst[i:i + n]

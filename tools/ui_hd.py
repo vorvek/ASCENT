@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Make upscaled copies of the interface pictures of FEBGND.DAT.
 
-Output: <hd>/ui/febgnd_<n>.png, RGB 8-bit, SCALE times the width and the height
+Output: <hd>/ui/febgnd_<n>.png, RGB 8-bit (RGBA for a picture of KEY), SCALE times the width and the height
 of picture n (6 times for the pictures of the 320x200 screen), and
 <hd>/ui/index.txt with one "n w h scale method" line per file. The default <hd>
 is gamedata/hd, which git ignores. Never commit the output: it is derived from
@@ -96,10 +96,23 @@ PICTURES = {
     159: ("x4plus", "loading picture"),
     160: ("x4plus", "loading picture"),
     161: ("x4plus", "death picture"),
+    # the Blackstaff screen: the talking head of Khelben (7 mouth pictures
+    # of 82x117 side by side, color 255 not drawn) and the pictures that
+    # the speech shows (~pN of the text, entry 27 + N)
+    195: ("face", "Khelben, the talking head (7 frames)"),
 }
+for _n in range(27, 57):
+    PICTURES[_n] = ("x4plus", "Blackstaff screen, picture of the speech")
 LOW = {57, 58, 59, 60, 61, 85}
 # A picture that the game shows with the palette of another entry.
-PALETTE_OF = {25: 14}
+PALETTE_OF = {25: 14, 195: 0}
+PALETTE_OF.update({_n: 0 for _n in range(27, 57)})
+# A picture that the game draws with a transparent index (fe_blit_part):
+# the file is RGBA, alpha 0 where the picture has that index.
+KEY = {195: 255}
+# A sheet of frames: each cell of this width is upscaled alone, so that no
+# frame takes colors from the next one.
+CELL_W = {195: 82}
 
 
 def ensure_venv(hd):
@@ -140,26 +153,66 @@ class Febgnd:
         return pal[np.frombuffer(pix, np.uint8).reshape(h, w)]
 
 
-def upscale(ups, rgb, method, scale):
-    """rgb (h, w, 3) float32 -> (h*scale, w*scale, 3) uint8, mean diff before and after"""
+def resize(a, h, w, reduce):
+    """(H, W, C) float32 -> (h, w, C), bicubic (with antialias for a reduction)"""
     import numpy as np
     import torch
+    t = torch.from_numpy(np.ascontiguousarray(a.transpose(2, 0, 1)))[None].cuda()
+    t = torch.nn.functional.interpolate(t, size=(h, w), mode="bicubic",
+                                        align_corners=False, antialias=reduce)
+    return t[0].permute(1, 2, 0).cpu().numpy()
+
+
+def upscale(ups, rgb, method, scale, opaque=None):
+    """rgb (h, w, 3) float32 -> (h*scale, w*scale, 3) uint8, mean diff before and after.
+    With opaque (h, w) bool: the other pixels get the colors of their opaque
+    neighbors before the upscale, the result is RGBA with alpha 0 there (the
+    mask upscaled the same way and cut at 50 percent)."""
+    import numpy as np
     h, w = rgb.shape[:2]
+    if opaque is not None and not opaque.any():
+        return np.zeros((h * scale, w * scale, 4), np.uint8), 0.0, 0.0
+    if opaque is not None:
+        rgb = th.fill_transparent(rgb, opaque, False)
     pad = np.pad(rgb, ((PAD, PAD), (PAD, PAD), (0, 0)), mode="symmetric")
     up = ups.run(pad[None].astype(np.float32), method)[0]
     c = PAD * th.SCALE
     up = up[c:c + h * th.SCALE, c:c + w * th.SCALE]
     if scale != th.SCALE:
-        t = torch.from_numpy(np.ascontiguousarray(up.transpose(2, 0, 1)))[None].cuda()
-        t = torch.nn.functional.interpolate(t, size=(h * scale, w * scale), mode="bicubic",
-                                            align_corners=False, antialias=scale < th.SCALE)
-        up = t[0].clamp(0, 1).permute(1, 2, 0).cpu().numpy()
+        up = np.clip(resize(up, h * scale, w * scale, scale < th.SCALE), 0, 1)
     up = up * 255.0
-    mo = rgb.reshape(-1, 3).mean(0) * 255.0
-    before = float(np.abs(up.reshape(-1, 3).mean(0) - mo).max())
-    up = np.clip(np.rint(up + (mo - up.reshape(-1, 3).mean(0))), 0, 255).astype(np.uint8)
-    after = float(np.abs(up.reshape(-1, 3).astype(np.float64).mean(0) - mo).max())
+    sel = np.ones((h * scale, w * scale), bool)
+    orig = rgb.reshape(-1, 3)
+    if opaque is not None:
+        m = np.pad(opaque.astype(np.float32), PAD, mode="symmetric")[..., None]
+        m = resize(m, (h + 2 * PAD) * scale, (w + 2 * PAD) * scale, False)[..., 0]
+        sel = m[PAD * scale:(PAD + h) * scale, PAD * scale:(PAD + w) * scale] >= 0.5
+        orig = rgb[opaque]
+    mo = orig.mean(0) * 255.0
+    before = float(np.abs(up[sel].mean(0) - mo).max())
+    up = np.clip(np.rint(up + (mo - up[sel].mean(0))), 0, 255).astype(np.uint8)
+    after = float(np.abs(up[sel].astype(np.float64).mean(0) - mo).max())
+    if opaque is not None:
+        up = np.concatenate([up, np.where(sel, 255, 0).astype(np.uint8)[..., None]], -1)
     return up, before, after
+
+
+def upscale_picture(ups, fb, n, scale):
+    """Picture n with its method, key and cells: (RGB or RGBA uint8, diff before, after)."""
+    import numpy as np
+    rgb = fb.rgb(n)
+    method = PICTURES[n][0]
+    opaque = None
+    if n in KEY:
+        opaque = np.frombuffer(fb.picture(n)[3], np.uint8).reshape(rgb.shape[:2]) != KEY[n]
+    cw = CELL_W.get(n, rgb.shape[1])
+    parts, diffs = [], []
+    for x in range(0, rgb.shape[1], cw):
+        part, b, a = upscale(ups, rgb[:, x:x + cw], method, scale,
+                             None if opaque is None else opaque[:, x:x + cw])
+        parts.append(part)
+        diffs.append((b, a))
+    return np.concatenate(parts, 1), max(d[0] for d in diffs), max(d[1] for d in diffs)
 
 
 def block_diff(rgb, up, scale, b=8):
@@ -182,7 +235,7 @@ def sheet(fb, n, up, scale, outdir):
     cw, ch = min(w, 160), min(h, 120)
     x0, y0 = (w - cw) // 2, (h - ch) // 2
     near = rgb.repeat(scale, 0).repeat(scale, 1)[y0 * scale:(y0 + ch) * scale, x0 * scale:(x0 + cw) * scale]
-    hd = up[y0 * scale:(y0 + ch) * scale, x0 * scale:(x0 + cw) * scale]
+    hd = up[y0 * scale:(y0 + ch) * scale, x0 * scale:(x0 + cw) * scale, :3]
     out = np.concatenate([near, np.zeros((near.shape[0], 8, 3), np.uint8), hd], 1)
     Image.fromarray(out, "RGB").save(os.path.join(outdir, "febgnd_%d.png" % n))
 
@@ -216,11 +269,11 @@ def main():
             continue
         t0 = time.time()
         rgb = fb.rgb(n)
-        up, before, after = upscale(ups, rgb, method, scale)
+        up, before, after = upscale_picture(ups, fb, n, scale)
         tmp = path + ".tmp"
-        Image.fromarray(up, "RGB").save(tmp, format="PNG", compress_level=6)
+        Image.fromarray(up, "RGBA" if up.shape[2] == 4 else "RGB").save(tmp, format="PNG", compress_level=6)
         os.replace(tmp, path)
-        bmax, bmean = block_diff(rgb, up, scale)
+        bmax, bmean = block_diff(rgb, up[..., :3], scale)
         print("febgnd %3d %dx%d -> %dx%d %-6s %5.1fs  mean diff %.2f -> %.2f, 8x8 block diff max %.1f mean %.2f, %.1f MB"
               % (n, rgb.shape[1], rgb.shape[0], up.shape[1], up.shape[0], method, time.time() - t0,
                  before, after, bmax, bmean, os.path.getsize(path) / 1048576.0), flush=True)

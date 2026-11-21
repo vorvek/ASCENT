@@ -37,6 +37,7 @@
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtudisp.h"
+#include "dtuobj.h"
 #include "dtutrig.h"
 #include "dtustate.h"
 
@@ -1133,6 +1134,8 @@ void dtu_trig_frame(void)
 {
 	object *obj = ConsoleObject;
 	int i;
+
+	dtu_test_place_player();	// ASCENT: the test option -testpos
 
 	// 0x9547A: the traps that wait for a delay or that repeat
 	for (i=0; i<Num_active_traps; i++)

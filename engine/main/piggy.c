@@ -409,6 +409,10 @@ hashtable AllBitmapsNames;
 hashtable AllDigiSndNames;
 
 int Num_bitmap_files = 0;
+// ASCENT: changes at each change of the tables (a reset, a loaded archive),
+// so that a user of the addresses of the bitmap data (the upscaled textures
+// of the GPU renderer, render.c) knows when to look at them again.
+int Piggy_generation = 0;
 int Num_sound_files = 0;
 
 digi_sound GameSounds[MAX_SOUND_FILES];
@@ -500,6 +504,7 @@ bitmap_index piggy_register_bitmap( grs_bitmap * bmp, char * name, int in_file )
 	if ( !in_file )
 		GameBitmapDiskFlags[Num_bitmap_files] = bmp->bm_flags;
 	Num_bitmap_files++;
+	Piggy_generation++;	// ASCENT
 
 	return temp;
 }
@@ -573,6 +578,7 @@ void piggy_get_sound_name( int i, char * name )
 
 static void piggy_reset_tables()
 {
+	Piggy_generation++;
 	int i;
 
 	for (i=0; i<MAX_SOUND_FILES; i++ )	{
@@ -786,6 +792,7 @@ int piggy_load_egg( char * filename )
 	digi_sound temp_sound;
 
 	piggy_init();
+	Piggy_generation++;
 
 	if ( Num_eggs >= MAX_EGG_FILES )	{
 		dtu_log( "Too many EGG archives\n" );
