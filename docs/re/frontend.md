@@ -324,8 +324,14 @@ percentile, thief flag, five thief skills (0x8BDE5), 0x66, flags, alignment,
   30 33 39 45 46 48 shuffled, the first min(INT, 18) / 3, and 46. Cleric:
   spell 0.
 - Portrait: player +0x1B03 = the frame number (no sex offset).
-- Gold: no code of character generation writes it (G: the player reset
-  0x33EBB, not read).
+- Gold: 102. 0x8B85D (called by MakePlayer at 0x8BF1D) writes 0x66 to the
+  attribute block +0x44 (0x8B8AC), and MakePlayer copies the block to P+0x97,
+  so P+0xDB = 102 (V). (An earlier version of this document said that no code
+  writes it.) The player reset 0x33EBB does not touch the gold (V: it sets
+  the empty hand record 0x1BD46C). No other start value exists: the other
+  writes of P+0xDB are the pick up (0x280B3), the passage fee (0x59FFA), the
+  rewards of Khelben (0x8450D on), the market and an event that takes all
+  gold (0xAA41E).
 
 ## 6. Waterdeep, Blackstaff, market (fewdeep.c, femarket.c) (V)
 
@@ -342,10 +348,228 @@ frames of 82x117 at (290,124)), eyes FESEQ 31, torches, the scrolling text of
 the mission (FETXT, table 0x142840) with markup `~c ~s ~p ~e ~n ~m`, music
 stream 2 at volume 25. Exit circle (551,422) r 32 keys Esc X.
 
-Market (0x8474B, record 0x13F29E, FEBGND 14): buy / sell, weapons / armor /
-misc, a nine row catalog, the quantity pop-up FEBGND 25. Stock: `geldor.dat`
-(10-byte records), saved as `TheStore.<n+1>`. The prices and the first stock
-(0x8705D, 0x872C1) were not traced.
+Market (0x8474B, record 0x13F29E, FEBGND 14): section 6a.
+
+No temple, training or inn screen exists in Waterdeep: the feature lists
+0x141D48 and 0x141F10 have only the places above (V). Rest is an action of
+the game (dtuchar.c).
+
+## 6a. The market (femarket.c) (V unless marked)
+
+### Screen
+
+Screen 3 (FEBGND 14), help bar (33,408)-(442,461). The init (0x84755) sets
+the rectangle of the catalog feature to (35,37)-(364,364), loads the icon
+sheet (0x8578C: FEBGND 22, icons of 32x32, icons per row = width / 32), reads
+the charisma (0x85764), builds the lists (0x8705D), selects "weapons" and
+"buy" in the two radio groups (ferbtn.c, 0x13EC48: `lbmwpnd_` (452,81),
+`lbmarmd_` (452,174), `lbmmscd_` (453,265); 0x13ECA8: `lbmbuyd_` (427,15),
+`lbmseld_` (532,15); the last `_` is the language letter) and draws the
+catalog and the gold.
+
+Features (list 0x13EE9C, 57 bytes each; all act on release):
+
+| # | Place | Keys | Help | Action |
+|---|---|---|---|---|
+| 0 | circle (543,434) r 36, control 0 `btnmkxit` (507,398) | Esc X | TEX[570] | 0x84BA8: leave, Function_mode 4 |
+| 1 | (427,15)-(520,64) | B | TEX[572] | 0x84A6E: buy |
+| 2 | (532,15)-(625,64) | S | TEX[573] | 0x84AEB: sell |
+| 3 | (452,81)-(619,143) | W | TEX[574] | 0x8494B: weapons |
+| 4 | (452,174)-(619,237) | A | TEX[575] | 0x849AA: armor |
+| 5 | (453,265)-(618,326) | M | TEX[576] | 0x84A0C: misc |
+| 6 | (35,37)-(364,364) | | TEX[577] | 0x84BE4: the catalog |
+| 7 | (366,43)-(396,73), control 1 `btnmkup` | Up | "Scroll up" | 0x84B6D |
+| 8 | (365,96)-(395,126), control 2 `btnmkdwn` | Down | "Scroll down" | 0x84B8A |
+
+The catalog (0x85AF0): 9 rows at (35, 37 + 37 i), 330x32. A row (0x85E06):
+the icon (32x32 at the left, the icon number is `icon=` of the item; color
+255 is not drawn, 0xE1280), at x 37 the quantity (medium font, hue 2; "many"
+TEX[701] for 100 or more or no limit) and the name (hue 3) at x 37 + the
+width of "many" + 5, and at x 282 the price (large font, hue 7, centered).
+The gold (0x85A3F): "%d" of P+0xDB, large font, hue 2, centered in
+(452,352) 166x25.
+
+A click in the catalog (0x84BE4): x - 35 must be below 330, y - 37 below
+0x148; the row is found by `while (row < 9 && y >= 32) { y -= 37; row++; }`;
+the row must hold a line.
+
+The lists are circular and doubly linked. The first line shown is
+0x13ED1C, the count of the list shown 0x13ED18. The scroll buttons act only
+when the list has more than 9 lines; they move the first line one back or
+one on, around the circle.
+
+### Lists (0x8705D, 0x870A0)
+
+Six lists: the stock for weapons, armor, misc (heads 0x13EB54, 0x13EB50,
+0x13EB58, counts 0x13EB60, 0x13EB5C, 0x13EB64) and the goods of the player
+(0x13EB38, 0x13EB3C, 0x13EB40, counts 0x13EB44 to 0x13EB4C). A line is a
+0x37-byte node: +8 class, +9 number, +0x0A stackable, +0x0B count of one
+item (word), +0x0D quantity (-1 no limit), +0x11 value, +0x15 sell price,
++0x19 buy price, +0x21 name, +0x25 (written, never read), +0x26 equipped,
++0x27 the 16-byte item record. A new line is put into its list sorted by
+class, number, count (higher first) and equipped; a line equal in these four
+gets the quantity added (-1 if one of them is -1) and is not added.
+
+The stock (0x872C1): the 10-byte records of `geldor.dat` (s32 quantity, u8
+class, u8 number, u32 count), read to the end of the file; with no file, the
+21 records at 0x13EB6C (the same goods as the GELDOR.DAT of the install, in
+another order). 0x873EE builds the item record from the item tables; for a
+stackable type the count is 1, else the count of the record. Classes: 5
+weapon, 15 armor, 16 misc, 17 spell (no spell is listed: the stock has none
+and the spells of the player are in other lists).
+
+The goods of the player: each entry of the item list (P+0x103, P+0xF3
+entries) that is not a plot item (`plot_item=` of the table, record +0x0A).
+A stackable entry gives one line with the stack as the quantity and count
+1, another entry a line of quantity 1 with its count (charges).
+
+### Price (0x86C5A) (V)
+
+```
+value = value= of the table line (weapon +0x34, armor, misc, spell)
+max   = uses= (weapon +0x2E, no start value; misc and spell start at 1);
+        armor: -1
+fixed = the flag "stackable" (weapon 0x02, armor 0x10, misc 0x01, spell 0x02)
+if value < 1: value = 1
+if not fixed:
+    max = max < 1 ? 0xFFFF : min(max, 0xFFFF)
+    cond = the count of the line; cond < 0 or > 0xFFFF: 0xFFFF
+    value = value * (min(cond, max) * 100 / max) / 100
+price = value * percent[charisma] / 100, at least 1
+if game flag 107 of the player (bit array P+0x1A33, 0xADAFE): price * 2
+```
+
+`percent` (0x86F75, charisma clamped to 0 .. 19): the player sells, table
+0x13F2DD: 20 25 27 33 35 40 45 50 55 60 65 70 75 80 85 88 93 97 99 100; the
+player buys, table 0x13F32D: 400 350 300 275 250 225 200 190 180 165 150 135
+125 120 115 112 108 107 105 101. There is no other reaction adjustment.
+
+The charisma (0x85764): if 0x13E38C is not 0, the word +0x5D of the record
+it points to, else P+0xBF. Character generation sets 0x13E38C to its record
+0x3A63F8 (0x87E82) and nothing clears it, so after a new character the market
+uses the charisma of that record for the rest of the run, even for a loaded
+character.
+
+All 21 goods of the first stock are stackable, so their price is value times
+the percent. Example with charisma 12: Potion of Healing (value 300) costs
+405 and sells for 210.
+
+### Buy (0x84D41) and sell (0x84CA6)
+
+Buy: the quantity text is "many" or "%d"; room = 0xB7303 (stackable: the
+limit `stack_limit=` minus the items of the type; else 127 minus the entries
+of the type); no room: message TEX[700] (the bag is full). Can = gold /
+price (or 1000 for no limit at price 0); 0: message TEX[702]. The most is
+min(quantity as unsigned, can, room). The pop-up text is TEX[704] with the
+quantity text, the price and the most.
+
+Sell: the price is the sell price, the most is the quantity, the text
+TEX[705] (quantity, price). If the (class, number, count) of the line is in
+a hot key, in the hand, in a slot, or in the bow or crossbow place
+(0x8622B builds the table 0x3A4FC8), the help bar shows TEX[703] for 3
+seconds.
+
+### The quantity pop-up (0x84EEA) (V)
+
+FEBGND 25 (0x860D9), centered on the screen ((640 - w) / 2, (480 - h) / 2).
+Sub canvases: title (35,32) 339 wide (medium font, hue 3, centered: the
+name of the item), the text (35, 33 + font height) (hue 7, centered), the
+quantity (175,144) 62x37 (hue 7, centered). The features of the screen
+become the list 0x13F10F, the help bar (px+41, py+200)-(px+374, py+254), the
+mouse is held in the pop-up and put at (320,280); a warning goes to the help
+bar; the quantity starts at 1.
+
+| # | Place (px, py = corner) | Control | Keys | Help | Action |
+|---|---|---|---|---|---|
+| 11 | (88,127)-(154,194) | `btnpulft` at (88,127) | Left Down | TEX[578] | 0x85740: quantity - 1, at least 1 |
+| 12 | (260,127)-(327,197) | `btnpurit` at (260,127) | Right Up | TEX[579] | 0x85719: quantity + 1, at most the most |
+| 13 | (54,258)-(199,314) | `lbpyesd_` at (54,258) | Right Down | TEX[580] | 0x85458: accept |
+| 14 | (217,259)-(360,315) | `lbprejd_` at (217,259) | Right Down | TEX[581] | 0x8566D: reject |
+| 15 | (175,144)-(237,181) | | Right Down | TEX[582] | 0x86F9C: menu "Enter Qty", 5 characters |
+
+The keys of 13 to 15 are the keys of 11 and 12, which come first: the
+keyboard can only change the quantity.
+
+Accept (0x85458), on a copy of the line:
+- Buy: the quantity of the line goes down by the number (0x86B80, a line at
+  0 goes away); for each item: if the player has fewer than 127 entries and
+  0xB6315 puts the item record into the item list, the line goes to the
+  player list (0x876ED) and the price is taken from the gold. At the end a
+  negative gold becomes 0.
+- Sell: the line of the player goes down; for each item 0xB6E01(class,
+  number, count) takes one item and the price goes to the gold; 0xAFB55
+  (the character values); then 0x873EE adds to the stock the quantity of
+  the copy, that is the items that the player had in the line, not the
+  number sold.
+
+Reject (0x8566D) closes the pop-up. The window gives the screen its
+features and help bar back and draws the catalog and the gold again.
+
+### Leaving and the stock file
+
+At the exit (0x847DE) the stock is written to `geldor.dat` (0x86846: armor,
+weapons, misc, each line as s32 quantity, u8 class, u8 number, u32 count),
+and the lists are freed.
+
+- New character: `geldor.dat` is deleted (0x87BFB at 0x87EC3).
+- Save (0x87C05(S, 1)): if `geldor.dat` exists it is copied to `TheStore.<S>`
+  (S = slot + 1, at most 999) with each record coded by 0x87BB7 (bytes 0..3
+  and 6..9 change places, and bytes 4 and 5). Without `geldor.dat` nothing is
+  written.
+- Load: `geldor.dat` is deleted, then `TheStore.<S>` is decoded into it
+  (0x87C05(S, 0)).
+- Rewards of Khelben (0x879A7(n), n 0 to 8, table 0x13F6A0): the records of
+  the reward are added at the end of `geldor.dat`; nothing if the file does
+  not exist.
+
+`THESTORE.1` of the install decodes to `GELDOR.DAT` of the install (V).
+
+## 6b. The ESC menu of the game (game() 0x4225A) (V)
+
+The Escape key of the game sets Function_mode 1 (Descent 1). After the game
+loop, if Function_mode is not 2 (and no demo, no editor), game() keeps the
+mode, sets 2 and:
+
+- If byte 0x13B254 is set (command 0 of DTU.WRP ran in this game: the exit
+  of the inn): message box (no title) "Yes" "No", text TEX[795] "Leave the
+  Yawning Portal?". The byte is not cleared by "No".
+- Else `nm_messagebox(NULL, 4, "Return to dungeon", "Load Game", "Save
+  Game", "Abort Game", "ESC Menu\n")` (strings 0x125723, 0x125719,
+  0x12570F, 0x125704, 0x1256FA):
+  - Return to dungeon, or Esc: the game goes on.
+  - Load Game: 0xBB780(1) (the slot menu and TEX[801] "Restore Game?").
+  - Save Game: 0xBA99F(0): the save in a level.
+  - Abort Game: TEX[103] "Abort Game?" Yes / No.
+- Then Function_mode = the kept mode, and 2 again if the choice was not 0
+  (for the exit question "Yes" is 0; for the menu only "Abort Game" + "Yes"
+  gives 0). So a load from this menu always goes on in Function_mode 2,
+  also for a save of Waterdeep (0xBB780 set mode 4).
+
+The end of the game after "Abort Game" (0x42639): byte 0x13B254 is 0, so
+0x141BBB = 0 (no character) and 0x8C426 (the first visit list of
+Waterdeep); main menu.
+
+## 7a. Loading pictures (V)
+
+`0x7C1E5(n)`: the picture of the loader. It keeps the video mode, and shows
+FEBGND n if 0x13E1E5 is 0, else FEBGND 12 for n < 0 and FEBGND
+table[n % 6] for n >= 0 (table 0x13E1C9: 156, 157, 158, 159, 160, 155), then
+sets 0x13E1E1 = 1. 0x13E1E5 starts as 1 and only 0x7C288 clears it (the
+death picture 161 at 0x4247D). `0x7C2BB` ends the picture: fade out
+(0xD9EA4) and the old video mode. `0x7C2EE` clears the flags with no fade.
+
+- Before a level (load_level 0x494EB): when the table of the level (0x1D2728)
+  is not the loaded table (0x1B79A2) and the archive differs, or the loaded
+  table is FRONTEND.TBL, or the archive is SHORT.EGG: video mode 640x480 and
+  `0x7C1E5(n)` with n = -1 if 0x13E324 is 1 (set by Function_mode 8, the
+  Yawning Portal of the front end) or the new table is FRONTEND.TBL, else
+  `rand() & 0xFF`. Then the tables load (0x4A569) and 0x13E324 = 0.
+- After the level: the warp (0x5A1B5) and the load of a save game (0xBBDEA)
+  end the picture (0x7C303, 0x7C2BB), set the game mode, load PALETTE.256
+  and clear the screen.
+- Back to the front end (0xB88FF, modes 4, 6, 1): fade, mode 640x480; if the
+  loaded archive is not "portal" (0x80F09), `0x7C1E5(-1)` (FEBGND 12) and
+  0x7C2EE; then the Waterdeep screen.
 
 ## 7. Entering a level (V)
 
@@ -428,13 +652,14 @@ each control).
 | Main menu | done, items and conditions as section 4 |
 | Character generation | done, all four screens and the quick character; the character goes to `Dtu_char` (dtuchar.h) and the game starts in YPINN through Waterdeep |
 | Waterdeep, Blackstaff | done (Khelben text, face, speech, torches) |
-| Market | the screen and its buttons only; no trade |
-| Save, load | done for the parts of section 9 that the port has (P below) |
+| Market | done: lists, prices, buy, sell, quantity window, stock file, `TheStore.<S>` in the saves (section 6a) |
+| Save, load | done, with the level state files (docs/re/levelstate.md) and the market stock; saves in a level |
 | Options | Music, FX, Reverse Stereo; Hires Dungeon Graphics is left out (P) |
 | Credits | done |
 | Exit of the inn | done: "Leave the Yawning Portal?" then Waterdeep |
 | Death | done: picture, music, Death Menu with Load Game and Abort Game |
-| ESC menu in the game | not done: Escape in a game that the front end started ends the game and goes to the main menu |
+| ESC menu in the game | done (section 6b) |
+| Loading pictures | done (section 7a); the picture is scaled to the screen of the game (P) |
 | Movies (MVE) | not done |
 
 Decisions of the port (P):
@@ -448,11 +673,40 @@ Decisions of the port (P):
   frames are one second).
 - Save games: the port reads a slot in the current directory first, then in
   the directories of the game data, and writes it in the current directory.
-  It writes only "between levels" files (the saves of the main menu and of
-  Waterdeep) with the header, the Khelben state, the player record
-  (`dtu_char_pack`), the attribute block and the RLPD block; the 19 mission
-  flags are 0. It does not write or read the level files of `SAVE\` and the
-  market stock. A save of a level starts that level from its start.
+  It writes the header, the Khelben state, the mission flags (dtuscript.c),
+  the player record (`dtu_char_pack`), the attribute block and the RLPD
+  block. A save in a level (the ESC menu) has "between levels" 0 and the
+  three counts at 7374 as 0 (7386 bytes, as SG0.SG). The level state goes
+  to `SAVE\` under the current directory (docs/re/levelstate.md), the stock
+  of the market to `TheStore.<S>` in the current directory. The level files
+  of the original (`SAVE\SGn_m.LVL`) are not read: their content is a memory
+  image of the executable.
+- The loads of the ESC menu and of the death menu end the game; the front
+  end then starts the level of the save (the executable starts it inside
+  game()).
+- The market: `geldor.dat` and `TheStore.<S>` are in the current directory.
+  The port has no bag limit of 127 entries: the inventory of the port has 64
+  entries (`DTU_MAX_INVENTORY`), and a buy stops there. Game flag 107 (the
+  double price) is the weak hook `dtu_hook_game_flag` (0 until the flags
+  exist). The mouse is not held in the quantity window.
+- The loading picture: the executable sets 640x480 and shows the picture;
+  the port draws it scaled into the screen of the game, keeps it while the
+  level loads and fades it out (0x7C2BB) after the level state is restored.
+  The first level after the front end always shows a picture, because the
+  front end of the executable has its own table (FRONTEND.TBL) and the port
+  keeps the tables of YPINN.
+- The Escape key of the game: game.c calls `dtufe_escape_key()`; the menu is
+  shown after the frame, where game() of the executable shows it.
+- Abort Game of the ESC menu: the port clears the character (0x141BBB = 0);
+  the first visit list of Waterdeep (0x8C426) is not used, the lists follow
+  the Khelben state.
+- Test options: `-statetest DOORSEG,DOORSIDE,OBJ[,WARPSEG,BACKSEG]`
+  (dtustate.c) opens a door, kills a creature and moves the player into
+  warp segments, with a log line "STATETEST" at each level start;
+  `-loadshots` writes each loading picture to `loading<n>.ppm`; the script
+  command `gamekeys` lets the script of `-fescript` run in the frames of the
+  game (its keys go to the game). A run with `-frames` and no script ends
+  the program when the game ends (the death screen would wait for a key).
 - The Descent message boxes of the game in the death menu are drawn as front
   end menus over the death picture; the text colors are the closest colors of
   the picture to the colors of the Waterdeep screen.
@@ -463,14 +717,25 @@ Decisions of the port (P):
   `dtu_hook_player_death_screen` (dtuobj.h) are defined in dtufe.c. game.c
   calls `dtufe_game_frame()` after each frame.
 
+Settings (on by default, each corrects a defect of the executable):
+
+| Setting | File | The executable | The port with the setting on |
+|---|---|---|---|
+| `Dtu_fix_market_charisma` | dtufe_town.c | after a new character the market uses the charisma of that character for the rest of the run, also for a loaded character (0x13E38C) | the charisma of the player |
+| `Dtu_fix_market_sell_count` | dtufe_town.c | a sale adds to the stock the items the player had in the line, not the items sold (0x8564F) | the items sold |
+| `Dtu_fix_escape_load_waterdeep` | dtufe.c | a save of Waterdeep loaded from the ESC menu gives the character but the game goes on in the level (0x423E1) | the player is in Waterdeep |
+
 ## Open questions
 
-1. The market: the prices, the first stock (0x8705D, 0x872C1), the pop-up
-   position and the icon sheet.
+1. The market: the meaning of node +0x25 (0x3533C, never read) and the order
+   in which 0xB6E01 takes an item when the player has two equal entries
+   (the port takes the first).
 2. The mission switch 0x83EF5 and the rewards 0x844ED: 35 cases not written
    down; the mapping from the DTU.WRP commands 1 to 19 to the quest flags.
-3. The player reset 0x33EBB and 0x3575B: starting gold, armor class, THAC0.
+3. The player reset 0x33EBB and 0x3575B: armor class, THAC0 (the gold is
+   102, section 5).
 4. The sound numbers 0xC1C and 0xC22 and their source.
 5. The hidden "`" feature (0x80D93) and the cheat sequence 0x141BD3.
-6. The ESC menu of the game and the loading pictures after the game.
+6. Game flag 107 (P+0x1A33 bit array), which doubles the market prices: who
+   sets it.
 7. The meaning of the unknown fields of the save file (see misc.md).

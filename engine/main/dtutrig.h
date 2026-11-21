@@ -186,6 +186,11 @@ uint dtu_trap_clock(void);
 // The message of a trigger (0x94D8B). Returns the text or NULL.
 char *dtu_trig_say_text(int say_index);
 
+// ASCENT: the player was put into a segment by a level state (not by a
+// move): the segment of the player does not fire its warp line and floor
+// triggers until the player leaves it.
+void dtu_trig_player_placed(void);
+
 // The warp of a segment of the current level. Returns 1 and writes the
 // values when the segment has a line in DTU.WRP.
 int dtu_warp_lookup(int segnum, int *dest_level, int *dest_seg, int *value);

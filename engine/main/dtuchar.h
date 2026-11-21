@@ -326,4 +326,43 @@ int dtu_char_next_level(int *points_to_next, int *percent_to_next);
 // The log of the option -charlog FILE.
 void dtu_char_log(char *format, ...);
 
+//------------------------------------------------------------------------
+// Items, potions, choices (docs/re/combat.md B6)
+
+// The Ring of Wizardry (armor 27) doubles the mage slots of the spell
+// levels 1 to 3 each time 0xAFB55 runs while it is worn, and halves them
+// one time when it is taken off. 1 (default): one doubling while it is
+// worn. 0 (-origcombat): the rule of the executable.
+extern int Dtu_fix_wizardry_ring;
+// The Poshun uv Hil Gient Inteljuns rolls 1 in 63 in each frame to make the
+// player forget parts of the map (0x396B2). 1 (default): one roll for each
+// reference frame (3/64 second). 0 (-origcombat): one roll for each frame.
+extern int Dtu_fix_potion_frame;
+// The Potion of Luck: the executable takes the lowest bit of the day clock
+// (raw fix, the sum of the frame times) as a coin flip (0x2A889). 1
+// (default): rand(). 0 (-origcombat): the clock bit.
+extern int Dtu_fix_luck_coin;
+// 1 while the attack of the player is a backstab (0x13A955, dtuthief.c).
+extern int Dtu_backstab;
+// The option -autochoice N: the choice boxes answer N.
+extern int Dtu_auto_choice;
+
+// A choice box (0x655FE): returns the index of the choice, -1 for Escape.
+int dtu_char_choice(char *text, int n, ...);
+// 0xAE837: the item in the hand falls ("You dropped your weapon!").
+void dtu_char_drop_weapon(void);
+// 0x396B2: the potion timers end when their time is over, or all of them
+// with force (Dispel Magic, Potion of Anti-Magic).
+void dtu_char_potions_end(int force);
+// The spell Strength (0x8FCFA): the gain and its end (0x90BE4).
+void dtu_char_strength_gain(int gain, int warrior);
+void dtu_char_strength_end(void);
+// A script event of the item code (0xADB3B, 0xAC055). Weak in dtuchar.c.
+void dtu_hook_script_event(int event);
+
+// For the market (dtufe*.c): the gold of the character is Dtu_gold of
+// dtuobj.h, the item value is dtu_item_data.value (dtu_item_get), the
+// inventory is Dtu_inventory[] with dtu_inventory_add() and
+// dtu_char_take().
+
 #endif

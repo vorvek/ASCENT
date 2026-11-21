@@ -302,11 +302,12 @@ with byte 0xCC. The decrypted text is readable English. GABE has 87 records
 (369929 bytes). The other six languages have 86 records and their DAT and RLH
 files are identical to each other.
 
-Unknown: the meaning of the control bytes. From the text alone, 0xCB seems to
-introduce a label, 0xCD a line spoken by the character, 0xCF a numbered
-answer of the player and 0xCC the end of the record (all guesses). The tool
-writes the decrypted record and a text file with the printable strings. It
-does not parse the script.
+The byte code of the records (labels, statements, conditions, replies) is
+verified in [../re/scripts.md](../re/scripts.md): 0xCB starts a labelled
+block, 0xCD is a line spoken by the character, 0xCF a reply of the player
+with the label it goes to, 0xCE the end of the reply list and 0xCC the end
+of a block. `tools/jrg.py` writes the decrypted record and a text file with
+the printable strings; `tools/script.py` disassembles the records.
 
 ## GELDOR.DAT
 
@@ -316,13 +317,14 @@ function.
 
 | Offset | Size | Meaning |
 |---|---|---|
-| 0 | i32 | unknown, -1 or a small positive number |
-| 4 | u8 | unknown (values 15, 5, 16) |
-| 5 | u8 | unknown |
-| 6 | i32 | unknown, 1 in every record |
+| 0 | i32 | quantity, -1: no limit |
+| 4 | u8 | item class: 5 weapon, 15 armor, 16 misc |
+| 5 | u8 | item number |
+| 6 | i32 | count of one item (1 in every record) |
 
-Guess: the stock of a shop (the string `geldor.dat` is next to `femarket.c`
-in the exe): item class, item number, price or limit, count.
+Verified in the code (0x872C1 reads, 0x86846 writes): the stock of the
+market. The market is in `docs/re/frontend.md` (section 6a), the coded copy
+`THESTORE.<n>` in `misc.md`.
 
 ## KCONFIG.DAT
 

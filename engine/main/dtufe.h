@@ -46,4 +46,27 @@ int dtufe_game_frame(void);
 // program must stop (the window was closed, or the option -frames).
 int dtufe_game_ended(void);
 
+// The direct start (-level NAME) calls this before the game, so that the
+// death of the player goes to the death screen and the death menu.
+void dtufe_direct_start(void);
+
+// The script of -fescript for the menus of newmenu.c. nm_show_frame() calls
+// it. Returns 0 after the "quit" command of the script.
+int dtufe_menu_script_frame(void);
+
+// The Escape key in the game (game.c). Returns 1 if the front end shows its
+// ESC menu (0x4225A) after this frame, 0 if the game must do what Descent 1
+// does.
+int dtufe_escape_key(void);
+
+// The loading pictures (0x7C1E5, 0x7C2BB). dtufe_loading_picture shows
+// FEBGND entry "entry" over the screen of the game and returns 1 if it is
+// shown. dtufe_loading_picture_end fades it out and gives the screen back
+// to the game. dtufe_loading_from_frontend returns 1 once after the front
+// end started the Yawning Portal (0x13E324), 2 once after it started a
+// level of a save game, else 0.
+int dtufe_loading_picture(int entry);
+void dtufe_loading_picture_end(void);
+int dtufe_loading_from_frontend(void);
+
 #endif

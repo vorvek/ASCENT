@@ -398,10 +398,13 @@ Options: `-fly` (the ship of Descent 1), `-origphys`, `-fixedfps N` (each frame 
 `left`, `right`, `slideleft`, `slideright`, `run`, `jump`, `lookup`, `lookdown`, `up`,
 `down`, `wait`. A length is a number of frames, or a game time with `ms`.
 
-Not in the port: the climb of the thief (0x9EBEB, climb thrust in 0x2C144), the push of
-objects of type 0x12, the result 4 of fvi and the second line of the query, the
+The climb of the thief (0x9EBEB, the climb thrust of 0x2C144), the push of objects of
+type 0x12 and the divide by 3 for the player bits 0x1C are in the port since the thief
+work (dtuthief.c, dtuobj.c; combat.md B7, ai.md).
+
+Not in the port: the result 4 of fvi and the second line of the query, the
 "dubble wammo" case, the code at 0x9E340 (hit side in another segment), 0x6CFF8, the
-divide by 3 for the player bits 0x1C, the splash object, the bounding boxes of the
+splash object, the bounding boxes of the
 animation frames, the movement of robots (pmon.c) and weapons (pweapon.c).
 
 Differences: a key is down for the whole frame or not at all (the executable uses the

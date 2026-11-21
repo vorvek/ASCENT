@@ -35,8 +35,10 @@
 #include "gameseq.h"
 #include "dtufile.h"
 #include "dtugame.h"
+#include "dtuthief.h"
 #include "dtuobj.h"
 #include "dtutrig.h"
+#include "dtuscript.h"
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -614,7 +616,7 @@ int dtu_use_object(object *player)
 	if (obj->shields < F1_0 || (obj->flags & OF_DESTROYED))
 		return 1;
 
-	script_talk(obj);
+	dtu_script_talk(obj);		// ASCENT: the interpreter of dtuscript.c
 	return 1;
 }
 
@@ -622,9 +624,7 @@ int dtu_use_object(object *player)
 // The hooks of dtutrig.c
 
 // 0xABBE5(object, 3): a trigger runs the script of an object. The object
-// wakes up (0xA6505 does not change the hostile bit). The script itself
-// (0xAAE3E) is not in the port, so the script cannot switch the trigger
-// off (statement 0xED).
+// wakes up (0xA6505 does not change the hostile bit).
 void dtu_hook_trigger_object(int objnum, int arg)
 {
 	object *obj;
@@ -637,10 +637,9 @@ void dtu_hook_trigger_object(int objnum, int arg)
 		dtu_obj_log("trigger: obj %d has no script",objnum);
 		return;
 	}
-	dtu_obj_log("trigger: script %d of obj %d %s (mode 3): the object wakes, the script is not run",
+	dtu_obj_log("trigger: script %d of obj %d %s (mode 3)",
 		obj->dtu.m_1b0 & DTU_SCRIPT_MASK,objnum,dtu_object_name(obj));
-	if (obj->type == OBJ_ROBOT && obj->shields >= F1_0)
-		dtu_creature_wake(obj,0);
+	dtu_script_run(obj,DTU_RUN_TRIGGER);		// ASCENT: dtuscript.c
 }
 
 // 0x946AE. A weapon with a min_speed (Weapon_info +0xC6) above 0 bursts
@@ -743,81 +742,16 @@ void dtu_hook_drop_objects(int segnum)
 		dtu_drop_objects_in_segment(segnum);
 }
 
-// The number of the texture with the name "ladder" (0x1C82F), or -1.
-static int ladder_texture(void)
-{
-	static int cached = -2;
-	int i;
-
-	if (cached != -2)
-		return cached;
-	cached = -1;
-	for (i=0;i<NumTextures;i++)
-		if (!strncasecmp(TmapInfo[i].filename,"ladder",6) && (TmapInfo[i].filename[6] == 0 || TmapInfo[i].filename[6] == '.')) {
-			cached = i;
-			break;
-		}
-	return cached;
-}
-
-// 0x951DE: the use action on a side that is no door: the player climbs.
-// The side must be solid, in front of the player and nearer than 10.0. A
-// ladder texture (ladder to ladder + 3) holds each character. Another wall
-// needs the skill of a thief and a roll.
+// 0x951DE: the use action on a side that is no door: the player climbs
+// (dtuthief.c).
 void dtu_hook_use_wall(object *obj, int segnum, int side)
 {
-	segment *segp;
-	vms_vector c;
-	fix d;
-	int tmap, ladder, skill;
-
 	if (!Dtu_objects_enabled || obj != ConsoleObject)
 		return;
 	// 0x951D1: the talk comes first in the port, see dtu_use_object()
 	if (dtu_use_object(obj))
 		return;
-
-	(void)segnum;
-	if (Dtu_player_state & DTU_PS_CLIMBING)
-		return;
-	if (side < 0 || side >= MAX_SIDES_PER_SEGMENT)
-		return;
-	segp = &Segments[obj->segnum];
-	if (segp->children[side] != -1) {
-		int wn = segp->sides[side].wall_num;
-
-		if (wn < 0 || Walls[wn].type != WALL_CLOSED)
-			return;
-	}
-	compute_center_point_on_side(&c,segp,side);
-	vm_vec_sub2(&c,&obj->pos);
-	d = abs(vm_vec_dot(&c,&segp->sides[side].normals[1]));
-	if (vm_vec_dot(&obj->orient.fvec,&segp->sides[side].normals[1]) > F1_0/4 || d >= i2f(10))
-		return;
-
-	tmap = segp->sides[side].tmap_num2 & 0x3fff;
-	if (tmap == 0)
-		tmap = segp->sides[side].tmap_num;
-	ladder = ladder_texture();
-	if (ladder >= 0 && tmap >= ladder && tmap <= ladder + 3) {
-		Dtu_player_state |= DTU_PS_CLIMBING;
-		dtu_obj_log("use: the player holds the ladder of seg %d side %d",obj->segnum,side);
-		return;
-	}
-	if (segp->children[side] != -1)
-		return;
-
-	skill = dtu_player_climb_skill();
-	if (skill <= 0) {
-		HUD_init_message("You cannot perform this action.");			// text 931
-		return;
-	}
-	if (rand() % 100 + 1 <= skill) {
-		Dtu_player_state |= DTU_PS_CLIMBING;
-		dtu_obj_log("use: the player climbs the wall seg %d side %d",obj->segnum,side);
-	}
-	else
-		HUD_init_message("You cannot get a good grip.");				// text 823
+	dtu_thief_climb_start(obj,segnum,side);
 }
 
 // 0x7EDFA: the use action that hit no side. The use ray goes through an

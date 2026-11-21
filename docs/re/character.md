@@ -223,7 +223,9 @@ skills for some items.
 3. Items that set a value while worn: Girdle 38 strength 19, Gauntlets 52 and
    Ring 26 strength 18 (percent 0), Ring 21 constitution 18, Gloves 50 dexterity
    plus 4, 2 or 1 (table 0x146240) and Open Locks plus 10 for a thief (37 for
-   others), Cloak 43 Hide In Shadows 95.
+   others), Cloak 43 Hide In Shadows 95, Ring 27 doubles the mage slots of the
+   levels 1 to 3, weapon 54 in the hand Find/Remove Traps 250. The spell
+   effects of worn items: combat.md B6a.
 4. Heavy armor takes 250 from Hide In Shadows, Move Silently and Climb Walls.
    Misc 9 (Gauntlets) takes 250 from Find Traps and Open Locks. Lockpicks in
    the lockpick slot add 5, 10, 15 or 20 to Open Locks for a thief (misc 10, 13,
@@ -292,12 +294,13 @@ each item number. Read in detail (**Code**):
   feel much better.".
 - At the end 0xB7084 takes one item from the entry.
 
-Seen and not read: 72 to 88 (the other potions, with timers at P+0x1A93), 2 (Gem
-of Curing, counter at P+0x1A57), 18 to 26 (the spider pieces), 101, 102 (the
-scroll: 0x9DC42 shows a text), 106 (cursed scroll: random ability scores, "You no
-longer think that reading the scroll was such a good idea..."), 127, weapon 13
-and armor 45. Wands are weapons with `pc_spell`: the attack casts the spell
-(`spells.c` 0x8CFFF, not read).
+All cases are in combat.md B6 and B6a (potions, the Gem of Curing, the spider
+pieces, the scrolls, weapon 13, armor 45, the potion timers 0x396B2, Luck). The
+effects of worn items (rings, boots, cloaks, amulet, gauntlets, weapon 54) are
+the item bits of 0xAFB55 and 0xB08A8 (combat.md B6a). Wands are weapons with
+`pc_spell`: the attack casts the spell (combat.md B1). The game has no
+identification of items: no string of the executable and no keyword of the
+tables contains "identif" (searched), and the item list has no field for it.
 
 ## 8. Drop: 0xB717B
 
@@ -472,11 +475,12 @@ Differences and guesses of the port:
   `dtu_char_pickup_allowed()` yet.
 - Rest: no sound, the fire stays, the two calls that were not read are missing.
   The time of a rest place is kept for each segment.
-- Use: only the two healing potions. Other items stay in the list.
+- Use: the cases of combat.md B6 (see combat.md C2 for the parts that are not
+  in the port). The Gem of Curing works once for each rest (guess).
 - Keys of the inventory screen (comma, period, Enter, U, Backspace) are an
   addition. The original has the mouse.
-- Spells, missile weapons, the potion timers, saving throws and the map are not
-  in the port.
+- The map is not in the port. Spells, missile weapons, saving throws, the
+  potion timers and the thief skills are (combat.md part C).
 
 Setting: `Dtu_fix_multiclass_thac0` (default 1). 0 gives the rule of the
 executable: a character with two classes gets the worse THAC0 of the two. The

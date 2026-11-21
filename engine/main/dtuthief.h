@@ -1,0 +1,64 @@
+/*
+ * ASCENT: new file. The thief skills of Descent to Undermountain: Open
+ * Locks, Find/Remove Traps, Move Silently, Hide In Shadows, Climb Walls
+ * and the backstab. It has no part in Descent 1.
+ *
+ * The facts are in docs/re/combat.md, section B7. The address of the
+ * original code (DTUGAME.EXE 1.3, object 1 at 0x10000) is at each function
+ * of dtuthief.c.
+ */
+#ifndef _DTUTHIEF_H
+#define _DTUTHIEF_H
+
+#include "types.h"
+#include "fix.h"
+#include "vecmat.h"
+#include "object.h"
+
+// The state bits of the player record P+0xA0
+#define DTU_TS_HIDDEN			0x01		// Hide In Shadows made
+#define DTU_TS_HIDE_FAILED		0x02		// Hide In Shadows tried and failed (the player is not told)
+#define DTU_TS_SILENT			0x04		// Move Silently made
+#define DTU_TS_SILENT_FAILED	0x08		// Move Silently tried and failed
+#define DTU_TS_SEARCHING		0x10		// the search for traps is on
+#define DTU_TS_CLIMB_SKILL		0x20		// the player holds a wall by the skill (not a ladder)
+extern int Dtu_thief_bits;
+
+// The skill roll 0xB3038: skill 0 Hide In Shadows, 1 Move Silently, 2 Open
+// Locks, 3 Find/Remove Traps, 4 Climb Walls. Returns 1 if the d100 is at
+// most the skill. *roll gets the d100.
+int dtu_thief_roll(int skill, int *roll);
+
+// The keys of the executable (kconfig items 54 to 59): M Move silently,
+// F Find Traps, O Open Locks.
+void dtu_thief_open_locks(void);			// 0xB31BD
+void dtu_thief_search_toggle(void);			// 0xB3400
+void dtu_thief_move_silently(void);			// 0xB4196
+
+// One time in each frame (dtu_char_frame): the search for traps (0xB4040
+// from game.c 0x438F3), Hide In Shadows (0xB333F from pcons.c 0x9DFDE).
+void dtu_thief_frame(void);
+
+// The use action on a side that is no door (0x951DE): the climb.
+void dtu_thief_climb_start(object *obj, int segnum, int side);
+// The climb in the movement of the player (pcons.c 0x9EBEB with 10.0):
+// physics.c calls it in each frame while the player holds a wall. accel
+// is the acceleration of the frame.
+void dtu_thief_climb_frame(object *obj, vms_vector *accel);
+// The climb thrust of the controls (0x2C144): forward goes up, back goes
+// down. physics.c and controls.c call it.
+void dtu_thief_climb_thrust(object *obj, fix forward, fix side);
+// An attack ends Hide In Shadows and the search (mask 0xEC at 0x44402 and
+// 0x5706E).
+void dtu_thief_attack(void);
+// 0xB337E: 1 if an attack of the player on the creature is a backstab.
+int dtu_thief_backstab_check(object *target, int weapon);
+
+// 1 if the creature does not see the player because of Hide In Shadows
+// (0x165C4 with 0x165F9).
+int dtu_thief_hidden_from(object *creature);
+// 1 if the creature does not notice the player because of Move Silently
+// (0x13D8E, 0x142BF: the player is behind the creature).
+int dtu_thief_unnoticed_by(object *creature);
+
+#endif

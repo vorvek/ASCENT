@@ -30,6 +30,7 @@
 #include <ctype.h>
 #include "mission.h"
 #include "dtufile.h"
+#include "dtuobj.h"		// ASCENT: dtu_damage_player() for -testdeath
 #include "dtugame.h"
 
 #define DTU_WEAK __attribute__((weak))
@@ -214,6 +215,19 @@ int dtu_frame_done(void)
 	}
 
 	frame_count++;
+
+	// ASCENT: test option -testdeath N: the player dies at frame N, so that
+	// a script can test the death sequence.
+	{
+		static int death_frame = -1;
+		if (death_frame == -1) {
+			death_frame = 0;
+			if ((t = FindArg("-testdeath")) != 0 && t+1 < Num_args)
+				death_frame = atoi(Args[t+1]);
+		}
+		if (death_frame > 0 && frame_count == death_frame && ConsoleObject)
+			dtu_damage_player(ConsoleObject, NULL, i2f(10000));
+	}
 
 	if (frame_limit > 0 && frame_count >= frame_limit) {
 		Dtu_frames_done = 1;

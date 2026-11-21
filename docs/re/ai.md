@@ -609,10 +609,13 @@ the damage of a spell (0x91BC3), regeneration of hit points, the death with
 drops, gold and experience, the corpse, the sounds of a creature, the trap
 hooks and the death of the player.
 
-Not in the port: the push of scenery (0x9FA41, see below), the evasion of
-weapons, the spells of a monster with a mage or cleric level (0x92D99,
-0x91FDC), the effects of a spell other than its damage (sleep, hold, fear,
-poison and the rest of 0x8CFFF and 0x90CEF), the saving throw (0xAE596), the
+In the port since the item and thief work: the spells of a monster with a
+mage or cleric level (0x92D99, 0x9231F, 0x91FDC, dtuspell.c, combat.md B10),
+the push and the break of scenery (below), the NPC table (0xA7E97, below),
+Hide In Shadows and Move Silently in the sight tests (0x165C4, 0x13D8E).
+
+Not in the port: the evasion of
+weapons, the
 alert function and the awareness events, the revive of a regenerating
 creature.
 
@@ -641,17 +644,78 @@ So a creature with no door bit takes no path through a segment that has a
 wall of any type, an open one too. The loop runs to `Highest_segment_index`
 minus 1, so the last segment is never marked.
 
-### Push of scenery (0x9FA41), verified, not in the port
+### Push of scenery (0x9FA41), verified, in the port
 
-When the movement of a creature hits an object of type 18 (scenery) and the
-`str` of the monster (+0xDE) is above `pushable` of the scenery entry
-(Dressing_info +0x14, table at 0x19B340, 32 bytes): the scenery gets 8 times
-the x and z parts of the velocity (+0xFC, +0x104) and of the thrust (+0x108,
-+0x110) of the creature, and movement type 1 (physics). After that, a hit on
-the player adds 1 to the creature value +0x1CD. Above 100 the creature is put
-at the position 0x30F478. A hit robot goes to the list at 0x30F10C. The port
-has no movement for scenery, so the push is left out. The creature breaks the
-scenery after 10 blocked frames instead.
+0x9FA41 is not a function: it is a block inside the creature move 0x9F153
+(pmon.c), with a second copy at 0x9FC29. The player has its own copy at
+0x9E5BE (pcons.c). **Code.**
+
+- Condition: the creature `str` (Robot_info +0xDE, 0x38E422) is above
+  `pushable` of the scenery entry. For the player the strength word P+0xB7
+  (0x1D33D3) is compared. `pushable` is Dressing_info +0x18 (0x19B354), the
+  default of the reader is 999. (Correction: earlier versions of this note
+  said +0x14; that offset is relative to 0x19B340.)
+- Effect: scenery velocity x and z (+0xFC, +0x104) = 8 times the velocity of
+  the mover, thrust x and z (+0x108, +0x110) = 8 times its thrust; vel.y
+  stays; movement type +0x0B = 1. The mover goes back to its start position
+  (0x30F478). The player does this only until it has hit the same object 9
+  times in a row (counter 0x1452F1, object 0x1452F5). Then
+  `collide_two_objects` 0x29455. No mass is used and the push does not break
+  the scenery.
+- The move of scenery with movement type 1 is 0x9FE68, each frame: the
+  velocity is halved, x and z are shifted right by 2, gravity 0x6C662, then
+  fvi. Movement type goes back to 0 on fvi result 3, or on result 1 with the
+  flag 0x13D448 & 0xA. Sound 2706 is linked to the object while the speed is
+  above 0x70. The slow down counts frames (frame rate dependent).
+- `pushable` values of the tables: 1, 4, 6, 9, 12, 13, 15, 16, 90, 100,
+  9999 (bench, chair, table, crate, barrel, bed). **Data.**
+
+### Scenery that breaks (0xA6ACB, 0x6D4EC, 0x14CA9), verified
+
+- The unbreakable flag is bit 0x04 of Dressing_info +0x04 (0x19B340 + 32
+  id). The reader sets only `magic` (1) and `animates` (2); `cant_break` is
+  matched and ignored (0x229FC). Bit 0x04 is set only by the level fixups
+  at 0xAD3AF, 0xAD3CE and 0xAD431 (these also set `pushable` to 0x7FFF). So
+  every other scenery object can break. **Code.**
+- A melee weapon test (0x6CFF8, player or creature) that touches breakable
+  scenery: the hit points are cut to 20.0, then 0x29A9C(obj, no attacker,
+  100.0) takes 100.0 and 0xA6ACB(obj, 0, 10.0) breaks it (0x6D4EC to
+  0x6D564). One hit breaks it. **Code.**
+- A creature whose way is blocked by breakable scenery for 10 frames
+  (+0x13A >= 10) in the attack states 6 or 7 calls 0xA6ACB(blocker,
+  creature, 10.0) and sets ailp+3 = 2 (0x14CA9). An unbreakable one goes to
+  the ignore list 0x30F10C. **Code.**
+- 0xA6ACB for scenery: returns for a dead object (flags & 7) and for bit
+  0x04; `explode_sound` (+0x0A) at volume 1.0 if it is not -1; nine
+  explosions of `break_vclip` (+0x1C, default 137) at the size of the
+  object, each moved by x, z += rand() % 11.0 - 5.0 and y += rand() % 0.6875
+  - 0.3125; rand() (0xD7AC4) is at most 0x7FFF, so the modulo does nothing
+  and the explosions are 5.0 to 4.5 to the side (a defect of 1.3); every
+  type 18 object of the segment gets movement type 1; then 0x6A3CC removes
+  the object (no broken model, no debris) and `object_create_egg` drops what
+  it contains. Two level special cases: level 0x20 object 3 (0xA6786) and
+  level 0 object 0x29 (a fire trap: "You set off a fire trap!!!", spell 16
+  twice through 0x90CEF). **Code.**
+- A missile that hits scenery (0x2641C) does no weapon damage. It casts its
+  `PC_spell` on the scenery (0x90CEF for an area spell, else 0x8CFFF), and
+  the spell cases decide (combat.md B3). **Code.**
+
+The port: `dtu_break_dressing()` and the push in `dtuobj.c` (settings
+`Dtu_fix_cant_break` and `Dtu_fix_push_frame`, see combat.md C3). The two
+level special cases are not in the port.
+
+### Creature melee status effects (verified: none)
+
+Version 1.3 has no poison, paralysis, level drain, sleep or disease in a
+creature melee hit. The only hook is 0x27D82, which casts the `enemy_spell`
+of the weapon (+0x3C) before the to-hit roll; all 276 `enemy_spell=`
+entries of the 85 decoded tables are -1, and 0x27D82 passes the arguments
+swapped (0x8CFFF(spell, attacker, player)). Robot_info has no poison or
+paralyze flag, and the strings "poison", "paralyze", "drain" and "disease"
+do not exist ("Energy drain" at 0xC0B83 is a level editor menu item).
+Paralysis, sleep and fear on the player come only from spells (Hold bit 14,
+Sleep bit 26, Fear bit 8), which creatures with a mage or cleric level cast
+(see the section on creature spells in combat.md, B10). **Code.**
 
 ### Spell damage (0x91BC3), verified
 
@@ -1240,6 +1304,7 @@ Warning for readers of the listing: Watcom loads an s16 field as a dword two byt
 - `fire_frames=` has 2 numbers (defaults 56 and 72). They are also arguments of 0x72DC5.
 - `simple_model=` is the second model. Its number goes to `+0x50` of the animation record of the first model.
 - NPC table row: name (16 bytes), a pointer (4 bytes), then 6 bytes: THAC0, armor class, mage level, mage points, cleric level, cleric points. At the end of the `$MONSTER` reader, 0xA7E97 finds the row by name (0xA7E47) and writes the 6 bytes to +0x74, +0x76, +0xE2, +0xE4, +0xE3, +0xE5. So the `thaco`, `armor_class`, `spell_level`, `spell_points` and `cleric_points` keywords are replaced for every monster that is in the table. A name that is not in the table prints "RLH: NPC [%s] not found!" and keeps the table values of the line.
+- The NPC table is at 0xA504A: rows of 26 bytes (name 16 bytes, a pointer, 6 signed bytes), 191 rows; the search 0xA7E47 stops at a row whose THAC0 byte is negative and compares the names with 0xD89C1. Rows with spells (mage level/points, cleric level/points): beholder 32/0, xabash 4/64 and 1/10, dragon and hatchlng 4/4, halaster, lich1 to lich3, hmmnpc and Aleena 4/127, ibbalar 4/60, kob_spel 1/3, avatar and thashasa 4/127 and 4/127, the human and drow casters rmme1 to rmmk9b and hmmk1, hfmk1 (mage 1 to 4), rfft1 to rffk9, rmft1 to rmfk9, hffk1 to hmft7 (cleric 1 to 4), prstsprt cleric 3/100, Mage Spirit 3/100, priestes and drowfem cleric 4/127, Daspel 3/11. The port has the table as `engine/main/dtunpc.h` and applies THAC0 and armor class at the level start (`dtu_objects_level_setup`); the spell values are read by `dtuspell.c`. **Code, Data.**
 
 ### Verified (code): the game changes entries after load
 
@@ -1576,6 +1641,11 @@ So the robot map (a 3-bit "which side leads to the player" code per segment pair
 - The builder was run from the level editor or from a debug key that is not in the release build.
 
 ## Scripts and NPCs
+
+The byte code, the interpreter, the conversation window and the mission
+flags are in [scripts.md](scripts.md), which corrects the statement and
+condition tables of this section. The loader, the NPC list and the level
+rule below are still the reference.
 
 This section covers the script and dialogue code of DTUGAME.EXE 1.3. The debug
 strings of this code start with `RLH:`. The assert file name is `dialogue.c`

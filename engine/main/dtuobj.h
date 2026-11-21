@@ -240,8 +240,6 @@ fix dtu_spell_hit(int spell, object *target, object *caster, int level);
 // acid damage.
 int dtu_spell_damage_roll(int spell, object *target, int level);
 
-// The player starts a melee attack (pweapon.c). Returns 1 if it started.
-int dtu_player_attack(void);
 
 // The body cylinder of an object for collisions (0x748D9) and the size for
 // physics (0x746B3).
@@ -330,5 +328,24 @@ int dtu_use_object(object *player);
 // The log of the option -objlog (state changes of creatures, damage,
 // pickup). The text starts with the game time and the frame number.
 void dtu_obj_log(char *format, ...);
+
+// Scenery (0xA6ACB, 0x9FA41): settings, see dtuobj.c. -origobj clears them.
+extern int Dtu_fix_cant_break;		// 1: the keyword cant_break works
+extern int Dtu_fix_push_frame;		// 1: the slow down of pushed scenery for each reference frame
+// 1 if the scenery cannot break
+int dtu_dressing_unbreakable(object *d);
+// 0xA6ACB (explode 0) or 0x911AA with 0x3CA7E (explode 1): the scenery
+// breaks. by is the object that breaks it, or NULL.
+void dtu_break_dressing(object *d, object *by, int explode);
+// The spell that a missile carries, or -1.
+int dtu_missile_spell(object *obj);
+// The life of a missile (Weapon_info+0xA8 that 0x56FF6 writes).
+void dtu_missile_set_life(int objnum, fix life);
+// object_create_egg (0x3C4BD): the object drops what it contains.
+void dtu_creature_drop_contents(object *obj);
+// 0xA9F58: the creature leaves the level (Abjure).
+void dtu_creature_vanish(object *obj);
+// 1 if the creature is active (+0x1CC == 2).
+int dtu_creature_is_active(object *obj);
 
 #endif

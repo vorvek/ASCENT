@@ -45,6 +45,9 @@
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtuobj.h"
+#include "dtuspell.h"	// ASCENT: the spells of the creatures, the area of a missile
+#include "dtuthief.h"	// ASCENT: Hide In Shadows and Move Silently in the AI
+#include "dtuchar.h"
 #include "digi.h"
 #include "sounds.h"
 #include "fireball.h"
@@ -183,6 +186,16 @@ typedef struct dtu_missile {
 
 static dtu_missile Missile[MAX_OBJECTS];
 
+// Scenery that moves (movement type 1 of the executable): pushed scenery
+// (0x9FA41, 0x9E5BE) and the scenery that falls after a break (0xA6ACB).
+// pcons.c 0x9FE68 moves it.
+static ubyte Dressing_fall[MAX_OBJECTS];
+static int Dressing_sig[MAX_OBJECTS];
+// The push of scenery depends on the frame rate: 0x9FE68 halves the
+// velocity and divides x and z by 4 in each frame. 1 (default): once in
+// each reference frame (3/64 second). 0 (-origobj): in each frame.
+int Dtu_fix_push_frame = 1;
+
 dtu_inv_item Dtu_inventory[DTU_MAX_INVENTORY];
 int Dtu_n_inventory = 0;
 int Dtu_gold = 0;
@@ -218,10 +231,10 @@ static item_info *item_table_entry(int type,int id);
 static fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
 static fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
 static fix spell_hit(int spell,object *target,object *attacker);
+static void push_dressing(object *mover,object *d,int strength);
 static int is_hostile(object *obj);
 
 // The attack of the player
-static fix Player_anim_start = 0;
 static int Player_swing_done = 0;
 
 static FILE *Obj_log = NULL;
@@ -548,6 +561,9 @@ static int creature_ray_to_player(object *obj)
 // the executable. The corrected rule casts a ray.
 static int player_is_visible(object *obj)
 {
+	// 0x165C4: Hide In Shadows hides the player (dtuthief.c)
+	if (dtu_thief_hidden_from(obj))
+		return 0;
 	if (!Dtu_fix_brain && Brain)
 		return brain_bit(obj->segnum,ConsoleObject->segnum);
 	return ray_is_free(&obj->pos,obj->segnum,&ConsoleObject->pos,obj-Objects);
@@ -639,7 +655,7 @@ void dtu_objects_init(void)
 		Dtu_objects_enabled = 0;
 	if (FindArg("-origobj"))
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
-			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = 0;
+			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break = Dtu_fix_push_frame = 0;
 	if (FindArg("-noattack"))
 		Dtu_creatures_attack = 0;
 	if (FindArg("-idleanim"))
@@ -814,7 +830,20 @@ void dtu_objects_level_setup(void)
 	Dtu_clock = 0;
 	Ref_tick_count = Ref_ticks_now = 0;
 	Ref_tick_acc = 0;
-	Player_anim_start = 0;
+
+	// 0xA7E97 at the end of each $MONSTER line: the NPC table replaces
+	// thaco and armor_class (and the spell levels and points, which
+	// dtuspell.c reads with dtu_npc_row)
+	for (i=0;i<N_robot_types;i++) {
+		int v[6];
+
+		if (dtu_npc_row(Monster_info[i].name,v) && (Monster_info[i].thaco != v[0] || Monster_info[i].armor_class != v[1])) {
+			dtu_obj_log("npc table: '%s' thaco %d -> %d, armor class %d -> %d, mage %d/%d, cleric %d/%d",Monster_info[i].name,
+				Monster_info[i].thaco,v[0],Monster_info[i].armor_class,v[1],v[2],v[3],v[4],v[5]);
+			Monster_info[i].thaco = v[0];
+			Monster_info[i].armor_class = v[1];
+		}
+	}
 	Player_swing_done = 0;
 	Test_pos_pending = 1;
 	Dtu_player_dead = 0;
@@ -1371,10 +1400,17 @@ static void creature_dies(object *obj,object *attacker)
 
 	dtu_obj_log("obj %d %s: dies",(int)(obj-Objects),dtu_object_name(obj));
 
-	// object_create_egg (0x3C4BD): what the object of the level file
-	// contains. One object with the count in its byte 0x1D5. The defaults
-	// of the monster table are not used. The weapons 10, 28, 40, 74 and 75
-	// are not dropped.
+	dtu_creature_drop_contents(obj);
+
+	log_creature_state(obj,"death");
+}
+
+// object_create_egg (0x3C4BD): what the object of the level file
+// contains. One object with the count in its byte 0x1D5. The defaults
+// of the monster table are not used. The weapons 10, 28, 40, 74 and 75
+// are not dropped.
+void dtu_creature_drop_contents(object *obj)
+{
 	if (obj->contains_count > 0) {
 		int type = obj->contains_type, id = obj->contains_id, count = obj->contains_count, n = -1;
 
@@ -1386,8 +1422,22 @@ static void creature_dies(object *obj,object *attacker)
 		obj->contains_type = obj->contains_id = -1;
 		obj->contains_count = 0;
 	}
+}
 
-	log_creature_state(obj,"death");
+// 0xA9F58: the creature leaves the level (Abjure): no control, no
+// movement, no picture, the flags 0xC0. The port takes the object away.
+void dtu_creature_vanish(object *obj)
+{
+	dtu_obj_log("obj %d %s: leaves the level (0xA9F58)",(int)(obj-Objects),dtu_object_name(obj));
+	obj->control_type = CT_NONE;
+	obj->movement_type = MT_NONE;
+	obj->render_type = RT_NONE;
+	obj->flags |= OF_SHOULD_BE_DEAD;
+}
+
+int dtu_creature_is_active(object *obj)
+{
+	return obj && obj->type == OBJ_ROBOT && Ail[obj-Objects].activity == 2;
 }
 
 // The weapon number of the damage functions for damage with no to-hit
@@ -1664,6 +1714,8 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);
 			return 0;
 		}
+		// 0x2A45F: a hit stops the cast of the player (0x9305D)
+		dtu_spell_interrupt(player,1);
 		damage = i2f(damage_dice(attacker,weapon));
 		if (hit == 2)
 			damage += i2f(damage_dice(attacker,weapon));
@@ -1878,8 +1930,15 @@ static void weapon_test(object *obj)
 		object *other = &Objects[hit.hit_object];
 
 		if (other->type == OBJ_DRESSING) {
-			// 0x6D4EA: scenery that can break takes 100.0 damage against
-			// 20.0 hit points at most. Breaking is not in the port.
+			// 0x6D4EC: scenery that can break: its hit points are cut to
+			// 20.0, then 0x29A9C with no attacker takes 100.0 and 0xA6ACB
+			// breaks it. One hit breaks it.
+			if (!dtu_dressing_unbreakable(other)) {
+				if (other->shields > i2f(20))
+					other->shields = i2f(20);
+				other->shields -= i2f(100);
+				dtu_break_dressing(other,obj,0);
+			}
 			if (swing_done) *swing_done = 0;
 		}
 		else if (other->type == OBJ_ROBOT) {
@@ -1994,6 +2053,10 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 	// The time to live. The port keeps it here: the object code of
 	// Descent 1 would explode a weapon with a damage radius at its end.
 	Missile_life[objnum] = wi->lifetime;
+	// 0x56FF6 writes 30.0 to the template of a spell missile (the caster
+	// sets the life of Lightning Bolt and Acid Arrow, dtu_missile_set_life)
+	if (spell >= 0)
+		Missile_life[objnum] = i2f(30);
 	if (bounce == 2)
 		Missile_life[objnum] += (rand() * 4) - F1_0;
 
@@ -2012,6 +2075,21 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 		objnum,weapon_type,Weapon_item_info[weapon_type].name,spell,parent,rtype,f2fl(size),f2fl(speed),f2fl(Missile_life[objnum]),
 		f2fl(pos->x),f2fl(pos->y),f2fl(pos->z));
 	return objnum;
+}
+
+int dtu_missile_spell(object *obj)
+{
+	int n = obj-Objects;
+
+	if (obj->type != OBJ_WEAPON || Missile[n].signature != obj->signature)
+		return -1;
+	return Missile[n].spell;
+}
+
+void dtu_missile_set_life(int objnum, fix life)
+{
+	if (objnum >= 0 && objnum < MAX_OBJECTS)
+		Missile_life[objnum] = life;
 }
 
 // 0x93294: the burst of a weapon with a min_speed (the bomb of a trap):
@@ -2041,10 +2119,36 @@ void dtu_create_burst(int weapon_type, int segnum, vms_vector *pos)
 }
 
 // collide_weapon_and_wall (0x26C2F) and the end of 0xA0731
-static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,int segnum)
+static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,int segnum,int side)
 {
 	dtu_missile *m = &Missile[obj-Objects];
 	weapon_info *wi = &Weapon_info[obj->id];
+
+	// 0x26C2F: the spell of the missile. Knock (28) calls the door function
+	// 0x7E859(seg, side, 1, parent); an area spell has its area here
+	// (0x90CEF at 0x26D63), which also removes the missile.
+	if (m->spell >= 0 && !m->harmless) {
+		object *parent = (m->parent >= 0 && Objects[m->parent].signature == m->parent_sig) ? &Objects[m->parent] : NULL;
+
+		if (m->spell == 28 && side >= 0 && segnum >= 0) {
+			dtu_obj_log("missile: Knock hits seg %d side %d",segnum,side);
+			dtu_wall_use_door(&Segments[segnum],side,parent,1);
+		}
+		else if (dtu_spell_is_area(m->spell)) {
+			vms_vector p = *point;
+			int seg = segnum;
+
+			// the point just in front of the wall
+			if (wallnorm) {
+				vm_vec_scale_add2(&p,wallnorm,F1_0/4);
+				if ((seg = find_point_seg(&p,segnum)) < 0) { p = *point; seg = segnum; }
+			}
+			dtu_obj_log("missile: the area spell %d of obj %d hits a wall",m->spell,(int)(obj-Objects));
+			missile_remove(obj);
+			dtu_spell_area(m->spell,&p,seg,parent,parent ? caster_level(parent) : 1);
+			return;
+		}
+	}
 
 	if (m->bounce == 1 && wallnorm) {
 		// 0xA07D7 negates the velocity of a missile that bounces
@@ -2075,8 +2179,19 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		parent = &Objects[m->parent];
 
 	if (other->type == OBJ_DRESSING) {
-		// Scenery stops a missile like a wall. (guess)
-		missile_hit_wall(obj,point,NULL,obj->segnum);
+		// 0x2641C: the missile casts its spell on the scenery (the spells
+		// decide whether it breaks); the weapon does no damage. The missile
+		// stops like at a wall. (guess for the stop)
+		if (m->spell >= 0 && !m->harmless) {
+			spell_hit(m->spell,other,parent);
+			if (obj->flags & OF_SHOULD_BE_DEAD)
+				return;
+			if (dtu_spell_is_area(m->spell)) {
+				missile_remove(obj);
+				return;
+			}
+		}
+		missile_hit_wall(obj,point,NULL,obj->segnum,-1);
 		return;
 	}
 	if (m->harmless)
@@ -2221,7 +2336,7 @@ static void missiles_frame(void)
 		}
 
 		if (fate == HIT_WALL)
-			missile_hit_wall(obj,&hit.hit_pnt,&hit.hit_wallnorm,hit.hit_seg >= 0 ? hit.hit_seg : obj->segnum);
+			missile_hit_wall(obj,&hit.hit_pnt,&hit.hit_wallnorm,hit.hit_seg >= 0 ? hit.hit_seg : obj->segnum,hit.hit_side_seg >= 0 ? hit.hit_side : -1);
 		else if (fate == HIT_NONE) {
 			int seg = (hit.hit_seg >= 0) ? hit.hit_seg : find_point_seg(&p1,obj->segnum);
 
@@ -2630,8 +2745,10 @@ void dtu_creature_physics_sim(object *obj)
 			else if (!Dtu_fix_creature_move || Ref_ticks_now > 0)
 				ail->blocked_count++;
 
-			// The executable pushes scenery here if the strength of the
-			// creature is above the value "pushable" (0x9FA41). Not in the port.
+			// 0x9FA41: the creature pushes scenery when its strength is
+			// above the value "pushable"
+			if (other->type == OBJ_DRESSING)
+				push_dressing(obj,other,Monster_info[obj->id].str);
 
 			collide_two_objects(obj,other,&hit.hit_pnt);
 
@@ -3348,17 +3465,65 @@ static void flee_from_player(object *obj,vms_vector *vec_to_player)
 	add_move(obj,dir);
 }
 
-// 0xA6ACB (not read): a creature breaks the scenery that blocks its way.
-// The port plays the sound and the vclip of the table line and takes the
-// object away. (guess)
-static void break_dressing(object *d,object *by)
+// The scenery that does not break. The executable ignores the keyword
+// cant_break (0x229FC) and has the bit 0x04 of Dressing_info+0x04 only
+// for a few objects of some levels (0xAD3AF). 1 (default): cant_break
+// works. 0 (-origobj): every scenery object can break.
+int Dtu_fix_cant_break = 1;
+
+int dtu_dressing_unbreakable(object *d)
 {
 	if (d->type != OBJ_DRESSING || d->id >= N_dressing_types)
+		return 1;
+	return Dtu_fix_cant_break && (Dressing_info[d->id].flags & DRESSING_F_CANT_BREAK);
+}
+
+// 0xA6ACB (explode 0) for scenery: explode_sound at volume 1.0, nine
+// explosions of break_vclip (default 137) at the size of the object, the
+// scenery of the segment falls (movement type 1), then 0x6A3CC removes the
+// object and object_create_egg drops what it contains. The nine places of
+// the explosions: x and z += rand() % 11.0 - 5.0, y += rand() % 0.6875 -
+// 0.3125; rand() is at most 0x7FFF, so the modulo does nothing and the
+// places are 5.0 to 4.5 to the side and -0.31 to 0.19 up and down (a
+// defect of 1.3, kept). explode 1: 0x911AA with 0x3CA7E: the explosion
+// vclip 2 at 2.5 times the size and explode_sound (no debris in the port).
+void dtu_break_dressing(object *d,object *by,int explode)
+{
+	dressing_info *di;
+	vms_vector p;
+	int i, vclip;
+
+	if (d->type != OBJ_DRESSING || d->id >= N_dressing_types || (d->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)))
 		return;
-	sound_at(Dressing_info[d->id].explode_sound,d->segnum,&d->pos,F1_0);
-	vclip_at(d->segnum,&d->pos,d->size,Dressing_info[d->id].break_vclip);
+	di = &Dressing_info[d->id];
+	if (!explode && dtu_dressing_unbreakable(d))
+		return;
+	dtu_obj_log("obj %d %s breaks obj %d %s (%s)",by ? (int)(by-Objects) : -1,by ? dtu_object_name(by) : "nothing",(int)(d-Objects),
+		dtu_object_name(d),explode ? "0x3CA7E" : "0xA6ACB");
+	if (explode) {
+		dtu_creature_drop_contents(d);
+		vclip_at(d->segnum,&d->pos,fixmul(d->size,0x28000),2);
+		sound_at(di->explode_sound,d->segnum,&d->pos,F1_0);
+	}
+	else {
+		if (di->explode_sound >= 0)
+			sound_at(di->explode_sound,d->segnum,&d->pos,F1_0);
+		vclip = (di->break_vclip >= 0) ? di->break_vclip : 137;
+		p = d->pos;
+		for (i=0;i<9;i++) {
+			vclip_at(d->segnum,&p,d->size,vclip);
+			p.x += (rand() % i2f(11)) - i2f(5);
+			p.z += (rand() % i2f(11)) - i2f(5);
+			p.y += (rand() % 0xB000) - 0x5000;
+		}
+		// the other scenery of the segment falls (guess for the meaning)
+		for (i=0;i<=Highest_object_index;i++)
+			if (Objects[i].type == OBJ_DRESSING && Objects[i].segnum == d->segnum && &Objects[i] != d)
+				Dressing_fall[i] = 1;
+	}
 	d->flags |= OF_SHOULD_BE_DEAD;
-	dtu_obj_log("obj %d %s breaks obj %d %s",(int)(by-Objects),dtu_object_name(by),(int)(d-Objects),dtu_object_name(d));
+	if (!explode)
+		dtu_creature_drop_contents(d);
 }
 
 static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_player,fix circle_distance,int evade_only);
@@ -3389,7 +3554,7 @@ static int blocked_move(object *obj,fix dist,vms_vector *vec_to_player,int visib
 		set_anim(obj,ai_tick(objnum,2) ? DAS_ATTACK2 : DAS_ATTACK);
 		ail->anim_start = GameTime;
 		if (blocker->id < N_dressing_types && !(Dressing_info[blocker->id].flags & DRESSING_F_CANT_BREAK) && ail->blocked_count >= 10) {
-			break_dressing(blocker,obj);
+			dtu_break_dressing(blocker,obj,0);
 			aip->GOAL_STATE = DAIS_SRCH;
 			ail->blocker = -1;
 			ail->blocked_count = 0;
@@ -3791,7 +3956,8 @@ static int wake_test(object *obj)
 	// The player is behind the creature: it notices the player with a
 	// chance that grows with its iq.
 	if (dot <= 0) {
-		if (obj->dtu.m_88 & 0x10)
+		// 0x13D8E: Move Silently (P+0xA0 bit 4) and a deaf creature
+		if ((Dtu_thief_bits & DTU_TS_SILENT) || (obj->dtu.m_88 & 0x10))
 			return 0;
 		if (Dtu_fix_ai_ticks) {
 			if ((rand() % 255) > Monster_info[obj->id].iq)
@@ -3845,6 +4011,8 @@ void dtu_do_ai_frame(object *obj)
 				aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
 			}
 			dtu_obj_log("obj %d %s: sees the player",objnum,dtu_object_name(obj));
+			// 0x13F09 and the alert 0x160AB: the conditions of the spells
+			dtu_spell_creature_event(obj,DTU_CSC_WAKE|DTU_CSC_ALERT);
 			// 0x13E25: the see sound, volume str * 0x1000
 			sound_at(ri->see_sound,obj->segnum,&obj->pos,mi->str * 0x1000);
 			morale_check(obj);
@@ -3941,7 +4109,8 @@ void dtu_do_ai_frame(object *obj)
 		return;
 	}
 
-	// Spell casting (0x1490B) is not in the port.
+	// 0x1490B: a creature with a mage or a cleric level casts (dtuspell.c)
+	dtu_spell_creature_frame(obj,dist,ail->activity == 2);
 
 	// 0x1498B: a creature that is far away is not processed on each frame
 	if (ail->awareness < 3) {
@@ -4216,6 +4385,31 @@ void dtu_do_ai_frame(object *obj)
 //------------------------------------------------------------------------
 // Calls from dtuhook.c
 
+// ASCENT: for the scripts (dtuscript.c). The anger byte of the scripts is
+// ai_local +0x00 (docs/re/scripts.md).
+ubyte *dtu_script_anger(object *obj)
+{
+	return &Ail[obj-Objects].awareness;
+}
+
+// ASCENT: 0xA9418, a script makes the object hostile: chase mode, goal
+// SRCH, animation RUN, anger 4, hostile bit, target the player, morale.
+void dtu_script_make_hostile(object *obj)
+{
+	dtu_ai_local *ail;
+
+	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types || obj->shields < F1_0 || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return;
+	dtu_creature_wake(obj,1);
+	ail = &Ail[obj-Objects];
+	ail->mode = DAIM_CHASE_OB;
+	obj->ctype.ai_info.GOAL_STATE = DAIS_SRCH;
+	set_anim(obj,DAS_RUN);
+	ail->awareness = 4;
+	ail->target = 0;
+	morale_check(obj);
+}
+
 // 0xA6505 (not read in full): makes a creature active, as the wake up of
 // do_ai_frame does (0x13D80).
 void dtu_creature_wake(object *obj, int make_hostile)
@@ -4429,6 +4623,121 @@ static void pick_up_item(object *player,object *item)
 	}
 }
 
+//------------------------------------------------------------------------
+// Pushed scenery (pmon.c 0x9FA41, pcons.c 0x9E5BE, the move 0x9FE68)
+
+static object *Push_last = NULL;
+static int Push_count = 0;
+
+static int dressing_pushable(object *d)
+{
+	int p;
+
+	if (d->id >= N_dressing_types)
+		return 999;
+	p = Dressing_info[d->id].pushable;
+	return p > 0 ? p : 999;		// the default of the reader is 999
+}
+
+// The velocity and the thrust of the scenery become 8 times those of the
+// mover in x and z; vel.y stays; movement type 1.
+static void push_dressing(object *mover,object *d,int strength)
+{
+	physics_info *pi = &d->mtype.phys_info;
+	int n = d-Objects;
+
+	if (d->type != OBJ_DRESSING || strength <= dressing_pushable(d))
+		return;
+	pi->velocity.x = 8 * mover->mtype.phys_info.velocity.x;
+	pi->velocity.z = 8 * mover->mtype.phys_info.velocity.z;
+	pi->thrust.x = 8 * mover->mtype.phys_info.thrust.x;
+	pi->thrust.z = 8 * mover->mtype.phys_info.thrust.z;
+	Dressing_fall[n] = 1;
+	Dressing_sig[n] = d->signature;
+	dtu_obj_log("push: obj %d %s (strength %d) pushes obj %d %s (pushable %d), velocity %.1f %.1f",(int)(mover-Objects),
+		dtu_object_name(mover),strength,n,dtu_object_name(d),dressing_pushable(d),f2fl(pi->velocity.x),f2fl(pi->velocity.z));
+}
+
+// 0x9FE68: the move of scenery with movement type 1. The velocity is
+// halved and x and z are divided by 4, then gravity and the move. The
+// sound 2706 plays while the speed is above 0x70. The move ends at a stop.
+static void dressing_move_frame(void)
+{
+	static fix acc = 0;
+	int i, ticks = 1;
+
+	if (Dtu_fix_push_frame) {
+		acc += FrameTime;
+		ticks = acc / DTU_REF_FRAMETIME;
+		acc -= ticks * DTU_REF_FRAMETIME;
+	}
+	for (i=0;i<=Highest_object_index;i++) {
+		object *d = &Objects[i];
+		physics_info *pi = &d->mtype.phys_info;
+		vms_vector p1, frame_vec;
+		fvi_query fq;
+		fvi_info hit;
+		fix speed;
+		int k, fate;
+
+		if (!Dressing_fall[i])
+			continue;
+		if (d->type != OBJ_DRESSING || d->signature != Dressing_sig[i] || (d->flags & OF_SHOULD_BE_DEAD)) {
+			Dressing_fall[i] = 0;
+			continue;
+		}
+		for (k=0;k<ticks;k++) {
+			pi->velocity.x = (pi->velocity.x / 2) >> 2;
+			pi->velocity.z = (pi->velocity.z / 2) >> 2;
+			pi->velocity.y /= 2;
+		}
+		// gravity (0x6C662): down to the floor, 3.0 times the distance
+		{
+			fvi_query gq;
+			fvi_info gh;
+			vms_vector down = d->pos;
+
+			down.y -= i2f(200);
+			gq.p0 = &d->pos; gq.p1 = &down; gq.startseg = d->segnum; gq.rad = 0;
+			gq.thisobjnum = i; gq.ignore_obj_list = NULL; gq.flags = 0;
+			if (find_vector_intersection(&gq,&gh) == HIT_WALL) {
+				fix fd = d->pos.y - gh.hit_pnt.y - d->size;
+				if (fd > F1_0/16)
+					pi->velocity.y -= fixmul(fd,i2f(3));
+				else
+					pi->velocity.y = 0;
+			}
+		}
+		speed = vm_vec_mag_quick(&pi->velocity);
+		if (speed <= 0x70) {
+			vm_vec_zero(&pi->velocity);
+			Dressing_fall[i] = 0;
+			dtu_obj_log("push: obj %d %s stops at %.1f %.1f %.1f",i,dtu_object_name(d),f2fl(d->pos.x),f2fl(d->pos.y),f2fl(d->pos.z));
+			continue;
+		}
+		vm_vec_copy_scale(&frame_vec,&pi->velocity,FrameTime);
+		vm_vec_add(&p1,&d->pos,&frame_vec);
+		fq.p0 = &d->pos; fq.p1 = &p1; fq.startseg = d->segnum; fq.rad = d->size / 2;
+		fq.thisobjnum = i; fq.ignore_obj_list = NULL; fq.flags = 0;
+		fate = find_vector_intersection(&fq,&hit);
+		if (fate == HIT_NONE) {
+			int seg = find_point_seg(&p1,d->segnum);
+			if (seg >= 0) {
+				d->pos = p1;
+				if (seg != d->segnum)
+					obj_relink(i,seg);
+			}
+		}
+		else {
+			pi->velocity.x = pi->velocity.z = 0;
+			if (fate == HIT_WALL && hit.hit_wallnorm.y > F1_0/2)
+				pi->velocity.y = 0;
+		}
+		if (FrameCount % 8 == 0)
+			sound_at(2706,d->segnum,&d->pos,F1_0/2);
+	}
+}
+
 int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 {
 	object *t;
@@ -4462,7 +4771,17 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 				}
 				break;
 			case OBJ_DRESSING:
-				// 0x25FB0: the player pushes scenery. Not in the port.
+				// 0x9E5BE (pcons.c): the player pushes scenery when the
+				// strength (P+0xB7) is above "pushable"; the push stops after
+				// 9 hits of the same object in a row (0x1452F1, 0x1452F5)
+				if (b == Push_last)
+					Push_count++;
+				else {
+					Push_last = b;
+					Push_count = 1;
+				}
+				if (Push_count < 9)
+					push_dressing(a,b,Dtu_char.created ? Dtu_char.pa.strength : 18);
 				break;
 		}
 	}
@@ -4473,58 +4792,6 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 
 //------------------------------------------------------------------------
 // The player
-
-// The attack of the player. The executable starts it in pweapon.c and
-// plays the states 6, 7, 11 and 12 of the player model with the function
-// 0x4450C. The port plays state ATTACK on the player object, which is not
-// drawn, and tests the weapon as the executable does (weapon_test).
-int dtu_player_attack(void)
-{
-	object *obj = ConsoleObject;
-
-	if (!Dtu_objects_enabled || Player_is_dead || Dtu_player_dead || obj->type != OBJ_PLAYER)
-		return 0;
-	if (DTU_ANIM_STATE(obj) == DAS_ATTACK)
-		return 0;
-
-	DTU_ANIM_STATE(obj) = DAS_ATTACK;
-	DTU_ANIM_GOAL(obj) = DAS_STAND;
-	DTU_ANIM_FRAME(obj) = Dtu_anim_first[DAS_ATTACK];
-	Player_anim_start = GameTime;
-	Player_swing_done = 0;
-	dtu_obj_log("player: starts an attack");
-	return 1;
-}
-
-// 0x4450C for the attack state
-static void player_animation(void)
-{
-	object *obj = ConsoleObject;
-	int s = DTU_ANIM_STATE(obj);
-	fix st = F1_0, elapsed;
-	polymodel *po = NULL;
-
-	if (obj->type != OBJ_PLAYER || s != DAS_ATTACK)
-		return;
-
-	if (N_player_types > 0 && Player_type_info[0].n_models > 0 && Player_type_info[0].model_nums[0] >= 0)
-		po = &Polygon_models[Player_type_info[0].model_nums[0]];
-	if (po && po->state_times[s] > 0)
-		st = po->state_times[s];
-
-	elapsed = GameTime - Player_anim_start;
-	DTU_ANIM_FRAME(obj) = Dtu_anim_first[s] +
-		(int)((((int64_t)elapsed * ((int64_t)(Dtu_anim_first[s+1] - Dtu_anim_first[s]) << 16)) / st + 0x8000) >> 16);
-
-	if (DTU_ANIM_FRAME(obj) >= Dtu_anim_first[s+1]) {
-		DTU_ANIM_STATE(obj) = DTU_ANIM_GOAL(obj) = DAS_STAND;
-		DTU_ANIM_FRAME(obj) = Dtu_anim_first[DAS_STAND];
-		Player_swing_done = 0;
-		return;
-	}
-
-	weapon_test(obj);
-}
 
 // The option -testpos X,Y,Z[,HEADING]: puts the player at a position of the
 // level at the first frame, for tests and screenshots. The heading is in
@@ -4577,8 +4844,8 @@ void dtu_objects_frame(void)
 	Ref_tick_count += Ref_ticks_now;
 
 	dtu_player_check_death(NULL);
-	player_animation();
 	missiles_frame();
+	dressing_move_frame();
 
 	// The option -objlogpos N (test): the place of each active creature
 	if (Obj_log && Obj_log_pos > 0 && (FrameCount % Obj_log_pos) == 0) {

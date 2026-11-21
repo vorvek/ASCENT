@@ -222,6 +222,8 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtucombat.h"	// ASCENT: the attack of the player
 #include "dtutrig.h"		// ASCENT: dtu_player_use()
+#include "dtuthief.h"		// ASCENT: the thief keys and the climb
+#include "dtuspell.h"		// ASCENT: the jump key stops a cast
 #include "bm.h"
 #include "key.h"
 #include "joy.h"
@@ -328,12 +330,16 @@ extern fix fixed_frametime;		// in game.c
 #define TM_DOWN		0x0800
 #define TM_USE			0x1000
 #define TM_ATTACK		0x2000		// ASCENT: the attack of the player, see dtuobj.c
+#define TM_PICKLOCK	0x4000		// ASCENT: the thief keys O, F and M (dtuthief.c)
+#define TM_SEARCH		0x8000
+#define TM_SNEAK		0x10000
 
 static struct { char *name; int mask; } Test_action_names[] = {
 	{"forward",TM_FORWARD}, {"back",TM_BACK}, {"left",TM_LEFT}, {"right",TM_RIGHT},
 	{"slideleft",TM_SLIDELEFT}, {"slideright",TM_SLIDERIGHT}, {"run",TM_RUN},
 	{"jump",TM_JUMP}, {"lookup",TM_LOOKUP}, {"lookdown",TM_LOOKDOWN},
-	{"up",TM_UP}, {"down",TM_DOWN}, {"use",TM_USE}, {"attack",TM_ATTACK}, {"wait",0}
+	{"up",TM_UP}, {"down",TM_DOWN}, {"use",TM_USE}, {"attack",TM_ATTACK},
+	{"picklock",TM_PICKLOCK}, {"search",TM_SEARCH}, {"sneak",TM_SNEAK}, {"wait",0}
 };
 
 #define MAX_TEST_STEPS	64
@@ -624,9 +630,29 @@ void dtu_read_controls(void)
 	}
 
 	key = keyd_pressed[KEY_SPACEBAR] || (t & TM_JUMP);
-	if (key && !space_last)
-		dtu_player_jump(obj);
+	if (key && !space_last) {
+		// 0x546CC: the jump key stops a cast when the player does not
+		// levitate (0x9305D with 0, "Your spell was aborted."); then no jump
+		if (!(obj->dtu.m_88 & DTU_OF_LEVITATE) && dtu_spell_interrupt(obj,0))
+			;
+		else
+			dtu_player_jump(obj);
+	}
 	space_last = key;
+
+	// The thief keys of the key table (kconfig items 54 to 59, defaults
+	// 0x13C010): M Move silently, F Find Traps, O Open Locks. Each action
+	// waits half a second between two uses.
+	{
+		static int o_last = 0, f_last = 0, m_last = 0;
+		int ko = keyd_pressed[KEY_O] || (t & TM_PICKLOCK), kf = keyd_pressed[KEY_F] || (t & TM_SEARCH),
+			km = keyd_pressed[KEY_M] || (t & TM_SNEAK);
+
+		if (ko && !o_last) dtu_thief_open_locks();
+		if (kf && !f_last) dtu_thief_search_toggle();
+		if (km && !m_last) dtu_thief_move_silently();
+		o_last = ko; f_last = kf; m_last = km;
+	}
 
 	// The use action: "Activate" of the key table of the executable
 	// (entries 39 and 40, default scan code 0x1E at 0x13C037). 0x53D6A
@@ -704,8 +730,11 @@ static void dtu_read_flying_controls(object *obj)
 			vm_matrix_x_matrix(&viewm,&obj->orient,&headm);
 			dir = viewm.fvec;
 		}
-		else if (Dtu_player_state & DTU_PS_CLIMBING)
-			vm_vec_zero(&dir);		// the climb of a thief is not in the port
+		else if (Dtu_player_state & DTU_PS_CLIMBING) {
+			// 0x2C144: the climb (dtuthief.c)
+			dtu_thief_climb_thrust(obj,Controls.forward_thrust_time,0);
+			vm_vec_zero(&dir);
+		}
 		else if (!(obj->dtu.m_88 & DTU_OF_LEVITATE))
 			vm_vec_scale_add(&dir,&obj->orient.fvec,&up,vm_vec_dot(&up,&obj->orient.fvec));
 		else {
@@ -716,7 +745,9 @@ static void dtu_read_flying_controls(object *obj)
 		vm_vec_scale_add2(&pi->thrust,&dir,Controls.forward_thrust_time);
 	}
 
-	if (Controls.sideways_thrust_time && !(Dtu_player_state & DTU_PS_CLIMBING)) {
+	if (Controls.sideways_thrust_time && (Dtu_player_state & DTU_PS_CLIMBING))
+		dtu_thief_climb_thrust(obj,0,Controls.sideways_thrust_time);
+	else if (Controls.sideways_thrust_time) {
 		vm_vec_scale_add(&dir,&obj->orient.rvec,&up,vm_vec_dot(&up,&obj->orient.rvec));
 		vm_vec_scale_add2(&pi->thrust,&dir,Controls.sideways_thrust_time);
 		pi->rotthrust.z = Controls.sideways_thrust_time;

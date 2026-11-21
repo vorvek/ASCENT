@@ -335,6 +335,7 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "dtutrig.h"		// ASCENT: dtu_trig_load_level()
 #include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtuchar.h"		// ASCENT: the character of the target game
+#include "dtustate.h"	// ASCENT: the level state files
 #ifdef NETWORK
 #include "netmisc.h"
 #endif
@@ -970,6 +971,9 @@ void LoadLevel(int level_num)
 		level_name = Level_names[level_num-1];
 #endif
 
+	// ASCENT: the loading picture of the level loader (0x494EB, dtustate.c)
+	dtustate_level_loading(level_name);
+
 	// ASCENT: no message while the fonts are not loaded
 	if (HELP_FONT)
 		show_boxed_message(TXT_LOADING);
@@ -1059,6 +1063,9 @@ void StartNewGame(int start_level)		// ASCENT: return type added
 	#endif
 
 	StartNewLevel(start_level);
+
+	// ASCENT: 0x4DD5A restores the state of the level (dtustate.c)
+	dtustate_game_started(start_level);
 
 	Players[Player_num].starting_level = start_level;		// Mark where they started
 

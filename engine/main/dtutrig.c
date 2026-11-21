@@ -38,6 +38,7 @@
 #include "dtugame.h"
 #include "dtudisp.h"
 #include "dtutrig.h"
+#include "dtustate.h"
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1102,15 +1103,27 @@ static int warp_check(int segnum, object *obj)
 	tlog("Warping to %s, Segment %d.", Level_names[dest_level], dest_seg);
 	printf("Warping to %s, Segment %d.\n", Level_names[dest_level], dest_seg);
 
-	// 0x5A0F6 closes the moving doors and saves the state of the level
-	// (0x5A756) before the load. The port loads each level new.
 	// 0x5A059 to 0x5A070: the executable waits for the sounds and stops
 	// them. The load of a level replaces the sound data.
 	digi_stop_all();
 	plat_audio_flush();			// the mixer must not read sample data that the load releases
+	// ASCENT: 0x5A0F6 closes the doors and 0x5A756 saves the state of the
+	// level, 0x5AA75 restores the state of the new level (dtustate.c).
+	dtustate_warp_leave(Level_index);
 	StartNewLevelSub(dest_level+1, 1);
+	dtustate_warp_enter(dest_level);
 	warp_place_player(dest_seg, value);
 	return 1;
+}
+
+// ASCENT: new. The executable looks at the segment of the player only
+// when a move takes the player into another segment (0x69BC8). A level
+// state that puts the player into a segment (dtustate.c) must not count as
+// such a move.
+void dtu_trig_player_placed(void)
+{
+	if (ConsoleObject && seg_ok(ConsoleObject->segnum))
+		Last_player_seg = Floor_trigger_seg = ConsoleObject->segnum;
 }
 
 //------------------------------------------------------------------------

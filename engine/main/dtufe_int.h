@@ -203,5 +203,17 @@ int fe_waterdeep(void);					// returns FE_GO_
 void fe_blackstaff(void);
 void fe_market(void);
 void fe_town_reset(void);				// a new character: Khelben starts again
+// The stock of the market in the save games: 0x87C05(S, write). write 1:
+// geldor.dat -> TheStore.<S>, 0: TheStore.<S> -> geldor.dat (after the
+// running geldor.dat is deleted, 0x87BFB).
+void fe_market_store(int s, int write);
+// A new character (0x87EC3): geldor.dat is deleted, and the market keeps
+// the charisma of this character (0x13E38C).
+void fe_market_new_character(void);
+// 0x879A7: reward n (0 to 8) of Khelben adds its goods to geldor.dat.
+int fe_market_reward(int n);
+// Settings of the market (dtufe_town.c, docs/re/frontend.md)
+extern int Dtu_fix_market_charisma;
+extern int Dtu_fix_market_sell_count;
 
 #endif

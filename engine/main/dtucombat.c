@@ -42,6 +42,7 @@
 #include "dtutrig.h"
 #include "dtucombat.h"
 #include "dtuspell.h"
+#include "dtuthief.h"
 
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
@@ -339,6 +340,8 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 	// 0x29A9C: the to-hit roll (0x2A7F3). A sleeping creature is hit and
 	// wakes (0x2A839).
 	ac = dtu_spell_creature_ac(creature,mi->armor_class) + dtu_spell_to_hit_bonus(player);
+	// 0x29D5B: 0xB337E sets the backstab flag 0x13A955 (dtuthief.c)
+	Dtu_backstab = dtu_thief_backstab_check(creature,weapon);
 	if (creature->dtu.m_88 & DTU_FX_SLEEP) {
 		creature->dtu.m_88 &= ~(DTU_FX_SLEEP|DTU_FX_BLIND);
 		roll = 1;
@@ -348,6 +351,10 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 		roll = dtu_char_attack_roll(ac);
 
 	if (roll > 0) {
+		// 0x29D80: the hit stops the cast of the creature (0x9305D); 0x29D85
+		// sets the condition bit 0x80 of its spells
+		dtu_spell_interrupt(creature,1);
+		dtu_spell_creature_event(creature,DTU_CSC_MELEE_HIT);
 		// 0x29D9D: weapon_resistant
 		if ((mi->flags & MONSTER_F_WEAPON_RESISTANT) && !(weapon >= 0 && weapon_flag(weapon,"magic"))) {
 			HUD_init_message("Your weapon has no effect on %s.",dtu_object_name(creature));
@@ -373,6 +380,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 		}
 	}
 
+	Dtu_backstab = 0;
 	hp0 = creature->shields;
 	if (damage > 0)
 		dealt = dtu_damage_creature_direct(creature,player,i2f(damage));
@@ -532,9 +540,16 @@ static void swing_hit_test(void)
 				player_hits_creature(other,weapon,&best_ip);
 		}
 		else if (other->type == OBJ_DRESSING) {
-			// 0x6D4EA: scenery breaks with 100.0 damage. Breaking scenery is
-			// in dtuobj.c, which has no call for it: not in the port.
-			dtu_obj_log("combat: the weapon hits scenery obj %d (breaking is not in the port)",best);
+			// 0x6D4EC: scenery that can break: hit points cut to 20.0, 100.0
+			// damage with no attacker (0x29A9C), then 0xA6ACB: one hit
+			// breaks it
+			dtu_obj_log("combat: the weapon hits scenery obj %d %s",best,dtu_object_name(other));
+			if (!dtu_dressing_unbreakable(other)) {
+				if (other->shields > i2f(20))
+					other->shields = i2f(20);
+				other->shields -= i2f(100);
+				dtu_break_dressing(other,obj,0);
+			}
 		}
 	}
 	else {
@@ -673,6 +688,8 @@ static void start_attack(void)
 		ConsoleObject->dtu.m_88 &= ~DTU_FX_INVISIBLE;
 		ConsoleObject->dtu.m_c8[0] = 0;
 	}
+	// 0x44402: the bits 0, 1 and 4 of P+0xA0 (hiding, searching) end
+	dtu_thief_attack();
 	Request = 0;
 	dtu_obj_log("combat: attack request accepted at %.3f",f2fl(GameTime));
 }
@@ -690,6 +707,7 @@ static void combat_init(void)
 		Dtu_fix_haste_attack = 0;
 		Dtu_fix_zero_dice = 0;
 		Dtu_fix_stoneskin_word = 0;
+		Dtu_fix_rary_manual = 0;
 	}
 }
 
@@ -751,6 +769,18 @@ void dtu_combat_frame(void)
 		change_player_model(hand_letter());
 	else if (!is_attack_state(View_state))
 		Swing_time = dtu_combat_swing_time();
+
+	// The walk drives the animation of the arms: the request of the
+	// controls (0x13B258) is WALK (0x2BFF2, guess for the stand: the port
+	// asks for STAND when the player does not move); a state that is not an
+	// attack ends before the next one starts (0x4450C)
+	if (!is_attack_state(View_state) && !is_attack_state(View_goal) && (View_goal != DAS_FIDGET || View_state == DAS_FIDGET) && View_goal != DAS_DIE) {
+		int g = (Dtu_move_mode != 0 && !(ConsoleObject->dtu.m_88 & DTU_OF_HELD)) ? DAS_WALK : DAS_STAND;
+		if (Dtu_anim_first[g+1] > Dtu_anim_first[g] && g != View_goal) {
+			View_goal = g;
+			dtu_obj_log("combat: the arms ask for state %d",g);
+		}
+	}
 
 	// The order of the game frame (0x435A6): the animation, the movement
 	// of the objects with the hit test, then the start of the attack.

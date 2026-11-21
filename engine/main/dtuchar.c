@@ -35,6 +35,19 @@
 #include "dtutrig.h"
 #include "dtuchar.h"
 #include "dtuspell.h"	// ASCENT: the spell effects of the armor class and the slots of a rest
+#include "dtuthief.h"
+#include "newmenu.h"
+#include "digi.h"
+#include "automap.h"
+
+#define DTU_WEAK __attribute__((weak))
+
+// A script event of the item code (0xADB3B, 0xAC055). dtuscript.c can
+// give the strong definition.
+DTU_WEAK void dtu_hook_script_event(int event)
+{
+	dtu_char_log("script event 0x%x (no script code)", event);
+}
 
 _Static_assert(sizeof(dtu_player_attr) == 80, "dtu_player_attr");
 _Static_assert(offsetof(dtu_player_attr, max_hit_points) == 0x0A, "dtu_player_attr");
@@ -50,6 +63,30 @@ _Static_assert(DTU_P_ATTR + sizeof(dtu_player_attr) == 0xE7, "player record");
 
 dtu_character Dtu_char;
 int Dtu_fix_multiclass_thac0 = 1;
+int Dtu_fix_wizardry_ring = 1;
+int Dtu_fix_potion_frame = 1;
+int Dtu_fix_luck_coin = 1;
+int Dtu_backstab = 0;
+int Dtu_auto_choice = -1;
+static int Dtu_last_attack_roll = 0;
+
+// The potion timers of the player record (0x396B2) and the values that
+// belong to them. All times are GameTime.
+static struct {
+	fix	intel_end;			// P+0x1A93 Poshun uv Hil Gient Inteljuns
+	fix	str_end;				// P+0x1A97 Hill Giant Strength
+	fix	dragon_end;			// P+0x1A9B Dragon's Blood
+	fix	dex_end;				// P+0x1A9F Agility
+	fix	luck_end;			// P+0x1A58 Luck
+	int	intel;				// the intelligence of the potion
+	int	dragon_extra;		// the percent value of Dragon's Blood for a warrior
+	int	gem_uses;			// P+0x1A57 Gem of Curing
+	int	str_gain, pct_gain;	// P+0x1A55, P+0x1A56: the gain of the spell Strength
+	fix	intel_acc;			// Dtu_fix_potion_frame
+} Potion;
+static int Worn_bits = 0;		// 0x1458AC: the effect bits of the worn items
+static int Wizardry_count = 0;	// doublings of the Ring of Wizardry
+static int Rests = 0;			// the number of rests (the Gem of Curing, guess)
 
 static FILE *Char_log = NULL;
 static int Char_options_read = 0;
@@ -155,6 +192,10 @@ static void read_options(void)
 		Char_script = Args[t + 1];
 	if (FindArg("-origchar"))
 		Dtu_fix_multiclass_thac0 = 0;
+	if (FindArg("-origcombat"))
+		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = 0;
+	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
+		Dtu_auto_choice = atoi(Args[t + 1]);
 }
 
 // A text of the string table of the game, or the default.
@@ -374,6 +415,179 @@ static int table_ac(dtu_inv_item *e)
 	return d.ac_bonus;
 }
 
+// The effect bits of the worn items (0xAFB55 collects them in edx). Item
+// bit n gives the effect of Worn_fx[n] (0xB08A8, 0xB0A98).
+static const int Worn_fx[15] = {
+	DTU_FX_CHILL_TOUCH, DTU_FX_RESIST_FIRE, 0, DTU_FX_FEATHER_FALL, DTU_FX_FLY, DTU_FX_FREE_ACTION, DTU_FX_INFRAVISION,
+	DTU_FX_JUMP, DTU_FX_DETECT_MAGIC, DTU_FX_HASTE, DTU_FX_SHIELD, DTU_FX_LEVITATE, DTU_FX_IMP_INVIS, DTU_FX_INVISIBLE,
+	DTU_FX_PROT_EVIL
+};
+
+static int armor_id(dtu_item_ref ref)
+{
+	dtu_inv_item *e = ref_entry(ref);
+
+	return (e && e->type == OBJ_ARMOR) ? e->id : -1;
+}
+
+static int worn_item_bits(void)
+{
+	int bits = 0, id, r;
+	dtu_inv_item *e;
+
+	// boots (0xAFBEE, jump table 0xAFAE5)
+	switch (armor_id(Dtu_char.slot[DTU_SLOT_BOOT])) {
+		case 34: bits |= 1 << 4; break;		// Winged Boots: Fly
+		case 35: bits |= 1 << 3; break;		// Boots of Feather Falling
+		case 36: bits |= 1 << 11; break;		// Boots of Levitation
+		case 37: bits |= 1 << 9; break;		// Boots of Speed: Haste
+	}
+	// necklace 33: Amulet of Shield (0xAFCBA tests the number only)
+	e = ref_entry(Dtu_char.slot[DTU_SLOT_NECKLACE]);
+	if (e && e->id == 33)
+		bits |= 1 << 10;
+	// gauntlet 51: Glim-Gauntlet, Detect Magic (0xAFD99)
+	if (armor_id(Dtu_char.slot[DTU_SLOT_GAUNTLET]) == 51)
+		bits |= 1 << 8;
+	// cloak 44: Chameleon Cloak, Improved Invisibility; 46: Elven Cloak,
+	// Invisibility (0xAFF54)
+	id = armor_id(Dtu_char.slot[DTU_SLOT_CLOAK]);
+	if (id == 44) bits |= 1 << 12;
+	if (id == 46) bits |= 1 << 13;
+	// rings (jump tables 0xAFAF5 and 0xAFB25). Ring 16 (Armoring) sets a
+	// flag that nothing reads.
+	for (r = 0; r < 2; r++) {
+		switch (armor_id(Dtu_char.slot[r ? DTU_SLOT_RING2 : DTU_SLOT_RING1])) {
+			case 17: bits |= 1 << 1; break;		// Ring of Coolness: Resist Fire
+			case 18: bits |= 1 << 3; break;		// Feather Fall
+			case 19: bits |= 1 << 4; break;		// Flying
+			case 20: bits |= 1 << 5; break;		// Free Action
+			case 22: if (Dtu_char.pa.race <= 0) bits |= 1 << 6; break;		// Infravision, humans only
+			case 23: bits |= 1 << 7; break;		// Jumping
+			case 24: bits |= 1 << 8; break;		// Magic Detection
+			case 25: bits |= 1 << 9; break;		// Quickness: Haste
+		}
+	}
+	// weapon 54 in the hand (0xB038F): bits 0, 1, 3, 5, 7, 8, 9, 12, and 6
+	// for a human
+	e = ref_entry(Dtu_char.current);
+	if (e && e->type == OBJ_WEAPON && e->id == 54) {
+		bits |= 0x2b | 0x1380;
+		if (Dtu_char.pa.race == 0)
+			bits |= 0x40;
+	}
+	return bits;
+}
+
+static void worn_effects(void)
+{
+	object *p = ConsoleObject;
+	int bits, gone, i, rings = 0;
+
+	if (!p || p->type != OBJ_PLAYER)
+		return;
+	bits = worn_item_bits();
+	gone = Worn_bits & ~bits;
+	// 0xB03FC: an item that is taken off ends its effect (0xB0A98 with 1)
+	for (i = 0; i < 15; i++)
+		if ((gone & (1 << i)) && Worn_fx[i])
+			dtu_spell_clear_effect(p, Worn_fx[i]);
+	if (bits != Worn_bits)
+		dtu_char_log("worn items: effect bits 0x%04x (were 0x%04x)", bits, Worn_bits);
+	Worn_bits = bits;
+	// 0xB08A8: the effects of the worn items, with no end. Infravision only
+	// for a human (0xB0968).
+	for (i = 0; i < 15; i++)
+		if ((bits & (1 << i)) && Worn_fx[i] && !(i == 6 && Dtu_char.pa.race != 0)) {
+			if (!(p->dtu.m_88 & Worn_fx[i]))
+				dtu_spell_set_effect(p, Worn_fx[i], DTU_FX_NO_END, 0, 0);
+		}
+
+	// The Ring of Wizardry (armor 27, 0xB00A5): the mage slots of the spell
+	// levels 1 to 3 double each time 0xAFB55 runs while it is worn, and
+	// are halved one time when it is taken off (0xB075F). Corrected: one
+	// doubling while it is worn.
+	if (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 27) rings++;
+	if (armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 27) rings++;
+	if (rings) {
+		if (Dtu_fix_wizardry_ring)
+			Wizardry_count = 1;
+		else
+			Wizardry_count += rings;
+	}
+	else if (Wizardry_count > 0)
+		Wizardry_count--;
+	dtu_spell_set_wizardry(Wizardry_count);
+}
+
+// The values of the potions and of the spell Strength (0x396B2, 0x8FCFA)
+static void potion_values(void)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+
+	if (Potion.str_end) {								// Hill Giant Strength: at least 19
+		if (pa->strength < 19) {
+			pa->strength = 19;
+			pa->strength_extra = 0;
+		}
+	}
+	if (Potion.dragon_end) {							// Dragon's Blood: at least 18
+		if (pa->strength < 18) {
+			pa->strength = 18;
+			pa->strength_extra = Potion.dragon_extra;
+		}
+	}
+	if (Potion.dex_end && pa->dexterity < 18)	// Agility: at least 18
+		pa->dexterity = 18;
+	if (Potion.intel_end)
+		pa->intelligence = Potion.intel;
+	if (Potion.str_gain || Potion.pct_gain) {	// the spell Strength
+		pa->strength += Potion.str_gain;
+		if (Potion.pct_gain) {
+			int x = pa->strength_extra + Potion.pct_gain;
+			pa->strength_extra = (x > 100) ? 0 : x;
+		}
+	}
+}
+
+// 0x8FCFA: the gain of the spell Strength. A warrior: 1d8, above 18 each
+// point is 10 percent (above 100 it becomes 0, 18/00); not at 18/00. Other
+// classes: at most 18, nothing at 18.
+void dtu_char_strength_gain(int gain, int warrior)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int s = pa->strength, e = pa->strength_extra, g = 0, p = 0;
+
+	if (warrior) {
+		if (s == 18 && e == 0)
+			return;
+		if (s + gain > 18) {
+			g = 18 - s;
+			p = 10 * (s + gain - 18);
+			if (e + p > 100)
+				p = 100 - e;
+		}
+		else
+			g = gain;
+	}
+	else {
+		if (s >= 18)
+			return;
+		g = (s + gain > 18) ? 18 - s : gain;
+	}
+	Potion.str_gain = g;
+	Potion.pct_gain = p;
+	dtu_char_log("Strength: strength %d/%d, gain %d and %d percent", s, e, g, p);
+	dtu_char_update();
+}
+
+// 0x90BE4: the gains go
+void dtu_char_strength_end(void)
+{
+	Potion.str_gain = Potion.pct_gain = 0;
+	dtu_char_update();
+}
+
 void dtu_char_update(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa, *base = &Dtu_char.base;
@@ -520,10 +734,30 @@ void dtu_char_update(void)
 		if (e->id == 12) pa->open_locks += 20;
 	}
 
+	// 0xB030B: invisible (effect bits 16, 17): Open Locks - 15. 0xB032A: the
+	// Find Traps effect (bit 20): Find/Remove Traps 100.
+	if (ConsoleObject && ConsoleObject->type == OBJ_PLAYER) {
+		if (ConsoleObject->dtu.m_88 & (DTU_FX_IMP_INVIS|DTU_FX_INVISIBLE))
+			pa->open_locks -= 15;
+		if (ConsoleObject->dtu.m_88 & DTU_FX_FIND_TRAPS)
+			pa->find_traps = 100;
+	}
+
 	// the item in the hand (0xB0356)
 	e = ref_entry(Dtu_char.current);
 	if (e && (e->type == OBJ_WEAPON || e->type == OBJ_MISC))
 		sum += table_ac(e);
+	// 0xB038F: weapon 54 (Sword of W'hin) in the hand: Find/Remove Traps
+	// 250 (95 after the limit)
+	if (e && e->type == OBJ_WEAPON && e->id == 54)
+		pa->find_traps = 250;
+
+	// The potions (0x396B2) and the spell Strength (0x8FCFA) change the
+	// values of the record while they last
+	potion_values();
+
+	// 0xB03E6 and 0xB08A8: the effects of the worn items
+	worn_effects();
 
 	// 0xB0B7E: each thief skill is 0 to 95
 	#define CLAMP95(v) do { if ((v) < 0) (v) = 0; if ((v) > 95) (v) = 95; } while (0)
@@ -836,49 +1070,420 @@ int dtu_char_pickup_allowed(void)
 }
 
 //------------------------------------------------------------------------
-// Use (0x37A6A). The executable has one case for each item number. The
-// port has the two healing potions.
+// Use (0x37A6A). The executable has one case for each item number (the
+// $OBJECT keywords pc_spell, duration and set_* are not read there).
+// docs/re/combat.md, section B6.
+
+// A choice box (0x655FE, nm_messagebox). Returns the index of the choice,
+// -1 for Escape. The option -autochoice N answers N without a box.
+int dtu_char_choice(char *text, int n, ...)
+{
+	va_list args;
+	char *c[4] = { NULL, NULL, NULL, NULL };
+	int i, r;
+
+	va_start(args, n);
+	for (i = 0; i < n && i < 4; i++)
+		c[i] = va_arg(args, char *);
+	va_end(args);
+	if (Dtu_auto_choice >= 0) {
+		r = (Dtu_auto_choice < n) ? Dtu_auto_choice : n - 1;
+		dtu_char_log("choice box '%s': %d (option -autochoice)", text, r);
+		return r;
+	}
+	switch (n) {
+		case 1: r = nm_messagebox(NULL, 1, c[0], "%s", text); break;
+		case 2: r = nm_messagebox(NULL, 2, c[0], c[1], "%s", text); break;
+		case 3: r = nm_messagebox(NULL, 3, c[0], c[1], c[2], "%s", text); break;
+		default: r = nm_messagebox(NULL, 4, c[0], c[1], c[2], c[3], "%s", text); break;
+	}
+	dtu_char_log("choice box '%s': %d", text, r);
+	return r;
+}
+
+// The vclip of a spell on the player (0x8CAD3)
+static void spell_vclip(int spell)
+{
+	if (ConsoleObject)
+		dtu_spell_cast_vclip(spell, ConsoleObject);
+}
+
+static fix rnd_time(int mod, int add, int unit)
+{
+	return i2f((rand() % mod + add) * unit);
+}
+
+// 0xAE837: the item in the hand falls to the floor at the center of the
+// segment of the player (0x3C93B, 0x13899) and leaves the inventory
+// (0xB6D0C). "You dropped your weapon!"
+void dtu_char_drop_weapon(void)
+{
+	dtu_inv_item *e = ref_entry(Dtu_char.current);
+	object *p = ConsoleObject;
+	vms_vector c;
+	int type, id, objnum;
+
+	if (!e || !p || p->type != OBJ_PLAYER)
+		return;
+	type = e->type;
+	id = e->id;
+	compute_segment_center(&c, &Segments[p->segnum]);
+	objnum = dtu_create_item(type, id, 1, p->segnum, &c);
+	if (objnum < 0) {
+		HUD_init_message("You were disarmed!");
+		dtu_char_log("drop weapon: no object, disarmed");
+	}
+	else {
+		HUD_init_message("You dropped your weapon!");
+		dtu_char_log("drop weapon: type %d id %d '%s' is object %d in segment %d", type, id, e->name, objnum, p->segnum);
+	}
+	dtu_char_take(type, id, 1);
+}
+
+// 0x396B2: the end of the potion timers. force: all end (Dispel Magic, the
+// Potion of Anti-Magic).
+void dtu_char_potions_end(int force)
+{
+	int changed = 0;
+
+	if (Potion.intel_end && (force || GameTime > Potion.intel_end)) {
+		Potion.intel_end = 0;
+		HUD_init_message("Hill Giant Intelligence expired.");
+		changed = 1;
+	}
+	else if (Potion.intel_end && !force) {
+		// each call, 1 in 63: parts of the map are forgotten (0x185FEC).
+		// The executable rolls in each frame; corrected: one roll for each
+		// reference frame (Dtu_fix_potion_frame).
+		int n = 1, s;
+
+		if (Dtu_fix_potion_frame) {
+			Potion.intel_acc += FrameTime;
+			n = Potion.intel_acc / (3 * F1_0 / 64);
+			Potion.intel_acc -= n * (3 * F1_0 / 64);
+		}
+		while (n-- > 0)
+			if (rand() % 63 == 0) {
+				int step = 16 + rand() % 17;
+				for (s = rand() % 49; s <= Highest_segment_index; s += step)
+					Automap_visited[s] = 0;
+				dtu_char_log("potion: the intelligence potion makes the player forget parts of the map");
+			}
+	}
+	if (Potion.str_end && (force || GameTime > Potion.str_end)) {
+		Potion.str_end = 0;
+		HUD_init_message("Hill Giant Strength expired.");
+		changed = 1;
+	}
+	if (Potion.dragon_end && (force || GameTime > Potion.dragon_end)) {
+		Potion.dragon_end = 0;
+		HUD_init_message("Dragon's Blood expired.");
+		changed = 1;
+	}
+	if (Potion.dex_end && (force || GameTime > Potion.dex_end)) {
+		Potion.dex_end = 0;
+		HUD_init_message("Agility expired.");
+		changed = 1;
+	}
+	if (Potion.luck_end && (force || GameTime > Potion.luck_end)) {
+		Potion.luck_end = 0;
+		HUD_init_message("Your luck just ran out.");
+		changed = 1;
+	}
+	if (changed) {
+		dtu_char_log("potion: a potion effect ends%s", force ? " (force)" : "");
+		dtu_char_update();
+	}
+}
+
+static int any_potion(void)
+{
+	return Potion.intel_end || Potion.str_end || Potion.dragon_end || Potion.dex_end || Potion.luck_end;
+}
+
+static void effect_on_player(int mask, fix duration)
+{
+	if (ConsoleObject)
+		dtu_spell_set_effect(ConsoleObject, mask, duration, 1, 1);
+}
+
+static void spell_on_player(int spell)
+{
+	if (ConsoleObject)
+		dtu_spell_cast_on(spell, ConsoleObject, ConsoleObject);
+}
+
+// 0x2FACC: the system shock of constitution 1 to 19
+static const ubyte System_shock[19] = { 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 88, 90, 95, 97, 99, 99 };
+
+// The misc items. Returns 1 if the item is used up (the cases that go to
+// 0x39694), 0 if not, -1 if the item has no use.
+static int use_misc(dtu_inv_item *e)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+	object *p = ConsoleObject;
+	int hp = dtu_char_hit_points(), max = dtu_char_max_hit_points(), n, i;
+
+	switch (e->id) {
+		case 0x02:		// Gem of Curing: not used up
+			// The executable compares the uses with the counter 0x13E588
+			// (0x8445A), which was not decoded. The port allows one use for
+			// each rest. (guess)
+			if (Potion.gem_uses > Rests) {
+				HUD_init_message("You cannot use the Gem Of Curing at this time.");
+				return 0;
+			}
+			if (p->dtu.m_88 & DTU_FX_BLIND) {
+				dtu_spell_clear_effect(p, DTU_FX_BLIND);
+				HUD_init_message("...And now you can see!");
+			}
+			else if (hp < max)
+				spell_on_player(11);
+			Potion.gem_uses++;
+			dtu_char_log("use: Gem of Curing, use %d", Potion.gem_uses);
+			return 0;
+		case 0x13:		// Spider Piece: the whole map is known
+			if (e->count > 0) {
+				for (i = 0; i <= Highest_segment_index; i++)
+					Automap_visited[i] = 1;
+				e->count--;
+				dtu_char_log("use: Spider Piece 0x13, the map is known, %d charges", e->count);
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
+		case 0x16:		// Spider Piece: area Fear and seven spells on the player
+			if (e->count > 0) {
+				static const int s[7] = { 1, 35, 19, 40, 43, 18, 50 };
+				dtu_spell_area(14, &p->pos, p->segnum, p, dtu_spell_player_level(14));
+				for (i = 0; i < 7; i++)
+					spell_on_player(s[i]);
+				e->count--;
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
+		case 0x19:		// Assembled Spider: four effects with no end
+			if (e->count > 0) {
+				static const int s[4] = { 48, 20, 21, 25 };
+				static const int m[4] = { DTU_FX_SPIDER_CLIMB, DTU_FX_FREE_ACTION, DTU_FX_HASTE, DTU_FX_INFRAVISION };
+				for (i = 0; i < 4; i++) {
+					spell_on_player(s[i]);
+					if (p->dtu.m_88 & m[i])
+						dtu_spell_set_effect(p, m[i], DTU_FX_NO_END, 0, 0);
+				}
+				e->count--;
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
+		case 0x1A:		// Spider Piece: all hit points and nine spells
+			if (e->count > 0) {
+				static const int s[9] = { 1, 45, 15, 24, 35, 38, 39, 43, 49 };
+				dtu_char_heal(max);
+				for (i = 0; i < 9; i++)
+					spell_on_player(s[i]);
+				if (p->dtu.m_88 & (DTU_FX_BLIND|DTU_FX_DEAF))
+					spell_on_player(42);
+				e->count--;
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
+		case 0x12: case 0x14: case 0x17: case 0x18:
+			// Turn undead as a cleric of level 2, the spell attack on the
+			// drow, the view tour of the creatures, a script event: not in
+			// the port
+			dtu_char_log("use: Spider Piece 0x%x is not in the port", e->id);
+			return -1;
+		case 0x48:		// Potion of Agility: dexterity 18 for 600 s
+			if (pa->dexterity < 18) {
+				Potion.dex_end = GameTime + i2f(600);
+				spell_vclip(21);
+			}
+			break;
+		case 0x49:		// Potion of Anti-Magic: all effects end
+			if (p->dtu.m_88 || any_potion()) {
+				dtu_spell_dispel(p);
+				dtu_char_potions_end(1);
+			}
+			spell_vclip(13);
+			break;
+		case 0x4A:		// Potion of Dragon's Blood: strength 18 for 1 to (level + 1) rounds
+			if (pa->strength < 18) {
+				Potion.dragon_end = GameTime + i2f((rand() % (pa->class1_level + 1) + 1) * 60);
+				Potion.dragon_extra = has_class(DTU_CLASS_FIGHTER) ? rand() % 100 : 0;
+				spell_vclip(50);
+			}
+			break;
+		case 0x4B:		// Potion of Extra-Healing: 6 to 27 hit points
+			if (hp < max) {
+				n = dtu_char_heal(rand() % 22 + 6);
+				HUD_init_message("You feel much better.");
+				dtu_char_log("use: '%s', %d hit points, %d -> %d of %d", e->name, n, hp, dtu_char_hit_points(), max);
+			}
+			spell_vclip(11);
+			break;
+		case 0x4C:		// Potion of Fire Resistance: Resist Fire for 600 s
+			effect_on_player(DTU_FX_RESIST_FIRE, i2f(600));
+			spell_vclip(43);
+			break;
+		case 0x4D:		// Potion of Flying: the spell Fly
+			spell_on_player(19);
+			break;
+		case 0x4E:		// Potion of Freedom: Free Action for 50 to 80 rounds
+			effect_on_player(DTU_FX_FREE_ACTION, rnd_time(4, 5, 600));
+			HUD_init_message("You are immune to paralysis for awhile.");
+			break;
+		case 0x4F:		// Potion of Healing: 4 to 10 hit points
+			if (hp < max) {
+				n = dtu_char_heal(rand() % 7 + 4);
+				HUD_init_message("You feel better.");
+				dtu_char_log("use: '%s', %d hit points, %d -> %d of %d", e->name, n, hp, dtu_char_hit_points(), max);
+			}
+			spell_vclip(10);
+			break;
+		case 0x50:		// Potion of Hill Giant Strength: 19 for 50 to 80 rounds
+			if (pa->strength < 19) {
+				Potion.str_end = GameTime + rnd_time(4, 5, 600);
+				HUD_init_message("You have Hill Giant strength for awhile.");
+			}
+			break;
+		case 0x51:		// Poshun uv Hil Gient Inteljuns: intelligence 5 to 7
+			Potion.intel = rand() % 3 + 5;
+			Potion.intel_end = GameTime + rnd_time(4, 5, 600);
+			// a random vclip and a flash for each point of intelligence: the
+			// vclip of one spell here
+			spell_vclip(7);
+			break;
+		case 0x52:		// Potion of Infravision: 10 to 80 rounds
+			effect_on_player(DTU_FX_INFRAVISION, rnd_time(8, 1, 600));
+			spell_vclip(25);
+			break;
+		case 0x53:		// the second "Potion of Agility": Invisibility for 30 to 60 rounds
+			effect_on_player(DTU_FX_INVISIBLE, rnd_time(4, 3, 600));
+			spell_vclip(26);
+			break;
+		case 0x54:		// Potion of Invulnerability: 5 to 20 rounds
+			effect_on_player(DTU_FX_INVULNERABLE, rnd_time(16, 5, 60));
+			spell_vclip(28);
+			break;
+		case 0x55:		// Potion of Jumping: the spell Jump
+			spell_on_player(27);
+			break;
+		case 0x56:		// Potion of Luck: one hour, one critical hit
+			Potion.luck_end = GameTime + i2f(3600);
+			spell_vclip(1);
+			HUD_init_message("You feel lucky today.");
+			break;
+		case 0x57:		// Potion of Speed: Haste for 5 to 20 rounds
+			effect_on_player(DTU_FX_HASTE, rnd_time(16, 5, 60));
+			spell_vclip(21);
+			break;
+		case 0x58:		// Potion of Toughening
+			if (max < hp) {
+				int roll = rand() % 100 + 1, c = pa->constitution;
+
+				if (c < 1) c = 1;
+				if (c > 19) c = 19;
+				HUD_init_message("You don't feel so good.");
+				dtu_char_log("use: Potion of Toughening again: system shock d100 %d against %d", roll, System_shock[c - 1]);
+				if (roll > System_shock[c - 1])
+					dtu_damage_player(p, NULL, i2f(hp + 1));
+			}
+			else {
+				n = rand() % 17 + 2;
+				dtu_spell_set_effect(p, DTU_FX_BLESS, rnd_time(6, 7, 600), 0, 0);
+				set_hit_points(hp + n);
+				HUD_init_message("You feel tougher.");
+				dtu_char_log("use: Potion of Toughening: %d hit points, %d of %d", n, dtu_char_hit_points(), max);
+			}
+			break;
+		case 0x65:		// Orb of Insight: script event 0x1FE (dtuscript.c)
+			dtu_char_log("use: Orb of Insight, script event 0x1FE");
+			dtu_hook_script_event(0x1FE);
+			return 0;
+		case 0x66:		// Scroll: 0x9DC42 shows the scroll text of the count
+		case 0x7F:		// thief scroll: the text 1
+			dtu_char_log("use: '%s' shows the scroll text %d (the text screen 0x9DC42 is not in the port)", e->name,
+				e->id == 0x7F ? 1 : e->count);
+			return 0;
+		case 0x6A:		// Cursed Scroll
+			{
+				static const int s[5] = { 7, 9, 44, 22, 16 };
+				ushort *a[6] = { &Dtu_char.base.strength, &Dtu_char.base.dexterity, &Dtu_char.base.constitution,
+					&Dtu_char.base.intelligence, &Dtu_char.base.wisdom, &Dtu_char.base.charisma };
+
+				for (i = 0; i < 5; i++)
+					if (rand() % 2)
+						spell_on_player(s[i]);
+				if (rand() % 2)
+					for (i = 0; i <= Highest_segment_index; i++)
+						Automap_visited[i] = 0;
+				for (i = 0; i < 6; i++)
+					if (rand() % 2 && *a[i] > 0)
+						*a[i] = rand() % *a[i] + 1;
+				Dtu_char.pa.intelligence = Dtu_char.base.intelligence;
+				Dtu_char.pa.wisdom = Dtu_char.base.wisdom;
+				Dtu_char.pa.charisma = Dtu_char.base.charisma;
+				dtu_char_update();
+				hp = dtu_char_hit_points();
+				if (hp > 0)
+					dtu_damage_player(p, NULL, i2f(rand() % hp));
+				HUD_init_message("You no longer think that reading the scroll was such a good idea...");
+			}
+			break;
+		default:
+			return -1;
+	}
+	return 1;
+}
 
 int dtu_char_use(int index)
 {
 	dtu_inv_item *e;
-	int before, n;
+	int r;
 
-	if (index < 0 || index >= Dtu_n_inventory)
+	if (index < 0 || index >= Dtu_n_inventory || !ConsoleObject)
 		return 0;
 	e = &Dtu_inventory[index];
-	if (e->type != OBJ_MISC)
-		return 0;
 	if (Dtu_player_dead)
 		return 0;
 
-	before = dtu_char_hit_points();
-	switch (e->id) {
-		case 79:		// Potion of Healing (0x38E27): 4 to 10 hit points
-			if (before < dtu_char_max_hit_points()) {
-				n = dtu_char_heal(rand() % 7 + 4);
-				HUD_init_message("You feel better.");
-				dtu_char_log("use: '%s', %d hit points, %d -> %d of %d", e->name, n, before, dtu_char_hit_points(), dtu_char_max_hit_points());
-			}
-			else
-				dtu_char_log("use: '%s', no effect at %d of %d hit points", e->name, before, dtu_char_max_hit_points());
-			break;
-		case 75:		// Potion of Extra-Healing (0x38C1A): 6 to 27 hit points
-			if (before < dtu_char_max_hit_points()) {
-				n = dtu_char_heal(rand() % 22 + 6);
-				HUD_init_message("You feel much better.");
-				dtu_char_log("use: '%s', %d hit points, %d -> %d of %d", e->name, n, before, dtu_char_hit_points(), dtu_char_max_hit_points());
-			}
-			else
-				dtu_char_log("use: '%s', no effect at %d of %d hit points", e->name, before, dtu_char_max_hit_points());
-			break;
-		default:
-			// ASCENT: the effect of this item is not in the port. The item
-			// stays in the inventory.
-			dtu_char_log("use: '%s' (misc %d) is not in the port", e->name, e->id);
+	dtu_char_log("use: entry %d type %d id %d '%s' count %d", index, e->type, e->id, e->name, e->count);
+	if (e->type == OBJ_WEAPON) {
+		// weapon 13, the item in the hand, with none of the effects
+		// 0xC004124: script events, and for a Lawful Good character
+		// Continual Light, Free Action and Protection From Evil
+		if (e->id != 13 || Dtu_char.current.n != index || (ConsoleObject->dtu.m_88 & 0xC004124))
 			return 0;
+		dtu_hook_script_event(0x1FD);
+		if (Dtu_char.pa.alignment == 0) {
+			dtu_spell_area(8, &ConsoleObject->pos, ConsoleObject->segnum, ConsoleObject, dtu_spell_player_level(8));
+			spell_on_player(20);
+			spell_on_player(53);
+		}
+		return 0;
 	}
-	// 0xB7084: one item of the entry is used up
+	if (e->type == OBJ_ARMOR) {
+		if (e->id == 45)		// armor 45 (Cloak of Elvenkind): area Continual Light
+			dtu_spell_area(8, &ConsoleObject->pos, ConsoleObject->segnum, ConsoleObject, dtu_spell_player_level(8));
+		return 0;
+	}
+	if (e->type != OBJ_MISC)
+		return 0;
+
+	r = use_misc(e);
+	if (r < 0) {
+		dtu_char_log("use: '%s' (misc %d) has no use", e->name, e->id);
+		return 0;
+	}
+	if (r == 0) {
+		dtu_char_update();
+		return 0;
+	}
+	// 0x39694: 0xB7084, one item of the entry is used up
+	dtu_char_update();
 	inv_remove(index, 1);
 	return 1;
 }
@@ -999,9 +1604,11 @@ int dtu_char_rest(void)
 	set_hit_points(Dtu_char.pa.max_hit_points);
 	Rest_time[seg] = GameTime + i2f(300);
 	HUD_init_message("You feel refreshed");
+	Rests++;
 	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
-	// The executable also calls 0x160AB(player, 5) and 0x92FF2, plays sound
-	// 62 and removes the fire of the rest place. These are not in the port.
+	dtu_spell_rest_shuffle();		// 0x3E1F6 calls 0x92FF2
+	// The executable also calls 0x160AB(player, 5), plays sound 62 and
+	// removes the fire of the rest place. These are not in the port.
 	return 1;
 }
 
@@ -1222,10 +1829,34 @@ int dtu_char_attack_roll(int target_armor_class)
 	int roll = rand() % 20 + 1, result;
 
 	dtu_char_get_attack(&a);
+	// 0x2AB66: a backstab adds 4
+	if (Dtu_backstab)
+		a.to_hit_bonus += 4;
+	// 0x2A87B: the Potion of Luck makes one roll a natural 20 when the
+	// day clock (raw fix) is odd. Then the luck ends (0xAE564: sound 0x8A8).
+	// The bit depends on the frame times (at a fixed frame rate with an
+	// even frame time it is never odd); corrected: a coin flip.
+	if (Potion.luck_end && (Dtu_fix_luck_coin ? (rand() & 1) : (GameTime & 1))) {
+		roll = 20;
+		Potion.luck_end = 0;
+		digi_play_sample(0x8A8, F1_0);
+		dtu_char_log("attack roll: the Potion of Luck gives a natural 20");
+	}
 	result = d20_result(roll, a.to_hit_bonus, a.thac0, target_armor_class);
+	Dtu_last_attack_roll = roll;
 	if (result == 2) HUD_init_message("You made a critical hit!");
-	if (result == -1) HUD_init_message("You made a critical fumble!");
-	dtu_char_log("attack roll: d20 %d + %d against THAC0 %d and armor class %d: %d", roll, a.to_hit_bonus, a.thac0, target_armor_class, result);
+	if (result == -1) {
+		int r2 = rand() % 20 + 1;
+
+		HUD_init_message("You made a critical fumble!");
+		// 0x2A8B1: a second d20 above the dexterity: the weapon falls
+		if (r2 > Dtu_char.pa.dexterity) {
+			dtu_char_log("attack roll: fumble, d20 %d above dexterity %d: the weapon falls", r2, Dtu_char.pa.dexterity);
+			dtu_char_drop_weapon();
+		}
+	}
+	dtu_char_log("attack roll: d20 %d + %d against THAC0 %d and armor class %d: %d%s", roll, a.to_hit_bonus, a.thac0, target_armor_class, result,
+		Dtu_backstab ? " (backstab)" : "");
 	return result;
 }
 
@@ -1238,6 +1869,21 @@ int dtu_char_damage_roll(void)
 	for (i = 0; i < a.dice_n; i++)
 		if (a.dice_sides > 0)
 			sum += rand() % a.dice_sides + 1;
+	// 0x2AF5E: a backstab multiplies the dice by (thief level + 7) / 4
+	// (level from 1); weapon 45 with a hit roll of 19 or 20 adds 1d4 + 3
+	if (Dtu_backstab) {
+		int lvl = (Dtu_char.pa.class1 == DTU_CLASS_THIEF) ? Dtu_char.pa.class1_level : Dtu_char.pa.class2_level;
+		int mult = (lvl + 1 + 7) >> 2;
+
+		sum *= mult;
+		if (a.weapon_id == 45 && Dtu_last_attack_roll >= 19) {
+			sum += rand() % 4 + 3;
+			HUD_init_message("Your backstab was very successful!");
+		}
+		else
+			HUD_init_message("Your backstab was successful!");
+		dtu_char_log("damage roll: backstab, times %d", mult);
+	}
 	sum += a.damage_bonus;
 	if (sum < 0) sum = 0;
 	dtu_char_log("damage roll: %dd%d + %d: %d", a.dice_n, a.dice_sides, a.damage_bonus, sum);
@@ -1547,9 +2193,22 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "drop"))		dtu_char_drop(index);
 	else if (!strcmp(cmd, "current"))	dtu_char_set_current(index);
 	else if (!strcmp(cmd, "hotkey"))		dtu_char_select_hot_key(a);
-	else if (!strcmp(cmd, "give"))		dtu_inventory_add(a, b, 1);
+	else if (!strcmp(cmd, "give")) {
+		int c = 1;
+		sscanf(value ? value : "", "%d.%d.%d", &a, &b, &c);
+		dtu_inventory_add(a, b, c);
+	}
+	else if (!strcmp(cmd, "skill")) {		// skill=N.VALUE: a thief skill of the base values (test)
+		int *sk[5] = { &Dtu_char.base.hide_in_shadows, &Dtu_char.base.move_silently, &Dtu_char.base.open_locks,
+			&Dtu_char.base.find_traps, &Dtu_char.base.climb_walls };
+		if (a >= 0 && a < 5) *sk[a] = b;
+		dtu_char_update();
+	}
+	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);
+	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
+	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
 	else if (!strcmp(cmd, "sethot")) {
 		int c = 0;
 		sscanf(value ? value : "", "%d.%d.%d", &a, &b, &c);
@@ -1634,9 +2293,13 @@ void dtu_char_frame(void)
 		return;
 	Char_frame++;
 
+	// The hit points above the maximum of Aid and the Potion of Toughening
+	// stay while Bless lasts (its end takes them away)
 	max = i2f(Dtu_char.pa.max_hit_points);
-	if (Players[Player_num].shields > max)
+	if (Players[Player_num].shields > max && !(ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_BLESS)))
 		set_hit_points(Dtu_char.pa.max_hit_points);
+	dtu_char_potions_end(0);		// 0x396B2 from the frame 0x435A6
+	dtu_thief_frame();
 	Dtu_char.pa.hit_points = dtu_char_hit_points();
 	Dtu_char.pa.gold = Dtu_gold;
 	sync_inventory();

@@ -499,6 +499,8 @@ static char rcsid[] = "$Id: newmenu.c 2.8 1995/05/26 16:16:28 john Exp $";
 
 #include "newmenu.h"
 #include "gamefont.h"
+#include "dtufe.h"		// ASCENT: dtufe_menu_script_frame() for the test scripts
+#include "dtudisp.h"		// ASCENT: dtu_febgnd_load() and Dtu_hires for the box background
 #include "network.h"
 #include "iff.h"
 #include "pcx.h"
@@ -562,9 +564,12 @@ extern void gr_bm_bitblt(int w, int h, int dx, int dy, int sx, int sy, grs_bitma
 // processes the window events. Returns 0 if the user closed the window.
 int nm_show_frame()
 {
+	int script_ok;
+
 	gr_present();
+	script_ok = dtufe_menu_script_frame();
 	gr_sync_display();
-	return plat_pump();
+	return plat_pump() && script_ok;
 }
 
 // ASCENT: new. Replaces _dos_findfirst and _dos_findnext of Watcom C.
@@ -683,12 +688,20 @@ void nm_draw_background(int x1, int y1, int x2, int y2 )
 
 		nm_background.bm_data=NULL;		
 		pcx_error = pcx_read_bitmap("SCORES.PCX",&nm_background,BM_LINEAR,newpal);
-		// ASCENT: Descent to Undermountain has no SCORES.PCX. Without the
-		// picture, the box background is a dark flat color.
+		// ASCENT: Descent to Undermountain has no SCORES.PCX. The executable
+		// (0x633B9) loads the stone picture of febgnd.jrg: entry 0x56 (86)
+		// in high resolution, entry 0x55 (85) in low resolution. Without
+		// that picture, the box background is a dark flat color.
 		if (pcx_error == PCX_ERROR_NONE)
 			gr_remap_bitmap_good( &nm_background, newpal, -1, -1 );
-		else
+		else {
+			grs_bitmap *bm = dtu_febgnd_load( Dtu_hires ? 86 : 85, newpal );
 			nm_background.bm_data = NULL;
+			if (bm) {
+				nm_background = *bm;		// the pixel data stays allocated for the program
+				gr_remap_bitmap_good( &nm_background, newpal, -1, -1 );
+			}
+		}
 	}
 
 	if (nm_background.bm_data == NULL) {
@@ -1039,7 +1052,11 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 	if (nitems < 1 )
 		return -1;
 
-	set_screen_mode(SCREEN_MENU);
+	// ASCENT: the newmenu_do of Descent to Undermountain (0x63F41) does not
+	// call set_screen_mode. It draws in the current screen mode, which is
+	// 640x480 in the high resolution form. Descent 1 changed to 320x200 here.
+	if (!Dtu_hires)
+		set_screen_mode(SCREEN_MENU);
 
 //NO_SOUND_PAUSE	if ( Function_mode == FMODE_GAME )	{
 //NO_SOUND_PAUSE		digi_pause_all();

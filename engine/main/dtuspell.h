@@ -81,6 +81,71 @@ extern int Dtu_fix_zero_dice;
 // the target end without their end action. Corrected: only its bit is set.
 extern int Dtu_fix_stoneskin_word;
 
+// Rary's Mnemonic Enhancer (0x8F21D). The executable: one cast sets bit
+// 22 and raises the slot maximum by three spell levels (the choice box);
+// a second cast does nothing while the bit is set; the bonus stays until
+// Dispel Magic or a Potion of Anti-Magic (0x9002C with force). The
+// manual: each cast gives three more levels, the bonus is good for one
+// rest period and ends at the next rest after the one that filled it.
+// 1 (default): the rule of the manual. 0: the rule of the executable.
+extern int Dtu_fix_rary_manual;
+
+// The creature spells (0x9231F) take rand() % n with n = 0 or less for
+// some spells (Scare at caster level 4 and up, Hold Person at a distance
+// that is a multiple of 50). The executable has the saturating divide
+// handler (0xF72AB): x % 0 is 0. This is kept. No setting.
+
+//------------------------------------------------------------------------
+// Calls for the items, the creatures and the combat code
+
+// Sets an effect bit with a timer (the potions of 0x37A6A, the worn items
+// of 0xB08A8 with DTU_FX_NO_END). keep_later: a timer that ends later
+// stays (0x37A6A). message: the HUD line of the effect. Returns 1.
+int dtu_spell_set_effect(object *obj, int mask, fix duration, int keep_later, int message);
+// Ends an effect without a message (0xB0A98 with 1: a worn item is taken
+// off). The end action of 0x9002C does not run.
+void dtu_spell_clear_effect(object *obj, int mask);
+// 0x9002C with force: all effects of the object end (Dispel Magic, Potion
+// of Anti-Magic).
+void dtu_spell_dispel(object *obj);
+// 0x8CFFF(spell, target, caster) with the levels of 0x8CFFF (the player:
+// 0x91EC1, a creature: 0xAE3BB). An area spell has its area around the
+// target (0x90CEF).
+fix dtu_spell_cast_on(int spell, object *target, object *caster);
+// 0x9305D: a cast of the object stops. hit 1: by a hit (the slot is used,
+// "Your spell was interrupted!"), 0: by the jump key ("Your spell was
+// aborted."). Returns 1 if a cast stopped.
+int dtu_spell_interrupt(object *obj, int hit);
+// The AI step of a creature that casts (0x1490B: 0x92D99 chooses, 0x91FDC
+// casts). active: the creature is active (+0x1CC == 2).
+void dtu_spell_creature_frame(object *obj, fix dist, int active);
+// The condition bits of a creature (+0x15E) that make it cast (0x92D99).
+#define DTU_CSC_FIRE		0x0001		// a fire hit
+#define DTU_CSC_ALERT		0x001C		// alerted (0x160AB levels 2 to 4)
+#define DTU_CSC_MELEE_HIT	0x0080		// a melee hit (0x29D85)
+#define DTU_CSC_SPELL_HIT	0x0100		// spell damage (0x91332)
+#define DTU_CSC_WAKE		0x0200		// wakes up (0x13F09)
+#define DTU_CSC_FLINCH	0x0400		// a hit that makes it flinch
+#define DTU_CSC_EXPIRED	0x0800		// an effect ended (0x9002C)
+#define DTU_CSC_SLOWED	0x2000		// slowed in its movement
+#define DTU_CSC_MORALE	0x4000		// a failed morale test
+void dtu_spell_creature_event(object *obj, int bits);
+// The NPC table of the executable (0xA504A, 191 rows, read by 0xA7E97 at
+// the end of each $MONSTER line): THAC0, armor class, mage level and
+// points, cleric level and points by the name of the creature. Returns 1
+// and fills the six values if the name is in the table.
+int dtu_npc_row(char *name, int v[6]);
+// The mage slots of the Ring of Wizardry (armor 27, 0xB00A5): levels 1 to
+// 3 are doubled. n is the number of doublings (dtuchar.c).
+void dtu_spell_set_wizardry(int n);
+// 1 if the spell has type=AREA (Spell_info+0x36 bit 0).
+int dtu_spell_is_area(int spell);
+// 0x8CAD3: the cast vclip of a spell on an object (the potions use it).
+void dtu_spell_cast_vclip(int spell, object *obj);
+// 0x92FF2 ("randomizing spell table"): a rest shuffles the creature spell
+// table.
+void dtu_spell_rest_shuffle(void);
+
 //------------------------------------------------------------------------
 // The spell in the hand. The executable keeps it as the current item
 // reference (P+0x1AD7, list 1 for a mage spell and 2 for a cleric spell).

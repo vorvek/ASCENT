@@ -1301,6 +1301,7 @@ set_thrust_from_velocity(object *obj)
 #include "player.h"
 #include "controls.h"
 #include "kconfig.h"
+#include "dtuthief.h"		// ASCENT: the climb and the slow sneak of the thief
 
 // The setting for the movement: 1 is the person of the target game, 0 is
 // the ship of Descent 1 (option -fly).
@@ -1822,7 +1823,16 @@ int dtu_player_physics_sim(object *obj)
 
 	dtu_physics_sim_rot(obj);
 
-	vm_vec_copy_scale(&accel,&pi->thrust,fixdiv(F1_0,pi->mass));
+	// pcons.c 0x9EBEB(obj, 10.0): the climb (dtuthief.c). It changes the
+	// thrust and adds a push away from the wall.
+	{
+		vms_vector climb_accel = { 0, 0, 0 };
+
+		if (Dtu_player_state & DTU_PS_CLIMBING)
+			dtu_thief_climb_frame(obj,&climb_accel);
+		vm_vec_copy_scale(&accel,&pi->thrust,fixdiv(F1_0,pi->mass));
+		vm_vec_add2(&accel,&climb_accel);
+	}
 
 	if (!(obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))) {
 		if (!(obj->dtu.m_88 & DTU_OF_1000)) {
@@ -1830,8 +1840,12 @@ int dtu_player_physics_sim(object *obj)
 				accel.x >>= 1;
 				accel.z >>= 1;
 			}
-			// The executable also divides by 3 when the player structure
-			// has one of the bits 0x1C at 0x1D33BC. Not in the port.
+			// 0x9DDE3: one third while the player sneaks or searches (the
+			// bits 0x1C of P+0xA0, dtuthief.c)
+			if (Dtu_thief_bits & (DTU_TS_SILENT|DTU_TS_SILENT_FAILED|DTU_TS_SEARCHING)) {
+				accel.x /= 3;
+				accel.z /= 3;
+			}
 		}
 		if (obj->dtu.m_88 & DTU_OF_FAST) {
 			accel.x *= 2;

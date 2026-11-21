@@ -352,6 +352,8 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtufoot.h"		// ASCENT: the footstep sounds
 #include "dtudisp.h"		// ASCENT: the interface of the target game
+#include "dtuscript.h"	// ASCENT: the scripts and the conversation window
+#include "dtudlg.h"
 #include "endlevel.h"
 #include "joydefs.h"
 #include "kconfig.h"
@@ -1919,6 +1921,7 @@ void game_render_frame_mono(void)
 		dtu_display_end_render();
 		game_draw_hud_stuff();
 		dtu_display_frame();
+		dtu_dlg_draw();			// ASCENT: the conversation window (dtudlg.c)
 		return;
 	}
 
@@ -3568,6 +3571,10 @@ void ReadControls()
 
 				//--killed--case KEY_SHIFTED+KEY_A:	toggle_afterburner_status();	break;
 				case KEY_ESC:
+					// ASCENT: the ESC menu of the target game (0x4225A,
+					// dtufe.c) when the front end runs the game
+					if (dtufe_escape_key())
+						break;
 					Game_aborted=1;
 					Function_mode = FMODE_MENU;
 					break;
@@ -4089,7 +4096,9 @@ mem_check();
 		if (Newdemo_state != ND_STATE_PLAYBACK)
 			do_controlcen_dead_frame();
 
-		if (ReadControlsFlag)
+		// ASCENT: while a script waits (a conversation, dtuscript.c) the
+		// keys go to the conversation window
+		if (ReadControlsFlag && !dtu_script_waiting())
 			ReadControls();
 		else
 			memset(&Controls, 0, sizeof(Controls));
@@ -4098,6 +4107,11 @@ mem_check();
 
 		digi_sync_sounds();
 		dtumusic_frame();		// ASCENT: the streamed music (0xA4F83)
+
+		// ASCENT: a waiting script stops the world, as the reduced frames
+		// of the executable do (0x4391D, docs/re/scripts.md)
+		if (dtu_script_frame())
+			return;
 
 		if (Endlevel_sequence) {
 			do_endlevel_frame();

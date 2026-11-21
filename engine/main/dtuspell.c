@@ -46,6 +46,20 @@ void make_random_vector(vms_vector *vec);		// ai.c
 
 int Dtu_fix_zero_dice = 1;
 int Dtu_fix_stoneskin_word = 1;
+int Dtu_fix_rary_manual = 1;
+
+// Rary's Mnemonic Enhancer: the extra mage slots of spell levels 1 to 3
+// (P+0x23 to P+0x25 of the executable). Rary_rest: the number of rests
+// since the last cast (the rule of the manual).
+static int Rary_bonus[3];
+static int Rary_rest = 0;
+static int Wizardry_n = 0;			// doublings of the Ring of Wizardry
+
+static int rand_mod(int n);
+static int creature_cleric_level(object *obj);
+static int creature_rf_name(object *obj);
+static int creature_interrupt(object *obj,int hit);
+static void rary_apply(int choice);
 
 int Dtu_spell_current = -1;
 int Dtu_spell_book_n[2];
@@ -95,6 +109,15 @@ static fix spell_fix(int spell,char *key,fix def)
 	if (!spell_ok(spell) || !bm_tbl_get(Spell_info[spell].record,key,v,sizeof(v)))
 		return def;
 	return fl2f(atof(v));
+}
+
+static int dtu_tbl_int(int record,char *key,int def)
+{
+	char v[32];
+
+	if (record < 0 || !bm_tbl_get(record,key,v,sizeof(v)))
+		return def;
+	return atoi(v);
 }
 
 static int spell_flag(int spell,char *flag)
@@ -260,6 +283,14 @@ void dtu_spell_compute_slots(void)
 				Dtu_spell_slots_max[1][i] += wisdom_bonus(i+1,Dtu_char.pa.wisdom);
 		}
 	}
+	// The Ring of Wizardry doubles P+0x23 to P+0x25 (0xB00A5), Rary's
+	// Mnemonic Enhancer adds to them (0x8F2CC)
+	for (i=0;i<3;i++) {
+		int n = Wizardry_n;
+		while (n-- > 0 && Dtu_spell_slots_max[0][i] < 127)
+			Dtu_spell_slots_max[0][i] *= 2;
+		Dtu_spell_slots_max[0][i] += Rary_bonus[i];
+	}
 	for (i=0;i<9;i++) {
 		if (Dtu_spell_slots_left[0][i] > Dtu_spell_slots_max[0][i]) Dtu_spell_slots_left[0][i] = Dtu_spell_slots_max[0][i];
 		if (Dtu_spell_slots_left[1][i] > Dtu_spell_slots_max[1][i]) Dtu_spell_slots_left[1][i] = Dtu_spell_slots_max[1][i];
@@ -268,6 +299,19 @@ void dtu_spell_compute_slots(void)
 
 void dtu_spell_restore_slots(void)
 {
+	// The rule of the manual for Rary's Mnemonic Enhancer: the first rest
+	// after the cast fills the bonus slots, the next rest ends the bonus.
+	// The executable keeps the bonus (bit 22 ends only with force).
+	if (Dtu_fix_rary_manual && ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_MNEMONIC)) {
+		if (++Rary_rest >= 2) {
+			dtu_spell_log("spell: the rest ends Rary's Mnemonic Enhancer (Dtu_fix_rary_manual)");
+			dtu_spell_clear_effect(ConsoleObject,DTU_FX_MNEMONIC);
+			HUD_init_message("Rary's Mnemonic Enhancer expired.");
+			memset(Rary_bonus,0,sizeof(Rary_bonus));
+			Rary_rest = 0;
+			dtu_spell_compute_slots();
+		}
+	}
 	memcpy(Dtu_spell_slots_left,Dtu_spell_slots_max,sizeof(Dtu_spell_slots_left));
 	dtu_spell_log("spell: the slots are full again (mage %d %d %d, cleric %d %d %d)",
 		Dtu_spell_slots_left[0][0],Dtu_spell_slots_left[0][1],Dtu_spell_slots_left[0][2],
@@ -426,7 +470,20 @@ static void fx_end(object *obj,int b)
 		case 26:	// Sleep also ends the blindness
 			obj->dtu.m_88 &= ~DTU_FX_BLIND;
 			break;
+		case 22:	// Rary's Mnemonic Enhancer: the extra slots go (0x90886)
+			if (obj->type == OBJ_PLAYER) {
+				memset(Rary_bonus,0,sizeof(Rary_bonus));
+				Rary_rest = 0;
+				dtu_spell_compute_slots();
+			}
+			break;
+		case 30:	// Strength: the gains go (0x90BE4)
+			if (obj->type == OBJ_PLAYER)
+				dtu_char_strength_end();
+			break;
 	}
+	if (obj->type == OBJ_ROBOT)
+		dtu_spell_creature_event(obj,DTU_CSC_EXPIRED);		// 0x9002C sets +0x15F bit 3
 	if (obj->type == OBJ_PLAYER) {
 		HUD_init_message("%s expired.",Fx_name[b]);
 		dtu_char_update();
@@ -489,7 +546,7 @@ int dtu_spell_save(object *obj,int cat)
 {
 	int need = 20, roll = rand() % 20 + 1, level;
 
-	if (cat < 0 || cat > 4)
+	if ((cat < 0 || cat > 4) && obj->type != OBJ_DRESSING)
 		cat = 4;
 	if (obj->type == OBJ_PLAYER) {
 		dtu_player_attr *pa = &Dtu_char.pa;
@@ -504,10 +561,21 @@ int dtu_spell_save(object *obj,int cat)
 	}
 	else if (obj->type == OBJ_ROBOT) {
 		level = creature_level(obj);
-		need = save_number(monster_int(obj,"cleric_level",0) > 0 ? DTU_CLASS_CLERIC : DTU_CLASS_FIGHTER,level,cat);
+		need = save_number(creature_cleric_level(obj) > 0 ? DTU_CLASS_CLERIC : DTU_CLASS_FIGHTER,level,cat);
 		if (monster_has(obj,"magic_resistant"))
 			need -= (level > 12 ? 12 : level) / 3;
 	}
+	else if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types) {
+		// The tables 0x1456E6, 0x1456E8, 0x1456EA by explode_sound, byte
+		// [category - 5]; a magic object needs half
+		static const ubyte t2702[2] = { 3, 2 }, t2218[2] = { 3, 14 }, tother[2] = { 7, 9 };
+		int s = Dressing_info[obj->id].explode_sound, c = (cat >= 5 && cat <= 6) ? cat - 5 : 0;
+		need = (s == 2702) ? t2702[c] : (s == 2218) ? t2218[c] : tother[c];
+		if (Dressing_info[obj->id].flags & DRESSING_F_MAGIC)
+			need /= 2;
+	}
+	else
+		need = 10;		// the default of 0xAE596 for other types (a missile, a light)
 	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,roll >= need ? "saved" : "failed");
 	return roll >= need;
 }
@@ -575,6 +643,10 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 		dmg = 0;		// 0x9178B
 	if (dmg > 0 && dtu_spell_save(target,DTU_SAVE_SPELL))
 		dmg /= 2;
+	else if (dmg > 0)
+		dtu_spell_interrupt(target,1);		// 0x913A7, 0x917D5
+	if (target->type == OBJ_ROBOT)
+		dtu_spell_creature_event(target,DTU_CSC_SPELL_HIT);		// 0x91332
 	if (target->dtu.m_88 & DTU_FX_ARMOR)
 		target->dtu.m_8c[1] -= i2f(dmg);		// the Armor pool (0x913AF)
 
@@ -641,7 +713,156 @@ static int rnd(int n)
 // before a slot or an item is used.
 static int spell_not_in_port(int spell)
 {
-	return spell == 0 || spell == 41;
+	(void) spell;
+	return 0;
+}
+
+// Robot_info+0xD9 bit 3 (0x1F448): the name of the creature starts with
+// "rf", "rm", "av" or "dro" (the human and drow fighters and casters).
+static int creature_rf_name(object *obj)
+{
+	char *n;
+
+	if (!obj || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	n = Monster_info[obj->id].name;
+	return !strnicmp(n,"rf",2) || !strnicmp(n,"rm",2) || !strnicmp(n,"av",2) || !strnicmp(n,"dro",3);
+}
+
+//------------------------------------------------------------------------
+// The NPC table (0xA504A): name, THAC0, armor class, mage level, mage
+// points, cleric level, cleric points. Only the rows with spells; the
+// THAC0 and the armor class of the rows are applied in dtuobj.c through
+// dtu_npc_row() as well.
+
+static const struct { char *name; signed char v[6]; } Npc_table[] = {
+#include "dtunpc.h"
+};
+
+int dtu_npc_row(char *name, int v[6])
+{
+	int i, j;
+
+	for (i=0;i<(int)(sizeof(Npc_table)/sizeof(Npc_table[0]));i++)
+		if (!stricmp(Npc_table[i].name,name)) {
+			for (j=0;j<6;j++)
+				v[j] = (j >= 2) ? (ubyte) Npc_table[i].v[j] : Npc_table[i].v[j];
+			return 1;
+		}
+	return 0;
+}
+
+// The mage level (Robot_info+0xE2) and the cleric level (+0xE3) of a
+// creature: the NPC table, else spell_level= of the line (the cleric
+// level only with cleric_points=).
+static int creature_mage_level(object *obj)
+{
+	int v[6];
+
+	if (!obj || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	if (dtu_npc_row(Monster_info[obj->id].name,v))
+		return v[2];
+	return monster_int(obj,"spell_level",0);
+}
+
+static int creature_cleric_level(object *obj)
+{
+	int v[6];
+
+	if (!obj || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	if (dtu_npc_row(Monster_info[obj->id].name,v))
+		return v[4];
+	return monster_int(obj,"cleric_points",0) ? monster_int(obj,"spell_level",0) : 0;
+}
+
+static int creature_points(object *obj,int cleric)
+{
+	int v[6];
+
+	if (!obj || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	if (dtu_npc_row(Monster_info[obj->id].name,v))
+		return v[cleric ? 5 : 3];
+	return monster_int(obj,cleric ? "cleric_points" : "spell_points",0);
+}
+
+//------------------------------------------------------------------------
+// A spell on an object that is not the player or a creature: scenery
+// (0x2641C casts the spell of a missile on the scenery that it hits), a
+// missile, an item, a light (the cases 0x8E0B5, 0x8EE76, 0x8F021 and the
+// damage 0x911AA)
+
+static fix object_spell(int spell,object *t,object *caster,int L)
+{
+	int unbreakable;
+
+	switch (t->type) {
+		case OBJ_DRESSING:
+			if (t->id >= N_dressing_types)
+				return 0;
+			unbreakable = dtu_dressing_unbreakable(t);
+			switch (spell) {
+				case 13: case 55:		// Dispel Magic: a magic object, save 5
+					if ((Dressing_info[t->id].flags & DRESSING_F_MAGIC) && !dtu_spell_save(t,5))
+						dtu_break_dressing(t,caster,0);
+					break;
+				case 16: case 17: case 37:	// Fireball, Flaming Sphere, Meteors: save 5
+					if (!unbreakable && !dtu_spell_save(t,5))
+						dtu_break_dressing(t,caster,0);
+					break;
+				case 32:		// Lightning Bolt: save 6
+					if (!unbreakable && !dtu_spell_save(t,6))
+						dtu_break_dressing(t,caster,0);
+					break;
+				case 4: case 33: case 34: case 36: {
+					// 0x911AA (0x91277): shields -= damage_percent * size;
+					// below 1.0 the object explodes if it has an explode_sound
+					fix d = fixmul(fl2f(spell_int(spell,"damage_percent",10) * 0.01),Dressing_info[t->id].size);
+					t->shields -= d;
+					dtu_spell_log("spell: '%s' on scenery obj %d %s: %.2f damage, %.2f left",spell_name(spell),(int)(t-Objects),
+						dtu_object_name(t),f2fl(d),f2fl(t->shields));
+					if (t->shields < F1_0 && Dressing_info[t->id].explode_sound != -1)
+						dtu_break_dressing(t,caster,1);
+					break;
+				}
+			}
+			return 0;
+		case OBJ_WEAPON:
+			// Dispel Magic: a missile of another spell, save 4 (10 for this
+			// type) or it goes
+			if ((spell == 13 || spell == 55)) {
+				int s = dtu_missile_spell(t);
+				if (s >= 0 && s != spell && !dtu_spell_save(t,4)) {
+					dtu_spell_log("spell: Dispel Magic ends the missile obj %d of '%s'",(int)(t-Objects),spell_name(s));
+					t->flags |= OF_SHOULD_BE_DEAD;
+				}
+			}
+			return 0;
+		case OBJ_MISC:
+			// Dispel Magic: a potion that is not a plot item
+			if ((spell == 13 || spell == 55) && t->id < N_misc_types && strstr(Misc_info[t->id].name,"otion") &&
+				 !dtu_tbl_int(Misc_info[t->id].record,"plot_item",0)) {
+				int need = 23 - L, roll = rand() % 20 + 1;
+				if (need < 2) need = 2;
+				if (need > 20) need = 20;
+				dtu_spell_log("spell: Dispel Magic on the potion obj %d: d20 %d against %d",(int)(t-Objects),roll,need);
+				if (roll >= need) {
+					sound_at(2702,t->segnum,&t->pos,F1_0/2);
+					t->flags |= OF_SHOULD_BE_DEAD;
+				}
+			}
+			return 0;
+		case OBJ_LIGHT:
+			// Dispel Magic: a light of a light spell (+0x144 bit 0), save 4
+			if ((spell == 13 || spell == 55) && !dtu_spell_save(t,4)) {
+				dtu_spell_log("spell: Dispel Magic ends the light obj %d",(int)(t-Objects));
+				t->flags |= OF_SHOULD_BE_DEAD;
+			}
+			return 0;
+	}
+	return 0;
 }
 
 //------------------------------------------------------------------------
@@ -657,7 +878,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 	if (target->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED))
 		return 0;
 	if (target->type != OBJ_PLAYER && target->type != OBJ_ROBOT)
-		return 0;
+		return object_spell(spell,target,caster,L < 1 ? 1 : L);
 	if (target->type == OBJ_ROBOT && (target->shields < F1_0 || DTU_ANIM_STATE(target) == DAS_DIE))
 		return 0;
 	if (target->type == OBJ_PLAYER && (Player_is_dead || Dtu_player_dead))
@@ -738,8 +959,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 54:		// Detect Magic (cleric): 10 rounds
 			fx_set(target,DTU_FX_DETECT_MAGIC,i2f(600));
 			break;
-		case 13: case 55:	// Dispel Magic: all effects of the target end
+		case 13: case 55:	// Dispel Magic: all effects of the target end, no save
 			fx_expire(target,1);
+			if (target->type == OBJ_PLAYER)
+				dtu_char_potions_end(1);		// 0x396B2(1)
 			break;
 		case 14:		// Fear: L rounds
 		case 44:		// Scare: 1d4 + L rounds, targets of level 6 or less
@@ -747,13 +970,87 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				break;
 			if (spell == 44 && (T > 6 || (mf & MONSTER_F_EXTRAPLANAR)))
 				break;
-			if ((spell == 14 || target->type == OBJ_PLAYER) && dtu_spell_save(target,DTU_SAVE_SPELL))
+			// 0x8F467: Scare has a save only for an elf, a half-elf or a
+			// cleric player, and for a creature with +0xD9 bit 3 or a cleric
+			// level
+			if (spell == 44 && target->type == OBJ_PLAYER &&
+				 !(Dtu_char.pa.race == DTU_RACE_ELF || (Dtu_char.pa.flags & DTU_PF_HALF_ELF) || char_is(DTU_CLASS_CLERIC)))
+				;
+			else if (spell == 44 && target->type == OBJ_ROBOT && !creature_cleric_level(target) && !creature_rf_name(target))
+				;
+			else if (dtu_spell_save(target,DTU_SAVE_SPELL))
 				break;
 			{
 				fix d = wisdom_cut(target,(spell == 14 ? L : rnd(4) + L)*MINUTE);
+				int drop = (spell == 14) ? (rand() % 100 + 1 <= 65 - 5*T) : (rand() % 2 != 0);
+
 				fx_set(target,DTU_FX_FEAR,d);
+				// The weapon falls: the player 0xAE837, a creature 0x3C4BD
+				if (drop) {
+					if (target->type == OBJ_PLAYER)
+						dtu_char_drop_weapon();
+					else
+						dtu_creature_drop_contents(target);
+				}
+				// The player: Hold for the same time. The executable also
+				// moves the view into a gated creature that flees (0x13407,
+				// 0x13D628); not in the port.
 				if (target->type == OBJ_PLAYER)
 					fx_set(target,DTU_FX_HOLD,d);
+			}
+			break;
+		case 0:		// Abjure (0x8D297)
+			if (caster && caster->type == OBJ_ROBOT && !self) {
+				// a creature caster: the damage of the line with the level 1
+				// (the message "Cause Serious Wounds", 0x91987)
+				dealt = spell_damage(spell,target,caster,1,GROUP_NONE,0,0);
+				break;
+			}
+			{
+				int need = 11 - L + T, roll = rand() % 20 + 1;
+
+				if (need < 1) need = 1;
+				if (need > 20) need = 20;
+				if (target->type != OBJ_ROBOT || !(mf & MONSTER_F_EXTRAPLANAR) || roll < need) {
+					dtu_spell_log("spell: Abjure on obj %d %s: extraplanar %d, d20 %d against %d: not affected",
+						(int)(target-Objects),target_name(target),(mf & MONSTER_F_EXTRAPLANAR) != 0,roll,need);
+					if (caster && caster->type == OBJ_PLAYER)
+						HUD_init_message("%s was not affected by abjure.",dtu_object_name(target));
+					return 0;		// 0x8D56D: no common end
+				}
+				// The creature stops and turns slowly (movement type 3)
+				vm_vec_zero(&target->mtype.phys_info.velocity);
+				roll = rand() % 100 + 1;
+				dtu_spell_log("spell: Abjure on obj %d %s (level %d): d20 made, d100 %d against %d: %s",(int)(target-Objects),
+					target_name(target),T,roll,2*T + 70,roll >= 2*T + 70 ? "dies" : "sent away");
+				if (roll >= 2*T + 70) {
+					// 0x29A9C(target, no attacker, all its hit points)
+					dealt = dtu_damage_creature_direct(target,NULL,target->shields);
+				}
+				else {
+					// the hit sound of the creature (Robot_info+0x9A), then
+					// 0xA9F58: the creature leaves the level
+					if (target->id < N_robot_types)
+						sound_at(Monster_info[target->id].hit_sound,target->segnum,&target->pos,F1_0/2);
+					dtu_creature_vanish(target);
+				}
+			}
+			break;
+		case 41:		// Rary's Mnemonic Enhancer (0x8F21D)
+			if ((target->dtu.m_88 & DTU_FX_MNEMONIC) && !Dtu_fix_rary_manual) {
+				dtu_spell_log("spell: Rary's Mnemonic Enhancer is on already: no effect (0x8F226)");
+				return 0;
+			}
+			target->dtu.m_88 |= DTU_FX_MNEMONIC;
+			if (target->type == OBJ_PLAYER) {
+				HUD_init_message("You have Rary's Mnemonic Enhancer for 1 day.");
+				Rary_rest = 0;
+				{
+					// 0x655FE: the box returns the index of the choice. Escape
+					// (-1) falls to the last case of 0x8F2E8: one 3rd.
+					int c = dtu_char_choice("Which additional spell levels\nwould you like to cast?",3,"Three 1st","One 1st and one 2nd","One 3rd");
+					rary_apply(c < 0 ? 2 : c);
+				}
 			}
 			break;
 		case 15:		// Feather Fall: L rounds
@@ -902,7 +1199,13 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (target->type == OBJ_PLAYER)
 				HUD_init_message("Stoneskin for %d attacks.",target->dtu.m_80);
 			break;
-		case 50:		// Strength: L hours. The gain of strength is not in the port.
+		case 50:		// Strength: L hours (0x8FCFA). The player gains strength.
+			if (target->dtu.m_88 & DTU_FX_STRENGTH)
+				break;
+			if (target->type == OBJ_PLAYER) {
+				int gain = char_is(DTU_CLASS_FIGHTER) ? rnd(8) : (char_is(DTU_CLASS_THIEF) || char_is(DTU_CLASS_CLERIC)) ? rnd(6) : rnd(4);
+				dtu_char_strength_gain(gain,char_is(DTU_CLASS_FIGHTER));
+			}
 			fx_set(target,DTU_FX_STRENGTH,L*3600*F1_0);
 			break;
 		case 51:		// "Burning Hands" (cold): the code is Find Traps, 30 rounds
@@ -1056,11 +1359,9 @@ static void tracked_frame(void)
 			continue;
 		obj = &Objects[Tracked[i].objnum];
 		if (obj->signature != Tracked[i].signature || obj->type != OBJ_WEAPON || (obj->flags & OF_SHOULD_BE_DEAD)) {
-			// The missile is gone: it hit a wall or its time ended. An area
-			// spell has its effect at the last point (0x90CEF from the wall
-			// hit of the missile).
-			if (spell_area(Tracked[i].spell) && !Tracked[i].area_done)
-				dtu_spell_area(Tracked[i].spell,&Tracked[i].last_pos,Tracked[i].last_seg,ConsoleObject,Tracked[i].level);
+			// The missile is gone. The area of an area spell comes from the
+			// wall hit (0x26C2F calls 0x90CEF at 0x26D63, dtuobj.c) or from
+			// the object hit; a missile whose time ends has no area.
 			Tracked[i].signature = 0;
 			continue;
 		}
@@ -1099,17 +1400,13 @@ fix dtu_spell_hit(int spell, object *target, object *caster, int level)
 {
 	if (!spell_ok(spell) || target == NULL)
 		return 0;
+	// 0x8CFFF computes the caster level itself (0x3A6540): the player
+	// 0x91EC1, a creature 0xAE3BB (max hit points / 8)
+	if (caster && (caster->type == OBJ_PLAYER || caster->type == OBJ_ROBOT))
+		level = object_level(caster,spell);
 	if (spell_area(spell)) {
-		int i;
 		fix hp = (target->type == OBJ_ROBOT) ? target->shields : 0;
 
-		// The missile that hit is done (the missile code removes it)
-		for (i=0;i<MAX_TRACKED;i++)
-			if (Tracked[i].signature && Tracked[i].spell == spell &&
-				 vm_vec_dist_quick(&Tracked[i].last_pos,&target->pos) < i2f(40)) {
-				Tracked[i].area_done = 1;
-				break;
-			}
 		dtu_spell_area(spell,&target->pos,target->segnum,caster,level);
 		return (target->type == OBJ_ROBOT && hp > target->shields) ? hp - target->shields : 0;
 	}
@@ -1262,6 +1559,10 @@ static void cast_now(int spell,int source)
 		if (objnum < 0)
 			break;
 		vm_vec_copy_scale(&Objects[objnum].mtype.phys_info.velocity,&d,speed);
+		// 0x56FF6: the life of the missile (W+0xA8): 30.0, Lightning Bolt
+		// 2.0, Melf's Acid Arrow (L/3 + 1) rounds. The duration and the
+		// range of the line are not used.
+		dtu_missile_set_life(objnum,(spell == 32) ? i2f(2) : (spell == 36) ? (L/3 + 1)*MINUTE : i2f(30));
 		track_missile(objnum,spell,L,target);
 		dtu_spell_log("spell: missile obj %d of '%s', speed %.0f, target %d",objnum,spell_name(spell),f2fl(speed),target);
 	}
@@ -1378,6 +1679,498 @@ int dtu_spell_to_hit_bonus(object *attacker)
 }
 
 //------------------------------------------------------------------------
+// Calls for the items and the combat code
+
+static int rand_mod(int n)
+{
+	// The saturating divide handler of the executable (0xF72AB): x % 0 is 0
+	return n == 0 ? 0 : rand() % n;
+}
+
+int dtu_spell_set_effect(object *obj,int mask,fix duration,int keep_later,int message)
+{
+	int b = fx_bit(mask);
+	fix end = (duration >= DTU_FX_NO_END) ? DTU_FX_NO_END : GameTime + duration;
+
+	if (obj == NULL)
+		return 0;
+	if (Fx_timer[b]) {
+		fix *t = timer_ref(obj,Fx_timer[b]);
+		if (!(keep_later && (obj->dtu.m_88 & mask) && (*t == DTU_FX_NO_END || *t > end)))
+			*t = end;
+	}
+	obj->dtu.m_88 |= mask;
+	if (message && obj->type == OBJ_PLAYER) {
+		if (duration >= DTU_FX_NO_END)
+			HUD_init_message("%s.",Fx_name[b]);
+		else if (duration >= MINUTE)
+			HUD_init_message("%s for %d minutes.",Fx_name[b],timer_ms(duration) / 60);
+		else
+			HUD_init_message("%s for %d seconds.",Fx_name[b],timer_ms(duration));
+	}
+	dtu_spell_log("spell: effect %s set on obj %d %s for %.1f seconds%s",Fx_name[b],(int)(obj-Objects),target_name(obj),
+		duration >= DTU_FX_NO_END ? -1.0 : f2fl(duration),keep_later ? " (the later end stays)" : "");
+	return 1;
+}
+
+void dtu_spell_clear_effect(object *obj,int mask)
+{
+	int b = fx_bit(mask);
+
+	if (obj == NULL || !(obj->dtu.m_88 & mask))
+		return;
+	if (Fx_timer[b])
+		*timer_ref(obj,Fx_timer[b]) = 0;
+	obj->dtu.m_88 &= ~mask;
+	dtu_spell_log("spell: effect %s of obj %d %s taken away",Fx_name[b],(int)(obj-Objects),target_name(obj));
+}
+
+void dtu_spell_dispel(object *obj)
+{
+	if (obj)
+		fx_expire(obj,1);
+}
+
+fix dtu_spell_cast_on(int spell,object *target,object *caster)
+{
+	int L = object_level(caster,spell);
+
+	if (!spell_ok(spell) || target == NULL)
+		return 0;
+	if (spell_area(spell))
+		return dtu_spell_area(spell,&target->pos,target->segnum,caster,L);
+	return apply_spell(spell,target,caster,L);
+}
+
+// 0x9305D
+int dtu_spell_interrupt(object *obj,int hit)
+{
+	if (obj == NULL)
+		return 0;
+	if (obj->type == OBJ_PLAYER) {
+		if (Cast_timer == DTU_FX_NO_END || Cast_timer <= GameTime || Cast_spell < 0)
+			return 0;
+		Cast_timer = DTU_FX_NO_END;
+		dtu_spell_log("spell: the cast of '%s' stops (%s) at %.3f",spell_name(Cast_spell),hit ? "a hit" : "the jump key",f2fl(GameTime));
+		if (hit) {
+			use_slot(Cast_spell);		// 0xB7084
+			HUD_init_message("Your spell was interrupted!");
+		}
+		else
+			HUD_init_message("Your spell was aborted.");
+		Cast_spell = -1;
+		return 1;
+	}
+	if (obj->type == OBJ_ROBOT)
+		return creature_interrupt(obj,hit);
+	return 0;
+}
+
+// 0x8F2C6: 0 "Three 1st", 1 "One 1st and one 2nd", 2 "One 3rd". Only the
+// maximum is raised: the next rest fills the slots.
+static void rary_apply(int c)
+{
+	if (c == 0) Rary_bonus[0] += 3;
+	else if (c == 1) { Rary_bonus[0]++; Rary_bonus[1]++; }
+	else Rary_bonus[2]++;
+	dtu_spell_compute_slots();
+	dtu_spell_log("spell: Rary's Mnemonic Enhancer, choice %d: extra mage slots %d %d %d, maximum %d %d %d, left %d %d %d",c,
+		Rary_bonus[0],Rary_bonus[1],Rary_bonus[2],Dtu_spell_slots_max[0][0],Dtu_spell_slots_max[0][1],Dtu_spell_slots_max[0][2],
+		Dtu_spell_slots_left[0][0],Dtu_spell_slots_left[0][1],Dtu_spell_slots_left[0][2]);
+}
+
+void dtu_spell_set_wizardry(int n)
+{
+	if (n == Wizardry_n)
+		return;
+	Wizardry_n = n;
+	dtu_spell_compute_slots();
+	dtu_spell_log("spell: Ring of Wizardry: %d doublings, mage maximum %d %d %d",n,
+		Dtu_spell_slots_max[0][0],Dtu_spell_slots_max[0][1],Dtu_spell_slots_max[0][2]);
+}
+
+//------------------------------------------------------------------------
+// The spells of the creatures (0x1490B, 0x92D99, 0x9231F, 0x91FDC)
+
+// 0x142084: 44 entries of 9 bytes: the spell, the condition bits of
+// +0x15E that it answers, the effect bits of the creature that stop it,
+// the Robot_info+0x98 flags that stop it. 0x92FF2 shuffles it at a rest.
+typedef struct { ubyte spell; ushort cond; uint effects; ushort flags; } cspell_entry;
+
+static cspell_entry Cspell_table[44] = {
+	{1,0xE00,0x2,0x0}, {2,0xA20,0x1,0x0}, {3,0xB20,0x2,0x0}, {4,0x7DC,0x4,0x0},
+	{5,0x798,0x8,0x0}, {6,0x7DC,0x4,0x0}, {7,0x7DC,0x0,0x0}, {9,0x7DC,0x0,0x300},
+	{8,0x7DC,0x0,0x300}, {10,0xD580,0x0,0x0}, {11,0xD580,0x0,0x0}, {13,0x120,0x0,0x0},
+	{55,0x120,0x0,0x0}, {14,0xEFFF,0x0,0x0}, {15,0x1800,0x80,0x20}, {16,0x8344,0x4,0x0},
+	{17,0x8344,0x4,0x0}, {18,0x1C5,0x400,0x18}, {19,0x5A20,0x800,0x20}, {20,0x6900,0x1000,0x0},
+	{21,0x6900,0x2000,0x0}, {22,0xEFFF,0x0,0x0}, {52,0xEFFF,0x0,0x0}, {24,0xCA20,0x30000,0x0},
+	{26,0xCA20,0x30000,0x0}, {29,0x1020,0x200000,0x20}, {30,0x7DC,0x0,0x300}, {31,0x7DC,0x0,0x300},
+	{32,0x8FFF,0x0,0x0}, {33,0xAFFF,0x0,0x0}, {34,0xAFFF,0x4,0x0}, {35,0xA20,0x80000000,0x0},
+	{36,0xAFFF,0x0,0x0}, {37,0xAFFF,0x4,0x0}, {38,0xB20,0x2,0x0}, {40,0x1C5,0x200,0x18},
+	{42,0xFFFF,0x0,0x1}, {43,0x1C5,0x400,0x18}, {44,0xEFFF,0x0,0x0}, {45,0xB64,0x2000000,0x0},
+	{46,0xEFFF,0x0,0x0}, {47,0xEFFF,0x0,0x0}, {49,0xFFFF,0x20000000,0x0}, {50,0xEFFF,0x40000000,0x0}
+};
+static int Cspell_next = 0;		// 0x142210
+
+// The Robot_info+0x98 flag bits of the executable for the table masks
+static int robot98_flags(object *obj)
+{
+	int mf = monster_flags(obj), r = 0;
+
+	if (mf & MONSTER_F_BLIND) r |= 0x1;
+	if (mf & MONSTER_F_ELECTRICITY_IMMUNE) r |= 0x2;
+	if (mf & MONSTER_F_EXTRAPLANAR) r |= 0x4;
+	if (mf & MONSTER_F_FIRE_IMMUNE) r |= 0x8;
+	if (monster_has(obj,"fire_resistant")) r |= 0x10;
+	if (mf & MONSTER_F_FLYING) r |= 0x20;
+	if (mf & MONSTER_F_HUMANOID) r |= 0x40;
+	if (mf & MONSTER_F_LIGHT_SENSITIVE) r |= 0x100;
+	if (monster_has(obj,"light_sensitive_2")) r |= 0x200;
+	return r;
+}
+
+// The spell state of a creature: +0x19E, +0x19F (mage and cleric points),
+// +0x1A8 (the time of the new points), +0x1C0 (the time of the cast),
+// ailp+0x2C (the chosen entry), +0x15E (the condition bits).
+static struct {
+	int		signature;
+	int		points[2];
+	fix		recharge_time, cast_time;
+	int		chosen;
+	int		cond;
+} Cspell[MAX_OBJECTS];
+
+static int cspell_state(object *obj)
+{
+	int n = obj-Objects;
+
+	if (Cspell[n].signature != obj->signature) {
+		Cspell[n].signature = obj->signature;
+		// 0x1038B step 11: the points of the monster table
+		Cspell[n].points[0] = creature_points(obj,0);
+		Cspell[n].points[1] = creature_points(obj,1);
+		Cspell[n].recharge_time = 0;
+		Cspell[n].cast_time = 0;
+		Cspell[n].chosen = -1;
+		Cspell[n].cond = 0;
+	}
+	return n;
+}
+
+void dtu_spell_creature_event(object *obj,int bits)
+{
+	if (obj == NULL || obj->type != OBJ_ROBOT)
+		return;
+	Cspell[cspell_state(obj)].cond |= bits;
+}
+
+// 0x9305D for a creature: the cast that waits is lost
+static int creature_interrupt(object *obj,int hit)
+{
+	int n = cspell_state(obj), e = Cspell[n].chosen;
+
+	if (Cspell[n].cast_time <= GameTime || e < 0)
+		return 0;
+	if (hit) {
+		int s = Cspell_table[e].spell, b = spell_flag(s,"mage_use") ? 0 : 1;
+		Cspell[n].points[b] -= spell_level(s);
+		if (Cspell[n].points[0] < 1 && Cspell[n].points[1] < 1) {
+			Cspell[n].points[0] = Cspell[n].points[1] = 0;
+			Cspell[n].recharge_time = GameTime + (9 - creature_mage_level(obj) - creature_cleric_level(obj)) * MINUTE;
+		}
+	}
+	Cspell[n].chosen = -1;
+	Cspell[n].cast_time = GameTime;
+	dtu_spell_log("cspell: obj %d %s: the cast of '%s' is interrupted",n,target_name(obj),spell_name(Cspell_table[e].spell));
+	return 1;
+}
+
+// 0x10815: an fvi ray with a radius from the eye of the creature to the
+// player
+static int creature_clear(object *obj,fix rad)
+{
+	fvi_query fq;
+	fvi_info hit;
+	vms_vector eye = obj->pos;
+	int f;
+
+	if (!(monster_flags(obj) & MONSTER_F_FLYING))
+		eye.y += i2f(5);
+	fq.p0 = &eye;
+	fq.p1 = &ConsoleObject->pos;
+	fq.startseg = obj->segnum;
+	fq.rad = rad;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = FQ_CHECK_OBJS;
+	if (find_point_seg(&eye,obj->segnum) < 0)
+		fq.p0 = &obj->pos;
+	f = find_vector_intersection(&fq,&hit);
+	return f == HIT_NONE || (f == HIT_OBJECT && hit.hit_object == ConsoleObject-Objects);
+}
+
+// 0x91F66: no other hostile creature in the segment of the player
+static int creature_safe(object *obj)
+{
+	int i;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+		if (o != obj && o->type == OBJ_ROBOT && o->segnum == ConsoleObject->segnum && !(o->flags & OF_SHOULD_BE_DEAD) &&
+			 o->shields >= F1_0 && !(o->dtu.m_1b0 & DTU_PEACEFUL))
+			return 0;
+	}
+	return 1;
+}
+
+static fix floor_height(object *obj)
+{
+	fvi_query fq;
+	fvi_info hit;
+	vms_vector p1 = obj->pos;
+
+	p1.y -= i2f(200);
+	fq.p0 = &obj->pos;
+	fq.p1 = &p1;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&hit) != HIT_WALL)
+		return 0;
+	return obj->pos.y - hit.hit_pnt.y;
+}
+
+// 0x9231F: the condition and the weight of one entry. Returns -1 if the
+// condition fails.
+static int cspell_weight(object *obj,int e,fix dist)
+{
+	object *pl = ConsoleObject;
+	int s = Cspell_table[e].spell, L = creature_level(obj), D = f2i(dist);
+	int pw = pl->dtu.m_88, cw = obj->dtu.m_88, mf = monster_flags(obj);
+	int AC = obj->id < N_robot_types ? Monster_info[obj->id].armor_class : 10;
+	int hp = f2i(obj->shields), max = obj->id < N_robot_types ? Monster_info[obj->id].max_hit_points : 1;
+	int slowed = (cw & DTU_FX_SLOW) != 0, stuck = (Cspell[obj-Objects].cond & DTU_CSC_SLOWED) != 0;
+	int fleeing = (obj->dtu.m_1b0 & DTU_FLEEING) != 0;
+	int v;
+
+	if (max < 1) max = 1;
+	switch (s) {
+		case 1:	return 40 + rand_mod(41);
+		case 2:	return AC > 6 ? 32*AC - 192 : -1;
+		case 3:	case 38:	return rand_mod((32 - L) * 4);
+		case 4:	return creature_clear(obj,i2f(30)) ? 50 + ((pw & 0x40600) ? 0 : rand_mod(50)) : -1;
+		case 5:	return dist < i2f(200) ? 100 - D : -1;
+		case 6:	return creature_clear(obj,i2f(30)) ? 25 + ((pw & DTU_FX_BLIND) ? 0 : rand_mod(75)) : -1;
+		case 7:	return (creature_safe(obj) && !(pw & DTU_FX_CONFUSION)) ? 25 + rand_mod(26) : -1;
+		case 8: case 9: case 30: case 31:
+			return (pw & DTU_FX_BLIND) ? -1 : 25 + rand_mod(51);
+		case 10: case 11:
+			return hp < max - (s == 10 ? 4 : 10) ? 100 - 100*hp/max : -1;
+		case 14:	return (pw & DTU_FX_FEAR) ? -1 : 25 + rand_mod(26);
+		case 44:
+			if (pw & DTU_FX_FEAR) return -1;
+			v = !(Dtu_char.pa.race == DTU_RACE_ELF || (Dtu_char.pa.flags & DTU_PF_HALF_ELF) || char_is(DTU_CLASS_CLERIC));
+			return rand_mod(50 - 16*L) + 50*v;
+		case 15:	return f2i(floor_height(obj));
+		case 16: case 17:
+			if (!creature_safe(obj))
+				return -1;
+			if ((cw & (DTU_FX_PROT_FIRE|DTU_FX_RESIST_FIRE)) || (mf & MONSTER_F_FIRE_IMMUNE) || monster_has(obj,"fire_resistant") ||
+				 D > spell_int(s,"radius",0))
+				return 25 + rand_mod(26);
+			return -1;
+		case 18: case 40: case 43:
+			v = Cspell[obj-Objects].cond & DTU_CSC_FIRE ? 1 : 0;
+			return v ? 20 + rand_mod(40*v) : -1;
+		case 19: case 29:
+			if (!((pw & (DTU_FX_FLY|DTU_FX_LEVITATE)) || pl->pos.y - obj->pos.y >= i2f(20)))
+				return -1;
+			return (s == 19) ? 20 + rand_mod(40*fleeing) : 25 + rand_mod(51);
+		case 20:	return (slowed || stuck || fleeing) ? 50 + rand_mod(51) : -1;
+		case 21:
+			if (!(slowed || stuck || fleeing || (pw & DTU_FX_HASTE)))
+				return -1;
+			return slowed ? 100 : 40 + rand_mod(41);
+		case 22: case 52:
+			return (pw & (DTU_FX_HOLD|DTU_FX_FREE_ACTION)) ? -1 : 50 + rand_mod(D % 50);
+		case 24: case 26:
+			return 100 - 100*hp/max + rand_mod(50 * !creature_clear(obj,0));
+		case 32: {
+			fvi_query fq;
+			fvi_info hit;
+			vms_vector p1;
+			vm_vec_scale_add(&p1,&obj->pos,&obj->orient.fvec,i2f(160));
+			fq.p0 = &obj->pos; fq.p1 = &p1; fq.startseg = obj->segnum; fq.rad = 0;
+			fq.thisobjnum = obj-Objects; fq.ignore_obj_list = NULL; fq.flags = 0;
+			return find_vector_intersection(&fq,&hit) == HIT_WALL ? -1 : 50;
+		}
+		case 33:	return (creature_clear(obj,i2f(5)) && !(pw & DTU_FX_SHIELD)) ? 50 : -1;
+		case 34:	return creature_clear(obj,i2f(30)) ? 50 : -1;
+		case 37:	return creature_clear(obj,i2f(30)) ? 30 : -1;
+		case 35:
+			v = 5 - (L - 5) / 3;
+			if (v < 1) v = 1;
+			return AC > v ? 8 * (AC - v) : -1;
+		case 36:	return 50;
+		case 45:	return AC > 3 ? 16*AC - 48 : -1;
+		case 46:	return (creature_safe(obj) && !(pw & DTU_FX_SLEEP)) ? 100 - 12*L : -1;
+		case 47:	return (pw & DTU_FX_SLOW) ? -1 : 50 + rand_mod((pw & DTU_FX_HASTE) ? 50 : 0);
+		case 49:	return 25 + rand_mod(25*(hp < max) + 25*!(char_is(DTU_CLASS_MAGE) || char_is(DTU_CLASS_CLERIC)));
+		case 50:	return D > 3 ? D : -1;
+	}
+	return -1;		// "bad spell"
+}
+
+// 0x91FDC: the cast
+static void creature_cast(object *obj)
+{
+	int n = obj-Objects, e = Cspell[n].chosen, s, L = creature_level(obj), b;
+
+	if (e < 0)
+		return;
+	s = Cspell_table[e].spell;
+	dtu_spell_log("cspell: obj %d %s casts '%s' (%d) at level %d, points %d %d",n,target_name(obj),spell_name(s),s,L,
+		Cspell[n].points[0],Cspell[n].points[1]);
+	if (spell_flag(s,"self_cast_ok") || s == 13 || s == 55) {
+		if (spell_area(s) || s == 38)
+			dtu_spell_area(s,&obj->pos,obj->segnum,obj,L);
+		else
+			apply_spell(s,obj,obj,L);
+		vclip_at(obj->segnum,&obj->pos,i2f(3),spell_int(s,"cast_vclip",-1));
+	}
+	else {
+		// 0x56FF6(obj, spell, template 3, hand 1): the missile goes from the
+		// creature to the player (guess: the facing of the creature, which
+		// turns to the player in the attack)
+		vms_vector dir, pos = obj->pos;
+		int seg, m, k, count = missile_count(s,L);
+
+		pos.y += i2f(2);
+		seg = find_point_seg(&pos,obj->segnum);
+		if (seg < 0) { pos = obj->pos; seg = obj->segnum; }
+		vm_vec_sub(&dir,&ConsoleObject->pos,&pos);
+		vm_vec_normalize_quick(&dir);
+		sound_at(spell_int(s,"cast_sound",10),obj->segnum,&obj->pos,F1_0/2);
+		for (k=0;k<count;k++) {
+			m = dtu_create_missile(&dir,&pos,seg,n,3 < N_weapon_types ? 3 : 0,s,k == 0);
+			if (m < 0)
+				break;
+			vm_vec_copy_scale(&Objects[m].mtype.phys_info.velocity,&dir,spell_fix(s,"speed",i2f(100)));
+			dtu_missile_set_life(m,(s == 32) ? i2f(2) : (s == 36) ? (L/3 + 1)*MINUTE : i2f(30));
+		}
+	}
+	b = spell_flag(s,"mage_use") ? 0 : 1;
+	Cspell[n].points[b] -= spell_level(s);
+	Cspell[n].chosen = -2;
+	if (Cspell[n].points[0] < 1 && Cspell[n].points[1] < 1) {
+		Cspell[n].points[0] = Cspell[n].points[1] = 0;
+		Cspell[n].recharge_time = GameTime + (9 - creature_mage_level(obj) - creature_cleric_level(obj)) * MINUTE;
+		dtu_spell_log("cspell: obj %d %s has no spell points: new points at %.1f",n,target_name(obj),f2fl(Cspell[n].recharge_time));
+	}
+}
+
+// 0x92D99: the choice of a spell
+static void creature_choose(object *obj,fix dist)
+{
+	int n = obj-Objects, k, ml = creature_mage_level(obj), cl = creature_cleric_level(obj), e = 0;
+	int rf = robot98_flags(obj);
+
+	if (Cspell[n].points[0] < 1 && Cspell[n].points[1] < 1) {
+		Cspell[n].points[0] = creature_points(obj,0);
+		Cspell[n].points[1] = creature_points(obj,1);
+		Cspell[n].cond |= 0x8000;
+	}
+	for (k=0;k<44;k++) {
+		int s, lvl, w, roll;
+
+		e = Cspell_next = (Cspell_next + 1) % 44;
+		s = Cspell_table[e].spell;
+		if (!(Cspell_table[e].cond & Cspell[n].cond))
+			continue;
+		lvl = spell_level(s);
+		if (spell_flag(s,"mage_use") && (ml < lvl || Cspell[n].points[0] < lvl))
+			continue;
+		if (spell_flag(s,"cleric_use") && (cl < lvl || Cspell[n].points[1] < lvl))
+			continue;
+		if (obj->dtu.m_88 & Cspell_table[e].effects)
+			continue;
+		if (rf & Cspell_table[e].flags)
+			continue;
+		if (s == 13 || s == 55) {
+			// Dispel Magic: at once on itself when the player or the
+			// creature has effects; the scan goes on
+			if ((ConsoleObject->dtu.m_88 & 0xF3FFBECB) || (obj->dtu.m_88 & 0x0C004124)) {
+				Cspell[n].chosen = e;
+				creature_cast(obj);
+			}
+			continue;
+		}
+		w = cspell_weight(obj,e,dist);
+		if (w < 0)
+			continue;
+		if (w > 100) w = 100;
+		roll = rand() % 100 + 1;
+		if (roll > w)
+			continue;
+		Cspell[n].cond &= ~Cspell_table[e].cond;
+		Cspell[n].chosen = e;
+		Cspell[n].cast_time = GameTime + i2f(spell_int(s,"cast_time",0));
+		dtu_spell_log("cspell: obj %d %s chooses '%s' (%d), weight %d, roll %d, cast at %.2f",n,target_name(obj),spell_name(s),s,w,roll,
+			f2fl(Cspell[n].cast_time));
+		return;
+	}
+	Cspell[n].cond &= ~Cspell_table[e].cond;
+	Cspell[n].chosen = -2;
+}
+
+void dtu_spell_rest_shuffle(void)
+{
+	int i;
+
+	for (i=0;i<44;i++) {
+		int j = rand() % 44;
+		cspell_entry t = Cspell_table[i];
+		Cspell_table[i] = Cspell_table[j];
+		Cspell_table[j] = t;
+	}
+	dtu_spell_log("cspell: the creature spell table is shuffled (0x92FF2)");
+}
+
+int dtu_spell_is_area(int spell)
+{
+	return spell_area(spell);
+}
+
+void dtu_spell_cast_vclip(int spell,object *obj)
+{
+	if (obj && spell_ok(spell))
+		vclip_at(obj->segnum,&obj->pos,i2f(3),spell_int(spell,"cast_vclip",-1));
+}
+
+void dtu_spell_creature_frame(object *obj,fix dist,int active)
+{
+	int n;
+
+	if (obj == NULL || obj->type != OBJ_ROBOT || ConsoleObject == NULL || Player_is_dead || Dtu_player_dead)
+		return;
+	if (!active || obj->shields < F1_0 || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return;
+	if (creature_mage_level(obj) <= 0 && creature_cleric_level(obj) <= 0)
+		return;
+	n = cspell_state(obj);
+	if (Cspell[n].cond == 0)
+		return;
+	if (Cspell[n].chosen < 0) {
+		if (Cspell[n].recharge_time <= GameTime)
+			creature_choose(obj,dist);
+	}
+	else if (Cspell[n].cast_time <= GameTime)
+		creature_cast(obj);
+}
+
+//------------------------------------------------------------------------
 // The frame
 
 static void spell_init(void)
@@ -1405,7 +2198,7 @@ void dtu_spell_frame(void)
 	if (last_level != Current_level_num) {
 		last_level = Current_level_num;
 		dtu_spell_compute_slots();
-		dtu_spell_restore_slots();
+		memcpy(Dtu_spell_slots_left,Dtu_spell_slots_max,sizeof(Dtu_spell_slots_left));		// 0x4225A calls 0x3551B
 		Cast_timer = DTU_FX_NO_END;
 		memset(Tracked,0,sizeof(Tracked));
 		// Test options: -testslots N gives N slots for each spell level,

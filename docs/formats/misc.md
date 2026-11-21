@@ -107,12 +107,17 @@ Record as stored in the file:
 | 5 | u8 | item class |
 | 6 | s32 | quantity, -1 = unlimited (guess from values) |
 
-The game "decodes" each record (0x87BE0) by swapping bytes 0..3 with 6..9 and
+The game "decodes" each record (0x87BB7) by swapping bytes 0..3 with 6..9 and
 byte 4 with byte 5, and writes the result to `geldor.dat`. The decoded record
-is: s32 quantity, u8 class, u8 id, u32. The (class, id) pair is the same item
-key that triggers use (`need_item_class`, `need_item_id` in `tig.md`).
+is: s32 quantity (-1: no limit), u8 class, u8 id, u32 count of one item (1,
+or -1 for "full", the charges of the item for a type that is not
+stackable). The (class, id) pair is the same item key that triggers use
+(`need_item_class`, `need_item_id` in `tig.md`).
 
-Verified: 21 records, classes 15, 5 and 16. Tool: `sidefiles.py store`.
+Verified: 21 records, classes 15, 5 and 16. `THESTORE.1` decodes to
+`GELDOR.DAT` of the install byte for byte, and the stock that the market of
+the port writes for the first stock is equal to `GELDOR.DAT`. Tool:
+`sidefiles.py store`. The market is in `docs/re/frontend.md` (section 6a).
 
 ## SG0.SG: save game
 
@@ -130,7 +135,7 @@ Magic `DGSS`, written by the state code derived from Descent 1 `state.c`
 | 45 | 4 | u32, 0 | name unknown |
 | 49 | 4 | u32, 933299 (Descent 1: game time as fix, 14.24 s) | name is a guess |
 | 53 | 4 | u32 count of the mission flags, 19 | verified |
-| 57 | 76 | 19 u32 mission flags (0x13CDD4 on), all 0 | values verified, names unknown |
+| 57 | 76 | 19 u32 mission flags (0x13CDD4 on, in address order), all 0. Mission flag k is at index k - 1 for k = 1..9, k + 1 for k = 10..17, 9 for k = 18, 10 for k = 19 (docs/re/scripts.md section 7) | values verified, order verified in the code |
 | 133 | 8 | u32 Khelben mission (0x13E588), u32 blurb (0x13E58C): 0, 1 | verified (writer 0x83D27, reader 0x83D5E) |
 | 141 | 6967 | the player record: one element of the player array, 0x1B37 bytes. The layout is in `docs/re/character.md`: name at +0, hit points at +0x53, the 80 attribute bytes at +0x97, the item list at +0x103 (16 bytes for each entry, count at +0xF3), hot keys at +0x1AC1 | verified: name, attributes, item lists and references decode to a consistent new character |
 | 7108 | 80 | a second copy of the 80 attribute bytes: the values without the effect of items (0x187B90 in the executable) | verified (equal to the first copy in this file) |
@@ -144,7 +149,9 @@ Unlike Descent 1 there is no thumbnail image in the file.
 The level state is not in this file. It is stored in `SAVE\SGn.LS`,
 `SAVE\SGn_m.LVL`, `SAVE\SGn_m.TIG` and `SAVE\SGn_m.TAP`.
 
-Unexplained ranges: the names of the 19 mission flags, the fields of the player record that `character.md` does not list, 7218..7361 and the records after 7374.
+The 256 global flags of the scripts are in the player record at P+0x1A33 (file offset 6852), bit n - 1 for flag n; all 0 in SG0.SG (docs/re/scripts.md section 7).
+
+Unexplained ranges: the fields of the player record that `character.md` does not list, 7218..7361 and the records after 7374.
 
 A file with "between levels" 1 ends at 7374. The port writes such a file for the saves of the main menu and of Waterdeep (`engine/main/dtufe.c`) and reads both kinds (docs/re/frontend.md).
 
@@ -166,8 +173,10 @@ slot n - 1 (the slot in the menu plus 1).
 Verified: both files of the install are 600 bytes; record 0 is (0, 1, 1) and
 records 1 to 99 are (0, 0, 1). The only level files are `SG1_0.*`. Character
 generation (0x87D73) deletes `CSUF.LS` and the `temp*` files and writes a new
-`CSUF.LS` with 100 records (0, 0, -1) (0x5AC6F, 0x5ABC6). The port does not
-read or write these files.
+`CSUF.LS` with 100 records (0, 0, -1) (0x5AC6F, 0x5ABC6). The code that uses
+the files is in `docs/re/levelstate.md`. The port writes and reads the `.LS`
+tables in this format (`engine/main/dtustate.c`); its `.lvl`, `.tig` and
+`.tap` level files have the names of the original but their own content.
 
 ## *.FNT: fonts
 

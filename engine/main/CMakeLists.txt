@@ -11,8 +11,8 @@ set(MAIN_SOURCES
   robot.c vclip.c effects.c weapon.c powerup.c mglobal.c hash.c
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
-  lighting.c render.c dtugame.c dtudisp.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c
-  dtufe.c dtufe_char.c dtufe_town.c)
+  lighting.c render.c dtugame.c dtudisp.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
+  dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c)
 
 add_library(d_main OBJECT EXCLUDE_FROM_ALL ${MAIN_SOURCES})
 target_include_directories(d_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

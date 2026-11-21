@@ -1159,6 +1159,9 @@ static int dtu_run_level(char *level_name)
 	if (!level_name)
 		dtufe_title();
 
+	if (level_name)
+		dtufe_direct_start();
+
 	do {
 		if (!level_name) {
 			level_num = dtufe_run();
@@ -1178,6 +1181,11 @@ static int dtu_run_level(char *level_name)
 				break;
 			game();
 		}
+
+		// ASCENT: after a death in a direct start, the death screen and the
+		// front end take over.
+		if (level_name && Dtu_player_dead)
+			level_name = NULL;
 	} while (!level_name && dtufe_game_ended());
 
 	return 0;

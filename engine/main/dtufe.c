@@ -52,6 +52,9 @@
 #include "gamefont.h"
 #include "dtufe.h"
 #include "dtufe_int.h"
+#include "dtustate.h"
+#include "dtuscript.h"
+#include "screens.h"
 
 int Dtu_fe_original_input = 0;
 int Dtu_fe_return_waterdeep = 0;
@@ -74,6 +77,8 @@ static int Fe_mode = FE_GO_MENU;		// Function_mode of the executable (0x1468CC)
 static int Fe_have_character;			// 0x141BBB
 static int Fe_in_game;					// the front end started the game that runs
 static int Fe_was_relative;
+static int Fe_loading_from;			// see dtufe_loading_from_frontend()
+static int Fe_ready_tables;			// the front end had its tables one time
 
 // screen number -> FEBGND entry (0x13E3D7), and the entry of the stone
 // texture that the menu boxes of the screen use (0x13E40B)
@@ -151,6 +156,8 @@ static ubyte *read_part(char *name, int offset, int size)
 //   text STRING     the characters of STRING, one in each frame
 //   shot FILE       write the frame to a PPM file
 //   quit            leave the program
+//   gamekeys        from now on the script also runs in the frames of the
+//                   game, and its keys go to the game
 // While the script has commands the clock of the front end is the frame
 // count (30 frames are one second), so a run always gives the same frames.
 
@@ -162,6 +169,7 @@ static int Script_btn, Script_rbtn;
 static char Script_text[80];
 static int Script_text_pos;
 static char *Script_shot;
+static int Script_in_game;			// the command "gamekeys" was run
 
 static int script_active(void)
 {
@@ -276,9 +284,41 @@ static void script_frame(void)
 		} else if (!stricmp(cmd, "quit")) {
 			Fe_quit = 1;
 			return;
+		} else if (!stricmp(cmd, "gamekeys")) {
+			// ASCENT: from here on the script also runs in the frames of
+			// the game; its keys go to the game (dtufe_game_frame)
+			Script_in_game = 1;
 		} else
 			printf("Script: unknown command '%s'\n", s);
 	}
+}
+
+// ASCENT: the script of -fescript also drives the message boxes and menus
+// of newmenu.c (the death menu uses them, as the executable does). This is
+// called from nm_show_frame() after the frame is on the screen. A pending
+// "shot" writes that frame. A "key" goes into the key buffer. Returns 0
+// after "quit".
+int dtufe_menu_script_frame(void)
+{
+	if (!Script_n)
+		return 1;
+	if (Script_shot) {
+		if (dtu_write_screenshot(Script_shot))
+			printf("Wrote %s (menu frame %d)\n", Script_shot, Fe_frame_count);
+		else
+			printf("Cannot write %s\n", Script_shot);
+		Script_shot = NULL;
+	}
+	if (script_active()) {
+		script_frame();
+		if (Fe_key) {
+			plat_input_key(Fe_key & 0xFF, 1);
+			plat_input_key(Fe_key & 0xFF, 0);
+			Fe_key = 0;
+		}
+	}
+	Fe_frame_count++;
+	return !Fe_quit;
 }
 
 //------------------------------------------------------------------------
@@ -1104,6 +1144,8 @@ void fe_run_screen(fe_screen *s)
 	fix repeat_time = 0, release_until = 0;
 	fe_seq *cur[2][3];
 	fe_screen *prev_screen;
+	fe_feature *frame_features;
+	int frame_n_features;
 
 	for (i = 0; i < s->n_controls; i++) {
 		fe_control *c = &s->controls[i];
@@ -1137,6 +1179,8 @@ void fe_run_screen(fe_screen *s)
 		if (s->frame)
 			s->frame(s);
 
+		frame_features = s->features;
+		frame_n_features = s->n_features;
 		hot = -1;
 		for (i = 0; i < s->n_features; i++)
 			if (feature_hit(&s->features[i], Fe_mx, Fe_my)) {
@@ -1201,6 +1245,10 @@ void fe_run_screen(fe_screen *s)
 			pressed = -1;
 		if (pressed_key >= 0 && fe_time() >= release_until)
 			pressed_key = -1;
+		// ASCENT: a handler may give the screen another feature list (the
+		// quantity window of the market, as 0x84EEA does)
+		if (s->features != frame_features || s->n_features != frame_n_features)
+			hot = pressed = pressed_key = -1;
 
 		if (s->draw)
 			s->draw(s);
@@ -1711,6 +1759,32 @@ static void loaded_character(void)
 	Dtu_player_portrait = Dtu_char.portrait;
 }
 
+// ASCENT: the slot menus of a game that runs (the ESC menu, the death
+// menu) use the menus of the game (newmenu, as the executable does in the
+// game); the front end draws them with its fonts.
+static int slot_menu_nm(int save, char desc[10][24])
+{
+	newmenu_item m[10];
+	int i, n_valid = 0;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < 10; i++) {
+		if (save) {
+			m[i].type = NM_TYPE_INPUT_MENU;			// 0xBA486: type 6, 19 characters
+			m[i].text_len = 19;
+		} else if (desc[i][0] && strcmp(desc[i], fe_text(67)))
+			n_valid++;
+		else
+			m[i].type = NM_TYPE_TEXT;
+		m[i].text = desc[i];
+	}
+	if (!save && !n_valid) {
+		nm_messagebox(NULL, 1, fe_text(34), fe_text(797));	// "No saved games were found"
+		return -1;
+	}
+	return newmenu_do(NULL, fe_text(save ? 796 : 798), 10, m, NULL);
+}
+
 int fe_load_game(int in_game)
 {
 	fe_menu_item m[10];
@@ -1730,28 +1804,42 @@ int fe_load_game(int in_game)
 		}
 		m[i].text = desc[i];
 	}
-	if (!n_valid) {
-		fe_message_box(NULL, fe_text(797), 1, fe_text(34), NULL);	// "No saved games were found"
-		return 0;
+	if (in_game) {
+		choice = slot_menu_nm(0, desc);
+		if (choice < 0 || Fe_quit)
+			return 0;
+		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(801)) != 0)	// "Restore Game?"
+			return 0;
+	} else {
+		if (!n_valid) {
+			fe_message_box(NULL, fe_text(797), 1, fe_text(34), NULL);	// "No saved games were found"
+			return 0;
+		}
+		// 0xBA647 puts a text item of four empty lines first. The port
+		// leaves it out.
+		choice = fe_menu(NULL, fe_text(798), m, 10, 0, 1);			// "Select Game to Restore"
+		if (choice < 0 || Fe_quit)
+			return 0;
 	}
-	// 0xBA647 puts a text item of four empty lines first. The port
-	// leaves it out.
-	choice = fe_menu(NULL, fe_text(798), m, 10, 0, 1);			// "Select Game to Restore"
-	if (choice < 0 || Fe_quit)
-		return 0;
-	if (in_game && fe_message_box(NULL, fe_text(801), 2, fe_text(32), fe_text(33)) != 0)	// "Restore Game?"
-		return 0;
 
 	if (!sg_find(choice, path, sizeof(path)) || (f = fopen(path, "rb")) == NULL)
 		return 0;
 	i = (int) fread(b, 1, sizeof(b), f);
 	fclose(f);
 	if (i != (int) sizeof(b) || !dtu_char_load_save(path)) {
-		fe_message_box(NULL, fe_text(802), 1, fe_text(34), NULL);	// "Incompatible save file version"
+		if (in_game)
+			nm_messagebox(NULL, 1, fe_text(34), fe_text(802));
+		else
+			fe_message_box(NULL, fe_text(802), 1, fe_text(34), NULL);	// "Incompatible save file version"
 		return 0;
 	}
+	// ASCENT: 0xBC51D: the level state of the slot, and the market
+	// (delete geldor.dat, 0x87C05(S, 0))
+	dtustate_load_slot(choice + 1);
+	fe_market_store(choice + 1, 0);
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
 	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
+	dtu_mission_read_save(path);			// ASCENT: the mission and global flags (dtuscript.c)
 	mode = get_u32(b + SG_BETWEEN) ? FE_GO_WATERDEEP : FE_GO_LEVEL;
 	Fe_load_level = (int) get_u32(b + SG_LEVEL);
 	if (Fe_load_level < 1)
@@ -1764,21 +1852,25 @@ int fe_load_game(int in_game)
 }
 
 // Writes the character as a save game "between levels" (the saves of the
-// main menu and of Waterdeep, 0xBA99F(1)).
-static int sg_write(int slot, char *desc)
+// main menu and of Waterdeep, 0xBA99F(1)), or as a save in a level
+// (0xBA99F(0)): then "between levels" is 0 and the three lists at 7374
+// follow (the port writes the three counts as 0, as in SG0.SG). The
+// level and the position of the player are in the level state files.
+static int sg_write(int slot, char *desc, int between)
 {
 	char name[16];
 	ubyte *b;
 	FILE *f;
 	int ok, level = Current_level_num > 0 ? Current_level_num : 1;
+	int size = between ? SG_SIZE_BETWEEN : SG_SIZE_BETWEEN + 12;
 
-	b = calloc(1, SG_SIZE_BETWEEN);
+	b = calloc(1, size);
 	if (!b)
 		return 0;
 	memcpy(b, "DGSS", 4);
 	put_u32(b + 4, SG_VERSION);
 	strncpy((char *) b + 8, desc, 19);
-	put_u32(b + SG_BETWEEN, 1);
+	put_u32(b + SG_BETWEEN, between ? 1 : 0);
 	strcpy((char *) b + 32, "DTU");				// the mission
 	put_u32(b + SG_LEVEL, level);
 	put_u32(b + 49, GameTime);
@@ -1788,6 +1880,7 @@ static int sg_write(int slot, char *desc)
 	dtu_char_pack(b + DTU_SG_PLAYER_OFFSET);
 	put_u32(b + DTU_SG_PLAYER_OFFSET + DTU_P_HIT_POINTS, (uint) Dtu_char.pa.hit_points << 16);
 	memcpy(b + SG_ATTR, &Dtu_char.base, sizeof(dtu_player_attr));
+	dtu_mission_write_save(b);				// ASCENT: the mission and global flags (dtuscript.c)
 	// The block of playsave.c (0x71729), with the values of SG0.SG
 	memcpy(b + SG_RLPD, "RLPD", 4);
 	b[SG_RLPD + 4] = 14;
@@ -1801,12 +1894,25 @@ static int sg_write(int slot, char *desc)
 
 	sprintf(name, "SG%d.sg", slot);
 	f = fopen(name, "wb");
-	ok = f && fwrite(b, 1, SG_SIZE_BETWEEN, f) == SG_SIZE_BETWEEN;
+	ok = f && fwrite(b, 1, size, f) == (size_t) size;
 	if (f && fclose(f))
 		ok = 0;
 	free(b);
 	dtu_log("Front end: %s %s: '%s'\n", ok ? "wrote" : "cannot write", name, Dtu_char.name);
 	return ok;
+}
+
+// ASCENT: 0xBA99F after the slot menu: in a level the state of the level
+// (0x5A756), then the level table of the slot (0xBC1EC), the market
+// (0x87C05(S, 1)) and the SG file.
+static int save_to_slot(int slot, char *desc, int between)
+{
+	if (!between)
+		dtustate_save_level(Current_level_num - 1);
+	if (!dtustate_save_slot(slot + 1))
+		dtu_log("Front end: no level table for slot %d\n", slot + 1);
+	fe_market_store(slot + 1, 1);
+	return sg_write(slot, desc, between);
 }
 
 void fe_save_game(void)
@@ -1827,8 +1933,24 @@ void fe_save_game(void)
 	choice = fe_menu(NULL, fe_text(796), m, 10, 0, 1);				// "Save Game"
 	if (choice < 0 || Fe_quit)
 		return;
-	if (!sg_write(choice, desc[choice]))
+	if (!save_to_slot(choice, desc[choice], 1))
 		fe_message_box(NULL, fe_text(800), 1, fe_text(34), NULL);	// "Error writing character data"
+}
+
+// The save of the ESC menu: 0xBA99F(0), in a level.
+static void ig_save_game(void)
+{
+	char desc[10][24];
+	int i, choice;
+
+	for (i = 0; i < 10; i++)
+		if (!sg_description(i, desc[i]))
+			snprintf(desc[i], sizeof(desc[i]), "%s", fe_text(67));	// "-empty-"
+	choice = slot_menu_nm(1, desc);
+	if (choice < 0 || Fe_quit)
+		return;
+	if (!save_to_slot(choice, desc[choice], 0))
+		nm_messagebox(NULL, 1, fe_text(34), fe_text(800));
 }
 
 //------------------------------------------------------------------------
@@ -1893,6 +2015,12 @@ static void fe_main_menu(void)
 		if (fe_new_character()) {
 			Fe_have_character = 1;
 			fe_town_reset();
+			dtu_mission_new_character();	// ASCENT: 0x5ADC9 in MakePlayer (dtuscript.c)
+			// ASCENT: 0x87EB9 to 0x87EC3: a new level state and a new
+			// market (geldor.dat is deleted). The market keeps the charisma
+			// of the new character (0x13E38C, see fe_market).
+			dtustate_new_game();
+			fe_market_new_character();
 			Fe_mode = FE_GO_WATERDEEP;
 		}
 		break;
@@ -1946,13 +2074,19 @@ static void fe_enter(void)
 	// The bitmaps and the sounds of the front end are in the archive of
 	// the Yawning Portal (PORTAL.EGG, named by YPINN.BIN). The executable
 	// loads these tables before the main menu (0xB8711).
-	if (piggy_find_bitmap("btn1ulc").index == 0) {
-		plat_audio_flush();
-		dtu_load_level_data("ypinn");
-	}
 	// The front end has one form: 640x480 (0xEB2F8 with mode 0xE).
 	if (grd_curscreen->sc_w != FE_W || grd_curscreen->sc_h != FE_H)
 		gr_set_mode(SM_640x480V);
+	if (piggy_find_bitmap("btn1ulc").index == 0) {
+		// ASCENT: 0xB88FF: back from a level whose archive is not PORTAL
+		// (0x80F09), the loading picture 12 shows while the tables load
+		// (0x7C1E5(-1), 0x7C2EE: no fade, the next screen replaces it).
+		if (Fe_ready_tables)
+			dtufe_loading_picture(12);
+		plat_audio_flush();
+		dtu_load_level_data("ypinn");
+	}
+	Fe_ready_tables = 1;
 	gr_set_current_canvas(&grd_curscreen->sc_canvas);
 	Fe_was_relative = plat_mouse_get_relative();
 	plat_mouse_set_relative(0);
@@ -2043,6 +2177,7 @@ int dtufe_run(void)
 			Dtu_fe_return_waterdeep = 0;
 			fe_leave();
 			Fe_in_game = 1;
+			Fe_loading_from = 1;		// 0xB8A09: 0x13E324 = 1
 			return level ? level : 1;
 			}
 		case FE_GO_LEVEL:
@@ -2052,6 +2187,7 @@ int dtufe_run(void)
 			Dtu_fe_return_waterdeep = 0;
 			fe_leave();
 			Fe_in_game = 1;
+			Fe_loading_from = 2;
 			return Fe_load_level;
 		default:
 			Fe_mode = FE_GO_MENU;
@@ -2067,6 +2203,129 @@ static int Fe_leave_game;				// 1: the game ends after this frame
 static int Fe_portal_exit;				// the player entered the exit of the inn
 static int Fe_portal_frame = -10;		// FrameCount of the last call of command 0
 
+static int Fe_escape_menu;				// the Escape key was pressed in this frame
+static int Fe_inn_flag;					// 0x13B254: command 0 of DTU.WRP was run in this game
+static int Fe_game_loaded;				// the ESC menu loaded a save game: the FE_GO_ mode
+
+// 0 (the executable): a save game of Waterdeep that the ESC menu loads
+// gives the character of the save, and the game goes on in the level that
+// runs (0x423E1 sets Function_mode 2 again after the load set 4). 1
+// (default): the game ends and the player is in Waterdeep.
+int Dtu_fix_escape_load_waterdeep = 1;
+
+// ASCENT: the direct start (-level NAME) skips the front end. The death of
+// the player must still go to the death screen and the death menu, so the
+// game runs as if the front end started it. It gets a new level state, as
+// a new character does.
+void dtufe_direct_start(void)
+{
+	Fe_in_game = 1;
+	dtustate_new_game();
+}
+
+// 0x4225A: game() shows its ESC menu when the game loop ended with another
+// Function_mode (the Escape key sets FMODE_MENU).
+int dtufe_escape_key(void)
+{
+	if (!Fe_in_game)
+		return 0;
+	Fe_escape_menu = 1;
+	return 1;
+}
+
+// 0x42352 to 0x423F5
+static void escape_menu(void)
+{
+	int c, mode;
+
+	if (Fe_inn_flag) {
+		// The byte 0x13B254 stays set after "No" to the question of the
+		// exit of the inn: the Escape key asks the question again.
+		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
+			Dtu_fe_return_waterdeep = 1;
+			Fe_leave_game = 1;
+		}
+		return;
+	}
+	// The text of the executable is "ESC Menu\n" (0x1256FA)
+	c = nm_messagebox(NULL, 4, "Return to dungeon", "Load Game", "Save Game", "Abort Game", "ESC Menu\n");
+	switch (c) {
+	case 1:					// 0xBB780(1)
+		mode = fe_load_game(1);
+		if (mode == FE_GO_LEVEL || (mode == FE_GO_WATERDEEP && Dtu_fix_escape_load_waterdeep)) {
+			Fe_game_loaded = mode;
+			Fe_leave_game = 1;
+		}
+		break;
+	case 2:					// 0xBA99F(0)
+		ig_save_game();
+		break;
+	case 3:					// "Abort Game?" (text 103)
+		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(103)) == 0) {
+			// 0x42649: no character (0x141BBB = 0), the main menu
+			Fe_have_character = 0;
+			Fe_leave_game = 1;
+		}
+		break;
+	}
+}
+
+// The loading pictures (0x7C1E5, 0x7C2BB). The executable sets the video
+// mode 640x480 for the picture. The port draws the picture scaled to the
+// screen of the game.
+static ubyte Loading_pal[768];
+
+int dtufe_loading_from_frontend(void)
+{
+	int r = Fe_loading_from;
+
+	Fe_loading_from = 0;
+	return r;
+}
+
+int dtufe_loading_picture(int entry)
+{
+	grs_bitmap *bm = fe_febgnd(entry, Loading_pal), *sb;
+	int x, y;
+
+	if (!bm)
+		return 0;
+	gr_set_current_canvas(&grd_curscreen->sc_canvas);
+	sb = screen_bm();
+	for (y = 0; y < sb->bm_h; y++) {
+		ubyte *d = sb->bm_data + y * sb->bm_rowsize;
+		ubyte *s = bm->bm_data + (y * bm->bm_h / sb->bm_h) * bm->bm_rowsize;
+		for (x = 0; x < sb->bm_w; x++)
+			d[x] = s[x * bm->bm_w / sb->bm_w];
+	}
+	gr_free_bitmap(bm);
+	memcpy(gr_palette, Loading_pal, 768);		// the screenshot of a script uses gr_palette
+	gr_palette_load(Loading_pal);
+	gr_present();
+	dtu_log("Front end: loading picture %d\n", entry);
+	printf("Loading picture %d\n", entry);
+	if (FindArg("-loadshots")) {		// test option: a screenshot of each loading picture
+		char name[32];
+		sprintf(name, "loading%d.ppm", entry);
+		dtu_write_screenshot(name);
+	}
+	return 1;
+}
+
+void dtufe_loading_picture_end(void)
+{
+	// 0x7C2BB fades out (0xD9EA4); the warp and the load then clear the
+	// screen and load PALETTE.256.
+	if (Script_n)
+		gr_palette_clear();
+	else
+		gr_palette_fade_out(Loading_pal, 32, 0);
+	gr_set_current_canvas(&grd_curscreen->sc_canvas);
+	gr_clear_canvas(0);
+	dtu_load_palette();
+	gr_palette_load(gr_palette);
+}
+
 // The death sequence of dtuobj.c is at the death screen (0x423F5).
 int dtu_hook_player_death_screen(void)
 {
@@ -2081,10 +2340,11 @@ int dtu_hook_player_death_screen(void)
 // the\nYawning Portal?" (text 795, 0x42639). The trigger code calls this
 // in each frame while the player is in the segment: the port asks once
 // each time the player enters it. The mission checks (commands 1 to 19)
-// set the quest flags (0x13CDD4) that Khelben reads; the port does not
-// have them yet.
+// set the mission flags (0x13CDD4) that Khelben reads (dtuscript.c).
 void dtu_hook_warp_command(int code, int value)
 {
+	if (code >= 1 && code <= 19)
+		dtu_mission_check(code);
 	if (code == 0 && Fe_in_game) {
 		if (FrameCount != Fe_portal_frame + 1 && FrameCount != Fe_portal_frame)
 			Fe_portal_exit = 1;
@@ -2096,13 +2356,27 @@ int dtufe_game_frame(void)
 {
 	if (!Fe_in_game)
 		return 0;
+	dtustate_test_frame();
+	if (Script_in_game && Script_n) {
+		dtufe_menu_script_frame();
+		if (Fe_quit)
+			return 1;
+	}
 	if (Fe_portal_exit) {
 		Fe_portal_exit = 0;
+		// 0x5B3BE: command 0 saves the state of the inn before the question
+		Fe_inn_flag = 1;
+		dtustate_save_level(Current_level_num - 1);
 		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
 			Dtu_fe_return_waterdeep = 1;
 			Fe_leave_game = 1;
 		}
 	}
+	if (Fe_escape_menu && !Fe_leave_game) {
+		Fe_escape_menu = 0;
+		escape_menu();
+	}
+	Fe_escape_menu = 0;
 	if (Fe_leave_game) {
 		Fe_leave_game = 0;
 		return 1;
@@ -2114,9 +2388,16 @@ int dtufe_game_frame(void)
 // with track 7, then the "Death Menu".
 int dtufe_game_ended(void)
 {
+	int loaded = Fe_game_loaded;
+
 	Fe_in_game = 0;
 	Fe_leave_game = Fe_portal_exit = 0;
+	Fe_inn_flag = Fe_escape_menu = Fe_game_loaded = 0;
 	if (Dtu_frames_done || Fe_quit || !plat_pump())
+		return 0;
+	// ASCENT: the test option -frames with no front end script: the
+	// program ends with the game (the death screen would wait for a key).
+	if (FindArg("-frames") && !Script_n)
 		return 0;
 
 	fe_enter();
@@ -2139,14 +2420,23 @@ int dtufe_game_ended(void)
 		dtumusic_stop();
 		Fe_mode = FE_GO_MENU;
 
-		// 0x42593: the "Death Menu" message box: "Load Game" (0xBB780(1))
-		// or "Abort Game" with the question "Abort Game?" (text 103). A
-		// load that is not done and "No" show the menu again. The
-		// executable shows the box after it loads PALETTE.256; the port
-		// shows it over the death picture.
+		// 0x42554 to 0x42593: the screen goes black, the executable loads
+		// PALETTE.256 and shows the "Death Menu" with the message box of
+		// the game, nm_messagebox (0x655FE): no title, the choices "Load
+		// Game" (0xBB780(1)) and "Abort Game", and the text "Death Menu".
+		// The box has the stone background (febgnd 86) and the game fonts.
+		// "Abort Game" asks "Abort Game?" (text 103). A load that is not
+		// done and "No" show the menu again.
 		while (!Fe_quit) {
-			int c = fe_message_box(NULL, "Death Menu", 2, "Load Game", "Abort Game");
-			if (Fe_quit)
+			int c;
+			gr_palette_clear();
+			gr_set_current_canvas(NULL);
+			dtu_load_palette();
+			gr_clear_canvas(BM_XRGB(0,0,0));
+			// The text in the executable is "Death Menu\n" (0x125735): the
+			// line break gives an empty line under the text.
+			c = nm_messagebox(NULL, 2, "Load Game", "Abort Game", "Death Menu\n");
+			if (Fe_quit || !plat_pump())
 				break;
 			if (c == 0) {
 				int mode = fe_load_game(1);
@@ -2154,10 +2444,12 @@ int dtufe_game_ended(void)
 					Fe_mode = mode;
 					break;
 				}
-			} else if (fe_message_box(NULL, fe_text(103), 2, fe_text(32), fe_text(33)) == 0)
+			} else if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(103)) == 0)
 				break;
 		}
-	} else if (Dtu_fe_return_waterdeep)
+	} else if (loaded)
+		Fe_mode = loaded;			// a load of the ESC menu
+	else if (Dtu_fe_return_waterdeep)
 		Fe_mode = FE_GO_WATERDEEP;
 	else
 		Fe_mode = FE_GO_MENU;
