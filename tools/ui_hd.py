@@ -25,6 +25,8 @@ Steps for each picture:
   3. upscale x4 with the method: "detail" (RealESRGAN x4plus plus 0.6 times
      the fine detail of 4x-UltraSharp, the method of the wall textures) for
      the stone, wood and metal art, x4plus for the rendered scenes,
+     4x-UltraSharp for the Waterdeep screen (x4plus wipes out the grain of
+     its grass),
   4. crop the padding, resize to the output scale (bicubic with antialias:
      3x is a reduction of the 4x result, 6x an enlargement),
   5. the mean color is moved back to the mean of the original (a constant
@@ -49,7 +51,9 @@ SCALE = 3            # pictures of the 640x480 screen: 1920x1440 at 1:1
 SCALE_LOW = 6        # pictures of the 320x200 screen: 1920x1200 at 1:1
 
 # n -> (method, use). The method "detail" is for the stone, wood and metal
-# art, x4plus for the rendered scenes and the logos.
+# art, x4plus for the rendered scenes and the logos. The Waterdeep screen (10)
+# takes 4x-UltraSharp: x4plus made its grass a flat green (the grass of the
+# original is a fine grain of green, brown and red pixels).
 PICTURES = {
     # the play screen (640x480, Dtu_hires) and the screens that open in play
     63: ("detail", "play screen, main mode"),
@@ -70,7 +74,7 @@ PICTURES = {
     19: ("x4plus", "screen 11 (title of the demo)"),
     0: ("x4plus", "screen 1, Blackstaff (main menu)"),
     1: ("detail", "screens 4 (stone), menu box of screens 1 and 4"),
-    10: ("x4plus", "screen 0, Waterdeep"),
+    10: ("ultrasharp", "screen 0, Waterdeep"),
     11: ("detail", "menu box of Waterdeep"),
     2: ("detail", "character creation 1"),
     3: ("detail", "character creation 2"),

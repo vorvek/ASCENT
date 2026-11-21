@@ -15,7 +15,8 @@ python -I tools/textures_hd.py --compare            # comparison sheets in gamed
 ```
 
 `--method NAME` picks another method (`combo`, the default, or one model or baseline
-of the table below), `--force` redoes existing files. The tool runs itself again with
+of the table below), `--force` redoes existing files, `--redo-effects` redoes the
+files of the bitmaps with effect colors (see below). The tool runs itself again with
 the Python of `gamedata/hd/venv` (Python 3.11, made with `uv` if it is installed).
 A file is skipped when it exists, is newer than its archive and the archive directory
 was made with the same method (file `.method`). A stopped run continues where it
@@ -47,6 +48,21 @@ Equal bitmaps (same pixels, size, flags and rule) are upscaled once. They are st
 `textures/.cache/<sha1>.png`, and the archive files are hard links to them. The level
 archives share most of their bitmaps with `PORTAL.EGG`.
 
+Effect colors (0x4E, 0x4F, 0x6D, 0x6E, 0x6F, 0xBE, 0xBF, 0xCF, see
+`re/effectcolors.md`): the game draws these texels of a merged wall with a color
+from the screen. Their palette color is a bright red (dark red for 0xCF). The tool
+fills them with the colors around them before the upscale (step 1 of the method),
+keeps them opaque, and gives these bitmaps a new cache key. The game marks the
+texels from the original pixels and gives the texels of a wall that is not merged
+their palette color, as the original. 5044 archive files (340 distinct bitmaps,
+45 wall texture names) have effect colors.
+
+A set made before this change has a red rim around the effect texels (the red
+waterfall edges, the red dots at the glass of doors). Make these files again with
+`python -I tools/textures_hd.py --redo-effects` (all archives; only the bitmaps with
+effect colors are upscaled again, the other files stay). The BONES archive (3279
+files) took 3 minutes from an empty directory.
+
 Not covered: color 254 of bitmaps with the super transparent flag (0x02). 816 bitmaps
 of `PORTAL.EGG` use it (palette entry 254 is a dark red, 20 0 0). The upscale treats
 it as a color, so the output has no exact mask for it.
@@ -55,8 +71,9 @@ it as a color, so the output has no exact mask for it.
 
 For each bitmap:
 
-1. Palette colors. Transparent pixels (flag 0x01, color 255) get the mean color of
-   their already filled 8 neighbors, ring after ring, until the picture is full.
+1. Palette colors. Transparent pixels (flag 0x01, color 255) and the pixels of the
+   effect colors get the mean color of their already filled 8 neighbors, ring after
+   ring, until the picture is full.
 2. Padding of 16 source pixels on each side. Tiling bitmaps are padded by wrapping:
    every 64 x 64 bitmap and every bitmap that a table uses as a wall texture
    (`$TEXTURES` outside `!BITMAP_REMAP_OFF`, `$WCLIP`, `$ECLIP` without
@@ -200,13 +217,19 @@ setting Upscaled textures (`engine/main/dtuhdui.c`, the compose step of
 | 193 | 640x480 | title | x4plus |
 | 18, 19 | 640x480 | front end screens 10 and 11 (Interplay logo, demo title) | x4plus |
 | 0 | 640x480 | screen 1, Blackstaff | x4plus |
-| 10, 11 | 640x480 | screen 0, Waterdeep (the main menu), and its menu box stone | x4plus, detail |
+| 10, 11 | 640x480 | screen 0, Waterdeep (the main menu), and its menu box stone | ultrasharp, detail |
 | 1 | 640x480 | screen 4 and the menu box stone of screens 1 and 4 | detail |
 | 2 to 5, 6 to 9 | 640x480 | character creation 1 to 4 and their menu box stones | detail |
 | 14, 15, 25 | 640x480, 414x349 | screen 3, the market, its menu box stone, the quantity window | detail |
 | 26 | 640x480 | screen 2 | x4plus |
 | 12, 155 to 160 | 640x480 | loading pictures | x4plus |
 | 161 | 640x480 | death picture | x4plus |
+
+Picture 10 (Waterdeep) was made with x4plus first: the model made the grass a flat
+green. The grass of the original is a fine grain of green, brown and red pixels.
+4x-UltraSharp keeps the grain and the detail of the rocks and roofs (8x8 block
+difference max 3.7, mean 0.74, against 12.8 and 2.49 for the detail method). Make
+it again with `python -I tools/ui_hd.py --only 10 --force`.
 
 Not upscaled: the portraits (87 to 150), icons (22 to 24), buttons (69 to 84),
 cursors, the Blackstaff pictures (27 to 56) and faces (195): they are drawn as
