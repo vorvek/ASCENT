@@ -41,6 +41,7 @@ static char rcsid[] = "$Id: songs.c 2.1 1995/05/02 16:15:21 john Exp $";
 #pragma on (unreferenced)
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "error.h"
@@ -49,42 +50,72 @@ static char rcsid[] = "$Id: songs.c 2.1 1995/05/02 16:15:21 john Exp $";
 #include "mono.h"
 #include "cfile.h"
 #include "digi.h"
+#include "mem.h"
+#include "dtufile.h"
+
+// ASCENT: this file read DESCENT.SNG, the list of the HMP song files and
+// their FM bank files, and played a song with digi_play_midi_song. The
+// songs.c of Descent to Undermountain (0x78D87, 0x78EB1) is a later form
+// of the file: it reads DTU.SNG, a table of CD audio tracks ("%hd %u":
+// track, seconds), and songs_play_song starts the CD track of a music item
+// if the CD audio driver is present ("RedBook Audio enabled"). The disc of
+// the game has one data track and no audio track, so that code plays
+// nothing with the shipped disc. The music of the game is the streamed
+// NAME.TUN files (dtumusic.c). See docs/re/music.md.
+//
+// The port reads the table as the original does and keeps the functions
+// for their callers. They play nothing: there is no CD audio.
 
 song_info Songs[MAX_SONGS];
 int Songs_initialized = 0;
 
 void songs_init()
 {
-	int i;
+	char *text, *p, *end;
 	char inputline[80+1];
-	CFILE * fp;
+	int size, n;
+	int track;
+	unsigned seconds;
 
 	if ( Songs_initialized ) return;
 
-	fp = cfopen( "descent.sng", "rb" );
-	if ( fp == NULL )	{
-		Error( "Couldn't open descent.sng" );
+	// ASCENT: the original stops with "Couldn't open DTU.SNG". The port
+	// goes on with an empty table, because nothing plays from it.
+	text = (char *)dtu_load_file( "DTU.SNG", &size );
+	if ( text == NULL )	{
+		Songs_initialized = 1;
+		return;
 	}
 
-	i = 0;
-	while (cfgets(inputline, 80, fp )) {
-		char *p = strchr(inputline,'\n');
-		if (p) *p = '\0';
-		if ( strlen( inputline ) )	{
-			Assert( i < MAX_SONGS );
-			sscanf( inputline, "%s %s %s", Songs[i].filename, Songs[i].melodic_bank_file, Songs[i].drum_bank_file );
-			//printf( "%d. '%s' '%s' '%s'\n",i,  Songs[i].filename, Songs[i].melodic_bank_file, Songs[i].drum_bank_file );
-			i++;
+	p = text;
+	end = text + size;
+	while ( p < end && Songs_initialized < MAX_SONGS )	{
+		n = 0;
+		while ( p < end && *p != '\n' )	{
+			if ( n < 80 ) inputline[n++] = *p;
+			p++;
+		}
+		p++;
+		inputline[n] = 0;
+		if ( inputline[0] == ';' ) continue;
+		if ( sscanf( inputline, "%d %u", &track, &seconds ) == 2 )	{
+			Songs[Songs_initialized].track = (short)track;
+			Songs[Songs_initialized].seconds = seconds;
+			sprintf( Songs[Songs_initialized].filename, "CD track %d", track );
+			Songs_initialized++;
 		}
 	}
-	Songs_initialized = 1;
-	cfclose(fp);
+	free( text );
+	if ( Songs_initialized == 0 )
+		Songs_initialized = 1;
 }
 
 void songs_play_song( int songnum, int repeat )
 {
 	if ( !Songs_initialized ) songs_init();
-	digi_play_midi_song( Songs[songnum].filename, Songs[songnum].melodic_bank_file, Songs[songnum].drum_bank_file, repeat );
+	// ASCENT: was the start of the CD track Songs[songnum].track.
+	songnum = songnum;
+	repeat = repeat;
 }
 
 void songs_play_level_song( int levelnum )
@@ -101,5 +132,5 @@ void songs_play_level_song( int levelnum )
 		songnum = (levelnum-1) % NUM_GAME_SONGS;
 	
 	songnum += SONG_LEVEL_MUSIC;
-	digi_play_midi_song( Songs[songnum].filename, Songs[songnum].melodic_bank_file, Songs[songnum].drum_bank_file, 1 );
+	songs_play_song( songnum, 1 );
 }

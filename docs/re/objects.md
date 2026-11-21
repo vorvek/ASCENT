@@ -759,3 +759,48 @@ The model name checks fail where the file has an older name of the same thing
 (`armogr.pof` for `armogre.pof`, `chest.pof` for `chest5.pof`, `rat_l.pof` for
 `rat_l2.pof`). The game takes the model of the table, so these objects load with the
 newer model.
+
+## Corrections and additions from the port of the objects
+
+Read in the code with the work on `engine/main/dtuobj.c`.
+
+- 0x6A3CC is the end of a creature (called at the end of the DIE animation, 0x11373, and
+  for an object that is picked up). For a creature (type 2): control type 11 becomes 0.
+  A HUMANOID creature drops gold (0x6A639). `shields` = 0. Alert function with level 4.
+  The body is put on the floor (0x6C30E). Object flags 0xC0 are set. With the
+  regeneration status bit (0x01000000) GOAL_STATE becomes SRCH and the function ends.
+  Else: status flags 0, `lifeleft` 0, the object number goes to the list at 0x2AEF54
+  (count 0x13D334, limit 800), object flags 6 are set, control type and movement type 0.
+  What takes the corpse away later was not read.
+- `collide_two_objects` (0x29455) builds the key (type A * 256 + type B - 0x101), looks
+  for it in the list of 64 words at 0x292D7 with `repne scasw` and jumps through the table
+  at 0x29355 with the count that is left. Player and creature: 0x26FC1 in both orders.
+- 0x6B70D (object, vector) is the "bump": for an object with movement type 1 and a mass
+  above 0 it adds the vector divided by the mass to the thrust.
+- 0x2AF5E (damage dice): a natural weapon of a creature as in ai.md. For a weapon type of
+  0 or more the dice are the bytes at `Weapon_info` + 0x0A (sides) and + 0x0B (count).
+  The player with no weapon uses the words at 0x1D33C1 (sides), 0x1D33C3 (count) and
+  0x1D33C7 (bonus) of the player structure. The result is a fix value.
+- The speed values that count are those of the model (models.md, 0x74AA7 reads the model
+  at +0xC0), not the copy at object 0x17A. (data) `durnan.pof` has 15.0, 6.0, 30.0, the
+  values of `speeds=` of its table line, not two times these values.
+
+### The port
+
+`dtu_objects_level_setup` does the steps of `verify_object`, `setup_object`,
+`place_creatures` and `fix_object_segs` for the types 2, 5, 15, 16, 17 and 18 after
+`level_resolve_models`. Differences:
+
+- The bitmap number of an item is a slot of `ObjBitmapPtrs` in the port (the number of
+  the executable is an index of `ObjBitmaps`). The picture is the same.
+- A creature that is in no segment is moved by `fix_object_segs` of Descent 1, not by
+  `place_creatures`.
+- `level_start` (the fixes for single levels, `creature_fixes`, the NPC table and the
+  scripts) is not in the port. A creature with a script number or with bit 9 of 0x1B0 is
+  not hostile.
+- Collision bodies: the port tests a moving object against the cylinder of 0x748D9 in
+  the x-z plane and then compares the heights (`dtu_check_vector_to_object` in `fvi.c`).
+  The test of the executable inside 0x3EFD9 was not read.
+- Pickup: the four player handlers are one function. The inventory is the list
+  `Dtu_inventory[]` of `dtuobj.h`, not the structure of 0xB65BB. The delay between two
+  pickups (0x31A0E) and the list of items that did not fit (0x30F10C) are not in the port.

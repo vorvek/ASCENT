@@ -56,10 +56,9 @@ int dtu_texture_ready(int tmap_num);
 //------------------------------------------------------------------------
 // The game.
 
-// 1: all objects are simulated and drawn. 0 (the default for now): only
-// the object of the player is simulated, no object is drawn, the AI does
-// not run, and the weapons of the player do not fire. The monsters and
-// items of the target game use tables that are not loaded yet.
+// 1 (the default): all objects are simulated and drawn (dtuobj.c). 0 (the
+// option -noobjects): only the object of the player is simulated, no
+// object is drawn and the AI does not run.
 extern int Dtu_objects_enabled;
 
 // 1 while the game runs from the option -level (no menus, Escape leaves

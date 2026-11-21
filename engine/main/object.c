@@ -373,6 +373,7 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 #include "newmenu.h"
 #include "gauges.h"
 #include "dtugame.h"		// ASCENT: Dtu_objects_enabled
+#include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "arcade.h"
 #include "multi.h"
 #include "menu.h"
@@ -657,6 +658,14 @@ void draw_polygon_object(object *obj)
 		}
 	}
 
+	// ASCENT: a model of an EGG archive is drawn in the animation frame of
+	// the object, see dtuobj.c
+	if (Dtu_objects_enabled) {
+		dtu_draw_polygon_object(obj,light,&engine_glow_value,NULL);
+		Interpolation_method = imsave;
+		return;
+	}
+
 	if (obj->rtype.pobj_info.tmap_override != -1) {
 		polymodel *pm = &Polygon_models[obj->rtype.pobj_info.model_num];
 		bitmap_index bm_ptrs[10];
@@ -898,7 +907,16 @@ void render_object(object *obj)
 
 		case RT_FIREBALL: draw_fireball(obj); break;
 
-		case RT_WEAPON_VCLIP: draw_weapon_vclip(obj); break;
+		// ASCENT: scenery of the target game can be a vclip (0x7C734)
+		case RT_WEAPON_VCLIP:
+			if (obj->type == OBJ_DRESSING)
+				dtu_draw_dressing_vclip(obj);
+			else
+				draw_weapon_vclip(obj);
+			break;
+
+		// ASCENT: an item of the target game (0x67E2D)
+		case RT_ITEM: dtu_draw_item(obj); break;
 
 		case RT_HOSTAGE: draw_hostage(obj); break;
 
@@ -1979,7 +1997,11 @@ void object_move_one( object * obj )
 			#if !defined(NDEBUG) && !defined(NMONO)
 			if (print_object_info>1) mprintf( (0, "AI: Moving robot object #%d\n",obj-Objects ));
 			#endif
-			do_ai_frame(obj);
+			// ASCENT: the AI of the target game (0x13BF4)
+			if (Dtu_objects_enabled)
+				dtu_do_ai_frame(obj);
+			else
+				do_ai_frame(obj);
 			break;
 
 		case CT_WEAPON:		Laser_do_weapon_sequence(obj); break;
@@ -2037,6 +2059,8 @@ void object_move_one( object * obj )
 		case MT_PHYSICS:
 			if (Dtu_player_walk && obj->type == OBJ_PLAYER && obj == ConsoleObject && obj->control_type == CT_FLYING && !Player_is_dead)
 				dtu_player_physics_sim(obj);
+			else if (Dtu_objects_enabled && obj->type == OBJ_ROBOT)
+				dtu_creature_physics_sim(obj);		// ASCENT: pmon.c (0x9F153)
 			else
 				do_physics_sim(obj);
 			break;	//move by physics
@@ -2089,6 +2113,9 @@ void object_move_all()
 		ConsoleObject->mtype.phys_info.flags |= PF_LEVELLING;
 	else
 		ConsoleObject->mtype.phys_info.flags &= ~PF_LEVELLING;
+
+	// ASCENT: the clock of the AI and the attack of the player
+	dtu_objects_frame();
 
 	// Move all objects
 	objp = Objects;

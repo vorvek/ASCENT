@@ -566,6 +566,9 @@ free_model(polymodel *po)
 		free(po->model_data);
 	po->dtu_block = NULL;
 	po->model_data = NULL;
+	if (po->dtu_arrays)
+		free(po->dtu_arrays);
+	po->dtu_arrays = NULL;
 }
 
 grs_bitmap *texture_list[MAX_POLYOBJ_TEXTURES];
@@ -889,6 +892,279 @@ int polyobj_find_model(const char *name)
 	return -1;
 }
 
+// Decode the arrays 10 to 19 of the data block and the rest of the header
+// into the fields of the model (docs/re/models.md, docs/formats/egg.md).
+// Returns 0 if there is no memory.
+static int dtu_decode_model_arrays(polymodel *pm)
+{
+	int n = pm->n_models, F = pm->n_frames, flags = pm->dtu_flags;
+	int n_vec, n_fix, n_ang, n_byte, i, total;
+	ubyte *mem;
+	const ubyte *p;
+	vms_vector *vp;
+	fix *fp;
+
+	#define SECTION(s) (pm->dtu_block + pm->dtu_section_ofs[s])
+
+	n_vec = 2*(F+1) + 7*F + (F+1) + 3*F;
+	n_fix = 2*(F+1) + 4*F;
+	n_ang = F*n;
+	n_byte = n + n*n;
+	total = n_vec*(int)sizeof(vms_vector) + n_fix*(int)sizeof(fix) + n_ang*(int)sizeof(vms_angvec) + n_byte + 16;
+
+	mem = (ubyte *) malloc(total);
+	if (mem == NULL)
+		return 0;
+	memset(mem,0,total);
+	pm->dtu_arrays = mem;
+
+	vp = (vms_vector *) mem;
+	fp = (fix *) (vp + n_vec);
+
+	// arrays 10 and 11: the body box
+	pm->box1_min = vp; vp += F+1;
+	pm->box1_max = vp; vp += F+1;
+	p = SECTION(10);
+	for (i=0;i<F+1;i++) dio_get_vector(&p,&pm->box1_min[i]);
+	p = SECTION(11);
+	for (i=0;i<F+1;i++) dio_get_vector(&p,&pm->box1_max[i]);
+
+	if (F > 0) {
+		vms_vector **list[7] = { &pm->frame_eye, &pm->box2_min, &pm->box2_max, &pm->box4_min, &pm->box4_max, &pm->box8_min, &pm->box8_max };
+		int k;
+
+		// array 12: the joint angles
+		pm->anim_angles = (vms_angvec *) (fp + n_fix);
+		p = SECTION(12);
+		for (i=0;i<n_ang;i++) {
+			pm->anim_angles[i].p = dio_get_fixang(&p);
+			pm->anim_angles[i].b = dio_get_fixang(&p);
+			pm->anim_angles[i].h = dio_get_fixang(&p);
+		}
+
+		// array 13: seven arrays of one vector per frame
+		p = SECTION(13);
+		for (k=0;k<7;k++) {
+			*list[k] = vp; vp += F;
+			for (i=0;i<F;i++) dio_get_vector(&p,&(*list[k])[i]);
+		}
+	}
+
+	if (flags & DTU_BOX_BODY) {
+		p = SECTION(14);
+		pm->body_center = vp; vp += F+1;
+		pm->body_half_height = fp; fp += F+1;
+		pm->body_radius = fp; fp += F+1;
+		for (i=0;i<F+1;i++) dio_get_vector(&p,&pm->body_center[i]);
+		for (i=0;i<F+1;i++) pm->body_half_height[i] = dio_get_fix(&p);
+		for (i=0;i<F+1;i++) pm->body_radius[i] = dio_get_fix(&p);
+	}
+	if ((flags & DTU_BOX_TORSO) && F > 0) {
+		p = SECTION(15);
+		pm->torso_center = vp; vp += F;
+		pm->torso_half_height = fp; fp += F;
+		pm->torso_radius = fp; fp += F;
+		for (i=0;i<F;i++) dio_get_vector(&p,&pm->torso_center[i]);
+		for (i=0;i<F;i++) pm->torso_half_height[i] = dio_get_fix(&p);
+		for (i=0;i<F;i++) pm->torso_radius[i] = dio_get_fix(&p);
+	}
+	if ((flags & DTU_BOX_WEAPON) && F > 0) {
+		p = SECTION(16);
+		pm->weapon_center = vp; vp += F;
+		pm->weapon_radius = fp; fp += F;
+		for (i=0;i<F;i++) dio_get_vector(&p,&pm->weapon_center[i]);
+		for (i=0;i<F;i++) pm->weapon_radius[i] = dio_get_fix(&p);
+	}
+	if ((flags & DTU_BOX_WEAPON2) && F > 0) {
+		p = SECTION(17);
+		pm->weapon2_center = vp; vp += F;
+		pm->weapon2_radius = fp; fp += F;
+		for (i=0;i<F;i++) dio_get_vector(&p,&pm->weapon2_center[i]);
+		for (i=0;i<F;i++) pm->weapon2_radius[i] = dio_get_fix(&p);
+	}
+
+	// arrays 18 and 19. The rows of array 18 have n bytes (the block has
+	// n more bytes after the last row).
+	pm->submodel_children = mem + total - 16 - n_byte;
+	pm->submodel_flags = pm->submodel_children + n*n;
+	memcpy(pm->submodel_children,SECTION(18),n*n);
+	memcpy(pm->submodel_flags,SECTION(19),n);
+	// A model with one submodel has a row that is not initialized.
+	if (n == 1)
+		pm->submodel_children[0] = 0xff;
+
+	#undef SECTION
+
+	// the header
+	pm->box_flags = flags;
+	p = pm->dtu_header + 0x4A;
+	pm->gun_submodels[0] = dio_get_ubyte(&p);
+	pm->gun_submodels[1] = dio_get_ubyte(&p);
+	pm->n_guns = dio_get_short(&p);
+	dio_get_vector(&p,&pm->gun_points[0]);
+	dio_get_vector(&p,&pm->gun_points[1]);
+	for (i=0;i<4;i++) pm->fire_frames[i] = dio_get_short(&p);
+	for (i=0;i<8;i++) pm->speeds[i] = dio_get_fix(&p);		// the loader of the game copies 8 values (0x70F57)
+	for (i=0;i<19;i++) pm->state_times[i] = dio_get_fix(&p);
+
+	return 1;
+}
+
+void polyobj_get_body_center(int model_num,int frame,vms_vector *center)
+{
+	polymodel *po;
+
+	vm_vec_zero(center);
+	if (model_num < 0 || model_num >= N_polygon_models)
+		return;
+	po = &Polygon_models[model_num];
+	if (po->body_center == NULL)
+		return;
+	if (frame < -1 || frame >= po->n_frames)
+		frame = -1;
+	*center = po->body_center[frame+1];
+}
+
+// The sorted draw of a model with more than one submodel (0x66E13 in
+// DTUGAME.EXE, newmodel.c). The model data has no SUBCALL opcode. Pass 1
+// walks the tree of the submodels and keeps the instance state and the
+// depth of each joint. Pass 2 draws the submodels, far ones first.
+static g3s_instance_state Sorted_saved[MAX_POLYMODEL_SUBMODELS];
+static fix Sorted_depth[MAX_POLYMODEL_SUBMODELS];
+static ubyte Sorted_visited[MAX_POLYMODEL_SUBMODELS];
+
+static void sorted_draw_walk(polymodel *po,int s,vms_angvec *angles,int depth)
+{
+	vms_vector zero = ZERO_VECTOR;
+	g3s_point origin;
+	ubyte *row;
+	int i;
+
+	// A child list of the data never has a loop. The test protects
+	// against a damaged file.
+	if (depth > MAX_POLYMODEL_SUBMODELS || Sorted_visited[s])
+		return;
+	Sorted_visited[s] = 1;
+
+	g3_start_instance_angles(&po->submodel_offsets[s],angles ? &angles[s] : NULL);
+	g3_get_instance_state(&Sorted_saved[s]);
+	g3_rotate_point(&origin,&zero);
+	Sorted_depth[s] = origin.p3_vec.z;
+
+	row = po->submodel_children + s*po->n_models;
+	for (i=0;i<po->n_models && row[i] != 0xff;i++)
+		if (row[i] < po->n_models)
+			sorted_draw_walk(po,row[i],angles,depth+1);
+
+	g3_done_instance();
+}
+
+static int sorted_draw_compare(const void *a,const void *b)
+{
+	fix za = Sorted_depth[*(const ubyte *)a], zb = Sorted_depth[*(const ubyte *)b];
+
+	// The largest z first. The order of two equal values is the order of
+	// the submodel numbers (the original leaves it to its qsort).
+	if (za != zb)
+		return (za > zb) ? -1 : 1;
+	return (int)*(const ubyte *)a - (int)*(const ubyte *)b;
+}
+
+static void draw_model_sorted(polymodel *po,vms_angvec *angles,fix light,fix *glow_values,int show_hidden)
+{
+	ubyte order[MAX_POLYMODEL_SUBMODELS];
+	g3s_instance_state save;
+	int i, n = po->n_models;
+
+	memset(Sorted_visited,0,sizeof(Sorted_visited));
+	sorted_draw_walk(po,0,angles,0);
+
+	for (i=0;i<n;i++)
+		order[i] = i;
+	qsort(order,n,1,sorted_draw_compare);
+
+	g3_get_instance_state(&save);
+	for (i=0;i<n;i++) {
+		int s = order[i];
+
+		if (!Sorted_visited[s])		// not in the tree
+			continue;
+		if ((po->submodel_flags[s] & DTU_SUBMODEL_F_HIDDEN) && !show_hidden)
+			continue;
+		g3_set_instance_state(&Sorted_saved[s]);
+		g3_draw_polygon_model(&po->model_data[po->submodel_ptrs[s]],texture_list,angles,light,glow_values);
+	}
+	g3_set_instance_state(&save);
+}
+
+void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[])
+{
+	polymodel *po;
+	vms_angvec *angles;
+	vms_vector draw_pos;
+	int i;
+
+	if (model_num < 0 || model_num >= N_polygon_models) {
+		mprintf((1, "Trying to draw bogus poly\n"));
+		return;
+	}
+
+	po=&Polygon_models[model_num];
+
+	if (po->dtu_block == NULL || po->model_data == NULL)
+		return;
+
+	if (frame > -1 && (po->anim_angles == NULL || frame >= po->n_frames))
+		frame = -1;
+
+	if (alt_textures)
+		for (i=0;i<po->n_textures;i++)	{
+			texture_list_index[i] = alt_textures[i];
+			texture_list[i] = &GameBitmaps[alt_textures[i].index];
+		}
+	else
+		for (i=0;i<po->n_textures;i++)	{
+			texture_list_index[i] = ObjBitmaps[ObjBitmapPtrs[po->first_texture+i]];
+			texture_list[i] = &GameBitmaps[ObjBitmaps[ObjBitmapPtrs[po->first_texture+i]].index];
+		}
+
+	// See draw_polygon_model()
+	for (i=po->n_textures;i<po->dtu_textures_used && i<MAX_POLYOBJ_TEXTURES;i++) {
+		texture_list_index[i].index = 0;
+		texture_list[i] = &GameBitmaps[0];
+	}
+
+#ifdef PIGGY_USE_PAGING
+	for (i=0;i<po->n_textures;i++)
+		PIGGY_PAGE_IN( texture_list_index[i] );
+#endif
+
+	// The position of an object is the center of the body box of its
+	// current frame (0x729C1 to 0x72A0A).
+	draw_pos = *pos;
+	if (po->body_center) {
+		vms_matrix m;
+		vms_vector ofs;
+
+		vm_copy_transpose_matrix(&m,orient);
+		vm_vec_rotate(&ofs,&po->body_center[frame+1],&m);
+		vm_vec_sub2(&draw_pos,&ofs);
+	}
+
+	g3_start_instance_matrix(&draw_pos,orient);
+
+	g3_set_interp_points(robot_points);
+
+	angles = (frame == -1) ? NULL : po->anim_angles + frame*po->n_models;
+
+	if (po->n_models > 1)
+		draw_model_sorted(po,angles,light,glow_values,show_hidden);
+	else
+		g3_draw_polygon_model(po->model_data,texture_list,angles,light,glow_values);
+
+	g3_done_instance();
+}
+
 int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_avail)
 {
 	polymodel *pm;
@@ -992,6 +1268,13 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 			return -1;
 		}
 	pm->dtu_textures_used = highest+1;
+
+	if (!dtu_decode_model_arrays(pm)) {
+		free(pm->dtu_block);
+		pm->dtu_block = NULL;
+		pm->model_data = NULL;
+		return -1;
+	}
 
 	// Until a table line names the model, it draws with the texture slots
 	// that follow slot 0. load_polygon_model() sets the real values.

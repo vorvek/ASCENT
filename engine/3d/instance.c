@@ -18,7 +18,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #include "globvars.h"
 
-#define MAX_INSTANCE_DEPTH	5
+//ASCENT: was 5. The models of Descent to Undermountain have up to 64
+//submodels in a chain, and the game draws them with one instance for
+//each joint (main/polyobj.c, draw_model_sorted).
+#define MAX_INSTANCE_DEPTH	72
 
 static struct instance_context {
 	vms_vector view_pos;
@@ -95,4 +98,19 @@ void g3_done_instance(void)
 		View_position = instance_stack[instance_depth].view_pos;
 		View_matrix = instance_stack[instance_depth].view_matrix;
 	}
+}
+
+//ASCENT: new. DTUGAME.EXE has these two functions (0xEA919, 0xEA93A): they
+//copy the view position and the view matrix of the current instance (48
+//bytes) to and from a buffer. The sorted model draw uses them.
+void g3_get_instance_state(g3s_instance_state *state)
+{
+	state->view_pos = View_position;
+	state->view_matrix = View_matrix;
+}
+
+void g3_set_instance_state(g3s_instance_state *state)
+{
+	View_position = state->view_pos;
+	View_matrix = state->view_matrix;
 }

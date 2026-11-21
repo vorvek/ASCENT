@@ -118,6 +118,9 @@ int plat_audio_play(const uint8_t *data, int length, int rate, int volume, int p
 // Stop a channel with a short fade. A handle of a channel that ended is ignored.
 void plat_audio_stop(int handle);
 void plat_audio_stop_all(void);
+// Release all the channels now, with no fade. After this call the mixer
+// does not read sample data, so the caller can release that data.
+void plat_audio_flush(void);
 void plat_audio_set_volume(int handle, int volume);
 void plat_audio_set_pan(int handle, int pan);
 // Returns 1 while the channel plays. Returns 0 after the sample ended or
@@ -139,5 +142,11 @@ void plat_audio_music_start(plat_audio_music_callback callback, void *user, int 
 // function returns.
 void plat_audio_music_stop(void);
 void plat_audio_music_set_volume(int volume);
+
+// Play signed 16-bit mono PCM. The other arguments, the return value and
+// the rule for the data are those of plat_audio_play. A sample value of
+// 32767 gives the same output as the value 255 of an 8-bit sample, within
+// one part in 256.
+int plat_audio_play16(const int16_t *data, int length, int rate, int volume, int pan, int loop);
 
 #endif

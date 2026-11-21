@@ -436,6 +436,10 @@ static void msg_insert(char *line, int color)
 	if (Msg_count < MSG_LINES) Msg_count++;
 }
 
+// ASCENT: the color of the next message, or -1. See
+// dtu_display_add_trigger_message().
+static int Msg_next_color = -1;
+
 void dtu_display_add_message(char *text)
 {
 	char line[MSG_LENGTH];
@@ -446,6 +450,8 @@ void dtu_display_add_message(char *text)
 	// The color of a message is the first byte of the line in the original.
 	// The callers were not traced: gray is a guess.
 	color = rgb6(48, 48, 48);
+	if (Msg_next_color >= 0)
+		color = Msg_next_color;
 	max_w = Msg_rect[Dtu_hires].w - 4;
 	gr_set_curfont(GAME_FONT);
 	while (*p) {
@@ -467,6 +473,19 @@ void dtu_display_add_message(char *text)
 		while (*p == ' ' || *p == '\n') p++;
 	}
 	Msg_first = 0;
+}
+
+// The message of a trigger (0x94F5B): 0x347A2 with the number of the
+// player, which gives the color of the player (table at 0x13B970, player
+// 0 is 15,15,23, each value times 2), then 0x34983, which adds a line
+// with one space.
+void dtu_display_add_trigger_message(char *text)
+{
+	if (!Dtu_display_active || !GAME_FONT || !text) return;
+	Msg_next_color = rgb6(30, 30, 46);
+	dtu_display_add_message(text);
+	msg_insert(" ", Msg_next_color);
+	Msg_next_color = -1;
 }
 
 static void msg_draw(void)

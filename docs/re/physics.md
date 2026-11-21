@@ -428,3 +428,50 @@ Other results: the walk speed limit is 49.33 and the run speed limit 74.0. In DR
 player stops at a wall after 80 units and moves 0.3 forward and back while the key is
 down (the bounce of 4.5). In BANE a wall at z 187 stops the player and lets the player pass after about 0.5 s (probably a door that opens at the hit). In YPINN
 (height 20) a jump ends at 3.0 at the ceiling. In PRISON (height 30) it goes to 7.5.
+
+## 11. Creatures (pmon.c, 0x9F153)
+
+Read with the port of the creatures (`dtu_creature_physics_sim` in
+`engine/main/dtuobj.c`). The function has the form of the player movement and
+uses the same helpers (0x6C662 gravity, 0x6CB68 thrust and drag, 0x6CD45 floor
+hit, 0x6C8C8 fall damage, 0x9E88D wall hit).
+
+1. Return if the object is held (status 0x04004000), has object flag 0x80 or
+   one of the flags 7, or has control type 11. Return if the activity byte
+   0x1CC is 0 (but for the rat type): a creature that is not active does not
+   move and has no gravity.
+2. The velocity is multiplied by 0.5 (0x9F286), see ai.md "How a creature
+   moves". The transposed orientation is copied to object 0x44.
+3. 0x6CFF8, the weapon test (ai.md, "Melee attack"), then 0x6B354 (not read).
+4. Acceleration = thrust / mass. On floor type 1 a creature that does not fly
+   gets half of it in x and z and bit 0x20 at 0x15F (and a splash object when
+   the switch at 0x145360 is set).
+5. Gravity 0x6C662. A creature that does not fly and is in CURRENT_STATE DEAD
+   gets bit 0x20 at 0x1AE: from then on the velocity in x and z is divided by
+   8 on each frame.
+6. 0x6CCDB and 0x6CB68. The thrust of a creature that does not fly is cleared.
+7. The body cylinder 0x748D9. The radius of the move query is one fourth of
+   its radius (0x9F605). The query tests objects unless the animation state is
+   DIE.
+8. The move loop, 5 tries at most. A velocity of 10 (fix units) or less ends
+   it with `retry_count` 0. Results of the query:
+   - nothing hit: move, `retry_count` 0, blocker fields cleared.
+   - floor: 0x6CD45 and 0x6C8C8.
+   - wall: 0x9E88D, `retry_count` 1, end.
+   - object: back to the start position, `retry_count` = clock parity, the
+     blocker (0x138) and its frame count (0x13A) are set. Scenery whose
+     `pushable` value is below `str` of the creature gets 8 times the velocity
+     and thrust of the creature and movement type 1. A creature that is hit
+     goes to the ignore list. Then `collide_two_objects`.
+   - bad start point: the velocity is negated, `retry_count` 1.
+9. After the loop: `update_object_seg`, the step sound on the first frame of
+   WALK and RUN, the attack sound in ATTACK. An object that is in no segment
+   gets object flag 0x40 and render, control and movement type 0.
+
+The port has the steps 1, 2, 3 (weapon test only), 5, 6, 7 and 8 without the
+push of scenery, the floor types, the sounds and the fall damage.
+`Dtu_fix_creature_move` (on by default) makes three parts independent of the
+frame rate: the factor 0.5 of step 2 acts per 3/64 second (v goes to the
+speed of the state with the same time constant as at that frame time), the
+steps of thrust, drag and gravity are all done (the executable does two at
+most per frame), and the lift out of the floor is 2.0 per 3/64 second.

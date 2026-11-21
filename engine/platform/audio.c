@@ -2,9 +2,10 @@
  * ASCENT platform layer: audio device and software mixer.
  *
  * It replaces the HMI Sound Operating System driver that the DOS game
- * used for digital sound. The mixer plays unsigned 8-bit mono samples on
- * PLAT_AUDIO_CHANNELS channels and one stream of 16-bit stereo music. It
- * resamples each source to the output rate with linear interpolation.
+ * used for digital sound. The mixer plays unsigned 8-bit or signed 16-bit
+ * mono samples on PLAT_AUDIO_CHANNELS channels and one stream of 16-bit
+ * stereo music. It resamples each source to the output rate with linear
+ * interpolation.
  *
  * Threads: the game thread calls the plat_audio functions. SDL calls
  * device_callback on its audio thread. Mixer_lock protects all the mixer
@@ -35,7 +36,8 @@ enum { MUSIC_OFF, MUSIC_ON, MUSIC_FADING };
 typedef struct channel {
 	int state;
 	int generation;             // the upper part of the handle
-	const uint8_t *data;
+	const uint8_t *data;        // unsigned 8-bit samples, or NULL
+	const int16_t *data16;      // signed 16-bit samples, used if data is NULL
 	uint32_t length;            // in samples
 	int loop;
 	uint64_t pos;               // position in the sample, 32.32 fixed point
@@ -147,12 +149,21 @@ static void mix_channel(channel *c, float *acc, int frames)
 			return;
 		}
 
-		s0 = c->data[idx];
-		if (idx + 1 < c->length)
-			s1 = c->data[idx + 1];
-		else
-			s1 = c->loop ? c->data[0] : s0;
-		v = ((float)(s0 - 128) + (float)(s1 - s0) * frac) * 256.0f;
+		if (c->data) {
+			s0 = c->data[idx];
+			if (idx + 1 < c->length)
+				s1 = c->data[idx + 1];
+			else
+				s1 = c->loop ? c->data[0] : s0;
+			v = ((float)(s0 - 128) + (float)(s1 - s0) * frac) * 256.0f;
+		} else {
+			s0 = c->data16[idx];
+			if (idx + 1 < c->length)
+				s1 = c->data16[idx + 1];
+			else
+				s1 = c->loop ? c->data16[0] : s0;
+			v = (float)s0 + (float)(s1 - s0) * frac;
+		}
 		if (!c->loop && end - c->pos < fade_len)
 			v *= (float)(end - c->pos) * fade_scale;
 
@@ -355,12 +366,13 @@ void plat_audio_close(void)
 // ---------------------------------------------------------------------
 // The interface for the game thread.
 
-int plat_audio_play(const uint8_t *data, int length, int rate, int volume, int pan, int loop)
+// Start a channel. One of data and data16 is not NULL.
+static int play_sample(const uint8_t *data, const int16_t *data16, int length, int rate, int volume, int pan, int loop)
 {
 	channel *c = NULL;
 	int i, handle = -1;
 
-	if (!Mixer_ready || !data || length <= 0 || rate <= 0)
+	if (!Mixer_ready || (!data && !data16) || length <= 0 || rate <= 0)
 		return -1;
 
 	SDL_LockMutex(Mixer_lock);
@@ -382,6 +394,7 @@ int plat_audio_play(const uint8_t *data, int length, int rate, int volume, int p
 		c->state = CH_PLAYING;
 		c->generation = Next_generation;
 		c->data = data;
+		c->data16 = data16;
 		c->length = (uint32_t)length;
 		c->loop = loop != 0;
 		c->pos = 0;
@@ -396,6 +409,16 @@ int plat_audio_play(const uint8_t *data, int length, int rate, int volume, int p
 	}
 	SDL_UnlockMutex(Mixer_lock);
 	return handle;
+}
+
+int plat_audio_play(const uint8_t *data, int length, int rate, int volume, int pan, int loop)
+{
+	return play_sample(data, NULL, length, rate, volume, pan, loop);
+}
+
+int plat_audio_play16(const int16_t *data, int length, int rate, int volume, int pan, int loop)
+{
+	return play_sample(NULL, data, length, rate, volume, pan, loop);
 }
 
 void plat_audio_stop(int handle)
@@ -425,6 +448,21 @@ void plat_audio_stop_all(void)
 			Channels[i].state = CH_STOPPING;
 			Channels[i].target_l = Channels[i].target_r = 0;
 		}
+	SDL_UnlockMutex(Mixer_lock);
+}
+
+// Release all the channels now, with no fade. After this call the mixer
+// does not read the sample data of any channel, so the caller can release
+// that data. The cut can give a click. Use it before the sample data goes away.
+void plat_audio_flush(void)
+{
+	int i;
+
+	if (!Mixer_ready)
+		return;
+	SDL_LockMutex(Mixer_lock);
+	for (i = 0; i < PLAT_AUDIO_CHANNELS; i++)
+		Channels[i].state = CH_FREE;
 	SDL_UnlockMutex(Mixer_lock);
 }
 

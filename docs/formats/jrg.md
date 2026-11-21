@@ -239,7 +239,7 @@ Entry:
 | Offset | Size | Meaning |
 |---|---|---|
 | 0 | 16 | file name, NUL terminated, NUL padded |
-| 16 | u32 | unknown. Values found: 0 (35 entries), 1 (2), 2 (2), 4 (1) |
+| 16 | u32 | not read by the version 1.3 executable (see [../re/music.md](../re/music.md)). Values found: 0 (35 entries), 1 (2), 2 (2), 4 (1) |
 
 Verified: 804 bytes = 4 + 40 * 20, no bytes after the NUL of a name other
 than NUL, and every name that is not empty is a file in the install (compared
@@ -248,7 +248,10 @@ values 1 and 2. 15 of the 52 .TUN files are not in this table (FECGEN,
 FECREDIT, FEWDEEP, IGACT1 to 3, IGBGND1 to 3 and the six TAG files), so the
 game must name those in another way.
 
-Guess: the entry number is a music slot number used by the level data.
+The entry number is the track number of the music code: the game code and the music
+commands of `DTU.WRP` name a track by it (verified, see [../re/music.md](../re/music.md)).
+The executable has no other source of `.TUN` names, so it does not play the 15 files
+that are not in this table.
 
 ## FESOUND.JRG (index without data)
 

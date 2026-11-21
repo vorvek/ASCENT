@@ -177,6 +177,7 @@ static char rcsid[] = "$Id: switch.c 2.1 1995/03/21 14:39:08 john Exp $";
 #include "gameseg.h"
 #include "mono.h"
 #include "wall.h"
+#include "dtutrig.h"		// ASCENT: dtu_trig_frame()
 #include "texmap.h"
 #include "fuelcen.h"
 #include "newdemo.h"
@@ -405,4 +406,9 @@ void triggers_frame_process()
 	for (i=0;i<Num_triggers;i++)
 		if (Triggers[i].time >= 0)
 			Triggers[i].time -= FrameTime;
+
+	// ASCENT: new. The triggers, traps and warps of the target game
+	// (0x9547A and 0x69BC8 of DTUGAME.EXE). The levels of the target game
+	// have no Descent 1 triggers.
+	dtu_trig_frame();
 }

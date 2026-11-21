@@ -34,7 +34,7 @@
 
 #define DTU_WEAK __attribute__((weak))
 
-int Dtu_objects_enabled = 0;
+int Dtu_objects_enabled = 1;
 int Dtu_direct_start = 0;
 
 //------------------------------------------------------------------------

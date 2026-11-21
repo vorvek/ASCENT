@@ -47,10 +47,15 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #ifndef _SONGS_H
 #define _SONGS_H
 
+#include "types.h"
+
+// ASCENT: was the HMP song file and its two FM bank files. DTU.SNG has a
+// CD audio track and its play time for each music item. filename holds a
+// text for the debug menu of Descent 1.
 typedef struct song_info {
 	char	filename[16];
-	char	melodic_bank_file[16];
-	char	drum_bank_file[16];
+	short	track;
+	uint	seconds;
 } song_info;
 
 #define MAX_SONGS 27

@@ -378,7 +378,11 @@ weapon sphere of the current frame (code):
   type is `Robot_info[id].weapon_type` for a creature and the current item for a player.
 
 The matrix at object 0x44 is the second matrix of the object (lvl.md: the loader copies
-the orientation to it).
+the orientation to it). Correction (code 0x9F28B, 0x6D129): the movement code and the
+weapon test write the transposed orientation to it on each frame (0xD778A is the copy
+with transpose). So `rotate(v, matrix at 0x44)` turns a vector of the model into the
+world. The port uses the transposed orientation for the weapon sphere, the torso center
+and the body center.
 
 ### Body size for physics
 
@@ -520,6 +524,39 @@ for the states that advance each frame. For STAND use one animation frame each 0
 frame rate, (guess)). Do not copy the floor of the frame time, or keep the game logic
 at a fixed tick.
 
+Correction (code 0x14A54, found with the port of the creatures): the idle animation is
+seen much less than the text above says. Step 20 of `do_ai_frame` puts a creature that
+is not active back to STAND, frame 0, each time the creature is processed. The time
+slicing of step 19 processes a creature on each frame if it is nearer than 100.0, each
+0.5 s if it is nearer than 150.0, and each 1.0 s beyond that. So a creature that is near
+and not active stands on frame 0 at any frame rate. Only a creature farther away plays
+the idle steps between two visits, and there the number of steps depends on the frame
+rate.
+
+What the port does (`engine/main/dtuobj.c`):
+
+- `Dtu_fix_idle_anim` (on by default): one idle step (0x14013) for each 3/64 second, the
+  reference frame time of physics.md, and the tenth step is the one that moves STAND,
+  REST and the SIDLE states. So STAND moves by one frame each 0.469 s and FIDGET takes
+  0.5625 s. Off: one step for each game frame, as the executable.
+- The reset of step 20 is kept in both cases. `Dtu_idle_anim_near` (off by default, option
+  `-idleanim`) leaves it out, so that the idle animation runs at all distances. This is
+  not the behavior of the executable.
+- The frame time floor of 1/150 s is in `calc_frame_time` of the port as in the executable.
+  The frame limit of the port (`Game_max_fps`, 60) keeps the frame time above it.
+
+Measured in the port (level BANE, 27 creatures, 40 seconds of game time, options
+`-idleanim -noattack -objlog FILE -objlogframes`, fixed frame rates):
+
+| Frames per second | Corrected: STAND, seconds per frame | Corrected: FIDGET, seconds | Rule of the executable (`-origobj`): STAND, seconds per frame |
+|---|---|---|---|
+| 20 | 0.464 | 0.60 | 0.249 |
+| 60 | 0.465 | 0.56 | 0.083 |
+| 200 | 0.465 | 0.56 | 0.050 |
+
+The values of the executable rule are for a constant frame time: the clock then has
+a short cycle of remainders by 10 (5 frames at 20 per second).
+
 ## Proof with the tool
 
 `tools/model.py` reads a model from an EGG file, applies the rules above (frame major
@@ -562,3 +599,32 @@ make them again.
 - Object field 0x16E.
 - The special draw 0x673AD and the magic effect bytes 0x14C4CD and 0x14C4D0.
 - Morph objects and debris with these models.
+
+## The port
+
+`engine/main/polyobj.c` and `polyobj.h`:
+
+- `polyobj_load_dtu_model` reads the header and all 19 arrays into the fields of
+  `polymodel` with the names of this document (`anim_angles`, `frame_eye`, `box1_min` to
+  `box8_max`, `body_center`, `body_half_height`, `body_radius`, `torso_*`, `weapon_*`,
+  `weapon2_*`, `submodel_flags`, `submodel_children`, `box_flags`, `gun_submodels`,
+  `fire_frames`, `speeds`, `state_times`, `n_guns`, `gun_points`). The arrays of the
+  submodels (2 to 9) have 64 entries (`MAX_POLYMODEL_SUBMODELS`). `MAX_SUBMODELS` (10)
+  still sizes the joint angles in the object of Descent 1, which the models of the target
+  game do not use.
+- `draw_polygon_model_frame` is 0x727A5 without the simpler model, the pulse counter and
+  the effect modes: texture list, position rule, `g3_start_instance_matrix`, then the
+  sorted draw for a model with more than one submodel.
+- The sorted draw is 0x66E13: pass 1 walks `submodel_children` with
+  `g3_start_instance_angles` and keeps the instance state and the depth of each joint,
+  pass 2 sorts by depth (largest first) and draws each submodel with its saved state.
+  `g3_get_instance_state` and `g3_set_instance_state` in `engine/3d/instance.c` are the
+  functions 0xEA919 and 0xEA93A. The instance stack of the 3d library has 72 levels in
+  place of 5.
+- Not in the port: the magic effect (flag 0x20, effect modes), the special draw 0x673AD,
+  the texture pulse, the draw of the viewer (the arms of the player), the model change of
+  the player.
+
+Checked by eye: `durnan.pof` in the level YPINN stands in the pose of frame 0 of the
+sheet of `tools/model.py` (upright, sword held up), and the skeletons, ghouls and orcs of
+BANE and DROW1 draw with whole bodies and weapons in the hand.

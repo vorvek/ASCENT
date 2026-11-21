@@ -331,6 +331,9 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "songs.h"
 #include "gamemine.h"	// ASCENT: level_translate_textures()
 #include "dtugame.h"		// ASCENT: the data layer functions and the direct start
+#include "dtuobj.h"		// ASCENT: the objects of the target game
+#include "dtutrig.h"		// ASCENT: dtu_trig_load_level()
+#include "dtumusic.h"	// ASCENT: the streamed music
 #ifdef NETWORK
 #include "netmisc.h"
 #endif
@@ -983,6 +986,13 @@ void LoadLevel(int level_num)
 	dtu_load_level_data(level_name);
 	level_translate_textures(1);
 	level_resolve_models(1);
+	// ASCENT: new. The model, bitmap, size and animation of each object
+	// come from the tables (dtuobj.c).
+	dtu_objects_level_setup();
+
+	// ASCENT: new. The triggers, traps, messages and warps of the level
+	// (0x9550D of DTUGAME.EXE loads them with the level).
+	dtu_trig_load_level(level_name, level_num-1);
 
 	#ifdef NETWORK
 	my_segments_checksum = netmisc_calc_checksum(Segments, sizeof(segment)*(Highest_segment_index+1));
@@ -1001,9 +1011,10 @@ void LoadLevel(int level_num)
 
 	set_sound_sources();
 
-	// ASCENT: the direct start has no sound
-	if (!Dtu_direct_start)
-		songs_play_level_song( Current_level_num );
+	// ASCENT: was songs_play_level_song( Current_level_num ). The music
+	// of the target game starts with the music commands of DTU.WRP when
+	// the player enters a segment (dtumusic.c).
+	dtumusic_level_start( Current_level_num - 1 );
 
 }
 
@@ -1454,7 +1465,9 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 		// ASCENT: piggy_load_level_data() pages in the bitmaps of the
 		// objects too. It needs the tables of the monsters and items. The
 		// bitmap of a texture is paged in when a side is drawn.
-		if (Dtu_objects_enabled)
+		// The tables of Descent 1 that the function reads do not exist in
+		// the target game, so it is not called (dtuobj.c).
+		if (0)
 			piggy_load_level_data();
 	}
 
@@ -1525,7 +1538,8 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 	init_robots_for_level();
 	// ASCENT: the AI data of the robots comes from the robot table, see
 	// Dtu_objects_enabled in dtugame.h
-	if (Dtu_objects_enabled)
+	// dtu_objects_level_setup() has done this for the creatures.
+	if (0)
 		init_ai_objects();
 	init_morphs();
 	init_all_matcens();
@@ -1551,7 +1565,8 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 		StartLevel(0);		// Note link to above if!
 
 	// ASCENT: see Dtu_objects_enabled in dtugame.h
-	if (Dtu_objects_enabled)
+	// The hit points of a creature are those of the level file.
+	if (0)
 		copy_defaults_to_robot_all();
 	init_controlcen_for_level();
 

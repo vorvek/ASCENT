@@ -30,7 +30,31 @@ typedef struct acm_state {
 	int			*amp;			// 0x10000 entries, AMP_MID is the value 0
 	int			*hist[16];	// two lines of history for each filter pass
 	int			error;
+	// The fields below are for a stream that is decoded in parts.
+	acm_read_fn	read;			// source of the bytes, NULL if all the data is at "data"
+	void			*user;
+	int			eof;			// the source has no more bytes
+	int			past_end;	// bytes that were asked for after the end
+	ubyte			buf[4096];
 } acm_state;
+
+// Get the next part of the stream from the source. Returns 0 at the end.
+static int acm_refill(acm_state *s)
+{
+	int n;
+
+	if ( s->read == NULL || s->eof )
+		return 0;
+	n = s->read( s->user, s->buf, (int)sizeof(s->buf) );
+	if ( n <= 0 ) {
+		s->eof = 1;
+		return 0;
+	}
+	s->data = s->buf;
+	s->pos = 0;
+	s->end = n;
+	return 1;
+}
 
 static int acm_bits(acm_state *s, int n)
 {
@@ -38,8 +62,10 @@ static int acm_bits(acm_state *s, int n)
 
 	while ( s->nbits < n ) {
 		// Bits past the end of the stream read as 0.
-		if ( s->pos < s->end )
+		if ( s->pos < s->end || acm_refill(s) )
 			s->acc |= (unsigned)s->data[s->pos++] << s->nbits;
+		else
+			s->past_end++;
 		s->nbits += 8;
 	}
 	v = s->acc & ((1u << n) - 1);
@@ -320,4 +346,127 @@ short *acm_decode(const ubyte *data, int size, acm_info *info)
 		return NULL;
 	}
 	return out;
+}
+
+// ---------------------------------------------------------------------
+// A stream that is decoded in parts (the music). The decoder is the one of
+// acm_decode: acm_load_block and acm_juggle_block on one block at a time.
+
+struct acm_stream {
+	acm_state	s;
+	acm_info		info;
+	int			block_len;		// values of one block
+	int			block_pos;		// next value of the block to give out
+	int			block_valid;	// 1 if the block holds decoded values
+	int			n_out;			// values given out since the start
+};
+
+acm_stream *acm_stream_open(acm_read_fn read, void *user, acm_info *info)
+{
+	acm_stream *st;
+	ubyte header[ACM_HEADER_SIZE];
+	int k, cols;
+
+	if ( read == NULL || read( user, header, ACM_HEADER_SIZE ) != ACM_HEADER_SIZE )
+		return NULL;
+	st = (acm_stream *)calloc( 1, sizeof(acm_stream) );
+	if ( st == NULL )
+		return NULL;
+	if ( !acm_get_info( header, ACM_HEADER_SIZE, &st->info ) ) {
+		free( st );
+		return NULL;
+	}
+
+	st->s.read = read;
+	st->s.user = user;
+	st->s.level = st->info.level;
+	st->s.rows = st->info.rows;
+	cols = st->s.cols = 1 << st->info.level;
+	st->block_len = st->s.rows * cols;
+	st->s.block = (int *)calloc( st->block_len, sizeof(int) );
+	st->s.amp = (int *)calloc( 0x10000, sizeof(int) );
+	for (k=0; k<st->s.level; k++ )
+		st->s.hist[k] = (int *)calloc( (2 * (cols >> (k+1)) + 2), sizeof(int) );
+	if ( st->s.block == NULL || st->s.amp == NULL ) {
+		acm_stream_close( st );
+		return NULL;
+	}
+	for (k=0; k<st->s.level; k++ )
+		if ( st->s.hist[k] == NULL ) {
+			acm_stream_close( st );
+			return NULL;
+		}
+
+	if ( info )
+		*info = st->info;
+	return st;
+}
+
+int acm_stream_read(acm_stream *st, short *out, int n_values)
+{
+	acm_state *s = &st->s;
+	int done = 0, v;
+
+	while ( done < n_values && st->n_out < st->info.total && !s->error ) {
+		if ( !st->block_valid || st->block_pos >= st->block_len ) {
+			acm_load_block( s );
+			// 64 bytes past the end: the stream is shorter than its header says.
+			if ( s->error || s->past_end > 64 ) {
+				s->error = 1;
+				break;
+			}
+			acm_juggle_block( s );
+			st->block_pos = 0;
+			st->block_valid = 1;
+		}
+		v = s->block[st->block_pos++] >> s->level;
+		if ( v < -32768 ) v = -32768;
+		if ( v > 32767 ) v = 32767;
+		out[done++] = (short)v;
+		st->n_out++;
+	}
+	return done;
+}
+
+void acm_stream_rewind(acm_stream *st)
+{
+	acm_state *s = &st->s;
+	int k;
+
+	// The state of a new decoder: no bits, no block, and zeros in the
+	// amplitude table and in the filter history. The caller has put the
+	// source at the first byte after the header.
+	s->data = NULL;
+	s->pos = s->end = 0;
+	s->acc = 0;
+	s->nbits = 0;
+	s->eof = 0;
+	s->past_end = 0;
+	s->error = 0;
+	memset( s->block, 0, st->block_len * sizeof(int) );
+	memset( s->amp, 0, 0x10000 * sizeof(int) );
+	for (k=0; k<s->level; k++ )
+		memset( s->hist[k], 0, (2 * (s->cols >> (k+1)) + 2) * sizeof(int) );
+	st->block_pos = 0;
+	st->block_valid = 0;
+	st->n_out = 0;
+}
+
+int acm_stream_error(acm_stream *st)
+{
+	return st->s.error;
+}
+
+void acm_stream_close(acm_stream *st)
+{
+	int k;
+
+	if ( st == NULL )
+		return;
+	free( st->s.block );
+	free( st->s.amp );
+	for (k=0; k<16; k++ )
+		if ( st->s.hist[k] )
+			free( st->s.hist[k] );
+	free( st );
 }

@@ -956,6 +956,121 @@ void reset_walls()
 		}
 }
 
+//-----------------------------------------------------------------
+// ASCENT: new. The use action of the player on a side, 0x7E859 of
+// DTUGAME.EXE ("I'm in check door"). In the target game a door opens by
+// the use action, by a trap, by a monster and by the spell that opens
+// locks (unlock = 1). A door does not open when the player walks into it,
+// and a door needs no key: a lock opens through a trap (toggle lock).
+#define DTU_WALL_SECRET			0x40		// wall flag: secret door
+#define DTU_SIDE_SECRET_FOUND	0x10		// side flag (pad): the secret door is found
+#define DTU_KEYS_MAGIC			6			// wall keys: the lock is magic
+#define DTU_SND_DOOR_LOCKED	2501
+#define DTU_SND_SECRET_DOOR	3104
+#define DTU_TXT_DOOR_LOCKED	132		// "This door is locked."
+#define DTU_TXT_SECRET_DOOR	949		// "You found a secret door!"
+
+extern void dtu_display_add_message(char *text);
+
+int dtu_wall_use_door(segment *seg, int side, object *obj, int unlock)
+{
+	wall *w;
+	vms_vector cp;
+
+	// the executable reads the wall with no test of the wall number
+	if (seg->sides[side].wall_num < 0 || seg->sides[side].wall_num >= Num_walls)
+		return WHP_NOT_SPECIAL;
+
+	w = &Walls[seg->sides[side].wall_num];
+
+	if (w->type != WALL_DOOR)
+		return WHP_NOT_SPECIAL;
+
+	if (w->flags & WALL_DOOR_LOCKED) {
+		compute_center_point_on_side(&cp, seg, side);
+		digi_link_sound_to_pos(DTU_SND_DOOR_LOCKED, seg-Segments, side, &cp, 0, F1_0);
+		if (!unlock) {
+			dtu_display_add_message(Text_string[DTU_TXT_DOOR_LOCKED]);
+			return WHP_NO_KEY;
+		}
+		if (w->keys & DTU_KEYS_MAGIC) {
+			dtu_display_add_message("Strong magic prevents you from unlocking this door.");
+			return WHP_NO_KEY;
+		}
+	}
+
+	if (w->state == WALL_DOOR_OPENING)
+		return WHP_DOOR;
+
+	if ((w->flags & DTU_WALL_SECRET) && !(seg->sides[side].pad & DTU_SIDE_SECRET_FOUND)) {
+		int child = seg->children[side];
+
+		seg->sides[side].pad |= DTU_SIDE_SECRET_FOUND;
+		if (child > -1) {
+			int cside = find_connect_side(seg, &Segments[child]);
+			if (cside != -1)
+				Segments[child].sides[cside].pad |= DTU_SIDE_SECRET_FOUND;
+		}
+		digi_play_sample(DTU_SND_SECRET_DOOR, F1_0);
+		dtu_display_add_message(Text_string[DTU_TXT_SECRET_DOOR]);
+	}
+
+	// ASCENT: wall_open_door() needs the segment behind the door
+	if (seg->children[side] > -1)
+		wall_open_door(seg, side);
+
+	return WHP_DOOR;
+}
+
+// ASCENT: new. The trap action "close door". The executable calls
+// wall_close_door() with a wall number (see Dtu_fix_trap_close_door in
+// dtutrig.h). An open door with the automatic flag starts to close. An
+// open door without it closes at once.
+void dtu_wall_start_close(segment *seg, int side)
+{
+	wall *w;
+	segment *csegp;
+	int i, wall_num, cside;
+
+	wall_num = seg->sides[side].wall_num;
+	if (wall_num < 0 || wall_num >= Num_walls || seg->children[side] < 0)
+		return;
+	w = &Walls[wall_num];
+	if (w->type != WALL_DOOR)
+		return;
+	csegp = &Segments[seg->children[side]];
+	cside = find_connect_side(seg, csegp);
+	if (cside == -1 || csegp->sides[cside].wall_num < 0)
+		return;
+
+	for (i=0; i<Num_open_doors; i++) {
+		active_door *d = &ActiveDoors[i];
+
+		if (d->front_wallnum[0]==wall_num || d->back_wallnum[0]==wall_num || (d->n_parts==2 && (d->front_wallnum[1]==wall_num || d->back_wallnum[1]==wall_num))) {
+			if (Walls[d->front_wallnum[0]].state == WALL_DOOR_WAITING) {
+				Walls[d->front_wallnum[0]].state = WALL_DOOR_CLOSING;
+				d->time = 0;
+			}
+			return;
+		}
+	}
+
+	if (w->flags & WALL_DOOR_OPENED) {
+		w->state = WALL_DOOR_CLOSED;
+		w->flags &= ~WALL_DOOR_OPENED;
+		Walls[csegp->sides[cside].wall_num].state = WALL_DOOR_CLOSED;
+		Walls[csegp->sides[cside].wall_num].flags &= ~WALL_DOOR_OPENED;
+		if (w->clip_num >= 0 && w->clip_num < Num_wall_anims && WallAnims[w->clip_num].num_frames > 0) {
+			vms_vector cp;
+
+			wall_set_tmap_num(seg,side,csegp,cside,w->clip_num,0);
+			compute_center_point_on_side(&cp, seg, side);
+			if (WallAnims[w->clip_num].close_sound > -1)
+				digi_link_sound_to_pos(WallAnims[w->clip_num].close_sound, seg-Segments, side, &cp, 0, F1_0);
+		}
+	}
+}
+
 void wall_frame_process()
 {
 	int i;

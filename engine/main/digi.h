@@ -151,6 +151,10 @@ extern int digi_midi_port;
 // Descent 1 has 11025. Set it before the first sound plays.
 extern int digi_sample_rate;
 
+// ASCENT: 1 (the default): the sounds play from their 16-bit data at their
+// own sample rate. 0 (the option -sound8): from the 8-bit copy.
+extern int Dtu_sound_16bit;
+
 extern int digi_get_settings();
 extern int digi_init();
 extern void digi_reset();

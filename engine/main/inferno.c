@@ -717,6 +717,8 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "gameseq.h"
 #include "mission.h"		// ASCENT: for build_mission_list
 #include "dtugame.h"		// ASCENT: the options -level and -checklevel
+#include "dtuobj.h"		// ASCENT: the objects of the target game
+#include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtudisp.h"		// ASCENT: the interface of the target game
 #include "gamefont.h"
 #include "playsave.h"
@@ -1031,8 +1033,7 @@ extern int Config_vr_tracking;
 // that the game loop needs (window, timer, keyboard, graphics, 3d, game),
 // asks the data layer for the tables (see dtugame.h), loads the mission
 // list and starts the level with StartNewGame(), as the menu does it.
-// The sound, the joystick, the mouse, the configuration file and the
-// player file are not used.
+// The joystick, the configuration file and the player file are not used.
 extern ubyte kconfig_settings[CONTROL_MAX_TYPES][MAX_CONTROLS];
 extern ubyte default_kconfig_settings[CONTROL_MAX_TYPES][MAX_CONTROLS];
 
@@ -1079,6 +1080,13 @@ static int dtu_run_level(char *level_name)
 
 	dtu_load_palette();
 	dtu_load_fonts();
+
+	// ASCENT: the sound and the music (the options -nosound and -nomusic).
+	// The tables load the sounds only if the sound is on.
+	if (!FindArg( "-nosound" ))
+		digi_init();
+	dtumusic_init();
+
 	dtu_load_tables();
 
 	// ASCENT: the art of the interface. If it is not available the game
@@ -1103,6 +1111,9 @@ static int dtu_run_level(char *level_name)
 
 	init_game();
 	set_detail_level_parameters(Detail_level);
+
+	// ASCENT: the options and the collision table of the objects
+	dtu_objects_init();
 
 	// While the other objects are not simulated (Dtu_objects_enabled), the
 	// player does not collide with them. The table was set by init_game().
@@ -1174,6 +1185,11 @@ int main(int argc,char **argv)
 
 	if ((t = FindArg( "-checklevel" )) != 0 && t+1 < Num_args)
 		return dtu_check_level(Args[t+1]);
+
+	// ASCENT: the debug option -musicwav TRACK FILE SECONDS writes the
+	// output of the music stream code to a WAV file. It opens no window.
+	if ((t = FindArg( "-musicwav" )) != 0 && t+3 < Num_args)
+		return dtumusic_render_wav(Args[t+1], Args[t+2], atoi(Args[t+3]));
 
 	if ((t = FindArg( "-level" )) != 0 && t+1 < Num_args)
 		return dtu_run_level(Args[t+1]);

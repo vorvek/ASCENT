@@ -842,11 +842,104 @@ int check_vector_to_sphere_1(vms_vector *intp,vms_vector *p0,vms_vector *p1,vms_
 //$$		return 0;       //no intersection
 //$$}
 
+// ASCENT: new. The test of a moving sphere against an object of the target
+// game. An item is a sphere with the size of the object. A creature, the
+// player or scenery is the cylinder of dtu_get_body_cylinder(): the test
+// runs in the x-z plane, then the height of the hit point is compared.
+// The fvi of DTUGAME.EXE (0x3EFD9) was not read for this, so the form of
+// the test is a guess. The sizes are those of the executable (0x748D9).
+#include "dtugame.h"
+#include "dtuobj.h"
+#include "bm.h"
+
+// Set by the caller for one query: a start point that is inside of the
+// body of an object hits it. The move of a body does not set it, so that two
+// bodies that overlap can move apart.
+int Fvi_dtu_inside_hits = 0;
+
+static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,object *obj,object *otherobj)
+{
+	vms_vector center,f0,f1,fc,fi;
+	fix radius,half_height,dist,len,my_half;
+
+	if (obj->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
+		return 0;
+
+	if (obj->type != OBJ_PLAYER && obj->type != OBJ_ROBOT && obj->type != OBJ_DRESSING)
+		return check_vector_to_sphere_1(intp,p0,p1,&obj->pos,obj->size+rad);
+
+	if (obj->render_type != RT_POLYOBJ && obj->type != OBJ_PLAYER)
+		return 0;
+	// "pass_thru" of the table line
+	if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types && Dressing_info[obj->id].pass_thru)
+		return 0;
+	if (obj->type == OBJ_ROBOT && obj->id < N_robot_types && (Monster_info[obj->id].flags & MONSTER_F_PASS_THRU))
+		return 0;
+
+	dtu_get_body_cylinder(obj,&center,&radius,&half_height);
+
+	f0 = *p0; f1 = *p1; fc = center;
+	f0.y = f1.y = fc.y = 0;
+
+	len = vm_vec_dist(&f0,&f1);
+	if (Fvi_dtu_inside_hits && vm_vec_dist(&f0,&fc) < radius+rad) {
+		// the test of a weapon: a start point in the body is a hit
+		dist = 1;
+		*intp = *p0;
+	}
+	else if (len < 16) {
+		// no movement in x and z: a hit if the point is in the circle
+		if (vm_vec_dist(&f0,&fc) >= radius+rad)
+			return 0;
+		dist = 1;
+		*intp = *p0;
+	}
+	else {
+		dist = check_vector_to_sphere_1(&fi,&f0,&f1,&fc,radius+rad);
+		if (dist == 0)
+			return 0;
+		vm_vec_sub(intp,p1,p0);
+		vm_vec_scale(intp,fixdiv(dist,len));
+		vm_vec_add2(intp,p0);
+	}
+
+	// the height
+	my_half = rad;
+	if (otherobj->type == OBJ_PLAYER || otherobj->type == OBJ_ROBOT) {
+		fix r;
+
+		dtu_get_body_size(otherobj,&r,&my_half);
+	}
+	if (abs(intp->y - center.y) > half_height + my_half)
+		return 0;
+
+	return dist;
+}
+
+// ASCENT: the test above for a caller outside of this file (the test of
+// a weapon in dtuobj.c). find_vector_intersection() tests only the objects
+// of the segments that the vector goes through, and an object is in the
+// list of one segment only, so a body that reaches into the next segment
+// can be missed there.
+fix dtu_object_hit_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,object *obj,object *otherobj)
+{
+	fix d;
+
+	Fvi_dtu_inside_hits = 1;
+	d = dtu_check_vector_to_object(intp,p0,p1,rad,obj,otherobj);
+	Fvi_dtu_inside_hits = 0;
+	return d;
+}
+
 //determine if a vector intersects with an object
 //if no intersects, returns 0, else fills in intp and returns dist
 fix check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,object *obj,object *otherobj)
 {
 	fix size = obj->size;
+
+	// ASCENT: the objects of the target game have a cylinder as the body
+	if (Dtu_objects_enabled)
+		return dtu_check_vector_to_object(intp,p0,p1,rad,obj,otherobj);
 
 	if (obj->type == OBJ_ROBOT && Robot_info[obj->id].attack_type)
 		size = (size*3)/4;

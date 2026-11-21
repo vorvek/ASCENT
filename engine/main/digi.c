@@ -386,6 +386,7 @@ static char rcsid[] = "$Id: digi.c 2.5 1996/01/05 16:51:51 john Exp $";
 // ASCENT: gameseg.h has the prototype of find_connected_distance.
 #include "gameseg.h"
 #include "platform.h"
+#include "dtumusic.h"		// ASCENT: the streamed music replaces the MIDI songs
 
 // ASCENT: removed "#pragma pack (4)" and "#pragma off (check_stack)".
 // They were for the SOS structures and the interrupt code.
@@ -393,7 +394,10 @@ static char rcsid[] = "$Id: digi.c 2.5 1996/01/05 16:51:51 john Exp $";
 
 #define DIGI_PAUSE_BROKEN 1		//if this is defined, don't pause MIDI songs
 
-#define _DIGI_MAX_VOLUME (16384)	//16384
+// ASCENT: was 16384. Descent to Undermountain has 0x8000 (0x2DF7E), so a
+// sound with the volume F1_0 plays at the whole range of the mixer when
+// the digi volume is at its maximum. With 16384 it played at half of it.
+#define _DIGI_MAX_VOLUME (32768)
 
 // ASCENT: the fields of the SOS structure _SOS_START_SAMPLE that this file
 // needs. The functions fill it as before and digi_mixer_start_sample gives
@@ -416,6 +420,11 @@ typedef struct _SOS_START_SAMPLE {
 // A handle of the mixer is never used again for another sample, so a
 // stale handle cannot name a new sound as a SOS voice number could.
 #define DIGI_NO_HANDLE (-1)
+
+// ASCENT: the debug option -soundlog prints one line for each sample that
+// starts in the mixer, and the counts when the sound system closes.
+static int Dtu_sound_log = 0;
+static int Dtu_sound_starts16 = 0, Dtu_sound_starts8 = 0, Dtu_sound_no_channel = 0;
 
 static int	Digi_initialized 		= 0;
 static int	digi_atexit_called	= 0;			// Set to 1 if atexit(digi_close) was called
@@ -514,6 +523,9 @@ void digi_close()
 	// ASCENT: was the removal of the timer function and the shutdown of
 	// the SOS MIDI, digital and timer systems.
 	digi_stop_current_song();
+	if ( Dtu_sound_log )
+		printf( "SOUND: %d samples started with 16 bits, %d with 8 bits, %d found no channel\n",
+			Dtu_sound_starts16, Dtu_sound_starts8, Dtu_sound_no_channel );
 	plat_audio_close();
 }
 
@@ -523,6 +535,10 @@ int digi_init()
 
 	if ( FindArg( "-nomusic" ))
 		digi_midi_type = 0;
+	if ( FindArg( "-sound8" ))		// ASCENT: play the 8-bit copy of each sound
+		Dtu_sound_16bit = 0;
+	if ( FindArg( "-soundlog" ))
+		Dtu_sound_log = 1;
 
 	// ASCENT: the board and MIDI device numbers of the config file chose a
 	// SOS driver. Now there is one device, the platform mixer, and it is
@@ -610,12 +626,52 @@ static int SampleHandles[32] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
 static int SoundNums[32] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
 static uint SoundVolumes[32] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
 
+// ASCENT: 1 (the default): a sound plays from its signed 16-bit data at
+// its own sample rate, as the original game does: its digi.c gives the
+// decoded ACM data to the sound driver with the same format code that the
+// 16-bit music stream has (docs/re/music.md, "Sound effects"). 0, or the
+// option -sound8: a sound plays from the unsigned 8-bit copy of GameSounds
+// at digi_sample_rate.
+int Dtu_sound_16bit = 1;
+
+static int digi_log_start( _SOS_START_SAMPLE * sampledata, int bits, int rate, int length, int handle )
+{
+	if ( handle == DIGI_NO_HANDLE )
+		Dtu_sound_no_channel++;
+	else if ( bits == 16 )
+		Dtu_sound_starts16++;
+	else
+		Dtu_sound_starts8++;
+	if ( Dtu_sound_log )	{
+		char name[16];
+		piggy_get_sound_name( sampledata->wSampleID, name );
+		printf( "SOUND: t %.3f file %d '%s' %d bits %d Hz %d samples volume %d pan %d loop %d handle %d\n", f2fl(GameTime),
+			sampledata->wSampleID, name, bits, rate, length, sampledata->wVolume, sampledata->wSamplePanLocation,
+			sampledata->wLoopCount != 0, handle );
+	}
+	return handle;
+}
+
 // ASCENT: replaces sosDIGIStartSample. Returns DIGI_NO_HANDLE if the
-// mixer has no free channel.
+// mixer has no free channel. wSampleID is the number of the sound in
+// GameSounds.
 static int digi_mixer_start_sample( _SOS_START_SAMPLE * sampledata )
 {
-	return plat_audio_play( sampledata->lpSamplePtr, sampledata->dwSampleSize, digi_sample_rate,
-		sampledata->wVolume, sampledata->wSamplePanLocation, sampledata->wLoopCount != 0 );
+	if ( Dtu_sound_16bit )	{
+		int n_values, channels, rate;
+		short * data16 = piggy_get_sound_16( sampledata->wSampleID, &n_values, &channels );
+
+		// All sounds of the archives have one channel.
+		if ( (data16 != NULL) && (channels == 1) && (n_values > 0) )	{
+			rate = piggy_get_sound_rate( sampledata->wSampleID );
+			if ( rate <= 0 ) rate = digi_sample_rate;
+			return digi_log_start( sampledata, 16, rate, n_values, plat_audio_play16( data16, n_values, rate,
+				sampledata->wVolume, sampledata->wSamplePanLocation, sampledata->wLoopCount != 0 ) );
+		}
+	}
+	return digi_log_start( sampledata, 8, digi_sample_rate, sampledata->dwSampleSize,
+		plat_audio_play( sampledata->lpSamplePtr, sampledata->dwSampleSize, digi_sample_rate,
+		sampledata->wVolume, sampledata->wSamplePanLocation, sampledata->wLoopCount != 0 ) );
 }
 
 // ASCENT: replaces sosDIGIGetSampleHandle, which searched the SOS voices
@@ -912,25 +968,30 @@ void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups )
 	digi_start_sound( &sSOSSampleData, soundno );
 }
 
-// ASCENT: there is no MIDI music yet. SOS played the HMP song files with
-// its MIDI drivers, and that code is not in the source release. The
-// functions below keep their names and their bookkeeping:
-// digi_play_midi_song stores the request (song file, bank files, loop
-// flag) and marks the song as started, digi_stop_current_song clears the
-// mark, and digi_midi_set_master_volume takes the volume that SOS got from
-// sosMIDISetMasterVolume. Nothing plays. The files are not opened. A later
-// task can play music from these three functions through
-// plat_audio_music_start, plat_audio_music_stop and
-// plat_audio_music_set_volume.
+// ASCENT: Descent to Undermountain has no MIDI music. Its music is the
+// streamed NAME.TUN files of dtumusic.c, which the game starts by track
+// number (dtumusic_play) and not by song file. SOS played the HMP song
+// files of Descent 1 with its MIDI drivers, and that code is not in the
+// source release. The functions below keep their names and their
+// bookkeeping for the callers of Descent 1: digi_play_midi_song stores the
+// request (song file, bank files, loop flag), marks the song as started
+// and plays nothing, because the target game has no song files. A call
+// with no file name stops the streamed music, as it stopped the song.
+// digi_stop_current_song stops the streamed music, and
+// digi_midi_set_master_volume gives the volume (0 to 127, as SOS got it
+// from sosMIDISetMasterVolume) to the streamed music as its setting from
+// 0 to 8.
 static void digi_midi_set_master_volume( int mvolume )
 {
-	mvolume = mvolume;
+	dtumusic_set_volume_level( (mvolume*8 + 63) / 127 );
 }
 
 void digi_stop_current_song()
 {
 	// Stop last song...
 	digi_midi_song_started = 0;
+	dtumusic_flush();
+	dtumusic_stop();
 }
 
 static void digi_copy_song_name( char * dest, char * src )

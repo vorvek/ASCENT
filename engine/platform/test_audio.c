@@ -21,6 +21,9 @@
 static int Failures;
 static uint8_t Tone[TONE_LEN];
 static uint8_t Dc[TONE_RATE];       // one second of the value 255
+static int16_t Tone16[TONE_LEN * 2];    // the same tone as 16-bit data at 22050 Hz
+static int16_t Dc16[TONE_RATE];     // one second of the value 32767
+#define FULL16      32767           // output of the 16-bit value 32767 at gain 1
 static int16_t Out[RATE * 2 * 2];   // two seconds of stereo output
 
 #define CHECK(cond) \
@@ -466,6 +469,117 @@ static void test_music(void)
 	plat_audio_music_stop();
 }
 
+// The 16-bit samples: the same checks as for the 8-bit samples.
+static void test_16bit(void)
+{
+	int ramp, h, h8, i, diff, d;
+	static int16_t ref[RATE * 2];
+
+	plat_audio_mixer_init(RATE);
+	ramp = plat_audio_mixer_ramp_frames();
+
+	// Amplitude: full volume on the left gives the sample value.
+	h = plat_audio_play16(Tone16, TONE_LEN * 2, TONE_RATE * 2, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 1);
+	CHECK(h >= 0);
+	render(RATE);
+	CHECK(near(peak(0, ramp, RATE), 32000, 32000 / 100));
+	CHECK(peak(1, 0, RATE) == 0);
+
+	// Pan: right, then center with constant power.
+	plat_audio_set_pan(h, PLAT_AUDIO_PAN_RIGHT);
+	render(RATE);
+	CHECK(peak(0, ramp, RATE) == 0);
+	CHECK(near(peak(1, ramp, RATE), 32000, 32000 / 100));
+	plat_audio_set_pan(h, PLAT_AUDIO_PAN_CENTER);
+	render(RATE);
+	CHECK(near(peak(0, ramp, RATE), (int)(32000 * SQRT_HALF), 32000 / 100));
+	CHECK(near(peak(0, ramp, RATE), peak(1, ramp, RATE), 4));
+
+	// Volume.
+	plat_audio_set_pan(h, PLAT_AUDIO_PAN_LEFT);
+	plat_audio_set_volume(h, PLAT_AUDIO_VOLUME_MAX / 2);
+	render(RATE);
+	CHECK(near(peak(0, ramp, RATE), 16000, 32000 / 100));
+	CHECK(plat_audio_is_playing(h) == 1);
+	plat_audio_stop(h);
+	render(RATE);
+	CHECK(plat_audio_is_playing(h) == 0);
+	CHECK(peak(0, ramp + 1, RATE) == 0);
+
+	// The exact value and the sign: a constant of 32767 and of -32768.
+	plat_audio_mixer_init(RATE);
+	plat_audio_play16(Dc16, TONE_RATE, TONE_RATE, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 1);
+	render(RATE);
+	CHECK(Out[(RATE - 1) * 2] == FULL16);
+	plat_audio_mixer_init(RATE);
+	for (i = 0; i < TONE_RATE; i++)
+		Dc16[i] = -32768;
+	plat_audio_play16(Dc16, TONE_RATE, TONE_RATE, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 1);
+	render(RATE);
+	CHECK(Out[(RATE - 1) * 2] == -32768);
+	for (i = 0; i < TONE_RATE; i++)
+		Dc16[i] = 32767;
+
+	// Resample: 441 Hz at 22050 Hz is 441 Hz in the output, and the same
+	// data at 11025 Hz is 220.5 Hz.
+	plat_audio_mixer_init(RATE);
+	plat_audio_play16(Tone16, TONE_LEN * 2, TONE_RATE * 2, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 1);
+	render(RATE + ramp);
+	CHECK(near(zero_crossings(0, ramp, RATE + ramp), 2 * TONE_HZ, 2));
+	CHECK(max_step(0, ramp, RATE) < (int)(32000 * 2 * 3.14159 * TONE_HZ / RATE * 1.3));
+	plat_audio_mixer_init(RATE);
+	plat_audio_play16(Tone16, TONE_LEN * 2, TONE_RATE, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 1);
+	render(RATE + ramp);
+	CHECK(near(zero_crossings(0, ramp, RATE + ramp), TONE_HZ, 2));
+
+	// The end of a sample that is not looped: no click, then silence, and
+	// the channel is free.
+	plat_audio_mixer_init(RATE);
+	h = plat_audio_play16(Dc16, TONE_RATE, TONE_RATE, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 0);
+	render(RATE * 2);
+	CHECK(max_step(0, 0, RATE * 2) <= FULL16 / ramp + 2);
+	CHECK(near(Out[(RATE - ramp - 2) * 2], FULL16, 2));
+	CHECK(peak(0, RATE, RATE * 2) == 0);
+	CHECK(plat_audio_is_playing(h) == 0);
+
+	// A 16-bit sample and its 8-bit form (the high byte, unsigned) give
+	// the same output within the rounding of the 8-bit form (1/256 of the
+	// range, plus the interpolation of that error).
+	plat_audio_mixer_init(RATE);
+	{
+		static uint8_t tone8[TONE_LEN * 2];
+		for (i = 0; i < TONE_LEN * 2; i++)
+			tone8[i] = (uint8_t)((Tone16[i] >> 8) + 128);
+		h8 = plat_audio_play(tone8, TONE_LEN * 2, TONE_RATE * 2, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 1);
+		render(RATE);
+		for (i = 0; i < RATE; i++)
+			ref[i] = Out[i * 2];
+		plat_audio_stop(h8);
+	}
+	plat_audio_mixer_init(RATE);
+	plat_audio_play16(Tone16, TONE_LEN * 2, TONE_RATE * 2, PLAT_AUDIO_VOLUME_MAX, PLAT_AUDIO_PAN_LEFT, 1);
+	render(RATE);
+	diff = 0;
+	for (i = 0; i < RATE; i++) {
+		d = abs(Out[i * 2] - ref[i]);
+		if (d > diff)
+			diff = d;
+	}
+	CHECK(diff <= 256);
+	CHECK(diff > 0);        // the 16-bit path is not the 8-bit path
+
+	// The two kinds of sample play together.
+	plat_audio_mixer_init(RATE);
+	plat_audio_play(Dc, sizeof(Dc), TONE_RATE, PLAT_AUDIO_VOLUME_MAX / 4, PLAT_AUDIO_PAN_LEFT, 1);
+	plat_audio_play16(Dc16, TONE_RATE, TONE_RATE, PLAT_AUDIO_VOLUME_MAX / 4, PLAT_AUDIO_PAN_LEFT, 1);
+	render(RATE);
+	CHECK(near(Out[(RATE - 1) * 2], FULL / 4 + FULL16 / 4, 4));
+
+	// Arguments that are not valid.
+	CHECK(plat_audio_play16(NULL, 10, TONE_RATE, PLAT_AUDIO_VOLUME_MAX, 0, 0) == -1);
+	CHECK(plat_audio_play16(Dc16, 0, TONE_RATE, PLAT_AUDIO_VOLUME_MAX, 0, 0) == -1);
+}
+
 int main(void)
 {
 	int i;
@@ -473,6 +587,10 @@ int main(void)
 	for (i = 0; i < TONE_LEN; i++)
 		Tone[i] = (uint8_t)(128 + lrint(127.0 * sin(2 * 3.14159265358979 * TONE_HZ * i / TONE_RATE)));
 	memset(Dc, 255, sizeof(Dc));
+	for (i = 0; i < TONE_LEN * 2; i++)
+		Tone16[i] = (int16_t)lrint(32000.0 * sin(2 * 3.14159265358979 * TONE_HZ * i / (TONE_RATE * 2)));
+	for (i = 0; i < TONE_RATE; i++)
+		Dc16[i] = 32767;
 
 	test_silence();
 	test_amplitude_and_pan();
@@ -481,6 +599,7 @@ int main(void)
 	test_ramps();
 	test_channels();
 	test_music();
+	test_16bit();
 	plat_audio_mixer_close();
 
 	if (Failures) {

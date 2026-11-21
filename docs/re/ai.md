@@ -349,6 +349,11 @@ operations:
      WALK and for states above SIDLE_L). At the end of the state pick the next
      one: FIDGET if `(FrameTime + objnum) % (iq >> (awareness + 1))` is 0, else
      STAND.
+   - Note (code 0x14A54): step 20 puts each creature that is not active back to
+     STAND and its first frame when it is processed. A creature nearer than
+     100.0 is processed on each frame, so its idle animation never leaves frame
+     0. The idle animation is seen only on creatures farther away, between two
+     visits of step 19 (0.5 or 1.0 second).
 6. In both cases (0x14134): reset the timers of `ailp` to GameTime, awareness
    time = 3.0, `+0x1DB` = GameTime + (256 - iq), danger laser = none, copy
    `pass_thru`. Then go to step 8.
@@ -563,6 +568,81 @@ The function 0x16366 is the Descent 1 awareness spread (segment awareness to
 objects). It raises the awareness of hostile creatures only, sets the time to
 3.0 and calls the morale function for each raised creature.
 
+## How a creature moves
+
+Verified (code), added with the port.
+
+- 0x11EC9 (object, direction): the direction with y = 0 (not for FLYING) is
+  made a unit vector and `direction * speed` is added to the velocity
+  (0xD6FA2 adds). The speed is 0x74AA7 for the current animation state, so a
+  creature moves only in the states WALK, SIDLE and RUN.
+- `pmon.c` (0x9F286) multiplies the velocity by 0.5 at the start of each
+  frame of an active creature. With the add of the AI on each frame the
+  velocity goes to the speed of the state: v' = (v + add) / 2. The time to
+  reach it is a number of frames, not a time.
+- 0x11F32 `move_towards_player`: nothing in CURRENT_STATE ATAK (but for a
+  FLYING melee creature). Else the forward vector becomes (direction x, old
+  forward y, direction z) at once, with no turn rate, then 0x11EC9.
+- 0x12547 `move_away_from_player`: nothing in CURRENT_STATE ATAK or with
+  `ailp` flag 0x10. Else 0x11EC9 with the direction negated, and the animation
+  frame is set to the last frame of STAND.
+- 0x125B9 is `ai_move_relative_to_player` of Descent 1 (object, ailp, distance,
+  vec_to_player, circle distance, evade only). Not for STATION and not for a
+  held creature. Below the circle distance or with flag 0x10: move away, set
+  flag 0x10. Below two times the distance or with flag 4: move around
+  (0x12000), set flag 4. Else move toward, set flag 8. The flags are cleared at
+  the end of an animation state.
+- 0x106BA `ai_turn_towards_vector` is the Descent 1 function, but the new
+  forward vector keeps the y part of the old one.
+
+## Port status (engine/main/dtuobj.c)
+
+In the port: the wake up test, the idle animation, the animation step, the
+modes STILL, CHASE_OB and RUN_FROM, the goal state choice, the current state
+switch, the morale check (without the level values), the weapon test, the
+to-hit roll, the damage dice and the death animation.
+
+Not in the port: paths (FOL_PATH, HOME, the path to the player), the door
+opener, the blocked move, the random turn, `move_around_player`, the evasion of
+weapons, ranged attacks and spells (a ranged creature goes through its attack
+animation and no missile comes), regeneration, the alert function and the
+awareness events, scripts, the push of scenery. A creature with a script
+number is not hostile in the port.
+
+Rules of the port that are not in the executable (marked "guess" in the
+code): a hostile creature that sees the player keeps the awareness 1 at least
+(the awareness events are missing), a creature that the player hits becomes
+hostile, a dead creature stays as a corpse on the last frame of DIE, a dead
+player stays in place.
+
+Settings of the port (globals of `dtuobj.h`, 1 is the corrected rule and the
+default, the option `-origobj` clears them):
+
+| Setting | Rule of the executable | Corrected rule |
+|---|---|---|
+| `Dtu_fix_idle_anim` | one idle step (0x14013) per game frame | one step per 3/64 second |
+| `Dtu_fix_ai_ticks` | the tests "(clock + objnum) % N == 0" are true in one game frame of N | true one time in N periods of 3/64 second. The test with 255 for a player behind the creature is a random number |
+| `Dtu_fix_creature_move` | velocity * 0.5 per frame, two steps of 1/64 second at most, lift out of the floor 2.0 per frame | the same per 3/64 second, all steps |
+| `Dtu_fix_brain` | sight by the BRN matrix | sight by a ray (the BRN files of the disc fit no level) |
+
+`Dtu_idle_anim_near` (default 0, option `-idleanim`) leaves out the reset of
+step 20. `Dtu_creatures_attack` (default 1, option `-noattack`) is the attack
+switch 0x13A6B4.
+
+Test options: `-objlog FILE` writes each change of the state of a creature,
+each attack roll, each damage and each pickup with the game time and the frame
+number. `-objlogframes` adds a line for each animation frame. `-testpos
+X,Y,Z[,HEADING]` puts the player at a point of the level. The action `attack`
+of `-testmove` is the attack key (left Ctrl in the game).
+
+Measured with `-level BANE -testpos 25,-1,205,0` and the player standing, 16
+seconds of game time, at 20, 60 and 200 frames per second with the corrected
+rules: the skeleton sees the player at 0.02 s in all three runs, walks at 1.07,
+1.07 and 1.06 s, starts its first attack at 3.17, 3.15 and 3.13 s, swings at
+3.82, 3.80 and 3.76 s, and then swings each 1.65, 1.65 and 1.62 s. All
+creatures together hit 19, 22 and 25 times for 104, 100 and 101 hit points
+(the dice differ from run to run).
+
 ## Animation step (0x11018)
 
 Arguments: eax = object, edx = distance, ebx = `vis_vec_pos`, ecx =
@@ -597,7 +677,73 @@ ATTACK), morale (RUN and the 0x10148 mapping).
 
 ## Melee attack
 
-### Hit test: do_ai_robot_hit_attack (0x1153A)
+### The weapon test that runs: 0x6CFF8 (physics.c)
+
+Verified (code), added with the port of the creatures. This function does the
+melee hits of version 1.3, for creatures and for the player. The movement code
+calls it one time per frame for the moving object: `pmon.c` at 0x9F2B4 for a
+creature (only an active creature gets that far, see physics.md) and the player
+movement in the same way. Argument: eax = object.
+
+1. The position of the object is moved forward for the time of the test and
+   put back at the end (0x6D01A to 0x6D066): with s and c the sine and cosine of
+   the heading minus 45 degrees, x gets s + c and z gets c - s. That is the
+   square root of 2 along the heading in the x-z plane.
+2. If the animation state is not 6, 7, 11 or 12: byte 0x1AF of the object = 0,
+   return.
+3. `rel` = frame minus the first frame of the state. A creature (type 2) can
+   hit when `rel` >= 8. Any other object (the player) can hit when `rel` >= 6
+   and `rel` <= frames of the state minus `rel` (so in the frames 6 to 8 of a
+   state of 16 frames) (0x6D0CF to 0x6D127).
+4. Weapon sphere of the frame: 0x7473F (models.md, "Where the weapon is"). No
+   weapon box: return. For the weapon types 0x12, 0x13, 0x22, 0x23, 0x2B, 0x2C,
+   0x2D and 0x45 the radius is multiplied by 8.0 (0x6D2B7 to 0x6D2F2).
+5. One query of `find_vector_intersection` (0x3EFD9): from the center of the
+   sphere, in the direction from the object position to the center, as far as
+   the radius, with the radius of the sphere, objects are tested (flag 1), the
+   object itself is the "this object" of the query.
+6. The object is the player and the query hit an object or a wall: byte 0x1AF =
+   0, and the start time of the attack animation of the player (0x1D3373) is
+   moved forward by the time of the frames that are left, so the swing goes
+   back. A wall hit calls 0x95019 (not read).
+7. The query hit an object ("I hit something."):
+   - type 18 (scenery): no effect if `Dressing_info` flag 4 is set. Else its
+     hit points are limited to 20.0 and the damage function 0x29A9C is called
+     with 100.0. Below 1.0 hit point 0xA6ACB breaks it, else 0x25D4F pushes it.
+   - type 2 (creature): nothing if the attacker is a creature too. Else
+     0x278B5(creature, attacker, weapon type, hit point): the player hits.
+   - type 4 (player): if byte 0x1AF of the attacker is 0: set it to 1 and call
+     0x27D82(player, attacker, weapon type, hit point). So a creature hits one
+     time per swing. The byte is cleared in step 2 and at the end of an
+     animation state (0x113C5).
+
+0x27D82 (target, attacker, weapon type, point): casts the spell of the weapon
+if it has one, calls the damage function 0x29A9C(target, attacker, 0, weapon
+type), and if the hit points of the target went down: a push of 0.2 along the
+line from the attacker to the target (0x6B70D adds the vector divided by the
+mass to the thrust), blood (0x25C76) and the hit sound.
+
+The damage function 0x29A9C with an attacker throws the to-hit roll (0x2A7F3).
+A result of 0 or less ends it. Else the damage is the dice of 0x2AF5E, two
+times the dice for a critical hit. For a creature as the target it then sets
+CURRENT_STATE = FLIN and the animation start time (if `ailp[0x2C]` is not
+negative), and below 1.0 hit point it starts the death: both AI states DEAD,
+animation state DIE at its first frame, mode STILL, status flags 0, hit points
+0, die sound, `object_create_egg` if the creature contains something (0x2A091 to
+0x2A245).
+
+`collide_robot_and_player` is 0x26FC1 (the table of `collide_two_objects` at
+0x29355 is indexed by the place of the key (type A * 256 + type B - 0x101) in
+the list at 0x292D7, counted from the end). It does not hit: it calls the alert
+function with level 3 for a hostile creature and the bump 0x2627C.
+
+### Dead code: do_ai_robot_hit_attack (0x1153A)
+
+No instruction of the image calls or jumps to 0x1153A, and no data holds its
+address (checked: all `call` and `jmp` targets and all 32-bit values of the
+image). 0x28B34 has no other caller. So the function below does not run in
+version 1.3. One result: `ailp` flag bit 5 ("the hit landed") is set only here
+(0x11AEC), so the attack animation of a creature never ends early.
 
 Arguments: eax = creature, edx = player object, ebx = collision point. It
 handles both directions. It returns 0 at once if the player object has type
@@ -641,9 +787,11 @@ natural weapon). Result: 2 = critical hit, 1 = hit, 0 = miss, -1 = fumble.
    goes to CURRENT_STATE FLIN. The player gets one of three texts and the
    FIDGET animation, or loses the weapon (0xAE837).
 3. Attacker with status bit 0x00200000: subtract min(speed / 0.25 + 1, 5).
+   All bonuses of the steps 3 to 8 are added to the roll (the int at 0x1B7AA4),
+   not to `thac0` (code 0x2AC84, 0x2ACAC).
 4. Creature as attacker: `thac0` = monster table +0x74. Add `to_hit_bonus`
-   (+0x70) for a natural weapon, or the bonus of the weapon (weapon table
-   0x1E9D12, 217 bytes per entry, s16 at +0x2A). Add the strength bonus
+   (+0x70) for a natural weapon, or the bonus of the weapon (weapon table,
+   s16 at +0x36, code 0x2AC73). Add the strength bonus
    0x2A789(`str`, 100): a table lookup at 0x13A956 + 4 * str, str limited to 1
    to 19 (values start -5, -3, -3, -2, -2, -1, -1, 0). Add 1 with status bit
    0x40000000.

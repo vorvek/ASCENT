@@ -72,4 +72,7 @@ int dtu_display_owns_key(int key);
 // Adds a text to the message box of the main screen.
 void dtu_display_add_message(char *text);
 
+// Adds the message of a trigger: the color of the player and an empty line after it.
+void dtu_display_add_trigger_message(char *text);
+
 #endif

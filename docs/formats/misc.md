@@ -34,7 +34,9 @@ with the format `"%d,%d %d,%d %d"` (string at 0x12875E):
   player to `dest_level`, `dest_segment`. Log text: "found a warp (seg %d ) to level %d,".
 - If `dest_level` is -2 the second number is a command code, not a segment.
 
-Command codes seen, with meaning taken from the comments in the file (guess, not traced in code):
+Command codes seen, with meaning taken from the comments in the file (guess, not traced in code,
+except 106 and 151: the codes 100 to 198 are music commands, a set of bits that is verified in
+[../re/music.md](../re/music.md); `value` is the entry number of DISCO.JRG):
 
 | Code | Lines | Comment in file | value |
 |---|---|---|---|
@@ -57,7 +59,8 @@ line is parsed with `"%hd %u"` (string at 0x12B256, `songs.c`):
 
 Lines are in music item order: title, briefing, end level, end game, credits,
 then level 1 to 22. `track` is the CD audio track, `seconds` is the play time
-before the track restarts. Verified: 27 data lines.
+before the track restarts. Verified: 27 data lines. The code that uses the table plays
+CD audio tracks and not the `.TUN` music (see [../re/music.md](../re/music.md)).
 
 ## DTU*.TEX, SETUPE.TEX: string tables
 

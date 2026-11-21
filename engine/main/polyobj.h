@@ -185,7 +185,61 @@ typedef struct polymodel {
 	int		dtu_section_ofs[DTU_MODEL_SECTIONS];	// offset of each array in dtu_block, -1 if absent
 	int		dtu_section_size[DTU_MODEL_SECTIONS];
 	ubyte		dtu_header[DTU_MODEL_HEADER_SIZE];
+
+	// ASCENT: the decoded arrays of the data block and the rest of the
+	// header. The names are those of docs/re/models.md ("The model struct
+	// in memory"). F is n_frames, n is n_models. All pointers point into
+	// one block of memory (dtu_arrays). A pointer is NULL if the model
+	// does not have the array.
+	void			*dtu_arrays;
+	vms_angvec	*anim_angles;			// F*n: entry frame*n + submodel
+	vms_vector	*frame_eye;				// F: the y value is added to the eye height
+	vms_vector	*box1_min, *box1_max;	// F+1: box of the whole body. Entry 0: rest pose. Entry f+1: frame f
+	vms_vector	*box2_min, *box2_max;	// F: box of the weapon (box_flags & 2)
+	vms_vector	*box4_min, *box4_max;	// F: box of the second weapon (box_flags & 4)
+	vms_vector	*box8_min, *box8_max;	// F: box of the torso (box_flags & 8)
+	vms_vector	*body_center;			// F+1, box_flags & 1
+	fix			*body_half_height;	// F+1
+	fix			*body_radius;			// F+1, in the xz plane
+	vms_vector	*torso_center;			// F, box_flags & 8, relative to body_center
+	fix			*torso_half_height;	// F
+	fix			*torso_radius;			// F
+	vms_vector	*weapon_center;		// F, box_flags & 2, relative to body_center
+	fix			*weapon_radius;		// F
+	vms_vector	*weapon2_center;		// F, box_flags & 4
+	fix			*weapon2_radius;		// F
+	ubyte			*submodel_flags;		// n, DTU_SUBMODEL_F_
+	ubyte			*submodel_children;	// n rows of n bytes. Row s: the children of submodel s, ended by 0xFF
+	ubyte			box_flags;				// DTU_BOX_ (the same value as dtu_flags)
+	ubyte			gun_submodels[2];
+	short			fire_frames[4];		// frame of the hit or shot in the states ATTACK, ATTACK2, 11, 12
+	fix			speeds[9];
+	fix			state_times[19];		// seconds, the index is the animation state
+	int			n_guns;
+	vms_vector	gun_points[2];
 } polymodel;
+
+#define DTU_BOX_BODY			1
+#define DTU_BOX_WEAPON		2
+#define DTU_BOX_WEAPON2		4
+#define DTU_BOX_TORSO		8
+
+#define DTU_SUBMODEL_F_PITCH		0x01		// the caller can add a pitch angle (always 0 in 1.3)
+#define DTU_SUBMODEL_F_HIDDEN		0x10		// the missile in the hand
+#define DTU_SUBMODEL_F_MAGIC		0x20		// the part that gets the magic effect
+
+// ASCENT: the draw function of DTUGAME.EXE (0x727A5) for a model of an EGG
+// archive. "frame" is the animation frame, or -1 for the pose of the model
+// data. The position is the center of the body box of the frame (if the
+// model has body boxes). A model with more than one submodel is drawn by
+// the sorted routine (0x66E13). "show_hidden" draws the submodels with the
+// flag DTU_SUBMODEL_F_HIDDEN.
+void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[]);
+
+// ASCENT: the offset from the origin of the model to the position of an
+// object in the given frame, in the space of the model (body_center[frame+1],
+// or zero for a model with no body boxes).
+void polyobj_get_body_center(int model_num,int frame,vms_vector *center);
 
 // ASCENT: load one model of an EGG archive. header points to the 218-byte
 // header, block to the data block of the model, block_avail is the number

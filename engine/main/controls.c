@@ -219,6 +219,8 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include <stdio.h>
 #include <string.h>
 #include "physics.h"
+#include "dtuobj.h"		// ASCENT: dtu_player_attack()
+#include "dtutrig.h"		// ASCENT: dtu_player_use()
 #include "bm.h"
 #include "key.h"
 #include "joy.h"
@@ -323,12 +325,14 @@ extern fix fixed_frametime;		// in game.c
 #define TM_LOOKDOWN	0x0200
 #define TM_UP			0x0400
 #define TM_DOWN		0x0800
+#define TM_USE			0x1000
+#define TM_ATTACK		0x2000		// ASCENT: the attack of the player, see dtuobj.c
 
 static struct { char *name; int mask; } Test_action_names[] = {
 	{"forward",TM_FORWARD}, {"back",TM_BACK}, {"left",TM_LEFT}, {"right",TM_RIGHT},
 	{"slideleft",TM_SLIDELEFT}, {"slideright",TM_SLIDERIGHT}, {"run",TM_RUN},
 	{"jump",TM_JUMP}, {"lookup",TM_LOOKUP}, {"lookdown",TM_LOOKDOWN},
-	{"up",TM_UP}, {"down",TM_DOWN}, {"wait",0}
+	{"up",TM_UP}, {"down",TM_DOWN}, {"use",TM_USE}, {"attack",TM_ATTACK}, {"wait",0}
 };
 
 #define MAX_TEST_STEPS	64
@@ -486,6 +490,7 @@ void dtu_move_log(object *obj)
 //   Home, End                glance up, glance down (the view returns)
 //   Insert, Delete           up, down in flight and in levitation
 //   V                        mouse look on and off ("immersive mode")
+//   A                        use ("Activate": doors and triggers in front)
 // The time of a key is the frame time when the key is down. The
 // executable uses the time that the key was down in the frame.
 void dtu_read_controls(void)
@@ -621,6 +626,18 @@ void dtu_read_controls(void)
 	if (key && !space_last)
 		dtu_player_jump(obj);
 	space_last = key;
+
+	// The use action: "Activate" of the key table of the executable
+	// (entries 39 and 40, default scan code 0x1E at 0x13C037). 0x53D6A
+	// calls it in each frame while the key is down, and the action itself
+	// waits half a second between two uses.
+	if (keyd_pressed[KEY_A] || (t & TM_USE))
+		dtu_player_use();
+
+	// The attack with the weapon in the hand (pweapon.c of the executable,
+	// not read). The key is a guess.
+	if (keyd_pressed[KEY_LCTRL] || (t & TM_ATTACK))
+		dtu_player_attack();
 
 	// 0x54033: the move mode. A run is 1.5 times the walk.
 	run = keyd_pressed[KEY_LSHIFT] || autorun || (t & TM_RUN);

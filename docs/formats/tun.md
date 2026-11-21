@@ -187,14 +187,19 @@ Nobody listened to the result.
   bitstream is read correctly and that the result has the shape of audio.
   They do not prove that the synthesis filter is exact. A wrong filter
   constant could still give smooth output.
+- `engine/main/acm.c` (the decoder of the port, written from this document)
+  gives the same values as `tools/tun.py` for STARTPUB (whole file), DEATHTAG
+  (whole file) and the first 10 seconds of FEBSTAFF and FECREDIT.
 - The decoder was written from the published description of the Interplay ACM
   format (the open source libacm decoder documents it). It was not compared
   with the decoder inside DTUGAME.EXE and not compared sample by sample with
   another decoder.
 - The original decoder most likely uses 32-bit integers. `tools/tun.py` uses
   unbounded integers. This only matters if a filter sum overflows 32 bits.
-- How the game loops or chains the files (for example IGBGND and IGACT, or
-  the two KHELBEN entries of DISCO.JRG) is unknown.
+- How the game loops and chains the files is in [../re/music.md](../re/music.md):
+  a track starts again at its first sample when it has ended, and the next
+  track waits for the end. The version 1.3 executable does not open IGBGND,
+  IGACT and the other files that are not in DISCO.JRG.
 - DIGITEST.RAW (42616 bytes) is not an ACM file. It is 21308 raw signed
   16-bit little endian values (range -28026 to 31429). Its sample rate and
   channel count are not stored and were not determined.

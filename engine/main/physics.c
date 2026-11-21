@@ -1296,6 +1296,7 @@ set_thrust_from_velocity(object *obj)
 #include "bm.h"
 #include "gameseg.h"
 #include "render.h"
+#include "dtuobj.h"
 #include "gauges.h"
 #include "player.h"
 #include "controls.h"
@@ -1438,7 +1439,7 @@ static void dtu_fall_damage(object *obj)
 
 			mprintf((0,"RLH: Object %d fell %d descent feet.\n",(int)(obj-Objects),fell));
 			HUD_init_message("You fell %d feet!",fell);
-			apply_damage_to_player(obj,obj,i2f(damage));
+			dtu_damage_player(obj,NULL,i2f(damage));		// ASCENT: was apply_damage_to_player() of Descent 1, see dtuobj.c
 		}
 	}
 

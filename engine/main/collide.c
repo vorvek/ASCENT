@@ -441,6 +441,7 @@ static char rcsid[] = "$Id: collide.c 2.5 1995/07/26 12:07:46 john Exp $";
 #include "slew.h"		
 #include "render.h"
 #include "wall.h"
+#include "dtutrig.h"		// ASCENT: dtu_trig_object_hit_wall()
 #include "vclip.h"
 #include "polyobj.h"
 #include "fireball.h"
@@ -473,6 +474,7 @@ static char rcsid[] = "$Id: collide.c 2.5 1995/07/26 12:07:46 john Exp $";
 #endif
 
 #include "collide.h"
+#include "dtuobj.h"		// ASCENT: the collision functions of the target game
 
 int Ugly_robot_cheat = 0;
 int Ugly_robot_texture = 0;
@@ -671,7 +673,12 @@ void collide_player_and_wall( object * player, fix hitspeed, short hitseg, short
 	if (TmapInfo[Segments[hitseg].sides[hitwall].tmap_num].damage > 0)
 		return;
 
-	wall_hit_process( &Segments[hitseg], hitwall, 20, player->id, player );
+	// ASCENT: no wall_hit_process() here. In the target game a door opens
+	// by the use action of the player (dtu_player_use() in dtutrig.c), not
+	// when the player walks into it: the door function 0x7E859 of
+	// DTUGAME.EXE has two callers, the use action and the spell that
+	// opens locks.
+	//wall_hit_process( &Segments[hitseg], hitwall, 20, player->id, player );
 
 	//	** Damage from hitting wall **
 	//	If the player has less than 10% shields, don't take damage from bump
@@ -1924,6 +1931,10 @@ void collide_weapon_and_debris( object * weapon, object * debris, vms_vector *co
 void collide_two_objects( object * A, object * B, vms_vector *collision_point )
 {
 	int collision_type;	
+
+	// ASCENT: the collision functions of the target game (0x29455)
+	if (dtu_collide_two_objects(A,B,collision_point))
+		return;
 		
 	collision_type = COLLISION_OF(A->type,B->type);
 
@@ -2064,4 +2075,8 @@ void collide_object_with_wall( object * A, fix hitspeed, short hitseg, short hit
 	default:
 		Error( "Unhandled object type hit wall in collide.c\n" );
 	}
+
+	// ASCENT: new. 0x29966 of DTUGAME.EXE: an object that touches a side
+	// fires the triggers of the side.
+	dtu_trig_object_hit_wall(A, hitseg, hitwall);
 }

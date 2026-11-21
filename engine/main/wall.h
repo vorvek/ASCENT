@@ -255,6 +255,14 @@ extern void wall_open_door(segment *seg, int side);
 // Closes a door (called after given interval)
 extern void wall_close_door(int wall_num);
 
+// ASCENT: new, for dtutrig.c. The use action of the player on a side
+// (0x7E859 of DTUGAME.EXE). Returns WHP_NOT_SPECIAL, WHP_NO_KEY (locked)
+// or WHP_DOOR. unlock is 1 for the spell that opens locks.
+extern int dtu_wall_use_door(segment *seg, int side, object *obj, int unlock);
+
+// ASCENT: new, for dtutrig.c. Starts the closing of an open door.
+extern void dtu_wall_start_close(segment *seg, int side);
+
 //return codes for wall_hit_process()
 #define WHP_NOT_SPECIAL		0		//wasn't a quote-wall-unquote
 #define WHP_NO_KEY			1		//hit door, but didn't have key

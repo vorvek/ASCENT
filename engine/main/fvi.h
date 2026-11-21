@@ -134,5 +134,8 @@ int object_intersects_wall(object *objp);
 // Fvi_dtu_body before a query and clears it after the query.
 extern int Fvi_dtu_body;
 extern fix Fvi_dtu_rad2;
+extern int Fvi_dtu_inside_hits;		// ASCENT: see dtu_check_vector_to_object() in fvi.c
+struct object;
+fix dtu_object_hit_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,struct object *obj,struct object *otherobj);
 
 #endif

@@ -228,6 +228,16 @@ void g3_start_instance_angles(vms_vector *pos,vms_angvec *angles);
 //pops the old context
 void g3_done_instance(void);
 
+//ASCENT: new, see instance.c. The view position and view matrix of the
+//current instance.
+typedef struct g3s_instance_state {
+	vms_vector view_pos;
+	vms_matrix view_matrix;
+} g3s_instance_state;
+
+void g3_get_instance_state(g3s_instance_state *state);
+void g3_set_instance_state(g3s_instance_state *state);
+
 //Misc utility functions:
 
 //get current field of view.  Fills in angle for x & y

@@ -75,7 +75,7 @@ no item or `cond` conditions.
 
 The caller passes an activation type that is ANDed with `activation_mask`.
 The "use" action on the side in front of the player (0x95050) passes type 1.
-The other callers were not traced. Masks in the files: 0xFD (625 records),
+The other callers and types are in `docs/re/triggers.md`. Masks in the files: 0xFD (625 records),
 0xFF, 0xF5, 0xF4, 0xFC, 0xF1, 0xF8, 0xF2, 0xF9, 0xFA.
 
 ## Verified

@@ -346,6 +346,9 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "network.h"
 #include "gamefont.h"
 #include "dtugame.h"		// ASCENT: the direct start, Dtu_objects_enabled
+#include "dtuobj.h"		// ASCENT: the attack of the player
+#include "dtumusic.h"	// ASCENT: the streamed music
+#include "dtufoot.h"		// ASCENT: the footstep sounds
 #include "dtudisp.h"		// ASCENT: the interface of the target game
 #include "endlevel.h"
 #include "joydefs.h"
@@ -3002,7 +3005,11 @@ void ReadControls()
 
 			// ASCENT: no weapons while the tables of the items are not
 			// loaded, see Dtu_objects_enabled in dtugame.h
-			if (!Dtu_objects_enabled) {
+			// The weapons of Descent 1 are never fired in the target game.
+			// The fire key starts the attack of the player (dtuobj.c).
+			if (Dtu_direct_start || !Dtu_objects_enabled) {
+				if (Controls.fire_primary_down_count)
+					dtu_player_attack();
 				Controls.fire_flare_down_count = 0;
 				Controls.drop_bomb_down_count = 0;
 				Global_missile_firing_count = 0;
@@ -3012,7 +3019,7 @@ void ReadControls()
 				if (allowed_to_fire_flare())
 					Flare_create(ConsoleObject);
 
-			if (Dtu_objects_enabled && allowed_to_fire_missile())
+			if (!Dtu_direct_start && Dtu_objects_enabled && allowed_to_fire_missile())
 				Global_missile_firing_count += Weapon_info[Secondary_weapon_to_weapon_info[Secondary_weapon]].fire_count * (Controls.fire_secondary_state || Controls.fire_secondary_down_count);
 
 			if (Global_missile_firing_count) {
@@ -4078,6 +4085,7 @@ mem_check();
 		GameTime += FrameTime;
 
 		digi_sync_sounds();
+		dtumusic_frame();		// ASCENT: the streamed music (0xA4F83)
 
 		if (Endlevel_sequence) {
 			do_endlevel_frame();
@@ -4119,6 +4127,11 @@ mem_check();
 			Players[Player_num].homing_object_dist = -1;		//	Assume not being tracked.  Laser_do_weapon_sequence modifies this.
 
 			object_move_all();	
+			// ASCENT: the footstep sounds of the player (0x437E7). The
+			// original calls its function before the game time is advanced.
+			// The port calls it here, because the controls of the walking
+			// player are read in object_move_all().
+			dtufoot_frame();
 			powerup_grab_cheat_all();
 
 			if (Endlevel_sequence)	//might have been started during move
@@ -4128,10 +4141,12 @@ mem_check();
 
 			// ASCENT: no AI and no weapons while the tables of the monsters
 			// and items are not loaded, see Dtu_objects_enabled in dtugame.h
-			if (Dtu_objects_enabled)
+			// The AI of the target game has no part that runs one time
+			// for all creatures (dtuobj.c).
+			if (!Dtu_direct_start && Dtu_objects_enabled)
 				do_ai_frame_all();
 
-			if (Dtu_objects_enabled && allowed_to_fire_laser()) {
+			if (!Dtu_direct_start && Dtu_objects_enabled && allowed_to_fire_laser()) {
 				Global_laser_firing_count += Weapon_info[Primary_weapon_to_weapon_info[Primary_weapon]].fire_count * (Controls.fire_primary_state || Controls.fire_primary_down_count);
 				if ((Primary_weapon == FUSION_INDEX) && (Global_laser_firing_count)) {
 					if ((Players[Player_num].energy < F1_0*2) && (Auto_fire_fusion_cannon_time == 0)) {
@@ -4209,7 +4224,9 @@ mem_check();
 		}
 
 	if (Do_appearance_effect) {
-		create_player_appearance_effect(ConsoleObject);
+		// ASCENT: the target game has no effect where the player appears
+		if (!Dtu_objects_enabled)
+			create_player_appearance_effect(ConsoleObject);
 		Do_appearance_effect = 0;
 	}
 }
