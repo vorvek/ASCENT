@@ -423,6 +423,7 @@ setting is 1 (corrected) by default. The option `-origphys` sets all to 0.
 | `Dtu_fix_jump_path` | The jump steps of the table, 28 for each second, and the velocity of a step divided by the frame time (section 5) | A throw with a constant gravity and the same height and air time (section 13) |
 | `Dtu_fix_ladder` | The climb ends below the top of a ladder (section 12), the climb thrust goes into the wall and the wall throws the player back on each frame | Section 13 |
 | `Dtu_fix_wall_slide` | 0.75 of the velocity into a wall comes back, on each frame while the player pushes, and the move of the frame is lost | The velocity into the wall is taken away, the velocity along it stays |
+| `Dtu_fix_wall_overlap` | (port) A body that starts inside the reach of a wall (rad + 1.0) hits it with each move and cannot move any more | The body is moved out of the reach of the wall along its normal (section 13) |
 
 Not corrected: the 8 tries of the move loop for each frame.
 
@@ -610,6 +611,32 @@ a step back over the edge at the top starts the climb down.
 keeps the velocity along it. When the velocity is along the side (the body touches an
 edge of the side), the player gets 8.0 for each second away from the side, so the
 tries of the move loop do not stay at the same place.
+
+`Dtu_fix_wall_overlap`: the move query has another radius for each side (section 3:
+the floor `rad/2`, the walls `rad + 1.0`). A segment under the player is entered
+through its top side with the small radius, so a wall of that segment can be nearer
+than `rad + 1.0` to the center when it first comes into the query. This happens when
+the player walks off a ledge: the floor search (only floor sides, section 9) finds no
+floor as soon as the center is past the edge, the player falls, and the body is
+inside the reach of the wall under the edge. From such a start every move hits the
+wall (the hit point is behind the start of the query, also for a move away from the
+wall), so the player is held in the air and cannot move. The saved game of a user
+("stuck", HUB1): the center at (-67.92, -308.67, 223.83) in segment 179, 0.46 from
+the wall of segment 70 side 0 (the side under the edge of the floor of segment 180),
+falling, the position the same in each frame (`-movelog`, 120 frames). The
+correction: when a wall hit is behind the start of the query and the start is in
+front of the side and nearer than its radius (`rad + 1.0`, the ceiling `rad2 * 1.5`),
+the center moves along the normal of the side to 1/32 beyond that radius, when the
+way there is free and the point is in a segment, and the move starts again from
+there (physics.c, `dtu_push_out_of_wall`, the line `WALLOVERLAP` of `-movelog`).
+With it the saved game moves the player 4.08 away from the wall, the player falls
+to the floor of segment 71 (y -334.98) in 10 frames and walks. A walk over the same
+edge with short key presses (YPINN start position replaced by `-testpos
+-66.5,-304,223.8,270`, 2 frames forward every 15 frames) gives the stuck player at
+30 and 60 frames per second without the correction, and one `WALLOVERLAP` and a fall
+to the floor below with it. The same with Improved physics off. Whether the
+executable has the same defect was not tested (its floor search uses the radii of
+the move, so it holds the player on the edge longer).
 
 `Dtu_improved_physics` (menu):
 

@@ -1324,6 +1324,7 @@ int Dtu_fix_jump_exit = 1;			// the velocity after a jump: the last step divided
 int Dtu_fix_jump_path = 1;			// the jump: a throw with a constant gravity, with the height and the air time of the table (15 steps, 28 per second)
 int Dtu_fix_ladder = 1;			// a ladder: no velocity into the wall, the hold of its top edge, the step onto the floor, the hold when the player steps down onto it
 int Dtu_fix_wall_slide = 1;		// a wall takes away the velocity into it, with no bounce back
+int Dtu_fix_wall_overlap = 1;	// a body that starts inside the reach of a wall is moved out of it (no stuck player)
 
 // The state of the player (the byte at 0x1AE of the object in the
 // executable) and the values that belong to it.
@@ -2310,6 +2311,77 @@ static void dtu_body_log(object *obj)
 	fflush(log);
 }
 
+// ASCENT: Dtu_fix_wall_overlap. The move query of the body has another
+// radius for each side (fvi.c, dtu_side_rad: the floor rad/2, the walls
+// rad + 1.0). A segment below the player is entered through its top side
+// with the small radius, so the body can already be inside the reach of a
+// wall of that segment when it comes into the query: the player who walks
+// off the edge of a ledge falls with the center less than rad + 1.0 from
+// the wall under the edge. From such a start each move hits the wall (the
+// hit point is behind the start), and the player cannot move any more
+// (the saved game "stuck": HUB1, segment 179, the wall of segment 70 side
+// 0, 0.44 from the center). This moves the center out of the reach of the
+// wall along its normal, when the start is in front of the wall and the
+// hit is not ahead of the start. Returns 1 if the player was moved.
+static int dtu_push_out_of_wall(object *obj,dtu_body *body,fvi_info *hit,vms_vector *move,vms_vector *start_pos)
+{
+	segment *segp;
+	vms_vector d, np;
+	fvi_query fq;
+	fvi_info h2;
+	fix dist, reach;
+	int k, seg;
+
+	if (hit->hit_side_seg < 0 || hit->hit_side < 0 || hit->hit_side == WBOTTOM)
+		return 0;
+	vm_vec_sub(&d,&hit->hit_pnt,&obj->pos);
+	if (vm_vec_dot(&d,move) > 0)
+		return 0;						// an ordinary hit, ahead of the start
+
+	reach = (hit->hit_side == WTOP) ? fixmul(body->move_rad2,0x18000) : body->move_rad + F1_0;
+	segp = &Segments[hit->hit_side_seg];
+	dist = 0x7fffffff;
+	for (k=0;k<4;k++) {
+		fix dk;
+
+		vm_vec_sub(&d,&obj->pos,&Vertices[segp->verts[Side_to_verts[hit->hit_side][k]]]);
+		dk = vm_vec_dot(&d,&hit->hit_wallnorm);
+		if (dk < dist)
+			dist = dk;
+	}
+	if (dist < 0 || dist > reach - F1_0/64)
+		return 0;						// behind the wall, or not inside its reach
+
+	vm_vec_scale_add(&np,&obj->pos,&hit->hit_wallnorm,reach - dist + F1_0/32);
+
+	fq.p0 = &obj->pos;
+	fq.p1 = &np;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&h2) != HIT_NONE)
+		return 0;
+	seg = find_point_seg(&np,obj->segnum);
+	if (seg < 0)
+		return 0;
+
+	{
+		char text[200];
+
+		snprintf(text,sizeof(text),"WALLOVERLAP seg %d side %d dist %.4f reach %.4f pos %.4f %.4f %.4f to %.4f %.4f %.4f\n",
+			hit->hit_side_seg,hit->hit_side,f2fl(dist),f2fl(reach),f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),
+			f2fl(np.x),f2fl(np.y),f2fl(np.z));
+		dtu_move_log_line(text);
+	}
+	obj->pos = np;
+	if (seg != obj->segnum)
+		obj_relink(obj-Objects,seg);
+	*start_pos = np;
+	return 1;
+}
+
 // ASCENT: Dtu_improved_physics. The body of the original (0x748D9) is so
 // wide (the walls stop the center at body_radius[0] / 2 + 1.0, 4.6 for a
 // human) that the edge of a wall side that is a step (BANE: a step of 3.5
@@ -2586,6 +2658,11 @@ int dtu_player_physics_sim(object *obj)
 			}
 
 			dtu_fall_damage(obj);
+		}
+		else if (fate == HIT_WALL && Dtu_fix_wall_overlap && dtu_push_out_of_wall(obj,&body,&hit,&frame_vec,&start_pos)) {
+			// ASCENT: Dtu_fix_wall_overlap. The move starts again from the
+			// position out of the reach of the wall.
+			continue;
 		}
 		else if (fate == HIT_WALL && Dtu_improved_physics && dtu_improved_step(obj,&body,&hit)) {
 			// ASCENT: Dtu_improved_physics, the step up a low wall. The move
