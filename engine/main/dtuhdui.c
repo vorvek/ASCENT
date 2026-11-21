@@ -19,6 +19,7 @@
  * dtudisp.c draws into the picture of the play screen) shows as 8-bit.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
 #include <sys/stat.h>
@@ -38,6 +39,27 @@ static signed char Has_file[MAX_N];		// 0 not known, 1 yes, -1 no
 static struct { ubyte *data; int w, h, n; } Loaded[MAX_LOADED];
 static int Next_loaded;
 static int Was_on;
+
+// The draws and darkenings that went to the GPU since the last clear, in
+// their order (the GPU keeps at most 64), for dtu_hdui_save and
+// dtu_hdui_restore.
+#define MAX_LOG		64
+typedef struct hdui_op {
+	int n;						// the picture, -1 for a darkening
+	int sx, sy, sw, sh, dx, dy, dw, dh;
+	ubyte table[256];
+} hdui_op;
+static hdui_op Log[MAX_LOG];
+static int Log_n;
+
+static void log_add(const hdui_op *op)
+{
+	if (Log_n == MAX_LOG) {
+		memmove(Log, Log + 1, (MAX_LOG - 1) * sizeof(hdui_op));
+		Log_n--;
+	}
+	Log[Log_n++] = *op;
+}
 
 static int file_path(int n, char *path, int size)
 {
@@ -76,6 +98,7 @@ static int enabled(void)
 	if (Was_on)
 		plat_gpu_ui_clear();
 	Was_on = 0;
+	Log_n = 0;
 	return 0;
 }
 
@@ -149,6 +172,28 @@ void dtu_hdui_blit(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *
 	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
 		return;
 	plat_gpu_ui_draw(n, sx, sy, sw, sh, dx + ox, dy + oy, dw, dh);
+	{
+		hdui_op op;
+		op.n = n;
+		op.sx = sx; op.sy = sy; op.sw = sw; op.sh = sh;
+		op.dx = dx + ox; op.dy = dy + oy; op.dw = dw; op.dh = dh;
+		log_add(&op);
+	}
+}
+
+// A darkening of the screen rectangle (x0, y0) to (x1, y1), x1 and y1 not in it.
+static void darken(int x0, int y0, int x1, int y1, const ubyte *table)
+{
+	hdui_op op;
+
+	if (x1 <= x0 || y1 <= y0)
+		return;
+	plat_gpu_ui_darken(x0, y0, x1, y1, table);
+	op.n = -1;
+	op.sx = op.sy = op.sw = op.sh = 0;
+	op.dx = x0; op.dy = y0; op.dw = x1 - x0; op.dh = y1 - y0;
+	memcpy(op.table, table, 256);
+	log_add(&op);
 }
 
 void dtu_hdui_menu_shadow(int x1, int y1, int x2, int y2, int level)
@@ -160,7 +205,45 @@ void dtu_hdui_menu_shadow(int x1, int y1, int x2, int y2, int level)
 		return;
 	// the order of the gr_urect calls of nm_draw_background
 	for (k = 5; k >= 0; k--)
-		plat_gpu_ui_darken(x2 - k + ox, y1 + k + oy, x2 - k + 1 + ox, y2 - 5 + 1 + oy, table);
+		darken(x2 - k + ox, y1 + k + oy, x2 - k + 1 + ox, y2 - 5 + 1 + oy, table);
 	for (k = 5; k >= 0; k--)
-		plat_gpu_ui_darken(x1 + k + ox, y2 - k + oy, x2 + 1 + ox, y2 - k + 1 + oy, table);
+		darken(x1 + k + ox, y2 - k + oy, x2 + 1 + ox, y2 - k + 1 + oy, table);
+}
+
+struct dtu_hdui_state {
+	int n;
+	hdui_op op[MAX_LOG];
+};
+
+dtu_hdui_state *dtu_hdui_save(void)
+{
+	dtu_hdui_state *st;
+
+	if (!Was_on || !(st = (dtu_hdui_state *) malloc(sizeof(*st))))
+		return NULL;
+	st->n = Log_n;
+	memcpy(st->op, Log, Log_n * sizeof(hdui_op));
+	return st;
+}
+
+void dtu_hdui_restore(dtu_hdui_state *st)
+{
+	int i;
+
+	if (!st)
+		return;
+	if (enabled()) {
+		plat_gpu_ui_clear();
+		Log_n = 0;
+		for (i = 0; i < st->n; i++) {
+			hdui_op *o = &st->op[i];
+			if (o->n < 0)
+				darken(o->dx, o->dy, o->dx + o->dw, o->dy + o->dh, o->table);
+			else {
+				plat_gpu_ui_draw(o->n, o->sx, o->sy, o->sw, o->sh, o->dx, o->dy, o->dw, o->dh);
+				log_add(o);
+			}
+		}
+	}
+	free(st);
 }

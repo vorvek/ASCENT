@@ -705,7 +705,8 @@ Decisions of the port (P):
   warp segments, with a log line "STATETEST" at each level start;
   `-loadshots` writes each loading picture to `loading<n>.ppm`; the script
   command `gamekeys` lets the script of `-fescript` run in the frames of the
-  game (its keys go to the game). A run with `-frames` and no script ends
+  game (its keys go to the game). With the direct start (`-level NAME`) the
+  script runs in the game from its first line, as after `gamekeys`. A run with `-frames` and no script ends
   the program when the game ends (the death screen would wait for a key).
 - The Descent message boxes of the game in the death menu are drawn as front
   end menus over the death picture; the text colors are the closest colors of

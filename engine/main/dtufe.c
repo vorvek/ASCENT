@@ -197,9 +197,12 @@ static void script_load(void)
 	FILE *f;
 	char line[200];
 	int t = FindArg("-fescript");
+	static int loaded;
 
-	if (!t || t + 1 >= Num_args)
+	// ASCENT: called by fe_enter and by the direct start (-level)
+	if (loaded || !t || t + 1 >= Num_args)
 		return;
+	loaded = 1;
 	f = fopen(Args[t+1], "r");
 	if (!f) {
 		printf("Cannot open the script %s\n", Args[t+1]);
@@ -2640,6 +2643,11 @@ int Dtu_fix_escape_load_waterdeep = 1;
 void dtufe_direct_start(void)
 {
 	Fe_in_game = 1;
+	// ASCENT: -fescript with -level drives the game and its menus (as
+	// after the command "gamekeys")
+	script_load();
+	if (Script_n)
+		Script_in_game = 1;
 	dtustate_new_game();
 }
 

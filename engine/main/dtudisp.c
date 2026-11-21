@@ -777,6 +777,15 @@ void dtu_display_end_render(void)
 	grd_curscreen->sc_aspect = Saved_aspect;
 }
 
+// ASCENT: the rectangle of the last draw_view, for dtu_display_view_again.
+static int View_dest[4], View_dest_set;
+
+void dtu_display_view_again(void)
+{
+	if (View_dest_set)
+		g3_gpu_view_dest(View_dest[0], View_dest[1], View_dest[2], View_dest[3]);
+}
+
 // Copies the rendered view to the screen. High resolution shows each line
 // twice (0x40729).
 static void draw_view(void)
@@ -790,6 +799,11 @@ static void draw_view(void)
 	if (View.x + w > dest->bm_w) w = dest->bm_w - View.x;
 	// ASCENT: the GPU image of the view (gpu3d.c) shows in this rectangle
 	g3_gpu_view_dest(View.x, View.y, w, Dtu_hires ? 2 * h : h);
+	View_dest[0] = View.x;
+	View_dest[1] = View.y;
+	View_dest[2] = w;
+	View_dest[3] = Dtu_hires ? 2 * h : h;
+	View_dest_set = 1;
 	for (y = 0; y < h; y++) {
 		ubyte *s = src->bm_data + y * src->bm_rowsize;
 		if (Dtu_hires) {
