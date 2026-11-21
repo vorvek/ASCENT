@@ -1315,6 +1315,19 @@ void calc_frame_time()
 		FrameTime = last_frametime;		//...then use time from last frame
 
 	#ifndef NDEBUG
+	// ASCENT: the test option -fixedfps N from the first frame on (the
+	// controls read it after the first frame, which had the time of the
+	// load, so two runs of a test did not give the same moves)
+	{
+		static int fixed_init = 0;
+		int t;
+
+		if (!fixed_init) {
+			fixed_init = 1;
+			if (!fixed_frametime && (t = FindArg("-fixedfps")) != 0 && t+1 < Num_args && atoi(Args[t+1]) > 0)
+				fixed_frametime = F1_0 / atoi(Args[t+1]);
+		}
+	}
 	if (fixed_frametime) FrameTime = fixed_frametime;
 	#endif
 
