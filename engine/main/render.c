@@ -1866,7 +1866,7 @@ typedef struct gpu_bm_ref {
 extern ubyte bogus_data[64*64];		// piggy.c: the data of the bitmaps that are not valid
 
 static gpu_bm_ref Gpu_refs[MAX_BITMAP_FILES];
-static int Gpu_n_refs, Gpu_refs_eggs = -1, Gpu_refs_bitmaps = -1;
+static int Gpu_n_refs, Gpu_refs_generation = -1;
 
 static int gpu_ref_cmp(const void *a, const void *b)
 {
@@ -1878,10 +1878,14 @@ static void gpu_refs_update(void)
 {
 	int ne = piggy_get_num_eggs(), e, i, n = 0;
 
-	if (ne == Gpu_refs_eggs && Num_bitmap_files == Gpu_refs_bitmaps)
+	// The table is made again after each change of the bitmap tables. A
+	// test of the counts only missed a level change that loads an archive
+	// with the same number of bitmaps at new addresses (the same level
+	// archive again after a warp, or a level of the same set): the bitmaps
+	// of the new level then had no source and stayed 8-bit.
+	if (Piggy_generation == Gpu_refs_generation)
 		return;
-	Gpu_refs_eggs = ne;
-	Gpu_refs_bitmaps = Num_bitmap_files;
+	Gpu_refs_generation = Piggy_generation;
 	Gpu_n_refs = 0;
 	for (e = 0; e < ne; e++) {
 		int nb = 0, first = 0;
