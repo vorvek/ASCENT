@@ -3,15 +3,14 @@
 ; Build it with installer/build.sh: the script expects the files of
 ; "cmake --install" in the folder STAGE (default ..\build-rel\stage).
 ;
-; The setup program asks for the game files (the disc, a disc image or an
-; installed Descent to Undermountain), copies the program, runs
-; ascent-import to make the data folder, downloads the 1.3 patch files from
-; the content server when the source has no 1.3 patch, and downloads the
-; upscaled content that the user chooses.
+; The setup program asks for the game disc (a drive, a copy of the disc or
+; a disc image), copies the program, runs ascent-import to make the data
+; folder, downloads the 1.3 patch files from the content server, and
+; downloads the upscaled content that the user chooses. An installed
+; Descent to Undermountain is not a source: it has only a part of the files.
 ;
 ; Command line options (also for a silent install):
-;   /SOURCE=path      the game files (folder, drive, .cue, .bin or .iso)
-;   /DISC=path        the disc, when SOURCE is an installed game
+;   /SOURCE=path      the game disc (folder, drive, .cue, .bin or .iso)
 ;   /PATCH=path       a local 1.3 patch archive or folder (no download)
 ;   /CONTENTURL=url   another content server (tests)
 ;   and the standard options: /DIR=, /TASKS=, /SILENT, /VERYSILENT, ...
@@ -93,7 +92,7 @@ Type: dirifempty; Name: "{app}"
 [Code]
 var
   SourcePage: TWizardPage;
-  SourceEdit, DiscEdit: TNewEdit;
+  SourceEdit: TNewEdit;
   SourceInfo: TNewStaticText;
   SourcePatched, SourcesChecked: Boolean;
   ProgressPage: TOutputProgressWizardPage;
@@ -162,27 +161,12 @@ end;
 // ---------------------------------------------------------------------
 // The source page
 
-function FindGameDisc(): String;
-var
-  D: Integer;
-  Root: String;
-begin
-  Result := '';
-  for D := Ord('D') to Ord('Z') do begin
-    Root := Chr(D) + ':\';
-    if FileExists(Root + 'DTU\DTU.MSN') then begin
-      Result := Root;
-      Exit;
-    end;
-  end;
-end;
-
 procedure BrowseFolder(Edit: TNewEdit);
 var
   Dir: String;
 begin
   Dir := Edit.Text;
-  if BrowseForFolder('Choose the game disc, its DTU folder, or the folder of an installed Descent to Undermountain:', Dir, False) then
+  if BrowseForFolder('Select the location of the game disc:', Dir, False) then
     Edit.Text := Dir;
 end;
 
@@ -197,8 +181,6 @@ end;
 
 procedure SourceFolderClick(Sender: TObject); begin BrowseFolder(SourceEdit); end;
 procedure SourceImageClick(Sender: TObject); begin BrowseImage(SourceEdit); end;
-procedure DiscFolderClick(Sender: TObject); begin BrowseFolder(DiscEdit); end;
-procedure DiscImageClick(Sender: TObject); begin BrowseImage(DiscEdit); end;
 
 function AddButton(Caption: String; Left, Top: Integer; Click: TNotifyEvent): TNewButton;
 begin
@@ -228,35 +210,22 @@ var
   T, W: Integer;
   L: TNewStaticText;
 begin
-  SourcePage := CreateCustomPage(wpSelectDir, 'Game files',
-    'ASCENT needs the files of Descent to Undermountain.');
-  L := AddLabel('Choose the game disc (a CD drive or a copy of the disc), a disc image (.cue, .bin, .iso), ' +
-    'or the folder of an installed Descent to Undermountain. Setup copies the game files into the ' +
+  SourcePage := CreateCustomPage(wpSelectDir, 'Game disc',
+    'ASCENT needs the disc of Descent to Undermountain.');
+  L := AddLabel('Select the location of the game disc. A CD drive, a folder with a copy of the disc, ' +
+    'or a disc image (an .iso file, or a .bin and .cue pair) work. Setup copies the game files into the ' +
     'installation folder. The original files are not changed.', 0);
   T := L.Top + L.Height + ScaleY(10);
   W := SourcePage.SurfaceWidth - 2 * ScaleX(96);
-  AddLabel('Game files:', T);
+  AddLabel('Game disc:', T);
   T := T + ScaleY(18);
   SourceEdit := TNewEdit.Create(SourcePage);
   SourceEdit.Parent := SourcePage.Surface;
   SourceEdit.Top := T;
   SourceEdit.Width := W - ScaleX(6);
   SourceEdit.Text := ExpandConstant('{param:SOURCE|}');
-  if SourceEdit.Text = '' then
-    SourceEdit.Text := FindGameDisc();
   AddButton('&Folder...', W, T - ScaleY(1), @SourceFolderClick);
   AddButton('&Image...', W + ScaleX(96), T - ScaleY(1), @SourceImageClick);
-  T := T + ScaleY(36);
-  L := AddLabel('The game disc, only when the game files above are an installed game (the installed game has ' +
-    'only a part of the files). Leave it empty to look in the CD drives:', T);
-  T := L.Top + L.Height + ScaleY(4);
-  DiscEdit := TNewEdit.Create(SourcePage);
-  DiscEdit.Parent := SourcePage.Surface;
-  DiscEdit.Top := T;
-  DiscEdit.Width := W - ScaleX(6);
-  DiscEdit.Text := ExpandConstant('{param:DISC|}');
-  AddButton('F&older...', W, T - ScaleY(1), @DiscFolderClick);
-  AddButton('I&mage...', W + ScaleX(96), T - ScaleY(1), @DiscImageClick);
   T := T + ScaleY(36);
   SourceInfo := AddLabel('', T);
   ProgressPage := CreateOutputProgressPage('Installing the game files', 'Please wait while Setup copies the files of Descent to Undermountain.');
@@ -273,13 +242,11 @@ begin
   SourcePatched := False;
   SourcesChecked := False;
   if Trim(SourceEdit.Text) = '' then begin
-    Result := 'Choose the game files: the game disc, a disc image or an installed Descent to Undermountain.';
+    Result := 'Select the location of the game disc: a CD drive, a copy of the disc, or a disc image.';
     Exit;
   end;
   ExtractTemporaryFile('ascent-import.exe');
   Params := '--check --source ' + Quote(Trim(SourceEdit.Text));
-  if Trim(DiscEdit.Text) <> '' then
-    Params := Params + ' --disc ' + Quote(Trim(DiscEdit.Text));
   Log('Check: ' + Params);
   if not ExecAndCaptureOutput(ExpandConstant('{tmp}\ascent-import.exe'), Params, '', SW_HIDE, ewWaitUntilTerminated, R, Output) then begin
     Result := 'Cannot run ascent-import.exe.';
@@ -297,7 +264,7 @@ begin
     Result := 'The game files cannot be read (ascent-import status ' + IntToStr(R) + ').';
   if (Result = '') and not SourcePatched and (ExpandConstant('{param:PATCH|}') = '') and not HasContentServer() then
     Result := 'The game files do not have the 1.3 patch, and this setup program has no download address for it. ' +
-      'Choose an installed game with the 1.3 patch, or start Setup with /PATCH=<the 1.3 patch archive>.';
+      'Start Setup with /PATCH=<the 1.3 patch archive>.';
   SourcesChecked := Result = '';
 end;
 
@@ -350,8 +317,6 @@ begin
       end;
     end;
     Params := '--source ' + Quote(Trim(SourceEdit.Text)) + ' --dest ' + Quote(ExpandConstant('{app}\data'));
-    if Trim(DiscEdit.Text) <> '' then
-      Params := Params + ' --disc ' + Quote(Trim(DiscEdit.Text));
     if not SourcePatched then
       Params := Params + ' --patch ' + Quote(Patch);
     R := RunTool(ExpandConstant('{tmp}\ascent-import.exe'), Params, 'Copying the game files...');

@@ -1,16 +1,15 @@
 /*
  * ascent-import: makes the "data" directory of an installed ASCENT from
- * the game disc or an installed Descent to Undermountain.
+ * the game disc.
  *
  * This file is new. It replaces the DOS installer of the game
  * (INSTALL.EXE), which copied a part of the disc to the hard disk.
  *
- *   ascent-import --source PATH --dest DIR [--disc PATH] [--patch PATH] [--check]
+ *   ascent-import --source PATH --dest DIR [--patch PATH] [--check]
  *
- * PATH is a folder (a CD drive, a copy of the disc, the DTU folder of the
- * disc, or an installed game) or a disc image (.cue, .bin, .iso). An
- * installed game has only a part of the files; the other files come from
- * the disc (--disc, else the CDPath of DTU.CFG, else a CD drive).
+ * PATH is a folder (a CD drive, a copy of the disc, or the DTU folder of
+ * the disc) or a disc image (.cue, .bin, .iso). An installed game is not
+ * a source: it has only a part of the files.
  *
  * The packed files of the disc (.DOG, .COW, .HEN) are copied as they are:
  * the game reads them. The files of the 1.3 patch (installer/patch13.txt)
@@ -18,7 +17,7 @@
  * also a self-extracting one, or a folder). docs/install.md has the list.
  *
  * The output lines: "PROGRESS <percent> <text>", "INFO <text>",
- * "SOURCE ...", "DISC ...", "PATCHED yes|no" and "ERROR: <text>".
+ * "SOURCE ...", "PATCHED yes|no" and "ERROR: <text>".
  * The exit status: 0 done, 1 usage, 2 no game data, 3 the patch is
  * needed, 4 the patch is not valid, 5 files are missing, 6 write error.
  */
@@ -284,45 +283,6 @@ static int hash_of(source *s, int i, char hex[65])
 	}
 }
 
-// The disc for an installed game: the CDPath of DTU.CFG, else a CD drive.
-static int find_disc(source *install, source *disc)
-{
-	char cfg[INST_PATH], line[600];
-	FILE *f;
-
-	if (inst_find_name(install->dir, "DTU.CFG", cfg, sizeof(cfg)) && (f = fopen(cfg, "r")) != NULL) {
-		while (fgets(line, sizeof(line), f)) {
-			if (!strncmp(line, "CDPath=", 7)) {
-				char *p = line + 7, *e = p + strlen(p);
-				while (e > p && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' '))
-					*--e = 0;
-				if (*p && open_folder(disc, p) && disc->n_cow > 0) {
-					fclose(f);
-					return 1;
-				}
-			}
-		}
-		fclose(f);
-	}
-#ifdef _WIN32
-	{
-		DWORD drives = GetLogicalDrives();
-		int d;
-		for (d = 2; d < 26; d++) {
-			char root[8];
-			if (!(drives & (1u << d)))
-				continue;
-			snprintf(root, sizeof(root), "%c:\\", 'A' + d);
-			if (GetDriveTypeA(root) != DRIVE_CDROM)
-				continue;
-			if (open_folder(disc, root) && disc->n_cow > 0)
-				return 1;
-		}
-	}
-#endif
-	return 0;
-}
-
 // ---------------------------------------------------------------------
 // The plan: one source for each output file
 
@@ -437,10 +397,8 @@ static int apply_patch(const char *patch, const char *dest)
 
 static void usage(void)
 {
-	printf("Usage: ascent-import --source PATH --dest DIR [--disc PATH] [--patch PATH] [--check]\n\n"
-		"  --source  the game disc (a drive or a folder), a disc image (.cue, .bin, .iso),\n"
-		"            or an installed Descent to Undermountain\n"
-		"  --disc    the disc for an installed game, if it is not found\n"
+	printf("Usage: ascent-import --source PATH --dest DIR [--patch PATH] [--check]\n\n"
+		"  --source  the game disc (a drive or a folder) or a disc image (.cue, .bin, .iso)\n"
 		"  --patch   the 1.3 patch: a ZIP archive or a folder\n"
 		"  --dest    the data folder to make\n"
 		"  --check   only examine the sources\n");
@@ -448,9 +406,9 @@ static void usage(void)
 
 int main(int argc, char **argv)
 {
-	const char *src_path = NULL, *disc_path = NULL, *patch = NULL, *dest = NULL;
-	static source src, disc;
-	source *install = NULL, *full = NULL;
+	const char *src_path = NULL, *patch = NULL, *dest = NULL;
+	static source src;
+	source *full = &src;
 	char err[INST_PATH + 200];
 	int i, check = 0, patched, rc;
 	static const char *core[] = { "DTU.MSN", "PALETTE.256", "FEBGND.DAT", "FEBGND.JRG", "FESTREAM.DAT",
@@ -458,7 +416,6 @@ int main(int argc, char **argv)
 
 	for (i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--source") && i + 1 < argc) src_path = argv[++i];
-		else if (!strcmp(argv[i], "--disc") && i + 1 < argc) disc_path = argv[++i];
 		else if (!strcmp(argv[i], "--patch") && i + 1 < argc) patch = argv[++i];
 		else if (!strcmp(argv[i], "--dest") && i + 1 < argc) dest = argv[++i];
 		else if (!strcmp(argv[i], "--check")) check = 1;
@@ -474,33 +431,16 @@ int main(int argc, char **argv)
 
 	if (!open_source(&src, src_path, err, sizeof(err)))
 		return fail(EXIT_NO_DATA, "%s", err);
-	if (src.n_cow > 0) {
-		full = &src;
-		out("SOURCE disc %s", src.is_image ? src.path : src.dir);
-	} else {
-		install = &src;
-		out("SOURCE install %s", src.dir);
-		if (disc_path) {
-			if (!open_source(&disc, disc_path, err, sizeof(err)))
-				return fail(EXIT_NO_DATA, "%s", err);
-			if (disc.n_cow == 0)
-				return fail(EXIT_NO_DATA, "%s is not the game disc: it has no .COW files.", disc_path);
-		} else if (!find_disc(install, &disc))
-			return fail(EXIT_NO_DATA, "The installed game in %s has only a part of the game files. "
-				"The other files are on the game disc: insert the disc, or choose the disc or a disc image as the second source.", src.dir);
-		full = &disc;
-		out("DISC %s", disc.is_image ? disc.path : disc.dir);
-	}
+	// An installed game has no .COW files: the disc has them.
+	if (src.n_cow == 0)
+		return fail(EXIT_NO_DATA, "%s is not the game disc: it has no .COW files. "
+			"Choose the game disc or a disc image, not an installed game.", src.is_image ? src.path : src.dir);
+	out("SOURCE disc %s", src.is_image ? src.path : src.dir);
 	if (full->n_cow < 57)
 		out("INFO the disc has %d .COW files (57 expected)", full->n_cow);
 
-	// The disc first, then the files of the installed game (unpacked or
-	// patched files) over them.
 	for (i = 0; i < full->files.n; i++)
 		plan_set(full, i);
-	if (install)
-		for (i = 0; i < install->files.n; i++)
-			plan_set(install, i);
 	for (i = 0; core[i]; i++)
 		if (!plan_find(core[i]) && !(!strcmp(core[i], "YPINN.DOG") && plan_find("YPINN.LVL")))
 			return fail(EXIT_MISSING, "The source has no %s. It is not a complete Descent to Undermountain.", core[i]);

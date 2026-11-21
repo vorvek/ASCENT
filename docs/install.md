@@ -22,7 +22,7 @@ The `DTU` folder of the disc has 519 files and the subfolder `STUFF` (121 files)
 | `INSTALL.DAT`, `SETUP.DAT`, `SETUPE.TEX`, `README.TXT`, `DIGITEST.RAW` | Install program, setup program, sound test. |
 | `*.LVV` | The 4 `.LVV` files are equal to the `.LV2` files of the 1.3 patch. The port reads `.LV2`. |
 
-From an installed game it also leaves out the files of the player:
+It also leaves out the files of the player, if a copy of the disc has them:
 `SG*.SG`, `GELDOR.DAT`, `THESTORE.*`, `KCONFIG.DAT`, `*.LOG` and the `SAVE` folder.
 
 The files that the port reads (from the code: `dtu_load_file`, `dtu_find_file`):
@@ -44,10 +44,10 @@ data: the other languages (`FETXT?.*`, `GAB?.*`, `DTU?.TEX`), `*.EOI`, `*.THN`,
 `WHAMMO.*`, `*.TBL`, `FESOUND.JRG`, `HRISBTN.PCH`, `BANE.TXT`, `*.RLH`.
 
 The installed game in `E:\UNDAMONTAN\DTU` has 266 files: it has no `.COW`, `.DOG` or
-`.HEN` files and reads them from the disc (`CDPath` in `DTU.CFG`). An import from an
-installed game therefore needs the disc too. It has unpacked copies of `YPINN`, `HMC`,
-`HMT` and `PORTAL` (`.LVL`, `.EGG`, `.BIN`); the import copies them, the port reads
-both forms.
+`.HEN` files and reads them from the disc (`CDPath` in `DTU.CFG`). So the import uses
+only the disc: a CD drive, a copy of the disc, or a disc image. It refuses a folder
+without `.COW` files (an installed game). The 1.3 patch files come from the patch
+archive (`--patch`), which the setup program downloads.
 
 ## The 1.3 patch
 
@@ -134,16 +134,15 @@ cmake --install build-rel --prefix build-rel/stage
 ## ascent-import
 
 ```
-ascent-import --source PATH --dest DIR [--disc PATH] [--patch PATH] [--check]
+ascent-import --source PATH --dest DIR [--patch PATH] [--check]
 ```
 
-- `PATH`: a CD drive, a copy of the disc, its `DTU` folder, an installed game, or an
-  image (`.cue`, `.bin`, `.iso`; 2048 or 2352-byte sectors).
-- An installed game (no `.COW` files) needs the disc: `--disc`, else `CDPath` of
-  `DTU.CFG`, else a CD drive with `DTU\DTU.MSN`.
-- The disc files first, then the files of the installed game over them, then the
-  patch files. At the end it checks the 9 patch hashes and core files.
-- Output: `PROGRESS <percent> <text>`, `SOURCE`, `DISC`, `PATCHED yes|no`, `FILES`,
+- `PATH`: a CD drive, a copy of the disc, its `DTU` folder, or an image (`.cue`,
+  `.bin`, `.iso`; 2048 or 2352-byte sectors). A folder without `.COW` files (an
+  installed game) is an error. The tool does not search the drives.
+- The disc files first, then the patch files. At the end it checks the 9 patch hashes
+  and core files.
+- Output: `PROGRESS <percent> <text>`, `SOURCE`, `PATCHED yes|no`, `FILES`,
   `INFO`, `ERROR: <text>`. Exit status: 0 done, 1 usage, 2 no game data, 3 patch
   needed, 4 patch not valid, 5 files missing, 6 write error.
 
@@ -251,16 +250,16 @@ The content tool is installed with the game ("ASCENT Content" in the Start menu)
 (the download sizes come from `CONTENT_DIR/manifest.txt`).
 
 The pages: installation folder (default `%LOCALAPPDATA%\Programs\ASCENT`, no
-administrator rights), game files (source field with Folder and Image buttons, a
-second field for the disc of an installed game; a CD drive with the game is filled in;
-Next runs `ascent-import --check` and shows its error), tasks (Start menu entry,
+administrator rights), game disc (one field with Folder and Image buttons: "Select
+the location of the game disc", a CD drive, a copy of the disc, or an `.iso` file or a
+`.bin` and `.cue` pair; Setup does not search the drives; Next runs `ascent-import --check` and shows its error), tasks (Start menu entry,
 checked; desktop shortcut; "Upscaled textures and interface (download, about 493 MB)",
 checked; "Upscaled movies (download, about 463 MB)", unchecked because of the size),
 ready, the progress page of the patch download and the import (a failure stops Setup
 with the message of the tool), the content downloads (a failure is a warning: the game
 works without them), and the last page with "Play ASCENT".
 
-Command line: `/SOURCE=`, `/DISC=`, `/PATCH=`, `/CONTENTURL=`, and `/DIR=`,
+Command line: `/SOURCE=`, `/PATCH=`, `/CONTENTURL=`, and `/DIR=`,
 `/TASKS=`, `/VERYSILENT`, `/SUPPRESSMSGBOXES`, `/LOG=`.
 
 The uninstaller (Windows "Installed apps") removes the program, `data`, `hd` and
