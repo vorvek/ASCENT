@@ -27,6 +27,10 @@
 #include "gr.h"
 #include "texmap.h"
 #include "texmapl.h"
+#include "tmapfx.h"
+
+#include <stdlib.h>
+#include <string.h>
 
 #define NBITS	4		// 2^NBITS pixels plotted per divide
 #define ZSHIFT	4		// precision used in PDIV macro
@@ -327,6 +331,48 @@ static void per_loop_fast_nolight(ubyte *dest, int loop_count, fix u, fix v, fix
 }
 
 // --------------------------------------------------------------------------------------------------
+// ASCENT: a lit span of a bitmap with effect colors (tmapfx.c). The span is
+// drawn as usual, then the effect pixels get their colors from the screen
+// before the span (saved here) and the bitmap colors of the same pixels
+// (the unlit loop into a buffer with the alignment of dest, so that it
+// takes the same texels).
+static void per_span_fx(ubyte *dest, int x, int loop_count, fix l, fix dl)
+{
+	static ubyte *buf;
+	static int buf_size;
+	int n = loop_count + 1, n_saved, lighting = Lighting_on;
+	ubyte *raw, *saved;
+
+	if (n * 2 + 16 > buf_size) {
+		ubyte *nb = (ubyte *) realloc(buf, (size_t) n * 2 + 16);
+		if (!nb)
+			return;
+		buf = nb;
+		buf_size = n * 2 + 16;
+	}
+	saved = buf;
+	raw = buf + n + 1;
+	raw += ((uintptr_t) dest - (uintptr_t) raw) & 3;
+	n_saved = (x + n <= window_right) ? n + 1 : n;
+	memcpy(saved, dest, (size_t) n_saved);
+	memset(raw, 255, (size_t) n);
+
+	Lighting_on = 0;
+	if (!per2_flag)
+		per_loop_divide(raw, loop_count, fx_u, fx_v, fx_z, l, dl);
+	else
+		per_loop_fast_nolight(raw, loop_count, fx_u, fx_v, fx_z, l, dl);
+	Lighting_on = lighting;
+
+	if (!per2_flag)
+		per_loop_divide(dest, loop_count, fx_u, fx_v, fx_z, l, dl);
+	else
+		per_loop_fast(dest, loop_count, fx_u, fx_v, fx_z, l, dl);
+
+	tmap_fx_fix_span(dest, raw, n, saved, n_saved, fx_y);
+}
+
+// --------------------------------------------------------------------------------------------------
 // Enter:
 //	fx_xleft	left x coordinate (int)
 //	fx_xright	right x coordinate (int)
@@ -376,6 +422,12 @@ void asm_tmap_scanline_per(void)
 
 	if (Lighting_on)
 		tmap_guard_light(&l, &dl, loop_count);
+
+	// ASCENT: the effect colors of a merged texture (tmapfx.c)
+	if (Tmap_fx && Lighting_on) {
+		per_span_fx(dest, x, loop_count, l, dl);
+		return;
+	}
 
 	if (!per2_flag)
 		per_loop_divide(dest, loop_count, fx_u, fx_v, fx_z, l, dl);

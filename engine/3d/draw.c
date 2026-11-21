@@ -338,6 +338,14 @@ bool g3_draw_tmap(int nv,g3s_point **pointlist,g3s_uvl *uvl_list,grs_bitmap *bm)
 	if (cc.and)		//check codes_and
 		return 1;	//all the way off screen, not visible at all
 
+	//ASCENT: the GPU renderer gets the face as it is and clips it itself,
+	//so that the light of the face does not depend on the clip (gpu_tmap
+	//in gpu3d.c).
+	if (G3_GPU_ROUTE()) {
+		G3_gpu->tmap(nv,bufptr,bm,tmap_drawer_ptr != draw_tmap);
+		return 0;
+	}
+
 	if (cc.or == 0)		//no clip needed
 		return draw_tmap_2d(nv,bufptr,bm);
 

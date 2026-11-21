@@ -44,7 +44,8 @@ extern fix blob_vertices[8];
 //ASCENT: the GPU renderer (gpu3d.c). While G3_gpu is not NULL and the
 //current canvas has the data G3_gpu->canvas, the drawers of the library
 //give the projected polygons to these functions in place of the texture
-//mapper and the 2d library. The points are projected.
+//mapper and the 2d library. The points are projected, but the points of
+//tmap are not clipped or projected: the GPU clips the face (see gpu_tmap).
 typedef struct g3_gpu_hooks {
 	ubyte *canvas;
 	//special is 1 when g3_set_special_render() replaced the tmap drawer

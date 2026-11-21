@@ -346,6 +346,7 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "palette.h"		// ASCENT: gr_palette for the GPU renderer
 #include "platform.h"		// ASCENT: plat_gpu_bind_settings
 #include "args.h"			// ASCENT: -lightlog
+#include "tmapfx.h"		// ASCENT: Tmap_fx_row
 #include <stdio.h>
 #include <ctype.h>
 
@@ -2044,6 +2045,23 @@ void render_frame(fix eye_offset)
 #endif
 
 	g3_start_frame();
+
+	// ASCENT: the pulse of the effect color 0xCF (tmapfx.c), 0x72818 to
+	// 0x72867: one step each 6 views, from 0 up to 25, then between 24 and 31.
+	{
+		static int value = 0, dir = 1, count = 5;
+
+		if (--count < 0) {
+			value += dir;
+			count = 5;
+		}
+		if (value < 25)
+			dir = 1;
+		if (value > 30)
+			dir = -1;
+		Tmap_fx_row = value;
+		G3_gpu_fx_row = value;
+	}
 
 	Viewer_eye = Viewer->pos;
 

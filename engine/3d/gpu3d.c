@@ -42,6 +42,7 @@ static char Opt_hd_dir[600];
 static int Rgb_gen = 1;		//changes when the RGB textures must be made again
 static int Hd_log;			//ASCENT_GPU_HDLOG=1: print the requests of upscaled textures
 int G3_gpu_heat;			//3d.h
+int G3_gpu_fx_row = 25;	//3d.h
 
 // ---------------------------------------------------------------------
 // The index of the upscaled set: <hd>/textures/<egg>/index.txt, one line
@@ -434,6 +435,13 @@ static void request_hd(grs_bitmap *bm,int tex)
 		}
 		job.orient = src.orient & 3;
 		job.super = (src.top->bm_flags & BM_FLAG_SUPER_TRANSPARENT) != 0;
+		//the effect colors of the merged bitmap (texmap/tmapfx.c); the
+		//loader copies the pixels
+		if (bm->bm_flags & BM_FLAG_DTU_EFFECTS) {
+			job.fx_index = bitmap_pixels(bm);
+			job.fx_w = bm->bm_w;
+			job.fx_h = bm->bm_h;
+		}
 	} else
 		return;
 	if (Hd_log)
@@ -565,6 +573,9 @@ static int merge_texture(grs_bitmap *bm,const g3_gpu_source *src)
 	m->tex = 0;
 	pix = bitmap_pixels(bm);
 	rgba = pix ? expand_rgba(pix,bm->bm_w,bm->bm_h) : NULL;
+	//the effect colors of a merged bitmap (texmap/tmapfx.c)
+	if (rgba && (bm->bm_flags & BM_FLAG_DTU_EFFECTS))
+		plat_gpu_fx_mark(rgba,bm->bm_w,bm->bm_h,pix,bm->bm_w,bm->bm_h);
 	if (rgba)
 		m->tex = plat_gpu_texture_create_rgba(bm->bm_w,bm->bm_h,rgba,0);
 	m->rgb_gen = Rgb_gen;
@@ -615,14 +626,38 @@ static int bitmap_texture(grs_bitmap *bm)
 // ---------------------------------------------------------------------
 // Polygons
 
+//A projected point (a clipped polygon of the 3d library): the position
+//times the depth (plat_gpu_vertex).
 static void make_vertex(plat_gpu_vertex *o,g3s_point *p)
 {
-	o->x = p->p3_sx / 65536.0f;
-	o->y = p->p3_sy / 65536.0f;
-	o->z = p->z / 65536.0f;
+	float z = p->z / 65536.0f;
+
+	memset(o,0,sizeof(*o));
+	o->x = p->p3_sx / 65536.0f * z;
+	o->y = p->p3_sy / 65536.0f * z;
+	o->z = z;
 	o->u = p->p3_u / 65536.0f;
 	o->v = p->p3_v / 65536.0f;
 	o->l = p->p3_l / 65536.0f;
+	o->lq[0] = -1.0f;
+}
+
+//A rotated point that need not be projected or in front of the eye. The
+//projection of g3_project_point (sx = x * w2 / z + w2, sy = h2 - y * h2 / z)
+//times z, which is linear in x, y, z.
+static void make_vertex_3d(plat_gpu_vertex *o,g3s_point *p)
+{
+	float x = p->x / 65536.0f, y = p->y / 65536.0f, z = p->z / 65536.0f;
+	float w2 = Canv_w2 / 65536.0f, h2 = Canv_h2 / 65536.0f;
+
+	memset(o,0,sizeof(*o));
+	o->x = x * w2 + w2 * z;
+	o->y = h2 * z - y * h2;
+	o->z = z;
+	o->u = p->p3_u / 65536.0f;
+	o->v = p->p3_v / 65536.0f;
+	o->l = p->p3_l / 65536.0f;
+	o->lq[0] = -1.0f;
 }
 
 static void draw_points(int nv,g3s_point **pointlist,plat_gpu_material *m)
@@ -634,6 +669,28 @@ static void draw_points(int nv,g3s_point **pointlist,plat_gpu_material *m)
 		return;
 	for (i=0;i<nv;i++)
 		make_vertex(&v[i],pointlist[i]);
+	plat_gpu_draw(v,nv,m);
+}
+
+//A face of g3_draw_tmap, not clipped (gpu_tmap). A lit quad gets the
+//bilinear light of its corners.
+static void draw_face(int nv,g3s_point **pointlist,plat_gpu_material *m)
+{
+	static const float st[4][2] = { {0,0}, {1,0}, {1,1}, {0,1} };
+	plat_gpu_vertex v[MAX_POINTS_IN_POLY];
+	int i,k;
+
+	if (nv < 3 || nv > MAX_POINTS_IN_POLY)
+		return;
+	for (i=0;i<nv;i++)
+		make_vertex_3d(&v[i],pointlist[i]);
+	if (nv == 4 && m->mode == PLAT_GPU_TEXTURED && m->lit)
+		for (i=0;i<4;i++) {
+			v[i].s = st[i][0];
+			v[i].t = st[i][1];
+			for (k=0;k<4;k++)
+				v[i].lq[k] = pointlist[k]->p3_l > 0 ? pointlist[k]->p3_l / 65536.0f : 0.0f;
+		}
 	plat_gpu_draw(v,nv,m);
 }
 
@@ -668,6 +725,15 @@ static int average_light_color(int nv,g3s_point **pointlist,grs_bitmap *bm)
 	return gr_fade_table[average_light*256 + bm->avg_color];
 }
 
+//The face is not clipped or projected (g3_draw_tmap): the GPU clips it.
+//When the 3d library clipped a face at the edges of the view, the new
+//corners got the light of the edge, and the fan of triangles of the
+//clipped polygon interpolated the light in screen space over other
+//triangles than those of the face. A large floor or ceiling face with one
+//bright corner (a torch) then showed light and dark areas that moved when
+//the view turned. Here the triangles are those of the face, the light is
+//interpolated with perspective, and a quad gets the bilinear light of its
+//corners, so the light of a point of a face does not depend on the view.
 static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 {
 	plat_gpu_material m;
@@ -679,7 +745,7 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	if (!tex) {
 		flat_material(&m,average_light_color(nv,pointlist,bm));
 		m.heat = G3_gpu_heat;
-		draw_points(nv,pointlist,&m);
+		draw_face(nv,pointlist,&m);
 		return;
 	}
 
@@ -689,7 +755,11 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	m.lit = !(bm->bm_flags & BM_FLAG_NO_LIGHTING);
 	m.transparent = (bm->bm_flags & BM_FLAG_TRANSPARENT) != 0;
 	m.heat = G3_gpu_heat;
-	draw_points(nv,pointlist,&m);
+	//the effect colors of a merged bitmap take the colors of the image
+	//under the face (texmap/tmapfx.c); the lit mappers of the original do it
+	m.effects = m.lit && (bm->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;
+	m.fx_row = G3_gpu_fx_row;
+	draw_face(nv,pointlist,&m);
 }
 
 static void gpu_poly(int nv,g3s_point **pointlist)
@@ -720,14 +790,20 @@ static void gpu_bitmap(g3s_point *pnt,fix w,fix h,grs_bitmap *bm)
 	m.heat = G3_gpu_heat;
 	if (!m.texture)
 		return;
+	memset(v,0,sizeof(v));
 	for (i=0;i<4;i++) {
 		v[i].z = z;
 		v[i].l = 1.0f;
+		v[i].lq[0] = -1.0f;
 	}
 	v[0].x = x0; v[0].y = y0; v[0].u = 0; v[0].v = 0;
 	v[1].x = x1; v[1].y = y0; v[1].u = 1; v[1].v = 0;
 	v[2].x = x1; v[2].y = y1; v[2].u = 1; v[2].v = 1;
 	v[3].x = x0; v[3].y = y1; v[3].u = 0; v[3].v = 1;
+	for (i=0;i<4;i++) {		// homogeneous (plat_gpu_vertex)
+		v[i].x *= z;
+		v[i].y *= z;
+	}
 	plat_gpu_draw(v,4,&m);
 }
 
@@ -746,12 +822,13 @@ static void gpu_sphere(g3s_point *pnt,fix r)
 	m.color = grd_curcanv->cv_color & 255;
 	m.heat = G3_gpu_heat;
 	for (i=0;i<24;i++) {
-		float a = i * (6.2831853f / 24);
-		v[i].x = cx + rad * cosf(a);
-		v[i].y = cy + rad * sinf(a);
-		v[i].z = pnt->z / 65536.0f;
-		v[i].u = v[i].v = 0;
+		float a = i * (6.2831853f / 24), z = pnt->z / 65536.0f;
+		memset(&v[i],0,sizeof(v[i]));
+		v[i].x = (cx + rad * cosf(a)) * z;		// homogeneous (plat_gpu_vertex)
+		v[i].y = (cy + rad * sinf(a)) * z;
+		v[i].z = z;
 		v[i].l = 1.0f;
+		v[i].lq[0] = -1.0f;
 	}
 	plat_gpu_draw(v,24,&m);
 }
