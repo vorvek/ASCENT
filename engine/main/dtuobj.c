@@ -45,6 +45,7 @@
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtuobj.h"
+#include "dtutrig.h"
 #include "dtuspell.h"	// ASCENT: the spells of the creatures, the area of a missile
 #include "dtuthief.h"	// ASCENT: Hide In Shadows and Move Silently in the AI
 #include "dtuchar.h"
@@ -5723,6 +5724,38 @@ static void test_place_player(void)
 	a.h = (fixang)(int)(h * 65536.0 / 360.0);
 	vm_angles_2_matrix(&ConsoleObject->orient,&a);
 	vm_vec_zero(&ConsoleObject->mtype.phys_info.velocity);
+	// the new segment is not a move into it: no warp or floor trigger
+	dtu_trig_player_placed();
+}
+
+// The triggers of a frame run before the objects (switch.c): -testpos must
+// move the player before the warp test of the start segment.
+void dtu_test_place_player(void)
+{
+	static int tour = -1, step = 0;
+
+	if (Dtu_objects_enabled && Test_pos_pending)
+		test_place_player();
+	// -testtour: the player visits the center of each segment, one frame
+	// for each of 4 headings, so that a test sees every side of the level
+	// (the requests of the upscaled textures: ASCENT_GPU_HDLOG=1)
+	if (tour < 0)
+		tour = FindArg("-testtour") != 0;
+	if (tour && ConsoleObject && step / 4 <= Highest_segment_index) {
+		int seg = step / 4;
+		vms_angvec a;
+
+		compute_segment_center(&ConsoleObject->pos,&Segments[seg]);
+		if (seg != ConsoleObject->segnum)
+			obj_relink(ConsoleObject-Objects,seg);
+		a.p = a.b = 0;
+		a.h = (fixang) ((step % 4) * 0x4000);
+		vm_angles_2_matrix(&ConsoleObject->orient,&a);
+		vm_vec_zero(&ConsoleObject->mtype.phys_info.velocity);
+		dtu_trig_player_placed();
+		if (++step / 4 > Highest_segment_index)
+			printf("-testtour: %d segments visited\n", seg + 1);
+	}
 }
 
 void dtu_objects_frame(void)
