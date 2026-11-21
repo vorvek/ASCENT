@@ -109,18 +109,3 @@ void garage_tweak_ship()
 	Player_ship->rot_speed = (int)atof(rot_speed);
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

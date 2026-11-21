@@ -63,5 +63,3 @@ extern void close_trigger_window();
 extern void do_trigger_window();
 
 #endif
-
-

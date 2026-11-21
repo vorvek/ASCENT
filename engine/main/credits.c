@@ -366,6 +366,3 @@ void credits_show()
 	}
 
 }
-
-
-

@@ -484,5 +484,3 @@ void info_display_all( UI_WINDOW * wnd )
 	}
 	grd_curcanv = save_canvas;
 }
-
-

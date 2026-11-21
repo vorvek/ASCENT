@@ -1721,6 +1721,3 @@ vm_vec_copy_scale(&satellite_upvec,&tm.uvec,SATELLITE_HEIGHT);
 	endlevel_data_loaded = 1;
 
 }
-
-
-

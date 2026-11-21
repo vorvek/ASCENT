@@ -68,6 +68,3 @@ int nfilelength( char * name )
 {
 
 }
-
-
-

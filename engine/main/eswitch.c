@@ -613,9 +613,3 @@ void do_trigger_window()
 
 	old_trigger_num = trigger_num;
 }
-
-
-
-
-
-

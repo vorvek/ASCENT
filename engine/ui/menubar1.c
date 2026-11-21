@@ -279,5 +279,3 @@ void menubar_close()
 		gr_free_bitmap( MenuSystem[i].background );
 	}
 }
-
-

@@ -61,5 +61,3 @@ void main()
 		fclose(fp1);
 	}	
 }
- 
-

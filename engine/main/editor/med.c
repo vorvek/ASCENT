@@ -1593,5 +1593,3 @@ int MarkEnd(void)
 
 	return 1;
 }
-
-

@@ -116,5 +116,3 @@ void draw_weapon_vclip(object *obj)
 	draw_vclip_object(obj, modtime, 0, vclip_num);
 
 }
-
-

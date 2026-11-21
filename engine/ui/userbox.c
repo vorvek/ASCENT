@@ -154,9 +154,3 @@ void ui_userbox_do( UI_GADGET_USERBOX * userbox, int keypress )
 	ui_draw_userbox( userbox );
 
 }
-
-
-
-
-
-

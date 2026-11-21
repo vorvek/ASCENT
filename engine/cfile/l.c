@@ -605,6 +605,3 @@ void cfclose( CFILE * fp ) {
 	free(fp);
 
 }
-
-
-

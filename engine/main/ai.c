@@ -3824,5 +3824,3 @@ int ai_restore_state( FILE * fp )
 // -- 	mprintf((0, "[pl: %i cur: st: %i]\n", ConsoleObject->segnum, objp->segnum, aip->hide_segment));
 
 // -- }
-
-

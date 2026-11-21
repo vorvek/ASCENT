@@ -2279,5 +2279,3 @@ void update_laser_weapon_info(void)
 	if (old_weapon[0][VR_current_page] == 0)
 		old_weapon[0][VR_current_page] = -1;
 }
-
-

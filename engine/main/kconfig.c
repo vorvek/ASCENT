@@ -2272,5 +2272,3 @@ void kconfig_sense_init()
 		printf( TXT_VFX1_ERROR2 );
 	}
 }
-
-

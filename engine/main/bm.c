@@ -185,6 +185,3 @@ void bm_read_all(CFILE * fp)
 	cfread( &exit_modelnum, sizeof(int), 1, fp );
 	cfread( &destroyed_exit_modelnum, sizeof(int), 1, fp );
 }
-
-
-

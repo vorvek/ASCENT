@@ -158,5 +158,3 @@ int SelectPreviousFoundSeg(void)
 
 	return 1;
 }
-
-

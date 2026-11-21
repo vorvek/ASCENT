@@ -268,7 +268,3 @@ void vfx_set_page(ubyte page)
 	outp( PORT_AIR, INDEX_PSR );
 	outp( PORT_CSR, page_register.value );
 }
-
-
-
-

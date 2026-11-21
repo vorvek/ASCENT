@@ -265,5 +265,3 @@ extern void add_segment_to_group(int segment_num, int group_num);
 extern void med_check_all_vertices();
 
 #endif
-
-

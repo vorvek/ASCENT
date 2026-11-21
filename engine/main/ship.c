@@ -65,6 +65,3 @@ void ship_energy_empty()
 {
 	Player_stats.energy = 0;
 }
-
-
-

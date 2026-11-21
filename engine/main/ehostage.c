@@ -543,7 +543,3 @@ void do_hostage_window()
 
 	LastHostageIndex = CurrentHostageIndex;
 }
-
-
-
-

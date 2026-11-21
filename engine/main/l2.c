@@ -357,5 +357,3 @@ void do_replacements_all(void)
 	}
 
 }
-
-

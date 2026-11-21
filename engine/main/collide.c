@@ -2056,7 +2056,3 @@ void collide_object_with_wall( object * A, fix hitspeed, short hitseg, short hit
 		Error( "Unhandled object type hit wall in collide.c\n" );
 	}
 }
-
-
-
-

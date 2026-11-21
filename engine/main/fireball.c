@@ -1281,5 +1281,3 @@ void do_exploding_wall_frame()
 	}
 
 }
-
-

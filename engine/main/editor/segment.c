@@ -2254,5 +2254,3 @@ void check_for_overlapping_segments(void)
 
 	mprintf((0, "\nDone!\n"));
 }
-
-

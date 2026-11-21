@@ -621,5 +621,3 @@ void joydefs_config()
 	}
 
 }
-
-

@@ -1280,5 +1280,3 @@ set_thrust_from_velocity(object *obj)
 	vm_vec_copy_scale(&obj->mtype.phys_info.thrust,&obj->mtype.phys_info.velocity,k);
 
 }
-
-

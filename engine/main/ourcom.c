@@ -835,5 +835,3 @@ void modem_answer(void)
 {
 
 }
-
-

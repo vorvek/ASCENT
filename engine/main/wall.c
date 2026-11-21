@@ -1046,5 +1046,3 @@ void kill_stuck_objects(int wallnum)
 		} else if (Stuck_objects[i].wallnum != -1)
 			Num_stuck_objects++;
 }
-
-

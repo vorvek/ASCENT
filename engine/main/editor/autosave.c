@@ -323,5 +323,3 @@ int undo( void ) {
 //@@     //diagnostic_message("Can't undo\n");
 
 }
-
-

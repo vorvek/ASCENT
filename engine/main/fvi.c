@@ -1531,5 +1531,3 @@ int object_intersects_wall(object *objp)
 
 	return sphere_intersects_wall(&objp->pos,objp->segnum,objp->size);
 }
-
-

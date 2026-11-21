@@ -1673,6 +1673,3 @@ StartLevel(int random)
 	if (VR_screen_mode == SCREEN_MENU)
 		vr_reset_display();
 }
-
-
-

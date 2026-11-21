@@ -915,5 +915,3 @@ void set_all_modes_to_hover(void)
 		if (Objects[i].control_type == CT_AI)
 			Objects[i].ctype.ai_info.behavior = AIB_STILL;
 }
-
-

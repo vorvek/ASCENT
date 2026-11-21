@@ -837,6 +837,3 @@ void do_multi_player_menu()
 	} while( choice > -1 );
 
 }
-
-
-

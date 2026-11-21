@@ -413,5 +413,3 @@ void ui_pad_goto_prev();
 void ui_pad_read( int n, char * filename );
 
 #endif
-
-

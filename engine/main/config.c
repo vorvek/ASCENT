@@ -387,6 +387,4 @@ int WriteConfigFile()
 	fputs(str, infile);
 	fclose(infile);
 	return 0;
-}		
-
-
+}

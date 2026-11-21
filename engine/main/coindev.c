@@ -116,6 +116,3 @@ unsigned int coindev_count(CoinMechNumber)
 
     return(y);
 }
-
-
-

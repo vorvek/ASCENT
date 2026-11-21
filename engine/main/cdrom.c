@@ -106,5 +106,3 @@ int find_descent_cd()
 	_dos_setdrive(cdrive,&cur_drive);
 	return cdrom_drive;
 }
-
-

@@ -340,5 +340,3 @@ void ui_mouse_close()
 	gr_free_bitmap(Mouse.background);
 
 }
-
-

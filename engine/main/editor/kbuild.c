@@ -277,6 +277,3 @@ int CreateAdjacentJointsAll()
  	warn_if_concave_segments();
    return 1;
 }
-
-
-

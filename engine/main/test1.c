@@ -53,5 +53,3 @@ int test_john(void)
 	return finish - start;
 
 }
-
-

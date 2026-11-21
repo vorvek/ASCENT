@@ -85,5 +85,3 @@ void main()
 	if (dos_change_master_env( "john", "a parallax employee", 0  )) 	
 		printf( "ERROR: Out of environment space!\n" );
 }
-
-

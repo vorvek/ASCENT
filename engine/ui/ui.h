@@ -445,5 +445,3 @@ extern char directory_list[100][13];
 extern int ui_button_any_drawn;
 
 #endif
-
-

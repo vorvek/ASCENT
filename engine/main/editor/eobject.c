@@ -1132,5 +1132,3 @@ int	ObjectMoveFurther(void)
 
 	return 1;	
 }
-
-

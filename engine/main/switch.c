@@ -403,5 +403,3 @@ void triggers_frame_process()
 		if (Triggers[i].time >= 0)
 			Triggers[i].time -= FrameTime;
 }
-
-
