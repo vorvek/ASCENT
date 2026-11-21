@@ -133,6 +133,11 @@ static int screen_pos(grs_bitmap *dest, int *x, int *y)
 
 void dtu_hdui_blit(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *dest, int dx, int dy, int dw, int dh)
 {
+	dtu_hdui_blit_key(src, sx, sy, sw, sh, dest, dx, dy, dw, dh, -1);
+}
+
+void dtu_hdui_blit_key(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *dest, int dx, int dy, int dw, int dh, int key)
+{
 	int n, ox, oy;
 
 	if (!enabled() || (n = picture_of(src)) < 0 || !screen_pos(dest, &ox, &oy))
@@ -148,7 +153,7 @@ void dtu_hdui_blit(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *
 	}
 	if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
 		return;
-	plat_gpu_ui_draw(n, sx, sy, sw, sh, dx + ox, dy + oy, dw, dh);
+	plat_gpu_ui_draw_key(n, sx, sy, sw, sh, dx + ox, dy + oy, dw, dh, key);
 }
 
 void dtu_hdui_menu_shadow(int x1, int y1, int x2, int y2, int level)

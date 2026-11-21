@@ -622,8 +622,7 @@ void fe_blit_part(grs_bitmap *bm, int sx, int sy, int w, int h, int x, int y, in
 				if (s[i] != trans)
 					d[i] = s[i];
 	}
-	if (trans < 0)
-		dtu_hdui_blit(bm, sx, sy, w, h, sb, x, y, w, h);	// ASCENT: the upscaled picture
+	dtu_hdui_blit_key(bm, sx, sy, w, h, sb, x, y, w, h, trans);	// ASCENT: the upscaled picture
 }
 
 void fe_blit(grs_bitmap *bm, int x, int y, int trans)

@@ -278,6 +278,10 @@ COMBO = ("detail", "x4plus")   # (wall textures, everything else)
 # stay seamless.
 DETAIL_STRENGTH = 0.6
 DETAIL_SIGMA = 2.0
+# The "face" method: the same with less of the UltraSharp detail. On the
+# dithered faces of the interface 0.6 brings back the dither as a grain,
+# x4plus alone loses the wrinkles and the beard (docs/hd_textures.md).
+FACE_DETAIL_STRENGTH = 0.15
 
 
 def sub_method(method, wall):
@@ -317,7 +321,8 @@ class Upscaler:
             return np.stack([scale4x(b) for b in batch])
         x = torch.from_numpy(np.ascontiguousarray(batch.transpose(0, 3, 1, 2))).cuda()
         with torch.no_grad():
-            if method == "detail":
+            if method in ("detail", "face"):
+                strength = DETAIL_STRENGTH if method == "detail" else FACE_DETAIL_STRENGTH
                 base = self.model("x4plus")(x.half()).float()
                 sharp = self.model("ultrasharp")(x.half()).float()
                 r = int(DETAIL_SIGMA * 3 + 0.5)
@@ -331,7 +336,7 @@ class Upscaler:
                 blur = torch.nn.functional.conv2d(blur, kh, groups=c)
                 blur = torch.nn.functional.pad(blur, (0, 0, r, r), mode="reflect")
                 blur = torch.nn.functional.conv2d(blur, kv, groups=c)
-                y = base + DETAIL_STRENGTH * (sharp - blur)
+                y = base + strength * (sharp - blur)
             elif method == "bicubic":
                 y = torch.nn.functional.interpolate(x, scale_factor=SCALE, mode="bicubic",
                                                     align_corners=False)

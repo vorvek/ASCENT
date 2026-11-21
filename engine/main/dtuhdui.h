@@ -18,6 +18,10 @@ void dtu_hdui_loaded(grs_bitmap *bm, int n);
 // picture with an upscaled file, or if dest is not in the screen.
 void dtu_hdui_blit(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *dest, int dx, int dy, int dw, int dh);
 
+// The same for a copy that skipped the pixels of index key (the talking
+// head of Khelben over the Blackstaff screen).
+void dtu_hdui_blit_key(grs_bitmap *src, int sx, int sy, int sw, int sh, grs_bitmap *dest, int dx, int dy, int dw, int dh, int key);
+
 // The shadow of the menu box (nm_draw_background of newmenu.c): the same
 // darkened rectangles in the current canvas, with the darkening level.
 void dtu_hdui_menu_shadow(int x1, int y1, int x2, int y2, int level);
