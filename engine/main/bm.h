@@ -373,6 +373,8 @@ extern tbl_record Tbl_records[MAX_TBL_RECORDS];
 // there. bm_tbl_has_flag() looks for a word without "=".
 int bm_tbl_get( int record, char * key, char * value, int value_size );
 int bm_tbl_has_flag( int record, char * flag );
+// The word number of the last "flag" of the record, or -1.
+int bm_tbl_flag_pos( int record, char * flag );
 
 // $PLAYER
 typedef struct player_type_info {

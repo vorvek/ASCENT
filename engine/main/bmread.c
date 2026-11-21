@@ -2139,24 +2139,30 @@ int bm_tbl_get( int record, char * key, char * value, int value_size )
 	return 1;
 }
 
-int bm_tbl_has_flag( int record, char * flag )
+int bm_tbl_flag_pos( int record, char * flag )
 {
 	char *p;
-	int len, in_quote = 0;
+	int len, in_quote = 0, pos = 0, found = -1;
 
 	if ( record < 0 || record >= N_tbl_records || Tbl_records[record].text == NULL )
-		return 0;
+		return -1;
 	len = (int)strlen(flag);
 	p = Tbl_records[record].text;
 	while ( *p ) {
 		while ( *p == ' ' || *p == '\t' ) p++;
 		if ( !*p ) break;
 		if ( !bm_strnicmp( p, flag, len ) && (p[len] == 0 || p[len] == ' ' || p[len] == '\t') )
-			return 1;
+			found = pos;
 		for (; *p; p++ ) {
 			if ( *p == '"' ) in_quote = !in_quote;
 			else if ( (*p == ' ' || *p == '\t') && !in_quote ) break;
 		}
+		pos++;
 	}
-	return 0;
+	return found;
+}
+
+int bm_tbl_has_flag( int record, char * flag )
+{
+	return bm_tbl_flag_pos( record, flag ) >= 0;
 }

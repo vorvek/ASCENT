@@ -5468,6 +5468,56 @@ void dtu_drop_objects_in_segment(int segnum)
 //------------------------------------------------------------------------
 // Collisions
 
+// Bit 0x10 of the flag word that the pickup passes to 0xB772D. Misc: the
+// flag that the table fixup 0x1A344 sets for a plot item, a name with '+'
+// and nine name parts. Armor: "stackable". Weapon: "magic", also set by
+// 0x1A344 for a plot item or a name with '+'. Spell: "cast_with_arrow",
+// the last cast_with_ word of the line wins (0x253A8 to 0x2545D).
+static int pickup_flag_10(int type,item_info *it)
+{
+	static char *misc_names[] = {"uring","yrkul","rystal","carab","speed",
+		"nsight","anegem","ursed","lamesword","otion"};
+	static char *cast_with[] = {"cast_with_hands","cast_with_wand",
+		"cast_with_scroll","cast_with_arrow"};
+	int i,best,pos,arrow;
+
+	switch (type) {
+		case OBJ_MISC:
+			if (tbl_int(it->record,"plot_item",0) != 0 || strchr(it->name,'+'))
+				return 1;
+			for (i=0;i<(int)(sizeof(misc_names)/sizeof(misc_names[0]));i++)
+				if (strstr(it->name,misc_names[i]))
+					return 1;
+			return 0;
+		case OBJ_ARMOR:
+			return bm_tbl_has_flag(it->record,"stackable");
+		case OBJ_WEAPON:
+			return bm_tbl_has_flag(it->record,"magic") || tbl_int(it->record,"plot_item",0) != 0
+				|| strchr(it->name,'+') != NULL;
+		case OBJ_SPELL:
+			best = -1;
+			arrow = 0;
+			for (i=0;i<4;i++) {
+				pos = bm_tbl_flag_pos(it->record,cast_with[i]);
+				if (pos > best) {
+					best = pos;
+					arrow = (i == 3);
+				}
+			}
+			return arrow;
+	}
+	return 0;
+}
+
+// 0xB772D, called by each pickup: sound 2216 if bit 0x10 of the flag word
+// is set, then sound 2215, both with the volume 0.5 (0x2D955).
+static void pickup_sound(int flag_10)
+{
+	if (flag_10)
+		digi_play_sample(0x8A8,F1_0/2);
+	digi_play_sample(0x8A7,F1_0/2);
+}
+
 // The four pickup functions of collide.c (0x2805B misc, 0x283DC armor,
 // 0x28273 spell, 0x284E0 weapon).
 static void pick_up_item(object *player,object *item)
@@ -5478,6 +5528,21 @@ static void pick_up_item(object *player,object *item)
 
 	if (player->id != Player_num || (item->flags & OF_SHOULD_BE_DEAD) || it == NULL)
 		return;
+
+	// Gold is misc id 1 (0x2806B). The amount is the hit points. The gold
+	// path comes before the pickup delay, and it passes the flag word 0 to
+	// the sound function 0xB772D (0x28089).
+	if (item->type == OBJ_MISC && item->id == 1) {
+		int amount = f2i(item->shields);
+
+		Dtu_gold += amount;
+		HUD_init_message("You pick up %d gold.",amount);
+		pickup_sound(0);
+		item->flags |= OF_SHOULD_BE_DEAD;
+		dtu_obj_log("pickup: obj %d, %d gold, sound 2215",(int)(item-Objects),amount);
+		return;
+	}
+
 	// 0x31A0E: no pick up for 5 seconds after a drop
 	if (!dtu_char_pickup_allowed())
 		return;
@@ -5485,17 +5550,6 @@ static void pick_up_item(object *player,object *item)
 	// A weapon is an item only if it does not move (0x28502).
 	if (item->type == OBJ_WEAPON && (item->render_type != RT_ITEM || item->lifeleft != IMMORTAL_TIME))
 		return;
-
-	// Gold is misc id 1 (0x2806B). The amount is the hit points.
-	if (item->type == OBJ_MISC && item->id == 1) {
-		int amount = f2i(item->shields);
-
-		Dtu_gold += amount;
-		HUD_init_message("You pick up %d gold.",amount);
-		item->flags |= OF_SHOULD_BE_DEAD;
-		dtu_obj_log("pickup: obj %d, %d gold",(int)(item-Objects),amount);
-		return;
-	}
 
 	if (count == 0) {
 		if (item_is_stackable(it) || item->type == OBJ_ARMOR)
@@ -5510,10 +5564,13 @@ static void pick_up_item(object *player,object *item)
 
 	index = dtu_inventory_add(item->type,item->id,count);
 	if (index >= 0) {
+		int flag_10 = pickup_flag_10(item->type,it);
+
 		item->flags |= OF_SHOULD_BE_DEAD;
 		HUD_init_message("You pick up %s.",it->name);
-		dtu_obj_log("pickup: obj %d type %d id %d '%s' count %d, inventory entry %d",(int)(item-Objects),
-			item->type,item->id,it->name,count,index);
+		pickup_sound(flag_10);
+		dtu_obj_log("pickup: obj %d type %d id %d '%s' count %d, inventory entry %d, sound %s",(int)(item-Objects),
+			item->type,item->id,it->name,count,index,flag_10 ? "2216 2215" : "2215");
 	}
 	else {
 		static fix last_message = 0;
