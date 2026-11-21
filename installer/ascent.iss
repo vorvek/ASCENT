@@ -23,7 +23,7 @@
   #define OUTDIR "..\build-rel\setup"
 #endif
 #ifndef APPVERSION
-  #define APPVERSION "0.1"
+  #define APPVERSION "1.0"
 #endif
 #ifndef TEXTURES_MB
   #define TEXTURES_MB "520"

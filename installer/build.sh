@@ -15,7 +15,7 @@
 set -e
 cd "$(dirname "$0")/.."
 export PATH=/c/msys64/ucrt64/bin:$PATH
-VERSION=${ASCENT_VERSION:-0.1}
+VERSION=${ASCENT_VERSION:-1.0}
 CONTENT=${1:-gamedata/content}
 ISCC=${ISCC:-"$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe"}
 [ -x "$ISCC" ] || ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
