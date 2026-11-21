@@ -1,0 +1,31 @@
+# Build output
+/build/
+/out/
+/bin/
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exe
+*.dll
+
+# Editor files
+.vs/
+.vscode/
+.idea/
+*.user
+
+# Original game data. Never commit these files.
+/gamedata/
+*.TUN
+*.BRN
+*.TIG
+*.TAP
+*.SAY
+*.LV2
+*.LVL
+*.MVE
+*.RLH
+*.JRG
+*.EGG
+*.SG
