@@ -2494,41 +2494,102 @@ int do_game_pause(int allow_menu)
 }
 
 
+// ASCENT: the F1 screen of Descent to Undermountain (0x4495B). It is not
+// the Descent 1 help menu: the executable never uses the Descent strings
+// 90 to 101. It draws its own box with the strings 739 to 754 of the text
+// table: the title "Keys" in font 0, seven pairs of a key and its meaning
+// in font 3, and a note in font 3 at the bottom. Then it waits for a key.
+// M is the margin (10). H is 1 in the high resolution form (0x13A94B).
+#define HELP_N_PAIRS	7
+
 void show_help()
 {
-	newmenu_item m[14];
+	grs_canvas *save_canv = grd_curcanv;
+	grs_font *save_font = grd_curcanv->cv_font;
+	grs_canvas box, part;
+	grs_bitmap *behind;
+	char *title = Text_string[754];			// 0x13B818
+	char *note = Text_string[753];			// 0x13B814
+	int M = 10, gap = 10, H = Dtu_hires ? 1 : 0;
+	int tw, th, sw, sh, w, h, aw;
+	int max_key = 0, max_desc = 0, items_h = 0, line_h = 0;
+	int content_w, box_w, box_h, x0, y0, x, y, i;
 
-	if ( VR_render_mode != VR_NONE )	{
-		m[ 0].type = NM_TYPE_TEXT; m[ 0].text = TXT_HELP_ESC;
-		m[ 1].type = NM_TYPE_TEXT; m[ 1].text = TXT_HELP_ALT_F2;
-		m[ 2].type = NM_TYPE_TEXT; m[ 2].text = TXT_HELP_ALT_F3;
-		m[ 3].type = NM_TYPE_TEXT; m[ 3].text = TXT_HELP_F2;
-		m[ 4].type = NM_TYPE_TEXT; m[ 4].text = TXT_HELP_F4;
-		m[ 5].type = NM_TYPE_TEXT; m[ 5].text = TXT_HELP_F5;
-		m[ 6].type = NM_TYPE_TEXT; m[ 6].text = TXT_HELP_PAUSE;
-		m[ 7].type = NM_TYPE_TEXT; m[ 7].text = TXT_HELP_1TO5;
-		m[ 8].type = NM_TYPE_TEXT; m[ 8].text = TXT_HELP_6TO10;
-		m[ 9].type = NM_TYPE_TEXT; m[ 9].text = "";
-		m[10].type = NM_TYPE_TEXT; m[10].text = TXT_HELP_TO_VIEW;
-		newmenu_do( NULL, TXT_KEYS, 11, m, NULL );
-	} else {
-		m[ 0].type = NM_TYPE_TEXT; m[ 0].text = TXT_HELP_ESC;
-		m[ 1].type = NM_TYPE_TEXT; m[ 1].text = TXT_HELP_ALT_F2;
-		m[ 2].type = NM_TYPE_TEXT; m[ 2].text = TXT_HELP_ALT_F3;
-		m[ 3].type = NM_TYPE_TEXT; m[ 3].text = TXT_HELP_F2;
-		m[ 4].type = NM_TYPE_TEXT; m[ 4].text = TXT_HELP_F3;
-		m[ 5].type = NM_TYPE_TEXT; m[ 5].text = TXT_HELP_F4;
-		m[ 6].type = NM_TYPE_TEXT; m[ 6].text = TXT_HELP_F5;
-		m[ 7].type = NM_TYPE_TEXT; m[ 7].text = TXT_HELP_PAUSE;
-		m[ 8].type = NM_TYPE_TEXT; m[ 8].text = TXT_HELP_MINUSPLUS;
-		m[ 9].type = NM_TYPE_TEXT; m[ 9].text = TXT_HELP_PRTSCN;
-		m[10].type = NM_TYPE_TEXT; m[10].text = TXT_HELP_1TO5;
-		m[11].type = NM_TYPE_TEXT; m[11].text = TXT_HELP_6TO10;
-		m[12].type = NM_TYPE_TEXT; m[12].text = "";
-		m[13].type = NM_TYPE_TEXT; m[13].text = TXT_HELP_TO_VIEW;
-		newmenu_do( NULL, TXT_KEYS, 14, m, NULL );
+	// Measure (0x44995 to 0x44A97)
+	gr_set_curfont(Gamefonts[0]);
+	gr_get_string_size(title, &tw, &th, &aw);
+	gr_set_curfont(Gamefonts[3]);
+	gr_get_string_size(note, &sw, &sh, &aw);
+	for (i = 0; i < HELP_N_PAIRS; i++) {
+		gr_get_string_size(Text_string[739 + i], &w, &h, &aw);
+		if (w > max_key) max_key = w;
+		gr_get_string_size(Text_string[746 + i], &w, &line_h, &aw);
+		if (w > max_desc) max_desc = w;
+		items_h += line_h;
 	}
 
+	// Size and place of the box (0x44A97 to 0x44B8C)
+	content_w = max_key + gap + max_desc;
+	w = (tw > sw) ? tw : sw;
+	if (w > content_w) {
+		gap += w - content_w;
+		content_w = w;
+	}
+	box_h = th + items_h + sh + 4 * M;
+	box_w = content_w + 3 * M;
+	if (H) {
+		box_h += 2 * M;
+		box_w += M;
+	}
+	x0 = (save_canv->cv_bitmap.bm_w - box_w) / 2;
+	y0 = (save_canv->cv_bitmap.bm_h - box_h) / 2;
+	gr_init_sub_canvas(&box, save_canv, x0, y0, box_w, box_h);
+
+	// Keep the screen under the box (0x44BCE), draw the background (0x632E8)
+	behind = gr_create_bitmap(box_w, box_h);
+	if (behind)
+		gr_bm_ubitblt(box_w, box_h, 0, 0, 0, 0, &box.cv_bitmap, behind);
+	gr_set_current_canvas(&box);
+	nm_draw_background(0, 0, box_w, box_h);
+
+	// The title, centered (0x44C2A)
+	gr_set_curfont(Gamefonts[0]);
+	gr_string(0x8000, M * H + M, title);
+
+	// The pairs (0x44C5F to 0x44D80)
+	y = 2 * M + th + 3;
+	x = M * H + M;
+	for (i = 0; i < HELP_N_PAIRS; i++) {
+		gr_init_sub_canvas(&part, &box, x, y, max_key, line_h);
+		gr_set_current_canvas(&part);
+		gr_set_curfont(Gamefonts[3]);
+		gr_string(0, 0, Text_string[739 + i]);
+		gr_init_sub_canvas(&part, &box, x + max_key + gap, y, max_desc, line_h);
+		gr_set_current_canvas(&part);
+		gr_set_curfont(Gamefonts[3]);
+		gr_string(0, 0, Text_string[746 + i]);
+		y += line_h;
+	}
+
+	// The note at the bottom (0x44D85)
+	y += M;
+	gr_init_sub_canvas(&part, &box, 2 * M, y, sw, sh);
+	gr_set_current_canvas(&part);
+	gr_set_curfont(Gamefonts[3]);
+	gr_string(0, 0, note);
+
+	// Wait for a key (0x44DED): the keys in the buffer go first.
+	key_flush();
+	while (nm_show_frame() && !key_inkey())
+		;
+
+	// Put back the screen under the box (0x44E06)
+	gr_set_current_canvas(save_canv);
+	if (behind) {
+		gr_bm_ubitblt(box_w, box_h, x0, y0, 0, 0, behind, &save_canv->cv_bitmap);
+		gr_free_bitmap(behind);
+	}
+	grd_curcanv->cv_font = save_font;
 }
 
 
