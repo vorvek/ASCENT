@@ -179,6 +179,11 @@ int dtu_spell_fire(void);
 // 1 if the item in the hand is a spell, a scroll or a wand: the attack
 // key casts.
 int dtu_spell_in_hand(void);
+// ASCENT: the target hint (Dtu_target_hint). The object that the missile of
+// the spell in the hand would hit if it were cast now (the homing target,
+// or the first body on the line of the flight), -1 for none, -2 if the
+// spell makes no missile (a spell on the caster).
+int dtu_spell_hint_target(void);
 
 // Makes the spell the spell in the hand. Returns 1 if the spell is in a
 // book of the character.

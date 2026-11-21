@@ -366,6 +366,11 @@ static int is_hostile(object *obj)
 	return (obj->dtu.m_1b0 & DTU_HOSTILE) != 0;
 }
 
+int dtu_creature_is_hostile(object *obj)
+{
+	return obj->type == OBJ_ROBOT && is_hostile(obj);
+}
+
 static int is_flying(object *obj)
 {
 	return (Monster_info[obj->id].flags & MONSTER_F_FLYING) || (obj->dtu.m_88 & DTU_OF_FLY);
@@ -2289,12 +2294,63 @@ static void missile_remove(object *obj)
 
 static fix Missile_life[MAX_OBJECTS];		// lifeleft (object +0x84)
 
+// The look and the size of a missile (part of 0x55511): the render type,
+// the model or the vclip, and the size.
+static fix missile_look(int weapon_type,int spell,int *rtype,int *model,int *vclip)
+{
+	weapon_info *wi = &Weapon_info[weapon_type];
+	fix size = F1_0;
+
+	*rtype = RT_NONE;
+	*model = *vclip = -1;
+	if (wi->render_type == WEAPON_RENDER_POLYMODEL)
+		*model = wi->model_num;
+	else if (wi->render_type == WEAPON_RENDER_VCLIP)
+		*vclip = wi->weapon_vclip;
+
+	// A spell missile has the look of the spell: the executable copies
+	// the render values of the spell to a weapon entry (0x56FF6, 0x946FA).
+	if (spell >= 0 && spell < N_spell_types) {
+		if (Spell_info[spell].model_num >= 0) {
+			*model = Spell_info[spell].model_num;
+			*vclip = -1;
+		}
+		else if (Spell_info[spell].vclip_num >= 0) {
+			*vclip = Spell_info[spell].vclip_num;
+			*model = -1;
+		}
+	}
+
+	if (*model >= 0 && *model < N_polygon_models && Polygon_models[*model].dtu_block) {
+		// the radius of the model divided by lw_ratio
+		*rtype = RT_POLYOBJ;
+		size = fixdiv(Polygon_models[*model].rad,wi->po_len_to_width_ratio > 0 ? wi->po_len_to_width_ratio : i2f(10));
+	}
+	else if (*vclip >= 0 && *vclip < VCLIP_MAXNUM) {
+		*rtype = RT_WEAPON_VCLIP;
+		size = wi->blob_size;
+	}
+	if (size < F1_0/16)
+		size = F1_0/16;
+	return size;
+}
+
+// The speed of the difficulty level, one half for a weapon with thrust.
+static fix missile_speed(weapon_info *wi)
+{
+	fix speed = wi->speed[Difficulty_level];
+
+	if (wi->thrust)
+		speed /= 2;
+	return speed;
+}
+
 // Laser_create_new (0x55511)
 int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent, int weapon_type, int spell, int make_sound)
 {
 	weapon_info *wi;
-	int objnum, rtype = RT_NONE, model = -1, vclip = -1, bounce;
-	fix size = F1_0, speed;
+	int objnum, rtype, model, vclip, bounce;
+	fix size, speed;
 	object *obj;
 	dtu_missile *m;
 	vms_matrix orient = vmd_identity_matrix;
@@ -2305,36 +2361,9 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 		return -1;
 	wi = &Weapon_info[weapon_type];
 
-	if (wi->render_type == WEAPON_RENDER_POLYMODEL)
-		model = wi->model_num;
-	else if (wi->render_type == WEAPON_RENDER_VCLIP)
-		vclip = wi->weapon_vclip;
-
-	// A spell missile has the look of the spell: the executable copies
-	// the render values of the spell to a weapon entry (0x56FF6, 0x946FA).
-	if (spell >= 0 && spell < N_spell_types) {
-		if (Spell_info[spell].model_num >= 0) {
-			model = Spell_info[spell].model_num;
-			vclip = -1;
-		}
-		else if (Spell_info[spell].vclip_num >= 0) {
-			vclip = Spell_info[spell].vclip_num;
-			model = -1;
-		}
-	}
-
-	if (model >= 0 && model < N_polygon_models && Polygon_models[model].dtu_block) {
-		// the radius of the model divided by lw_ratio
-		rtype = RT_POLYOBJ;
-		size = fixdiv(Polygon_models[model].rad,wi->po_len_to_width_ratio > 0 ? wi->po_len_to_width_ratio : i2f(10));
+	size = missile_look(weapon_type,spell,&rtype,&model,&vclip);
+	if (rtype == RT_POLYOBJ)
 		vm_vector_2_matrix(&orient,dir,(parent >= 0) ? &Objects[parent].orient.uvec : NULL,NULL);
-	}
-	else if (vclip >= 0 && vclip < VCLIP_MAXNUM) {
-		rtype = RT_WEAPON_VCLIP;
-		size = wi->blob_size;
-	}
-	if (size < F1_0/16)
-		size = F1_0/16;
 
 	objnum = obj_create(OBJ_WEAPON,weapon_type,segnum,pos,&orient,size,CT_NONE,MT_NONE,rtype);
 	if (objnum < 0)
@@ -2371,11 +2400,8 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 	if (bounce == 2)
 		Missile_life[objnum] += (rand() * 4) - F1_0;
 
-	// The speed of the difficulty level, one half for a weapon with
-	// thrust. The velocity of the parent is not added.
-	speed = wi->speed[Difficulty_level];
-	if (wi->thrust)
-		speed /= 2;
+	// The velocity of the parent is not added.
+	speed = missile_speed(wi);
 	vm_vec_copy_scale(&obj->mtype.phys_info.velocity,dir,speed);
 
 	vclip_at(obj->segnum,&obj->pos,wi->flash_size,wi->flash_vclip);
@@ -2550,19 +2576,101 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	missile_remove(obj);
 }
 
+// The objects on the way of a missile from its position to end (part of
+// 0xA03A8): the number of the object that it hits first, or -1, and the
+// hit point. The executable does this in the same query as the walls. The
+// port tests each body, see weapon_test(). step is the length of the move
+// in this frame. The missile can be a stand in object that is not in the
+// list (dtu_missile_path_target).
+static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,int parent_sig,vms_vector *best_ip)
+{
+	int j, best = -1;
+	fix best_d = 0x7fffffff;
+	vms_vector ip;
+
+	for (j=0;j<=Highest_object_index;j++) {
+		object *o = &Objects[j];
+		fix d;
+
+		if (o == obj || (o->type != OBJ_ROBOT && o->type != OBJ_PLAYER && o->type != OBJ_DRESSING))
+			continue;
+		if (j == parent && o->signature == parent_sig)
+			continue;
+		if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
+			continue;
+		if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) == DAS_DIE)
+			continue;
+		if (o->type == OBJ_DRESSING && (o->id >= N_dressing_types || Dressing_info[o->id].pass_thru))
+			continue;
+		if (vm_vec_dist_quick(&o->pos,&obj->pos) > step + o->size + i2f(30))
+			continue;
+		d = dtu_object_hit_test(&ip,&obj->pos,end,obj->size,o,obj);
+		if (d > 0 && d < best_d) {
+			best_d = d;
+			best = j;
+			*best_ip = ip;
+		}
+	}
+	return best;
+}
+
+// ASCENT: the target hint (dtuobj.h). The way of a new missile as
+// missiles_frame moves it: a straight line at the same speed, the wall
+// test with the radius of the missile up to 1.0, then the bodies on the
+// line up to the wall.
+int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range)
+{
+	static object stand_in;
+	int rtype, model, vclip, fate;
+	vms_vector p1, end, ip;
+	fvi_query fq;
+	fvi_info hit;
+
+	if (weapon_type < 0 || weapon_type >= N_weapon_types || segnum < 0 || parent < 0 || range <= 0)
+		return -1;
+	memset(&stand_in,0,sizeof(stand_in));
+	stand_in.type = OBJ_WEAPON;
+	stand_in.id = weapon_type;
+	stand_in.pos = *pos;
+	stand_in.segnum = segnum;
+	stand_in.size = missile_look(weapon_type,spell,&rtype,&model,&vclip);
+
+	vm_vec_scale_add(&p1,pos,dir,range);
+	fq.p0 = pos;
+	fq.p1 = &p1;
+	fq.startseg = segnum;
+	fq.rad = (stand_in.size < F1_0) ? stand_in.size : F1_0;
+	fq.thisobjnum = parent;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	fate = find_vector_intersection(&fq,&hit);
+	if (fate != HIT_NONE && fate != HIT_WALL)
+		return -1;
+	end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
+	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,&ip);
+}
+
+// The range of a missile weapon: its speed for its life.
+fix dtu_missile_weapon_range(int weapon_type)
+{
+	if (weapon_type < 0 || weapon_type >= N_weapon_types)
+		return 0;
+	return fixmul(missile_speed(&Weapon_info[weapon_type]),Weapon_info[weapon_type].lifetime);
+}
+
 // The movement of all missiles for one frame (0xA03A8 and 0x5656C).
 static void missiles_frame(void)
 {
-	int i, j;
+	int i;
 
 	for (i=0;i<=Highest_object_index;i++) {
 		object *obj = &Objects[i];
 		dtu_missile *m = &Missile[i];
-		vms_vector p1, end, ip, best_ip, *vel;
+		vms_vector p1, end, best_ip, *vel;
 		fvi_query fq;
 		fvi_info hit;
-		int fate, best = -1;
-		fix best_d = 0x7fffffff, step;
+		int fate, best;
+		fix step;
 
 		if (m->signature == 0)
 			continue;
@@ -2618,32 +2726,7 @@ static void missiles_frame(void)
 		fate = find_vector_intersection(&fq,&hit);
 		end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
 
-		// The objects on the way. The executable does this in the same
-		// query. The port tests each body, see weapon_test().
-		for (j=0;j<=Highest_object_index;j++) {
-			object *o = &Objects[j];
-			fix d;
-
-			if (j == i || (o->type != OBJ_ROBOT && o->type != OBJ_PLAYER && o->type != OBJ_DRESSING))
-				continue;
-			if (j == m->parent && o->signature == m->parent_sig)
-				continue;
-			if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
-				continue;
-			if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) == DAS_DIE)
-				continue;
-			if (o->type == OBJ_DRESSING && (o->id >= N_dressing_types || Dressing_info[o->id].pass_thru))
-				continue;
-			if (vm_vec_dist_quick(&o->pos,&obj->pos) > step + o->size + i2f(30))
-				continue;
-			d = dtu_object_hit_test(&ip,&obj->pos,&end,obj->size,o,obj);
-			if (d > 0 && d < best_d) {
-				best_d = d;
-				best = j;
-				best_ip = ip;
-			}
-		}
-
+		best = missile_path_object(obj,&end,step,m->parent,m->parent_sig,&best_ip);
 		if (best >= 0) {
 			missile_hit_object(obj,&Objects[best],&best_ip);
 			if (obj->flags & OF_SHOULD_BE_DEAD)

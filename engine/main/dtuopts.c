@@ -32,6 +32,7 @@ int Dtu_shader = DTU_SHADER_SUBTLE;
 int Dtu_safe_music = 0;
 int Dtu_anim_interp = 1;
 int Dtu_improved_infravision = 1;
+int Dtu_target_hint = 1;
 
 #define DTU_OPTS_FILE	"ascent.cfg"
 
@@ -63,6 +64,7 @@ static dtu_opt Opts[] = {
 	{ "SafeMusic",           &Dtu_safe_music,           0, 1 },
 	{ "AnimInterpolation",   &Dtu_anim_interp,          0, 1 },
 	{ "ImprovedInfravision", &Dtu_improved_infravision, 0, 1 },
+	{ "TargetHint",          &Dtu_target_hint,          0, 1 },
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
@@ -115,7 +117,10 @@ void dtu_opts_load(void)
 		Dtu_improved_physics = Dtu_improved_jump = Dtu_improved_pathfinding = 0;
 		Dtu_improved_occlusion = Dtu_improved_body = 0;
 		Dtu_improved_infravision = 0;
+		Dtu_target_hint = 0;
 	}
+	if (FindArg("-notargethint"))		// a comparison with the original cursor
+		Dtu_target_hint = 0;
 	if (FindArg("-noimprovedinfra"))		// a comparison with the original infravision
 		Dtu_improved_infravision = 0;
 	if (FindArg("-noaniminterp"))		// a comparison with the original animation
