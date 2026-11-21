@@ -374,6 +374,7 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 #include "gauges.h"
 #include "dtugame.h"		// ASCENT: Dtu_objects_enabled
 #include "dtuobj.h"		// ASCENT: the objects of the target game
+#include "dtuinfra.h"		// ASCENT: the heat of an object (improved infravision)
 #include "arcade.h"
 #include "multi.h"
 #include "menu.h"
@@ -882,6 +883,10 @@ void render_object(object *obj)
 	mld_save = Max_linear_depth;
 	Max_linear_depth = Max_linear_depth_objects;
 
+	// ASCENT: the heat of the object for the improved infravision
+	if (Dtu_infra_heat)
+		G3_gpu_heat = dtu_infra_object_heat(obj);
+
 	switch (obj->render_type) {
 
 		case RT_NONE:	break;		//doesn't render, like the player
@@ -936,6 +941,7 @@ void render_object(object *obj)
 	#endif
 
 	Max_linear_depth = mld_save;
+	G3_gpu_heat = 0;
 
 }
 

@@ -403,6 +403,10 @@ void g3_gpu_view_dest(int x,int y,int w,int h);
 //pixels of the screen (the fade table keeps color 255, the color that
 //shows the GPU image). Call it after g3_gpu_view_dest() of the frame.
 void g3_gpu_view_darken(int x0,int y0,int x1,int y1,int level);
+//The heat of the polygons drawn now, for the improved infravision of the
+//GPU renderer (PLAT_GPU_HEAT_* of platform.h: 0 cold, 1 warm, 2 hot). The
+//game sets it before it draws an object or a face and sets 0 after.
+extern int G3_gpu_heat;
 
 #endif
 

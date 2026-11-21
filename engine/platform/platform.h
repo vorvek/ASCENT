@@ -274,7 +274,13 @@ typedef struct plat_gpu_material {
 	int transparent;	// TEXTURED: color 255 (alpha 0 in RGBA) is not drawn
 	int clamp;			// TEXTURED: no wrap of u and v
 	int color;			// FLAT: the palette index. DARKEN: the fade table row
+	int heat;			// TEXTURED, FLAT: PLAT_GPU_HEAT_* (only with plat_gpu_set_infravision)
 } plat_gpu_material;
+
+// The heat of a polygon for the improved infravision of the RGB form.
+#define PLAT_GPU_HEAT_COLD	0		// walls, undead, things: dark and cool
+#define PLAT_GPU_HEAT_WARM	1		// living creatures and characters: red
+#define PLAT_GPU_HEAT_HOT	2		// light sources and fire: bright red to yellow
 
 // The flags of plat_gpu_begin_view
 #define PLAT_GPU_VIEW_DEPTH		1	// a depth buffer hides the pixels behind a nearer polygon (else painter's order)
@@ -290,6 +296,10 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m);
 // The later polygons are drawn over the earlier ones (depth buffer cleared).
 void plat_gpu_clear_depth(void);
 void plat_gpu_end_view(void);
+// The improved infravision of the RGB form: 1 colors the polygons of the
+// next views by their heat (plat_gpu_material.heat), 0 is the normal view.
+// Read at plat_gpu_begin_view. The 8-bit form ignores it.
+void plat_gpu_set_infravision(int on);
 // The fade table: levels rows of 256 palette indexes.
 void plat_gpu_set_fade_table(const uint8_t *table, int levels);
 // The palette of the bitmaps of the 3D view (768 bytes, 6 bits for each

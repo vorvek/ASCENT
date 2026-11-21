@@ -167,6 +167,7 @@ void dtu_player_body(dtu_body *b);
 #define DTU_IMP_COYOTE_TIME		0x2666		// 0.15 s, a jump is still possible this long after the floor or the ladder is left
 
 // Dtu_player_state: the byte at 0x1AE of the object of the executable
+#define DTU_PS_INFRAVISION		0x08		// the key N turned infravision on (0x54632)
 #define DTU_PS_FALLING			0x20
 #define DTU_PS_JUMPING			0x40
 #define DTU_PS_CLIMBING			0x80

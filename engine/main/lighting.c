@@ -312,6 +312,12 @@ static fix dtu_object_light(object *obj, int objnum)
 	return light;
 }
 
+// ASCENT: dtu_object_light for other files (the improved infravision)
+fix dtu_object_light_value(object *obj)
+{
+	return dtu_object_light(obj, obj - Objects);
+}
+
 // ----------------------------------------------------------------------------------------------
 void set_dynamic_light(void)
 {

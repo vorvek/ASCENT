@@ -1830,6 +1830,7 @@ static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[
 	{ "Upscaled movies",       &Dtu_upscaled_movies,    0, 1, Gfx_onoff },
 	{ "Anisotropic filtering", &Dtu_anisotropic,        0, 1, Gfx_onoff },
 	{ "Shader",                &Dtu_shader,             DTU_SHADER_OFF, DTU_SHADER_VGA, Gfx_shader },
+	{ "Improved infravision",  &Dtu_improved_infravision, 0, 1, Gfx_onoff },
 };
 #define N_GFX	((int) (sizeof(Gfx_item) / sizeof(Gfx_item[0])))
 #define GFX_FIRST_GPU	2		// the items from here on need the GPU renderer

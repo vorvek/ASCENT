@@ -76,6 +76,13 @@ extern int Dtu_upscaled_movies;
 // always uses trilinear mipmaps; this setting adds the anisotropy.
 extern int Dtu_anisotropic;
 
+// Infravision (the key N) shows heat: light sources (torches, lamps,
+// fire) and living creatures and characters are red and visible in the
+// dark, undead (the UNDEAD flag of the creature table) and the rest of the
+// scene are dark and cool. Off: the effect of the original (a fade table
+// with red rows). Needs the RGB form of the GPU renderer.
+extern int Dtu_improved_infravision;
+
 // The screen shader: 0 off, 1 subtle (a little bloom and a soft blend of
 // the pixels), 2 VGA (a mid range computer monitor of the late 1990s).
 extern int Dtu_shader;

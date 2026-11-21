@@ -71,9 +71,10 @@ Immersive 0x54439, Automap 0x408F5, Inventory 0x408A2, Stats 0x4093A, Infravisio
 **V** Cycle Weapon (0x544F2) goes through the 10 hot keys from the one after the last
 chosen (0x13AD13) and takes the first that holds a usable weapon (class 0x11, or class
 5 with the tests of 0x1E9D44), then 0x43A5A. Infravision (0x54632, key gate 0x545F5):
-without infravision (P+0xB5, or 5 with bit 1 of P+0xFA) TEX 819 "You don't have
-Infravision.", else the flag 0x14C4DA changes with TEX 820 or 821 and bit 8 of the
-byte 0x1AE of the player object.
+without infravision (P+0xB5, or 5 with bit 1 of P+0xFA) and without the effect bit 15
+of the player object TEX 819 "You don't have Infravision.", else the flag 0x14C4DA
+changes with TEX 820 or 821 and bit 8 of the byte 0x1AE of the player object. The view
+is in [infravision.md](infravision.md).
 
 The hot keys 1 to 0 are not in the table. The system keys (0x13BFD0, as Descent 1:
 Escape, F1 to F12, 0 to 9, minus, equal, Print Screen) cannot be chosen.
@@ -147,7 +148,7 @@ executable. Changes:
   button clicks the interface in the other mode). **G** whether the executable lets a
   click on the interface attack.
 - Cycle Weapon takes the next hot key that holds an item (the weapon tests are not
-  ported). Infravision has the messages and the flag, not the render effect.
+  ported). Infravision: see [infravision.md](infravision.md).
 - `-keyconfig "forward=Q;back=Y,DOWN"` sets keys for a test.
 
 ### Gamepad (port)

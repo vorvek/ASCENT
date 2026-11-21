@@ -1000,7 +1000,7 @@ Corrected bit list (replaces objects.md where it differs):
 | 12 | Free Action | 0xB8 | | no slow down (0x9DDB4, 0x9F39B) |
 | 13 | Haste | 0xBC | | speed x2 (0x9DE13), attack delay / 2 (0x41EC3), AI 0x119AD, 0x14173 |
 | 14 | Hold (Hold Person/Undead, Color Spray stun, Fear on the player) | 0xC0 | creature +0x1DB = GameTime, 0x10ADF | no move (0x9DC84 mask 0x4004000), AI stops (ai.md) |
-| 15 | Infravision | 0xC4 | | render (guess) |
+| 15 | Infravision | 0xC4 | | the key N can turn the view on (0x54668), see [infravision.md](infravision.md) |
 | 16 | Improved Invisibility | 0xC8 (shared) | bits 16 and 17 end together; creature +0x147 = 0; player sound 161 | AC/skills 0xB0310: P+0xD7 -= 15 |
 | 17 | Invisibility | 0xC8 | as 16 | ended by attacking (0x4440E, 0x5705B) |
 | 18 | Invulnerability | 0xCC | sound 163 | no spell damage (0x9178B), AC - 2 (0xB0707), 0x2A270 |

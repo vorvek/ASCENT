@@ -213,25 +213,48 @@ static const char *Scene_fs =
 	"uniform int u_rgb;\n"
 	"uniform sampler2D u_tex;\n"
 	"uniform sampler2D u_dest;\n"
+	"uniform int u_infra;\n"
+	"uniform int u_heat;\n"
 	LIGHT_GLSL
+	// The improved infravision (plat_gpu_set_infravision): c is the lit
+	// color, b the color without light. A cold polygon is a dark blue of
+	// the lit brightness. A warm or a hot polygon shows in the dark too.
+	// Warm is a red ramp of the brightness of the texel; grey texels (metal:
+	// weapons, armor) get less of it. Hot goes from orange to yellow white
+	// on the bright texels (the flame, not the wall around a lamp).
+	"float lum(vec3 v) { return dot(v, vec3(0.299, 0.587, 0.114)); }\n"
+	"vec3 infra(vec3 c, vec3 b) {\n"
+	"	vec3 cold = vec3(0.28, 0.42, 0.75) * (lum(c) * 0.55);\n"
+	"	if (u_heat == 1) {\n"
+	"		float s = max(b.r, max(b.g, b.b)) - min(b.r, min(b.g, b.b));\n"
+	"		vec3 w = mix(vec3(0.30, 0.02, 0.0), vec3(1.0, 0.42, 0.12), clamp(0.25 + lum(b) * 1.2, 0.0, 1.0));\n"
+	"		return mix(cold, w, clamp(0.15 + s * 3.0, 0.0, 1.0));\n"
+	"	}\n"
+	"	if (u_heat == 2) {\n"
+	"		vec3 h = mix(vec3(0.95, 0.30, 0.02), vec3(1.0, 0.95, 0.70), clamp(lum(b) * 1.3 - 0.3, 0.0, 1.0));\n"
+	"		return mix(cold, h, smoothstep(0.35, 0.65, lum(b)));\n"
+	"	}\n"
+	"	return cold;\n"
+	"}\n"
 	"in vec2 v_uv;\n"
 	"noperspective in float v_l;\n"
 	"out vec4 o_color;\n"
 	"int idx(vec4 c) { return int(c.r * 255.0 + 0.5); }\n"
 	"void main() {\n"
 	"	if (u_rgb != 0) {\n"
-	"		vec3 c;\n"
+	"		vec3 c, b;\n"
 	"		if (u_mode == 0) {\n"
 	"			vec4 t = texture(u_tex, v_uv);\n"
 	"			if (u_transparent != 0 && t.a < 0.5) discard;\n"
-	"			c = t.rgb;\n"
+	"			c = b = t.rgb;\n"
 	"			if (u_lit != 0)\n"
 	"				c = light(c, clamp(v_l * 32.0 - 0.5, 0.0, 31.0));\n"
 	"		} else if (u_mode == 1) {\n"
-	"			c = vpal(u_color);\n"
+	"			c = b = vpal(u_color);\n"
 	"		} else {\n"
-	"			c = light(texelFetch(u_dest, ivec2(gl_FragCoord.xy), 0).rgb, float(u_color));\n"
+	"			c = b = light(texelFetch(u_dest, ivec2(gl_FragCoord.xy), 0).rgb, float(u_color));\n"
 	"		}\n"
+	"		if (u_infra != 0 && u_mode != 2) c = infra(c, b);\n"
 	"		o_color = vec4(c, 1.0);\n"
 	"		return;\n"
 	"	}\n"
@@ -661,6 +684,7 @@ static SDL_Window *Gpu_window;
 static GLuint Scene_prog, Comp_prog, Down_prog, Blur_prog, Final_prog;
 static struct {
 	GLint canvas, znear, mode, lit, transparent, color, rgb, tex, fade, dest, vpal, nearc, levels, rowk;
+	GLint infra, heat;
 } Su;
 static struct {
 	GLint frame, pal, view, fade, plut, vpal, nearc, levels, rowk, dst, fsize, vrect, vsize, key, vrgb;
@@ -689,6 +713,7 @@ static GLuint Vpal_tex;					// View_pal as RGBA8, 256x1
 static GLuint Near_tex;					// the nearest palette color of each 6-bit color, R8UI 64x64x64
 static float Row_k[64];					// the average scale of the colors of each fade table row
 static int Light_dirty = 1;
+static int Infra_on;		// plat_gpu_set_infravision
 static uint8_t Near_pal[768];
 static int Near_valid_pal;
 static GLuint Plut_tex;					// View_pal to the frame palette, RGBA16F, 256x1
@@ -744,7 +769,7 @@ static int64_t Tex_bytes;
 
 // The batch of polygons
 typedef struct {
-	int mode, texture, lit, transparent, clamp, color, depth_write, smooth;
+	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat;
 } draw_state;
 
 typedef struct {
@@ -926,6 +951,8 @@ int gpu_init(SDL_Window *window)
 	Su.nearc = qglGetUniformLocation(Scene_prog, "u_near");
 	Su.rowk = qglGetUniformLocation(Scene_prog, "u_rowk");
 	Su.levels = qglGetUniformLocation(Scene_prog, "u_levels");
+	Su.infra = qglGetUniformLocation(Scene_prog, "u_infra");
+	Su.heat = qglGetUniformLocation(Scene_prog, "u_heat");
 	Cu.frame = qglGetUniformLocation(Comp_prog, "u_frame");
 	Cu.pal = qglGetUniformLocation(Comp_prog, "u_pal");
 	Cu.view = qglGetUniformLocation(Comp_prog, "u_view");
@@ -1286,6 +1313,11 @@ static void take_hd_results(void)
 	}
 }
 
+void plat_gpu_set_infravision(int on)
+{
+	Infra_on = on != 0;
+}
+
 void plat_gpu_set_fade_table(const uint8_t *table, int levels)
 {
 	if (!Gpu_ready || levels <= 0 || levels > 64)
@@ -1499,6 +1531,8 @@ static void apply_state(const draw_state *st)
 		qglUniform1i(Su.transparent, st->transparent);
 	if (!Cur_state_valid || st->color != Cur_state.color)
 		qglUniform1i(Su.color, st->color);
+	if (!Cur_state_valid || st->heat != Cur_state.heat)
+		qglUniform1i(Su.heat, st->heat);
 	if (st->mode == PLAT_GPU_TEXTURED && (!Cur_state_valid || st->texture != Cur_state.texture)) {
 		qglActiveTexture(GL_TEXTURE0);
 		qglBindTexture(GL_TEXTURE_2D, (GLuint) st->texture);
@@ -1586,6 +1620,7 @@ void plat_gpu_begin_view(int canvas_w, int canvas_h, int target_w, int target_h,
 	qglUniform2f(Su.canvas, Canvas_w, Canvas_h);
 	qglUniform1f(Su.znear, 1.0f / 16.0f);
 	qglUniform1i(Su.rgb, rgb);
+	qglUniform1i(Su.infra, rgb && Infra_on);
 	qglUniform1i(Su.tex, 0);
 	qglUniform1i(Su.fade, 1);
 	qglUniform1i(Su.dest, 2);
@@ -1618,6 +1653,7 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 
 	memset(&st, 0, sizeof(st));
 	st.mode = m->mode;
+	st.heat = (View_rgb && Infra_on) ? m->heat : 0;
 	st.depth_write = (m->mode != PLAT_GPU_DARKEN);
 	if (m->mode == PLAT_GPU_TEXTURED) {
 		tex_info *ti;

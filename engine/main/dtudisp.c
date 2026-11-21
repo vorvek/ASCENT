@@ -36,6 +36,7 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 #include "dtuspell.h"		// ASCENT: the spell list of the statistics screen
+#include "physics.h"		// ASCENT: Dtu_player_state (infravision)
 #include "kconfig.h"		// ASCENT: the key table (dtu_action_key)
 #include "3d.h"			// ASCENT: g3_gpu_view_dest
 #include "dtuhdui.h"		// ASCENT: the upscaled interface pictures
@@ -1414,16 +1415,17 @@ static void do_input(int mx, int my)
 	if (action_acts(DTU_ACT_STATS)) toggle_screen(DTU_IM_STATS);
 	if (action_acts(DTU_ACT_INFRAVISION)) {
 		// 0x54632: without infravision of the race (P+0xB5, 5 with the
-		// bit 1 of P+0xFA) TEX 819, else the flag 0x14C4DA changes with
-		// TEX 820 or 821 and the render bit 8 of the player object. The
-		// port has the messages and the flag, not the render effect.
-		static int infra = 0;
+		// bit 1 of P+0xFA) and without the Infravision effect (bit 15 of
+		// the effects of the player object, the spell, the potion, the
+		// ring) TEX 819, else the flag 0x14C4DA changes with TEX 820 or
+		// 821 and the bit 8 of the byte 0x1AE of the player object
+		// (DTU_PS_INFRAVISION). The 3D view is in dtuinfra.c.
 		char *text;
-		if (!Dtu_char.pa.infravision)
+		if (!Dtu_char.pa.infravision && !(ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_INFRAVISION)))
 			text = Text_string[819];
 		else {
-			infra = !infra;
-			text = Text_string[infra ? 820 : 821];
+			Dtu_player_state ^= DTU_PS_INFRAVISION;
+			text = Text_string[(Dtu_player_state & DTU_PS_INFRAVISION) ? 820 : 821];
 		}
 		Msg_next_color = rgb6(30, 30, 46);		// 0x347A2, the color of the player
 		dtu_display_add_message(text ? text : "");

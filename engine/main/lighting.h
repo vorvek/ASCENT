@@ -89,4 +89,7 @@ fix compute_seg_dynamic_light(int segnum);
 //object's center point is rotated.
 fix compute_object_light(object *obj,vms_vector *rotated_pnt);
 
+// ASCENT: the light that an object casts (0x57A80 to 0x57BED), 0 for none
+fix dtu_object_light_value(object *obj);
+
 #endif

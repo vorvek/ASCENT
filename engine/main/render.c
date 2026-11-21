@@ -341,6 +341,7 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "dtugame.h"		// ASCENT: the flat color of a side with no texture, Dtu_objects_enabled
 #include "dtucombat.h"	// ASCENT: dtu_combat_draw_view()
 #include "dtuopts.h"		// ASCENT: the GPU renderer settings
+#include "dtuinfra.h"		// ASCENT: infravision
 #include "dtudisp.h"		// ASCENT: Dtu_hires, Dtu_display_active
 #include "palette.h"		// ASCENT: gr_palette for the GPU renderer
 #include "platform.h"		// ASCENT: plat_gpu_bind_settings
@@ -752,7 +753,13 @@ void render_face(int segnum, int sidenum, int nv, short *vp, int tmap1, int tmap
 		g3_draw_tmap(nv,pointlist,(g3s_uvl *) uvl_copy,&GameBitmaps[Textures[Bottom_bitmap_num].index]);
 	else
 #endif
+	{
+		// ASCENT: the heat of the face for the improved infravision
+		if (Dtu_infra_heat)
+			G3_gpu_heat = dtu_infra_face_heat(tmap1, tmap2);
 		g3_draw_tmap(nv,pointlist,(g3s_uvl *) uvl_copy,bm);
+		G3_gpu_heat = 0;
+	}
 
 	#ifndef NDEBUG
 	if (Outline_mode) draw_outline(nv, pointlist);
@@ -1933,7 +1940,7 @@ static int gpu_bitmap_source(grs_bitmap *bm, g3_gpu_source *src)
 // the GPU renderer of the game. The 8-bit form (palette indexes, the
 // colors of the software renderer) is kept as a reference for the tests:
 // environment variable ASCENT_GPU_8BIT=1.
-static void gpu_set_options(void)
+static int gpu_set_options(void)
 {
 	static int bound = 0;
 	g3_gpu_options o;
@@ -1968,6 +1975,7 @@ static void gpu_set_options(void)
 	o.palette = gr_palette;
 	o.source = gpu_bitmap_source;
 	g3_gpu_set_options(&o);
+	return o.rgb;		// ASCENT: the form of the view (infravision)
 }
 
 // ASCENT: a test aid. ASCENT_RENDER_STATS=1 prints at exit the size of the
@@ -2013,6 +2021,7 @@ void render_frame(fix eye_offset)
 	int gpu_view;		// ASCENT: the GPU renderer draws this view
 	uint64_t t0;		// ASCENT: ASCENT_RENDER_STATS
 	int gpu_view_full;	// ASCENT: the full depth of the GPU renderer
+	int infra;			// ASCENT: the infravision mode of the view (dtuinfra.h)
 
 //Total_num_tmaps_drawn += Num_tmaps_drawn;
 //if ((FrameCount > 0) && (Total_num_tmaps_drawn))
@@ -2094,10 +2103,14 @@ void render_frame(fix eye_offset)
 	// form each line of the canvas covers two lines of the screen. With
 	// Dtu_improved_occlusion a depth buffer hides the parts of the objects
 	// behind the walls. The GPU clears the image.
-	gpu_set_options();
+	// Infravision (dtuinfra.c) sets the fade table or the heat colors
+	// before the view starts: the GPU reads both at g3_gpu_begin_view.
+	infra = dtu_infra_begin_view(gpu_set_options() && Dtu_gpu_renderer && plat_gpu_available());
 	gpu_view = g3_gpu_begin_view(Dtu_gpu_renderer, Dtu_render_scale,
 		(Dtu_display_active && Dtu_hires) ? 2 : 1, Dtu_improved_occlusion,
 		(Clear_window == 1 && Clear_window_color != -1) ? Clear_window_color : BM_XRGB(0, 0, 0));
+	if (infra == DTU_INFRA_IMPROVED && !gpu_view)
+		dtu_infra_fallback();
 
 	if (Clear_window == 1 && !gpu_view) {
 		if (Clear_window_color == -1)
@@ -2155,13 +2168,18 @@ void render_frame(fix eye_offset)
 
 	// ASCENT: the arms and the weapon of the player of the target game
 	// (render_object 0x67C5A draws the viewer, see dtucombat.c)
-	if (Viewer == ConsoleObject)
+	// The improved infravision keeps the first person model (the arms
+	// and the weapon in one model) cold: the weapon does not glow.
+	if (Viewer == ConsoleObject) {
+		G3_gpu_heat = PLAT_GPU_HEAT_COLD;
 		dtu_combat_draw_view();
+	}
 
 	if (Use_player_head_angles ) 
 		draw_3d_reticle(eye_offset);
 
 	g3_gpu_end_view();		// ASCENT: see g3_gpu_begin_view
+	dtu_infra_end_view(gpu_view);
 
 	g3_end_frame();
 

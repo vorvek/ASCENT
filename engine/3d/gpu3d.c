@@ -41,6 +41,7 @@ static ubyte Opt_palette[768];
 static char Opt_hd_dir[600];
 static int Rgb_gen = 1;		//changes when the RGB textures must be made again
 static int Hd_log;			//ASCENT_GPU_HDLOG=1: print the requests of upscaled textures
+int G3_gpu_heat;			//3d.h
 
 // ---------------------------------------------------------------------
 // The index of the upscaled set: <hd>/textures/<egg>/index.txt, one line
@@ -677,6 +678,7 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	tex = special ? 0 : bitmap_texture(bm);
 	if (!tex) {
 		flat_material(&m,average_light_color(nv,pointlist,bm));
+		m.heat = G3_gpu_heat;
 		draw_points(nv,pointlist,&m);
 		return;
 	}
@@ -686,6 +688,7 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	m.texture = tex;
 	m.lit = !(bm->bm_flags & BM_FLAG_NO_LIGHTING);
 	m.transparent = (bm->bm_flags & BM_FLAG_TRANSPARENT) != 0;
+	m.heat = G3_gpu_heat;
 	draw_points(nv,pointlist,&m);
 }
 
@@ -694,6 +697,7 @@ static void gpu_poly(int nv,g3s_point **pointlist)
 	plat_gpu_material m;
 
 	flat_material(&m,grd_curcanv->cv_color);
+	m.heat = G3_gpu_heat;
 	draw_points(nv,pointlist,&m);
 }
 
@@ -713,6 +717,7 @@ static void gpu_bitmap(g3s_point *pnt,fix w,fix h,grs_bitmap *bm)
 	m.texture = bitmap_texture(bm);
 	m.transparent = 1;
 	m.clamp = 1;
+	m.heat = G3_gpu_heat;
 	if (!m.texture)
 		return;
 	for (i=0;i<4;i++) {
@@ -739,6 +744,7 @@ static void gpu_sphere(g3s_point *pnt,fix r)
 	memset(&m,0,sizeof(m));
 	m.mode = PLAT_GPU_FLAT;
 	m.color = grd_curcanv->cv_color & 255;
+	m.heat = G3_gpu_heat;
 	for (i=0;i<24;i++) {
 		float a = i * (6.2831853f / 24);
 		v[i].x = cx + rad * cosf(a);
