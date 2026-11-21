@@ -697,10 +697,12 @@ void nm_draw_background(int x1, int y1, int x2, int y2 )
 		else {
 			grs_bitmap *bm = dtu_febgnd_load( Dtu_hires ? 86 : 85, newpal );
 			nm_background.bm_data = NULL;
-			if (bm) {
+			// The pixels of entries 85 and 86 already use the colors of
+			// PALETTE.256, so they are copied with no remap. A remap to the
+			// palette of the moment gave wrong colors when the first box
+			// came in the front end.
+			if (bm)
 				nm_background = *bm;		// the pixel data stays allocated for the program
-				gr_remap_bitmap_good( &nm_background, newpal, -1, -1 );
-			}
 		}
 	}
 

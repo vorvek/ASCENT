@@ -219,7 +219,9 @@ static int script_key(char *name)
 	static struct { char *name; int key; } names[] = {
 		{ "esc", KEY_ESC }, { "enter", KEY_ENTER }, { "space", KEY_SPACEBAR },
 		{ "pgup", KEY_PAGEUP }, { "pgdn", KEY_PAGEDOWN }, { "left", KEY_LEFT },
-		{ "right", KEY_RIGHT }, { "up", KEY_UP }, { "down", KEY_DOWN }, { "backsp", KEY_BACKSP } };
+		{ "right", KEY_RIGHT }, { "up", KEY_UP }, { "down", KEY_DOWN }, { "backsp", KEY_BACKSP },
+		{ "f1", KEY_F1 }, { "f2", KEY_F2 }, { "f3", KEY_F3 }, { "f4", KEY_F4 }, { "f5", KEY_F5 },
+		{ "f6", KEY_F6 }, { "f7", KEY_F7 }, { "f8", KEY_F8 }, { "f9", KEY_F9 }, { "f10", KEY_F10 } };
 	int i;
 
 	for (i = 0; i < (int) (sizeof(names) / sizeof(names[0])); i++)
