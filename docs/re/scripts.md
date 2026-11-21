@@ -221,7 +221,8 @@ the player.
 Open (0xA74AA): 0x458BA(1) ramps the byte 0x14C4CE from 0 to 15, one step for
 each 0x800 of game time, with reduced frames; the pixel shading function
 0xEC4D7 uses it (**G**: the view turns dark and grey behind the window). Then
-0xB1D77(10) (10 visible lines), 0xB13C4 (the layout), 0x92FF2. Close
+0xB1D77(10) (at most 10 replies, `MaxDialogResponses` 0x1465A8; 8 when the value is not
+above 0), 0xB13C4 (the layout), 0x92FF2. Close
 (0xA74D0): 0x458BA(0) ramps it back, 0xB1A8C, and the temporary object of
 run_script_id is deleted.
 
@@ -237,7 +238,30 @@ first (0x407EB(0)).
 
 The window has no picture and no portrait: the text is drawn over the 3D
 view. The text area is at (x, y), the reply area under it. The replies have a
-column of numbers `"%d)"` and a column of text. Colors (0xB19A2 to 0xB19F1,
+column of numbers `"%d)"` and a column of text.
+
+Positions (0xB13C4, 0xB1B9E, 0xB2D0D, 0xB2D90, verified in the code). The margin
+m is 10 (low) or 16 (high) (0x1466AC). An area of height h holds n = (h - 2m) /
+ft_h lines of the font; its lines start at m + (h - 2m - n x ft_h) / 2 from the
+top of the area. Each part is a sub-canvas of the screen, which clips the text:
+
+- Text: x, y + top of the text area, width, n x ft_h. The speech and narration
+  buffers are drawn at the top of it (with the scroll offset), lines ft_h apart.
+- Number column: x, y + text height + top of the reply area, width numw, where
+  numw is the largest width of `"%d) "` (with the space) for 1 to
+  `MaxDialogResponses` (0xB170B).
+- Reply text: x + numw + 10 (x + width - (width - numw - 10)), the same y, width
+  - numw - 10; the replies are wrapped to that width (0xB20F0 in 0xB1D99).
+- A reply is drawn at row r of both columns with `gr_string(0, r)`; the next reply
+  starts at r + the height of the reply + ft_h (one empty line, 0xB2E69).
+- "Press Enter...": centered in a canvas of the whole reply area width at the
+  same y, at (canvas height - ft_h) / 2 (0xB2E91).
+- The magenta frame (0xB2EDD): lines at x - 3 and x + width + 3 and at the top and
+  the bottom row of the active area (y and y + text height, or y + text height
+  and y + text height + reply height).
+
+High resolution, mode 0, the game font (ft_h 8 in the port): text lines from y 43, 11 lines;
+reply rows from y 167, 11 rows; the reply text at x 141 + numw + 10. Colors (0xB19A2 to 0xB19F1,
 the closest palette colors): speech green (0, 63, 0), narration yellow (63,
 63, 0), the selected reply orange (63, 32, 0), the other replies grey (32,
 32, 32), a frame of magenta (63, 0, 63) lines around the active area, from
@@ -535,8 +559,8 @@ table of YPINN: 0x26 "Skull Key", 0x6B to 0x79 "Violet Gem Key", 0x12 to
 
 ## 11. Open questions
 
-1. The window draws: the scroll of long texts, the mouse, the exact text
-   positions of 0xB1B9E.
+1. The window draws: the scroll of long texts (which replies 0x3D498C and
+   0x3D4984 show), the mouse.
 2. The meaning of `D8`, `D9` and the fourth value of D4 and D5.
 3. The prison sequence 0xAA3F3. (The end sequence of sound 0xFFFF is in
    movies.md: the movie FLAM1.MVE.)
