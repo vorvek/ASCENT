@@ -136,6 +136,7 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 #endif
 
 #include "dataio.h"		// ASCENT: little endian field reads
+#include "dtufile.h"		// ASCENT: dtu_log()
 
 polymodel Polygon_models[MAX_POLYGON_MODELS];	// = {&bot11,&bot17,&robot_s2,&robot_b2,&bot11,&bot17,&robot_s2,&robot_b2};
 
@@ -558,7 +559,13 @@ int read_model_guns(char *filename,vms_vector *gun_points, vms_vector *gun_dirs,
 //free up a model, getting rid of all its memory
 free_model(polymodel *po)
 {
-	free(po->model_data);
+	// ASCENT: the model data of an EGG model is the start of dtu_block.
+	if (po->dtu_block)
+		free(po->dtu_block);
+	else if (po->model_data)
+		free(po->model_data);
+	po->dtu_block = NULL;
+	po->model_data = NULL;
 }
 
 grs_bitmap *texture_list[MAX_POLYOBJ_TEXTURES];
@@ -604,6 +611,14 @@ void draw_polygon_model(vms_vector *pos,vms_matrix *orient,vms_angvec *anim_angl
 			texture_list_index[i] = ObjBitmaps[ObjBitmapPtrs[po->first_texture+i]];
 			texture_list[i] = &GameBitmaps[ObjBitmaps[ObjBitmapPtrs[po->first_texture+i]].index];
 		}
+
+	// ASCENT: the table can give a model fewer textures than its data uses
+	// (the loader warns about it). The other entries get bitmap 0 (the
+	// "bogus" bitmap), so that the 3d code never reads an old pointer.
+	for (i=po->n_textures;i<po->dtu_textures_used && i<MAX_POLYOBJ_TEXTURES;i++) {
+		texture_list_index[i].index = 0;
+		texture_list[i] = &GameBitmaps[0];
+	}
 
 #ifdef PIGGY_USE_PAGING
 	// Make sure the textures for this object are paged in...
@@ -744,33 +759,276 @@ int load_polygon_model(char *filename,int n_textures,grs_bitmap ***textures)
 	#define r NULL
 	#endif
 
-	Assert(N_polygon_models < MAX_POLYGON_MODELS);
+	// ASCENT: Descent 1 read the POF file here. In Descent to Undermountain
+	// the models are in the EGG archive, and piggy.c has already loaded them
+	// (polyobj_load_dtu_model below). DTUGAME.EXE does the same: it looks for
+	// the name among the loaded models (code at 0x72DD4) and returns that
+	// number. A model that is not in the archive gives -1 here. The original
+	// then read NAME.POF from the disk, and no such file ships.
+	//
+	// DTUGAME.EXE keeps the first_texture of the EGG header for a model
+	// that it finds. This port does not: the header value depends on the
+	// exact slot numbers of the original table parser, which are verified
+	// only in part (docs/formats/tbl.md). The first table line that names a
+	// model gives it the slots of its texture list. A later line with the
+	// same model name gets the same model, with the textures of the first
+	// line, as in the original.
+	int mn;
+	polymodel *pm;
+
 	Assert(n_textures < MAX_POLYOBJ_TEXTURES);
 
-	mprintf(( 0, "Used %d/%d polygon model slots\n", N_polygon_models+1, MAX_POLYGON_MODELS ));
+	mn = polyobj_find_model(filename);
+	if (mn < 0) {
+		dtu_log( "Model <%s> is not in the EGG archive\n", filename );
+		return -1;
+	}
 
-	Assert(strlen(filename) <= 12);
-	strcpy(Pof_names[N_polygon_models],filename);
+	pm = &Polygon_models[mn];
 
-	read_model_file(&Polygon_models[N_polygon_models],filename,r);
+	if (!pm->dtu_bound) {
+		if (n_textures != pm->dtu_n_textures_file || n_textures < pm->dtu_textures_used)
+			dtu_log( "Model <%s>: the table gives %d textures, the header has %d, the data uses %d\n",
+				filename, n_textures, pm->dtu_n_textures_file, pm->dtu_textures_used );
+		if (n_textures >= MAX_POLYOBJ_TEXTURES)
+			n_textures = MAX_POLYOBJ_TEXTURES-1;
+		pm->n_textures = n_textures;
+		pm->first_texture = first_texture;
+		pm->simpler_model = 0;
+		pm->dtu_bound = 1;
+	}
 
-	polyobj_find_min_max(&Polygon_models[N_polygon_models]);
+	// ASCENT: Descent 1 filled the gun points and the joint positions of a
+	// robot from the POF file. Where the EGG model keeps them is not known.
+	if (r)
+		r->n_guns = 0;
 
-	g3_init_polygon_model(Polygon_models[N_polygon_models].model_data);
+	return mn;
 
-	if (highest_texture_num+1 != n_textures)
-		Error("Model <%s> references %d textures but specifies %d.",filename,highest_texture_num+1,n_textures);
+}
 
-	Polygon_models[N_polygon_models].n_textures = n_textures;
-	Polygon_models[N_polygon_models].first_texture = first_texture;
-	Polygon_models[N_polygon_models].simpler_model = 0;
+// ASCENT: the functions below are new. They load the polygon models of an
+// EGG archive. See docs/formats/egg.md for the layout.
 
-//	Assert(polygon_models[N_polygon_models]!=NULL);
+// Walk the opcodes of the interpreter data without a change to the data.
+// Returns 0 if an opcode is unknown or the data ends too early. Sets
+// *highest_tex to the highest texture number of a textured polygon.
+// The record sizes are those of init_loop() in 3d/interp.c.
+static int dtu_check_model_data(const ubyte *data, int size, int ofs, int depth, int *highest_tex, int *n_ops)
+{
+	int op, n;
+
+	if (depth > 64)
+		return 0;
+
+	for (;;) {
+		if (ofs < 0 || ofs+2 > size)
+			return 0;
+		if (++(*n_ops) > 200000)
+			return 0;
+
+		op = data[ofs] | (data[ofs+1]<<8);
+
+		#define DTU_W(o) (((ofs)+(o)+2 <= size) ? (data[ofs+(o)] | (data[ofs+(o)+1]<<8)) : 0)
+
+		switch (op) {
+		case 0:				//OP_EOF
+			return 1;
+		case 1:				//OP_DEFPOINTS
+			n = DTU_W(2);
+			ofs += 4 + n*12;
+			break;
+		case 2:				//OP_FLATPOLY
+			n = DTU_W(2);
+			ofs += 30 + ((n*2)|2);		//pointnum_list_size
+			break;
+		case 3:				//OP_TMAPPOLY
+			n = (short) DTU_W(28);
+			if (n > *highest_tex)
+				*highest_tex = n;
+			n = DTU_W(2);
+			ofs += 30 + ((n*2)|2) + n*12;
+			break;
+		case 4:				//OP_SORTNORM
+			if (!dtu_check_model_data(data,size,ofs+DTU_W(28),depth+1,highest_tex,n_ops))
+				return 0;
+			if (!dtu_check_model_data(data,size,ofs+DTU_W(30),depth+1,highest_tex,n_ops))
+				return 0;
+			ofs += 32;
+			break;
+		case 5:				//OP_RODBM
+			ofs += 36;
+			break;
+		case 6:				//OP_SUBCALL
+			if (!dtu_check_model_data(data,size,ofs+DTU_W(16),depth+1,highest_tex,n_ops))
+				return 0;
+			ofs += 20;
+			break;
+		case 7:				//OP_DEFP_START
+			n = DTU_W(2);
+			ofs += 8 + n*12;
+			break;
+		case 8:				//OP_GLOW
+			ofs += 4;
+			break;
+		default:
+			return 0;
+		}
+
+		#undef DTU_W
+	}
+}
+
+int polyobj_find_model(const char *name)
+{
+	int i;
+
+	for (i=0;i<N_polygon_models;i++)
+		if (!stricmp(Pof_names[i],name))
+			return i;
+	return -1;
+}
+
+int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_avail)
+{
+	polymodel *pm;
+	const ubyte *p;
+	int n, F, flags, i, ofs, highest, n_ops;
+	int size[DTU_MODEL_SECTIONS];
+
+	if (N_polygon_models >= MAX_POLYGON_MODELS) {
+		dtu_log( "Too many polygon models (%d)\n", MAX_POLYGON_MODELS );
+		return -1;
+	}
+
+	pm = &Polygon_models[N_polygon_models];
+	memset(pm,0,sizeof(*pm));
+
+	p = header;
+	pm->n_models = dio_get_int(&p);
+	pm->model_data_size = dio_get_int(&p);
+	dio_get_vector(&p,&pm->mins);
+	dio_get_vector(&p,&pm->maxs);
+	pm->rad = dio_get_fix(&p);
+	pm->dtu_n_textures_file = (ubyte) dio_get_int(&p);
+	pm->dtu_first_texture_file = dio_get_int(&p);
+	p += 8;									// 0x2C, 0x30: -1 in all files
+	pm->n_frames = dio_get_int(&p);
+	p += 4;									// 0x38: offset, the caller used it
+	pm->dtu_flags = dio_get_ubyte(&p);
+
+	n = pm->n_models;
+	F = pm->n_frames;
+	flags = pm->dtu_flags;
+
+	if (n < 1 || n > MAX_POLYMODEL_SUBMODELS || F < 0 || F > 100000 || pm->model_data_size < 2)
+		return -1;
+
+	// The sizes of the arrays of the data block, in file order.
+	memset(size,0,sizeof(size));
+	size[1] = pm->model_data_size;
+	size[2] = 4*n;
+	size[3] = size[4] = size[5] = 12*n;
+	size[6] = 4*n;
+	size[7] = n;
+	size[8] = size[9] = 12*n;
+	size[10] = size[11] = 12*(F+1);
+	if (F > 0) {
+		size[12] = 6*n*F;
+		size[13] = 7*12*F;
+	}
+	if (flags & 1) size[14] = 20*(F+1);
+	if (flags & 8) size[15] = 20*F;
+	if (flags & 2) size[16] = 16*F;
+	if (flags & 4) size[17] = 16*F;
+	size[18] = n*(n+1);
+	size[19] = n;
+
+	ofs = 0;
+	for (i=1;i<DTU_MODEL_SECTIONS;i++) {
+		pm->dtu_section_size[i] = size[i];
+		pm->dtu_section_ofs[i] = size[i] ? ofs : -1;
+		ofs += size[i];
+		if (ofs > block_avail || ofs < 0)
+			return -1;
+	}
+	pm->dtu_section_ofs[0] = -1;
+
+	pm->dtu_block_size = ofs;
+	pm->dtu_block = (ubyte *) malloc(ofs);
+	if (pm->dtu_block == NULL)
+		return -1;
+	memcpy(pm->dtu_block,block,ofs);
+	memcpy(pm->dtu_header,header,DTU_MODEL_HEADER_SIZE);
+	pm->model_data = pm->dtu_block;
+
+	p = pm->dtu_block + pm->dtu_section_ofs[2];
+	for (i=0;i<n;i++) pm->submodel_ptrs[i] = dio_get_int(&p);
+	for (i=0;i<n;i++) dio_get_vector(&p,&pm->submodel_offsets[i]);
+	for (i=0;i<n;i++) dio_get_vector(&p,&pm->submodel_norms[i]);
+	for (i=0;i<n;i++) dio_get_vector(&p,&pm->submodel_pnts[i]);
+	for (i=0;i<n;i++) pm->submodel_rads[i] = dio_get_fix(&p);
+	for (i=0;i<n;i++) pm->submodel_parents[i] = dio_get_ubyte(&p);
+	for (i=0;i<n;i++) dio_get_vector(&p,&pm->submodel_mins[i]);
+	for (i=0;i<n;i++) dio_get_vector(&p,&pm->submodel_maxs[i]);
+
+	// Check the opcode stream. The data is not changed: g3_init_polygon_model
+	// is not called, because the flat polygon colors in the archive are
+	// already palette indexes. (Guess from Descent 1, which wrote its models
+	// to the PIG file after that function. Not verified in DTUGAME.EXE.)
+	highest = -1;
+	n_ops = 0;
+	if (!dtu_check_model_data(pm->model_data,pm->model_data_size,0,0,&highest,&n_ops) || highest >= MAX_POLYOBJ_TEXTURES) {
+		free(pm->dtu_block);
+		pm->dtu_block = NULL;
+		pm->model_data = NULL;
+		return -1;
+	}
+	for (i=0;i<n;i++)
+		if (pm->submodel_ptrs[i] < 0 || pm->submodel_ptrs[i] >= pm->model_data_size) {
+			free(pm->dtu_block);
+			pm->dtu_block = NULL;
+			pm->model_data = NULL;
+			return -1;
+		}
+	pm->dtu_textures_used = highest+1;
+
+	// Until a table line names the model, it draws with the texture slots
+	// that follow slot 0. load_polygon_model() sets the real values.
+	pm->n_textures = pm->dtu_n_textures_file;
+	if (pm->n_textures >= MAX_POLYOBJ_TEXTURES)
+		pm->n_textures = MAX_POLYOBJ_TEXTURES-1;
+	pm->first_texture = 0;
+	pm->simpler_model = 0;
+	pm->dtu_bound = 0;
+
+	memcpy(Pof_names[N_polygon_models],header+0x3D,12);
+	Pof_names[N_polygon_models][12] = 0;
 
 	N_polygon_models++;
 
 	return N_polygon_models-1;
+}
 
+void polyobj_free_all_models(void)
+{
+	int i;
+
+	for (i=0;i<N_polygon_models;i++)
+		free_model(&Polygon_models[i]);
+	N_polygon_models = 0;
+}
+
+const ubyte *polyobj_get_frame_angles(int model_num, int frame)
+{
+	polymodel *pm;
+
+	if (model_num < 0 || model_num >= N_polygon_models)
+		return NULL;
+	pm = &Polygon_models[model_num];
+	if (pm->dtu_block == NULL || frame < 0 || frame >= pm->n_frames || pm->dtu_section_ofs[12] < 0)
+		return NULL;
+	return pm->dtu_block + pm->dtu_section_ofs[12] + frame*6*pm->n_models;
 }
 
 

@@ -7,10 +7,11 @@ set(MAIN_SOURCES
   menu.c newmenu.c kconfig.c joydefs.c gauges.c hud.c automap.c kmatrix.c
   endlevel.c terrain.c gamefont.c newdemo.c songs.c digi.c
   bm.c bmread.c piggy.c paging.c texmerge.c gamemine.c gamesave.c polyobj.c
+  dtufile.c acm.c
   robot.c vclip.c effects.c weapon.c powerup.c mglobal.c hash.c
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
-  lighting.c render.c)
+  lighting.c render.c dtugame.c)
 
 add_library(d_main OBJECT EXCLUDE_FROM_ALL ${MAIN_SOURCES})
 target_include_directories(d_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -39,3 +40,16 @@ target_include_directories(test_data_io PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_data_io PRIVATE
   d_common d_3d d_2d d_cfile d_misc d_mem d_vecmat d_fix)
 add_test(NAME test_data_io COMMAND test_data_io)
+
+# Check of the data layer against the game data (see test_dtudata.c). It is
+# not in the default build and it is not a registered test: it needs the
+# game files. It links the whole game code, which has main() of inferno.c.
+# The linker option makes the start code call __wrap_main() of the test.
+add_executable(test_dtudata EXCLUDE_FROM_ALL test_dtudata.c $<TARGET_OBJECTS:d_main>)
+target_link_libraries(test_dtudata PRIVATE d_main)
+target_link_options(test_dtudata PRIVATE -Wl,--wrap=main)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  # The game headers declare functions without a return type.
+  target_compile_options(test_dtudata PRIVATE
+    -Wno-error=implicit-int -Wno-implicit-int -Wno-unknown-pragmas)
+endif()

@@ -176,6 +176,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 //Array of pointers to text
 extern char *Text_string[];
 
+// ASCENT: the language of the text file: 0 English (DTUE.TEX), 1 DTUF,
+// 2 DTUG, 3 DTUI, 4 DTUS, 5 DTUN, 6 DTUM. Set it before load_text().
+extern int Text_language;
+
 //Symbolic constants for all the strings
 
 #define TXT_NEW_GAME				Text_string[ 0]
@@ -800,7 +804,12 @@ extern char *Text_string[];
 #define TXT_ROBOT_PAINTING_OFF Text_string[619]
 #define TXT_ROBOT_PAINTING_ON Text_string[620]
 
-#define N_TEXT_STRINGS			621
+// ASCENT: was 621. DTUGAME.EXE wants at least 979 strings in its text file
+// (DTUE.TEX has 985 lines). The strings 0 to 620 are at the places of the
+// Descent 1 strings: Descent to Undermountain changed the words of a
+// string and kept its number. The TXT_ names below are still the Descent 1
+// names. The strings from 621 on have no names yet.
+#define N_TEXT_STRINGS			979
 
 // Constants for keyboard configuration
 #define TNUM_REAR_VIEW			(319-8)

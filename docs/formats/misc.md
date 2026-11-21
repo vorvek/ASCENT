@@ -78,7 +78,16 @@ The game expects at least 979 strings ("Not enough strings in text file").
 | SETUPE.TEX | 75 | strings of SETUP.EXE |
 
 Verified: all are plain text with CRLF, no control bytes, at most 6 bytes above 0x7F.
-Not verified: which string index maps to which use.
+
+String numbers: the first 621 strings of DTUE.TEX stand at the places of the 621
+strings of Descent 1 (`TXT_` names of `text.h`). Descent to Undermountain changed the
+words and kept the number. Sample: 0 "New game" (`TXT_NEW_GAME`), 2 "Quit", 101 "KEYS"
+(`TXT_KEYS`), 103 "Abort Game?", 300 "Your level", 501 "Error writing player file.",
+502 "Killed!" (`TXT_SHIP_DESTROYED_0`). Some strings have a new use: 104 to 107 are
+"Longbow", "Crossbow", "Wand of Magic Missiles", "Wand of Fire" (Descent 1: the names of
+the first four weapons), 617 to 619 are class descriptions. The strings from 621 on are
+new (900 is "Durnan"). The port loads 979 strings (`text.c`). The new strings have no
+names yet.
 
 ## THESTORE.1: shop inventory
 
@@ -154,6 +163,14 @@ Tool: `sidefiles.py fnt`.
 - Color fonts end with a 768-byte palette (6-bit VGA values, maximum 63) at `8 + datasize`.
 
 Verified: all 13 files parse with every byte accounted for.
+
+DTUGAME.EXE has a table of ten font names at 0x13B848, two sets in the order of the
+five Descent 1 game fonts (big, three medium fonts, small): `FNTECLL_`, `FNTECLMU`,
+`FNTECLMS`, `FNTECLMT`, `FNTEMLS_` and `FNTECHL_`, `FNTECHMU`, `FNTECHMS`,
+`FNTECHMT`, `FNTEMHS_`. Guess: L and H are the low and the high screen resolution.
+`FNTEMFL_`, `FNTEMFM_` and `FNTEMFS_` are loaded by other code (0x45AE0). The port
+loads the first set with the Descent 1 font code (`gamefont.c`) and draws text with
+it (`test_dtudata` writes a picture).
 
 | File | Size | Cell | Flags | Chars |
 |---|---|---|---|---|

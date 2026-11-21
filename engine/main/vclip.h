@@ -145,7 +145,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define VCLIP_POWERUP_DISAPPEARANCE	62
 #define VCLIP_VOLATILE_WALL_HIT	5
 
-#define VCLIP_MAXNUM			70
+// ASCENT: was 70. The tables of Descent to Undermountain use clip numbers
+// up to 180. DTUGAME.EXE clears 250 entries of an array whose entry size
+// fits a vclip (loop at 0x1B43C). Guess: that array is Vclip.
+#define VCLIP_MAXNUM			250
 #define VCLIP_MAX_FRAMES	30
 
 //vclip flags

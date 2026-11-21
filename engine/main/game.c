@@ -345,6 +345,7 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "newmenu.h"
 #include "network.h"
 #include "gamefont.h"
+#include "dtugame.h"		// ASCENT: the direct start, Dtu_objects_enabled
 #include "endlevel.h"
 #include "joydefs.h"
 #include "kconfig.h"
@@ -597,9 +598,16 @@ void init_game()
 
 	background_bitmap.bm_data=NULL;
 	pcx_error = pcx_read_bitmap(BACKGROUND_NAME,&background_bitmap,BM_LINEAR,pal);
-	if (pcx_error != PCX_ERROR_NONE)
-		Error("File %s - PCX error: %s",BACKGROUND_NAME,pcx_errormsg(pcx_error));
-	gr_remap_bitmap_good( &background_bitmap, pal, -1, -1 );
+	// ASCENT: the original stopped if the file is absent. The target game
+	// does not have this file. The background is drawn only around a game
+	// window that is smaller than the screen (fill_background), and that
+	// function does nothing without the bitmap now.
+	if (pcx_error != PCX_ERROR_NONE) {
+		if (background_bitmap.bm_data)
+			free(background_bitmap.bm_data);
+		background_bitmap.bm_data=NULL;
+	} else
+		gr_remap_bitmap_good( &background_bitmap, pal, -1, -1 );
 
 	Clear_window = 2;		//	do portal only window clear.
 }
@@ -913,6 +921,10 @@ void copy_background_rect(int left,int top,int right,int bot)		// ASCENT: return
 
 void fill_background(int x,int y,int w,int h,int dx,int dy)		// ASCENT: return type added
 {
+	// ASCENT: the background bitmap is absent in the target game, see init_game()
+	if (!background_bitmap.bm_data)
+		return;
+
 	gr_set_current_canvas(&VR_screen_pages[VR_current_page]);
 	copy_background_rect(x-dx,y-dy,x-1,y+h+dy-1);
 	copy_background_rect(x+w,y-dy,x+w+dx-1,y+h+dy-1);
@@ -1460,6 +1472,9 @@ extern fix Cruise_speed;
 
 void game_draw_hud_stuff()
 {
+	// ASCENT: no text while the fonts are not loaded
+	if (!GAME_FONT)
+		return;
 
 	#ifndef NDEBUG
 	if (Debug_pause) {
@@ -2752,6 +2767,19 @@ void game()
 				longjmp(LeaveGame,0);
 			}
 
+			// ASCENT: the options -frames and -screenshot
+			if (dtu_frame_done()) {
+				Function_mode = FMODE_EXIT;
+				longjmp(LeaveGame,0);
+			}
+
+			// ASCENT: the direct start (-level) has no menu. Escape leaves
+			// the program without the "abort game" question.
+			if (Dtu_direct_start && Function_mode != FMODE_GAME) {
+				Function_mode = FMODE_EXIT;
+				longjmp(LeaveGame,0);
+			}
+
 			if (Config_menu_flag)	{
 				if (!(Game_mode&GM_MULTI)) palette_save();
 				do_options_menu();
@@ -2929,14 +2957,23 @@ void ReadControls()
 			check_rear_view();
 						
 			//	If automap key pressed, enable automap unless you are in network mode, control center destroyed and < 10 seconds left
-			if ( Controls.automap_down_count && !((Game_mode & GM_MULTI) && Fuelcen_control_center_destroyed && (Fuelcen_seconds_left < 10)))
-				Automap_flag = 1;			
+			// ASCENT: the automap draws text, so the fonts must be loaded
+			if ( Controls.automap_down_count && GAME_FONT && !((Game_mode & GM_MULTI) && Fuelcen_control_center_destroyed && (Fuelcen_seconds_left < 10)))
+				Automap_flag = 1;
+
+			// ASCENT: no weapons while the tables of the items are not
+			// loaded, see Dtu_objects_enabled in dtugame.h
+			if (!Dtu_objects_enabled) {
+				Controls.fire_flare_down_count = 0;
+				Controls.drop_bomb_down_count = 0;
+				Global_missile_firing_count = 0;
+			}
 
 			if (Controls.fire_flare_down_count)
 				if (allowed_to_fire_flare())
 					Flare_create(ConsoleObject);
 
-			if (allowed_to_fire_missile())
+			if (Dtu_objects_enabled && allowed_to_fire_missile())
 				Global_missile_firing_count += Weapon_info[Secondary_weapon_to_weapon_info[Secondary_weapon]].fire_count * (Controls.fire_secondary_state || Controls.fire_secondary_down_count);
 
 			if (Global_missile_firing_count) {
@@ -2994,6 +3031,12 @@ void ReadControls()
 		}
 
 		while ((key=key_inkey_time(&key_time)) != 0)	{
+
+			// ASCENT: the keys below open menus, messages and the help
+			// screen. They draw text. While the fonts are not loaded, only
+			// Escape is handled (the flight controls do not use this loop).
+			if (!GAME_FONT && key != KEY_ESC)
+				continue;
 
 			john_cheat_func_1(key);
 
@@ -4039,9 +4082,12 @@ mem_check();
 
 			fuelcen_update_all();
 
-			do_ai_frame_all();
+			// ASCENT: no AI and no weapons while the tables of the monsters
+			// and items are not loaded, see Dtu_objects_enabled in dtugame.h
+			if (Dtu_objects_enabled)
+				do_ai_frame_all();
 
-			if (allowed_to_fire_laser()) {
+			if (Dtu_objects_enabled && allowed_to_fire_laser()) {
 				Global_laser_firing_count += Weapon_info[Primary_weapon_to_weapon_info[Primary_weapon]].fire_count * (Controls.fire_primary_state || Controls.fire_primary_down_count);
 				if ((Primary_weapon == FUSION_INDEX) && (Global_laser_firing_count)) {
 					if ((Players[Player_num].energy < F1_0*2) && (Auto_fire_fusion_cannon_time == 0)) {

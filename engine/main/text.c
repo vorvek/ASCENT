@@ -78,10 +78,14 @@ static char rcsid[] = "$Id: text.c 2.0 1995/02/27 11:33:09 john Exp $";
 #include "text.h"
 #include "args.h"
 #include "compbit.h"
+#include "dtufile.h"		// ASCENT: the game data files
 
 char *text;
 
 char *Text_string[N_TEXT_STRINGS];
+
+// ASCENT: the language of the text file, 0 (English) to 6. See load_text().
+int Text_language = 0;
 
 // ASCENT: return type added, atexit takes a void function
 void free_text(void)
@@ -110,15 +114,41 @@ void load_text()
 	CFILE *ifile;
 	int len,i, have_binary = 0;
 	char *tptr;
-	char *filename="descent.tex";
+	// ASCENT: was "descent.tex". DTUGAME.EXE loads <name>.tex, where the
+	// name depends on the language (table at 0x131C04): dtue is English,
+	// then dtuf, dtug, dtui, dtus, dtun, dtum. Text_language picks one.
+	static char *language_names[] = { "dtue.tex", "dtuf.tex", "dtug.tex", "dtui.tex", "dtus.tex", "dtun.tex", "dtum.tex" };
+	char *filename=language_names[0];
+	ubyte *dtu_data;
+	int dtu_len;
+
+	if (Text_language >= 0 && Text_language < 7)
+		filename = language_names[Text_language];
 
 	if ((i=FindArg("-text"))!=0)
 		filename = Args[i+1];
 
+	// ASCENT: the file is in one of the game data directories (dtufile.c).
+	// The old code below still reads a file of the current directory.
+	if ((dtu_data = dtu_load_file(filename,&dtu_len)) != NULL) {
+		char *p;
+		int k;
+
+		text=malloc((dtu_len+2)*sizeof(char));
+		atexit(free_text);
+		p = text;
+		for (k=0;k<dtu_len;k++)
+			if (dtu_data[k] != 13)
+				*p++ = dtu_data[k];
+		*p++ = 10;		// the last line can be without a line end
+		*p = 0;
+		free(dtu_data);
+	} else
+
 	if ((tfile = cfopen(filename,"rb")) == NULL) {
 		filename="descent.txb";
 		if ((ifile = cfopen(filename, "rb")) == NULL)
-			Error("Cannot open file DESCENT.TEX or DESCENT.TXB");
+			Error("Cannot open file DTUE.TEX");
 		have_binary = 1;
 
 		len = cfilelength(ifile);

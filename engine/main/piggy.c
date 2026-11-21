@@ -375,8 +375,26 @@ static char rcsid[] = "$Id: piggy.c 2.10 1995/10/07 13:17:26 john Exp $";
 
 //#define NO_DUMP_SOUNDS	1		//if set, dump bitmaps but not sounds
 
-ubyte *BitmapBits = NULL;
-ubyte *SoundBits = NULL;
+#include <ctype.h>
+#include "mem.h"			// ASCENT: malloc and free of the game, as in dtufile.c and acm.c
+#include "dtufile.h"		// ASCENT: the game data files
+#include "acm.h"			// ASCENT: the sounds of an EGG archive are ACM streams
+#include "polyobj.h"
+
+// ASCENT: from here on this file is new. Descent 1 read one PIG file
+// (DESCENT.PIG) and paged its bitmaps into a cache of 2 MB. Descent to
+// Undermountain reads EGG archives: one for the level and one for each
+// player character. An EGG archive holds bitmaps, sounds and polygon
+// models. The layout is in docs/formats/egg.md.
+//
+// What is the same as in Descent 1: the bitmap header (17 bytes), the RLE
+// bitmap data, the names (piggy_find_bitmap, "name#frame" for a frame of
+// an animation), bitmap 0 (the "bogus" bitmap, a red X).
+//
+// What this port does in another way than DTUGAME.EXE: the whole archive
+// is loaded into memory and every bitmap points into that memory. There
+// is no cache and no paging. PIGGY_PAGE_IN still compiles: no bitmap has
+// BM_FLAG_PAGED_OUT, so it does nothing.
 
 typedef struct BitmapFile	{
 	char			name[15];
@@ -393,151 +411,74 @@ int Num_bitmap_files = 0;
 int Num_sound_files = 0;
 
 digi_sound GameSounds[MAX_SOUND_FILES];
-int SoundOffset[MAX_SOUND_FILES];
 grs_bitmap GameBitmaps[MAX_BITMAP_FILES];
 
-int Num_bitmap_files_new = 0;
-int Num_sound_files_new = 0;
 static BitmapFile AllBitmaps[ MAX_BITMAP_FILES ];
 static SoundFile AllSounds[ MAX_SOUND_FILES ];
 
+// The flags byte of the bitmap header as it is in the archive.
+static ubyte GameBitmapDiskFlags[MAX_BITMAP_FILES];
+
+// ASCENT: the low memory translation table of Descent 1. It maps each
+// bitmap to itself. Only the PSX tool code of paging.c names it.
+ushort GameBitmapXlat[MAX_BITMAP_FILES];
+
+// Sound data. GameSounds[i].data is unsigned 8-bit mono (what the mixer of
+// digi.c plays). GameSounds16[i] is the decoded stream: signed 16-bit,
+// interleaved if it has two channels.
+static short *GameSounds16[MAX_SOUND_FILES];
+static int GameSoundRate[MAX_SOUND_FILES];
+static int GameSoundChannels[MAX_SOUND_FILES];
+static int GameSoundValues[MAX_SOUND_FILES];
+static int GameSoundDiskFlags[MAX_SOUND_FILES];
+
 int piggy_low_memory = 0;
+int piggy_page_flushed = 0;
+
+// ASCENT: gauges.c shows this value (the fill of the Descent 1 bitmap
+// cache). There is no cache now.
+int Piggy_bitmap_cache_next = 0;
 
 #define DBM_FLAG_LARGE 	128		// Flags added onto the flags struct in b
 #define DBM_FLAG_ABM		64
 
-int Piggy_bitmap_cache_size = 0;
-int Piggy_bitmap_cache_next = 0;
-ubyte * Piggy_bitmap_cache_data = NULL;
-static int GameBitmapOffset[MAX_BITMAP_FILES];
-static ubyte GameBitmapFlags[MAX_BITMAP_FILES];
-ushort GameBitmapXlat[MAX_BITMAP_FILES];
-
-#define PIGGY_BUFFER_SIZE (2048*1024)
-
-int piggy_page_flushed = 0;
-
-typedef struct DiskBitmapHeader {
-	char name[8];
-	ubyte dflags;
-	ubyte	width;	
-	ubyte height;
-	ubyte flags;
-	ubyte avg_color;
-	int offset;
-} DiskBitmapHeader;
-
-typedef struct DiskSoundHeader {
-	char name[8];
-	int length;
-	int data_length;
-	int offset;
-} DiskSoundHeader;
-
-ubyte BigPig = 0;
-
-// ASCENT: the sizes of the two headers in the PIG file. The structures had
-// 1 byte packing. sizeof() of the structures above is larger now, so the
-// code reads the fields one at a time and uses these sizes for the offsets.
 #define DISK_BITMAP_HEADER_SIZE	17		// 8+1+1+1+1+1+4
-#define DISK_SOUND_HEADER_SIZE	20		// 8+4+4+4
+#define DISK_SOUND_HEADER_SIZE	24		// 8+4+4+4+4
+#define DISK_SOUND_HEADER_SIZE_OLD	20		// 8+4+4+4, the header of Descent 1
+#define DISK_MODEL_HEADER_SIZE	DTU_MODEL_HEADER_SIZE
 
-static void read_disk_bitmap_header( DiskBitmapHeader *bmh, CFILE *fp )
-{
-	ubyte buf[DISK_BITMAP_HEADER_SIZE];
-	const ubyte *p = buf;
+// The archives that are loaded now.
+#define MAX_EGG_FILES	8
 
-	memset( buf, 0, sizeof(buf) );
-	cfread( buf, DISK_BITMAP_HEADER_SIZE, 1, fp );
-	dio_get_bytes( &p, bmh->name, 8 );
-	bmh->dflags = dio_get_ubyte( &p );
-	bmh->width = dio_get_ubyte( &p );
-	bmh->height = dio_get_ubyte( &p );
-	bmh->flags = dio_get_ubyte( &p );
-	bmh->avg_color = dio_get_ubyte( &p );
-	bmh->offset = dio_get_int( &p );
-}
+typedef struct egg_file {
+	char		name[16];
+	ubyte		*data;
+	int		size;
+	int		n_bitmaps, n_sounds, n_models;
+	int		first_bitmap, first_sound, first_model;
+	int		bad_bitmaps, bad_sounds, bad_models;
+} egg_file;
 
-static void read_disk_sound_header( DiskSoundHeader *sndh, CFILE *fp )
-{
-	ubyte buf[DISK_SOUND_HEADER_SIZE];
-	const ubyte *p = buf;
+static egg_file Eggs[MAX_EGG_FILES];
+static int Num_eggs = 0;
 
-	memset( buf, 0, sizeof(buf) );
-	cfread( buf, DISK_SOUND_HEADER_SIZE, 1, fp );
-	dio_get_bytes( &p, sndh->name, 8 );
-	sndh->length = dio_get_int( &p );
-	sndh->data_length = dio_get_int( &p );
-	sndh->offset = dio_get_int( &p );
-}
+static int Piggy_initialized = 0;
 
-// ASCENT: when this is 0, piggy_init() does not read the game tables
-// (bm_read_all) from the PIG file. bm_init_use_tbl() clears it, because the
-// tables then come from BITMAPS.TBL. The original made this choice at compile
-// time: the editor build read the tables from the PIG file only with -nobm.
-int Piggy_read_tables = 1;
-
-void piggy_bitmap_page_out_all();
-int piggy_is_substitutable_bitmap( char * name, char * subst_name );
-
-
-//#define BUILD_PSX_DATA 1
-
-#ifdef BUILD_PSX_DATA
-FILE * count_file = NULL;
-
-int num_good=0,num_bad=0;
-int num_good64=0,num_bad64=0;
-
-void close_count_file()
-{
- 	if ( count_file )	{
-		fprintf( count_file,"Good = %d\n", num_good );
-		fprintf( count_file,"Bad = %d\n", num_bad );
-		fprintf( count_file,"64Good = %d\n", num_good64 );
-		fprintf( count_file,"64Bad = %d\n", num_bad64 );
-		fclose(count_file);
-		count_file=NULL;
-	}
-}
-
-void count_colors( int bnum, grs_bitmap * bmp )
-{
-	int i,colors;
-	ushort n[256];
-
-	quantize_colors( bnum, bmp );
-
-	if ( count_file == NULL )	{
-		atexit( close_count_file );
-		count_file = fopen( "bitmap.cnt", "wt" );
-	}
-	for (i=0; i<256; i++ )
-		n[i] = 0;
-
-	for (i=0; i<bmp->bm_w*bmp->bm_h; i++ )	{
-		n[bmp->bm_data[i]]++;
-	}
-
-	colors = 0;
-	for (i=0; i<256; i++ )
-		if (n[i]) colors++;
-
-	if ( colors > 16 )	{
-		if ( (bmp->bm_w==64) && (bmp->bm_h==64) ) num_bad64++;
-		num_bad++;
-		fprintf( count_file, "Bmp has %d colors (%d x %d)\n", colors, bmp->bm_w, bmp->bm_h );
-	} else {
-		if ( (bmp->bm_w==64) && (bmp->bm_h==64) ) num_good64++;
-		num_good++;
-	}
-}
-#endif
+ubyte bogus_data[64*64];
+grs_bitmap bogus_bitmap;
+ubyte bogus_bitmap_initialized=0;
+digi_sound bogus_sound;
 
 void piggy_get_bitmap_name( int i, char * name )
 {
 	strncpy( name, AllBitmaps[i].name, 12 );
 	name[12] = 0;
+}
+
+int piggy_get_bitmap_disk_flags( int i )
+{
+	if ( i < 0 || i >= Num_bitmap_files ) return 0;
+	return GameBitmapDiskFlags[i];
 }
 
 bitmap_index piggy_register_bitmap( grs_bitmap * bmp, char * name, int in_file )
@@ -547,19 +488,16 @@ bitmap_index piggy_register_bitmap( grs_bitmap * bmp, char * name, int in_file )
 
 	temp.index = Num_bitmap_files;
 
-
-	if (!in_file)	{
-		if ( !BigPig )	gr_bitmap_rle_compress( bmp );
-		Num_bitmap_files_new++;
-	}
-
 	strncpy( AllBitmaps[Num_bitmap_files].name, name, 12 );
-	hashtable_insert( &AllBitmapsNames, AllBitmaps[Num_bitmap_files].name, Num_bitmap_files );
+	AllBitmaps[Num_bitmap_files].name[12] = 0;
+	// ASCENT: two archives can hold a bitmap of the same name (a player
+	// archive and a level archive). The first one keeps the name. The
+	// second one still gets a number.
+	if ( hashtable_search( &AllBitmapsNames, AllBitmaps[Num_bitmap_files].name ) < 0 )
+		hashtable_insert( &AllBitmapsNames, AllBitmaps[Num_bitmap_files].name, Num_bitmap_files );
 	GameBitmaps[Num_bitmap_files] = *bmp;
-	if ( !in_file )	{
-		GameBitmapOffset[Num_bitmap_files] = 0;
-		GameBitmapFlags[Num_bitmap_files] = bmp->bm_flags;
-	}
+	if ( !in_file )
+		GameBitmapDiskFlags[Num_bitmap_files] = bmp->bm_flags;
 	Num_bitmap_files++;
 
 	return temp;
@@ -572,22 +510,17 @@ int piggy_register_sound( digi_sound * snd, char * name, int in_file )
 	Assert( Num_sound_files < MAX_SOUND_FILES );
 
 	strncpy( AllSounds[Num_sound_files].name, name, 12 );
-	hashtable_insert( &AllDigiSndNames, AllSounds[Num_sound_files].name, Num_sound_files );
+	AllSounds[Num_sound_files].name[12] = 0;
+	if ( hashtable_search( &AllDigiSndNames, AllSounds[Num_sound_files].name ) < 0 )
+		hashtable_insert( &AllDigiSndNames, AllSounds[Num_sound_files].name, Num_sound_files );
 	GameSounds[Num_sound_files] = *snd;
-	if ( !in_file )	{
-		SoundOffset[Num_sound_files] = 0;	
-	}
 
 	i = Num_sound_files;
-   
-	if (!in_file)
-		Num_sound_files_new++;
-
 	Num_sound_files++;
 	return i;
 }
 
-bitmap_index piggy_find_bitmap( char * name )	
+bitmap_index piggy_find_bitmap( char * name )
 {
 	bitmap_index bmp;
 	int i;
@@ -603,71 +536,65 @@ bitmap_index piggy_find_bitmap( char * name )
 	return bmp;
 }
 
-int piggy_find_sound( char * name )	
+// ASCENT: returns SOUND_FILE_NONE if there is no such sound. Descent 1
+// returned 255, which is a valid sound file number now.
+int piggy_find_sound( char * name )
 {
 	int i;
 
 	i = hashtable_search( &AllDigiSndNames, name );
 
 	if ( i < 0 )
-		return 255;
+		return SOUND_FILE_NONE;
 
 	return i;
 }
 
-CFILE * Piggy_fp = NULL;
-
-void piggy_close_file()
+int piggy_get_sound_rate( int i )
 {
-	if ( Piggy_fp )	{
-		cfclose( Piggy_fp );
-		Piggy_fp	= NULL;
-	}
+	if ( i < 0 || i >= Num_sound_files ) return 0;
+	return GameSoundRate[i];
 }
 
-ubyte bogus_data[64*64];
-grs_bitmap bogus_bitmap;
-ubyte bogus_bitmap_initialized=0;
-digi_sound bogus_sound;
-
-extern void bm_read_all(CFILE * fp);
-
-int piggy_init()
+short *piggy_get_sound_16( int i, int *n_values, int *channels )
 {
-	int sbytes = 0;
-	char temp_name_read[16];
-	char temp_name[16];
-	grs_bitmap temp_bitmap;
-	digi_sound temp_sound;
-	DiskBitmapHeader bmh;
-	DiskSoundHeader sndh;
-	int header_size, N_bitmaps, N_sounds;
-	int i,size, length, x, y;
-	char * filename;
-	int read_sounds = 1;
-	int Pigdata_start;
+	if ( i < 0 || i >= Num_sound_files ) return NULL;
+	if ( n_values ) *n_values = GameSoundValues[i];
+	if ( channels ) *channels = GameSoundChannels[i];
+	return GameSounds16[i];
+}
 
-	hashtable_init( &AllBitmapsNames, MAX_BITMAP_FILES );
-	hashtable_init( &AllDigiSndNames, MAX_SOUND_FILES );
+void piggy_get_sound_name( int i, char * name )
+{
+	strncpy( name, AllSounds[i].name, 12 );
+	name[12] = 0;
+}
 
-	if ( FindArg( "-nosound" ) || (digi_driver_board<1) )		{
-		read_sounds = 0;
-		mprintf(( 0, "Not loading sound data!!!!!\n" ));
-	}
-	
+static void piggy_reset_tables()
+{
+	int i;
+
 	for (i=0; i<MAX_SOUND_FILES; i++ )	{
 		GameSounds[i].length = 0;
 		GameSounds[i].data = NULL;
-		SoundOffset[i] = 0;
+		GameSounds16[i] = NULL;
+		GameSoundRate[i] = 0;
+		GameSoundChannels[i] = 0;
+		GameSoundValues[i] = 0;
+		GameSoundDiskFlags[i] = 0;
 	}
 
 	for (i=0; i<MAX_BITMAP_FILES; i++ )		{
 		GameBitmapXlat[i] = i;
-		GameBitmaps[i].bm_flags = BM_FLAG_PAGED_OUT;
+		GameBitmapDiskFlags[i] = 0;
+		memset( &GameBitmaps[i], 0, sizeof(grs_bitmap) );
 	}
 
+	Num_bitmap_files = 0;
+	Num_sound_files = 0;
+
+	// Bitmap 0 is the bogus bitmap, as in Descent 1.
 	if ( !bogus_bitmap_initialized )	{
-		int i;
 		ubyte c;
 		bogus_bitmap_initialized = 1;
 		memset( &bogus_bitmap, 0, sizeof(grs_bitmap) );
@@ -681,280 +608,435 @@ int piggy_init()
 			bogus_data[i*64+i] = c;
 			bogus_data[i*64+(63-i)] = c;
 		}
-		piggy_register_bitmap( &bogus_bitmap, "bogus", 1 );
 		bogus_sound.length = 64*64;
 		bogus_sound.data = bogus_data;
-		GameBitmapOffset[0] = 0;
 	}
+	piggy_register_bitmap( &bogus_bitmap, "bogus", 1 );
+}
 
-	filename = "DESCENT.PIG";
-	
-	if ( FindArg( "-bigpig" ))
-		BigPig = 1;
+// ASCENT: Descent 1 opened DESCENT.PIG here and read all the headers. Now
+// this function only sets up the empty tables. piggy_load_egg() adds the
+// contents of an archive.
+int piggy_init()
+{
+	if ( Piggy_initialized )
+		return 0;
+	Piggy_initialized = 1;
+
+	hashtable_init( &AllBitmapsNames, MAX_BITMAP_FILES*2 );
+	hashtable_init( &AllDigiSndNames, MAX_SOUND_FILES*2 );
 
 	if ( FindArg( "-lowmem" ))
-		piggy_low_memory = 1;
+		piggy_low_memory = 0;		// ASCENT: there is no low memory mode
 
-	if ( FindArg( "-nolowmem" ))
-		piggy_low_memory = 0;
+	piggy_reset_tables();
 
-	if (piggy_low_memory)
-		digi_lomem = 1;
+	atexit( piggy_close );
 
-	if ( (i=FindArg( "-piggy" )) )	{
-		filename	= Args[i+1];
-		mprintf( (0, "Using alternate pigfile, '%s'\n", filename ));
-	}
-	Piggy_fp = cfopen( filename, "rb" );
-	if (Piggy_fp==NULL) return 0;
+	return 0;
+}
 
-	Pigdata_start = cf_get_int( Piggy_fp );		// ASCENT: little endian field read
-#ifdef EDITOR
-	if ( FindArg("-nobm") )
-#else
-	// ASCENT: see Piggy_read_tables above. -nobm works as in the editor build.
-	if ( Piggy_read_tables || FindArg("-nobm") )
-#endif
-	{
-		bm_read_all( Piggy_fp );	// Note connection to above if!!!
-		// ASCENT: was one cfread of the whole ushort array
-		for (i=0; i<MAX_BITMAP_FILES; i++ )
-			GameBitmapXlat[i] = cf_get_ushort( Piggy_fp );
+// Release all archives. The bitmap, sound and model tables are empty
+// afterwards (bitmap 0 is the bogus bitmap again).
+void piggy_free_all()
+{
+	int i;
+
+	if ( !Piggy_initialized )	{
+		piggy_init();
+		return;
 	}
 
-	cfseek( Piggy_fp, Pigdata_start, SEEK_SET );
-	size = cfilelength(Piggy_fp) - Pigdata_start;
-	length = size;
-	mprintf( (0, "\nReading data (%d KB) ", size/1024 ));
+	// Bitmaps that the texture merge cache and the RLE cache made from
+	// archive bitmaps are not valid any more.
+	texmerge_flush();
+	rle_cache_flush();
 
-	// ASCENT: little endian field reads, and the header sizes on disk
-	// in place of sizeof() of the structures.
-	N_bitmaps = cf_get_int( Piggy_fp );
-	size -= sizeof(int);
-	N_sounds = cf_get_int( Piggy_fp );
-	size -= sizeof(int);
+	for (i=0; i<Num_sound_files; i++ )	{
+		if ( GameSounds[i].data && GameSounds[i].data != bogus_data )
+			free( GameSounds[i].data );
+		if ( GameSounds16[i] )
+			free( GameSounds16[i] );
+	}
 
-	header_size = (N_bitmaps*DISK_BITMAP_HEADER_SIZE) + (N_sounds*DISK_SOUND_HEADER_SIZE);
+	for (i=0; i<Num_eggs; i++ )	{
+		if ( Eggs[i].data )
+			free( Eggs[i].data );
+		Eggs[i].data = NULL;
+	}
+	Num_eggs = 0;
 
-	x = 60; y = 189;
+	polyobj_free_all_models();
 
-	gr_set_curfont( Gamefonts[GFONT_SMALL] );	
-	gr_set_fontcolor(gr_find_closest_color_current( 20, 20, 20 ),-1 );
-	gr_printf( 0x8000, y-10, "%s...", TXT_LOADING_DATA );
+	hashtable_free( &AllBitmapsNames );
+	hashtable_free( &AllDigiSndNames );
+	hashtable_init( &AllBitmapsNames, MAX_BITMAP_FILES*2 );
+	hashtable_init( &AllDigiSndNames, MAX_SOUND_FILES*2 );
 
-	for (i=0; i<N_bitmaps; i++ )	{
-		read_disk_bitmap_header( &bmh, Piggy_fp );		// ASCENT: field read
-		//size -= sizeof(DiskBitmapHeader);
-		memcpy( temp_name_read, bmh.name, 8 );
+	piggy_reset_tables();
+}
+
+// Check the data of one RLE bitmap: the total size, one size byte for each
+// row, and rows that end exactly at the total size. Returns 0 if not valid.
+static int piggy_check_rle( const ubyte *p, int avail, int w, int h )
+{
+	int total, i, sum, x, row_end;
+	const ubyte *row;
+
+	if ( avail < 4 + h )
+		return 0;
+	total = p[0] | (p[1]<<8) | (p[2]<<16) | ((int)p[3]<<24);
+	if ( total < 4 + h || total > avail )
+		return 0;
+	sum = 4 + h;
+	for (i=0; i<h; i++ )
+		sum += p[4+i];
+	if ( sum != total )
+		return 0;
+
+	// Each row must give exactly w pixels.
+	row = p + 4 + h;
+	for (i=0; i<h; i++ )	{
+		row_end = p[4+i];
+		x = 0;
+		{
+			int k = 0;
+			while ( k < row_end )	{
+				ubyte c = row[k++];
+				if ( (c & 0xE0) == 0xE0 )	{
+					int count = c & 0x1F;
+					if ( count == 0 )
+						break;
+					if ( k >= row_end )
+						return 0;
+					k++;
+					x += count;
+				} else
+					x++;
+			}
+		}
+		if ( x != w )
+			return 0;
+		row += row_end;
+	}
+	return 1;
+}
+
+static int egg_get_int( const ubyte *p )
+{
+	return (int)( p[0] | (p[1]<<8) | (p[2]<<16) | ((unsigned)p[3]<<24) );
+}
+
+// Convert a decoded sound to the unsigned 8-bit mono form of digi_sound.
+static ubyte *piggy_make_8bit( const short *s16, int n_values, int channels, int *length )
+{
+	int n = n_values / channels;
+	ubyte *d;
+	int i, v;
+
+	d = (ubyte *) malloc( n + 1 );
+	if ( d == NULL )
+		return NULL;
+	for (i=0; i<n; i++ )	{
+		if ( channels == 2 )
+			v = (s16[i*2] + s16[i*2+1]) / 2;
+		else
+			v = s16[i];
+		d[i] = (ubyte)((v >> 8) + 128);
+	}
+	*length = n;
+	return d;
+}
+
+// 1 if a model header can start at ofs: the name field holds "name.pof".
+static int egg_is_model_header( const ubyte *data, int size, int ofs )
+{
+	const ubyte *name;
+	int i;
+
+	if ( ofs < 0 || ofs + DISK_MODEL_HEADER_SIZE > size )
+		return 0;
+	name = data + ofs + 0x3D;
+	for (i=1; i<9; i++ )
+		if ( name[i] == '.' )
+			return tolower(name[i+1]) == 'p' && tolower(name[i+2]) == 'o' && tolower(name[i+3]) == 'f' && name[i+4] == 0;
+	return 0;
+}
+
+// Load one EGG archive (NAME.EGG, or the packed NAME.COW) and add its
+// bitmaps, sounds and polygon models to the tables. Returns the number of
+// the archive (0 for the first one), or -1 if the file is missing or not
+// valid. piggy_get_egg_counts() gives the counts.
+int piggy_load_egg( char * filename )
+{
+	egg_file *egg;
+	ubyte *data;
+	int size, n_bitmaps, n_sounds, n_models, header_size, data_start;
+	int i, read_sounds = 1;
+	int sound_header_size = DISK_SOUND_HEADER_SIZE;
+	const ubyte *h;
+	char temp_name_read[16];
+	char temp_name[16];
+	grs_bitmap temp_bitmap;
+	digi_sound temp_sound;
+
+	piggy_init();
+
+	if ( Num_eggs >= MAX_EGG_FILES )	{
+		dtu_log( "Too many EGG archives\n" );
+		return -1;
+	}
+
+	data = dtu_load_file( filename, &size );
+	if ( data == NULL )	{
+		dtu_log( "Cannot load EGG archive '%s'\n", filename );
+		return -1;
+	}
+
+	if ( size < 12 )	{
+		free( data );
+		return -1;
+	}
+
+	n_bitmaps = egg_get_int( data );
+	n_sounds = egg_get_int( data+4 );
+	n_models = egg_get_int( data+8 );
+
+	// ASCENT: the file has no magic number. Check the counts against the
+	// limits of the game and against the file size.
+	if ( n_bitmaps < 0 || n_sounds < 0 || n_models < 0 ||
+		  n_bitmaps > MAX_BITMAP_FILES || n_sounds > MAX_SOUND_FILES || n_models > MAX_POLYGON_MODELS )	{
+		dtu_log( "EGG archive '%s': bad counts %d, %d, %d\n", filename, n_bitmaps, n_sounds, n_models );
+		free( data );
+		return -1;
+	}
+	// ASCENT: two archives of the disc (DEMO.EGG and FFM.EGG) have an older
+	// layout: the sound header is the 20 bytes of Descent 1, without the
+	// flags, and the sounds are raw 8-bit samples. The file does not say
+	// which layout it has. The model headers do: the name of a model ends
+	// with ".pof" only if the size of the sound headers before it is right.
+	if ( n_sounds > 0 && n_models > 0 )	{
+		int ofs24 = 12 + n_bitmaps*DISK_BITMAP_HEADER_SIZE + n_sounds*DISK_SOUND_HEADER_SIZE;
+		int ofs20 = 12 + n_bitmaps*DISK_BITMAP_HEADER_SIZE + n_sounds*DISK_SOUND_HEADER_SIZE_OLD;
+		if ( !egg_is_model_header( data, size, ofs24 ) && egg_is_model_header( data, size, ofs20 ) )	{
+			sound_header_size = DISK_SOUND_HEADER_SIZE_OLD;
+			dtu_log( "EGG archive '%s' has the old sound headers (20 bytes, raw samples)", filename );
+		}
+	}
+	header_size = n_bitmaps*DISK_BITMAP_HEADER_SIZE + n_sounds*sound_header_size + n_models*DISK_MODEL_HEADER_SIZE;
+	data_start = header_size + 12;
+	if ( data_start > size ||
+		  Num_bitmap_files + n_bitmaps > MAX_BITMAP_FILES ||
+		  Num_sound_files + n_sounds > MAX_SOUND_FILES ||
+		  N_polygon_models + n_models > MAX_POLYGON_MODELS )	{
+		dtu_log( "EGG archive '%s': tables too large (%d, %d, %d)\n", filename, n_bitmaps, n_sounds, n_models );
+		free( data );
+		return -1;
+	}
+
+	egg = &Eggs[Num_eggs];
+	memset( egg, 0, sizeof(*egg) );
+	strncpy( egg->name, filename, 15 );
+	egg->data = data;
+	egg->size = size;
+	egg->n_bitmaps = n_bitmaps;
+	egg->n_sounds = n_sounds;
+	egg->n_models = n_models;
+	egg->first_bitmap = Num_bitmap_files;
+	egg->first_sound = Num_sound_files;
+	egg->first_model = N_polygon_models;
+
+	if ( FindArg( "-nosound" ) )
+		read_sounds = 0;
+
+	// Bitmaps
+	h = data + 12;
+	for (i=0; i<n_bitmaps; i++, h += DISK_BITMAP_HEADER_SIZE )	{
+		int dflags = h[8];
+		int width = h[9];
+		int height = h[10];
+		int flags = h[11];
+		int offset = egg_get_int( h+13 ) + data_start;
+		int ok;
+
+		memcpy( temp_name_read, h, 8 );
 		temp_name_read[8] = 0;
-		if ( bmh.dflags & DBM_FLAG_ABM )	
-			sprintf( temp_name, "%s#%d", temp_name_read, bmh.dflags & 63 );
+		if ( dflags & DBM_FLAG_ABM )
+			sprintf( temp_name, "%s#%d", temp_name_read, dflags & 63 );
 		else
 			strcpy( temp_name, temp_name_read );
+
+		if ( dflags & DBM_FLAG_LARGE )
+			width += 256;
+
 		memset( &temp_bitmap, 0, sizeof(grs_bitmap) );
-		if ( bmh.dflags & DBM_FLAG_LARGE )
-			temp_bitmap.bm_w = temp_bitmap.bm_rowsize = bmh.width+256;
-		else
-			temp_bitmap.bm_w = temp_bitmap.bm_rowsize = bmh.width;
-		temp_bitmap.bm_h = bmh.height;
-		temp_bitmap.bm_flags = BM_FLAG_PAGED_OUT;
-		temp_bitmap.avg_color = bmh.avg_color;
-		temp_bitmap.bm_data = Piggy_bitmap_cache_data;
+		temp_bitmap.bm_w = temp_bitmap.bm_rowsize = width;
+		temp_bitmap.bm_h = height;
+		temp_bitmap.avg_color = h[12];
+		temp_bitmap.bm_flags = 0;
+		if ( flags & BM_FLAG_TRANSPARENT ) temp_bitmap.bm_flags |= BM_FLAG_TRANSPARENT;
+		if ( flags & BM_FLAG_SUPER_TRANSPARENT ) temp_bitmap.bm_flags |= BM_FLAG_SUPER_TRANSPARENT;
+		if ( flags & BM_FLAG_NO_LIGHTING ) temp_bitmap.bm_flags |= BM_FLAG_NO_LIGHTING;
+		if ( flags & BM_FLAG_RLE ) temp_bitmap.bm_flags |= BM_FLAG_RLE;
+		// Bit 16 of the file (BM_FLAG_PAGED_OUT) is not copied: the data is
+		// in memory. Bit 64 has no place in the 8 flag bits of the 2d
+		// library. piggy_get_bitmap_disk_flags() returns all the bits.
 
-		GameBitmapFlags[i+1] = 0;
-		if ( bmh.flags & BM_FLAG_TRANSPARENT ) GameBitmapFlags[i+1] |= BM_FLAG_TRANSPARENT;
-		if ( bmh.flags & BM_FLAG_SUPER_TRANSPARENT ) GameBitmapFlags[i+1] |= BM_FLAG_SUPER_TRANSPARENT;
-		if ( bmh.flags & BM_FLAG_NO_LIGHTING ) GameBitmapFlags[i+1] |= BM_FLAG_NO_LIGHTING;
-		if ( bmh.flags & BM_FLAG_RLE ) GameBitmapFlags[i+1] |= BM_FLAG_RLE;
+		ok = (offset >= data_start && offset < size && width > 0 && height > 0);
+		if ( ok )	{
+			if ( flags & BM_FLAG_RLE )
+				ok = piggy_check_rle( data+offset, size-offset, width, height );
+			else
+				ok = (offset + width*height <= size);
+		}
 
-		GameBitmapOffset[i+1] = bmh.offset + header_size + (sizeof(int)*2) + Pigdata_start;
-		Assert( (i+1) == Num_bitmap_files );
+		if ( ok )
+			temp_bitmap.bm_data = data + offset;
+		else	{
+			// The bitmap is not valid. Show the bogus bitmap in its place.
+			temp_bitmap = bogus_bitmap;
+			egg->bad_bitmaps++;
+			dtu_log( "EGG archive '%s': bitmap %d '%s' is not valid\n", filename, i, temp_name );
+		}
+
+		GameBitmapDiskFlags[Num_bitmap_files] = flags;
 		piggy_register_bitmap( &temp_bitmap, temp_name, 1 );
 	}
 
-	for (i=0; i<N_sounds; i++ )	{
-		read_disk_sound_header( &sndh, Piggy_fp );		// ASCENT: field read
-		//size -= sizeof(DiskSoundHeader);
-		temp_sound.length = sndh.length;
-		// ASCENT: the original stored the file offset in the data pointer
-		// until piggy_read_sounds() loaded the sound. A file offset is not a
-		// pointer on a 64-bit system. The offset is in SoundOffset[]. The
-		// pointer is NULL until the sound is loaded.
-		temp_sound.data = NULL;
-		SoundOffset[Num_sound_files] = sndh.offset + header_size + (sizeof(int)*2)+Pigdata_start;
-		memcpy( temp_name_read, sndh.name, 8 );
+	// Sounds
+	for (i=0; i<n_sounds; i++, h += sound_header_size )	{
+		int data_length = egg_get_int( h+12 );
+		int offset = egg_get_int( h+16 ) + data_start;
+		int n = Num_sound_files;
+		acm_info info;
+
+		memcpy( temp_name_read, h, 8 );
 		temp_name_read[8] = 0;
+
+		temp_sound.length = 0;
+		temp_sound.data = NULL;
+		GameSoundDiskFlags[n] = (sound_header_size == DISK_SOUND_HEADER_SIZE) ? egg_get_int( h+20 ) : 0;
+		GameSounds16[n] = NULL;
+		GameSoundRate[n] = 0;
+		GameSoundChannels[n] = 0;
+		GameSoundValues[n] = 0;
+
+		if ( offset < data_start || data_length < 0 || offset > size || data_length > size - offset )	{
+			egg->bad_sounds++;
+			dtu_log( "EGG archive '%s': sound %d '%s' is outside the file\n", filename, i, temp_name_read );
+		} else if ( sound_header_size == DISK_SOUND_HEADER_SIZE_OLD )	{
+			// Old layout: unsigned 8-bit samples, as in the Descent 1 PIG file.
+			// Guess: the sample rate is the 11025 of Descent 1. No 16-bit copy.
+			GameSoundRate[n] = 11025;
+			GameSoundChannels[n] = 1;
+			if ( read_sounds && data_length > 0 )	{
+				temp_sound.data = (ubyte *) malloc( data_length );
+				if ( temp_sound.data )	{
+					memcpy( temp_sound.data, data+offset, data_length );
+					temp_sound.length = data_length;
+				}
+			}
+		} else if ( acm_get_info( data+offset, data_length, &info ) )	{
+			GameSoundRate[n] = info.rate;
+			GameSoundChannels[n] = info.channels;
+			if ( read_sounds )	{
+				GameSounds16[n] = acm_decode( data+offset, data_length, &info );
+				if ( GameSounds16[n] )	{
+					GameSoundValues[n] = info.total;
+					temp_sound.data = piggy_make_8bit( GameSounds16[n], info.total, info.channels, &temp_sound.length );
+				} else {
+					egg->bad_sounds++;
+					dtu_log( "EGG archive '%s': sound %d '%s' does not decode\n", filename, i, temp_name_read );
+				}
+			}
+		} else {
+			// Not an ACM stream. DTUGAME.EXE refuses such a sound ("DTU no
+			// longer supports uncompressed sounds"). No shipped archive has one.
+			egg->bad_sounds++;
+			dtu_log( "EGG archive '%s': sound %d '%s' is not an ACM stream\n", filename, i, temp_name_read );
+		}
+
 		piggy_register_sound( &temp_sound, temp_name_read, 1 );
-		sbytes += sndh.length;
-		//mprintf(( 0, "%d bytes of sound\n", sbytes ));
 	}
 
-	SoundBits = malloc( sbytes + 16 );
-	if ( SoundBits == NULL )
-		Error( "Not enough memory to load DESCENT.PIG sounds\n" );
+	// Polygon models
+	for (i=0; i<n_models; i++, h += DISK_MODEL_HEADER_SIZE )	{
+		int offset = egg_get_int( h+0x38 ) + data_start;
+		int mn = -1;
 
-#ifdef EDITOR
-	Piggy_bitmap_cache_size	= size - header_size - sbytes + 16;
-	Assert( Piggy_bitmap_cache_size > 0 );
-#else
-	Piggy_bitmap_cache_size = PIGGY_BUFFER_SIZE;
-#endif
-	BitmapBits = malloc( Piggy_bitmap_cache_size );
-	if ( BitmapBits == NULL )
-		Error( "Not enough memory to load DESCENT.PIG bitmaps\n" );
-	Piggy_bitmap_cache_data = BitmapBits;	
-	Piggy_bitmap_cache_next = 0;
-	
-	mprintf(( 0, "\nBitmaps: %d KB   Sounds: %d KB\n", Piggy_bitmap_cache_size/1024, sbytes/1024 ));
+		if ( offset >= data_start && offset < size )
+			mn = polyobj_load_dtu_model( h, data+offset, size-offset );
+		if ( mn < 0 )	{
+			// Keep the numbering of the models that follow: register an
+			// empty model with the name of the bad one.
+			egg->bad_models++;
+			dtu_log( "EGG archive '%s': model %d is not valid\n", filename, i );
+			if ( N_polygon_models < MAX_POLYGON_MODELS )	{
+				memset( &Polygon_models[N_polygon_models], 0, sizeof(polymodel) );
+				Pof_names[N_polygon_models][0] = 0;
+				N_polygon_models++;
+			}
+		}
+	}
 
-	atexit(piggy_close_file);
+	// ASCENT: the sounds of all archives have one sample rate (22050 in all
+	// the shipped files). The mixer of digi.c plays every sound at
+	// digi_sample_rate.
+	for (i=egg->first_sound; i<Num_sound_files; i++ )
+		if ( GameSoundRate[i] > 0 )	{
+			digi_sample_rate = GameSoundRate[i];
+			break;
+		}
 
-//	mprintf( (0, "<<<<Paging in all piggy bitmaps...>>>>>" ));
-//	for (i=0; i < Num_bitmap_files; i++ )	{
-//		bitmap_index bi;
-//		bi.index = i;
-//		PIGGY_PAGE_IN( bi );
-//	}
-//	mprintf( (0, "\n (USed %d / %d KB)\n", Piggy_bitmap_cache_next/1024, (size - header_size - sbytes + 16)/1024 ));
-//	key_getch();
+	dtu_log( "EGG archive '%s': %d bitmaps, %d sounds, %d models\n", filename, n_bitmaps, n_sounds, n_models );
 
-	return 0;
+	return Num_eggs++;
+}
+
+int piggy_get_num_eggs()
+{
+	return Num_eggs;
+}
+
+// The counts and the first table numbers of a loaded archive. Any pointer
+// can be NULL. Returns the number of entries that were not valid.
+int piggy_get_egg_counts( int egg_num, int *n_bitmaps, int *n_sounds, int *n_models, int *first_bitmap, int *first_sound, int *first_model )
+{
+	egg_file *egg;
+
+	if ( egg_num < 0 || egg_num >= Num_eggs )
+		return -1;
+	egg = &Eggs[egg_num];
+	if ( n_bitmaps ) *n_bitmaps = egg->n_bitmaps;
+	if ( n_sounds ) *n_sounds = egg->n_sounds;
+	if ( n_models ) *n_models = egg->n_models;
+	if ( first_bitmap ) *first_bitmap = egg->first_bitmap;
+	if ( first_sound ) *first_sound = egg->first_sound;
+	if ( first_model ) *first_model = egg->first_model;
+	return egg->bad_bitmaps + egg->bad_sounds + egg->bad_models;
 }
 
 int piggy_is_needed(int soundnum)
 {
-	int i;
-
-	if ( !digi_lomem ) return 1;
-
-	for (i=0; i<MAX_SOUNDS; i++ )	{
-		if ( (AltSounds[i] < 255) && (Sounds[AltSounds[i]] == soundnum) )
-			return 1;
-	}
-	return 0;
+	return 1;
 }
 
+// ASCENT: the sounds are decoded when the archive is loaded.
 void piggy_read_sounds()
 {
-	ubyte * ptr;
-	int i, sbytes;
-
-	ptr = SoundBits;
-	sbytes = 0;
-
-	for (i=0; i<Num_sound_files; i++ )	{
-		digi_sound *snd = &GameSounds[i];
-
-		if ( SoundOffset[i] > 0 )	{
-			if ( piggy_is_needed(i) )	{
-				cfseek( Piggy_fp, SoundOffset[i], SEEK_SET );
-	
-				// Read in the sound data!!!
-				snd->data = ptr;
-				ptr += snd->length;
-				sbytes += snd->length;
-				cfread( snd->data, snd->length, 1, Piggy_fp );
-			}
-		}
-	}
-
-	mprintf(( 0, "\nActual Sound usage: %d KB\n", sbytes/1024 ));
-
 }
 
-// ASCENT: piggy_critical_error() and the checks of descent_critical_error
-// are removed. They handled the DOS critical error interrupt (int 24h,
-// "drive not ready") with a retry box. There is no such interrupt now. A
-// read error leaves the bitmap data as it is.
-
+// ASCENT: no bitmap is paged out. See the comment at the top.
 void piggy_bitmap_page_in( bitmap_index bitmap )
 {
-	grs_bitmap * bmp;
-	int i,org_i,temp;
-			
-	i = bitmap.index;
-	Assert( i >= 0 );
-	Assert( i < MAX_BITMAP_FILES );
-	Assert( i < Num_bitmap_files );
-	Assert( Piggy_bitmap_cache_size > 0 );
-
-	if ( i < 1 ) return;
-	if ( i >= MAX_BITMAP_FILES ) return;
-	if ( i >= Num_bitmap_files ) return;
-
-	if ( GameBitmapOffset[i] == 0 ) return;		// A read-from-disk bitmap!!!
-
-	if ( piggy_low_memory )	{
-		org_i = i;
-		i = GameBitmapXlat[i];		// Xlat for low-memory settings!
-	}
-	bmp = &GameBitmaps[i];
-	
-	if ( bmp->bm_flags & BM_FLAG_PAGED_OUT )	{
-		stop_time();
-
-	ReDoIt:
-		cfseek( Piggy_fp, GameBitmapOffset[i], SEEK_SET );
-		
-		bmp->bm_data = &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next];
-		bmp->bm_flags = GameBitmapFlags[i];
-	
-		if ( bmp->bm_flags & BM_FLAG_RLE )	{
-			int zsize = 0;
-			zsize = cf_get_int( Piggy_fp );		// ASCENT: little endian field read
-	
-			// GET JOHN NOW IF YOU GET THIS ASSERT!!!
-			Assert( Piggy_bitmap_cache_next+zsize < Piggy_bitmap_cache_size );	
-			if ( Piggy_bitmap_cache_next+zsize >= Piggy_bitmap_cache_size )	{
-				piggy_bitmap_page_out_all();
-				goto ReDoIt;
-			}
-			memcpy( &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next], &zsize, sizeof(int) );
-			Piggy_bitmap_cache_next += sizeof(int);
-			temp = cfread( &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next], 1, zsize-4, Piggy_fp );
-			Piggy_bitmap_cache_next += zsize-4;
-		} else {
-			// GET JOHN NOW IF YOU GET THIS ASSERT!!!
-			Assert( Piggy_bitmap_cache_next+(bmp->bm_h*bmp->bm_w) < Piggy_bitmap_cache_size );	
-			if ( Piggy_bitmap_cache_next+(bmp->bm_h*bmp->bm_w) >= Piggy_bitmap_cache_size )	{
-				piggy_bitmap_page_out_all();
-				goto ReDoIt;
-			}
-			temp = cfread( &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next], 1, bmp->bm_h*bmp->bm_w, Piggy_fp );
-			Piggy_bitmap_cache_next+=bmp->bm_h*bmp->bm_w;
-		}
-	
-		// ASCENT: the DPMI selector of the bitmap (bm_selector) is not used.
-		// The original changed the base of the selector to the new bm_data here.
-		start_time();
-	}
-
-	if ( piggy_low_memory )	{
-		if ( org_i != i )
-			GameBitmaps[org_i] = GameBitmaps[i];
-	}
-	
 }
 
 void piggy_bitmap_page_out_all()
 {
-	int i;
-	
-	Piggy_bitmap_cache_next = 0;
-
-	piggy_page_flushed++;
-
+	// The bitmaps stay in memory. The two caches are still flushed, as in
+	// Descent 1, because this is called when a new level starts.
 	texmerge_flush();
 	rle_cache_flush();
-
-	for (i=0; i<Num_bitmap_files; i++ )		{
-		if ( GameBitmapOffset[i] > 0 )	{	// Don't page out bitmaps read from disk!!!
-			GameBitmaps[i].bm_flags = BM_FLAG_PAGED_OUT;
-			GameBitmaps[i].bm_data = Piggy_bitmap_cache_data;
-		}
-	}
-
-	mprintf(( 0, "Flushing piggy bitmap cache\n" ));
 }
 
 void piggy_load_level_data()
@@ -963,267 +1045,34 @@ void piggy_load_level_data()
 	paging_touch_all();
 }
 
-#ifdef EDITOR
-void piggy_dump_all()
-{
-	int i, xlat_offset;
-	FILE * fp;
-#ifndef RELEASE
-	FILE * fp1;
-	FILE * fp2;
-#endif
-	char * filename;
-	int data_offset;
-	int org_offset;
-	DiskBitmapHeader bmh;
-	DiskSoundHeader sndh;
-	int header_offset;
-	char subst_name[32];
-
-	#ifdef NO_DUMP_SOUNDS
-	Num_sound_files = 0;
-	Num_sound_files_new = 0;
-	#endif
-
-//	{
-//	bitmap_index bi;
-//	bi.index = 614;
-//	PIGGY_PAGE_IN( bi );
-//	count_colors( bi.index, &GameBitmaps[bi.index] );
-//	key_getch();
-//	}
-//	{
-//	bitmap_index bi;
-//	bi.index = 478;
-//	PIGGY_PAGE_IN( bi );
-//	Int3();
-//	count_colors( bi.index, &GameBitmaps[bi.index] );
-//	key_getch();
-//	}
-//	{
-//	bitmap_index bi;
-//	bi.index = 1398;
-//	PIGGY_PAGE_IN( bi );
-//	count_colors( bi.index, &GameBitmaps[bi.index] );
-//	key_getch();
-//	}
-//	{
-//	bitmap_index bi;
-//	bi.index = 642;
-//	PIGGY_PAGE_IN( bi );
-//	count_colors( bi.index, &GameBitmaps[bi.index] );
-//	key_getch();
-//	}
-//	{
-//	bitmap_index bi;
-//	bi.index = 529;
-//	PIGGY_PAGE_IN( bi );
-//	count_colors( bi.index, &GameBitmaps[bi.index] );
-//	key_getch();
-//	}
-//	exit(0);
-//
-	if ((Num_bitmap_files_new == 0) && (Num_sound_files_new == 0) )
-		return;
-
-	mprintf( (0, "Paging in all piggy bitmaps..." ));
-	for (i=0; i < Num_bitmap_files; i++ )	{
-		bitmap_index bi;
-		bi.index = i;
-		PIGGY_PAGE_IN( bi );
-	}
-	mprintf( (0, "\n" ));
-
-	piggy_close_file();
-
-	mprintf( (0, "Creating DESCENT.PIG..." ));
-	filename = "DESCENT.PIG";
-	if ( (i=FindArg( "-piggy" )) )	{
-		filename	= Args[i+1];
-		mprintf( (0, "Dumping alternate pigfile, '%s'\n", filename ));
-	} 
-	mprintf( (0, "\nDumping bitmaps..." ));
-
-	fp = fopen( filename, "wb" );
-	Assert( fp!=NULL );
-
-#ifndef RELEASE
-	fp1 = fopen( "piggy.lst", "wt" );
-	fp2 = fopen( "piggy.all", "wt" );
-#endif
-
-	i = 0;
-	fwrite( &i, sizeof(int), 1, fp );	
-	bm_write_all(fp);
-	xlat_offset = ftell(fp);
-	fwrite( GameBitmapXlat, sizeof(ushort)*MAX_BITMAP_FILES, 1, fp );
-	i = ftell(fp);
-	fseek( fp, 0, SEEK_SET );
-	fwrite( &i, sizeof(int), 1, fp );
-	fseek( fp, i, SEEK_SET );
-		
-	Num_bitmap_files--;
-	fwrite( &Num_bitmap_files, sizeof(int), 1, fp );
-	Num_bitmap_files++;
-	fwrite( &Num_sound_files, sizeof(int), 1, fp );
-
-	header_offset = ftell(fp);
-	header_offset += ((Num_bitmap_files-1)*sizeof(DiskBitmapHeader)) + (Num_sound_files*sizeof(DiskSoundHeader));
-	data_offset = header_offset;
-
-	for (i=1; i < Num_bitmap_files; i++ )	{
-		int *size;
-		grs_bitmap *bmp;
-
-		{		
-			char * p, *p1;
-			p = strchr(AllBitmaps[i].name,'#');
-			if (p)	{
-				int n;
-				p1 = p; p1++; 
-				n = atoi(p1);
-				*p = 0;
-#ifndef RELEASE
-				if (n==0)	{		
-					fprintf( fp2, "%s.abm\n", AllBitmaps[i].name );
-				}	
-#endif
-				memcpy( bmh.name, AllBitmaps[i].name, 8 );
-				Assert( n <= 63 );
-				bmh.dflags = DBM_FLAG_ABM + n;
-				*p = '#';
-			}else {
-#ifndef RELEASE
-				fprintf( fp2, "%s.bbm\n", AllBitmaps[i].name );
-#endif
-				memcpy( bmh.name, AllBitmaps[i].name, 8 );
-				bmh.dflags = 0;
-			}
-		}
-		bmp = &GameBitmaps[i];
-
-		Assert( !(bmp->bm_flags&BM_FLAG_PAGED_OUT) );
-
-#ifndef RELEASE
-		fprintf( fp1, "BMP: %s, size %d bytes", AllBitmaps[i].name, bmp->bm_rowsize * bmp->bm_h );
-#endif
-		org_offset = ftell(fp);
-		bmh.offset = data_offset - header_offset;
-		fseek( fp, data_offset, SEEK_SET );
-
-		if ( bmp->bm_flags & BM_FLAG_RLE )	{
-			size = (int *)bmp->bm_data;
-			fwrite( bmp->bm_data, sizeof(ubyte), *size, fp );
-			data_offset += *size;
-			//bmh.data_length = *size;
-#ifndef RELEASE
-			fprintf( fp1, ", and is already compressed to %d bytes.\n", *size );
-#endif
-		} else {
-			fwrite( bmp->bm_data, sizeof(ubyte), bmp->bm_rowsize * bmp->bm_h, fp );
-			data_offset += bmp->bm_rowsize * bmp->bm_h;
-			//bmh.data_length = bmp->bm_rowsize * bmp->bm_h;
-#ifndef RELEASE
-			fprintf( fp1, ".\n" );
-#endif
-		}
-		fseek( fp, org_offset, SEEK_SET );
-		if ( GameBitmaps[i].bm_w > 255 )	{
-			Assert( GameBitmaps[i].bm_w < 512 );
-			bmh.width = GameBitmaps[i].bm_w - 256;
-			bmh.dflags |= DBM_FLAG_LARGE;
-		} else {
-			bmh.width = GameBitmaps[i].bm_w;
-		}
-		Assert( GameBitmaps[i].bm_h < 256 );
-		bmh.height = GameBitmaps[i].bm_h;
-		bmh.flags = GameBitmaps[i].bm_flags;
-		if (piggy_is_substitutable_bitmap( AllBitmaps[i].name, subst_name ))	{
-			bitmap_index other_bitmap;
-			other_bitmap = piggy_find_bitmap( subst_name );
-			GameBitmapXlat[i] = other_bitmap.index;
-			bmh.flags |= BM_FLAG_PAGED_OUT;
-			//mprintf(( 0, "Skipping bitmap %d\n", i ));
-			//mprintf(( 0, "Marking '%s' as substitutible\n", AllBitmaps[i].name ));
-		} else	{
-#ifdef BUILD_PSX_DATA
-			count_colors( i, &GameBitmaps[i] );
-#endif
-			bmh.flags &= ~BM_FLAG_PAGED_OUT;
-		}
-		bmh.avg_color=GameBitmaps[i].avg_color;
-		fwrite( &bmh, sizeof(DiskBitmapHeader), 1, fp );			// Mark as a bitmap
-	}
-
-	mprintf( (0, "\nDumping sounds..." ));
-
-	for (i=0; i < Num_sound_files; i++ )	{
-		digi_sound *snd;
-
-		snd = &GameSounds[i];
-		strcpy( sndh.name, AllSounds[i].name );
-		sndh.length = GameSounds[i].length;
-		sndh.offset = data_offset - header_offset;
-
-		org_offset = ftell(fp);
-		fseek( fp, data_offset, SEEK_SET );
-
-		sndh.data_length = GameSounds[i].length;
-		fwrite( snd->data, sizeof(ubyte), snd->length, fp );
-		data_offset += snd->length;
-		fseek( fp, org_offset, SEEK_SET );
-		fwrite( &sndh, sizeof(DiskSoundHeader), 1, fp );			// Mark as a bitmap
-
-#ifndef RELEASE
-		fprintf( fp1, "SND: %s, size %d bytes\n", AllSounds[i].name, snd->length );
-
-		fprintf( fp2, "%s.raw\n", AllSounds[i].name );
-#endif
-	}
-
-	fseek( fp, xlat_offset, SEEK_SET );
-	fwrite( GameBitmapXlat, sizeof(ushort)*MAX_BITMAP_FILES, 1, fp );
-
-	fclose(fp);
-
-	mprintf( (0, "\n" ));
-
-	mprintf( (0, " Dumped %d assorted bitmaps.\n", Num_bitmap_files ));
-	mprintf( (0, " Dumped %d assorted sounds.\n", Num_sound_files ));
-
-#ifndef RELEASE
-	fprintf( fp1, " Dumped %d assorted bitmaps.\n", Num_bitmap_files );
-	fprintf( fp1, " Dumped %d assorted sounds.\n", Num_sound_files );
-
-	fclose(fp1);
-	fclose(fp2);
-#endif
-
-#ifdef BUILD_PSX_DATA
-	fp = fopen( "psx/descent.dat", "wb" );
-	fwrite( &i, sizeof(int), 1, fp );	
-	bm_write_all(fp);
-	fwrite( GameBitmapXlat, sizeof(ushort)*MAX_BITMAP_FILES, 1, fp );
-	fclose(fp);
-#endif
-
-	// Never allow the game to run after building pig.
-	exit(0);
-}
-
-#endif
-
 void piggy_close()
 {
-	if (BitmapBits)
-		free(BitmapBits);
+	int i;
 
-	if ( SoundBits )
-		free( SoundBits );
+	if ( !Piggy_initialized )
+		return;
+
+	for (i=0; i<Num_sound_files; i++ )	{
+		if ( GameSounds[i].data && GameSounds[i].data != bogus_data )
+			free( GameSounds[i].data );
+		GameSounds[i].data = NULL;
+		if ( GameSounds16[i] )
+			free( GameSounds16[i] );
+		GameSounds16[i] = NULL;
+	}
+	Num_sound_files = 0;
+
+	for (i=0; i<Num_eggs; i++ )
+		if ( Eggs[i].data )	{
+			free( Eggs[i].data );
+			Eggs[i].data = NULL;
+		}
+	Num_eggs = 0;
 
 	hashtable_free( &AllBitmapsNames );
 	hashtable_free( &AllDigiSndNames );
 
+	Piggy_initialized = 0;
 }
 
 int piggy_does_bitmap_exist_slow( char * name )
@@ -1236,45 +1085,3 @@ int piggy_does_bitmap_exist_slow( char * name )
 	}
 	return 0;
 }
-
-
-#define NUM_GAUGE_BITMAPS 10
-char * gauge_bitmap_names[NUM_GAUGE_BITMAPS] = { "gauge01", "gauge02", "gauge06", "targ01", "targ02", "targ03", "targ04", "targ05", "targ06", "gauge18" };
-
-int piggy_is_gauge_bitmap( char * base_name )
-{
-	int i;
-	for (i=0; i<NUM_GAUGE_BITMAPS; i++ )	{
-		if ( !stricmp( base_name, gauge_bitmap_names[i] ))	
-			return 1;
-	}
-
-	return 0;	
-}
-
-int piggy_is_substitutable_bitmap( char * name, char * subst_name )
-{
-	int frame;
-	char * p;
-	char base_name[ 16 ];
-	
-	strcpy( subst_name, name );
-	p = strchr( subst_name, '#' );
-	if ( p ) 	{
-		frame = atoi( &p[1] );
-		*p = 0;
-		strcpy( base_name, subst_name );
-		if ( !piggy_is_gauge_bitmap( base_name ))	{
-			sprintf( subst_name, "%s#%d", base_name, frame+1 );
-			if ( piggy_does_bitmap_exist_slow( subst_name )  ) 	{
-				if ( frame & 1 ) {
-					sprintf( subst_name, "%s#%d", base_name, frame-1 );
-					return 1;
-				}
-			}
-		}
-	}
-	strcpy( subst_name, name );
-	return 0;
-}
-

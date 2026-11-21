@@ -437,6 +437,10 @@ void wall_open_door(segment *seg, int side)
 
 	//kill_stuck_objects(seg->sides[side].wall_num);
 
+	// ASCENT: a door whose animation is not loaded cannot open
+	if (w->clip_num < 0 || w->clip_num >= Num_wall_anims || WallAnims[w->clip_num].num_frames <= 0)
+		return;
+
 	if (w->state == WALL_DOOR_OPENING)		//already opening
 		return;
 
@@ -962,6 +966,11 @@ void wall_frame_process()
 
 		d = &ActiveDoors[i];
 		w = &Walls[d->front_wallnum[0]];
+
+		// ASCENT: a door whose animation is not loaded does not move
+		// (do_door_open() and do_door_close() divide by the frame count)
+		if (w->clip_num < 0 || w->clip_num >= Num_wall_anims || WallAnims[w->clip_num].num_frames <= 0)
+			continue;
 
 		if (w->state == WALL_DOOR_OPENING)
 			do_door_open(i);

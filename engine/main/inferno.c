@@ -716,6 +716,7 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 // ASCENT: cdrom.h removed (MSCDEX interface, not used here)
 #include "gameseq.h"
 #include "mission.h"		// ASCENT: for build_mission_list
+#include "dtugame.h"		// ASCENT: the options -level and -checklevel
 #include "playsave.h"
 
 #ifdef EDITOR
@@ -1023,6 +1024,110 @@ int find_descent_cd();
 extern int Config_vr_type;
 extern int Config_vr_tracking;
 
+// ASCENT: new. The option -level NAME: start one level of the target game
+// with no title screen and no menu. The function does the parts of main()
+// that the game loop needs (window, timer, keyboard, graphics, 3d, game),
+// asks the data layer for the tables (see dtugame.h), loads the mission
+// list and starts the level with StartNewGame(), as the menu does it.
+// The sound, the joystick, the mouse, the configuration file and the
+// player file are not used.
+extern ubyte kconfig_settings[CONTROL_MAX_TYPES][MAX_CONTROLS];
+extern ubyte default_kconfig_settings[CONTROL_MAX_TYPES][MAX_CONTROLS];
+
+static int dtu_run_level(char *level_name)
+{
+	int level_num, t, i, j;
+
+	Dtu_direct_start = 1;
+	load_text();		// ASCENT: the HUD and the message boxes use the string table
+	Lighting_on = 1;
+
+	if (plat_init("ASCENT", 320, 200, 3) != 0)
+		Error("Cannot open the window");
+	atexit(plat_shutdown);
+
+	timer_init();
+	timer_set_rate( digi_timer_rate );
+	key_init();
+	div0_init(DM_ERROR);
+
+	// the default keys of the keyboard, as new_player_config() sets them
+	for (i=0;i<CONTROL_MAX_TYPES; i++ )
+		for (j=0;j<MAX_CONTROLS; j++ )
+			kconfig_settings[i][j] = default_kconfig_settings[i][j];
+	Config_control_type = CONTROL_NONE;
+	kc_set_controls();
+	Auto_leveling_on = 0;
+
+	game_init_render_buffers(SM_320x200C, 320, 200, 0, VR_NONE, 1 );
+
+	if ((t=gr_init( SM_ORIGINAL ))!=0)
+		Error(TXT_CANT_INIT_GFX,t);
+	gr_set_mode(SM_320x200C);
+
+	dtu_load_palette();
+	dtu_load_fonts();
+	dtu_load_tables();
+
+	g3_init();
+	texmerge_init( 10 );		// 10 cache bitmaps
+
+	// The full screen view needs no cockpit bitmap.
+	Cockpit_mode = CM_FULL_SCREEN;
+
+	set_screen_mode(SCREEN_MENU);
+
+	init_game();
+	set_detail_level_parameters(Detail_level);
+
+	// While the other objects are not simulated (Dtu_objects_enabled), the
+	// player does not collide with them. The table was set by init_game().
+	if (!Dtu_objects_enabled)
+		memset(CollisionResult, RESULT_NOTHING, sizeof(CollisionResult));
+
+	strcpy(Players[Player_num].callsign, "player");
+
+	Game_mode = GM_GAME_OVER;
+
+	build_mission_list(0);		// This also loads mission 0.
+
+	// A level that is not in the mission gets a place after the last level.
+	level_num = dtu_find_level_num(level_name);
+	if (!level_num) {
+		if (Last_level >= MAX_LEVELS_PER_MISSION || strlen(level_name) > 8 || strchr(level_name,'.'))
+			Error("The level %s is not in the mission", level_name);
+		sprintf(Level_names[Last_level], "%s.LVL", level_name);
+		level_num = ++Last_level;
+	}
+
+	// The ship of Descent 1 (the values of its bitmaps.tbl), while the
+	// player table of the target game is not loaded.
+	if (Player_ship->mass == 0) {
+		Player_ship->mass = fl2f(4.0);
+		Player_ship->drag = fl2f(0.033);
+		Player_ship->max_thrust = fl2f(7.8);
+		Player_ship->reverse_thrust = fl2f(7.8);
+		Player_ship->brakes = fl2f(7.8);
+		Player_ship->wiggle = fl2f(0.5);
+		Player_ship->max_rotthrust = fl2f(0.14);
+	}
+
+	StartNewGame(level_num);
+
+	// The size of the player is the one of the level file. A level with
+	// no size gets the size of the ship of Descent 1.
+	if (ConsoleObject->size <= 0)
+		ConsoleObject->size = fl2f(4.5);
+
+	while (Function_mode == FMODE_GAME) {
+		if (!plat_pump())
+			break;
+		game();
+	}
+
+	return 0;
+}
+
 int main(int argc,char **argv)
 {
 	int i,t;
@@ -1031,8 +1136,19 @@ int main(int argc,char **argv)
 	error_init(NULL);
 
 	setbuf(stdout, NULL);	// unbuffered output via printf
-		
+
 	InitArgs( argc,argv );
+
+	// ASCENT: the directories of the game data, and the two options that
+	// do not go through the title screens and menus. -checklevel opens no
+	// window.
+	dtu_read_datadir_args();
+
+	if ((t = FindArg( "-checklevel" )) != 0 && t+1 < Num_args)
+		return dtu_check_level(Args[t+1]);
+
+	if ((t = FindArg( "-level" )) != 0 && t+1 < Num_args)
+		return dtu_run_level(Args[t+1]);
 
 	if ( FindArg( "-verbose" ) )
 		Inferno_verbose = 1;

@@ -95,6 +95,30 @@ extern int Gamesave_level_format;
 extern int load_level(char *filename);
 extern int save_level(char *filename);
 
+// ASCENT: the level files of Descent to Undermountain. See the comments in
+// gamesave.c and docs/formats/lvl.md.
+
+// The POF name list of the level file. The model number of a polygon
+// object in the file (dtu.model_num_level) is an index into it. The
+// largest list has 238 names.
+#define MAX_LEVEL_POF_NAMES	512
+extern char Level_pof_names[MAX_LEVEL_POF_NAMES][13];
+extern int Num_level_pof_names;
+
+extern int Level_file_size;			// the size of the level file
+extern int Level_mine_version;		// 18
+extern int Level_game_version;		// 40 or 41
+extern int Level_objects_moved;		// the objects that fix_object_segs() put into another segment
+extern int Level_objects_centered;	// the objects that fix_object_segs() moved to the center of their segment
+
+// Sets the model numbers of the polygon objects of the loaded level from
+// the POF name list. Call it after load_level() when the models of the
+// game are loaded. Returns the number of names that the game does not have.
+int level_resolve_models(int report);
+
+// Prints the summary of the loaded level (the option -checklevel).
+void level_print_summary(FILE *f, char *name);
+
 //called in place of load_game() to only load the .min data
 extern load_mine_only(char * filename);
 

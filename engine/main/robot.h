@@ -167,9 +167,11 @@ typedef struct robot_info {
 	byte		cloak_type;								//	0=never, 1=always, 2=except-when-firing
 	byte		attack_type;							//	0=firing, 1=charge (like green guy)
 	byte		boss_flag;								//	0 = not boss, 1 = boss.  Is that surprising?
-	ubyte		see_sound;								//	sound robot makes when it first sees the player
-	ubyte		attack_sound;							//	sound robot makes when it attacks the player
-	ubyte		claw_sound;								//	sound robot makes as it claws you (attack_type should be 1)
+	// ASCENT: the three sounds were ubyte. The sound numbers of Descent to
+	// Undermountain go up to 4413.
+	short		see_sound;								//	sound robot makes when it first sees the player
+	short		attack_sound;							//	sound robot makes when it attacks the player
+	short		claw_sound;								//	sound robot makes as it claws you (attack_type should be 1)
 
 	//animation info
 	jointlist anim_states[MAX_GUNS+1][N_ANIM_STATES];
@@ -179,9 +181,10 @@ typedef struct robot_info {
 } robot_info;
 
 
-#define	MAX_ROBOT_TYPES	30				// maximum number of robot types
+// ASCENT: was 30. 40 is the constant of the MAX_ROBOT_TYPES asserts in DTUGAME.EXE.
+#define	MAX_ROBOT_TYPES	40				// maximum number of robot types
 
-#define	ROBOT_NAME_LENGTH	16
+#define	ROBOT_NAME_LENGTH	40		// ASCENT: was 16
 extern char	Robot_names[MAX_ROBOT_TYPES][ROBOT_NAME_LENGTH];
 
 //the array of robots types

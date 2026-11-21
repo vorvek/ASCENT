@@ -6,7 +6,103 @@ loader code in `DTUGAME.EXE` 1.3. Addresses below are for the LE image with obje
 at 0x10000: `load_level` 0x494EB, `load_mine_data` 0x45CDC, `load_game_data` 0x489EE,
 `read_object` 0x47D90.
 
-Tool: `tools/lvl.py` (summary, checks, OBJ export).
+Later the 35 levels of the disc were unpacked (see `packed.md`) and all 39 files (35
+`.LVL`, 4 `.LV2`) were parsed by `tools/lvl.py` and loaded by the level loader of the
+engine. The section "All 39 level files" below has the facts that the larger set adds or
+corrects. The counts in the other sections are for the five files of the install.
+
+Tools: `tools/lvl.py` (summary, checks, OBJ export, `--summary` for the comparison with
+the engine), `tools/lvlcheck.py` (runs the comparison).
+
+## All 39 level files
+
+Checked with `tools/lvl.py` over `gamedata/unpacked/*.LVL` and the four `.LV2` files.
+
+- Mine version 18 in all files. Game data version 41 in 36 files and version 40 in
+  three files of the disc that the mission does not use (`IBBALAR1.LVL`, `PRISON1.LVL`,
+  `THIEF.LVL`). The version 40 object record has no value for 0x1B0 (4 bytes less: the
+  common part is 201 bytes). `object_sizeof` in the game fileinfo is 475 for version 41
+  and 473 or 424 for version 40.
+- Largest counts: 800 segments (`BEHOLDER`, `DROW2`, `IBBALAR`), 2642 vertices
+  (`BEHOLDER`), 182 objects (`DROW5`), 278 walls (`PRISON`), 250 POF names (the
+  smallest list has 69).
+- Segment `segnum` is never -1. The byte values at 516 to 533 have only the two
+  patterns of the table below (all zero in 12375 records, the conversion defaults in
+  9965).
+- Segment `special` is 0, or 2 in 31 segments (one to three per level, 22 levels). Those
+  segments have `matcen_num` 4 and `value` 0, 1, 2 in the order of the segments, which is
+  the station number that `fuelcen_create` of Descent 1 gives to them.
+- `THIEF1.LVL` has two active door records (16 bytes each: `n_parts` 1, front wall 0
+  and back wall 1, front wall 3 and back wall 2, time 0 and 2684). The walls have the
+  state 0 (closed). All other tables that are empty in the five files are empty in all
+  files.
+- Wall `clip_num` goes up to 81. Wall flags are 0, 8, 16 or 24 (in Descent 1, 8 is
+  "door locked" and 16 is "door auto").
+- Object types and their form in all files: 2 (ai, physics, polyobj) 1110 objects in the
+  35 `.LVL` files, 4 (slew, physics, polyobj) 35, 5 (none, none, render 8) 115, 15 (same)
+  82, 16 (same) 220, 17 (same) 68, 18 (none, none, polyobj) 938 and (none, none, render
+  8) 29.
+- The short at object offset 8 is -1 for the player in 24 files and 0 in 15 files. It is
+  0 for all other objects.
+- The int at object offset 85 (0x88) is 0, in 39 records 0x1000000, in two records
+  0x8000. Render type 8 values are 34 to 1095.
+- Nine objects (seven in `BEHOLDR2.LVL`, two in `MYRKUL.LVL`) have a position that is in
+  no segment for the test of Descent 1 (`find_point_seg`). `fix_object_segs` of Descent 1
+  moves such an object to the center of its segment.
+
+### Names and limits from DTUGAME.EXE
+
+The table `Object_type_names` of the executable (9 bytes per name, at file offset
+0x197738) has 19 names: the Descent 1 names for 0 to 14, with `(unused)` for 3 (hostage)
+and 9 (cntrlcen), and then `ARMOR` (15), `MISC` (16), `SPELL` (17), `DRESSING` (18). The
+executable has one table for each new type (asserts `N_armor_types < MAX_ARMOR_TYPES`,
+`N_misc_types < MAX_MISC_TYPES`, `N_spell_types < MAX_SPELL_TYPES`,
+`N_dressing_types < MAX_DRESSING_TYPES`).
+
+The limits are the constants in the compare instructions of the asserts (address of the
+compare in the LE image, object 1 at 0x10000):
+
+| Limit | Value | Where |
+|---|---|---|
+| `MAX_SEGMENTS` | 900 | `Num_segments <= MAX_SEGMENTS`, 0x46B2C |
+| `MAX_VERTICES` | 3608 | `Num_vertices <= MAX_VERTICES`, 0x46AEB (3600 and 8 for the editor's new segment) |
+| segments for the game | 800 | `Too many segments (%i > %i) for game (not editor)`, 0xCC3EA |
+| `MAX_OBJECTS` | 800 | `objnum < MAX_OBJECTS`, 0x75D52, and the test before `Object creation failed`, 0x6875B |
+| `MAX_OBJECT_TYPES` | 19 | `type < MAX_OBJECT_TYPES`, 0xB8BE6 |
+| `MAX_WALLS` | 300 | `Num_walls < MAX_WALLS`, 0xBB38D |
+| `MAX_DOORS` | 200 | `Num_open_doors < MAX_DOORS`, 0x7D914 |
+| `MAX_TRIGGERS` | 255 | `trigger_num < MAX_TRIGGERS`, 0xC0485 |
+| `MAX_TEXTURES` | 2500 | `NumTextures < MAX_TEXTURES`, 0x46046 |
+| `MAX_POLYGON_MODELS` | 160 | `N_polygon_models < MAX_POLYGON_MODELS`, 0x6DA3F |
+
+The object struct of the executable has 479 bytes and the segment struct has 536 bytes
+(the index scaling in the code at 0x75D30 and 0x4D040). So the segment in memory is the
+segment record of the file.
+
+### What the loader does after the read
+
+The executable is an editor build. Its `load_mine_data` ends like the editor version of
+Descent 1 (0x469F5 to 0x46A33): `reset_objects(1)`, `set_vertex_counts`,
+`warn_if_concave_segments`, `validate_segment_all` (0x4D039). The two middle calls are
+named by their place in the Descent 1 code. `validate_segment_all` is identified by its
+code (the `segnum` test and the string `Segment %i has invalid segnum`). It
+computes the type and the normals of each side again and leaves out a segment with
+`segnum` -1. So the game does not use the side types and normals of the file.
+
+The engine does the same with the `validate_segment` of Descent 1. Over all 39 files it
+gives the type of the file for every side, and no normal component differs by more than
+1/256.
+
+### Check of the engine loader
+
+`ascent -datadir DIR -checklevel NAME` loads a level with no window and prints a summary:
+counts, the bounding box, the player start, and FNV-1a checksums over the vertices, the
+segment children, the segment vertex numbers, the sides, the other segment values, the
+walls and the objects (all fields of the record, with the 124 byte block).
+`lvl.py --summary FILE` prints the same text from the file. `tools/lvlcheck.py EXE DIR`
+compares the two. Result: the summaries are equal for all 39 files and for the
+`YPINN.LVL` of the install (which differs from the one of the disc only by the 18 byte
+trailer).
 
 A level file is the Descent 1 editor level format (`gamesave.c`, `gamemine.c`), not the
 compiled RDL format. The mine data is the editor mine (`load_mine_data`) and the game
@@ -35,8 +131,8 @@ the code of `DTUGAME.EXE`. The level names appear only in `DTU.MSN`, `DTU.WRP`, 
 The other 28 levels are not on the hard disk. `UNINST.LOG` shows that the installer
 copied only `YPINN.LVL` and the per level `.SAY`, `.TIG`, `.TAP` and `.BRN` files.
 `DTU.CFG` has `CDPath=D:\DTU` and the executable has the strings `%c:\DTU` and
-`Can't open file %s %s on HD or CD`. Guess: the missing `.LVL` files are loose files in
-the `\DTU` directory of the game CD. This was not verified, no CD image was available.
+`Can't open file %s %s on HD or CD`. The levels are in the `\DTU` directory of the disc
+in packed form (`NAME.DOG`), see `packed.md`.
 
 `SAVE\SG1_0.LVL` is a save game level. It starts with `DGSS`, not `LVLP`, and is a
 different format that this document does not cover.
@@ -162,7 +258,7 @@ At `segment_offset`: `segment_howmany` records. The executable calls the type
 
 | Offset | Size | Type | Field | Descent 1 | Notes |
 |---|---|---|---|---|---|
-| 0 | 2 | s16 | segnum | segnum (editor) | Not the record index in 68% of the records, and not unique. The loader does not use it |
+| 0 | 2 | s16 | segnum | segnum (editor) | Not the record index in 68% of the records, and not unique. `validate_segment_all` leaves out a segment with -1 here. No record has -1 |
 | 2 | 2 | s16 | group | group (editor) | -1 in all records. The loader sets it to -1 |
 | 4 | 480 | side[6] | sides | sides | see below |
 | 484 | 12 | s16[6] | children | children | -1 none, -2 exit, else segment index |
@@ -396,10 +492,10 @@ files:
 | 2 robot | 132 | ai, physics, polyobj | monsters and characters |
 | 4 player | 5 | slew, physics, polyobj | one per level, object 0 |
 | 5 weapon | 16 | none, none, 8 | guess: weapon items on the floor |
-| 15 | 14 | none, none, 8 | unknown item class |
-| 16 | 40 | none, none, 8 | unknown item class |
-| 17 | 8 | none, none, 8 | unknown item class |
-| 18 | 158 | none, none, polyobj (155) or 8 (3) | scenery: chairs, beds, barrels |
+| 15 armor | 14 | none, none, 8 | item. Name from the executable, see above |
+| 16 misc | 40 | none, none, 8 | item |
+| 17 spell | 8 | none, none, 8 | item |
+| 18 dressing | 158 | none, none, polyobj (155) or 8 (3) | scenery: chairs, beds, barrels |
 
 ### Wall record, 24 bytes
 
@@ -476,8 +572,9 @@ than 0.0005 units. The one normal mismatch is in `BANE.LV2`.
   is computed is unknown.
 - Object: the 124 byte block at offset 81, the `attached_obj` name at offset 8, the
   three values at mem 0x16E to 0x176 of the polyobj part, the render type 8 value, the
-  meaning of types 15 to 18.
+  tables that the ids of the types 15 to 18 are indexes of.
+- Segment `special` 2 with `matcen_num` 4: what the game does in such a segment.
 - The 18 byte trailer of `YPINN.LVL`.
 - The content of the player block.
 - Why the POF name count is 25.
-- Where the other 28 levels are stored on the CD.
+- Whether the game moves the nine objects that are in no segment, as Descent 1 does.

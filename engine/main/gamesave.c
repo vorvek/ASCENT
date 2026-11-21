@@ -323,6 +323,9 @@ static char rcsid[] = "$Id: gamesave.c 2.2 1995/04/23 14:53:12 john Exp $";
 #include "gameseg.h"		// ASCENT: find_connect_side() and others were implicit
 #include "textures.h"
 #include "dataio.h"		// ASCENT: little endian field reads and the record sizes
+#include "dtufile.h"		// ASCENT: dtu_load_file()
+#include "mem.h"			// ASCENT: dtu_load_file() memory is released through the debug allocator
+#include <stdint.h>
 
 // ASCENT: see gamesave.h. Selects the mine format for load_level().
 int Gamesave_level_format = LEVEL_FORMAT_AUTO;
@@ -1678,6 +1681,11 @@ char *Level_being_loaded=NULL;
 extern void ncache_flush();
 #endif
 
+// ASCENT: the load_level() of Descent 1 is not built. The new load_level()
+// for the level files of the target game is below it. load_mine_data(),
+// load_mine_data_compiled() and load_game_data() of Descent 1 are still
+// built, and nothing calls them.
+#if 0
 //loads a level (.LVL) file from disk
 int load_level(char * filename_passed)
 {
@@ -1839,6 +1847,993 @@ int load_level(char * filename_passed)
 	#endif
 
 	return 0;
+}
+#endif	// ASCENT: the load_level() of Descent 1
+
+// -----------------------------------------------------------------------------
+// ASCENT: new. The level files of Descent to Undermountain (LVL and LV2,
+// see docs/formats/lvl.md): the LVLP container, the mine data of version 18
+// (load_mine_data_dtu in gamemine.c) and the game data of version 40 or 41
+// below. The functions read from the file in memory, which dtu_load_file()
+// supplies.
+
+#define GAME_VERSION_DTU				41		// all levels of the game and of the 1.3 patch
+#define GAME_VERSION_DTU_OLDEST		40		// three unused level files of the disc. They have no m_1b0 in the object.
+
+char Level_pof_names[MAX_LEVEL_POF_NAMES][13];
+int Num_level_pof_names = 0;
+
+int Level_file_size = 0;
+int Level_mine_version = 0;
+int Level_game_version = 0;
+int Level_objects_moved = 0;
+int Level_objects_centered = 0;
+
+// The record of a table at "offset". Stops the program if the table is not
+// inside the data.
+static const ubyte *game_dtu_range(const ubyte *data, int size, int offset, int count, int record_size, char *what)
+{
+	if (offset < 0 || count < 0 || offset > size || (int64_t)offset + (int64_t)count * record_size > size)
+		Error( "The level file is damaged: %s (offset %d, %d records of %d bytes, file size %d)", what, offset, count, record_size, size );
+	return data + offset;
+}
+
+// The largest object record: the common part, physics, AI and a polygon model.
+#define OBJECT_DTU_MAX_DISK_SIZE	(205+64+24+24)
+
+// Reads one object record of the given version. The read order is the one
+// of read_object in the executable of the target game.
+// Returns 0, or -1 for a record that the target game does not load.
+static int read_object_dtu(object *obj, const ubyte **pp, int version)
+{
+	const ubyte *start = *pp;
+	int i;
+
+	memset(obj, 0, sizeof(*obj));
+
+	obj->type				= dio_get_ubyte(pp);
+	obj->id					= dio_get_ubyte(pp);
+
+	obj->control_type		= dio_get_ubyte(pp);
+	obj->movement_type	= dio_get_ubyte(pp);
+	obj->render_type		= dio_get_ubyte(pp);
+	obj->flags				= dio_get_ubyte(pp);
+
+	obj->segnum				= dio_get_short(pp);
+	// The record has -1 for the player and 0 for all other objects here.
+	// In the code of Descent 1, 0 is "object 0 is attached", so the value
+	// of the file is kept in dtu.m_10 and not used.
+	obj->dtu.m_10			= dio_get_short(pp);
+	obj->attached_obj		= -1;
+
+	dio_get_vector(pp, &obj->pos);
+	dio_get_matrix(pp, &obj->orient);
+	obj->dtu.pos_level = obj->pos;
+	obj->dtu.orient_copy = obj->orient;
+
+	obj->size				= dio_get_fix(pp);
+	obj->shields			= dio_get_fix(pp);
+
+	dio_get_vector(pp, &obj->last_pos);
+
+	obj->contains_type	= dio_get_byte(pp);
+	obj->contains_id		= dio_get_byte(pp);
+	obj->contains_count	= dio_get_byte(pp);
+
+	// The block of 124 bytes that Descent 1 does not have (120 bytes in
+	// version 40).
+	obj->dtu.m_80 = dio_get_short(pp);
+	obj->dtu.m_82 = dio_get_short(pp);
+	obj->dtu.m_88_level = dio_get_int(pp);
+	for (i=0;i<13;i++)
+		obj->dtu.m_8c[i] = dio_get_fix(pp);
+	for (i=0;i<2;i++)
+		obj->dtu.m_c0[i] = dio_get_fix(pp);
+	for (i=0;i<6;i++)
+		obj->dtu.m_c8[i] = dio_get_fix(pp);
+	for (i=0;i<2;i++)
+		obj->dtu.m_e0[i] = dio_get_fix(pp);
+	for (i=0;i<5;i++)
+		obj->dtu.m_e8[i] = dio_get_fix(pp);
+	if (version > 40)
+		obj->dtu.m_1b0 = dio_get_fix(pp);
+
+	// What the loader of the target game does with the block after the read.
+	obj->dtu.m_88 = obj->dtu.m_c8[5];
+	if (obj->type == OBJ_WEAPON || obj->type == OBJ_ARMOR || obj->type == OBJ_MISC || obj->type == OBJ_SPELL) {
+		obj->dtu.m_1d5 = (ubyte)(obj->dtu.m_8c[8] & 0xff);
+		obj->dtu.m_8c[8] = 0;
+	}
+
+	switch (obj->movement_type) {
+
+		case MT_PHYSICS:
+
+			dio_get_vector(pp, &obj->mtype.phys_info.velocity);
+			dio_get_vector(pp, &obj->mtype.phys_info.thrust);
+
+			obj->mtype.phys_info.mass		= dio_get_fix(pp);
+			obj->mtype.phys_info.drag		= dio_get_fix(pp);
+			obj->mtype.phys_info.brakes	= dio_get_fix(pp);
+
+			dio_get_vector(pp, &obj->mtype.phys_info.rotvel);
+			dio_get_vector(pp, &obj->mtype.phys_info.rotthrust);
+
+			obj->mtype.phys_info.turnroll	= dio_get_fixang(pp);
+			obj->mtype.phys_info.flags		= dio_get_ushort(pp);
+
+			break;
+
+		case MT_SPINNING:
+
+			dio_get_vector(pp, &obj->mtype.spin_rate);
+			break;
+
+		case MT_NONE:
+			break;
+
+		default:
+			printf( "Object with the unknown movement type %d\n", obj->movement_type );
+			return -1;
+	}
+
+	switch (obj->control_type) {
+
+		case CT_AI: {
+
+			obj->ctype.ai_info.behavior				= dio_get_ubyte(pp);
+
+			for (i=0;i<MAX_AI_FLAGS;i++)
+				obj->ctype.ai_info.flags[i]			= dio_get_byte(pp);
+
+			obj->ctype.ai_info.hide_segment			= dio_get_short(pp);
+			obj->ctype.ai_info.hide_index				= dio_get_short(pp);
+			obj->ctype.ai_info.path_length			= dio_get_short(pp);
+			obj->ctype.ai_info.cur_path_index		= dio_get_short(pp);
+
+			obj->ctype.ai_info.follow_path_start_seg	= dio_get_short(pp);
+			obj->ctype.ai_info.follow_path_end_seg		= dio_get_short(pp);
+
+			break;
+		}
+
+		case CT_EXPLOSION:
+
+			obj->ctype.expl_info.spawn_time		= dio_get_fix(pp);
+			obj->ctype.expl_info.delete_time		= dio_get_fix(pp);
+			obj->ctype.expl_info.delete_objnum	= dio_get_short(pp);
+			obj->ctype.expl_info.next_attach = obj->ctype.expl_info.prev_attach = obj->ctype.expl_info.attach_parent = -1;
+
+			break;
+
+		case CT_WEAPON:
+
+			// read, then reset (the target game does the same)
+			*pp += 8;
+			obj->ctype.laser_info.parent_type		= -1;
+			obj->ctype.laser_info.parent_num			= -1;
+			obj->ctype.laser_info.parent_signature	= -1;
+
+			break;
+
+		case CT_LIGHT:
+
+			obj->ctype.light_info.intensity = dio_get_fix(pp);
+			obj->dtu.light_m = dio_get_short(pp);		// in the versions above 38
+			break;
+
+		case CT_POWERUP:
+
+			// read and not used by the target game
+			*pp += 4;
+			obj->ctype.powerup_info.count = 1;
+			break;
+
+		case CT_NONE:
+		case CT_FLYING:
+		case CT_DEBRIS:
+			break;
+
+		case CT_SLEW:		//the player is generally saved as slew
+			break;
+
+		case CT_CNTRLCEN:
+			break;
+
+		default:
+			printf( "Object with the unknown control type %d\n", obj->control_type );
+			return -1;
+	}
+
+	switch (obj->render_type) {
+
+		case RT_NONE:
+			break;
+
+		case RT_MORPH:
+		case RT_POLYOBJ: {
+
+			// The model number is an index into the POF name list of the
+			// level, and the texture number is an index into the texture
+			// name table of the level. level_resolve_models() and
+			// level_translate_textures() set the numbers of the game.
+			obj->dtu.model_num_level				= dio_get_int(pp);
+			obj->rtype.pobj_info.model_num		= 0;
+
+			obj->dtu.m_16e								= dio_get_short(pp);
+			obj->dtu.m_170								= dio_get_short(pp);
+			obj->dtu.m_172								= dio_get_int(pp);
+			obj->dtu.m_176								= dio_get_int(pp);
+
+			for (i=0;i<MAX_SUBMODELS;i++)
+				vm_angvec_zero(&obj->rtype.pobj_info.anim_angles[i]);
+
+			obj->rtype.pobj_info.subobj_flags	= dio_get_int(pp);
+
+			obj->dtu.tmap_override_level			= dio_get_int(pp);
+			obj->rtype.pobj_info.tmap_override	= -1;
+
+			obj->rtype.pobj_info.alt_textures	= 0;
+
+			break;
+		}
+
+		case RT_WEAPON_VCLIP:
+		case RT_FIREBALL:
+
+			obj->rtype.vclip_info.vclip_num	= dio_get_int(pp);
+			obj->rtype.vclip_info.frametime	= dio_get_fix(pp);
+			obj->rtype.vclip_info.framenum	= dio_get_byte(pp);
+
+			break;
+
+		case RT_POWERUP:
+
+			// read and not used by the target game
+			*pp += 9;
+			break;
+
+		case RT_ITEM:
+
+			obj->dtu.item_bitmap = (short)dio_get_int(pp);
+			break;
+
+		case RT_LASER:
+			break;
+
+		case RT_HOSTAGE:		// the target game stops at a hostage
+		default:
+			printf( "Object with the unknown render type %d\n", obj->render_type );
+			return -1;
+
+	}
+
+	obj->dtu.record_size = (int)(*pp - start);
+
+	return 0;
+}
+
+// What verify_object() does that needs no table of the game. The tables
+// of the target game (monsters, items, models) have another form than the
+// ones of Descent 1, so the rest of verify_object() is not used.
+static void verify_object_dtu( object * obj )
+{
+	obj->lifeleft = IMMORTAL_TIME;		//all loaded object are immortal, for now
+
+	if ( obj->type == OBJ_ROBOT )
+		Gamesave_num_org_robots++;
+
+	if ( obj->type == OBJ_PLAYER )	{
+		//Make sure orient matrix is orthogonal
+		check_and_fix_matrix(&obj->orient);
+
+		obj->id = Gamesave_num_players++;
+	}
+}
+
+// ASCENT: new. Sets the model number of each polygon object of the loaded
+// level from the name in the POF name list of the level, as verify_object()
+// does it with Save_pof_names. Call it after load_level() when the models
+// of the game are loaded (N_polygon_models, Pof_names).
+// An object with a name that the game does not have gets model 0.
+// If "report" is not 0, the function prints each name that it cannot find.
+// Returns the number of those names.
+int level_resolve_models(int report)
+{
+	static ubyte missing[MAX_LEVEL_POF_NAMES];
+	int i, j, n_missing = 0;
+
+	memset(missing, 0, sizeof(missing));
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *obj = &Objects[i];
+		int n;
+
+		if (obj->type == OBJ_NONE || (obj->render_type != RT_POLYOBJ && obj->render_type != RT_MORPH))
+			continue;
+
+		n = obj->dtu.model_num_level;
+		obj->rtype.pobj_info.model_num = 0;
+
+		if (n < 0 || n >= Num_level_pof_names)
+			continue;
+
+		for (j=0;j<N_polygon_models;j++)
+			if (!stricmp(Pof_names[j],Level_pof_names[n])) {		//found it!
+				obj->rtype.pobj_info.model_num = j;
+				break;
+			}
+
+		if (j >= N_polygon_models && !missing[n]) {
+			missing[n] = 1;
+			n_missing++;
+			if (report && N_polygon_models > 0)
+				printf( "Level model %d '%s' is not in the model table of the game\n", n, Level_pof_names[n] );
+		}
+	}
+
+	if (report && n_missing && N_polygon_models > 0)
+		printf( "%d model names of the level are not in the model table of the game (%d models)\n", n_missing, N_polygon_models );
+
+	return n_missing;
+}
+
+// Loads the game data from the level file in memory.
+// returns 0=everything ok, -1=error
+int load_game_data_dtu(const ubyte *data, int size, int start_offset)
+{
+	const ubyte *p, *end = data + size;
+	int i,j;
+	int version;
+
+	//===================== READ FILE INFO ========================
+
+	p = game_dtu_range(data, size, start_offset, 1, GAME_FILEINFO_DISK_SIZE, "game fileinfo");
+
+	game_fileinfo.fileinfo_signature = dio_get_ushort(&p);
+	game_fileinfo.fileinfo_version = dio_get_ushort(&p);
+	game_fileinfo.fileinfo_sizeof = dio_get_int(&p);
+	game_top_fileinfo.fileinfo_signature = game_fileinfo.fileinfo_signature;
+	game_top_fileinfo.fileinfo_version = game_fileinfo.fileinfo_version;
+	game_top_fileinfo.fileinfo_sizeof = game_fileinfo.fileinfo_sizeof;
+
+	// Check signature
+	if (game_fileinfo.fileinfo_signature != 0x6705)
+		return -1;
+
+	// Check version number. The executable of the target game loads the
+	// versions 22 and up. The object record of each version below 40 has
+	// another form, and no level file has such a version.
+	version = game_fileinfo.fileinfo_version;
+	if (version < GAME_VERSION_DTU_OLDEST || version > GAME_VERSION_DTU) {
+		printf( "Game data version %d is not supported (only %d and %d)\n", version, GAME_VERSION_DTU_OLDEST, GAME_VERSION_DTU );
+		return -1;
+	}
+	if (game_fileinfo.fileinfo_sizeof != GAME_FILEINFO_DISK_SIZE) {
+		printf( "Game fileinfo size %d is not supported\n", game_fileinfo.fileinfo_sizeof );
+		return -1;
+	}
+
+	dio_get_bytes(&p, game_fileinfo.mine_filename, 15);
+	game_fileinfo.level = dio_get_int(&p);
+	game_fileinfo.player_offset = dio_get_int(&p);				// Player info
+	game_fileinfo.player_sizeof = dio_get_int(&p);
+	game_fileinfo.object_offset = dio_get_int(&p);				// Object info
+	game_fileinfo.object_howmany = dio_get_int(&p);
+	game_fileinfo.object_sizeof = dio_get_int(&p);
+	game_fileinfo.walls_offset = dio_get_int(&p);
+	game_fileinfo.walls_howmany = dio_get_int(&p);
+	game_fileinfo.walls_sizeof = dio_get_int(&p);
+	game_fileinfo.doors_offset = dio_get_int(&p);
+	game_fileinfo.doors_howmany = dio_get_int(&p);
+	game_fileinfo.doors_sizeof = dio_get_int(&p);
+	game_fileinfo.triggers_offset = dio_get_int(&p);
+	game_fileinfo.triggers_howmany = dio_get_int(&p);
+	game_fileinfo.triggers_sizeof = dio_get_int(&p);
+	game_fileinfo.links_offset = dio_get_int(&p);
+	game_fileinfo.links_howmany = dio_get_int(&p);
+	game_fileinfo.links_sizeof = dio_get_int(&p);
+	game_fileinfo.control_offset = dio_get_int(&p);
+	game_fileinfo.control_howmany = dio_get_int(&p);
+	game_fileinfo.control_sizeof = dio_get_int(&p);
+	game_fileinfo.matcen_offset = dio_get_int(&p);
+	game_fileinfo.matcen_howmany = dio_get_int(&p);
+	game_fileinfo.matcen_sizeof = dio_get_int(&p);
+
+	//load the level name. It ends with a zero byte.
+	{
+		int n = 0;
+
+		while (p < end && *p != 0) {
+			if (n < LEVEL_NAME_LEN-1)
+				Current_level_name[n++] = *p;
+			p++;
+		}
+		Current_level_name[n] = 0;
+		if (p < end)
+			p++;
+	}
+
+	//load pof names
+	// The count of the file (N_save_pof_names) is 25 in all levels. The
+	// list of the file is longer: it runs up to player_offset, and the
+	// model numbers of the objects are indexes into the whole list. The
+	// executable of the target game reads only the count times 13 bytes.
+	Num_level_pof_names = 0;
+	if (end - p >= 2) {
+		N_save_pof_names = dio_get_ushort(&p);
+
+		if (game_fileinfo.player_offset > (int)(p - data) && game_fileinfo.player_offset <= size)
+			Num_level_pof_names = (game_fileinfo.player_offset - (int)(p - data)) / 13;
+		else
+			Num_level_pof_names = N_save_pof_names;
+		if (Num_level_pof_names > MAX_LEVEL_POF_NAMES)
+			Error( "Too many POF names (%d, maximum %d) in the level file", Num_level_pof_names, MAX_LEVEL_POF_NAMES );
+		game_dtu_range(data, size, (int)(p - data), Num_level_pof_names, 13, "POF names");
+		for (i=0;i<Num_level_pof_names;i++) {
+			dio_get_bytes(&p, Level_pof_names[i], 13);
+			Level_pof_names[i][12] = 0;
+		}
+	}
+
+	//===================== READ PLAYER INFO ==========================
+	Object_next_signature = 0;
+
+	//===================== READ OBJECT INFO ==========================
+
+	Gamesave_num_org_robots = 0;
+	Gamesave_num_players = 0;
+
+	if (game_fileinfo.object_howmany < 0 || game_fileinfo.object_howmany > MAX_OBJECTS)
+		Error( "Too many objects (%d, maximum %d) in the level file", game_fileinfo.object_howmany, MAX_OBJECTS );
+
+	if (game_fileinfo.object_offset > -1) {
+		p = game_dtu_range(data, size, game_fileinfo.object_offset, 0, 0, "objects");
+
+		for (i=0;i<game_fileinfo.object_howmany;i++)	{
+			ubyte tail[OBJECT_DTU_MAX_DISK_SIZE];
+			const ubyte *rp = p;
+			int at_tail = 0;
+
+			// The size of a record is known only after the read. Near the
+			// end of the file the record is read from a copy with zeros
+			// after the data.
+			if (end - p < OBJECT_DTU_MAX_DISK_SIZE) {
+				memset(tail, 0, sizeof(tail));
+				memcpy(tail, p, end - p);
+				rp = tail;
+				at_tail = 1;
+			}
+
+			if (read_object_dtu(&Objects[i],&rp,version) != 0) {
+				printf( "Error in object %d of the level file\n", i );
+				return -1;
+			}
+
+			p += Objects[i].dtu.record_size;
+			if (p > end || (at_tail && Objects[i].dtu.record_size > OBJECT_DTU_MAX_DISK_SIZE))
+				Error( "The level file is damaged: object %d ends after the end of the file", i );
+
+			Objects[i].signature = Object_next_signature++;
+			verify_object_dtu( &Objects[i] );
+		}
+
+		// In all level files the walls follow the last object record.
+		if (game_fileinfo.walls_offset > -1 && game_fileinfo.object_howmany > 0 && (int)(p - data) != game_fileinfo.walls_offset)
+			printf( "Warning: the object records end at offset %d, the walls start at %d\n", (int)(p - data), game_fileinfo.walls_offset );
+	}
+
+	//===================== READ WALL INFO ============================
+
+	if (game_fileinfo.walls_howmany < 0 || game_fileinfo.walls_howmany > MAX_WALLS)
+		Error( "Too many walls (%d, maximum %d) in the level file", game_fileinfo.walls_howmany, MAX_WALLS );
+
+	if (game_fileinfo.walls_offset > -1 && game_fileinfo.walls_howmany > 0)
+	{
+		if (WALL_DISK_SIZE != game_fileinfo.walls_sizeof)
+			Error( "Bad wall record size (%d) in the level file", game_fileinfo.walls_sizeof );
+
+		p = game_dtu_range(data, size, game_fileinfo.walls_offset, game_fileinfo.walls_howmany, WALL_DISK_SIZE, "walls");
+
+		for (i=0;i<game_fileinfo.walls_howmany;i++) {
+			wall_from_disk(&Walls[i], p);
+			p += WALL_DISK_SIZE;
+
+			if (Walls[i].segnum < 0 || Walls[i].segnum > Highest_segment_index || Walls[i].sidenum < 0 || Walls[i].sidenum >= MAX_SIDES_PER_SEGMENT)
+				Error( "Wall %d is on segment %d, side %d", i, Walls[i].segnum, Walls[i].sidenum );
+			if (Walls[i].linked_wall < -1 || Walls[i].linked_wall >= game_fileinfo.walls_howmany)
+				Error( "Wall %d is linked to wall %d (%d walls)", i, Walls[i].linked_wall, game_fileinfo.walls_howmany );
+		}
+	}
+
+	for (i=0; i<=Highest_segment_index; i++)
+		for (j=0;j<MAX_SIDES_PER_SEGMENT;j++)
+			if (Segments[i].sides[j].wall_num >= game_fileinfo.walls_howmany)
+				Error( "Segment %d, side %d has the wall number %d (%d walls)", i, j, Segments[i].sides[j].wall_num, game_fileinfo.walls_howmany );
+
+	//===================== READ DOOR INFO ============================
+
+	if (game_fileinfo.doors_howmany < 0 || game_fileinfo.doors_howmany > MAX_DOORS)
+		Error( "Too many active doors (%d, maximum %d) in the level file", game_fileinfo.doors_howmany, MAX_DOORS );
+
+	if (game_fileinfo.doors_offset > -1 && game_fileinfo.doors_howmany > 0)
+	{
+		if (ACTIVE_DOOR_DISK_SIZE != game_fileinfo.doors_sizeof)
+			Error( "Bad door record size (%d) in the level file", game_fileinfo.doors_sizeof );
+
+		p = game_dtu_range(data, size, game_fileinfo.doors_offset, game_fileinfo.doors_howmany, ACTIVE_DOOR_DISK_SIZE, "active doors");
+
+		for (i=0;i<game_fileinfo.doors_howmany;i++) {
+			active_door_from_disk(&ActiveDoors[i], p);
+			p += ACTIVE_DOOR_DISK_SIZE;
+		}
+	}
+
+	//==================== READ TRIGGER INFO ==========================
+
+	if (game_fileinfo.triggers_howmany < 0 || game_fileinfo.triggers_howmany > MAX_TRIGGERS)
+		Error( "Too many triggers (%d, maximum %d) in the level file", game_fileinfo.triggers_howmany, MAX_TRIGGERS );
+
+	if (game_fileinfo.triggers_offset > -1 && game_fileinfo.triggers_howmany > 0)	{
+		if (TRIGGER_DISK_SIZE != game_fileinfo.triggers_sizeof)
+			Error( "Bad trigger record size (%d) in the level file", game_fileinfo.triggers_sizeof );
+
+		p = game_dtu_range(data, size, game_fileinfo.triggers_offset, game_fileinfo.triggers_howmany, TRIGGER_DISK_SIZE, "triggers");
+
+		for (i=0;i<game_fileinfo.triggers_howmany;i++)	{
+			trigger_from_disk(&Triggers[i], p);
+			p += TRIGGER_DISK_SIZE;
+		}
+	}
+
+	//================ READ CONTROL CENTER TRIGGER INFO ===============
+
+	if (game_fileinfo.control_offset > -1 && game_fileinfo.control_howmany > 0)
+	{
+		if (CONTROL_CENTER_TRIGGERS_DISK_SIZE != game_fileinfo.control_sizeof)
+			Error( "Bad control center record size (%d) in the level file", game_fileinfo.control_sizeof );
+
+		p = game_dtu_range(data, size, game_fileinfo.control_offset, game_fileinfo.control_howmany, CONTROL_CENTER_TRIGGERS_DISK_SIZE, "control center triggers");
+
+		for (i=0;i<game_fileinfo.control_howmany;i++) {
+			control_center_triggers_from_disk(&ControlCenterTriggers, p);
+			p += CONTROL_CENTER_TRIGGERS_DISK_SIZE;
+		}
+	}
+
+	//================ READ MATERIALOGRIFIZATIONATORS INFO ===============
+
+	if (game_fileinfo.matcen_howmany < 0 || game_fileinfo.matcen_howmany > MAX_ROBOT_CENTERS)
+		Error( "Too many robot makers (%d, maximum %d) in the level file", game_fileinfo.matcen_howmany, MAX_ROBOT_CENTERS );
+
+	if (game_fileinfo.matcen_offset > -1 && game_fileinfo.matcen_howmany > 0)
+	{
+		if (MATCEN_INFO_DISK_SIZE != game_fileinfo.matcen_sizeof)
+			Error( "Bad robot maker record size (%d) in the level file", game_fileinfo.matcen_sizeof );
+
+		p = game_dtu_range(data, size, game_fileinfo.matcen_offset, game_fileinfo.matcen_howmany, MATCEN_INFO_DISK_SIZE, "robot makers");
+
+		for (i=0;i<game_fileinfo.matcen_howmany;i++) {
+			matcen_info_from_disk(&RobotCenters[i], p);
+			p += MATCEN_INFO_DISK_SIZE;
+			//	Set links in RobotCenters to Station array
+			for (j=0; j<=Highest_segment_index; j++)
+				if (Segments[j].special == SEGMENT_IS_ROBOTMAKER)
+					if (Segments[j].matcen_num == i)
+						RobotCenters[i].fuelcen_num = Segments[j].value;
+		}
+	}
+
+	//========================= UPDATE VARIABLES ======================
+
+	reset_objects(game_fileinfo.object_howmany > 0 ? game_fileinfo.object_howmany : 1);
+	if (game_fileinfo.object_howmany <= 0)
+		Objects[0].type = OBJ_NONE;
+
+	for (i=0; i<MAX_OBJECTS; i++) {
+		Objects[i].next = Objects[i].prev = -1;
+		if (Objects[i].type != OBJ_NONE) {
+			int objsegnum = Objects[i].segnum;
+
+			if (objsegnum < 0 || objsegnum > Highest_segment_index)		//bogus object
+				Objects[i].type = OBJ_NONE;
+			else {
+				Objects[i].segnum = -1;			//avoid Assert()
+				obj_link(i,objsegnum);
+			}
+		}
+	}
+
+	// The original called clear_transient_objects(1) here. It deletes each
+	// object of the type OBJ_WEAPON. In the target game an object of that
+	// type in a level file is a weapon item that lies in the level, so the
+	// call is removed.
+
+	// "Make sure non-transparent doors are set correctly" is in
+	// level_translate_textures() now.
+
+	Num_walls = game_fileinfo.walls_howmany;
+	reset_walls();
+
+	Num_open_doors = game_fileinfo.doors_howmany;
+	Num_triggers = game_fileinfo.triggers_howmany;
+
+	Num_robot_centers = game_fileinfo.matcen_howmany;
+
+	// fix_object_segs() puts an object into the segment that its position
+	// is in. If the position is in no segment, it moves the object to the
+	// center of its segment (and gives an Int3 message). The counters tell
+	// how many objects got another segment and another position.
+	{
+		static short file_segnum[MAX_OBJECTS];
+
+		for (i=0;i<=Highest_object_index;i++)
+			file_segnum[i] = Objects[i].segnum;
+
+		fix_object_segs();
+
+		Level_objects_moved = 0;
+		Level_objects_centered = 0;
+		for (i=0;i<=Highest_object_index;i++)
+			if (Objects[i].type != OBJ_NONE) {
+				if (file_segnum[i] != Objects[i].segnum)
+					Level_objects_moved++;
+				if (Objects[i].pos.x != Objects[i].dtu.pos_level.x || Objects[i].pos.y != Objects[i].dtu.pos_level.y || Objects[i].pos.z != Objects[i].dtu.pos_level.z)
+					Level_objects_centered++;
+			}
+	}
+
+	return 0;
+}
+
+//loads a level (.LVL) file from disk
+// ASCENT: the file comes from dtu_load_file(): a name with the extension
+// LVL gives the LV2 file of the 1.3 patch if there is one, and the packed
+// level of the disc is unpacked. A name with no extension gets ".LVL".
+// The texture numbers and the model numbers of the level are not
+// translated here. The caller does that with level_translate_textures()
+// and level_resolve_models() when the tables of the game are loaded.
+// Returns 0, or 1 if the file is not a level that this program can load.
+int load_level(char * filename_passed)
+{
+	ubyte *data;
+	const ubyte *p;
+	char filename[128];
+	int size;
+	int sig,version,minedata_offset,gamedata_offset,hostagetext_offset;
+	int mine_err,game_err;
+
+	#ifndef RELEASE
+	Level_being_loaded = filename_passed;
+	#endif
+
+	Assert(strlen(filename_passed) < 120);
+	strcpy(filename,filename_passed);
+	if (!strchr(filename,'.'))
+		strcat(filename,".LVL");
+
+	data = dtu_load_file( filename, &size );
+
+	if (!data)
+		Error("Can't open file <%s>\n",filename);
+
+	strcpy( Gamesave_current_filename, filename );
+
+	if (size < 20) {
+		free(data);
+		return 1;
+	}
+
+	p = data;
+	sig						= dio_get_int(&p);
+	version					= dio_get_int(&p);
+	minedata_offset		= dio_get_int(&p);
+	gamedata_offset		= dio_get_int(&p);
+	hostagetext_offset	= dio_get_int(&p);		// the offset of the end of the game data. Not used.
+	(void)hostagetext_offset;
+
+	if (sig != 0x504C564C) {		// 'PLVL', the bytes "LVLP"
+		printf( "The file %s is not a level (no LVLP signature)\n", filename );
+		free(data);
+		return 1;
+	}
+
+	Level_file_size = size;
+
+	mine_err = load_mine_data_dtu(data, size, minedata_offset);
+
+	if (mine_err == -1) {	//error!!
+		free(data);
+		return 1;
+	}
+
+	game_err = load_game_data_dtu(data, size, gamedata_offset);
+
+	free(data);
+
+	if (game_err == -1)	//error!!
+		return 1;
+
+	Level_mine_version = mine_top_fileinfo.fileinfo_version;
+	Level_game_version = game_top_fileinfo.fileinfo_version;
+	(void)version;
+
+	return 0;
+}
+
+// ASCENT: new. The summary of the loaded level for the option -checklevel
+// of the program. tools/lvl.py prints the same text from the level file
+// (option --summary), so that the two can be compared. Each checksum is
+// the 32-bit FNV-1a hash of the values, each value as 1, 2 or 4 bytes in
+// little endian order.
+
+static unsigned int sum_u8(unsigned int h, int v)
+{
+	h ^= (unsigned int)(v & 0xff);
+	return h * 16777619u;
+}
+
+static unsigned int sum_u16(unsigned int h, int v)
+{
+	h = sum_u8(h, v);
+	return sum_u8(h, v >> 8);
+}
+
+static unsigned int sum_u32(unsigned int h, int v)
+{
+	h = sum_u16(h, v);
+	return sum_u16(h, (int)((unsigned int)v >> 16));
+}
+
+static unsigned int sum_vec(unsigned int h, vms_vector *v)
+{
+	h = sum_u32(h, v->x);
+	h = sum_u32(h, v->y);
+	return sum_u32(h, v->z);
+}
+
+#define SUM_START	2166136261u
+
+void level_print_summary(FILE *f, char *name)
+{
+	char base[128];
+	char *t;
+	int i, j, k, n;
+	int type_count[256];
+	vms_vector lo, hi;
+	unsigned int h;
+
+	// the name of the level: upper case, no directory, no extension
+	t = name;
+	for (i=0; name[i]; i++)
+		if (name[i] == '/' || name[i] == '\\' || name[i] == ':')
+			t = name + i + 1;
+	strncpy(base, t, sizeof(base)-1);
+	base[sizeof(base)-1] = 0;
+	if ((t = strchr(base,'.')) != NULL)
+		*t = 0;
+	strupr(base);
+
+	fprintf(f, "level %s\n", base);
+	fprintf(f, "file_size %d\n", Level_file_size);
+	fprintf(f, "mine_version %d\n", Level_mine_version);
+	fprintf(f, "game_version %d\n", Level_game_version);
+	fprintf(f, "level_name %s\n", Current_level_name);
+	fprintf(f, "vertices %d\n", Num_vertices);
+	fprintf(f, "segments %d\n", Num_segments);
+	fprintf(f, "texture_names %d\n", Num_level_tmap_names);
+	fprintf(f, "pof_names %d\n", Num_level_pof_names);
+
+	memset(type_count, 0, sizeof(type_count));
+	n = 0;
+	for (i=0; i<=Highest_object_index; i++)
+		if (Objects[i].type != OBJ_NONE) {
+			type_count[Objects[i].type]++;
+			n++;
+		}
+	fprintf(f, "objects %d\n", n);
+	for (i=0; i<256; i++)
+		if (type_count[i])
+			fprintf(f, "objects_type %d %d\n", i, type_count[i]);
+
+	// the objects that are in the object lists of the segments
+	n = 0;
+	for (i=0; i<=Highest_segment_index; i++) {
+		int count = 0;
+		for (j=Segments[i].objects; j!=-1 && count<=MAX_OBJECTS; j=Objects[j].next) {
+			if (Objects[j].segnum == i)
+				n++;
+			count++;
+		}
+	}
+	fprintf(f, "objects_linked %d\n", n);
+
+	memset(type_count, 0, sizeof(type_count));
+	for (i=0; i<Num_walls; i++)
+		type_count[Walls[i].type]++;
+	fprintf(f, "walls %d\n", Num_walls);
+	for (i=0; i<256; i++)
+		if (type_count[i])
+			fprintf(f, "walls_type %d %d\n", i, type_count[i]);
+
+	fprintf(f, "doors %d\n", Num_open_doors);
+	fprintf(f, "triggers %d\n", Num_triggers);
+	fprintf(f, "matcens %d\n", Num_robot_centers);
+
+	// the bounding box of the vertices, as fix values
+	vm_vec_zero(&lo);
+	vm_vec_zero(&hi);
+	for (i=0; i<Num_vertices; i++) {
+		vms_vector *v = &Vertices[i];
+		if (i == 0) {
+			lo = hi = *v;
+		}
+		if (v->x < lo.x) lo.x = v->x;
+		if (v->y < lo.y) lo.y = v->y;
+		if (v->z < lo.z) lo.z = v->z;
+		if (v->x > hi.x) hi.x = v->x;
+		if (v->y > hi.y) hi.y = v->y;
+		if (v->z > hi.z) hi.z = v->z;
+	}
+	fprintf(f, "bbox %d %d %d %d %d %d\n", lo.x, lo.y, lo.z, hi.x, hi.y, hi.z);
+
+	// the player start: the first object of the type OBJ_PLAYER
+	for (i=0; i<=Highest_object_index; i++)
+		if (Objects[i].type == OBJ_PLAYER)
+			break;
+	if (i <= Highest_object_index)
+		fprintf(f, "player_start %d %d %d %d %d\n", i, Objects[i].segnum, Objects[i].dtu.pos_level.x, Objects[i].dtu.pos_level.y, Objects[i].dtu.pos_level.z);
+	else
+		fprintf(f, "player_start none\n");
+
+	h = SUM_START;
+	for (i=0; i<Num_vertices; i++)
+		h = sum_vec(h, &Vertices[i]);
+	fprintf(f, "checksum_vertices %08x\n", h);
+
+	h = SUM_START;
+	for (i=0; i<Num_segments; i++)
+		for (j=0; j<MAX_SIDES_PER_SEGMENT; j++)
+			h = sum_u16(h, Segments[i].children[j]);
+	fprintf(f, "checksum_children %08x\n", h);
+
+	h = SUM_START;
+	for (i=0; i<Num_segments; i++)
+		for (j=0; j<MAX_VERTICES_PER_SEGMENT; j++)
+			h = sum_u16(h, Segments[i].verts[j]);
+	fprintf(f, "checksum_segment_verts %08x\n", h);
+
+	// the sides: the byte at offset 1, the wall number, the texture
+	// numbers of the level file, the uvl values. The type and the normals
+	// are not in the sum, because validate_segment() computes them.
+	h = SUM_START;
+	for (i=0; i<Num_segments; i++)
+		for (j=0; j<MAX_SIDES_PER_SEGMENT; j++) {
+			side *s = &Segments[i].sides[j];
+			h = sum_u8(h, s->pad);
+			h = sum_u16(h, s->wall_num);
+			h = sum_u16(h, Segments[i].dtu_tmap_num[j]);
+			h = sum_u16(h, Segments[i].dtu_tmap_num2[j]);
+			for (k=0; k<4; k++) {
+				h = sum_u32(h, s->uvls[k].u);
+				h = sum_u32(h, s->uvls[k].v);
+				h = sum_u32(h, s->uvls[k].l);
+			}
+		}
+	fprintf(f, "checksum_sides %08x\n", h);
+
+	// the other values of the segments. "value" is not in the sum, because
+	// fuelcen_activate() sets it.
+	h = SUM_START;
+	for (i=0; i<Num_segments; i++) {
+		h = sum_u16(h, Segments[i].segnum);
+		h = sum_u32(h, Segments[i].static_light);
+		for (j=0; j<DTU_SEGMENT_UNKNOWN_BYTES; j++)
+			h = sum_u8(h, Segments[i].dtu_unknown[j]);
+		h = sum_u8(h, Segments[i].special);
+		h = sum_u8(h, Segments[i].matcen_num);
+	}
+	fprintf(f, "checksum_segment_data %08x\n", h);
+
+	h = SUM_START;
+	for (i=0; i<Num_walls; i++) {
+		wall *w = &Walls[i];
+		h = sum_u32(h, w->segnum);
+		h = sum_u32(h, w->sidenum);
+		h = sum_u32(h, w->hps);
+		h = sum_u32(h, w->linked_wall);
+		h = sum_u8(h, w->type);
+		h = sum_u8(h, w->flags);
+		h = sum_u8(h, w->state);
+		h = sum_u8(h, w->trigger);
+		h = sum_u8(h, w->clip_num);
+		h = sum_u8(h, w->keys);
+	}
+	fprintf(f, "checksum_walls %08x\n", h);
+
+	// the objects. The position and the orientation are the ones of the
+	// file (fix_object_segs() can move an object, and the loader makes the
+	// matrix of the player orthogonal). The id of a player is not in the
+	// sum (the loader numbers the players).
+	h = SUM_START;
+	for (i=0; i<=Highest_object_index; i++) {
+		object *o = &Objects[i];
+		dtu_object_info *d = &o->dtu;
+
+		if (o->type == OBJ_NONE)
+			continue;
+
+		h = sum_u8(h, o->type);
+		h = sum_u8(h, o->type == OBJ_PLAYER ? 0 : o->id);
+		h = sum_u8(h, o->control_type);
+		h = sum_u8(h, o->movement_type);
+		h = sum_u8(h, o->render_type);
+		h = sum_u8(h, o->flags);
+		h = sum_u16(h, o->segnum);
+		h = sum_u16(h, d->m_10);
+		h = sum_vec(h, &d->pos_level);
+		h = sum_vec(h, &d->orient_copy.rvec);
+		h = sum_vec(h, &d->orient_copy.uvec);
+		h = sum_vec(h, &d->orient_copy.fvec);
+		h = sum_u32(h, o->size);
+		h = sum_u32(h, o->shields);
+		h = sum_vec(h, &o->last_pos);
+		h = sum_u8(h, o->contains_type);
+		h = sum_u8(h, o->contains_id);
+		h = sum_u8(h, o->contains_count);
+
+		h = sum_u16(h, d->m_80);
+		h = sum_u16(h, d->m_82);
+		h = sum_u32(h, d->m_88_level);
+		for (j=0; j<13; j++) h = sum_u32(h, d->m_8c[j]);
+		for (j=0; j<2; j++) h = sum_u32(h, d->m_c0[j]);
+		for (j=0; j<6; j++) h = sum_u32(h, d->m_c8[j]);
+		for (j=0; j<2; j++) h = sum_u32(h, d->m_e0[j]);
+		for (j=0; j<5; j++) h = sum_u32(h, d->m_e8[j]);
+		h = sum_u32(h, d->m_1b0);
+		h = sum_u32(h, d->m_88);
+		h = sum_u8(h, d->m_1d5);
+
+		if (o->movement_type == MT_PHYSICS) {
+			physics_info *pi = &o->mtype.phys_info;
+			h = sum_vec(h, &pi->velocity);
+			h = sum_vec(h, &pi->thrust);
+			h = sum_u32(h, pi->mass);
+			h = sum_u32(h, pi->drag);
+			h = sum_u32(h, pi->brakes);
+			h = sum_vec(h, &pi->rotvel);
+			h = sum_vec(h, &pi->rotthrust);
+			h = sum_u16(h, pi->turnroll);
+			h = sum_u16(h, pi->flags);
+		} else if (o->movement_type == MT_SPINNING)
+			h = sum_vec(h, &o->mtype.spin_rate);
+
+		if (o->control_type == CT_AI) {
+			ai_static *ai = &o->ctype.ai_info;
+			h = sum_u8(h, ai->behavior);
+			for (j=0; j<MAX_AI_FLAGS; j++) h = sum_u8(h, ai->flags[j]);
+			h = sum_u16(h, ai->hide_segment);
+			h = sum_u16(h, ai->hide_index);
+			h = sum_u16(h, ai->path_length);
+			h = sum_u16(h, ai->cur_path_index);
+			h = sum_u16(h, ai->follow_path_start_seg);
+			h = sum_u16(h, ai->follow_path_end_seg);
+		}
+
+		if (o->render_type == RT_POLYOBJ || o->render_type == RT_MORPH) {
+			h = sum_u32(h, d->model_num_level);
+			h = sum_u16(h, d->m_16e);
+			h = sum_u16(h, d->m_170);
+			h = sum_u32(h, d->m_172);
+			h = sum_u32(h, d->m_176);
+			h = sum_u32(h, o->rtype.pobj_info.subobj_flags);
+			h = sum_u32(h, d->tmap_override_level);
+		} else if (o->render_type == RT_ITEM)
+			h = sum_u16(h, d->item_bitmap);
+
+		h = sum_u32(h, d->record_size);
+	}
+	fprintf(f, "checksum_objects %08x\n", h);
 }
 
 #ifdef EDITOR

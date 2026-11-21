@@ -233,7 +233,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  *		CONSTANTS
  */
 
-#define MAX_OBJECTS			350		//increased on 01/24/95 for multiplayer. --MK;  total number of objects in world
+// ASCENT: was 350. The executable of the target game compares with 800
+// (the assert "objnum < MAX_OBJECTS" in render.c and the test in obj_create).
+// The largest level has 182 objects.
+#define MAX_OBJECTS			800		//increased on 01/24/95 for multiplayer. --MK;  total number of objects in world
 
 //Object types
 #define OBJ_NONE		255	//unused object
@@ -252,8 +255,21 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define OBJ_GHOST		12		//what the player turns into when dead
 #define OBJ_LIGHT		13		//a light source, & not much else
 #define OBJ_COOP		14		//a cooperative player object.
+// ASCENT: the object types that the target game adds. The names are from
+// the Object_type_names table of DTUGAME.EXE ("ARMOR", "MISC", "SPELL",
+// "DRESSING"; types 3 and 9 are "(unused)" there). The executable has one
+// table of types for each (N_armor_types, N_misc_types, N_spell_types,
+// N_dressing_types) and the id of the object is the index into it. In the
+// level files the types 15 to 17 are items that lie in the level (no
+// control, no movement, render type RT_ITEM), and type 18 is scenery such
+// as chairs, beds and barrels (no control, no movement, a polygon model).
+// A type 5 object (OBJ_WEAPON) with the same form is a weapon item.
+#define OBJ_ARMOR		15		//an armor item
+#define OBJ_MISC		16		//a miscellaneous item
+#define OBJ_SPELL		17		//a spell item
+#define OBJ_DRESSING	18		//scenery ("set dressing")
 // WARNING!! If you add a type here, add its name to Object_type_names in object.c
-#define MAX_OBJECT_TYPES	15
+#define MAX_OBJECT_TYPES	19
 
 //Result types
 #define RESULT_NOTHING	0		//Ignore this collision
@@ -289,6 +305,11 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define RT_POWERUP		5	//a powerup
 #define RT_MORPH			6	//a robot being morphed
 #define RT_WEAPON_VCLIP	7	//a weapon that renders as a vclip
+// ASCENT: new in the target game. The record has one int (87 to 733 in the
+// levels), which the loader stores as 16 bits (dtu.item_bitmap). All items
+// (types 5, 15, 16, 17) use it. The table that the number is an index of is
+// not known.
+#define RT_ITEM			8	//an item of the target game
 
 //misc object flags
 #define OF_EXPLODING			1		//this object is exploding
@@ -399,6 +420,49 @@ typedef struct polyobj_info {
 	int			alt_textures;					//if not -1, use these textures instead
 } polyobj_info;
 
+// ASCENT: the parts of an object record of a Descent to Undermountain level
+// (game data version 41) that Descent 1 does not have. See
+// docs/formats/lvl.md. The loader of the target game reads each value into
+// its object structure of 479 bytes. The name of a field with no known
+// meaning has the offset in that structure (m_80 is at 0x80).
+#define DTU_OBJECT_BLOCK_SIZE	124
+
+typedef struct dtu_object_info {
+	// The short at record offset 8 (0x10, attached_obj in the order of the
+	// Descent 1 structure): -1 for the player, 0 for all other objects.
+	short			m_10;
+	// The 124 bytes at record offset 81, in file order.
+	short			m_80;				// 0 in all records
+	short			m_82;				// 0 in all records
+	int			m_88_level;		// the value of the record for m_88: 0, in one record 0x1000000
+	int			m_88;				// the loader replaces the value of the record with m_c8[5]
+	fix			m_8c[13];		// 0x8C to 0xBC. m_8c[8] (0xAC) is 0 to 30 for items, see m_1d5
+	fix			m_c0[2];			// 0xC0, 0xC4
+	fix			m_c8[6];			// 0xC8 to 0xDC
+	fix			m_e0[2];			// 0xE0, 0xE4
+	fix			m_e8[5];			// 0xE8 to 0xF8
+	fix			m_1b0;			// -1 for the player, 0x400000 plus low bits for robots. Not in version 40
+	// Values that the loader derives.
+	ubyte			m_1d5;			// low byte of m_8c[8] for the types 5, 15, 16, 17 (the loader clears m_8c[8])
+	vms_matrix	orient_copy;	// 0x44: the loader copies the orientation of the record to it
+	// The position of the record. fix_object_segs() moves an object that
+	// is in no segment to the center of its segment.
+	vms_vector	pos_level;
+	// The control part of a light (control type 14).
+	short			light_m;			// the short after the intensity
+	// The render part of a polygon model (render types 1 and 6).
+	short			m_16e;			// 0 (twice 5)
+	short			m_170;			// 1 for robots and players, 0 for scenery
+	int			m_172;			// 0 for robots and players, -1 for scenery
+	int			m_176;			// 1 for robots and players, -1 for scenery
+	int			model_num_level;	// model_num of the record: index into the POF name list of the level (Level_pof_names)
+	int			tmap_override_level;	// tmap_override of the record: -1 or an index into the texture name table of the level
+	// The render part of an item (render type RT_ITEM).
+	short			item_bitmap;	// 0x162
+	// The size of the record in the level file.
+	int			record_size;
+} dtu_object_info;
+
 typedef struct object {
 	int			signature;		// Every object ever has a unique signature...
 	ubyte			type;				// what type of object this is... robot, weapon, hostage, powerup, fireball
@@ -442,6 +506,9 @@ typedef struct object {
 		polyobj_info pobj_info;			//polygon model
 		vclip_info	 vclip_info;		//vclip
 	} rtype;
+
+	// ASCENT: the data of the target game, see dtu_object_info
+	dtu_object_info dtu;
 
 } object;
 

@@ -372,6 +372,7 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 #include "network.h"
 #include "newmenu.h"
 #include "gauges.h"
+#include "dtugame.h"		// ASCENT: Dtu_objects_enabled
 #include "arcade.h"
 #include "multi.h"
 #include "menu.h"
@@ -446,6 +447,11 @@ char	Object_type_names[MAX_OBJECT_TYPES][9] = {
 	"GHOST   ",
 	"LIGHT   ",
 	"COOP    ",
+	// ASCENT: the types of the target game, see object.h
+	"ARMOR   ",
+	"MISC    ",
+	"SPELL   ",
+	"DRESSING",
 };
 #endif
 
@@ -2074,7 +2080,10 @@ void object_move_all()
 
 	#ifndef DEMO_ONLY
 	for (i=0;i<=Highest_object_index;i++) {
-		if ( (objp->type != OBJ_NONE) && (!(objp->flags&OF_SHOULD_BE_DEAD)) )	{
+		// ASCENT: only the object of the player is simulated while the
+		// tables of the monsters and items are not loaded, see
+		// Dtu_objects_enabled in dtugame.h
+		if ( (objp->type != OBJ_NONE) && (!(objp->flags&OF_SHOULD_BE_DEAD)) && (Dtu_objects_enabled || objp == ConsoleObject) )	{
 			object_move_one( objp );
 		}
 		objp++;
@@ -2245,7 +2254,10 @@ void clear_transient_objects(int clear_all)
 	object *obj; 
 
 	for (objnum=0,obj=&Objects[0];objnum<=Highest_object_index;objnum++,obj++)
-		if (((obj->type == OBJ_WEAPON) && (clear_all || obj->id != PROXIMITY_ID)) ||
+		// ASCENT: the test of control_type is new. In the target game an
+		// object of the type OBJ_WEAPON with no control is a weapon item
+		// that lies in the level, and it must stay.
+		if (((obj->type == OBJ_WEAPON) && (obj->control_type == CT_WEAPON) && (clear_all || obj->id != PROXIMITY_ID)) ||
 			 obj->type == OBJ_FIREBALL ||
 			 obj->type == OBJ_DEBRIS ||
 			 obj->type == OBJ_DEBRIS ||

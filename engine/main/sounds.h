@@ -236,12 +236,17 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define  SOUND_CHEATER									200
 
 //--------------------------------------------------------------
-#define MAX_SOUNDS 	250
+// ASCENT: was 250. The sound numbers of the Descent to Undermountain
+// tables go up to 4413. DTUGAME.EXE has two tables of 5500 16-bit entries
+// (the loop at 0x1B39B fills them with 10000, "no sound").
+#define MAX_SOUNDS 	5500
 
-//I think it would be nice to have a scrape sound... 
+//I think it would be nice to have a scrape sound...
 //#define SOUND_PLAYER_SCRAPE_WALL						72
 
-extern ubyte Sounds[MAX_SOUNDS];
-extern ubyte AltSounds[MAX_SOUNDS];
+// ASCENT: the entries were ubyte, with 255 for "no sound". Now an entry is
+// a sound file number (index of GameSounds) or SOUND_FILE_NONE (piggy.h).
+extern ushort Sounds[MAX_SOUNDS];
+extern ushort AltSounds[MAX_SOUNDS];
 
 #endif

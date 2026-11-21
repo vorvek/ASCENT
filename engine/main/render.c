@@ -338,6 +338,7 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "newmenu.h"
 #include "mem.h"
 #include "piggy.h"
+#include "dtugame.h"		// ASCENT: the flat color of a side with no texture, Dtu_objects_enabled
 
 #define	INITIAL_LOCAL_LIGHT	(F1_0/4)		// local light value in segment of occurence (of light emission)
 
@@ -566,6 +567,21 @@ void render_face(int segnum, int sidenum, int nv, short *vp, int tmap1, int tmap
 	}
 
 	face_light = -vm_vec_dot(&Viewer->orient.fvec,norm);
+
+	// ASCENT: a side whose texture the game does not have (the bit in
+	// dtu_tmap_missing, see level_translate_textures) or whose bitmap is not
+	// loaded is drawn with a flat color, so that the level geometry shows
+	// in any case. The color depends on the texture number of the level
+	// file and on the light of the side.
+	if ((Segments[segnum].dtu_tmap_missing & (1 << sidenum)) || !dtu_texture_ready(tmap1)) {
+		fix light = 0;
+
+		for (i=0; i<nv; i++)
+			light += uvlp[i].l;
+		gr_setcolor(dtu_flat_color(Segments[segnum].dtu_tmap_num[sidenum], light / nv));
+		g3_draw_poly(nv,pointlist);
+		return;
+	}
 
 	if (tmap1 >= NumTextures) {
 		mprintf((0,"Invalid tmap number %d, NumTextures=%d, changing to 0\n",tmap1,NumTextures));
@@ -823,6 +839,11 @@ do_render_object(int objnum)
 	object *obj = &Objects[objnum];
 	int count = 0;
 	int n;
+
+	// ASCENT: no object is drawn while the tables of the monsters and
+	// items are not loaded, see Dtu_objects_enabled in dtugame.h
+	if (!Dtu_objects_enabled)
+		return;
 
 	Assert(objnum < MAX_OBJECTS);
 

@@ -171,4 +171,33 @@ int load_mine_data_compiled(struct CFILE *LoadFile);
 
 extern short tmap_xlate_table[];
 
+// ASCENT: the mine data of a Descent to Undermountain level. See
+// docs/formats/lvl.md and the comments in gamemine.c.
+#define MINE_VERSION_DTU			18
+
+// The size of the texture name table of a level. All levels have 1489
+// names. The executable of the target game compares the number of textures
+// of the game with 2500 (the assert "NumTextures < MAX_TEXTURES").
+#define MAX_LEVEL_TMAP_NAMES		2500
+
+extern char Level_tmap_names[MAX_LEVEL_TMAP_NAMES][13];	// the texture names of the level file
+extern int Num_level_tmap_names;
+extern short Level_tmap_xlate[MAX_LEVEL_TMAP_NAMES];	// level texture number to game texture number, -1 if the game has no texture with the name
+extern int Level_tmaps_translated;							// 1 after level_translate_textures()
+
+// How many sides got another type or another normal from
+// validate_segment() than the level file has.
+extern int Level_validate_type_changes;
+extern int Level_validate_normal_changes;
+
+// Loads the mine data from the level file in memory.
+// Returns 0=everything ok, -1=error.
+int load_mine_data_dtu(const unsigned char *data, int size, int mine_start);
+
+// Translates the texture numbers of the loaded level to the texture table
+// of the game. Call it after load_level() when the texture table is
+// loaded, and again when the table changes. Returns the number of texture
+// names of the level that are in use and that the game does not have.
+int level_translate_textures(int report);
+
 #endif

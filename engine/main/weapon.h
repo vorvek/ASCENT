@@ -138,22 +138,24 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "piggy.h"
 
 typedef struct weapon_info {
+	// ASCENT: the model numbers and the vclip numbers were byte. Descent to
+	// Undermountain has model numbers and vclip numbers above 127.
 	byte	render_type;				// How to draw 0=laser, 1=blob, 2=object
-	byte	model_num;					// Model num if rendertype==2.
-	byte	model_num_inner;			// Model num of inner part if rendertype==2.
+	short	model_num;					// Model num if rendertype==2.
+	short	model_num_inner;			// Model num of inner part if rendertype==2.
 	byte	persistent;					//	0 = dies when it hits something, 1 = continues (eg, fusion cannon)
 
-	byte	flash_vclip;				// What vclip to use for muzzle flash
+	short	flash_vclip;				// What vclip to use for muzzle flash
 	short	flash_sound;				// What sound to play when fired
-	byte	robot_hit_vclip;			// What vclip for impact with robot
+	short	robot_hit_vclip;			// What vclip for impact with robot
 	short	robot_hit_sound;			// What sound for impact with robot
 
-	byte	wall_hit_vclip;			// What vclip for impact with wall
+	short	wall_hit_vclip;			// What vclip for impact with wall
 	short	wall_hit_sound;			// What sound for impact with wall
 	byte	fire_count;					//	Number of bursts fired from EACH GUN per firing.  For weapons which fire from both sides, 3*fire_count shots will be fired.
 	byte	ammo_usage;					//	How many units of ammunition it uses.
 
-	byte	weapon_vclip;				//	Vclip to render for the weapon, itself.
+	short	weapon_vclip;				//	Vclip to render for the weapon, itself.
 	byte	destroyable;				//	If !0, this weapon can be destroyed by another weapon.
 	byte	matter;						//	Flag: set if this object is matter (as opposed to energy)
 	byte	bounce;						//	Flag: set if this object bounces off walls
@@ -191,7 +193,8 @@ typedef struct weapon_info {
 #define WEAPON_TYPE_STRONG_LASER	1
 #define WEAPON_TYPE_CANNON_BALL	2
 #define WEAPON_TYPE_MISSILE		3
-#define MAX_WEAPON_TYPES 			30
+// ASCENT: was 30. 90 is the constant of the MAX_WEAPON_TYPES asserts in DTUGAME.EXE.
+#define MAX_WEAPON_TYPES 			90
 
 #define WEAPON_RENDER_NONE			-1
 #define WEAPON_RENDER_LASER		0

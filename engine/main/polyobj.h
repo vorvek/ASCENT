@@ -132,33 +132,77 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #endif
 #include "piggy.h"
 
+// ASCENT: Descent 1 had 85 models and 10 submodels in a model. The
+// constants of the asserts in DTUGAME.EXE are 160 and 64. Three archives
+// of the disc that the game does not use (BASE, SPIDER, DEMO) have up to
+// 238 models, so the limit here is 256. MAX_SUBMODELS (10, inferno.h)
+// still sizes the animation angles of an object, so the arrays of the
+// model have their own constant.
 #ifndef DRIVE
-#define MAX_POLYGON_MODELS 85
+#define MAX_POLYGON_MODELS 256
 #else
 #define MAX_POLYGON_MODELS 300
 #define MAX_SUBMODELS 10
 #endif
+#define MAX_POLYMODEL_SUBMODELS	64
+
+// ASCENT: the model header of an EGG archive and the number of arrays in
+// the data block of a model. See docs/formats/egg.md.
+#define DTU_MODEL_HEADER_SIZE		218
+#define DTU_MODEL_SECTIONS			20		// section numbers 1 to 19 of egg.md
 
 //used to describe a polygon model
 typedef struct polymodel {
 	int n_models;
 	int model_data_size;
 	ubyte *model_data;
-	int submodel_ptrs[MAX_SUBMODELS];
-	vms_vector submodel_offsets[MAX_SUBMODELS];
-	vms_vector submodel_norms[MAX_SUBMODELS];		//norm for sep plane
-	vms_vector submodel_pnts[MAX_SUBMODELS];		//point on sep plane 
-	fix submodel_rads[MAX_SUBMODELS];				//radius for each submodel
-	ubyte submodel_parents[MAX_SUBMODELS];		//what is parent for each submodel
-	vms_vector submodel_mins[MAX_SUBMODELS];
-	vms_vector submodel_maxs[MAX_SUBMODELS];
+	int submodel_ptrs[MAX_POLYMODEL_SUBMODELS];
+	vms_vector submodel_offsets[MAX_POLYMODEL_SUBMODELS];
+	vms_vector submodel_norms[MAX_POLYMODEL_SUBMODELS];		//norm for sep plane
+	vms_vector submodel_pnts[MAX_POLYMODEL_SUBMODELS];		//point on sep plane
+	fix submodel_rads[MAX_POLYMODEL_SUBMODELS];				//radius for each submodel
+	ubyte submodel_parents[MAX_POLYMODEL_SUBMODELS];		//what is parent for each submodel
+	vms_vector submodel_mins[MAX_POLYMODEL_SUBMODELS];
+	vms_vector submodel_maxs[MAX_POLYMODEL_SUBMODELS];
 	vms_vector mins,maxs;							//min,max for whole model
 	fix rad;
 	ubyte		n_textures;
 	ushort	first_texture;
 	ubyte		simpler_model;		//alternate model with less detail (0 if none, model_num+1 else)
 //	vms_vector min,max;
+
+	// ASCENT: the parts that Descent to Undermountain added. The loader
+	// keeps the whole data block of the model and the header as they are in
+	// the EGG archive, for the parts that are not decoded yet.
+	int		n_frames;			// animation frames (header 0x34)
+	ubyte		dtu_flags;			// header 0x3C: optional arrays in the block
+	ubyte		dtu_bound;			// 1 after the table gave this model its textures
+	ubyte		dtu_textures_used;	// highest texture number in the model data, plus 1
+	ubyte		dtu_n_textures_file;	// n_textures of the header
+	int		dtu_first_texture_file;	// first_texture of the header (not used, see polyobj.c)
+	ubyte		*dtu_block;			// copy of the data block. model_data points to its start
+	int		dtu_block_size;
+	int		dtu_section_ofs[DTU_MODEL_SECTIONS];	// offset of each array in dtu_block, -1 if absent
+	int		dtu_section_size[DTU_MODEL_SECTIONS];
+	ubyte		dtu_header[DTU_MODEL_HEADER_SIZE];
 } polymodel;
+
+// ASCENT: load one model of an EGG archive. header points to the 218-byte
+// header, block to the data block of the model, block_avail is the number
+// of bytes from block to the end of the archive. Returns the model number,
+// or -1 if the model is not valid.
+int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_avail);
+
+// ASCENT: find a loaded model by its POF name (no case). Returns -1 if none.
+int polyobj_find_model(const char *name);
+
+// ASCENT: release all models. The next model gets number 0.
+void polyobj_free_all_models(void);
+
+// ASCENT: animation angles of frame "frame" of a model: n_models angvecs
+// in the memory of the model, or NULL if the model has no such frame.
+// The bytes are in file order (3 x s16, little endian).
+const ubyte *polyobj_get_frame_angles(int model_num, int frame);
 
 //array of pointers to polygon objects
 extern polymodel Polygon_models[];

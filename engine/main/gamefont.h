@@ -74,5 +74,15 @@ extern grs_font *Gamefonts[MAX_FONTS];
 void gamefont_init();
 void gamefont_close();
 
+// ASCENT: 0 loads the "L" font set of Descent to Undermountain, 1 the "H"
+// set. Set it before gamefont_init(). See gamefont.c.
+extern int Gamefont_hires;
+
+// ASCENT: load PALETTE.256 from the game data directories (dtufile.c) and
+// make it the current palette. Returns 0 if the file is not there. This
+// takes the place of gr_use_palette_table("PALETTE.256") in the start
+// code, which only looks in the current directory.
+int dtu_load_palette(void);
+
 
 #endif

@@ -123,6 +123,12 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define	WBACK								4
 #define	WFRONT							5
 
+// ASCENT: the limits of the target game, from the compare instructions of
+// the asserts in DTUGAME.EXE 1.3: MAX_SEGMENTS 900, MAX_VERTICES 3608
+// (3600 and the 8 vertices of the editor's new segment), and 800 segments
+// in "Too many segments (%i > %i) for game (not editor)". The values of
+// Descent 1 below are the same. The largest levels have 800 segments and
+// 2642 vertices.
 #define	MAX_GAME_SEGMENTS				800
 #define	MAX_GAME_VERTICES				2800
 
@@ -178,24 +184,40 @@ typedef struct side {
 } side;
 #endif
 
+// ASCENT: the segment record of a Descent to Undermountain level (mine
+// version 18, 536 bytes, see docs/formats/lvl.md) has 14 bytes that
+// Descent 1 does not have and that have no known meaning. They are kept
+// here in file order: the 12 bytes at record offset 516 (int, fix, int)
+// and the 2 bytes at record offsets 532 and 533.
+#define	DTU_SEGMENT_UNKNOWN_BYTES	14
+
 typedef struct segment {
-	#ifdef	EDITOR
+	// ASCENT: segnum and group were under EDITOR. The level files of the
+	// target game are editor mines and store both. The executable of the
+	// target game does not validate a segment with segnum -1 (unused).
 	short		segnum;								// segment number, not sure what it means
-	#endif
 	side		sides[MAX_SIDES_PER_SEGMENT];	// 6 sides
 	short		children[MAX_SIDES_PER_SEGMENT];	// indices of 6 children segments, front, left, top, right, bottom, back
 	short		verts[MAX_VERTICES_PER_SEGMENT];	// vertex ids of 4 front and 4 back vertices
-	#ifdef	EDITOR
 	short		group;								// group number to which the segment belongs.
-	#endif
 	short		objects;								// pointer to objects in this segment
 	ubyte		special;								// special property of a segment (such as damaging, trigger, etc.)
 	byte		matcen_num;							//	which center segment is associated with.
 	short		value;
 	fix		static_light;						//average static light in segment
-	#ifndef	EDITOR
-	short		pad;			//make structure longword aligned
-	#endif
+	// ASCENT: new fields for the levels of the target game.
+	ubyte		dtu_unknown[DTU_SEGMENT_UNKNOWN_BYTES];	// see DTU_SEGMENT_UNKNOWN_BYTES
+	// The texture numbers of the level file for each side. They are indexes
+	// into the texture name table of the level (Level_tmap_names in
+	// gamemine.c), not into the texture table of the game. The translation
+	// step (level_translate_textures) sets tmap_num and tmap_num2 of each
+	// side from them. dtu_tmap_num2 has the rotation in the top 2 bits.
+	short		dtu_tmap_num[MAX_SIDES_PER_SEGMENT];
+	short		dtu_tmap_num2[MAX_SIDES_PER_SEGMENT];
+	// Bit n is set if the game has no texture for the name of side n.
+	// The renderer draws such a side with a flat color.
+	ubyte		dtu_tmap_missing;
+	ubyte		dtu_tmap2_missing;
 } segment;
 
 #ifdef COMPACT_SEGS

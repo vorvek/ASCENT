@@ -60,7 +60,9 @@ int hashtable_init( hashtable *ht, int size )	{
 
 	ht->size=0;
 
-	for (i=1; i<12; i++ )	{
+	// ASCENT: was i<12 (at most 2048 entries). The bitmap table of Descent
+	// to Undermountain has 4000 names and the sound table 5500.
+	for (i=1; i<16; i++ )	{
 		if ( (1<<i) >= size )	{
 			ht->bitsize = i;
 			ht->size = 1<<i;

@@ -51,7 +51,9 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <types.h>
 
 #define MAX_MISSIONS 						100
-#define MAX_LEVELS_PER_MISSION			30
+// ASCENT: was 30. DTU.MSN has 33 levels. The value of the target game is
+// not known.
+#define MAX_LEVELS_PER_MISSION			40
 #define MAX_SECRET_LEVELS_PER_MISSION	5
 #define MISSION_NAME_LEN 					21
 

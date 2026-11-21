@@ -266,11 +266,10 @@ static inline void segment_from_disk_editor(segment *seg, const ubyte *buf, shor
 	short t;
 	int i;
 
+	// ASCENT: segnum and group are always in the structure now (segment.h)
 	t = dio_get_short(&p);
 	if (segnum) *segnum = t;
-	#ifdef EDITOR
 	seg->segnum = t;
-	#endif
 	for (i = 0; i < MAX_SIDES_PER_SEGMENT; i++)
 		side_from_disk(&seg->sides[i], &p);
 	for (i = 0; i < MAX_SIDES_PER_SEGMENT; i++)
@@ -279,17 +278,53 @@ static inline void segment_from_disk_editor(segment *seg, const ubyte *buf, shor
 		seg->verts[i] = dio_get_short(&p);
 	t = dio_get_short(&p);
 	if (group) *group = t;
-	#ifdef EDITOR
 	seg->group = t;
-	#endif
 	seg->objects = dio_get_short(&p);
 	seg->special = dio_get_ubyte(&p);
 	seg->matcen_num = dio_get_byte(&p);
 	seg->value = dio_get_short(&p);
 	seg->static_light = dio_get_fix(&p);
-	#ifndef EDITOR
-	seg->pad = 0;
-	#endif
+	memset(seg->dtu_unknown, 0, sizeof(seg->dtu_unknown));
+	for (i = 0; i < MAX_SIDES_PER_SEGMENT; i++) {
+		seg->dtu_tmap_num[i] = seg->sides[i].tmap_num;
+		seg->dtu_tmap_num2[i] = seg->sides[i].tmap_num2;
+	}
+	seg->dtu_tmap_missing = seg->dtu_tmap2_missing = 0;
+}
+
+#define SEGMENT_DTU_DISK_SIZE		536	// segment of Descent to Undermountain (mine version 18)
+
+// One segment record of a Descent to Undermountain level (536 bytes, see
+// docs/formats/lvl.md): segnum, group, sides[6], children[6], verts[8],
+// static_light, 12 unknown bytes, objects, value, 2 unknown bytes, special,
+// matcen_num. The texture numbers of the sides are indexes into the texture
+// name table of the level. They are copied to dtu_tmap_num and
+// dtu_tmap_num2 for the translation step.
+static inline void segment_from_disk_dtu(segment *seg, const ubyte *buf)
+{
+	const ubyte *p = buf;
+	int i;
+
+	seg->segnum = dio_get_short(&p);
+	seg->group = dio_get_short(&p);
+	for (i = 0; i < MAX_SIDES_PER_SEGMENT; i++)
+		side_from_disk(&seg->sides[i], &p);
+	for (i = 0; i < MAX_SIDES_PER_SEGMENT; i++)
+		seg->children[i] = dio_get_short(&p);
+	for (i = 0; i < MAX_VERTICES_PER_SEGMENT; i++)
+		seg->verts[i] = dio_get_short(&p);
+	seg->static_light = dio_get_fix(&p);
+	dio_get_bytes(&p, &seg->dtu_unknown[0], 12);		// record offsets 516 to 527
+	seg->objects = dio_get_short(&p);
+	seg->value = dio_get_short(&p);
+	dio_get_bytes(&p, &seg->dtu_unknown[12], 2);		// record offsets 532 and 533
+	seg->special = dio_get_ubyte(&p);
+	seg->matcen_num = dio_get_byte(&p);
+	for (i = 0; i < MAX_SIDES_PER_SEGMENT; i++) {
+		seg->dtu_tmap_num[i] = seg->sides[i].tmap_num;
+		seg->dtu_tmap_num2[i] = seg->sides[i].tmap_num2;
+	}
+	seg->dtu_tmap_missing = seg->dtu_tmap2_missing = 0;
 }
 
 #endif	// _SEGMENT_H

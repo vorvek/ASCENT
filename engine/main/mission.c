@@ -121,6 +121,8 @@ static char rcsid[] = "$Id: mission.c 2.9 1995/05/26 16:16:32 john Exp $";
 #include "titles.h"
 #include "mono.h"
 #include "error.h"
+#include "dtufile.h"		// ASCENT: dtu_load_file()
+#include "mem.h"			// ASCENT: dtu_load_file() memory is released through the debug allocator
 
 mle Mission_list[MAX_MISSIONS];
 
@@ -200,6 +202,35 @@ char *get_parm_value(char *parm,FILE *f)
 		return NULL;
 }
 
+// ASCENT: new. A mission file in memory, and the function that reads the
+// next line of it, like mfgets() for a file. The line ends are removed.
+#define DTU_MISSION_FILE	"DTU.MSN"		// the mission of the target game (33 levels)
+
+typedef struct msn_text {
+	char	*data;
+	int	size;
+	int	pos;
+} msn_text;
+
+static char *msn_gets(char *s,int n,msn_text *t)
+{
+	int len = 0;
+
+	if (t->pos >= t->size)
+		return NULL;
+
+	while (t->pos < t->size && t->data[t->pos] != '\n') {
+		char c = t->data[t->pos++];
+		if (c != '\r' && c != 26 && len < n-1)		// 26 is the DOS end of file character
+			s[len++] = c;
+	}
+	if (t->pos < t->size)
+		t->pos++;		// the line feed
+	s[len] = 0;
+
+	return s;
+}
+
 // ASCENT: the parameters have the types that qsort gives to the function
 int ml_sort_func(const void *v0,const void *v1)
 {
@@ -254,7 +285,9 @@ int build_mission_list(int anarchy_mode)
 
 #ifndef DEST_SAT
 		strcpy(Mission_list[0].filename,"");		//no filename for builtin
-		strcpy(Mission_list[0].mission_name,"Descent: First Strike");
+		// ASCENT: was "Descent: First Strike". load_mission(0) sets the name
+		// from the mission file of the target game.
+		strcpy(Mission_list[0].mission_name,"Undermountain");
 		count = 1;
 #endif
 
@@ -411,60 +444,49 @@ int load_mission(int mission_num)
 
 	mprintf(( 0, "Loading mission %d\n", mission_num ));
 
-#ifndef DEST_SAT
-	if (mission_num == 0) {		//built-in mission
-		int i;
-
-#ifdef ROCKWELL_CODE
-		Last_level = 7;
-		Last_secret_level = 0;
-
-		//build level names
-		for (i=0;i<Last_level;i++)
-			sprintf(Level_names[i], "LEVEL%02d.RDL", i+1);
-#else
-		Last_level = BIM_LAST_LEVEL;
-		Last_secret_level = BIM_LAST_SECRET_LEVEL;
-
-		//build level names
-		for (i=0;i<Last_level;i++)
-			sprintf(Level_names[i], "LEVEL%02d.RDL", i+1);
-		for (i=0;i<-Last_secret_level;i++)
-			sprintf(Secret_level_names[i], "LEVELS%1d.RDL", i+1);
-
-		Secret_level_table[0] = 10;
-		Secret_level_table[1] = 21;
-		Secret_level_table[2] = 24;
-#endif
-		strcpy(Briefing_text_filename,BIM_BRIEFING_FILE);
-		strcpy(Ending_text_filename,BIM_ENDING_FILE);
-		cfile_use_alternate_hogfile(NULL);		//disable alternate
-	} else 
-#endif
-	{		 //NOTE LINK TO ABOVE IF!!!!!
+	// ASCENT: mission 0 was the built-in mission of Descent 1 (27 levels and
+	// 3 secret levels with fixed names). It is the mission of the target
+	// game now: the file DTU.MSN from the data directories, which has the
+	// same form as a mission file of Descent 1. The file is parsed from
+	// memory (msn_gets), for mission 0 and for the other mission files.
+	{		 
 			//read mission from file 
-		FILE *mfile;
+		msn_text text;
 		char buf[80], tmp[80], *v;
+		int size = 0;
 
-		strcpy(buf,Mission_list[mission_num].filename);
-		strcat(buf,".MSN");
+		text.data = NULL;
+		text.pos = 0;
 
-		strcpy(tmp,Mission_list[mission_num].filename);
-		strcat(tmp,".HOG");
-		cfile_use_alternate_hogfile(tmp);
+		if (mission_num == 0) {
+			text.data = (char *)dtu_load_file(DTU_MISSION_FILE, &size);
+			cfile_use_alternate_hogfile(NULL);		//disable alternate
+		} else {
+			FILE *mfile;
 
-		mfile = fopen(buf,"rt");
-#ifdef USE_CD
-		if (mfile == NULL) {
-			if ( strlen(destsat_cdpath) )	{
-				char temp_spec[128];
-				strcpy( temp_spec, destsat_cdpath );
-				strcat( temp_spec, buf );
-				mfile = fopen( temp_spec, "rt" );
+			strcpy(buf,Mission_list[mission_num].filename);
+			strcat(buf,".MSN");
+
+			strcpy(tmp,Mission_list[mission_num].filename);
+			strcat(tmp,".HOG");
+			cfile_use_alternate_hogfile(tmp);
+
+			mfile = fopen(buf,"rb");
+			if (mfile) {
+				fseek(mfile,0,SEEK_END);
+				size = (int)ftell(mfile);
+				fseek(mfile,0,SEEK_SET);
+				text.data = malloc(size+1);
+				if (text.data && fread(text.data,1,size,mfile) != (size_t)size) {
+					free(text.data);
+					text.data = NULL;
+				}
+				fclose(mfile);
 			}
 		}
-#endif
-		if (mfile == NULL) {
+		text.size = size;
+
+		if (text.data == NULL) {
 			Current_mission_num = -1;
 			return 0;		//error!
 		}
@@ -482,10 +504,21 @@ int load_mission(int mission_num)
 		}
 #endif
 
-		while (mfgets(buf,80,mfile)) {
+		while (msn_gets(buf,80,&text)) {
 
-			if (istok(buf,"name"))
+			if (istok(buf,"name")) {
+				// ASCENT: the name of mission 0 is in its file
+				if (mission_num == 0 && (v = get_value(buf)) != NULL) {
+					char *t;
+					if ((t=strchr(v,';'))!=NULL)
+						*t=0;
+					for (t = v + strlen(v); t > v && isspace(t[-1]); t--)
+						t[-1] = 0;
+					strncpy(Mission_list[0].mission_name,v,MISSION_NAME_LEN);
+					Mission_list[0].mission_name[MISSION_NAME_LEN] = 0;
+				}
 				continue;						//already have name, go to next line
+			}
 			else if (istok(buf,"type"))
 				continue;						//already have name, go to next line				
 			else if (istok(buf,"hog")) {
@@ -523,7 +556,7 @@ int load_mission(int mission_num)
 
 					// ASCENT: the loop stops at the size of Level_names.
 					// The original code did not test it.
-					for (i=0;i<n_levels && i<MAX_LEVELS_PER_MISSION && mfgets(buf,80,mfile);i++) {
+					for (i=0;i<n_levels && i<MAX_LEVELS_PER_MISSION && msn_gets(buf,80,&text);i++) {
 
 						add_term(buf);
 						if (strlen(buf) <= 12) {
@@ -543,7 +576,7 @@ int load_mission(int mission_num)
 					n_secret_levels = atoi(v);
 
 					// ASCENT: the loop stops at the size of Secret_level_names
-					for (i=0;i<n_secret_levels && i<MAX_SECRET_LEVELS_PER_MISSION && mfgets(buf,80,mfile);i++) {
+					for (i=0;i<n_secret_levels && i<MAX_SECRET_LEVELS_PER_MISSION && msn_gets(buf,80,&text);i++) {
 						char *t;
 
 						
@@ -568,7 +601,7 @@ int load_mission(int mission_num)
 
 		}
 
-		fclose(mfile);
+		free(text.data);
 
 		if (Last_level <= 0) {
 			Current_mission_num = -1;		//no valid mission loaded 

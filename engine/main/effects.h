@@ -80,7 +80,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #include "vclip.h"
 
-#define MAX_EFFECTS 60
+// ASCENT: was 60. The tables of Descent to Undermountain use clip numbers
+// up to 91. DTUGAME.EXE clears 140 entries of an array whose entry size
+// fits an eclip (loop at 0x1B3EE). Guess: that array is Effects.
+#define MAX_EFFECTS 140
 
 //flags for eclips.  If no flags are set, always plays
 

@@ -683,9 +683,20 @@ void nm_draw_background(int x1, int y1, int x2, int y2 )
 
 		nm_background.bm_data=NULL;		
 		pcx_error = pcx_read_bitmap("SCORES.PCX",&nm_background,BM_LINEAR,newpal);
-		Assert(pcx_error == PCX_ERROR_NONE);
+		// ASCENT: Descent to Undermountain has no SCORES.PCX. Without the
+		// picture, the box background is a dark flat color.
+		if (pcx_error == PCX_ERROR_NONE)
+			gr_remap_bitmap_good( &nm_background, newpal, -1, -1 );
+		else
+			nm_background.bm_data = NULL;
+	}
 
-		gr_remap_bitmap_good( &nm_background, newpal, -1, -1 );
+	if (nm_background.bm_data == NULL) {
+		if ( x1 < 0 ) x1 = 0;
+		if ( y1 < 0 ) y1 = 0;
+		gr_setcolor( gr_find_closest_color(6,6,10) );
+		gr_rect( x1, y1, x2, y2 );
+		return;
 	}
 
 	if ( x1 < 0 ) x1 = 0;

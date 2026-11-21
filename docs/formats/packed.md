@@ -88,7 +88,16 @@ For example `YPINN.HEN` names `portal.egg`.
 | `MULHOR.EGG` | Bitmap `bless#6` row 0 has 0 pixels | One bitmap of 3340. |
 | `DEMO.EGG` | RLE data outside file | Not examined. |
 
-The cause is unknown for each of the three files.
+The causes (see egg.md):
+
+- `FFM.EGG` and `DEMO.EGG` have an older archive layout: a sound header of 20 bytes
+  in place of 24, and raw 8-bit sounds. With 20 bytes all their entries are valid.
+- `MULHOR.EGG` holds one damaged bitmap, `bless#6`. The other 3339 are valid.
+
+The unpack code of the port (`dtu_unpack` in `engine/main/dtufile.c`) gives the same
+results as `tools/unpack.py`: `test_dtudata -sweep` loads the same 81 tables with
+their archives from the packed files of the disc as from the unpacked files, and it
+finds the texture names of all 34 packed levels.
 
 ## Unknown
 

@@ -15,6 +15,9 @@ Options:
     --walls         list every wall
     --ranges        list every explained byte range
     --quiet         print only the verification lines
+    --summary       print only the summary that `ascent -checklevel NAME`
+                    prints (counts, bounding box, checksums), to compare
+                    the level loader of the engine with this parser
 """
 
 import argparse
@@ -305,9 +308,10 @@ class Level:
             raise FormatError("game fileinfo size %d" % size)
         vals = struct.unpack_from(GAME_FILEINFO_FMT, d, o)
         gfi = self.game_fileinfo = dict(zip(GAME_FILEINFO_FIELDS, vals))
-        if ver != 41:
-            raise FormatError("game version %d is not supported (only 41)"
-                              % ver)
+        if ver not in (40, 41):
+            raise FormatError("game version %d is not supported (only 40 "
+                              "and 41)" % ver)
+        self.game_version = ver
         self.mark(o, o + 119, "game fileinfo")
         o += 119
 
@@ -880,10 +884,225 @@ def print_verification(lv):
     return all_ok and not gaps and not overlaps
 
 
+class Sum:
+    """32-bit FNV-1a hash over little-endian values (engine summary)."""
+
+    def __init__(self):
+        self.h = 2166136261
+
+    def u8(self, v):
+        self.h = ((self.h ^ (v & 0xff)) * 16777619) & 0xffffffff
+
+    def u16(self, v):
+        self.u8(v)
+        self.u8(v >> 8)
+
+    def u32(self, v):
+        self.u16(v)
+        self.u16((v & 0xffffffff) >> 16)
+
+    def vec(self, v):
+        for k in v:
+            self.u32(k)
+
+    def hex(self):
+        return "%08x" % self.h
+
+
+def print_engine_summary(lv, path, out=sys.stdout):
+    """Print the summary that `ascent -checklevel NAME` prints.
+
+    The text and the checksums must match level_print_summary() in
+    engine/main/gamesave.c line for line. The values are the ones that the
+    engine has after the load: see the comments below for the fields that
+    the loader changes.
+    """
+    w = lambda s: out.write(s + "\n")
+    base = os.path.basename(path)
+    base = base.split(".")[0].upper()
+    w("level %s" % base)
+    w("file_size %d" % len(lv.data))
+    w("mine_version %d" % lv.mine_fileinfo["version"])
+    w("game_version %d" % lv.game_version)
+    w("level_name %s" % lv.level_name[:35])
+    w("vertices %d" % len(lv.vertices))
+    w("segments %d" % len(lv.segments))
+    w("texture_names %d" % len(lv.textures))
+    w("pof_names %d" % len(lv.pof_names))
+
+    nseg = len(lv.segments)
+    # The engine drops an object with a segment number outside the level.
+    objs = [(i, ob) for i, ob in enumerate(lv.objects)
+            if 0 <= ob["segnum"] < nseg]
+    w("objects %d" % len(objs))
+    counts = collections.Counter(ob["type"] for i, ob in objs)
+    for t in sorted(counts):
+        w("objects_type %d %d" % (t, counts[t]))
+    w("objects_linked %d" % len(objs))
+
+    w("walls %d" % len(lv.walls))
+    counts = collections.Counter(wl["type"] for wl in lv.walls)
+    for t in sorted(counts):
+        w("walls_type %d %d" % (t, counts[t]))
+    w("doors %d" % len(lv.doors))
+    w("triggers %d" % len(lv.triggers))
+    w("matcens %d" % len(lv.matcens))
+
+    vs = lv.vertices
+    if vs:
+        lo = [min(v[k] for v in vs) for k in range(3)]
+        hi = [max(v[k] for v in vs) for k in range(3)]
+    else:
+        lo = hi = [0, 0, 0]
+    w("bbox %d %d %d %d %d %d" % tuple(lo + hi))
+
+    for i, ob in objs:
+        if ob["type"] == 4:
+            w("player_start %d %d %d %d %d"
+              % ((i, ob["segnum"]) + tuple(ob["pos"])))
+            break
+    else:
+        w("player_start none")
+
+    s = Sum()
+    for v in vs:
+        s.vec(v)
+    w("checksum_vertices %s" % s.hex())
+
+    s = Sum()
+    for seg in lv.segments:
+        for c in seg["children"]:
+            s.u16(c)
+    w("checksum_children %s" % s.hex())
+
+    s = Sum()
+    for seg in lv.segments:
+        for v in seg["verts"]:
+            s.u16(v)
+    w("checksum_segment_verts %s" % s.hex())
+
+    # The type and the normals of a side are not in the sum: the game
+    # computes them again after the load (validate_segment).
+    s = Sum()
+    for seg in lv.segments:
+        for sd in seg["sides"]:
+            s.u8(sd["byte1"])
+            s.u16(sd["wall_num"])
+            s.u16(sd["tmap_num"])
+            s.u16(sd["tmap_num2"])
+            for uvl in sd["uvls"]:
+                s.vec(uvl)
+    w("checksum_sides %s" % s.hex())
+
+    # "value" is not in the sum: fuelcen_activate() of the engine sets it.
+    s = Sum()
+    for seg in lv.segments:
+        s.u16(seg["segnum"])
+        s.u32(seg["static_light"])
+        s.u32(seg["unk516"])
+        s.u32(seg["unk520"])
+        s.u32(seg["unk524"])
+        s.u8(seg["unk532"])
+        s.u8(seg["unk533"])
+        s.u8(seg["special"])
+        s.u8(seg["matcen_num"])
+    w("checksum_segment_data %s" % s.hex())
+
+    s = Sum()
+    for wl in lv.walls:
+        s.u32(wl["segnum"])
+        s.u32(wl["sidenum"])
+        s.u32(wl["hps"])
+        s.u32(wl["linked_wall"])
+        for k in ("type", "flags", "state", "trigger", "clip_num", "keys"):
+            s.u8(wl[k])
+    w("checksum_walls %s" % s.hex())
+
+    s = Sum()
+    for i, ob in objs:
+        s.u8(ob["type"])
+        # the loader numbers the players, so the id of a player is not used
+        s.u8(0 if ob["type"] == 4 else ob["id"])
+        s.u8(ob["control_type"])
+        s.u8(ob["movement_type"])
+        s.u8(ob["render_type"])
+        s.u8(ob["flags"])
+        s.u16(ob["segnum"])
+        s.u16(ob["attached_obj"])
+        s.vec(ob["pos"])
+        s.vec(ob["orient"])
+        s.u32(ob["size"])
+        s.u32(ob["shields"])
+        s.vec(ob["last_pos"])
+        s.u8(ob["contains_type"])
+        s.u8(ob["contains_id"])
+        s.u8(ob["contains_count"])
+
+        # The block that Descent 1 does not have, with the two changes
+        # that the loader of the game makes after the read: the value at
+        # 0x88 is replaced by the one at 0xDC, and for the item types the
+        # low byte of 0xAC moves to the byte at 0x1D5.
+        ext = dict(ob["ext"])
+        m_1d5 = 0
+        if ob["type"] in (5, 15, 16, 17):
+            m_1d5 = ext[0xac] & 0xff
+            ext[0xac] = 0
+        s.u16(ext[0x80])
+        s.u16(ext[0x82])
+        s.u32(ext[0x88])
+        for off in range(0x8c, 0xfc, 4):
+            s.u32(ext[off])
+        s.u32(ext.get(0x1b0, 0))
+        s.u32(ext[0xdc])
+        s.u8(m_1d5)
+
+        if ob["movement_type"] == 1:
+            ph = ob["phys"]
+            s.vec(ph["velocity"])
+            s.vec(ph["thrust"])
+            s.u32(ph["mass"])
+            s.u32(ph["drag"])
+            s.u32(ph["brakes"])
+            s.vec(ph["rotvel"])
+            s.vec(ph["rotthrust"])
+            s.u16(ph["turnroll"])
+            s.u16(ph["flags"])
+        elif ob["movement_type"] == 3:
+            s.vec(ob["spin_rate"])
+
+        if ob["control_type"] == 1:
+            ai = ob["ai"]
+            s.u8(ai["behavior"])
+            for f in ai["flags"]:
+                s.u8(f)
+            for k in ("hide_segment", "hide_index", "path_length",
+                      "cur_path_index", "follow_path_start_seg",
+                      "follow_path_end_seg"):
+                s.u16(ai[k])
+
+        if ob["render_type"] in (1, 6):
+            po = ob["polyobj"]
+            s.u32(po["model_num"])
+            s.u16(po["m16e"])
+            s.u16(po["m170"])
+            s.u32(po["m172"])
+            s.u32(po["m176"])
+            s.u32(po["subobj_flags"])
+            s.u32(po["tmap_override"])
+        elif ob["render_type"] == 8:
+            s.u16(ob["render8"])
+
+        s.u32(ob["length"])
+    w("checksum_objects %s" % s.hex())
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Parse Descent to Undermountain level files.")
     ap.add_argument("files", nargs="+")
+    ap.add_argument("--summary", action="store_true",
+                    help="print only the summary that 'ascent -checklevel' "
+                         "prints, for a comparison with the engine")
     ap.add_argument("--obj", metavar="OUT.obj")
     ap.add_argument("--all-sides", action="store_true")
     ap.add_argument("--textures", action="store_true")
@@ -897,6 +1116,17 @@ def main(argv=None):
 
     status = 0
     for path in args.files:
+        if args.summary:
+            try:
+                with open(path, "rb") as f:
+                    data = f.read()
+                lv = Level(data, os.path.basename(path))
+            except (OSError, FormatError, struct.error, ValueError) as e:
+                print("error: %s: %s" % (path, e))
+                status = 1
+                continue
+            print_engine_summary(lv, path)
+            continue
         print("== %s" % path)
         try:
             with open(path, "rb") as f:

@@ -103,22 +103,50 @@ void piggy_read_sound_data(digi_sound	*snd);
 
 void piggy_load_level_data();
 
-#ifdef SHAREWARE
-#define MAX_BITMAP_FILES	1500
-#define MAX_SOUND_FILES		MAX_SOUNDS
-#else
-#define MAX_BITMAP_FILES	1800
-#define MAX_SOUND_FILES		MAX_SOUNDS
-#endif
+// ASCENT: the limits of DTUGAME.EXE (constants of the asserts in its
+// piggy.c): 4000 bitmaps and 5500 sounds. Descent 1 had 1800 and 250.
+#define MAX_BITMAP_FILES	4000
+#define MAX_SOUND_FILES		5500
+
+// ASCENT: the value of piggy_find_sound() and of Sounds[] for "no sound".
+// DTUGAME.EXE fills its sound tables with 10000. Descent 1 used 255.
+#define SOUND_FILE_NONE		10000
 
 extern digi_sound GameSounds[MAX_SOUND_FILES];
 extern grs_bitmap GameBitmaps[MAX_BITMAP_FILES];
 
 void piggy_read_sounds();
 
-// ASCENT: 1 (the default) means that piggy_init() reads the game tables from
-// the PIG file. bm_init_use_tbl() sets it to 0. See piggy.c.
-extern int Piggy_read_tables;
+// ASCENT: the EGG archives of Descent to Undermountain replace the PIG
+// file. piggy_init() makes the empty tables. piggy_load_egg() loads one
+// archive (NAME.EGG, or the packed NAME.COW, through dtufile.c) and adds
+// its bitmaps, sounds and polygon models. It returns the number of the
+// archive or -1. The first archive gets the bitmap numbers from 1, the
+// sound numbers from 0 and the model numbers from 0. Each later archive
+// continues the numbers. DTUGAME.EXE loads the archive of the player
+// character before the archive of the level.
+// piggy_free_all() releases all archives and empties the tables.
+int piggy_load_egg( char * filename );
+void piggy_free_all();
+int piggy_get_num_eggs();
+int piggy_get_egg_counts( int egg_num, int *n_bitmaps, int *n_sounds, int *n_models, int *first_bitmap, int *first_sound, int *first_model );
+
+extern int Num_bitmap_files;
+extern int Num_sound_files;
+
+void piggy_get_bitmap_name( int i, char * name );
+void piggy_get_sound_name( int i, char * name );
+
+// ASCENT: the flags byte of a bitmap as it is in the archive. The 2d
+// library gets bits 1, 2, 4 and 8. Bit 16 marks a bitmap that the low
+// memory mode of Descent 1 replaced. Bit 64 is on the interface bitmaps.
+int piggy_get_bitmap_disk_flags( int i );
+
+// ASCENT: the sample rate of a sound (22050 in all shipped archives), and
+// the decoded sound: signed 16-bit values, interleaved for two channels.
+// GameSounds[i].data holds the same sound as unsigned 8-bit mono.
+int piggy_get_sound_rate( int i );
+short *piggy_get_sound_16( int i, int *n_values, int *channels );
 
 
 #endif

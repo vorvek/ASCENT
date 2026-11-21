@@ -329,6 +329,8 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "mission.h"
 #include "state.h"		// ASCENT: lower case, the file name is state.h
 #include "songs.h"
+#include "gamemine.h"	// ASCENT: level_translate_textures()
+#include "dtugame.h"		// ASCENT: the data layer functions and the direct start
 #ifdef NETWORK
 #include "netmisc.h"
 #endif
@@ -964,10 +966,23 @@ void LoadLevel(int level_num)
 		level_name = Level_names[level_num-1];
 #endif
 
-	show_boxed_message(TXT_LOADING);
+	// ASCENT: no message while the fonts are not loaded
+	if (HELP_FONT)
+		show_boxed_message(TXT_LOADING);
 
+	// ASCENT: a level that does not load stopped the original at the
+	// Assert in StartNewLevelSub().
 	if (!load_level(level_name))
 		Current_level_num=level_num;
+	else
+		Error("Cannot load the level %s", level_name);
+
+	// ASCENT: new. The level file has its own table of texture names and
+	// its own list of model names. The numbers of the game are set here,
+	// after the data layer loaded what the level adds to the tables.
+	dtu_load_level_data(level_name);
+	level_translate_textures(1);
+	level_resolve_models(1);
 
 	#ifdef NETWORK
 	my_segments_checksum = netmisc_calc_checksum(Segments, sizeof(segment)*(Highest_segment_index+1));
@@ -975,7 +990,8 @@ void LoadLevel(int level_num)
 
 	load_endlevel_data(level_num);
 
-	clear_boxed_message();
+	if (HELP_FONT)
+		clear_boxed_message();
 
 	#ifdef NETWORK
 	reset_network_objects();
@@ -985,7 +1001,9 @@ void LoadLevel(int level_num)
 
 	set_sound_sources();
 
-	songs_play_level_song( Current_level_num );
+	// ASCENT: the direct start has no sound
+	if (!Dtu_direct_start)
+		songs_play_level_song( Current_level_num );
 
 }
 
@@ -1433,7 +1451,11 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 	LoadLevel(level_num);
 
 	if ( page_in_textures )	{
-		piggy_load_level_data();
+		// ASCENT: piggy_load_level_data() pages in the bitmaps of the
+		// objects too. It needs the tables of the monsters and items. The
+		// bitmap of a texture is paged in when a side is drawn.
+		if (Dtu_objects_enabled)
+			piggy_load_level_data();
 	}
 
 	Assert(Current_level_num == level_num);	//make sure level set right
@@ -1501,12 +1523,16 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 
 	init_cockpit();
 	init_robots_for_level();
-	init_ai_objects();
+	// ASCENT: the AI data of the robots comes from the robot table, see
+	// Dtu_objects_enabled in dtugame.h
+	if (Dtu_objects_enabled)
+		init_ai_objects();
 	init_morphs();
 	init_all_matcens();
 	reset_palette_add();
 
-	if (!(Game_mode & GM_MULTI) && !Cheats_enabled)
+	// ASCENT: the direct start has no player file
+	if (!(Game_mode & GM_MULTI) && !Cheats_enabled && !Dtu_direct_start)
 		set_highest_level(Current_level_num);
 
 	reset_special_effects();
@@ -1524,7 +1550,9 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 #endif
 		StartLevel(0);		// Note link to above if!
 
-	copy_defaults_to_robot_all();
+	// ASCENT: see Dtu_objects_enabled in dtugame.h
+	if (Dtu_objects_enabled)
+		copy_defaults_to_robot_all();
 	init_controlcen_for_level();
 
 	//	Say player can use FLASH cheat to mark path to exit.
@@ -1534,10 +1562,13 @@ void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return ty
 //called when the player is starting a new level for normal game model
 void StartNewLevel(int level_num)		// ASCENT: return type added
 {
-	if (!(Game_mode & GM_MULTI)) {
+	// ASCENT: no briefing in the direct start, and none for a mission with
+	// no briefing file (do_briefing_screens() starts a song before it
+	// tests the file name).
+	if (!(Game_mode & GM_MULTI) && !Dtu_direct_start && Briefing_text_filename[0]) {
 		do_briefing_screens(level_num);
 	}
-	StartNewLevelSub(level_num, 1 );		
+	StartNewLevelSub(level_num, 1 );
 
 }
 

@@ -103,9 +103,15 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 //#include "vclip.h"
 
-#define MAX_WALLS					175	// Maximum number of walls
-#define MAX_WALL_ANIMS			30		// Maximum different types of doors
-#define MAX_DOORS					50		// Maximum number of open doors
+// ASCENT: MAX_WALLS was 175 and MAX_DOORS was 50. The executable of the
+// target game compares with 300 (the assert "Num_walls < MAX_WALLS" in
+// state.c) and with 200 (the assert "Num_open_doors < MAX_DOORS" in
+// wall.c). The largest level has 278 walls.
+#define MAX_WALLS					300	// Maximum number of walls
+// ASCENT: was 30. The $WCLIP lines of the Descent to Undermountain tables
+// use clip numbers 0 to 81. The value of DTUGAME.EXE is not known.
+#define MAX_WALL_ANIMS			100	// Maximum different types of doors
+#define MAX_DOORS					200	// Maximum number of open doors
 // not used -> #define MAX_DOOR_ANIMS			20		// Maximum different types of doors
 
 // Various wall types.

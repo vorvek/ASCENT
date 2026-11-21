@@ -226,7 +226,9 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "gr.h"
 #include "piggy.h"
 
-#define MAX_TEXTURES		800
+// ASCENT: was 800. 2500 is the constant of the MAX_TEXTURES asserts in
+// DTUGAME.EXE. A level table of the game defines 1489 textures.
+#define MAX_TEXTURES		2500
 #define BM_MAX_ARGS		10
 
 //tmapinfo flags
@@ -247,9 +249,7 @@ extern int Num_cockpits;
 extern bitmap_index cockpit_bitmap[N_COCKPIT_BITMAPS];
 
 extern int Num_tmaps;
-#ifdef EDITOR
-extern int TmapList[MAX_TEXTURES];
-#endif
+extern int TmapList[MAX_TEXTURES];		// ASCENT: was under EDITOR, bmread.c is always built
 
 extern tmap_info TmapInfo[MAX_TEXTURES];
 
@@ -261,28 +261,45 @@ extern int Dead_modelnums[];
 int bm_init();
 void bm_close();
 
-// ASCENT: the BITMAPS.TBL parser (bmread.c) is built without EDITOR now.
-// bm_init() loads the game tables from the PIG file. bm_init_use_tbl()
-// loads them from BITMAPS.TBL (or BITMAPS.BIN). Call one of the two.
+// ASCENT: the game tables of Descent to Undermountain. Descent 1 read its
+// tables from the PIG file (bm_read_all, removed). In Descent to
+// Undermountain each level has a table file LEVEL.BIN (packed: LEVEL.HEN).
+// It names the EGG archive of the level in its first 13 bytes. The rest
+// is the encoded text of a BITMAPS.TBL file. See docs/formats/tbl.md.
+//
+// Start code: bm_init() once, after the palette is loaded.
+// Level loader, before the mine is read:
+//
+//   bm_load_level_tables( "ypinn", "hmc" );
+//
+// The first name is the level name without extension. The second is the
+// 3-letter name of the player character archive, or NULL. The function
+// releases the archives and tables of the level before, loads the player
+// archive (HMC.EGG), then the archive that LEVEL.BIN names, then parses
+// the table text. Where the table has its $PLAYER line it reads the lines
+// of the player table (HMC.BIN) in place of that line, as DTUGAME.EXE
+// does. Returns 1, or 0 if a file is missing or not valid. A call with
+// the names of the tables that are loaded already returns 1 at once.
+int bm_load_level_tables( char * level_name, char * player_name );
+
+// The names of the tables that are loaded ("" if none), and the name of
+// the level archive.
+extern char Bm_level_name[16];
+extern char Bm_player_name[16];
+extern char Bm_egg_name[16];
+
+// Number of table lines that the parser did not understand in the last
+// bm_load_level_tables(). Each one gives a line on the message window.
+extern int Bm_tbl_warnings;
+
+// ASCENT: the name of the old function. It loads the tables of the first
+// level ("ypinn") with the default player character. For code that still
+// calls it.
 int bm_init_use_tbl();
 
-// ASCENT: the sizes of the table records in the PIG file (1 byte packing,
-// 32-bit pointers), and the functions of bm.c that convert one record on
-// disk to the structure in memory.
-#define BITMAP_INDEX_DISK_SIZE		2
-#define TMAP_INFO_DISK_SIZE			26		// 13+1+4+4+4
-#define VCLIP_DISK_SIZE					82		// 4+4+4+4+2+30*2+4
-#define ECLIP_DISK_SIZE					130	// vclip+4+4+2+2+9*4
-#define WCLIP_DISK_SIZE					66		// 4+2+20*2+2+2+2+13+1
-#define ROBOT_INFO_DISK_SIZE			486
-#define JOINTPOS_DISK_SIZE				8
-#define WEAPON_INFO_DISK_SIZE			115
-#define POWERUP_TYPE_INFO_DISK_SIZE	16
-#define POLYMODEL_DISK_SIZE			734	// model_data is 4 bytes on disk
-#define PLAYER_SHIP_DISK_SIZE			132
-
-struct CFILE;
-void bm_read_all(struct CFILE * fp);
+// Decode the text of a BIN table file in place: all bytes after the first
+// 13. See docs/formats/egg.md.
+void bm_decode_bin_text( ubyte * text, int len );
 
 // Initializes the Texture[] array of bmd_bitmap structures.
 void init_textures();
@@ -294,18 +311,173 @@ void init_textures();
 #define OL_PLAYER				5
 #define OL_CLUTTER			6		//some sort of misc object
 #define OL_EXIT				7		//the exit model for external scenes
+// ASCENT: the classes of Descent to Undermountain. The numbers are those
+// of this port. The numbers of DTUGAME.EXE are not known.
+#define OL_WEAPON				8
+#define OL_ARMOR				9
+#define OL_MISC				10
+#define OL_SPELL				11
+#define OL_DRESSING			12
 
-#define	MAX_OBJTYPE			100
+// ASCENT: was 100. 430 is the constant of the MAX_OBJTYPE asserts in
+// DTUGAME.EXE.
+#define	MAX_OBJTYPE			430
 
 extern int Num_total_object_types;		//	Total number of object types, including robots, hostages, powerups, control centers, faces
 extern byte	ObjType[MAX_OBJTYPE];		// Type of an object, such as Robot, eg if ObjType[11] == OL_ROBOT, then object #11 is a robot
-extern byte	ObjId[MAX_OBJTYPE];			// ID of a robot, within its class, eg if ObjType[11] == 3, then object #11 is the third robot
+extern ubyte	ObjId[MAX_OBJTYPE];			// ID of a robot, within its class, eg if ObjType[11] == 3, then object #11 is the third robot
 extern fix	ObjStrength[MAX_OBJTYPE];	// initial strength of each object
 
-#define MAX_OBJ_BITMAPS				210
+// ASCENT: was 210. 1700 is the constant of the MAX_OBJ_BITMAPS and
+// MAX_OBJ_BITMAP_PTRS asserts in DTUGAME.EXE.
+#define MAX_OBJ_BITMAPS				1700
 extern bitmap_index ObjBitmaps[MAX_OBJ_BITMAPS];
 extern ushort ObjBitmapPtrs[MAX_OBJ_BITMAPS];
 extern int First_multi_bitmap_num;
+
+// ---------------------------------------------------------------------
+// ASCENT: tables of Descent to Undermountain that Descent 1 does not have.
+// The limits with "EXE" are assert constants of DTUGAME.EXE. The others
+// are sized from the data.
+
+#define MAX_PLAYER_TYPES		4			// four $PLAYER lines at most in a table
+#define MAX_PLAYER_MODELS		64			// largest $PLAYER line: 49 models
+#define MAX_DRESSING_TYPES		60			// EXE
+#define MAX_ARMOR_TYPES			80			// EXE
+#define MAX_MISC_TYPES			250		// EXE
+#define MAX_SPELL_TYPES			100		// data: 56
+#define MAX_INTERFACE_BITMAPS	400		// data: 149
+#define MAX_ICON_BITMAPS		16
+#define MAX_TBL_RECORDS			1024		// data: 420 lines of the classes below
+#define DTU_N_STATE_TIMES		19			// model header 0x8E has 19 values
+#define DTU_N_SPEEDS				9
+#define DTU_N_FIRE_FRAMES		4
+#define DTU_NAME_LENGTH			40
+#define DTU_NDL					5			// same as NDL of game.h
+
+// One table line of an object class ($PLAYER, $OBJECT, $ARMOR, $SPELL,
+// $WEAPON, $MONSTER, $MONSTER_AI, $DRESSING), kept as text. The parser
+// decodes only a part of the keywords. bm_tbl_get() finds any keyword.
+typedef struct tbl_record {
+	char		section[12];		// "$MONSTER" and so on
+	int		linenum;
+	int		id;					// number of the entry in its class
+	char		*text;				// the line without the section word. Spaces inside quotes are kept.
+} tbl_record;
+
+extern int N_tbl_records;
+extern tbl_record Tbl_records[MAX_TBL_RECORDS];
+
+// Find "key=value" in a record. Copies the value (without quotes; a list
+// of numbers up to the next keyword) to value. Returns 1 if the key is
+// there. bm_tbl_has_flag() looks for a word without "=".
+int bm_tbl_get( int record, char * key, char * value, int value_size );
+int bm_tbl_has_flag( int record, char * flag );
+
+// $PLAYER
+typedef struct player_type_info {
+	char			name[DTU_NAME_LENGTH];
+	int			n_models;
+	int			model_nums[MAX_PLAYER_MODELS];	// the first one is the normal body
+	bitmap_index picture;
+	fix			eye_offset;
+	fix			gravity;
+	fix			state_times[DTU_N_STATE_TIMES];
+	fix			speeds[DTU_N_SPEEDS];
+	short			fire_frames[DTU_N_FIRE_FRAMES];
+	int			record;				// index of Tbl_records
+} player_type_info;
+
+extern int N_player_types;
+extern player_type_info Player_type_info[MAX_PLAYER_TYPES];
+
+// $MONSTER and $MONSTER_AI: the values that robot_info has no place for.
+// Entry i belongs to Robot_info[i].
+#define MONSTER_F_UNDEAD				0x0001
+#define MONSTER_F_HUMANOID				0x0002
+#define MONSTER_F_FLYING				0x0004
+#define MONSTER_F_NO_SCARE				0x0008
+#define MONSTER_F_NO_SLEEP				0x0010
+#define MONSTER_F_FIRE_IMMUNE			0x0020
+#define MONSTER_F_ELECTRICITY_IMMUNE	0x0040
+#define MONSTER_F_WEAPON_RESISTANT	0x0080
+#define MONSTER_F_EXTRAPLANAR			0x0100
+#define MONSTER_F_BLIND					0x0200
+#define MONSTER_F_LIGHT_SENSITIVE	0x0400
+#define MONSTER_F_DARK_LOVER			0x0800
+#define MONSTER_F_LIGHT_LOVER			0x1000
+#define MONSTER_F_PASS_THRU			0x2000
+#define MONSTER_F_NOATTACK				0x4000
+
+typedef struct monster_info {
+	char			name[DTU_NAME_LENGTH];
+	bitmap_index picture;
+	int			flags;				// MONSTER_F_
+	int			thaco, armor_class, max_hit_points, str, iq, moola;
+	int			die_sound, hit_sound;
+	fix			gravity;
+	fix			state_times[DTU_N_STATE_TIMES];
+	fix			speeds[DTU_N_SPEEDS];
+	short			fire_frames[DTU_N_FIRE_FRAMES];
+	short			ai_values[2][DTU_NDL];	// the last two groups of $MONSTER_AI, meaning unknown
+	int			ai_first_number;		// the first number of $MONSTER_AI, read and not used by DTUGAME.EXE
+	int			record;					// $MONSTER line, index of Tbl_records
+	int			ai_record;				// $MONSTER_AI line
+} monster_info;
+
+extern monster_info Monster_info[];
+
+// $DRESSING: scenery objects (OBJ_DRESSING). An entry draws as a polygon
+// model, as a vclip or as one bitmap.
+#define DRESSING_F_MAGIC			1
+#define DRESSING_F_CANT_BREAK		2
+
+typedef struct dressing_info {
+	char			name[DTU_NAME_LENGTH];
+	int			model_num;			// pof=, or -1
+	int			vclip_num;			// vclip=, or -1
+	int			obj_bitmap;			// bitmap=: slot of ObjBitmapPtrs, or -1. It can be an animating slot (%N).
+	fix			size;
+	fix			lightcast;
+	int			explode_sound;
+	int			break_vclip;
+	int			pushable;
+	int			pass_thru;
+	int			flags;				// DRESSING_F_
+	int			record;
+} dressing_info;
+
+extern int N_dressing_types;
+extern dressing_info Dressing_info[MAX_DRESSING_TYPES];
+
+// $OBJECT (OBJ_MISC), $ARMOR (OBJ_ARMOR), $SPELL (OBJ_SPELL) and the item
+// part of $WEAPON. Only the values that every item has are decoded.
+typedef struct item_info {
+	char			name[DTU_NAME_LENGTH];
+	int			obj_bitmap;			// picture=: slot of ObjBitmapPtrs, or -1
+	int			icon;					// icon=, or -1
+	int			inv_icon;			// inv_icon=, or -1
+	int			value;
+	fix			mass;					// mass= or weight=
+	int			stack_limit;
+	int			model_num;			// weapon_pof= of a spell, or -1
+	int			vclip_num;			// weapon_vclip= of a spell, or -1
+	int			record;
+} item_info;
+
+extern int N_misc_types;
+extern item_info Misc_info[MAX_MISC_TYPES];
+extern int N_armor_types;
+extern item_info Armor_info[MAX_ARMOR_TYPES];
+extern int N_spell_types;
+extern item_info Spell_info[MAX_SPELL_TYPES];
+extern item_info Weapon_item_info[];		// entry i belongs to Weapon_info[i]
+
+// $INTERFACE and $ICONS bitmaps, in table order.
+extern int N_interface_bitmaps;
+extern bitmap_index Interface_bitmaps[MAX_INTERFACE_BITMAPS];
+extern int N_icon_bitmaps;
+extern bitmap_index Icon_bitmaps[MAX_ICON_BITMAPS];
 
 
 #endif
