@@ -69,8 +69,8 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #include "types.h"
 
-typedef long fix;				//16 bits int, 16 bits frac
-typedef short fixang;		//angles
+typedef int32_t fix;				//16 bits int, 16 bits frac
+typedef int16_t fixang;		//angles
 
 //Convert an int to a fix
 #define i2f(i) ((i)<<16)
@@ -104,29 +104,40 @@ typedef short fixang;		//angles
 #define F0_5 	f0_5
 #define F0_1 	f0_1
 
-fix fixmul(fix a,fix b);
-#pragma aux fixmul parm [eax] [edx] = \
-	"imul	edx"				\
-	"shrd	eax,edx,16";
+// ASCENT: C replacements for the Watcom inline assembly.
+// A divide by zero or a quotient overflow was a processor exception in the
+// original code (see div0). Here the result saturates.
+static inline fix fixmul(fix a,fix b)
+{
+	return (fix) (((int64_t) a * b) >> 16);
+}
 
+static inline fix fix_saturate_quotient(int64_t n,int64_t d)
+{
+	int64_t q;
+	if (d == 0)
+		return (n < 0) ? INT32_MIN : INT32_MAX;
+	q = n / d;
+	if (q > INT32_MAX) return INT32_MAX;
+	if (q < INT32_MIN) return INT32_MIN;
+	return (fix) q;
+}
 
-fix fixdiv(fix a,fix b);
-#pragma aux fixdiv parm [eax] [ebx] modify exact [eax edx] = \
-	"mov	edx,eax"	\
-	"sar	edx,16"	\
-	"shl	eax,16"	\
-	"idiv	ebx";
+static inline fix fixdiv(fix a,fix b)
+{
+	return fix_saturate_quotient((int64_t) a * 65536,b);
+}
 
-fix fixmuldiv(fix a,fix b,fix c);
-#pragma aux fixmuldiv parm [eax] [edx] [ebx] modify exact [eax edx] = \
-	"imul	edx"	\
-	"idiv	ebx";
+static inline fix fixmuldiv(fix a,fix b,fix c)
+{
+	return fix_saturate_quotient((int64_t) a * b,c);
+}
 
 //computes the square root of a long, returning a short
-ushort long_sqrt(long a);
+ushort long_sqrt(int32_t a);
 
 //computes the square root of a quad, returning a long
-ulong quad_sqrt(long low,long high);
+uint32_t quad_sqrt(int32_t low,int32_t high);
 
 //computes the square root of a fix, returning a fix
 fix fix_sqrt(fix a);
@@ -147,14 +158,7 @@ fixang fix_acos(fix v);
 //NOTE: this is different from the standard C atan2, since it is left-handed.
 fixang fix_atan2(fix cos,fix sin); 
 
-#pragma aux fix_fastsincos parm [eax] [esi] [edi] modify exact [eax ebx];
-#pragma aux fix_sincos parm [eax] [esi] [edi] modify exact [eax ebx];
 
-#pragma aux fix_acos "*" parm [eax] value [ax] modify exact [eax];
-#pragma aux fix_atan2 "*" parm [eax] [ebx] value [ax] modify exact [eax ebx];
 
-#pragma aux long_sqrt "*" parm [eax] value [ax] modify [];
-#pragma aux fix_sqrt "*" parm [eax] value [eax] modify [];
-#pragma aux quad_sqrt "*" parm [eax] [edx] value [eax] modify [];
 
 #endif

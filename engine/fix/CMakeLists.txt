@@ -1,0 +1,12 @@
+file(GLOB FIX_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
+list(FILTER FIX_SOURCES EXCLUDE REGEX "/test_[^/]*\\.c$")
+
+if(FIX_SOURCES)
+  add_library(d_fix STATIC ${FIX_SOURCES})
+  target_include_directories(d_fix PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries(d_fix PUBLIC d_common)
+else()
+  add_library(d_fix INTERFACE)
+  target_include_directories(d_fix INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries(d_fix INTERFACE d_common)
+endif()
