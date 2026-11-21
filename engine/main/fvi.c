@@ -878,6 +878,43 @@ int fvi_hit_seg2;		// what segment the hit point is in
 
 int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p1,fix rad,short thisobjnum,int *ignore_obj_list,int flags,int *seglist,int *n_segs,int entry_seg);
 
+// ASCENT: new. The fvi_sub of DTUGAME.EXE (0x3F29A) does not test all sides
+// of a segment with the radius of the query. It uses (code at 0x3F58C):
+//   side 3 (WBOTTOM, the floor):  rad/2
+//   side 1 (WTOP, the ceiling):   rad2 * 1.5 (rad2 is a second radius of the query)
+//   the other sides (walls):      rad + 1.0
+// The levels of the target game have the floor at side 3 of a segment.
+// The port does this only when the caller sets Fvi_dtu_body:
+//   1: the three radii above (the move of the player)
+//   2: rad/2 for the floor, 0 for the other sides (the search for the floor)
+// The mode 2 is not in the executable. It keeps a wall that is near the
+// player out of the search for the floor.
+int Fvi_dtu_body = 0;
+fix Fvi_dtu_rad2 = 0;
+
+static fix dtu_side_rad(int side,fix rad)
+{
+	if (!Fvi_dtu_body || rad == 0)
+		return rad;
+	if (side == WBOTTOM)
+		return rad/2;
+	if (Fvi_dtu_body == 2)
+		return 0;
+	if (side == WTOP)
+		return fixmul(Fvi_dtu_rad2,0x18000);
+	return rad + F1_0;
+}
+
+// The face mask of get_seg_masks() has two bits for each side.
+static int dtu_body_facemask(vms_vector *p,int segnum,fix rad)
+{
+	int m_wall = get_seg_masks(p,segnum,dtu_side_rad(0,rad)).facemask;
+	int m_top = get_seg_masks(p,segnum,dtu_side_rad(WTOP,rad)).facemask;
+	int m_bottom = get_seg_masks(p,segnum,dtu_side_rad(WBOTTOM,rad)).facemask;
+
+	return (m_wall & ~((3<<(WTOP*2)) | (3<<(WBOTTOM*2)))) | (m_top & (3<<(WTOP*2))) | (m_bottom & (3<<(WBOTTOM*2)));
+}
+
 //What the hell is fvi_hit_seg for???
 
 //Find out if a vector intersects with anything.
@@ -1114,6 +1151,13 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 
 	masks = get_seg_masks(p1,startseg,rad);    //on back of which faces?
 	endmask = masks.facemask;
+
+	// ASCENT: the body of a person has another radius for each side, see
+	// dtu_side_rad(). The center mask does not depend on the radius.
+	if (Fvi_dtu_body) {
+		startmask = dtu_body_facemask(p0,startseg,rad);
+		endmask = dtu_body_facemask(p1,startseg,rad);
+	}
 	//@@sidemask = masks.sidemask;
 	centermask = masks.centermask;
 
@@ -1150,14 +1194,14 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 						face_hit_type = special_check_line_to_face( &hit_point,
 										p0,p1,seg,side,
 										face,
-										((num_faces==1)?4:3),rad);
+										((num_faces==1)?4:3),dtu_side_rad(side,rad));	// ASCENT: was rad
 					else
 					//#endif
 						//NOTE LINK TO ABOVE!!
 						face_hit_type = check_line_to_face( &hit_point,
 										p0,p1,seg,side,
 										face,
-										((num_faces==1)?4:3),rad);
+										((num_faces==1)?4:3),dtu_side_rad(side,rad));	// ASCENT: was rad
 
 	
 					if (face_hit_type) {            //through this wall/door

@@ -1007,6 +1007,14 @@ void reset_player_object()
 	ConsoleObject->mtype.phys_info.drag = Player_ship->drag;
 	ConsoleObject->mtype.phys_info.flags |= PF_TURNROLL | PF_LEVELLING | PF_WIGGLE | PF_USES_THRUST;
 
+	// ASCENT: a person does not roll in a turn and does not wiggle. The
+	// player of a saved game of the target game has the flags 0x42.
+	if (Dtu_player_walk) {
+		ConsoleObject->mtype.phys_info.flags &= ~(PF_TURNROLL | PF_WIGGLE);
+		Dtu_player_state = 0;
+		Dtu_look_pitch = 0;
+	}
+
 	//Init render info
 
 	ConsoleObject->render_type = RT_POLYOBJ;
@@ -2024,7 +2032,14 @@ void object_move_one( object * obj )
 
 		case MT_NONE:			break;								//this doesn't move
 
-		case MT_PHYSICS:		do_physics_sim(obj);	break;	//move by physics
+		// ASCENT: DTUGAME.EXE (0x69B93) moves the player with pcons.c, not
+		// with do_physics_sim(). A dead player moves as in Descent 1.
+		case MT_PHYSICS:
+			if (Dtu_player_walk && obj->type == OBJ_PLAYER && obj == ConsoleObject && obj->control_type == CT_FLYING && !Player_is_dead)
+				dtu_player_physics_sim(obj);
+			else
+				do_physics_sim(obj);
+			break;	//move by physics
 
 		case MT_SPINNING:		spin_object(obj); break;
 

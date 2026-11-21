@@ -1741,6 +1741,12 @@ void render_frame(fix eye_offset)
 		vm_vec_scale_add2(&Viewer_eye,&Viewer->orient.rvec,eye_offset);
 	}
 
+	// ASCENT: the eye of the player of the target game is above the center
+	// of the body (DTUGAME.EXE 0x76E9C). The function also sets the pitch
+	// of the view in Player_head_angles.
+	if (Viewer==ConsoleObject)
+		dtu_player_eye(&Viewer_eye);
+
 	#ifdef EDITOR
 	if (Function_mode==FMODE_EDITOR)
 		Viewer_eye = Viewer->pos;

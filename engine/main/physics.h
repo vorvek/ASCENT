@@ -97,4 +97,78 @@ int phys_apply_rot(object *obj,vms_vector *force_vec);
 //(hopefully) maintain the object's current velocity
 int set_thrust_from_velocity(object *obj);
 
+//------------------------------------------------------------------------
+// ASCENT: the movement of the player of the target game (a person who
+// walks). The code is at the end of physics.c and in controls.c. The
+// constants are from DTUGAME.EXE 1.3, see docs/re/physics.md.
+
+#define DTU_FT						(F1_0/64)	// 0x400, the step of thrust, drag and gravity
+#define DTU_REF_FRAMETIME		(3*DTU_FT)	// 0xC00, the frame time of the corrected rules (21.33 frames per second)
+
+// The body. The executable takes these two values from the bounding boxes
+// of the polygon model. The port has constants: 2.5 is half of the least
+// width of the player (5.0, code at 0x7470A). 6.25 is a guess: a player
+// in a saved game of the original stands 7.50 above the floor, which is
+// this height and the radius of the floor test (1.25).
+#define DTU_BODY_RAD				0x28000		// 2.5
+#define DTU_BODY_HALF_HEIGHT	0x64000		// 6.25, from the center down to the feet
+
+#define DTU_EYE_OFFSET_DEFAULT	0x30000	// 3.0 above the center when the table has no eye_offset (0x1F5A9)
+#define DTU_BOB_HEIGHT			0x5333		// 0.325, the view goes up and down by this value in a walk
+#define DTU_FLOOR_PROBE			0x80000		// 8.0, how far below the feet the floor is searched
+#define DTU_FLOOR_EPS			0x1999		// 0.1, a distance to the floor below this value is 0
+#define DTU_GRAVITY_K			0x30000		// 3.0, gravity for each unit of distance to the floor and each step
+#define DTU_PUSH_UP_MAX			0x20000		// 2.0, the most that a frame lifts the player out of the floor
+#define DTU_TERMINAL_VEL		((fix)0xfea20000)	// -350.0, the largest velocity down
+#define DTU_SLOW_FALL_VEL		0xf0000		// 15.0, the largest velocity down with the object flag 0x80
+#define DTU_WALL_BOUNCE			0x1c000		// 1.75, the part of the velocity into a wall that is taken away
+#define DTU_KNEE_HIGH			0x58000		// 5.5
+#define DTU_KNEE_LIFT			0x30000		// 3.0
+#define DTU_JUMP_STEPS			15
+#define DTU_JUMP_RATE			0x1c0000		// 28 steps of the jump for each second
+#define DTU_JUMP_FLOOR_MAX		0x30000		// 3.0, no jump when the feet are higher above the floor
+#define DTU_FLY_BOB_STEP		0x886			// 0.0333 of a circle on each frame
+#define DTU_RUN_SCALE			0x18000		// 1.5
+#define DTU_ROTTHRUST_SCALE	0x30000		// 3.0
+#define DTU_LOOK_MIN				(-0x3000)	// the look pitch (fixang), up
+#define DTU_LOOK_MAX				0x2fa0		// down
+#define DTU_LOOK_RETURN			0x1194		// (0x1194 + FrameTime)/4 fixang on each frame after a glance
+
+// Dtu_player_state: the byte at 0x1AE of the object of the executable
+#define DTU_PS_FALLING			0x20
+#define DTU_PS_JUMPING			0x40
+#define DTU_PS_CLIMBING			0x80
+
+// Bits of the int at 0x88 of the object (dtu.m_88). The names with a
+// number have no known meaning.
+#define DTU_OF_80					0x00000080	// no gravity, and the velocity down is 15.0 at most (guess: feather fall)
+#define DTU_OF_FLY				0x00000800	// thrust in the direction of the view, no gravity
+#define DTU_OF_1000				0x00001000	// the floor type does not make the player slow
+#define DTU_OF_FAST				0x00002000	// two times the thrust in x and z (guess: haste)
+#define DTU_OF_JUMP_SPELL		0x00080000	// two times the length of a jump
+#define DTU_OF_LEVITATE			0x00200000	// no gravity, no velocity in x and z ("Levitate cancelled.")
+#define DTU_OF_SLOW				0x08000000	// half of the thrust in x and z
+#define DTU_OF_HELD				0x04004000	// the player does not move
+#define DTU_OF_NO_GRAVITY		(DTU_OF_80|DTU_OF_FLY|DTU_OF_LEVITATE)
+
+extern int Dtu_player_walk;
+extern int Dtu_fix_physics_steps,Dtu_fix_frame_drag,Dtu_fix_stop_decay;
+extern int Dtu_fix_floor_push,Dtu_fix_look_return,Dtu_fix_fly_bob,Dtu_fix_turn_ramp,Dtu_fix_jump_exit;
+extern ubyte Dtu_player_state;
+extern fixang Dtu_look_pitch;
+extern int Dtu_move_mode;
+extern fix Dtu_floor_dist;
+extern int Dtu_jump_skill;
+
+int dtu_player_physics_sim(object *obj);
+fix dtu_get_floor_dist(object *obj);
+void dtu_player_jump(object *obj);
+void dtu_stop_decay(object *obj);
+void dtu_stop_decay_reset(void);
+void dtu_player_eye(vms_vector *eye);
+
+// In controls.c
+void dtu_read_controls(void);
+void dtu_move_log(object *obj);
+
 #endif

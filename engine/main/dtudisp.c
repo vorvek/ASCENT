@@ -1,0 +1,959 @@
+/*
+ * ASCENT: new file. The in-game interface of Descent to Undermountain.
+ * It replaces the Descent 1 cockpit and HUD drawing (gauges.c, hud.c and
+ * the cockpit setup of game.c). See dtudisp.h.
+ *
+ * The layout and the behavior are from DTUGAME.EXE version 1.3. Each
+ * comment with an address (0x...) names the function or the data of the
+ * executable that the code below follows. docs/re/ingame-ui.md has the
+ * details. A comment that says "guess" marks a part that is not verified.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "inferno.h"
+#include "types.h"
+#include "fix.h"
+#include "gr.h"
+#include "palette.h"
+#include "error.h"
+#include "mem.h"		// malloc and free of the game
+#include "args.h"
+#include "key.h"
+#include "mouse.h"
+#include "game.h"
+#include "object.h"
+#include "player.h"
+#include "weapon.h"
+#include "bm.h"
+#include "gamefont.h"
+#include "text.h"
+#include "dtufile.h"
+#include "dtugame.h"
+#include "dtudisp.h"
+
+int Dtu_hires = 1;					// 0x13A94B
+int Dtu_display_active = 0;
+int Dtu_interface_mode = DTU_IM_MAIN;		// 0x13B616
+int Dtu_immersive = 0;
+int Dtu_ui_key_repeat = 0;
+int Dtu_player_portrait = 0;
+
+extern void game_init_render_sub_buffers( int x, int y, int w, int h );
+extern int Game_window_w, Game_window_h;
+
+//------------------------------------------------------------------------
+// FEBGND.JRG and FEBGND.DAT (docs/formats/jrg.md)
+
+#define FEBGND_MAX	256
+
+typedef struct febgnd_entry {
+	uint	offset, w, h, size;
+} febgnd_entry;
+
+static febgnd_entry Febgnd[FEBGND_MAX];
+static int N_febgnd = 0;
+static char Febgnd_dat_path[600];
+
+static uint get_u32(ubyte *p)
+{
+	return (uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24);
+}
+
+static int febgnd_open(void)
+{
+	ubyte *jrg;
+	int size, i;
+
+	if (N_febgnd)
+		return 1;
+	jrg = dtu_load_file("FEBGND.JRG", &size);
+	if (!jrg)
+		return 0;
+	if (size >= 4)
+		N_febgnd = (int) get_u32(jrg);
+	if (N_febgnd < 1 || N_febgnd > FEBGND_MAX || size < 4 + 16 * N_febgnd)
+		N_febgnd = 0;
+	for (i = 0; i < N_febgnd; i++) {
+		Febgnd[i].offset = get_u32(jrg + 4 + 16 * i);
+		Febgnd[i].w = get_u32(jrg + 8 + 16 * i);
+		Febgnd[i].h = get_u32(jrg + 12 + 16 * i);
+		Febgnd[i].size = get_u32(jrg + 16 + 16 * i);
+	}
+	free(jrg);
+	if (N_febgnd && !dtu_find_file("FEBGND.DAT", Febgnd_dat_path, sizeof(Febgnd_dat_path)))
+		N_febgnd = 0;
+	return N_febgnd != 0;
+}
+
+// Loads one picture. The palette of the entry (768 bytes) is skipped: the
+// interface pictures have the game palette. Returns NULL if not available.
+static grs_bitmap *febgnd_load(int n)
+{
+	FILE *f;
+	ubyte *src, *dst, ring[4096];
+	grs_bitmap *bm;
+	int src_size, dst_size, sp, dp, rp, flags, bit;
+
+	if (n < 0 || n >= N_febgnd || Febgnd[n].size <= 768 || Febgnd[n].w > 1024 || Febgnd[n].h > 1024)
+		return NULL;
+	f = fopen(Febgnd_dat_path, "rb");
+	if (!f)
+		return NULL;
+	src_size = Febgnd[n].size - 768;
+	src = malloc(src_size);
+	if (!src || fseek(f, Febgnd[n].offset + 768, SEEK_SET) != 0 || fread(src, 1, src_size, f) != (size_t) src_size) {
+		fclose(f);
+		free(src);
+		return NULL;
+	}
+	fclose(f);
+
+	bm = gr_create_bitmap(Febgnd[n].w, Febgnd[n].h);
+	dst = bm->bm_data;
+	dst_size = Febgnd[n].w * Febgnd[n].h;
+	memset(dst, 0, dst_size);
+
+	// LZSS of felz.c: ring of 4096 bytes filled with 0x20, start 0xFEE
+	memset(ring, 0x20, sizeof(ring));
+	rp = 0xFEE;
+	sp = dp = 0;
+	flags = 0;
+	bit = 8;
+	while (sp < src_size && dp < dst_size) {
+		if (bit == 8) {
+			flags = src[sp++];
+			bit = 0;
+			continue;
+		}
+		if (flags & (1 << bit)) {
+			ubyte c = src[sp++];
+			dst[dp++] = c;
+			ring[rp] = c;
+			rp = (rp + 1) & 4095;
+		} else {
+			int lo, hi, pos, len;
+			if (sp + 1 >= src_size)
+				break;
+			lo = src[sp++];
+			hi = src[sp++];
+			pos = lo | ((hi & 0xF0) << 4);
+			len = (hi & 0x0F) + 3;
+			while (len-- && dp < dst_size) {
+				ubyte c = ring[pos];
+				pos = (pos + 1) & 4095;
+				dst[dp++] = c;
+				ring[rp] = c;
+				rp = (rp + 1) & 4095;
+			}
+		}
+		bit++;
+	}
+	free(src);
+	return bm;
+}
+
+//------------------------------------------------------------------------
+// Layout. The original computes the values in 0x44F1B as scale * constant
+// with scale 1 (low resolution) or 2 (high resolution). The view heights
+// are not scaled: in high resolution each rendered line is shown twice.
+
+#define SC(v)	((v) * (Dtu_hires ? 2 : 1))
+
+typedef struct dtu_rect {
+	int x, y, w, h;
+} dtu_rect;
+
+// Message box of the main screen (0x142EF8 low, 0x142F08 high)
+static dtu_rect Msg_rect[2] = { { 63, 150, 244, 46 }, { 131, 306, 470, 77 } };
+
+// Scroll bar of the message box (0x142FC8 low, 0x142F58 high): bar, up
+// arrow, pressed up arrow in the interface picture, down arrow, pressed
+// down arrow in the interface picture.
+static dtu_rect Sbar_def[2][5] = {
+	{ { 307, 158, 7, 29 }, { 307, 150, 7, 8 }, { 300, 150, 7, 8 }, { 307, 187, 7, 8 }, { 300, 187, 7, 8 } },
+	{ { 605, 324, 26, 42 }, { 605, 304, 26, 20 }, { 354, 263, 26, 20 }, { 604, 366, 26, 20 }, { 387, 263, 26, 20 } },
+};
+// The slider of the high resolution scroll bar in the interface picture
+// (0x142F48).
+static dtu_rect Sbar_slider_hi = { 323, 271, 25, 12 };
+
+// Hot key boxes of the low resolution hot key screen (0x144680, 0x1446A8)
+static short Hotkey_lo_x[10] = { 107, 107, 107, 107, 107, 161, 161, 161, 161, 161 };
+static short Hotkey_lo_y[10] = { 13, 48, 82, 116, 150, 13, 48, 82, 116, 150 };
+static short Hotkey_lo_qty_y[10] = { 32, 66, 100, 134, 169, 32, 66, 100, 134, 169 };
+
+//------------------------------------------------------------------------
+// Buttons (dispbutn.c). The records are from the lists at 0x14437F (high)
+// and 0x1443A3 (low).
+
+#define ACT_NONE		0
+#define ACT_MODE_BASE	1		// ACT_MODE_BASE + mode: select the mode
+#define ACT_REST		20
+#define ACT_USE		21
+#define ACT_DROP		22
+
+typedef struct dtu_button {
+	short	x, y, w, h;			// hot rectangle and draw rectangle
+	short	x0, y0;				// image 0 in the sheet (at rest)
+	short	x1, y1;				// image 1 in the sheet (pressed)
+	short	action;				// at release
+} dtu_button;
+
+#define AM(m)	(ACT_MODE_BASE + (m))
+
+static dtu_button Buttons_hi_main[] = {		// 0x14433E
+	{ 16, 305, 43, 38,  74, 2,  29, 2, AM(DTU_IM_MAP) },
+	{ 67, 306, 40, 37, 161, 2, 119, 2, AM(DTU_IM_INVENTORY) },
+	{ 16, 348, 42, 38, 247, 2, 203, 2, AM(DTU_IM_STATS) },
+	{ 67, 348, 41, 38, 334, 2, 291, 2, ACT_REST },
+	{ 0 } };
+static dtu_button Buttons_hi_inv[] = {			// 0x1442EE
+	{ 454, 312, 39, 33,  74, 42,  29, 42, AM(DTU_IM_MAP) },
+	{ 497, 312, 39, 33, 161, 42, 119, 42, AM(DTU_IM_MAIN) },
+	{ 541, 312, 39, 33, 247, 42, 203, 42, AM(DTU_IM_STATS) },
+	{ 584, 312, 39, 33, 334, 42, 291, 42, ACT_REST },
+	{ 454, 354, 77, 33, 264, 78, 184, 78, ACT_USE },
+	{ 548, 354, 74, 33, 107, 78,  29, 78, ACT_DROP },
+	{ 0 } };
+static dtu_button Buttons_hi_map[] = {			// 0x14432A
+	{ 454, 312, 77, 33, 426, 115, 346, 115, AM(DTU_IM_MAIN) },
+	{ 546, 312, 77, 33, 108, 115,  29, 115, AM(DTU_IM_INVENTORY) },
+	{ 454, 354, 77, 33, 521,  78, 521,  41, AM(DTU_IM_STATS) },
+	{ 547, 354, 76, 33, 267, 115, 188, 115, ACT_REST },
+	{ 0 } };
+static dtu_button Buttons_hi_stats[] = {		// 0x144316
+	{ 453, 312, 79, 34, 435, 151, 353, 151, AM(DTU_IM_MAP) },
+	{ 545, 312, 79, 34, 111, 151,  29, 151, AM(DTU_IM_INVENTORY) },
+	{ 454, 354, 78, 34, 521, 151, 521, 115, AM(DTU_IM_MAIN) },
+	{ 547, 354, 77, 34, 273, 151, 193, 151, ACT_REST },
+	{ 0 } };
+static dtu_button Buttons_lo_main[] = {		// 0x1442DA
+	{  8, 154, 19, 17,  30, 39,   9, 39, AM(DTU_IM_MAP) },
+	{ 33, 154, 19, 17,  72, 39,  51, 39, AM(DTU_IM_INVENTORY) },
+	{  8, 176, 19, 16, 114, 39,  93, 39, AM(DTU_IM_STATS) },
+	{ 33, 176, 19, 16, 156, 39, 135, 39, ACT_REST },
+	{ 0 } };
+static dtu_button Buttons_lo_inv[] = {			// 0x144262 and 0x14428E
+	{ 227, 156, 16, 15, 300, 39, 282, 39, AM(DTU_IM_MAP) },
+	{ 249, 156, 17, 15, 423, 39, 318, 39, AM(DTU_IM_MAIN) },
+	{ 274, 156, 16, 15, 462, 39, 443, 39, AM(DTU_IM_STATS) },
+	{ 296, 156, 15, 15, 423, 20, 423,  2, ACT_REST },
+	{ 273, 178, 39, 19, 521, 39, 480, 39, ACT_DROP },
+	{ 227, 178, 39, 17, 514, 21, 480, 39, ACT_USE },
+	{ 0 } };
+static dtu_button Buttons_lo_map[] = {			// 0x1442C6
+	{ 227, 156, 39, 17,  50, 2,   9, 2, AM(DTU_IM_MAIN) },
+	{ 273, 156, 39, 17, 132, 2,  91, 2, AM(DTU_IM_INVENTORY) },
+	{ 227, 177, 39, 17, 214, 2, 173, 2, AM(DTU_IM_STATS) },
+	{ 273, 177, 39, 17, 296, 2, 255, 2, ACT_REST },
+	{ 0 } };
+static dtu_button Buttons_lo_stats[] = {		// 0x1442B2
+	{ 227, 156, 39, 16,  50, 21,   9, 21, AM(DTU_IM_MAP) },
+	{ 274, 156, 38, 16, 131, 21,  91, 21, AM(DTU_IM_INVENTORY) },
+	{ 227, 178, 39, 16, 212, 21, 171, 21, AM(DTU_IM_MAIN) },
+	{ 274, 178, 38, 16, 293, 21, 253, 21, ACT_REST },
+	{ 0 } };
+
+static dtu_button *Button_list;		// the list of the current mode, or NULL
+static int Button_pressed = -1;		// the button that is held down, or -1
+
+//------------------------------------------------------------------------
+// State
+
+static grs_bitmap *Interface_bm;		// picture of the current mode (0x1B5654)
+static int Interface_entry = -1;
+static grs_bitmap *Icons_bm;			// InGameIcons (0x1BD584)
+static grs_bitmap *Cursor_src;		// 0x1BD51C
+static int Cursor_size;
+static grs_bitmap *Button_sheet;
+static grs_bitmap *Portrait_bm;
+static int Portrait_loaded = -1;
+static int Saved_mode = DTU_IM_MAIN;	// 0x13B61A
+
+static dtu_rect View;					// the view on the screen (h is the rendered height)
+static fix Saved_aspect;
+
+// The message box (0x1BD47C: 40 lines, line 0 is the newest)
+#define MSG_LINES		40
+#define MSG_LENGTH	160
+static char Msg_text[MSG_LINES][MSG_LENGTH];
+static ubyte Msg_color[MSG_LINES];
+static int Msg_count = 0;
+static int Msg_first = 0;				// the line at the bottom of the box
+
+static ubyte Key_was_down[256];
+static int Mouse_was_down = 0;
+
+//------------------------------------------------------------------------
+// Drawing helpers. All coordinates are screen coordinates. The current
+// canvas is the screen.
+
+static int rgb6(int r, int g, int b)
+{
+	return gr_find_closest_color(r, g, b);
+}
+
+static void blit(grs_bitmap *src, int sx, int sy, int w, int h, int dx, int dy, int masked)
+{
+	grs_bitmap *dest = &grd_curcanv->cv_bitmap;
+
+	if (!src) return;
+	if (sx < 0 || sy < 0 || sx + w > src->bm_w || sy + h > src->bm_h) return;
+	if (dx < 0) { sx -= dx; w += dx; dx = 0; }
+	if (dy < 0) { sy -= dy; h += dy; dy = 0; }
+	if (dx + w > dest->bm_w) w = dest->bm_w - dx;
+	if (dy + h > dest->bm_h) h = dest->bm_h - dy;
+	if (w <= 0 || h <= 0) return;
+	if (masked)
+		gr_bm_ubitbltm(w, h, dx, dy, sx, sy, src, dest);
+	else
+		gr_bm_ubitblt(w, h, dx, dy, sx, sy, src, dest);
+}
+
+static void fill(int x, int y, int w, int h, int color)
+{
+	gr_setcolor(color);
+	gr_rect(x, y, x + w - 1, y + h - 1);
+}
+
+// The restore function of an area: high resolution copies the interface
+// picture (0x9C38F), which the frame already drew. Low resolution fills
+// the area with the clear color, black for all areas (0x9C1F2).
+static void area_restore(int x, int y, int w, int h)
+{
+	if (!Dtu_hires)
+		fill(x, y, w, h, rgb6(0, 0, 0));
+}
+
+// Area type 1 (0x9B95E): the string centered in the area
+static void area_text(int x, int y, int w, int h, char *s, int color)
+{
+	int sw, sh, aw;
+
+	area_restore(x, y, w, h);
+	if (!s || !*s || !GAME_FONT) return;
+	gr_set_curfont(GAME_FONT);
+	gr_set_fontcolor(color, -1);
+	gr_get_string_size(s, &sw, &sh, &aw);
+	gr_string(x + (w - sw) / 2, y + (h - GAME_FONT->ft_h) / 2, s);
+}
+
+// Area type 0 (0x9BD8A): an icon of the sheet. Icon 0 is "no icon".
+// 0x36E3F: 8 icons in a row.
+static void area_icon(int x, int y, int icon)
+{
+	int size = SC(16);
+
+	area_restore(x, y, size, size);
+	if (icon <= 0 || icon >= 256 || !Icons_bm) return;
+	blit(Icons_bm, (icon & 7) * size, (icon / 8) * size, size, size, x, y, 1);
+}
+
+// The border function of an area (0x9C890)
+static void area_border(int x, int y, int w, int h, int color, int t)
+{
+	fill(x, y, w, t, color);
+	fill(x, y + h - t, w, t, color);
+	fill(x, y + t, t, h - 2 * t, color);
+	fill(x + w - t, y + t, t, h - 2 * t, color);
+}
+
+// Area type 3 (0x9B241): the hit points. The color is from 0x34530.
+static void area_hit_points(int x, int y, int w, int h, int hp, int max_hp)
+{
+	char text[40];
+	int percent, color;
+
+	if (max_hp < 1) max_hp = 1;
+	percent = hp * 100 / max_hp;
+	if (percent <= 25)
+		color = rgb6(63, 0, 0);
+	else if (percent >= 51)
+		color = rgb6(0, 63, 0);
+	else
+		color = rgb6(63, 63, 0);
+	if (hp < 1)
+		strcpy(text, "DEAD");
+	else
+		sprintf(text, "%d / %d", hp, max_hp);
+	area_text(x, y, w, h, text, color);
+}
+
+//------------------------------------------------------------------------
+// The values that the screen shows
+
+static char *player_name(void)
+{
+	return Players[Player_num].callsign;
+}
+
+static int player_hit_points(void)
+{
+	// ASCENT: the port has no character record yet. The shields of the
+	// Descent player structure are the hit points for now.
+	return f2i(Players[Player_num].shields);
+}
+
+static int player_max_hit_points(void)
+{
+	// ASCENT: missing source: the maximum hit points of the character
+	// (player record +0x9F in the original). 100 is the start value of the
+	// shields.
+	return 100;
+}
+
+static int current_item_icon(void)
+{
+	// ASCENT: missing source: the current item of the character (player
+	// record +0x1AD7 in the original). The Descent primary weapon stands
+	// for it.
+	int w = Primary_weapon_to_weapon_info[Primary_weapon];
+	return Weapon_item_info[w].icon;
+}
+
+//------------------------------------------------------------------------
+// Message box (0x33F55 init, 0x34682 draw)
+
+static int msg_visible_lines(void)
+{
+	return (Msg_rect[Dtu_hires].h - 6) / 10;
+}
+
+static void msg_insert(char *line, int color)
+{
+	int i;
+
+	for (i = MSG_LINES - 1; i > 0; i--) {
+		strcpy(Msg_text[i], Msg_text[i - 1]);
+		Msg_color[i] = Msg_color[i - 1];
+	}
+	strncpy(Msg_text[0], line, MSG_LENGTH - 1);
+	Msg_text[0][MSG_LENGTH - 1] = 0;
+	Msg_color[0] = color;
+	if (Msg_count < MSG_LINES) Msg_count++;
+}
+
+void dtu_display_add_message(char *text)
+{
+	char line[MSG_LENGTH];
+	int max_w, sw, sh, aw, len, last_space, color;
+	char *p = text;
+
+	if (!Dtu_display_active || !GAME_FONT || !text) return;
+	// The color of a message is the first byte of the line in the original.
+	// The callers were not traced: gray is a guess.
+	color = rgb6(48, 48, 48);
+	max_w = Msg_rect[Dtu_hires].w - 4;
+	gr_set_curfont(GAME_FONT);
+	while (*p) {
+		len = 0;
+		last_space = -1;
+		while (p[len] && p[len] != '\n' && len < MSG_LENGTH - 1) {
+			line[len] = p[len];
+			line[len + 1] = 0;
+			gr_get_string_size(line, &sw, &sh, &aw);
+			if (sw > max_w && len > 0) break;
+			if (p[len] == ' ') last_space = len;
+			len++;
+		}
+		if (p[len] && p[len] != '\n' && last_space > 0)
+			len = last_space;
+		line[len] = 0;
+		msg_insert(line, color);
+		p += len;
+		while (*p == ' ' || *p == '\n') p++;
+	}
+	Msg_first = 0;
+}
+
+static void msg_draw(void)
+{
+	dtu_rect *r = &Msg_rect[Dtu_hires];
+	dtu_rect *sb = Sbar_def[Dtu_hires];
+	int n = msg_visible_lines(), i, line;
+
+	// 0x346CA: black over the box and the width of the scroll bar
+	fill(r->x, r->y, r->w + sb[0].w, r->h, rgb6(0, 0, 0));
+	if (!GAME_FONT) return;
+	gr_set_curfont(GAME_FONT);
+	for (i = 0; i < n; i++) {
+		line = Msg_first + n - 1 - i;
+		if (line < 0 || line >= Msg_count) continue;
+		gr_set_fontcolor(Msg_color[line], -1);
+		gr_string(r->x + 2, r->y + 3 + 10 * i, Msg_text[line]);
+	}
+	if (Msg_count > n) {
+		// 0x3654C draws the scroll bar. It was not read. The port shows the
+		// bar and the arrows of the interface picture again (the black
+		// rectangle above covered them). The place of the slider is a guess
+		// (in proportion to the first line).
+		for (i = 0; i < 5; i += (i == 0) ? 1 : 2)
+			blit(Interface_bm, sb[i].x, sb[i].y, sb[i].w, sb[i].h, sb[i].x, sb[i].y, 0);
+		if (Dtu_hires) {
+			int range = Msg_count - n;
+			int travel = sb[0].h - Sbar_slider_hi.h;
+			int pos = range > 0 ? travel - travel * Msg_first / range : travel;
+			blit(Interface_bm, Sbar_slider_hi.x, Sbar_slider_hi.y, Sbar_slider_hi.w, Sbar_slider_hi.h,
+				sb[0].x + (sb[0].w - Sbar_slider_hi.w) / 2, sb[0].y + pos, 0);
+		}
+	}
+}
+
+static void msg_scroll(int d)
+{
+	int n = msg_visible_lines();
+
+	Msg_first += d;
+	if (Msg_first > Msg_count - n) Msg_first = Msg_count - n;
+	if (Msg_first < 0) Msg_first = 0;
+}
+
+//------------------------------------------------------------------------
+// Modes
+
+static int mode_is_screen(int mode)
+{
+	return mode >= DTU_IM_INVENTORY && mode <= DTU_IM_HOTKEYS;
+}
+
+static int mode_has_interface(int mode)
+{
+	return mode == DTU_IM_MAIN || mode_is_screen(mode);
+}
+
+// The tables at 0x13B63B (high) and 0x13B65F (low)
+static int mode_picture(int mode)
+{
+	static int hi[9] = { 63, 63, 63, 65, 64, 67, 65, 63, 63 };
+	static int lo[9] = { 57, 57, 57, 59, 58, 61, 60, 57, 57 };
+	return Dtu_hires ? hi[mode] : lo[mode];
+}
+
+static dtu_button *mode_buttons(int mode)
+{
+	switch (mode) {
+	case DTU_IM_MAIN:			return Dtu_hires ? Buttons_hi_main : Buttons_lo_main;
+	case DTU_IM_INVENTORY:	return Dtu_hires ? Buttons_hi_inv : Buttons_lo_inv;
+	case DTU_IM_MAP:			return Dtu_hires ? Buttons_hi_map : Buttons_lo_map;
+	case DTU_IM_STATS:		return Dtu_hires ? Buttons_hi_stats : Buttons_lo_stats;
+	case DTU_IM_HOTKEYS:		return Dtu_hires ? Buttons_hi_inv : Buttons_lo_inv;
+	}
+	return NULL;
+}
+
+// 0x4052F (init_game_screen): the view rectangle of a mode
+static void mode_view(int mode, dtu_rect *v)
+{
+	int sw = Dtu_hires ? 640 : 320;
+
+	if (mode == DTU_IM_MAIN) {
+		v->x = SC(63); v->y = SC(5); v->w = SC(252); v->h = 139;
+	} else if (mode_is_screen(mode)) {
+		v->x = SC(225); v->y = SC(6); v->w = SC(88); v->h = 78;
+	} else if (mode == DTU_IM_LETTERBOX) {
+		// 0x40686: 140 lines in the middle of the screen
+		v->x = 0; v->w = sw; v->h = 140;
+		v->y = ((Dtu_hires ? 480 : 200) - (Dtu_hires ? 280 : 140)) / 2;
+	} else {
+		// 0x40649: 320x200, or 640x239 with each line shown twice
+		v->x = 0; v->y = 0; v->w = sw; v->h = Dtu_hires ? 239 : 200;
+	}
+}
+
+void dtu_display_init_cockpit(void)
+{
+	mode_view(Dtu_interface_mode, &View);
+	game_init_render_sub_buffers(0, 0, View.w, View.h);
+	Game_window_w = View.w;
+	Game_window_h = View.h;
+	// 0x40772: the call 0xE89A8 with the center of the view. The function
+	// was not read: it puts the mouse there (guess).
+	mouse_set_limits(0, 0, Dtu_hires ? 639 : 319, Dtu_hires ? 479 : 199);
+	mouse_set_pos(View.x + View.w / 2, View.y + View.h * (Dtu_hires ? 2 : 1) / 2);
+}
+
+// 0x407EB and 0x40403
+void dtu_display_select_mode(int mode)
+{
+	dtu_button *b;
+	int entry;
+
+	if (mode < 0 || mode > DTU_IM_LETTERBOX || mode == 1 || mode == 2)
+		return;
+	Dtu_interface_mode = mode;
+	Button_pressed = -1;
+	Button_list = NULL;
+
+	if (mode_has_interface(mode)) {
+		entry = mode_picture(mode);
+		if (entry != Interface_entry || !Interface_bm) {
+			if (Interface_bm) gr_free_bitmap(Interface_bm);
+			Interface_bm = febgnd_load(entry);
+			Interface_entry = entry;
+			// 0x98D21: each button draws its image 0 into the picture
+			if (Interface_bm && Button_sheet)
+				for (b = mode_buttons(mode); b && b->w; b++)
+					if (b->x0 + b->w <= Button_sheet->bm_w && b->y0 + b->h <= Button_sheet->bm_h
+							&& b->x + b->w <= Interface_bm->bm_w && b->y + b->h <= Interface_bm->bm_h)
+						gr_bm_ubitblt(b->w, b->h, b->x, b->y, b->x0, b->y0, Button_sheet, Interface_bm);
+		}
+		Button_list = mode_buttons(mode);
+	}
+	dtu_display_init_cockpit();
+}
+
+// 0x408A2, 0x408F5, 0x4093A: the same key or button leaves the screen
+static void toggle_screen(int mode)
+{
+	if (Dtu_interface_mode == mode || (mode == DTU_IM_INVENTORY && Dtu_interface_mode == DTU_IM_HOTKEYS)) {
+		dtu_display_select_mode(Saved_mode);
+		return;
+	}
+	if (!mode_is_screen(Dtu_interface_mode))
+		Saved_mode = Dtu_interface_mode;
+	dtu_display_select_mode(mode);
+}
+
+static void do_action(int action)
+{
+	if (action >= ACT_MODE_BASE && action <= ACT_MODE_BASE + DTU_IM_LETTERBOX) {
+		int mode = action - ACT_MODE_BASE;
+		if (mode == DTU_IM_MAIN) {
+			// 0x36042: the button of the open screen selects mode 0
+			dtu_display_select_mode(DTU_IM_MAIN);
+		} else {
+			if (!mode_is_screen(Dtu_interface_mode))
+				Saved_mode = Dtu_interface_mode;
+			dtu_display_select_mode(mode);
+		}
+		return;
+	}
+	// ASCENT: missing source: rest areas (0x360D5), use (0x3614B) and drop
+	// (0x35FD6) need the character and the inventory. The buttons show the
+	// pressed image and do nothing.
+}
+
+//------------------------------------------------------------------------
+// Init
+
+int dtu_display_init(void)
+{
+	Dtu_display_active = 0;
+	if (!febgnd_open())
+		return 0;
+	// 0x3420C: the icons are entry 23 (low) or 24 (high), the cursor is the
+	// top left of entry 154 (15x15) or 153 (31x31)
+	Icons_bm = febgnd_load(Dtu_hires ? 24 : 23);
+	Cursor_src = febgnd_load(Dtu_hires ? 153 : 154);
+	Cursor_size = Dtu_hires ? 31 : 15;
+	// 0x98B78 and 0xAEEC4: the button sheet of the language. The tables at
+	// 0x145718 (high) and 0x145734 (low) give entry 70 + language and
+	// 78 + language. ASCENT: the language is English (0).
+	Button_sheet = febgnd_load(Dtu_hires ? 70 : 78);
+	if (!Icons_bm || !Cursor_src || !Button_sheet)
+		return 0;
+	if (Icons_bm) Icons_bm->bm_flags |= BM_FLAG_TRANSPARENT;
+	Interface_entry = -1;
+	Msg_count = 0;
+	Msg_first = 0;
+	memset(Key_was_down, 0, sizeof(Key_was_down));
+	Dtu_display_active = 1;
+	dtu_display_select_mode(DTU_IM_MAIN);
+	if (!Interface_bm) {
+		Dtu_display_active = 0;
+		return 0;
+	}
+	mouse_set_relative(Dtu_immersive);
+	return 1;
+}
+
+//------------------------------------------------------------------------
+// Render
+
+void dtu_display_begin_render(void)
+{
+	Saved_aspect = grd_curscreen->sc_aspect;
+	// A rendered line covers two lines of the 640x480 screen.
+	if (Dtu_display_active && Dtu_hires)
+		grd_curscreen->sc_aspect = Saved_aspect * 2;
+}
+
+void dtu_display_end_render(void)
+{
+	grd_curscreen->sc_aspect = Saved_aspect;
+}
+
+// Copies the rendered view to the screen. High resolution shows each line
+// twice (0x40729).
+static void draw_view(void)
+{
+	grs_bitmap *src = &VR_render_sub_buffer[0].cv_bitmap;
+	grs_bitmap *dest = &grd_curcanv->cv_bitmap;
+	int y, w = View.w, h = View.h;
+
+	if (w > src->bm_w) w = src->bm_w;
+	if (h > src->bm_h) h = src->bm_h;
+	if (View.x + w > dest->bm_w) w = dest->bm_w - View.x;
+	for (y = 0; y < h; y++) {
+		ubyte *s = src->bm_data + y * src->bm_rowsize;
+		if (Dtu_hires) {
+			if (View.y + 2 * y + 1 >= dest->bm_h) break;
+			memcpy(dest->bm_data + (View.y + 2 * y) * dest->bm_rowsize + View.x, s, w);
+			memcpy(dest->bm_data + (View.y + 2 * y + 1) * dest->bm_rowsize + View.x, s, w);
+		} else {
+			if (View.y + y >= dest->bm_h) break;
+			memcpy(dest->bm_data + (View.y + y) * dest->bm_rowsize + View.x, s, w);
+		}
+	}
+}
+
+static void load_portrait(void)
+{
+	int n = Dtu_player_portrait;
+
+	if (n < 0 || n > 31) n = 0;
+	if (Portrait_loaded == n + (Dtu_hires ? 100 : 0)) return;
+	if (Portrait_bm) gr_free_bitmap(Portrait_bm);
+	// 0x3627E: entries 87.. (100x90, high) and 119.. (50x45, low)
+	Portrait_bm = febgnd_load((Dtu_hires ? 87 : 119) + n);
+	Portrait_loaded = n + (Dtu_hires ? 100 : 0);
+}
+
+// The areas of the main screen (0x996D8) and their update (0x324DA)
+static void draw_main_areas(void)
+{
+	int px = SC(5), py = SC(17), pw = SC(50), ph = SC(45);
+
+	// portrait, area type 5 (0x9BB7F): the picture centered in the area
+	load_portrait();
+	if (Portrait_bm)
+		blit(Portrait_bm, 0, 0, Portrait_bm->bm_w, Portrait_bm->bm_h,
+			px + (pw - Portrait_bm->bm_w) / 2, py + (ph - Portrait_bm->bm_h) / 2, 0);
+
+	// name: text color (48,48,48). Low resolution prints it at x 1
+	// (area type 2), high resolution centers it.
+	if (Dtu_hires)
+		area_text(SC(5), SC(67), SC(50), SC(8), player_name(), rgb6(48, 48, 48));
+	else {
+		area_restore(5, 67, 50, 8);
+		if (GAME_FONT) {
+			gr_set_curfont(GAME_FONT);
+			gr_set_fontcolor(rgb6(48, 48, 48), -1);
+			gr_string(5 + 1, 67 + (8 - GAME_FONT->ft_h) / 2, player_name());
+		}
+	}
+
+	area_hit_points(SC(5), SC(79), SC(50), SC(8), player_hit_points(), player_max_hit_points());
+	area_icon(SC(22), SC(92), current_item_icon());
+}
+
+// The hot key boxes (0x995BE create, 0x329CB update). High resolution has
+// them on the main screen and on the screens, low resolution on the hot
+// key screen only.
+static void draw_hot_keys(void)
+{
+	int i, size = SC(16);
+
+	if (Dtu_hires ? (Dtu_interface_mode == DTU_IM_HOTKEYS) : (Dtu_interface_mode != DTU_IM_HOTKEYS))
+		return;
+	for (i = 0; i < 10; i++) {
+		int x, y, qy;
+		if (Dtu_hires) {
+			x = 14 + 55 * i; y = 411; qy = 449;		// 0x1446D0, 0x1446F8
+		} else {
+			x = Hotkey_lo_x[i]; y = Hotkey_lo_y[i]; qy = Hotkey_lo_qty_y[i];
+		}
+		// ASCENT: missing source: the hot keys of the character (player
+		// record +0x1AC1 in the original). All boxes are empty: the icon
+		// area and the quantity area are restored and nothing is printed.
+		area_icon(x, y, 0);
+		area_text(x, qy, size, SC(6), "", rgb6(32, 0, 0));
+		(void) area_border;		// the box of the current item gets a (63,63,0) border
+	}
+}
+
+// The character information of the screens (0x99449): name, hit points,
+// armor class, experience, gold.
+static void draw_info_areas(void)
+{
+	int x = SC(227), w = SC(81), h = SC(6);
+	char text[40];
+
+	area_text(x, SC(97), w, h, player_name(), rgb6(48, 48, 48));
+	area_hit_points(x, SC(108), w, h, player_hit_points(), player_max_hit_points());
+	// ASCENT: missing source: armor class, experience and gold of the
+	// character. The labels "AC" and "GOLD" are read from the manual picture
+	// (the original takes them from the string table), the values are
+	// neutral.
+	sprintf(text, "%s %d", "AC", 10);
+	area_text(x, SC(119), w, h, text, rgb6(63, 63, 0));
+	sprintf(text, "%d Exp", 0);
+	area_text(x, SC(130), w, h, text, rgb6(63, 63, 0));
+	sprintf(text, "%s %d", "GOLD", 0);
+	area_text(x, SC(141), w, h, text, rgb6(63, 48, 32));
+	// The item description bar (area 0x3BC524, red text) stays empty.
+	area_restore(SC(5), SC(188), SC(208), SC(7));
+}
+
+static void draw_buttons(void)
+{
+	dtu_button *b;
+
+	if (Button_pressed < 0 || !Button_list) return;
+	b = &Button_list[Button_pressed];
+	blit(Button_sheet, b->x1, b->y1, b->w, b->h, b->x, b->y, 0);
+}
+
+// The cursor (dtumouse.c): the hot spot is the center of the picture.
+static void draw_cursor(int mx, int my)
+{
+	grs_bitmap *dest = &grd_curcanv->cv_bitmap;
+	int x, y, half = Cursor_size / 2;
+
+	if (!Cursor_src) return;
+	for (y = 0; y < Cursor_size; y++)
+		for (x = 0; x < Cursor_size; x++) {
+			int c = Cursor_src->bm_data[y * Cursor_src->bm_rowsize + x];
+			int dx = mx - half + x, dy = my - half + y;
+			// The draw code of the cursor was not read. The background of
+			// the picture is color 255, the transparent color.
+			if (c == 255) continue;
+			if (dx < 0 || dy < 0 || dx >= dest->bm_w || dy >= dest->bm_h) continue;
+			dest->bm_data[dy * dest->bm_rowsize + dx] = c;
+		}
+}
+
+//------------------------------------------------------------------------
+// Input
+
+// Returns 1 if the key acts in this frame: at the press, or in each frame
+// while it is down if Dtu_ui_key_repeat is set.
+static int key_acts(int scancode)
+{
+	int down = keyd_pressed[scancode] != 0;
+	int was = Key_was_down[scancode];
+
+	Key_was_down[scancode] = down;
+	if (Dtu_ui_key_repeat) return down;
+	return down && !was;
+}
+
+int dtu_display_owns_key(int key)
+{
+	if (!Dtu_display_active) return 0;
+	switch (key) {
+	case KEY_I:
+	case KEY_TAB:
+	case KEY_V:
+	case KEY_R:
+	case KEY_F3:
+		return 1;
+	}
+	return 0;
+}
+
+static int in_rect(int x, int y, int rx, int ry, int rw, int rh)
+{
+	return x >= rx && y >= ry && x < rx + rw && y < ry + rh;
+}
+
+static void do_input(int mx, int my)
+{
+	int down, pressed, released, i;
+
+	// The keys of the manual: I inventory, Tab map, V mouse mode, R rest.
+	// The key code of the original was not read.
+	if (key_acts(KEY_I)) toggle_screen(DTU_IM_INVENTORY);
+	if (key_acts(KEY_TAB)) toggle_screen(DTU_IM_MAP);
+	if (key_acts(KEY_R)) do_action(ACT_REST);
+	if (key_acts(KEY_V)) {
+		int i;
+		char *found = NULL;
+		Dtu_immersive = !Dtu_immersive;
+		mouse_set_relative(Dtu_immersive);
+		// The text is in the string table of the game (DTU.TEX).
+		for (i = 0; i < N_TEXT_STRINGS && !found; i++)
+			if (Text_string[i] && strstr(Text_string[i], "mmersive")
+					&& ((strstr(Text_string[i], "Non") != NULL) == !Dtu_immersive))
+				found = Text_string[i];
+		dtu_display_add_message(found ? found : (Dtu_immersive ? "Immersive Mode" : "Non-Immersive Mode"));
+	}
+	// F3 "cycles the playing screen size" (manual). The sizes of the cycle
+	// were not read: main screen and full screen (guess).
+	if (key_acts(KEY_F3)) {
+		if (Dtu_interface_mode == DTU_IM_FULL_SCREEN)
+			dtu_display_select_mode(DTU_IM_MAIN);
+		else if (Dtu_interface_mode == DTU_IM_MAIN)
+			dtu_display_select_mode(DTU_IM_FULL_SCREEN);
+	}
+
+	down = !Dtu_immersive && (mouse_get_btns() & 1);
+	pressed = down && (!Mouse_was_down || Dtu_ui_key_repeat);
+	released = !down && Mouse_was_down;
+	Mouse_was_down = down;
+	if (Dtu_immersive || !mode_has_interface(Dtu_interface_mode)) {
+		Button_pressed = -1;
+		return;
+	}
+
+	if (pressed) {
+		// 0x98E99: the pressed button shows its other image
+		for (i = 0; Button_list && Button_list[i].w; i++)
+			if (in_rect(mx, my, Button_list[i].x, Button_list[i].y, Button_list[i].w, Button_list[i].h)) {
+				Button_pressed = i;
+				if (Dtu_ui_key_repeat)
+					do_action(Button_list[i].action);
+				return;
+			}
+		if (Dtu_interface_mode == DTU_IM_MAIN) {
+			dtu_rect *sb = Sbar_def[Dtu_hires];
+			if (in_rect(mx, my, sb[1].x, sb[1].y, sb[1].w, sb[1].h)) msg_scroll(1);
+			if (in_rect(mx, my, sb[3].x, sb[3].y, sb[3].w, sb[3].h)) msg_scroll(-1);
+		}
+	}
+	if (released && Button_pressed >= 0 && Button_list) {
+		// 0x98F38: the action runs at the release
+		dtu_button *b = &Button_list[Button_pressed];
+		int action = in_rect(mx, my, b->x, b->y, b->w, b->h) ? b->action : ACT_NONE;
+		Button_pressed = -1;
+		if (!Dtu_ui_key_repeat)
+			do_action(action);
+	}
+}
+
+//------------------------------------------------------------------------
+// The frame
+
+void dtu_display_frame(void)
+{
+	int mx = 0, my = 0;
+
+	if (!Dtu_display_active) return;
+
+	mouse_get_pos(&mx, &my);
+	do_input(mx, my);
+
+	gr_set_current_canvas(&VR_screen_pages[0]);
+
+	if (mode_has_interface(Dtu_interface_mode) && Interface_bm)
+		blit(Interface_bm, 0, 0, Interface_bm->bm_w, Interface_bm->bm_h, 0, 0, 0);
+	else
+		gr_clear_canvas(rgb6(0, 0, 0));
+
+	draw_view();
+
+	if (mode_has_interface(Dtu_interface_mode)) {
+		if (Dtu_interface_mode == DTU_IM_MAIN) {
+			draw_main_areas();
+			msg_draw();
+		} else
+			draw_info_areas();
+		draw_hot_keys();
+		draw_buttons();
+	}
+	if (!Dtu_immersive)
+		draw_cursor(mx, my);
+}

@@ -346,6 +346,7 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "network.h"
 #include "gamefont.h"
 #include "dtugame.h"		// ASCENT: the direct start, Dtu_objects_enabled
+#include "dtudisp.h"		// ASCENT: the interface of the target game
 #include "endlevel.h"
 #include "joydefs.h"
 #include "kconfig.h"
@@ -701,6 +702,14 @@ void init_cockpit()
 {
 	int minx, maxx, miny, maxy;
 
+	// ASCENT: the interface of the target game sets the view (dtudisp.c).
+	// The Descent cockpit bitmaps do not exist in the target game.
+	if (Dtu_display_active) {
+		dtu_display_init_cockpit();
+		gr_set_current_canvas(NULL);
+		return;
+	}
+
 	//Initialize the on-screen canvases
 
 	if ( VR_render_mode != VR_NONE )
@@ -799,6 +808,10 @@ void toggle_cockpit()		// ASCENT: return type added
 {
 	int new_mode;
 
+	// ASCENT: the interface of the target game has its own modes (dtudisp.c)
+	if (Dtu_display_active)
+		return;
+
 	switch (Cockpit_mode) {
 
 		case CM_FULL_COCKPIT:
@@ -833,6 +846,10 @@ void toggle_cockpit()		// ASCENT: return type added
 
 void grow_window()		// ASCENT: return type added
 {
+	// ASCENT: the view size of the target game is set by dtudisp.c
+	if (Dtu_display_active)
+		return;
+
 	if (Cockpit_mode == CM_FULL_COCKPIT) {
 		Game_window_h = max_window_h;
 		Game_window_w = VR_render_width;
@@ -934,6 +951,10 @@ void fill_background(int x,int y,int w,int h,int dx,int dy)		// ASCENT: return t
 
 void shrink_window()		// ASCENT: return type added
 {
+	// ASCENT: the view size of the target game is set by dtudisp.c
+	if (Dtu_display_active)
+		return;
+
 	if (Cockpit_mode == CM_FULL_COCKPIT) {
 		Game_window_h = max_window_h;
 		Game_window_w = VR_render_width;
@@ -1565,7 +1586,11 @@ void game_draw_hud_stuff()
 		Game_mode = Newdemo_game_mode;
 #endif
 
-	draw_hud();
+	// ASCENT: the target game has no HUD in the view. Its displays are
+	// around the view (dtudisp.c). draw_hud() asks for Descent bitmaps that
+	// the target game does not have.
+	if (!Dtu_display_active)
+		draw_hud();
 
 #ifndef SHAREWARE
 	if ( (Newdemo_state == ND_STATE_PLAYBACK) )
@@ -1876,6 +1901,20 @@ void game_render_frame_mono(void)
 		gr_set_current_canvas(&VR_render_sub_buffer[0]);
 	else	{
 		gr_set_current_canvas(&Screen_3d_window);
+	}
+
+	// ASCENT: the play screen of the target game (dtudisp.c). The view is
+	// rendered to the offscreen canvas. dtu_display_frame() draws the
+	// interface picture, the view and the displays on the screen. This
+	// replaces the Descent cockpit, gauges and HUD.
+	if (Dtu_display_active) {
+		gr_set_current_canvas(&VR_render_sub_buffer[0]);
+		dtu_display_begin_render();
+		render_frame(0);
+		dtu_display_end_render();
+		game_draw_hud_stuff();
+		dtu_display_frame();
+		return;
 	}
 
 	render_frame(0);
@@ -3036,6 +3075,11 @@ void ReadControls()
 			// screen. They draw text. While the fonts are not loaded, only
 			// Escape is handled (the flight controls do not use this loop).
 			if (!GAME_FONT && key != KEY_ESC)
+				continue;
+
+			// ASCENT: the keys of the interface of the target game (I, Tab,
+			// V, R, F3). dtu_display_frame() reads their state.
+			if (dtu_display_owns_key(key))
 				continue;
 
 			john_cheat_func_1(key);

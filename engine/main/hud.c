@@ -150,6 +150,7 @@ static char rcsid[] = "$Id: hud.c 2.2 1995/03/30 16:36:40 mike Exp $";
 #include "arcade.h"
 #include "screens.h"
 #include "text.h"
+#include "dtudisp.h"		// ASCENT: the message box of the target game
 
 int hud_first = 0;
 int hud_last = 0;
@@ -303,6 +304,10 @@ void HUD_init_message(char * format, ... )
 			HUD_message_timer = F1_0*3;		// 1 second per 5 characters
 			return;	// ignore since it is the same as the last one
 		}
+
+		// ASCENT: the target game shows messages in the message box of the
+		// main screen (dtudisp.c), not in the view.
+		dtu_display_add_message( message );
 
 		hud_last = temp;
 		// Check if memory has been overwritten at this point.

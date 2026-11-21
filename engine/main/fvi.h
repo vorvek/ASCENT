@@ -130,4 +130,9 @@ int find_hitpoint_uv(fix *u,fix *v,vms_vector *pnt,segment *seg,int sidenum,int 
 //Returns true if the object is through any walls
 int object_intersects_wall(object *objp);
 
+// ASCENT: the radii of the body of a person, see fvi.c. The caller sets
+// Fvi_dtu_body before a query and clears it after the query.
+extern int Fvi_dtu_body;
+extern fix Fvi_dtu_rad2;
+
 #endif

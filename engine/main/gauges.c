@@ -1828,6 +1828,14 @@ show_reticle(int force_big_one)
 	int laser_ready,missile_ready,laser_ammo,missile_ammo;
 	int cross_bm_num,primary_bm_num,secondary_bm_num;
 
+	// ASCENT: the target game has no reticle bitmaps. Without this test
+	// the function draws the 64x64 "bogus" bitmap with gr_ubitmapm, which
+	// does not clip. render.c calls it for a 64x64 canvas when the view
+	// uses the head angles, and the bitmap went over the end of that
+	// canvas.
+	if (Gauges[RETICLE_CROSS].index == 0)
+		return;
+
 	x = grd_curcanv->cv_w/2;
 	y = grd_curcanv->cv_h/2;
 
@@ -2085,7 +2093,13 @@ void draw_hud()
 			hud_show_energy();
 			hud_show_shield();
 			hud_show_weapons();
-			hud_show_keys();
+			// ASCENT: the target game has no gauge bitmaps (key icons,
+			// reticle, lives). A gauge with bitmap 0 is not in the data:
+			// the HUD does not ask for it. This draw_hud() is used only
+			// if the interface of the target game is not loaded
+			// (dtudisp.c).
+			if (Gauges[KEY_ICON_BLUE].index != 0)
+				hud_show_keys();
 			hud_show_cloak_invuln();
 
 			if ( ( Newdemo_state==ND_STATE_RECORDING ) && ( Players[Player_num].flags != old_flags[VR_current_page] )) {
@@ -2100,11 +2114,12 @@ void draw_hud()
 			show_time();
 		#endif
 		#endif
-		if (Cockpit_mode != CM_LETTERBOX && (!Use_player_head_angles))
+		// ASCENT: see above, no reticle and no lives icon without bitmaps
+		if (Cockpit_mode != CM_LETTERBOX && (!Use_player_head_angles) && Gauges[RETICLE_CROSS].index != 0)
 			show_reticle(0);
 		HUD_render_message_frame();
 
-		if (Cockpit_mode!=CM_STATUS_BAR)
+		if (Cockpit_mode!=CM_STATUS_BAR && Gauges[GAUGE_LIVES].index != 0)
 			hud_show_lives();
 		#ifdef NETWORK
 		if (Game_mode&GM_MULTI && Show_kill_list)

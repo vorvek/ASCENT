@@ -717,6 +717,8 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "gameseq.h"
 #include "mission.h"		// ASCENT: for build_mission_list
 #include "dtugame.h"		// ASCENT: the options -level and -checklevel
+#include "dtudisp.h"		// ASCENT: the interface of the target game
+#include "gamefont.h"
 #include "playsave.h"
 
 #ifdef EDITOR
@@ -1042,13 +1044,20 @@ static int dtu_run_level(char *level_name)
 	load_text();		// ASCENT: the HUD and the message boxes use the string table
 	Lighting_on = 1;
 
-	if (plat_init("ASCENT", 320, 200, 3) != 0)
+	// ASCENT: the interface of the target game has a 640x480 form (the
+	// default) and a 320x200 form (the option -lowres of the original).
+	if (FindArg("-lowres"))
+		Dtu_hires = 0;
+	Gamefont_hires = Dtu_hires;
+
+	if (plat_init("ASCENT", Dtu_hires ? 640 : 320, Dtu_hires ? 480 : 200, Dtu_hires ? 2 : 3) != 0)
 		Error("Cannot open the window");
 	atexit(plat_shutdown);
 
 	timer_init();
 	timer_set_rate( digi_timer_rate );
 	key_init();
+	mouse_init(0);		// ASCENT: the cursor of the interface
 	div0_init(DM_ERROR);
 
 	// the default keys of the keyboard, as new_player_config() sets them
@@ -1059,15 +1068,30 @@ static int dtu_run_level(char *level_name)
 	kc_set_controls();
 	Auto_leveling_on = 0;
 
-	game_init_render_buffers(SM_320x200C, 320, 200, 0, VR_NONE, 1 );
+	if (Dtu_hires)
+		game_init_render_buffers(SM_640x480V, 640, 480, 0, VR_NONE, 0 );
+	else
+		game_init_render_buffers(SM_320x200C, 320, 200, 0, VR_NONE, 1 );
 
 	if ((t=gr_init( SM_ORIGINAL ))!=0)
 		Error(TXT_CANT_INIT_GFX,t);
-	gr_set_mode(SM_320x200C);
+	gr_set_mode(Dtu_hires ? SM_640x480V : SM_320x200C);
 
 	dtu_load_palette();
 	dtu_load_fonts();
 	dtu_load_tables();
+
+	// ASCENT: the art of the interface. If it is not available the game
+	// shows the full screen view.
+	dtu_display_init();
+	// The option -fullview starts with the full screen view (interface
+	// mode 7, the key F3 changes it).
+	if (Dtu_display_active && FindArg("-fullview"))
+		dtu_display_select_mode(DTU_IM_FULL_SCREEN);
+	// The option -uimode N starts with interface mode N (3 inventory,
+	// 4 map, 5 statistics), for screenshots of the screens.
+	if (Dtu_display_active && (t = FindArg("-uimode")) != 0 && t+1 < Num_args)
+		dtu_display_select_mode(atoi(Args[t+1]));
 
 	g3_init();
 	texmerge_init( 10 );		// 10 cache bitmaps
@@ -1082,8 +1106,12 @@ static int dtu_run_level(char *level_name)
 
 	// While the other objects are not simulated (Dtu_objects_enabled), the
 	// player does not collide with them. The table was set by init_game().
-	if (!Dtu_objects_enabled)
+	if (!Dtu_objects_enabled) {
 		memset(CollisionResult, RESULT_NOTHING, sizeof(CollisionResult));
+		// ASCENT: a wall is not an object. With no entry for the player
+		// and the wall, fvi_sub() tests the walls with the radius 0.
+		CollisionResult[OBJ_PLAYER][OBJ_WALL] = CollisionResult[OBJ_WALL][OBJ_PLAYER] = RESULT_CHECK;
+	}
 
 	strcpy(Players[Player_num].callsign, "player");
 

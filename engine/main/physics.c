@@ -1280,3 +1280,753 @@ set_thrust_from_velocity(object *obj)
 	vm_vec_copy_scale(&obj->mtype.phys_info.thrust,&obj->mtype.phys_info.velocity,k);
 
 }
+
+//------------------------------------------------------------------------
+// ASCENT: new, to the end of the file. The movement of the player of
+// Descent to Undermountain: a person who walks on the floor.
+//
+// DTUGAME.EXE 1.3 does not move the player with do_physics_sim(). The
+// function object_move_one() (0x69B93) calls pcons.c (0x9DC66) for the
+// player, pmon.c (0x9F153) for a monster and pweapon.c (0xA03A8) for a
+// weapon. pcons.c uses new functions of physics.c (0x6C30E to 0x6CD45).
+// The code below follows these functions. The address of the original
+// code is at each function. See docs/re/physics.md for the facts, the
+// guesses and the parts that are not in the port.
+
+#include "bm.h"
+#include "gameseg.h"
+#include "render.h"
+#include "gauges.h"
+#include "player.h"
+#include "controls.h"
+#include "kconfig.h"
+
+// The setting for the movement: 1 is the person of the target game, 0 is
+// the ship of Descent 1 (option -fly).
+int Dtu_player_walk = 1;
+
+// The settings for the places where the original movement depends on the
+// frame rate. 1 (default) is the corrected rule, 0 is the rule of the
+// executable. The corrected rules give the movement of the executable at
+// a frame time of DTU_REF_FRAMETIME. The option -origphys clears them all.
+int Dtu_fix_physics_steps = 1;	// thrust, drag and gravity steps: all steps of 1/64 second, not 2 at most
+int Dtu_fix_frame_drag = 1;		// the extra drag while gravity acts: one time per reference frame, not per frame
+int Dtu_fix_stop_decay = 1;		// velocity/3 with no forward input (and velocity/4 in levitation): per reference frame
+int Dtu_fix_floor_push = 1;		// lift out of the floor: 2.0 per reference frame, not per frame
+int Dtu_fix_look_return = 1;		// return of the view after a glance: per reference frame
+int Dtu_fix_fly_bob = 1;			// phase of the up and down motion in flight: per reference frame
+int Dtu_fix_turn_ramp = 1;			// the turn keys reach the whole turn rate after 8 reference frames, not 8 frames
+int Dtu_fix_jump_exit = 1;			// the velocity after a jump: the last step divided by the reference frame time, not by the frame time
+
+// The state of the player (the byte at 0x1AE of the object in the
+// executable) and the values that belong to it.
+ubyte Dtu_player_state = 0;
+fixang Dtu_look_pitch = 0;			// the word at 0x13D9AE
+int Dtu_move_mode = 0;				// the byte at 0x1452F0: 0 stands, 1 walks, 2 runs
+fix Dtu_floor_dist = 0;				// result of the last dtu_apply_gravity()
+int Dtu_jump_skill = 0;				// the word at 0x1D33DF of the player structure. Its source is not known
+
+static int Dtu_bob_mode = 0;		// the byte at 0x14530D
+static fix Dtu_bob_phase = 0;		// the float at 0x38DFAC, as a fix angle
+static fix Dtu_fly_bob_phase = 0;	// the float at 0x13D435, as a fix angle
+static fix Dtu_fall_start_y = 0;	// the table at 0x30E2D4, for the player
+static fix Dtu_jump_time = 0;		// 0x13D43A
+static fix Dtu_jump_base_y = 0;	// 0x1E9C58
+static int Dtu_jump_last_step = -1;	// 0x13D434
+static vms_vector Dtu_jump_vec;	// 0x3BCB0C
+static int Dtu_gravity_drag = 0;	// the byte at 0x13D470, inverted
+static int Dtu_jump_set_vel = 0;	// the jump set the velocity of this frame
+
+// The height of the jump for each of the 15 steps (table at 0x14530E).
+static fix Dtu_jump_table[DTU_JUMP_STEPS+1] = {
+	0x18000, 0x30000, 0x48000, 0x60000, 0x6c000, 0x72000, 0x78000, 0x78000,
+	0x72000, 0x6c000, 0x60000, 0x48000, 0x30000, 0x18000, 0, 0
+};
+
+#define DTU_HIT_FLOOR	5			// the new result of find_vector_intersection() of the executable
+
+// Returns how many times a rule that the executable applies one time per
+// frame must be applied in this frame. *acc is the time that is left.
+static int dtu_ref_ticks(int corrected, fix *acc)
+{
+	int n;
+
+	if (!corrected)
+		return 1;
+
+	*acc += FrameTime;
+	n = *acc / DTU_REF_FRAMETIME;
+	*acc -= n * DTU_REF_FRAMETIME;
+	if (n > 8)
+		n = 8;
+	return n;
+}
+
+// The type of the floor: the two low bits of the byte at offset 1 of the
+// bottom side (0x9DCC2). Type 1 makes the player slow and halves the
+// damage of a fall. The segment below is used if there is one.
+static int dtu_floor_type(object *obj)
+{
+	int segnum = obj->segnum;
+	int below = Segments[segnum].children[WBOTTOM];
+
+	if (below > -1)
+		segnum = below;
+	return Segments[segnum].sides[WBOTTOM].pad & 3;
+}
+
+// 0x6C30E. The distance from the feet of the object to the floor. It is
+// negative when the feet are in the floor, and 8.0 when no floor is found.
+// The executable takes the radius and the height from the bounding boxes
+// of the polygon model. The port uses constants, see physics.h.
+fix dtu_get_floor_dist(object *obj)
+{
+	static fix result = 0;
+	fvi_query fq;
+	fvi_info hit;
+	vms_vector p1;
+	int fate;
+
+	p1 = obj->pos;
+	p1.y -= DTU_FLOOR_PROBE + DTU_BODY_HALF_HEIGHT;
+
+	fq.p0 = &obj->pos;
+	fq.p1 = &p1;
+	fq.startseg = obj->segnum;
+	fq.rad = DTU_BODY_RAD;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+
+	Fvi_dtu_body = 2;
+	fate = find_vector_intersection(&fq,&hit);
+	Fvi_dtu_body = 0;
+
+	if (fate == HIT_WALL)
+		result = (obj->pos.y - hit.hit_pnt.y) - DTU_BODY_HALF_HEIGHT;
+	else if (fate == HIT_BAD_P0)
+		result = -abs(result);		// "RLH: %d has bad gravity!"
+	else
+		result = DTU_FLOOR_PROBE;
+
+	if (abs(result) < DTU_FLOOR_EPS)
+		result = 0;
+
+	return result;
+}
+
+// 0x6CB0F
+static void dtu_start_fall(object *obj)
+{
+	Dtu_player_state |= DTU_PS_FALLING;
+	Dtu_fall_start_y = obj->pos.y;
+}
+
+// 0x6C8C8. The damage of a fall, and the end of the fall. The executable
+// lets a thief take hold of a wall here. That part is not in the port.
+static void dtu_fall_damage(object *obj)
+{
+	if ((Dtu_player_state & DTU_PS_FALLING) && !(obj->dtu.m_88 & DTU_OF_NO_GRAVITY)) {
+		int fell = (Dtu_fall_start_y - obj->pos.y) >> 17;		// "descent feet": half units
+
+		if (fell > 10) {
+			int base = fell/10;
+			int damage = rand() % (base*5 + 1) + base;
+
+			if ((Segments[obj->segnum].sides[WBOTTOM].pad & 3) == 1)
+				damage >>= 1;
+
+			mprintf((0,"RLH: Object %d fell %d descent feet.\n",(int)(obj-Objects),fell));
+			HUD_init_message("You fell %d feet!",fell);
+			apply_damage_to_player(obj,obj,i2f(damage));
+		}
+	}
+
+	Dtu_fall_start_y = obj->pos.y;
+	Dtu_player_state &= ~DTU_PS_FALLING;
+}
+
+// 0x6C662. Gravity pulls with 3.0 times the distance to the floor for each
+// step of 1/64 second. An object that is in the floor moves up.
+static void dtu_apply_gravity(object *obj,vms_vector *accel)
+{
+	static fix push_acc = 0;
+	fix d = dtu_get_floor_dist(obj);
+	fix ad = abs(d);
+	int no_gravity = (obj->dtu.m_88 & DTU_OF_NO_GRAVITY) || (Dtu_player_state & DTU_PS_CLIMBING);
+
+	Dtu_floor_dist = d;
+	Dtu_gravity_drag = 0;
+
+	if (d < 0) {
+		vms_vector new_pos,head;
+		fix push = DTU_PUSH_UP_MAX;
+
+		// The executable moves the object 2.0 at most on each frame.
+		if (Dtu_fix_floor_push) {
+			push_acc += fixmuldiv(DTU_PUSH_UP_MAX,FrameTime,DTU_REF_FRAMETIME);
+			if (push_acc > DTU_PUSH_UP_MAX*4)
+				push_acc = DTU_PUSH_UP_MAX*4;
+			push = push_acc;
+		}
+		if (push > ad)
+			push = ad;
+		if (Dtu_fix_floor_push)
+			push_acc -= push;
+
+		new_pos = obj->pos;
+		new_pos.y += push;
+		head = new_pos;
+		head.y += DTU_BODY_HALF_HEIGHT;
+		if (find_point_seg(&head,obj->segnum) >= 0)
+			obj->pos = new_pos;
+
+		Dtu_player_state &= ~DTU_PS_CLIMBING;
+
+		if (!no_gravity)
+			dtu_fall_damage(obj);
+	}
+	else {
+		push_acc = 0;
+
+		if (no_gravity)
+			;
+		else if (d != 0) {
+			accel->y -= fixmul(ad,DTU_GRAVITY_K);
+			Dtu_gravity_drag = 1;
+			if (ad < F1_0)
+				Dtu_player_state &= ~DTU_PS_FALLING;
+			else if (!(Dtu_player_state & DTU_PS_FALLING))
+				dtu_start_fall(obj);
+		}
+		else
+			Dtu_player_state &= ~DTU_PS_FALLING;
+	}
+}
+
+// 0x6CB68. Thrust and drag in steps of 1/64 second, as do_physics_sim()
+// of Descent 1. The executable does 2 steps at most on each frame, and it
+// drops the rest of the frame when the frame has more than 2 steps. While
+// gravity acts, the part step uses the whole drag.
+static void dtu_integrate(object *obj,vms_vector *accel,fix sim_time)
+{
+	static fix step_acc = 0,drag_acc = 0;
+	physics_info *pi = &obj->mtype.phys_info;
+	fix drag = pi->drag;
+	int count;
+	fix k;
+
+	if (Dtu_fix_physics_steps) {
+		step_acc += sim_time;
+		count = step_acc / DTU_FT;
+		step_acc -= count * DTU_FT;
+		if (count > 32)
+			count = 32;
+		k = 0;
+	}
+	else {
+		count = sim_time / DTU_FT;
+		k = fixdiv(sim_time % DTU_FT,DTU_FT);
+		if (count > 2) {
+			count = 2;
+			k = 0;
+		}
+	}
+
+	while (count--) {
+		vm_vec_add2(&pi->velocity,accel);
+		vm_vec_scale(&pi->velocity,F1_0-drag);
+	}
+
+	if (!Dtu_fix_physics_steps) {
+		vm_vec_scale_add2(&pi->velocity,accel,k);
+		if (!Dtu_gravity_drag || Dtu_fix_frame_drag)
+			vm_vec_scale(&pi->velocity,F1_0-fixmul(k,drag));
+	}
+
+	if (Dtu_gravity_drag) {
+		int n = dtu_ref_ticks(Dtu_fix_frame_drag,&drag_acc);
+
+		while (n--)
+			vm_vec_scale(&pi->velocity,F1_0-drag);
+	}
+
+	if (pi->velocity.y < DTU_TERMINAL_VEL)
+		pi->velocity.y = DTU_TERMINAL_VEL;
+}
+
+// 0x9F093 "Jump stopped."
+static void dtu_stop_jump(object *obj)
+{
+	if ((Dtu_player_state & DTU_PS_JUMPING) && obj->mtype.phys_info.velocity.y < 0) {
+		dtu_fall_damage(obj);
+		vm_vec_zero(&obj->mtype.phys_info.velocity);
+		Dtu_player_state &= ~(DTU_PS_JUMPING|DTU_PS_FALLING);
+	}
+}
+
+// 0x546CC. The jump key.
+void dtu_player_jump(object *obj)
+{
+	if (obj->dtu.m_88 & DTU_OF_LEVITATE) {
+		obj->dtu.m_88 &= ~DTU_OF_LEVITATE;
+		HUD_init_message("Levitate cancelled.");
+		return;
+	}
+
+	if ((Dtu_player_state & DTU_PS_JUMPING) || (obj->dtu.m_88 & DTU_OF_FLY))
+		return;
+
+	if (dtu_get_floor_dist(obj) > DTU_JUMP_FLOOR_MAX && !(Dtu_player_state & DTU_PS_CLIMBING))
+		return;
+
+	Dtu_jump_time = 0;
+	Dtu_jump_base_y = obj->pos.y;
+	Dtu_player_state |= DTU_PS_JUMPING;
+}
+
+// 0x9E9D8. One frame of a jump. The jump has 15 steps and 28 steps for
+// each second. The height comes from a table. The velocity is the way to
+// the place of the step, divided by the frame time.
+static void dtu_jump_frame(object *obj,fix sim_time)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	int step,prev;
+
+	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))
+		return;
+	if (Dtu_player_state & DTU_PS_CLIMBING)
+		return;
+
+	if (Dtu_jump_time == 0) {
+		Dtu_jump_vec = pi->thrust;
+		if (Dtu_jump_vec.x || Dtu_jump_vec.y || Dtu_jump_vec.z)
+			vm_vec_normalize(&Dtu_jump_vec);
+		Dtu_jump_vec.y = 0;
+		vm_vec_scale(&Dtu_jump_vec,(Dtu_jump_skill << 13) + 0x8000);
+		if (Dtu_move_mode == 2)
+			vm_vec_scale(&Dtu_jump_vec,0x18000);
+		if (obj->dtu.m_88 & DTU_OF_JUMP_SPELL)
+			vm_vec_scale(&Dtu_jump_vec,0x20000);
+		Dtu_jump_last_step = -1;
+	}
+
+	Dtu_jump_time += sim_time;
+	step = fixmul(Dtu_jump_time,DTU_JUMP_RATE) >> 16;
+
+	if (step == Dtu_jump_last_step) {
+		vm_vec_zero(&pi->velocity);
+		return;
+	}
+
+	prev = Dtu_jump_last_step;
+	Dtu_jump_last_step = step;
+
+	if (step >= DTU_JUMP_STEPS) {
+		Dtu_player_state &= ~(DTU_PS_JUMPING|DTU_PS_FALLING);
+		Dtu_jump_time = 0;
+		vm_vec_copy_scale(&pi->velocity,&Dtu_jump_vec,i2f(DTU_JUMP_STEPS - prev));
+		Dtu_jump_last_step = -1;
+		pi->velocity.y = Dtu_jump_base_y - obj->pos.y;
+		if (abs(dtu_get_floor_dist(obj) + pi->velocity.y) > DTU_JUMP_FLOOR_MAX)
+			pi->velocity.y -= 0x18000;
+	}
+	else {
+		vm_vec_copy_scale(&pi->velocity,&Dtu_jump_vec,i2f(step - prev));
+		pi->velocity.y = Dtu_jump_table[step] - (obj->pos.y - Dtu_jump_base_y);
+	}
+
+	vm_vec_scale(&pi->velocity,fixdiv(F1_0,sim_time));
+	Dtu_jump_set_vel = 1;
+}
+
+// 0x6B354. The rotation: only the heading. The drag is 5 times the drag
+// of the object for each step of 1/64 second (Descent 1: 2.5 times).
+static void dtu_physics_sim_rot(object *obj)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	vms_angvec tangles;
+	vms_matrix rotmat,new_orient;
+
+	if (!(pi->rotvel.x || pi->rotvel.y || pi->rotvel.z || pi->rotthrust.x || pi->rotthrust.y || pi->rotthrust.z))
+		return;
+
+	if (pi->drag) {
+		static fix step_acc = 0;
+		int count = FrameTime / DTU_FT;
+		fix k = fixdiv(FrameTime % DTU_FT,DTU_FT);
+		fix drag = pi->drag*5;
+
+		// The part step is linear. With it the turn rate grows with the
+		// frame rate (1.25 turns for each second at 21 frames, 1.76 at 200).
+		// The corrected rule has only whole steps.
+		if (Dtu_fix_physics_steps) {
+			step_acc += FrameTime;
+			count = step_acc / DTU_FT;
+			step_acc -= count * DTU_FT;
+			if (count > 32)
+				count = 32;
+			k = 0;
+		}
+
+		if (pi->flags & PF_USES_THRUST) {
+			vms_vector accel;
+
+			vm_vec_copy_scale(&accel,&pi->rotthrust,fixdiv(F1_0,pi->mass));
+
+			while (count--) {
+				vm_vec_add2(&pi->rotvel,&accel);
+				vm_vec_scale(&pi->rotvel,F1_0-drag);
+			}
+
+			vm_vec_scale_add2(&pi->rotvel,&accel,k);
+			vm_vec_scale(&pi->rotvel,F1_0-fixmul(k,drag));
+		}
+		else {
+			fix total_drag = F1_0;
+
+			while (count--)
+				total_drag = fixmul(total_drag,F1_0-drag);
+			total_drag = fixmul(total_drag,F1_0-fixmul(k,drag));
+			vm_vec_scale(&pi->rotvel,total_drag);
+		}
+	}
+
+	tangles.p = 0;
+	tangles.b = 0;
+	tangles.h = fixmul(pi->rotvel.y,FrameTime);
+
+	vm_angles_2_matrix(&rotmat,&tangles);
+	vm_matrix_x_matrix(&new_orient,&obj->orient,&rotmat);
+	obj->orient = new_orient;
+
+	check_and_fix_matrix(&obj->orient);
+}
+
+// 0x6C186 "obj %d hit a kneeHigh Segment." The player hit a floor side.
+// When the center of that side is above the center of the floor below the
+// player by less than 5.5, the player gets a velocity up.
+static int dtu_knee_high(object *obj,int hit_seg,int hit_side)
+{
+	fvi_query fq;
+	fvi_info hit;
+	vms_vector c1,c2,p1;
+	fix diff;
+
+	if (hit_seg < 0 || hit_seg > Highest_segment_index || hit_side < 0 || hit_side > 5)
+		return 0;
+
+	compute_center_point_on_side(&c1,&Segments[hit_seg],hit_side);
+
+	p1 = obj->pos;
+	p1.y -= DTU_FLOOR_PROBE + DTU_BODY_HALF_HEIGHT;
+
+	fq.p0 = &obj->pos;
+	fq.p1 = &p1;
+	fq.startseg = obj->segnum;
+	fq.rad = 0x1000;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+
+	if (find_vector_intersection(&fq,&hit) != HIT_WALL)
+		return 0;
+	if (hit.hit_side_seg < 0 || hit.hit_side < 0)
+		return 0;
+
+	compute_center_point_on_side(&c2,&Segments[hit.hit_side_seg],hit.hit_side);
+
+	diff = c1.y - c2.y;
+	if (diff > 0 && diff < DTU_KNEE_HIGH) {
+		obj->mtype.phys_info.velocity.y = c1.y - obj->pos.y + DTU_KNEE_LIFT;
+		return 1;
+	}
+
+	return 0;
+}
+
+// The rule of read_flying_controls() of the executable (0x2C025): with no
+// forward input the velocity and the thrust in x and z become one third,
+// one time on each frame.
+static fix Dtu_stop_decay_acc = 0;
+
+// The player has forward input. The next dtu_stop_decay() acts at once,
+// as the first frame with no input does in the executable.
+void dtu_stop_decay_reset(void)
+{
+	Dtu_stop_decay_acc = DTU_REF_FRAMETIME - 1;
+}
+
+void dtu_stop_decay(object *obj)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	int n = dtu_ref_ticks(Dtu_fix_stop_decay,&Dtu_stop_decay_acc);
+
+	while (n--) {
+		pi->thrust.x /= 3;
+		pi->thrust.z /= 3;
+		pi->velocity.x /= 3;
+		pi->velocity.z /= 3;
+	}
+}
+
+// 0x76E9C in render.c of the executable: the eye of the player is above
+// the center of the body, the view goes up and down with the steps, and
+// the view has the pitch of the look keys.
+void dtu_player_eye(vms_vector *eye)
+{
+	fix eye_offset = DTU_EYE_OFFSET_DEFAULT;
+
+	if (!Dtu_player_walk || Player_is_dead) {
+		Use_player_head_angles = 0;
+		return;
+	}
+
+	if (N_player_types > 0 && Player_type_info[0].eye_offset)
+		eye_offset = Player_type_info[0].eye_offset;
+
+	vm_vec_scale_add2(eye,&ConsoleObject->orient.uvec,eye_offset);
+
+	if (Dtu_bob_mode) {
+		fix s;
+
+		fix_sincos(Dtu_bob_phase,&s,NULL);
+		eye->y += fixmul(DTU_BOB_HEIGHT,s);
+	}
+
+	Use_player_head_angles = 1;
+	Player_head_angles.p = Dtu_look_pitch;
+	Player_head_angles.b = 0;
+	Player_head_angles.h = 0;
+}
+
+// 0x9DC66 (pcons.c). The movement of the player for one frame.
+int dtu_player_physics_sim(object *obj)
+{
+	static fix levitate_acc = 0;
+	physics_info *pi = &obj->mtype.phys_info;
+	int objnum = obj-Objects;
+	fix sim_time = FrameTime;
+	vms_vector accel,start_pos,frame_vec,new_pos,p1;
+	int floor_type,tries = 0,fate;
+	int ignore_obj_list[MAX_IGNORE_OBJS],n_ignore_objs = 0;
+	fvi_query fq;
+	fvi_info hit;
+
+	if (obj->dtu.m_88 & DTU_OF_HELD)
+		return 1;
+
+	n_phys_segs = 0;
+	floor_type = dtu_floor_type(obj);
+
+	dtu_physics_sim_rot(obj);
+
+	vm_vec_copy_scale(&accel,&pi->thrust,fixdiv(F1_0,pi->mass));
+
+	if (!(obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))) {
+		if (!(obj->dtu.m_88 & DTU_OF_1000)) {
+			if (floor_type == 1 || (obj->dtu.m_88 & DTU_OF_SLOW)) {
+				accel.x >>= 1;
+				accel.z >>= 1;
+			}
+			// The executable also divides by 3 when the player structure
+			// has one of the bits 0x1C at 0x1D33BC. Not in the port.
+		}
+		if (obj->dtu.m_88 & DTU_OF_FAST) {
+			accel.x *= 2;
+			accel.z *= 2;
+		}
+	}
+
+	dtu_apply_gravity(obj,&accel);
+
+	// 0x6CCDB: the player moves up and down in flight and in levitation.
+	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) {
+		fix s;
+
+		fix_sincos(Dtu_fly_bob_phase,&s,NULL);
+		accel.y += s/5;
+		if (Dtu_fix_fly_bob)
+			Dtu_fly_bob_phase += fixmuldiv(DTU_FLY_BOB_STEP,sim_time,DTU_REF_FRAMETIME);
+		else
+			Dtu_fly_bob_phase += DTU_FLY_BOB_STEP;
+	}
+
+	Dtu_bob_mode = Dtu_move_mode;
+	Dtu_jump_set_vel = 0;
+
+	if (Dtu_player_state & DTU_PS_JUMPING)
+		dtu_jump_frame(obj,sim_time);
+	else
+		dtu_integrate(obj,&accel,sim_time);
+
+	vm_vec_zero(&pi->thrust);
+
+	if (obj->dtu.m_88 & DTU_OF_LEVITATE) {
+		int n = dtu_ref_ticks(Dtu_fix_stop_decay,&levitate_acc);
+
+		if (!(Dtu_player_state & DTU_PS_CLIMBING))
+			pi->velocity.x = pi->velocity.z = 0;
+		while (n--)
+			pi->velocity.y >>= 2;
+	}
+
+	if ((obj->dtu.m_88 & DTU_OF_80) && pi->velocity.y < -DTU_SLOW_FALL_VEL)
+		pi->velocity.y = -DTU_SLOW_FALL_VEL;
+
+	// The view goes up and down one time for each second of a walk and two
+	// times for each second of a run (0x76F30).
+	Dtu_bob_phase += sim_time * Dtu_bob_mode;
+
+	start_pos = obj->pos;
+
+	// The move. A hit puts the player back to the start of the frame and
+	// changes the velocity. Then the move starts again, 8 times at most.
+	for (;;) {
+
+		if (vm_vec_mag(&pi->velocity) <= 0x72)
+			break;
+
+		frame_vec.x = fixmul(pi->velocity.x,sim_time);
+		frame_vec.y = fixmul(pi->velocity.y,sim_time);
+		frame_vec.z = fixmul(pi->velocity.z,sim_time);
+
+		if (++tries > 8) {
+			mprintf((0,"Stupid human. "));
+			obj->pos = start_pos;
+			break;
+		}
+
+		vm_vec_add(&new_pos,&obj->pos,&frame_vec);
+
+		// The query goes 1.2 times as far in x and z as the move.
+		p1.x = obj->pos.x + fixmul(frame_vec.x,0x13333);
+		p1.y = obj->pos.y + frame_vec.y;
+		p1.z = obj->pos.z + fixmul(frame_vec.z,0x13333);
+
+		ignore_obj_list[n_ignore_objs] = -1;
+
+		fq.p0 = &obj->pos;
+		fq.p1 = &p1;
+		fq.startseg = obj->segnum;
+		fq.rad = DTU_BODY_RAD;
+		fq.thisobjnum = objnum;
+		fq.ignore_obj_list = ignore_obj_list;
+		fq.flags = FQ_CHECK_OBJS | FQ_GET_SEGLIST;
+
+		Fvi_dtu_body = 1;
+		Fvi_dtu_rad2 = DTU_BODY_HALF_HEIGHT;
+		fate = find_vector_intersection(&fq,&hit);
+		Fvi_dtu_body = 0;
+
+		// 0x3FA08: a hit of the bottom side of a segment is a hit of the floor.
+		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
+			fate = DTU_HIT_FLOOR;
+
+		{
+			int i = 0;
+
+			if (n_phys_segs && hit.n_segs && phys_seglist[n_phys_segs-1]==hit.seglist[0])
+				n_phys_segs--;
+			while (i<hit.n_segs && n_phys_segs<MAX_FVI_SEGS-1)
+				phys_seglist[n_phys_segs++] = hit.seglist[i++];
+		}
+
+		if (fate == HIT_NONE) {
+			int segnum = find_point_seg(&new_pos,obj->segnum);
+
+			if (segnum != -1) {
+				obj->pos = new_pos;
+				if (segnum != obj->segnum)
+					obj_relink(objnum,segnum);
+			}
+			break;
+		}
+		else if (fate == DTU_HIT_FLOOR) {			// 0x6CD45
+
+			obj->pos = start_pos;
+			Dtu_player_state &= ~(DTU_PS_JUMPING|DTU_PS_CLIMBING);
+
+			if (!dtu_knee_high(obj,hit.hit_side_seg,hit.hit_side)) {
+				fix d = vm_vec_dot(&pi->velocity,&hit.hit_wallnorm);
+
+				vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,-d);
+			}
+
+			dtu_fall_damage(obj);
+		}
+		else if (fate == HIT_WALL) {					// 0x9E47C and 0x9E88D
+			vms_vector moved;
+			fix wall_part,d;
+
+			if (Dtu_player_state & DTU_PS_JUMPING) {
+				dtu_stop_jump(obj);
+				vm_vec_zero(&pi->velocity);
+			}
+
+			if (hit.hit_side == WTOP) {
+				Dtu_player_state &= ~DTU_PS_JUMPING;
+				pi->velocity.y = 0;
+			}
+			else
+				dtu_stop_jump(obj);
+
+			vm_vec_sub(&moved,&new_pos,&start_pos);
+			wall_part = vm_vec_dot(&moved,&hit.hit_wallnorm);
+
+			if (hit.hit_side_seg >= 0 && hit.hit_side >= 0)
+				collide_object_with_wall(obj,abs(wall_part),hit.hit_side_seg,hit.hit_side,&hit.hit_pnt);
+
+			if (obj->flags & OF_SHOULD_BE_DEAD)
+				break;
+
+			// The velocity into the wall turns back with 0.75 of its size.
+			d = vm_vec_dot(&pi->velocity,&hit.hit_wallnorm);
+			vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,fixmul(-d,DTU_WALL_BOUNCE));
+
+			obj->pos = start_pos;
+			Dtu_bob_mode = 0;
+		}
+		else if (fate == HIT_OBJECT) {				// 0x9E53D
+			object *other = &Objects[hit.hit_object];
+
+			obj->pos = start_pos;
+			collide_two_objects(obj,other,&hit.hit_pnt);
+
+			if (obj->flags & OF_SHOULD_BE_DEAD)
+				break;
+
+			// A monster stops the player. The player goes through all
+			// other objects after the collision (an item that is taken).
+			if (other->type == OBJ_ROBOT || other->type == OBJ_PLAYER || other->type == OBJ_CNTRLCEN)
+				break;
+			if (n_ignore_objs < MAX_IGNORE_OBJS-1)
+				ignore_obj_list[n_ignore_objs++] = hit.hit_object;
+		}
+		else													// HIT_BAD_P0 "bad p0 "
+			break;
+	}
+
+	// The velocity of a step of the jump is the way of the step divided by
+	// the frame time. The executable keeps this velocity when the jump
+	// ends in this frame: the player is fast after a jump at a high frame
+	// rate. The corrected rule keeps the velocity of the reference frame.
+	if (Dtu_jump_set_vel && !(Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_exit)
+		vm_vec_scale(&pi->velocity,fixdiv(sim_time,DTU_REF_FRAMETIME));
+
+	// The object must be in its segment.
+	if (get_seg_masks(&obj->pos,obj->segnum,0).centermask != 0) {
+		if (!update_object_seg(obj)) {
+			int n = find_point_seg(&start_pos,obj->segnum);
+
+			if (n != -1) {
+				obj->pos = start_pos;
+				obj_relink(objnum,n);
+			}
+		}
+	}
+
+	dtu_move_log(obj);
+
+	return 1;
+}

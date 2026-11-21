@@ -215,6 +215,18 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 //look at keyboard, mouse, joystick, CyberMan, whatever, and set 
 //physics vars rotvel, velocity
 
+// ASCENT: the controls of the target game, see the end of the file
+#include <stdio.h>
+#include <string.h>
+#include "physics.h"
+#include "bm.h"
+#include "key.h"
+#include "joy.h"
+#include "gauges.h"
+
+static void dtu_move_init(void);
+static void dtu_read_flying_controls(object *obj);
+
 void read_flying_controls( object * obj )
 {
 	fix	afterburner_thrust;
@@ -228,6 +240,13 @@ void read_flying_controls( object * obj )
 	}
 
 	if ((obj->type!=OBJ_PLAYER) || (obj->id!=Player_num)) return;	//references to player_ship require that this obj be the player
+
+	// ASCENT: the player of the target game is a person who walks
+	dtu_move_init();
+	if (Dtu_player_walk) {
+		dtu_read_flying_controls(obj);
+		return;
+	}
 
 	//	Couldn't the "50" in the next three lines be changed to "64" with no ill effect?
 	obj->mtype.phys_info.rotthrust.x = Controls.pitch_time;
@@ -282,4 +301,416 @@ void read_flying_controls( object * obj )
 		vm_vec_scale( &obj->mtype.phys_info.rotthrust, fixdiv(Player_ship->max_rotthrust,ft) );
 	}
 
+}
+
+//------------------------------------------------------------------------
+// ASCENT: new, to the end of the file. The controls of the player of
+// Descent to Undermountain, the scripted input for tests and the log of
+// the movement. See docs/re/physics.md.
+
+extern fix fixed_frametime;		// in game.c
+
+// The actions of the option -testmove
+#define TM_FORWARD	0x0001
+#define TM_BACK		0x0002
+#define TM_LEFT		0x0004
+#define TM_RIGHT		0x0008
+#define TM_SLIDELEFT	0x0010
+#define TM_SLIDERIGHT 0x0020
+#define TM_RUN			0x0040
+#define TM_JUMP		0x0080
+#define TM_LOOKUP		0x0100
+#define TM_LOOKDOWN	0x0200
+#define TM_UP			0x0400
+#define TM_DOWN		0x0800
+
+static struct { char *name; int mask; } Test_action_names[] = {
+	{"forward",TM_FORWARD}, {"back",TM_BACK}, {"left",TM_LEFT}, {"right",TM_RIGHT},
+	{"slideleft",TM_SLIDELEFT}, {"slideright",TM_SLIDERIGHT}, {"run",TM_RUN},
+	{"jump",TM_JUMP}, {"lookup",TM_LOOKUP}, {"lookdown",TM_LOOKDOWN},
+	{"up",TM_UP}, {"down",TM_DOWN}, {"wait",0}
+};
+
+#define MAX_TEST_STEPS	64
+
+static struct {
+	int	mask;
+	int	frames;		// length in frames, or
+	fix	time;			// length in game time when frames is 0
+} Test_steps[MAX_TEST_STEPS];
+static int N_test_steps = 0;
+static FILE *Move_log = NULL;
+
+// -testmove ACTION[+ACTION]:LENGTH[,...]. LENGTH is a number of frames, or
+// a time in milliseconds with "ms" after the number. Example:
+// -testmove forward+run:2000ms,left:30,wait:10,jump:1
+static void dtu_parse_testmove(char *s)
+{
+	while (*s && N_test_steps < MAX_TEST_STEPS) {
+		int mask = 0, n;
+
+		while (*s && *s != ':' && *s != ',') {
+			int i, len = 0;
+
+			while (s[len] && s[len] != '+' && s[len] != ':' && s[len] != ',')
+				len++;
+			for (i=0; i<(int)(sizeof(Test_action_names)/sizeof(*Test_action_names)); i++)
+				if ((int)strlen(Test_action_names[i].name) == len && !strnicmp(s,Test_action_names[i].name,len))
+					mask |= Test_action_names[i].mask;
+			s += len;
+			if (*s == '+')
+				s++;
+		}
+
+		n = 1;
+		if (*s == ':') {
+			s++;
+			n = atoi(s);
+			while (*s >= '0' && *s <= '9')
+				s++;
+		}
+
+		Test_steps[N_test_steps].mask = mask;
+		if (s[0] == 'm' && s[1] == 's') {
+			Test_steps[N_test_steps].frames = 0;
+			Test_steps[N_test_steps].time = fixmuldiv(n,F1_0,1000);
+			s += 2;
+		}
+		else {
+			Test_steps[N_test_steps].frames = n;
+			Test_steps[N_test_steps].time = 0;
+		}
+		N_test_steps++;
+
+		while (*s && *s != ',')
+			s++;
+		if (*s == ',')
+			s++;
+	}
+}
+
+// Reads the options one time.
+static void dtu_move_init(void)
+{
+	static int done = 0;
+	int t;
+
+	if (done)
+		return;
+	done = 1;
+
+	if (FindArg("-fly"))
+		Dtu_player_walk = 0;
+
+	if (FindArg("-origphys"))
+		Dtu_fix_physics_steps = Dtu_fix_frame_drag = Dtu_fix_stop_decay =
+			Dtu_fix_floor_push = Dtu_fix_look_return = Dtu_fix_fly_bob = Dtu_fix_turn_ramp = Dtu_fix_jump_exit = 0;
+
+	if ((t = FindArg("-fixedfps")) != 0 && t+1 < Num_args && atoi(Args[t+1]) > 0)
+		fixed_frametime = F1_0 / atoi(Args[t+1]);
+
+	if ((t = FindArg("-testmove")) != 0 && t+1 < Num_args)
+		dtu_parse_testmove(Args[t+1]);
+
+	if ((t = FindArg("-movelog")) != 0 && t+1 < Num_args) {
+		if (!strcmp(Args[t+1],"-"))
+			Move_log = stdout;
+		else
+			Move_log = fopen(Args[t+1],"wt");
+	}
+}
+
+// Returns the actions of the test script for this frame.
+static int dtu_test_keys(void)
+{
+	static int step = 0, frames = 0;
+	static fix time = 0;
+	int mask;
+
+	if (step >= N_test_steps)
+		return 0;
+
+	mask = Test_steps[step].mask;
+
+	if (Test_steps[step].frames) {
+		if (++frames >= Test_steps[step].frames) {
+			step++;
+			frames = 0;
+		}
+	}
+	else {
+		time += FrameTime;
+		if (time >= Test_steps[step].time) {
+			time -= Test_steps[step].time;
+			step++;
+		}
+	}
+
+	return mask;
+}
+
+// Prints one line for each frame of the player: the frame number, the game
+// time, the position, the segment, the velocity, the distance of the feet
+// to the floor, the state, the move mode and the look pitch.
+void dtu_move_log(object *obj)
+{
+	static int frame = 0;
+
+	frame++;
+	if (!Move_log)
+		return;
+
+	if (frame == 1)
+		fprintf(Move_log,"MOVEINFO mass %.4f drag %.4f max_thrust %.4f max_rotthrust %.4f eye_offset %.4f size %.4f flags %02x walk %d fix %d%d%d%d%d%d%d%d\n",
+			f2fl(obj->mtype.phys_info.mass), f2fl(obj->mtype.phys_info.drag), f2fl(Player_ship->max_thrust), f2fl(Player_ship->max_rotthrust),
+			f2fl(N_player_types > 0 ? Player_type_info[0].eye_offset : 0), f2fl(obj->size), obj->mtype.phys_info.flags, Dtu_player_walk,
+			Dtu_fix_physics_steps, Dtu_fix_frame_drag, Dtu_fix_stop_decay, Dtu_fix_floor_push, Dtu_fix_look_return, Dtu_fix_fly_bob, Dtu_fix_turn_ramp, Dtu_fix_jump_exit);
+
+	fprintf(Move_log,"MOVE %d t %.4f pos %.4f %.4f %.4f seg %d vel %.4f %.4f %.4f floor %.4f state %02x mode %d pitch %d\n",
+		frame, f2fl(GameTime),
+		f2fl(obj->pos.x), f2fl(obj->pos.y), f2fl(obj->pos.z), obj->segnum,
+		f2fl(obj->mtype.phys_info.velocity.x), f2fl(obj->mtype.phys_info.velocity.y), f2fl(obj->mtype.phys_info.velocity.z),
+		f2fl(Dtu_floor_dist), Dtu_player_state, Dtu_move_mode, Dtu_look_pitch);
+	fflush(Move_log);
+}
+
+// Reads the keyboard, the mouse and the joystick for the movement of the
+// player. The keys are the default keys of the manual of the game:
+//   8 or up, 2 or down       forward, backward
+//   4 or left, 6 or right    turn (side step in the side step mode)
+//   Z, X                     side step left, right
+//   Alt                      side step mode on and off
+//   left Shift               run.  Caps Lock: run always, on and off
+//   Space                    jump
+//   Page Up, Page Down       look up, look down
+//   Home, End                glance up, glance down (the view returns)
+//   Insert, Delete           up, down in flight and in levitation
+//   V                        mouse look on and off ("immersive mode")
+// The time of a key is the frame time when the key is down. The
+// executable uses the time that the key was down in the frame.
+void dtu_read_controls(void)
+{
+	static int sidestep_mode = 0, autorun = 0, mouse_look = 0, glance_return = 0;
+	static int alt_last = 0, caps_last = 0, space_last = 0, v_last = 0;
+	static fix return_acc = 0;
+	static fix turn_time = 0, turn_ramp = 0;
+	object *obj = ConsoleObject;
+	fix ft = FrameTime;
+	fix fwd = 0, side = 0, heading = 0, vert = 0;
+	int t = dtu_test_keys();
+	int turn = 0, run, look = 0, glance = 0, key;
+
+	if (keyd_pressed[KEY_UP] || keyd_pressed[KEY_PAD8] || (t & TM_FORWARD))	fwd += ft;
+	if (keyd_pressed[KEY_DOWN] || keyd_pressed[KEY_PAD2] || (t & TM_BACK))		fwd -= ft;
+	if (keyd_pressed[KEY_LEFT] || keyd_pressed[KEY_PAD4] || (t & TM_LEFT))		turn--;
+	if (keyd_pressed[KEY_RIGHT] || keyd_pressed[KEY_PAD6] || (t & TM_RIGHT))	turn++;
+	if (keyd_pressed[KEY_Z] || (t & TM_SLIDELEFT))		side -= ft;
+	if (keyd_pressed[KEY_X] || (t & TM_SLIDERIGHT))		side += ft;
+
+	key = keyd_pressed[KEY_LALT];
+	if (key && !alt_last)
+		sidestep_mode = !sidestep_mode;
+	alt_last = key;
+
+	key = keyd_pressed[KEY_CAPSLOCK];
+	if (key && !caps_last)
+		autorun = !autorun;
+	caps_last = key;
+
+	key = keyd_pressed[KEY_V];
+	if (key && !v_last) {
+		mouse_look = !mouse_look;
+		HUD_init_message(mouse_look ? "Immersive Mode" : "Non-Immersive Mode");
+	}
+	v_last = key;
+
+	// 0x533DC, as in Descent 1: a turn key adds one eighth of its time to
+	// the heading time of the frame before. The turn has its whole rate
+	// after 8 frames. The corrected rule: after 8 reference frames.
+	if (sidestep_mode || turn == 0)
+		turn_time = turn_ramp = 0;
+	else if (Dtu_fix_turn_ramp) {
+		if ((turn > 0 && turn_ramp < 0) || (turn < 0 && turn_ramp > 0))
+			turn_ramp = 0;
+		{
+			// The mean of the ramp over the frame. The ramp of the executable
+			// has steps: its mean is one half step (1/16) above a line.
+			fix old_ramp = turn_ramp, mean;
+
+			turn_ramp += turn * fixdiv(ft,8*DTU_REF_FRAMETIME);
+			if (turn_ramp > F1_0) turn_ramp = F1_0;
+			if (turn_ramp < -F1_0) turn_ramp = -F1_0;
+			mean = (old_ramp + turn_ramp)/2 + turn * (F1_0/16);
+			if (mean > F1_0) mean = F1_0;
+			if (mean < -F1_0) mean = -F1_0;
+			turn_time = fixmul(mean,ft);
+		}
+	}
+	else {
+		if ((turn > 0 && turn_time < 0) || (turn < 0 && turn_time > 0))
+			turn_time = 0;
+		turn_time += turn * ft / 8;
+		if (turn_time > ft) turn_time = ft;
+		if (turn_time < -ft) turn_time = -ft;
+	}
+
+	if (sidestep_mode)
+		side += turn * ft;
+	else
+		heading += turn_time;
+
+	// The joystick: left and right turn, forward and back walk. Guess.
+	if (joy_present) {
+		int jx, jy;
+
+		joy_get_pos(&jx,&jy);
+		if (abs(jx) > 16) heading += fixmuldiv(ft,jx,128);
+		if (abs(jy) > 16) fwd -= fixmuldiv(ft,jy,128);
+	}
+
+	// The mouse in the mouse look mode: left and right turn, up and down
+	// look. The scale is a guess.
+	if (mouse_look) {
+		int dx, dy;
+
+		mouse_get_delta(&dx,&dy);
+		heading += fixmuldiv(ft,dx,16);
+		look += dy * 32;
+	}
+
+	// The look keys: the pitch changes by the key time, as an angle
+	// (0x52BF9: time * sensitivity / 8, the sensitivity at 0x13BFEF is 8).
+	if (keyd_pressed[KEY_PAGEUP] || (t & TM_LOOKUP))		look -= ft;
+	if (keyd_pressed[KEY_PAGEDOWN] || (t & TM_LOOKDOWN))	look += ft;
+	if (keyd_pressed[KEY_HOME])	{ look -= ft; glance = 1; }
+	if (keyd_pressed[KEY_END])		{ look += ft; glance = 1; }
+
+	if (look) {
+		int p = Dtu_look_pitch + look;
+
+		if (p < DTU_LOOK_MIN) p = DTU_LOOK_MIN;
+		if (p > DTU_LOOK_MAX) p = DTU_LOOK_MAX;
+		Dtu_look_pitch = p;
+		glance_return = glance;
+		return_acc = 0;
+	}
+	else if (glance_return) {
+		// 0x53C9F: the view returns after a glance.
+		int step, p = Dtu_look_pitch;
+
+		if (Dtu_fix_look_return) {
+			return_acc += fixmuldiv((DTU_LOOK_RETURN + DTU_REF_FRAMETIME) >> 2,ft,DTU_REF_FRAMETIME) << 8;
+			step = return_acc >> 8;
+			return_acc &= 0xff;
+		}
+		else
+			step = (DTU_LOOK_RETURN + ft) >> 2;
+
+		if (p < 0)	{ p += step; if (p >= 0) { p = 0; glance_return = 0; } }
+		else			{ p -= step; if (p <= 0) { p = 0; glance_return = 0; } }
+		Dtu_look_pitch = p;
+	}
+
+	// Up and down, only in flight and in levitation
+	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) {
+		if (keyd_pressed[KEY_INSERT] || (t & TM_UP))		vert += ft;
+		if (keyd_pressed[KEY_DELETE] || (t & TM_DOWN))	vert -= ft;
+	}
+
+	key = keyd_pressed[KEY_SPACEBAR] || (t & TM_JUMP);
+	if (key && !space_last)
+		dtu_player_jump(obj);
+	space_last = key;
+
+	// 0x54033: the move mode. A run is 1.5 times the walk.
+	run = keyd_pressed[KEY_LSHIFT] || autorun || (t & TM_RUN);
+	Dtu_move_mode = 0;
+	if (fwd && !(Dtu_player_state & (DTU_PS_FALLING|DTU_PS_JUMPING|DTU_PS_CLIMBING))) {
+		Dtu_move_mode = 1;
+		if (run) {
+			fwd = fixmul(fwd,DTU_RUN_SCALE);
+			Dtu_move_mode = 2;
+		}
+	}
+	if (side && !(Dtu_player_state & (DTU_PS_FALLING|DTU_PS_JUMPING|DTU_PS_CLIMBING))) {
+		Dtu_move_mode = 1;
+		if (run) {
+			side = fixmul(side,DTU_RUN_SCALE);
+			Dtu_move_mode = 2;
+		}
+	}
+
+	if (heading > ft) heading = ft;
+	if (heading < -ft) heading = -ft;
+
+	Controls.pitch_time = 0;
+	Controls.bank_time = 0;
+	Controls.heading_time = heading;
+	Controls.forward_thrust_time = fwd;
+	Controls.sideways_thrust_time = side;
+	Controls.vertical_thrust_time = vert;
+}
+
+// The read_flying_controls() of DTUGAME.EXE (0x2BFAE).
+static void dtu_read_flying_controls(object *obj)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	vms_vector dir, up;
+	fix ft = FrameTime;
+
+	dtu_read_controls();
+
+	if (obj->dtu.m_88 & (DTU_OF_HELD & 0x4000))
+		return;
+
+	if (Controls.forward_thrust_time == 0)
+		dtu_stop_decay(obj);
+	else
+		dtu_stop_decay_reset();
+
+	pi->rotthrust.x = fixmul(Controls.pitch_time,DTU_ROTTHRUST_SCALE);
+	pi->rotthrust.y = fixmul(Controls.heading_time,DTU_ROTTHRUST_SCALE);
+	pi->rotthrust.z = 0;
+
+	up.x = 0; up.y = F1_0; up.z = 0;
+
+	if (Controls.forward_thrust_time) {
+		if (obj->dtu.m_88 & DTU_OF_FLY) {
+			// in the direction of the view
+			vms_angvec a;
+			vms_matrix headm, viewm;
+
+			a.p = Dtu_look_pitch; a.b = 0; a.h = 0;
+			vm_angles_2_matrix(&headm,&a);
+			vm_matrix_x_matrix(&viewm,&obj->orient,&headm);
+			dir = viewm.fvec;
+		}
+		else if (Dtu_player_state & DTU_PS_CLIMBING)
+			vm_vec_zero(&dir);		// the climb of a thief is not in the port
+		else if (!(obj->dtu.m_88 & DTU_OF_LEVITATE))
+			vm_vec_scale_add(&dir,&obj->orient.fvec,&up,vm_vec_dot(&up,&obj->orient.fvec));
+		else {
+			dir = obj->orient.fvec;
+			dir.y = 0;
+			vm_vec_normalize(&dir);
+		}
+		vm_vec_scale_add2(&pi->thrust,&dir,Controls.forward_thrust_time);
+	}
+
+	if (Controls.sideways_thrust_time && !(Dtu_player_state & DTU_PS_CLIMBING)) {
+		vm_vec_scale_add(&dir,&obj->orient.rvec,&up,vm_vec_dot(&up,&obj->orient.rvec));
+		vm_vec_scale_add2(&pi->thrust,&dir,Controls.sideways_thrust_time);
+		pi->rotthrust.z = Controls.sideways_thrust_time;
+	}
+
+	pi->thrust.y += Controls.vertical_thrust_time;
+
+	//	Prevent divide overflows on high frame rates, as in Descent 1.
+	if ((ft < F1_0/2) && (ft << 15 <= Player_ship->max_thrust))
+		ft = (Player_ship->max_thrust >> 15) + 1;
+	vm_vec_scale( &pi->thrust, fixdiv(Player_ship->max_thrust,ft) );
+
+	if ((ft < F1_0/2) && (ft << 15 <= Player_ship->max_rotthrust))
+		ft = (Player_ship->max_thrust >> 15) + 1;
+	vm_vec_scale( &pi->rotthrust, fixdiv(Player_ship->max_rotthrust,ft) );
 }
