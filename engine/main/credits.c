@@ -145,7 +145,7 @@ static char rcsid[] = "$Id: credits.c 2.2 1995/06/14 17:26:08 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dos.h>
+// ASCENT: dos.h removed (not used)
 #include <stdarg.h>
 #include <ctype.h>
 
@@ -171,7 +171,8 @@ static char rcsid[] = "$Id: credits.c 2.2 1995/06/14 17:26:08 john Exp $";
 
 #include "cfile.h"
 #include "compbit.h"
-#include "vfx.h"
+// ASCENT: vfx.h removed (virtual reality headset, not built)
+#include "platform.h"		// ASCENT: for plat_pump and plat_sleep_ms
 #include "songs.h"
 
 #define ROW_SPACING 11
@@ -240,7 +241,7 @@ void credits_show()
 	gr_set_current_canvas(NULL);
 	gr_bitmap(0,0,&backdrop);
 	gr_palette_fade_in( gr_palette, 32, 0 );
-	vfx_set_palette_sub( gr_palette );
+	// ASCENT: vfx_set_palette_sub call removed (virtual reality headset)
 
 	//gr_clear_canvas(BM_XRGB(0,0,0));
 	key_flush();
@@ -317,11 +318,17 @@ void credits_show()
 			}
 			gr_bm_ubitblt(320, 200, 0, 0, 0, 0, &(VR_offscreen_buffer->cv_bitmap), &(grd_curscreen->sc_canvas.cv_bitmap) );
 
-			while( timer_get_fixed_seconds() < last_time+time_delay );
+			// ASCENT: show the frame. The wait sleeps and does not spin.
+			gr_present();
+			while( timer_get_fixed_seconds() < last_time+time_delay )
+				plat_sleep_ms(1);
 			last_time = timer_get_fixed_seconds();
 		
 
 			k = key_inkey();
+			// ASCENT: leave the credits if the user closes the window
+			if (!plat_pump())
+				k = KEY_ESC;
 
 			#ifndef NDEBUG
 			if (k == KEY_BACKSP) {

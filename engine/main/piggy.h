@@ -116,5 +116,9 @@ extern grs_bitmap GameBitmaps[MAX_BITMAP_FILES];
 
 void piggy_read_sounds();
 
+// ASCENT: 1 (the default) means that piggy_init() reads the game tables from
+// the PIG file. bm_init_use_tbl() sets it to 0. See piggy.c.
+extern int Piggy_read_tables;
+
 
 #endif

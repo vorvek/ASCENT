@@ -692,13 +692,11 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: newdemo.c 2.7 1995/05/26 16:16:06 john Exp $";
 #pragma on (unreferenced)
 
-#include <dos.h>
+// ASCENT: removed dos.h, io.h and malloc.h (not standard C).
 #include <stdlib.h>
 #include <stdio.h>
-#include <io.h>
 #include <string.h>	// for memset
 #include <ctype.h>
-#include <malloc.h>
 #include <limits.h>
 
 #include "inferno.h"
@@ -856,6 +854,19 @@ byte playback_style;
 FILE *infile;
 FILE *outfile;
 
+// ASCENT: new. Replaces filelength(fileno(fp)) of io.h. Returns the length
+// of the open file and keeps the file position.
+static int nd_file_length(FILE *fp)
+{
+	long pos, len;
+
+	pos = ftell(fp);
+	fseek(fp, 0, SEEK_END);
+	len = ftell(fp);
+	fseek(fp, pos, SEEK_SET);
+	return (int)len;
+}
+
 int newdemo_get_percent_done()	{
 	if ( Newdemo_state == ND_STATE_PLAYBACK )	{
 		return (ftell(infile)*100)/Newdemo_size;
@@ -942,14 +953,28 @@ static void nd_write_byte(byte b)
 	newdemo_write(&b, 1, 1);
 }
 
+// ASCENT: the functions that read and write a short, an int, a fix and a
+// fixang passed the address of the variable to fread and fwrite. They now
+// read and write the bytes in little endian order, so that the demo file
+// does not depend on the byte order of the machine. The file is the same.
 static void nd_write_short(short s)
 {
-	newdemo_write(&s, 2, 1);
+	ubyte b[2];
+
+	b[0] = (ubyte)s;
+	b[1] = (ubyte)((ushort)s >> 8);
+	newdemo_write(b, 2, 1);
 }
 
 static void nd_write_int(int i)
 {
-	newdemo_write(&i, 4, 1);
+	ubyte b[4];
+
+	b[0] = (ubyte)i;
+	b[1] = (ubyte)((uint)i >> 8);
+	b[2] = (ubyte)((uint)i >> 16);
+	b[3] = (ubyte)((uint)i >> 24);
+	newdemo_write(b, 4, 1);
 }
 
 static void nd_write_string(char *str)
@@ -960,12 +985,12 @@ static void nd_write_string(char *str)
 
 static void nd_write_fix(fix f)
 {
-	newdemo_write(&f, sizeof(fix), 1);
+	nd_write_int(f);			// ASCENT: little endian, see nd_write_short
 }
 
 static void nd_write_fixang(fixang f)
 {
-	newdemo_write(&f, sizeof(fixang), 1);
+	nd_write_short(f);		// ASCENT: little endian, see nd_write_short
 }
 
 static void nd_write_vector(vms_vector *v)
@@ -1017,14 +1042,23 @@ static void nd_read_byte(byte *b)
 	newdemo_read(b, 1, 1);
 }
 
+// ASCENT: little endian, see nd_write_short. If the read fails, the
+// value is 0 (fread left the variable as it was, often not initialized).
+// newdemo_read sets nd_bad_read in that case, as before.
 static void nd_read_short(short *s)
 {
-	newdemo_read(s, 2, 1);
+	ubyte b[2] = { 0, 0 };
+
+	newdemo_read(b, 2, 1);
+	*s = (short)(b[0] | (b[1] << 8));
 }
 
 static void nd_read_int(int *i)
 {
-	newdemo_read(i, 4, 1);
+	ubyte b[4] = { 0, 0, 0, 0 };
+
+	newdemo_read(b, 4, 1);
+	*i = (int)((uint)b[0] | ((uint)b[1] << 8) | ((uint)b[2] << 16) | ((uint)b[3] << 24));
 }
 
 static void nd_read_string(char *str)
@@ -1037,12 +1071,18 @@ static void nd_read_string(char *str)
 
 static void nd_read_fix(fix *f)
 {
-	newdemo_read(f, sizeof(fix), 1);
+	int i;
+
+	nd_read_int(&i);			// ASCENT: little endian, see nd_write_short
+	*f = i;
 }
 
 static void nd_read_fixang(fixang *f)
 {
-	newdemo_read(f, sizeof(fixang), 1);
+	short s;
+
+	nd_read_short(&s);		// ASCENT: little endian, see nd_write_short
+	*f = s;
 }
 
 static void nd_read_vector(vms_vector *v)
@@ -1629,6 +1669,13 @@ void newdemo_record_morph_frame(morph_data *md)	{
 
 	nd_write_byte( ND_EVENT_MORPH_FRAME );
 #if 0
+	// ASCENT: the three arrays below go to the file as blocks of memory.
+	// They are arrays of 32-bit integers with no padding. The assertions
+	// prove the sizes. The byte order is that of the machine (little endian
+	// on the supported systems).
+	_Static_assert( sizeof(md->morph_vecs) == MAX_VECS*12, "morph_vecs layout" );
+	_Static_assert( sizeof(md->submodel_active) == MAX_SUBMODELS*4, "submodel_active layout" );
+	_Static_assert( sizeof(md->submodel_startpoints) == MAX_SUBMODELS*4, "submodel_startpoints layout" );
 	newdemo_write( md->morph_vecs, sizeof(md->morph_vecs), 1 );
 	newdemo_write( md->submodel_active, sizeof(md->submodel_active), 1 );
 	newdemo_write( md->submodel_startpoints, sizeof(md->submodel_startpoints), 1 );
@@ -3384,16 +3431,13 @@ void newdemo_playback_one_frame()
 
 void newdemo_start_recording()
 {
-	struct diskfree_t dfree;
-	unsigned drive;
-
-	_dos_getdrive(&drive);
-	if (!_dos_getdiskfree(drive, &dfree))
-		Newdemo_size = dfree.avail_clusters * dfree.sectors_per_cluster * dfree.bytes_per_sector;
-	else {
-		Newdemo_size = ULONG_MAX;					// make be biggest it can be
-		Int3();		// get MARK A!!!!!
-	}
+	// ASCENT: the original code asked DOS for the free space of the disk
+	// (_dos_getdrive, _dos_getdiskfree) and stopped the recording 100000
+	// bytes before the disk was full. Standard C cannot ask for the free
+	// space. The limit is now the largest size that the 32-bit counters of
+	// this file can hold. A failed write still stops the recording
+	// (newdemo_write).
+	Newdemo_size = INT_MAX;
 	if (Newdemo_size < 500000) {
 		nm_messagebox(NULL, 1, TXT_OK, TXT_DEMO_NO_SPACE);
 		return;
@@ -3559,27 +3603,27 @@ try_again:
 
 void newdemo_start_playback(char * filename)
 {
-	struct find_t find;
+	nm_find_t find;		// ASCENT: was struct find_t of dos.h. nm_findfirst and nm_findnext (newmenu.c) replace the DOS functions.
 	int rnd_demo = 0;
 
 	if (filename==NULL) {
 		// Randomly pick a filename 
 		int NumFiles = 0, RandFileNum;
 		rnd_demo = 1;
-		if( !_dos_findfirst( "*.DEM", _A_NORMAL, &find ) )	{
+		if( !nm_findfirst( "*.DEM", &find ) )	{
 			do	{
 				NumFiles++;
-			} while( !_dos_findnext( &find ) );
+			} while( !nm_findnext( &find ) );
 		}
 #ifdef USE_CD
 		if ( strlen(destsat_cdpath) )	{
 			char temp_spec[128];
 			strcpy( temp_spec, destsat_cdpath );
 			strcat( temp_spec, "*.DEM" );
-			if( !_dos_findfirst( temp_spec, _A_NORMAL, &find ) )	{
+			if( !nm_findfirst( temp_spec, &find ) )	{
 				do	{
 					NumFiles++;
-				} while( !_dos_findnext( &find ) );
+				} while( !nm_findnext( &find ) );
 			}
 		}
 #endif
@@ -3589,28 +3633,30 @@ void newdemo_start_playback(char * filename)
 		}
 		RandFileNum = rand() % NumFiles;
 		NumFiles = 0;
-		if( !_dos_findfirst( "*.DEM", _A_NORMAL, &find ) )	{
+		if( !nm_findfirst( "*.DEM", &find ) )	{
 			do	{
 				if ( NumFiles==RandFileNum )	{
-					filename = &find.name;
+					filename = find.name;		// ASCENT: was &find.name (wrong pointer type)
 					break;
 				}
 				NumFiles++;
-			} while( !_dos_findnext( &find ) );
+			} while( !nm_findnext( &find ) );
+			nm_findclose( &find );		// ASCENT: the name stays in 'find'
 		}
 #ifdef USE_CD
 		if ( strlen(destsat_cdpath) )	{
 			char temp_spec[128];
 			strcpy( temp_spec, destsat_cdpath );
 			strcat( temp_spec, "*.DEM" );
-			if( !_dos_findfirst( temp_spec, _A_NORMAL, &find ) )	{
+			if( !filename && !nm_findfirst( temp_spec, &find ) )	{		// ASCENT: do not search again when the first search found the file, 'find' holds its name
 				do	{
 					if ( NumFiles==RandFileNum )	{
-						filename = &find.name;
+						filename = find.name;
 						break;
 					}
 					NumFiles++;
-				} while( !_dos_findnext( &find ) );
+				} while( !nm_findnext( &find ) );
+				nm_findclose( &find );
 			}
 		}
 #endif
@@ -3652,7 +3698,7 @@ void newdemo_start_playback(char * filename)
 	Newdemo_state = ND_STATE_PLAYBACK;
 	Newdemo_vcr_state = ND_STATE_PLAYBACK;
 	Newdemo_old_cockpit = Cockpit_mode;
-	Newdemo_size = filelength(fileno(infile));
+	Newdemo_size = nd_file_length(infile);		// ASCENT: was filelength(fileno(infile)) of io.h
 	nd_bad_read = 0;
 	Newdemo_at_eof = 0;
 	NewdemoFrameCount = 0;
@@ -3691,7 +3737,7 @@ void newdemo_strip_frames(char *outname, int bytes_to_strip)
 	short last_frame_length;
 
 	bytes_done = 0;
-	total_size = filelength(fileno(infile));
+	total_size = nd_file_length(infile);		// ASCENT: was filelength(fileno(infile)) of io.h
 	outfile = fopen(outname, "wb");
 	if (outfile == NULL) {
 		newmenu_item m[1];
@@ -3744,7 +3790,13 @@ void newdemo_strip_frames(char *outname, int bytes_to_strip)
 		fwrite(buf, 1, read_elems, outfile);
 	fseek(outfile, stop_loc, SEEK_SET);
 	fseek(outfile, 1, SEEK_CUR);
-	fwrite(&last_frame_length, 2, 1, outfile);
+	{
+		// ASCENT: write the bytes in little endian order
+		ubyte b[2];
+		b[0] = (ubyte)last_frame_length;
+		b[1] = (ubyte)((ushort)last_frame_length >> 8);
+		fwrite(b, 2, 1, outfile);
+	}
 	fclose(outfile);
 	newdemo_stop_playback();
 

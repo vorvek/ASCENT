@@ -94,7 +94,8 @@ int main(void)
 	us0 = plat_time_us();
 	timer_delay(F1_0 / 10);
 	us1 = plat_time_us();
-	CHECK(us1 - us0 >= 100000);
+	// ASCENT: F1_0 / 10 is 6553 units, which is 99990 microseconds.
+	CHECK(us1 - us0 >= 99990);
 	CHECK(us1 - us0 < 1000000);
 	timer_delay(0);
 	timer_delay(-F1_0);

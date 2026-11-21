@@ -174,7 +174,7 @@ extern int N_polygon_models;
 //array of names of currently-loaded models
 extern char Pof_names[MAX_POLYGON_MODELS][13];
 
-init_polygon_models();
+int init_polygon_models();		// ASCENT: "int" added, the type was implicit
 
 #ifndef DRIVE
 int load_polygon_model(char *filename,int n_textures,int first_texture,robot_info *r);
@@ -192,7 +192,7 @@ int read_model_guns(char *filename,vms_vector *gun_points, vms_vector *gun_dirs,
 //more-or-less fill the canvas.  Note that this routine actually renders
 //into an off-screen canvas that it creates, then copies to the current
 //canvas.
-draw_model_picture(int mn,vms_angvec *orient_angles);
+int draw_model_picture(int mn,vms_angvec *orient_angles);		// ASCENT: "int" added, the type was implicit
 
 #define MAX_POLYOBJ_TEXTURES 50
 extern grs_bitmap *texture_list[MAX_POLYOBJ_TEXTURES];

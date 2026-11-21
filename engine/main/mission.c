@@ -108,8 +108,10 @@ static char rcsid[] = "$Id: mission.c 2.9 1995/05/26 16:16:32 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dos.h>
 #include <ctype.h>
+// ASCENT: dos.h removed. The file search uses dirent.h (see msn_find_next),
+// as cfile.c does.
+#include <dirent.h>
 
 #include "cfile.h"
 
@@ -136,7 +138,12 @@ char *mfgets(char *s,int n,FILE *f)
 	char *r;
 
 	r = fgets(s,n,f);
-	if (r && s[strlen(s)-1] == '\n')
+	// ASCENT: an empty string has no last character to test. The carriage
+	// return is removed too, for a C library that does not translate the
+	// DOS line ends of a text file.
+	if (r && s[0] && s[strlen(s)-1] == '\n')
+		s[strlen(s)-1] = 0;
+	if (r && s[0] && s[strlen(s)-1] == '\r')
 		s[strlen(s)-1] = 0;
 
 	return r;
@@ -150,7 +157,7 @@ int istok(char *buf,char *tok)
 }
 
 //adds a terminating 0 after a string at the first white space
-add_term(char *s)
+void add_term(char *s)		// ASCENT: return type added
 {
 	while (*s && !isspace(*s)) s++;
 
@@ -163,9 +170,13 @@ char *get_value(char *buf)
 {
 	char *t;
 
-	t = strchr(buf,'=')+1;
+	// ASCENT: the test was done after the +1, so a line without '=' gave
+	// the pointer 1 and not NULL.
+	t = strchr(buf,'=');
 
 	if (t) {
+		t++;
+
 		while (*t && isspace(*t)) t++;
 
 		if (*t)
@@ -189,10 +200,43 @@ char *get_parm_value(char *parm,FILE *f)
 		return NULL;
 }
 
-ml_sort_func(mle *e0,mle *e1)
+// ASCENT: the parameters have the types that qsort gives to the function
+int ml_sort_func(const void *v0,const void *v1)
 {
+	const mle *e0 = v0, *e1 = v1;
+
 	return strcmp(e0->mission_name,e1->mission_name);
 
+}
+
+// ASCENT: new. Replaces _dos_findfirst and _dos_findnext for the search
+// of the mission files. msn_find_next gives the next file of the open
+// directory with the extension ext (for example ".MSN", the case of the
+// letters is ignored). It skips each name that is not a DOS 8.3 name,
+// because the callers keep the name in 13 bytes and the base name in 9.
+// Returns 1 and the name in name[13], or 0 at the end of the directory.
+static int msn_find_next(DIR *dir, char *ext, char *name)
+{
+	struct dirent *ent;
+
+	if (!dir)
+		return 0;
+
+	while ((ent = readdir(dir)) != NULL) {
+		int len = strlen(ent->d_name);
+		int extlen = strlen(ext);
+		char *dot = strchr(ent->d_name,'.');
+
+		if (len > 12 || len <= extlen)
+			continue;
+		if (dot != ent->d_name + len - extlen || dot - ent->d_name > 8)
+			continue;
+		if (stricmp(dot,ext))
+			continue;
+		strcpy(name,ent->d_name);
+		return 1;
+	}
+	return 0;
 }
 
 
@@ -202,7 +246,9 @@ ml_sort_func(mle *e0,mle *e1)
 int build_mission_list(int anarchy_mode)
 {
 	int count=0;
-	struct find_t find;
+	// ASCENT: struct find_t replaced. find.name is the only member used.
+	struct { char name[13]; } find;
+	DIR *dir;
 
 	//fill in built-in level
 
@@ -215,7 +261,9 @@ int build_mission_list(int anarchy_mode)
 
 	//now search for levels on disk
 
-	if( !_dos_findfirst( "*.MSN", 0, &find ) )	{
+	// ASCENT: _dos_findfirst( "*.MSN" ) replaced by a directory search
+	dir = opendir(".");
+	if( msn_find_next( dir, ".MSN", find.name ) )	{
 		do	{
 			FILE *mfile;
 			int is_anarchy;
@@ -263,15 +311,18 @@ int build_mission_list(int anarchy_mode)
 				count++;
 			}
 
-		} while( !_dos_findnext( &find ) && count<MAX_MISSIONS);
+		} while( msn_find_next( dir, ".MSN", find.name ) && count<MAX_MISSIONS);
 	}
+	if (dir)
+		closedir(dir);
 #ifdef USE_CD
 	if ( strlen(destsat_cdpath) )	{
 		int i;
 		char temp_spec[128];
+		// ASCENT: _dos_findfirst replaced by a directory search
 		strcpy( temp_spec, destsat_cdpath );
-		strcat( temp_spec, "*.MSN" );
-		if( !_dos_findfirst( temp_spec, 0, &find ) )	{
+		dir = opendir( temp_spec );
+		if( msn_find_next( dir, ".MSN", find.name ) )	{
 			do	{
 				FILE *mfile;
 				int is_anarchy;
@@ -329,8 +380,10 @@ int build_mission_list(int anarchy_mode)
 					count++;
 				}
 	
-			} while( !_dos_findnext( &find ) && count<MAX_MISSIONS);
+			} while( msn_find_next( dir, ".MSN", find.name ) && count<MAX_MISSIONS);
 		}
+		if (dir)
+			closedir(dir);
 	}
 #endif
 
@@ -468,7 +521,9 @@ int load_mission(int mission_num)
 
 					n_levels = atoi(v);
 
-					for (i=0;i<n_levels && mfgets(buf,80,mfile);i++) {
+					// ASCENT: the loop stops at the size of Level_names.
+					// The original code did not test it.
+					for (i=0;i<n_levels && i<MAX_LEVELS_PER_MISSION && mfgets(buf,80,mfile);i++) {
 
 						add_term(buf);
 						if (strlen(buf) <= 12) {
@@ -487,7 +542,8 @@ int load_mission(int mission_num)
 
 					n_secret_levels = atoi(v);
 
-					for (i=0;i<n_secret_levels && mfgets(buf,80,mfile);i++) {
+					// ASCENT: the loop stops at the size of Secret_level_names
+					for (i=0;i<n_secret_levels && i<MAX_SECRET_LEVELS_PER_MISSION && mfgets(buf,80,mfile);i++) {
 						char *t;
 
 						

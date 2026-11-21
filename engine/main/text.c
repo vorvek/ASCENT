@@ -67,7 +67,7 @@ static char rcsid[] = "$Id: text.c 2.0 1995/02/27 11:33:09 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <io.h>
+// ASCENT: io.h removed (DOS header, not used)
 
 //#include "cfile.h"
 #include "cfile.h"
@@ -83,7 +83,8 @@ char *text;
 
 char *Text_string[N_TEXT_STRINGS];
 
-free_text()
+// ASCENT: return type added, atexit takes a void function
+void free_text(void)
 {
 	free(text);
 }
@@ -123,7 +124,10 @@ void load_text()
 		len = cfilelength(ifile);
 
 		//MALLOC(text,char,len);//Won't compile... working on it..-KRB
-		text=malloc(len*sizeof(char));//my hack -KRB
+		// ASCENT: one more byte, set to 0, so that the string scan below
+		// stops at the end of the buffer.
+		text=malloc((len+1)*sizeof(char));//my hack -KRB
+		text[len] = 0;
 		atexit(free_text);
 
 		cfread(text,1,len,ifile);
@@ -137,7 +141,9 @@ void load_text()
 		len = cfilelength(tfile);
 
 		//MALLOC(text,char,len);//Won't compile... working on it..-KRB
-		text=malloc(len*sizeof(char));//my hack -KRB
+		// ASCENT: one more byte: the loop below also stores the EOF value
+		// after the last character of the file.
+		text=malloc((len+1)*sizeof(char));//my hack -KRB
 
 		atexit(free_text);
 

@@ -272,12 +272,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: joydefs.c 2.2 1995/06/30 12:30:22 john Exp $";
 #pragma on (unreferenced)
 
-#include <conio.h>
+// ASCENT: removed conio.h, io.h and dos.h (DOS only headers).
 #include <stdlib.h>
 #include <stdio.h>
-#include <io.h>
 #include <string.h>
-#include <dos.h>
 
 #include "mono.h"
 #include "key.h"
@@ -292,7 +290,7 @@ static char rcsid[] = "$Id: joydefs.c 2.2 1995/06/30 12:30:22 john Exp $";
 
 #include "controls.h"
 #include "joydefs.h"
-#include "victor.h"
+// ASCENT: removed victor.h (virtual reality headset, not part of the port).
 #include "render.h"
 #include "palette.h"
 #include "newmenu.h"
@@ -306,9 +304,11 @@ int joydefs_calibrate_flag = 0;
 
 void joy_delay()
 {
-	int t1 = TICKER + 19/4;			// Wait 1/4 second...
+	// ASCENT: the original loop read the BIOS tick count at full processor
+	// speed until 4 ticks (of 18.2 Hz) passed. timer_delay waits for the
+	// same time and processes the window events.
 	stop_time();
-	while( TICKER < t1 );
+	timer_delay( (4*F1_0*10)/182 );			// Wait 1/4 second...
 	joy_flush();
 	start_time();
 }

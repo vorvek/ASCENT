@@ -286,14 +286,14 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #pragma on (unreferenced)
 
+// ASCENT: malloc.h, conio.h and dos.h removed (DOS and Watcom headers).
+// platform.h added for the window events and the sleep.
 #include <stdio.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
-#include <conio.h>
 #include <stdarg.h>
-#include <dos.h>
 
+#include "platform.h"
 #include "inferno.h"
 #include "game.h"
 #include "key.h"
@@ -349,12 +349,11 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "joydefs.h"
 #include "kconfig.h"
 #include "mouse.h"
-#include "coindev.h"
+// ASCENT: coindev.h (coin device) and dpmi.h removed
 #include "multi.h"
 #include "desc_id.h"
 #include "cntrlcen.h"
 #include "pcx.h"
-#include "dpmi.h"
 #include "state.h"
 #include "piggy.h"
 #include "multibot.h"
@@ -371,9 +370,27 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #define Arcade_mode 0
 #endif
 
-#include "victor.h"
+// ASCENT: victor.h and vfx.h removed (virtual reality headsets, not built)
 
-#include "vfx.h"
+// ASCENT: Watcom C has min() in stdlib.h.
+#ifndef min
+#define min(a,b) (((a)<(b))?(a):(b))
+#endif
+
+// ASCENT: prototypes added for functions of this file that are used
+// before their definition. The original code declared them implicitly.
+void fill_background(int x,int y,int w,int h,int dx,int dy);
+void game_init_render_sub_buffers( int x, int y, int w, int h );
+void draw_centered_text( int y, char * s );
+void GameLoop(int RenderFlag, int ReadControlsFlag );
+int create_special_path(void);
+void powerup_grab_cheat_all(void);
+
+// ASCENT: the frame limiter. The game loop does not start a new frame
+// before 1/Game_max_fps seconds passed since the start of the last one.
+// The 1995 game had no limit: the speed of the computer was the limit.
+// 0 means no limit. See calc_frame_time.
+int Game_max_fps = 60;
 
 #ifdef EDITOR
 #include "editor\editor.h"
@@ -597,7 +614,8 @@ void reset_palette_add()
 }
 
 
-game_show_warning(char *s)
+// ASCENT: return type added, set_warn_func takes a void function
+void game_show_warning(char *s)
 {
 
 	if (!((Game_mode & GM_MULTI) && (Function_mode == FMODE_GAME)))
@@ -769,7 +787,7 @@ void reset_cockpit()
 
 void HUD_clear_messages();
 
-toggle_cockpit()
+void toggle_cockpit()		// ASCENT: return type added
 {
 	int new_mode;
 
@@ -805,7 +823,7 @@ toggle_cockpit()
 
 #define WINDOW_MIN_W		160
 
-grow_window()
+void grow_window()		// ASCENT: return type added
 {
 	if (Cockpit_mode == CM_FULL_COCKPIT) {
 		Game_window_h = max_window_h;
@@ -849,7 +867,7 @@ grow_window()
 
 grs_bitmap background_bitmap;
 
-copy_background_rect(int left,int top,int right,int bot)
+void copy_background_rect(int left,int top,int right,int bot)		// ASCENT: return type added
 {
 	grs_bitmap *bm = &background_bitmap;
 	int x,y;
@@ -893,7 +911,7 @@ copy_background_rect(int left,int top,int right,int bot)
 
 }
 
-fill_background(int x,int y,int w,int h,int dx,int dy)
+void fill_background(int x,int y,int w,int h,int dx,int dy)		// ASCENT: return type added
 {
 	gr_set_current_canvas(&VR_screen_pages[VR_current_page]);
 	copy_background_rect(x-dx,y-dy,x-1,y+h+dy-1);
@@ -902,7 +920,7 @@ fill_background(int x,int y,int w,int h,int dx,int dy)
 	copy_background_rect(x,y+h,x+w-1,y+h+dy-1);
 }
 
-shrink_window()
+void shrink_window()		// ASCENT: return type added
 {
 	if (Cockpit_mode == CM_FULL_COCKPIT) {
 		Game_window_h = max_window_h;
@@ -991,54 +1009,8 @@ void game_init_render_buffers(int screen_mode, int render_w, int render_h, int u
 	}
 }
 
-void game_3dmax_off()
-{
-	union REGS regs;
-
-//	memset(&regs,0,sizeof(regs));
-//	regs.w.ax = 0x4fd0;
-//	regs.w.bx =	0x3d08;		// I
-//	int386 (0x10, &regs, &regs);
-
-	memset(&regs,0,sizeof(regs));
-	regs.w.ax = 0x4fd0;
-	regs.w.bx =	0x3d00;		// Interlace off
-	int386 (0x10, &regs, &regs);
-
-	memset(&regs,0,sizeof(regs));
-	regs.w.ax = 0x4fd0;
-	regs.w.bx =	0x3d02;		// Glasses off
-	int386 (0x10, &regs, &regs);
-
-	mprintf(( 0, "3dmax off\n" ));
-	return;
-}
-
-void game_3dmax_on()
-{
-	union REGS regs;
-
-//	memset(&regs,0,sizeof(regs));
-//	regs.w.ax = 0x4fd0;
-// regs.w.bx =	0x3d09;		// Glasses on
-//	int386 (0x10, &regs, &regs);
-
-	memset(&regs,0,sizeof(regs));
-	regs.w.ax = 0x4fd0;
-   regs.w.bx =	0x3d01;		// Interlace on
-	int386 (0x10, &regs, &regs);
-
-	memset(&regs,0,sizeof(regs));
-	regs.w.ax = 0x4fd0;
-	regs.w.bx =	0x3d03;		// Glasses on
-	int386 (0x10, &regs, &regs);
-
-	mprintf(( 0, "3dmax on\n" ));
-	return;
-}
-
-
-
+// ASCENT: game_3dmax_off and game_3dmax_on are removed. They switched the
+// 3D-Max and LCDBIOS shutter glasses with the video BIOS (int 10h).
 
 //called to change the screen mode. Parameter sm is the new mode, one of
 //SMODE_GAME or SMODE_EDITOR. returns mode acutally set (could be other
@@ -1076,11 +1048,8 @@ int set_screen_mode(int sm)
 	 		gr_palette_load( gr_palette );
 		}
 
-		if ( Game_3dmax_flag )
-			game_3dmax_off();
-
-		if ( Game_vfx_flag )
-			vfx_close_graphics();
+		// ASCENT: the calls of game_3dmax_off and vfx_close_graphics are
+		// removed (virtual reality headsets)
 
 		gr_init_sub_canvas( &VR_screen_pages[0], &grd_curscreen->sc_canvas, 0, 0, grd_curscreen->sc_w, grd_curscreen->sc_h );
 		gr_init_sub_canvas( &VR_screen_pages[1], &grd_curscreen->sc_canvas, 0, 0, grd_curscreen->sc_w, grd_curscreen->sc_h );
@@ -1094,13 +1063,8 @@ int set_screen_mode(int sm)
 					Error( "Cannot set screen mode for game!\nMake sure that you have a VESA driver loaded\nthat can display 640x480 in 256 colors.\n" );
 			}
 
-		if ( Game_3dmax_flag )
-			game_3dmax_on();
-
-		if ( Game_vfx_flag )		{
-			vfx_init_graphics();
-			Beam_brightness=0x38000;
-		}
+		// ASCENT: the calls of game_3dmax_on and vfx_init_graphics are
+		// removed (virtual reality headsets)
 
 		if ( VR_render_mode == VR_NONE )	{
 			if ( max_window_h == 0 )	{
@@ -1168,7 +1132,7 @@ void ftoa(char *string, fix f)
 	sprintf( string, "%d.%02d", decimal, fractional );
 }
 
-show_framerate()
+void show_framerate()		// ASCENT: return type added
 {
 	char temp[50];
 	fix rate;
@@ -1187,7 +1151,7 @@ show_framerate()
 }
 #endif
 
-static timer_paused=0;		
+static int timer_paused=0;		// ASCENT: type added
 
 void stop_time()
 {
@@ -1259,6 +1223,23 @@ void calc_frame_time()
 	_last_frametime = last_frametime;
 	#endif
 
+	// ASCENT: the frame limiter. Wait until the time since the last call
+	// is 1/Game_max_fps seconds. The wait sleeps while more than 2 ms
+	// are left and reads the timer for the rest, because the sleep is
+	// not exact. The rest of the function is the original calculation.
+	// A negative or very large difference (the timer was reset or it
+	// wrapped) ends the wait.
+	if (Game_max_fps > 0) {
+		fix min_frametime = F1_0/Game_max_fps;
+		for (;;) {
+			fix elapsed = timer_get_fixed_seconds() - last_timer_value;
+			if (elapsed < 0 || elapsed >= min_frametime)
+				break;
+			if (min_frametime - elapsed > F1_0/500)
+				plat_sleep_ms(1);
+		}
+	}
+
 	timer_value = timer_get_fixed_seconds();
 	FrameTime = timer_value - last_timer_value;
 
@@ -1302,8 +1283,16 @@ void calc_frame_time()
 	if ( Debug_pause )      {
 		int c;
 		c = 0;
-		while( c==0 )
+		// ASCENT: the loop sleeps, and it ends if the user closes the window
+		while( c==0 ) {
 			c = key_peekkey();
+			if (!plat_pump()) {
+				Debug_pause = 0;
+				break;
+			}
+			if (c==0)
+				plat_sleep_ms(1);
+		}
 			
 		if ( c == KEY_P )       {
 			Debug_pause = 0;
@@ -1351,7 +1340,7 @@ fix Show_view_text_timer = -1;
 
 #ifndef NDEBUG
 
-draw_window_label()
+void draw_window_label()		// ASCENT: return type added
 {
 	if ( Show_view_text_timer > 0 )
 	{
@@ -1576,6 +1565,11 @@ extern int gr_bitblt_dest_step_shift;
 extern int gr_wait_for_retrace;
 extern int gr_bitblt_double;
 
+// ASCENT: game_render_frame_stereo_vfx and
+// game_render_frame_stereo_interlaced are not built. They draw the two
+// views for the virtual reality headsets and the shutter glasses.
+// VR_render_mode is always VR_NONE in this build.
+#if 0
 //render a frame for the game in stereo
 game_render_frame_stereo_vfx()
 {
@@ -1849,6 +1843,7 @@ game_render_frame_stereo_interlaced()
 	}
 	grd_curscreen->sc_aspect=save_aspect;
 }
+#endif
 
 
 
@@ -1918,12 +1913,14 @@ void game_render_frame()
 
 	play_homing_warning();
 
-	if (VR_render_mode == VR_INTERLACED )
-		game_render_frame_stereo_interlaced();
-	else if (VR_render_mode == VR_AREA_DET)
-		game_render_frame_stereo_vfx();
-	else if (VR_render_mode == VR_NONE )
-		game_render_frame_mono();		
+	// ASCENT: the stereo render functions are not built (see above)
+	if (VR_render_mode == VR_NONE )
+		game_render_frame_mono();
+
+	// ASCENT: show the frame in the window. In the screen modes with two
+	// pages, gr_show_canvas in game_render_frame_mono showed it already.
+	if ( !VR_use_paging )
+		gr_present();
 
 	// Make sure palette is faded in
 	stop_time();
@@ -1983,7 +1980,10 @@ void save_screen_shot(int automap_flag)
 	gr_palette_read(pal);		//get actual palette from the hardware
 	pcx_write_bitmap(savename,&temp_canv->cv_bitmap,pal);
 
-	while ( timer_get_fixed_seconds() < t1 );		// Wait so that messag stays up at least 1 second.
+	// ASCENT: show the message. The wait sleeps and does not spin.
+	gr_present();
+	while ( timer_get_fixed_seconds() < t1 )		// Wait so that messag stays up at least 1 second.
+		plat_sleep_ms(1);
 
 	gr_set_current_canvas(screen_canv);
 
@@ -2185,21 +2185,8 @@ void diminish_palette_towards_normal(void)
 
 	//mprintf(0, "%2i %2i %2i\n", PaletteRedAdd, PaletteGreenAdd, PaletteBlueAdd);
 
-	// need to reset black and white palette colors for SVR registration
-	if (Game_simuleyes_flag)  {
-		// make black be black		
-		outp( 0x3c6, 0xff );
-		outp( 0x3c8, svr_black );
-		outp( 0x3c9, 0 );
-		outp( 0x3c9, 0 );
-		outp( 0x3c9, 0 );
-		// make white be white
-		outp( 0x3c6, 0xff );
-		outp( 0x3c8, svr_white );
-		outp( 0x3c9, 63 );
-		outp( 0x3c9, 63 );
-		outp( 0x3c9, 63 );
-	}
+	// ASCENT: removed the writes to the VGA palette ports that set the
+	// black and white colors for the SimulEyes shutter glasses.
 }
 
 int	Redsave, Bluesave, Greensave;
@@ -2315,7 +2302,7 @@ typedef struct bkg {
 bkg bg = {0,0,0,0,NULL};
 
 //show a message in a nice little box
-show_boxed_message(char *msg)
+void show_boxed_message(char *msg)		// ASCENT: return type added
 {	
 	int w,h,aw;
 	int x,y;
@@ -2344,9 +2331,13 @@ show_boxed_message(char *msg)
 	gr_set_fontcolor( gr_getcolor(31, 31, 31), -1 );
 	gr_ustring( 0x8000, y, msg );
 
+	// ASCENT: show the message in the window. The callers do work that
+	// takes time (load a level) or wait for a key after this function.
+	gr_present();
+
 }
 
-clear_boxed_message()
+void clear_boxed_message()		// ASCENT: return type added
 {
 
 	if (bg.bmp) {
@@ -2389,6 +2380,10 @@ int do_game_pause(int allow_menu)
 	show_boxed_message(TXT_PAUSE);
 
 	while (paused) {
+
+		// ASCENT: show the screen with the message before the wait for a
+		// key. If the user closes the window, key_getch returns KEY_ESC.
+		gr_present();
 
 		key = key_getch();
 
@@ -2749,6 +2744,14 @@ void game()
 
 			GameLoop( 1, 1 );		// Do game loop with rendering and reading controls.
 
+			// ASCENT: if the user closed the window, leave the game and the
+			// program without the "abort game" question. The code after
+			// the loop stops the sounds and the demo recording.
+			if (!plat_pump()) {
+				Function_mode = FMODE_EXIT;
+				longjmp(LeaveGame,0);
+			}
+
 			if (Config_menu_flag)	{
 				if (!(Game_mode&GM_MULTI)) palette_save();
 				do_options_menu();
@@ -2757,16 +2760,14 @@ void game()
 
 			if (Automap_flag) {
 				int save_w=Game_window_w,save_h=Game_window_h;
-				if ( Game_3dmax_flag )
-					game_3dmax_off();
+				// ASCENT: the calls of game_3dmax_off and game_3dmax_on
+				// around the automap are removed
 				do_automap(0);
 				Screen_mode=-1; set_screen_mode(SCREEN_GAME);
 				Game_window_w=save_w; Game_window_h=save_h;
 				init_cockpit();
 				last_drawn_cockpit[0] = -1;
 				last_drawn_cockpit[1] = -1;
-				if ( Game_3dmax_flag )
-					game_3dmax_on();
 
 				if (VR_screen_mode != SCREEN_MENU)
 					vr_reset_display();
@@ -3581,19 +3582,14 @@ void ReadControls()
 					break;
 
 
+				// ASCENT: the calls of victor_init_graphics (CyberMaxx
+				// headset) for Alt+V and Shift+F5 are removed.
 				case KEY_V + KEY_ALTED: 	// changes 11/9/95
-					if ( Game_victor_flag )		{
-						victor_init_graphics();
-						HUD_init_message( "Victor mode toggled" );
-					}
 					break;
 
 					// changes 11/9/95, 11/10/95
-				case KEY_SHIFTED+KEY_F5:  
-					if ( Game_victor_flag )		{
-						victor_init_graphics();
-						HUD_init_message( "Victor mode toggled" );
-					} else if ( VR_render_mode != VR_NONE )	{
+				case KEY_SHIFTED+KEY_F5:
+					if ( VR_render_mode != VR_NONE )	{
 						simuleyes_offset_ratio = VR_DEFAULT_OFFSET_RATIO;
 						simuleyes_adjusted_offset_ratio = fixdiv (simuleyes_offset_ratio *
 								VR_PIXEL_SHIFT, VR_SEPARATION);
@@ -4281,6 +4277,10 @@ void show_free_objects(void)
 
 }
 
+// ASCENT: fill_func and check_func are not built, with mem_fill and
+// mem_check below. They wrote to the memory between the functions of the
+// program to find a bug of the DOS game.
+#if 0
 #define	FILL_VAL	0xcc		//	int 3 opcode value
 
 
@@ -4331,7 +4331,6 @@ void check_func(char *start, char *end, char value)
 
 }
 
-#if 0
 void mem_fill(void)
 {
 	if (Mem_filled)

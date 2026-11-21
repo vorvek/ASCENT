@@ -167,6 +167,8 @@ static char rcsid[] = "$Id: gamemine.c 2.2 1995/03/06 15:23:14 john Exp $";
 #include "hash.h"
 #include "key.h"
 #include "piggy.h"
+#include "gamesave.h"	// ASCENT: OBJECT_DISK_SIZE
+#include "dataio.h"		// ASCENT: little endian field reads and the record sizes
 
 #define REMOVE_EXT(s)  (*(strchr( (s), '.' ))='\0')
 
@@ -177,7 +179,57 @@ struct me mine_editor;
 
 int CreateDefaultNewSegment();
 
-#ifdef EDITOR
+// ASCENT: the editor mine format loader (load_mine_data) was built only with
+// EDITOR. The levels of the target game use that format, so it is always
+// built now. The caller selects the format: load_mine_data() reads the editor
+// format, load_mine_data_compiled() reads the compiled (RDL) format. See
+// Gamesave_level_format in gamesave.c for load_level().
+//
+// The file structures (mine_top_fileinfo, mine_fileinfo, mine_header,
+// mine_editor) and the records are read one field at a time, little endian.
+// The sizes on disk are the constants below and in dataio.h.
+
+int load_mine_data_compiled_new(CFILE *LoadFile);
+
+// Reads the bytes of a file structure. "size_in_file" is the size that the
+// file gives for the structure, "max" is the size that this program knows.
+// Returns the number of bytes that are valid in buf. The original read
+// size_in_file bytes over the structure, so a file with a smaller (older)
+// structure left the defaults in the fields that it did not have.
+static int mine_read_struct(ubyte *buf, int size_in_file, int max, CFILE *LoadFile)
+{
+	int n = size_in_file;
+
+	if (n > max) n = max;
+	if (n < 0) n = 0;
+	memset(buf, 0, max);
+	if (n > 0)
+		if (cfread( buf, n, 1, LoadFile )!=1)
+			return -1;
+	return n;
+}
+
+// Reads the next int of the buffer into "field" when the buffer has it.
+#define MINE_GET_INT(field) do { if ((p - buf) + 4 <= n) (field) = dio_get_int(&p); else p += 4; } while (0)
+
+// Reads one vertex record of "size_in_file" bytes. The fields that the
+// record does not have keep their values.
+static int mine_read_vertex(vms_vector *v, int size_in_file, CFILE *LoadFile)
+{
+	ubyte buf[VERTEX_DISK_SIZE];
+	const ubyte *p = buf;
+	int n;
+
+	n = mine_read_struct(buf, size_in_file, VERTEX_DISK_SIZE, LoadFile);
+	if (n < 0)
+		return 0;
+	MINE_GET_INT(v->x);
+	MINE_GET_INT(v->y);
+	MINE_GET_INT(v->z);
+	if (size_in_file > VERTEX_DISK_SIZE)		//skip the part that we do not know
+		cfseek( LoadFile, size_in_file - VERTEX_DISK_SIZE, SEEK_CUR );
+	return 1;
+}
 
 static char old_tmap_list[MAX_TEXTURES][13];
 short tmap_xlate_table[MAX_TEXTURES];
@@ -210,43 +262,53 @@ int load_mine_data(CFILE *LoadFile)
 	// These are the default values... version and fileinfo_sizeof
 	// don't have defaults.
 	mine_fileinfo.header_offset     =   -1;
-	mine_fileinfo.header_size       =   sizeof(mine_header);
+	// ASCENT: the sizes on disk, not sizeof() of the structures in memory
+	mine_fileinfo.header_size       =   MINE_HEADER_DISK_SIZE;
 	mine_fileinfo.editor_offset     =   -1;
-	mine_fileinfo.editor_size       =   sizeof(mine_editor);
+	mine_fileinfo.editor_size       =   MINE_EDITOR_DISK_SIZE;
 	mine_fileinfo.vertex_offset     =   -1;
 	mine_fileinfo.vertex_howmany    =   0;
-	mine_fileinfo.vertex_sizeof     =   sizeof(vms_vector);
+	mine_fileinfo.vertex_sizeof     =   VERTEX_DISK_SIZE;
 	mine_fileinfo.segment_offset    =   -1;
 	mine_fileinfo.segment_howmany   =   0;
-	mine_fileinfo.segment_sizeof    =   sizeof(segment);
+	mine_fileinfo.segment_sizeof    =   SEGMENT_EDITOR_DISK_SIZE;
 	mine_fileinfo.newseg_verts_offset     =   -1;
 	mine_fileinfo.newseg_verts_howmany    =   0;
-	mine_fileinfo.newseg_verts_sizeof     =   sizeof(vms_vector);
+	mine_fileinfo.newseg_verts_sizeof     =   VERTEX_DISK_SIZE;
 	mine_fileinfo.group_offset		  =	-1;
 	mine_fileinfo.group_howmany	  =	0;
-	mine_fileinfo.group_sizeof		  =	sizeof(group);
+	mine_fileinfo.group_sizeof		  =	GROUP_DISK_SIZE;
 	mine_fileinfo.texture_offset    =   -1;
 	mine_fileinfo.texture_howmany   =   0;
 	mine_fileinfo.texture_sizeof    =   13;  // num characters in a name
  	mine_fileinfo.walls_offset		  =	-1;
 	mine_fileinfo.walls_howmany	  =	0;
-	mine_fileinfo.walls_sizeof		  =	sizeof(wall);  
+	mine_fileinfo.walls_sizeof		  =	WALL_DISK_SIZE;
  	mine_fileinfo.triggers_offset	  =	-1;
 	mine_fileinfo.triggers_howmany  =	0;
-	mine_fileinfo.triggers_sizeof	  =	sizeof(trigger);  
+	mine_fileinfo.triggers_sizeof	  =	TRIGGER_DISK_SIZE;
 	mine_fileinfo.object_offset		=	-1;
 	mine_fileinfo.object_howmany		=	1;
-	mine_fileinfo.object_sizeof		=	sizeof(object);  
+	mine_fileinfo.object_sizeof		=	OBJECT_DISK_SIZE;
 
 	// Read in mine_top_fileinfo to get size of saved fileinfo.
-	
+
 	memset( &mine_top_fileinfo, 0, sizeof(mine_top_fileinfo) );
 
 	if (cfseek( LoadFile, mine_start, SEEK_SET ))
 		Error( "Error moving to top of file in gamemine.c" );
 
-	if (cfread( &mine_top_fileinfo, sizeof(mine_top_fileinfo), 1, LoadFile )!=1)
-		Error( "Error reading mine_top_fileinfo in gamemine.c" );
+	// ASCENT: field reads of the 8 bytes of mine_top_fileinfo
+	{
+		ubyte buf[MINE_TOP_FILEINFO_DISK_SIZE];
+		const ubyte *p = buf;
+
+		if (cfread( buf, MINE_TOP_FILEINFO_DISK_SIZE, 1, LoadFile )!=1)
+			Error( "Error reading mine_top_fileinfo in gamemine.c" );
+		mine_top_fileinfo.fileinfo_signature = dio_get_ushort(&p);
+		mine_top_fileinfo.fileinfo_version = dio_get_ushort(&p);
+		mine_top_fileinfo.fileinfo_sizeof = dio_get_int(&p);
+	}
 
 	if (mine_top_fileinfo.fileinfo_signature != 0x2884)
 		return -1;
@@ -259,8 +321,61 @@ int load_mine_data(CFILE *LoadFile)
 	if (cfseek( LoadFile, mine_start, SEEK_SET ))
 		Error( "Error seeking to top of file in gamemine.c" );
 
-	if (cfread( &mine_fileinfo, mine_top_fileinfo.fileinfo_sizeof, 1, LoadFile )!=1)
-		Error( "Error reading mine_fileinfo in gamemine.c" );
+	// ASCENT: field reads of mine_fileinfo. The file gives the size of its
+	// structure (fileinfo_sizeof). A larger size than MINE_FILEINFO_DISK_SIZE
+	// went over the end of the structure in the original. The rest is
+	// ignored now.
+	{
+		ubyte buf[MINE_FILEINFO_DISK_SIZE];
+		const ubyte *p = buf;
+		int n;
+
+		n = mine_read_struct(buf, mine_top_fileinfo.fileinfo_sizeof, MINE_FILEINFO_DISK_SIZE, LoadFile);
+		if (n <= 0)
+			Error( "Error reading mine_fileinfo in gamemine.c" );
+
+		if (n >= 8) {
+			mine_fileinfo.fileinfo_signature = dio_get_ushort(&p);
+			mine_fileinfo.fileinfo_version = dio_get_ushort(&p);
+			mine_fileinfo.fileinfo_sizeof = dio_get_int(&p);
+		} else
+			p += 8;
+		MINE_GET_INT(mine_fileinfo.header_offset);
+		MINE_GET_INT(mine_fileinfo.header_size);
+		MINE_GET_INT(mine_fileinfo.editor_offset);
+		MINE_GET_INT(mine_fileinfo.editor_size);
+		MINE_GET_INT(mine_fileinfo.segment_offset);
+		MINE_GET_INT(mine_fileinfo.segment_howmany);
+		MINE_GET_INT(mine_fileinfo.segment_sizeof);
+		MINE_GET_INT(mine_fileinfo.newseg_verts_offset);
+		MINE_GET_INT(mine_fileinfo.newseg_verts_howmany);
+		MINE_GET_INT(mine_fileinfo.newseg_verts_sizeof);
+		MINE_GET_INT(mine_fileinfo.group_offset);
+		MINE_GET_INT(mine_fileinfo.group_howmany);
+		MINE_GET_INT(mine_fileinfo.group_sizeof);
+		MINE_GET_INT(mine_fileinfo.vertex_offset);
+		MINE_GET_INT(mine_fileinfo.vertex_howmany);
+		MINE_GET_INT(mine_fileinfo.vertex_sizeof);
+		MINE_GET_INT(mine_fileinfo.texture_offset);
+		MINE_GET_INT(mine_fileinfo.texture_howmany);
+		MINE_GET_INT(mine_fileinfo.texture_sizeof);
+		MINE_GET_INT(mine_fileinfo.walls_offset);
+		MINE_GET_INT(mine_fileinfo.walls_howmany);
+		MINE_GET_INT(mine_fileinfo.walls_sizeof);
+		MINE_GET_INT(mine_fileinfo.triggers_offset);
+		MINE_GET_INT(mine_fileinfo.triggers_howmany);
+		MINE_GET_INT(mine_fileinfo.triggers_sizeof);
+		MINE_GET_INT(mine_fileinfo.links_offset);
+		MINE_GET_INT(mine_fileinfo.links_howmany);
+		MINE_GET_INT(mine_fileinfo.links_sizeof);
+		MINE_GET_INT(mine_fileinfo.object_offset);
+		MINE_GET_INT(mine_fileinfo.object_howmany);
+		MINE_GET_INT(mine_fileinfo.object_sizeof);
+		MINE_GET_INT(mine_fileinfo.unused_offset);
+		MINE_GET_INT(mine_fileinfo.unused_howmamy);
+		MINE_GET_INT(mine_fileinfo.unused_sizeof);
+		Assert(p - buf == MINE_FILEINFO_DISK_SIZE);
+	}
 
 	//===================== READ HEADER INFO ========================
 
@@ -270,11 +385,19 @@ int load_mine_data(CFILE *LoadFile)
 
 	if (mine_fileinfo.header_offset > -1 )
 	{
+		ubyte buf[MINE_HEADER_DISK_SIZE];
+		const ubyte *p = buf;
+		int n;
+
 		if (cfseek( LoadFile, mine_fileinfo.header_offset, SEEK_SET ))
 			Error( "Error seeking to header_offset in gamemine.c" );
-	
-		if (cfread( &mine_header, mine_fileinfo.header_size, 1, LoadFile )!=1)
+
+		// ASCENT: field reads of mine_header
+		n = mine_read_struct(buf, mine_fileinfo.header_size, MINE_HEADER_DISK_SIZE, LoadFile);
+		if (n <= 0)
 			Error( "Error reading mine_header in gamemine.c" );
+		MINE_GET_INT(mine_header.num_vertices);
+		MINE_GET_INT(mine_header.num_segments);
 	}
 
 	//===================== READ EDITOR INFO ==========================
@@ -282,18 +405,37 @@ int load_mine_data(CFILE *LoadFile)
 	// Set default values
 	mine_editor.current_seg         =   0;
 	mine_editor.newsegment_offset   =   -1; // To be written
-	mine_editor.newsegment_size     =   sizeof(segment);
+	mine_editor.newsegment_size     =   SEGMENT_EDITOR_DISK_SIZE;		// ASCENT: was sizeof(segment)
 	mine_editor.Curside             =   0;
 	mine_editor.Markedsegp          =   -1;
 	mine_editor.Markedside          =   0;
 
 	if (mine_fileinfo.editor_offset > -1 )
 	{
+		ubyte buf[MINE_EDITOR_DISK_SIZE];
+		const ubyte *p = buf;
+		int n;
+
 		if (cfseek( LoadFile, mine_fileinfo.editor_offset, SEEK_SET ))
 			Error( "Error seeking to editor_offset in gamemine.c" );
-	
-		if (cfread( &mine_editor, mine_fileinfo.editor_size, 1, LoadFile )!=1)
+
+		// ASCENT: field reads of mine_editor
+		n = mine_read_struct(buf, mine_fileinfo.editor_size, MINE_EDITOR_DISK_SIZE, LoadFile);
+		if (n <= 0)
 			Error( "Error reading mine_editor in gamemine.c" );
+		MINE_GET_INT(mine_editor.current_seg);
+		MINE_GET_INT(mine_editor.newsegment_offset);
+		MINE_GET_INT(mine_editor.newsegment_size);
+		MINE_GET_INT(mine_editor.Curside);
+		MINE_GET_INT(mine_editor.Markedsegp);
+		MINE_GET_INT(mine_editor.Markedside);
+		for (i=0;i<10;i++)
+			MINE_GET_INT(mine_editor.Groupsegp[i]);
+		for (i=0;i<10;i++)
+			MINE_GET_INT(mine_editor.Groupside[i]);
+		MINE_GET_INT(mine_editor.num_groups);
+		MINE_GET_INT(mine_editor.current_group);
+		Assert(p - buf == MINE_EDITOR_DISK_SIZE);
 	}
 
 	//===================== READ TEXTURE INFO ==========================
@@ -302,6 +444,13 @@ int load_mine_data(CFILE *LoadFile)
 	{
 		if (cfseek( LoadFile, mine_fileinfo.texture_offset, SEEK_SET ))
 			Error( "Error seeking to texture_offset in gamemine.c" );
+
+		// ASCENT: the original did not check these two values. Larger values
+		// wrote past the end of old_tmap_list and tmap_xlate_table.
+		if ( mine_fileinfo.texture_howmany > MAX_TEXTURES )
+			Error( "Too many textures (%d, maximum %d) in the mine file", mine_fileinfo.texture_howmany, MAX_TEXTURES );
+		if ( mine_fileinfo.texture_sizeof < 1 || mine_fileinfo.texture_sizeof > 13 )
+			Error( "Bad texture name size (%d) in the mine file", mine_fileinfo.texture_sizeof );
 
 		for (i=0; i< mine_fileinfo.texture_howmany; i++ )
 		{
@@ -381,7 +530,8 @@ int load_mine_data(CFILE *LoadFile)
 			Vertices[i].y = 1;
 			Vertices[i].z = 1;
 
-			if (cfread( &Vertices[i], mine_fileinfo.vertex_sizeof, 1, LoadFile )!=1)
+			// ASCENT: field read of the vertex
+			if (!mine_read_vertex( &Vertices[i], mine_fileinfo.vertex_sizeof, LoadFile ))
 				Error( "Error reading Vertices[i] in gamemine.c" );
 		}
 	}
@@ -411,12 +561,17 @@ int load_mine_data(CFILE *LoadFile)
 			//memset( &Segments[i], 0, sizeof(segment) );
 
 			if (mine_top_fileinfo.fileinfo_version >= 16) {
+				// ASCENT: the record on disk is the segment of the editor build
+				// (522 bytes, with segnum and group). It is converted one field
+				// at a time. The game structure has no segnum and no group.
+				ubyte seg_buf[SEGMENT_EDITOR_DISK_SIZE];
 
-				Assert(mine_fileinfo.segment_sizeof == sizeof(v16_seg));
+				Assert(mine_fileinfo.segment_sizeof == SEGMENT_EDITOR_DISK_SIZE);
 
-				if (cfread( &v16_seg, mine_fileinfo.segment_sizeof, 1, LoadFile )!=1)
+				if (cfread( seg_buf, SEGMENT_EDITOR_DISK_SIZE, 1, LoadFile )!=1)
 					Error( "Error reading segments in gamemine.c" );
 
+				segment_from_disk_editor( &v16_seg, seg_buf, NULL, NULL );
 			}				
 			else 
 				Error("Invalid mine version");
@@ -483,8 +638,15 @@ int load_mine_data(CFILE *LoadFile)
 	{
 		if (cfseek( LoadFile, mine_editor.newsegment_offset,SEEK_SET ))
 			Error( "Error seeking to newsegment_offset in gamemine.c" );
-		if (cfread( &New_segment, mine_editor.newsegment_size,1,LoadFile )!=1)
-			Error( "Error reading new_segment in gamemine.c" );
+		// ASCENT: field read of the segment record
+		{
+			ubyte seg_buf[SEGMENT_EDITOR_DISK_SIZE];
+
+			Assert(mine_editor.newsegment_size == SEGMENT_EDITOR_DISK_SIZE);
+			if (cfread( seg_buf, SEGMENT_EDITOR_DISK_SIZE,1,LoadFile )!=1)
+				Error( "Error reading new_segment in gamemine.c" );
+			segment_from_disk_editor( &New_segment, seg_buf, NULL, NULL );
+		}
 	}
 
 	if ( (mine_fileinfo.newseg_verts_offset > -1) && (mine_fileinfo.newseg_verts_howmany > 0))
@@ -498,7 +660,8 @@ int load_mine_data(CFILE *LoadFile)
 			Vertices[NEW_SEGMENT_VERTICES+i].y = 1;
 			Vertices[NEW_SEGMENT_VERTICES+i].z = 1;
 			
-			if (cfread( &Vertices[NEW_SEGMENT_VERTICES+i], mine_fileinfo.newseg_verts_sizeof,1,LoadFile )!=1)
+			// ASCENT: field read of the vertex
+			if (!mine_read_vertex( &Vertices[NEW_SEGMENT_VERTICES+i], mine_fileinfo.newseg_verts_sizeof, LoadFile ))
 				Error( "Error reading Vertices[NEW_SEGMENT_VERTICES+i] in gamemine.c" );
 
 			New_segment.verts[i] = NEW_SEGMENT_VERTICES+i;
@@ -565,7 +728,7 @@ int load_mine_data(CFILE *LoadFile)
 		return 0;
 
 }
-#endif
+// ASCENT: the "#endif" of the "#ifdef EDITOR" around load_mine_data() was here.
 
 #define COMPILED_MINE_VERSION 0
 
@@ -588,21 +751,23 @@ int load_mine_data_compiled(CFILE *LoadFile)
 	// 
 	// Although in a cloud of arrogant glee, he forgot to ifdef it on EDITOR!
 	// (Matt told me to write that!)
-#ifdef EDITOR
+	// ASCENT: tmap_xlate_table is always built now (it was under EDITOR),
+	// because the editor format loader and read_object() use it.
 	for (i=0; i<MAX_TEXTURES; i++)
 		tmap_xlate_table[i] = i;
-#endif
 //	memset( Segments, 0, sizeof(segment)*MAX_SEGMENTS );
 	fuelcen_reset();
 
 	//=============================== Reading part ==============================
-	cfread( &version, sizeof(ubyte), 1, LoadFile );						// 1 byte = compiled version
+	// ASCENT: all reads in this function are little endian field reads now
+	// (cf_get_*), in place of cfread() into the variables.
+	version = cf_get_ubyte( LoadFile );						// 1 byte = compiled version
 	Assert( version==COMPILED_MINE_VERSION );
-	cfread( &Num_vertices, sizeof(int), 1, LoadFile );					// 4 bytes = Num_vertices
+	Num_vertices = cf_get_int( LoadFile );					// 4 bytes = Num_vertices
 	Assert( Num_vertices <= MAX_VERTICES );
-	cfread( &Num_segments, sizeof(int), 1, LoadFile );					// 4 bytes = Num_segments
+	Num_segments = cf_get_int( LoadFile );					// 4 bytes = Num_segments
 	Assert( Num_segments <= MAX_SEGMENTS );
-	cfread( Vertices, sizeof(vms_vector), Num_vertices, LoadFile );
+	cf_get_vectors( LoadFile, Vertices, Num_vertices );
 
 	for (segnum=0; segnum<Num_segments; segnum++ )	{
 		#ifdef EDITOR
@@ -611,29 +776,29 @@ int load_mine_data_compiled(CFILE *LoadFile)
 		#endif
 
 		// Read short Segments[segnum].children[MAX_SIDES_PER_SEGMENT]
- 		cfread( Segments[segnum].children, sizeof(short), MAX_SIDES_PER_SEGMENT, LoadFile );
+ 		cf_get_shorts( LoadFile, Segments[segnum].children, MAX_SIDES_PER_SEGMENT );
 		// Read short Segments[segnum].verts[MAX_VERTICES_PER_SEGMENT]
-		cfread( Segments[segnum].verts, sizeof(short), MAX_VERTICES_PER_SEGMENT, LoadFile );
+		cf_get_shorts( LoadFile, Segments[segnum].verts, MAX_VERTICES_PER_SEGMENT );
 		Segments[segnum].objects = -1;
 
 		// Read ubyte	Segments[segnum].special
-		cfread( &Segments[segnum].special, sizeof(ubyte), 1, LoadFile );
+		Segments[segnum].special = cf_get_ubyte( LoadFile );
 		// Read byte	Segments[segnum].matcen_num
-		cfread( &Segments[segnum].matcen_num, sizeof(ubyte), 1, LoadFile );
+		Segments[segnum].matcen_num = cf_get_byte( LoadFile );
 		// Read short	Segments[segnum].value
-		cfread( &Segments[segnum].value, sizeof(short), 1, LoadFile );
+		Segments[segnum].value = cf_get_short( LoadFile );
 
 		// Read fix	Segments[segnum].static_light (shift down 5 bits, write as short)
-		cfread( &temp_ushort, sizeof(temp_ushort), 1, LoadFile );
+		temp_ushort = cf_get_ushort( LoadFile );
 		Segments[segnum].static_light	= ((fix)temp_ushort) << 4;
 		//cfread( &Segments[segnum].static_light, sizeof(fix), 1, LoadFile );
-	
+
 		// Read the walls as a 6 byte array
 		for (sidenum=0; sidenum<MAX_SIDES_PER_SEGMENT; sidenum++ )	{
 			ubyte byte_wallnum;
 			Segments[segnum].sides[sidenum].pad = 0;
-			cfread( &byte_wallnum, sizeof(ubyte), 1, LoadFile );
-			if ( byte_wallnum == 255 )			
+			byte_wallnum = cf_get_ubyte( LoadFile );
+if ( byte_wallnum == 255 )			
 				Segments[segnum].sides[sidenum].wall_num = -1;
 			else		
 				Segments[segnum].sides[sidenum].wall_num = byte_wallnum;
@@ -643,16 +808,16 @@ int load_mine_data_compiled(CFILE *LoadFile)
 
 			if ( (Segments[segnum].children[sidenum]==-1) || (Segments[segnum].sides[sidenum].wall_num!=-1) )	{
 				// Read short Segments[segnum].sides[sidenum].tmap_num;
-				cfread( &Segments[segnum].sides[sidenum].tmap_num, sizeof(short), 1, LoadFile );
+				Segments[segnum].sides[sidenum].tmap_num = cf_get_short( LoadFile );
 				// Read short Segments[segnum].sides[sidenum].tmap_num2;
-				cfread( &Segments[segnum].sides[sidenum].tmap_num2, sizeof(short), 1, LoadFile );
+				Segments[segnum].sides[sidenum].tmap_num2 = cf_get_short( LoadFile );
 				// Read uvl Segments[segnum].sides[sidenum].uvls[4] (u,v>>5, write as short, l>>1 write as short)
 				for (i=0; i<4; i++ )	{
-					cfread( &temp_short, sizeof(short), 1, LoadFile );
+					temp_short = cf_get_short( LoadFile );
 					Segments[segnum].sides[sidenum].uvls[i].u = ((fix)temp_short) << 5;
-					cfread( &temp_short, sizeof(short), 1, LoadFile );
+					temp_short = cf_get_short( LoadFile );
 					Segments[segnum].sides[sidenum].uvls[i].v = ((fix)temp_short) << 5;
-					cfread( &temp_ushort, sizeof(temp_ushort), 1, LoadFile );
+					temp_ushort = cf_get_ushort( LoadFile );
 					Segments[segnum].sides[sidenum].uvls[i].l = ((fix)temp_ushort) << 1;
 					//cfread( &Segments[segnum].sides[sidenum].uvls[i].l, sizeof(fix), 1, LoadFile );
 				}	
@@ -694,27 +859,29 @@ int load_mine_data_compiled_new(CFILE *LoadFile)
 
 	//	For compiled levels, textures map to themselves, prevent tmap_override always being gray,
 	//	bug which Matt and John refused to acknowledge, so here is Mike, fixing it.
-#ifdef EDITOR
+	// ASCENT: tmap_xlate_table is always built now (it was under EDITOR),
+	// because the editor format loader and read_object() use it.
 	for (i=0; i<MAX_TEXTURES; i++)
 		tmap_xlate_table[i] = i;
-#endif
 
 //	memset( Segments, 0, sizeof(segment)*MAX_SEGMENTS );
 	fuelcen_reset();
 
 	//=============================== Reading part ==============================
-	cfread( &version, sizeof(ubyte), 1, LoadFile );						// 1 byte = compiled version
+	// ASCENT: all reads in this function are little endian field reads now
+	// (cf_get_*), in place of cfread() into the variables.
+	version = cf_get_ubyte( LoadFile );						// 1 byte = compiled version
 	Assert( version==COMPILED_MINE_VERSION );
 
-	cfread( &temp_ushort, sizeof(ushort), 1, LoadFile );					// 2 bytes = Num_vertices
+	temp_ushort = cf_get_ushort( LoadFile );					// 2 bytes = Num_vertices
 	Num_vertices = temp_ushort;
 	Assert( Num_vertices <= MAX_VERTICES );
 
-	cfread( &temp_ushort, sizeof(ushort), 1, LoadFile );					// 2 bytes = Num_segments
+	temp_ushort = cf_get_ushort( LoadFile );					// 2 bytes = Num_segments
 	Num_segments = temp_ushort;
 	Assert( Num_segments <= MAX_SEGMENTS );
 
-	cfread( Vertices, sizeof(vms_vector), Num_vertices, LoadFile );
+	cf_get_vectors( LoadFile, Vertices, Num_vertices );
 
 	for (segnum=0; segnum<Num_segments; segnum++ )	{
 		int	bit;
@@ -724,26 +891,26 @@ int load_mine_data_compiled_new(CFILE *LoadFile)
 		Segments[segnum].group = 0;
 		#endif
 
- 		cfread( &bit_mask, sizeof(ubyte), 1, LoadFile );
+ 		bit_mask = cf_get_ubyte( LoadFile );
 
 		for (bit=0; bit<MAX_SIDES_PER_SEGMENT; bit++) {
 			if (bit_mask & (1 << bit))
-		 		cfread( &Segments[segnum].children[bit], sizeof(short), 1, LoadFile );
+		 		Segments[segnum].children[bit] = cf_get_short( LoadFile );
 			else
 				Segments[segnum].children[bit] = -1;
 		}
 
 		// Read short Segments[segnum].verts[MAX_VERTICES_PER_SEGMENT]
-		cfread( Segments[segnum].verts, sizeof(short), MAX_VERTICES_PER_SEGMENT, LoadFile );
+		cf_get_shorts( LoadFile, Segments[segnum].verts, MAX_VERTICES_PER_SEGMENT );
 		Segments[segnum].objects = -1;
 
 		if (bit_mask & (1 << MAX_SIDES_PER_SEGMENT)) {
 			// Read ubyte	Segments[segnum].special
-			cfread( &Segments[segnum].special, sizeof(ubyte), 1, LoadFile );
+			Segments[segnum].special = cf_get_ubyte( LoadFile );
 			// Read byte	Segments[segnum].matcen_num
-			cfread( &Segments[segnum].matcen_num, sizeof(ubyte), 1, LoadFile );
+			Segments[segnum].matcen_num = cf_get_byte( LoadFile );
 			// Read short	Segments[segnum].value
-			cfread( &Segments[segnum].value, sizeof(short), 1, LoadFile );
+			Segments[segnum].value = cf_get_short( LoadFile );
 		} else {
 			Segments[segnum].special = 0;
 			Segments[segnum].matcen_num = -1;
@@ -751,21 +918,21 @@ int load_mine_data_compiled_new(CFILE *LoadFile)
 		}
 
 		// Read fix	Segments[segnum].static_light (shift down 5 bits, write as short)
-		cfread( &temp_ushort, sizeof(temp_ushort), 1, LoadFile );
+		temp_ushort = cf_get_ushort( LoadFile );
 		Segments[segnum].static_light	= ((fix)temp_ushort) << 4;
 		//cfread( &Segments[segnum].static_light, sizeof(fix), 1, LoadFile );
-	
+
 		// Read the walls as a 6 byte array
 		for (sidenum=0; sidenum<MAX_SIDES_PER_SEGMENT; sidenum++ )	{
 			Segments[segnum].sides[sidenum].pad = 0;
 		}
 
- 		cfread( &bit_mask, sizeof(ubyte), 1, LoadFile );
+ 		bit_mask = cf_get_ubyte( LoadFile );
 		for (sidenum=0; sidenum<MAX_SIDES_PER_SEGMENT; sidenum++) {
 			ubyte byte_wallnum;
 
 			if (bit_mask & (1 << sidenum)) {
-				cfread( &byte_wallnum, sizeof(ubyte), 1, LoadFile );
+				byte_wallnum = cf_get_ubyte( LoadFile );
 				if ( byte_wallnum == 255 )			
 					Segments[segnum].sides[sidenum].wall_num = -1;
 				else		
@@ -778,7 +945,7 @@ int load_mine_data_compiled_new(CFILE *LoadFile)
 
 			if ( (Segments[segnum].children[sidenum]==-1) || (Segments[segnum].sides[sidenum].wall_num!=-1) )	{
 				// Read short Segments[segnum].sides[sidenum].tmap_num;
-				cfread( &temp_ushort, sizeof(ushort), 1, LoadFile );
+				temp_ushort = cf_get_ushort( LoadFile );
 
 				Segments[segnum].sides[sidenum].tmap_num = temp_ushort & 0x7fff;
 
@@ -786,16 +953,16 @@ int load_mine_data_compiled_new(CFILE *LoadFile)
 					Segments[segnum].sides[sidenum].tmap_num2 = 0;
 				else {
 					// Read short Segments[segnum].sides[sidenum].tmap_num2;
-					cfread( &Segments[segnum].sides[sidenum].tmap_num2, sizeof(short), 1, LoadFile );
+					Segments[segnum].sides[sidenum].tmap_num2 = cf_get_short( LoadFile );
 				}
 
 				// Read uvl Segments[segnum].sides[sidenum].uvls[4] (u,v>>5, write as short, l>>1 write as short)
 				for (i=0; i<4; i++ )	{
-					cfread( &temp_short, sizeof(short), 1, LoadFile );
+					temp_short = cf_get_short( LoadFile );
 					Segments[segnum].sides[sidenum].uvls[i].u = ((fix)temp_short) << 5;
-					cfread( &temp_short, sizeof(short), 1, LoadFile );
+					temp_short = cf_get_short( LoadFile );
 					Segments[segnum].sides[sidenum].uvls[i].v = ((fix)temp_short) << 5;
-					cfread( &temp_ushort, sizeof(temp_ushort), 1, LoadFile );
+					temp_ushort = cf_get_ushort( LoadFile );
 					Segments[segnum].sides[sidenum].uvls[i].l = ((fix)temp_ushort) << 1;
 					//cfread( &Segments[segnum].sides[sidenum].uvls[i].l, sizeof(fix), 1, LoadFile );
 				}	

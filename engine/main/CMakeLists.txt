@@ -28,3 +28,14 @@ endif()
 # The executable is not part of the default build until the game code links.
 add_executable(ascent EXCLUDE_FROM_ALL $<TARGET_OBJECTS:d_main>)
 target_link_libraries(ascent PRIVATE d_main)
+
+add_executable(test_fvi_math test_fvi_math.c)
+target_include_directories(test_fvi_math PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_fvi_math PRIVATE d_common d_fix)
+add_test(NAME test_fvi_math COMMAND test_fvi_math)
+
+add_executable(test_data_io test_data_io.c)
+target_include_directories(test_data_io PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_data_io PRIVATE
+  d_common d_3d d_2d d_cfile d_misc d_mem d_vecmat d_fix)
+add_test(NAME test_data_io COMMAND test_data_io)

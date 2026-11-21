@@ -483,10 +483,10 @@ static char rcsid[] = "$Id: newmenu.c 2.8 1995/05/26 16:16:28 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dos.h>
 #include <stdarg.h>
 #include <ctype.h>
-#include <io.h>
+// ASCENT: removed dos.h and io.h. The file search of the list boxes uses
+// the helper nm_find_files below.
 
 #include "error.h"
 #include "types.h"
@@ -510,9 +510,15 @@ static char rcsid[] = "$Id: newmenu.c 2.8 1995/05/26 16:16:28 john Exp $";
 #include "multi.h"
 #include "endlevel.h"
 #include "screens.h"
-#include "vfx.h"
+// ASCENT: removed vfx.h (virtual reality headset, not part of the port).
 #include "kconfig.h"
 #include "player.h"
+
+// ASCENT: headers for the frame wait and for the file search helper.
+#include <dirent.h>
+#include <sys/stat.h>
+#include "timer.h"
+#include "platform.h"
 
 #define TITLE_FONT  		(Gamefonts[GFONT_BIG_1])
 
@@ -521,15 +527,17 @@ static char rcsid[] = "$Id: newmenu.c 2.8 1995/05/26 16:16:28 john Exp $";
 #define NORMAL_FONT  	(Gamefonts[GFONT_MEDIUM_1])
 #define TEXT_FONT  		(Gamefonts[GFONT_MEDIUM_3])
 
-#define NORMAL_CHECK_BOX	""
-#define CHECKED_CHECK_BOX	"‚"
-#define NORMAL_RADIO_BOX	""
-#define CHECKED_RADIO_BOX	"€"
+// ASCENT: the characters above 126 are written as octal escapes, so that
+// this file is plain ASCII. The values are the same.
+#define NORMAL_CHECK_BOX	"\201"
+#define CHECKED_CHECK_BOX	"\202"
+#define NORMAL_RADIO_BOX	"\177"
+#define CHECKED_RADIO_BOX	"\200"
 #define CURSOR_STRING		"_"
-#define SLIDER_LEFT			"ƒ"		// 131
-#define SLIDER_RIGHT			"„"		// 132
-#define SLIDER_MIDDLE		"…"		// 133
-#define SLIDER_MARKER		"†"		// 134
+#define SLIDER_LEFT			"\203"		// 131
+#define SLIDER_RIGHT			"\204"		// 132
+#define SLIDER_MIDDLE		"\205"		// 133
+#define SLIDER_MARKER		"\206"		// 134
 
 int Newmenu_first_time = 1;
 //--unused-- int Newmenu_fade_in = 1;
@@ -546,6 +554,100 @@ grs_bitmap nm_background;
 #define MAX_TEXT_WIDTH 	200				// How many pixels wide a input box can be
 
 extern void gr_bm_bitblt(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest);
+
+// ASCENT: new. The VGA showed each change of the video memory, and the
+// original menu loops ran at the full speed of the processor. Each loop
+// that draws and waits for input now calls this function one time for each
+// pass: it shows the frame, waits for one period of the display, and
+// processes the window events. Returns 0 if the user closed the window.
+int nm_show_frame()
+{
+	gr_present();
+	gr_sync_display();
+	return plat_pump();
+}
+
+// ASCENT: new. Replaces _dos_findfirst and _dos_findnext of Watcom C.
+// The functions return 0 when they found a file, as the DOS functions did.
+// The file spec is an optional directory and a pattern with * and ?.
+// The search ignores the case of the letters, skips the directories, and
+// skips each name that is longer than a DOS 8.3 name (12 characters),
+// because the callers keep each name in 14 bytes.
+// The names have the case that the file system gives. DOS gave upper case.
+// The code uses dirent.h, so it needs GCC or Clang (as cfile.c).
+// nm_find_t is in newmenu.h, because newdemo.c also searches for files.
+
+static int nm_match_pattern( char * pat, char * name )
+{
+	while (*pat) {
+		if ( *pat == '*' ) {
+			pat++;
+			do {
+				if (nm_match_pattern( pat, name ))
+					return 1;
+			} while (*name++);
+			return 0;
+		}
+		if ( !*name )
+			return 0;
+		if ( (*pat != '?') && (toupper(*pat) != toupper(*name)) )
+			return 0;
+		pat++;
+		name++;
+	}
+	return (*name == 0);
+}
+
+void nm_findclose( nm_find_t * f )
+{
+	if (f->dir)
+		closedir((DIR *)f->dir);
+	f->dir = NULL;
+}
+
+int nm_findnext( nm_find_t * f )
+{
+	struct dirent * ent;
+
+	if (!f->dir)
+		return 1;
+
+	while ( (ent = readdir((DIR *)f->dir)) != NULL ) {
+		char full[128+256];
+		struct stat st;
+
+		if ( strlen(ent->d_name) > 12 )
+			continue;
+		if ( !nm_match_pattern( f->pattern, ent->d_name ) )
+			continue;
+		sprintf( full, "%s%.255s", f->path, ent->d_name );
+		if ( stat( full, &st ) || !S_ISREG(st.st_mode) )
+			continue;
+		strcpy( f->name, ent->d_name );
+		return 0;
+	}
+	nm_findclose(f);
+	return 1;
+}
+
+int nm_findfirst( char * filespec, nm_find_t * f )
+{
+	char * p, * sep = NULL;
+
+	f->dir = NULL;
+	for (p=filespec; *p; p++ )
+		if ( *p=='/' || *p=='\\' || *p==':' )
+			sep = p;
+	p = sep ? sep+1 : filespec;
+	if ( (p-filespec >= (int)sizeof(f->path)) || (strlen(p) >= sizeof(f->pattern)) )
+		return 1;
+	memcpy( f->path, filespec, p-filespec );
+	f->path[p-filespec] = 0;
+	strcpy( f->pattern, p );
+
+	f->dir = opendir( f->path[0] ? f->path : "." );
+	return nm_findnext(f);
+}
 
 void newmenu_close()	{
 	if ( nm_background.bm_data )
@@ -811,10 +913,12 @@ void draw_item( bkg * b, newmenu_item *item, int is_current )
 		if (item->value < item->min_value) item->value=item->min_value;
 		if (item->value > item->max_value) item->value=item->max_value;
 		sprintf( item->saved_text, "%s\t%s", item->text, SLIDER_LEFT );
+		// ASCENT: strcat replaces sprintf with the destination as a source
+		// argument (undefined in standard C). The string is the same.
 		for (j=0; j<(item->max_value-item->min_value+1); j++ )	{
-			sprintf( item->saved_text, "%s%s", item->saved_text,SLIDER_MIDDLE );
+			strcat( item->saved_text, SLIDER_MIDDLE );
 		}
-		sprintf( item->saved_text, "%s%s", item->saved_text,SLIDER_RIGHT );
+		strcat( item->saved_text, SLIDER_RIGHT );
 		
 		item->saved_text[item->value+1+strlen(item->text)+1] = SLIDER_MARKER[0];
 		
@@ -977,11 +1081,14 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 		if ( item[i].type == NM_TYPE_SLIDER )	{
 			int w1,h1,aw1;
 			nothers++;
+			// ASCENT: the original code called sprintf with the destination
+			// as a source argument. That is undefined in standard C. strcat
+			// gives the same string.
 			sprintf( item[i].saved_text, "%s", SLIDER_LEFT );
 			for (j=0; j<(item[i].max_value-item[i].min_value+1); j++ )	{
-				sprintf( item[i].saved_text, "%s%s", item[i].saved_text,SLIDER_MIDDLE );
+				strcat( item[i].saved_text, SLIDER_MIDDLE );
 			}
-			sprintf( item[i].saved_text, "%s%s", item[i].saved_text,SLIDER_RIGHT );
+			strcat( item[i].saved_text, SLIDER_RIGHT );
 			gr_get_string_size(item[i].saved_text,&w1,&h1,&aw1 );
 			string_width += w1 + aw;
 		}
@@ -1452,6 +1559,13 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 		if ( gr_palette_faded_out )	{
 			gr_palette_fade_in( gr_palette, 32, 0 );
 		}
+
+		// ASCENT: show the menu and wait for one display period. If the
+		// window is closed, leave the menu as the ESC key does.
+		if ( !nm_show_frame() && !done )	{
+			done = 1;
+			choice = -1;
+		}
 	}
 	
 	// Restore everything...
@@ -1504,7 +1618,7 @@ int nm_messagebox1( char *title, void (*subfunction)(int nitems,newmenu_item * i
 		nm_message_items[i].type = NM_TYPE_MENU; nm_message_items[i].text = s;
 	}
 	format = va_arg( args, char * );
-	sprintf(	nm_text, "" );
+	nm_text[0] = 0;		// ASCENT: was sprintf with an empty format (compiler warning)
 	vsprintf(nm_text,format,args);
 	va_end(args);
 
@@ -1531,7 +1645,7 @@ int nm_messagebox( char *title, int nchoices, ... )
 		nm_message_items[i].type = NM_TYPE_MENU; nm_message_items[i].text = s;
 	}
 	format = va_arg( args, char * );
-	sprintf(	nm_text, "" );
+	nm_text[0] = 0;		// ASCENT: was sprintf with an empty format (compiler warning)
 	vsprintf(nm_text,format,args);
 	va_end(args);
 
@@ -1574,7 +1688,7 @@ void delete_player_saved_games(char * name)
 	
 	for (i=0;i<10; i++)	{
 		sprintf( filename, "%s.sg%d", name, i );
-		unlink( filename );
+		remove( filename );		// ASCENT: was unlink (not standard C)
 	}
 }
 
@@ -1585,7 +1699,7 @@ int MakeNewPlayerFile(int allow_abort);
 int newmenu_get_filename( char * title, char * filespec, char * filename, int allow_abort_flag )
 {
 	int i;
-	struct find_t find;
+	nm_find_t find;		// ASCENT: was struct find_t of dos.h
 	int NumFiles=0, key,done, citem, ocitem;
 	char * filenames = NULL;
 	int NumFiles_displayed = 8;
@@ -1618,7 +1732,8 @@ ReadFileNames:
 		NumFiles++;
 	}
 
-	if( !_dos_findfirst( filespec, 0, &find ) )	{
+	// ASCENT: nm_findfirst and nm_findnext replace the DOS functions.
+	if( !nm_findfirst( filespec, &find ) )	{
 		do	{
 			if (NumFiles<MAX_FILES)	{
 				strncpy( &filenames[NumFiles*14], find.name, 13 );
@@ -1631,7 +1746,8 @@ ReadFileNames:
 			} else {
 				break;
 			}
-		} while( !_dos_findnext( &find ) );
+		} while( !nm_findnext( &find ) );
+		nm_findclose( &find );
 	}
 
 #ifdef USE_CD
@@ -1641,7 +1757,7 @@ ReadFileNames:
 		strcpy( temp_spec, destsat_cdpath );
 		strcat( temp_spec, filespec );
 
-		if( !_dos_findfirst( temp_spec, 0, &find ) )	{
+		if( !nm_findfirst( temp_spec, &find ) )	{		// ASCENT: was _dos_findfirst
 			do	{
 				if (NumFiles<MAX_FILES)	{
 
@@ -1661,7 +1777,8 @@ ReadFileNames:
 				} else {
 					break;
 				}
-			} while( !_dos_findnext( &find ) );
+			} while( !nm_findnext( &find ) );
+			nm_findclose( &find );
 		}
 	}
 #endif
@@ -1740,7 +1857,7 @@ ReadFileNames:
 					p = &filenames[(citem*14)+strlen(&filenames[citem*14])];
 					if (player_mode)
 						*p = '.';
-					ret = unlink( &filenames[citem*14] );
+					ret = remove( &filenames[citem*14] );		// ASCENT: was unlink (not standard C)
 					if (player_mode)
 						*p = 0;
 
@@ -1881,6 +1998,15 @@ ReadFileNames:
 				gr_rect( 100, y-1, 220, y+11 );
 				gr_string( 105, y, (&filenames[i*14])+((player_mode && filenames[i*14]=='$')?1:0)  );
 			}
+		}
+
+		// ASCENT: show the list and wait for one display period. If the
+		// window is closed, leave the list as the ESC key does. A caller
+		// that does not allow ESC gets the current item.
+		if ( !nm_show_frame() )	{
+			if (allow_abort_flag)
+				citem = -1;
+			done = 1;
 		}
 	}
 
@@ -2126,6 +2252,15 @@ int newmenu_listbox1( char * title, int nitems, char * items[], int allow_abort_
 				gr_string( wx+5, y, items[i]  );
 			}
 		}
+
+		// ASCENT: show the list and wait for one display period. If the
+		// window is closed, leave the list as the ESC key does. A caller
+		// that does not allow ESC gets the current item.
+		if ( !nm_show_frame() )	{
+			if (allow_abort_flag)
+				citem = -1;
+			done = 1;
+		}
 	}
 	keyd_repeat = old_keyd_repeat;
 
@@ -2140,10 +2275,11 @@ int newmenu_filelist( char * title, char * filespec, char * filename )
 	int i, NumFiles;
 	char * Filenames[MAX_FILES];
 	char FilenameText[MAX_FILES][14];
-	struct find_t find;
+	nm_find_t find;		// ASCENT: was struct find_t of dos.h
 
 	NumFiles = 0;
-	if( !_dos_findfirst( filespec, 0, &find ) )	{
+	// ASCENT: nm_findfirst and nm_findnext replace the DOS functions.
+	if( !nm_findfirst( filespec, &find ) )	{
 		do	{
 			if (NumFiles<MAX_FILES)	{
 				strncpy( FilenameText[NumFiles], find.name, 13 );
@@ -2152,7 +2288,8 @@ int newmenu_filelist( char * title, char * filespec, char * filename )
 			} else {
 				break;
 			}
-		} while( !_dos_findnext( &find ) );
+		} while( !nm_findnext( &find ) );
+		nm_findclose( &find );
 	}
 
 	i = newmenu_listbox( title, NumFiles, Filenames, 1, NULL );

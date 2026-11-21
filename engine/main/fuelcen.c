@@ -247,6 +247,7 @@ static char rcsid[] = "$Id: fuelcen.c 2.3 1995/03/21 14:38:40 john Exp $";
 #include "fuelcen.h"
 #include "gameseg.h"
 #include "game.h"		// For FrameTime
+#include "gameseq.h"	// ASCENT: for DoPlayerDead()
 #include "error.h"
 #include "mono.h"
 #include "gauges.h"
@@ -853,6 +854,8 @@ void controlcen_proc( FuelCenter * controlcen )
 	}
 }
 
+// ASCENT: <math.h> can define M_PI. Use the value of the original code.
+#undef M_PI
 #define M_PI 3.14159
 
 //-------------------------------------------------------------

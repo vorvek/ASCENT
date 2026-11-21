@@ -268,6 +268,14 @@ static char rcsid[] = "$Id: endlevel.c 2.2 1995/03/21 14:40:14 john Exp $";
 #include "compbit.h"
 #include "songs.h"
 
+// ASCENT: min and max are macros of stdlib.h in Watcom C only.
+#ifndef min
+#define min(a,b) (((a)<(b))?(a):(b))
+#endif
+#ifndef max
+#define max(a,b) (((a)>(b))?(a):(b))
+#endif
+
 typedef struct flythrough_data {
 	object		*obj;
 	vms_angvec	angles;			//orientation in angles
@@ -329,7 +337,14 @@ vms_matrix mine_exit_orient;
 
 int outside_mine;
 
-start_endlevel_flythrough(int n,object *obj,fix speed);
+// ASCENT: the functions of this file that had no return type (implicit
+// int) and return no value are now void. These are the prototypes for
+// the functions that the file calls before their definition.
+void start_endlevel_flythrough(int n,object *obj,fix speed);
+void do_endlevel_flythrough(int n);
+void generate_starfield();
+void draw_stars();
+int find_exit_side(object *obj);
 
 grs_bitmap terrain_bm_instance;
 grs_bitmap satellite_bm_instance;
@@ -354,7 +369,7 @@ int matt_find_connect_side(int seg0,int seg1)
 	return -1;
 }
 
-free_endlevel_data()
+void free_endlevel_data()
 {
 	if (terrain_bm_instance.bm_data)
 		free(terrain_bm_instance.bm_data);
@@ -363,7 +378,7 @@ free_endlevel_data()
 		free(satellite_bm_instance.bm_data);
 }
 
-init_endlevel()
+void init_endlevel()
 {
 	//##satellite_bitmap = bm_load("earth.bbm");
 	//##terrain_bitmap = bm_load("moon.bbm");
@@ -404,7 +419,7 @@ vms_matrix surface_orient;
 
 int endlevel_data_loaded=0;
 
-start_endlevel_sequence()
+void start_endlevel_sequence()
 {
 	int last_segnum,exit_side,tunnel_length;
 
@@ -596,7 +611,7 @@ int chase_angles(vms_angvec *cur_angles,vms_angvec *desired_angles)
 	return mask;
 }
 
-stop_endlevel_sequence()
+void stop_endlevel_sequence()
 {
 	Interpolation_method = 0;
 
@@ -615,7 +630,7 @@ stop_endlevel_sequence()
 //--unused-- vms_vector upvec = {0,f1_0,0};
 
 //find the angle between the player's heading & the station
-get_angs_to_object(vms_angvec *av,vms_vector *targ_pos,vms_vector *cur_pos)
+void get_angs_to_object(vms_angvec *av,vms_vector *targ_pos,vms_vector *cur_pos)
 {
 	vms_vector tv;
 
@@ -624,7 +639,7 @@ get_angs_to_object(vms_angvec *av,vms_vector *targ_pos,vms_vector *cur_pos)
 	vm_extract_angles_vector(av,&tv);
 }
 
-do_endlevel_frame()
+void do_endlevel_frame()
 {
 	static fix timer;
 	vms_vector save_last_pos;
@@ -991,7 +1006,7 @@ do_endlevel_frame()
 #define MIN_D 0x100
 
 //find which side to fly out of
-find_exit_side(object *obj)
+int find_exit_side(object *obj)
 {
 	int i;
 	vms_vector prefvec,segcenter,sidevec;
@@ -1033,7 +1048,7 @@ extern vms_vector Viewer_eye;	//valid during render
 
 void render_mine(int start_seg_num,fix eye_offset);
 
-draw_exit_model()
+void draw_exit_model()
 {
 	vms_vector model_pos;
 	int f=15,u=0;	//21;
@@ -1053,7 +1068,7 @@ fix satellite_size = i2f(400);
 #define SATELLITE_WIDTH		satellite_size
 #define SATELLITE_HEIGHT	((satellite_size*9)/4)		//((satellite_size*5)/2)
 
-render_external_scene(fix eye_offset)
+void render_external_scene(fix eye_offset)
 {
 
 	Viewer_eye = Viewer->pos;
@@ -1112,20 +1127,22 @@ render_external_scene(fix eye_offset)
 
 vms_vector stars[MAX_STARS];
 
-generate_starfield()
+void generate_starfield()
 {
 	int i;
 
 	for (i=0;i<MAX_STARS;i++) {
 
-		stars[i].x = (rand() - RAND_MAX/2) << 14;
-		stars[i].z = (rand() - RAND_MAX/2) << 14;
-		stars[i].y = (rand()/2) << 14;
+		// ASCENT: RAND_MAX is 32767 in Watcom C. The mask and the constant
+		// give the same range where the C library has a larger RAND_MAX.
+		stars[i].x = ((rand() & 0x7fff) - 0x7fff/2) << 14;
+		stars[i].z = ((rand() & 0x7fff) - 0x7fff/2) << 14;
+		stars[i].y = ((rand() & 0x7fff)/2) << 14;
 
 	}
 }
 
-draw_stars()
+void draw_stars()
 {
 	int i;
 	int intensity=31;
@@ -1175,7 +1192,7 @@ draw_stars()
 
 }
 
-endlevel_render_mine(fix eye_offset)
+void endlevel_render_mine(fix eye_offset)
 {
 	int start_seg_num;
 
@@ -1254,7 +1271,7 @@ fixang interp_angle(fixang dest,fixang src,fixang step);
 #define MIN_D 0x100
 
 //if speed is zero, use default speed
-start_endlevel_flythrough(int n,object *obj,fix speed)
+void start_endlevel_flythrough(int n,object *obj,fix speed)
 {
 	flydata = &fly_objects[n];
 
@@ -1280,7 +1297,7 @@ static vms_angvec *angvec_add2_scale(vms_angvec *dest,vms_vector *src,fix s)
 
 #define MAX_SLIDE_PER_SEGMENT 0x10000
 
-do_endlevel_flythrough(int n)
+void do_endlevel_flythrough(int n)
 {
 	object *obj;
 	segment *pseg;
@@ -1514,7 +1531,7 @@ int convert_ext( char *dest, char *ext )
 }
 
 //called for each level to load & setup the exit sequence
-load_endlevel_data(int level_num)
+void load_endlevel_data(int level_num)
 {
 	char filename[13];
 	char line[LINE_LEN],*p;
@@ -1565,7 +1582,9 @@ try_again:
 	while (cfgets(line,LINE_LEN,ifile)) {
 
 		if (have_binary) {
-			for (i = 0; i < strlen(line) - 1; i++) {
+			// ASCENT: the cast makes the loop empty for an empty line. The
+			// unsigned result of strlen made the limit a very large number.
+			for (i = 0; i < (int)strlen(line) - 1; i++) {
 				encode_rotate_left(&(line[i]));
 				line[i] = line[i] ^ BITMAP_TBL_XOR;
 				encode_rotate_left(&(line[i]));

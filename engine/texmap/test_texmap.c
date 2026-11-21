@@ -37,21 +37,7 @@ grs_bitmap *rle_expand_texture(grs_bitmap *bmp)
 	return bmp;
 }
 
-#ifndef Assert
-void Assert(int expr)
-{
-	if (!expr) {
-		printf("Assert failed\n");
-		exit(2);
-	}
-}
-#endif
-
-#ifndef Int3
-void Int3()
-{
-}
-#endif
+// ASCENT: Assert and Int3 come from the misc library.
 
 // ---------------------------------------------------------------------------
 // Canvas with guard bands.

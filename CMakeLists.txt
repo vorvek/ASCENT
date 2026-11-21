@@ -9,6 +9,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
+# Keep the asserts in the optimized build. The game code has many of them,
+# and the port needs them while the loaders change.
+string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+
 # SDL3: use an installed package when one exists. If not, download and build it.
 find_package(SDL3 CONFIG QUIET)
 if(NOT SDL3_FOUND)

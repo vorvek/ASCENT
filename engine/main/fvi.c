@@ -215,8 +215,17 @@ static char rcsid[] = "$Id: fvi.c 2.3 1995/03/24 14:49:04 john Exp $";
 #pragma on (unreferenced)
 
 #include <stdlib.h>
-#include <malloc.h>
+// ASCENT: removed <malloc.h>. It supplied stackavail() of Watcom C.
 #include <string.h>
+
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
 
 #include "error.h"
 #include "mono.h"
@@ -236,21 +245,24 @@ extern int Physics_cheat_flag;
 
 #define face_type_num(nfaces,face_num,tri_edge) ((nfaces==1)?0:(tri_edge*2 + face_num))
 
-int oflow_check(fix a,fix b);
-
-#pragma aux oflow_check parm [eax] [ebx] value [eax] modify exact [eax ebx edx] = \
-   "cdq"				\
-	"xor eax,edx"	\
-	"sub eax,edx"	\
-	"xchg eax,ebx"	\
-   "cdq"				\
-	"xor eax,edx"	\
-	"sub eax,edx"	\
-	"imul ebx"		\
-	"sar  edx,15"	\
-	"or   dx,dx"	\
-	"setnz al"		\
-	"movzx eax,al";
+// ASCENT: oflow_check() was a #pragma aux routine. The C version is in
+// fvi_a.h. The assembly stays here as the reference.
+//int oflow_check(fix a,fix b);
+//
+//#pragma aux oflow_check parm [eax] [ebx] value [eax] modify exact [eax ebx edx] = \
+//   "cdq"				\
+//	"xor eax,edx"	\
+//	"sub eax,edx"	\
+//	"xchg eax,ebx"	\
+//   "cdq"				\
+//	"xor eax,edx"	\
+//	"sub eax,edx"	\
+//	"imul ebx"		\
+//	"sar  edx,15"	\
+//	"or   dx,dx"	\
+//	"setnz al"		\
+//	"movzx eax,al";
+#include "fvi_a.h"
 
 
 //find the point on the specified plane where the line intersects
@@ -884,7 +896,7 @@ int find_vector_intersection(fvi_query *fq,fvi_info *hit_data)
 	vms_vector hit_pnt;
 	int i;
 
-	Assert(fq->ignore_obj_list != -1);
+	Assert(fq->ignore_obj_list != (int *)(intptr_t)-1);	// ASCENT: cast for the comparison of a pointer with -1
 	Assert((fq->startseg <= Highest_segment_index) && (fq->startseg >= 0));
 
 	fvi_hit_seg = -1;
@@ -1038,11 +1050,13 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 
 	//fvi_hit_object = -1;
 
-	if ( stackavail() < 1024 )                      
-	{
-		mprintf( (0, "In fvi_sub, stack left is < 1k !\n" ));
-		Int3();
-	}
+	// ASCENT: removed the stackavail() check of Watcom C. The check only
+	// printed a message and called Int3(). It did not stop the recursion.
+	//if ( stackavail() < 1024 )                      
+	//	{
+	//		mprintf( (0, "In fvi_sub, stack left is < 1k !\n" ));
+	//		Int3();
+	//	}
 
 	if (flags&FQ_GET_SEGLIST)
 		*seglist = startseg; 

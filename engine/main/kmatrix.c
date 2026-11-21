@@ -104,10 +104,8 @@ static char rcsid[] = "$Id: kmatrix.c 2.3 1995/05/02 17:01:22 john Exp $";
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <io.h>
 #include <stdarg.h>
-#include <dos.h>
-#include <conio.h>
+// ASCENT: removed io.h, dos.h and conio.h (DOS only headers).
 
 #include "error.h"
 #include "types.h"
@@ -132,6 +130,7 @@ static char rcsid[] = "$Id: kmatrix.c 2.3 1995/05/02 17:01:22 john Exp $";
 #include "gauges.h"
 #include "pcx.h"
 #include "network.h"
+#include "platform.h"	// ASCENT: plat_pump reports that the window is closed
 
 #define CENTERING_OFFSET(x) ((300 - (70 + (x)*25 ))/2)
 
@@ -284,6 +283,12 @@ void kmatrix_view(int network)
 	done = 0;
 
 	while(!done)	{
+
+		// ASCENT: show the frame, do not spin at full processor speed,
+		// and leave the screen if the window is closed.
+		gr_present();
+		timer_delay(F1_0/100);
+		if (!plat_pump()) done=1;
 
 		for (i=0; i<4; i++ )	
 			if (joy_get_button_down_cnt(i)>0) done=1;

@@ -31,7 +31,7 @@ endforeach()
 # small versions of the symbols of the other libraries. It needs their
 # headers and not their code.
 add_executable(test_texmap test_texmap.c ${TEXMAP_SOURCES})
-target_link_libraries(test_texmap PRIVATE d_common)
+target_link_libraries(test_texmap PRIVATE d_common d_misc)
 target_include_directories(test_texmap PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 foreach(dep ${TEXMAP_DEPS})
   target_include_directories(test_texmap PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../${dep})

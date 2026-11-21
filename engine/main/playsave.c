@@ -226,7 +226,8 @@ static char rcsid[] = "$Id: playsave.c 2.3 1995/05/26 16:16:23 john Exp $";
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <io.h>
+#include <ctype.h>
+// ASCENT: io.h removed (isatty and fileno are replaced by plr_name_is_device)
 
 #include "error.h"
 
@@ -246,7 +247,14 @@ static char rcsid[] = "$Id: playsave.c 2.3 1995/05/26 16:16:23 john Exp $";
 #include "mono.h"
 #include "state.h"
 
-#define SAVE_FILE_ID			'DPLR'
+// ASCENT: the value of the Watcom constant 'DPLR', written without a
+// multi-character constant. The file starts with the bytes R,L,P,D.
+#define SAVE_FILE_ID			0x44504C52
+
+// ASCENT: Watcom C has EZERO (no error) in errno.h.
+#ifndef EZERO
+#define EZERO 0
+#endif
 
 //this is for version 5 and below
 typedef struct save_info_v5 {
@@ -270,6 +278,10 @@ typedef struct hli {
 	char	shortname[9];
 	ubyte	level_num;
 } hli;
+
+// ASCENT: the array of hli is read and written as one block. The structure
+// has only bytes, so it has no padding.
+_Static_assert(sizeof(hli) == 10, "hli is 10 bytes in the player file");
 
 int n_highest_levels;
 
@@ -298,6 +310,175 @@ typedef struct saved_game {
 } saved_game;
 
 saved_game saved_games[N_SAVE_SLOTS];
+
+// ASCENT: the structures in the player file had 1 byte packing (the Watcom
+// default) and are little endian. The functions below read and write each
+// field at its offset in the file. The structures in memory can have padding.
+
+#define SAVE_INFO_DISK_SIZE	20			// save_info and save_info_v5
+#define SAVED_GAME_DISK_SIZE	(GAME_NAME_LEN+1+PLAYER_DISK_SIZE+8*4)	// saved_game: 174 bytes
+
+static int plr_get_short(const ubyte *p)
+{
+	return (short)(p[0] | (p[1]<<8));
+}
+
+static int plr_get_int(const ubyte *p)
+{
+	return (int)((uint)p[0] | ((uint)p[1]<<8) | ((uint)p[2]<<16) | ((uint)p[3]<<24));
+}
+
+static void plr_put_short(ubyte *p, int v)
+{
+	p[0] = v & 0xff;
+	p[1] = (v>>8) & 0xff;
+}
+
+static void plr_put_int(ubyte *p, int v)
+{
+	p[0] = v & 0xff;
+	p[1] = (v>>8) & 0xff;
+	p[2] = (v>>16) & 0xff;
+	p[3] = (v>>24) & 0xff;
+}
+
+// ASCENT: converts the player structure of the files (116 bytes, player
+// structure version 16) to the structure in memory. state.c uses it too.
+void player_from_disk(player *p, const ubyte *buf)
+{
+	int i;
+
+	memcpy(p->callsign, buf, CALLSIGN_LEN+1);
+	memcpy(p->net_address, buf+9, 6);
+	p->connected = buf[15];
+	p->objnum = plr_get_int(buf+16);
+	p->n_packets_got = plr_get_int(buf+20);
+	p->n_packets_sent = plr_get_int(buf+24);
+	p->flags = plr_get_int(buf+28);
+	p->energy = plr_get_int(buf+32);
+	p->shields = plr_get_int(buf+36);
+	p->lives = buf[40];
+	p->level = buf[41];
+	p->laser_level = buf[42];
+	p->starting_level = buf[43];
+	p->killer_objnum = plr_get_short(buf+44);
+	p->primary_weapon_flags = buf[46];
+	p->secondary_weapon_flags = buf[47];
+	for (i=0; i<MAX_PRIMARY_WEAPONS; i++)
+		p->primary_ammo[i] = plr_get_short(buf+48+i*2);
+	for (i=0; i<MAX_SECONDARY_WEAPONS; i++)
+		p->secondary_ammo[i] = plr_get_short(buf+58+i*2);
+	p->last_score = plr_get_int(buf+68);
+	p->score = plr_get_int(buf+72);
+	p->time_level = plr_get_int(buf+76);
+	p->time_total = plr_get_int(buf+80);
+	p->cloak_time = plr_get_int(buf+84);
+	p->invulnerable_time = plr_get_int(buf+88);
+	p->net_killed_total = plr_get_short(buf+92);
+	p->net_kills_total = plr_get_short(buf+94);
+	p->num_kills_level = plr_get_short(buf+96);
+	p->num_kills_total = plr_get_short(buf+98);
+	p->num_robots_level = plr_get_short(buf+100);
+	p->num_robots_total = plr_get_short(buf+102);
+	p->hostages_rescued_total = plr_get_short(buf+104);
+	p->hostages_total = plr_get_short(buf+106);
+	p->hostages_on_board = buf[108];
+	p->hostages_level = buf[109];
+	p->homing_object_dist = plr_get_int(buf+110);
+	p->hours_level = buf[114];
+	p->hours_total = buf[115];
+}
+
+void player_to_disk(player *p, ubyte *buf)
+{
+	int i;
+
+	memcpy(buf, p->callsign, CALLSIGN_LEN+1);
+	memcpy(buf+9, p->net_address, 6);
+	buf[15] = p->connected;
+	plr_put_int(buf+16, p->objnum);
+	plr_put_int(buf+20, p->n_packets_got);
+	plr_put_int(buf+24, p->n_packets_sent);
+	plr_put_int(buf+28, p->flags);
+	plr_put_int(buf+32, p->energy);
+	plr_put_int(buf+36, p->shields);
+	buf[40] = p->lives;
+	buf[41] = p->level;
+	buf[42] = p->laser_level;
+	buf[43] = p->starting_level;
+	plr_put_short(buf+44, p->killer_objnum);
+	buf[46] = p->primary_weapon_flags;
+	buf[47] = p->secondary_weapon_flags;
+	for (i=0; i<MAX_PRIMARY_WEAPONS; i++)
+		plr_put_short(buf+48+i*2, p->primary_ammo[i]);
+	for (i=0; i<MAX_SECONDARY_WEAPONS; i++)
+		plr_put_short(buf+58+i*2, p->secondary_ammo[i]);
+	plr_put_int(buf+68, p->last_score);
+	plr_put_int(buf+72, p->score);
+	plr_put_int(buf+76, p->time_level);
+	plr_put_int(buf+80, p->time_total);
+	plr_put_int(buf+84, p->cloak_time);
+	plr_put_int(buf+88, p->invulnerable_time);
+	plr_put_short(buf+92, p->net_killed_total);
+	plr_put_short(buf+94, p->net_kills_total);
+	plr_put_short(buf+96, p->num_kills_level);
+	plr_put_short(buf+98, p->num_kills_total);
+	plr_put_short(buf+100, p->num_robots_level);
+	plr_put_short(buf+102, p->num_robots_total);
+	plr_put_short(buf+104, p->hostages_rescued_total);
+	plr_put_short(buf+106, p->hostages_total);
+	buf[108] = p->hostages_on_board;
+	buf[109] = p->hostages_level;
+	plr_put_int(buf+110, p->homing_object_dist);
+	buf[114] = p->hours_level;
+	buf[115] = p->hours_total;
+}
+
+// ASCENT: the offsets above are for 5 primary and 5 secondary weapons.
+_Static_assert(MAX_PRIMARY_WEAPONS == 5 && MAX_SECONDARY_WEAPONS == 5 && CALLSIGN_LEN == 8,
+	"player_from_disk and player_to_disk have fixed offsets");
+
+// ASCENT: one saved game of the old player files (174 bytes).
+static void saved_game_from_disk(saved_game *sg, const ubyte *buf)
+{
+	memcpy(sg->name, buf, GAME_NAME_LEN+1);
+	buf += GAME_NAME_LEN+1;
+	player_from_disk(&sg->player, buf);
+	buf += PLAYER_DISK_SIZE;
+	sg->difficulty_level = plr_get_int(buf);
+	sg->primary_weapon = plr_get_int(buf+4);
+	sg->secondary_weapon = plr_get_int(buf+8);
+	sg->cockpit_mode = plr_get_int(buf+12);
+	sg->window_w = plr_get_int(buf+16);
+	sg->window_h = plr_get_int(buf+20);
+	sg->next_level_num = plr_get_int(buf+24);
+	sg->auto_leveling_on = plr_get_int(buf+28);
+}
+
+// ASCENT: replaces isatty(fileno(file)). The original code opened the
+// player file and asked DOS if the handle was a character device, to find
+// a callsign that is the name of a DOS device. This function compares the
+// name with the device names. Returns 1 if the name is a device name.
+int plr_name_is_device(char *name)
+{
+	static char *devices[] = { "CON", "PRN", "AUX", "NUL", "CLOCK$",
+		"COM1", "COM2", "COM3", "COM4", "LPT1", "LPT2", "LPT3" };
+	int i, j;
+
+	for (i=0; i<(int)(sizeof(devices)/sizeof(devices[0])); i++) {
+		for (j=0; devices[i][j] && toupper(name[j])==devices[i][j]; j++)
+			;
+		if (devices[i][j]==0 && j<=CALLSIGN_LEN && (name[j]==0 || name[j]==' '))
+			return 1;
+	}
+	return 0;
+}
+
+// ASCENT: the taunt macros of the player file, for the build without the
+// network code. They are kept so that write_player_file writes them back.
+#ifndef NETWORK
+static char plr_message_macro[4][MAX_MESSAGE_LEN];
+#endif
 
 int Default_leveling_on=1;
 
@@ -368,14 +549,18 @@ int read_player_file()
 	FILE *file;
 	save_info info;
 	int errno_ret = EZERO;
+	ubyte info_buf[SAVE_INFO_DISK_SIZE];
 
 	Assert(Player_num>=0 && Player_num<MAX_PLAYERS);
 
-	sprintf(filename,"%8s.plr",Players[Player_num].callsign);
+	// ASCENT: the format was "%8s.plr". It puts spaces before a short
+	// callsign. DOS ignored them. Other systems do not.
+	sprintf(filename,"%.8s.plr",Players[Player_num].callsign);
 	file = fopen(filename,"rb");
 
 	//check filename
-	if (file && isatty(fileno(file))) {
+	// ASCENT: isatty(fileno(file)) replaced by a test of the name
+	if (file && plr_name_is_device(Players[Player_num].callsign)) {
 		//if the callsign is the name of a tty device, prepend a char
 		fclose(file);
 		sprintf(filename,"$%.7s.plr",Players[Player_num].callsign);
@@ -386,11 +571,18 @@ int read_player_file()
 		return errno;
 	}
 
-	if (fread(&info,sizeof(info),1,file) != 1) {
+	// ASCENT: the header is read field by field (20 bytes, little endian)
+	if (fread(info_buf,SAVE_INFO_DISK_SIZE,1,file) != 1) {
 		errno_ret = errno;
 		fclose(file);
 		return errno_ret;
 	}
+	info.id = plr_get_int(info_buf);
+	info.saved_game_version = plr_get_short(info_buf+4);
+	info.player_struct_version = plr_get_short(info_buf+6);
+	info.n_highest_levels = plr_get_int(info_buf+8);
+	info.default_difficulty_level = plr_get_int(info_buf+12);
+	info.default_leveling_on = plr_get_int(info_buf+16);
 
 	if (info.id!=SAVE_FILE_ID) {
 		nm_messagebox(TXT_ERROR, 1, TXT_OK, "Invalid player file");
@@ -423,6 +615,13 @@ int read_player_file()
 	}
 	else {	//read new highest level info
 
+		// ASCENT: a count outside of the table means a bad file
+		if (info.n_highest_levels < 0 || info.n_highest_levels > MAX_MISSIONS) {
+			nm_messagebox(TXT_ERROR, 1, TXT_OK, "Invalid player file");
+			fclose(file);
+			return -1;
+		}
+
 		n_highest_levels = info.n_highest_levels;
 
 		if (fread(highest_levels,sizeof(hli),n_highest_levels,file) != n_highest_levels) {
@@ -436,11 +635,17 @@ int read_player_file()
 	Default_leveling_on = info.default_leveling_on;
 
 	if ( info.saved_game_version < 7 )	{			// Read old saved games.
-		if (fread(saved_games,sizeof(saved_games),1,file) != 1) {
+		// ASCENT: each saved game is converted from its layout in the file
+		static ubyte sg_buf[N_SAVE_SLOTS*SAVED_GAME_DISK_SIZE];
+		int i;
+
+		if (fread(sg_buf,sizeof(sg_buf),1,file) != 1) {
 			errno_ret = errno;
 			fclose(file);
 			return errno_ret;
 		}
+		for (i=0; i<N_SAVE_SLOTS; i++)
+			saved_game_from_disk(&saved_games[i], sg_buf+i*SAVED_GAME_DISK_SIZE);
 	}
 
 	//read taunt macros
@@ -454,8 +659,11 @@ int read_player_file()
 			if (fread(Network_message_macro[i], len, 1, file) != 1)
 				{errno_ret = errno; break;}
 		#else
-		i = 0;
-		fseek( file, 48*len, SEEK_CUR );
+		// ASCENT: the code without NETWORK skipped 48*len bytes. The
+		// file has 4 macros of len bytes. They are read and kept.
+		for (i = 0; i < 4; i++)
+			if (fread(plr_message_macro[i], len, 1, file) != 1)
+				{errno_ret = errno; break;}
 		#endif
 	}
 
@@ -563,6 +771,7 @@ int write_player_file()
 	FILE *file;
 	save_info info;
 	int errno_ret;
+	ubyte info_buf[SAVE_INFO_DISK_SIZE];
 
 	errno_ret = WriteConfigFile();
 
@@ -580,7 +789,8 @@ int write_player_file()
 	file = fopen(filename,"wb");
 
 	//check filename
-	if (file && isatty(fileno(file))) {
+	// ASCENT: isatty(fileno(file)) replaced by a test of the name
+	if (file && plr_name_is_device(Players[Player_num].callsign)) {
 
 		//if the callsign is the name of a tty device, prepend a char
 
@@ -594,7 +804,15 @@ int write_player_file()
 
 	errno_ret = EZERO;
 
-	if (fwrite(&info,sizeof(info),1,file) != 1) {
+	// ASCENT: the header is written field by field (20 bytes, little endian)
+	plr_put_int(info_buf, info.id);
+	plr_put_short(info_buf+4, info.saved_game_version);
+	plr_put_short(info_buf+6, info.player_struct_version);
+	plr_put_int(info_buf+8, info.n_highest_levels);
+	plr_put_int(info_buf+12, info.default_difficulty_level);
+	plr_put_int(info_buf+16, info.default_leveling_on);
+
+	if (fwrite(info_buf,SAVE_INFO_DISK_SIZE,1,file) != 1) {
 		errno_ret = errno;
 		fclose(file);
 		return errno_ret;
@@ -620,7 +838,13 @@ int write_player_file()
 		return errno_ret;
 	}
 	#else
-	fseek( file, MAX_MESSAGE_LEN * 4, SEEK_CUR );
+	// ASCENT: the code without NETWORK skipped the macros with fseek.
+	// The macros that read_player_file kept are written.
+	if ((fwrite(plr_message_macro, MAX_MESSAGE_LEN, 4, file) != 4)) {
+		errno_ret = errno;
+		fclose(file);
+		return errno_ret;
+	}
 	#endif
 
 	//write kconfig info

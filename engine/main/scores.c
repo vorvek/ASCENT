@@ -240,10 +240,8 @@ static char rcsid[] = "$Id: scores.c 2.2 1995/06/15 12:13:54 john Exp $";
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <io.h>
 #include <stdarg.h>
-#include <dos.h>
-#include <conio.h>
+// ASCENT: io.h, dos.h and conio.h removed (DOS headers)
 
 #include "error.h"
 #include "types.h"
@@ -263,7 +261,9 @@ static char rcsid[] = "$Id: scores.c 2.2 1995/06/15 12:13:54 john Exp $";
 #include "joy.h"
 #include "timer.h"
 #include "text.h"
-#include "vfx.h"
+// ASCENT: vfx.h removed (virtual reality headset, not built)
+#include "scores.h"		// ASCENT: for the prototype of scores_view
+#include "platform.h"	// ASCENT: for plat_pump and plat_sleep_ms
 
 #define VERSION_NUMBER 		1
 #define SCORES_FILENAME 	"DESCENT.HI"
@@ -289,6 +289,61 @@ typedef struct all_scores {
 } all_scores;
 
 static all_scores Scores;
+
+// ASCENT: the high score file is the all_scores structure with 1 byte
+// packing (the Watcom default), little endian: 294 bytes. Each record of
+// stats_info is 24 bytes. The functions below convert the file to the
+// structure in memory and back, field by field.
+#define STATS_INFO_DISK_SIZE	(CALLSIGN_LEN+1+4+3+2+2+4)
+#define ALL_SCORES_DISK_SIZE	(3+1+COOL_MESSAGE_LEN+MAX_HIGH_SCORES*STATS_INFO_DISK_SIZE)
+
+static void scores_from_disk(all_scores *s, const ubyte *buf)
+{
+	int i;
+
+	memcpy(s->signature, buf, 3);
+	s->version = buf[3];
+	memcpy(s->cool_saying, buf+4, COOL_MESSAGE_LEN);
+	buf += 4+COOL_MESSAGE_LEN;
+	for (i=0; i<MAX_HIGH_SCORES; i++, buf+=STATS_INFO_DISK_SIZE) {
+		stats_info *st = &s->stats[i];
+		const ubyte *p = buf;
+
+		memcpy(st->name, p, CALLSIGN_LEN+1);	p += CALLSIGN_LEN+1;
+		st->score = (int)((uint)p[0] | ((uint)p[1]<<8) | ((uint)p[2]<<16) | ((uint)p[3]<<24));	p += 4;
+		st->starting_level = p[0];
+		st->ending_level = p[1];
+		st->diff_level = p[2];					p += 3;
+		st->kill_ratio = (short)(p[0] | (p[1]<<8));	p += 2;
+		st->hostage_ratio = (short)(p[0] | (p[1]<<8));	p += 2;
+		st->seconds = (int)((uint)p[0] | ((uint)p[1]<<8) | ((uint)p[2]<<16) | ((uint)p[3]<<24));
+	}
+}
+
+static void scores_to_disk(all_scores *s, ubyte *buf)
+{
+	int i;
+
+	memcpy(buf, s->signature, 3);
+	buf[3] = s->version;
+	memcpy(buf+4, s->cool_saying, COOL_MESSAGE_LEN);
+	buf += 4+COOL_MESSAGE_LEN;
+	for (i=0; i<MAX_HIGH_SCORES; i++, buf+=STATS_INFO_DISK_SIZE) {
+		stats_info *st = &s->stats[i];
+		ubyte *p = buf;
+
+		memcpy(p, st->name, CALLSIGN_LEN+1);	p += CALLSIGN_LEN+1;
+		p[0] = st->score & 0xff; p[1] = (st->score>>8) & 0xff;
+		p[2] = (st->score>>16) & 0xff; p[3] = (st->score>>24) & 0xff;	p += 4;
+		p[0] = st->starting_level;
+		p[1] = st->ending_level;
+		p[2] = st->diff_level;					p += 3;
+		p[0] = st->kill_ratio & 0xff; p[1] = (st->kill_ratio>>8) & 0xff;	p += 2;
+		p[0] = st->hostage_ratio & 0xff; p[1] = (st->hostage_ratio>>8) & 0xff;	p += 2;
+		p[0] = st->seconds & 0xff; p[1] = (st->seconds>>8) & 0xff;
+		p[2] = (st->seconds>>16) & 0xff; p[3] = (st->seconds>>24) & 0xff;
+	}
+}
 
 stats_info Last_game;
 
@@ -318,6 +373,7 @@ void scores_read()
 {
 	FILE * fp;
 	int fsize;
+	ubyte buf[ALL_SCORES_DISK_SIZE];
 
 	// clear score array...
 	memset( &Scores, 0, sizeof(all_scores) );
@@ -344,14 +400,20 @@ void scores_read()
 		return;
 	}
 		
-	fsize = filelength( fileno( fp ));
+	// ASCENT: filelength(fileno(fp)) replaced by fseek and ftell. The
+	// size is compared with the size of the structure in the file.
+	fseek( fp, 0, SEEK_END );
+	fsize = ftell( fp );
+	fseek( fp, 0, SEEK_SET );
 
-	if ( fsize != sizeof(all_scores) )	{
+	if ( fsize != ALL_SCORES_DISK_SIZE )	{
 		fclose(fp);
 		return;
 	}
 	// Read 'em in...
-	fread( &Scores, sizeof(all_scores),1, fp );
+	// ASCENT: read into a buffer and converted field by field
+	if ( fread( buf, ALL_SCORES_DISK_SIZE, 1, fp ) == 1 )
+		scores_from_disk( &Scores, buf );
 	fclose(fp);
 
 	if ( (Scores.version!=VERSION_NUMBER)||(Scores.signature[0]!='D')||(Scores.signature[1]!='H')||(Scores.signature[2]!='S') )	{
@@ -363,6 +425,7 @@ void scores_read()
 void scores_write()
 {
 	FILE * fp;
+	ubyte buf[ALL_SCORES_DISK_SIZE];
 
 	fp = fopen( get_scores_filename(), "wb" );
 	if (fp==NULL) {
@@ -374,7 +437,9 @@ void scores_write()
 	Scores.signature[1]='H';
 	Scores.signature[2]='S';
 	Scores.version = VERSION_NUMBER;
-	fwrite( &Scores,sizeof(all_scores),1, fp );
+	// ASCENT: converted field by field to the layout of the file
+	scores_to_disk( &Scores, buf );
+	fwrite( buf, ALL_SCORES_DISK_SIZE, 1, fp );
 	fclose(fp);
 }
 
@@ -403,7 +468,15 @@ void int_to_string( int number, char *dest )
 		*p++ = buffer[i];
 	}
 	*p++ = '\0';
-	strrev(dest);
+	// ASCENT: strrev is not in standard C. The string is reversed here.
+	{
+		char *a = dest, *b = dest + strlen(dest) - 1;
+		while (a < b) {
+			char t = *a;
+			*a++ = *b;
+			*b-- = t;
+		}
+	}
 }
 
 void scores_fill_struct(stats_info * stats)
@@ -612,7 +685,9 @@ ReshowScores:
 	
 			t1	= timer_get_fixed_seconds();
 			if ( t1 > time_out_value ) done = 1;
-			while ( timer_get_fixed_seconds() < t1+F1_0/128 );	
+			// ASCENT: the wait sleeps and does not spin
+			while ( timer_get_fixed_seconds() < t1+F1_0/128 )
+				plat_sleep_ms(1);
 
 			gr_set_fontcolor( gr_fade_table[fades[looper]*256+BM_XRGB(28,28,28)], -1 );
 			looper++;
@@ -622,6 +697,15 @@ ReshowScores:
 			else
 				scores_draw_item( citem, &Scores.stats[citem] );
 		}
+
+		// ASCENT: show the frame. Without the blinking score the loop
+		// drew nothing and did not wait, so it sleeps here.
+		gr_present();
+		if ( citem <= -1 )
+			plat_sleep_ms(5);
+		// ASCENT: leave the screen if the user closes the window
+		if (!plat_pump())
+			done = 1;
 
 		for (i=0; i<4; i++ )	
 			if (joy_get_button_down_cnt(i)>0) done=1;

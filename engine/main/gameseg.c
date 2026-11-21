@@ -204,8 +204,17 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <malloc.h>	//for stackavail()
+// ASCENT: removed <malloc.h>. It supplied stackavail() of Watcom C.
 #include <string.h>	//	for memset()
+
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
 
 #include "inferno.h"
 #include "game.h"
@@ -920,18 +929,21 @@ int trace_segs(vms_vector *p0,int oldsegnum)
 
 	Assert((oldsegnum <= Highest_segment_index) && (oldsegnum >= 0));
 
-	if (stackavail() < 1024) {		//if no debugging, we'll get past assert
-
-		#ifndef NDEBUG
-		if (!Doing_lighting_hack_flag)
-			Int3();	// Please get Matt, or if you cannot, then type 
-						// "?p0->xyz,segnum" at the DBG prompt, write down
-						// the values (a 3-element vector and a segment number), 
-						// and make a copy of the mine you are playing.
-		#endif
-
-		return oldsegnum;				//just say we're in this segment and be done with it
-	}
+	// ASCENT: removed the stackavail() check of Watcom C. The original gave up
+	// and returned oldsegnum when less than 1024 bytes of stack were left. The
+	// port has a large stack, so the recursion always continues.
+//	if (stackavail() < 1024) {		//if no debugging, we'll get past assert
+//
+//		#ifndef NDEBUG
+//		if (!Doing_lighting_hack_flag)
+//			Int3();	// Please get Matt, or if you cannot, then type 
+//						// "?p0->xyz,segnum" at the DBG prompt, write down
+//						// the values (a 3-element vector and a segment number), 
+//						// and make a copy of the mine you are playing.
+//		#endif
+//
+//		return oldsegnum;				//just say we're in this segment and be done with it
+//	}
 
 
 	centermask = get_side_dists(p0,oldsegnum,side_dists);		//check old segment

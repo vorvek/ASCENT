@@ -86,6 +86,16 @@ void init_game_list();
 
 int read_player_file();
 
+// ASCENT: the player structure in the player files and the save game files
+// is 116 bytes (1 byte packing, little endian). These functions convert it.
+#define PLAYER_DISK_SIZE 116
+struct player;
+void player_from_disk(struct player *p, const unsigned char *buf);
+void player_to_disk(struct player *p, unsigned char *buf);
+
+// ASCENT: returns 1 if the callsign is the name of a DOS device (CON, PRN...)
+int plr_name_is_device(char *name);
+
 //set a new highest level for player for this mission
 void set_highest_level(int levelnum);
 

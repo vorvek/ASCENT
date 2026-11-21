@@ -145,6 +145,14 @@ struct me {
 //	int	  num_objects;
 };
 
+// ASCENT: the sizes of the structures above in the mine file (the editor
+// mine format). The loader reads the fields one at a time.
+#define MINE_TOP_FILEINFO_DISK_SIZE	8
+#define MINE_FILEINFO_DISK_SIZE		144	// 2+2+4+34*4
+#define MINE_HEADER_DISK_SIZE			8
+#define MINE_EDITOR_DISK_SIZE			112	// 6*4+10*4+10*4+2*4
+#define GROUP_DISK_SIZE					9024	// group of the editor build: 4+4+2*900+2*3608
+
 extern struct mtfi mine_top_fileinfo;    // Should be same as first two fields below...
 extern struct mfi mine_fileinfo;
 extern struct mh mine_header;
@@ -152,6 +160,14 @@ extern struct me mine_editor;
 
 // returns 1 if error, else 0
 int game_load_mine(char * filename);
+
+// ASCENT: both mine loaders are built with and without EDITOR. They load
+// from an already-open file. load_mine_data() reads the editor mine format
+// and returns 0=everything ok, 1=old version, -1=error.
+// load_mine_data_compiled() reads the compiled (RDL) format and returns 0.
+struct CFILE;
+int load_mine_data(struct CFILE *LoadFile);
+int load_mine_data_compiled(struct CFILE *LoadFile);
 
 extern short tmap_xlate_table[];
 

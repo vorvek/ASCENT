@@ -215,6 +215,7 @@ static char rcsid[] = "$Id: automap.c 2.2 1995/03/21 14:41:26 john Exp $";
 #include "gauges.h"
 #include "powerup.h"
 #include "network.h" 
+#include "platform.h"		// ASCENT: plat_pump reports that the window is closed
 
 #define EF_USED			1		// This edge is used
 #define EF_DEFINING		2		// A structure defining edge that should always draw.
@@ -227,7 +228,7 @@ static char rcsid[] = "$Id: automap.c 2.2 1995/03/21 14:41:26 john Exp $";
 typedef struct Edge_info {
 	union {
 		short	verts[2];		// 4 bytes
-		long vv;
+		int vv;					// ASCENT: was long. It must have the size of verts (4 bytes); long has 8 bytes on some 64-bit systems.
 	};
 	ubyte sides[4];			// 4 bytes
 	short segnum[4];			// 8 bytes	// This might not need to be stored... If you can access the normals of a side.
@@ -288,6 +289,17 @@ static vms_vector view_target;
 static fix Automap_farthest_dist = (F1_0 * 20 * 50);		// 50 segments away
 static vms_matrix	ViewMatrix;
 static fix ViewDist=0;
+
+// ASCENT: prototypes for functions that this file calls before their
+// definition. Watcom C accepted the implicit declarations.
+void draw_all_edges();
+void automap_build_edge_list();
+void adjust_segment_limit(int SegmentLimit);
+
+// ASCENT: min is a macro of stdlib.h in Watcom C only.
+#ifndef min
+#define min(a,b) (((a)<(b))?(a):(b))
+#endif
 
 void automap_clear_visited()	
 {
@@ -707,6 +719,19 @@ void do_automap( int key_code )	{
 			gr_palette_load( gr_palette );
 		}
 
+		// ASCENT: draw_automap shows the frame (gr_show_canvas). The page
+		// flip of the VGA waited for the vertical retrace (70 Hz in this
+		// mode). This wait keeps the loop at 70 frames in each second or
+		// less, so that it does not use the full processor speed.
+		{
+			fix left = F1_0/70 - (timer_get_fixed_seconds()-t1);
+			if ( (left > 0) && (left <= F1_0/70) )
+				timer_delay(left);
+		}
+		// ASCENT: leave the automap if the user closed the window.
+		if ( !plat_pump() )
+			done = 1;
+
 		t2 = timer_get_fixed_seconds();
 		if (pause_game)
 			FrameTime=t2-t1;
@@ -880,7 +905,7 @@ void draw_all_edges()
 //finds edge, filling in edge_ptr. if found old edge, returns index, else return -1
 static int automap_find_edge(int v0,int v1,Edge_info **edge_ptr)
 {
-	long vv;
+	int vv;		// ASCENT: was long, see Edge_info
 	short hash,oldhash;
 	int ret;
 

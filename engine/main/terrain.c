@@ -113,8 +113,13 @@ vms_vector start_point;
 
 grs_bitmap *terrain_bm;
 
-extern fix g3_get_surface_dotprod(g3s_point **list);
-#pragma aux g3_get_surface_dotprod "*" parm [esi] value [eax] modify exact [eax];
+// ASCENT: removed the declaration of g3_get_surface_dotprod with its
+// #pragma aux (register calling convention of Watcom C). Nothing calls it.
+
+// ASCENT: the functions of this file that had no return type (implicit
+// int) and return no value are now void. build_light_table is called
+// before its definition.
+void build_light_table();
 
 int terrain_outline=0;
 
@@ -124,7 +129,7 @@ int org_i,org_j;
 
 int mine_tiles_drawn;		//flags to tell if all 4 tiles under mine have drawn
 
-draw_cell(int i,int j,g3s_point *p0,g3s_point *p1,g3s_point *p2,g3s_point *p3)
+void draw_cell(int i,int j,g3s_point *p0,g3s_point *p1,g3s_point *p2,g3s_point *p3)
 {
 	g3s_point *pointlist[3];
 
@@ -380,7 +385,7 @@ void render_terrain(vms_vector *org_point,int org_2dx,int org_2dy)
 
 }
 
-free_height_array()
+void free_height_array()
 {
 	free(height_array);
 }
@@ -437,7 +442,7 @@ void load_terrain(char *filename)
 }
 
 
-get_pnt(vms_vector *p,int i,int j)
+void get_pnt(vms_vector *p,int i,int j)
 {
 	p->x = GRID_SCALE*i;
 	p->z = GRID_SCALE*j;
@@ -477,14 +482,14 @@ fix get_avg_light(int i,int j)
 	return sum/6;
 }
 
-free_light_table()
+void free_light_table()
 {
 	if (light_array)
 		free(light_array);
 
 }
 
-build_light_table()
+void build_light_table()
 {
 	int i,j;
 	fix l,l2,min_l=0x7fffffff,max_l=0;

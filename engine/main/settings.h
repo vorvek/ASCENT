@@ -32,4 +32,5 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 //#define USE_CD 1	// Doesn't use a CD in drive 
 //#define ROCKWELL_CODE 1	// Rockwell psuedo shareware 
 //#define COMPACT_SEGS 1		// Not building for Destination Saturn (OEM version) 
-#define NETWORK 1		// Not building for Destination Saturn (OEM version) 
+// ASCENT: NETWORK is not defined. The network and modem code is not built.
+//#define NETWORK 1		// Not building for Destination Saturn (OEM version) 

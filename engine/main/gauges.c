@@ -614,7 +614,8 @@ copy_gauge_box(gauge_box *box,grs_bitmap *bm)
 }
 
 //fills in the coords of the hostage video window
-get_hostage_window_coords(int *x,int *y,int *w,int *h)
+// ASCENT: the function had no return type (implicit int) and returns no value.
+void get_hostage_window_coords(int *x,int *y,int *w,int *h)
 {
 	if (Cockpit_mode == CM_STATUS_BAR) {
 		*x = SB_SECONDARY_W_BOX_LEFT;
@@ -1067,7 +1068,8 @@ void hud_show_shield(void)
 }
 
 //draw the icons for number of lives
-hud_show_lives()
+// ASCENT: the function had no return type (implicit int) and returns no value.
+void hud_show_lives()
 {
 	if ((HUD_nmessages > 0) && (strlen(HUD_messages[hud_first]) > 38))
 		return;
@@ -1087,7 +1089,8 @@ hud_show_lives()
 
 }
 
-sb_show_lives()
+// ASCENT: the function had no return type (implicit int) and returns no value.
+void sb_show_lives()
 {
 	int x,y;
 	grs_bitmap * bm = &GameBitmaps[Gauges[GAUGE_LIVES].index];

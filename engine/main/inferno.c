@@ -641,19 +641,19 @@ static char rcsid[] = "$Id: inferno.c 2.36 1996/01/05 16:52:16 john Exp $";
 static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE CORPORATION";
 #pragma on (unreferenced)
 
-#include <io.h>
-#include <dos.h>
+// ASCENT: io.h, dos.h, malloc.h, conio.h and direct.h removed (DOS and
+// Watcom headers). ui.h removed (the user interface library of the editor
+// is not built). platform.h added for the window.
 #include <stdio.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
-#include <conio.h>
 #include <time.h>
-#include <dos.h>
-#include <direct.h>
 
+#include "platform.h"
 #include "gr.h"
+#ifdef EDITOR
 #include "ui.h"
+#endif
 #include "mono.h"
 #include "key.h"
 #include "timer.h"
@@ -661,7 +661,8 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "bm.h"
 #include "inferno.h"
 #include "error.h"
-#include "cflib.h"
+// ASCENT: cflib.h removed (the file is not in the source release and
+// nothing of it is used)
 #include "div0.h"
 #include "game.h"
 #include "segment.h"		//for Side_to_verts
@@ -685,28 +686,37 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "titles.h"
 #include "player.h"
 #include "text.h"
+// ASCENT: the headers of the code that is not built are included only
+// with the macro of that code: ipx.h and modem.h (network), arcade.h and
+// coindev.h (arcade version). victor.h, iglasses.h (virtual reality
+// headsets) and dpmi.h are removed.
+#ifdef NETWORK
 #include "ipx.h"
+#endif
 #include "newdemo.h"
-#include "victor.h"
 #include "network.h"
+#ifdef NETWORK
 #include "modem.h"
+#endif
 #include "gamefont.h"
 #include "kconfig.h"
+#ifdef ARCADE
 #include "arcade.h"
 #include "coindev.h"
+#endif
 #include "mouse.h"
 #include "joy.h"
-#include "dpmi.h"
 #include "newmenu.h"
 #include "desc_id.h"
 #include "config.h"
 #include "joydefs.h"
 #include "multi.h"
-#include "iglasses.h"
 #include "songs.h"
 #include "cfile.h"
-#include "cdrom.h"
+// ASCENT: cdrom.h removed (MSCDEX interface, not used here)
 #include "gameseq.h"
+#include "mission.h"		// ASCENT: for build_mission_list
+#include "playsave.h"
 
 #ifdef EDITOR
 #include "editor\editor.h"
@@ -735,25 +745,18 @@ int Inferno_is_800x600_available = 0;
 
 void install_int3_handler(void);
 
-int __far descent_critical_error_handler( unsigned deverr, unsigned errcode, unsigned far * devhdr );
+// ASCENT: prototypes added for functions of this file that are used
+// before their definition.
+void check_joystick_calibration(void);
+void show_order_form(void);
+
+// ASCENT: the prototype of the DOS critical error handler is removed.
 
 #ifndef NDEBUG
-do_heap_check()
+// ASCENT: the function called _heapset of Watcom C to test the heap. It
+// does nothing now. The return type is added.
+void do_heap_check()
 {
-	int heap_status;
-
-	heap_status = _heapset( 0xFF );
-	switch( heap_status )
-	{
-	case _HEAPBADBEGIN:
-		mprintf((1, "ERROR - heap is damaged\n"));
-		Int3();
-		break;
-	case _HEAPBADNODE:
-		mprintf((1, "ERROR - bad node in heap\n" ));
-		Int3();
-		break;
-	}
 }
 #endif
 
@@ -766,7 +769,9 @@ check_id_checksum_and_date()
 	const char name[] = DESC_ID_STR;
 	char time_str[] = DESC_DEAD_TIME;
 	int i, found;
-	unsigned long *checksum, test_checksum;
+	// ASCENT: the checksum is a 32-bit number. "unsigned long" has 64 bits
+	// on some systems, so the type is uint.
+	uint checksum, test_checksum;
 	time_t current_time, saved_time;
 
 	saved_time = (time_t)strtol(&(time_str[strlen(time_str) - 10]), NULL, 16);
@@ -790,25 +795,21 @@ check_id_checksum_and_date()
 		if (found)
 			test_checksum |= 0x80000000;
 	}
-	checksum = (unsigned long *)&(desc_id_checksum_str[0]);
-	if (test_checksum != *checksum)
+	// ASCENT: the first 4 characters of the string are read as a little
+	// endian number. The code read them through a pointer cast.
+	checksum = (uint)(ubyte)desc_id_checksum_str[0] | ((uint)(ubyte)desc_id_checksum_str[1]<<8) |
+		((uint)(ubyte)desc_id_checksum_str[2]<<16) | ((uint)(ubyte)desc_id_checksum_str[3]<<24);
+	if (test_checksum != checksum)
 		desc_id_exit_num = 2;
 
 	printf ("%s %s\n", TXT_REGISTRATION, name);
 }
 
+// ASCENT: the function asked the video BIOS (int 10h) for the 3DBIOS of
+// the LCD shutter glasses. There is no video BIOS, so the answer is no.
 int is_3dbios_installed()
 {
-	dpmi_real_regs rregs;
-	memset(&rregs,0,sizeof(dpmi_real_regs));
-	rregs.eax = 0x4ed0;
-	//rregs.ebx = 0x3d10;	
-	dpmi_real_int386x( 0x10, &rregs );
-	if ( (rregs.edx & 0xFFFF) != 0x3344 )
-		return 0;
-	else
-		return 1;
-
+	return 0;
 }
 
 
@@ -863,85 +864,16 @@ int init_graphics()
 extern fix fixed_frametime;
 
 // Returns 1 if ok, 0 if failed...
+// ASCENT: the function asked the BIOS (int 15h) for the driver of the
+// Notebook Gameport. There is no such driver, so it fails.
 int init_gameport()
 {
-	union REGS regs;
-
-	memset(&regs,0,sizeof(regs));
-	regs.x.eax = 0x8400;
-	regs.x.edx = 0xF0;
-   int386( 0x15, &regs, &regs );
-	if ( ( regs.x.eax & 0xFFFF ) == 'SG' )
-		return 1;
-	else
-		return 0;
+	return 0;
 }
 
-void check_dos_version()
-{
-	int major, minor;
-	union REGS regs;
-
-	memset(&regs,0,sizeof(regs));
-	regs.x.eax = 0x3000;							// Get MS-DOS Version Number
-   int386( 0x21, &regs, &regs );
-
-	major = regs.h.al;
-	minor = regs.h.ah;
-	
-	if ( major < 5 )	{
-		printf( "%s %d.d\n%s", TXT_DOS_VERSION_1, major, minor, TXT_DOS_VERSION_2);
-		exit(1);
-	}
-	//printf( "\nUsing MS-DOS %d.%d...\n", major, minor );
-}
-
-void change_to_dir(char *cmd_line)
-{
-	char drive[_MAX_DRIVE], dir[_MAX_DIR], curdir[_MAX_DIR];
-	unsigned total, cur_drive;
-
-	_splitpath(cmd_line, drive, dir, NULL, NULL);
-	dir[strlen(dir) - 1] = '\0';
-	if (drive[0] != '\0') {
-		_dos_getdrive(&cur_drive);
-		if (cur_drive != (drive[0] - 'A' + 1))
-			_dos_setdrive(drive[0] - 'A' + 1, &total);
-	}
-	getcwd(curdir, _MAX_DIR);
-	if (stricmp(&(curdir[2]), dir))
-		chdir(dir);
-}
-
-void dos_check_file_handles(int num_required)
-{
-	int i, n;
-	FILE * fp[16];
-
-	if ( num_required > 16 )
-		num_required = 16;
-
-	n = 0;	
-	for (i=0; i<16; i++ )
-		fp[i] = NULL;
-	for (i=0; i<16; i++ )	{
-		fp[i] = fopen( "nul", "wb" );
-		if ( !fp[i] ) break;
-	}
-	n = i;
-	for (i=0; i<16; i++ )	{
-		if (fp[i])
-			fclose(fp[i]);
-	}
-	if ( n < num_required )	{
-		printf( "\n%s\n", TXT_NOT_ENOUGH_HANDLES );
-		printf( "------------------------\n" );
-		printf( "%d/%d %s\n", n, num_required, TXT_HANDLES_1 );
-		printf( "%s\n", TXT_HANDLES_2);
-		printf( "%s\n", TXT_HANDLES_3);
-		exit(1);
-	}
-}
+// ASCENT: removed check_dos_version (int 21h), change_to_dir (DOS drive
+// and directory calls, it was not called) and dos_check_file_handles (the
+// test of the FILES= limit of DOS).
 
 #define NEEDED_DOS_MEMORY   			( 300*1024)		// 300 K
 #define NEEDED_LINEAR_MEMORY 			(7680*1024)		// 7.5 MB
@@ -950,6 +882,10 @@ void dos_check_file_handles(int num_required)
 
 extern int piggy_low_memory;
 
+// ASCENT: mem_int_to_string and check_memory are not built. check_memory
+// printed the DPMI memory numbers and stopped the program when the
+// conventional, linear or physical memory was too low.
+#if 0
 void mem_int_to_string( int number, char *dest )
 {
 	int i,l,c;
@@ -1024,6 +960,7 @@ void check_memory()
 	}
 
 }
+#endif
 
 
 int Inferno_verbose = 0;
@@ -1067,30 +1004,16 @@ unsigned descent_critical_errcode = 0;
 
 
 
-#pragma off (check_stack)
-int __far descent_critical_error_handler(unsigned deverror, unsigned errcode, unsigned __far * devhdr )
-{
-	devhdr = devhdr;
-	descent_critical_error++;
-	descent_critical_deverror = deverror;
-	descent_critical_errcode = errcode;
-	return _HARDERR_FAIL;
-}
-void chandler_end (void)  // dummy functions
-{
-}
-#pragma on (check_stack)
+// ASCENT: the DOS critical error handler (int 24h, installed with
+// _harderr) is removed. The three variables above stay, because other
+// files test descent_critical_error after a file operation. It stays 0.
 
 extern int Network_allow_socket_changes;
 
-extern void vfx_set_palette_sub(ubyte *);
-
-extern int Game_vfx_flag;
-extern int Game_victor_flag;
-extern int Game_vio_flag;
-extern int Game_3dmax_flag;
+// ASCENT: the externs of the virtual reality headset code are removed
+// (vfx_set_palette_sub, vfx_init, Game_vfx_flag, Game_victor_flag,
+// Game_vio_flag, Game_3dmax_flag).
 extern int VR_low_res;
-extern void vfx_init();
 
 #ifdef USE_CD
 char destsat_cdpath[128] = "";
@@ -1116,28 +1039,8 @@ int main(int argc,char **argv)
 
 	//change_to_dir(argv[0]);
 
-	// Initialize DPMI before anything else!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	// (To check memory size and availbabitliy and allocate some low DOS memory)
-	if (Inferno_verbose) printf( "%s... ", TXT_INITIALIZING_DPMI);
-	dpmi_init(Inferno_verbose);		// Before anything
-	if (Inferno_verbose) printf( "\n" );
-
-	if (Inferno_verbose) printf( "\n%s...", TXT_INITIALIZING_CRIT);
-	if (!dpmi_lock_region((void near *)descent_critical_error_handler,(char *)chandler_end - (char near *)descent_critical_error_handler))	{
-		Error( "Unable to lock critial error handler" );
-	}
-	if (!dpmi_lock_region(&descent_critical_error,sizeof(int)))	{
-		Error( "Unable to lock critial error handler" );
-	}
-	if (!dpmi_lock_region(&descent_critical_deverror,sizeof(unsigned)))	{
-		Error( "Unable to lock critial error handler" );
-	}
-	if (!dpmi_lock_region(&descent_critical_errcode,sizeof(unsigned)))	{
-		Error( "Unable to lock critial error handler" );
-	}
-	_harderr((void *) descent_critical_error_handler );
-	//Above line modified by KRB, added (void *) cast
-	//for the compiler.
+	// ASCENT: removed the DPMI setup (dpmi_init, the memory locks) and the
+	// install of the DOS critical error handler (_harderr).
 
 #ifdef USE_CD
 	i=find_descent_cd();
@@ -1191,8 +1094,8 @@ int main(int argc,char **argv)
 		printf( "%s\n", TXT_COMMAND_LINE_7 );
 		printf( "%s\n", TXT_COMMAND_LINE_8 );
 //		printf( "\n");
-		printf( "\n%s\n",TXT_PRESS_ANY_KEY3);
-		getch();
+		// ASCENT: the wait for a key (getch of conio.h) between the two
+		// pages of the help text is removed.
 		printf( "\n" );
 		printf( "%s\n", TXT_COMMAND_LINE_9);
 		printf( "%s\n", TXT_COMMAND_LINE_10);
@@ -1239,14 +1142,9 @@ int main(int argc,char **argv)
 
 	Lighting_on = 1;
 
-	if ( !FindArg( "-nodoscheck" ))
-		check_dos_version();
-	
-	if ( !FindArg( "-nofilecheck" ))
-		dos_check_file_handles(5);
-
-	if ( !FindArg( "-nomemcheck" ))
-		check_memory();
+	// ASCENT: removed the checks of the DOS version, of the file handles
+	// and of the free memory (-nodoscheck, -nofilecheck and -nomemcheck
+	// have no effect).
 
 	strcpy(Menu_pcx_name, "menu.pcx");	//	Used to be menu2.pcx.
 
@@ -1256,7 +1154,7 @@ int main(int argc,char **argv)
 	if (!Inferno_is_800x600_available)	{
 		printf( "The editor will not be available, press any key to start game...\n" );
 		Function_mode = FMODE_MENU;
-		getch();
+		getchar();		// ASCENT: was getch() of conio.h
 	}
 	#endif
 
@@ -1276,6 +1174,16 @@ int main(int argc,char **argv)
 	if (Inferno_verbose) printf ("%s", TXT_VERBOSE_1);
 	ReadConfigFile();
 	if (Inferno_verbose) printf( "\n%s", TXT_VERBOSE_2);
+
+	// ASCENT: open the window. It must exist before gr_init, and the
+	// keyboard, the mouse and the joystick get their events from it.
+	// The frame has the size of the first screen mode (320x200). The 2d
+	// library gives the size of each later mode with the frame.
+	// plat_shutdown is called at each exit of the program (return from
+	// main, exit, Error).
+	if (plat_init("ASCENT", 320, 200, 3) != 0)
+		Error("Cannot open the window");
+	atexit(plat_shutdown);
 
 	timer_init();
 	timer_set_rate( digi_timer_rate );			// Tell our timer how fast to go (120 Hz)
@@ -1377,14 +1285,20 @@ int main(int argc,char **argv)
 	}
 #endif
 
+	// ASCENT: the virtual reality headsets (VFX1, CyberMaxx, i-glasses,
+	// 3D-Max, LCDBIOS and SimulEyes shutter glasses) are not built. Their
+	// head tracking setup and their screen modes are not compiled. The
+	// options and the VR_type of descent.cfg have no effect. The code
+	// for the normal screen modes, which was the last "else", stays.
+#if 0
 	i = FindArg( "-vfxtrak" );
 	if ( i > 0 )
 		kconfig_sense_init();
 	else if ((Config_vr_type==1)&&(Config_vr_tracking>0))
 		kconfig_sense_init();
-		
+
 	i = FindArg( "-maxxtrak" );
-	if ( i > 0)	
+	if ( i > 0)
 		victor_init_tracking( atoi(Args[i+1]) );
 	else if ((Config_vr_type==2)&&(Config_vr_tracking>0))
 		victor_init_tracking( Config_vr_tracking );
@@ -1429,7 +1343,9 @@ int main(int argc,char **argv)
 		game_init_render_buffers(22, 320, 200, 1, VR_INTERLACED, 0 );
 		VR_switch_eyes = 0;
 		VR_low_res = 0;
-	} else {
+	} else
+#endif
+	{
 		int screen_mode = SM_320x200C;
 		int screen_width = 320;
 		int screen_height = 200;
@@ -1437,6 +1353,7 @@ int main(int argc,char **argv)
 		int screen_compatible = 1;
 		int use_double_buffer = 0;
 
+#if 0		// ASCENT: LCDBIOS and SimulEyes shutter glasses, see above
 		if ( FindArg( "-lcdbios" ) )	{
 			if (!is_3dbios_installed())	{
 				printf( "Warning: LCDBIOS needs to be installed.\nPress Esc to continue anyway, any other key to exit.\n" );
@@ -1474,6 +1391,7 @@ int main(int argc,char **argv)
 				if (Inferno_verbose) printf( "Using 320x400 ModeX...\n" );
 			}
 		}
+#endif
 
 		if ( FindArg( "-320x240" ))	{
 			if (Inferno_verbose) printf( "Using 320x240 ModeX...\n" );
@@ -1527,6 +1445,7 @@ int main(int argc,char **argv)
 		game_init_render_buffers(screen_mode, screen_width, screen_height, use_double_buffer, vr_mode, screen_compatible );
 	}
 
+#if 0		// ASCENT: CyberMaxx headset, see above
 	if (Game_victor_flag) {
 		char *vswitch = getenv( "CYBERMAXX" );
 		if ( vswitch )	{
@@ -1535,10 +1454,11 @@ int main(int argc,char **argv)
 				VR_switch_eyes = 1;
 			} else 
 				VR_switch_eyes = 0;
-		} else {		
+		} else {
 		 	VR_switch_eyes = 0;
 		}
 	}
+#endif
 
 
 #ifdef ARCADE
@@ -1560,10 +1480,9 @@ int main(int argc,char **argv)
 	control_invul_time = 0;
 #endif
 
-	i = FindArg( "-xcontrol" );
-	if ( i > 0 )	{
-		kconfig_init_external_controls( strtol(Args[i+1], NULL, 0), strtol(Args[i+2], NULL, 0) );
-	}
+	// ASCENT: -xcontrol gave the number of a DOS software interrupt and a
+	// real mode address for an external control driver. The call of
+	// kconfig_init_external_controls is removed.
 
 	if (Inferno_verbose) printf( "\n%s\n\n", TXT_INITIALIZING_GRAPHICS);
 	if ((t=gr_init( SM_ORIGINAL ))!=0)
@@ -1593,7 +1512,7 @@ int main(int argc,char **argv)
 		strcpy(filename, "descent.pcx");
 
 		if ((pcx_error=pcx_read_bitmap( filename, &grd_curcanv->cv_bitmap, grd_curcanv->cv_bitmap.bm_type, title_pal ))==PCX_ERROR_NONE)	{
-			vfx_set_palette_sub( title_pal );
+			// ASCENT: vfx_set_palette_sub call removed (virtual reality headset)
 			gr_palette_clear();
 			//gr_bitmap( 0, 0, &title_bm );
 			gr_palette_fade_in( title_pal, 32, 0 );
@@ -1660,6 +1579,14 @@ int main(int argc,char **argv)
 
 	while (Function_mode != FMODE_EXIT)
 	{
+		// ASCENT: if the user closed the window, leave the program in the
+		// normal way (the configuration is written, the atexit functions
+		// of the libraries run).
+		if (!plat_pump()) {
+			Function_mode = FMODE_EXIT;
+			break;
+		}
+
 		switch( Function_mode )	{
 		case FMODE_MENU:
 			if ( Auto_demo )	{
@@ -1689,7 +1616,7 @@ int main(int argc,char **argv)
 		case FMODE_EDITOR:
 			keyd_editor_mode = 1;
 			editor();
-			_harderr( (void *)descent_critical_error_handler );		// Reinstall game error handler
+			// ASCENT: the install of the DOS critical error handler is removed
 			if ( Function_mode == FMODE_GAME ) {
 				Game_mode = GM_EDITOR;
 				editor_reset_stuff_on_level();
@@ -1710,7 +1637,9 @@ int main(int argc,char **argv)
 	#endif
 		//NOTE LINK TO ABOVE!!
 	#ifndef EDITOR
-		show_order_form();
+		// ASCENT: the last screen is not shown after the window is closed
+		if (plat_pump())
+			show_order_form();
 	#endif
 #endif
 
@@ -1735,9 +1664,10 @@ void check_joystick_calibration()	{
 
 	joy_get_pos( &x1, &y1 );
 
+	// ASCENT: the wait sleeps and does not spin
 	t1 = timer_get_fixed_seconds();
 	while( timer_get_fixed_seconds() < t1 + F1_0/100 )
-		;
+		plat_sleep_ms(1);
 
 	joy_get_pos( &x2, &y2 );
 
@@ -1774,7 +1704,7 @@ void show_order_form()
 	#endif
 #endif
 	if ((pcx_error=pcx_read_bitmap( exit_screen, &grd_curcanv->cv_bitmap, grd_curcanv->cv_bitmap.bm_type, title_pal ))==PCX_ERROR_NONE) {
-		vfx_set_palette_sub( title_pal );
+		// ASCENT: vfx_set_palette_sub call removed (virtual reality headset)
 		gr_palette_fade_in( title_pal, 32, 0 );
 		{
 			int done=0;
@@ -1782,6 +1712,11 @@ void show_order_form()
 			while(!done)	{
 				if ( timer_get_approx_seconds() > time_out_value ) done = 1;
 				if (key_inkey()) done = 1;
+				// ASCENT: the loop ends if the user closes the window.
+				// It shows the frame and sleeps, so it does not spin.
+				if (!plat_pump()) done = 1;
+				gr_present();
+				plat_sleep_ms(5);
 			}
 		}
 		gr_palette_fade_out( title_pal, 32, 0 );		
@@ -1790,105 +1725,12 @@ void show_order_form()
 }
 
 
+// ASCENT: find_descent_cd is removed. It searched the CD-ROM drives with
+// MSCDEX (int 2Fh), DPMI and the DOS drive calls. USE_CD is not defined in
+// this build. If it is defined, no CD is found.
 #ifdef USE_CD
-
-#include <dos.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include "dpmi.h"
-
-typedef struct {
-	char unit;
-	ushort dev_offset;
-	ushort dev_segment;
-} dev_list;
-
-typedef struct _Dev_Hdr {
-	unsigned int dev_next;
-	unsigned short dev_att;
-	ushort dev_stat;
-	ushort dev_int;
-	char dev_name[8];
-	short dev_resv;
-	char dev_letr;
-	char dev_units;
-} dev_header;
-
 int find_descent_cd()
 {
-	dpmi_real_regs rregs;
-		
-	// Get dos memory for call...
-	dev_list * buf;
-	dev_header *device;
-	int num_drives, i;
-	unsigned cdrive, cur_drive, cdrom_drive;
-
-	memset(&rregs,0,sizeof(dpmi_real_regs));
-	rregs.eax = 0x1500;
-	rregs.ebx = 0;
-	dpmi_real_int386x( 0x2f, &rregs );
-	if ((rregs.ebx & 0xffff) == 0) {
-		return -1;			// No cdrom
-	}
-	num_drives = rregs.ebx;
-
-	buf = (dev_list *)dpmi_get_temp_low_buffer( sizeof(dev_list)*26 );	
-	if (buf==NULL) {
-		return -2;			// Error getting memory!
-	}
-
-	memset(&rregs,0,sizeof(dpmi_real_regs));
-	rregs.es = DPMI_real_segment(buf);
-	rregs.ebx = DPMI_real_offset(buf);
-	rregs.eax = 0x1501;
-	dpmi_real_int386x( 0x2f, &rregs );
-	cdrom_drive = 0;
-	_dos_getdrive(&cdrive);
-	for (i = 0; i < num_drives; i++) {
-		device = (dev_header *)((buf[i].dev_segment<<4)+ buf[i].dev_offset);
-		_dos_setdrive(device->dev_letr,&cur_drive);
-		_dos_getdrive(&cur_drive);
-		if (cur_drive == device->dev_letr) {
-			if (!chdir("\\descent")) {
-				FILE * fp;
-#ifdef DEST_SAT
-				fp = fopen( "saturn.hog", "rb" );	
-#else
-				fp = fopen( "descent.hog", "rb" );	
-#endif
-				if ( fp )	{
-					int write_failed = 1;
-					fclose(fp);
-					fp = fopen( "descent.tmp", "wb" );
-					if ( fp )	{
-						int temp = 0x15A90C23;
-						if ( fwrite( &temp, sizeof(int), 1, fp )==1 )	{
-							fp = fopen( "descent.tmp", "rb" );
-							if ( fp )	{
-								temp = 0;
-								if ( fread( &temp, sizeof(int), 1, fp )==1 )	{
-									if ( temp == 0x15A90C23 ) 
-										write_failed = 0;
-								}
-								fclose(fp);
-								unlink( "descent.tmp" );
-							}
-						}
-						fclose(fp);
-					}
-					if ( write_failed )	{
-						cdrom_drive = device->dev_letr;
-						break;
-					}
-				}
-			}
-		}				
-	}
-	_dos_setdrive(cdrive,&cur_drive);
-	return cdrom_drive;
+	return -1;
 }
-
 #endif

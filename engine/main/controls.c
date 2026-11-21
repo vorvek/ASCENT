@@ -205,7 +205,7 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 
 #include "controls.h"
 #include "joydefs.h"
-#include "victor.h"
+// ASCENT: victor.h removed (virtual reality headset, not built)
 #include "render.h"
 #include "args.h"
 #include "palette.h"

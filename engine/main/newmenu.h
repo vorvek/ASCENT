@@ -227,4 +227,25 @@ extern int newmenu_listbox1( char * title, int nitems, char * items[], int allow
 
 extern int newmenu_filelist( char * title, char * filespace, char * filename );
 
+// ASCENT: new. Shows the frame (gr_present), waits for one period of the
+// display, and processes the window events. Each loop that draws on the
+// screen and waits for input calls it one time for each pass.
+// Returns 0 if the user closed the window.
+extern int nm_show_frame();
+
+// ASCENT: new. File search, replaces _dos_findfirst and _dos_findnext of
+// Watcom C (see newmenu.c). nm_findfirst and nm_findnext return 0 when
+// they found a file. The name of the file is in the name field. Call
+// nm_findclose if the search stops before nm_findnext returns nonzero.
+typedef struct nm_find_t {
+	void	*dir;				// the open directory (DIR * of dirent.h)
+	char	path[128];		// the directory, with the separator at the end
+	char	pattern[32];
+	char	name[13];
+} nm_find_t;
+
+extern int nm_findfirst( char * filespec, nm_find_t * f );
+extern int nm_findnext( nm_find_t * f );
+extern void nm_findclose( nm_find_t * f );
+
 #endif

@@ -280,7 +280,7 @@ static char rcsid[] = "$Id: gamesave.c 2.2 1995/04/23 14:53:12 john Exp $";
 #pragma on (unreferenced)
 
 
-#include <io.h>
+// ASCENT: io.h (DOS) and cflib.h (not in the tree) are removed.
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -305,7 +305,6 @@ static char rcsid[] = "$Id: gamesave.c 2.2 1995/04/23 14:53:12 john Exp $";
 #include "robot.h"
 
 
-#include "cflib.h"
 #include "cfile.h"
 #include "bm.h"
 #include "menu.h"
@@ -321,6 +320,16 @@ static char rcsid[] = "$Id: gamesave.c 2.2 1995/04/23 14:53:12 john Exp $";
 #include "text.h"
 #include "gamefont.h"
 #include "gamesave.h"
+#include "gameseg.h"		// ASCENT: find_connect_side() and others were implicit
+#include "textures.h"
+#include "dataio.h"		// ASCENT: little endian field reads and the record sizes
+
+// ASCENT: see gamesave.h. Selects the mine format for load_level().
+int Gamesave_level_format = LEVEL_FORMAT_AUTO;
+
+// ASCENT: prototypes of functions that the original called without one
+int load_game_data(CFILE *LoadFile);
+void dump_mine_info(void);
 
 #ifdef EDITOR
 #ifdef SHAREWARE
@@ -376,6 +385,11 @@ char Gamesave_current_filename[128];
 
 #define GAME_VERSION					25
 #define GAME_COMPATIBLE_VERSION	22
+
+// ASCENT: the sizes of game_top_fileinfo and game_fileinfo in the file
+// (1 byte packing). The loader reads the fields one at a time.
+#define GAME_TOP_FILEINFO_DISK_SIZE	8
+#define GAME_FILEINFO_DISK_SIZE		119	// 2+2+4+15+24*4
 
 #define MENU_CURSOR_X_MIN			MENU_X
 #define MENU_CURSOR_X_MAX			MENU_X+6
@@ -575,7 +589,7 @@ int Gamesave_num_players=0;
 int N_save_pof_names=25;
 char Save_pof_names[MAX_POLYGON_MODELS][13];
 
-check_and_fix_matrix(vms_matrix *m);
+int check_and_fix_matrix(vms_matrix *m);		// ASCENT: "int" added, the type was implicit
 
 void verify_object( object * obj )	{
 
@@ -689,42 +703,48 @@ void verify_object( object * obj )	{
 
 static int read_int(CFILE *file)
 {
-	int i;
+	// ASCENT: little endian field read. The same change is in the other
+	// read_ functions below.
+	ubyte b[4];
+	const ubyte *p = b;
 
-	if (cfread( &i, sizeof(i), 1, file) != 1)
+	if (cfread( b, 4, 1, file) != 1)
 		Error( "Error reading int in gamesave.c" );
 
-	return i;
+	return dio_get_int(&p);
 }
 
 static fix read_fix(CFILE *file)
 {
-	fix f;
+	ubyte b[4];
+	const ubyte *p = b;
 
-	if (cfread( &f, sizeof(f), 1, file) != 1)
+	if (cfread( b, 4, 1, file) != 1)
 		Error( "Error reading fix in gamesave.c" );
 
-	return f;
+	return dio_get_fix(&p);
 }
 
 static short read_short(CFILE *file)
 {
-	short s;
+	ubyte b[2];
+	const ubyte *p = b;
 
-	if (cfread( &s, sizeof(s), 1, file) != 1)
+	if (cfread( b, 2, 1, file) != 1)
 		Error( "Error reading short in gamesave.c" );
 
-	return s;
+	return dio_get_short(&p);
 }
 
 static short read_fixang(CFILE *file)
 {
-	fixang f;
+	ubyte b[2];
+	const ubyte *p = b;
 
-	if (cfread( &f, sizeof(f), 1, file) != 1)
+	if (cfread( b, 2, 1, file) != 1)
 		Error( "Error reading fixang in gamesave.c" );
 
-	return f;
+	return dio_get_fixang(&p);
 }
 
 static byte read_byte(CFILE *file)
@@ -975,11 +995,13 @@ read_object(object *obj,CFILE *f,int version)
 
 			tmo = read_int(f);
 
-			#ifndef EDITOR
-			obj->rtype.pobj_info.tmap_override	= tmo;
-			#else
-			if (tmo==-1)
-				obj->rtype.pobj_info.tmap_override	= -1;
+			// ASCENT: the translation of the texture number was under EDITOR.
+			// The editor mine format needs it, and that format is always built
+			// now. For a compiled mine the table maps each number to itself.
+			// A number outside the table is kept as it is, as in the game
+			// build of the original.
+			if (tmo<0 || tmo>=MAX_TEXTURES)		//includes -1, no override
+				obj->rtype.pobj_info.tmap_override	= tmo;
 			else {
 				int xlated_tmo = tmap_xlate_table[tmo];
 				if (xlated_tmo < 0)	{
@@ -989,7 +1011,6 @@ read_object(object *obj,CFILE *f,int version)
 				}
 				obj->rtype.pobj_info.tmap_override	= xlated_tmo;
 			}
-			#endif
 
 			obj->rtype.pobj_info.alt_textures	= 0;
 
@@ -1206,33 +1227,43 @@ load_game_data(CFILE *LoadFile)
 	// Set default values
 	game_fileinfo.level					=	-1;
 	game_fileinfo.player_offset		=	-1;
-	game_fileinfo.player_sizeof		=	sizeof(player);
+	// ASCENT: the sizes on disk, not sizeof() of the structures in memory
+	game_fileinfo.player_sizeof		=	PLAYER_DISK_SIZE;
  	game_fileinfo.object_offset		=	-1;
 	game_fileinfo.object_howmany		=	0;
-	game_fileinfo.object_sizeof		=	sizeof(object);  
+	game_fileinfo.object_sizeof		=	OBJECT_DISK_SIZE;  
 	game_fileinfo.walls_offset			=	-1;
 	game_fileinfo.walls_howmany		=	0;
-	game_fileinfo.walls_sizeof			=	sizeof(wall);  
+	game_fileinfo.walls_sizeof			=	WALL_DISK_SIZE;  
 	game_fileinfo.doors_offset			=	-1;
 	game_fileinfo.doors_howmany		=	0;
-	game_fileinfo.doors_sizeof			=	sizeof(active_door);  
+	game_fileinfo.doors_sizeof			=	ACTIVE_DOOR_DISK_SIZE;  
 	game_fileinfo.triggers_offset		=	-1;
 	game_fileinfo.triggers_howmany	=	0;
-	game_fileinfo.triggers_sizeof		=	sizeof(trigger);  
+	game_fileinfo.triggers_sizeof		=	TRIGGER_DISK_SIZE;  
 	game_fileinfo.control_offset		=	-1;
 	game_fileinfo.control_howmany		=	0;
-	game_fileinfo.control_sizeof		=	sizeof(control_center_triggers);
+	game_fileinfo.control_sizeof		=	CONTROL_CENTER_TRIGGERS_DISK_SIZE;
 	game_fileinfo.matcen_offset		=	-1;
 	game_fileinfo.matcen_howmany		=	0;
-	game_fileinfo.matcen_sizeof		=	sizeof(matcen_info);
+	game_fileinfo.matcen_sizeof		=	MATCEN_INFO_DISK_SIZE;
 
 	// Read in game_top_fileinfo to get size of saved fileinfo.
 
 	if (cfseek( LoadFile, start_offset, SEEK_SET )) 
 		Error( "Error seeking in gamesave.c" ); 
 
-	if (cfread( &game_top_fileinfo, sizeof(game_top_fileinfo), 1, LoadFile) != 1)
-		Error( "Error reading game_top_fileinfo in gamesave.c" );
+	// ASCENT: field reads of the 8 bytes of game_top_fileinfo
+	{
+		ubyte buf[GAME_TOP_FILEINFO_DISK_SIZE];
+		const ubyte *p = buf;
+
+		if (cfread( buf, GAME_TOP_FILEINFO_DISK_SIZE, 1, LoadFile) != 1)
+			Error( "Error reading game_top_fileinfo in gamesave.c" );
+		game_top_fileinfo.fileinfo_signature = dio_get_ushort(&p);
+		game_top_fileinfo.fileinfo_version = dio_get_ushort(&p);
+		game_top_fileinfo.fileinfo_sizeof = dio_get_int(&p);
+	}
 
 	// Check signature
 	if (game_top_fileinfo.fileinfo_signature != 0x6705)
@@ -1289,7 +1320,12 @@ load_game_data(CFILE *LoadFile)
 		Current_level_name[0]=0;
 
 	if (game_top_fileinfo.fileinfo_version >= 19) {	//load pof names
-		cfread(&N_save_pof_names,2,1,LoadFile);
+		// ASCENT: the original read 2 bytes into the int. The count is an
+		// unsigned short. The original did not check the count against the
+		// size of Save_pof_names.
+		N_save_pof_names = (ushort)read_short(LoadFile);
+		if (N_save_pof_names > MAX_POLYGON_MODELS)
+			Error( "Too many POF names (%d, maximum %d) in the level file", N_save_pof_names, MAX_POLYGON_MODELS );
 		cfread(Save_pof_names,N_save_pof_names,13,LoadFile);
 	}
 
@@ -1317,6 +1353,11 @@ load_game_data(CFILE *LoadFile)
 
 	//===================== READ WALL INFO ============================
 
+	// ASCENT: the wall and door records are read into a byte buffer and
+	// converted one field at a time (see dataio.h). The size checks compare
+	// the size in the file header with the size of the record on disk, not
+	// with sizeof() of the structure in memory.
+
 	if (game_fileinfo.walls_offset > -1)
 	{
 
@@ -1324,19 +1365,34 @@ load_game_data(CFILE *LoadFile)
 			for (i=0;i<game_fileinfo.walls_howmany;i++) {
 
 				if (game_top_fileinfo.fileinfo_version >= 20) {
+					ubyte buf[WALL_DISK_SIZE];
 
-					Assert(sizeof(Walls[i]) == game_fileinfo.walls_sizeof);
+					Assert(WALL_DISK_SIZE == game_fileinfo.walls_sizeof);
 
-					if (cfread(&Walls[i], game_fileinfo.walls_sizeof, 1,LoadFile)!=1)
+					if (cfread(buf, WALL_DISK_SIZE, 1,LoadFile)!=1)
 						Error( "Error reading Walls[%d] in gamesave.c", i);
+
+					wall_from_disk(&Walls[i], buf);
 				}
 				else if (game_top_fileinfo.fileinfo_version >= 17) {
 					v19_wall w;
+					ubyte buf[V19_WALL_DISK_SIZE];
+					const ubyte *p = buf;
 
-					Assert(sizeof(w) == game_fileinfo.walls_sizeof);
+					Assert(V19_WALL_DISK_SIZE == game_fileinfo.walls_sizeof);
 
-					if (cfread(&w, game_fileinfo.walls_sizeof, 1,LoadFile)!=1)
+					if (cfread(buf, V19_WALL_DISK_SIZE, 1,LoadFile)!=1)
 						Error( "Error reading Walls[%d] in gamesave.c", i);
+
+					w.segnum			= dio_get_int(&p);
+					w.sidenum		= dio_get_int(&p);
+					w.type			= dio_get_byte(&p);
+					w.flags			= dio_get_byte(&p);
+					w.hps				= dio_get_fix(&p);
+					w.trigger		= dio_get_byte(&p);
+					w.clip_num		= dio_get_byte(&p);
+					w.keys			= dio_get_byte(&p);
+					w.linked_wall	= dio_get_int(&p);
 
 					Walls[i].segnum		= w.segnum;
 					Walls[i].sidenum		= w.sidenum;
@@ -1353,11 +1409,20 @@ load_game_data(CFILE *LoadFile)
 				}
 				else {
 					v16_wall w;
+					ubyte buf[V16_WALL_DISK_SIZE];
+					const ubyte *p = buf;
 
-					Assert(sizeof(w) == game_fileinfo.walls_sizeof);
+					Assert(V16_WALL_DISK_SIZE == game_fileinfo.walls_sizeof);
 
-					if (cfread(&w, game_fileinfo.walls_sizeof, 1,LoadFile)!=1)
+					if (cfread(buf, V16_WALL_DISK_SIZE, 1,LoadFile)!=1)
 						Error( "Error reading Walls[%d] in gamesave.c", i);
+
+					w.type			= dio_get_byte(&p);
+					w.flags			= dio_get_byte(&p);
+					w.hps				= dio_get_fix(&p);
+					w.trigger		= dio_get_byte(&p);
+					w.clip_num		= dio_get_byte(&p);
+					w.keys			= dio_get_byte(&p);
 
 					Walls[i].segnum = Walls[i].sidenum = Walls[i].linked_wall = -1;
 
@@ -1382,20 +1447,34 @@ load_game_data(CFILE *LoadFile)
 			for (i=0;i<game_fileinfo.doors_howmany;i++) {
 
 				if (game_top_fileinfo.fileinfo_version >= 20) {
+					ubyte buf[ACTIVE_DOOR_DISK_SIZE];
 
-					Assert(sizeof(ActiveDoors[i]) == game_fileinfo.doors_sizeof);
+					Assert(ACTIVE_DOOR_DISK_SIZE == game_fileinfo.doors_sizeof);
 
-					if (cfread(&ActiveDoors[i], game_fileinfo.doors_sizeof,1,LoadFile)!=1)
+					if (cfread(buf, ACTIVE_DOOR_DISK_SIZE,1,LoadFile)!=1)
 						Error( "Error reading ActiveDoors[%d] in gamesave.c", i);
+
+					active_door_from_disk(&ActiveDoors[i], buf);
 				}
 				else {
 					v19_door d;
+					ubyte buf[V19_DOOR_DISK_SIZE];
+					const ubyte *bp = buf;
 					int p;
 
-					Assert(sizeof(d) == game_fileinfo.doors_sizeof);
+					Assert(V19_DOOR_DISK_SIZE == game_fileinfo.doors_sizeof);
 
-					if (cfread(&d, game_fileinfo.doors_sizeof, 1,LoadFile)!=1)
+					if (cfread(buf, V19_DOOR_DISK_SIZE, 1,LoadFile)!=1)
 						Error( "Error reading Doors[%d] in gamesave.c", i);
+
+					d.n_parts	= dio_get_int(&bp);
+					d.seg[0]		= dio_get_short(&bp);
+					d.seg[1]		= dio_get_short(&bp);
+					d.side[0]	= dio_get_short(&bp);
+					d.side[1]	= dio_get_short(&bp);
+					d.type[0]	= dio_get_short(&bp);
+					d.type[1]	= dio_get_short(&bp);
+					d.open		= dio_get_fix(&bp);
 
 					ActiveDoors[i].n_parts = d.n_parts;
 
@@ -1442,15 +1521,30 @@ load_game_data(CFILE *LoadFile)
 	{
 		if (!cfseek( LoadFile, game_fileinfo.control_offset,SEEK_SET ))	{
 			for (i=0;i<game_fileinfo.control_howmany;i++)
-				if ( sizeof(ControlCenterTriggers) == game_fileinfo.control_sizeof )	{
-					if (cfread(&ControlCenterTriggers, game_fileinfo.control_sizeof,1,LoadFile)!=1)
+				// ASCENT: was a compare with sizeof() and a cfread() of the structure
+				if ( CONTROL_CENTER_TRIGGERS_DISK_SIZE == game_fileinfo.control_sizeof )	{
+					ubyte buf[CONTROL_CENTER_TRIGGERS_DISK_SIZE];
+
+					if (cfread(buf, CONTROL_CENTER_TRIGGERS_DISK_SIZE,1,LoadFile)!=1)
 					 	Error( "Error reading ControlCenterTriggers in gamesave.c", i);
+
+					control_center_triggers_from_disk(&ControlCenterTriggers, buf);
 				} else {
+					// ASCENT: the original code for a record of another size has
+					// a ";" after each "for", so it read three shorts in all and
+					// stored the second one in seg[MAX_WALLS_PER_LINK] and the
+					// third one in side[MAX_WALLS_PER_LINK], both past the end of
+					// the arrays. With 1 byte packing seg[MAX_WALLS_PER_LINK] is
+					// side[0], and side[MAX_WALLS_PER_LINK] is the memory after
+					// the structure. The three shorts are still read. The second
+					// one goes to side[0]. The third one is dropped.
+					short past_seg, past_side;
+
 					ControlCenterTriggers.num_links = read_short( LoadFile );
-					for (j=0; j<MAX_WALLS_PER_LINK; j++ );
-						ControlCenterTriggers.seg[j] = read_short( LoadFile );
-					for (j=0; j<MAX_WALLS_PER_LINK; j++ );
-						ControlCenterTriggers.side[j] = read_short( LoadFile );
+					past_seg = read_short( LoadFile );
+					past_side = read_short( LoadFile );
+					ControlCenterTriggers.side[0] = past_seg;
+					(void)past_side;
 				}
 		}
 	}
@@ -1464,9 +1558,13 @@ load_game_data(CFILE *LoadFile)
 		if (!cfseek( LoadFile, game_fileinfo.matcen_offset,SEEK_SET ))	{
 			// mprintf((0, "Reading %i materialization centers.\n", game_fileinfo.matcen_howmany));
 			for (i=0;i<game_fileinfo.matcen_howmany;i++) {
-				Assert( sizeof(RobotCenters[i]) == game_fileinfo.matcen_sizeof );
-				if (cfread(&RobotCenters[i], game_fileinfo.matcen_sizeof,1,LoadFile)!=1)
+				// ASCENT: field read of the record
+				ubyte buf[MATCEN_INFO_DISK_SIZE];
+
+				Assert( MATCEN_INFO_DISK_SIZE == game_fileinfo.matcen_sizeof );
+				if (cfread(buf, MATCEN_INFO_DISK_SIZE,1,LoadFile)!=1)
 					Error( "Error reading RobotCenters in gamesave.c", i);
+				matcen_info_from_disk(&RobotCenters[i], buf);
 				//	Set links in RobotCenters to Station array
 				for (j=0; j<=Highest_segment_index; j++)
 					if (Segments[j].special == SEGMENT_IS_ROBOTMAKER)
@@ -1583,9 +1681,9 @@ extern void ncache_flush();
 //loads a level (.LVL) file from disk
 int load_level(char * filename_passed)
 {
-	#ifdef EDITOR
+	// ASCENT: use_compiled_level was under EDITOR. Both mine loaders are
+	// always built now. See Gamesave_level_format.
 	int use_compiled_level=1;
-	#endif
 	CFILE * LoadFile;
 	char filename[128];
 	int sig,version,minedata_offset,gamedata_offset,hostagetext_offset;
@@ -1624,7 +1722,21 @@ int load_level(char * filename_passed)
 	if ( (!cfexist(filename)) && use_compiled_level )	{
 		convert_name_to_LVL(filename,filename_passed);
 		use_compiled_level = 0;
-	}		
+	}
+	#endif
+
+	// ASCENT: the caller selects the mine format with Gamesave_level_format.
+	// The automatic choice of the game build looks at the extension, as the
+	// editor build did, but it does not change the file name.
+	if (Gamesave_level_format == LEVEL_FORMAT_COMPILED)
+		use_compiled_level = 1;
+	else if (Gamesave_level_format == LEVEL_FORMAT_EDITOR)
+		use_compiled_level = 0;
+	#ifndef EDITOR
+	else {
+		char *ext = strrchr(filename,'.');
+		use_compiled_level = !(ext && !stricmp(ext,".LVL"));
+	}
 	#endif
 
 	LoadFile = cfopen( filename, "rb" );
@@ -1656,11 +1768,10 @@ int load_level(char * filename_passed)
 	Assert(sig == 'PLVL');
 
 	cfseek(LoadFile,minedata_offset,SEEK_SET);
-	#ifdef EDITOR
+	// ASCENT: was under EDITOR
 	if (!use_compiled_level)
 		mine_err = load_mine_data(LoadFile);
 	else
-	#endif
 		//NOTE LINK TO ABOVE!!
 		mine_err = load_mine_data_compiled(LoadFile);
 

@@ -77,6 +77,21 @@ void get_level_name(void);
 //extern int load_game(char *filename);
 //extern int save_game(char *filename);
 
+// ASCENT: the sizes of the object and player structures of the 1995 game
+// build (1 byte packing). The file headers store them (object_sizeof,
+// player_sizeof). Objects are read and written one field at a time, with a
+// variable record size, so these values are only for the headers.
+#define OBJECT_DISK_SIZE	264
+#define PLAYER_DISK_SIZE	116
+
+// ASCENT: the format of the mine data that load_level() expects. The
+// original selected the loader at compile time (the editor build looked at
+// the file extension, the game build always used the compiled format).
+#define LEVEL_FORMAT_AUTO		0	// .LVL is the editor format, all other names are compiled (the default)
+#define LEVEL_FORMAT_COMPILED	1	// compiled mine (RDL and SDL files): load_mine_data_compiled()
+#define LEVEL_FORMAT_EDITOR	2	// editor mine (LVL files): load_mine_data()
+extern int Gamesave_level_format;
+
 extern int load_level(char *filename);
 extern int save_level(char *filename);
 

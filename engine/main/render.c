@@ -301,6 +301,15 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include <stdlib.h>
 #include <string.h>
 
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #include "inferno.h"
 #include "segment.h"
 #include "error.h"
@@ -969,7 +978,7 @@ void render_segment(int segnum)
 
 	Assert(segnum!=-1 && segnum<=Highest_segment_index);
 
-	cc=rotate_list(8,&seg->verts);
+	cc=rotate_list(8,seg->verts);	// ASCENT: was &seg->verts (pointer to the array)
 
 	if (! cc.and) {		//all off screen?
 
@@ -1050,7 +1059,7 @@ outline_seg_side(segment *seg,int _side,int edge,int vert)
 {
 	g3s_codes cc;
 
-	cc=rotate_list(8,&seg->verts);
+	cc=rotate_list(8,seg->verts);	// ASCENT: was &seg->verts (pointer to the array)
 
 	if (! cc.and) {		//all off screen?
 		side *s;
@@ -1179,7 +1188,7 @@ int Window_clip_left,Window_clip_top,Window_clip_right,Window_clip_bot;
 
 //Given two sides of segment, tell the two verts which form the 
 //edge between them
-Two_sides_to_edge[6][6][2] = {
+int Two_sides_to_edge[6][6][2] = {	// ASCENT: the type was implicit int
 	{ {-1,-1}, {3,7}, {-1,-1}, {2,6}, {6,7}, {2,3} },
 	{ {3,7}, {-1,-1}, {0,4}, {-1,-1}, {4,7}, {0,3} },
 	{ {-1,-1}, {0,4}, {-1,-1}, {1,5}, {4,5}, {0,1} },
@@ -1189,7 +1198,7 @@ Two_sides_to_edge[6][6][2] = {
 };
 
 //given an edge specified by two verts, give the two sides on that edge
-Edge_to_sides[8][8][2] = {
+int Edge_to_sides[8][8][2] = {	// ASCENT: the type was implicit int
 	{ {-1,-1}, {2,5}, {-1,-1}, {1,5}, {1,2}, {-1,-1}, {-1,-1}, {-1,-1} },
 	{ {2,5}, {-1,-1}, {3,5}, {-1,-1}, {-1,-1}, {2,3}, {-1,-1}, {-1,-1} },
 	{ {-1,-1}, {3,5}, {-1,-1}, {0,5}, {-1,-1}, {-1,-1}, {0,3}, {-1,-1} },
@@ -1644,7 +1653,7 @@ build_object_lists(int n_segs)
 
 			//now call qsort
 
-			qsort(sort_list,n_sort_items,sizeof(*sort_list),sort_func);
+			qsort(sort_list,n_sort_items,sizeof(*sort_list),(int (*)(const void *,const void *)) sort_func);	// ASCENT: cast to the type that qsort() takes
 
 			//now copy back into list
 
@@ -1674,6 +1683,8 @@ int Rear_view=0;
 fix Zoom_factor=F1_0;
 #endif
 //renders onto current canvas
+void render_mine(int start_seg_num,fix eye_offset);	// ASCENT: prototype, used before the definition
+
 void render_frame(fix eye_offset)
 {
 	int start_seg_num;
@@ -1847,7 +1858,7 @@ build_segment_list(int start_seg_num)
 						ubyte codes_and=0xff;
 						int i;
 
-						rotate_list(8,&seg->verts);
+						rotate_list(8,seg->verts);	// ASCENT: was &seg->verts (pointer to the array)
 						rotated=1;
 
 						for (i=0;i<4;i++)
@@ -1883,8 +1894,8 @@ build_segment_list(int start_seg_num)
 
 						if (rotated<2) {
 							if (!rotated)
-								rotate_list(8,&seg->verts);
-							project_list(8,&seg->verts);
+								rotate_list(8,seg->verts);	// ASCENT: was &seg->verts (pointer to the array)
+							project_list(8,seg->verts);	// ASCENT: was &seg->verts (pointer to the array)
 							rotated=2;
 						}
 
@@ -2031,7 +2042,7 @@ void render_mine(int start_seg_num,fix eye_offset)
 
 	#if defined(EDITOR) && !defined(NDEUBG)
 	if (Show_only_curside) {
-		rotate_list(8,&Cursegp->verts);
+		rotate_list(8,Cursegp->verts);	// ASCENT: was &seg->verts (pointer to the array)
 		render_side(Cursegp,Curside);
 		goto done_rendering;
 	}

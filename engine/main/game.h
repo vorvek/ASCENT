@@ -283,7 +283,19 @@ void close_game(void);
 
 void calc_frame_time(void);
 
-do_flythrough(object *obj,int first_time);
+int do_flythrough(object *obj,int first_time);		// ASCENT: return type added
+
+// ASCENT: the frame limiter of calc_frame_time: the highest number of
+// frames in one second. 0 means no limit.
+extern int Game_max_fps;
+
+// ASCENT: prototypes added for functions of game.c that other files call
+void init_cockpit(void);
+void toggle_cockpit(void);
+void grow_window(void);
+void shrink_window(void);
+void game_render_frame(void);
+void GameLoop(int RenderFlag, int ReadControlsFlag );
 
 extern jmp_buf LeaveGame;					// Do a long jump to this when game is over.
 extern int	Difficulty_level;				//	Difficulty level in 0..NDL-1, 0 = easiest, NDL-1 = hardest
@@ -365,10 +377,10 @@ void palette_restore(void);
 void do_show_help();
 
 //show a message in a nice little box
-show_boxed_message(char *msg);
+void show_boxed_message(char *msg);		// ASCENT: return type added
 
 //erases message drawn with show_boxed_message()
-clear_boxed_message();
+void clear_boxed_message();		// ASCENT: return type added
 
 //turns off rear view & rear view cockpit
 void reset_rear_view(void);

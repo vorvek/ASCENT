@@ -352,14 +352,18 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: digi.c 2.5 1996/01/05 16:51:51 john Exp $";
 #pragma on (unreferenced)
 
+// ASCENT: this file drove the HMI Sound Operating System (SOS) library.
+// The source release does not contain that library, and the body of each
+// function was commented out. The game logic is restored here and the SOS
+// calls are replaced with calls to the mixer of the platform layer
+// (plat_audio_* in platform.h). Removed: the DOS headers, the SOS driver,
+// timer and MIDI setup (digi_init_digi, digi_init_midi, digi_close_digi,
+// digi_close_midi, digi_load_fm_banks, testLoadFile, the MIDI callback),
+// the loading of the driver and patch files, the DPMI memory locks and
+// the interrupt control around the MIDI volume calls.
+
 #include<stdlib.h>
 #include<stdio.h>
-#include<dos.h>
-#include<fcntl.h> 
-#include<malloc.h> 
-#include<bios.h>
-#include<io.h>
-#include<conio.h> 
 #include<string.h>
 #include<ctype.h>
 
@@ -374,39 +378,45 @@ static char rcsid[] = "$Id: digi.c 2.5 1996/01/05 16:51:51 john Exp $";
 #include "key.h"
 #include "newdemo.h"
 #include "game.h"
-#include "dpmi.h"
 #include "error.h"
 #include "wall.h"
 #include "cfile.h"
 #include "piggy.h"
 #include "text.h"
+// ASCENT: gameseg.h has the prototype of find_connected_distance.
+#include "gameseg.h"
+#include "platform.h"
 
-
-#pragma pack (4);						// Use 32-bit packing!
-#pragma off (check_stack);			// No stack checking!
-//*************************************************
-//#include "sos.h"
-//#include "sosm.h"
-//The above two includes are part of a commercial 
-//sound library, so they cannot be included in a public 
-//release of the source code. -KRB
-#include "no_sos.h" //Added by KRB
-//*************************************************
+// ASCENT: removed "#pragma pack (4)" and "#pragma off (check_stack)".
+// They were for the SOS structures and the interrupt code.
 #include "kconfig.h"
-//#include "soscomp.h"
 
 #define DIGI_PAUSE_BROKEN 1		//if this is defined, don't pause MIDI songs
 
-#define _DIGI_SAMPLE_FLAGS (_VOLUME | _PANNING )
-
 #define _DIGI_MAX_VOLUME (16384)	//16384
 
-// patch files
-#define  _MELODIC_PATCH       "melodic.bnk"
-#define  _DRUM_PATCH          "drum.bnk"
-#define  _DIGDRUM_PATCH       "drum32.dig"
+// ASCENT: the fields of the SOS structure _SOS_START_SAMPLE that this file
+// needs. The functions fill it as before and digi_mixer_start_sample gives
+// the values to the platform mixer. wVolume is from 0 to 0x7fff
+// (PLAT_AUDIO_VOLUME_MAX) and wSamplePanLocation is from 0 (left) to
+// 0xffff (right). The mixer clamps the values that are out of range: SOS
+// took 16-bit words, and a pan of F1_0 (sound exactly to the right) or a
+// volume of 4*F1_0 at the maximum digi volume became 0 there.
+typedef struct _SOS_START_SAMPLE {
+	ubyte *	lpSamplePtr;
+	int		dwSampleSize;
+	int		wLoopCount;				// 0 = play once, -1 = loop forever
+	int		wVolume;
+	int		wSampleID;
+	int		wSamplePanLocation;
+} _SOS_START_SAMPLE;
 
- 
+// ASCENT: the sample handles are the channel handles of the platform
+// mixer. -1 is "no handle" (it was 0xffff, and _ERR_NO_SLOTS from SOS).
+// A handle of the mixer is never used again for another sample, so a
+// stale handle cannot name a new sound as a SOS voice number could.
+#define DIGI_NO_HANDLE (-1)
+
 static int	Digi_initialized 		= 0;
 static int	digi_atexit_called	= 0;			// Set to 1 if atexit(digi_close) was called
 
@@ -417,48 +427,21 @@ int digi_driver_dma					= 0;
 int digi_midi_type					= 0;			// Midi driver type
 int digi_midi_port					= 0;			// Midi driver port
 static int digi_max_channels		= 8;
-static int digi_driver_rate		= 11025;			// rate to use driver at
-static int digi_dma_buffersize	= 4096;			// size of the dma buffer to use (4k)
+// ASCENT: was digi_driver_rate, the rate of the SOS driver. It is now the
+// rate of the samples in GameSounds, and the mixer resamples them.
+int digi_sample_rate					= 11025;
 int digi_timer_rate					= 9943;			// rate for the timer to go off to handle the driver system (120 Hz)
 int digi_lomem 						= 0;
 static int digi_volume				= _DIGI_MAX_VOLUME;		// Max volume
 static int midi_volume				= 128/2;						// Max volume
-static int midi_system_initialized		= 0;
-static int digi_system_initialized		= 0;
-static int timer_system_initialized		= 0;
 static int digi_sound_locks[MAX_SOUNDS];
 char digi_last_midi_song[16] = "";
 char digi_last_melodic_bank[16] = "";
 char digi_last_drum_bank[16] = "";
-LPSTR digi_driver_path = NULL;//Was _NULL -KRB
-static WORD						hSOSDigiDriver = 0xffff;			// handle for the SOS driver being used 
-static WORD     				hSOSMidiDriver = 0xffff;			// handle for the loaded MIDI driver
-static WORD						hTimerEventHandle = 0xffff;		// handle for the timer function
-
-static void * lpInstruments = NULL;		// pointer to the instrument file
-static int InstrumentSize = 0;
-static void * lpDrums = NULL;				// pointer to the drum file
-static int DrumSize = 0;
-// track mapping structure, this is used to map which track goes
-// out which device. this can also be mapped by the name of the 
-// midi track. to map by the name of the midi track use the define
-// _MIDI_MAP_TRACK for each of the tracks 
-/*
-static _SOS_MIDI_TRACK_DEVICE   sSOSTrackMap = { 
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, 
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, 
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, 
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK,
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, 
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, 
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, 
-   _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK, _MIDI_MAP_TRACK 
-};
-*/
-// handle for the initialized MIDI song
-WORD     wSongHandle = 0xffff;         
-ubyte		*SongData=NULL;
-int		SongSize;
+// ASCENT: the loop flag of the last song request, and 1 while a song
+// counts as started (this was wSongHandle < 0xffff).
+static int digi_last_midi_loop = 0;
+static int digi_midi_song_started = 0;
 
 
 #define SOF_USED				1 		// Set if this sample is used
@@ -474,12 +457,12 @@ typedef struct sound_object {
 	fix			max_distance;	// The max distance that this sound can be heard at...
 	int			volume;			// Volume that this sound is playing at
 	int			pan;				// Pan value that this sound is playing at
-	WORD			handle;			// What handle this sound is playing on.  Valid only if SOF_PLAYING is set.
+	int			handle;			// What handle this sound is playing on.  Valid only if SOF_PLAYING is set.
 	short			soundnum;		// The sound number that is playing
-	union {	
+	union {
 		struct {
 			short			segnum;				// Used if SOF_LINK_TO_POS field is used
-			short			sidenum;				
+			short			sidenum;
 			vms_vector	position;
 		};
 		struct {
@@ -494,329 +477,73 @@ sound_object SoundObjects[MAX_SOUND_OBJECTS];
 short next_signature=0;
 
 int digi_sounds_initialized=0;
-//this block commented out by KRB
 
+// ASCENT: the play channels (at most 32-MAX_SOUND_OBJECTS) and the sound
+// objects must all fit in the mixer.
+_Static_assert( PLAT_AUDIO_CHANNELS >= 32, "the mixer has too few channels" );
 
-void * testLoadFile( char * szFileName, int * length );
-
-VOID _far sosMIDICallback( WORD PassedSongHandle );
-VOID sosEndMIDICallback();
+void digi_reset_digi_sounds();
+void digi_stop_current_song();
+#ifndef NDEBUG
+int verify_sound_channel_free( int channel );
+#endif
 
 //NOT_MIDI_CHECKushort MIDI_CRC;
 //NOT_MIDI_CHECKubyte MIDI_SAVED_DATA[100*1024];
-/*
-
-
-*/
-
 
 int digi_xlat_sound(int soundno)
 {
-/*
 	if ( soundno < 0 ) return -1;
 
 	if ( digi_lomem )	{
 		soundno = AltSounds[soundno];
 		if ( soundno == 255 ) return -1;
 	}
+	// ASCENT: Sounds[] holds 255 for a sound that does not exist, and
+	// GameSounds has only MAX_SOUND_FILES entries.
+	if ( Sounds[soundno] >= MAX_SOUND_FILES ) return -1;
 	return Sounds[soundno];
-*/
-	return 0;//KRB Comment out...
-
-}
-
-
-void digi_close_midi()
-{
-/*
-	if (digi_midi_type>0)	{
-		if (wSongHandle < 0xffff)	{
-		   // stop the last MIDI song from playing
-			sosMIDIStopSong( wSongHandle );
-		   // uninitialize the last MIDI song
-			sosMIDIUnInitSong( wSongHandle );
-			wSongHandle = 0xffff;
-		}
-		if (SongData) 	{
-			if (!dpmi_unlock_region(SongData, SongSize))	{
-				mprintf( (1, "Error unlocking midi file" ));
-			}
-			free(SongData);
-			SongData = NULL;
-		}
-	   // reset the midi driver and
-	   // uninitialize the midi driver and tell it to free the memory allocated
-	   // for the driver
-		if ( hSOSMidiDriver < 0xffff )	{
-		   sosMIDIResetDriver( hSOSMidiDriver );
-	   	sosMIDIUnInitDriver( hSOSMidiDriver, _TRUE  );
-			hSOSMidiDriver = 0xffff;
-		}
-
-		if ( midi_system_initialized )	{
-		   // uninitialize the MIDI system
-		   sosMIDIUnInitSystem(); 
-			midi_system_initialized = 0;
-		}
-	}
-*/
-}
-
-void digi_close_digi()
-{
-/*
-	if (digi_driver_board>0)	{
-		if ( hTimerEventHandle < 0xffff )	{
-		 	sosTIMERRemoveEvent( hTimerEventHandle );
-			hTimerEventHandle = 0xffff;
-		}
-		if ( hSOSDigiDriver < 0xffff )
-		   sosDIGIUnInitDriver( hSOSDigiDriver, _TRUE, _TRUE );
-	}
-*/
 }
 
 
 void digi_close()
 {
-/*
 	if (!Digi_initialized) return;
 	Digi_initialized = 0;
 
-	if ( timer_system_initialized )	{
-		// Remove timer...
-		timer_set_function( NULL );
-	}
-
-	if ( digi_driver_board == _GUS_8_ST )	{
-		digi_close_digi();
-		digi_close_midi();
-	} else {
-		digi_close_midi();
-		digi_close_digi();
-	}
-
-	if ( digi_system_initialized )	{
-	   // uninitialize the DIGI system
-		sosDIGIUnInitSystem();
-		digi_system_initialized = 0;
-	}
-
-	if ( timer_system_initialized )	{
-		// Remove timer...
-		timer_system_initialized = 0;
-		sosTIMERUnInitSystem( 0 );
-	}
-*/
-}
-
-extern int loadpats( char * filename );
-
-int digi_load_fm_banks( char * melodic_file, char * drum_file )
-{	
-/*
-   WORD     wError;                 // error code returned from functions
-
-	// set the instrument file for the MIDI driver to use, since we are using
-	// the FM driver two instrument files are needed, the first is for 
-	// all melodic instruments and the second is for events on channel 10
-	// which is the drum track.
-	// set the drum instruments
-	if (lpInstruments)	{
-		dpmi_unlock_region(lpInstruments, InstrumentSize);
-		free( lpInstruments );
-	}
-			
-	lpInstruments = testLoadFile( melodic_file, &InstrumentSize );
-	if ( !lpInstruments )	{
-		printf( "%s '%s'\n", TXT_SOUND_ERROR_OPEN, melodic_file );
-		return 0;
-	}
-
-	if (!dpmi_lock_region(lpInstruments, InstrumentSize))	{
-		printf( "%s '%s', ptr=0x%8x, len=%d bytes\n", TXT_SOUND_ERROR_LOCK, melodic_file, lpInstruments, InstrumentSize );
-		return 0;
-	}
-	
-	if( ( wError =  sosMIDISetInsData( hSOSMidiDriver, lpInstruments, 0x01  ) ) ) 	{
-		printf( "%s %s \n", TXT_SOUND_ERROR_HMI, sosGetErrorString( wError ) );
-		return 0;
-	}
-	
-	if (lpDrums)	{
-		dpmi_unlock_region(lpDrums, DrumSize);
-		free( lpDrums );
-	}
-			
-	lpDrums = testLoadFile( drum_file, &DrumSize );
-	if ( !lpDrums )	{
-		printf( "%s '%s'\n", TXT_SOUND_ERROR_OPEN, drum_file );
-		return 0;
-	}
-
-	if (!dpmi_lock_region(lpDrums, DrumSize))	{
-		printf( "%s  '%s', ptr=0x%8x, len=%d bytes\n", TXT_SOUND_ERROR_LOCK_DRUMS, drum_file, lpDrums, DrumSize );
-		return 0;
-	}
-	
-	 // set the drum instruments
-	if( ( wError =  sosMIDISetInsData( hSOSMidiDriver, lpDrums, 0x01  ) ) )	{
-		printf( "%s %s\n", TXT_SOUND_ERROR_HMI, sosGetErrorString( wError ) );
-		return 0;
-	}
-	
-	return 1;
-*/
-	return 0;//KRB Comment out...
-
-}
-
-int digi_init_midi()
-{
-/*
-   WORD     wError;                 // error code returned from functions
-	_SOS_MIDI_INIT_DRIVER			sSOSMIDIInitDriver;	// structure for the MIDI driver initialization function 
-	_SOS_MIDI_HARDWARE				sSOSMIDIHardware; 	// structure for the MIDI driver hardware
-
-	if ( digi_midi_type > 0 )	{
-		// Lock the TrackMap array, since HMI references it in an interrupt.
-		if (!dpmi_lock_region ( &sSOSTrackMap, sizeof(sSOSTrackMap)) )	{
-			printf( "%s\n", TXT_SOUND_ERROR_MIDI);
-			digi_close();
-			return 1;
-		}
-
-//		if (!dpmi_lock_region ((void near *)sosMIDICallback, (char *)sosEndMIDICallback - (char near *)sosMIDICallback))	{
-		if (!dpmi_lock_region ((void near *)sosMIDICallback, 4*1024) )	{
-			printf( "%s\n", TXT_SOUND_ERROR_MIDI_CALLBACK);
-			digi_close();
-			return 1;
-		}
-
-	   // initialize the MIDI system
-	   sosMIDIInitSystem( digi_driver_path, _SOS_DEBUG_NORMAL );
-		midi_system_initialized = 1;
-
-	   // set the pointer to the driver memory for the MIDI driver to 
-	   // _NULL. this will tell the load driver routine to allocate new
-	   // memory for the MIDI driver
-	   sSOSMIDIInitDriver.lpDriverMemory  = _NULL;
-		sSOSMIDIInitDriver.sDIGIInitInfo = _NULL;
-	
-		sSOSMIDIHardware.wPort = digi_midi_port;
-	
-	   // load and initialize the MIDI driver 
-	   if( ( wError = sosMIDIInitDriver( digi_midi_type, &sSOSMIDIHardware, &sSOSMIDIInitDriver, &hSOSMidiDriver ) ) )	{
-	      printf( "SOUND: (HMI) '%s'\n", sosGetErrorString( wError ) );
-			digi_close();
-	      return 1;
-	   }
-		sosMIDIEnableChannelStealing( _FALSE );
-	}
-	return 0;
-*/
-	return 0;//KRB Comment out...
-
-}
-
-int digi_init_digi()
-{
-/*
-   WORD     wError;                 // error code returned from functions
-	_SOS_INIT_DRIVER					sSOSInitDriver;			// structure used to initialize the driver
-	_SOS_HARDWARE						sSOSHardwareSettings;	// device settings
-
-	if ( digi_driver_board > 0 )	{
-		memset( &sSOSInitDriver, 0, sizeof(_SOS_INIT_DRIVER) );
-		sSOSInitDriver.wBufferSize			= digi_dma_buffersize;
-		sSOSInitDriver.lpBuffer				= _NULL;
-		sSOSInitDriver.wAllocateBuffer	= _TRUE;
-		//sSOSInitDriver.wParam 				= 19;
-		sSOSInitDriver.wSampleRate			= digi_driver_rate;
-		sSOSInitDriver.lpDriverMemory		= _NULL;
-		sSOSInitDriver.lpTimerMemory		= _NULL;
-	
-		sSOSHardwareSettings.wPort = digi_driver_port;
-		sSOSHardwareSettings.wIRQ = digi_driver_irq;
-		sSOSHardwareSettings.wDMA = digi_driver_dma;
-
-	   if( ( wError = sosDIGIInitDriver(  digi_driver_board, &sSOSHardwareSettings, &sSOSInitDriver, &hSOSDigiDriver ) ) )
-	   {
-	      // display the error types
-	      printf( "SOUND: (HMI) '%s'\n", sosGetErrorString( wError ) );
-			digi_close();
-	      return 1;
-	   }
-
-	   if( ( wError = sosTIMERRegisterEvent( 1193180/digi_timer_rate, sSOSInitDriver.lpFillHandler, &hTimerEventHandle ) ) )	{
-	      // display the error types
-	      printf( "SOUND: (HMI) '%s'\n", sosGetErrorString( wError ) );
-			digi_close();
-	      return 1;
-		}
-	}
-	*/
-	return 0;
+	// ASCENT: was the removal of the timer function and the shutdown of
+	// the SOS MIDI, digital and timer systems.
+	digi_stop_current_song();
+	plat_audio_close();
 }
 
 int digi_init()
 {
 	int i;
-/*
-#ifdef USE_CD
-	{ 
-		FILE * fp;
-		fp = fopen( "hmimdrv.386", "rb" );	
-		if ( fp )
-			fclose(fp);
-		else
-			digi_driver_path = destsat_cdpath;
-	}
-#endif
 
-	if ( FindArg( "-nomusic" )) 
+	if ( FindArg( "-nomusic" ))
 		digi_midi_type = 0;
 
-	if ( (digi_midi_type<1) && (digi_driver_board<1) )	
+	// ASCENT: the board and MIDI device numbers of the config file chose a
+	// SOS driver. Now there is one device, the platform mixer, and it is
+	// used unless the command line has -nosound (inferno.c tests that).
+	// digi_driver_board and digi_midi_type keep their meaning as on/off
+	// values for the other code (piggy.c loads the sounds only if
+	// digi_driver_board is more than 0). The original returned 0 with no
+	// sound if the two values were 0. The same happens here if the device
+	// does not open.
+	if ( plat_audio_init() )	{
+		printf( "SOUND: the audio device did not open.\n" );
+		digi_driver_board = 0;
+		digi_midi_type = 0;
 		return 0;
-
-	if ( !FindArg( "-noloadpats" ) )	{
-		if ( digi_midi_type == _MIDI_GUS )	{
-			char fname[128];
-			strcpy( fname, "DESCENTG.INI" );
-#ifdef USE_CD
-			{
-				FILE * fp = fopen( fname, "rb" );
-				if ( fp )
-					fclose(fp);
-				else {
-					strcpy( fname, destsat_cdpath );	
-					strcat( fname, "DESCENTG.INI" );
-				}
-			}
-#endif
-			loadpats(fname);
-		}
 	}
+	if ( digi_driver_board < 1 )
+		digi_driver_board = 1;
+	if ( (digi_midi_type < 1) && !FindArg( "-nomusic" ) )
+		digi_midi_type = 1;
+
 	Digi_initialized = 1;
-
-	// initialize the DIGI system and lock down all SOS memory
-	sosDIGIInitSystem( digi_driver_path, _SOS_DEBUG_NORMAL );
-	digi_system_initialized = 1;
-
-	// Initialize timer, where we will call it from out own interrupt
-	// routine, and we will call DOS 18.2Hz ourselves.
-	sosTIMERInitSystem( 0, _SOS_DEBUG_NO_TIMER );
-	timer_set_function( sosTIMERHandler );		// New way
-	timer_system_initialized = 1;
-	
-	if ( digi_driver_board == _RAP10_8_MONO )	{
-		if (digi_init_digi()) return 1;
-		if (digi_init_midi()) return 1;
-	} else {
-		if (digi_init_midi()) return 1;
-		if (digi_init_digi()) return 1;
-	}
 
 	if (!digi_atexit_called)	{
 		atexit( digi_close );
@@ -831,15 +558,11 @@ int digi_init()
 	digi_reset_digi_sounds();
 
 	return 0;
-*/
-	return 0;//KRB Comment out...
-
 }
 
 // Toggles sound system on/off
-void digi_reset()	
+void digi_reset()
 {
-/*
 	if ( Digi_initialized )	{
 		digi_reset_digi_sounds();
 		digi_close();
@@ -848,38 +571,28 @@ void digi_reset()
 		digi_init();
 		mprintf( (0, "Sound system ENABLED.\n" ));
 	}
-*/
 }
 
 int digi_total_locks = 0;
 
+// ASCENT: the sound data was locked in memory with DPMI while a sound
+// played. Only the lock counts remain. The sound data must stay in memory
+// while the mixer plays it, and piggy.c keeps it until the program ends.
 ubyte * digi_lock_sound_data( int soundnum )
 {
-/*
-	int i;
-
 	if ( !Digi_initialized ) return NULL;
 	if ( digi_driver_board <= 0 )	return NULL;
 
 	if ( digi_sound_locks[soundnum] == 0 )	{
 		digi_total_locks++;
 		//mprintf(( 0, "Total sound locks = %d\n", digi_total_locks ));
-		i = dpmi_lock_region( GameSounds[soundnum].data, GameSounds[soundnum].length );
-		if ( !i ) Error( "Error locking sound %d\n", soundnum );
 	}
 	digi_sound_locks[soundnum]++;
 	return GameSounds[soundnum].data;
-*/
-	digi_total_locks=digi_total_locks;//blah -KRB
-	return 0;//KRB Comment out...
-
 }
 
 void digi_unlock_sound_data( int soundnum )
 {
-/*
-	int i;
-
 	if ( !Digi_initialized ) return;
 	if ( digi_driver_board <= 0 )	return;
 
@@ -888,34 +601,57 @@ void digi_unlock_sound_data( int soundnum )
 	if ( digi_sound_locks[soundnum] == 1 )	{
 		digi_total_locks--;
 		//mprintf(( 0, "Total sound locks = %d\n", digi_total_locks ));
-		i = dpmi_unlock_region( GameSounds[soundnum].data, GameSounds[soundnum].length );
-		if ( !i ) Error( "Error unlocking sound %d\n", soundnum );
 	}
 	digi_sound_locks[soundnum]--;
-*/
 }
-/*
+
 static int next_handle = 0;
-static WORD SampleHandles[32] = { 0xffff, 0xffff, 0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff };
+static int SampleHandles[32] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
 static int SoundNums[32] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
 static uint SoundVolumes[32] = { -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1 };
-//This block commented out by KRB
-*/
+
+// ASCENT: replaces sosDIGIStartSample. Returns DIGI_NO_HANDLE if the
+// mixer has no free channel.
+static int digi_mixer_start_sample( _SOS_START_SAMPLE * sampledata )
+{
+	return plat_audio_play( sampledata->lpSamplePtr, sampledata->dwSampleSize, digi_sample_rate,
+		sampledata->wVolume, sampledata->wSamplePanLocation, sampledata->wLoopCount != 0 );
+}
+
+// ASCENT: replaces sosDIGIGetSampleHandle, which searched the SOS voices
+// for a sample ID. The sounds that this file started are in SampleHandles
+// and in SoundObjects. Returns DIGI_NO_HANDLE if the sound does not play.
+static int digi_get_sample_handle( int soundno )
+{
+	int i;
+
+	for (i=0; i<32; i++ )	{
+		if ( (SoundNums[i] == soundno) && (SampleHandles[i] != DIGI_NO_HANDLE) && plat_audio_is_playing( SampleHandles[i] ) )
+			return SampleHandles[i];
+	}
+	for (i=0; i<MAX_SOUND_OBJECTS; i++ )	{
+		if ( (SoundObjects[i].flags & SOF_USED) && (SoundObjects[i].flags & SOF_PLAYING) && (SoundObjects[i].soundnum == soundno) )	{
+			if ( plat_audio_is_playing( SoundObjects[i].handle ) )
+				return SoundObjects[i].handle;
+		}
+	}
+	return DIGI_NO_HANDLE;
+}
+
 void digi_reset_digi_sounds()
 {
-/*
 	int i;
 
 	if ( !Digi_initialized ) return;
 	if ( digi_driver_board <= 0 )	return;
 
 	for (i=0; i<32; i++ )	{
-		if (SampleHandles[i] < _MAX_VOICES )	{
-			if ( !sosDIGISampleDone( hSOSDigiDriver, SampleHandles[i])  )		{
+		if (SampleHandles[i] != DIGI_NO_HANDLE )	{
+			if ( plat_audio_is_playing( SampleHandles[i] )  )		{
 				//mprintf(( 0, "Stopping sound %d.\n", next_handle ));
-				sosDIGIStopSample(hSOSDigiDriver, SampleHandles[i]);
+				plat_audio_stop( SampleHandles[i] );
 			}
-			SampleHandles[i] = 0xffff;
+			SampleHandles[i] = DIGI_NO_HANDLE;
 		}
 		if ( SoundNums[i] != -1 )	{
 			digi_unlock_sound_data(SoundNums[i]);
@@ -925,12 +661,10 @@ void digi_reset_digi_sounds()
 	for (i=0; i<MAX_SOUNDS; i++ )	{
 		Assert( digi_sound_locks[i] == 0 );
 	}
-*/
 }
 
 void reset_sounds_on_channel( int channel )
 {
-/*
 	int i;
 
 	if ( !Digi_initialized ) return;
@@ -938,58 +672,50 @@ void reset_sounds_on_channel( int channel )
 
 	for (i=0; i<digi_max_channels; i++ )	{
 		if (SampleHandles[i] == channel )	{
-			SampleHandles[i] = 0xffff;
+			SampleHandles[i] = DIGI_NO_HANDLE;
 			if ( SoundNums[i] != -1 )	{
 				digi_unlock_sound_data(SoundNums[i]);
 				SoundNums[i] = -1;
 			}
 		}
 	}
-*/
 }
 
 
 void digi_set_max_channels(int n)
 {
-/*
 	digi_max_channels	= n;
 
-	if ( digi_max_channels < 1 ) 
+	if ( digi_max_channels < 1 )
 		digi_max_channels = 1;
-	if ( digi_max_channels > (32-MAX_SOUND_OBJECTS) ) 
+	if ( digi_max_channels > (32-MAX_SOUND_OBJECTS) )
 		digi_max_channels = (32-MAX_SOUND_OBJECTS);
 
 	if ( !Digi_initialized ) return;
 	if ( digi_driver_board <= 0 )	return;
 
 	digi_reset_digi_sounds();
-*/
 }
 
 int digi_get_max_channels()
 {
-	//return digi_max_channels;
-	return 0;//KRB Comment out...
-
+	return digi_max_channels;
 }
 
 
-//WORD digi_start_sound(_SOS_START_SAMPLE * sampledata, short soundnum ) //This is the original modified below by KRB
-WORD digi_start_sound(void * sampledata, short soundnum )
-
+int digi_start_sound(_SOS_START_SAMPLE * sampledata, short soundnum )
 {
-/*
 	int i, ntries;
-	WORD sHandle;
+	int sHandle;
 
-	if ( !Digi_initialized ) return 0xFFFF;
-	if ( digi_driver_board <= 0 )	return 0xFFFF;
+	if ( !Digi_initialized ) return DIGI_NO_HANDLE;
+	if ( digi_driver_board <= 0 )	return DIGI_NO_HANDLE;
 
 	soundnum  = soundnum;
 	ntries = 0;
 
 TryNextChannel:
-	if ( (SampleHandles[next_handle] < _MAX_VOICES) && (!sosDIGISampleDone( hSOSDigiDriver, SampleHandles[next_handle]))  )		{
+	if ( (SampleHandles[next_handle] != DIGI_NO_HANDLE) && plat_audio_is_playing( SampleHandles[next_handle] )  )		{
 		if ( (SoundVolumes[next_handle] > digi_volume) && (ntries<digi_max_channels) )	{
 			//mprintf(( 0, "Not stopping loud sound %d.\n", next_handle ));
 			next_handle++;
@@ -999,8 +725,8 @@ TryNextChannel:
 			goto TryNextChannel;
 		}
 		//mprintf(( 0, "[SS:%d]", next_handle ));
-		sosDIGIStopSample(hSOSDigiDriver, SampleHandles[next_handle]);
-		SampleHandles[next_handle] = 0xffff;
+		plat_audio_stop( SampleHandles[next_handle] );
+		SampleHandles[next_handle] = DIGI_NO_HANDLE;
 	}
 
 	if ( SoundNums[next_handle] != -1 )	{
@@ -1010,10 +736,10 @@ TryNextChannel:
 
 //	sampledata->lpSamplePtr = sound_expand_sound( soundnum,  &i );
 //	sampledata->wSampleID = i;
-	
+
 	digi_lock_sound_data(soundnum);
-	sHandle = sosDIGIStartSample( hSOSDigiDriver, sampledata );
-	if ( sHandle == _ERR_NO_SLOTS )	{
+	sHandle = digi_mixer_start_sample( sampledata );
+	if ( sHandle == DIGI_NO_HANDLE )	{
 		mprintf(( 1, "NOT ENOUGH SOUND SLOTS!!!\n" ));
 		digi_unlock_sound_data(soundnum);
 		return sHandle;
@@ -1022,12 +748,12 @@ TryNextChannel:
 
 #ifndef NDEBUG
 	verify_sound_channel_free( sHandle );
-	Assert( sHandle != _ERR_NO_SLOTS );
+	Assert( sHandle != DIGI_NO_HANDLE );
 #endif
 
 	for (i=0; i<digi_max_channels; i++ )	{
 		if (SampleHandles[i] == sHandle )	{
-			SampleHandles[i] = 0xffff;
+			SampleHandles[i] = DIGI_NO_HANDLE;
 			if ( SoundNums[i] != -1 )	{
 				digi_unlock_sound_data(SoundNums[i]);
 				SoundNums[i] = -1;
@@ -1045,15 +771,10 @@ TryNextChannel:
 		next_handle = 0;
 	//mprintf(( 0, "%d samples playing\n", sosDIGISamplesPlaying(hSOSDigiDriver) ));
 	return sHandle;
-*/
-	return 0;//KRB Comment out...
-
 }
 
 int digi_is_sound_playing(int soundno)
 {
-/*
-	WORD SampleHandle;
 	soundno = digi_xlat_sound(soundno);
 
 	if (!Digi_initialized) return 0;
@@ -1065,18 +786,14 @@ int digi_is_sound_playing(int soundno)
 		return 0;
 	}
 
-	SampleHandle = sosDIGIGetSampleHandle( hSOSDigiDriver, soundno );
-	if ( (SampleHandle < _MAX_VOICES) && (!sosDIGISampleDone( hSOSDigiDriver, SampleHandle)) )
+	if ( digi_get_sample_handle( soundno ) != DIGI_NO_HANDLE )
 		return 1;
 	return 0;
-	*/
-	return 0;//KRB Comment out...
 }
 
-void digi_play_sample_once( int soundno, fix max_volume )	
+void digi_play_sample_once( int soundno, fix max_volume )
 {
-/*
-	WORD SampleHandle;
+	int SampleHandle;
 	digi_sound *snd;
 	_SOS_START_SAMPLE sSOSSampleData;
 
@@ -1094,38 +811,32 @@ void digi_play_sample_once( int soundno, fix max_volume )
 		Int3();
 		return;
 	}
-		
-	SampleHandle = sosDIGIGetSampleHandle( hSOSDigiDriver, soundno );
-	if ( (SampleHandle < _MAX_VOICES) && (!sosDIGISampleDone( hSOSDigiDriver, SampleHandle)) )	{
-		sosDIGIStopSample(hSOSDigiDriver, SampleHandle);
+
+	SampleHandle = digi_get_sample_handle( soundno );
+	if ( SampleHandle != DIGI_NO_HANDLE )	{
+		plat_audio_stop( SampleHandle );
 		//while ( !sosDIGISampleDone( hSOSDigiDriver, SampleHandle));
 		//return;
 	}
 
 	memset( &sSOSSampleData, 0, sizeof(_SOS_START_SAMPLE));
 	sSOSSampleData.wLoopCount 				= 0x00;
-	sSOSSampleData.wChannel 				= _CENTER_CHANNEL;
 	sSOSSampleData.wVolume					= fixmuldiv(max_volume,digi_volume,F1_0);
 	sSOSSampleData.wSampleID				= soundno;
-   sSOSSampleData.dwSampleSize 			= ( LONG )snd->length;
+   sSOSSampleData.dwSampleSize 			= snd->length;
 	sSOSSampleData.lpSamplePtr				= snd->data;
-	sSOSSampleData.lpCallback				= _NULL;		//sosDIGISampleCallback;
 	sSOSSampleData.wSamplePanLocation	= 0xffff/2;
-	sSOSSampleData.wSamplePanSpeed 		= 0;
-	sSOSSampleData.wSampleFlags			= _DIGI_SAMPLE_FLAGS;
 
 //	if ( sosDIGISamplesPlaying(hSOSDigiDriver) >= digi_max_channels )
 //		return;
-	
+
    // start the sample playing
 	digi_start_sound( &sSOSSampleData, soundno );
-	*/
 }
 
 
 void digi_play_sample( int soundno, fix max_volume )
 {
-/*
 	digi_sound *snd;
 	_SOS_START_SAMPLE sSOSSampleData;
 
@@ -1147,28 +858,22 @@ void digi_play_sample( int soundno, fix max_volume )
 	//mprintf( (0, "Playing sample of length %d\n", snd->length ));
 	memset( &sSOSSampleData, 0, sizeof(_SOS_START_SAMPLE));
 	sSOSSampleData.wLoopCount 				= 0x00;
-	sSOSSampleData.wChannel 				= _CENTER_CHANNEL;
 	sSOSSampleData.wVolume					= fixmuldiv(max_volume,digi_volume,F1_0);
 	sSOSSampleData.wSampleID				= soundno;
-   sSOSSampleData.dwSampleSize 			= ( LONG )snd->length;
+   sSOSSampleData.dwSampleSize 			= snd->length;
 	sSOSSampleData.lpSamplePtr				= snd->data;
-	sSOSSampleData.lpCallback				= _NULL;		//sosDIGISampleCallback;
 	sSOSSampleData.wSamplePanLocation	= 0xffff/2;
-	sSOSSampleData.wSamplePanSpeed 		= 0;
-	sSOSSampleData.wSampleFlags			= _DIGI_SAMPLE_FLAGS;
 
 //	if ( sosDIGISamplesPlaying(hSOSDigiDriver) >= digi_max_channels )
 //		return;
 
    // start the sample playing
 	digi_start_sound( &sSOSSampleData, soundno );
-*/
 }
 
 
-void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups )	
+void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups )
 {
-/*
 	_SOS_START_SAMPLE sSOSSampleData;
 	digi_sound *snd;
 
@@ -1197,25 +902,68 @@ void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups )
 
 	memset( &sSOSSampleData, 0, sizeof(_SOS_START_SAMPLE));
 	sSOSSampleData.wLoopCount 		= 0x00;
-	sSOSSampleData.wChannel 		= _CENTER_CHANNEL;
 	sSOSSampleData.wSampleID		= soundno;
-	sSOSSampleData.dwSampleSize 	= ( LONG )snd->length;
-	sSOSSampleData.dwSampleByteLength 	= ( LONG )snd->length;
+	sSOSSampleData.dwSampleSize 	= snd->length;
 	sSOSSampleData.lpSamplePtr		= snd->data;
-	sSOSSampleData.lpCallback		= _NULL;		//sosDIGISampleCallback;
 	sSOSSampleData.wSamplePanLocation	= angle;			// 0 - 0xFFFF
-	sSOSSampleData.wSamplePanSpeed 		= 0;
 	sSOSSampleData.wVolume					= fixmuldiv(volume,digi_volume,F1_0);;					// 0 - 0x7fff
-	sSOSSampleData.wSampleFlags			= _DIGI_SAMPLE_FLAGS;
 
    // start the sample playing
 	digi_start_sound( &sSOSSampleData, soundno );
-*/
+}
+
+// ASCENT: there is no MIDI music yet. SOS played the HMP song files with
+// its MIDI drivers, and that code is not in the source release. The
+// functions below keep their names and their bookkeeping:
+// digi_play_midi_song stores the request (song file, bank files, loop
+// flag) and marks the song as started, digi_stop_current_song clears the
+// mark, and digi_midi_set_master_volume takes the volume that SOS got from
+// sosMIDISetMasterVolume. Nothing plays. The files are not opened. A later
+// task can play music from these three functions through
+// plat_audio_music_start, plat_audio_music_stop and
+// plat_audio_music_set_volume.
+static void digi_midi_set_master_volume( int mvolume )
+{
+	mvolume = mvolume;
+}
+
+void digi_stop_current_song()
+{
+	// Stop last song...
+	digi_midi_song_started = 0;
+}
+
+static void digi_copy_song_name( char * dest, char * src )
+{
+	// digi_set_midi_volume passes the stored names back in.
+	if ( (src == NULL) || (src == dest) ) return;
+	strncpy( dest, src, 15 );
+	dest[15] = 0;
+}
+
+void digi_play_midi_song( char * filename, char * melodic_bank, char * drum_bank, int loop )
+{
+	if (!Digi_initialized) return;
+	if ( digi_midi_type <= 0 )	return;
+
+	digi_stop_current_song();
+
+	if ( filename == NULL )	return;
+
+	digi_copy_song_name( digi_last_midi_song, filename );
+	digi_copy_song_name( digi_last_melodic_bank, melodic_bank );
+	digi_copy_song_name( digi_last_drum_bank, drum_bank );
+	digi_last_midi_loop = loop;
+
+	if ( midi_volume < 1 )		{
+		return;				// Don't play song if volume == 0;
+	}
+
+	digi_midi_song_started = 1;
 }
 
 void digi_set_midi_volume( int mvolume )
 {
-/*
 	int old_volume = midi_volume;
 
 	if ( mvolume > 127 )
@@ -1225,21 +973,18 @@ void digi_set_midi_volume( int mvolume )
 	else
 		midi_volume = mvolume;
 
-	if ( (digi_midi_type > 0) && (hSOSMidiDriver < 0xffff) )		{
+	// ASCENT: was (digi_midi_type > 0) && (hSOSMidiDriver < 0xffff).
+	if ( (digi_midi_type > 0) && Digi_initialized )		{
 		if (  (old_volume < 1) && ( midi_volume > 1 ) )	{
-			if (wSongHandle == 0xffff )
+			if (!digi_midi_song_started)
 				digi_play_midi_song( digi_last_midi_song, digi_last_melodic_bank, digi_last_drum_bank, 1 );
 		}
-		_disable();
-		sosMIDISetMasterVolume(midi_volume);
-		_enable();
+		digi_midi_set_master_volume(midi_volume);
 	}
-*/
 }
 
 void digi_set_digi_volume( int dvolume )
 {
-/*
 	dvolume = fixmuldiv( dvolume, _DIGI_MAX_VOLUME, 0x7fff);
 	if ( dvolume > _DIGI_MAX_VOLUME )
 		digi_volume = _DIGI_MAX_VOLUME;
@@ -1252,193 +997,19 @@ void digi_set_digi_volume( int dvolume )
 	if ( digi_driver_board <= 0 )	return;
 
 	digi_sync_sounds();
-*/
 }
 
 
-// 0-0x7FFF 
-void digi_set_volume( int dvolume, int mvolume )	
+// 0-0x7FFF
+void digi_set_volume( int dvolume, int mvolume )
 {
-/*
 	digi_set_midi_volume( mvolume );
 	digi_set_digi_volume( dvolume );
 //	mprintf(( 1, "Volume: 0x%x and 0x%x\n", digi_volume, midi_volume ));
-*/
 }
 
-// allocate memory for file, load file, create far pointer
-// with DS in selector.
-void * testLoadFile( char * szFileName, int * length )
+void digi_get_sound_loc( vms_matrix * listener, vms_vector * listener_pos, int listener_seg, vms_vector * sound_pos, int sound_seg, fix max_volume, int *volume, int *pan, fix max_distance )
 {
-/*
-   PSTR  pDataPtr;
-	CFILE * fp;
-	
-   // open file
-   fp  =  cfopen( szFileName, "rb" );
-	if ( !fp ) return NULL;
-
-   *length  =  cfilelength(fp);
-
-   pDataPtr =  malloc( *length );
-	if ( !pDataPtr ) return NULL;
-
-   // read in driver
-   cfread( pDataPtr, *length, 1, fp);
-
-   // close driver file
-   cfclose( fp );
-
-   // return 
-   return( pDataPtr );
-   */
-   return NULL;//KRB Comment out...
-}
-
-
-// ALL VARIABLES IN HERE MUST BE LOCKED DOWN!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-VOID _far sosMIDICallback( WORD PassedSongHandle )
-{
-	//sosMIDIStartSong(PassedSongHandle);
-	return;//KRB comment out
-} 
-
-VOID sosEndMIDICallback()		// Used to mark the end of sosMIDICallBack
-{
-}
-
-void digi_stop_current_song()
-{
-/*
-	// Stop last song...
-	if (wSongHandle < 0xffff )	{
-	   // stop the last MIDI song from playing
-		sosMIDIStopSong( wSongHandle );
-	   // uninitialize the last MIDI song
-		sosMIDIUnInitSong( wSongHandle );
-		wSongHandle = 0xffff;
-	}
-	if (SongData) 	{
-		if (!dpmi_unlock_region(SongData, SongSize))	{
-			mprintf( (1, "Error unlocking midi file" ));
-		}
-		free(SongData);
-		SongData = NULL;
-	}
-*/
-}
-
-
-void digi_play_midi_song( char * filename, char * melodic_bank, char * drum_bank, int loop )
-{
-/*
-	int i;
-	char fname[128];
-   WORD     wError;                 // error code returned from functions
-	CFILE		*fp;
-
-	// structure to pass sosMIDIInitSong
-	_SOS_MIDI_INIT_SONG     sSOSInitSong;
-
-	if (!Digi_initialized) return;
-	if ( digi_midi_type <= 0 )	return;
-
-	digi_stop_current_song();
-
-	if ( filename == NULL )	return;
-
-	strcpy( digi_last_midi_song, filename );
-	strcpy( digi_last_melodic_bank, melodic_bank );
-	strcpy( digi_last_drum_bank, drum_bank );
-
-	fp = NULL;
-
-	if ( (digi_midi_type==_MIDI_FM)||(digi_midi_type==_MIDI_OPL3) )	{	
-		int sl;
-		sl = strlen( filename );
-		strcpy( fname, filename );	
-		fname[sl-1] = 'q';
-		fp = cfopen( fname, "rb" );
-	}
-
-	if ( !fp  )	{
-		fp = cfopen( filename, "rb" );
-		if (!fp) {
-	 		mprintf( (1, "Error opening midi file, '%s'", filename ));
-	 		return;
-		}
-	}
-	if ( midi_volume < 1 )		{
-		cfclose(fp);
-		return;				// Don't play song if volume == 0;
-	}
-	SongSize = cfilelength( fp );
-	SongData	= malloc( SongSize );
-	if (SongData==NULL)	{
-		cfclose(fp);
-		mprintf( (1, "Error mallocing %d bytes for '%s'", SongSize, filename ));
-		return;
-	}
-	if ( cfread (  SongData, SongSize, 1, fp )!=1)	{
-		mprintf( (1, "Error reading midi file, '%s'", filename ));
-		cfclose(fp);
-		free(SongData);
-		SongData=NULL;
-		return;
-	}
-	cfclose(fp);
-
-	if ( (digi_midi_type==_MIDI_FM)||(digi_midi_type==_MIDI_OPL3) )	{	
-		if ( !digi_load_fm_banks(melodic_bank, drum_bank) )	{
-			return;
-		}
-	}
-		
-	if (!dpmi_lock_region(SongData, SongSize))	{
-		mprintf( (1, "Error locking midi file, '%s'", filename ));
-		free(SongData);
-		SongData=NULL;
-		return;
-	}
-
-	// setup the song initialization structure
-	sSOSInitSong.lpSongData = SongData;
-	if ( loop )
-		sSOSInitSong.lpSongCallback = sosMIDICallback;
-	else
-		sSOSInitSong.lpSongCallback = _NULL;
-
-	for ( i=0; i<32; i++ )
-		sSOSTrackMap.wTrackDevice[i] = _MIDI_MAP_TRACK;
-			
-	for ( i=0; i<_SOS_MIDI_MAX_TRACKS; i++ )
-		_lpSOSMIDITrack[0][i] = _NULL;
-
-	//initialize the song
-	if( ( wError = sosMIDIInitSong( &sSOSInitSong, &sSOSTrackMap, &wSongHandle ) ) )	{
-		mprintf( (1, "\nHMI Error : %s", sosGetErrorString( wError ) ));
-		free(SongData);
-		SongData=NULL;
-		return;
-	}
-
-	Assert( wSongHandle == 0 );
-	 
-  // start the song playing
-   if( ( wError = sosMIDIStartSong( wSongHandle ) ) ) {
-		mprintf( (1, "\nHMI Error : %s", sosGetErrorString( wError ) ));
-	   // uninitialize the last MIDI song
-		sosMIDIUnInitSong( wSongHandle );
-		free(SongData);
-		SongData=NULL;
-		return;
-   }
-   */
-}
-
-void digi_get_sound_loc( vms_matrix * listener, vms_vector * listener_pos, int listener_seg, vms_vector * sound_pos, int sound_seg, fix max_volume, int *volume, int *pan, fix max_distance )	
-{	  
-/*
 	vms_vector	vector_to_sound;
 	fix angle_from_ear, cosang,sinang;
 	fix distance;
@@ -1451,7 +1022,7 @@ void digi_get_sound_loc( vms_matrix * listener, vms_vector * listener_pos, int l
 
 	//	Warning: Made the vm_vec_normalized_dir be vm_vec_normalized_dir_quick and got illegal values to acos in the fang computation.
 	distance = vm_vec_normalized_dir_quick( &vector_to_sound, sound_pos, listener_pos );
-		
+
 	if (distance < max_distance )	{
 		int num_search_segs = f2i(max_distance/20);
 		if ( num_search_segs < 1 ) num_search_segs = 1;
@@ -1470,14 +1041,12 @@ void digi_get_sound_loc( vms_matrix * listener, vms_vector * listener_pos, int l
 				*volume = 0;
 			}
 		}
-	}																					  
-	*/
+	}
 }
 
 
 void digi_init_sounds()
 {
-/*
 	int i;
 
 	if (!Digi_initialized) return;
@@ -1488,19 +1057,17 @@ void digi_init_sounds()
 	for (i=0; i<MAX_SOUND_OBJECTS; i++ )	{
 		if (digi_sounds_initialized) {
 			if ( SoundObjects[i].flags & SOF_PLAYING )	{
-				sosDIGIStopSample( hSOSDigiDriver, SoundObjects[i].handle );
+				plat_audio_stop( SoundObjects[i].handle );
 			}
 		}
 		SoundObjects[i].flags = 0;	// Mark as dead, so some other sound can use this sound
 	}
 	digi_sounds_initialized = 1;
-	*/
 }
 
 void digi_start_sound_object(int i)
 {
-/*
-	// start sample structures 
+	// start sample structures
 	_SOS_START_SAMPLE sSOSSampleData;
 
 	memset( &sSOSSampleData, 0, sizeof(_SOS_START_SAMPLE));
@@ -1508,29 +1075,21 @@ void digi_start_sound_object(int i)
 	if (!Digi_initialized) return;
 	if (digi_driver_board<1) return;
 
-	if (!dpmi_lock_region( GameSounds[SoundObjects[i].soundnum].data, GameSounds[SoundObjects[i].soundnum].length ))
-		Error( "Error locking sound object %d\n", SoundObjects[i].soundnum );
-	
 	// Sound is not playing, so we must start it again
 	SoundObjects[i].signature=next_signature++;
-	sSOSSampleData.wChannel 		= _CENTER_CHANNEL;
 	sSOSSampleData.wSampleID		= SoundObjects[i].soundnum;
-	sSOSSampleData.dwSampleSize 	= ( LONG )GameSounds[SoundObjects[i].soundnum].length;
+	sSOSSampleData.dwSampleSize 	= GameSounds[SoundObjects[i].soundnum].length;
 	sSOSSampleData.lpSamplePtr		= GameSounds[SoundObjects[i].soundnum].data;
-	sSOSSampleData.lpCallback		= _NULL;		//sosDIGISampleCallback;
 	sSOSSampleData.wSamplePanLocation	= SoundObjects[i].pan;			// 0 - 0xFFFF
-	sSOSSampleData.wSamplePanSpeed 		= 0;
 	sSOSSampleData.wVolume					= fixmuldiv(SoundObjects[i].volume,digi_volume,F1_0);					// 0 - 0x7fff
-	sSOSSampleData.wSampleFlags			= _DIGI_SAMPLE_FLAGS;
 	if (SoundObjects[i].flags & SOF_PLAY_FOREVER )	{
 		sSOSSampleData.wLoopCount 		= -1;				// loop forever.
-		sSOSSampleData.wSampleFlags |= _LOOPING; 		// Mark it as a looper.
 	}
 			// start the sample playing
-	
-	//SoundObjects[i].handle = digi_start_sound( &sSOSSampleData );	
-	SoundObjects[i].handle = sosDIGIStartSample( hSOSDigiDriver, &sSOSSampleData );
-	if (SoundObjects[i].handle != _ERR_NO_SLOTS )		{
+
+	//SoundObjects[i].handle = digi_start_sound( &sSOSSampleData );
+	SoundObjects[i].handle = digi_mixer_start_sample( &sSOSSampleData );
+	if (SoundObjects[i].handle != DIGI_NO_HANDLE )		{
 		SoundObjects[i].flags |= SOF_PLAYING;
 		//mprintf(( 0, "Starting sound object %d on channel %d\n", i, SoundObjects[i].handle ));
 		reset_sounds_on_channel( SoundObjects[i].handle );
@@ -1538,13 +1097,10 @@ void digi_start_sound_object(int i)
 //	else
 //		mprintf( (1, "[Out of channels: %i] ", i ));
 
-*/
-
 }
 
 int digi_link_sound_to_object2( int org_soundnum, short objnum, int forever, fix max_volume, fix  max_distance )
 {
-/*
 	int i,volume,pan;
 	object * objp;
 	int soundnum;
@@ -1574,7 +1130,7 @@ int digi_link_sound_to_object2( int org_soundnum, short objnum, int forever, fix
 	for (i=0; i<MAX_SOUND_OBJECTS; i++ )
 		if (SoundObjects[i].flags==0)
 			break;
-	
+
 	if (i==MAX_SOUND_OBJECTS) {
 		mprintf((1, "Too many sound objects!\n" ));
 		return -1;
@@ -1593,26 +1149,22 @@ int digi_link_sound_to_object2( int org_soundnum, short objnum, int forever, fix
 	SoundObjects[i].soundnum = soundnum;
 
 	objp = &Objects[SoundObjects[i].objnum];
-	digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum, 
+	digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum,
                        &objp->pos, objp->segnum, SoundObjects[i].max_volume,
                        &SoundObjects[i].volume, &SoundObjects[i].pan, SoundObjects[i].max_distance );
 
 	digi_start_sound_object(i);
 
 	return SoundObjects[i].signature;
-*/
-	return 0;//KRB -Comment out
 }
 
 int digi_link_sound_to_object( int soundnum, short objnum, int forever, fix max_volume )
 {																									// 10 segs away
-	//return digi_link_sound_to_object2( soundnum, objnum, forever, max_volume, 256*F1_0  );
-	return 0;//KRB comment out 98
+	return digi_link_sound_to_object2( soundnum, objnum, forever, max_volume, 256*F1_0  );
 }
 
 int digi_link_sound_to_pos2( int org_soundnum, short segnum, short sidenum, vms_vector * pos, int forever, fix max_volume, fix max_distance )
 {
-/*
 	int i, volume, pan;
 	int soundnum;
 
@@ -1642,7 +1194,7 @@ int digi_link_sound_to_pos2( int org_soundnum, short segnum, short sidenum, vms_
 	for (i=0; i<MAX_SOUND_OBJECTS; i++ )
 		if (SoundObjects[i].flags==0)
 			break;
-	
+
 	if (i==MAX_SOUND_OBJECTS) {
 		mprintf((1, "Too many sound objects!\n" ));
 		return -1;
@@ -1661,27 +1213,23 @@ int digi_link_sound_to_pos2( int org_soundnum, short segnum, short sidenum, vms_
 	SoundObjects[i].max_distance = max_distance;
 	SoundObjects[i].volume = 0;
 	SoundObjects[i].pan = 0;
-	digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum, 
+	digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum,
                        &SoundObjects[i].position, SoundObjects[i].segnum, SoundObjects[i].max_volume,
                        &SoundObjects[i].volume, &SoundObjects[i].pan, SoundObjects[i].max_distance );
-	
+
 	digi_start_sound_object(i);
 
 	return SoundObjects[i].signature;
-	*/
-	return 0;//KRB comment out '98
 }
 
 int digi_link_sound_to_pos( int soundnum, short segnum, short sidenum, vms_vector * pos, int forever, fix max_volume )
 {
-	//return digi_link_sound_to_pos2( soundnum, segnum, sidenum, pos, forever, max_volume, F1_0 * 256 );
-	return 0;//KRB comment out project...	
+	return digi_link_sound_to_pos2( soundnum, segnum, sidenum, pos, forever, max_volume, F1_0 * 256 );
 }
 
 
 void digi_kill_sound_linked_to_segment( int segnum, int sidenum, int soundnum )
 {
-/*
 	int i,killed;
 
 	soundnum = digi_xlat_sound(soundnum);
@@ -1695,7 +1243,7 @@ void digi_kill_sound_linked_to_segment( int segnum, int sidenum, int soundnum )
 		if ( (SoundObjects[i].flags & SOF_USED) && (SoundObjects[i].flags & SOF_LINK_TO_POS) )	{
 			if ((SoundObjects[i].segnum == segnum) && (SoundObjects[i].soundnum==soundnum ) && (SoundObjects[i].sidenum==sidenum) )	{
 				if ( SoundObjects[i].flags & SOF_PLAYING )	{
-					sosDIGIStopSample( hSOSDigiDriver, SoundObjects[i].handle );
+					plat_audio_stop( SoundObjects[i].handle );
 				}
 				SoundObjects[i].flags = 0;	// Mark as dead, so some other sound can use this sound
 				killed++;
@@ -1707,12 +1255,10 @@ void digi_kill_sound_linked_to_segment( int segnum, int sidenum, int soundnum )
 	if ( killed > 1 )	{
 		mprintf( (1, "ERROR: More than 1 sounds were deleted from seg %d\n", segnum ));
 	}
-*/
 }
 
 void digi_kill_sound_linked_to_object( int objnum )
 {
-/*
 	int i,killed;
 
 	if (!Digi_initialized) return;
@@ -1724,7 +1270,7 @@ void digi_kill_sound_linked_to_object( int objnum )
 		if ( (SoundObjects[i].flags & SOF_USED) && (SoundObjects[i].flags & SOF_LINK_TO_OBJ ) )	{
 			if (SoundObjects[i].objnum == objnum)	{
 				if ( SoundObjects[i].flags & SOF_PLAYING )	{
-					sosDIGIStopSample( hSOSDigiDriver, SoundObjects[i].handle );
+					plat_audio_stop( SoundObjects[i].handle );
 				}
 				SoundObjects[i].flags = 0;	// Mark as dead, so some other sound can use this sound
 				killed++;
@@ -1736,7 +1282,6 @@ void digi_kill_sound_linked_to_object( int objnum )
 	if ( killed > 1 )	{
 		mprintf( (1, "ERROR: More than 1 sounds were deleted from object %d\n", objnum ));
 	}
-*/
 }
 
 
@@ -1744,7 +1289,7 @@ void digi_kill_sound_linked_to_object( int objnum )
 //--unused-- {
 //--unused-- 	int i;
 //--unused-- 	if (!Digi_initialized) return;
-//--unused-- 
+//--unused--
 //--unused-- 	for (i=0; i<MAX_SOUND_OBJECTS; i++ )	{
 //--unused-- 		if ( SoundObjects[i].flags & SOF_USED )	{
 //--unused-- 			if (SoundObjects[i].signature == signature )	{
@@ -1759,7 +1304,6 @@ void digi_kill_sound_linked_to_object( int objnum )
 
 void digi_sync_sounds()
 {
-/*
 	int i;
 	int oldvolume, oldpan;
 
@@ -1775,7 +1319,7 @@ void digi_sync_sounds()
 //NOT_MIDI_CHECK					mprintf(( 0, "MIDI[%d] CHANGED FROM 0x%x to 0x%x\n", i, MIDI_SAVED_DATA[i], SongData[i] ));
 //NOT_MIDI_CHECK					MIDI_SAVED_DATA[i] = SongData[i];
 //NOT_MIDI_CHECK				}
-//NOT_MIDI_CHECK			}		
+//NOT_MIDI_CHECK			}
 //NOT_MIDI_CHECK			//Int3();		// Midi data changed!!!!
 //NOT_MIDI_CHECK			MIDI_CRC=new_crc;
 //NOT_MIDI_CHECK		}
@@ -1789,63 +1333,62 @@ void digi_sync_sounds()
 			if ( !(SoundObjects[i].flags & SOF_PLAY_FOREVER) )	{
 			 	// Check if its done.
 				if (SoundObjects[i].flags & SOF_PLAYING) {
-					if (sosDIGISampleDone(hSOSDigiDriver, SoundObjects[i].handle) )	{
+					if ( !plat_audio_is_playing( SoundObjects[i].handle ) )	{
 						SoundObjects[i].flags = 0;	// Mark as dead, so some other sound can use this sound
 						continue;		// Go on to next sound...
 					}
 				}
-			}			
-		
+			}
+
 			if ( SoundObjects[i].flags & SOF_LINK_TO_POS )	{
-				digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum, 
+				digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum,
                                 &SoundObjects[i].position, SoundObjects[i].segnum, SoundObjects[i].max_volume,
                                 &SoundObjects[i].volume, &SoundObjects[i].pan, SoundObjects[i].max_distance );
 
 			} else if ( SoundObjects[i].flags & SOF_LINK_TO_OBJ )	{
 				object * objp;
-	
+
 				objp = &Objects[SoundObjects[i].objnum];
-		
+
 				if ((objp->type==OBJ_NONE) || (objp->signature!=SoundObjects[i].objsignature))	{
 					// The object that this is linked to is dead, so just end this sound if it is looping.
 					if ( (SoundObjects[i].flags & SOF_PLAYING)  && (SoundObjects[i].flags & SOF_PLAY_FOREVER))	{
-						sosDIGIStopSample( hSOSDigiDriver, SoundObjects[i].handle );
+						plat_audio_stop( SoundObjects[i].handle );
 					}
 					SoundObjects[i].flags = 0;	// Mark as dead, so some other sound can use this sound
 					continue;		// Go on to next sound...
 				} else {
-					digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum, 
+					digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum,
 	                                &objp->pos, objp->segnum, SoundObjects[i].max_volume,
                                    &SoundObjects[i].volume, &SoundObjects[i].pan, SoundObjects[i].max_distance );
 				}
 			}
-			 
+
 			if (oldvolume != SoundObjects[i].volume) 	{
 				if ( SoundObjects[i].volume < 1 )	{
 					// Sound is too far away, so stop it from playing.
 					if ((SoundObjects[i].flags & SOF_PLAYING)&&(SoundObjects[i].flags & SOF_PLAY_FOREVER))	{
-						sosDIGIStopSample( hSOSDigiDriver, SoundObjects[i].handle );
+						plat_audio_stop( SoundObjects[i].handle );
 						SoundObjects[i].flags &= ~SOF_PLAYING;		// Mark sound as not playing
 					}
 				} else {
 					if (!(SoundObjects[i].flags & SOF_PLAYING))	{
 						digi_start_sound_object(i);
 					} else {
-						sosDIGISetSampleVolume( hSOSDigiDriver, SoundObjects[i].handle, fixmuldiv(SoundObjects[i].volume,digi_volume,F1_0) );
+						plat_audio_set_volume( SoundObjects[i].handle, fixmuldiv(SoundObjects[i].volume,digi_volume,F1_0) );
 					}
 				}
 			}
-				
+
 			if (oldpan != SoundObjects[i].pan) 	{
 				if (SoundObjects[i].flags & SOF_PLAYING)
-					sosDIGISetPanLocation( hSOSDigiDriver, SoundObjects[i].handle, SoundObjects[i].pan );
+					plat_audio_set_pan( SoundObjects[i].handle, SoundObjects[i].pan );
 			}
 
 
 		}
 	}
 
-*/
 }
 
 
@@ -1853,7 +1396,6 @@ int sound_paused = 0;
 
 void digi_pause_all()
 {
-/*
 	int i;
 
 	if (!Digi_initialized) return;
@@ -1868,26 +1410,22 @@ void digi_pause_all()
 			//	_enable();
 		  	//	mprintf(( 0, "Paused song %d\n", wSongHandle ));
 		   //}
-			_disable();
-			sosMIDISetMasterVolume(0);
-			_enable();
+			digi_midi_set_master_volume(0);
 		}
 		if (digi_driver_board>0)	{
 			for (i=0; i<MAX_SOUND_OBJECTS; i++ )	{
 				if ( (SoundObjects[i].flags & SOF_USED) && (SoundObjects[i].flags & SOF_PLAYING)&& (SoundObjects[i].flags & SOF_PLAY_FOREVER) )	{
-					sosDIGIStopSample( hSOSDigiDriver, SoundObjects[i].handle );
+					plat_audio_stop( SoundObjects[i].handle );
 					SoundObjects[i].flags &= ~SOF_PLAYING;		// Mark sound as not playing
-				}			
+				}
 			}
 		}
 	}
 	sound_paused++;
-*/
 }
 
 void digi_resume_all()
 {
-/*
 	if (!Digi_initialized) return;
 
 	Assert( sound_paused > 0 );
@@ -1902,54 +1440,38 @@ void digi_resume_all()
 			//	_enable();
 			//	mprintf(( 0, "Resumed song %d\n", wSongHandle ));
 			//}
-			_disable();
-			sosMIDISetMasterVolume(midi_volume);
-			_enable();
+			digi_midi_set_master_volume(midi_volume);
 		}
 	}
 	sound_paused--;
-*/
 }
 
 
 void digi_stop_all()
 {
-	/*
 	int i;
 
 	if (!Digi_initialized) return;
 
 	if ( digi_midi_type > 0 )	{
-		if (wSongHandle < 0xffff )	{
-		   // stop the last MIDI song from playing
-			sosMIDIStopSong( wSongHandle );
-		   // uninitialize the last MIDI song
-			sosMIDIUnInitSong( wSongHandle );
-			wSongHandle = 0xffff;
-		}
-		if (SongData) 	{
-			free(SongData);
-			SongData = NULL;
-		}
+		digi_stop_current_song();
 	}
 
 	if (digi_driver_board>0)	{
 		for (i=0; i<MAX_SOUND_OBJECTS; i++ )	{
 			if ( SoundObjects[i].flags & SOF_USED )	{
 				if ( SoundObjects[i].flags & SOF_PLAYING )	{
-					sosDIGIStopSample( hSOSDigiDriver, SoundObjects[i].handle );
+					plat_audio_stop( SoundObjects[i].handle );
 				}
 				SoundObjects[i].flags = 0;	// Mark as dead, so some other sound can use this sound
 			}
 		}
 	}
-	*/
 }
 
 #ifndef NDEBUG
 int verify_sound_channel_free( int channel )
 {
-	/*
 	int i;
 	if (digi_driver_board>0)	{
 		for (i=0; i<MAX_SOUND_OBJECTS; i++ )	{
@@ -1963,7 +1485,6 @@ int verify_sound_channel_free( int channel )
 			}
 		}
 	}
-	*/
 	return 0;
 }
 #endif

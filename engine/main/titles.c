@@ -167,8 +167,7 @@ static char rcsid[] = "$Id: titles.c 2.10 1995/06/15 12:14:16 john Exp $";
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <process.h>
-#include <io.h>
+// ASCENT: process.h and io.h removed (DOS headers)
 
 #include "types.h"
 #include "timer.h"
@@ -179,8 +178,11 @@ static char rcsid[] = "$Id: titles.c 2.10 1995/06/15 12:14:16 john Exp $";
 #include "pcx.h"
 #include "mem.h"
 #include "joy.h"
+// ASCENT: the arcade version and the coin device are not built
+#ifdef ARCADE
 #include "arcade.h"
 #include "coindev.h"
+#endif
 #include "mono.h"
 #include "gamefont.h"
 #include "cfile.h"
@@ -197,9 +199,24 @@ static char rcsid[] = "$Id: titles.c 2.10 1995/06/15 12:14:16 john Exp $";
 #include "kmatrix.h"
 #include "piggy.h"
 #include "songs.h"
-#include "vfx.h"
+// ASCENT: vfx.h removed (virtual reality headset, not built)
 #include "newmenu.h"
 #include "state.h"
+#include "game.h"			// ASCENT: for Game_mode and Function_mode
+#include "gameseq.h"		// ASCENT: for Next_level_num
+#include "titles.h"		// ASCENT: for the prototypes of this file
+#include "platform.h"	// ASCENT: for plat_pump and plat_sleep_ms
+
+// ASCENT: prototype added, the function is used before its definition
+void title_save_game();
+
+// ASCENT: new. The original loops read the timer until a time passed.
+// This wait sleeps and does not spin.
+static void title_wait_until(fix t)
+{
+	while (timer_get_fixed_seconds() < t)
+		plat_sleep_ms(1);
+}
 
 ubyte New_pal[768];
 int	New_pal_254_bash;
@@ -224,6 +241,10 @@ int local_key_inkey(void)
 	int	rval;
 
 	rval = key_inkey();
+
+	// ASCENT: if the user closes the window, the screens end as with Esc
+	if (!plat_pump())
+		return KEY_ESC;
 
 	if ( rval==KEY_ALTED+KEY_F2 )	{
 	 	title_save_game();
@@ -252,7 +273,7 @@ int show_title_screen( char * filename, int allow_keys )
 		return 0;
 	}
 
-	vfx_set_palette_sub( New_pal );
+	// ASCENT: vfx_set_palette_sub call removed (virtual reality headset)
 	gr_palette_clear();	
 	gr_set_current_canvas( NULL );
 	gr_bitmap( 0, 0, &title_bm );
@@ -264,6 +285,8 @@ int show_title_screen( char * filename, int allow_keys )
 	while (1)	{
 		if ( local_key_inkey() && allow_keys ) break;
 		if ( timer_get_fixed_seconds() > timer ) break;
+		// ASCENT: the loop sleeps and does not spin
+		plat_sleep_ms(1);
 
 		#ifdef ARCADE
 		{
@@ -432,7 +455,7 @@ void show_bitmap_frame(void)
 			New_pal[254*3+1] = 0;
 			New_pal[254*3+2] = 0;
 			gr_palette_load( New_pal );
-			vfx_set_palette_sub( New_pal );
+			// ASCENT: vfx_set_palette_sub call removed (virtual reality headset)
 		}
 
 		switch (Animating_bitmap_type) {
@@ -587,8 +610,11 @@ int show_char_delay(char the_char, int delay, int robot_num, int cursor_flag)
 		if (delay != 0)
 			show_bitmap_frame();
 
-		while (timer_get_fixed_seconds() < start_time + delay/2)
-			;
+		// ASCENT: show the frame with the cursor and the animations.
+		// The wait sleeps and does not spin.
+		if (delay != 0)
+			gr_present();
+		title_wait_until(start_time + delay/2);
 
 		start_time = timer_get_fixed_seconds();
 	}
@@ -618,9 +644,11 @@ int load_briefing_screen( int screen_num )
 {
 	int	pcx_error;
 
-	if ((pcx_error=pcx_read_bitmap( &Briefing_screens[screen_num].bs_name, &grd_curcanv->cv_bitmap, grd_curcanv->cv_bitmap.bm_type, New_pal ))!=PCX_ERROR_NONE)	{
+	// ASCENT: "&" removed from the file name argument (pointer to array),
+	// and the second printf, which had 0 as its format, is mprintf now.
+	if ((pcx_error=pcx_read_bitmap( Briefing_screens[screen_num].bs_name, &grd_curcanv->cv_bitmap, grd_curcanv->cv_bitmap.bm_type, New_pal ))!=PCX_ERROR_NONE)	{
 		printf( "File '%s', PCX load error: %s\n  (It's a briefing screen.  Does this cause you pain?)\n",Briefing_screens[screen_num].bs_name, pcx_errormsg(pcx_error));
-		printf(0, "File '%s', PCX load error: %s (%i)\n  (It's a briefing screen.  Does this cause you pain?)\n",Briefing_screens[screen_num].bs_name, pcx_errormsg(pcx_error), pcx_error);
+		mprintf((0, "File '%s', PCX load error: %s (%i)\n  (It's a briefing screen.  Does this cause you pain?)\n",Briefing_screens[screen_num].bs_name, pcx_errormsg(pcx_error), pcx_error));
 		Int3();
 		return 0;
 	}
@@ -816,11 +844,12 @@ int show_briefing_message(int screen_num, char *message)
 						keypress = 0;
 						break;					// Time out after 1 minute..
 					}
-					while (timer_get_fixed_seconds() < start_time + KEY_DELAY_DEFAULT/2)
-						;
+					// ASCENT: the wait sleeps and does not spin
+					title_wait_until(start_time + KEY_DELAY_DEFAULT/2);
 					flash_cursor(flashing_cursor);
 					show_spinning_robot_frame(robot_num);
 					show_bitmap_frame();
+					gr_present();		// ASCENT: show the frame
 					start_time += KEY_DELAY_DEFAULT/2;
 				}
 
@@ -901,11 +930,13 @@ int show_briefing_message(int screen_num, char *message)
 					keypress = 0;
 					break;					// Time out after 1 minute..
 				}
+				// ASCENT: the wait sleeps and does not spin
 				while (timer_get_approx_seconds() < start_time + KEY_DELAY_DEFAULT/2)
-					;
+					plat_sleep_ms(1);
 				flash_cursor(flashing_cursor);
 				show_spinning_robot_frame(robot_num);
 				show_bitmap_frame();
+				gr_present();		// ASCENT: show the frame
 				start_time += KEY_DELAY_DEFAULT/2;
 			}
 
@@ -977,16 +1008,19 @@ void load_screen_text(char *filename, char **buf)
 
 		len = cfilelength(ifile);
 		//MALLOC(*buf,char, len);//Unable to get this to compile...is it a case issue? -KRB
-		*buf=(char *)malloc(len*sizeof(char));//My hack -KRB
+		// ASCENT: one more byte, set to 0 below. get_briefing_message
+		// searches the text for a 0, and the file does not end with one.
+		*buf=(char *)malloc((len+1)*sizeof(char));//My hack -KRB
 		cfread(*buf, 1, len, ifile);
 		cfclose(ifile);
 	} else {
 		len = cfilelength(tfile);
 		//MALLOC(*buf, char, len);-KRB
-		*buf=(char *)malloc(len*sizeof(char));//-KRB
+		*buf=(char *)malloc((len+1)*sizeof(char));//-KRB
 		cfread(*buf, 1, len, tfile);
 		cfclose(tfile);
 	}
+	(*buf)[len] = 0;
 
 	if (have_binary) {
 		char *ptr;
@@ -1039,14 +1073,15 @@ int show_briefing_screen( int screen_num, int allow_keys)
 	}
 
 	briefing_bm.bm_data=NULL;	
-	if ((pcx_error=pcx_read_bitmap( &Briefing_screens[screen_num].bs_name, &briefing_bm, BM_LINEAR, New_pal ))!=PCX_ERROR_NONE)	{
+	// ASCENT: "&" removed from the file name argument (pointer to array)
+	if ((pcx_error=pcx_read_bitmap( Briefing_screens[screen_num].bs_name, &briefing_bm, BM_LINEAR, New_pal ))!=PCX_ERROR_NONE)	{
 		printf( "PCX load error: %s.  File '%s'\n\n", pcx_errormsg(pcx_error), Briefing_screens[screen_num].bs_name);
 		mprintf((0, "File '%s', PCX load error: %s (%i)\n  (It's a briefing screen.  Does this cause you pain?)\n",Briefing_screens[screen_num].bs_name, pcx_errormsg(pcx_error), pcx_error));
 		Int3();
 		return 0;
 	}
 
-	vfx_set_palette_sub( New_pal );
+	// ASCENT: vfx_set_palette_sub call removed (virtual reality headset)
 	gr_palette_clear();
 	gr_bitmap( 0, 0, &briefing_bm );
 

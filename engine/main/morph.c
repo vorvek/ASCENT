@@ -132,6 +132,15 @@ static char rcsid[] = "$Id: morph.c 2.1 1995/02/27 18:26:33 john Exp $";
 #include <stdlib.h>
 #include <string.h>
 
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #include "texmap.h"
 #include "error.h"
 

@@ -118,10 +118,17 @@ static char rcsid[] = "$Id: wall.c 2.1 1995/03/21 14:39:04 john Exp $";
 #include "wall.h"
 #include "switch.h"
 #include "inferno.h"
+// ASCENT: the editor header is included only in the EDITOR build (it needs ui.h).
+#ifdef EDITOR
 #include "editor\editor.h"
+#endif
 #include "segment.h"
 #include "error.h"
 #include "gameseg.h"
+
+// ASCENT: prototype for a function that is used before the definition.
+void kill_stuck_objects(int wallnum);
+
 #include "game.h"
 #include "bm.h"
 #include "vclip.h"

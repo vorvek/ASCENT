@@ -7,3 +7,13 @@ target_link_libraries(d_platform PRIVATE SDL3::SDL3)
 
 add_executable(test_window test_window.c)
 target_link_libraries(test_window PRIVATE d_platform d_fix d_common)
+
+# The mixer test does not open a device.
+add_executable(test_audio test_audio.c)
+target_link_libraries(test_audio PRIVATE d_platform d_common)
+add_test(NAME platform_audio COMMAND test_audio)
+
+# A program for a person: it plays a test pattern on the real device.
+# It is not a test.
+add_executable(test_audio_play test_audio_play.c)
+target_link_libraries(test_audio_play PRIVATE d_platform d_common)

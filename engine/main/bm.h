@@ -261,6 +261,29 @@ extern int Dead_modelnums[];
 int bm_init();
 void bm_close();
 
+// ASCENT: the BITMAPS.TBL parser (bmread.c) is built without EDITOR now.
+// bm_init() loads the game tables from the PIG file. bm_init_use_tbl()
+// loads them from BITMAPS.TBL (or BITMAPS.BIN). Call one of the two.
+int bm_init_use_tbl();
+
+// ASCENT: the sizes of the table records in the PIG file (1 byte packing,
+// 32-bit pointers), and the functions of bm.c that convert one record on
+// disk to the structure in memory.
+#define BITMAP_INDEX_DISK_SIZE		2
+#define TMAP_INFO_DISK_SIZE			26		// 13+1+4+4+4
+#define VCLIP_DISK_SIZE					82		// 4+4+4+4+2+30*2+4
+#define ECLIP_DISK_SIZE					130	// vclip+4+4+2+2+9*4
+#define WCLIP_DISK_SIZE					66		// 4+2+20*2+2+2+2+13+1
+#define ROBOT_INFO_DISK_SIZE			486
+#define JOINTPOS_DISK_SIZE				8
+#define WEAPON_INFO_DISK_SIZE			115
+#define POWERUP_TYPE_INFO_DISK_SIZE	16
+#define POLYMODEL_DISK_SIZE			734	// model_data is 4 bytes on disk
+#define PLAYER_SHIP_DISK_SIZE			132
+
+struct CFILE;
+void bm_read_all(struct CFILE * fp);
+
 // Initializes the Texture[] array of bmd_bitmap structures.
 void init_textures();
 

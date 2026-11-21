@@ -413,6 +413,15 @@ static char rcsid[] = "$Id: collide.c 2.5 1995/07/26 12:07:46 john Exp $";
 #include <stdlib.h>
 #include <stdio.h>
 
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #include "rle.h"
 #include "inferno.h"
 #include "game.h"

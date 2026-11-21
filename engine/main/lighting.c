@@ -132,6 +132,15 @@ static char rcsid[] = "$Id: lighting.c 2.1 1995/07/24 13:21:56 john Exp $";
 #include <stdlib.h>
 #include <string.h>	// for memset()
 
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #include "inferno.h"
 #include "segment.h"
 #include "error.h"

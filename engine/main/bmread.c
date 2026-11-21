@@ -48,21 +48,21 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 
 #include "settings.h"
 
-#ifdef EDITOR
+// ASCENT: the original built this whole file only with EDITOR. The target
+// game loads its tables from BITMAPS.TBL, so the parser is now always built.
+// The parts that need the editor (texture page marks, bm_write_all and the
+// PIG dump) are still under EDITOR. conio.h, io.h and cflib.h are removed.
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <conio.h>
 #include <string.h>
-#include <io.h>
 
 #include "types.h"
 #include "inferno.h"
 #include "gr.h"
 #include "bm.h"
 #include "mem.h"
-#include "cflib.h"
 #include "mono.h"
 #include "error.h"
 #include "object.h"
@@ -94,7 +94,9 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 #include "args.h"
 
 
+#ifdef EDITOR
 #include "editor\texpage.h"
+#endif
 
 #define BM_NONE			-1
 #define BM_COCKPIT		 0
@@ -149,6 +151,50 @@ static int			crit_clip;		//clip number to play when destroyed
 static int			crit_flag;		//flag if this is a destroyed eclip
 static int			tmap1_flag;		//flag if this is used as tmap_num (not tmap_num2)
 static int			num_sounds=0;
+
+// ASCENT: MAX_NUM_NET_PLAYERS comes from multi.h only when NETWORK is
+// defined. The editor build always had NETWORK. The value is the same.
+#ifndef MAX_NUM_NET_PLAYERS
+#define MAX_NUM_NET_PLAYERS 8
+#endif
+
+// ASCENT: prototypes of the functions that the original called before their
+// definitions (implicit declarations are errors now).
+void verify_textures();
+void bm_read_eclip();
+void bm_read_gauges();
+void bm_read_wclip();
+void bm_read_vclip();
+int bm_read_sound();
+void bm_read_robot_ai();
+void bm_read_robot();
+void bm_read_object();
+void bm_read_player_ship();
+void bm_read_some_file();
+void bm_read_weapon(int unused_flag);
+void bm_read_powerup(int unused_flag);
+void bm_read_hostage();
+void bm_read_hostage_face();
+
+// ASCENT: replaces _splitpath(filename,NULL,NULL,fname,NULL) of the Watcom
+// library: copies the file name without drive, directory and extension.
+// The extension starts at the last dot, as in _splitpath. fname has room
+// for 20 characters in all callers.
+static void bm_get_fname( char * filename, char * fname )
+{
+	char *p, *start, *dot;
+	int len;
+
+	start = filename;
+	for (p=filename; *p; p++ )
+		if ( (*p==':') || (*p=='/') || (*p=='\\') )
+			start = p+1;
+	dot = strrchr( start, '.' );
+	len = dot ? (int)(dot-start) : (int)strlen(start);
+	if (len > 19) len = 19;
+	memcpy( fname, start, len );
+	fname[len] = 0;
+}
 
 
 
@@ -218,7 +264,7 @@ bitmap_index bm_load_sub( char * filename )
 	}
 #endif
 
-	_splitpath(  filename, NULL, NULL, fname, NULL );
+	bm_get_fname( filename, fname );		// ASCENT: was _splitpath
 
 	bitmap_num=piggy_find_bitmap( fname );
 	if (bitmap_num.index)	{
@@ -269,7 +315,7 @@ void ab_load( char * filename, bitmap_index bmp[], int *nframes )
 #endif
 
 
-	_splitpath( filename, NULL, NULL, fname, NULL );
+	bm_get_fname( filename, fname );		// ASCENT: was _splitpath
 	
 	for (i=0; i<MAX_BITMAPS_PER_BRUSH; i++ )	{
 		sprintf( tempname, "%s#%d", fname, i );
@@ -285,7 +331,7 @@ void ab_load( char * filename, bitmap_index bmp[], int *nframes )
 		return;
 	}
 
-	iff_error = iff_read_animbrush(filename,bm,MAX_BITMAPS_PER_BRUSH,nframes,&newpal);
+	iff_error = iff_read_animbrush(filename,bm,MAX_BITMAPS_PER_BRUSH,nframes,newpal);		// ASCENT: was &newpal, a pointer to the array
 	if (iff_error != IFF_NO_ERROR)	{
 		mprintf((1,"File %s - IFF error: %s",filename,iff_errormsg(iff_error)));
 		Error("File %s - IFF error: %s",filename,iff_errormsg(iff_error));
@@ -322,8 +368,8 @@ int ds_load( char * filename )	{
 	}
 #endif
 
-	_splitpath(  filename, NULL, NULL, fname, NULL );
-	_makepath( rawname, NULL, NULL,fname, ".RAW" );
+	bm_get_fname( filename, fname );		// ASCENT: was _splitpath
+	sprintf( rawname, "%s.RAW", fname );		// ASCENT: was _makepath
 
 	i=piggy_find_sound( fname );
 	if (i!=255)	{
@@ -441,6 +487,10 @@ int bm_init_use_tbl()
 		return 1;
 
 	Installed = 1;
+
+	// ASCENT: the tables come from BITMAPS.TBL, not from the PIG file.
+	// See Piggy_read_tables in piggy.c.
+	Piggy_read_tables = 0;
 
 	piggy_init();
 
@@ -1926,6 +1976,10 @@ void bm_read_hostage_face()
  #endif
 }
 
+// ASCENT: bm_write_all() writes the tables as whole structs for the PIG dump
+// of the editor. It stays under EDITOR. The closing #endif is the one that
+// closed the whole file in the original.
+#ifdef EDITOR
 void bm_write_all(FILE *fp)
 {
 	int i;

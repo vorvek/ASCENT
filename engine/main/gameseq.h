@@ -199,33 +199,46 @@ extern int Player_highest_level;
 //  New game sequencing functions
 //
 
+// ASCENT: return types added to the prototypes of this block. The
+// original code declared them without a type (implicit int) and defined
+// some of them as void.
+
 //called once at program startup to get the player's name
-RegisterPlayer();
+int RegisterPlayer();
 
 //Inputs the player's name, without putting up the background screen
-RegisterPlayerSub(int allow_abort_flag);
+int RegisterPlayerSub(int allow_abort_flag);
 
 //starts a new game on the given level
-StartNewGame(int start_level);
+void StartNewGame(int start_level);
 
 //starts the next level
-StartNewLevel(int level_num);
+void StartNewLevel(int level_num);
 
 // Actually does the work to start new level
-StartNewLevelSub(int level_num, int page_in_textures);
+void StartNewLevelSub(int level_num, int page_in_textures);
 
-InitPlayerObject();				//make sure player's object set up
-init_player_stats_game();		//clear all stats
+void InitPlayerObject();				//make sure player's object set up
+void init_player_stats_game();		//clear all stats
 
 //starts a resumed game loaded from disk
-ResumeSavedGame(int start_level);
+void ResumeSavedGame(int start_level);
 
 //called when the player has finished a level
 //if secret flag is true, advance to secret level, else next normal level
-PlayerFinishedLevel(int secret_flag);
+void PlayerFinishedLevel(int secret_flag);
 
 //called when the player has died
-DoPlayerDead();
+void DoPlayerDead();
+
+// ASCENT: prototypes added for functions of gameseq.c that are called
+// before their definition or from other files.
+void init_player_stats_new_ship();
+int AdvanceLevel(int secret_flag);
+void StartLevel(int random);
+void InitPlayerPosition(int random);
+void copy_defaults_to_robot_all(void);
+void set_sound_sources();
 
 //load a level off disk. level numbers start at 1.  
 //Secret levels are -1,-2,-3
@@ -243,7 +256,7 @@ extern void draw_high_scores( int place );
 extern int add_player_to_high_scores(player *pp);
 extern void input_name ( int place );
 extern int reset_high_scores();
-extern init_player_stats_level();
+extern void init_player_stats_level();		// ASCENT: return type added
 
 void open_message_window(void);
 void close_message_window(void);
@@ -252,7 +265,7 @@ void close_message_window(void);
 extern void create_player_appearance_effect(object *player_obj);
 
 //goto whatever secrect level is appropriate given the current level
-extern goto_secret_level();
+extern int goto_secret_level();		// ASCENT: return type added
 
 //reset stuff so game is semi-normal when playing from editor
 void editor_reset_stuff_on_level();

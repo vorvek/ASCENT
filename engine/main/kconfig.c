@@ -293,8 +293,7 @@ static char rcsid[] = "$Id: kconfig.c 2.11 1995/08/23 16:08:04 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dos.h>
-#include <io.h>
+// ASCENT: removed dos.h and io.h (DOS only headers).
 #include <stdarg.h>
 #include <ctype.h>
 
@@ -313,32 +312,40 @@ static char rcsid[] = "$Id: kconfig.c 2.11 1995/08/23 16:08:04 john Exp $";
 #include "kconfig.h"
 #include "gauges.h"
 #include "joydefs.h"
-#include "vfx1.h"
-#include "render.h"
+// ASCENT: removed vfx1.h, victor.h and iglasses.h. The virtual reality
+// headsets are not part of the port. arcade.h stays: without the ARCADE
+// macro it turns the arcade code into nothing.
 #include "arcade.h"
+#include "render.h"
 #include "digi.h"
 #include "newmenu.h"
-#include "victor.h"
 #include "endlevel.h"
 #include "multi.h"
 #include "timer.h"
 #include "text.h"
 #include "player.h"
 #include "menu.h"
-#include "iglasses.h"
 #include "args.h"
+#include "platform.h"		// ASCENT: plat_pump reports that the window is closed
 
 //#define TABLE_CREATION 1
 
-int     sense_function1=0;	
+int     sense_function1=0;
 int	  vfx1_installed=0;
 int     SenseStatus1( void );
+
+// ASCENT: the characters above 126 in the key names of this file are
+// written as octal escapes, so that the file is plain ASCII.
+
+// ASCENT: playsave.c reads and writes kconfig_settings as one block of
+// bytes. The array has only bytes, so it has no padding.
+_Static_assert( sizeof(kconfig_settings) == CONTROL_MAX_TYPES*MAX_CONTROLS, "kconfig_settings layout" );
 
 // Array used to 'blink' the cursor while waiting for a keypress.
 byte fades[64] = { 1,1,1,2,2,3,4,4,5,6,8,9,10,12,13,15,16,17,19,20,22,23,24,26,27,28,28,29,30,30,31,31,31,31,31,30,30,29,28,28,27,26,24,23,22,20,19,17,16,15,13,12,10,9,8,6,5,4,4,3,2,2,1,1 };
 
 //char * invert_text[2] = { "N", "Y" };
-//char * joybutton_text[28] = { "BTN 1", "BTN 2", "BTN 3", "BTN 4", "", "TRIG", "LEFT", "HAT ", "RIGHT", "", "", "HAT €", "MID", "", "", "HAT ", "", "", "", "HAT ‚", "TRIG", "LEFT", "RIGHT", "", "UP","DOWN","LEFT", "RIGHT" };
+//char * joybutton_text[28] = { "BTN 1", "BTN 2", "BTN 3", "BTN 4", "", "TRIG", "LEFT", "HAT ?", "RIGHT", "", "", "HAT ?", "MID", "", "", "HAT ?", "", "", "", "HAT ?", "TRIG", "LEFT", "RIGHT", "", "UP","DOWN","LEFT", "RIGHT" };
 //char * joyaxis_text[4] = { "X1", "Y1", "X2", "Y2" };
 //char * mouseaxis_text[2] = { "L/R", "F/B" };
 //char * mousebutton_text[3] = { "Left", "Right", "Mid" };
@@ -359,7 +366,7 @@ int mousebutton_text[3] = { TNUM_LEFT, TNUM_RIGHT, TNUM_MID };
 char * key_text[256] = {         \
 "","ESC","1","2","3","4","5","6","7","8","9","0","-", 			\
 "=","BSPC","TAB","Q","W","E","R","T","Y","U","I","O",				\
-"P","[","]","ƒ","LCTRL","A","S","D","F",        \
+"P","[","]","\203","LCTRL","A","S","D","F",        \
 "G","H","J","K","L",";","'","`",        \
 "LSHFT","\\","Z","X","C","V","B","N","M",",",      \
 ".","/","RSHFT","PAD*","LALT","SPC",      \
@@ -370,10 +377,10 @@ char * key_text[256] = {         \
 "","","","","","","","","","","","","","","","","","","","",     \
 "","","","","","","","","","","","","","","","","","","","",     \
 "","","","","","","","","","","","","","","","","","",           \
-"PADƒ","RCTRL","","","","","","","","","","","","","", \
+"PAD\203","RCTRL","","","","","","","","","","","","","", \
 "","","","","","","","","","","PAD/","","","RALT","",      \
-"","","","","","","","","","","","","","HOME","‚","PGUP",     \
-"","","","","","END","€","PGDN","INS",       \
+"","","","","","","","","","","","","","HOME","\202","PGUP",     \
+"","\201","","\177","","END","\200","PGDN","INS",       \
 "DEL","","","","","","","","","","","","","","","","","",     \
 "","","","","","","","","","","","","","","","","","","","",     \
 "","","","","","","" };
@@ -655,6 +662,19 @@ int find_next_item_left( kc_item * items, int nitems, int citem )
 
 
 
+// ASCENT: prototypes for functions that this file calls before their
+// definition. Watcom C accepted the implicit declarations.
+struct kc_item;
+void kc_drawitem( struct kc_item *item, int is_current );
+void kc_change_key( struct kc_item * item );
+void kc_change_joybutton( struct kc_item * item );
+void kc_change_mousebutton( struct kc_item * item );
+void kc_change_joyaxis( struct kc_item * item );
+void kc_change_mouseaxis( struct kc_item * item );
+void kc_change_invert( struct kc_item * item );
+void kconfig_read_fcs( int raw_axis );
+void kconfig_set_fcs_button( int btn, int button );
+
 void kconfig_sub(kc_item * items,int nitems, char * title)
 {
 	grs_canvas * save_canvas;
@@ -768,6 +788,10 @@ void kconfig_sub(kc_item * items,int nitems, char * title)
 
 	while(1)		{
 		k = key_inkey();
+		// ASCENT: show the screen and wait for one display period. If the
+		// window is closed, leave the screen as the ESC key does.
+		if ( !nm_show_frame() )
+			k = KEY_ESC;
 		if ( !time_stopped ) {
 			#ifdef NETWORK
 			if (multi_menu_poll() == -1)
@@ -934,7 +958,7 @@ void kc_drawitem( kc_item *item, int is_current )
 	gr_string( item->x, item->y, Text_string[item->text_num1] );
 
 	if (item->value==255) {
-		sprintf( btext, "" );
+		btext[0] = 0;		// ASCENT: was sprintf with an empty format (compiler warning)
 	} else {
 		switch( item->type )	{
 			case BT_KEY:
@@ -1014,9 +1038,13 @@ void kc_change_key( kc_item * item )
 //		if ( Game_mode & GM_MULTI )
 //			GameLoop( 0, 0 );				// Continue
 		k = key_inkey();
-		delay(10);
+		// ASCENT: timer_delay replaces delay(10) of dos.h. The loop also
+		// shows the frame, and ends as with ESC if the window is closed.
+		timer_delay(F1_0/100);
+		if ( !plat_pump() ) k = KEY_ESC;
 		kc_drawquestion( item );
-	
+		gr_present();
+		
 		for (i=0; i<256; i++ )	{
 			if (keyd_pressed[i] && (strlen(key_text[i])>0))	{
 				f = 0;
@@ -1068,12 +1096,16 @@ void kc_change_joybutton( kc_item * item )
 //		if ( Game_mode & GM_MULTI )
 //			GameLoop( 0, 0 );				// Continue
 		k = key_inkey();
-		delay(10);
+		// ASCENT: timer_delay replaces delay(10) of dos.h. The loop also
+		// shows the frame, and ends as with ESC if the window is closed.
+		timer_delay(F1_0/100);
+		if ( !plat_pump() ) k = KEY_ESC;
 
 		if (k == KEY_PRINT_SCREEN)
 			save_screen_shot(0);
 
 		kc_drawquestion( item );
+		gr_present();
 
 		if (Config_control_type==CONTROL_THRUSTMASTER_FCS)	{
 			int axis[4];
@@ -1136,12 +1168,16 @@ void kc_change_mousebutton( kc_item * item )
 //		if ( Game_mode & GM_MULTI )
 //			GameLoop( 0, 0 );				// Continue
 		k = key_inkey();
-		delay(10);
+		// ASCENT: timer_delay replaces delay(10) of dos.h. The loop also
+		// shows the frame, and ends as with ESC if the window is closed.
+		timer_delay(F1_0/100);
+		if ( !plat_pump() ) k = KEY_ESC;
 
 		if (k == KEY_PRINT_SCREEN)
 			save_screen_shot(0);
 
 		kc_drawquestion( item );
+		gr_present();
 
 		b = mouse_get_btns();
 		for (i=0; i<3; i++ )	{
@@ -1190,12 +1226,16 @@ void kc_change_joyaxis( kc_item * item )
 //		if ( Game_mode & GM_MULTI )
 //			GameLoop( 0, 0 );				// Continue
 		k = key_inkey();
-		delay(10);
+		// ASCENT: timer_delay replaces delay(10) of dos.h. The loop also
+		// shows the frame, and ends as with ESC if the window is closed.
+		timer_delay(F1_0/100);
+		if ( !plat_pump() ) k = KEY_ESC;
 
 		if (k == KEY_PRINT_SCREEN)
 			save_screen_shot(0);
 
 		kc_drawquestion( item );
+		gr_present();
 
 		joystick_read_raw_axis( JOY_ALL_AXIS, axis );
 		
@@ -1247,12 +1287,16 @@ void kc_change_mouseaxis( kc_item * item )
 //		if ( Game_mode & GM_MULTI )
 //			GameLoop( 0, 0 );				// Continue
 		k = key_inkey();
-		delay(10);
+		// ASCENT: timer_delay replaces delay(10) of dos.h. The loop also
+		// shows the frame, and ends as with ESC if the window is closed.
+		timer_delay(F1_0/100);
+		if ( !plat_pump() ) k = KEY_ESC;
 
 		if (k == KEY_PRINT_SCREEN)
 			save_screen_shot(0);
 
 		kc_drawquestion( item );
+		gr_present();
 
 		mouse_get_delta( &dx, &dy );
 		if ( abs(dx)>20 ) code = 0;
@@ -1392,6 +1436,14 @@ extern int			VR_sensitivity;
 						
 int VR_sense_range[3] = { 25, 50, 75 };
 
+// ASCENT: the virtual reality headsets (VFX1, i-glasses, Victor) are not
+// part of the port. The function does nothing. The original code stays
+// below for reference and is not compiled.
+void read_head_tracker()
+{
+}
+
+#if 0	// ASCENT: headset code, not compiled
 read_head_tracker()
 {
 	fix yaw, pitch, roll;
@@ -1426,6 +1478,7 @@ read_head_tracker()
 	Last_angles_h = yaw;
 	Last_angles_b = roll;
 }
+#endif	// ASCENT: end of the headset code
 
 #define	PH_SCALE	8
 #define	JOYSTICK_READ_TIME	(F1_0/10)		//	Read joystick at 10 Hz.
@@ -1440,6 +1493,22 @@ control_info	*kc_external_control = NULL;
 ubyte				*kc_external_name = NULL;
 ubyte				kc_external_version = 0;
 
+// ASCENT: the external control interface called a real mode interrupt of a
+// DOS driver that wrote into the memory of the game (-xcontrol). It cannot
+// work in the port. kconfig_init_external_controls does nothing, so
+// kc_use_external_control stays 0 and nothing reads the external controls.
+// The original code stays below for reference and is not compiled.
+void kconfig_init_external_controls(int intno, int address)
+{
+	intno = intno;
+	address = address;
+}
+
+void kconfig_read_external_controls()
+{
+}
+
+#if 0	// ASCENT: external control code, not compiled
 void kconfig_init_external_controls(int intno, int address)
 {
 	int i;
@@ -1537,6 +1606,7 @@ void kconfig_read_external_controls()
 	Controls.automap_down_count += kc_external_control->automap_down_count;
 	Controls.automap_state |= kc_external_control->automap_state;
 }
+#endif	// ASCENT: end of the external control code
 
 void controls_read_all()
 {
@@ -2149,6 +2219,19 @@ void kc_set_controls()
 }
 
 
+// ASCENT: the VFX1 driver was called through a DOS interrupt. The headset
+// is not part of the port: kconfig_sense_init and kconfig_center_headset do
+// nothing and vfx1_installed stays 0. The original code stays below for
+// reference and is not compiled.
+void kconfig_center_headset()
+{
+}
+
+void kconfig_sense_init()
+{
+}
+
+#if 0	// ASCENT: VFX1 code, not compiled
 int SenseStatus1( void )
 {
 	union  REGS     regs;
@@ -2272,3 +2355,4 @@ void kconfig_sense_init()
 		printf( TXT_VFX1_ERROR2 );
 	}
 }
+#endif	// ASCENT: end of the VFX1 code

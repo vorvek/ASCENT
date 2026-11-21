@@ -81,8 +81,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <conio.h>
-#include <dos.h>
+// ASCENT: conio.h and dos.h removed (DOS headers)
 
 #include "types.h"
 #include "game.h"
@@ -94,8 +93,8 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "player.h"
 #include "mission.h"
 
-#pragma pack (4);						// Use 32-bit packing!
-#pragma off (check_stack);			// No stack checking!
+// ASCENT: "#pragma pack (4)" and "#pragma off (check_stack)" removed. They
+// were for the headers of the SOS sound library, which are not included.
 //#include "sos.h"//These sos headers are part of a commercial library, and aren't included-KRB
 //#include "sosm.h"
 
@@ -140,22 +139,19 @@ void set_custom_detail_vars(void);
 #define CL_MC0 0xF8F
 #define CL_MC1 0xF8D
 
+// ASCENT: the Crystal Lake sound card is not present. The two functions
+// did port I/O with the interrupts off. Now the write does nothing and the
+// read returns 0.
 void CrystalLakeWriteMCP( ushort mc_addr, ubyte mc_data )
 {
-	_disable();
-	outp( CL_MC0, 0xE2 );				// Write password
-	outp( mc_addr, mc_data );		// Write data
-	_enable();
+	(void)mc_addr;
+	(void)mc_data;
 }
 
 ubyte CrystalLakeReadMCP( ushort mc_addr )
 {
-	ubyte value;
-	_disable();
-	outp( CL_MC0, 0xE2 );		// Write password
-	value = inp( mc_addr );		// Read data
-	_enable();
-	return value;
+	(void)mc_addr;
+	return 0;
 }
 
 void CrystalLakeSetSB()
@@ -217,6 +213,10 @@ int ReadConfigFile()
 		if (*ptr != '\0') {
 			token = strtok(ptr, "=");
 			value = strtok(NULL, "=");
+			// ASCENT: a line without "=" gave a NULL value to strtol.
+			// Such a line is ignored.
+			if (token == NULL || value == NULL)
+				continue;
 			if (!strcmp(token, digi_dev_str))
 				digi_driver_board = strtol(value, NULL, 16);
 			else if (!strcmp(token, digi_port_str))
@@ -318,12 +318,9 @@ int ReadConfigFile()
 
 	// HACK!!! 
 	//Hack to make the Crytal Lake look like Microsoft Sound System
+	// ASCENT: the port I/O of the hack is removed (see CrystalLakeReadMCP).
+	// The board number is still set to 0, as before.
 	if ( digi_driver_board == 0xe200 )	{
-		ubyte tmp;
-		tmp = CrystalLakeReadMCP( CL_MC1 );
-		if ( !(tmp & 0x80) )
-			atexit( CrystalLakeSetSB );		// Restore to SB when done.
-	 	CrystalLakeSetWSS();
 		digi_driver_board = 0;//_MICROSOFT_8_ST;<was this microsoft thing, but its irrelevant, because we have no sound here yet,being that its also undefined, I set it to 0 -KRB
 	}
 

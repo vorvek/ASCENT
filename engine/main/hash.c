@@ -48,6 +48,7 @@ static char rcsid[] = "$Id: hash.c 2.0 1995/02/27 11:28:01 john Exp $";
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "error.h"
 #include "mono.h"
@@ -98,11 +99,22 @@ void hashtable_free( hashtable *ht )	{
 	ht->size = 0;
 }
 
+// ASCENT: three changes in this function and the two below.
+// 1. The shift count is "i & 31". The 386 shift instruction uses only the
+//    low 5 bits of the count, so the original gave this result for keys
+//    longer than 31 characters. A larger count is undefined in C.
+// 2. The key is made lower case here, one character at a time. The original
+//    called strlwr() on the string of the caller before it computed the key.
+//    hashtable_search() does not change the string of the caller now: many
+//    callers pass a string constant, and a write to a string constant is a
+//    fault on a modern system. hashtable_insert() still makes the string
+//    lower case in place (the table keeps a pointer to it), without strlwr().
+// 3. The shift is done on an unsigned value (no signed overflow).
 int hashtable_getkey( char *key )	{
 	int k = 0, i=0;
 
 	while( *key )	{
-		k^=((int)(*key++))<<i;
+		k^=(int)(((unsigned int)tolower((unsigned char)*key++))<<(i&31));
 		i++;
 	}
 	return k;
@@ -111,7 +123,7 @@ int hashtable_getkey( char *key )	{
 int hashtable_search( hashtable *ht, char *key )	{
 	int i,j,k;
 
-	strlwr( key );
+	// ASCENT: no strlwr( key ) here, see hashtable_getkey()
 
 	k = hashtable_getkey( key );
 	i = 0;
@@ -132,7 +144,12 @@ void hashtable_insert( hashtable *ht, char *key, int value )	{
 //	mprintf( 0, "Inserting '%s' into hash table\n", key );
 //	key_getch();
 
-	strlwr( key );
+	// ASCENT: was strlwr( key ), which is not a standard function
+	{
+		char *p;
+		for (p=key; *p; p++)
+			*p = tolower((unsigned char)*p);
+	}
 	k = hashtable_getkey( key );
 	i = 0;
 

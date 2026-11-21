@@ -108,7 +108,7 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <io.h>
+// ASCENT: io.h (DOS) is removed.
 
 #ifdef DRIVE
 #include "drive.h"
@@ -135,6 +135,8 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 #include "piggy.h"
 #endif
 
+#include "dataio.h"		// ASCENT: little endian field reads
+
 polymodel Polygon_models[MAX_POLYGON_MODELS];	// = {&bot11,&bot17,&robot_s2,&robot_b2,&bot11,&bot17,&robot_s2,&robot_b2};
 
 int N_polygon_models = 0;
@@ -149,6 +151,10 @@ int	Pof_file_end;
 int	Pof_addr;
 
 #define	MODEL_BUF_SIZE	32768
+
+// ASCENT: the sizes of a vector and of an angle vector in a POF file
+#define VMS_VECTOR_DISK_SIZE	12
+#define VMS_ANGVEC_DISK_SIZE	6
 
 void _pof_cfseek(int len,int type)
 {
@@ -170,8 +176,11 @@ void _pof_cfseek(int len,int type)
 int pof_read_int(ubyte *bufp)
 {
 	int i;
+	const ubyte *p = &bufp[Pof_addr];
 
-	i = *((int *) &bufp[Pof_addr]);
+	// ASCENT: was a read through an (int *) cast, which is not aligned
+	// and depends on the byte order of the processor.
+	i = dio_get_int(&p);
 	Pof_addr += 4;
 	return i;
 
@@ -197,13 +206,28 @@ size_t pof_cfread(void *dst, size_t elsize, size_t nelem, ubyte *bufp)
 }
 
 // #define new_read_int(i,f) cfread(&(i),sizeof(i),1,(f))
-#define new_pof_read_int(i,f) pof_cfread(&(i),sizeof(i),1,(f))
+// ASCENT: was "pof_cfread(&(i),sizeof(i),1,(f))", a copy of the 4 bytes into
+// the int. Now a little endian read with the same end-of-file check: it
+// gives 1 and moves ahead when the 4 bytes are there, else 0.
+static int _new_pof_read_int(int *i, ubyte *bufp)
+{
+	ubyte b[4];
+	const ubyte *p = b;
+
+	if (pof_cfread(b,4,1,bufp) != 1)
+		return 0;
+	*i = dio_get_int(&p);
+	return 1;
+}
+#define new_pof_read_int(i,f) _new_pof_read_int(&(i),(f))
 
 short pof_read_short(ubyte *bufp)
 {
 	short s;
+	const ubyte *p = &bufp[Pof_addr];
 
-	s = *((short *) &bufp[Pof_addr]);
+	// ASCENT: was a read through a (short *) cast, see pof_read_int()
+	s = dio_get_short(&p);
 	Pof_addr += 2;
 	return s;
 //	if (cfread(&s,sizeof(s),1,f) != 1)
@@ -229,8 +253,16 @@ pof_read_vecs(vms_vector *vecs,int n,ubyte *bufp)
 {
 //	cfread(vecs,sizeof(vms_vector),n,f);
 
-	memcpy(vecs, &bufp[Pof_addr], n*sizeof(*vecs));
-	Pof_addr += n*sizeof(*vecs);
+	// ASCENT: was a memcpy() of the vectors. Each vector is 12 bytes in the
+	// file (three fix values, little endian).
+	{
+		const ubyte *p = &bufp[Pof_addr];
+		int i;
+
+		for (i=0; i<n; i++)
+			dio_get_vector(&p, &vecs[i]);
+		Pof_addr += n*VMS_VECTOR_DISK_SIZE;
+	}
 	
 	if (Pof_addr > MODEL_BUF_SIZE)
 		Int3();
@@ -250,7 +282,7 @@ vms_angvec anim_angs[N_ANIM_STATES][MAX_SUBMODELS];
 
 //set the animation angles for this robot.  Gun fields of robot info must
 //be filled in.
-robot_set_angles(robot_info *r,polymodel *pm,vms_angvec angs[N_ANIM_STATES][MAX_SUBMODELS]);
+int robot_set_angles(robot_info *r,polymodel *pm,vms_angvec angs[N_ANIM_STATES][MAX_SUBMODELS]);		// ASCENT: "int" added, the type was implicit
 #endif
 
 //reads a binary file containing a 3d model
@@ -388,7 +420,15 @@ polymodel *read_model_file(polymodel *pm,char *filename,robot_info *r)
 
 					for (m=0;m<pm->n_models;m++)
 						for (f=0;f<n_frames;f++)
-							pof_cfread(&anim_angs[f][m],1,sizeof(vms_angvec),model_buf);
+							{
+								// ASCENT: was a pof_cfread() of the structure. An
+								// angle vector is 6 bytes in the file (three shorts).
+								ubyte ang_buf[VMS_ANGVEC_DISK_SIZE];
+								const ubyte *ang_p = ang_buf;
+
+								if (pof_cfread(ang_buf,1,VMS_ANGVEC_DISK_SIZE,model_buf))
+									dio_get_angvec(&ang_p, &anim_angs[f][m]);
+							}
 
 					robot_set_angles(r,pm,anim_angs);
 				
@@ -614,7 +654,9 @@ void draw_polygon_model(vms_vector *pos,vms_matrix *orient,vms_angvec *anim_angl
 
 }
 
-free_polygon_models()
+// ASCENT: the function had no return type (int). atexit() needs a function
+// that returns void.
+void free_polygon_models(void)
 {
 	int i;
 

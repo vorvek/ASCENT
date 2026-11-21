@@ -147,6 +147,10 @@ extern int digi_driver_dma;
 extern int digi_midi_type;
 extern int digi_midi_port;
 
+// ASCENT: the sample rate in Hz of the data of each digi_sound.
+// Descent 1 has 11025. Set it before the first sound plays.
+extern int digi_sample_rate;
+
 extern int digi_get_settings();
 extern int digi_init();
 extern void digi_reset();
@@ -180,7 +184,8 @@ extern void digi_pause_all();
 extern void digi_resume_all();
 extern void digi_stop_all();
 
-extern digi_set_max_channels(int n);
+// ASCENT: added the return type. The definition in digi.c is void.
+extern void digi_set_max_channels(int n);
 extern int digi_get_max_channels();
 
 extern int digi_lomem;

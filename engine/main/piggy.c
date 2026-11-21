@@ -339,22 +339,19 @@ static char rcsid[] = "$Id: piggy.c 2.10 1995/10/07 13:17:26 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <conio.h>
 #include <string.h>
-#include <io.h>
+// ASCENT: conio.h, io.h, cflib.h and dpmi.h (DOS) are removed.
 
 #include "types.h"
 #include "inferno.h"
 #include "gr.h"
 //#include "mem.h"
-#include "cflib.h"
 #include "mono.h"
 #include "error.h"
 #include "sounds.h"
 #include "bm.h"
 #include "hash.h"
 #include "args.h"
-#include "dpmi.h"
 #include "palette.h"
 #include "gamefont.h"
 #include "rle.h"
@@ -364,7 +361,8 @@ static char rcsid[] = "$Id: piggy.c 2.10 1995/10/07 13:17:26 john Exp $";
 //The above include is part of a commercial 
 //sound library, so it cannot be included in a public 
 //release of the source code. -KRB
-#include "no_sos.h" //Added by KRB
+//#include "no_sos.h" //Added by KRB
+// ASCENT: no_sos.h is not in the source release. This file needs nothing from it.
 
 #include "piggy.h"
 #include "texmerge.h"
@@ -373,6 +371,7 @@ static char rcsid[] = "$Id: piggy.c 2.10 1995/10/07 13:17:26 john Exp $";
 #include "text.h"
 #include "cfile.h"
 #include "newmenu.h"
+#include "dataio.h"		// ASCENT: little endian field reads
 
 //#define NO_DUMP_SOUNDS	1		//if set, dump bitmaps but not sounds
 
@@ -436,6 +435,50 @@ typedef struct DiskSoundHeader {
 } DiskSoundHeader;
 
 ubyte BigPig = 0;
+
+// ASCENT: the sizes of the two headers in the PIG file. The structures had
+// 1 byte packing. sizeof() of the structures above is larger now, so the
+// code reads the fields one at a time and uses these sizes for the offsets.
+#define DISK_BITMAP_HEADER_SIZE	17		// 8+1+1+1+1+1+4
+#define DISK_SOUND_HEADER_SIZE	20		// 8+4+4+4
+
+static void read_disk_bitmap_header( DiskBitmapHeader *bmh, CFILE *fp )
+{
+	ubyte buf[DISK_BITMAP_HEADER_SIZE];
+	const ubyte *p = buf;
+
+	memset( buf, 0, sizeof(buf) );
+	cfread( buf, DISK_BITMAP_HEADER_SIZE, 1, fp );
+	dio_get_bytes( &p, bmh->name, 8 );
+	bmh->dflags = dio_get_ubyte( &p );
+	bmh->width = dio_get_ubyte( &p );
+	bmh->height = dio_get_ubyte( &p );
+	bmh->flags = dio_get_ubyte( &p );
+	bmh->avg_color = dio_get_ubyte( &p );
+	bmh->offset = dio_get_int( &p );
+}
+
+static void read_disk_sound_header( DiskSoundHeader *sndh, CFILE *fp )
+{
+	ubyte buf[DISK_SOUND_HEADER_SIZE];
+	const ubyte *p = buf;
+
+	memset( buf, 0, sizeof(buf) );
+	cfread( buf, DISK_SOUND_HEADER_SIZE, 1, fp );
+	dio_get_bytes( &p, sndh->name, 8 );
+	sndh->length = dio_get_int( &p );
+	sndh->data_length = dio_get_int( &p );
+	sndh->offset = dio_get_int( &p );
+}
+
+// ASCENT: when this is 0, piggy_init() does not read the game tables
+// (bm_read_all) from the PIG file. bm_init_use_tbl() clears it, because the
+// tables then come from BITMAPS.TBL. The original made this choice at compile
+// time: the editor build read the tables from the PIG file only with -nobm.
+int Piggy_read_tables = 1;
+
+void piggy_bitmap_page_out_all();
+int piggy_is_substitutable_bitmap( char * name, char * subst_name );
 
 
 //#define BUILD_PSX_DATA 1
@@ -665,13 +708,18 @@ int piggy_init()
 	Piggy_fp = cfopen( filename, "rb" );
 	if (Piggy_fp==NULL) return 0;
 
-	cfread( &Pigdata_start, sizeof(int), 1, Piggy_fp );
+	Pigdata_start = cf_get_int( Piggy_fp );		// ASCENT: little endian field read
 #ifdef EDITOR
 	if ( FindArg("-nobm") )
+#else
+	// ASCENT: see Piggy_read_tables above. -nobm works as in the editor build.
+	if ( Piggy_read_tables || FindArg("-nobm") )
 #endif
 	{
 		bm_read_all( Piggy_fp );	// Note connection to above if!!!
-		cfread( GameBitmapXlat, sizeof(ushort)*MAX_BITMAP_FILES, 1, Piggy_fp );
+		// ASCENT: was one cfread of the whole ushort array
+		for (i=0; i<MAX_BITMAP_FILES; i++ )
+			GameBitmapXlat[i] = cf_get_ushort( Piggy_fp );
 	}
 
 	cfseek( Piggy_fp, Pigdata_start, SEEK_SET );
@@ -679,12 +727,14 @@ int piggy_init()
 	length = size;
 	mprintf( (0, "\nReading data (%d KB) ", size/1024 ));
 
-	cfread( &N_bitmaps, sizeof(int), 1, Piggy_fp );
+	// ASCENT: little endian field reads, and the header sizes on disk
+	// in place of sizeof() of the structures.
+	N_bitmaps = cf_get_int( Piggy_fp );
 	size -= sizeof(int);
-	cfread( &N_sounds, sizeof(int), 1, Piggy_fp );
+	N_sounds = cf_get_int( Piggy_fp );
 	size -= sizeof(int);
 
-	header_size = (N_bitmaps*sizeof(DiskBitmapHeader)) + (N_sounds*sizeof(DiskSoundHeader));
+	header_size = (N_bitmaps*DISK_BITMAP_HEADER_SIZE) + (N_sounds*DISK_SOUND_HEADER_SIZE);
 
 	x = 60; y = 189;
 
@@ -693,7 +743,7 @@ int piggy_init()
 	gr_printf( 0x8000, y-10, "%s...", TXT_LOADING_DATA );
 
 	for (i=0; i<N_bitmaps; i++ )	{
-		cfread( &bmh, sizeof(DiskBitmapHeader), 1, Piggy_fp );
+		read_disk_bitmap_header( &bmh, Piggy_fp );		// ASCENT: field read
 		//size -= sizeof(DiskBitmapHeader);
 		memcpy( temp_name_read, bmh.name, 8 );
 		temp_name_read[8] = 0;
@@ -723,10 +773,14 @@ int piggy_init()
 	}
 
 	for (i=0; i<N_sounds; i++ )	{
-		cfread( &sndh, sizeof(DiskSoundHeader), 1, Piggy_fp );
+		read_disk_sound_header( &sndh, Piggy_fp );		// ASCENT: field read
 		//size -= sizeof(DiskSoundHeader);
 		temp_sound.length = sndh.length;
-		temp_sound.data = (ubyte *)(sndh.offset + header_size + (sizeof(int)*2)+Pigdata_start);
+		// ASCENT: the original stored the file offset in the data pointer
+		// until piggy_read_sounds() loaded the sound. A file offset is not a
+		// pointer on a 64-bit system. The offset is in SoundOffset[]. The
+		// pointer is NULL until the sound is loaded.
+		temp_sound.data = NULL;
 		SoundOffset[Num_sound_files] = sndh.offset + header_size + (sizeof(int)*2)+Pigdata_start;
 		memcpy( temp_name_read, sndh.name, 8 );
 		temp_name_read[8] = 0;
@@ -808,28 +862,10 @@ void piggy_read_sounds()
 
 }
 
-extern int descent_critical_error;
-extern unsigned descent_critical_deverror;
-extern unsigned descent_critical_errcode;
-
-char * crit_errors[13] = { "Write Protected", "Unknown Unit", "Drive Not Ready", "Unknown Command", "CRC Error", \
-"Bad struct length", "Seek Error", "Unknown media type", "Sector not found", "Printer out of paper", "Write Fault", \
-"Read fault", "General Failure" };
-
-void piggy_critical_error()
-{
-	grs_canvas * save_canv;
-	grs_font * save_font;
-	int i;
-	save_canv = grd_curcanv;
-	save_font = grd_curcanv->cv_font;
-	gr_palette_load( gr_palette );
-	i = nm_messagebox( "Disk Error", 2, "Retry", "Exit", "%s\non drive %c:", crit_errors[descent_critical_errcode&0xf], (descent_critical_deverror&0xf)+'A'  );
-	if ( i == 1 )
-		exit(1);
-	gr_set_current_canvas(save_canv);
-	grd_curcanv->cv_font = save_font;
-}
+// ASCENT: piggy_critical_error() and the checks of descent_critical_error
+// are removed. They handled the DOS critical error interrupt (int 24h,
+// "drive not ready") with a retry box. There is no such interrupt now. A
+// read error leaves the bitmap data as it is.
 
 void piggy_bitmap_page_in( bitmap_index bitmap )
 {
@@ -858,24 +894,14 @@ void piggy_bitmap_page_in( bitmap_index bitmap )
 		stop_time();
 
 	ReDoIt:
-		descent_critical_error = 0;
 		cfseek( Piggy_fp, GameBitmapOffset[i], SEEK_SET );
-		if ( descent_critical_error )	{
-			piggy_critical_error();
-			goto ReDoIt;
-		}
 		
 		bmp->bm_data = &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next];
 		bmp->bm_flags = GameBitmapFlags[i];
 	
 		if ( bmp->bm_flags & BM_FLAG_RLE )	{
 			int zsize = 0;
-			descent_critical_error = 0;
-			temp = cfread( &zsize, 1, sizeof(int), Piggy_fp );
-			if ( descent_critical_error )	{
-				piggy_critical_error();
-				goto ReDoIt;
-			}
+			zsize = cf_get_int( Piggy_fp );		// ASCENT: little endian field read
 	
 			// GET JOHN NOW IF YOU GET THIS ASSERT!!!
 			Assert( Piggy_bitmap_cache_next+zsize < Piggy_bitmap_cache_size );	
@@ -885,12 +911,7 @@ void piggy_bitmap_page_in( bitmap_index bitmap )
 			}
 			memcpy( &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next], &zsize, sizeof(int) );
 			Piggy_bitmap_cache_next += sizeof(int);
-			descent_critical_error = 0;
 			temp = cfread( &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next], 1, zsize-4, Piggy_fp );
-			if ( descent_critical_error )	{
-				piggy_critical_error();
-				goto ReDoIt;
-			}
 			Piggy_bitmap_cache_next += zsize-4;
 		} else {
 			// GET JOHN NOW IF YOU GET THIS ASSERT!!!
@@ -899,19 +920,12 @@ void piggy_bitmap_page_in( bitmap_index bitmap )
 				piggy_bitmap_page_out_all();
 				goto ReDoIt;
 			}
-			descent_critical_error = 0;
 			temp = cfread( &Piggy_bitmap_cache_data[Piggy_bitmap_cache_next], 1, bmp->bm_h*bmp->bm_w, Piggy_fp );
-			if ( descent_critical_error )	{
-				piggy_critical_error();
-				goto ReDoIt;
-			}
 			Piggy_bitmap_cache_next+=bmp->bm_h*bmp->bm_w;
 		}
 	
-		if ( bmp->bm_selector ) {
-			if (!dpmi_modify_selector_base( bmp->bm_selector, bmp->bm_data ))
-				Error( "Error modifying selector base in piggy.c\n" );
-		}
+		// ASCENT: the DPMI selector of the bitmap (bm_selector) is not used.
+		// The original changed the base of the selector to the new bm_data here.
 		start_time();
 	}
 

@@ -248,6 +248,15 @@ static char rcsid[] = "$Id: ai.c 2.11 1995/07/09 11:15:48 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #include "inferno.h"
 #include "game.h"
 #include "mono.h"
@@ -693,6 +702,9 @@ void john_cheat_func_2(int key)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+// ASCENT: prototype for a function that is used before the definition.
+void init_boss_segments(short segptr[], int *num_segs, int size_check);
+
 void init_ai_objects(void)
 {
 	int	i;

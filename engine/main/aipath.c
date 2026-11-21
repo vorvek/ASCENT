@@ -156,10 +156,19 @@ static char rcsid[] = "$Id: aipath.c 2.0 1995/02/27 11:30:48 john Exp $";
 #include "fvi.h"
 #include "physics.h"
 #include "wall.h"
+// ASCENT: the editor header is included only in the EDITOR build (it needs ui.h).
+#ifdef EDITOR
 #include "editor\editor.h"
+#endif
 #include "player.h"
 #include "fireball.h"
 #include "game.h"
+
+// ASCENT: prototypes for functions that are used before the definition.
+int validate_path(int debug_flag, point_seg *psegs, int num_points);
+void validate_all_paths(void);
+void ai_path_set_orient_and_vel(object *objp, vms_vector *goal_point);
+void maybe_ai_path_garbage_collect(void);
 
 #define	PARALLAX	0		//	If !0, then special debugging for Parallax eyes enabled.
 
@@ -1164,7 +1173,7 @@ void ai_path_garbage_collect(void)
 		}
 	}
 
-	qsort(object_list, num_path_objects, sizeof(object_list[0]), path_index_compare);
+	qsort(object_list, num_path_objects, sizeof(object_list[0]), (int (*)(const void *, const void *)) path_index_compare);	// ASCENT: cast to the type that qsort() takes
 
 	for (objind=0; objind < num_path_objects; objind++) {
 		object		*objp;

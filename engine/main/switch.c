@@ -168,7 +168,10 @@ static char rcsid[] = "$Id: switch.c 2.1 1995/03/21 14:39:08 john Exp $";
 #include "game.h"
 #include "switch.h"
 #include "inferno.h"
+// ASCENT: the editor header is included only in the EDITOR build (it needs ui.h).
+#ifdef EDITOR
 #include "editor\editor.h"
+#endif
 #include "segment.h"
 #include "error.h"
 #include "gameseg.h"

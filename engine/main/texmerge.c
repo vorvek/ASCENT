@@ -150,6 +150,13 @@ static int cache_misses = 0;
 
 void texmerge_close();
 
+// ASCENT: prototypes for the two functions below, which the original called
+// before their definitions. The merge routines for the four orientations
+// (gr_merge_textures, gr_merge_textures_1, _2, _3) were assembly in the 2d
+// library. They are C code there now (gr.h).
+void merge_textures_new( int type, grs_bitmap * bottom_bmp, grs_bitmap * top_bmp, ubyte * dest_data );
+void merge_textures_super_xparent( int type, grs_bitmap * bottom_bmp, grs_bitmap * top_bmp, ubyte * dest_data );
+
 //----------------------------------------------------------------------
 
 int texmerge_init(int num_cached_textures)

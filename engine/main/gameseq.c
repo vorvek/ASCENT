@@ -246,16 +246,16 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #pragma on (unreferenced)
 
+// ASCENT: malloc.h, conio.h and io.h removed (DOS and Watcom headers)
 #include <stdio.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
-#include <conio.h>
 #include <stdarg.h>
-#include <io.h>
 #include <errno.h>
+#include <setjmp.h>
 #include <time.h>
 
+#include "platform.h"		// ASCENT: for plat_pump
 #include "inferno.h"
 #include "game.h"
 #include "key.h"
@@ -303,7 +303,11 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "newmenu.h"
 #include "endlevel.h"
 #include "network.h"
+// ASCENT: arcade.h, modem.h and netmisc.h are included only with the macro
+// of their code (arcade version, network)
+#ifdef ARCADE
 #include "arcade.h"
+#endif
 #include "playsave.h"
 #include "ctype.h"
 #include "multi.h"
@@ -314,16 +318,20 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "automap.h"
 #include "cntrlcen.h"
 #include "powerup.h"
+#ifdef NETWORK
 #include "modem.h"
+#endif
 #include "text.h"
 #include "cfile.h"
 #include "piggy.h"
 #include "texmerge.h"
 #include "paging.h"
 #include "mission.h"
-#include "State.h"
+#include "state.h"		// ASCENT: lower case, the file name is state.h
 #include "songs.h"
+#ifdef NETWORK
 #include "netmisc.h"
+#endif
 
 #ifdef EDITOR
 #include "editor\editor.h"
@@ -349,7 +357,10 @@ int NumNetPlayerPositions = -1;
 
 // Extern from game.c to fix a bug in the cockpit!
 
-extern int last_drawn_cockpit;
+// ASCENT: the variable is an array of two ints in game.c. It was declared
+// here as one int, and the code set it to -1, which set the first element.
+// The code below now names that element.
+extern int last_drawn_cockpit[2];
 extern int Last_level_path_created;
 
 void HUD_clear_messages(); // From hud.c
@@ -720,7 +731,7 @@ void update_player_stats()
 }
 
 //go through this level and start any eclip sounds
-set_sound_sources()
+void set_sound_sources()		// ASCENT: return type added
 {
 	int segnum,sidenum;
 	segment *seg;
@@ -803,6 +814,9 @@ try_again:
 
 	if ( x < 0 ) {
 		if ( allow_abort ) return 0;
+		// ASCENT: if the user closed the window, the menu ends at once
+		// each time. Leave, so that the program can exit.
+		if ( !plat_pump() ) return 0;
 		goto try_again;
 	}
 
@@ -814,7 +828,8 @@ try_again:
 	fp = fopen( filename, "rb" );
 
 	//if the callsign is the name of a tty device, prepend a char
-	if (fp && isatty(fileno(fp))) {
+	// ASCENT: isatty(fileno(fp)) replaced by a test of the name (playsave.c)
+	if (fp && plr_name_is_device(text)) {
 		fclose(fp);
 		sprintf(filename,"$%.7s.plr",text);
 		fp = fopen(filename,"rb");
@@ -839,7 +854,7 @@ try_again:
 }
 
 //Inputs the player's name, without putting up the background screen
-RegisterPlayer()
+int RegisterPlayer()		// ASCENT: return type added
 {
 	int i,j;
 	char filename[14];
@@ -866,6 +881,10 @@ RegisterPlayer()
 
 do_menu_again:
 	;
+
+	// ASCENT: if the user closed the window, do not ask again
+	if ( !plat_pump() )
+		return 0;
 
 	if (!newmenu_get_filename( TXT_SELECT_PILOT, "*.plr", filename, allow_abort_flag ))	{
 		return 0;		// They hit Esc in file selector
@@ -971,7 +990,7 @@ void LoadLevel(int level_num)
 }
 
 //sets up Player_num & ConsoleObject  
-InitPlayerObject()
+void InitPlayerObject()		// ASCENT: return type added
 {
 	Assert(Player_num>=0 && Player_num<MAX_PLAYERS);
 
@@ -993,7 +1012,7 @@ InitPlayerObject()
 extern void game_disable_cheats();
 
 //starts a new game on the given level
-StartNewGame(int start_level)
+void StartNewGame(int start_level)		// ASCENT: return type added
 {
 	Game_mode = GM_NORMAL;
 	Function_mode = FMODE_GAME;
@@ -1017,7 +1036,7 @@ StartNewGame(int start_level)
 }
 
 //starts a resumed game loaded from disk
-ResumeSavedGame(int start_level)
+void ResumeSavedGame(int start_level)		// ASCENT: return type added
 {
 	Game_mode = GM_NORMAL;
 	Function_mode = FMODE_GAME;
@@ -1133,7 +1152,7 @@ void DoEndLevelScoreGlitz(int network)
 }
 
 //give the player the opportunity to save his game
-DoEndlevelMenu()
+void DoEndlevelMenu()		// ASCENT: return type added
 {
 #ifdef SHAREWARE
 	if (!Cheats_enabled)
@@ -1144,7 +1163,7 @@ DoEndlevelMenu()
 }
 
 //called when the player has finished a level
-PlayerFinishedLevel(int secret_flag)
+void PlayerFinishedLevel(int secret_flag)		// ASCENT: return type added
 {
 	int	rval;
 	int 	was_multi = 0;
@@ -1169,7 +1188,7 @@ PlayerFinishedLevel(int secret_flag)
 		else
 			Players[Player_num].connected = 2; // Finished but did not die
 
-	last_drawn_cockpit = -1;
+	last_drawn_cockpit[0] = -1;		// ASCENT: see the declaration
 
 	if (Current_level_num == Last_level) {
 		#ifdef NETWORK
@@ -1302,7 +1321,7 @@ died_in_mine_message(void)
 }
 
 //called when the player has died
-DoPlayerDead()
+void DoPlayerDead()		// ASCENT: return type added
 {
 	reset_palette_add();
 
@@ -1367,7 +1386,7 @@ DoPlayerDead()
 				DoEndLevelScoreGlitz(0);	
 			}
 			init_player_stats_new_ship();
-			last_drawn_cockpit = -1;
+			last_drawn_cockpit[0] = -1;		// ASCENT: see the declaration
 		} else {
 			#ifdef NETWORK
 			if (Game_mode & GM_MULTI)
@@ -1378,7 +1397,7 @@ DoPlayerDead()
 
 			rval = AdvanceLevel(0);			//if finished, go on to next level
 			init_player_stats_new_ship();
-			last_drawn_cockpit = -1;
+			last_drawn_cockpit[0] = -1;		// ASCENT: see the declaration
 		}
 
 		if (rval) {
@@ -1394,10 +1413,10 @@ DoPlayerDead()
 }
 
 //called when the player is starting a new level for normal game mode and restore state
-StartNewLevelSub(int level_num, int page_in_textures)
+void StartNewLevelSub(int level_num, int page_in_textures)		// ASCENT: return type added
 {
 	if (!(Game_mode & GM_MULTI)) {
-		last_drawn_cockpit = -1;
+		last_drawn_cockpit[0] = -1;		// ASCENT: see the declaration
 	}
 
 	if (Newdemo_state == ND_STATE_PAUSED)
@@ -1513,7 +1532,7 @@ StartNewLevelSub(int level_num, int page_in_textures)
 }
 
 //called when the player is starting a new level for normal game model
-StartNewLevel(int level_num)
+void StartNewLevel(int level_num)		// ASCENT: return type added
 {
 	if (!(Game_mode & GM_MULTI)) {
 		do_briefing_screens(level_num);
@@ -1523,7 +1542,7 @@ StartNewLevel(int level_num)
 }
 
 //initialize the player object position & orientation (at start of game, or new ship)
-InitPlayerPosition(int random)
+void InitPlayerPosition(int random)		// ASCENT: return type added
 {
 	int NewPlayer;
 
@@ -1627,7 +1646,7 @@ extern void vr_reset_display();
 
 //	-----------------------------------------------------------------------------------------------------
 //called when the player is starting a level (new game or new ship)
-StartLevel(int random)
+void StartLevel(int random)		// ASCENT: return type added
 {
 	Assert(!Player_is_dead);
 

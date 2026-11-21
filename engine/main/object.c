@@ -320,6 +320,15 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 #include <string.h>	// for memset
 #include <stdio.h>
 
+// ASCENT: the Watcom stdlib.h supplied min() and max(). The macros evaluate
+// an argument two times, as the Watcom macros did.
+#ifndef min
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#endif
+#ifndef max
+#define max(a,b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #include "inferno.h"
 #include "game.h"
 #include "gr.h"
@@ -337,6 +346,7 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 
 #include "object.h"
 #include "physics.h"
+#include "gameseq.h"	// ASCENT: for DoPlayerDead()
 #include "slew.h"		
 #include "render.h"
 #include "wall.h"
@@ -414,7 +424,9 @@ int print_object_info = 0;
 //--unused-- int Player_controller_type = 0;
 
 //	List of objects rendered last frame in order.  Created at render time, used by homing missiles in laser.c
-short ordered_rendered_object_list[MAX_RENDERED_OBJECTS];
+// ASCENT: the name was ordered_rendered_object_list. All users spell it with a
+// capital O. The Watcom linker did not distinguish case.
+short Ordered_rendered_object_list[MAX_RENDERED_OBJECTS];
 int	Num_rendered_objects = 0;
 
 #ifndef NDEBUG
@@ -529,6 +541,8 @@ fix	Cloak_fadein_duration;
 fix	Cloak_fadeout_duration;
 
 //do special cloaked render
+// ASCENT: in this file the calls of draw_polygon_model() pass anim_angles (the
+// array) and not &anim_angles (a pointer to the array). The address is the same.
 draw_cloaked_object(object *obj,fix light,fix *glow,fix cloak_start_time,fix cloak_end_time,bitmap_index * alt_textures)
 {
 	fix cloak_delta_time,total_cloaked_time;
@@ -598,12 +612,12 @@ draw_cloaked_object(object *obj,fix light,fix *glow,fix cloak_start_time,fix clo
 
 		new_light = fixmul(light,light_scale);
 		new_glow = fixmul(*glow,light_scale);
-		draw_polygon_model(&obj->pos,&obj->orient,&obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,new_light,&new_glow, alt_textures );
+		draw_polygon_model(&obj->pos,&obj->orient,obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,new_light,&new_glow, alt_textures );
 	}
 	else {
 		Gr_scanline_darkening_level = cloak_value;
 		g3_set_special_render(draw_tmap_flat,NULL,NULL);		//use special flat drawer
-		draw_polygon_model(&obj->pos,&obj->orient,&obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,light,glow, alt_textures );
+		draw_polygon_model(&obj->pos,&obj->orient,obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,light,glow, alt_textures );
 		g3_set_special_render(NULL,NULL,NULL);
 		Gr_scanline_darkening_level = GR_FADE_LEVELS;
 	}
@@ -648,7 +662,7 @@ void draw_polygon_object(object *obj)
 		for (i=0;i<pm->n_textures;i++)
 			bm_ptrs[i] = Textures[obj->rtype.pobj_info.tmap_override];
 
-		draw_polygon_model(&obj->pos,&obj->orient,&obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,light,&engine_glow_value,bm_ptrs);
+		draw_polygon_model(&obj->pos,&obj->orient,obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,light,&engine_glow_value,bm_ptrs);
 	}
 	else {
 		bitmap_index * alt_textures = NULL;
@@ -666,11 +680,11 @@ void draw_polygon_object(object *obj)
 			else
 				draw_cloaked_object(obj,light,&engine_glow_value, GameTime-F1_0*10, GameTime+F1_0*10,alt_textures);
 		} else {
-			draw_polygon_model(&obj->pos,&obj->orient,&obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,light,&engine_glow_value,alt_textures);
+			draw_polygon_model(&obj->pos,&obj->orient,obj->rtype.pobj_info.anim_angles,obj->rtype.pobj_info.model_num,obj->rtype.pobj_info.subobj_flags,light,&engine_glow_value,alt_textures);
 			if (obj->type == OBJ_WEAPON && (Weapon_info[obj->id].model_num_inner > -1 )) {
 				fix dist_to_eye = vm_vec_dist_quick(&Viewer->pos, &obj->pos);
 				if (dist_to_eye < Simple_model_threshhold_scale * F1_0*2)
-					draw_polygon_model(&obj->pos,&obj->orient,&obj->rtype.pobj_info.anim_angles,Weapon_info[obj->id].model_num_inner,obj->rtype.pobj_info.subobj_flags,light,&engine_glow_value,alt_textures);
+					draw_polygon_model(&obj->pos,&obj->orient,obj->rtype.pobj_info.anim_angles,Weapon_info[obj->id].model_num_inner,obj->rtype.pobj_info.subobj_flags,light,&engine_glow_value,alt_textures);
 			}
 		}
 	}
@@ -964,7 +978,11 @@ void render_object(object *obj)
 //--unused-- }
 
 
-check_and_fix_matrix(vms_matrix *m);
+int check_and_fix_matrix(vms_matrix *m);	// ASCENT: the type was implicit int
+
+// ASCENT: prototypes for functions that are used before the definition.
+void obj_detach_one(object *sub);
+void obj_detach_all(object *parent);
 
 #define vm_angvec_zero(v) (v)->p=(v)->b=(v)->h=0
 
@@ -1760,8 +1778,9 @@ void dead_player_frame(void)
 	}
 }
 
-Killed_in_frame = -1;
-Killed_objnum = -1;
+// ASCENT: the type was implicit int.
+int Killed_in_frame = -1;
+int Killed_objnum = -1;
 
 //	------------------------------------------------------------------------------------------------------------------
 void start_player_death_sequence(object *player)
@@ -1957,7 +1976,8 @@ void object_move_one( object * obj )
 			if ( keyd_pressed[KEY_PAD5] ) slew_stop( obj );
 			if ( keyd_pressed[KEY_NUMLOCK] ) 		{
 				slew_reset_orient( obj ); 
-				* (ubyte *) 0x417 &= ~0x20;		//kill numlock
+				// ASCENT: removed the write to the BIOS keyboard flags at 0040:0017 (DOS memory).
+				//* (ubyte *) 0x417 &= ~0x20;		//kill numlock
 			}
 			slew_frame(0 );		// Does velocity addition for us.
 			break;

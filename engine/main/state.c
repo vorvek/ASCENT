@@ -254,6 +254,10 @@ static char rcsid[] = "$Id: state.c 2.14 1995/05/26 16:16:10 john Exp $";
 #include "mem.h"
 #include "network.h"
 #include "args.h"
+#include "state.h"		// ASCENT: for the prototypes of this file
+#include "playsave.h"	// ASCENT: for player_from_disk and player_to_disk
+#include "ai.h"
+#include "switch.h"
 
 #ifndef SHAREWARE
 
@@ -296,6 +300,553 @@ char dgss_id[4] = "DGSS";
 int state_default_item = 0;
 
 uint state_game_id;
+
+//	-----------------------------------------------------------------------------
+// ASCENT: the save game file of the 1995 game is a dump of C variables and
+// of arrays of C structures. The structures had 1 byte packing (the Watcom
+// default) and the numbers are little endian. The functions below read and
+// write that format one field at a time, so the file does not depend on
+// the padding and the byte order of the structures in memory, and a file
+// of the DOS game stays valid. No structure of the file has a pointer.
+//
+// The sizes of the records in the file:
+#define OBJECT_DISK_SIZE			264
+#define WALL_DISK_SIZE				24
+#define ACTIVE_DOOR_DISK_SIZE		16
+#define TRIGGER_DISK_SIZE			54
+#define MATCEN_INFO_DISK_SIZE		16
+#define CC_TRIGGERS_DISK_SIZE		42
+#define FUELCEN_DISK_SIZE			40
+
+_Static_assert(MAX_SUBMODELS == 10 && MAX_AI_FLAGS == 11 && MAX_WALLS_PER_LINK == 10,
+	"the record sizes of the save game file depend on these constants");
+
+// Fields in a byte buffer. Each function moves the buffer pointer.
+static int st_get_byte(const ubyte **pp)
+{
+	return (byte)*(*pp)++;
+}
+
+static int st_get_ubyte(const ubyte **pp)
+{
+	return *(*pp)++;
+}
+
+static int st_get_short(const ubyte **pp)
+{
+	const ubyte *p = *pp;
+	*pp += 2;
+	return (short)(p[0] | (p[1]<<8));
+}
+
+static int st_get_int(const ubyte **pp)
+{
+	const ubyte *p = *pp;
+	*pp += 4;
+	return (int)((uint)p[0] | ((uint)p[1]<<8) | ((uint)p[2]<<16) | ((uint)p[3]<<24));
+}
+
+static void st_get_vector(const ubyte **pp, vms_vector *v)
+{
+	v->x = st_get_int(pp);
+	v->y = st_get_int(pp);
+	v->z = st_get_int(pp);
+}
+
+static void st_put_byte(ubyte **pp, int v)
+{
+	*(*pp)++ = v & 0xff;
+}
+
+static void st_put_short(ubyte **pp, int v)
+{
+	ubyte *p = *pp;
+	p[0] = v & 0xff;
+	p[1] = (v>>8) & 0xff;
+	*pp += 2;
+}
+
+static void st_put_int(ubyte **pp, int v)
+{
+	ubyte *p = *pp;
+	p[0] = v & 0xff;
+	p[1] = (v>>8) & 0xff;
+	p[2] = (v>>16) & 0xff;
+	p[3] = (v>>24) & 0xff;
+	*pp += 4;
+}
+
+static void st_put_vector(ubyte **pp, vms_vector *v)
+{
+	st_put_int(pp, v->x);
+	st_put_int(pp, v->y);
+	st_put_int(pp, v->z);
+}
+
+// One int of the file. A short read gives 0, as a failed fread into a
+// cleared variable.
+static int st_read_int(FILE *fp)
+{
+	ubyte buf[4];
+	const ubyte *p = buf;
+
+	memset(buf, 0, 4);
+	fread(buf, 4, 1, fp);
+	return st_get_int(&p);
+}
+
+static void st_write_int(FILE *fp, int v)
+{
+	ubyte buf[4], *p = buf;
+
+	st_put_int(&p, v);
+	fwrite(buf, 4, 1, fp);
+}
+
+// The player structure (116 bytes, see playsave.c).
+static void st_read_player(FILE *fp, player *pl)
+{
+	ubyte buf[PLAYER_DISK_SIZE];
+
+	memset(buf, 0, sizeof(buf));
+	fread(buf, PLAYER_DISK_SIZE, 1, fp);
+	player_from_disk(pl, buf);
+}
+
+static void st_write_player(FILE *fp, player *pl)
+{
+	ubyte buf[PLAYER_DISK_SIZE];
+
+	player_to_disk(pl, buf);
+	fwrite(buf, PLAYER_DISK_SIZE, 1, fp);
+}
+
+// One object (264 bytes). The object has three unions. The member that is
+// read or written is selected by movement_type, control_type and
+// render_type, as in the code that uses the object. For a type that uses
+// no member, the largest member is taken, so that no byte of the record
+// is lost. spin_rate is at the place of phys_info.velocity, so the
+// movement union is always handled as phys_info.
+static void object_from_disk(object *obj, const ubyte *buf)
+{
+	const ubyte *p = buf;
+	const ubyte *u;
+	int i;
+
+	memset(obj, 0, sizeof(*obj));
+
+	obj->signature = st_get_int(&p);
+	obj->type = st_get_ubyte(&p);
+	obj->id = st_get_ubyte(&p);
+	obj->next = st_get_short(&p);
+	obj->prev = st_get_short(&p);
+	obj->control_type = st_get_ubyte(&p);
+	obj->movement_type = st_get_ubyte(&p);
+	obj->render_type = st_get_ubyte(&p);
+	obj->flags = st_get_ubyte(&p);
+	obj->segnum = st_get_short(&p);
+	obj->attached_obj = st_get_short(&p);
+	st_get_vector(&p, &obj->pos);
+	st_get_vector(&p, &obj->orient.rvec);
+	st_get_vector(&p, &obj->orient.uvec);
+	st_get_vector(&p, &obj->orient.fvec);
+	obj->size = st_get_int(&p);
+	obj->shields = st_get_int(&p);
+	st_get_vector(&p, &obj->last_pos);
+	obj->contains_type = st_get_byte(&p);
+	obj->contains_id = st_get_byte(&p);
+	obj->contains_count = st_get_byte(&p);
+	obj->matcen_creator = st_get_byte(&p);
+	obj->lifeleft = st_get_int(&p);
+
+	// movement info: 64 bytes at offset 94
+	u = buf + 94;
+	st_get_vector(&u, &obj->mtype.phys_info.velocity);
+	st_get_vector(&u, &obj->mtype.phys_info.thrust);
+	obj->mtype.phys_info.mass = st_get_int(&u);
+	obj->mtype.phys_info.drag = st_get_int(&u);
+	obj->mtype.phys_info.brakes = st_get_int(&u);
+	st_get_vector(&u, &obj->mtype.phys_info.rotvel);
+	st_get_vector(&u, &obj->mtype.phys_info.rotthrust);
+	obj->mtype.phys_info.turnroll = st_get_short(&u);
+	obj->mtype.phys_info.flags = st_get_short(&u);
+
+	// control info: 30 bytes at offset 158
+	u = buf + 158;
+	switch (obj->control_type) {
+		case CT_WEAPON:
+			obj->ctype.laser_info.parent_type = st_get_short(&u);
+			obj->ctype.laser_info.parent_num = st_get_short(&u);
+			obj->ctype.laser_info.parent_signature = st_get_int(&u);
+			obj->ctype.laser_info.creation_time = st_get_int(&u);
+			obj->ctype.laser_info.last_hitobj = st_get_short(&u);
+			obj->ctype.laser_info.track_goal = st_get_short(&u);
+			obj->ctype.laser_info.multiplier = st_get_int(&u);
+			break;
+		case CT_EXPLOSION:
+		case CT_DEBRIS:
+			obj->ctype.expl_info.spawn_time = st_get_int(&u);
+			obj->ctype.expl_info.delete_time = st_get_int(&u);
+			obj->ctype.expl_info.delete_objnum = st_get_short(&u);
+			obj->ctype.expl_info.attach_parent = st_get_short(&u);
+			obj->ctype.expl_info.prev_attach = st_get_short(&u);
+			obj->ctype.expl_info.next_attach = st_get_short(&u);
+			break;
+		case CT_LIGHT:
+			obj->ctype.light_info.intensity = st_get_int(&u);
+			break;
+		case CT_POWERUP:
+			obj->ctype.powerup_info.count = st_get_int(&u);
+			break;
+		case CT_AI:
+		default:
+			obj->ctype.ai_info.behavior = st_get_ubyte(&u);
+			for (i=0; i<MAX_AI_FLAGS; i++)
+				obj->ctype.ai_info.flags[i] = st_get_byte(&u);
+			obj->ctype.ai_info.hide_segment = st_get_short(&u);
+			obj->ctype.ai_info.hide_index = st_get_short(&u);
+			obj->ctype.ai_info.path_length = st_get_short(&u);
+			obj->ctype.ai_info.cur_path_index = st_get_short(&u);
+			obj->ctype.ai_info.follow_path_start_seg = st_get_short(&u);
+			obj->ctype.ai_info.follow_path_end_seg = st_get_short(&u);
+			obj->ctype.ai_info.danger_laser_signature = st_get_int(&u);
+			obj->ctype.ai_info.danger_laser_num = st_get_short(&u);
+			break;
+	}
+
+	// render info: 76 bytes at offset 188
+	u = buf + 188;
+	switch (obj->render_type) {
+		case RT_FIREBALL:
+		case RT_HOSTAGE:
+		case RT_POWERUP:
+		case RT_WEAPON_VCLIP:
+			obj->rtype.vclip_info.vclip_num = st_get_int(&u);
+			obj->rtype.vclip_info.frametime = st_get_int(&u);
+			obj->rtype.vclip_info.framenum = st_get_byte(&u);
+			break;
+		case RT_POLYOBJ:
+		case RT_MORPH:
+		default:
+			obj->rtype.pobj_info.model_num = st_get_int(&u);
+			for (i=0; i<MAX_SUBMODELS; i++) {
+				obj->rtype.pobj_info.anim_angles[i].p = st_get_short(&u);
+				obj->rtype.pobj_info.anim_angles[i].b = st_get_short(&u);
+				obj->rtype.pobj_info.anim_angles[i].h = st_get_short(&u);
+			}
+			obj->rtype.pobj_info.subobj_flags = st_get_int(&u);
+			obj->rtype.pobj_info.tmap_override = st_get_int(&u);
+			obj->rtype.pobj_info.alt_textures = st_get_int(&u);
+			break;
+	}
+}
+
+static void object_to_disk(object *obj, ubyte *buf)
+{
+	ubyte *p = buf;
+	ubyte *u;
+	int i;
+
+	memset(buf, 0, OBJECT_DISK_SIZE);
+
+	st_put_int(&p, obj->signature);
+	st_put_byte(&p, obj->type);
+	st_put_byte(&p, obj->id);
+	st_put_short(&p, obj->next);
+	st_put_short(&p, obj->prev);
+	st_put_byte(&p, obj->control_type);
+	st_put_byte(&p, obj->movement_type);
+	st_put_byte(&p, obj->render_type);
+	st_put_byte(&p, obj->flags);
+	st_put_short(&p, obj->segnum);
+	st_put_short(&p, obj->attached_obj);
+	st_put_vector(&p, &obj->pos);
+	st_put_vector(&p, &obj->orient.rvec);
+	st_put_vector(&p, &obj->orient.uvec);
+	st_put_vector(&p, &obj->orient.fvec);
+	st_put_int(&p, obj->size);
+	st_put_int(&p, obj->shields);
+	st_put_vector(&p, &obj->last_pos);
+	st_put_byte(&p, obj->contains_type);
+	st_put_byte(&p, obj->contains_id);
+	st_put_byte(&p, obj->contains_count);
+	st_put_byte(&p, obj->matcen_creator);
+	st_put_int(&p, obj->lifeleft);
+
+	// movement info: 64 bytes at offset 94
+	u = buf + 94;
+	st_put_vector(&u, &obj->mtype.phys_info.velocity);
+	st_put_vector(&u, &obj->mtype.phys_info.thrust);
+	st_put_int(&u, obj->mtype.phys_info.mass);
+	st_put_int(&u, obj->mtype.phys_info.drag);
+	st_put_int(&u, obj->mtype.phys_info.brakes);
+	st_put_vector(&u, &obj->mtype.phys_info.rotvel);
+	st_put_vector(&u, &obj->mtype.phys_info.rotthrust);
+	st_put_short(&u, obj->mtype.phys_info.turnroll);
+	st_put_short(&u, obj->mtype.phys_info.flags);
+
+	// control info: 30 bytes at offset 158
+	u = buf + 158;
+	switch (obj->control_type) {
+		case CT_WEAPON:
+			st_put_short(&u, obj->ctype.laser_info.parent_type);
+			st_put_short(&u, obj->ctype.laser_info.parent_num);
+			st_put_int(&u, obj->ctype.laser_info.parent_signature);
+			st_put_int(&u, obj->ctype.laser_info.creation_time);
+			st_put_short(&u, obj->ctype.laser_info.last_hitobj);
+			st_put_short(&u, obj->ctype.laser_info.track_goal);
+			st_put_int(&u, obj->ctype.laser_info.multiplier);
+			break;
+		case CT_EXPLOSION:
+		case CT_DEBRIS:
+			st_put_int(&u, obj->ctype.expl_info.spawn_time);
+			st_put_int(&u, obj->ctype.expl_info.delete_time);
+			st_put_short(&u, obj->ctype.expl_info.delete_objnum);
+			st_put_short(&u, obj->ctype.expl_info.attach_parent);
+			st_put_short(&u, obj->ctype.expl_info.prev_attach);
+			st_put_short(&u, obj->ctype.expl_info.next_attach);
+			break;
+		case CT_LIGHT:
+			st_put_int(&u, obj->ctype.light_info.intensity);
+			break;
+		case CT_POWERUP:
+			st_put_int(&u, obj->ctype.powerup_info.count);
+			break;
+		case CT_AI:
+		default:
+			st_put_byte(&u, obj->ctype.ai_info.behavior);
+			for (i=0; i<MAX_AI_FLAGS; i++)
+				st_put_byte(&u, obj->ctype.ai_info.flags[i]);
+			st_put_short(&u, obj->ctype.ai_info.hide_segment);
+			st_put_short(&u, obj->ctype.ai_info.hide_index);
+			st_put_short(&u, obj->ctype.ai_info.path_length);
+			st_put_short(&u, obj->ctype.ai_info.cur_path_index);
+			st_put_short(&u, obj->ctype.ai_info.follow_path_start_seg);
+			st_put_short(&u, obj->ctype.ai_info.follow_path_end_seg);
+			st_put_int(&u, obj->ctype.ai_info.danger_laser_signature);
+			st_put_short(&u, obj->ctype.ai_info.danger_laser_num);
+			break;
+	}
+
+	// render info: 76 bytes at offset 188
+	u = buf + 188;
+	switch (obj->render_type) {
+		case RT_FIREBALL:
+		case RT_HOSTAGE:
+		case RT_POWERUP:
+		case RT_WEAPON_VCLIP:
+			st_put_int(&u, obj->rtype.vclip_info.vclip_num);
+			st_put_int(&u, obj->rtype.vclip_info.frametime);
+			st_put_byte(&u, obj->rtype.vclip_info.framenum);
+			break;
+		case RT_POLYOBJ:
+		case RT_MORPH:
+		default:
+			st_put_int(&u, obj->rtype.pobj_info.model_num);
+			for (i=0; i<MAX_SUBMODELS; i++) {
+				st_put_short(&u, obj->rtype.pobj_info.anim_angles[i].p);
+				st_put_short(&u, obj->rtype.pobj_info.anim_angles[i].b);
+				st_put_short(&u, obj->rtype.pobj_info.anim_angles[i].h);
+			}
+			st_put_int(&u, obj->rtype.pobj_info.subobj_flags);
+			st_put_int(&u, obj->rtype.pobj_info.tmap_override);
+			st_put_int(&u, obj->rtype.pobj_info.alt_textures);
+			break;
+	}
+}
+
+// One wall (24 bytes).
+static void wall_from_disk(wall *w, const ubyte *p)
+{
+	w->segnum = st_get_int(&p);
+	w->sidenum = st_get_int(&p);
+	w->hps = st_get_int(&p);
+	w->linked_wall = st_get_int(&p);
+	w->type = st_get_ubyte(&p);
+	w->flags = st_get_ubyte(&p);
+	w->state = st_get_ubyte(&p);
+	w->trigger = st_get_byte(&p);
+	w->clip_num = st_get_byte(&p);
+	w->keys = st_get_ubyte(&p);
+	w->pad = st_get_short(&p);
+}
+
+static void wall_to_disk(wall *w, ubyte *p)
+{
+	st_put_int(&p, w->segnum);
+	st_put_int(&p, w->sidenum);
+	st_put_int(&p, w->hps);
+	st_put_int(&p, w->linked_wall);
+	st_put_byte(&p, w->type);
+	st_put_byte(&p, w->flags);
+	st_put_byte(&p, w->state);
+	st_put_byte(&p, w->trigger);
+	st_put_byte(&p, w->clip_num);
+	st_put_byte(&p, w->keys);
+	st_put_short(&p, w->pad);
+}
+
+// One active door (16 bytes).
+static void active_door_from_disk(active_door *d, const ubyte *p)
+{
+	d->n_parts = st_get_int(&p);
+	d->front_wallnum[0] = st_get_short(&p);
+	d->front_wallnum[1] = st_get_short(&p);
+	d->back_wallnum[0] = st_get_short(&p);
+	d->back_wallnum[1] = st_get_short(&p);
+	d->time = st_get_int(&p);
+}
+
+static void active_door_to_disk(active_door *d, ubyte *p)
+{
+	st_put_int(&p, d->n_parts);
+	st_put_short(&p, d->front_wallnum[0]);
+	st_put_short(&p, d->front_wallnum[1]);
+	st_put_short(&p, d->back_wallnum[0]);
+	st_put_short(&p, d->back_wallnum[1]);
+	st_put_int(&p, d->time);
+}
+
+// One trigger (54 bytes).
+static void trigger_from_disk(trigger *t, const ubyte *p)
+{
+	int i;
+
+	t->type = st_get_byte(&p);
+	t->flags = st_get_short(&p);
+	t->value = st_get_int(&p);
+	t->time = st_get_int(&p);
+	t->link_num = st_get_byte(&p);
+	t->num_links = st_get_short(&p);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		t->seg[i] = st_get_short(&p);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		t->side[i] = st_get_short(&p);
+}
+
+static void trigger_to_disk(trigger *t, ubyte *p)
+{
+	int i;
+
+	st_put_byte(&p, t->type);
+	st_put_short(&p, t->flags);
+	st_put_int(&p, t->value);
+	st_put_int(&p, t->time);
+	st_put_byte(&p, t->link_num);
+	st_put_short(&p, t->num_links);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		st_put_short(&p, t->seg[i]);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		st_put_short(&p, t->side[i]);
+}
+
+// One robot maker (16 bytes).
+static void matcen_info_from_disk(matcen_info *m, const ubyte *p)
+{
+	m->robot_flags = st_get_int(&p);
+	m->hit_points = st_get_int(&p);
+	m->interval = st_get_int(&p);
+	m->segnum = st_get_short(&p);
+	m->fuelcen_num = st_get_short(&p);
+}
+
+static void matcen_info_to_disk(matcen_info *m, ubyte *p)
+{
+	st_put_int(&p, m->robot_flags);
+	st_put_int(&p, m->hit_points);
+	st_put_int(&p, m->interval);
+	st_put_short(&p, m->segnum);
+	st_put_short(&p, m->fuelcen_num);
+}
+
+// The control center triggers (42 bytes).
+static void cc_triggers_from_disk(control_center_triggers *t, const ubyte *p)
+{
+	int i;
+
+	t->num_links = st_get_short(&p);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		t->seg[i] = st_get_short(&p);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		t->side[i] = st_get_short(&p);
+}
+
+static void cc_triggers_to_disk(control_center_triggers *t, ubyte *p)
+{
+	int i;
+
+	st_put_short(&p, t->num_links);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		st_put_short(&p, t->seg[i]);
+	for (i=0; i<MAX_WALLS_PER_LINK; i++)
+		st_put_short(&p, t->side[i]);
+}
+
+// One fuel center (40 bytes).
+static void fuelcen_from_disk(FuelCenter *f, const ubyte *p)
+{
+	f->Type = st_get_int(&p);
+	f->segnum = st_get_int(&p);
+	f->Flag = st_get_byte(&p);
+	f->Enabled = st_get_byte(&p);
+	f->Lives = st_get_byte(&p);
+	f->dum1 = st_get_byte(&p);
+	f->Capacity = st_get_int(&p);
+	f->MaxCapacity = st_get_int(&p);
+	f->Timer = st_get_int(&p);
+	f->Disable_time = st_get_int(&p);
+	st_get_vector(&p, &f->Center);
+}
+
+static void fuelcen_to_disk(FuelCenter *f, ubyte *p)
+{
+	st_put_int(&p, f->Type);
+	st_put_int(&p, f->segnum);
+	st_put_byte(&p, f->Flag);
+	st_put_byte(&p, f->Enabled);
+	st_put_byte(&p, f->Lives);
+	st_put_byte(&p, f->dum1);
+	st_put_int(&p, f->Capacity);
+	st_put_int(&p, f->MaxCapacity);
+	st_put_int(&p, f->Timer);
+	st_put_int(&p, f->Disable_time);
+	st_put_vector(&p, &f->Center);
+}
+
+// Reads n records of size bytes. Each record is converted and stored in
+// the array, which has room for max records. The records after max are
+// read and dropped, so that a bad count does not write outside the array
+// (the original code did not test the counts). Returns the count of the
+// records that are in the array.
+#define ST_READ_ARRAY(fp, n, max, array, size, from_disk) do {	\
+		ubyte st_buf[size];												\
+		int st_i;															\
+		for (st_i=0; st_i<(n); st_i++) {								\
+			memset(st_buf, 0, size);									\
+			fread(st_buf, size, 1, fp);								\
+			if (st_i < (max))												\
+				from_disk(&(array)[st_i], st_buf);					\
+		}																		\
+	} while (0)
+
+#define ST_WRITE_ARRAY(fp, n, array, size, to_disk) do {			\
+		ubyte st_buf[size];												\
+		int st_i;															\
+		for (st_i=0; st_i<(n); st_i++) {								\
+			to_disk(&(array)[st_i], st_buf);							\
+			fwrite(st_buf, size, 1, fp);								\
+		}																		\
+	} while (0)
+
+// Limits a count that was read from the file to the size of its array.
+static int st_limit_count(int n, int max)
+{
+	if (n < 0)
+		return 0;
+	if (n > max)
+		return max;
+	return n;
+}
 
 void state_callback(int nitems,newmenu_item * items, int * last_key, int citem)
 {
@@ -351,7 +902,7 @@ int state_get_save_file(char * fname, char * dsc, int multi )
 			fread( id, sizeof(char)*4, 1, fp );
 			if ( !memcmp( id, dgss_id, 4 )) {
 				//Read version
-				fread( &version, sizeof(int), 1, fp );
+				version = st_read_int( fp );		// ASCENT: little endian int
 				if (version >= STATE_COMPATIBLE_VERSION)	{
 					// Read description
 					fread( desc[i], sizeof(char)*DESC_LENGTH, 1, fp );
@@ -413,7 +964,7 @@ int state_get_restore_file(char * fname, int multi )
 			fread( id, sizeof(char)*4, 1, fp );
 			if ( !memcmp( id, dgss_id, 4 )) {
 				//Read version
-				fread( &version, sizeof(int), 1, fp );
+				version = st_read_int( fp );		// ASCENT: little endian int
 				if (version >= STATE_COMPATIBLE_VERSION)	{
 					// Read description
 					fread( desc[i], sizeof(char)*DESC_LENGTH, 1, fp );
@@ -475,11 +1026,16 @@ int state_save_old_game(int slotnum, char * sg_name, player * sg_player,
 //Save id
 	fwrite( dgss_id, sizeof(char)*4, 1, fp );
 
+// ASCENT: in this function each fwrite of an int is st_write_int (little
+// endian), and the player structure is written field by field.
+
 //Save version
 	temp_int = STATE_VERSION;
-	fwrite( &temp_int, sizeof(int), 1, fp );
+	st_write_int( fp, temp_int );
 
 //Save description
+	// ASCENT: desc is cleared, so that no byte of the stack goes to the file
+	memset( desc, 0, sizeof(desc) );
 	strncpy( desc, sg_name, DESC_LENGTH );
 	fwrite( desc, sizeof(char)*DESC_LENGTH, 1, fp );
 	
@@ -517,23 +1073,23 @@ int state_save_old_game(int slotnum, char * sg_name, player * sg_player,
 
 // Save the Between levels flag...
 	temp_int = 1;
-	fwrite( &temp_int, sizeof(int), 1, fp );
+	st_write_int( fp, temp_int );
 
 // Save the mission info...
-	fwrite( &Mission_list[0], sizeof(char)*9, 1, fp );
+	fwrite( Mission_list[0].filename, sizeof(char)*9, 1, fp );
 
 //Save level info
 	temp_int = sg_player->level;
-	fwrite( &temp_int, sizeof(int), 1, fp );
+	st_write_int( fp, temp_int );
 	temp_int = sg_next_level_num;
-	fwrite( &temp_int, sizeof(int), 1, fp );
+	st_write_int( fp, temp_int );
 
 //Save GameTime
 	temp_int = 0;
-	fwrite( &temp_int, sizeof(fix), 1, fp );
+	st_write_int( fp, temp_int );
 
 //Save player info
-	fwrite( sg_player, sizeof(player), 1, fp );
+	st_write_player( fp, sg_player );
 
 // Save the current weapon info
 	temp_byte = sg_primary_weapon;
@@ -543,20 +1099,20 @@ int state_save_old_game(int slotnum, char * sg_name, player * sg_player,
 
 // Save the difficulty level
 	temp_int = sg_difficulty_level;
-	fwrite( &temp_int, sizeof(int), 1, fp );
+	st_write_int( fp, temp_int );
 
 // Save the Cheats_enabled
 	temp_int = 0;
-	fwrite( &temp_int, sizeof(int), 1, fp );
+	st_write_int( fp, temp_int );
 	temp_int = 0;		// turbo mode
-	fwrite( &temp_int, sizeof(int), 1, fp );
+	st_write_int( fp, temp_int );
 
-	fwrite( &state_game_id, sizeof(uint), 1, fp );
-	fwrite( &Laser_rapid_fire, sizeof(int), 1, fp );
-	fwrite( &Ugly_robot_cheat, sizeof(int), 1, fp );
-	fwrite( &Ugly_robot_texture, sizeof(int), 1, fp );
-	fwrite( &Physics_cheat_flag, sizeof(int), 1, fp );
-	fwrite( &Lunacy, sizeof(int), 1, fp );
+	st_write_int( fp, state_game_id );
+	st_write_int( fp, Laser_rapid_fire );
+	st_write_int( fp, Ugly_robot_cheat );
+	st_write_int( fp, Ugly_robot_texture );
+	st_write_int( fp, Physics_cheat_flag );
+	st_write_int( fp, Lunacy );
 
 	fclose(fp);
 
@@ -612,9 +1168,13 @@ int state_save_all_sub(char *filename, char *desc, int between_levels)
 //Save id
 	fwrite( dgss_id, sizeof(char)*4, 1, fp );
 
+// ASCENT: in this function each fwrite of an int is st_write_int (little
+// endian), and each fwrite of a structure or of an array of structures
+// writes the fields one by one (see the functions at the top of the file).
+
 //Save version
 	i = STATE_VERSION;
-	fwrite( &i, sizeof(int), 1, fp );
+	st_write_int( fp, i );
 
 //Save description
 	fwrite( desc, sizeof(char)*DESC_LENGTH, 1, fp );
@@ -655,31 +1215,31 @@ int state_save_all_sub(char *filename, char *desc, int between_levels)
 	}
 
 // Save the Between levels flag...
-	fwrite( &between_levels, sizeof(int), 1, fp );
+	st_write_int( fp, between_levels );
 
 // Save the mission info...
-	fwrite( &Mission_list[Current_mission_num], sizeof(char)*9, 1, fp );
+	fwrite( Mission_list[Current_mission_num].filename, sizeof(char)*9, 1, fp );
 
 //Save level info
-	fwrite( &Current_level_num, sizeof(int), 1, fp );
-	fwrite( &Next_level_num, sizeof(int), 1, fp );
+	st_write_int( fp, Current_level_num );
+	st_write_int( fp, Next_level_num );
 
 //Save GameTime
-	fwrite( &GameTime, sizeof(fix), 1, fp );
+	st_write_int( fp, GameTime );
 
 //Save player info
-	fwrite( &Players[Player_num], sizeof(player), 1, fp );
+	st_write_player( fp, &Players[Player_num] );
 
 // Save the current weapon info
 	fwrite( &Primary_weapon, sizeof(byte), 1, fp );
 	fwrite( &Secondary_weapon, sizeof(byte), 1, fp );
 
 // Save the difficulty level
-	fwrite( &Difficulty_level, sizeof(int), 1, fp );
+	st_write_int( fp, Difficulty_level );
 
 // Save the Cheats_enabled
-	fwrite( &Cheats_enabled, sizeof(int), 1, fp );
-	fwrite( &Game_turbo_mode, sizeof(int), 1, fp );
+	st_write_int( fp, Cheats_enabled );
+	st_write_int( fp, Game_turbo_mode );
 
 
 	if ( !between_levels )	{
@@ -706,60 +1266,62 @@ int state_save_all_sub(char *filename, char *desc, int between_levels)
 	
 	//Save object info
 		i = Highest_object_index+1;
-		fwrite( &i, sizeof(int), 1, fp );
-		fwrite( Objects, sizeof(object)*i, 1, fp );
-		
+		st_write_int( fp, i );
+		ST_WRITE_ARRAY( fp, i, Objects, OBJECT_DISK_SIZE, object_to_disk );
+
 	//Save wall info
 		i = Num_walls;
-		fwrite( &i, sizeof(int), 1, fp );
-		fwrite( Walls, sizeof(wall)*i, 1, fp );
-	
+		st_write_int( fp, i );
+		ST_WRITE_ARRAY( fp, i, Walls, WALL_DISK_SIZE, wall_to_disk );
+
 	//Save door info
 		i = Num_open_doors;
-		fwrite( &i, sizeof(int), 1, fp );
-		fwrite( ActiveDoors, sizeof(active_door)*i, 1, fp );
-	
+		st_write_int( fp, i );
+		ST_WRITE_ARRAY( fp, i, ActiveDoors, ACTIVE_DOOR_DISK_SIZE, active_door_to_disk );
+
 	//Save trigger info
-		fwrite( &Num_triggers, sizeof(int), 1, fp );
-		fwrite( Triggers, sizeof(trigger)*Num_triggers, 1, fp );
-	
+		st_write_int( fp, Num_triggers );
+		ST_WRITE_ARRAY( fp, Num_triggers, Triggers, TRIGGER_DISK_SIZE, trigger_to_disk );
+
 	//Save tmap info
 		for (i=0; i<=Highest_segment_index; i++ )	{
 			for (j=0; j<6; j++ )	{
-				fwrite( &Segments[i].sides[j].wall_num, sizeof(short), 1, fp );
-				fwrite( &Segments[i].sides[j].tmap_num, sizeof(short), 1, fp );
-				fwrite( &Segments[i].sides[j].tmap_num2, sizeof(short), 1, fp );
+				ubyte side_buf[6], *sp = side_buf;
+				st_put_short( &sp, Segments[i].sides[j].wall_num );
+				st_put_short( &sp, Segments[i].sides[j].tmap_num );
+				st_put_short( &sp, Segments[i].sides[j].tmap_num2 );
+				fwrite( side_buf, 6, 1, fp );
 			}
 		}
-	
+
 	// Save the fuelcen info
-		fwrite( &Fuelcen_control_center_destroyed, sizeof(int), 1, fp );
-		fwrite( &Fuelcen_seconds_left, sizeof(int), 1, fp );
-		fwrite( &Num_robot_centers, sizeof(int), 1, fp );
-		fwrite( RobotCenters, sizeof(matcen_info)*Num_robot_centers, 1, fp );
-		fwrite( &ControlCenterTriggers, sizeof(control_center_triggers), 1, fp );
-		fwrite( &Num_fuelcenters, sizeof(int), 1, fp );
-		fwrite( Station, sizeof(FuelCenter)*Num_fuelcenters, 1, fp );
-	
+		st_write_int( fp, Fuelcen_control_center_destroyed );
+		st_write_int( fp, Fuelcen_seconds_left );
+		st_write_int( fp, Num_robot_centers );
+		ST_WRITE_ARRAY( fp, Num_robot_centers, RobotCenters, MATCEN_INFO_DISK_SIZE, matcen_info_to_disk );
+		ST_WRITE_ARRAY( fp, 1, &ControlCenterTriggers, CC_TRIGGERS_DISK_SIZE, cc_triggers_to_disk );
+		st_write_int( fp, Num_fuelcenters );
+		ST_WRITE_ARRAY( fp, Num_fuelcenters, Station, FUELCEN_DISK_SIZE, fuelcen_to_disk );
+
 	// Save the control cen info
-		fwrite( &Control_center_been_hit, sizeof(int), 1, fp );
-		fwrite( &Control_center_player_been_seen, sizeof(int), 1, fp );
-		fwrite( &Control_center_next_fire_time, sizeof(int), 1, fp );
-		fwrite( &Control_center_present, sizeof(int), 1, fp );
-		fwrite( &Dead_controlcen_object_num, sizeof(int), 1, fp );
-	
+		st_write_int( fp, Control_center_been_hit );
+		st_write_int( fp, Control_center_player_been_seen );
+		st_write_int( fp, Control_center_next_fire_time );
+		st_write_int( fp, Control_center_present );
+		st_write_int( fp, Dead_controlcen_object_num );
+
 	// Save the AI state
 		ai_save_state( fp );
-	
+
 	// Save the automap visited info
 		fwrite( Automap_visited, sizeof(ubyte)*MAX_SEGMENTS, 1, fp );
 	}
-	fwrite( &state_game_id, sizeof(uint), 1, fp );
-	fwrite( &Laser_rapid_fire, sizeof(int), 1, fp );
-	fwrite( &Ugly_robot_cheat, sizeof(int), 1, fp );
-	fwrite( &Ugly_robot_texture, sizeof(int), 1, fp );
-	fwrite( &Physics_cheat_flag, sizeof(int), 1, fp );
-	fwrite( &Lunacy, sizeof(int), 1, fp );
+	st_write_int( fp, state_game_id );
+	st_write_int( fp, Laser_rapid_fire );
+	st_write_int( fp, Ugly_robot_cheat );
+	st_write_int( fp, Ugly_robot_texture );
+	st_write_int( fp, Physics_cheat_flag );
+	st_write_int( fp, Lunacy );
 
 	fclose(fp);
 
@@ -839,8 +1401,12 @@ int state_restore_all_sub(char *filename, int multi)
 		return 0;
 	}
 
+// ASCENT: in this function each fread of an int is st_read_int (little
+// endian), and each fread of a structure or of an array of structures
+// reads the fields one by one (see the functions at the top of the file).
+
 //Read version
-	fread( &version, sizeof(int), 1, fp );
+	version = st_read_int( fp );
 	if (version < STATE_COMPATIBLE_VERSION)	{
 		fclose(fp);
 		return 0;
@@ -853,10 +1419,11 @@ int state_restore_all_sub(char *filename, int multi)
 	fseek( fp, THUMBNAIL_W*THUMBNAIL_H, SEEK_CUR );
 
 // Read the Between levels flag...
-	fread( &between_levels, sizeof(int), 1, fp );
+	between_levels = st_read_int( fp );
 
 // Read the mission info...
 	fread( mission, sizeof(char)*9, 1, fp );
+	mission[9] = 0;		// ASCENT: the name always ends
 
 	if (!load_mission_by_name( mission ))	{
 		nm_messagebox( NULL, 1, "Ok", "Error!\nUnable to load mission\n'%s'\n", mission );
@@ -865,11 +1432,11 @@ int state_restore_all_sub(char *filename, int multi)
 	}
 
 //Read level info
-	fread( &current_level, sizeof(int), 1, fp );
-	fread( &next_level, sizeof(int), 1, fp );
+	current_level = st_read_int( fp );
+	next_level = st_read_int( fp );
 
 //Restore GameTime
-	fread( &GameTime, sizeof(fix), 1, fp );
+	GameTime = st_read_int( fp );
 
 // Start new game....
 	if (!multi)	{
@@ -889,7 +1456,7 @@ int state_restore_all_sub(char *filename, int multi)
 
 	if ( between_levels )	{
 		int saved_offset;
-		fread( &Players[Player_num], sizeof(player), 1, fp );
+		st_read_player( fp, &Players[Player_num] );
 		saved_offset = ftell(fp);
 		fclose( fp );
 		do_briefing_screens(next_level);
@@ -897,8 +1464,8 @@ int state_restore_all_sub(char *filename, int multi)
 		fseek( fp, saved_offset, SEEK_SET );
  		StartNewLevelSub( next_level, 0 );		
 	} else {
-		StartNewLevelSub(current_level, 0);		
-		fread( &Players[Player_num], sizeof(player), 1, fp );
+		StartNewLevelSub(current_level, 0);
+		st_read_player( fp, &Players[Player_num] );
 	}
 	strcpy( Players[Player_num].callsign, org_callsign );
 
@@ -914,11 +1481,11 @@ int state_restore_all_sub(char *filename, int multi)
 	select_weapon(Secondary_weapon, 1, 0, 0);
 
 // Restore the difficulty level
-	fread( &Difficulty_level, sizeof(int), 1, fp );
+	Difficulty_level = st_read_int( fp );
 
 // Restore the cheats enabled flag
-	fread( &Cheats_enabled, sizeof(int), 1, fp );
-	fread( &Game_turbo_mode, sizeof(int), 1, fp );
+	Cheats_enabled = st_read_int( fp );
+	Game_turbo_mode = st_read_int( fp );
 
 	if ( !between_levels )	{
 		Do_appearance_effect = 0;			// Don't do this for middle o' game stuff.
@@ -931,17 +1498,24 @@ RetryObjectLoading:
 		reset_objects(1);
 	
 		//Read objects, and pop 'em into their respective segments.
-		fread( &i, sizeof(int), 1, fp );
-		Highest_object_index = i-1;
-		if ( !BogusSaturnShit )	
-			fread( Objects, sizeof(object)*i, 1, fp );
+		// ASCENT: the objects are read one by one and converted from the
+		// 264 bytes of the file. The count is limited to the array (the
+		// objects after it are read and dropped).
+		i = st_read_int( fp );
+		Highest_object_index = st_limit_count( i, MAX_OBJECTS ) - 1;
+		if ( !BogusSaturnShit )
+			ST_READ_ARRAY( fp, i, MAX_OBJECTS, Objects, OBJECT_DISK_SIZE, object_from_disk );
 		else {
-			ubyte tmp_object[sizeof(object)];
-			for (i=0; i<=Highest_object_index; i++ )	{
-				fread( tmp_object, sizeof(object)-3, 1, fp );
+			ubyte tmp_object[OBJECT_DISK_SIZE];
+			int n_objects = i;
+			for (i=0; i<n_objects; i++ )	{
+				memset( tmp_object, 0, OBJECT_DISK_SIZE );
+				fread( tmp_object, OBJECT_DISK_SIZE-3, 1, fp );
 				// Insert 3 bytes after the read in obj->rtype.pobj_info.alt_textures field.
-				memcpy( &Objects[i], tmp_object, sizeof(object)-3 );
-				Objects[i].rtype.pobj_info.alt_textures = -1;
+				if ( i < MAX_OBJECTS )	{
+					object_from_disk( &Objects[i], tmp_object );
+					Objects[i].rtype.pobj_info.alt_textures = -1;
+				}
 			}
 		}
 	
@@ -970,7 +1544,7 @@ RetryObjectLoading:
 		Object_next_signature++;
 	
 		//Restore wall info
-		fread( &i, sizeof(int), 1, fp );
+		i = st_read_int( fp );
 		Num_walls = i;
 		// Check for a bogus Saturn version!!!!
 		if (!BogusSaturnShit )	{
@@ -982,7 +1556,8 @@ RetryObjectLoading:
 			}
 		}
 
-		fread( Walls, sizeof(wall)*Num_walls, 1, fp );
+		ST_READ_ARRAY( fp, Num_walls, MAX_WALLS, Walls, WALL_DISK_SIZE, wall_from_disk );
+		Num_walls = st_limit_count( Num_walls, MAX_WALLS );		// ASCENT: see ST_READ_ARRAY
 		// Check for a bogus Saturn version!!!!
 		if (!BogusSaturnShit )	{
 			for (i=0; i<Num_walls; i++ )	{
@@ -996,38 +1571,47 @@ RetryObjectLoading:
 		}
 	
 		//Restore door info
-		fread( &i, sizeof(int), 1, fp );
+		i = st_read_int( fp );
 		Num_open_doors = i;
-		fread( ActiveDoors, sizeof(active_door)*Num_open_doors, 1, fp );
-	
+		ST_READ_ARRAY( fp, Num_open_doors, MAX_DOORS, ActiveDoors, ACTIVE_DOOR_DISK_SIZE, active_door_from_disk );
+		Num_open_doors = st_limit_count( Num_open_doors, MAX_DOORS );		// ASCENT: see ST_READ_ARRAY
+
 		//Restore trigger info
-		fread( &Num_triggers, sizeof(int), 1, fp );
-		fread( Triggers, sizeof(trigger)*Num_triggers, 1, fp );
-	
+		Num_triggers = st_read_int( fp );
+		ST_READ_ARRAY( fp, Num_triggers, MAX_TRIGGERS, Triggers, TRIGGER_DISK_SIZE, trigger_from_disk );
+		Num_triggers = st_limit_count( Num_triggers, MAX_TRIGGERS );		// ASCENT: see ST_READ_ARRAY
+
 		//Restore tmap info
 		for (i=0; i<=Highest_segment_index; i++ )	{
 			for (j=0; j<6; j++ )	{
-				fread( &Segments[i].sides[j].wall_num, sizeof(short), 1, fp );
-				fread( &Segments[i].sides[j].tmap_num, sizeof(short), 1, fp );
-				fread( &Segments[i].sides[j].tmap_num2, sizeof(short), 1, fp );
+				ubyte side_buf[6];
+				const ubyte *sp = side_buf;
+				// ASCENT: a short read keeps the values of the level
+				if ( fread( side_buf, 6, 1, fp ) != 1 )
+					continue;
+				Segments[i].sides[j].wall_num = st_get_short( &sp );
+				Segments[i].sides[j].tmap_num = st_get_short( &sp );
+				Segments[i].sides[j].tmap_num2 = st_get_short( &sp );
 			}
 		}
-	
+
 		//Restore the fuelcen info
-		fread( &Fuelcen_control_center_destroyed, sizeof(int), 1, fp );
-		fread( &Fuelcen_seconds_left, sizeof(int), 1, fp );
-		fread( &Num_robot_centers, sizeof(int), 1, fp );
-		fread( RobotCenters, sizeof(matcen_info)*Num_robot_centers, 1, fp );
-		fread( &ControlCenterTriggers, sizeof(control_center_triggers), 1, fp );
-		fread( &Num_fuelcenters, sizeof(int), 1, fp );
-		fread( Station, sizeof(FuelCenter)*Num_fuelcenters, 1, fp );
-	
+		Fuelcen_control_center_destroyed = st_read_int( fp );
+		Fuelcen_seconds_left = st_read_int( fp );
+		Num_robot_centers = st_read_int( fp );
+		ST_READ_ARRAY( fp, Num_robot_centers, MAX_ROBOT_CENTERS, RobotCenters, MATCEN_INFO_DISK_SIZE, matcen_info_from_disk );
+		Num_robot_centers = st_limit_count( Num_robot_centers, MAX_ROBOT_CENTERS );		// ASCENT: see ST_READ_ARRAY
+		ST_READ_ARRAY( fp, 1, 1, &ControlCenterTriggers, CC_TRIGGERS_DISK_SIZE, cc_triggers_from_disk );
+		Num_fuelcenters = st_read_int( fp );
+		ST_READ_ARRAY( fp, Num_fuelcenters, MAX_NUM_FUELCENS, Station, FUELCEN_DISK_SIZE, fuelcen_from_disk );
+		Num_fuelcenters = st_limit_count( Num_fuelcenters, MAX_NUM_FUELCENS );		// ASCENT: see ST_READ_ARRAY
+
 		// Restore the control cen info
-		fread( &Control_center_been_hit, sizeof(int), 1, fp );
-		fread( &Control_center_player_been_seen, sizeof(int), 1, fp );
-		fread( &Control_center_next_fire_time, sizeof(int), 1, fp );
-		fread( &Control_center_present, sizeof(int), 1, fp );
-		fread( &Dead_controlcen_object_num, sizeof(int), 1, fp );
+		Control_center_been_hit = st_read_int( fp );
+		Control_center_player_been_seen = st_read_int( fp );
+		Control_center_next_fire_time = st_read_int( fp );
+		Control_center_present = st_read_int( fp );
+		Dead_controlcen_object_num = st_read_int( fp );
 	
 		// Restore the AI state
 		ai_restore_state( fp );
@@ -1047,12 +1631,12 @@ RetryObjectLoading:
 
 	if ( version >= 7 )	{
 		int tmp_Lunacy;
-		fread( &state_game_id, sizeof(uint), 1, fp );
-		fread( &Laser_rapid_fire, sizeof(int), 1, fp );
-		fread( &Ugly_robot_cheat, sizeof(int), 1, fp );
-		fread( &Ugly_robot_texture, sizeof(int), 1, fp );
-		fread( &Physics_cheat_flag, sizeof(int), 1, fp );
-		fread( &tmp_Lunacy, sizeof(int), 1, fp );
+		state_game_id = st_read_int( fp );
+		Laser_rapid_fire = st_read_int( fp );
+		Ugly_robot_cheat = st_read_int( fp );
+		Ugly_robot_texture = st_read_int( fp );
+		Physics_cheat_flag = st_read_int( fp );
+		tmp_Lunacy = st_read_int( fp );
 		if ( tmp_Lunacy )
 			do_lunacy_on();
 	}

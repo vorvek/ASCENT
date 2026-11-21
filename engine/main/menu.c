@@ -32,8 +32,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <conio.h>
-#include <dos.h>
+// ASCENT: removed conio.h and dos.h (DOS only headers).
 #include <errno.h>
 
 #include "menu.h"
@@ -47,7 +46,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include "bm.h"
 #include "screens.h"
 #include "mono.h"
-#include "cflib.h"
+// ASCENT: removed cflib.h. That library is not part of the port and this file uses nothing from it.
 #include "joy.h"
 #include "vecmat.h"
 #include "effects.h"
@@ -66,7 +65,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include "network.h"
 #include "scores.h"
 #include "joydefs.h"
-#include "modem.h"
+// ASCENT: removed modem.h (the modem game is not part of the port).
 #include "playsave.h"
 #include "multi.h"
 #include "kconfig.h"
@@ -78,6 +77,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include "mission.h"
 #include "songs.h"
 #include "config.h"
+#include "platform.h"		// ASCENT: plat_pump reports that the window is closed
 
 #ifdef EDITOR
 #include "editor\editor.h"
@@ -114,9 +114,25 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 
 #define ADD_ITEM(t,value,key)  do { m[num_options].type=NM_TYPE_MENU; m[num_options].text=t; menu_choice[num_options]=value;num_options++; } while (0)
 
+// ASCENT: prototypes for functions that this file calls before their
+// definition. Watcom C accepted the implicit declarations. The functions
+// that had no return type and returned no value are now void.
+void do_option(int select);
+void do_new_game_menu(void);
+void do_load_game_menu(void);
+void do_save_game_menu(void);
+void do_multi_player_menu();
+void do_detail_level_menu_custom(void);
+
+// ASCENT: EZERO (no error) is in errno.h of Watcom C only.
+#ifndef EZERO
+#define EZERO 0
+#endif
+
 extern int last_joy_time;		//last time the joystick was used
 #ifndef NDEBUG
-extern int speedtest_on;
+extern int Speedtest_on;	// ASCENT: game.c defines Speedtest_on. Watcom linked without case.
+#define speedtest_on Speedtest_on
 #else
 #define speedtest_on 0
 #endif
@@ -247,6 +263,12 @@ int DoMenu()
 		if (main_menu_choice < 0 )	main_menu_choice = 0;		
 		Menu_draw_copyright = 1;
 		main_menu_choice = newmenu_do2( "", NULL, num_options, m, autodemo_menu_check, main_menu_choice, Menu_pcx_name);
+		// ASCENT: the main menu ignores the ESC key, so a closed window
+		// would not end this loop. Leave the program in that case.
+		if ( !plat_pump() )	{
+			Function_mode = FMODE_EXIT;
+			break;
+		}
 		if ( main_menu_choice > -1 ) do_option(menu_choice[main_menu_choice]);
 		create_main_menu(m, menu_choice, &num_options);	//	may have to change, eg, maybe selected pilot and no save games.
 	} while( Function_mode==FMODE_MENU );
@@ -580,7 +602,7 @@ void do_detail_level_menu_custom(void)
 	set_custom_detail_vars();
 }
 
-do_new_game_menu()
+void do_new_game_menu()
 {
 	int n_missions,new_level_num,player_highest_level;
 
@@ -633,7 +655,7 @@ try_again:
 
 		strcpy(num_text,"1");
 
-		choice = newmenu_do( NULL, TXT_SELECT_START_LEV, 2, &m, NULL );
+		choice = newmenu_do( NULL, TXT_SELECT_START_LEV, 2, m, NULL );		// ASCENT: was &m (pointer to the array, wrong type)
 
 		if (choice==-1 || m[1].text[0]==0)
 			return;
@@ -668,7 +690,7 @@ try_again:
 
 }
 
-do_load_game_menu()
+void do_load_game_menu()
 {
 	newmenu_item m[N_SAVE_SLOTS];
 	char *saved_text[N_SAVE_SLOTS];
@@ -708,7 +730,7 @@ do_load_game_menu()
 	}
 }
 
-do_save_game_menu()
+void do_save_game_menu()
 {
 	newmenu_item m[N_SAVE_SLOTS];
 	char *saved_text_ptrs[N_SAVE_SLOTS];
