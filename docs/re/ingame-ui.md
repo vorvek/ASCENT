@@ -366,8 +366,8 @@ behavior.
   the 12 equipment boxes are in tables that are not decoded (pointer tables
   near 0x144540 and the layout variables 0x13B364 to 0x13B548). Input code is
   in 0x2FB10.
-- Map (mode 4): picture 64 or 58. The map circle is drawn by 0x34032
-  ("crystalBall != NULL"). Not read.
+- Map (mode 4): picture 64 or 58. The automap in the circle (0x34032,
+  "crystalBall != NULL", and 0x1887E) is in [automap.md](automap.md).
 - Statistics (mode 5): picture 67 or 61. 0x992DB creates about 40 text areas
   at 0x99B11 to 0x9A52B (areas 0x3BB77C to 0x3BC244, gray, white and orange
   text). The positions come from tables that are not decoded.
@@ -394,7 +394,7 @@ places of the paper doll, the cursor that holds an item, the buttons USE, DROP
 and R (rest), the statistics screen (portrait, alignment, race, classes and
 levels, the six abilities, the five thief skills), the portrait number.
 
-Frame only: the map picture, the spell tables of the statistics screen, the
+The map screen draws the automap (automap.md). Frame only: the spell tables of the statistics screen, the
 SPELLS button and the spell lists, the scroll bar of the inventory list
 (`HRISBTN.PCH` is not read).
 

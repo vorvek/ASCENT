@@ -64,7 +64,7 @@ Default (0x13C010) and the default of the port:
 
 **V** `controls_read_all` reads each keyboard item (0x5313D to 0x54002). The actions of
 the items 28 to 61 (0x53D05 to 0x5402E): Cycle Weapon 0x544F2, Activate 0x95050,
-Immersive 0x54439, Automap 0x408F5, Inventory 0x408A2, Stats 0x4093A, Infravision
+Immersive 0x54439, Automap 0x408F5 ([automap.md](automap.md)), Inventory 0x408A2, Stats 0x4093A, Infravision
 0x54632, Disarm 0x43A5A(-3), Turn Undead 0xADC46, Move silently 0xB4196, Find Traps
 0xB3400, Open Locks 0xB31BD, Rest 0x360DA(1).
 

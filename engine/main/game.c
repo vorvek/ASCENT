@@ -3183,6 +3183,12 @@ void ReadControls()
 			if (dtu_display_owns_key(key))
 				continue;
 
+			// ASCENT: the keys of the map while it has the controls (0x1893F)
+			if (dtu_automap_owns_key(key)) {
+				dtu_automap_key(key);
+				continue;
+			}
+
 			john_cheat_func_1(key);
 
 			#ifdef NETWORK

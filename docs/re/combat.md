@@ -1316,8 +1316,9 @@ The lockpick slot is not read here (it only adds to Open Locks in 0xAFB55).
   every trigger whose first_trap is this trap; success: door open if flag 1,
   side pad &= ~8, on = 0, tex_disabled (+0x37) into tmap_num2, 0x954C8 (out of
   the list of active traps), TEX 947.
-- Guess: nothing reads the side pad bits 4 and 8; a found trap is shown only
-  by the marker of the spell.
+- The automap draws the sides with the pad bits 4 (blue), 8 (green) and 0x10
+  (magenta, a found secret door) in flickering colors (0x1968A, see
+  [automap.md](automap.md)). Nothing else was found that reads the bits 4 and 8.
 
 ### Move Silently 0xB4196 (key M, 0x53F53) and Hide In Shadows 0xB333F
 
