@@ -108,6 +108,16 @@ key name centered (56,56,56). Keys: arrows move by u, d, l, r; Enter changes; Ct
 control type). The key names (0x13BBB8) are those of Descent 1 with UP, DOWN, LEFT,
 RIGHT as words.
 
+**V** The screen is called through 0x5225D (`kconfig` of Descent 1, with the page
+number and the title). In the game (0x7F13D returns 0: the front end is not active)
+0x5225D copies the screen canvas (pointer at 0x13B5FE) to a second canvas (pointer at
+0x13B606) with `gr_bitmap` (0xE0BC0) before the screen (0x5226D to 0x52281), and copies
+it back after it (0x522DB to 0x522EF). Then 0x40853 sets 0x13B622 to 1 and 0x13B6A7
+(the last drawn cockpit mode of `init_cockpit` 0x402DC) to -1. So the Controls menu and
+the options menu that come back are drawn over the play screen, not over the key
+screen. The screen function 0x51170 itself does not restore the screen (its Escape
+path 0x51642 sets the canvas, flushes the input and starts the time).
+
 **V** In the high resolution form (0x13A94B) each coordinate is doubled (0x50DC7 to
 0x50DEB, 0x51668, 0x5171E) and the items use the font at 0x13E380 (FNTEMFM_.FNT).
 
@@ -150,6 +160,14 @@ executable. Changes:
 - Cycle Weapon takes the next hot key that holds an item (the weapon tests are not
   ported). Infravision: see [infravision.md](infravision.md).
 - `-keyconfig "forward=Q;back=Y,DOWN"` sets keys for a test.
+- The copy of the screen around the key screen (0x5225D) is in `dtu_kconfig`
+  (`kc_screen_save`, `kc_screen_restore`), for each page, also in the front end (its
+  Controls menu is a port addition). The 1.0 build did not copy the screen
+  back: after Escape the Controls menu and then the options menu showed over the key
+  screen. With the GPU renderer the copy back also shows the upscaled pictures again
+  (`dtu_hdui_save`, `dtu_hdui_restore` in `dtuhdui.c`) and the GPU image of the view
+  (`dtu_display_view_again` in `dtudisp.c`): `gpu.c` ends the view rectangle when a
+  screen covers it.
 
 ### Gamepad (port)
 

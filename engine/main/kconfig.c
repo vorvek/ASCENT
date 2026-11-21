@@ -2379,6 +2379,7 @@ void kconfig_sense_init()
 #include "dtudisp.h"		// Dtu_hires, Dtu_immersive
 #include "dtufile.h"		// dtu_find_file
 #include "dtuopts.h"		// dtu_opts_save
+#include "dtuhdui.h"		// dtu_hdui_save, dtu_hdui_restore
 
 #define DTU_KC_N_KEYS	62
 #define DTU_KC_N_HOT		(2*DTU_N_HOT_ACTIONS)
@@ -3344,6 +3345,40 @@ static void kc_reset_page(void)
 	}
 }
 
+// The screen under the key screen (dtu_kconfig): its pixels and its
+// upscaled pictures.
+static grs_bitmap *Kc_saved;
+static dtu_hdui_state *Kc_saved_hd;
+static int Kc_saved_game;			// the screen had the view of the game
+
+static void kc_screen_save(void)
+{
+	grs_bitmap *scr = &grd_curscreen->sc_canvas.cv_bitmap;
+
+	Kc_saved = gr_create_bitmap(scr->bm_w, scr->bm_h);
+	if (!Kc_saved)
+		return;
+	gr_bm_ubitblt(scr->bm_w, scr->bm_h, 0, 0, 0, 0, scr, Kc_saved);
+	Kc_saved_hd = dtu_hdui_save();
+	Kc_saved_game = (Function_mode == FMODE_GAME);
+}
+
+static void kc_screen_restore(void)
+{
+	grs_bitmap *scr = &grd_curscreen->sc_canvas.cv_bitmap;
+
+	if (!Kc_saved)
+		return;
+	gr_bm_ubitblt(scr->bm_w, scr->bm_h, 0, 0, 0, 0, Kc_saved, scr);
+	gr_free_bitmap(Kc_saved);
+	Kc_saved = NULL;
+	dtu_hdui_restore(Kc_saved_hd);
+	Kc_saved_hd = NULL;
+	// the GPU image of the view in the pixels of color 255 (gpu.c)
+	if (Kc_saved_game)
+		dtu_display_view_again();
+}
+
 // page: 0 keyboard, 1 joystick, 2 mouse, 3 hot keys, 4 gamepad (port)
 void dtu_kconfig(int page, char *title)
 {
@@ -3371,6 +3406,14 @@ void dtu_kconfig(int page, char *title)
 	}
 
 	gr_set_current_canvas(NULL);
+	// 0x5225D: in the game the executable copies the screen to a canvas
+	// before the key screen (0x5226D to 0x52281) and copies it back after
+	// it (0x522DB to 0x522EF), so the menus that come back (Controls,
+	// Options) are drawn over the play screen, not over the key screen.
+	// ASCENT: the port does it in the front end too (its Controls menu is
+	// not in the executable), and keeps the upscaled pictures of the
+	// screen with it (dtuhdui.c).
+	kc_screen_save();
 	Kc_s = (grd_curcanv->cv_bitmap.bm_w >= 640) ? 2 : 1;
 	Kc_item_font = GAME_FONT;
 	if (Kc_s == 2) {
@@ -3414,6 +3457,7 @@ void dtu_kconfig(int page, char *title)
 		case -2:
 		case KEY_ESC:
 			grd_curcanv->cv_font = save_font;
+			kc_screen_restore();
 			gr_set_current_canvas(save_canvas);
 			keyd_repeat = old_keyd_repeat;
 			game_flush_inputs();

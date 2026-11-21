@@ -60,6 +60,11 @@ void dtu_display_init_cockpit(void);
 void dtu_display_begin_render(void);
 void dtu_display_end_render(void);
 
+// ASCENT: the GPU image of the view shows again in the rectangle of the
+// last frame (gpu.c ends the rectangle when a screen covers it). For a
+// screen that is copied back over a full screen picture (kconfig.c).
+void dtu_display_view_again(void);
+
 // Draws the interface and the rendered view on the screen canvas, and
 // handles the keys and the mouse of the interface. Called once per frame
 // in place of the copy of the view to the screen.
