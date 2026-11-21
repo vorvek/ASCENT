@@ -623,14 +623,17 @@ tries of the move loop do not stay at the same place.
 - A step up a low wall: the body of the original (4.1) stops the center 4.6 (human) or
   4.5 (dwarf) from a wall side, also at the top edge of a step, and the executable has
   no step test for walls. So a step of 3.5 that is a wall side (BANE, segment 17 side
-  0 at z 70) stops a dwarf (center 6.34 above the floor, 2.84 above the step) always
-  and a human (7.54, 4.04 above it) at some frame rates. With the Improvement a wall
+  0 at z 70) stops a dwarf or a halfling (center 6.34 above the floor, 2.84 above the
+  step) always and a human or an elf (7.54, 4.04 above it) at some frame rates. With the Improvement a wall
   side whose top is 5.5 (the limit of the kneeHigh test, 4.6) or less above the feet
   lifts the player onto it when the player walks on the floor (no jump, climb, fall,
   flight or levitation) and the new center and the head test point (4.3) are in a
   segment. Measured: BANE walk of 2.7 s, end z 143.2, 142.4, 143.2 (human) and 143.0,
   142.4, 142.0 (dwarf) at 20, 60, 200 frames per second; with `-noimprovements` the
-  dwarf stops at z 65.5.
+  dwarf stops at z 65.5. At 60 frames per second for 4 s (`-archive`): human 141.5,
+  dwarf 141.5, halfling (`fmf`) 141.4; with `-noimprovements` human 134.0, dwarf 65.5,
+  halfling 65.0. The step does not depend on the race: the center height decides it
+  (`-bodylog`: human, elf and dark elf 7.54, dwarf and halfling 6.34).
 
 `Dtu_improved_jump` (menu): the keys steer the jump (60.0 for each second squared, the
 speed in x and z at most the start speed of the jump, 14.0 at least). A jump is possible

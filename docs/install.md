@@ -172,8 +172,9 @@ separated by tabs: name, version, target, file, size, sha256, files, title.
 
 ## The content server
 
-`installer/content.ini` is the one place with the server address (`base_url`, empty in
-the repository), the header (`X-Ascent-Client: ascent-setup-1`) and the User-Agent
+`installer/content.ini` is the one place with the server address (`base_url`,
+`https://ascent-content.generalsimulationworks.com/`, a Cloudflare Worker in front of
+an R2 bucket, `installer/server/worker.js`), the header (`X-Ascent-Client: ascent-setup-1`) and the User-Agent
 (`ASCENT-Setup/1.0`) that the client sends. The setup program reads it at compile time
 and writes the address it used into the installed `content.ini`. A test gives another
 address: `/CONTENTURL=` for the setup program, `--url` for `ascent-content`.
