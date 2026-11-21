@@ -5732,15 +5732,25 @@ static void test_place_player(void)
 // move the player before the warp test of the start segment.
 void dtu_test_place_player(void)
 {
-	static int tour = -1, step = 0;
+	static int tour = -1, step = 0, delay = 0;
 
 	if (Dtu_objects_enabled && Test_pos_pending)
 		test_place_player();
-	// -testtour: the player visits the center of each segment, one frame
-	// for each of 4 headings, so that a test sees every side of the level
-	// (the requests of the upscaled textures: ASCENT_GPU_HDLOG=1)
-	if (tour < 0)
-		tour = FindArg("-testtour") != 0;
+	// -testtour [FRAMES]: the player visits the center of each segment, one
+	// frame for each of 4 headings, so that a test sees every side of the
+	// level (the requests of the upscaled textures: ASCENT_GPU_HDLOG=1).
+	// With FRAMES the tour starts after that many frames (after a warp of
+	// the start segment, for example).
+	if (tour < 0) {
+		int t = FindArg("-testtour");
+		tour = t != 0;
+		if (t && t+1 < Num_args && Args[t+1][0] >= '0' && Args[t+1][0] <= '9')
+			delay = atoi(Args[t+1]);
+	}
+	if (tour && delay > 0) {
+		delay--;
+		return;
+	}
 	if (tour && ConsoleObject && step / 4 <= Highest_segment_index) {
 		int seg = step / 4;
 		vms_angvec a;
