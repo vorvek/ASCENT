@@ -128,6 +128,7 @@ static char rcsid[] = "$Id: texmerge.c 2.0 1995/02/27 11:31:08 john Exp $";
 #include "mono.h"
 #include "rle.h"
 #include "piggy.h"
+#include "tmapfx.h"		// ASCENT: the effect colors
 
 #define MAX_NUM_CACHE_BITMAPS 50
 
@@ -272,7 +273,21 @@ grs_bitmap * texmerge_get_cached_bitmap( int tmap_bottom, int tmap_top )
 		Cache[least_recently_used].bitmap->bm_flags = bitmap_bottom->bm_flags & (~BM_FLAG_RLE);
 		Cache[least_recently_used].bitmap->avg_color = bitmap_bottom->avg_color;
 	}
-		
+
+	// ASCENT: DTUGAME.EXE sets flag 0x20 on each merged bitmap (0x7AB89),
+	// and the texture mappers give its effect colors the colors of the
+	// screen (tmapfx.c). Here the flag is set only when the bitmap has one.
+	{
+		ubyte *p = Cache[least_recently_used].bitmap->bm_data;
+		int i;
+
+		for (i=0; i<64*64; i++)
+			if (tmap_fx_color_code(p[i])) {
+				Cache[least_recently_used].bitmap->bm_flags |= BM_FLAG_DTU_EFFECTS;
+				break;
+			}
+	}
+
 	Cache[least_recently_used].top_bmp = bitmap_top;
 	Cache[least_recently_used].bottom_bmp = bitmap_bottom;
 	Cache[least_recently_used].last_frame_used = FrameCount;

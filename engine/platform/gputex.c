@@ -39,18 +39,25 @@
 // ---------------------------------------------------------------------
 // Image work (any thread)
 
-// Fill the color of the pixels with alpha 0 from the pixels next to them,
-// so that the linear filter and the mipmaps do not mix the color of the
-// transparent pixels (often a bright key color) into the edges. The pixels
-// that no pass reaches get the average color of the image.
-void gputex_bleed(uint8_t *rgba, int w, int h)
+// A pixel whose color fill_colors fills: alpha 0 (fx 0), or an effect
+// texel (fx 1, plat_gpu_fx_mark).
+static int fill_target(uint8_t a, int fx)
+{
+	return fx ? (a != 0 && a != 255) : a == 0;
+}
+
+// Fill the color of the target pixels from the other pixels next to them
+// (an effect texel is not a source for the pixels with alpha 0 either:
+// fx 0 runs after the effect texels got their colors). The pixels that
+// no pass reaches get the average color of the image.
+static void fill_colors(uint8_t *rgba, int w, int h, int fx)
 {
 	uint8_t *done;
 	int x, y, pass, any = 0, left;
 	int64_t sum[3] = { 0, 0, 0 }, n = 0;
 
 	for (y = 0; y < w * h; y++)
-		if (rgba[y * 4 + 3] == 0) {
+		if (fill_target(rgba[y * 4 + 3], fx)) {
 			any = 1;
 			break;
 		}
@@ -60,7 +67,7 @@ void gputex_bleed(uint8_t *rgba, int w, int h)
 	if (!done)
 		return;
 	for (y = 0; y < w * h; y++) {
-		done[y] = rgba[y * 4 + 3] != 0;
+		done[y] = !fill_target(rgba[y * 4 + 3], fx) && (!fx || rgba[y * 4 + 3] != 0);
 		if (done[y]) {
 			sum[0] += rgba[y * 4];
 			sum[1] += rgba[y * 4 + 1];
@@ -112,6 +119,48 @@ void gputex_bleed(uint8_t *rgba, int w, int h)
 	free(done);
 }
 
+// Fill the color of the pixels with alpha 0 from the pixels next to them,
+// so that the linear filter and the mipmaps do not mix the color of the
+// transparent pixels (often a bright key color) into the edges.
+void gputex_bleed(uint8_t *rgba, int w, int h)
+{
+	fill_colors(rgba, w, h, 0);
+}
+
+int plat_gpu_fx_code(int c)
+{
+	switch (c) {
+		case 0xCF: return 1;
+		case 0xBF: return 2;
+		case 0xBE: return 3;
+		case 0x6F: return 4;
+		case 0x6E: return 5;
+		case 0x6D: return 6;
+		case 0x4F: return 7;
+		case 0x4E: return 8;
+	}
+	return 0;
+}
+
+void plat_gpu_fx_mark(uint8_t *rgba, int w, int h, const uint8_t *index, int iw, int ih)
+{
+	int x, y, any = 0;
+
+	if (!rgba || !index || w <= 0 || h <= 0 || iw <= 0 || ih <= 0)
+		return;
+	for (y = 0; y < h; y++)
+		for (x = 0; x < w; x++) {
+			int k = plat_gpu_fx_code(index[(y * ih / h) * iw + x * iw / w]);
+			uint8_t *p = rgba + ((size_t) y * w + x) * 4;
+			if (k && p[3]) {
+				p[3] = (uint8_t) (255 - 8 * k);
+				any = 1;
+			}
+		}
+	if (any)
+		fill_colors(rgba, w, h, 1);
+}
+
 // The upscaled interface pictures of gpu.c. stb_image memory comes from
 // malloc (STBI_MALLOC default).
 uint8_t *gputex_load_png(const char *path, int *w, int *h)
@@ -142,9 +191,16 @@ static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file
 			// stb_image memory comes from malloc (STBI_MALLOC default)
 			*from_file = 1;
 			for (y = 0; y < h; y++)
-				for (x = 0; x < w; x++)
-					if (l->rgba[((y / scale) * l->w + x / scale) * 4 + 3] == 0)
+				for (x = 0; x < w; x++) {
+					int o = (y / scale) * l->w + x / scale;
+					if (l->rgba[o * 4 + 3] == 0)
 						img[(y * w + x) * 4 + 3] = 0;
+					// an effect color keeps its palette color, as in the
+					// original bitmap (a texture that is not merged shows
+					// it; plat_gpu_fx_mark replaces it in a merged one)
+					else if (l->index && plat_gpu_fx_code(l->index[o]))
+						memcpy(img + (y * w + x) * 4, l->rgba + o * 4, 3);
+				}
 			return img;
 		}
 	}
@@ -315,6 +371,7 @@ static gputex_result *run_job(job_item *it)
 	}
 	while (j->max_size > 0 && (w > j->max_size || h > j->max_size) && w > 1 && h > 1)
 		img = halve(img, &w, &h);
+	plat_gpu_fx_mark(img, w, h, j->fx_index, j->fx_w, j->fx_h);
 	gputex_bleed(img, w, h);
 
 	r = (gputex_result *) calloc(1, sizeof(*r));
@@ -351,6 +408,7 @@ static int worker(void *arg)
 		r = run_job(it);
 		free_layer(&it->job.base);
 		free_layer(&it->job.top);
+		free((void *) it->job.fx_index);
 		free(it);
 
 		SDL_LockMutex(Lock);
@@ -401,6 +459,7 @@ void gputex_stop(void)
 		Jobs = it->next;
 		free_layer(&it->job.base);
 		free_layer(&it->job.top);
+		free((void *) it->job.fx_index);
 		free(it);
 	}
 	while (Done) {
@@ -429,9 +488,13 @@ void gputex_queue(int texture, unsigned serial, const plat_gpu_hd_job *job)
 	it->texture = texture;
 	it->serial = serial;
 	it->job = *job;
+	it->job.fx_index = NULL;
+	if (job->fx_index && job->fx_w > 0 && job->fx_h > 0)
+		it->job.fx_index = (const uint8_t *) dup_mem(job->fx_index, (size_t) job->fx_w * job->fx_h);
 	if (!copy_layer(&it->job.base, &job->base) || !copy_layer(&it->job.top, &job->top)) {
 		free_layer(&it->job.base);
 		free_layer(&it->job.top);
+		free((void *) it->job.fx_index);
 		free(it);
 		return;
 	}

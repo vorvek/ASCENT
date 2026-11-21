@@ -258,12 +258,19 @@ int plat_gpu_available(void);
 void plat_gpu_bind_settings(const int *enable, const int *shader);
 
 // A vertex of a polygon. x and y are canvas pixels (the screen position of
-// the 3d library), z is the view depth (more than 0). u and v are texture
-// coordinates (1.0 is the width or the height of the bitmap). l is the
-// light (1.0 is full light; the fade table row is l * 32).
+// the 3d library) times z, z is the view depth. The position is
+// homogeneous, so a vertex can lie behind the eye: the GPU clips the
+// polygon at the depth 1/16. u and v are texture coordinates (1.0 is the
+// width or the height of the bitmap). l is the light (1.0 is full light;
+// the fade table row is l * 32), interpolated with perspective. When lq[0]
+// is 0 or more, the light is the bilinear mix of the four corner lights
+// lq[0] to lq[3] at the place s, t of the face (corner 0 at 0,0, 1 at 1,0,
+// 2 at 1,1, 3 at 0,1), and l is not used.
 typedef struct plat_gpu_vertex {
 	float x, y, z;
 	float u, v, l;
+	float s, t;
+	float lq[4];
 } plat_gpu_vertex;
 
 #define PLAT_GPU_TEXTURED	0		// bitmap, optional fade table light
@@ -278,7 +285,22 @@ typedef struct plat_gpu_material {
 	int clamp;			// TEXTURED: no wrap of u and v
 	int color;			// FLAT: the palette index. DARKEN: the fade table row
 	int heat;			// TEXTURED, FLAT: PLAT_GPU_HEAT_* (only with plat_gpu_set_infravision)
+	int effects;		// TEXTURED: the texels of the effect colors (see plat_gpu_fx_mark) take
+						// their color from the image under the polygon (texmap/tmapfx.c)
+	int fx_row;			// TEXTURED with effects: the fade table row of effect color 0xCF
 } plat_gpu_material;
+
+// The effect colors of the GPU renderer (texmap/tmapfx.c,
+// docs/re/effectcolors.md): 0xCF, 0xBF, 0xBE, 0x6F, 0x6E, 0x6D, 0x4F, 0x4E
+// are effect k = 1 to 8. In an RGBA texture an effect texel has the alpha
+// 255 - 8 * k (all above 0.5, so it is not transparent) and the color of
+// the texels next to it (so that the filters do not mix the palette color
+// of the effect color, a bright red, into the texture). The 8-bit form
+// tests the palette index. plat_gpu_fx_code: k for a palette index, or 0.
+int plat_gpu_fx_code(int c);
+// Mark the effect texels of an RGBA image of w x h pixels from the 8-bit
+// pixels index (iw x ih, the same picture at another size). Any thread.
+void plat_gpu_fx_mark(uint8_t *rgba, int w, int h, const uint8_t *index, int iw, int ih);
 
 // The heat of a polygon for the improved infravision of the RGB form.
 #define PLAT_GPU_HEAT_COLD	0		// walls, undead, things: dark and cool
@@ -337,6 +359,8 @@ typedef struct plat_gpu_hd_job {
 	int super;				// color 254 of the top layer is a hole
 	int scale;				// the scale of the files
 	int max_size;			// the largest width or height on the GPU (an image is halved until it fits)
+	const uint8_t *fx_index;	// the 8-bit pixels of the merged bitmap for plat_gpu_fx_mark, or NULL
+	int fx_w, fx_h;
 } plat_gpu_hd_job;
 void plat_gpu_texture_load_hd(int texture, const plat_gpu_hd_job *job);
 // The number of upscaled texture loads that are not finished.
