@@ -432,6 +432,21 @@ the parser was missed or these models draw with wrong slots in the original. (gu
 The 1 is the stray bitmap line of the player table (`HMC.BIN` line 24). The port should
 keep its rule for all models.
 
+Check (`test_dtudata -texcheck DIR [-texorig] DATADIR ...`, test_dtudata.c): for each
+table of DIR, loaded with `HMC` and with `HMT`, each texture number that a TMAPPOLY of
+a model uses is resolved as `draw_polygon_model_frame` does, and a reference that gives
+bitmap 0, an empty bitmap, an all transparent bitmap or a bitmap that is 90% black is
+listed. Result over the 78 tables of the disc (156 loads, 60972 references): no
+reference of a weapon, arms or creature model is bad. The listed references are the
+`*empty` bitmaps (transparent by design: `pempty` of the arms, `empty` of `rat_s.pof`,
+`b01empty` ... of the place holder models) and models that no table line names (the
+place holders `a01temp1.pof` ... and spell models of tables without the spell).
+With `-texorig` the check also applies the header rule above to the `$WEAPON`,
+`$SPELL` and arms models: 1460 references give another bitmap than the port, and 60
+give bitmap 0 (MINES1, PRISON1, TRAIN1: `arrow.pof`, `flare.pof`, `cbbolt.pof`,
+`ltning.pof`, `ice.pof`, `acid.pof`, `m_a.pof`, `e_a.pof`, `y_a.pof`). This is the
+likely cause of the black weapons of the original (bugs.md D14). (guess)
+
 ## Timing
 
 ### The frame time (0x40E91, calc_frame_time)
@@ -621,6 +636,23 @@ make them again.
   `g3_get_instance_state` and `g3_set_instance_state` in `engine/3d/instance.c` are the
   functions 0xEA919 and 0xEA93A. The instance stack of the 3d library has 72 levels in
   place of 5.
+- All models draw with the perspective texture mapper. The original draws each object
+  but the viewer with the linear mapper (bugs.md D12).
+- Animation interpolation (`Dtu_anim_interp`, on by default, `AnimInterpolation` in
+  `ascent.cfg`, item of the Graphics menu, option `-noaniminterp`):
+  `draw_polygon_model_frame_lerp` draws the joint angles (each the short way around,
+  as a signed 16-bit difference) and the body center between the frame of the game and
+  the next frame of the state. `polyobj_anim_track_update` gives the next frame and
+  the fraction: it learns the time of one frame from the frame changes that the draw
+  sees (the mean since the first change of the state), or takes it from the state time
+  where the game counts the frames by time (active creatures 0x11018: `state_time / (n
+  - 1)`, the arms 0x4450C: `state_time / n`). It does not interpolate past the last
+  frame of the state, nor over a change of the state, nor over a jump of more than 2
+  frames or against the direction of the state: the new frame is drawn at once. The
+  game rules keep the frame numbers (`DTU_ANIM_FRAME`, `View_frame`). The picture
+  leads the frame of the game by up to one frame (it reaches the pose of frame F+1
+  when the game frame becomes F+1). Callers: `dtu_draw_polygon_object` (creatures,
+  players) and `dtu_combat_draw_view` (the arms).
 - Not in the port: the magic effect (flag 0x20, effect modes), the special draw 0x673AD,
   the texture pulse, the draw of the viewer (the arms of the player), the model change of
   the player.

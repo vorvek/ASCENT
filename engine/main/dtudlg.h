@@ -13,6 +13,10 @@ void dtu_dlg_open(void);
 void dtu_dlg_close(void);			// 0xA74D0
 int dtu_dlg_is_open(void);
 
+// ASCENT: 1 while the window waits for a choice (the keys 1 to 9 choose a
+// reply then, so the play screen leaves its hot keys alone).
+int dtu_dlg_is_waiting(void);
+
 // Adds a text to the text area: speech (green, 0xB1F5F) or narration
 // (yellow, 0xB1F52). The texts stay until a choice is made.
 void dtu_dlg_add_text(const char *text, int narration);

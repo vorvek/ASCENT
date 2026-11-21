@@ -806,3 +806,35 @@ Read in the code with the work on `engine/main/dtuobj.c`.
 - Pickup: the four player handlers are one function. The inventory is the list
   `Dtu_inventory[]` of `dtuobj.h`, not the structure of 0xB65BB. The delay between two
   pickups (0x31A0E) and the list of items that did not fit (0x30F10C) are not in the port.
+
+## Dynamic light
+
+Verified in DTUGAME.EXE. `set_dynamic_light` (start before 0x57873, end
+0x57C38) builds the vertex list of the render list, clears one half of it in
+each frame (`FrameCount & 1`, 0x578EF) and calls the muzzle flash light
+(0x5777E). Then for each segment of the render list:
+
+1. Each side with a light texture (0x57963 to 0x57A76): the center of the
+   side (0x4AD3E) plus a random offset in each axis (`rand() % 0x8000`), the
+   light `table[(segment + side) & 7] & 0x1FFFF` (table 0x13CCC0, changed at
+   0x5783C), positive to 0x57642, negative to 0x574FE. Not in the port.
+2. Each object of the segment (0x57A80): type 1 fireball as in Descent 1;
+   type 5 weapon `Weapon_info[id].light` (0x1E9DA8, written from `lightcast=`
+   at 0x214BD), skipped when bit 4 of byte 0x1AE is set; for id 1 it adds
+   `2 * (min(light, lifeleft) + ((GameTime ^ xlate[objnum & 15]) & 0x3FFF))`;
+   type 8 debris 0x4000; type 13 light the intensity at 0x140; type 18
+   dressing the `lightcast=` value (0x19B34C + 32 * id, written at 0x22918).
+   Robots (the creatures) and powerups cast no light.
+
+`apply_light` (0x57642): a source with `intensity * 64 <= 8.0` lights the 8
+vertices of its own segment in each frame, a brighter one the vertices of the
+list with the parity of the frame. Both use `d = (dist / 4)^2` (Descent 1
+uses the plain distance for the bright sources), skip `d >= intensity * 64`,
+and add `intensity / max(d, 4.0)`.
+
+The player light (0x57C39, called from the face draw at 0x7550B) is the
+Descent 1 `compute_headlight_light`: `Beam_brightness` 0.5 (0x13CC78),
+`Face_reflectivity` 0.5 (0x13D640), `use_beam` 0 (0x1F3AB8). The face term is
+the dot product of the view direction and the face normal, so the light of a
+wall depends on the view direction. `Dtu_fix_light_stable` (lighting.h)
+changes that in the port.

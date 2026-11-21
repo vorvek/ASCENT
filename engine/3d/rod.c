@@ -175,5 +175,11 @@ void g3_draw_bitmap(vms_vector *pos,fix width,fix height,grs_bitmap *bm)
 
 	//now draw
 
+	//ASCENT: the GPU renderer draws the bitmap (globvars.h)
+	if (G3_GPU_ROUTE()) {
+		G3_gpu->bitmap(pnt,w,h,bm);
+		return;
+	}
+
 	scale_bitmap(bm,(grs_point *) blob_vertices);
 }

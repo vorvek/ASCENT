@@ -281,6 +281,23 @@ grs_bitmap * texmerge_get_cached_bitmap( int tmap_bottom, int tmap_top )
 	return Cache[least_recently_used].bitmap;
 }
 
+// ASCENT: the two bitmaps and the rotation of a bitmap of the cache, for
+// the upscaled textures of the GPU renderer. Returns 0 if bm is not in the
+// cache.
+int texmerge_get_sources( grs_bitmap *bm, grs_bitmap **bottom, grs_bitmap **top, int *orient )
+{
+	int i;
+
+	for (i=0; i<num_cache_entries; i++ )
+		if ( Cache[i].bitmap == bm && Cache[i].last_frame_used > -1 && Cache[i].top_bmp && Cache[i].bottom_bmp )	{
+			*bottom = Cache[i].bottom_bmp;
+			*top = Cache[i].top_bmp;
+			*orient = Cache[i].orient;
+			return 1;
+		}
+	return 0;
+}
+
 void merge_textures_new( int type, grs_bitmap * bottom_bmp, grs_bitmap * top_bmp, ubyte * dest_data )
 {
 //	ubyte c;

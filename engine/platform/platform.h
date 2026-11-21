@@ -23,6 +23,12 @@ int plat_set_frame_size(int w, int h);
 // pal6 is 256 RGB entries with 6 bits for each component (VGA format).
 void plat_present(const uint8_t *pixels, int w, int h, int pitch, const uint8_t *pal6);
 
+// Show one frame of 32-bit pixels (0xXXRRGGBB, the bytes B, G, R, X in
+// memory), scaled with a linear filter to the largest size with the aspect
+// of the frame (rgbpresent.c, for the upscaled movies). pitch is in bytes.
+// The next plat_present shows the 8-bit frame again.
+void plat_present_xrgb(const uint32_t *pixels, int w, int h, int pitch);
+
 // Process the window events. Returns 0 after the user closes the window.
 int plat_pump(void);
 
@@ -54,6 +60,12 @@ typedef void (*plat_mouse_motion_handler)(int dx, int dy, int x, int y);
 void plat_set_mouse_handlers(plat_mouse_button_handler button, plat_mouse_motion_handler motion);
 void plat_input_mouse_button(int button, int down);
 void plat_input_mouse_motion(int dx, int dy, int x, int y);
+
+// Mouse wheel. plat_input_mouse_wheel adds steps (positive: the wheel
+// turned away from the user). plat_mouse_wheel returns the steps since its
+// last call and clears them.
+void plat_input_mouse_wheel(int steps);
+int plat_mouse_wheel(void);
 
 // Relative mouse mode: the pointer is hidden and held in the window, and
 // the motion has no limit at the window border. If there is no window yet,
@@ -87,6 +99,53 @@ typedef void (*plat_joy_hat_handler)(int hat);
 void plat_set_joy_handlers(plat_joy_button_handler button, plat_joy_hat_handler hat);
 void plat_input_joy_button(int button, int down);
 void plat_input_joy_hat(int hat);
+
+// ASCENT: gamepad (SDL_Gamepad: XInput controllers and each device with a
+// gamepad mapping). The first gamepad is used. The state is kept here and
+// is changed only by plat_input_pad_button and plat_input_pad_axis, which
+// plat_pump calls for the gamepad events (a test calls them too).
+// The button numbers are those of SDL_GamepadButton, the axis numbers
+// those of SDL_GamepadAxis.
+#define PLAT_PAD_A           0
+#define PLAT_PAD_B           1
+#define PLAT_PAD_X           2
+#define PLAT_PAD_Y           3
+#define PLAT_PAD_BACK        4
+#define PLAT_PAD_GUIDE       5
+#define PLAT_PAD_START       6
+#define PLAT_PAD_LSTICK      7
+#define PLAT_PAD_RSTICK      8
+#define PLAT_PAD_LSHOULDER   9
+#define PLAT_PAD_RSHOULDER   10
+#define PLAT_PAD_DPAD_UP     11
+#define PLAT_PAD_DPAD_DOWN   12
+#define PLAT_PAD_DPAD_LEFT   13
+#define PLAT_PAD_DPAD_RIGHT  14
+#define PLAT_PAD_BUTTONS     26
+#define PLAT_PAD_LEFTX       0
+#define PLAT_PAD_LEFTY       1
+#define PLAT_PAD_RIGHTX      2
+#define PLAT_PAD_RIGHTY      3
+#define PLAT_PAD_LTRIGGER    4
+#define PLAT_PAD_RTRIGGER    5
+#define PLAT_PAD_AXES        6
+// Start the gamepad support. Returns 1 if a gamepad is open.
+int plat_pad_init(void);
+// 1 if a gamepad is open or a test sent a gamepad event
+int plat_pad_present(void);
+// The state: a button is 0 or 1, an axis -32768 to 32767 (the triggers 0
+// to 32767).
+int plat_pad_button(int button);
+int plat_pad_axis(int axis);
+// The presses of a button since the last call for it
+int plat_pad_button_presses(int button);
+void plat_input_pad_button(int button, int down);
+void plat_input_pad_axis(int axis, int value);
+// The menus: while no game frame was seen for 0.1 s, the d-pad and the
+// left stick give the arrow keys, A Enter and B Escape (as key events).
+// Start gives Escape in the game and in the menus. The game calls
+// plat_pad_game_frame in each frame that reads its controls.
+void plat_pad_game_frame(void);
 
 // ---------------------------------------------------------------------
 // Audio (audio.c). One output device and a software mixer that runs on
@@ -148,5 +207,181 @@ void plat_audio_music_set_volume(int volume);
 // 32767 gives the same output as the value 255 of an 8-bit sample, within
 // one part in 256.
 int plat_audio_play16(const int16_t *data, int length, int rate, int volume, int pan, int loop);
+
+// ---------------------------------------------------------------------
+// Window (video.c)
+
+// Call before plat_init. 1: the window starts as a window. 0 (the default):
+// the window starts in borderless full screen at the desktop resolution.
+// Alt+Enter switches between the two forms.
+void plat_set_start_windowed(int windowed);
+// A hidden window for automated runs (tests). It is not full screen and
+// does not take the focus. Call it before plat_init.
+void plat_set_start_hidden(int hidden);
+// Send silence to the audio device (the mixer still runs). Automated test
+// runs and the option -mute use it. It can be called before the audio init.
+void plat_audio_set_muted(int muted);
+// 1 when the window is in the borderless full screen form.
+int plat_is_fullscreen(void);
+
+// ---------------------------------------------------------------------
+// GPU renderer (gpu.c, gputex.c). OpenGL 3.3 core. The GPU draws the 3D
+// view into its own image, at a multiple of the size of the view canvas.
+// The image has one of two forms:
+// - 8-bit: palette indexes. The colors are those of the software renderer
+//   (the fade table gives the light).
+// - RGB: 32-bit color. The textures are RGBA (the bitmaps expanded with the
+//   palette of the view, or the upscaled texture set), with mipmaps and
+//   filters. The light is a curve for each color channel and each fade
+//   table row, made from the fade table and the palette (gpu.c).
+// plat_present composes that image with the 8-bit frame: in the rectangle
+// given by plat_gpu_set_view_dest, a frame pixel of color 255 (the
+// transparent color) shows the GPU image. The palette of the frame (pal6)
+// is applied to the image of both forms (for the RGB form, a curve for each
+// channel maps the palette of the view to pal6), so the palette effects
+// (flashes, fades) show on the 3D view. A screen shader can process the
+// composed image (plat_gpu_bind_settings).
+
+// Returns 1 if the GPU renderer can be used (the OpenGL context exists).
+int plat_gpu_available(void);
+
+// The settings that the presentation reads at each frame: pointers to ints
+// of the engine, which can change at any time. The shader is used when
+// *enable is not 0. *shader is one of PLAT_GPU_SHADER_*. NULL: off. It can
+// be called before plat_init.
+#define PLAT_GPU_SHADER_OFF		0
+#define PLAT_GPU_SHADER_SUBTLE	1		// a light bloom and a soft blend of the pixel edges
+#define PLAT_GPU_SHADER_VGA		2		// a mid range VGA monitor of 1997
+void plat_gpu_bind_settings(const int *enable, const int *shader);
+
+// A vertex of a polygon. x and y are canvas pixels (the screen position of
+// the 3d library), z is the view depth (more than 0). u and v are texture
+// coordinates (1.0 is the width or the height of the bitmap). l is the
+// light (1.0 is full light; the fade table row is l * 32).
+typedef struct plat_gpu_vertex {
+	float x, y, z;
+	float u, v, l;
+} plat_gpu_vertex;
+
+#define PLAT_GPU_TEXTURED	0		// bitmap, optional fade table light
+#define PLAT_GPU_FLAT		1		// one palette color
+#define PLAT_GPU_DARKEN		2		// dest = fade table[level][dest]
+
+typedef struct plat_gpu_material {
+	int mode;			// PLAT_GPU_*
+	int texture;		// TEXTURED: a texture handle of the form of the view
+	int lit;				// TEXTURED: apply the fade table row of the light
+	int transparent;	// TEXTURED: color 255 (alpha 0 in RGBA) is not drawn
+	int clamp;			// TEXTURED: no wrap of u and v
+	int color;			// FLAT: the palette index. DARKEN: the fade table row
+} plat_gpu_material;
+
+// The flags of plat_gpu_begin_view
+#define PLAT_GPU_VIEW_DEPTH		1	// a depth buffer hides the pixels behind a nearer polygon (else painter's order)
+#define PLAT_GPU_VIEW_RGB		2	// the RGB form (textures of plat_gpu_texture_create_rgba)
+#define PLAT_GPU_VIEW_ANISO		4	// RGB form: mipmaps and 8x anisotropic filtering
+
+// Start the 3D view. canvas_w and canvas_h give the coordinate space of the
+// vertices. The image is target_w by target_h pixels. flags: PLAT_GPU_VIEW_*.
+// clear_color is the palette index of the background.
+void plat_gpu_begin_view(int canvas_w, int canvas_h, int target_w, int target_h, int flags, int clear_color);
+// Draw a convex polygon (n from 3 to 128) in the order of the calls.
+void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m);
+// The later polygons are drawn over the earlier ones (depth buffer cleared).
+void plat_gpu_clear_depth(void);
+void plat_gpu_end_view(void);
+// The fade table: levels rows of 256 palette indexes.
+void plat_gpu_set_fade_table(const uint8_t *table, int levels);
+// The palette of the bitmaps of the 3D view (768 bytes, 6 bits for each
+// component). The RGB form uses it for the flat colors and the light
+// curves, and maps it to the palette of the frame.
+void plat_gpu_set_view_palette(const uint8_t *pal6);
+// 8-bit textures of w by h pixels, rows from the top, no padding.
+// plat_gpu_texture_create returns a handle (more than 0), or 0.
+int plat_gpu_texture_create(int w, int h, const uint8_t *pixels);
+void plat_gpu_texture_update(int texture, int w, int h, const uint8_t *pixels);
+// RGBA textures (8 bits for each component, rows from the top) for the RGB
+// form. The mipmaps are made. Returns a handle (more than 0), or 0.
+#define PLAT_GPU_TEX_SMOOTH		1	// linear magnification (an upscaled texture)
+int plat_gpu_texture_create_rgba(int w, int h, const uint8_t *rgba, int flags);
+void plat_gpu_texture_delete(int texture);
+// Load an upscaled texture in the background (gputex.c) and put it into the
+// RGBA texture when it is ready, at a later plat_gpu_begin_view. The data of
+// the job is copied. If no file of the job is valid, the texture keeps its
+// content. A layer is a PNG file (path) that is scale times the original
+// size, or, if path is NULL or not valid, the original pixels (rgba). The
+// alpha of the result is 0 where the original pixel has alpha 0.
+typedef struct plat_gpu_hd_layer {
+	const char *path;		// the PNG file, or NULL
+	int w, h;				// the original size
+	const uint8_t *rgba;	// the original pixels (w*h*4)
+	const uint8_t *index;	// the original 8-bit pixels (w*h): color 254 for super transparency, or NULL
+} plat_gpu_hd_layer;
+typedef struct plat_gpu_hd_job {
+	plat_gpu_hd_layer base;
+	plat_gpu_hd_layer top;	// a second layer drawn over the base (texmerge.c), or rgba NULL
+	int orient;				// the rotation of the top layer, 0 to 3 (texmerge.c)
+	int super;				// color 254 of the top layer is a hole
+	int scale;				// the scale of the files
+	int max_size;			// the largest width or height on the GPU (an image is halved until it fits)
+} plat_gpu_hd_job;
+void plat_gpu_texture_load_hd(int texture, const plat_gpu_hd_job *job);
+// The number of upscaled texture loads that are not finished.
+int plat_gpu_hd_pending(void);
+// The memory of the RGBA textures on the GPU, in bytes (with the mipmaps).
+int64_t plat_gpu_texture_bytes(void);
+// Where the next presented frames show the GPU image: a rectangle of frame
+// pixels. w or h 0: no GPU image. It also ends the darkened rectangles.
+void plat_gpu_set_view_dest(int x, int y, int w, int h);
+// Darken the GPU image in a rectangle of frame pixels (x1, y1 not included)
+// with the fade table row level, as the software code darkens the 8-bit
+// pixels of the frame (the fade table keeps the color 255 that shows the
+// GPU image). Up to 4 rectangles, until the next plat_gpu_set_view_dest.
+void plat_gpu_view_darken(int x0, int y0, int x1, int y1, int level);
+// The composed image (the frame with the GPU image, as the window shows
+// it, with the screen shader) at the resolution of the GPU image: the
+// frame size times the scale of the GPU image. pixels, w, h, pitch and pal6
+// are as for plat_present. Returns a buffer of *out_w * *out_h RGB pixels
+// (free it with free), or NULL if no GPU image is shown.
+uint8_t *plat_gpu_screenshot(const uint8_t *pixels, int w, int h, int pitch, const uint8_t *pal6, int *out_w, int *out_h);
+
+// The upscaled interface pictures (gpu.c). The engine tells where the 8-bit
+// frame has the pixels of a picture; the presentation shows the upscaled
+// file of the picture at the window resolution there, and the 8-bit pixel
+// where the frame pixel is different from the picture pixel (text, icons,
+// the cursor, the view). The palette effects apply as to the frame.
+//
+// The 8-bit pixels of picture id (w by h, rows from the top, copied) as
+// the game loaded it, and its upscaled file: a PNG of an integer multiple
+// of the size, loaded at the first draw. A picture that is given again
+// keeps its file and its texture.
+void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char *path);
+// Picture id was drawn into the frame: frame pixel (x, y) of the rectangle
+// (dx, dy, dw, dh) has the picture pixel (sx + (x - dx) * sw / dw,
+// sy + (y - dy) * sh / dh). The draw stays valid at the next frames while
+// most of its pixels still have the picture colors, or until a later draw
+// covers its rectangle.
+void plat_gpu_ui_draw(int id, int sx, int sy, int sw, int sh, int dx, int dy, int dw, int dh);
+// The frame pixels in the rectangle (x1, y1 not included) went through the
+// table (256 palette indexes): the darkening of the 2d library.
+void plat_gpu_ui_darken(int x0, int y0, int x1, int y1, const uint8_t *table);
+// Forget all draws.
+void plat_gpu_ui_clear(void);
+// The palette (768 bytes, 6 bits) of the pictures at full light, read at
+// each present: the colors of the upscaled files go through the curve from
+// it to the palette of the frame.
+void plat_gpu_ui_bind_palette(const uint8_t *pal6);
+
+// ---------------------------------------------------------------------
+// Directories (paths.c). Each function writes the name without the
+// separator at the end and returns 1, or returns 0 if it has no name.
+
+// The directory of the executable.
+int plat_base_dir(char *out, int size);
+// The directory of the user for the files of the program app (for example
+// %APPDATA%\ASCENT on Windows). The function makes the directory.
+int plat_pref_dir(const char *app, char *out, int size);
+// Show an error message in a window of the system (no game window needed).
+void plat_message_box(const char *title, const char *text);
 
 #endif

@@ -105,13 +105,26 @@ int set_thrust_from_velocity(object *obj);
 #define DTU_FT						(F1_0/64)	// 0x400, the step of thrust, drag and gravity
 #define DTU_REF_FRAMETIME		(3*DTU_FT)	// 0xC00, the frame time of the corrected rules (21.33 frames per second)
 
-// The body. The executable takes these two values from the bounding boxes
-// of the polygon model. The port has constants: 2.5 is half of the least
-// width of the player (5.0, code at 0x7470A). 6.25 is a guess: a player
-// in a saved game of the original stands 7.50 above the floor, which is
-// this height and the radius of the floor test (1.25).
+// The body. The executable takes the values from the bounding boxes of the
+// frames of the polygon models of the player (dtu_player_body(), end of
+// physics.c). These constants are used only when the models are missing:
+// 2.5 is half of the least width of the player (5.0, code at 0x7470A), and
+// 6.25 + 2.5/2 is 7.5, about the height of the center of a player above
+// the floor.
 #define DTU_BODY_RAD				0x28000		// 2.5
 #define DTU_BODY_HALF_HEIGHT	0x64000		// 6.25, from the center down to the feet
+
+// ASCENT: the body of the player in the current animation frame
+typedef struct dtu_body {
+	fix	move_rad;		// radius of the move query (0x748D9 / 2)
+	fix	move_rad2;		// second radius of the move query: the ceiling side gets 1.5 times it
+	fix	floor_rad;		// radius of the floor search (the floor side gets one half of it)
+	fix	floor_height;	// the floor search: from the center to the feet
+	fix	half_height;	// body_half_height[0]: the head test and the knee-high query
+	fix	eye_y;			// frame_eye[frame].y, added to the eye
+	int	model, frame;	// the model of the hand and its frame, -1: no model
+} dtu_body;
+void dtu_player_body(dtu_body *b);
 
 #define DTU_EYE_OFFSET_DEFAULT	0x30000	// 3.0 above the center when the table has no eye_offset (0x1F5A9)
 #define DTU_BOB_HEIGHT			0x5333		// 0.325, the view goes up and down by this value in a walk
@@ -134,6 +147,25 @@ int set_thrust_from_velocity(object *obj);
 #define DTU_LOOK_MAX				0x2fa0		// down
 #define DTU_LOOK_RETURN			0x1194		// (0x1194 + FrameTime)/4 fixang on each frame after a glance
 
+// New values, not in the executable. DTU_FIX_* and DTU_WALL_* belong to the
+// corrections Dtu_fix_jump_path, Dtu_fix_ladder and Dtu_fix_wall_slide (always
+// on, -origphys turns them off). DTU_IMP_* belong to the Improvements
+// Dtu_improved_physics and Dtu_improved_jump of the menu (dtuopts.h).
+#define DTU_STAND_HEIGHT			0x78000		// 7.5, the center of a player that stands is this high above the floor
+#define DTU_IMP_STOP_TAU			0x400			// 1/64 s, time constant of the stop and of the slide to the side
+#define DTU_IMP_STOP_TIME		0x1999		// 0.1 s, the horizontal velocity is 0 this long after the keys are released
+#define DTU_WALL_SLIDE			0x10000		// 1.0, Dtu_fix_wall_slide: the part of the velocity into a wall that is taken away
+#define DTU_WALL_UNSTICK_SPEED	0x80000		// 8.0, Dtu_fix_wall_slide: the velocity away from the edge of a side that the body touches
+#define DTU_FIX_LADDER_EXIT_SPEED	0x180000	// 24.0, the step from the top of a ladder onto the floor
+#define DTU_FIX_LADDER_EXIT_TIME	0x8000		// 0.5 s, the most time of that step
+#define DTU_FIX_LADDER_GRAB_FALL	0xa0000		// 10.0, a fall of less takes hold of a ladder in reach
+#define DTU_FIX_JUMP_HEIGHT		0x78000		// 7.5, the top of the jump table (0x14530E)
+#define DTU_FIX_JUMP_V0			0x380000		// 56.0 = 4 * height / air time, the velocity up at the start
+#define DTU_FIX_JUMP_GRAVITY	0xd11111		// 209.07 = 8 * height / air time^2, air time 15/28 s
+#define DTU_FIX_JUMP_HSPEED		0xe0000		// 14.0 = 0.5 * 28, the speed forward of the original jump (one step 0.5, 28 steps per second)
+#define DTU_IMP_AIR_ACCEL		0x3c0000		// 60.0, the steering in the air
+#define DTU_IMP_COYOTE_TIME		0x2666		// 0.15 s, a jump is still possible this long after the floor or the ladder is left
+
 // Dtu_player_state: the byte at 0x1AE of the object of the executable
 #define DTU_PS_FALLING			0x20
 #define DTU_PS_JUMPING			0x40
@@ -154,6 +186,13 @@ int set_thrust_from_velocity(object *obj);
 extern int Dtu_player_walk;
 extern int Dtu_fix_physics_steps,Dtu_fix_frame_drag,Dtu_fix_stop_decay;
 extern int Dtu_fix_floor_push,Dtu_fix_look_return,Dtu_fix_fly_bob,Dtu_fix_turn_ramp,Dtu_fix_jump_exit;
+extern int Dtu_fix_jump_path,Dtu_fix_ladder,Dtu_fix_wall_slide;
+// ASCENT: the turn keys for Dtu_fix_turn_ramp (controls.c): the direction
+// (-1, 0, 1), the time the key was down at the start of the frame, the
+// rotthrust of a whole turn key, and the rotthrust of the mouse and the
+// joystick in this frame.
+extern int Dtu_turn_dir;
+extern fix Dtu_turn_hold, Dtu_turn_full_thrust, Dtu_turn_other_thrust;
 extern ubyte Dtu_player_state;
 extern fixang Dtu_look_pitch;
 extern int Dtu_move_mode;

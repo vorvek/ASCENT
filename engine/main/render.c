@@ -340,6 +340,13 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "piggy.h"
 #include "dtugame.h"		// ASCENT: the flat color of a side with no texture, Dtu_objects_enabled
 #include "dtucombat.h"	// ASCENT: dtu_combat_draw_view()
+#include "dtuopts.h"		// ASCENT: the GPU renderer settings
+#include "dtudisp.h"		// ASCENT: Dtu_hires, Dtu_display_active
+#include "palette.h"		// ASCENT: gr_palette for the GPU renderer
+#include "platform.h"		// ASCENT: plat_gpu_bind_settings
+#include "args.h"			// ASCENT: -lightlog
+#include <stdio.h>
+#include <ctype.h>
 
 #define	INITIAL_LOCAL_LIGHT	(F1_0/4)		// local light value in segment of occurence (of light emission)
 
@@ -546,6 +553,89 @@ flash_frame()
 }
 
 // -----------------------------------------------------------------------------------
+// ASCENT: test option -lightlog FILE. For each frame one line that compares
+// the light of each drawn corner (segment, side, corner, triangle) with the
+// light of the same corner in the frame before: the number of corners drawn
+// in both frames, how many changed, the largest and the mean change, for the
+// total light and for its parts (headlight, dynamic light), and the mean
+// light. A change of 0x800 is one of the 32 light levels of the fade table.
+#define LL_N	(MAX_SEGMENTS*6*4*2)
+typedef struct { fix total[2], head[2], dyn[2]; int stamp[2]; fix ref; int has_ref; } ll_entry;
+static ll_entry *Ll;
+static FILE *Light_log;
+static int Ll_frame = 1;
+
+static void light_log_record(int segnum, int sidenum, int nv, short *vp, vms_vector *norm, int i, fix total, fix head, fix dyn)
+{
+	int c, tri, k, s;
+	ll_entry *e;
+
+	if (!Light_log) return;
+	for (c = 0; c < 4; c++)
+		if (Segments[segnum].verts[Side_to_verts[sidenum][c]] == vp[i]) break;
+	if (c == 4) return;
+	tri = nv == 3 && !memcmp(norm, &Segments[segnum].sides[sidenum].normals[1], sizeof(*norm))
+		&& memcmp(norm, &Segments[segnum].sides[sidenum].normals[0], sizeof(*norm));
+	k = ((segnum * 6 + sidenum) * 4 + c) * 2 + tri;
+	e = &Ll[k];
+	s = Ll_frame & 1;
+	e->total[s] = total; e->head[s] = head; e->dyn[s] = dyn; e->stamp[s] = Ll_frame;
+	if (!e->has_ref) { e->ref = total; e->has_ref = 1; }
+}
+
+static void light_log_frame(void)
+{
+	static int init = 0;
+	int k, s, n = 0, both = 0, ch[3] = {0,0,0}, vis[3] = {0,0,0};
+	fix maxd[3] = {0,0,0};
+	double sumd[3] = {0,0,0}, sum = 0;
+	int drift = 0; fix maxdrift = 0;
+
+	if (!init) {
+		int t;
+		init = 1;
+		if ((t = FindArg("-lightlog")) != 0 && t+1 < Num_args) {
+			Light_log = fopen(Args[t+1], "w");
+			if (Light_log) Ll = calloc(LL_N, sizeof(ll_entry));
+			if (!Ll && Light_log) { fclose(Light_log); Light_log = NULL; }
+		}
+		return;
+	}
+	if (!Light_log) return;
+	s = Ll_frame & 1;
+	for (k = 0; k < LL_N; k++) {
+		ll_entry *e = &Ll[k];
+		if (e->stamp[s] != Ll_frame) continue;
+		n++;
+		sum += e->total[s];
+		if (abs(e->total[s] - e->ref) >= 0x800) drift++;
+		if (abs(e->total[s] - e->ref) > maxdrift) maxdrift = abs(e->total[s] - e->ref);
+		if (e->stamp[!s] == Ll_frame - 1) {
+			fix d[3];
+			int j;
+			both++;
+			d[0] = abs(e->total[s] - e->total[!s]);
+			d[1] = abs(e->head[s] - e->head[!s]);
+			d[2] = abs(e->dyn[s] - e->dyn[!s]);
+			for (j = 0; j < 3; j++) {
+				if (d[j] >= 0x100) ch[j]++;
+				if (d[j] >= 0x800) vis[j]++;
+				if (d[j] > maxd[j]) maxd[j] = d[j];
+				sumd[j] += d[j];
+			}
+		}
+	}
+	fprintf(Light_log, "frame %d drawn %d both %d mean %.4f drift %d maxdrift %.4f | total ch %d vis %d max %.4f mean %.5f | head ch %d vis %d max %.4f | dyn ch %d vis %d max %.4f | pos %.2f %.2f %.2f fvec %.3f %.3f\n",
+		Ll_frame, n, both, n ? sum / n / 65536.0 : 0.0, drift, maxdrift / 65536.0,
+		ch[0], vis[0], maxd[0] / 65536.0, both ? sumd[0] / both / 65536.0 : 0.0,
+		ch[1], vis[1], maxd[1] / 65536.0, ch[2], vis[2], maxd[2] / 65536.0,
+		f2fl(Viewer->pos.x), f2fl(Viewer->pos.y), f2fl(Viewer->pos.z),
+		f2fl(Viewer->orient.fvec.x), f2fl(Viewer->orient.fvec.z));
+	fflush(Light_log);
+	Ll_frame++;
+}
+
+// -----------------------------------------------------------------------------------
 //	Render a face.
 //	It would be nice to not have to pass in segnum and sidenum, but they are used for our
 //	hideously hacked in headlight system.
@@ -619,15 +709,39 @@ void render_face(int segnum, int sidenum, int nv, short *vp, int tmap1, int tmap
 			if (Fuelcen_control_center_destroyed)	//make lights flash
 				uvl_copy[i].l = fixmul(flash_scale,uvl_copy[i].l);
 
-			//add in dynamic light (from explosions, etc.)
-			uvl_copy[i].l += Dynamic_light[vp[i]];
+			{
+				fix head, vertex_face_light = face_light;
 
-			//add in light from player's headlight
-			uvl_copy[i].l += compute_headlight_light(&Segment_points[vp[i]].p3_vec,face_light);
+				//add in dynamic light (from explosions, etc.)
+				uvl_copy[i].l += Dynamic_light[vp[i]];
 
-			//saturate at max value
-			if (uvl_copy[i].l > MAX_LIGHT)
-				uvl_copy[i].l = MAX_LIGHT;
+				// ASCENT: Dtu_fix_light_stable (lighting.h). The original
+				// scales the player light by the angle between the view
+				// direction and the face, so a wall got lighter when the
+				// player turned to it. Here the angle is between the face
+				// and the direction from the corner to the eye: a light that
+				// the player carries. At the center of the view the original
+				// gives the full angle term; over all the view directions in
+				// which a corner is drawn it gives less. One half of the angle
+				// term keeps the mean light of the views (turns in place in
+				// YPINN, BANE, DROW1: -0.3% to +2%).
+				if (Dtu_fix_light_stable) {
+					vms_vector to_eye;
+
+					vm_vec_normalized_dir(&to_eye, &Viewer_eye, &Vertices[vp[i]]);
+					vertex_face_light = fixmul(vm_vec_dot(&to_eye, norm), reflect) / 2;
+				}
+
+				//add in light from player's headlight
+				head = compute_headlight_light(&Segment_points[vp[i]].p3_vec,vertex_face_light);
+				uvl_copy[i].l += head;
+
+				//saturate at max value
+				if (uvl_copy[i].l > MAX_LIGHT)
+					uvl_copy[i].l = MAX_LIGHT;
+
+				light_log_record(segnum, sidenum, nv, vp, norm, i, uvl_copy[i].l, head, Dynamic_light[vp[i]]);
+			}
 
 		}
 	}
@@ -858,7 +972,9 @@ do_render_object(int objnum)
 
 	//	Added by MK on 09/07/94 (at about 5:28 pm, CDT, on a beautiful, sunny late summer day!) so
 	//	that the guided missile system will know what objects to look at.
-	if ((Objects[objnum].type == OBJ_ROBOT) || (Objects[objnum].type == OBJ_PLAYER)) {
+	// ASCENT: only for an object that the original depth draws (see
+	// Render_orig_visible)
+	if (Render_orig_visible && ((Objects[objnum].type == OBJ_ROBOT) || (Objects[objnum].type == OBJ_PLAYER))) {
 		//Assert(Num_rendered_objects < MAX_RENDERED_OBJECTS);
 		//	This peculiar piece of code makes us keep track of the most recently rendered objects, which
 		//	are probably the higher priority objects, without overflowing the buffer
@@ -1009,7 +1125,10 @@ void render_segment(int segnum)
 
 		// set_segment_local_light_value(segnum,INITIAL_LOCAL_LIGHT);
 
-		Automap_visited[segnum]=1;
+		// ASCENT: only a segment that the original depth draws is marked
+		// (the scripts read the map, see Render_orig_visible)
+		if (Render_orig_visible)
+			Automap_visited[segnum]=1;
 
 		for (sn=0; sn<MAX_SIDES_PER_SEGMENT; sn++)
 			render_side(seg, sn);
@@ -1187,16 +1306,34 @@ char visited2[MAX_SEGMENTS];
 #endif
 
 char visited[MAX_SEGMENTS];
-short Render_list[MAX_RENDER_SEGS];
-short Seg_depth[MAX_RENDER_SEGS];		//depth for each seg in Render_list
-ubyte processed[MAX_RENDER_SEGS];		//whether each entry has been processed
+// ASCENT: the arrays have the room of the full list of the GPU renderer, see
+// RENDER_LIST_SIZE in render.h (were MAX_RENDER_SEGS)
+short Render_list[RENDER_LIST_SIZE];
+short Seg_depth[RENDER_LIST_SIZE];		//depth for each seg in Render_list
+ubyte processed[RENDER_LIST_SIZE];		//whether each entry has been processed
 int	lcnt_save,scnt_save;
 //@@short *persp_ptr;
 short render_pos[MAX_SEGMENTS];	//where in render_list does this segment appear?
 //ubyte no_render_flag[MAX_RENDER_SEGS];
-window render_windows[MAX_RENDER_SEGS];
+window render_windows[RENDER_LIST_SIZE];
 
-short render_obj_list[MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS][OBJS_PER_SEG];
+// ASCENT: the extra object lists start at RENDER_LIST_SIZE (was
+// MAX_RENDER_SEGS). The limits of this frame: the original ones for the
+// software renderer, the full level for the GPU renderer (render_frame).
+#define OBJ_LISTS_SIZE	(RENDER_LIST_SIZE+N_EXTRA_OBJ_LISTS_FULL)
+short render_obj_list[OBJ_LISTS_SIZE][OBJS_PER_SEG];
+static int Render_full_depth;					// 1: the GPU renderer draws the view
+// The entries of Render_list before Orig_list_end are the list of the
+// original depth: the search adds the segments in the same order, and the
+// passes after Render_depth only add entries after them. Render_orig_visible
+// is 1 while render_mine draws such a segment and its objects. The game
+// state that the drawing writes (Automap_visited, which the scripts read,
+// the list of the drawn robots for the homing weapons, the warning of a
+// robot in the line of fire) only changes for those, as in the original.
+static int Orig_list_end;
+int Render_orig_visible = 1;
+static int Render_seg_limit = MAX_RENDER_SEGS;	// the size limit of Render_list
+static int Obj_lists_end = RENDER_LIST_SIZE+N_EXTRA_OBJ_LISTS;	// the end of the extra object lists
 
 //for objects
 
@@ -1490,7 +1627,7 @@ add_obj_to_seglist(int objnum,int listnum)
 		if (marker != -1) {
 			checkn = -marker;
 			//Assert(checkn < MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS);
-			if (checkn >= MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS) {
+			if (checkn >= Obj_lists_end) {		// ASCENT: was MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS
 				Int3();
 				return;
 			}
@@ -1513,10 +1650,13 @@ add_obj_to_seglist(int objnum,int listnum)
 
 		//find an available sublist
 
-		for (lookn=MAX_RENDER_SEGS;render_obj_list[lookn][0]!=-1 && lookn<MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS;lookn++);
+		// ASCENT: the extra lists are RENDER_LIST_SIZE to Obj_lists_end (were
+		// MAX_RENDER_SEGS to MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS). The test of
+		// lookn comes first: the original read one list past the end.
+		for (lookn=RENDER_LIST_SIZE;lookn<Obj_lists_end && render_obj_list[lookn][0]!=-1;lookn++);
 
 		//Assert(lookn<MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS);
-		if (lookn >= MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS) {
+		if (lookn >= Obj_lists_end) {
 			Int3();
 			return;
 		}
@@ -1577,7 +1717,7 @@ build_object_lists(int n_segs)
 
 //mprintf((0,"build n_segs=%d",n_segs));
 
-	for (nn=0;nn<MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS;nn++)
+	for (nn=0;nn<OBJ_LISTS_SIZE;nn++)		// ASCENT: was MAX_RENDER_SEGS+N_EXTRA_OBJ_LISTS
 		render_obj_list[nn][0] = -1;
 
 	for (nn=0;nn<n_segs;nn++) {
@@ -1707,9 +1847,172 @@ fix Zoom_factor=F1_0;
 //renders onto current canvas
 void render_mine(int start_seg_num,fix eye_offset);	// ASCENT: prototype, used before the definition
 
+// ASCENT: the source of a bitmap for the upscaled texture set of the GPU
+// renderer (g3_gpu_options in 3d.h): the archive and the name of a bitmap
+// of GameBitmaps, found by the address of its data, or the two bitmaps of
+// a merged wall texture.
+typedef struct gpu_bm_ref {
+	const ubyte *data;
+	int index, egg;
+} gpu_bm_ref;
+
+extern ubyte bogus_data[64*64];		// piggy.c: the data of the bitmaps that are not valid
+
+static gpu_bm_ref Gpu_refs[MAX_BITMAP_FILES];
+static int Gpu_n_refs, Gpu_refs_eggs = -1, Gpu_refs_bitmaps = -1;
+
+static int gpu_ref_cmp(const void *a, const void *b)
+{
+	uintptr_t x = (uintptr_t) ((const gpu_bm_ref *) a)->data, y = (uintptr_t) ((const gpu_bm_ref *) b)->data;
+	return x < y ? -1 : x > y;
+}
+
+static void gpu_refs_update(void)
+{
+	int ne = piggy_get_num_eggs(), e, i, n = 0;
+
+	if (ne == Gpu_refs_eggs && Num_bitmap_files == Gpu_refs_bitmaps)
+		return;
+	Gpu_refs_eggs = ne;
+	Gpu_refs_bitmaps = Num_bitmap_files;
+	Gpu_n_refs = 0;
+	for (e = 0; e < ne; e++) {
+		int nb = 0, first = 0;
+		if (piggy_get_egg_counts(e, &nb, NULL, NULL, &first, NULL, NULL) < 0)
+			continue;
+		for (i = first; i < first + nb && i < Num_bitmap_files && i < MAX_BITMAP_FILES; i++)
+			if (GameBitmaps[i].bm_data && GameBitmaps[i].bm_data != bogus_data) {
+				Gpu_refs[n].data = GameBitmaps[i].bm_data;
+				Gpu_refs[n].index = i;
+				Gpu_refs[n].egg = e;
+				n++;
+			}
+	}
+	qsort(Gpu_refs, n, sizeof(gpu_bm_ref), gpu_ref_cmp);
+	Gpu_n_refs = n;
+}
+
+static int gpu_bitmap_source(grs_bitmap *bm, g3_gpu_source *src)
+{
+	gpu_bm_ref key, *r;
+	const char *egg, *slash;
+	char name[16];
+	int i, k;
+
+	memset(src, 0, sizeof(*src));
+	if (texmerge_get_sources(bm, &src->bottom, &src->top, &src->orient)) {
+		src->kind = 2;
+		return 1;
+	}
+	gpu_refs_update();
+	key.data = bm->bm_data;
+	r = (gpu_bm_ref *) bsearch(&key, Gpu_refs, Gpu_n_refs, sizeof(gpu_bm_ref), gpu_ref_cmp);
+	if (!r || GameBitmaps[r->index].bm_w != bm->bm_w || GameBitmaps[r->index].bm_h != bm->bm_h)
+		return 0;
+	egg = piggy_get_egg_name(r->egg);
+	if (!egg)
+		return 0;
+	// the base name of the archive in lower case
+	slash = egg;
+	for (i = 0; egg[i]; i++)
+		if (egg[i] == '/' || egg[i] == 0x5C || egg[i] == ':')
+			slash = egg + i + 1;
+	for (i = 0, k = 0; slash[i] && slash[i] != '.' && k < (int) sizeof(src->egg) - 1; i++)
+		src->egg[k++] = (char) tolower((unsigned char) slash[i]);
+	src->egg[k] = 0;
+	// the name of the bitmap in lower case, '#' replaced by '_'
+	piggy_get_bitmap_name(r->index, name);
+	for (i = 0, k = 0; name[i] && k < (int) sizeof(src->name) - 1; i++)
+		src->name[k++] = name[i] == '#' ? '_' : (char) tolower((unsigned char) name[i]);
+	src->name[k] = 0;
+	src->kind = 1;
+	return src->egg[0] && src->name[0];
+}
+
+// ASCENT: the settings of the GPU renderer for this frame. The RGB form is
+// the GPU renderer of the game. The 8-bit form (palette indexes, the
+// colors of the software renderer) is kept as a reference for the tests:
+// environment variable ASCENT_GPU_8BIT=1.
+static void gpu_set_options(void)
+{
+	static int bound = 0;
+	g3_gpu_options o;
+	const char *e = getenv("ASCENT_GPU_8BIT");
+
+	if (!bound) {
+		plat_gpu_bind_settings(&Dtu_gpu_renderer, &Dtu_shader);
+		bound = 1;
+	}
+	// A test aid: ASCENT_GPU_CYCLE=N changes one graphics setting each N
+	// frames, as the Graphics menu does during play.
+	{
+		const char *c = getenv("ASCENT_GPU_CYCLE");
+		static int frame = 0;
+		int n = c ? atoi(c) : 0;
+		if (n > 0 && ++frame % n == 0) {
+			int step = frame / n;
+			switch (step % 5) {
+			case 0: Dtu_gpu_renderer = !Dtu_gpu_renderer; break;
+			case 1: Dtu_upscaled_textures = !Dtu_upscaled_textures; break;
+			case 2: Dtu_anisotropic = !Dtu_anisotropic; break;
+			case 3: Dtu_shader = (Dtu_shader + 1) % 3; break;
+			case 4: Dtu_render_scale = Dtu_render_scale % DTU_RENDER_SCALE_MAX + 1; break;
+			}
+		}
+	}
+	memset(&o, 0, sizeof(o));
+	o.rgb = !(e && e[0] == '1');
+	o.anisotropic = Dtu_anisotropic;
+	o.upscaled = Dtu_upscaled_textures;
+	o.hd_dir = Dtu_upscaled_textures ? dtu_hd_dir() : NULL;
+	o.palette = gr_palette;
+	o.source = gpu_bitmap_source;
+	g3_gpu_set_options(&o);
+}
+
+// ASCENT: a test aid. ASCENT_RENDER_STATS=1 prints at exit the size of the
+// render list (the segments drawn), the deepest level of the segment
+// search and the CPU time of render_mine (the search, the light and the
+// draw calls of the segments and the objects).
+static int Rstats_on = -1;
+static uint64_t Rstats_frames, Rstats_segs, Rstats_segs_max, Rstats_us, Rstats_us_max;
+static int Rstats_depth_max;
+
+static void rstats_print(void)
+{
+	if (!Rstats_frames)
+		return;
+	printf("Render stats: %d frames, segments avg %.1f max %d, search depth max %d, render_mine avg %.3f ms max %.3f ms\n",
+		(int) Rstats_frames, (double) Rstats_segs / Rstats_frames, (int) Rstats_segs_max, Rstats_depth_max,
+		Rstats_us / 1000.0 / Rstats_frames, Rstats_us_max / 1000.0);
+	fflush(stdout);
+}
+
+static void rstats_frame(uint64_t us)
+{
+	int i, n = 0;
+
+	for (i = 0; i < N_render_segs; i++)
+		if (Render_list[i] != -1) {
+			n++;
+			if (Seg_depth[i] > Rstats_depth_max)
+				Rstats_depth_max = Seg_depth[i];
+		}
+	Rstats_frames++;
+	Rstats_segs += n;
+	if (n > Rstats_segs_max)
+		Rstats_segs_max = n;
+	Rstats_us += us;
+	if (us > Rstats_us_max)
+		Rstats_us_max = us;
+}
+
 void render_frame(fix eye_offset)
 {
 	int start_seg_num;
+	int gpu_view;		// ASCENT: the GPU renderer draws this view
+	uint64_t t0;		// ASCENT: ASCENT_RENDER_STATS
+	int gpu_view_full;	// ASCENT: the full depth of the GPU renderer
 
 //Total_num_tmaps_drawn += Num_tmaps_drawn;
 //if ((FrameCount > 0) && (Total_num_tmaps_drawn))
@@ -1786,13 +2089,69 @@ void render_frame(fix eye_offset)
 #endif
 	}
 
-	if (Clear_window == 1) {
+	// ASCENT: the GPU renderer (gpu3d.c). The 3D view is drawn at
+	// Dtu_render_scale times the size of the canvas; in the high resolution
+	// form each line of the canvas covers two lines of the screen. With
+	// Dtu_improved_occlusion a depth buffer hides the parts of the objects
+	// behind the walls. The GPU clears the image.
+	gpu_set_options();
+	gpu_view = g3_gpu_begin_view(Dtu_gpu_renderer, Dtu_render_scale,
+		(Dtu_display_active && Dtu_hires) ? 2 : 1, Dtu_improved_occlusion,
+		(Clear_window == 1 && Clear_window_color != -1) ? Clear_window_color : BM_XRGB(0, 0, 0));
+
+	if (Clear_window == 1 && !gpu_view) {
 		if (Clear_window_color == -1)
 			Clear_window_color = BM_XRGB(0, 0, 0);	//BM_XRGB(31, 15, 7);
 		gr_clear_canvas(Clear_window_color);
 	}
 
+	// ASCENT: the GPU renderer draws every visible segment and its objects
+	// to the full distance of the level: the GPU draws the few polygons of a
+	// level fast. The software renderer keeps Render_depth, MAX_RENDER_SEGS
+	// and N_EXTRA_OBJ_LISTS (endlevel.c and terrain.c call render_mine with
+	// these). The flat and linear far textures of the software texture
+	// mapper (Max_linear_depth, Max_perspective_depth) are not used by the
+	// GPU renderer, and no model of the game has a simpler model.
+	// ASCENT_RENDER_ORIGDEPTH=1 keeps the original depth on the GPU (a test
+	// aid for comparisons).
+	{
+		static int orig_depth = -1;
+		if (orig_depth < 0) {
+			const char *e = getenv("ASCENT_RENDER_ORIGDEPTH");
+			orig_depth = (e && e[0] == '1');
+		}
+		if (orig_depth)
+			gpu_view_full = 0;
+		else
+			gpu_view_full = gpu_view;
+	}
+	if (gpu_view_full) {
+		Render_full_depth = 1;
+		Render_seg_limit = RENDER_LIST_SIZE;
+		Obj_lists_end = OBJ_LISTS_SIZE;
+	}
+
+	if (Rstats_on < 0) {
+		const char *e = getenv("ASCENT_RENDER_STATS");
+		Rstats_on = (e && e[0] == '1');
+		if (Rstats_on)
+			atexit(rstats_print);
+	}
+	t0 = Rstats_on ? plat_time_us() : 0;
+
 	render_mine(start_seg_num,eye_offset);
+
+	if (Rstats_on)
+		rstats_frame(plat_time_us() - t0);
+
+	Render_full_depth = 0;
+	Render_seg_limit = MAX_RENDER_SEGS;
+	Obj_lists_end = RENDER_LIST_SIZE+N_EXTRA_OBJ_LISTS;
+
+	// ASCENT: the arms and the weapon are drawn over the level, as the
+	// original draws them after it: the depth buffer is cleared.
+	if (gpu_view)
+		g3_gpu_clear_depth();
 
 	// ASCENT: the arms and the weapon of the player of the target game
 	// (render_object 0x67C5A draws the viewer, see dtucombat.c)
@@ -1801,6 +2160,8 @@ void render_frame(fix eye_offset)
 
 	if (Use_player_head_angles ) 
 		draw_3d_reticle(eye_offset);
+
+	g3_gpu_end_view();		// ASCENT: see g3_gpu_begin_view
 
 	g3_end_frame();
 
@@ -1845,9 +2206,18 @@ build_segment_list(int start_seg_num)
 
 	//breadth-first renderer
 
+	Orig_list_end = -1;		// ASCENT: see Render_orig_visible
+
 	//build list
 
-	for (l=0;l<Render_depth;l++) {
+	// ASCENT: the GPU renderer lists the segments to the full distance of
+	// the level (Render_full_depth, see render_frame). The search ends when
+	// a pass processes no entry: then no later pass changes the list.
+	for (l=0;l<(Render_full_depth ? MAX_SEGMENTS : Render_depth);l++) {
+		int n_processed = 0;	// ASCENT: the entries processed in this pass
+
+		if (l == Render_depth)
+			Orig_list_end = lcnt;
 
 		//while (scnt < ecnt) {
 		for (scnt=0;scnt < ecnt;scnt++) {
@@ -1861,6 +2231,7 @@ build_segment_list(int start_seg_num)
 				continue;
 
 			processed[scnt]=1;
+			n_processed++;
 
 			segnum = Render_list[scnt];
 			check_w = &render_windows[scnt];
@@ -2013,7 +2384,7 @@ build_segment_list(int start_seg_num)
 							Render_list[lcnt] = ch;
 							Seg_depth[lcnt] = l;
 							lcnt++;
-							if (lcnt >= MAX_RENDER_SEGS) {mprintf((0,"Too many segs in render list!!\n")); goto done_list;}
+							if (lcnt >= Render_seg_limit) {mprintf((0,"Too many segs in render list!!\n")); goto done_list;}	// ASCENT: was MAX_RENDER_SEGS
 							visited[ch] = 1;
 
 							#ifndef NDEBUG
@@ -2029,7 +2400,7 @@ no_add:
 						Render_list[lcnt] = ch;
 						Seg_depth[lcnt] = l;
 						lcnt++;
-						if (lcnt >= MAX_RENDER_SEGS) {mprintf((0,"Too many segs in render list!!\n")); goto done_list;}
+						if (lcnt >= Render_seg_limit) {mprintf((0,"Too many segs in render list!!\n")); goto done_list;}	// ASCENT: was MAX_RENDER_SEGS
 						visited[ch] = 1;
 					}
 				}
@@ -2039,8 +2410,17 @@ no_add:
 		scnt = ecnt;
 		ecnt = lcnt;
 
+		if (Render_full_depth && n_processed == 0)
+			break;
+
 	}
 done_list:
+
+	// ASCENT: see Render_orig_visible
+	if (Orig_list_end < 0 || Orig_list_end > lcnt)
+		Orig_list_end = lcnt;
+	if (Orig_list_end > MAX_RENDER_SEGS)
+		Orig_list_end = MAX_RENDER_SEGS;
 
 	lcnt_save = lcnt;
 	scnt_save = scnt;
@@ -2058,6 +2438,10 @@ void render_mine(int start_seg_num,fix eye_offset)
 
 	//	Initialize number of objects (actually, robots!) rendered this frame.
 	Num_rendered_objects = 0;
+
+	if (eye_offset <= 0 && !_search_mode)
+		light_log_frame();		// ASCENT: -lightlog
+
 
 #ifdef LASER_HACK
 	Hack_nlasers = 0;
@@ -2171,6 +2555,8 @@ void render_mine(int start_seg_num,fix eye_offset)
 
 			//mprintf((0," %d",segnum));
 
+			Render_orig_visible = nn < Orig_list_end;		// ASCENT
+
 			render_segment(segnum); 
 			visited[segnum]=255;
 
@@ -2236,6 +2622,8 @@ void render_mine(int start_seg_num,fix eye_offset)
 
 		}
 	}
+
+	Render_orig_visible = 1;		// ASCENT
 
 	//mprintf((0,"\n"));
 

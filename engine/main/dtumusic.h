@@ -16,6 +16,12 @@
 #define DTUMUSIC_DEATH		7		// deathtag.tun: the death of the player, one time
 #define DTUMUSIC_DROWDEAD	9		// drowdead.tun: one event in the player code, one time
 
+// ASCENT: run the music command of the start segment of the player, or
+// of the nearest segment with a command, at the first game frame of a
+// level. The original starts no music there (see dtumusic.c). On by
+// default, not in a menu; the option -origmusic clears it.
+extern int Dtu_fix_start_music;
+
 // Load DISCO.JRG. Call it after digi_init(). The music stays off if the
 // sound is off or the command line has -nomusic.
 void dtumusic_init(void);

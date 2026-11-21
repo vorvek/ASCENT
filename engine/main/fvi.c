@@ -1045,6 +1045,10 @@ int find_vector_intersection(fvi_query *fq,fvi_info *hit_data)
 		hit_data->hit_seg = fq->startseg;
 		hit_data->hit_side = hit_data->hit_object = 0;
 		hit_data->hit_side_seg = -1;
+		// ASCENT: the segment list was not set on this return. The player
+		// movement copies it to phys_seglist and the trigger test of
+		// object_move_one() read the garbage (crash in BANE).
+		hit_data->n_segs = 0;
 
 		return hit_data->hit_type;
 	}

@@ -224,3 +224,13 @@ it (`test_dtudata` writes a picture).
 | FNTEMFS_ | 2084 | 6x8 | mono, fixed | 0..255 |
 | FNTEMHS_ | 1070 | 10x8 | proportional | 32..132 |
 | FNTEMLS_ | 844 | 7x6 | proportional | 32..132 |
+
+## KCFG.ENG, KCFG.FRE, KCFG.GER, KCFG.ITA, KCFG.SPA, KCFG.NON, KCFG.MAR
+
+Text files of the CD (1285 to 1327 bytes), CR LF lines. A line that starts with `;` is
+a comment. Each other line has a key index (a DOS scan code, 0 to 255), spaces and one
+word: the name of that key on the key configuration screen, for example `28  Enter`.
+Verified in the files and in the code: 0xAEEE8 reads the file of the language
+(0x1456F8) from the table 0x1457AB, which has no entry for English (0): the English
+names are those of the code, and `KCFG.ENG` is not read. The port uses the names of
+the code (`docs/re/controls.md`).

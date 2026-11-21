@@ -27,5 +27,21 @@ if(NOT SDL3_FOUND)
   FetchContent_MakeAvailable(SDL3)
 endif()
 
+# ASCENT_RELEASE: the build for the installer (installer/README in
+# docs/install.md): no developer messages unless -debug, no console window.
+option(ASCENT_RELEASE "Build the game for the installer" OFF)
+if(ASCENT_RELEASE)
+  add_compile_definitions(ASCENT_RELEASE)
+  # The asserts stay, as in RelWithDebInfo. The original code also has
+  # parts that exist only without NDEBUG.
+  string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+endif()
+if(WIN32)
+  enable_language(RC)		# the icon and the manifest of the executables
+endif()
+
 enable_testing()
 add_subdirectory(engine)
+if(WIN32)
+  add_subdirectory(installer)	# the import tool, the content tool, the install rules
+endif()

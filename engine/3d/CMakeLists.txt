@@ -19,9 +19,11 @@ set(D3D_SOURCES
 # The texture mapper (draw_tmap, gr_upoly_tmap,
 # init_interface_vars_to_assembler) is not in the link list: it comes after
 # the 3d library in the build order, and it links the 3d library.
-add_library(d_3d STATIC ${D3D_SOURCES})
+# gpu3d.c (ASCENT) gives the polygons to the GPU renderer of the platform
+# layer. It is not in D3D_SOURCES: the test program has no platform layer.
+add_library(d_3d STATIC ${D3D_SOURCES} ${CMAKE_CURRENT_SOURCE_DIR}/gpu3d.c)
 target_include_directories(d_3d PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(d_3d PUBLIC d_common d_fix d_vecmat)
+target_link_libraries(d_3d PUBLIC d_common d_fix d_vecmat d_platform)
 if(TARGET d_2d)
   target_link_libraries(d_3d PUBLIC d_2d)
 else()

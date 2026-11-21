@@ -139,6 +139,7 @@ static size_t BytesMalloced = 0;
 static size_t LargestBytesMalloced = 0;
 
 int show_mem_info = 0;
+int mem_report_leaks = 1;		// ASCENT: see mem.h
 
 static int Initialized = 0;
 
@@ -366,6 +367,7 @@ void mem_display_blocks()
 	int numleft;
 
 	if (Initialized==0) return;
+	if (!mem_report_leaks) return;		// ASCENT: the release build
 
 	numleft = 0;
 	for (i=0; i<Table_size; i++ )

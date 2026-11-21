@@ -398,7 +398,28 @@ player missile kill also gives experience.)
 player, not part of this task). The tables of BANE.BIN set no
 `monster_miss_sound`, `monster_kill_sound`, `monster_miss_vclip`, `POV_clip`
 or `reach` on any weapon line (decoded table, grep), so those sounds are
-silent in practice (the parser default was not checked).
+silent in practice (the parser default was not checked). Of the 85 decoded
+tables only DEMO.BIN and MOIN1.BIN set `monster_kill_sound` (12). **V**
+
+The impact sound of the killing blow (verified, 0x27CCF to 0x27D08): the sound
+at the hit point is `monster_hit_sound` (W+0x24) if the hit points are 1.0 or
+more after the damage, else `monster_kill_sound` (W+0x28); a value of -1 or less
+plays nothing. So a melee kill has no impact sound at the hit point: only the
+contact sound before the roll (linked to the creature, 0.5) and the two
+`die_sound` calls (0.5 after the limit of 0x2E631 and 0x2E957). On a normal
+hit the impact sound plays two times (contact and hit point). A missile kill
+(creature at less than 1.0) plays no weapon sound at all. In DTUGAME.EXE
+0x2E631 keeps a one-shot sound in a sound object linked to the object (Descent
+1 played it at once); the sync 0x2EC66 stops a sound of a dead object only if
+it loops, and 0x2E816 (kill the sounds of an object) runs at 0x6A3CC, the end
+of the DIE animation, not in the frame of the kill. So no code stops the
+contact sound; the defect is the choice of the sound. **V**
+
+Port (always on, no setting): the melee hit point plays `monster_hit_sound` on
+each hit that does damage, and `monster_kill_sound` as well on a kill if a table
+sets it (dtucombat.c `player_hits_creature`); a missile that kills plays the
+weapon `monster_hit_sound` at 0.25 at the hit point (dtuobj.c). The die sound is
+not changed. See bugs.md, D10.
 
 ## A5. Missile and thrown weapons
 
@@ -1548,6 +1569,20 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   thrown weapon is hidden from the fire frame on. The executable draws the player object
   in the painter order of its segment; the segment of the viewer is drawn last, so the
   picture is the same.
+- The setting `Dtu_improved_body` (Improvements, on by default, not in the executable).
+  The arms model is the upper body only (root 0, chest 1 with flag 0x02, right arm 2 to
+  5 with the weapon in the hand part, left arm 7 to 10, an end marker with flag 0x04 at
+  the end of the weapon). With the setting on, the model is placed as at look pitch 0
+  and turned with the view pitch about the eye (without the bob), with the view matrix
+  as its orientation: the arms stay at the same place on the screen at every pitch and
+  no point of the arms is further from the eye than at pitch 0. For a model whose weapon
+  (the middle of the hand joint and the end marker) is in the view in no frame of the
+  attack state, the arms rise along the view up vector during the swing, so that the
+  weapon of the frames 6 to 8 is at 0.6 of the half height under the center of the view
+  (rise over 3/16 of the swing, fall over the last 4/16). Computed values: short sword
+  1.42 and dagger 1.32 for the human, elf and K models, 2.62 and 2.52 for the D and F
+  models (also warhammer 1.05 and empty hand 0.73 there); all other weapons 0. The hit
+  test, the swing time and the missile start do not change. Off: the rule of 0x67C5A.
 
 ## C2. Spells
 

@@ -2356,3 +2356,1326 @@ void kconfig_sense_init()
 	}
 }
 #endif	// ASCENT: end of the VFX1 code
+
+//------------------------------------------------------------------------
+// ASCENT: new, to the end of the file. The key configuration of Descent to
+// Undermountain (DTUGAME.EXE 1.3). See docs/re/controls.md.
+//
+// The executable keeps the Descent 1 code of this file with new tables:
+// 62 keyboard items (31 actions with two keys each) at 0x13C190, 27
+// joystick items at 0x13C6E4 and 29 mouse items at 0x13C978, each item of
+// 22 bytes as kc_item above. The defaults are 6 rows of 64 bytes at
+// 0x13C010: row 0 the keyboard, rows 1 to 4 the joysticks, row 5 the
+// mouse. kconfig.dat holds the 384 bytes, the control type (0x13BFED) and
+// the look sensitivity (0x13BFEF).
+//
+// The port keeps the table in ascent.cfg (dtuopts.c), not in kconfig.dat,
+// with the defaults of the owner of the project for the keyboard, and adds
+// a page of 10 hot keys (the executable has the keys 1 to 0 fixed). The
+// walk controls (controls.c), the play screen (dtudisp.c), the attack
+// (dtucombat.c) and the test keys (dtusoak.c) read the table through
+// dtu_action_down() and dtu_action_has_key().
+
+#include "dtudisp.h"		// Dtu_hires, Dtu_immersive
+#include "dtufile.h"		// dtu_find_file
+#include "dtuopts.h"		// dtu_opts_save
+
+#define DTU_KC_N_KEYS	62
+#define DTU_KC_N_HOT		(2*DTU_N_HOT_ACTIONS)
+#define DTU_KC_N_JOY		27
+#define DTU_KC_N_MOUSE	29
+#define DTU_KC_ROW		64
+
+// The items of the executable (0x13C190, 0x13C6E4, 0x13C978): id, x, y,
+// w1, w2, up, down, left, right, text number, type, value.
+static kc_item Dtu_kc_keys[DTU_KC_N_KEYS] = {
+	{  0, 15, 49, 71, 26, 58,  2, 59,  1, 378, BT_KEY, 255 },
+	{  1, 15, 49,100, 26, 59,  3,  0, 18, 378, BT_KEY, 255 },
+	{  2, 15, 57, 71, 26,  0,  4, 19,  3, 561, BT_KEY, 255 },
+	{  3, 15, 57,100, 26,  1,  5,  2, 22, 561, BT_KEY, 255 },
+	{  4, 15, 65, 71, 26,  2,  6, 19,  5, 380, BT_KEY, 255 },
+	{  5, 15, 65,100, 26,  3,  7,  4, 22, 380, BT_KEY, 255 },
+	{  6, 15, 73, 71, 26,  4,  8, 23,  7, 381, BT_KEY, 255 },
+	{  7, 15, 73,100, 26,  5,  9,  6, 28, 381, BT_KEY, 255 },
+	{  8, 15, 85, 71, 26,  6, 10, 29,  9, 382, BT_KEY, 255 },
+	{  9, 15, 85,100, 26,  7, 11,  8, 39, 382, BT_KEY, 255 },
+	{ 10, 15, 93, 71, 26,  8, 12, 40, 11, 383, BT_KEY, 255 },
+	{ 11, 15, 93,100, 26,  9, 13, 10, 38, 383, BT_KEY, 255 },
+	{ 12, 15,101, 71, 26, 10, 14, 49, 13, 384, BT_KEY, 255 },
+	{ 13, 15,101,100, 26, 11, 15, 12, 14, 384, BT_KEY, 255 },
+	{ 14, 15,109, 71, 26, 12, 16, 13, 15, 385, BT_KEY, 255 },
+	{ 15, 15,109,100, 26, 13, 17, 14, 24, 385, BT_KEY, 255 },
+	{ 16, 15,117, 71, 26, 14, 41, 25, 17, 386, BT_KEY, 255 },
+	{ 17, 15,117,100, 26, 15, 42, 16, 26, 386, BT_KEY, 255 },
+	{ 18,158, 49, 83, 26, 60, 22,  1, 19, 390, BT_KEY, 255 },
+	{ 19,158, 49,112, 26, 61, 23, 18,  2, 390, BT_KEY, 255 },
+	{ 20,158, 57, 83, 26, 18, 22,  3, 21,  56, BT_KEY, 255 },
+	{ 21,158, 57,112, 26, 19, 23, 20,  4,  56, BT_KEY, 255 },
+	{ 22,158, 65, 83, 26, 18, 28,  5, 23, 562, BT_KEY, 255 },
+	{ 23,158, 65,112, 26, 19, 29, 22,  6, 562, BT_KEY, 255 },
+	{ 24,158,109, 83, 26, 38, 26, 15, 25, 393, BT_KEY, 255 },
+	{ 25,158,109,112, 26, 49, 27, 24, 16, 393, BT_KEY, 255 },
+	{ 26,158,117, 83, 26, 24, 30, 17, 27, 394, BT_KEY, 255 },
+	{ 27,158,117,112, 26, 25, 31, 26, 41, 394, BT_KEY, 255 },
+	{ 28,158, 73, 83, 26, 22, 39,  7, 29, 395, BT_KEY, 255 },
+	{ 29,158, 73,112, 26, 23, 40, 28,  8, 395, BT_KEY, 255 },
+	{ 30,158,125, 83, 26, 26, 32, 42, 31, 556, BT_KEY, 255 },
+	{ 31,158,125,112, 26, 27, 33, 30, 43, 556, BT_KEY, 255 },
+	{ 32,158,133, 83, 26, 30, 34, 44, 33, 557, BT_KEY, 255 },
+	{ 33,158,133,112, 26, 31, 35, 32, 45, 557, BT_KEY, 255 },
+	{ 34,158,141, 83, 26, 32, 36, 46, 35, 558, BT_KEY, 255 },
+	{ 35,158,141,112, 26, 33, 37, 34, 47, 558, BT_KEY, 255 },
+	{ 36,158,149, 83, 26, 34, 54, 48, 37, 559, BT_KEY, 255 },
+	{ 37,158,149,112, 26, 35, 55, 36, 50, 559, BT_KEY, 255 },
+	{ 38,158, 93, 83, 26, 39, 24, 11, 49, 374, BT_KEY, 255 },
+	{ 39,158, 85, 83, 26, 28, 38,  9, 40, 555, BT_KEY, 255 },
+	{ 40,158, 85,112, 26, 29, 49, 39, 10, 555, BT_KEY, 255 },
+	{ 41, 15,125, 71, 26, 16, 43, 27, 42, 560, BT_KEY, 255 },
+	{ 42, 15,125,100, 26, 17, 44, 41, 30, 560, BT_KEY, 255 },
+	{ 43, 15,133, 71, 26, 41, 45, 31, 44, 563, BT_KEY, 255 },
+	{ 44, 15,133,100, 26, 42, 46, 43, 32, 563, BT_KEY, 255 },
+	{ 45, 15,141, 71, 26, 43, 47, 31, 46, 564, BT_KEY, 255 },
+	{ 46, 15,141,100, 26, 44, 48, 45, 34, 564, BT_KEY, 255 },
+	{ 47, 15,149, 71, 26, 45, 50, 41, 48, 565, BT_KEY, 255 },
+	{ 48, 15,149,100, 26, 46, 51, 47, 36, 565, BT_KEY, 255 },
+	{ 49,158, 93,112, 26, 40, 25, 38, 12, 374, BT_KEY, 255 },
+	{ 50, 15,160, 71, 26, 47, 52, 37, 51, 776, BT_KEY, 255 },
+	{ 51, 15,160,100, 26, 48, 53, 50, 54, 776, BT_KEY, 255 },
+	{ 52, 15,168, 71, 26, 50, 60, 55, 53, 777, BT_KEY, 255 },
+	{ 53, 15,168,100, 26, 51, 61, 52, 56, 777, BT_KEY, 255 },
+	{ 54,158,160, 83, 26, 36, 56, 51, 55, 778, BT_KEY, 255 },
+	{ 55,158,160,112, 26, 37, 57, 54, 52, 778, BT_KEY, 255 },
+	{ 56,158,168, 83, 26, 54, 58, 53, 57, 779, BT_KEY, 255 },
+	{ 57,158,168,112, 26, 55, 59, 56, 60, 779, BT_KEY, 255 },
+	{ 58,158,176, 83, 26, 56,  0, 61, 59, 780, BT_KEY, 255 },
+	{ 59,158,176,112, 26, 57,  1, 58,  0, 780, BT_KEY, 255 },
+	{ 60, 15,176, 71, 26, 52, 18, 57, 61, 961, BT_KEY, 255 },
+	{ 61, 15,176,100, 26, 53, 19, 60, 58, 961, BT_KEY, 255 },
+};
+
+static kc_item Dtu_kc_joy[DTU_KC_N_JOY] = {
+	{  0, 25, 46, 85, 26, 19,  1, 20,  5, 390, BT_JOY_BUTTON, 255 },
+	{  1, 25, 54, 85, 26,  0,  4,  5,  6, 562, BT_JOY_BUTTON, 255 },
+	{  2, 25, 78, 85, 26, 26,  3,  8,  9, 393, BT_JOY_BUTTON, 255 },
+	{  3, 25, 86, 85, 26,  2, 13,  9, 11, 394, BT_JOY_BUTTON, 255 },
+	{  4, 25, 62, 85, 26,  1, 26,  6,  7, 555, BT_JOY_BUTTON, 255 },
+	{  5,180, 46, 59, 26, 23,  6,  0,  1, 382, BT_JOY_BUTTON, 255 },
+	{  6,180, 54, 59, 26,  5,  7,  1,  4, 383, BT_JOY_BUTTON, 255 },
+	{  7,180, 62, 59, 26,  6,  8,  4, 26, 384, BT_JOY_BUTTON, 255 },
+	{  8,180, 70, 59, 26,  7,  9, 26,  2, 385, BT_JOY_BUTTON, 255 },
+	{  9,180, 78, 59, 26,  8, 11,  2,  3, 386, BT_JOY_BUTTON, 255 },
+	{ 10, 25, 94, 85, 26,  3, 13, 11, 13,  56, BT_JOY_BUTTON, 255 },
+	{ 11,180, 86, 59, 26,  9, 17,  3, 13, 560, BT_JOY_BUTTON, 255 },
+	{ 12,180,106, 59, 26, 11, 18, 11, 13,  56, BT_JOY_BUTTON, 255 },
+	{ 13, 22,146, 51, 26,  3, 15,  3, 14, 399, BT_JOY_AXIS, 255 },
+	{ 14, 22,146, 99,  8, 13, 16, 13, 17, 399, BT_INVERT, 255 },
+	{ 15, 22,154, 51, 26, 13,  5, 18, 16, 400, BT_JOY_AXIS, 255 },
+	{ 16, 22,154, 99,  8, 14, 17, 15, 19, 400, BT_INVERT, 255 },
+	{ 17,164,146, 58, 26, 11, 19, 14, 18, 401, BT_JOY_AXIS, 255 },
+	{ 18,164,146,106,  8, 11, 20, 17, 15, 401, BT_INVERT, 255 },
+	{ 19,164,154, 58, 26, 17,  0, 16, 20, 402, BT_JOY_AXIS, 255 },
+	{ 20,164,154,106,  8, 18,  0, 19,  0, 402, BT_INVERT, 255 },
+	{ 21,164,162, 58, 26, 19, 23, 20, 22,  56, BT_JOY_AXIS, 255 },
+	{ 22,164,162,106,  8, 20, 24, 21, 23,  56, BT_INVERT, 255 },
+	{ 23,164,174, 58, 26, 21,  5, 22, 24,  56, BT_JOY_AXIS, 255 },
+	{ 24,164,174,106,  8, 22, 13, 23,  0,  56, BT_INVERT, 255 },
+	{ 25, 25,109, 85, 26,  3, 14, 12, 13,  56, BT_JOY_BUTTON, 255 },
+	{ 26, 25, 70, 85, 26,  4,  2,  7,  8, 395, BT_JOY_BUTTON, 255 },
+};
+
+static kc_item Dtu_kc_mouse[DTU_KC_N_MOUSE] = {
+	{  0, 25, 46, 85, 26, 19,  1, 20,  5, 390, BT_MOUSE_BUTTON, 255 },
+	{  1, 25, 54, 85, 26,  0,  4,  5,  6, 561, BT_MOUSE_BUTTON, 255 },
+	{  2, 25, 78, 85, 26, 26,  3,  8,  9, 393, BT_MOUSE_BUTTON, 255 },
+	{  3, 25, 86, 85, 26,  2, 27,  9, 10, 394, BT_MOUSE_BUTTON, 255 },
+	{  4, 25, 62, 85, 26,  1, 26,  6,  7, 562, BT_MOUSE_BUTTON, 255 },
+	{  5,180, 46, 59, 26, 19,  6,  0,  1, 382, BT_MOUSE_BUTTON, 255 },
+	{  6,180, 54, 59, 26,  5,  7,  1,  4, 383, BT_MOUSE_BUTTON, 255 },
+	{  7,180, 62, 59, 26,  6,  8,  4, 26, 384, BT_MOUSE_BUTTON, 255 },
+	{  8,180, 70, 59, 26,  7,  9, 26,  2, 385, BT_MOUSE_BUTTON, 255 },
+	{  9,180, 78, 59, 26,  8, 10,  2,  3, 386, BT_MOUSE_BUTTON, 255 },
+	{ 10,180, 86, 59, 26,  9, 14,  3, 27, 560, BT_MOUSE_BUTTON, 255 },
+	{ 11,180, 98, 59, 26, 10, 12,  3, 12,  56, BT_MOUSE_BUTTON, 255 },
+	{ 12,180,106, 59, 26, 11,  0, 11, 13,  56, BT_MOUSE_BUTTON, 255 },
+	{ 13,103,138, 58, 26, 27, 15, 27, 14, 399, BT_MOUSE_AXIS, 255 },
+	{ 14,103,138,106,  8, 10, 16, 13, 15, 399, BT_INVERT, 255 },
+	{ 15,103,146, 58, 26, 13, 17, 14, 16, 400, BT_MOUSE_AXIS, 255 },
+	{ 16,103,146,106,  8, 14, 18, 15, 17, 400, BT_INVERT, 255 },
+	{ 17,103,154, 58, 26, 15, 19, 16, 18, 401, BT_MOUSE_AXIS, 255 },
+	{ 18,103,154,106,  8, 16, 20, 17, 19, 401, BT_INVERT, 255 },
+	{ 19,103,162, 58, 26, 17,  5, 18, 20, 402, BT_MOUSE_AXIS, 255 },
+	{ 20,103,162,106,  8, 18,  0, 19,  0, 402, BT_INVERT, 255 },
+	{ 21,103,170, 58, 26, 19, 23, 20, 22,  56, BT_MOUSE_AXIS, 255 },
+	{ 22,103,170,106,  8, 20, 24, 21, 23,  56, BT_INVERT, 255 },
+	{ 23,103,182, 58, 26, 21, 14, 22, 24,  56, BT_MOUSE_AXIS, 255 },
+	{ 24,103,182,106,  8, 22,  5, 23,  0,  56, BT_INVERT, 255 },
+	{ 25, 25,109, 85, 26,  3, 13, 12, 13,  56, BT_MOUSE_BUTTON, 255 },
+	{ 26, 25, 70, 85, 26,  4,  2,  7,  8, 395, BT_MOUSE_BUTTON, 255 },
+	{ 27, 25, 94, 85, 26,  3, 13, 10, 13, 555, BT_MOUSE_BUTTON, 255 },
+	{ 28, 25,102, 85, 26, 27, 13, 27, 13,  56, BT_MOUSE_BUTTON, 255 },
+};
+
+// The page of the hot keys (port). The items are those of the left and
+// right half of the keyboard page: hot keys 1 to 5 on the left, 6 to 10
+// on the right, two keys each. The text number is -1 - the action.
+// dtu_kc_init() sets the fields.
+static kc_item Dtu_kc_hot[DTU_KC_N_HOT];
+
+// The gamepad page (port): the 30 actions of the keyboard page and the
+// previous and next hot key, two bindings each
+#define BT_PAD			6
+#define DTU_PAD_N_ACTS	(DTU_ACT_HOT_KEY_1 + 2)
+static kc_item Dtu_kc_pad[2 * DTU_PAD_N_ACTS];
+static int Pad_page_acts[DTU_PAD_N_ACTS];
+
+// The defaults of the executable (0x13C010)
+static const ubyte Dtu_kc_orig_defaults[6][DTU_KC_ROW] = {
+	{ 0x3a,0xff,0x39,0xff,0xcb,0x4b,0xcd,0x4d,0x38,0xb8,0x2c,0x4f,0x2d,0x51,0xd2,0xff,
+	  0xd3,0xff,0x1d,0x9d,0xff,0xff,0x2f,0xff,0xc8,0x48,0xd0,0x50,0x2e,0xff,0xc9,0xff,
+	  0xd1,0xff,0xc7,0xff,0xcf,0xff,0x0f,0x1e,0xff,0x2a,0x36,0x17,0xff,0x1f,0xff,0x31,
+	  0xff,0xff,0x20,0xff,0x14,0xff,0x32,0xff,0x21,0xff,0x18,0xff,0x13,0xff,0xff,0xff },
+	{ 0x00,0xff,0xff,0xff,0x01,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0xff,0x00,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff },
+	{ 0x05,0xff,0x13,0x0b,0x06,0xff,0x07,0x0f,0xff,0xff,0xff,0xff,0xff,0x01,0x00,0x00,
+	  0x00,0xff,0x00,0xff,0x00,0xff,0x00,0xff,0x00,0xff,0x0c,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff },
+	{ 0x00,0xff,0x13,0x0b,0x03,0xff,0x07,0x0f,0xff,0xff,0xff,0xff,0xff,0x01,0xff,0x00,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff },
+	{ 0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff },
+	{ 0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x01,0x00,0x00,
+	  0x00,0xff,0x00,0xff,0x00,0xff,0x00,0xff,0x00,0xff,0xff,0x01,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+	  0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff },
+};
+
+// The keyboard defaults of the port (the owner of the project): W and S
+// forward and back (with the arrows), A and D side steps (the executable:
+// Z and X), E Activate (A), H Disarm (D), P Stats (S), R and Z Rest. The
+// other keys are those of the executable. The keypad 8 and 2 of the
+// executable gave way to W and S (two keys for each action).
+static const ubyte Dtu_kc_port_keys[DTU_KC_N_KEYS] = {
+	KEY_CAPSLOCK,255,	KEY_SPACEBAR,255,	KEY_LEFT,KEY_PAD4,	KEY_RIGHT,KEY_PAD6,
+	KEY_LALT,KEY_RALT,	KEY_A,KEY_PAD1,		KEY_D,KEY_PAD3,		KEY_INSERT,255,
+	KEY_DELETE,255,		KEY_LCTRL,KEY_RCTRL,	255,255,				KEY_V,255,
+	KEY_W,KEY_UP,			KEY_S,KEY_DOWN,		KEY_C,255,				KEY_PAGEUP,255,
+	KEY_PAGEDOWN,255,		KEY_HOME,255,			KEY_END,255,
+	KEY_TAB,					// 38 Automap
+	KEY_E,255,				// 39, 40 Activate
+	KEY_LSHIFT,KEY_RSHIFT,	KEY_I,255,			KEY_P,255,				KEY_N,255,
+	255,						// 49 Automap, second key
+	KEY_H,255,				KEY_T,255,				KEY_M,255,				KEY_F,255,
+	KEY_O,255,				KEY_R,KEY_Z,
+};
+
+static const ubyte Dtu_kc_hot_keys[DTU_N_HOT_ACTIONS] = { KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0 };
+
+// The settings: rows as in the executable (0 keyboard, 1 to 4 joysticks,
+// 5 mouse), and the hot keys of the port.
+static ubyte Dtu_kc_settings[6][DTU_KC_ROW];
+static ubyte Dtu_kc_hot_settings[DTU_KC_N_HOT];
+int Dtu_control_type = 5;		// 0x13BFED: 1 to 4 a joystick, 5 the mouse (the default of 0x71A07)
+static int Dtu_kc_ready = 0;
+
+// The two keyboard items of each action (the second -1 for none). The
+// actions of the keyboard page are in the order of the items of the
+// executable; Automap has the items 38 and 49.
+static const signed char Dtu_act_items[DTU_N_ACTIONS][2] = {
+	{ 0, 1 }, { 2, 3 }, { 4, 5 }, { 6, 7 }, { 8, 9 }, { 10, 11 }, { 12, 13 }, { 14, 15 },
+	{ 16, 17 }, { 18, 19 }, { 22, 23 }, { 24, 25 }, { 26, 27 }, { 28, 29 }, { 30, 31 },
+	{ 32, 33 }, { 34, 35 }, { 36, 37 }, { 38, 49 }, { 39, 40 }, { 41, 42 }, { 43, 44 },
+	{ 45, 46 }, { 47, 48 }, { 50, 51 }, { 52, 53 }, { 54, 55 }, { 56, 57 }, { 58, 59 },
+	{ 60, 61 },
+	// the hot keys: items of the hot key page, after the keyboard items
+	{ 62, 63 }, { 64, 65 }, { 66, 67 }, { 68, 69 }, { 70, 71 }, { 72, 73 }, { 74, 75 },
+	{ 76, 77 }, { 78, 79 }, { 80, 81 },
+	// the previous and the next hot key: no keyboard items, only the gamepad
+	{ -1, -1 }, { -1, -1 },
+};
+
+// The text numbers of the actions (the hot keys have no text)
+static const short Dtu_act_text[DTU_N_ACTIONS] = {
+	378, 561, 380, 381, 382, 383, 384, 385, 386, 390, 562, 393, 394, 395, 556, 557,
+	558, 559, 374, 555, 560, 563, 564, 565, 776, 777, 778, 779, 780, 961,
+};
+
+static char *Dtu_hot_names[DTU_N_HOT_ACTIONS + 2] = {
+	"Hot key 1", "Hot key 2", "Hot key 3", "Hot key 4", "Hot key 5",
+	"Hot key 6", "Hot key 7", "Hot key 8", "Hot key 9", "Hot key 10",
+	"Prev. hot key", "Next hot key",
+};
+
+//------------------------------------------------------------------------
+// The gamepad (port, SDL_Gamepad through the platform layer). Each action
+// has two bindings: a button (0 to 25, SDL_GamepadButton), a direction of
+// a stick or a trigger (PAD_AXIS + 2 * axis, + 1 for the positive
+// direction), or 255.
+
+#define PAD_AXIS		0x40
+#define PAD_NEG(a)	(PAD_AXIS + 2*(a))
+#define PAD_POS(a)	(PAD_AXIS + 2*(a) + 1)
+
+static ubyte Dtu_pad_settings[DTU_N_ACTIONS][2];
+int Dtu_pad_dead_zone = 6;			// 0 to 8: 4% each (6: 24%, about the XInput value)
+int Dtu_pad_speed = 8;				// 1 to 16: the turn and the look; 8 is the rate of the turn keys
+int Dtu_pad_invert_look = 0;
+
+static void dtu_pad_defaults(void)
+{
+	static const struct { int act; ubyte b0, b1; } def[] = {
+		{ DTU_ACT_FORWARD,      PAD_NEG(PLAT_PAD_LEFTY),  255 },
+		{ DTU_ACT_BACK,         PAD_POS(PLAT_PAD_LEFTY),  255 },
+		{ DTU_ACT_SLIDE_LEFT,   PAD_NEG(PLAT_PAD_LEFTX),  255 },
+		{ DTU_ACT_SLIDE_RIGHT,  PAD_POS(PLAT_PAD_LEFTX),  255 },
+		{ DTU_ACT_TURN_LEFT,    PAD_NEG(PLAT_PAD_RIGHTX), 255 },
+		{ DTU_ACT_TURN_RIGHT,   PAD_POS(PLAT_PAD_RIGHTX), 255 },
+		{ DTU_ACT_LOOK_UP,      PAD_NEG(PLAT_PAD_RIGHTY), 255 },
+		{ DTU_ACT_LOOK_DOWN,    PAD_POS(PLAT_PAD_RIGHTY), 255 },
+		{ DTU_ACT_JUMP,         PLAT_PAD_A,               255 },
+		{ DTU_ACT_ATTACK,       PLAT_PAD_X,               PAD_POS(PLAT_PAD_RTRIGGER) },
+		{ DTU_ACT_ACTIVATE,     PLAT_PAD_B,               255 },
+		{ DTU_ACT_CYCLE_WEAPON, PLAT_PAD_Y,               255 },
+		{ DTU_ACT_RUN,          PAD_POS(PLAT_PAD_LTRIGGER), 255 },
+		{ DTU_ACT_AUTO_RUN,     PLAT_PAD_LSTICK,          255 },
+		{ DTU_ACT_QUICK_DOWN,   PLAT_PAD_RSTICK,          255 },
+		{ DTU_ACT_AUTOMAP,      PLAT_PAD_BACK,            255 },
+		{ DTU_ACT_INVENTORY,    PLAT_PAD_DPAD_UP,         255 },
+		{ DTU_ACT_REST,         PLAT_PAD_DPAD_DOWN,       255 },
+		{ DTU_ACT_FIND_TRAPS,   PLAT_PAD_DPAD_LEFT,       255 },
+		{ DTU_ACT_STATS,        PLAT_PAD_DPAD_RIGHT,      255 },
+		{ DTU_ACT_PREV_HOT_KEY, PLAT_PAD_LSHOULDER,       255 },
+		{ DTU_ACT_NEXT_HOT_KEY, PLAT_PAD_RSHOULDER,       255 },
+	};
+	int i;
+
+	memset(Dtu_pad_settings, 255, sizeof(Dtu_pad_settings));
+	for (i = 0; i < (int) (sizeof(def) / sizeof(def[0])); i++) {
+		Dtu_pad_settings[def[i].act][0] = def[i].b0;
+		Dtu_pad_settings[def[i].act][1] = def[i].b1;
+	}
+	Dtu_pad_dead_zone = 6;
+	Dtu_pad_speed = 8;
+	Dtu_pad_invert_look = 0;
+}
+
+static int pad_is_analog(int act)
+{
+	switch (act) {
+	case DTU_ACT_FORWARD: case DTU_ACT_BACK: case DTU_ACT_SLIDE_LEFT: case DTU_ACT_SLIDE_RIGHT:
+	case DTU_ACT_TURN_LEFT: case DTU_ACT_TURN_RIGHT: case DTU_ACT_LOOK_UP: case DTU_ACT_LOOK_DOWN:
+	case DTU_ACT_FLOAT_UP: case DTU_ACT_FLOAT_DOWN:
+		return 1;
+	}
+	return 0;
+}
+
+// The amount of one binding, 0 to F1_0, after the dead zone. invert turns
+// the direction of a stick.
+static fix pad_binding_amount(int b, int invert)
+{
+	int axis, v, dz;
+
+	if (b == 255)
+		return 0;
+	if (b < PAD_AXIS)
+		return plat_pad_button(b) ? F1_0 : 0;
+	axis = (b - PAD_AXIS) / 2;
+	v = plat_pad_axis(axis);
+	if (((b - PAD_AXIS) & 1) == invert)
+		v = -v;							// the negative direction
+	dz = Dtu_pad_dead_zone * 32768 * 4 / 100;
+	if (v <= dz)
+		return 0;
+	if (v > 32767) v = 32767;
+	return (fix) (((int64_t) (v - dz) << 16) / (32767 - dz));
+}
+
+fix dtu_pad_amount(int act)
+{
+	fix a = 0, b;
+	int w, inv;
+
+	if (act < 0 || act >= DTU_N_ACTIONS || !plat_pad_present())
+		return 0;
+	inv = Dtu_pad_invert_look && (act == DTU_ACT_LOOK_UP || act == DTU_ACT_LOOK_DOWN);
+	for (w = 0; w < 2; w++) {
+		b = pad_binding_amount(Dtu_pad_settings[act][w], inv);
+		if (b > a) a = b;
+	}
+	if (act == DTU_ACT_TURN_LEFT || act == DTU_ACT_TURN_RIGHT || act == DTU_ACT_LOOK_UP || act == DTU_ACT_LOOK_DOWN)
+		a = (fix) (((int64_t) a * Dtu_pad_speed) / 8);
+	return a;
+}
+
+// 1 if a gamepad binding of the action is down: a button, or for an action
+// that is not analog a stick or trigger past one half
+static int pad_down(int act)
+{
+	int w;
+
+	if (act < 0 || act >= DTU_N_ACTIONS || !plat_pad_present())
+		return 0;
+	for (w = 0; w < 2; w++) {
+		int b = Dtu_pad_settings[act][w];
+		if (b == 255)
+			continue;
+		if (b < PAD_AXIS) {
+			if (plat_pad_button(b))
+				return 1;
+		} else if (!pad_is_analog(act) && pad_binding_amount(b, 0) > F1_0/2)
+			return 1;
+	}
+	return 0;
+}
+
+static int Kc_args_pending;
+
+void dtu_pad_frame(void)
+{
+	plat_pad_game_frame();
+	if (Kc_args_pending)
+		dtu_kconfig_args();		// -keyconfig needs the text table
+}
+
+static char *dtu_pad_name(int b, char *buf, int size)
+{
+	static char *buttons[] = { "A", "B", "X", "Y", "BACK", "GUIDE", "START", "LS", "RS", "LB", "RB",
+		"DUP", "DDN", "DLT", "DRT" };		// the d-pad: short names for the boxes
+	static char *axes[] = { "LX", "LY", "RX", "RY", "LT", "RT" };
+
+	buf[0] = 0;
+	if (b == 255)
+		return buf;
+	if (b < PAD_AXIS) {
+		if (b < (int) (sizeof(buttons) / sizeof(buttons[0])))
+			snprintf(buf, size, "%s", buttons[b]);
+		else
+			snprintf(buf, size, "BTN%d", b);
+	} else {
+		int a = (b - PAD_AXIS) / 2;
+		if (a >= PLAT_PAD_LTRIGGER && a < PLAT_PAD_AXES)
+			snprintf(buf, size, "%s", axes[a]);		// a trigger
+		else if (a < PLAT_PAD_AXES)
+			snprintf(buf, size, "%s%c", axes[a], (b & 1) ? '+' : '-');
+	}
+	return buf;
+}
+
+// The system keys of the executable (0x13BFD0) are those of Descent 1:
+// Escape, F1 to F12, 0 to 9, minus, equal, Print Screen. The port lets
+// the digits be keys: the hot keys are in the table.
+static ubyte Dtu_system_keys[] = { KEY_ESC, KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12, KEY_MINUS, KEY_EQUAL, KEY_PRINT_SCREEN };
+
+static ubyte *kc_key_value(int item)
+{
+	if (item < DTU_KC_N_KEYS)
+		return &Dtu_kc_settings[0][item];
+	return &Dtu_kc_hot_settings[item - DTU_KC_N_KEYS];
+}
+
+void dtu_kconfig_defaults(void)
+{
+	int i;
+
+	memcpy(Dtu_kc_settings, Dtu_kc_orig_defaults, sizeof(Dtu_kc_settings));
+	memcpy(Dtu_kc_settings[0], Dtu_kc_port_keys, DTU_KC_N_KEYS);
+	for (i = 0; i < DTU_N_HOT_ACTIONS; i++) {
+		Dtu_kc_hot_settings[2*i] = Dtu_kc_hot_keys[i];
+		Dtu_kc_hot_settings[2*i+1] = 255;
+	}
+	Dtu_control_type = 5;
+	dtu_pad_defaults();
+}
+
+// The items of a page of actions in two halves (the hot keys, the gamepad):
+// rows of 8 pixels from y 49 in the columns of the keyboard page, two
+// items for each action. text_num1 is -1 - the action.
+static void kc_build_grid(kc_item *items, const int *acts, int n_acts)
+{
+	int rows = (n_acts + 1) / 2, n = 2 * n_acts, i;
+
+	for (i = 0; i < n; i++) {
+		kc_item *it = &items[i];
+		int a = i / 2, c = i & 1, right = a >= rows, row = right ? a - rows : a;
+		int col_n = right ? n_acts - rows : rows;		// the actions in this half
+		int other = right ? row : row + rows;			// the action at this row in the other half
+
+		if (other >= n_acts)
+			other = n_acts - 1;
+		it->id = i;
+		it->x = right ? 158 : 15;
+		it->y = 49 + 8 * row;
+		it->w1 = right ? (c ? 112 : 83) : (c ? 100 : 71);
+		it->w2 = 26;
+		// up and down in the same column, round at the ends
+		it->u = (row == 0) ? i + 2 * (col_n - 1) : i - 2;
+		it->d = (row == col_n - 1) ? i - 2 * (col_n - 1) : i + 2;
+		// left and right along the row, from one half to the other
+		it->l = c ? i - 1 : 2 * other + 1;
+		it->r = c ? 2 * other : i + 1;
+		it->text_num1 = -1 - acts[a];
+		it->type = BT_KEY;
+		it->value = 255;
+	}
+}
+
+static void dtu_kc_init(void)
+{
+	int i;
+
+	if (Dtu_kc_ready)
+		return;
+	Dtu_kc_ready = 1;
+	dtu_kconfig_defaults();
+
+	// The hot key page
+	{
+		int acts[DTU_N_HOT_ACTIONS];
+		for (i = 0; i < DTU_N_HOT_ACTIONS; i++)
+			acts[i] = DTU_ACT_HOT_KEY_1 + i;
+		kc_build_grid(Dtu_kc_hot, acts, DTU_N_HOT_ACTIONS);
+	}
+	// The gamepad page: the actions of the keyboard page and the previous
+	// and next hot key
+	for (i = 0; i < DTU_PAD_N_ACTS; i++)
+		Pad_page_acts[i] = i < DTU_ACT_HOT_KEY_1 ? i : DTU_ACT_PREV_HOT_KEY + (i - DTU_ACT_HOT_KEY_1);
+	kc_build_grid(Dtu_kc_pad, Pad_page_acts, DTU_PAD_N_ACTS);
+	for (i = 0; i < 2 * DTU_PAD_N_ACTS; i++)
+		Dtu_kc_pad[i].type = BT_PAD;
+}
+
+int dtu_action_key(int act, int which)
+{
+	int item;
+
+	dtu_kc_init();
+	if (act < 0 || act >= DTU_N_ACTIONS || which < 0 || which > 1)
+		return 255;
+	item = Dtu_act_items[act][which];
+	if (item < 0)
+		return 255;
+	return *kc_key_value(item);
+}
+
+int dtu_action_has_key(int act, int scancode)
+{
+	return scancode != 255 && (dtu_action_key(act, 0) == scancode || dtu_action_key(act, 1) == scancode);
+}
+
+// The mouse or joystick item of an action, by the text number of the item
+static int dtu_button_down(int act)
+{
+	int i, text;
+
+	if (act < 0 || act >= DTU_ACT_HOT_KEY_1)
+		return 0;
+	text = Dtu_act_text[act];
+	if (Dtu_control_type == 5) {
+		// 0x52DE2 to 0x52E13: the attack and the immersive mode button act
+		// in both modes; the others (0x52E19) only in the immersive mode.
+		// The port: the attack too, as the left button clicks the
+		// interface in the other mode.
+		if (act != DTU_ACT_IMMERSIVE && !Dtu_immersive)
+			return 0;
+		for (i = 0; i < DTU_KC_N_MOUSE; i++)
+			if (Dtu_kc_mouse[i].type == BT_MOUSE_BUTTON && Dtu_kc_mouse[i].text_num1 == text &&
+				Dtu_kc_settings[5][i] != 255 && mouse_button_state(Dtu_kc_settings[5][i]))
+				return 1;
+	} else if (Dtu_control_type >= 1 && Dtu_control_type <= 4 && joy_present) {
+		for (i = 0; i < DTU_KC_N_JOY; i++)
+			if (Dtu_kc_joy[i].type == BT_JOY_BUTTON && Dtu_kc_joy[i].text_num1 == text &&
+				Dtu_kc_settings[Dtu_control_type][i] != 255 && joy_get_button_state(Dtu_kc_settings[Dtu_control_type][i]))
+				return 1;
+	}
+	return 0;
+}
+
+int dtu_action_down(int act)
+{
+	int k0 = dtu_action_key(act, 0), k1 = dtu_action_key(act, 1);
+
+	if ((k0 != 255 && keyd_pressed[k0]) || (k1 != 255 && keyd_pressed[k1]))
+		return 1;
+	return dtu_button_down(act) || pad_down(act);
+}
+
+// The presses of the keys of an action since the last call (key_down_count
+// takes them away). A press and a release within one frame count.
+int dtu_action_presses(int act)
+{
+	int k0 = dtu_action_key(act, 0), k1 = dtu_action_key(act, 1), n = 0;
+
+	if (k0 != 255) n += key_down_count(k0);
+	if (k1 != 255) n += key_down_count(k1);
+	return n;
+}
+
+static char *dtu_key_name(int k)
+{
+	// 0x13BBB8: the names of the executable are those of Descent 1, but
+	// for the arrows (words, not arrow characters).
+	switch (k) {
+	case KEY_UP: return "UP";
+	case KEY_DOWN: return "DOWN";
+	case KEY_LEFT: return "LEFT";
+	case KEY_RIGHT: return "RIGHT";
+	}
+	if (k < 0 || k > 255 || !key_text[k])		// the table has fewer than 256 names
+		return "";
+	return key_text[k];
+}
+
+char *dtu_action_name(int act)
+{
+	if (act >= DTU_ACT_HOT_KEY_1 && act < DTU_N_ACTIONS)
+		return Dtu_hot_names[act - DTU_ACT_HOT_KEY_1];
+	if (act >= 0 && act < DTU_N_ACTIONS && Text_string[Dtu_act_text[act]])
+		return Text_string[Dtu_act_text[act]];
+	return "";
+}
+
+// The names of the keys of an action, for example "W or UP". sep is put
+// between the names.
+char *dtu_action_key_names(int act, char *buf, int size, char *sep)
+{
+	int k0 = dtu_action_key(act, 0), k1 = dtu_action_key(act, 1);
+
+	buf[0] = 0;
+	if (k0 != 255)
+		snprintf(buf, size, "%s", dtu_key_name(k0));
+	if (k1 != 255)
+		snprintf(buf + strlen(buf), size - strlen(buf), "%s%s", buf[0] ? sep : "", dtu_key_name(k1));
+	return buf;
+}
+
+int dtu_hot_keys_are_default(void)
+{
+	int i;
+
+	dtu_kc_init();
+	for (i = 0; i < DTU_N_HOT_ACTIONS; i++)
+		if (Dtu_kc_hot_settings[2*i] != Dtu_kc_hot_keys[i] || Dtu_kc_hot_settings[2*i+1] != 255)
+			return 0;
+	return 1;
+}
+
+// The axes of the mouse (0 x, 1 y) or of the joystick (0 to 3) for the
+// look, the turn, the side step and up and down. The mouse is read only
+// in the immersive mode (0x52E19). Values: the mouse movement in pixels,
+// the joystick position from -128 to 127.
+int dtu_control_axes(int *look, int *turn, int *slide, int *updown)
+{
+	static const short texts[4] = { 399, 400, 401, 402 };
+	int *out[4] = { look, turn, slide, updown };
+	int raw[4] = { 0, 0, 0, 0 }, i, j, src = 0;
+
+	dtu_kc_init();
+	for (j = 0; j < 4; j++)
+		*out[j] = 0;
+	if (Dtu_control_type == 5) {
+		if (!Dtu_immersive)
+			return 0;
+		mouse_get_delta(&raw[0], &raw[1]);
+		src = 1;
+		for (i = 0; i < DTU_KC_N_MOUSE; i++)
+			for (j = 0; j < 4; j++)
+				if (Dtu_kc_mouse[i].type == BT_MOUSE_AXIS && Dtu_kc_mouse[i].text_num1 == texts[j]) {
+					int v = Dtu_kc_settings[5][i];
+					if (v < 2) {
+						*out[j] = raw[v];
+						if (Dtu_kc_settings[5][i+1] == 1)		// the invert item follows the axis item
+							*out[j] = -*out[j];
+					}
+				}
+	} else if (Dtu_control_type >= 1 && Dtu_control_type <= 4 && joy_present) {
+		int axis[4];
+		ubyte mask = joystick_read_raw_axis(JOY_ALL_AXIS, axis);
+
+		src = 2;
+		for (i = 0; i < 4; i++)
+			raw[i] = (mask & (1 << i)) ? joy_get_scaled_reading(axis[i], i) : 0;
+		for (i = 0; i < DTU_KC_N_JOY; i++)
+			for (j = 0; j < 4; j++)
+				if (Dtu_kc_joy[i].type == BT_JOY_AXIS && Dtu_kc_joy[i].text_num1 == texts[j]) {
+					int v = Dtu_kc_settings[Dtu_control_type][i];
+					if (v < 4) {
+						*out[j] = raw[v];
+						if (Dtu_kc_settings[Dtu_control_type][i+1] == 1)
+							*out[j] = -*out[j];
+					}
+				}
+	}
+	return src;
+}
+
+//------------------------------------------------------------------------
+// The screen (0x51170, kconfig_sub of Descent 1). The executable draws it
+// in the coordinates of a 320x200 screen; in the high resolution form
+// (0x13A94B) each coordinate is doubled (0x50DC7 to 0x50DEB, 0x51668,
+// 0x5171E) and the items use the font at 0x13E380 (FNTEMFM_.FNT).
+
+static int Kc_s = 1;					// 2 in the high resolution form
+static grs_font *Kc_item_font;
+static kc_item *Kc_items;
+static int Kc_nitems;
+static int Kc_page;						// 0 keyboard, 1 joystick, 2 mouse, 3 hot keys
+
+static ubyte *kc_value(int i)
+{
+	switch (Kc_page) {
+	case 0: return &Dtu_kc_settings[0][i];
+	case 1: return &Dtu_kc_settings[Dtu_control_type][i];
+	case 2: return &Dtu_kc_settings[5][i];
+	case 4: return &Dtu_pad_settings[Pad_page_acts[i / 2]][i & 1];
+	default: return &Dtu_kc_hot_settings[i];
+	}
+}
+
+static char *kc_label(kc_item *it)
+{
+	if (it->text_num1 < 0)
+		return dtu_action_name(-1 - it->text_num1);
+	return Text_string[it->text_num1];
+}
+
+static int kc_font_h(void)
+{
+	return grd_curcanv->cv_font->ft_h / Kc_s;
+}
+
+static void kc_string(int x, int y, char *s)
+{
+	gr_string(x == 0x8000 ? x : x * Kc_s, y * Kc_s, s);
+}
+
+// 0x51668: a string in a box (x, y, w, h); centered when xoff is 0x8000
+static void kc_box_string(char *s, int center, int x, int y, int w, int h)
+{
+	grs_canvas *save = grd_curcanv, sub;
+
+	if (!s || !s[0] || w <= 0)
+		return;
+	gr_init_sub_canvas(&sub, save, x * Kc_s, y * Kc_s, w * Kc_s, h * Kc_s);
+	gr_set_current_canvas(&sub);
+	sub.cv_font = save->cv_font;
+	sub.cv_font_fg_color = save->cv_font_fg_color;
+	sub.cv_font_bg_color = save->cv_font_bg_color;
+	gr_string(center ? 0x8000 : 0, 0, s);
+	gr_set_current_canvas(save);
+}
+
+static void kc_draw_item(int i, int is_current)
+{
+	kc_item *it = &Kc_items[i];
+	int v = *kc_value(i), h;
+	char btext[16];
+
+	// 0x5178A: an item with the text "(unused)" is not drawn
+	if (it->text_num1 >= 0 && !strcmp(Text_string[it->text_num1], "(unused)"))
+		return;
+
+	grd_curcanv->cv_font = Kc_item_font;
+	h = kc_font_h();
+	if (is_current)
+		gr_set_fontcolor(gr_find_closest_color(0x28,0x28,0x3a), -1);
+	else
+		gr_set_fontcolor(gr_find_closest_color(0x1e,0x1e,0x30), -1);
+	kc_box_string(kc_label(it), 0, it->x, it->y, it->w1 - 1, h);
+
+	btext[0] = 0;
+	if (v != 255) {
+		switch (it->type) {
+		case BT_KEY:				snprintf(btext, sizeof(btext), "%s", dtu_key_name(v)); break;
+		case BT_MOUSE_BUTTON:	if (v < 3) snprintf(btext, sizeof(btext), "%s", Text_string[mousebutton_text[v]]); break;
+		case BT_MOUSE_AXIS:		if (v < 2) snprintf(btext, sizeof(btext), "%s", Text_string[mouseaxis_text[v]]); break;
+		case BT_JOY_BUTTON:
+			if (v < 28 && joybutton_text[v] != -1)
+				snprintf(btext, sizeof(btext), "%s", Text_string[joybutton_text[v]]);
+			else
+				snprintf(btext, sizeof(btext), "BTN%d", v);
+			break;
+		case BT_JOY_AXIS:			if (v < 4) snprintf(btext, sizeof(btext), "%s", Text_string[joyaxis_text[v]]); break;
+		case BT_INVERT:			if (v < 2) snprintf(btext, sizeof(btext), "%s", Text_string[invert_text[v]]); break;
+		case BT_PAD:				dtu_pad_name(v, btext, sizeof(btext)); break;
+		}
+	}
+
+	if (is_current)
+		gr_setcolor(gr_find_closest_color(0x2a,0,0x30));
+	else
+		gr_setcolor(gr_find_closest_color(0x20,0,0x26));
+	gr_urect((it->x + it->w1) * Kc_s, (it->y - 1) * Kc_s, (it->x + it->w1 + it->w2) * Kc_s, (it->y + h) * Kc_s);
+
+	gr_set_fontcolor(gr_find_closest_color(0x38,0x38,0x38), -1);
+	kc_box_string(btext, 1, it->x + it->w1, it->y, it->w2, h);
+}
+
+static void kc_draw_question(int i)
+{
+	static int looper = 0;
+	kc_item *it = &Kc_items[i];
+	int c = gr_find_closest_color(0x2a,0,0x30), h;
+
+	grd_curcanv->cv_font = Kc_item_font;
+	h = kc_font_h();
+	gr_setcolor(gr_fade_table[fades[looper]*256+c]);
+	if (++looper > 63)
+		looper = 0;
+	gr_urect((it->x + it->w1) * Kc_s, (it->y - 1) * Kc_s, (it->x + it->w1 + it->w2) * Kc_s, (it->y + h) * Kc_s);
+	gr_set_fontcolor(gr_find_closest_color(0x38,0x38,0x38), -1);
+	kc_box_string("?", 1, it->x + it->w1, it->y, it->w2, h);
+}
+
+// Waits for a new key, button or axis. Returns the value or -1 (Escape).
+static int kc_wait_input(int i, char *prompt)
+{
+	kc_item *it = &Kc_items[i];
+	int k = 0, value = -1, n, axis[4], old_axis[4], first = 1;
+
+	grd_curcanv->cv_font = Kc_item_font;
+	gr_set_fontcolor(gr_find_closest_color(0x38,0x38,0x38), -1);
+	kc_string(0x8000, INFO_Y, prompt);
+	game_flush_inputs();
+	if (it->type == BT_PAD) {
+		// the button that chose the item (A) must go up first
+		while (nm_show_frame()) {
+			for (n = 0; n < PLAT_PAD_BUTTONS && !plat_pad_button(n); n++)
+				;
+			if (n == PLAT_PAD_BUTTONS)
+				break;
+			kc_draw_question(i);
+		}
+		for (n = 0; n < PLAT_PAD_BUTTONS; n++)
+			plat_pad_button_presses(n);
+	}
+	while (value < 0) {
+		k = key_inkey();
+		kc_draw_question(i);
+		if (it->type == BT_PAD) {
+			// a button, or a stick or trigger past three quarters. This
+			// comes first: B also gives Escape in the menus.
+			for (n = 0; n < PLAT_PAD_BUTTONS && value < 0; n++)
+				if (plat_pad_button_presses(n))
+					value = n;
+			for (n = 0; n < PLAT_PAD_AXES && value < 0; n++) {
+				int a = plat_pad_axis(n);
+				if (a > 24576) value = PAD_POS(n);
+				else if (a < -24576 && n < PLAT_PAD_LTRIGGER) value = PAD_NEG(n);
+			}
+			if (value >= 0)
+				break;
+		}
+		if (!nm_show_frame() || k == KEY_ESC)
+			break;
+		switch (it->type) {
+		case BT_KEY:
+			for (n = 0; n < 256; n++)
+				if ((keyd_pressed[n] || n == (k & 0xff)) && n && strlen(dtu_key_name(n)) > 0) {
+					int sys = 0, j;
+					for (j = 0; j < (int) sizeof(Dtu_system_keys); j++)
+						if (Dtu_system_keys[j] == n)
+							sys = 1;
+					if (!sys)
+						value = n;
+				}
+			break;
+		case BT_MOUSE_BUTTON:
+			for (n = 0; n < 3; n++)
+				if (mouse_button_state(n))
+					value = n;
+			break;
+		case BT_JOY_BUTTON:
+			for (n = 0; n < 28; n++)
+				if (joy_get_button_state(n))
+					value = n;
+			break;
+		case BT_MOUSE_AXIS: {
+			int dx, dy;
+			mouse_get_delta(&dx, &dy);
+			if (!first && (abs(dx) > 20 || abs(dy) > 20))
+				value = abs(dx) > abs(dy) ? 0 : 1;
+			break;
+		}
+		case BT_JOY_AXIS: {
+			ubyte mask = joystick_read_raw_axis(JOY_ALL_AXIS, axis);
+			if (!first)
+				for (n = 0; n < 4; n++)
+					if ((mask & (1 << n)) && abs(axis[n] - old_axis[n]) > 20)
+						value = n;
+			memcpy(old_axis, axis, sizeof(axis));
+			break;
+		}
+		}
+		first = 0;
+	}
+	// clear the line of the prompt
+	nm_draw_background(0, (INFO_Y - 1) * Kc_s, grd_curcanv->cv_bitmap.bm_w - 1, (INFO_Y + kc_font_h() + 1) * Kc_s);
+	game_flush_inputs();
+	return value;
+}
+
+static void kc_change(int i)
+{
+	kc_item *it = &Kc_items[i];
+	ubyte *v = kc_value(i);
+	int n;
+
+	if (it->type == BT_INVERT) {
+		*v = (*v == 1) ? 0 : 1;
+		kc_draw_item(i, 1);
+		return;
+	}
+	n = kc_wait_input(i, it->type == BT_PAD ? "Press a button or move a stick" :
+		it->type == BT_KEY ? TXT_PRESS_NEW_KEY :
+		it->type == BT_JOY_BUTTON ? TXT_PRESS_NEW_JBUTTON :
+		it->type == BT_MOUSE_BUTTON ? TXT_PRESS_NEW_MBUTTON :
+		it->type == BT_JOY_AXIS ? TXT_MOVE_NEW_JOY_AXIS : TXT_MOVE_NEW_MSE_AXIS);
+	if (n >= 0) {
+		int j;
+		// 0x51C29 (Descent 1 kc_change_key): the key leaves each other item
+		// that has it. The port: on both keyboard pages.
+		if (it->type == BT_KEY) {
+			for (j = 0; j < DTU_KC_N_KEYS + DTU_KC_N_HOT; j++) {
+				ubyte *o = kc_key_value(j);
+				if (o != v && *o == n)
+					*o = 255;
+			}
+		} else
+			for (j = 0; j < Kc_nitems; j++)
+				if (j != i && Kc_items[j].type == it->type && *kc_value(j) == n)
+					*kc_value(j) = 255;
+		*v = (ubyte) n;
+		for (j = 0; j < Kc_nitems; j++)
+			kc_draw_item(j, j == i);
+	} else
+		kc_draw_item(i, 1);
+}
+
+static void kc_draw_page(char *title)
+{
+	int i;
+	char *p;
+
+	nm_draw_background(0, 0, grd_curcanv->cv_bitmap.bm_w, grd_curcanv->cv_bitmap.bm_h);
+
+	grd_curcanv->cv_font = Gamefonts[GFONT_MEDIUM_3];
+	p = strchr(title, '\n');
+	if (p) *p = 32;
+	kc_string(0x8000, 8, title);
+	if (p) *p = '\n';
+
+	grd_curcanv->cv_font = Kc_item_font;
+	gr_set_fontcolor(gr_find_closest_color(0x38,0x38,0x38), -1);
+	kc_string(0x8000, 20, TXT_KCONFIG_STRING_1);
+
+	gr_set_fontcolor(gr_find_closest_color(0x3e,0x36,0x0c), -1);
+	gr_setcolor(gr_find_closest_color(0x3e,0x36,0x0c));
+	if (Kc_page == 0 || Kc_page == 3 || Kc_page == 4) {
+		// 0x50DF8: "or" over the two key columns
+		static const short sl[4][3] = { { 98, 106, 42 }, { 120, 128, 42 }, { 253, 261, 42 }, { 274, 283, 42 } };
+		static const short px[4] = { 98, 128, 253, 283 };
+		for (i = 0; i < 4; i++) {
+			gr_scanline(sl[i][0] * Kc_s, sl[i][1] * Kc_s, sl[i][2] * Kc_s);
+			gr_pixel(px[i] * Kc_s, 43 * Kc_s);
+			gr_pixel(px[i] * Kc_s, 44 * Kc_s);
+		}
+		kc_string(109, 40, Text_string[816]);
+		kc_string(264, 40, Text_string[816]);
+	} else {
+		// 0x50F34 (joystick) and 0x5105C (mouse)
+		int axes_y = Kc_page == 1 ? 129 : 124;
+		gr_scanline(18 * Kc_s, 135 * Kc_s, 37 * Kc_s);
+		gr_scanline(181 * Kc_s, 294 * Kc_s, 37 * Kc_s);
+		gr_scanline(18 * Kc_s, 144 * Kc_s, axes_y * Kc_s);
+		gr_scanline(174 * Kc_s, 294 * Kc_s, axes_y * Kc_s);
+		kc_string(0x8000, 35, TXT_BUTTONS);
+		kc_string(0x8000, axes_y - 2, TXT_AXES);
+		gr_set_fontcolor(gr_find_closest_color(0x38,0x38,0x38), -1);
+		if (Kc_page == 1) {
+			kc_string(81, 137, TXT_AXIS);
+			kc_string(111, 137, TXT_INVERT);
+			kc_string(222, 137, TXT_AXIS);
+			kc_string(252, 137, TXT_INVERT);
+		} else {
+			kc_string(169, 129, TXT_AXIS);
+			kc_string(199, 129, TXT_INVERT);
+		}
+	}
+	for (i = 0; i < Kc_nitems; i++)
+		kc_draw_item(i, 0);
+}
+
+static void kc_reset_page(void)
+{
+	int i;
+
+	switch (Kc_page) {
+	case 0: memcpy(Dtu_kc_settings[0], Dtu_kc_port_keys, DTU_KC_N_KEYS); break;
+	case 1: memcpy(Dtu_kc_settings[Dtu_control_type], Dtu_kc_orig_defaults[Dtu_control_type], DTU_KC_ROW); break;
+	case 2: memcpy(Dtu_kc_settings[5], Dtu_kc_orig_defaults[5], DTU_KC_ROW); break;
+	case 4: {
+		int dz = Dtu_pad_dead_zone, sp = Dtu_pad_speed, inv = Dtu_pad_invert_look;
+		dtu_pad_defaults();
+		Dtu_pad_dead_zone = dz; Dtu_pad_speed = sp; Dtu_pad_invert_look = inv;
+		return;
+	}
+	default:
+		for (i = 0; i < DTU_N_HOT_ACTIONS; i++) {
+			Dtu_kc_hot_settings[2*i] = Dtu_kc_hot_keys[i];
+			Dtu_kc_hot_settings[2*i+1] = 255;
+		}
+	}
+	// a default key leaves the items of the other keyboard page
+	if (Kc_page == 0 || Kc_page == 3) {
+		int j;
+		for (i = 0; i < Kc_nitems; i++)
+			for (j = 0; j < DTU_KC_N_KEYS + DTU_KC_N_HOT; j++) {
+				ubyte *o = kc_key_value(j);
+				if (o != kc_value(i) && *o == *kc_value(i))
+					*o = 255;
+			}
+	}
+}
+
+// page: 0 keyboard, 1 joystick, 2 mouse, 3 hot keys, 4 gamepad (port)
+void dtu_kconfig(int page, char *title)
+{
+	grs_canvas *save_canvas = grd_curcanv;
+	grs_font *save_font = grd_curcanv->cv_font;
+	int old_keyd_repeat = keyd_repeat, citem = 0, ocitem, k;
+	int time_stopped = 0;
+	static grs_font *hires_font;
+
+	dtu_kc_init();
+	Kc_page = page;
+	switch (page) {
+	case 0: Kc_items = Dtu_kc_keys; Kc_nitems = DTU_KC_N_KEYS; break;
+	case 1: Kc_items = Dtu_kc_joy; Kc_nitems = DTU_KC_N_JOY; break;
+	case 2: Kc_items = Dtu_kc_mouse; Kc_nitems = DTU_KC_N_MOUSE; break;
+	case 4: Kc_items = Dtu_kc_pad; Kc_nitems = 2 * DTU_PAD_N_ACTS; break;
+	default: Kc_items = Dtu_kc_hot; Kc_nitems = DTU_KC_N_HOT; Kc_page = 3; break;
+	}
+	if (page == 1 && (Dtu_control_type < 1 || Dtu_control_type > 4))
+		return;
+
+	if (Function_mode == FMODE_GAME) {
+		time_stopped = 1;
+		stop_time();
+	}
+
+	gr_set_current_canvas(NULL);
+	Kc_s = (grd_curcanv->cv_bitmap.bm_w >= 640) ? 2 : 1;
+	Kc_item_font = GAME_FONT;
+	if (Kc_s == 2) {
+		char path[600];
+		if (!hires_font && dtu_find_file("FNTEMFM_.FNT", path, sizeof(path)))
+			hires_font = gr_init_font(path);
+		if (hires_font)
+			Kc_item_font = hires_font;
+	}
+	game_flush_inputs();
+	keyd_repeat = 1;
+
+	kc_draw_page(title);
+	kc_draw_item(citem, 1);
+
+	while (1) {
+		k = key_inkey();
+		if (!nm_show_frame())
+			k = KEY_ESC;
+		ocitem = citem;
+		switch (k) {
+		case KEY_PRINT_SCREEN:
+			save_screen_shot(0);
+			break;
+		case KEY_CTRLED+KEY_D:		// 0x514BE
+			*kc_value(citem) = 255;
+			kc_draw_item(citem, 1);
+			break;
+		case KEY_CTRLED+KEY_R:		// 0x514E1: the defaults of the page
+			kc_reset_page();
+			kc_draw_page(title);
+			kc_draw_item(citem, 1);
+			break;
+		case KEY_UP: case KEY_PAD8:		citem = Kc_items[citem].u; break;
+		case KEY_DOWN: case KEY_PAD2:		citem = Kc_items[citem].d; break;
+		case KEY_LEFT: case KEY_PAD4:		citem = Kc_items[citem].l; break;
+		case KEY_RIGHT: case KEY_PAD6:	citem = Kc_items[citem].r; break;
+		case KEY_ENTER: case KEY_PADENTER:
+			kc_change(citem);
+			break;
+		case -2:
+		case KEY_ESC:
+			grd_curcanv->cv_font = save_font;
+			gr_set_current_canvas(save_canvas);
+			keyd_repeat = old_keyd_repeat;
+			game_flush_inputs();
+			if (time_stopped)
+				start_time();
+			return;
+		}
+		if (ocitem != citem) {
+			kc_draw_item(ocitem, 0);
+			kc_draw_item(citem, 1);
+		}
+	}
+}
+
+//------------------------------------------------------------------------
+// The Controls menu (0x50B4F, joydefs_config of Descent 1): the control
+// types 1 to 5 of the executable (no "Keyboard only"), "Customize Above",
+// a blank line and "Customize Keyboard". The port adds "Customize Hot
+// Keys" and "Reset to defaults". The settings are written to ascent.cfg
+// when the menu closes.
+
+static void dtu_controls_menuset(int nitems, newmenu_item *items, int *last_key, int citem)
+{
+	int i;
+
+	for (i = 0; i < 5; i++)
+		if (items[i].value)
+			Dtu_control_type = i + 1;
+}
+
+void dtu_kconfig_menu(void)
+{
+	newmenu_item m[11];
+	int i, c = 7;
+
+	dtu_kc_init();
+	plat_pad_init();
+	do {
+		memset(m, 0, sizeof(m));
+		for (i = 0; i < 5; i++) {
+			m[i].type = NM_TYPE_RADIO;
+			m[i].text = Text_string[143 + i];		// Joystick to Mouse
+			m[i].value = (Dtu_control_type == i + 1);
+			m[i].group = 0;
+		}
+		m[5].type = NM_TYPE_MENU; m[5].text = TXT_CUST_ABOVE;
+		m[6].type = NM_TYPE_TEXT; m[6].text = "";
+		m[7].type = NM_TYPE_MENU; m[7].text = TXT_CUST_KEYBOARD;
+		m[8].type = NM_TYPE_MENU; m[8].text = "Customize Hot Keys";
+		m[9].type = NM_TYPE_MENU; m[9].text = "Customize Gamepad";
+		m[10].type = NM_TYPE_MENU; m[10].text = "Reset to defaults";
+		c = newmenu_do1(NULL, TXT_CONTROLS, 11, m, dtu_controls_menuset, c);
+		for (i = 0; i < 5; i++)
+			if (m[i].value)
+				Dtu_control_type = i + 1;
+		switch (c) {
+		case 5:
+			dtu_kconfig(Dtu_control_type == 5 ? 2 : 1, Text_string[142 + Dtu_control_type]);
+			break;
+		case 7:
+			dtu_kconfig(0, TXT_KEYBOARD);
+			break;
+		case 8:
+			dtu_kconfig(3, "Hot Keys");
+			break;
+		case 9:
+			dtu_pad_menu();
+			break;
+		case 10:
+			if (nm_messagebox(NULL, 2, TXT_YES, TXT_NO, "Reset all keys\nto the defaults?") == 0)
+				dtu_kconfig_defaults();
+			break;
+		}
+	} while (c > -1);
+	dtu_opts_save();
+}
+
+//------------------------------------------------------------------------
+// The Customize Gamepad menu (port): the bindings, the dead zone, the speed
+// of the turn and the look, the inverted look, and the defaults.
+
+static void dtu_pad_menuset(int nitems, newmenu_item *items, int *last_key, int citem)
+{
+	Dtu_pad_dead_zone = items[2].value;
+	Dtu_pad_speed = items[3].value + 1;
+	Dtu_pad_invert_look = items[4].value;
+}
+
+void dtu_pad_menu(void)
+{
+	newmenu_item m[7];
+	int c = 0;
+
+	dtu_kc_init();
+	plat_pad_init();
+	do {
+		memset(m, 0, sizeof(m));
+		m[0].type = NM_TYPE_TEXT; m[0].text = plat_pad_present() ? "A gamepad is connected." : "No gamepad found.";
+		m[1].type = NM_TYPE_MENU; m[1].text = "Customize Buttons and Sticks";
+		m[2].type = NM_TYPE_SLIDER; m[2].text = "Dead zone"; m[2].value = Dtu_pad_dead_zone; m[2].min_value = 0; m[2].max_value = 8;
+		m[3].type = NM_TYPE_SLIDER; m[3].text = "Turn and look speed"; m[3].value = Dtu_pad_speed - 1; m[3].min_value = 0; m[3].max_value = 15;
+		m[4].type = NM_TYPE_CHECK; m[4].text = "Invert look"; m[4].value = Dtu_pad_invert_look;
+		m[5].type = NM_TYPE_TEXT; m[5].text = "";
+		m[6].type = NM_TYPE_MENU; m[6].text = "Reset gamepad to defaults";
+		c = newmenu_do1(NULL, "Gamepad", 7, m, dtu_pad_menuset, c < 1 ? 1 : c);
+		dtu_pad_menuset(7, m, NULL, c);
+		if (c == 1)
+			dtu_kconfig(4, "Gamepad");
+		else if (c == 6)
+			dtu_pad_defaults();
+	} while (c > -1);
+}
+
+//------------------------------------------------------------------------
+// The settings in ascent.cfg (dtuopts.c): "KeyConfigN=" with the 64 bytes
+// of row N in hex, "KeyConfigHot=" with the 20 bytes of the hot keys and
+// "ControlType=". Returns 1 if the line was a line of the key table.
+
+static int hex_bytes(const char *s, ubyte *out, int n)
+{
+	int i;
+
+	for (i = 0; i < n; i++) {
+		unsigned v;
+		if (sscanf(s + 2*i, "%2x", &v) != 1)
+			return 0;
+		out[i] = (ubyte) v;
+	}
+	return 1;
+}
+
+int dtu_kconfig_cfg_line(const char *name, const char *value)
+{
+	ubyte row[DTU_KC_ROW];
+	int n;
+
+	dtu_kc_init();
+	if (!strcmp(name, "ControlType")) {
+		n = atoi(value);
+		if (n >= 1 && n <= 5)
+			Dtu_control_type = n;
+		return 1;
+	}
+	if (!strcmp(name, "PadConfig")) {
+		ubyte pad[2 * DTU_N_ACTIONS];
+		if (strlen(value) >= sizeof(pad) * 2 && hex_bytes(value, pad, sizeof(pad)))
+			memcpy(Dtu_pad_settings, pad, sizeof(pad));
+		return 1;
+	}
+	if (!strcmp(name, "PadDeadZone")) {
+		n = atoi(value);
+		if (n >= 0 && n <= 8) Dtu_pad_dead_zone = n;
+		return 1;
+	}
+	if (!strcmp(name, "PadSpeed")) {
+		n = atoi(value);
+		if (n >= 1 && n <= 16) Dtu_pad_speed = n;
+		return 1;
+	}
+	if (!strcmp(name, "PadInvertLook")) {
+		Dtu_pad_invert_look = atoi(value) != 0;
+		return 1;
+	}
+	if (!strcmp(name, "KeyConfigHot")) {
+		if (strlen(value) >= 2*DTU_KC_N_HOT && hex_bytes(value, row, DTU_KC_N_HOT))
+			memcpy(Dtu_kc_hot_settings, row, DTU_KC_N_HOT);
+		return 1;
+	}
+	if (!strncmp(name, "KeyConfig", 9) && name[9] >= '0' && name[9] <= '5' && !name[10]) {
+		if (strlen(value) >= 2*DTU_KC_ROW && hex_bytes(value, row, DTU_KC_ROW))
+			memcpy(Dtu_kc_settings[name[9] - '0'], row, DTU_KC_ROW);
+		return 1;
+	}
+	return 0;
+}
+
+void dtu_kconfig_cfg_write(FILE *f)
+{
+	int r, i;
+
+	dtu_kc_init();
+	fprintf(f, "ControlType=%d\n", Dtu_control_type);
+	for (r = 0; r < 6; r++) {
+		fprintf(f, "KeyConfig%d=", r);
+		for (i = 0; i < DTU_KC_ROW; i++)
+			fprintf(f, "%02x", Dtu_kc_settings[r][i]);
+		fprintf(f, "\n");
+	}
+	fprintf(f, "KeyConfigHot=");
+	for (i = 0; i < DTU_KC_N_HOT; i++)
+		fprintf(f, "%02x", Dtu_kc_hot_settings[i]);
+	fprintf(f, "\n");
+	fprintf(f, "PadConfig=");
+	for (i = 0; i < DTU_N_ACTIONS; i++)
+		fprintf(f, "%02x%02x", Dtu_pad_settings[i][0], Dtu_pad_settings[i][1]);
+	fprintf(f, "\nPadDeadZone=%d\nPadSpeed=%d\nPadInvertLook=%d\n", Dtu_pad_dead_zone, Dtu_pad_speed, Dtu_pad_invert_look);
+}
+
+// For the tests: -keyconfig ACTION=KEY[,KEY][;...] sets keys, for example
+// -keyconfig "forward=Q;back=Y,DOWN". The names are those of the screen
+// (dtu_action_name, ignoring case and spaces) and of the keys.
+static int name_eq(const char *a, const char *b, int n)
+{
+	while (n > 0 && *b) {
+		if (*a == ' ') { a++; continue; }
+		if (toupper((ubyte) *a) != toupper((ubyte) *b))
+			return 0;
+		a++; b++; n--;
+	}
+	while (*a == ' ') a++;
+	return n == 0 && *a == 0;
+}
+
+void dtu_kconfig_args(void)
+{
+	int t = FindArg("-keyconfig");
+	char *s;
+
+	dtu_kc_init();
+	plat_pad_init();			// the gamepad, also for the menus of the front end
+	Kc_args_pending = 0;
+	if (!t || t + 1 >= Num_args)
+		return;
+	if (!Text_string[0]) {		// the names of the actions are not loaded yet
+		Kc_args_pending = 1;
+		return;
+	}
+	for (s = Args[t+1]; *s; ) {
+		char *eq = strchr(s, '='), *end = strchr(s, ';');
+		int act, n = 0;
+
+		if (!end) end = s + strlen(s);
+		if (!eq || eq > end)
+			break;
+		for (act = 0; act < DTU_N_ACTIONS; act++)
+			if (name_eq(dtu_action_name(act), s, (int) (eq - s)))
+				break;
+		if (act < DTU_N_ACTIONS) {
+			char *k = eq + 1;
+			int w;
+			for (w = 0; w < 2; w++) {
+				int item = Dtu_act_items[act][w];
+				*kc_key_value(item) = 255;
+			}
+			while (k < end && n < 2) {
+				char *c = k;
+				int key;
+				while (c < end && *c != ',') c++;
+				for (key = 1; key < 256; key++)
+					if (dtu_key_name(key)[0] && name_eq(dtu_key_name(key), k, (int) (c - k)))
+						break;
+				if (key < 256) {
+					int j;
+					for (j = 0; j < DTU_KC_N_KEYS + DTU_KC_N_HOT; j++)
+						if (*kc_key_value(j) == key)
+							*kc_key_value(j) = 255;
+					*kc_key_value(Dtu_act_items[act][n++]) = (ubyte) key;
+				}
+				k = (c < end) ? c + 1 : c;
+			}
+		} else
+			printf("-keyconfig: no action '%.*s'\n", (int) (eq - s), s);
+		s = *end ? end + 1 : end;
+	}
+}

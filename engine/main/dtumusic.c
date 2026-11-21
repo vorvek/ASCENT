@@ -24,6 +24,17 @@
  * it block by block into a ring buffer of RING_FRAMES frames when the
  * mixer asks for data, so no file is read on the audio thread and the
  * supply of data does not depend on the frame rate of the game.
+ *
+ * ASCENT: replacement music. With the setting Dtu_safe_music on, the file
+ * <hd>/music/NAME.ogg (Ogg Vorbis) plays in place of NAME.TUN if it
+ * exists (dtu_hd_dir of dtuopts.c). It goes through the same player,
+ * queue, loop and fade; stb_vorbis decodes it block by block in the
+ * callback, as the ACM decoder does. The mixer resamples it from its own
+ * rate. tools/music_replace.py matches its loudness to the original track
+ * when it makes the file, so the player applies no gain.
+ *
+ * ASCENT: the music at the start of a level (Dtu_fix_start_music), see
+ * start_music below and docs/re/music.md.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,7 +50,14 @@
 #include "acm.h"
 #include "dtufile.h"
 #include "dtumusic.h"
+#include "dtuopts.h"
 #include "platform.h"
+
+// stb_vorbis (public domain, engine/third_party/stb). dtuogg.c compiles
+// the implementation.
+#define STB_VORBIS_HEADER_ONLY
+#define STB_VORBIS_NO_STDIO
+#include "../third_party/stb/stb_vorbis.c"
 
 #define RING_FRAMES		4096			// stereo frames of decoded music
 #define QUEUE_SIZE		8				// 0xA3877: three queues of 8 entries
@@ -63,7 +81,9 @@ typedef struct music_player {
 	int			file_size;
 	int			file_pos;
 	acm_stream	*acm;
-	acm_info		info;
+	stb_vorbis	*ogg;					// ASCENT: a replacement file, in place of acm
+	acm_info		info;					// rate and channels (also of the ogg file)
+	int			pass_frames;			// frames decoded in this pass
 	int			loops;					// repeats that remain, -1 = no limit
 	volatile int	no_more_loops;		// the game thread sets it: do not repeat again
 	volatile int	done;					// the callback sets it: the last pass has ended
@@ -97,6 +117,19 @@ static int Queue_count = 0;
 static short Wrp_code[MAX_SEGMENTS];
 static ubyte Wrp_value[MAX_SEGMENTS];
 static int Wrp_last_seg = -1;
+
+// ASCENT: the music at the start of a level, see start_music. The option
+// -origmusic clears it: the level is silent until the player enters a
+// segment with a music command, as in the original.
+int Dtu_fix_start_music = 1;
+static int Start_pending = 0;			// dtumusic_level_start ran, no game frame since
+static fix Start_gametime;
+
+// ASCENT: -safemusic and -nosafemusic set Dtu_safe_music for this run
+// only (-1: the value of the setting). Safe_used is the value with which
+// the track that plays now was opened.
+static int Safe_override = -1;
+static int Safe_used = 0;
 
 // Totals for the line that dtumusic_close prints.
 static unsigned Total_frames;
@@ -141,7 +174,9 @@ static void player_fill(music_player *p)
 		if ( room > RING_FRAMES - pos )
 			room = RING_FRAMES - pos;
 
-		if ( p->info.channels == 2 )
+		if ( p->ogg )
+			n = stb_vorbis_get_samples_short_interleaved( p->ogg, 2, p->ring + pos*2, room*2 );
+		else if ( p->info.channels == 2 )
 			n = acm_stream_read( p->acm, p->ring + pos*2, room*2 ) / 2;
 		else {
 			if ( room > 512 ) room = 512;
@@ -150,16 +185,23 @@ static void player_fill(music_player *p)
 				p->ring[(pos+i)*2] = p->ring[(pos+i)*2+1] = mono[i];
 		}
 		p->ring_count += n;
+		p->pass_frames += n;
 
 		if ( n < room ) {
-			// The end of the track, or a stream that is not valid.
-			if ( acm_stream_error( p->acm ) || p->no_more_loops || p->loops == 0 )
+			// The end of the track, or a stream that is not valid. A pass
+			// without a frame is an error too (no endless loop).
+			if ( (p->acm && acm_stream_error( p->acm )) || p->pass_frames == 0 || p->no_more_loops || p->loops == 0 )
 				p->done = 1;
 			else {
 				if ( p->loops > 0 )
 					p->loops--;
-				p->file_pos = ACM_HEADER_SIZE;
-				acm_stream_rewind( p->acm );
+				if ( p->ogg )
+					stb_vorbis_seek_start( p->ogg );
+				else {
+					p->file_pos = ACM_HEADER_SIZE;
+					acm_stream_rewind( p->acm );
+				}
+				p->pass_frames = 0;
 				p->passes++;
 			}
 		}
@@ -196,11 +238,110 @@ static int music_callback(void *user, int16_t *buffer, int frames)
 //-----------------------------------------------------------------------
 // The game thread.
 
+// ASCENT: the options -safemusic and -nosafemusic (for a test; they do not
+// change the saved setting).
+static void safe_music_args(void)
+{
+	if ( FindArg( "-safemusic" ) )
+		Safe_override = 1;
+	if ( FindArg( "-nosafemusic" ) )
+		Safe_override = 0;
+}
+
+static int safe_music_on(void)
+{
+	return Safe_override >= 0 ? Safe_override : Dtu_safe_music;
+}
+
+// ASCENT: load a whole file by its path. NULL if it cannot be read.
+static ubyte *load_path(const char *path, int *size_out)
+{
+	FILE *f = fopen( path, "rb" );
+	ubyte *data;
+	long n;
+
+	if ( f == NULL )
+		return NULL;
+	fseek( f, 0, SEEK_END );
+	n = ftell( f );
+	fseek( f, 0, SEEK_SET );
+	data = (n > 0 && n < 0x10000000) ? malloc( n ) : NULL;
+	if ( data && fread( data, 1, n, f ) != (size_t)n ) {
+		free( data );
+		data = NULL;
+	}
+	fclose( f );
+	*size_out = (int)n;
+	return data;
+}
+
+// ASCENT: the replacement of a track, <hd>/music/NAME.ogg, where NAME is
+// the name of the TUN file without its extension. The name is tried in
+// upper case, as written in DISCO.JRG and in lower case (for file systems
+// with case). Returns the file in memory, or NULL; path gets its name.
+static ubyte *load_replacement(const char *name, int *size, char *path, int path_size)
+{
+	const char *hd = dtu_hd_dir();
+	char base[32];
+	ubyte *data;
+	int i, n, form;
+
+	if ( hd == NULL )
+		return NULL;
+	for (n=0; name[n] && name[n] != '.' && n < (int)sizeof(base)-1; n++ )
+		;
+	for (form=0; form<3; form++ ) {
+		for (i=0; i<n; i++ ) {
+			base[i] = name[i];
+			if ( form == 0 && base[i] >= 'a' && base[i] <= 'z' ) base[i] -= 'a' - 'A';
+			if ( form == 2 && base[i] >= 'A' && base[i] <= 'Z' ) base[i] += 'a' - 'A';
+		}
+		base[n] = 0;
+		snprintf( path, path_size, "%s/music/%s.ogg", hd, base );
+		if ( (data = load_path( path, size )) != NULL )
+			return data;
+	}
+	return NULL;
+}
+
+// ASCENT: open the replacement of a track. Returns 1 if it can play.
+static int player_open_ogg(music_player *p, const char *name)
+{
+	char path[700];
+	stb_vorbis_info vi;
+	int error = 0;
+
+	p->file = load_replacement( name, &p->file_size, path, sizeof(path) );
+	if ( p->file == NULL )
+		return 0;
+	p->ogg = stb_vorbis_open_memory( p->file, p->file_size, &error, NULL );
+	if ( p->ogg == NULL ) {
+		dtu_log( "MUSIC: '%s' is not an Ogg Vorbis file (error %d)\n", path, error );
+		free( p->file );
+		p->file = NULL;
+		return 0;
+	}
+	vi = stb_vorbis_get_info( p->ogg );
+	p->info.rate = vi.sample_rate;
+	p->info.channels = vi.channels;
+	p->info.total = (int)stb_vorbis_stream_length_in_samples( p->ogg ) * vi.channels;
+	dtu_log( "MUSIC: replacement '%s' for '%s', %d Hz, %d channels\n", path, name, p->info.rate, p->info.channels );
+	if ( Music_log )
+		printf( "MUSIC: replacement '%s' for '%s': %d Hz, %d channels, %d frames\n",
+			path, name, p->info.rate, p->info.channels, vi.channels > 0 ? p->info.total / vi.channels : 0 );
+	return 1;
+}
+
 // Load a track and make the player ready. The mixer does not have the
 // player now. Returns 1 if the track can play.
 static int player_open(music_player *p, const char *name, int loops)
 {
 	memset( p, 0, sizeof(*p) );
+	// ASCENT: the replacement of the track, if the setting is on.
+	if ( safe_music_on() && player_open_ogg( p, name ) ) {
+		p->loops = loops;
+		return 1;
+	}
 	p->file = dtu_load_file( name, &p->file_size );
 	if ( p->file == NULL ) {
 		dtu_log( "MUSIC: the file '%s' is not in the data directories\n", name );
@@ -222,7 +363,10 @@ static void player_close(music_player *p)
 {
 	if ( p->acm ) acm_stream_close( p->acm );
 	p->acm = NULL;
+	if ( p->ogg ) stb_vorbis_close( p->ogg );
+	p->ogg = NULL;
 	if ( p->file ) free( p->file );
+	p->file = NULL;
 }
 
 // 0xA40B3: start a job.
@@ -231,6 +375,7 @@ static void start_job(int index, int loops, int volume)
 	Fade_target = -1;
 	Cur_volume = volume;
 
+	Safe_used = safe_music_on();
 	if ( !player_open( &Player, Disco[index].name, loops ) )
 		return;
 	Cur_index = index;
@@ -238,9 +383,11 @@ static void start_job(int index, int loops, int volume)
 	Total_tracks++;
 	plat_audio_music_set_volume( Cur_volume );
 	plat_audio_music_start( music_callback, &Player, Player.info.rate );
-	dtu_log( "MUSIC: start %d '%s', loops %d, volume %d\n", index, Disco[index].name, loops, volume );
+	dtu_log( "MUSIC: start %d '%s'%s, loops %d, volume %d\n", index, Disco[index].name,
+		Player.ogg ? " (replacement)" : "", loops, volume );
 	if ( Music_log )
-		printf( "MUSIC: t %.2f start %d '%s', loops %d, volume %d\n", f2fl(GameTime), index, Disco[index].name, loops, volume );
+		printf( "MUSIC: t %.2f start %d '%s'%s, loops %d, volume %d\n", f2fl(GameTime), index, Disco[index].name,
+			Player.ogg ? " (replacement)" : "", loops, volume );
 }
 
 // 0xA3DB9: stop the job.
@@ -454,7 +601,75 @@ void dtumusic_level_start(int level_index)
 	if ( (t = FindArg( "-music" )) != 0 && t+1 < Num_args ) {
 		dtumusic_flush();
 		dtumusic_play( atoi( Args[t+1] ), DTUMUSIC_LOOP_FOREVER, 100 );
+	} else {
+		// ASCENT: start_music runs at the first game frame, when the
+		// player is at the start position (also after a load).
+		Start_pending = 1;
+		Start_gametime = GameTime;
 	}
+}
+
+// ASCENT: the music at the start of a level (Dtu_fix_start_music).
+//
+// The original runs a music command of DTU.WRP only when the player moves
+// into a segment that has one (0x69BC8 compares the segment after the move
+// with the segment before it). Nothing runs for the segment in which the
+// player starts, and the level load starts no music. So a level is silent
+// until the player crosses a segment with a command; in YPINN the commands
+// are in the doors of the rooms (segments 3, 28, 22), not in the room
+// where the player starts.
+//
+// The correction runs, at the first game frame of the level, the command
+// of the start segment, or else the command of the nearest segment that
+// has one (breadth first search through the connected segments, the
+// first found at the smallest number of steps). If that command starts a
+// track and another track plays now (from the level before), the other
+// track fades out (as code 106 does) so that the new one starts in 1.6 s
+// and not at the end of the old one.
+static void start_music(int start_seg)
+{
+	static short queue[MAX_SEGMENTS];
+	static short dist[MAX_SEGMENTS];
+	int head = 0, tail = 0, s, side, c, found = -1, code, value, cur;
+
+	if ( start_seg < 0 || start_seg > Highest_segment_index )
+		return;
+	memset( dist, -1, sizeof(dist) );
+	dist[start_seg] = 0;
+	queue[tail++] = (short)start_seg;
+	while ( head < tail ) {
+		s = queue[head++];
+		if ( Wrp_code[s] ) {
+			found = s;
+			break;
+		}
+		for (side=0; side<MAX_SIDES_PER_SEGMENT; side++ ) {
+			c = Segments[s].children[side];
+			if ( c >= 0 && c <= Highest_segment_index && dist[c] < 0 ) {
+				dist[c] = dist[s] + 1;
+				queue[tail++] = (short)c;
+			}
+		}
+	}
+
+	if ( Music_log ) {
+		if ( found < 0 )
+			printf( "MUSIC: t %.2f level start, segment %d, no music command in %d segments that connect\n",
+				f2fl(GameTime), start_seg, tail );
+		else
+			printf( "MUSIC: t %.2f level start, segment %d, command %d value %d of segment %d at %d steps%s\n",
+				f2fl(GameTime), start_seg, Wrp_code[found], Wrp_value[found], found, dist[found],
+				Dtu_fix_start_music ? "" : " (not run: -origmusic)" );
+	}
+	if ( found < 0 || !Dtu_fix_start_music )
+		return;
+
+	code = Wrp_code[found];
+	value = Wrp_value[found];
+	cur = dtumusic_current();
+	dtumusic_command( code, value );
+	if ( ((code - 100) & 1) && cur >= 0 && cur != value )
+		dtumusic_fade( 0 );
 }
 
 void dtumusic_frame(void)
@@ -468,6 +683,14 @@ void dtumusic_frame(void)
 	// 0x69BC8: the command of the segment that the player entered.
 	if ( ConsoleObject != NULL ) {
 		seg = ConsoleObject->segnum;
+		// ASCENT: the first game frame of the level: GameTime moves only
+		// in the game loop, not in the front end, which also calls this
+		// function.
+		if ( Start_pending && GameTime != Start_gametime && seg >= 0 && seg < MAX_SEGMENTS ) {
+			Start_pending = 0;
+			start_music( seg );
+			Wrp_last_seg = seg;
+		}
 		if ( seg >= 0 && seg < MAX_SEGMENTS && seg != Wrp_last_seg ) {
 			if ( Wrp_last_seg >= 0 && Wrp_code[seg] )
 				dtumusic_command( Wrp_code[seg], Wrp_value[seg] );
@@ -488,6 +711,25 @@ void dtumusic_frame(void)
 		while ( Fade_target >= 0 && now - Fade_time >= FADE_TICK ) {
 			Fade_time += FADE_TICK;
 			fade_step();
+		}
+	}
+
+	// ASCENT: the setting "Streaming safe music" changed in a menu: the
+	// track that plays starts again from its start in the other form, if
+	// it has a replacement.
+	if ( Playing && !Player.done && Fade_target < 0 && safe_music_on() != Safe_used ) {
+		char path[700];
+		int size;
+		ubyte *data = load_replacement( Disco[Cur_index].name, &size, path, sizeof(path) );
+
+		Safe_used = safe_music_on();
+		if ( data != NULL ) {
+			free( data );
+			index = Cur_index;
+			loops = Player.no_more_loops ? 0 : Player.loops;
+			volume = Cur_volume;
+			dtumusic_stop();
+			start_job( index, loops, volume );
 		}
 	}
 
@@ -515,7 +757,7 @@ void dtumusic_close(void)
 	dtumusic_stop();
 	Queue_count = 0;
 	Music_ready = 0;
-	if ( Total_tracks > 0 )
+	if ( Total_tracks > 0 && Dtu_debug )		// ASCENT: -debug or the debug build (dtufile.h)
 		printf( "MUSIC: %d tracks started, %u frames played, %d repeats, %d underruns\n",
 			Total_tracks, Total_frames, Total_passes, Total_underruns );
 }
@@ -567,6 +809,9 @@ void dtumusic_init(void)
 
 	if ( FindArg( "-musiclog" ) )
 		Music_log = 1;
+	if ( FindArg( "-origmusic" ) )		// ASCENT: the start of a level as in the original
+		Dtu_fix_start_music = 0;
+	safe_music_args();
 	if ( (t = FindArg( "-musicscript" )) != 0 && t+1 < Num_args ) {
 		char *p = Args[t+1];
 		float time;
@@ -607,6 +852,7 @@ int dtumusic_render_wav(const char *track, const char *wav_name, int seconds)
 		}
 		name = Disco[i].name;
 	}
+	safe_music_args();
 	if ( !player_open( &p, name, DTUMUSIC_LOOP_FOREVER ) ) {
 		printf( "MUSIC: cannot open '%s'\n", name );
 		return 1;
@@ -637,8 +883,8 @@ int dtumusic_render_wav(const char *track, const char *wav_name, int seconds)
 	}
 	fclose( f );
 
-	printf( "MUSIC: wrote %s: '%s', %d Hz, %d channels in the file, %d values in one pass, %u frames written, %d repeats, %d underruns\n",
-		wav_name, name, p.info.rate, p.info.channels, p.info.total, done, p.passes, p.underruns );
+	printf( "MUSIC: wrote %s: '%s'%s, %d Hz, %d channels in the file, %d values in one pass, %u frames written, %d repeats, %d underruns\n",
+		wav_name, name, p.ogg ? " (replacement)" : "", p.info.rate, p.info.channels, p.info.total, done, p.passes, p.underruns );
 	player_close( &p );
 	return done == frames ? 0 : 1;
 }

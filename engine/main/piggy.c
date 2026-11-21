@@ -1003,6 +1003,15 @@ int piggy_get_num_eggs()
 	return Num_eggs;
 }
 
+// ASCENT: the file name of a loaded archive, as piggy_load_egg() got it
+// (the GPU renderer finds the upscaled textures of the archive by it).
+const char *piggy_get_egg_name( int egg_num )
+{
+	if ( egg_num < 0 || egg_num >= Num_eggs )
+		return NULL;
+	return Eggs[egg_num].name;
+}
+
 // The counts and the first table numbers of a loaded archive. Any pointer
 // can be NULL. Returns the number of entries that were not valid.
 int piggy_get_egg_counts( int egg_num, int *n_bitmaps, int *n_sounds, int *n_models, int *first_bitmap, int *first_sound, int *first_model )

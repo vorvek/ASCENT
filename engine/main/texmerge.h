@@ -49,6 +49,8 @@ int texmerge_init(int num_cached_textures);
 grs_bitmap * texmerge_get_cached_bitmap( int tmap_bottom, int tmap_top );
 void texmerge_close();
 void texmerge_flush();
+// ASCENT: the two bitmaps and the rotation of a bitmap of the cache.
+int texmerge_get_sources( grs_bitmap *bm, grs_bitmap **bottom, grs_bitmap **top, int *orient );
 
 
 #endif

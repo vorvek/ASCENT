@@ -100,6 +100,7 @@ typedef struct fe_seq {
 #define FE_MI_INPUT	3
 #define FE_MI_TEXT	4
 #define FE_MI_INPUT_MENU	5	// NM_TYPE_INPUT_MENU: a menu item that becomes an input field
+#define FE_MI_CHOICE	6	// ASCENT: a value from min_value to max_value, shown as "x<value>" or labels[value - min_value]; left and right change it
 
 typedef struct fe_menu_item {
 	int	type;
@@ -108,6 +109,8 @@ typedef struct fe_menu_item {
 	char	*buf;				// FE_MI_INPUT, FE_MI_INPUT_MENU
 	int	buf_len;			// most characters
 	void	(*changed)(struct fe_menu_item *item);
+	char	**labels;			// ASCENT: FE_MI_CHOICE: the names of the values, or NULL
+	int	disabled;			// ASCENT: FE_MI_CHOICE: drawn dark, the value does not change
 	// set by fe_menu
 	int	x, y, w, h;
 } fe_menu_item;

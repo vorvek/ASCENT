@@ -327,10 +327,31 @@ one. The interface picture has no USE label at that place.
 ## Cursor and mouse mode
 
 Verified: the cursor record is at 0x1BD51C. It keeps the image, a work copy
-and the saved background. Not traced: the code that moves it and the code of
-the key V (immersive mode). The manual says: in non-immersive mode the mouse
+and the saved background. Not traced: the code that moves it.
+
+Verified: the key V (immersive mode) is 0x54439, called from 0x529D5,
+0x52DFA and 0x53DA9 when the key of the control at 0x13C70F is down. It
+calls the key gate 0x545F5 first: the gate returns 1 only when 36.4 clock
+ticks (0.364 s, `clock()` at 0x10A0F3) have passed since the last time it
+returned 1 (time at 0x13BAE1, shared with 0x54632). So a held key toggles
+again each 0.364 s, and a short press toggles once. The flag at 0x13BAE0 is
+inverted. On: TEX 817 "Immersive mode is on." Off: TEX 818 "Immersive mode
+is off.", then the mouse goes to the center of the view (0xE89A8). The text
+goes to the message box with 0x347A2 and the player number (the color of the
+player). The manual says: in non-immersive mode the mouse
 moves the cursor, in immersive mode the mouse turns the character and the
 buttons are not reachable.
+
+Port addition (not in the executable): the menus of `newmenu.c` (the
+Escape menu, F2, the message boxes, Improvements, Graphics, the death
+menu, the list boxes) show a pointer: the cursor picture (entry 153 or 154)
+with its colors matched to the current palette. While a menu is open the
+mouse is not in the relative mode; the mode of before comes back when the
+last menu closes. The item under the pointer is selected when the pointer
+moves, the left button chooses it, the right button is Escape, and the
+wheel moves the selection, changes a slider or a number, or scrolls a list.
+The cursor of the play screen is taken out of the frame under a menu. The
+setting `Dtu_fe_original_input` turns all of this off.
 
 ## Input defect
 

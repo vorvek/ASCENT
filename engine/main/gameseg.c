@@ -919,6 +919,12 @@ int	Doing_lighting_hack_flag=0;
 #define Doing_lighting_hack_flag 0
 #endif
 
+// ASCENT: the depth of the recursion of trace_segs(). Two segments can send
+// the trace back and forth without end; the stackavail() test stopped that
+// in the original. The soak test found the stack overflow (FLAME.LVL).
+#define MAX_TRACE_DEPTH 256
+static int Trace_depth = 0, Trace_abort = 0;
+
 //figure out what seg the given point is in, tracing through segments
 //returns segment number, or -1 if can't find segment
 int trace_segs(vms_vector *p0,int oldsegnum)
@@ -928,6 +934,17 @@ int trace_segs(vms_vector *p0,int oldsegnum)
 	fix side_dists[6];
 
 	Assert((oldsegnum <= Highest_segment_index) && (oldsegnum >= 0));
+
+	// ASCENT: in place of the stackavail() test below. -1 makes
+	// find_point_seg() search all segments, so the answer is right.
+	// The whole trace stops, so that the other sides of each level are not
+	// tried as well.
+	if (Trace_depth == 0)
+		Trace_abort = 0;
+	if (Trace_depth >= MAX_TRACE_DEPTH) {
+		Trace_abort = 1;
+		return -1;
+	}
 
 	// ASCENT: removed the stackavail() check of Watcom C. The original gave up
 	// and returned oldsegnum when less than 1024 bytes of stack were left. The
@@ -975,7 +992,11 @@ int trace_segs(vms_vector *p0,int oldsegnum)
 
 				side_dists[biggest_side] = 0;
 
+				Trace_depth++;
 				check = trace_segs(p0,seg->children[biggest_side]);	//trace into adjacent segment
+				Trace_depth--;
+				if (Trace_abort)
+					return -1;
 
 				if (check != -1)		//we've found a segment
 					return check;	

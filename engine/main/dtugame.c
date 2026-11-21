@@ -17,6 +17,7 @@
 #include "palette.h"
 #include "error.h"
 #include "args.h"
+#include "dtusoak.h"
 #include "segment.h"
 #include "object.h"
 #include "wall.h"
@@ -32,6 +33,7 @@
 #include "dtufile.h"
 #include "dtuobj.h"		// ASCENT: dtu_damage_player() for -testdeath
 #include "dtugame.h"
+#include "platform.h"		// ASCENT: plat_gpu_screenshot()
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -97,6 +99,11 @@ int dtu_load_level_data(char *level_name)
 	char name[16];
 	int i;
 
+	// -archive RSC: the player archive for a test (race, sex, class
+	// letters, for example dmf for a dwarf male fighter)
+	if ((i = FindArg("-archive")) != 0 && i+1 < Num_args && strlen(Args[i+1]) == 3)
+		strcpy(Dtu_player_archive, Args[i+1]);
+
 	for (i=0; i<15 && level_name[i] && level_name[i] != '.'; i++)
 		name[i] = tolower(level_name[i]);
 	name[i] = 0;
@@ -112,13 +119,10 @@ DTU_WEAK int dtu_texture_ready(int tmap_num)
 
 //------------------------------------------------------------------------
 
+// ASCENT: -datadir, and the directories of an installed game (dtufile.c)
 void dtu_read_datadir_args(void)
 {
-	int i;
-
-	for (i=1; i<Num_args-1; i++)
-		if (!stricmp(Args[i], "-datadir"))
-			dtu_add_data_dir(Args[i+1]);
+	dtu_init_dirs();
 }
 
 int dtu_check_level(char *level_name)
@@ -175,9 +179,25 @@ int dtu_write_screenshot(char *filename)
 	grs_bitmap *bm = &grd_curscreen->sc_canvas.cv_bitmap;
 	FILE *f;
 	int x, y;
+	uint8_t *rgb;
+	int rgb_w, rgb_h;
 
 	if (!bm->bm_data || bm->bm_type != BM_LINEAR)
 		return 0;
+
+	// ASCENT: when the frame shows the image of the GPU renderer, the
+	// picture is the composed image, at the resolution of the GPU image.
+	rgb = plat_gpu_screenshot(bm->bm_data, bm->bm_w, bm->bm_h, bm->bm_rowsize, (uint8_t *) gr_palette, &rgb_w, &rgb_h);
+	if (rgb) {
+		f = fopen(filename, "wb");
+		if (f) {
+			fprintf(f, "P6\n%d %d\n255\n", rgb_w, rgb_h);
+			fwrite(rgb, 3, (size_t) rgb_w * rgb_h, f);
+			fclose(f);
+		}
+		free(rgb);
+		return f != NULL;
+	}
 
 	f = fopen(filename, "wb");
 	if (!f)
@@ -212,9 +232,13 @@ int dtu_frame_done(void)
 		frame_limit = 0;
 		if ((t = FindArg("-frames")) != 0 && t+1 < Num_args)
 			frame_limit = atoi(Args[t+1]);
+		dtu_soak_init();
 	}
 
 	frame_count++;
+
+	// ASCENT: the soak test (-soak SEED, dtusoak.c)
+	dtu_soak_frame();
 
 	// ASCENT: test option -testdeath N: the player dies at frame N, so that
 	// a script can test the death sequence.
@@ -231,6 +255,7 @@ int dtu_frame_done(void)
 
 	if (frame_limit > 0 && frame_count >= frame_limit) {
 		Dtu_frames_done = 1;
+		dtu_soak_done();
 		if ((t = FindArg("-screenshot")) != 0 && t+1 < Num_args) {
 			if (dtu_write_screenshot(Args[t+1]))
 				printf("Wrote %s after %d frames\n", Args[t+1], frame_count);

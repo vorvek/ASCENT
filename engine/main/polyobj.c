@@ -1099,10 +1099,24 @@ static void draw_model_sorted(polymodel *po,vms_angvec *angles,fix light,fix *gl
 
 void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[])
 {
+	draw_polygon_model_frame_lerp(pos,orient,model_num,frame,-1,0,show_hidden,light,glow_values,alt_textures);
+}
+
+// ASCENT: the angle frac of the way from a to b, the short way around
+static fixang angle_lerp(fixang a,fixang b,fix frac)
+{
+	fixang d = (fixang) (b - a);		// wraps to -0x8000 .. 0x7FFF
+
+	return (fixang) (a + fixmul(d,frac));
+}
+
+void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int next,fix frac,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[])
+{
+	static vms_angvec lerp_angles[MAX_POLYMODEL_SUBMODELS];
 	polymodel *po;
 	vms_angvec *angles;
 	vms_vector draw_pos;
-	int i;
+	int i, im_save;
 
 	if (model_num < 0 || model_num >= N_polygon_models) {
 		mprintf((1, "Trying to draw bogus poly\n"));
@@ -1116,6 +1130,10 @@ void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,i
 
 	if (frame > -1 && (po->anim_angles == NULL || frame >= po->n_frames))
 		frame = -1;
+	if (frame == -1 || next < 0 || next >= po->n_frames || next == frame || frac <= 0 || po->n_models > MAX_POLYMODEL_SUBMODELS)
+		next = -1;
+	if (frac > F1_0)
+		frac = F1_0;
 
 	if (alt_textures)
 		for (i=0;i<po->n_textures;i++)	{
@@ -1146,8 +1164,16 @@ void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,i
 		vms_matrix m;
 		vms_vector ofs;
 
+		vms_vector c = po->body_center[frame+1];
+
 		vm_copy_transpose_matrix(&m,orient);
-		vm_vec_rotate(&ofs,&po->body_center[frame+1],&m);
+		if (next != -1) {		// ASCENT: animation interpolation
+			vms_vector *n = &po->body_center[next+1];
+			c.x += fixmul(n->x - c.x,frac);
+			c.y += fixmul(n->y - c.y,frac);
+			c.z += fixmul(n->z - c.z,frac);
+		}
+		vm_vec_rotate(&ofs,&c,&m);
 		vm_vec_sub2(&draw_pos,&ofs);
 	}
 
@@ -1157,12 +1183,89 @@ void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,i
 
 	angles = (frame == -1) ? NULL : po->anim_angles + frame*po->n_models;
 
+	// ASCENT: animation interpolation: each joint angle between the two
+	// frames, the short way around.
+	if (next != -1) {
+		vms_angvec *a = po->anim_angles + frame*po->n_models;
+		vms_angvec *b = po->anim_angles + next*po->n_models;
+
+		for (i=0;i<po->n_models;i++) {
+			lerp_angles[i].p = angle_lerp(a[i].p,b[i].p,frac);
+			lerp_angles[i].b = angle_lerp(a[i].b,b[i].b,frac);
+			lerp_angles[i].h = angle_lerp(a[i].h,b[i].h,frac);
+		}
+		angles = lerp_angles;
+	}
+
+	// ASCENT: draw_polygon_object (0x675D4) sets Interpolation_method to 1
+	// (the linear texture mapper) for each object but the viewer, because
+	// Linear_tmap_polygon_objects (0x13D3E3) is 1 and nothing changes it.
+	// The linear mapper bends the textures of large polygons near the eye
+	// (beds, tables). The port draws all models with the perspective
+	// mapper. The GPU renderer is always perspective correct.
+	im_save = Interpolation_method;
+	Interpolation_method = 2;
+
 	if (po->n_models > 1)
 		draw_model_sorted(po,angles,light,glow_values,show_hidden);
 	else
 		g3_draw_polygon_model(po->model_data,texture_list,angles,light,glow_values);
 
+	Interpolation_method = im_save;
+
 	g3_done_instance();
+}
+
+// ASCENT: the frame tracker of the animation interpolation, see polyobj.h
+fix polyobj_anim_track_update(polyobj_anim_track *t,int key,int state,int frame,int first,int last,fix est,int def_dir,fix now,int *next)
+{
+	int dir, d;
+	fix frac;
+
+	*next = -1;
+	if (t->key != key || t->state != state || now < t->t_frame) {
+		t->key = key;
+		t->state = (short) state;
+		t->frame = (short) frame;
+		t->dir = 0;
+		t->n_adv = 0;
+		t->t_frame = now;
+		t->dur = est;
+	}
+	else if (frame != t->frame) {
+		d = frame - t->frame;
+		if (d >= -2 && d <= 2 && (t->dir == 0 || (d > 0) == (t->dir > 0))) {
+			t->dir = d > 0 ? 1 : -1;
+			if (t->n_adv == 0) {
+				// the first change: the time of a frame is known from the next one
+				t->n_adv = 1;
+				t->t_first = now;
+			}
+			else {
+				t->n_adv += d > 0 ? d : -d;
+				t->dur = (now - t->t_first) / (t->n_adv - 1);
+			}
+		}
+		else {
+			// a jump inside the state: start again
+			t->dir = 0;
+			t->n_adv = 0;
+			t->dur = est;
+		}
+		t->frame = (short) frame;
+		t->t_frame = now;
+	}
+
+	dir = t->dir ? t->dir : (def_dir < 0 ? -1 : 1);
+	if (frame < first || frame >= last || frame + dir < first || frame + dir >= last || t->dur <= 0)
+		return 0;
+	frac = fixdiv(now - t->t_frame,t->dur);
+	if (frac <= 0)
+		return 0;
+	if (frac > F1_0)
+		frac = F1_0;
+	*next = frame + dir;
+	return frac;
 }
 
 int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_avail)

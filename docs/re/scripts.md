@@ -505,13 +505,19 @@ Settings (globals in dtuscript.c):
   the last segment of the path at the end of the run and then runs mode 2,
   because the port has no access to the AI paths.
 
-Not in the port: `EB` (no area spell function), the end sequence of sound
-0xFFFF, the prison sequence of DB, the sounds of D4 to D7 at an object or
+Not in the port: `EB` (no area spell function), the prison sequence of DB, the sounds of D4 to D7 at an object or
 side (they play at the player), the step turn of the speaker, the shading
-ramp, the mouse and the scroll arrows of the window, the market stock of the
+ramp, the scroll arrows of the window, the market stock of the
 rewards (weak hook `dtu_hook_market_add_stock`), the thief points screen
 (weak hook `dtu_hook_thief_points`), global flag 0x81 of the WEAPON 13 talk,
 and condition 98 (the morale of dtuobj.c; the port uses 0 + 500).
+
+Port additions to the window (not in the executable): the keys 1 to 9 and
+the keypad digits choose the reply with that number at once, and the mouse
+works as in the menus (the cursor of the play screen shows over the window,
+also in the immersive mode, which comes back after the conversation; the
+reply under the cursor is selected when the cursor moves, a click chooses
+it, the wheel scrolls). See the top of `engine/main/dtudlg.c`.
 
 Test options: `-scriptlog` (trace), `-dlgauto LIST` and `-dlgdelay N`
 (automatic replies), `-scriptflags LIST` (global flags and `mK` mission
@@ -532,7 +538,8 @@ table of YPINN: 0x26 "Skull Key", 0x6B to 0x79 "Violet Gem Key", 0x12 to
 1. The window draws: the scroll of long texts, the mouse, the exact text
    positions of 0xB1B9E.
 2. The meaning of `D8`, `D9` and the fourth value of D4 and D5.
-3. The prison sequence 0xAA3F3 and the end sequence of sound 0xFFFF.
+3. The prison sequence 0xAA3F3. (The end sequence of sound 0xFFFF is in
+   movies.md: the movie FLAM1.MVE.)
 4. Script 0x1FD and its seven callers.
 5. The MISC items of the rewards by name, and the doors that they open.
 

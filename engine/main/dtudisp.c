@@ -36,6 +36,10 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 #include "dtuspell.h"		// ASCENT: the spell list of the statistics screen
+#include "kconfig.h"		// ASCENT: the key table (dtu_action_key)
+#include "3d.h"			// ASCENT: g3_gpu_view_dest
+#include "dtuhdui.h"		// ASCENT: the upscaled interface pictures
+#include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -155,6 +159,7 @@ static grs_bitmap *febgnd_load(int n)
 		bit++;
 	}
 	free(src);
+	dtu_hdui_loaded(bm, n);		// ASCENT: the reference of the upscaled picture
 	return bm;
 }
 
@@ -335,8 +340,10 @@ static void blit(grs_bitmap *src, int sx, int sy, int w, int h, int dx, int dy, 
 	if (w <= 0 || h <= 0) return;
 	if (masked)
 		gr_bm_ubitbltm(w, h, dx, dy, sx, sy, src, dest);
-	else
+	else {
 		gr_bm_ubitblt(w, h, dx, dy, sx, sy, src, dest);
+		dtu_hdui_blit(src, sx, sy, w, h, dest, dx, dy, w, h);	// ASCENT: the upscaled picture
+	}
 }
 
 static void fill(int x, int y, int w, int h, int color)
@@ -780,6 +787,8 @@ static void draw_view(void)
 	if (w > src->bm_w) w = src->bm_w;
 	if (h > src->bm_h) h = src->bm_h;
 	if (View.x + w > dest->bm_w) w = dest->bm_w - View.x;
+	// ASCENT: the GPU image of the view (gpu3d.c) shows in this rectangle
+	g3_gpu_view_dest(View.x, View.y, w, Dtu_hires ? 2 * h : h);
 	for (y = 0; y < h; y++) {
 		ubyte *s = src->bm_data + y * src->bm_rowsize;
 		if (Dtu_hires) {
@@ -1172,8 +1181,69 @@ static void draw_buttons(void)
 	blit(Button_sheet, b->x1, b->y1, b->w, b->h, b->x, b->y, 0);
 }
 
+// ASCENT: the pixels under the last cursor and of the cursor itself, so
+// that a menu can take the cursor out of the frame (dtu_display_hide_cursor)
+#define CUR_SAVE	33
+static ubyte Cur_under[CUR_SAVE * CUR_SAVE], Cur_over[CUR_SAVE * CUR_SAVE];
+static ubyte *Cur_data;			// the first pixel of the saved square, NULL: none
+static int Cur_rowsize, Cur_w, Cur_h;
+
+static void cursor_copy(ubyte *buf, int to_screen)
+{
+	int y;
+
+	for (y = 0; y < Cur_h; y++) {
+		if (to_screen)
+			memcpy(Cur_data + y * Cur_rowsize, buf + y * CUR_SAVE, Cur_w);
+		else
+			memcpy(buf + y * CUR_SAVE, Cur_data + y * Cur_rowsize, Cur_w);
+	}
+}
+
+static void draw_cursor_main(int mx, int my);
+
 // The cursor (dtumouse.c): the hot spot is the center of the picture.
 static void draw_cursor(int mx, int my)
+{
+	grs_bitmap *dest = &grd_curcanv->cv_bitmap;
+	int x0 = mx - CUR_SAVE / 2, y0 = my - CUR_SAVE / 2, x1 = x0 + CUR_SAVE, y1 = y0 + CUR_SAVE;
+
+	// ASCENT: save the square under the cursor
+	if (x0 < 0) x0 = 0;
+	if (y0 < 0) y0 = 0;
+	if (x1 > dest->bm_w) x1 = dest->bm_w;
+	if (y1 > dest->bm_h) y1 = dest->bm_h;
+	Cur_data = NULL;
+	if (x1 > x0 && y1 > y0) {
+		Cur_data = dest->bm_data + y0 * dest->bm_rowsize + x0;
+		Cur_rowsize = dest->bm_rowsize;
+		Cur_w = x1 - x0;
+		Cur_h = y1 - y0;
+		cursor_copy(Cur_under, 0);
+	}
+	draw_cursor_main(mx, my);
+	if (Cur_data)
+		cursor_copy(Cur_over, 0);
+}
+
+// ASCENT: a menu opens over the play screen: the cursor of the play screen
+// goes out of the frame (the menu shows its own pointer). Nothing happens
+// if the pixels of the cursor are not in the frame any more.
+void dtu_display_hide_cursor(void)
+{
+	int y;
+
+	if (!Cur_data)
+		return;
+	for (y = 0; y < Cur_h; y++)
+		if (memcmp(Cur_data + y * Cur_rowsize, Cur_over + y * CUR_SAVE, Cur_w))
+			break;
+	if (y == Cur_h)
+		cursor_copy(Cur_under, 1);
+	Cur_data = NULL;
+}
+
+static void draw_cursor_main(int mx, int my)
 {
 	grs_bitmap *dest = &grd_curcanv->cv_bitmap;
 	int x, y, half = Cursor_size / 2;
@@ -1197,6 +1267,71 @@ static void draw_cursor(int mx, int my)
 		}
 }
 
+// ASCENT: the cursor of the play screen at the mouse position, for the
+// conversation window (dtudlg.c), which draws over the interface.
+void dtu_display_draw_cursor(void)
+{
+	int mx = 0, my = 0;
+
+	if (!Dtu_display_active || Dtu_immersive)
+		return;
+	mouse_get_pos(&mx, &my);
+	draw_cursor(mx, my);
+}
+
+// ASCENT: the mouse pointer of the menus (newmenu.c). The menus of the
+// original have no pointer. It is the cursor picture of the play screen
+// (FEBGND 153 for a screen of 640 pixels or more, 154 for 320x200), loaded
+// with the palette of its entry. Each color is matched to the nearest
+// color of the current palette, so the pointer shows in the palette of the
+// game and of the front end. Color 255 is not used: it is transparent and
+// shows the image of the GPU renderer.
+void dtu_display_draw_pointer(grs_bitmap *dest, int mx, int my)
+{
+	static grs_bitmap *src[2];
+	static ubyte src_pal[2][768], tried[2];
+	static ubyte map_pal[768], map[2][256], map_ok[2];
+	int hi = dest->bm_w >= 640 ? 1 : 0;
+	int size = hi ? 31 : 15, half = size / 2, x, y;
+
+	if (!tried[hi]) {
+		tried[hi] = 1;
+		src[hi] = dtu_febgnd_load(hi ? 153 : 154, src_pal[hi]);
+	}
+	if (!src[hi])
+		return;
+	if (memcmp(map_pal, gr_palette, sizeof(map_pal))) {
+		memcpy(map_pal, gr_palette, sizeof(map_pal));
+		map_ok[0] = map_ok[1] = 0;
+	}
+	if (!map_ok[hi]) {
+		int c, j;
+		for (c = 0; c < 256; c++) {
+			int r = src_pal[hi][c*3], g = src_pal[hi][c*3+1], b = src_pal[hi][c*3+2];
+			int best = 0, best_d = 0x7FFFFFFF;
+			for (j = 0; j < 255; j++) {
+				int dr = r - map_pal[j*3], dg = g - map_pal[j*3+1], db = b - map_pal[j*3+2];
+				int d = dr*dr + dg*dg + db*db;
+				if (d < best_d) {
+					best_d = d;
+					best = j;
+				}
+			}
+			map[hi][c] = (ubyte) best;
+		}
+		map_ok[hi] = 1;
+	}
+	if (size > src[hi]->bm_w) size = src[hi]->bm_w;
+	for (y = 0; y < size && y < src[hi]->bm_h; y++)
+		for (x = 0; x < size; x++) {
+			int c = src[hi]->bm_data[y * src[hi]->bm_rowsize + x];
+			int dx = mx - half + x, dy = my - half + y;
+			if (c == 255) continue;
+			if (dx < 0 || dy < 0 || dx >= dest->bm_w || dy >= dest->bm_h) continue;
+			dest->bm_data[dy * dest->bm_rowsize + dx] = map[hi][c];
+		}
+}
+
 //------------------------------------------------------------------------
 // Input
 
@@ -1206,23 +1341,49 @@ static int key_acts(int scancode)
 {
 	int down = keyd_pressed[scancode] != 0;
 	int was = Key_was_down[scancode];
+	// ASCENT: the presses since the last frame (repeats are not counted),
+	// so that a press and a release within one frame also act once.
+	int presses = key_down_count(scancode);
 
 	Key_was_down[scancode] = down;
-	if (Dtu_ui_key_repeat) return down;
-	return down && !was;
+	if (Dtu_ui_key_repeat) return down || presses;
+	return presses > 0 || (down && !was);
+}
+
+// ASCENT: the actions of the key table (kconfig.c) that the play screen
+// handles
+static const int Screen_actions[] = { DTU_ACT_INVENTORY, DTU_ACT_AUTOMAP, DTU_ACT_IMMERSIVE,
+	DTU_ACT_REST, DTU_ACT_STATS, DTU_ACT_INFRAVISION };
+
+// ASCENT: 1 if a key of the action acts in this frame (key_acts), or a
+// mouse or joystick button of it went down.
+static int action_acts(int act)
+{
+	static ubyte was[DTU_N_ACTIONS];
+	int k0 = dtu_action_key(act, 0), k1 = dtu_action_key(act, 1), r = 0, d;
+
+	if (k0 != 255) r |= key_acts(k0);
+	if (k1 != 255) r |= key_acts(k1);
+	d = dtu_action_down(act);
+	if (d && (!was[act] || Dtu_ui_key_repeat)) r = 1;
+	was[act] = d;
+	return r;
 }
 
 int dtu_display_owns_key(int key)
 {
+	int i;
+
 	if (!Dtu_display_active) return 0;
+	// ASCENT: the keys of the play screen actions and the hot keys
+	for (i = 0; i < (int) (sizeof(Screen_actions) / sizeof(Screen_actions[0])); i++)
+		if (dtu_action_has_key(Screen_actions[i], key))
+			return 1;
+	for (i = 0; i < DTU_N_HOT_ACTIONS; i++)
+		if (dtu_action_has_key(DTU_ACT_HOT_KEY_1 + i, key))
+			return 1;
 	switch (key) {
-	case KEY_I:
-	case KEY_TAB:
-	case KEY_V:
-	case KEY_R:
 	case KEY_F3:
-	case KEY_1: case KEY_2: case KEY_3: case KEY_4: case KEY_5:
-	case KEY_6: case KEY_7: case KEY_8: case KEY_9: case KEY_0:
 		return 1;
 	case KEY_COMMA:
 	case KEY_PERIOD:
@@ -1243,22 +1404,45 @@ static void do_input(int mx, int my)
 {
 	int down, pressed, released, i;
 
-	// The keys of the manual: I inventory, Tab map, V mouse mode, R rest.
-	// The key code of the original was not read.
-	if (key_acts(KEY_I)) toggle_screen(DTU_IM_INVENTORY);
-	if (key_acts(KEY_TAB)) toggle_screen(DTU_IM_MAP);
-	if (key_acts(KEY_R)) do_action(ACT_REST);
-	if (key_acts(KEY_V)) {
-		int i;
-		char *found = NULL;
+	// ASCENT: the actions of the key table (kconfig.c): Inventory (0x408A2,
+	// default I), Automap (0x408F5, Tab), Rest (0x360DA, R; the port adds
+	// Z), Stats (0x4093A, the executable S, the port P), Immersive Mode
+	// (0x54439, V), Infravision (0x54632, N).
+	if (action_acts(DTU_ACT_INVENTORY)) toggle_screen(DTU_IM_INVENTORY);
+	if (action_acts(DTU_ACT_AUTOMAP)) toggle_screen(DTU_IM_MAP);
+	if (action_acts(DTU_ACT_REST)) do_action(ACT_REST);
+	if (action_acts(DTU_ACT_STATS)) toggle_screen(DTU_IM_STATS);
+	if (action_acts(DTU_ACT_INFRAVISION)) {
+		// 0x54632: without infravision of the race (P+0xB5, 5 with the
+		// bit 1 of P+0xFA) TEX 819, else the flag 0x14C4DA changes with
+		// TEX 820 or 821 and the render bit 8 of the player object. The
+		// port has the messages and the flag, not the render effect.
+		static int infra = 0;
+		char *text;
+		if (!Dtu_char.pa.infravision)
+			text = Text_string[819];
+		else {
+			infra = !infra;
+			text = Text_string[infra ? 820 : 821];
+		}
+		Msg_next_color = rgb6(30, 30, 46);		// 0x347A2, the color of the player
+		dtu_display_add_message(text ? text : "");
+		Msg_next_color = -1;
+	}
+	if (action_acts(DTU_ACT_IMMERSIVE)) {
+		// ASCENT: 0x54439 toggles the flag at 0x13BAE0 and adds TEX 817
+		// "Immersive mode is on." or TEX 818 "Immersive mode is off." with
+		// 0x347A2 (the color of the player, no blank line). Its key gate
+		// 0x545F5 lets the key act at most once in 36.4 clock ticks
+		// (0.364 s): one short press gives one toggle. This is the only
+		// handler of V: controls.c follows Dtu_immersive.
+		char *text;
 		Dtu_immersive = !Dtu_immersive;
 		mouse_set_relative(Dtu_immersive);
-		// The text is in the string table of the game (DTU.TEX).
-		for (i = 0; i < N_TEXT_STRINGS && !found; i++)
-			if (Text_string[i] && strstr(Text_string[i], "mmersive")
-					&& ((strstr(Text_string[i], "Non") != NULL) == !Dtu_immersive))
-				found = Text_string[i];
-		dtu_display_add_message(found ? found : (Dtu_immersive ? "Immersive Mode" : "Non-Immersive Mode"));
+		text = Text_string[Dtu_immersive ? 817 : 818];
+		Msg_next_color = rgb6(30, 30, 46);
+		dtu_display_add_message(text ? text : (Dtu_immersive ? "Immersive mode is on." : "Immersive mode is off."));
+		Msg_next_color = -1;
 	}
 	// F3 "cycles the playing screen size" (manual). The sizes of the cycle
 	// were not read: main screen and full screen (guess).
@@ -1270,12 +1454,33 @@ static void do_input(int mx, int my)
 	}
 
 	// The keys 1 to 0 arm the item of a hot key box (help text 760 of the
-	// game). The key code of the original was not read.
+	// game). The key code of the original was not read. ASCENT: the keys
+	// of the hot key page of the key table (kconfig.c), 1 to 0 by default.
+	// ASCENT: not while the conversation window waits for a choice: the
+	// keys 1 to 9 choose a reply then (dtudlg.c)
+	for (i = 0; i < DTU_N_HOT_KEYS && i < DTU_N_HOT_ACTIONS; i++)
+		if (action_acts(DTU_ACT_HOT_KEY_1 + i) && !dtu_dlg_is_waiting())
+			dtu_char_select_hot_key(i);
+	// ASCENT: the previous and the next hot key that holds an item (the
+	// shoulder buttons of the gamepad by default)
 	{
-		static int number_keys[DTU_N_HOT_KEYS] = { KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0 };
-		for (i = 0; i < DTU_N_HOT_KEYS; i++)
-			if (key_acts(number_keys[i]))
-				dtu_char_select_hot_key(i);
+		int prev = action_acts(DTU_ACT_PREV_HOT_KEY), next = action_acts(DTU_ACT_NEXT_HOT_KEY);
+		if (prev != next) {
+			int h = -1, k, step = next ? 1 : DTU_N_HOT_KEYS - 1;
+			for (k = 0; k < DTU_N_HOT_KEYS; k++)
+				if (Dtu_char.hot_key[k].n >= 0 && Dtu_char.hot_key[k].list == Dtu_char.current.list &&
+					Dtu_char.hot_key[k].n == Dtu_char.current.n)
+					h = k;
+			if (h < 0 && !next)
+				h = 0;
+			for (k = 1; k <= DTU_N_HOT_KEYS; k++) {
+				int j = (h + k * step + 10 * DTU_N_HOT_KEYS) % DTU_N_HOT_KEYS;
+				if (Dtu_char.hot_key[j].n >= 0 && j != h) {
+					dtu_char_select_hot_key(j);
+					break;
+				}
+			}
+		}
 	}
 	// ASCENT: keys for the inventory screen. The original has the mouse
 	// only. Comma and period choose an entry, Enter wears it or takes it
@@ -1380,6 +1585,8 @@ void dtu_display_frame(void)
 		draw_hot_keys();
 		draw_buttons();
 	}
-	if (!Dtu_immersive)
+	// ASCENT: with the conversation window open, dtu_dlg_draw() draws the
+	// cursor after the window (dtu_display_draw_cursor)
+	if (!Dtu_immersive && !dtu_dlg_is_open())
 		draw_cursor(mx, my);
 }

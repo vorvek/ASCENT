@@ -39,3 +39,6 @@ g3s_point *Vbuf1[MAX_POINTS_IN_POLY];
 
 //list of 2d coords
 fix Vertex_list[MAX_POINTS_IN_POLY*2];
+
+//ASCENT: the GPU renderer (globvars.h). NULL: the software renderer.
+g3_gpu_hooks *G3_gpu = NULL;

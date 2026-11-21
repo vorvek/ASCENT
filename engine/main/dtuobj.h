@@ -200,6 +200,11 @@ void dtu_objects_frame(void);
 // (0x67E2D). dtu_draw_dressing_vclip() is render type 7 of scenery.
 void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *alt_textures);
 void dtu_draw_item(object *obj);
+
+// The splash of a step of the player in water (dtufoot.c)
+void dtu_water_splash(object *obj, fix side_step);
+// 1 for a splash of dtu_water_splash(): it casts no light (lighting.c)
+int dtu_is_water_splash(object *obj);
 void dtu_draw_dressing_vclip(object *obj);
 
 // Collision handlers (collide.c of the executable). Each returns 1 if it
@@ -285,6 +290,15 @@ void dtu_player_check_death(object *killer);
 
 //------------------------------------------------------------------------
 // Calls from dtuhook.c (traps, triggers, the use action).
+
+// The state check of the soak test (dtusoak.c): the AI values of each
+// creature. Writes the first problem to msg and returns 1, or returns 0.
+int dtu_objects_check(char *msg, int size);
+
+// Turn undead (0xADC46): turned 1 makes the creature flee (not hostile,
+// no target), turned 0 makes it hostile (a failed turn, or "unable to
+// affect"). Both start the creature again and check its morale.
+void dtu_creature_turn(object *obj, int turned);
 
 // 0xA6505: makes a creature active. With make_hostile it attacks the player.
 void dtu_creature_wake(object *obj, int make_hostile);

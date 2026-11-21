@@ -1053,6 +1053,11 @@ static int dtu_run_level(char *level_name)
 		Dtu_hires = 0;
 	Gamefont_hires = Dtu_hires;
 
+	plat_set_start_windowed(FindArg("-window") != 0);	// ASCENT: else full screen
+	// ASCENT: an automated run (a test) uses a hidden window.
+	plat_set_start_hidden(FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
+	// ASCENT: an automated run (a test) has no sound output.
+	plat_audio_set_muted(FindArg("-mute") || FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
 	if (plat_init("ASCENT", Dtu_hires ? 640 : 320, Dtu_hires ? 480 : 200, Dtu_hires ? 2 : 3) != 0)
 		Error("Cannot open the window");
 	atexit(plat_shutdown);
@@ -1208,6 +1213,7 @@ int main(int argc,char **argv)
 	// window.
 	dtu_read_datadir_args();
 	dtu_opts_load();		// ASCENT: the Improvements settings (dtuopts.h)
+	plat_gpu_bind_settings(&Dtu_gpu_renderer, &Dtu_shader);	// ASCENT: the screen shader reads the settings
 
 	if ((t = FindArg( "-checklevel" )) != 0 && t+1 < Num_args)
 		return dtu_check_level(Args[t+1]);
@@ -1373,6 +1379,11 @@ int main(int argc,char **argv)
 	// library gives the size of each later mode with the frame.
 	// plat_shutdown is called at each exit of the program (return from
 	// main, exit, Error).
+	plat_set_start_windowed(FindArg("-window") != 0);	// ASCENT: else full screen
+	// ASCENT: an automated run (a test) uses a hidden window.
+	plat_set_start_hidden(FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
+	// ASCENT: an automated run (a test) has no sound output.
+	plat_audio_set_muted(FindArg("-mute") || FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
 	if (plat_init("ASCENT", 320, 200, 3) != 0)
 		Error("Cannot open the window");
 	atexit(plat_shutdown);

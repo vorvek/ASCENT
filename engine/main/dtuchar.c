@@ -36,6 +36,7 @@
 #include "dtuchar.h"
 #include "dtuspell.h"	// ASCENT: the spell effects of the armor class and the slots of a rest
 #include "dtuthief.h"
+#include "dtucombat.h"	// ASCENT: turn undead of the Spider Piece 0x12
 #include "newmenu.h"
 #include "digi.h"
 #include "automap.h"
@@ -1290,10 +1291,17 @@ static int use_misc(dtu_inv_item *e)
 			else
 				HUD_init_message("Nothing happens...");
 			return 0;
-		case 0x12: case 0x14: case 0x17: case 0x18:
-			// Turn undead as a cleric of level 2, the spell attack on the
-			// drow, the view tour of the creatures, a script event: not in
-			// the port
+		case 0x12:		// Spider Piece: turn undead as a cleric of level 2 (0xADC46)
+			if (e->count > 0) {
+				dtu_combat_turn_undead(2);
+				e->count--;
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
+		case 0x14: case 0x17: case 0x18:
+			// The spell attack on the drow, the view tour of the
+			// creatures, a script event: not in the port
 			dtu_char_log("use: Spider Piece 0x%x is not in the port", e->id);
 			return -1;
 		case 0x48:		// Potion of Agility: dexterity 18 for 600 s

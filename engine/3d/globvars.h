@@ -41,6 +41,24 @@ extern fix Vertex_list[MAX_POINTS_IN_POLY*2];
 //from rod.c: the 2d corners of the last bitmap that g3_draw_bitmap() drew
 extern fix blob_vertices[8];
 
+//ASCENT: the GPU renderer (gpu3d.c). While G3_gpu is not NULL and the
+//current canvas has the data G3_gpu->canvas, the drawers of the library
+//give the projected polygons to these functions in place of the texture
+//mapper and the 2d library. The points are projected.
+typedef struct g3_gpu_hooks {
+	ubyte *canvas;
+	//special is 1 when g3_set_special_render() replaced the tmap drawer
+	void (*tmap)(int nv,g3s_point **pointlist,grs_bitmap *bm,int special);
+	void (*poly)(int nv,g3s_point **pointlist);
+	//w and h are the half size in canvas pixels
+	void (*bitmap)(g3s_point *pnt,fix w,fix h,grs_bitmap *bm);
+	void (*sphere)(g3s_point *pnt,fix r);
+} g3_gpu_hooks;
+
+extern g3_gpu_hooks *G3_gpu;
+
+#define G3_GPU_ROUTE() (G3_gpu && grd_curcanv->cv_bitmap.bm_data == G3_gpu->canvas)
+
 //The divcheck macro of 3d.inc. The assembly checks for overflow before
 //each projection divide: it takes the absolute value of the high dword of
 //the numerator, shifts it left one bit together with the top bit of the

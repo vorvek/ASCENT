@@ -654,7 +654,7 @@ each control).
 | Waterdeep, Blackstaff | done (Khelben text, face, speech, torches) |
 | Market | done: lists, prices, buy, sell, quantity window, stock file, `TheStore.<S>` in the saves (section 6a) |
 | Save, load | done, with the level state files (docs/re/levelstate.md) and the market stock; saves in a level |
-| Options | Music, FX, Reverse Stereo; Hires Dungeon Graphics is left out (P) |
+| Options | Music, FX, Reverse Stereo; Hires Dungeon Graphics is left out (P). The port adds "Improvements..." (the settings of `dtuopts.h`); the ESC menu and the F2 options menu of the game also have it |
 | Credits | done |
 | Exit of the inn | done: "Leave the Yawning Portal?" then Waterdeep |
 | Death | done: picture, music, Death Menu with Load Game and Abort Game |

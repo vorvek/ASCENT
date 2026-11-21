@@ -93,6 +93,18 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define OBJS_PER_SEG 		5
 #define N_EXTRA_OBJ_LISTS	50
 
+// ASCENT: the GPU renderer lists every visible segment of the level, to the
+// full distance (render.c). MAX_RENDER_SEGS and N_EXTRA_OBJ_LISTS stay the
+// limits of the software renderer. A segment is in the list at most once
+// (no_migrate_segs), and each extra object list holds OBJS_PER_SEG-1 objects
+// and the link to the next list.
+#define RENDER_LIST_SIZE		MAX_SEGMENTS
+#define N_EXTRA_OBJ_LISTS_FULL	(MAX_OBJECTS/(OBJS_PER_SEG-1)+1)
+
+// ASCENT: 1 while render_mine draws a segment (and its objects) that the
+// original render depth draws, 0 for a segment beyond it (render.c).
+extern int Render_orig_visible;
+
 extern int	Clear_window;			//	1 = Clear whole background window, 2 = clear view portals into rest of world, 0 = no clear
 
 void render_frame(fix eye_offset);		//draws the world into the current canvas
@@ -128,7 +140,7 @@ extern fix Render_zoom;		//the player's zoom factor
 extern char visited[MAX_SEGMENTS];
 
 extern int N_render_segs;
-extern short Render_list[MAX_RENDER_SEGS];
+extern short Render_list[RENDER_LIST_SIZE];	// ASCENT: was MAX_RENDER_SEGS
 
 #ifdef EDITOR
 extern int Render_only_bottom;

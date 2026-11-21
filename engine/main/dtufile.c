@@ -23,6 +23,10 @@
 #include "types.h"
 #include "mem.h"		// malloc and free of the game (the callers include it too)
 #include "dtufile.h"
+#include "args.h"		// ASCENT: -datadir, -userdir, -debug
+#include "error.h"		// set_error_func
+#include "platform.h"	// the directories of an installed game
+#include <sys/stat.h>
 
 #define DTU_MAX_DIRS		8
 #define DTU_MAX_PATH		512
@@ -47,6 +51,93 @@ void dtu_add_data_dir(const char *path)
 	while ( len > 1 && (Dtu_dirs[Dtu_num_dirs][len-1] == '/' || Dtu_dirs[Dtu_num_dirs][len-1] == '\\') )
 		Dtu_dirs[Dtu_num_dirs][--len] = 0;
 	Dtu_num_dirs++;
+}
+
+// ----------------------------------------------------------------------
+// ASCENT: the directories of a development run and of an installed game.
+// See dtufile.h.
+
+#ifdef ASCENT_RELEASE
+int Dtu_debug = 0;
+#else
+int Dtu_debug = 1;
+#endif
+
+static char Dtu_user_dir[DTU_MAX_PATH];		// empty: the current directory
+static char Dtu_install_dir[DTU_MAX_PATH];	// empty: not an installed game
+
+static int dtu_dir_exists(const char *path)
+{
+	struct stat st;
+
+	return stat(path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR;
+}
+
+static void dtu_error_box(char *msg)
+{
+	plat_message_box("ASCENT", msg);
+}
+
+void dtu_init_dirs(void)
+{
+	char path[DTU_MAX_PATH];
+	int i, n_datadir = 0;
+
+	if (FindArg("-debug"))
+		Dtu_debug = 1;
+	if (!Dtu_debug)
+		mem_report_leaks = 0;		// MEM_LEAKAGE (mem.c)
+
+	for (i=1; i<Num_args-1; i++)
+		if (!stricmp(Args[i], "-datadir")) {
+			dtu_add_data_dir(Args[i+1]);
+			n_datadir++;
+		}
+
+	// A development run gives the data directories. It keeps its files
+	// in the current directory.
+	if (n_datadir == 0) {
+		// An installed game: the data is in "data" next to the executable,
+		// and the files of the player go to the directory of the user.
+		if (plat_base_dir(Dtu_install_dir, sizeof(Dtu_install_dir)) && (int) strlen(Dtu_install_dir) < DTU_MAX_PATH-8) {
+			snprintf(path, sizeof(path), "%s/data", Dtu_install_dir);
+			dtu_add_data_dir(path);
+		} else
+			Dtu_install_dir[0] = 0;
+		if (!plat_pref_dir("ASCENT", Dtu_user_dir, sizeof(Dtu_user_dir)))
+			Dtu_user_dir[0] = 0;
+		set_error_func(dtu_error_box);		// the release build has no console
+		if (!dtu_find_file("DTU.MSN", path, sizeof(path))) {
+			char msg[DTU_MAX_PATH+200];
+			snprintf(msg, sizeof(msg), "The game data is not in %s/data.\n\n"
+				"Run the setup program again, or start the game with -datadir.", Dtu_install_dir);
+			plat_message_box("ASCENT", msg);
+			exit(1);
+		}
+	}
+
+	// -userdir DIR: the files of the player go to DIR (for tests).
+	if ((i = FindArg("-userdir")) != 0 && i+1 < Num_args && dtu_dir_exists(Args[i+1]))
+		snprintf(Dtu_user_dir, sizeof(Dtu_user_dir), "%s", Args[i+1]);
+}
+
+const char *dtu_install_dir(void)
+{
+	return Dtu_install_dir[0] ? Dtu_install_dir : NULL;
+}
+
+const char *dtu_user_dir(void)
+{
+	return Dtu_user_dir[0] ? Dtu_user_dir : NULL;
+}
+
+char *dtu_user_path(char *out, int size, const char *name)
+{
+	if (Dtu_user_dir[0])
+		snprintf(out, size, "%s/%s", Dtu_user_dir, name);
+	else
+		snprintf(out, size, "%s", name);
+	return out;
 }
 
 static int dtu_names_equal(const char *a, const char *b)

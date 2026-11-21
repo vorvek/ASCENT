@@ -334,12 +334,14 @@ function at exe address 0x7190F.
 
 | Offset | Size | Meaning |
 |---|---|---|
-| 0 | 384 | control configuration table. Most bytes are 0xFF (guess: "not bound"). The start looks like pairs of key scan codes |
-| 384 | u8 | unknown (5 in the install) |
-| 385 | u8 | unknown (8 in the install) |
+| 0 | 384 | `kconfig_settings`: 6 rows of 64 bytes. Row 0: the values of the 62 keyboard items (DOS scan codes), rows 1 to 4: the 27 joystick items of each joystick type, row 5: the 29 mouse items. 0xFF is "none" |
+| 384 | u8 | the control type (0x13BFED): 1 to 4 a joystick, 5 the mouse (5 in the install) |
+| 385 | u8 | the look sensitivity (0x13BFEF, 8 in the install) |
 
-The layout inside the 384 bytes is unknown. This file is written by the game
-(user settings), so it is not game data that the port must read.
+Verified in the code (0x7190F writes, 0x719E3 reads, 0x5413F copies the rows into the
+items). The items and their actions are in `docs/re/controls.md`. This file is
+written by the game (user settings), so it is not game data that the port must read;
+the port keeps its key table in `ascent.cfg`.
 
 ## Tool
 

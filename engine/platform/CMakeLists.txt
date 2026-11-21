@@ -17,3 +17,8 @@ add_test(NAME platform_audio COMMAND test_audio)
 # It is not a test.
 add_executable(test_audio_play test_audio_play.c)
 target_link_libraries(test_audio_play PRIVATE d_platform d_common)
+
+# ASCENT: the gamepad state, with events sent by the test (no device)
+add_executable(test_pad test_pad.c)
+target_link_libraries(test_pad PRIVATE d_platform d_common)
+add_test(NAME platform_pad COMMAND test_pad)

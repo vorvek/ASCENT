@@ -306,6 +306,16 @@ int plat_audio_mixer_ramp_frames(void)
 // ---------------------------------------------------------------------
 // The device.
 
+// ASCENT: muted output (automated test runs and the option -mute). The
+// mixer still runs, so that the sound and music logic is the same; only
+// silence goes to the device.
+static volatile int Muted;
+
+void plat_audio_set_muted(int muted)
+{
+	Muted = (muted != 0);
+}
+
 static void SDLCALL device_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
 {
 	int16_t buf[BLOCK_FRAMES * 2];
@@ -316,6 +326,8 @@ static void SDLCALL device_callback(void *userdata, SDL_AudioStream *stream, int
 	while (frames > 0) {
 		int n = frames < BLOCK_FRAMES ? frames : BLOCK_FRAMES;
 		plat_audio_mixer_render(buf, n);
+		if (Muted)
+			memset(buf, 0, (size_t) n * 4);
 		SDL_PutAudioStreamData(stream, buf, n * 4);
 		frames -= n;
 	}

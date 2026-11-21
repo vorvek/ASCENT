@@ -15,6 +15,23 @@
 // The first directory that has a file supplies that file.
 void dtu_add_data_dir(const char *path);
 
+// ASCENT: the directories. dtu_init_dirs() reads -datadir (each one is a
+// data directory), -userdir and -debug. Without -datadir the game is an
+// installed game: the data directory is "data" next to the executable and
+// the files of the player (ascent.cfg, the save games, the SAVE directory
+// of the level states, the market stock) go to the directory of the user
+// (%APPDATA%/ASCENT on Windows). With -datadir they stay in the current
+// directory. -userdir DIR changes the directory of the user.
+void dtu_init_dirs(void);
+// The directory of the executable of an installed game, or NULL.
+const char *dtu_install_dir(void);
+// The directory of the user, or NULL for the current directory.
+const char *dtu_user_dir(void);
+// The path of a file of the player: name in the directory of the user.
+char *dtu_user_path(char *out, int size, const char *name);
+// 1 in the debug build or with -debug: the messages for the developers.
+extern int Dtu_debug;
+
 // Find a file in the search list. The name match ignores case.
 // Writes the full path to path_out. Returns 1 if the file exists.
 int dtu_find_file(const char *name, char *path_out, int path_size);

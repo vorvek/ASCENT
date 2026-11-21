@@ -59,6 +59,16 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #define BEAM_CUTOFF	0xa000		//what is out of beam?
 
+// ASCENT: light that does not change when the player turns in place (on by
+// default, -origlight clears it). The original (and Descent 1) lights a
+// wall more when the view looks at it (the player light uses the view
+// direction), computes the light of objects for the segments of the render
+// list only and one half of the vertices in each frame. With the setting:
+// the player light uses the direction from the wall to the player, the
+// exact distance, and the light of all objects in each frame. See
+// render_face() in render.c and set_dynamic_light().
+extern int Dtu_fix_light_stable;
+
 extern fix	Beam_brightness;
 extern fix	Dynamic_light[MAX_VERTICES];
 

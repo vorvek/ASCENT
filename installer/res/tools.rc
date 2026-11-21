@@ -1,0 +1,5 @@
+// ASCENT: the resources of the installer tools: the icon and the manifest.
+#include <winuser.h>
+
+1 ICON "ascent.ico"
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "tools.manifest"

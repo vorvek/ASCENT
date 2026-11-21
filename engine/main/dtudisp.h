@@ -82,4 +82,20 @@ void dtu_display_add_trigger_message(char *text);
 struct _grs_bitmap;
 struct _grs_bitmap *dtu_febgnd_load(int n, ubyte *pal);
 
+// ASCENT: draws the cursor of the play screen at the mouse position on the
+// current canvas, if the display is active and not in the immersive mode.
+// The conversation window (dtudlg.c) calls it after it draws itself.
+void dtu_display_draw_cursor(void);
+
+// ASCENT: takes the last cursor of the play screen out of the frame, if
+// its pixels are still there (a menu opens over the play screen).
+void dtu_display_hide_cursor(void);
+
+// ASCENT: draws the mouse pointer of the menus into dest with its center
+// at (x, y): the cursor picture of the play screen in the colors of the
+// current palette. It covers at most DTU_POINTER_SIZE pixels in each
+// direction, from x - DTU_POINTER_SIZE / 2.
+#define DTU_POINTER_SIZE	31
+void dtu_display_draw_pointer(struct _grs_bitmap *dest, int x, int y);
+
 #endif

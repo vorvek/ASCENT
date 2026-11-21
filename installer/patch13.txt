@@ -1,0 +1,15 @@
+# The files of the official 1.3 patch of Descent to Undermountain that the
+# port needs: the files that the patch adds or changes, compared with the
+# DTU directory of the disc, without the DOS programs and the text files.
+# One line for each file: SHA-256, size in bytes, name.
+# Verified against the patch archive dtu1_3.zip (docs/install.md).
+# ascent-import (generated header) and tools/content_pack.py read this file.
+d5227612c386cd85c8a31985d12ea57e7216a4fdf5b22fc4a7b5f8a509ba1b3e 388907 BANE.LV2
+5b604fe22b6700b341dd55a80e2e004b906df05e15403bd2425092d8beae5a66 425259 FLAME.LV2
+847eef1adf793246a023ff8f46e0c2c0b77806702eea09676f74d1ab4985136b 528587 IBBALAR.LV2
+2b8205103f88147d44f527a761eccf88c274531c1b298dc3b1f8277081869d9c 435966 THIEF2.LV2
+e8b338c5711dd73a0378f37bdedf8d4acafb77397c04661cfa1f1b1a4b1c095c 804 DISCO.JRG
+c9746cbdd74c20610bdb49b529f0204f89778258a056ee9c472ee2913c0060b4 43813 DTU.WRP
+45b4d7e5701b08647999d9d2ac22bd32b299633e0476fada8016089f714a5b16 24558 DTUE.TEX
+906fb4248b69f77c6fc94ee4249574c9e083eadb58501a2511c975524c8da9f5 369929 GABE.DAT
+fb6d2226de6d8b909f5e40a7b33e5cf0af0d3ff90c09fe72999c9bc83bf3c267 696 GABE.RLH

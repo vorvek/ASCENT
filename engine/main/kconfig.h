@@ -177,5 +177,49 @@ extern int kconfig_is_axes_used(int axis);
 
 extern void kconfig_init_external_controls(int intno, int address);
 
+// ASCENT: the key table of Descent to Undermountain (kconfig.c, see
+// docs/re/controls.md). The actions of the keyboard page in the order of
+// the items of the executable (two items each), then the hot keys of the
+// port.
+enum {
+	DTU_ACT_AUTO_RUN, DTU_ACT_JUMP, DTU_ACT_TURN_LEFT, DTU_ACT_TURN_RIGHT,
+	DTU_ACT_SLIDE_ON, DTU_ACT_SLIDE_LEFT, DTU_ACT_SLIDE_RIGHT, DTU_ACT_FLOAT_UP,
+	DTU_ACT_FLOAT_DOWN, DTU_ACT_ATTACK, DTU_ACT_IMMERSIVE, DTU_ACT_FORWARD,
+	DTU_ACT_BACK, DTU_ACT_CYCLE_WEAPON, DTU_ACT_LOOK_UP, DTU_ACT_LOOK_DOWN,
+	DTU_ACT_QUICK_UP, DTU_ACT_QUICK_DOWN, DTU_ACT_AUTOMAP, DTU_ACT_ACTIVATE,
+	DTU_ACT_RUN, DTU_ACT_INVENTORY, DTU_ACT_STATS, DTU_ACT_INFRAVISION,
+	DTU_ACT_DISARM, DTU_ACT_TURN_UNDEAD, DTU_ACT_MOVE_SILENTLY, DTU_ACT_FIND_TRAPS,
+	DTU_ACT_OPEN_LOCKS, DTU_ACT_REST,
+	DTU_ACT_HOT_KEY_1,
+	// the port: the previous and the next hot key (the gamepad shoulders)
+	DTU_ACT_PREV_HOT_KEY = DTU_ACT_HOT_KEY_1 + 10, DTU_ACT_NEXT_HOT_KEY,
+	DTU_N_ACTIONS
+};
+#define DTU_N_HOT_ACTIONS	10
+
+extern int Dtu_control_type;		// 1 to 4 a joystick, 5 the mouse
+int dtu_action_key(int act, int which);			// scan code of key 0 or 1, 255 for none
+int dtu_action_has_key(int act, int scancode);
+int dtu_action_down(int act);						// a key or a button of the action is down
+int dtu_action_presses(int act);					// presses since the last call (key_down_count)
+char *dtu_action_name(int act);
+char *dtu_action_key_names(int act, char *buf, int size, char *sep);
+int dtu_hot_keys_are_default(void);
+int dtu_control_axes(int *look, int *turn, int *slide, int *updown);	// 0 none, 1 mouse, 2 joystick
+void dtu_kconfig(int page, char *title);			// 0 keyboard, 1 joystick, 2 mouse, 3 hot keys
+void dtu_kconfig_menu(void);						// the Controls menu
+void dtu_kconfig_defaults(void);
+void dtu_kconfig_args(void);						// the test option -keyconfig
+// The gamepad (port): the amount of an action from a stick or a trigger
+// (0 to F1_0, after the dead zone; the turn and the look with the speed
+// setting). dtu_action_down() has the buttons and, for the actions that
+// are not analog, a stick or trigger past one half.
+fix dtu_pad_amount(int act);
+void dtu_pad_frame(void);							// once per game frame
+void dtu_pad_menu(void);							// the Customize Gamepad menu
+#include <stdio.h>
+int dtu_kconfig_cfg_line(const char *name, const char *value);
+void dtu_kconfig_cfg_write(FILE *f);
+
 
 #endif

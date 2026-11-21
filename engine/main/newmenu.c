@@ -501,6 +501,7 @@ static char rcsid[] = "$Id: newmenu.c 2.8 1995/05/26 16:16:28 john Exp $";
 #include "gamefont.h"
 #include "dtufe.h"		// ASCENT: dtufe_menu_script_frame() for the test scripts
 #include "dtudisp.h"		// ASCENT: dtu_febgnd_load() and Dtu_hires for the box background
+#include "dtuhdui.h"		// ASCENT: the upscaled box background
 #include "network.h"
 #include "iff.h"
 #include "pcx.h"
@@ -562,14 +563,120 @@ extern void gr_bm_bitblt(int w, int h, int dx, int dy, int sx, int sy, grs_bitma
 // that draws and waits for input now calls this function one time for each
 // pass: it shows the frame, waits for one period of the display, and
 // processes the window events. Returns 0 if the user closed the window.
+// ASCENT: new. The mouse pointer of the menus. The menus of the original
+// have no pointer. The port shows the cursor picture of the play screen
+// (dtu_display_draw_pointer) at the system pointer position while a menu
+// or a list is open: the item under the pointer becomes the current one
+// when the pointer moves, the left button chooses it, the right button is
+// Escape, and the wheel moves the selection or scrolls a list. The mouse
+// leaves the relative mode for the menus and gets it back after the last
+// one closes (the immersive mode of the play screen). With the setting
+// Dtu_fe_original_input nothing of this is done.
+typedef struct nm_ptr {
+	int x, y;			// the position in screen pixels
+	int moved;			// the pointer moved since the last poll
+	int click, rclick;	// a press of the left or the right button
+	int held;			// the left button is down
+	int wheel;			// one wheel step (1 away from the user, -1 toward) or 0
+} nm_ptr;
+
+static int Nm_ptr_depth;			// the open menus that show the pointer
+static int Nm_ptr_was_relative;
+static int Nm_ptr_x, Nm_ptr_y;		// the position at the last poll
+static int Nm_ptr_wheel;			// the wheel steps that are not used yet
+
+static int nm_pointer_on()
+{
+	return Nm_ptr_depth > 0 && !Dtu_fe_original_input;
+}
+
+static void nm_pointer_begin()
+{
+	if (Nm_ptr_depth++ == 0)	{
+		Nm_ptr_was_relative = plat_mouse_get_relative();
+		Nm_ptr_wheel = 0;
+		plat_mouse_wheel();
+	}
+	if (Dtu_fe_original_input)
+		return;
+	dtu_display_hide_cursor();		// the menu shows its own pointer
+	mouse_set_relative(0);
+	if (grd_curscreen)
+		mouse_set_limits(0, 0, grd_curscreen->sc_w - 1, grd_curscreen->sc_h - 1);
+	// a pointer that does not move does not change the current item
+	mouse_get_pos(&Nm_ptr_x, &Nm_ptr_y);
+}
+
+static void nm_pointer_end()
+{
+	if (Nm_ptr_depth > 0 && --Nm_ptr_depth == 0)
+		mouse_set_relative(Nm_ptr_was_relative);
+}
+
+static void nm_pointer_poll( nm_ptr *p )
+{
+	memset(p, 0, sizeof(*p));
+	if (!nm_pointer_on())
+		return;
+	mouse_get_pos(&p->x, &p->y);
+	p->moved = (p->x != Nm_ptr_x || p->y != Nm_ptr_y);
+	Nm_ptr_x = p->x;
+	Nm_ptr_y = p->y;
+	p->click = mouse_button_down_count(0) > 0;
+	p->rclick = mouse_button_down_count(1) > 0;
+	p->held = (mouse_get_btns() & 1) != 0;
+	Nm_ptr_wheel += plat_mouse_wheel();
+	if (Nm_ptr_wheel > 0)	{
+		p->wheel = 1;
+		Nm_ptr_wheel--;
+	} else if (Nm_ptr_wheel < 0)	{
+		p->wheel = -1;
+		Nm_ptr_wheel++;
+	}
+}
+
 int nm_show_frame()
 {
-	int script_ok;
+	static ubyte under[DTU_POINTER_SIZE * DTU_POINTER_SIZE];
+	grs_bitmap *scr = NULL;
+	int script_ok, px = 0, py = 0, x, y;
 
+	// ASCENT: the pointer is in the frame only while the frame is shown
+	// (and in a screen shot of the test script); the menu code draws its
+	// items without it.
+	if (nm_pointer_on() && grd_curscreen)	{
+		scr = &grd_curscreen->sc_canvas.cv_bitmap;
+		mouse_get_pos(&px, &py);
+		px -= DTU_POINTER_SIZE / 2;
+		py -= DTU_POINTER_SIZE / 2;
+		for (y = 0; y < DTU_POINTER_SIZE; y++)
+			for (x = 0; x < DTU_POINTER_SIZE; x++)
+				if (px + x >= 0 && py + y >= 0 && px + x < scr->bm_w && py + y < scr->bm_h)
+					under[y * DTU_POINTER_SIZE + x] = scr->bm_data[(py + y) * scr->bm_rowsize + px + x];
+		dtu_display_draw_pointer(scr, px + DTU_POINTER_SIZE / 2, py + DTU_POINTER_SIZE / 2);
+	}
 	gr_present();
 	script_ok = dtufe_menu_script_frame();
+	if (scr)	{
+		for (y = 0; y < DTU_POINTER_SIZE; y++)
+			for (x = 0; x < DTU_POINTER_SIZE; x++)
+				if (px + x >= 0 && py + y >= 0 && px + x < scr->bm_w && py + y < scr->bm_h)
+					scr->bm_data[(py + y) * scr->bm_rowsize + px + x] = under[y * DTU_POINTER_SIZE + x];
+	}
 	gr_sync_display();
 	return plat_pump() && script_ok;
+}
+
+// ASCENT: new. The list row under the pointer: rows of row_h pixels from
+// (x, y), w pixels wide, n rows. Returns the row or -1.
+static int nm_pointer_row( nm_ptr *p, int x, int y, int w, int row_h, int n )
+{
+	int r;
+
+	if (p->x < x || p->x >= x + w || p->y < y)
+		return -1;
+	r = (p->y - y) / row_h;
+	return r < n ? r : -1;
 }
 
 // ASCENT: new. Replaces _dos_findfirst and _dos_findnext of Watcom C.
@@ -727,6 +834,7 @@ void nm_draw_background(int x1, int y1, int x2, int y2 )
 	y2 = y1 + h - 1;
 
 	gr_bm_bitblt(w, h, x1, y1, 0, 0, &nm_background, &(grd_curcanv->cv_bitmap) );
+	dtu_hdui_blit(&nm_background, 0, 0, w, h, &(grd_curcanv->cv_bitmap), x1, y1, w, h);	// ASCENT
 
 	Gr_scanline_darkening_level = 2*7;
 
@@ -744,6 +852,8 @@ void nm_draw_background(int x1, int y1, int x2, int y2 )
 	gr_urect( x1+2, y2-2, x2, y2-2 );
 	gr_urect( x1+1, y2-1, x2, y2-1 );
 	gr_urect( x1+0, y2, x2, y2-0 );
+
+	dtu_hdui_menu_shadow(x1, y1, x2, y2, Gr_scanline_darkening_level);	// ASCENT: the upscaled box
 
 	Gr_scanline_darkening_level = GR_FADE_LEVELS;
 }
@@ -765,6 +875,7 @@ void nm_restore_background( int x, int y, int w, int h )
 	h = y2 - y1 + 1;
 
 	gr_bm_bitblt(w, h, x1, y1, x1, y1, &nm_background, &(grd_curcanv->cv_bitmap) );
+	dtu_hdui_blit(&nm_background, x1, y1, w, h, &(grd_curcanv->cv_bitmap), x1, y1, w, h);	// ASCENT
 }
 
 // Draw a left justfied string
@@ -1071,6 +1182,11 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 		stop_time();
 	}
 
+	// ASCENT: the cursor of the play screen goes out of the frame before
+	// the menu box saves the background (the menu shows its own pointer)
+	if (!Dtu_fe_original_input)
+		dtu_display_hide_cursor();
+
 	save_canvas = grd_curcanv;
 	gr_set_current_canvas( NULL );			
 	save_font = grd_curcanv->cv_font;
@@ -1329,12 +1445,87 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 
 	// Clear mouse, joystick to clear button presses.
 	game_flush_inputs();
+	nm_pointer_begin();		// ASCENT: the mouse pointer
 
 	while(!done)	{
 		//network_listen();
 	
 
 		k = key_inkey();
+
+		// ASCENT: the mouse pointer (nm_pointer_poll). It acts before the
+		// subfunction, so that a click is the key that the subfunction
+		// sees: Enter for a menu item, Space for a check box or a radio
+		// button. The right button is Escape.
+		if ( nm_pointer_on() )	{
+			nm_ptr p;
+			int hit = -1, mx, my;
+
+			nm_pointer_poll( &p );
+			mx = p.x - x;
+			my = p.y - y;
+			if ( mx >= 5 && mx < w - 5 )
+				for (i=0; i<nitems; i++ )
+					if ( item[i].type!=NM_TYPE_TEXT && my >= item[i].y && my <= item[i].y + item[i].h )	{
+						hit = i;
+						break;
+					}
+			if ( hit > -1 && !all_text && hit != choice && (p.moved || p.click) )	{
+				// the same changes as the Up and Down keys
+				if ( item[hit].type==NM_TYPE_INPUT )
+					item[hit].value = -1;
+				if ( (choice>-1) && (item[choice].type==NM_TYPE_INPUT_MENU) )	{
+					item[choice].group=0;
+					strcpy(item[choice].text, item[choice].saved_text );
+					item[choice].value = -1;
+				}
+				if ( choice > -1 )
+					item[choice].redraw = 1;
+				choice = hit;
+				item[choice].redraw = 1;
+			}
+			if ( k == 0 && hit > -1 && hit == choice && item[hit].type == NM_TYPE_SLIDER && (p.click || (p.held && p.moved)) )	{
+				// the slider: the value at the pointer
+				char *s = strchr( item[hit].saved_text, '\t' );
+				int sw = 0, sh, saw, n = item[hit].max_value - item[hit].min_value + 1, v;
+				grs_font *f = grd_curcanv->cv_font;
+				grd_curcanv->cv_font = CURRENT_FONT;
+				if ( s )
+					gr_get_string_size( s + 1, &sw, &sh, &saw );
+				grd_curcanv->cv_font = f;
+				if ( sw > 0 && n > 0 )	{
+					int cell = sw / (n + 2);
+					if ( cell < 1 ) cell = 1;
+					v = (mx - (item[hit].x + item[hit].w - sw)) / cell - 1;
+					if ( v < 0 ) v = 0;
+					if ( v > n - 1 ) v = n - 1;
+					if ( item[hit].value != item[hit].min_value + v )	{
+						item[hit].value = item[hit].min_value + v;
+						item[hit].redraw = 1;
+					}
+				}
+			} else if ( k == 0 && p.click && hit > -1 && hit == choice )	{
+				switch( item[hit].type )	{
+				case NM_TYPE_CHECK:
+				case NM_TYPE_RADIO:
+					k = KEY_SPACEBAR;
+					break;
+				case NM_TYPE_NUMBER:
+					k = (mx < item[hit].x + item[hit].w / 2) ? KEY_LEFT : KEY_RIGHT;
+					break;
+				default:
+					k = KEY_ENTER;
+					break;
+				}
+			} else if ( k == 0 && p.rclick )	{
+				k = KEY_ESC;
+			} else if ( k == 0 && p.wheel )	{
+				if ( hit > -1 && hit == choice && (item[hit].type == NM_TYPE_SLIDER || item[hit].type == NM_TYPE_NUMBER) )
+					k = p.wheel > 0 ? KEY_RIGHT : KEY_LEFT;
+				else
+					k = p.wheel > 0 ? KEY_UP : KEY_DOWN;
+			}
+		}
 
 		if (subfunction)
 			(*subfunction)(nitems,item,&k,choice);
@@ -1617,6 +1808,7 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 	gr_set_current_canvas( save_canvas );			
 	keyd_repeat = old_keyd_repeat;
 
+	nm_pointer_end();		// ASCENT
 	game_flush_inputs();
 
 	if (time_stopped)
@@ -1741,6 +1933,7 @@ int newmenu_get_filename( char * title, char * filespec, char * filename, int al
 	int initialized = 0;
 	int exit_value = 0;
 	int w_x, w_y, w_w, w_h;
+	int pointer_started = 0;		// ASCENT: nm_pointer_begin was called
 
 	filenames = malloc( MAX_FILES * 14 );
 	if (filenames==NULL) return 0;
@@ -1868,10 +2061,42 @@ ReadFileNames:
 		}
 	}
 
+	if ( !pointer_started )	{
+		nm_pointer_begin();		// ASCENT: the mouse pointer
+		pointer_started = 1;
+	}
+
 	while(!done)	{
 		ocitem = citem;
 		ofirst_item = first_item;
 		key = key_inkey();
+
+		// ASCENT: the mouse pointer (nm_pointer_poll): the row under the
+		// pointer is the current one, a click chooses it, the right button
+		// is Escape, the wheel scrolls the list.
+		if ( nm_pointer_on() && first_item >= 0 )	{
+			nm_ptr p;
+			int row;
+
+			nm_pointer_poll( &p );
+			row = nm_pointer_row( &p, 100, w_y + 45 - 1, 121, 12, NumFiles_displayed );
+			if ( row > -1 && first_item + row >= NumFiles )
+				row = -1;
+			if ( row > -1 && (p.moved || p.click) )
+				citem = first_item + row;
+			if ( key == 0 && p.click && row > -1 )
+				key = KEY_ENTER;
+			else if ( key == 0 && p.rclick )
+				key = KEY_ESC;
+			else if ( p.wheel )	{
+				first_item -= p.wheel;
+				if ( first_item > NumFiles - NumFiles_displayed ) first_item = NumFiles - NumFiles_displayed;
+				if ( first_item < 0 ) first_item = 0;
+				if ( citem < first_item ) citem = first_item;
+				if ( citem >= first_item + NumFiles_displayed ) citem = first_item + NumFiles_displayed - 1;
+			}
+		}
+
 		switch(key)	{
 		case KEY_PRINT_SCREEN: 		save_screen_shot(0); break;
 		case KEY_CTRLED+KEY_D:
@@ -2050,6 +2275,8 @@ ExitFileMenuEarly:
 
 ExitFileMenu:
 	keyd_repeat = old_keyd_repeat;
+	if ( pointer_started )
+		nm_pointer_end();		// ASCENT
 
 	if ( initialized )	{
 		gr_bm_bitblt(320, 200, 0, 0, 0, 0, &(VR_offscreen_buffer->cv_bitmap), &(grd_curcanv->cv_bitmap) );
@@ -2140,11 +2367,39 @@ int newmenu_listbox1( char * title, int nitems, char * items[], int allow_abort_
 	if ( citem >= nitems ) citem = 0;
 
 	first_item = -1;
+	nm_pointer_begin();		// ASCENT: the mouse pointer
 
 	while(!done)	{
 		ocitem = citem;
 		ofirst_item = first_item;
 		key = key_inkey();
+
+		// ASCENT: the mouse pointer (nm_pointer_poll): the row under the
+		// pointer is the current one, a click chooses it, the right button
+		// is Escape, the wheel scrolls the list. It acts before the
+		// callback, which sees the key of a click.
+		if ( nm_pointer_on() && first_item >= 0 )	{
+			nm_ptr p;
+			int row;
+
+			nm_pointer_poll( &p );
+			row = nm_pointer_row( &p, wx, wy - 1, width, 12, LB_ITEMS_ON_SCREEN );
+			if ( row > -1 && first_item + row >= nitems )
+				row = -1;
+			if ( row > -1 && (p.moved || p.click) )
+				citem = first_item + row;
+			if ( key == 0 && p.click && row > -1 )
+				key = KEY_ENTER;
+			else if ( key == 0 && p.rclick )
+				key = KEY_ESC;
+			else if ( p.wheel )	{
+				first_item -= p.wheel;
+				if ( first_item > nitems - LB_ITEMS_ON_SCREEN ) first_item = nitems - LB_ITEMS_ON_SCREEN;
+				if ( first_item < 0 ) first_item = 0;
+				if ( citem < first_item ) citem = first_item;
+				if ( citem >= first_item + LB_ITEMS_ON_SCREEN ) citem = first_item + LB_ITEMS_ON_SCREEN - 1;
+			}
+		}
 
 		if ( listbox_callback )
 			redraw = (*listbox_callback)(&citem, &nitems, items, &key );
@@ -2293,6 +2548,7 @@ int newmenu_listbox1( char * title, int nitems, char * items[], int allow_abort_
 		}
 	}
 	keyd_repeat = old_keyd_repeat;
+	nm_pointer_end();		// ASCENT
 
 	gr_bm_bitblt(320, 200, 0, 0, 0, 0, &(VR_offscreen_buffer->cv_bitmap), &(grd_curcanv->cv_bitmap) );
 

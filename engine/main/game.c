@@ -2502,6 +2502,24 @@ int do_game_pause(int allow_menu)
 // M is the margin (10). H is 1 in the high resolution form (0x13A94B).
 #define HELP_N_PAIRS	7
 
+// ASCENT: the key text of pair i. The pair 6 is "1-10" (the hot keys). When
+// the key table (kconfig.c) has other hot keys, the port lists their keys.
+static char *help_key_text(int i)
+{
+	static char buf[80];
+	int k;
+
+	if (i != 6 || dtu_hot_keys_are_default())
+		return Text_string[739 + i];
+	buf[0] = 0;
+	for (k = 0; k < DTU_N_HOT_ACTIONS; k++) {
+		char one[24];
+		dtu_action_key_names(DTU_ACT_HOT_KEY_1 + k, one, sizeof(one), "/");
+		snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), "%s%s", k ? "," : "", one[0] ? one : "-");
+	}
+	return buf;
+}
+
 void show_help()
 {
 	grs_canvas *save_canv = grd_curcanv;
@@ -2521,7 +2539,7 @@ void show_help()
 	gr_set_curfont(Gamefonts[3]);
 	gr_get_string_size(note, &sw, &sh, &aw);
 	for (i = 0; i < HELP_N_PAIRS; i++) {
-		gr_get_string_size(Text_string[739 + i], &w, &h, &aw);
+		gr_get_string_size(help_key_text(i), &w, &h, &aw);
 		if (w > max_key) max_key = w;
 		gr_get_string_size(Text_string[746 + i], &w, &line_h, &aw);
 		if (w > max_desc) max_desc = w;
@@ -2563,7 +2581,7 @@ void show_help()
 		gr_init_sub_canvas(&part, &box, x, y, max_key, line_h);
 		gr_set_current_canvas(&part);
 		gr_set_curfont(Gamefonts[3]);
-		gr_string(0, 0, Text_string[739 + i]);
+		gr_string(0, 0, help_key_text(i));
 		gr_init_sub_canvas(&part, &box, x + max_key + gap, y, max_desc, line_h);
 		gr_set_current_canvas(&part);
 		gr_set_curfont(Gamefonts[3]);
@@ -3644,6 +3662,10 @@ void ReadControls()
 				case KEY_F3:				toggle_cockpit();			break;
 				case KEY_F4:				palette_save(); joydefs_calibrate(); palette_restore(); break;
 				case KEY_F5:	
+						// ASCENT: the Graphics menu (dtufe.c, dtuopts.h). The
+						// key switch of the executable (0x42F9C) has no F5.
+						if (dtufe_graphics_key())
+							break;
 						if ( Newdemo_state == ND_STATE_RECORDING )
 							newdemo_stop_recording();
 						else if ( Newdemo_state == ND_STATE_NORMAL )			

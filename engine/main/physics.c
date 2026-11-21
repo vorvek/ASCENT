@@ -1302,6 +1302,8 @@ set_thrust_from_velocity(object *obj)
 #include "controls.h"
 #include "kconfig.h"
 #include "dtuthief.h"		// ASCENT: the climb and the slow sneak of the thief
+#include "dtuopts.h"		// ASCENT: Dtu_improved_physics, Dtu_improved_jump
+#include <math.h>
 
 // The setting for the movement: 1 is the person of the target game, 0 is
 // the ship of Descent 1 (option -fly).
@@ -1319,6 +1321,9 @@ int Dtu_fix_look_return = 1;		// return of the view after a glance: per referenc
 int Dtu_fix_fly_bob = 1;			// phase of the up and down motion in flight: per reference frame
 int Dtu_fix_turn_ramp = 1;			// the turn keys reach the whole turn rate after 8 reference frames, not 8 frames
 int Dtu_fix_jump_exit = 1;			// the velocity after a jump: the last step divided by the reference frame time, not by the frame time
+int Dtu_fix_jump_path = 1;			// the jump: a throw with a constant gravity, with the height and the air time of the table (15 steps, 28 per second)
+int Dtu_fix_ladder = 1;			// a ladder: no velocity into the wall, the hold of its top edge, the step onto the floor, the hold when the player steps down onto it
+int Dtu_fix_wall_slide = 1;		// a wall takes away the velocity into it, with no bounce back
 
 // The state of the player (the byte at 0x1AE of the object in the
 // executable) and the values that belong to it.
@@ -1338,6 +1343,21 @@ static int Dtu_jump_last_step = -1;	// 0x13D434
 static vms_vector Dtu_jump_vec;	// 0x3BCB0C
 static int Dtu_gravity_drag = 0;	// the byte at 0x13D470, inverted
 static int Dtu_jump_set_vel = 0;	// the jump set the velocity of this frame
+
+// The state of the corrections Dtu_fix_jump_path, Dtu_fix_ladder,
+// Dtu_fix_wall_slide and of the Improvements (dtuopts.h). Not in the
+// executable.
+static fix Dtu_stop_time = 0;			// time since the movement keys were released
+static int Dtu_ladder_seg = -1;		// the ladder that the player holds
+static int Dtu_ladder_side = -1;
+static fix Dtu_ladder_exit = 0;		// time left of the step from the top of a ladder
+static vms_vector Dtu_ladder_exit_dir;
+static fix Dtu_air_time = 0;			// time since the player stood or held a ladder
+static int Dtu_jump_from_climb = 0;	// the jump starts from a ladder or a wall
+static fix Dtu_jump_vy = 0;			// the velocity up of the jump at the end of the last frame
+static vms_vector Dtu_jump_hvel;		// the velocity in x and z of the jump
+static fix Dtu_jump_hmax = 0;			// the most speed in x and z of the steering in the air
+static fix Dtu_wall_time = F1_0;		// time since the player touched a wall
 
 // The height of the jump for each of the 15 steps (table at 0x14530E).
 static fix Dtu_jump_table[DTU_JUMP_STEPS+1] = {
@@ -1379,8 +1399,8 @@ static int dtu_floor_type(object *obj)
 
 // 0x6C30E. The distance from the feet of the object to the floor. It is
 // negative when the feet are in the floor, and 8.0 when no floor is found.
-// The executable takes the radius and the height from the bounding boxes
-// of the polygon model. The port uses constants, see physics.h.
+// ASCENT: the radius and the height are those of the model of the hand
+// and its frame (0x6C52D, dtu_player_body()).
 fix dtu_get_floor_dist(object *obj)
 {
 	static fix result = 0;
@@ -1388,14 +1408,16 @@ fix dtu_get_floor_dist(object *obj)
 	fvi_info hit;
 	vms_vector p1;
 	int fate;
+	dtu_body b;
 
+	dtu_player_body(&b);
 	p1 = obj->pos;
-	p1.y -= DTU_FLOOR_PROBE + DTU_BODY_HALF_HEIGHT;
+	p1.y -= DTU_FLOOR_PROBE + b.floor_height;
 
 	fq.p0 = &obj->pos;
 	fq.p1 = &p1;
 	fq.startseg = obj->segnum;
-	fq.rad = DTU_BODY_RAD;
+	fq.rad = b.floor_rad;
 	fq.thisobjnum = obj-Objects;
 	fq.ignore_obj_list = NULL;
 	fq.flags = 0;
@@ -1405,7 +1427,7 @@ fix dtu_get_floor_dist(object *obj)
 	Fvi_dtu_body = 0;
 
 	if (fate == HIT_WALL)
-		result = (obj->pos.y - hit.hit_pnt.y) - DTU_BODY_HALF_HEIGHT;
+		result = (obj->pos.y - hit.hit_pnt.y) - b.floor_height;
 	else if (fate == HIT_BAD_P0)
 		result = -abs(result);		// "RLH: %d has bad gravity!"
 	else
@@ -1455,7 +1477,8 @@ static void dtu_apply_gravity(object *obj,vms_vector *accel)
 	static fix push_acc = 0;
 	fix d = dtu_get_floor_dist(obj);
 	fix ad = abs(d);
-	int no_gravity = (obj->dtu.m_88 & DTU_OF_NO_GRAVITY) || (Dtu_player_state & DTU_PS_CLIMBING);
+	int no_gravity = (obj->dtu.m_88 & DTU_OF_NO_GRAVITY) || (Dtu_player_state & DTU_PS_CLIMBING) ||
+		Dtu_ladder_exit > 0;		// ASCENT: Dtu_fix_ladder, the step from the top of a ladder
 
 	Dtu_floor_dist = d;
 	Dtu_gravity_drag = 0;
@@ -1479,7 +1502,13 @@ static void dtu_apply_gravity(object *obj,vms_vector *accel)
 		new_pos = obj->pos;
 		new_pos.y += push;
 		head = new_pos;
-		head.y += DTU_BODY_HALF_HEIGHT;
+		{
+			// 0x6C7BE: body_half_height[0] of the model of the hand
+			dtu_body b;
+
+			dtu_player_body(&b);
+			head.y += b.half_height;
+		}
 		if (find_point_seg(&head,obj->segnum) >= 0)
 			obj->pos = new_pos;
 
@@ -1579,6 +1608,27 @@ void dtu_player_jump(object *obj)
 	if ((Dtu_player_state & DTU_PS_JUMPING) || (obj->dtu.m_88 & DTU_OF_FLY))
 		return;
 
+	// ASCENT: Dtu_fix_jump_path, the jump with a constant gravity. From a
+	// ladder or a wall the jump goes up and toward the wall, as the jump
+	// of the executable does (its direction is that of the climb thrust).
+	// Dtu_improved_jump: a jump is also possible a short time after the
+	// player left the floor.
+	if (Dtu_fix_jump_path) {
+		if (Dtu_ladder_exit > 0)
+			return;
+		Dtu_jump_from_climb = (Dtu_player_state & DTU_PS_CLIMBING) != 0;
+		if (!Dtu_jump_from_climb && dtu_get_floor_dist(obj) > DTU_JUMP_FLOOR_MAX &&
+			!(Dtu_improved_jump && Dtu_air_time < DTU_IMP_COYOTE_TIME))
+			return;
+		Dtu_player_state &= ~DTU_PS_CLIMBING;
+		Dtu_thief_bits &= ~DTU_TS_CLIMB_SKILL;
+		Dtu_ladder_seg = -1;
+		Dtu_jump_time = 0;
+		Dtu_jump_base_y = obj->pos.y;
+		Dtu_player_state |= DTU_PS_JUMPING;
+		return;
+	}
+
 	if (dtu_get_floor_dist(obj) > DTU_JUMP_FLOOR_MAX && !(Dtu_player_state & DTU_PS_CLIMBING))
 		return;
 
@@ -1642,6 +1692,241 @@ static void dtu_jump_frame(object *obj,fix sim_time)
 	Dtu_jump_set_vel = 1;
 }
 
+//------------------------------------------------------------------------
+// ASCENT: the corrections Dtu_fix_jump_path and Dtu_fix_ladder, and the
+// Improvements of the movement (dtuopts.h). New code, not in
+// the executable. See docs/re/physics.md, sections 12 and 13.
+
+// The factor exp(-t / tau): the part of a velocity that is left after the
+// time t, independent of the frame rate.
+static fix dtu_decay(fix t, fix tau)
+{
+	return fl2f(exp(-f2fl(t) / f2fl(tau)));
+}
+
+// The direction of the thrust in x and z, normalized. Returns 0 if there
+// is no thrust in x and z.
+static int dtu_thrust_dir(object *obj, vms_vector *dir)
+{
+	dir->x = obj->mtype.phys_info.thrust.x;
+	dir->y = 0;
+	dir->z = obj->mtype.phys_info.thrust.z;
+	if (abs(dir->x) < 0x10 && abs(dir->z) < 0x10)
+		return 0;
+	vm_vec_normalize(dir);
+	return 1;
+}
+
+// Dtu_fix_jump_path: the jump is a throw with a constant gravity. It has
+// the height (7.5) and the air time (15/28 s) of the jump table of the
+// executable at all frame rates, and the speed forward of the original
+// jump (14.0, 1.5 times in a run, 2 times with the Jump spell). The jump
+// ends on a floor, or becomes a fall of the game when the player is below
+// the start of the jump. Dtu_improved_jump: the keys steer the jump a
+// little.
+static void dtu_jump_frame_ballistic(object *obj,fix sim_time)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	vms_vector dir;
+	fix vy0,vy1,vmove,d = Dtu_floor_dist;
+
+	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))
+		return;
+
+	if (Dtu_jump_time == 0) {
+		fix speed = fixmul((Dtu_jump_skill << 13) + 0x8000,i2f(28));
+
+		if (Dtu_move_mode == 2)
+			speed = fixmul(speed,0x18000);
+		if (obj->dtu.m_88 & DTU_OF_JUMP_SPELL)
+			speed = fixmul(speed,0x20000);
+
+		vm_vec_zero(&Dtu_jump_hvel);
+		if (Dtu_jump_from_climb) {
+			// over the top of the ladder or the wall in front
+			dir = obj->orient.fvec;
+			dir.y = 0;
+			vm_vec_normalize(&dir);
+			vm_vec_copy_scale(&Dtu_jump_hvel,&dir,speed);
+		}
+		else if (dtu_thrust_dir(obj,&dir))
+			vm_vec_copy_scale(&Dtu_jump_hvel,&dir,speed);
+
+		Dtu_jump_hmax = speed > DTU_FIX_JUMP_HSPEED ? speed : DTU_FIX_JUMP_HSPEED;
+		Dtu_jump_vy = DTU_FIX_JUMP_V0;
+		Dtu_jump_last_step = -1;
+	}
+	Dtu_jump_time += sim_time;
+
+	// Dtu_improved_jump: the steering in the air
+	if (Dtu_improved_jump && dtu_thrust_dir(obj,&dir)) {
+		fix m;
+
+		vm_vec_scale_add2(&Dtu_jump_hvel,&dir,fixmul(DTU_IMP_AIR_ACCEL,sim_time));
+		m = vm_vec_mag(&Dtu_jump_hvel);
+		if (m > Dtu_jump_hmax)
+			vm_vec_scale(&Dtu_jump_hvel,fixdiv(Dtu_jump_hmax,m));
+	}
+
+	// Constant gravity. The mean velocity of the frame gives the exact
+	// path at each frame rate.
+	vy0 = Dtu_jump_vy;
+	vy1 = vy0 - fixmul(DTU_FIX_JUMP_GRAVITY,sim_time);
+	vmove = (vy0 + vy1) / 2;
+
+	if (vmove < 0 && d < DTU_FLOOR_PROBE && d + fixmul(vmove,sim_time) <= 0) {
+		// the feet reach the floor in this frame: the jump ends on it
+		vmove = d > 0 ? -fixdiv(d,sim_time) : 0;
+		vy1 = 0;
+		Dtu_player_state &= ~DTU_PS_JUMPING;
+		Dtu_jump_time = 0;
+		dtu_fall_damage(obj);
+	}
+	else if (vy1 < 0 && obj->pos.y + fixmul(vmove,sim_time) < Dtu_jump_base_y) {
+		// below the start and no floor: a fall with the gravity of the game
+		Dtu_player_state &= ~DTU_PS_JUMPING;
+		Dtu_jump_time = 0;
+		if (!(Dtu_player_state & DTU_PS_FALLING))
+			dtu_start_fall(obj);
+	}
+
+	Dtu_jump_vy = vy1;
+	pi->velocity.x = Dtu_jump_hvel.x;
+	pi->velocity.y = vmove;
+	pi->velocity.z = Dtu_jump_hvel.z;
+}
+
+// Dtu_improved_physics on the floor: no slide. The velocity in x and z
+// that is not in the direction of the keys goes away with the time
+// constant DTU_IMP_STOP_TAU, and all of it when no key is down. After
+// DTU_IMP_STOP_TIME with no key the velocity in x and z is 0. The speed
+// in the direction of the keys is that of the original rules.
+static void dtu_improved_walk(object *obj,fix sim_time)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	fix k = dtu_decay(sim_time,DTU_IMP_STOP_TAU);
+	vms_vector dir;
+
+	if (dtu_thrust_dir(obj,&dir)) {
+		fix par = fixmul(pi->velocity.x,dir.x) + fixmul(pi->velocity.z,dir.z);
+		fix px = pi->velocity.x - fixmul(dir.x,par);
+		fix pz = pi->velocity.z - fixmul(dir.z,par);
+
+		// Along a wall the velocity to the side stays: the player slides
+		// along the wall as in the original.
+		if (Dtu_wall_time < DTU_IMP_STOP_TIME)
+			k = F1_0;
+		if (par < 0)
+			par = fixmul(par,k);
+		pi->velocity.x = fixmul(dir.x,par) + fixmul(px,k);
+		pi->velocity.z = fixmul(dir.z,par) + fixmul(pz,k);
+		Dtu_stop_time = 0;
+	}
+	else {
+		Dtu_stop_time += sim_time;
+		if (Dtu_stop_time >= DTU_IMP_STOP_TIME) {
+			pi->velocity.x = 0;
+			pi->velocity.z = 0;
+		}
+		else {
+			pi->velocity.x = fixmul(pi->velocity.x,k);
+			pi->velocity.z = fixmul(pi->velocity.z,k);
+		}
+	}
+}
+
+// Dtu_fix_ladder: a ladder (not a wall that the thief climbs).
+// The executable ends the climb when the center of the player is in a
+// segment with no ladder in reach: at the top the feet are still a body
+// height under the floor of the top, and the push of 0x9EBEB does not
+// lift the player that far. Here the player holds the ladder of the last
+// frame until the feet are above its top edge, and then steps onto the
+// floor behind it. Returns 1 if this replaces the climb frame of
+// dtuthief.c.
+static int dtu_improved_ladder(object *obj)
+{
+	segment *segp;
+	side *sidep;
+	vms_vector c,rel;
+	fix top,dist;
+	int side,i;
+	dtu_body b;
+
+	side = dtu_thief_ladder_side(obj,obj->segnum);
+	if (side >= 0) {
+		Dtu_ladder_seg = obj->segnum;
+		Dtu_ladder_side = side;
+		return 0;
+	}
+	if (Dtu_ladder_seg < 0 || Dtu_ladder_seg > Highest_segment_index)
+		return 0;
+
+	segp = &Segments[Dtu_ladder_seg];
+	sidep = &segp->sides[Dtu_ladder_side];
+	compute_center_point_on_side(&c,segp,Dtu_ladder_side);
+	vm_vec_sub(&rel,&obj->pos,&c);
+	dist = vm_vec_dot(&rel,&sidep->normals[0]);
+	if (abs(dist) > i2f(10))
+		return 0;
+
+	top = Vertices[segp->verts[Side_to_verts[Dtu_ladder_side][0]]].y;
+	for (i=1; i<4; i++) {
+		fix y = Vertices[segp->verts[Side_to_verts[Dtu_ladder_side][i]]].y;
+		if (y > top)
+			top = y;
+	}
+
+	Dtu_player_state &= ~DTU_PS_FALLING;
+
+	// Nearer than 4.0: out of the wall, as 0x9EBEB does
+	if (dist >= 0 && dist < i2f(4))
+		vm_vec_scale_add2(&obj->pos,&sidep->normals[0],i2f(4) - dist);
+
+	// The feet are above the top and the player climbs up: the step.
+	dtu_player_body(&b);
+	if (obj->pos.y - (b.floor_height + b.floor_rad/2) >= top && obj->mtype.phys_info.thrust.y > 0) {
+		Dtu_player_state &= ~DTU_PS_CLIMBING;
+		Dtu_ladder_seg = -1;
+		Dtu_ladder_exit = DTU_FIX_LADDER_EXIT_TIME;
+		Dtu_ladder_exit_dir = sidep->normals[0];
+		Dtu_ladder_exit_dir.y = 0;
+		vm_vec_negate(&Dtu_ladder_exit_dir);
+		vm_vec_normalize(&Dtu_ladder_exit_dir);
+	}
+	return 1;
+}
+
+// Dtu_fix_ladder: a player who starts to fall near a ladder and
+// faces it takes hold of it. So the player can climb down from the top:
+// a step back over the edge.
+static void dtu_improved_ladder_grab(object *obj,vms_vector *accel)
+{
+	int seg = obj->segnum,side;
+
+	if (Dtu_player_state & (DTU_PS_CLIMBING|DTU_PS_JUMPING))
+		return;
+	if ((obj->dtu.m_88 & DTU_OF_NO_GRAVITY) || Dtu_ladder_exit > 0)
+		return;
+	if (Dtu_floor_dist < F1_0 || !(Dtu_player_state & DTU_PS_FALLING) || Dtu_fall_start_y - obj->pos.y > DTU_FIX_LADDER_GRAB_FALL)
+		return;
+
+	side = dtu_thief_ladder_side(obj,seg);
+	if (side < 0) {
+		seg = Segments[obj->segnum].children[WBOTTOM];
+		side = seg >= 0 ? dtu_thief_ladder_side(obj,seg) : -1;
+	}
+	if (side < 0)
+		return;
+
+	Dtu_player_state |= DTU_PS_CLIMBING;
+	Dtu_player_state &= ~DTU_PS_FALLING;
+	Dtu_thief_bits &= ~DTU_TS_CLIMB_SKILL;
+	Dtu_ladder_seg = seg;
+	Dtu_ladder_side = side;
+	vm_vec_zero(&obj->mtype.phys_info.velocity);
+	accel->y = 0;
+}
+
 // 0x6B354. The rotation: only the heading. The drag is 5 times the drag
 // of the object for each step of 1/64 second (Descent 1: 2.5 times).
 static void dtu_physics_sim_rot(object *obj)
@@ -1650,8 +1935,81 @@ static void dtu_physics_sim_rot(object *obj)
 	vms_angvec tangles;
 	vms_matrix rotmat,new_orient;
 
+	// ASCENT: Dtu_improved_physics. The turn has no inertia: the turn rate
+	// is the rate that the turn input gives at the end of the ramp of the
+	// executable (rotthrust / mass * (1 - 5 drag) / (5 drag)), so the turn
+	// stops when the input stops. The drag of the executable lets the view
+	// turn on by 5 to 18 degrees after a turn key at the whole rate.
+	if (Dtu_improved_physics && Dtu_player_walk && pi->drag && pi->mass) {
+		fix drag = pi->drag*5;
+
+		pi->rotvel.x = pi->rotvel.z = 0;
+		pi->rotvel.y = fixmul(fixdiv(pi->rotthrust.y,pi->mass),fixdiv(F1_0-drag,drag));
+		goto turn;
+	}
+
 	if (!(pi->rotvel.x || pi->rotvel.y || pi->rotvel.z || pi->rotthrust.x || pi->rotthrust.y || pi->rotthrust.z))
 		return;
+
+	// ASCENT: Dtu_fix_turn_ramp, the turn with inertia (no Improved
+	// physics). The executable does the steps of a frame and then turns by
+	// the new rate for the whole frame. At the reference frame time (3
+	// steps) that gives the shape of the turn that the corrected rules keep;
+	// at other frame rates the angle after a time was up to 30% different.
+	// Here the steps run on a clock of reference frames: at the start of a
+	// reference frame the 3 steps give its rate, and the angle grows by
+	// that rate over the reference frame, in the game frames that it spans.
+	// A press, a release or a change of the direction starts a reference
+	// frame at once, as the first frame of a key does. The thrust of the
+	// turn keys in reference frame k is k/8 of the whole thrust (the ramp of
+	// 0x533DC, controls.c), from the time the key is down; the thrust of the
+	// mouse and the joystick is that of the frame.
+	if (Dtu_fix_turn_ramp && obj == ConsoleObject && pi->drag && pi->mass) {
+		static fix ref_t = DTU_REF_FRAMETIME;
+		static int last_dir = 0;
+		static int64_t rest = 0;
+		fix drag = pi->drag*5, left = FrameTime, accel = 0;
+		int dir = Dtu_turn_dir, i;
+		int64_t h = rest;
+
+		if (dir != last_dir)
+			ref_t = DTU_REF_FRAMETIME;
+		last_dir = dir;
+		pi->rotvel.x = pi->rotvel.z = 0;
+		while (left > 0) {
+			fix dt;
+
+			if (ref_t >= DTU_REF_FRAMETIME) {
+				// the time the key is down at the start of this reference frame
+				fix held = Dtu_turn_hold + (FrameTime - left);
+				int k = (held + DTU_REF_FRAMETIME/2) / DTU_REF_FRAMETIME + 1;
+				fix thrust = Dtu_turn_other_thrust;
+
+				if (k > 8)
+					k = 8;
+				if (dir)
+					thrust += dir * (fix) (((int64_t) Dtu_turn_full_thrust * k) / 8);
+				accel = fixdiv(thrust,pi->mass);
+				for (i = 0; i < DTU_REF_FRAMETIME / DTU_FT; i++) {
+					pi->rotvel.y += accel;
+					pi->rotvel.y = fixmul(pi->rotvel.y,F1_0-drag);
+				}
+				ref_t = 0;
+			}
+			dt = DTU_REF_FRAMETIME - ref_t;
+			if (dt > left)
+				dt = left;
+			h += (int64_t) pi->rotvel.y * dt;
+			ref_t += dt;
+			left -= dt;
+		}
+		tangles.p = tangles.b = 0;
+		tangles.h = (fixang) (h >> 16);
+		rest = h - ((h >> 16) << 16);
+		if (!pi->rotvel.y)
+			rest = 0;
+		goto apply;
+	}
 
 	if (pi->drag) {
 		static fix step_acc = 0;
@@ -1694,10 +2052,24 @@ static void dtu_physics_sim_rot(object *obj)
 		}
 	}
 
+turn:
 	tangles.p = 0;
 	tangles.b = 0;
 	tangles.h = fixmul(pi->rotvel.y,FrameTime);
+	// ASCENT: Dtu_fix_turn_ramp. The part of the angle below one unit is
+	// kept for the next frame. Without it the turn lost 0.25% at 300
+	// frames per second, and less at fewer frames.
+	if (Dtu_fix_turn_ramp && obj == ConsoleObject) {
+		static int64_t rest = 0;
+		int64_t h = (int64_t) pi->rotvel.y * FrameTime + rest;
 
+		tangles.h = (fixang) (h >> 16);
+		rest = h - ((h >> 16) << 16);
+		if (!pi->rotvel.y)
+			rest = 0;
+	}
+
+apply:
 	vm_angles_2_matrix(&rotmat,&tangles);
 	vm_matrix_x_matrix(&new_orient,&obj->orient,&rotmat);
 	obj->orient = new_orient;
@@ -1714,14 +2086,17 @@ static int dtu_knee_high(object *obj,int hit_seg,int hit_side)
 	fvi_info hit;
 	vms_vector c1,c2,p1;
 	fix diff;
+	dtu_body b;
 
 	if (hit_seg < 0 || hit_seg > Highest_segment_index || hit_side < 0 || hit_side > 5)
 		return 0;
 
 	compute_center_point_on_side(&c1,&Segments[hit_seg],hit_side);
 
+	// 0x6C234: body_half_height[0] of the model of the hand
+	dtu_player_body(&b);
 	p1 = obj->pos;
-	p1.y -= DTU_FLOOR_PROBE + DTU_BODY_HALF_HEIGHT;
+	p1.y -= DTU_FLOOR_PROBE + b.half_height;
 
 	fq.p0 = &obj->pos;
 	fq.p1 = &p1;
@@ -1789,6 +2164,14 @@ void dtu_player_eye(vms_vector *eye)
 
 	vm_vec_scale_add2(eye,&ConsoleObject->orient.uvec,eye_offset);
 
+	// 0x76EC8: the y of frame_eye of the frame of the model of the hand
+	{
+		dtu_body b;
+
+		dtu_player_body(&b);
+		eye->y += b.eye_y;
+	}
+
 	if (Dtu_bob_mode) {
 		fix s;
 
@@ -1803,6 +2186,182 @@ void dtu_player_eye(vms_vector *eye)
 }
 
 // 0x9DC66 (pcons.c). The movement of the player for one frame.
+// ASCENT: the body of the player from its polygon models (0x748D9,
+// 0x6C30E, 0x6C662, 0x6C186, 0x76E9C; docs/re/physics.md 4.1 and 4.8).
+// "The model of the hand" is the model of the player object (object 0x162,
+// dtu_combat_view_model(): race, sex, class and the weapon in the hand),
+// "the frame" its animation frame (object 0x172, absolute).
+//   move (0x748D9, 0x9DF34): model 16, not the model of the hand (0x748F4).
+//     rad  = body_radius[0] / 2
+//     rad2 = torso_half_height[frame] (box_flags & 8), else body_half_height[0]
+//   floor search (0x6C52D): rad = body_radius[frame] / 2 and the height
+//     torso_half_height[frame] of the model of the hand. The index is the
+//     frame, not frame + 1 as in the other arrays of the frames (entry 0 is
+//     the box of all frames), as in the executable.
+//   head test of the lift out of the floor (0x6C7BE) and the knee-high
+//     query (0x6C234): body_half_height[0] of the model of the hand.
+//   eye (0x76EC8): frame_eye[frame].y of the model of the hand.
+// The player models are the first models (piggy.c, 0x70303), so model 16
+// is the 17th model of the archive of the player.
+// Without the models the port takes the constants of physics.h.
+#include "polyobj.h"
+#include "args.h"
+#include "dtucombat.h"
+#include <string.h>
+
+#define DTU_PLAYER_BODY_MODEL	16
+
+static polymodel *dtu_body_model(int n)
+{
+	polymodel *po;
+
+	if (n < 0 || n >= N_polygon_models)
+		return NULL;
+	po = &Polygon_models[n];
+	if (!po->dtu_block || !(po->box_flags & DTU_BOX_BODY) || !po->body_radius || !po->body_half_height || po->n_frames <= 0)
+		return NULL;
+	return po;
+}
+
+void dtu_player_body(dtu_body *b)
+{
+	polymodel *hand = dtu_body_model(dtu_combat_view_model());
+	polymodel *body = dtu_body_model(DTU_PLAYER_BODY_MODEL);
+	int f = dtu_combat_view_frame();
+
+	b->move_rad = DTU_BODY_RAD;
+	b->move_rad2 = DTU_BODY_HALF_HEIGHT;
+	b->floor_rad = DTU_BODY_RAD;
+	b->floor_height = DTU_BODY_HALF_HEIGHT;
+	b->half_height = DTU_BODY_HALF_HEIGHT;
+	b->eye_y = 0;
+	b->model = -1;
+	b->frame = f;
+
+	if (!Dtu_player_walk)
+		return;
+
+	if (hand && f >= 0 && f < hand->n_frames) {
+		b->model = dtu_combat_view_model();
+		b->floor_rad = fixmul(hand->body_radius[f],F1_0/2);
+		b->floor_height = hand->torso_half_height ? hand->torso_half_height[f] : hand->body_half_height[0];
+		b->half_height = hand->body_half_height[0];
+		if (hand->frame_eye)
+			b->eye_y = hand->frame_eye[f].y;
+	}
+
+	if (body) {
+		b->move_rad = fixmul(body->body_radius[0],F1_0/2);
+		if ((body->box_flags & DTU_BOX_TORSO) && body->torso_half_height && f >= 0 && f < body->n_frames)
+			b->move_rad2 = body->torso_half_height[f];
+		else
+			b->move_rad2 = body->body_half_height[0];
+	}
+}
+
+// -bodylog FILE: one line for each frame of the player with its body.
+static void dtu_body_log(object *obj)
+{
+	static FILE *log = NULL;
+	static int init = 0, frame = 0;
+	dtu_body b;
+	int t;
+
+	if (!init) {
+		init = 1;
+		if ((t = FindArg("-bodylog")) != 0 && t+1 < Num_args)
+			log = !strcmp(Args[t+1],"-") ? stdout : fopen(Args[t+1],"wt");
+		// -startseg SEG.SIDE: a test starts at the center of the segment,
+		// the view toward the center of the side (level y)
+		if ((t = FindArg("-startseg")) != 0 && t+1 < Num_args) {
+			int seg = atoi(Args[t+1]), side = 0;
+			char *dot = strchr(Args[t+1],'.');
+
+			if (dot)
+				side = atoi(dot+1);
+			if (seg >= 0 && seg <= Highest_segment_index && side >= 0 && side < 6) {
+				vms_vector c, dir;
+
+				compute_segment_center(&obj->pos,&Segments[seg]);
+				compute_center_point_on_side(&c,&Segments[seg],side);
+				vm_vec_sub(&dir,&c,&obj->pos);
+				dir.y = 0;
+				if (vm_vec_normalize(&dir) > 0)
+					vm_vector_2_matrix(&obj->orient,&dir,NULL,NULL);
+				vm_vec_zero(&obj->mtype.phys_info.velocity);
+				if (seg != obj->segnum)
+					obj_relink(obj-Objects,seg);
+			}
+		}
+	}
+	frame++;
+	if (!log)
+		return;
+	dtu_player_body(&b);
+	if (frame == 1) {
+		polymodel *body = dtu_body_model(DTU_PLAYER_BODY_MODEL);
+		fprintf(log,"BODYINFO model16 %s eye_offset %.4f\n",body ? Pof_names[DTU_PLAYER_BODY_MODEL] : "-",
+			f2fl(N_player_types > 0 && Player_type_info[0].eye_offset ? Player_type_info[0].eye_offset : DTU_EYE_OFFSET_DEFAULT));
+	}
+	fprintf(log,"BODY %d t %.4f hand %d %s frame %d move_rad %.4f rad2 %.4f floor_rad %.4f floor_h %.4f stand %.4f half %.4f eye_y %.4f floor %.4f pos %.4f %.4f %.4f seg %d\n",
+		frame,f2fl(GameTime),b.model,b.model >= 0 ? Pof_names[b.model] : "-",b.frame,
+		f2fl(b.move_rad),f2fl(b.move_rad2),f2fl(b.floor_rad),f2fl(b.floor_height),f2fl(b.floor_height + b.floor_rad/2),
+		f2fl(b.half_height),f2fl(b.eye_y),f2fl(Dtu_floor_dist),f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),obj->segnum);
+	fflush(log);
+}
+
+// ASCENT: Dtu_improved_physics. The body of the original (0x748D9) is so
+// wide (the walls stop the center at body_radius[0] / 2 + 1.0, 4.6 for a
+// human) that the edge of a wall side that is a step (BANE: a step of 3.5
+// at z 70) stops a player whose center is less than that above the top of
+// the step: always a dwarf (center 6.3 above the floor), a human (7.5) at
+// some frame rates. The executable has no step test for the walls (4.6).
+// Here a wall side whose top is above the feet by DTU_KNEE_HIGH (5.5, the
+// limit of the kneeHigh test of the floor) or less lifts the player onto
+// it, when the player walks (no jump, climb, fall or flight) and there is
+// room for the body there. Returns 1 if the player was lifted.
+static int dtu_improved_step(object *obj,dtu_body *body,fvi_info *hit)
+{
+	segment *segp;
+	vms_vector new_pos,head;
+	fix top,feet,stand;
+	int i,seg;
+
+	if (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_CLIMBING|DTU_PS_FALLING))
+		return 0;
+	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))
+		return 0;
+	if (hit->hit_side_seg < 0 || hit->hit_side < 0 || hit->hit_side == WTOP || hit->hit_side == WBOTTOM)
+		return 0;
+	if (Dtu_floor_dist != 0)
+		return 0;
+	if (vm_vec_dot(&obj->mtype.phys_info.velocity,&hit->hit_wallnorm) >= 0)
+		return 0;
+
+	segp = &Segments[hit->hit_side_seg];
+	top = Vertices[segp->verts[Side_to_verts[hit->hit_side][0]]].y;
+	for (i=1; i<4; i++) {
+		fix y = Vertices[segp->verts[Side_to_verts[hit->hit_side][i]]].y;
+		if (y > top)
+			top = y;
+	}
+	stand = body->floor_height + body->floor_rad/2;
+	feet = obj->pos.y - stand;
+	if (top <= feet || top - feet > DTU_KNEE_HIGH)
+		return 0;
+
+	new_pos = obj->pos;
+	new_pos.y = top + stand + F1_0/16;
+	head = new_pos;
+	head.y += body->half_height;
+	if ((seg = find_point_seg(&new_pos,obj->segnum)) < 0 || find_point_seg(&head,seg) < 0)
+		return 0;
+	obj->pos = new_pos;
+	if (seg != obj->segnum)
+		obj_relink(obj-Objects,seg);
+	return 1;
+}
+
 int dtu_player_physics_sim(object *obj)
 {
 	static fix levitate_acc = 0;
@@ -1814,9 +2373,12 @@ int dtu_player_physics_sim(object *obj)
 	int ignore_obj_list[MAX_IGNORE_OBJS],n_ignore_objs = 0;
 	fvi_query fq;
 	fvi_info hit;
+	dtu_body body;		// ASCENT: the body of the frame (0x748D9)
 
 	if (obj->dtu.m_88 & DTU_OF_HELD)
 		return 1;
+
+	dtu_player_body(&body);
 
 	n_phys_segs = 0;
 	floor_type = dtu_floor_type(obj);
@@ -1828,8 +2390,14 @@ int dtu_player_physics_sim(object *obj)
 	{
 		vms_vector climb_accel = { 0, 0, 0 };
 
-		if (Dtu_player_state & DTU_PS_CLIMBING)
-			dtu_thief_climb_frame(obj,&climb_accel);
+		// ASCENT: Dtu_fix_ladder holds the top of a ladder
+		if (Dtu_player_state & DTU_PS_CLIMBING) {
+			if (!(Dtu_fix_ladder && Dtu_player_walk && !(Dtu_thief_bits & DTU_TS_CLIMB_SKILL) &&
+				!(Dtu_player_state & DTU_PS_JUMPING) && dtu_improved_ladder(obj)))
+				dtu_thief_climb_frame(obj,&climb_accel);
+		}
+		else
+			Dtu_ladder_seg = -1;
 		vm_vec_copy_scale(&accel,&pi->thrust,fixdiv(F1_0,pi->mass));
 		vm_vec_add2(&accel,&climb_accel);
 	}
@@ -1855,6 +2423,14 @@ int dtu_player_physics_sim(object *obj)
 
 	dtu_apply_gravity(obj,&accel);
 
+	// ASCENT: Dtu_fix_ladder, and the time in the air for Dtu_improved_jump
+	if (Dtu_fix_ladder && Dtu_player_walk)
+		dtu_improved_ladder_grab(obj,&accel);
+	if (Dtu_floor_dist <= DTU_JUMP_FLOOR_MAX || (Dtu_player_state & DTU_PS_CLIMBING))
+		Dtu_air_time = 0;
+	else if (Dtu_air_time < F1_0)
+		Dtu_air_time += sim_time;
+
 	// 0x6CCDB: the player moves up and down in flight and in levitation.
 	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) {
 		fix s;
@@ -1870,10 +2446,42 @@ int dtu_player_physics_sim(object *obj)
 	Dtu_bob_mode = Dtu_move_mode;
 	Dtu_jump_set_vel = 0;
 
-	if (Dtu_player_state & DTU_PS_JUMPING)
+	if ((Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_path)
+		dtu_jump_frame_ballistic(obj,sim_time);
+	else if (Dtu_player_state & DTU_PS_JUMPING)
 		dtu_jump_frame(obj,sim_time);
 	else
 		dtu_integrate(obj,&accel,sim_time);
+
+	// ASCENT: Dtu_fix_ladder. On a ladder: no velocity into the wall (the
+	// executable moves the player into the wall and the wall throws the
+	// player back on each frame). The step from the top of a ladder:
+	// forward, with no gravity, until the floor is under the feet.
+	// Dtu_improved_physics: on the floor, no slide.
+	if (Dtu_player_walk && !(obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))) {
+		if (!Dtu_fix_ladder)
+			Dtu_ladder_exit = 0;
+		if (Dtu_ladder_exit > 0) {
+			Dtu_ladder_exit -= sim_time;
+			if (Dtu_floor_dist < DTU_FLOOR_PROBE && Dtu_floor_dist <= F1_0)
+				Dtu_ladder_exit = 0;
+			else {
+				vm_vec_copy_scale(&pi->velocity,&Dtu_ladder_exit_dir,DTU_FIX_LADDER_EXIT_SPEED);
+				Dtu_player_state &= ~DTU_PS_FALLING;
+			}
+		}
+		else if ((Dtu_player_state & DTU_PS_CLIMBING) && Dtu_fix_ladder) {
+			vms_vector h = obj->orient.fvec;
+			fix d;
+
+			h.y = 0;
+			vm_vec_normalize(&h);
+			d = vm_vec_dot(&pi->velocity,&h);
+			vm_vec_scale_add2(&pi->velocity,&h,-d);
+		}
+		else if (Dtu_improved_physics && !(Dtu_player_state & (DTU_PS_CLIMBING|DTU_PS_JUMPING|DTU_PS_FALLING)) && Dtu_floor_dist <= F1_0)
+			dtu_improved_walk(obj,sim_time);
+	}
 
 	vm_vec_zero(&pi->thrust);
 
@@ -1894,6 +2502,8 @@ int dtu_player_physics_sim(object *obj)
 	Dtu_bob_phase += sim_time * Dtu_bob_mode;
 
 	start_pos = obj->pos;
+	if (Dtu_wall_time < F1_0)
+		Dtu_wall_time += sim_time;
 
 	// The move. A hit puts the player back to the start of the frame and
 	// changes the velocity. Then the move starts again, 8 times at most.
@@ -1924,13 +2534,13 @@ int dtu_player_physics_sim(object *obj)
 		fq.p0 = &obj->pos;
 		fq.p1 = &p1;
 		fq.startseg = obj->segnum;
-		fq.rad = DTU_BODY_RAD;
+		fq.rad = body.move_rad;
 		fq.thisobjnum = objnum;
 		fq.ignore_obj_list = ignore_obj_list;
 		fq.flags = FQ_CHECK_OBJS | FQ_GET_SEGLIST;
 
 		Fvi_dtu_body = 1;
-		Fvi_dtu_rad2 = DTU_BODY_HALF_HEIGHT;
+		Fvi_dtu_rad2 = body.move_rad2;
 		fate = find_vector_intersection(&fq,&hit);
 		Fvi_dtu_body = 0;
 
@@ -1957,6 +2567,13 @@ int dtu_player_physics_sim(object *obj)
 			}
 			break;
 		}
+		else if (fate == DTU_HIT_FLOOR && (Dtu_player_state & DTU_PS_JUMPING) && Dtu_improved_jump && Dtu_jump_vy > 0) {
+			// ASCENT: Dtu_improved_jump. The body touches the edge of a higher
+			// floor on the way up: no move forward in this frame, the jump
+			// goes on and passes over the edge when it is high enough.
+			obj->pos = start_pos;
+			pi->velocity.x = pi->velocity.z = 0;
+		}
 		else if (fate == DTU_HIT_FLOOR) {			// 0x6CD45
 
 			obj->pos = start_pos;
@@ -1970,21 +2587,70 @@ int dtu_player_physics_sim(object *obj)
 
 			dtu_fall_damage(obj);
 		}
+		else if (fate == HIT_WALL && Dtu_improved_physics && dtu_improved_step(obj,&body,&hit)) {
+			// ASCENT: Dtu_improved_physics, the step up a low wall. The move
+			// starts again from the new height.
+			continue;
+		}
 		else if (fate == HIT_WALL) {					// 0x9E47C and 0x9E88D
 			vms_vector moved;
 			fix wall_part,d;
+			int ballistic = (Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_path;
+			// Dtu_improved_jump, but not when the body touches the edge of the
+			// side (no velocity into it): then the rules of the base.
+			int improved_jump = ballistic && Dtu_improved_jump &&
+				vm_vec_dot(&pi->velocity,&hit.hit_wallnorm) < -DTU_WALL_UNSTICK_SPEED/8;
 
-			if (Dtu_player_state & DTU_PS_JUMPING) {
-				dtu_stop_jump(obj);
-				vm_vec_zero(&pi->velocity);
-			}
+			if (improved_jump) {
+				// ASCENT: Dtu_improved_jump. A wall does not end the jump: the
+				// part of the velocity into the wall goes away. A ceiling
+				// turns the jump down.
+				if (hit.hit_side == WTOP && Dtu_jump_vy > 0)
+					Dtu_jump_vy = 0;
+				d = vm_vec_dot(&Dtu_jump_hvel,&hit.hit_wallnorm);
+				if (d < 0) {
+					vms_vector nh = hit.hit_wallnorm;
 
-			if (hit.hit_side == WTOP) {
-				Dtu_player_state &= ~DTU_PS_JUMPING;
-				pi->velocity.y = 0;
+					nh.y = 0;
+					d = vm_vec_dot(&Dtu_jump_hvel,&nh);
+					vm_vec_scale_add2(&Dtu_jump_hvel,&nh,-d);
+				}
+				if (hit.hit_side == WTOP && pi->velocity.y > 0)
+					pi->velocity.y = 0;
 			}
-			else
-				dtu_stop_jump(obj);
+			else if (ballistic) {
+				// ASCENT: Dtu_fix_jump_path, the rules of the executable for
+				// the jump with a constant gravity. A ceiling ends the jump. A
+				// wall ends it on the way down (0x9F093). On the way up the
+				// move of this frame stops: the executable sets the velocity
+				// to 0 and puts the player back to the height of the table in
+				// the next step, so the height does not change.
+				if (hit.hit_side == WTOP) {
+					Dtu_player_state &= ~DTU_PS_JUMPING;
+					Dtu_jump_time = 0;
+					Dtu_jump_vy = 0;
+					pi->velocity.y = 0;
+				}
+				else if (pi->velocity.y < 0) {
+					dtu_stop_jump(obj);
+					Dtu_jump_time = 0;
+				}
+				else
+					pi->velocity.x = pi->velocity.z = 0;
+			}
+			else {
+				if (Dtu_player_state & DTU_PS_JUMPING) {
+					dtu_stop_jump(obj);
+					vm_vec_zero(&pi->velocity);
+				}
+
+				if (hit.hit_side == WTOP) {
+					Dtu_player_state &= ~DTU_PS_JUMPING;
+					pi->velocity.y = 0;
+				}
+				else
+					dtu_stop_jump(obj);
+			}
 
 			vm_vec_sub(&moved,&new_pos,&start_pos);
 			wall_part = vm_vec_dot(&moved,&hit.hit_wallnorm);
@@ -1996,11 +2662,31 @@ int dtu_player_physics_sim(object *obj)
 				break;
 
 			// The velocity into the wall turns back with 0.75 of its size.
+			// ASCENT: Dtu_fix_wall_slide. The executable throws the player
+			// back on each frame of a walk into a wall or along it, and the
+			// player loses the move of that frame: the position goes back
+			// and forth by 0.6 to 0.7 and the size of the steps changes with
+			// the frame rate. The corrected rule takes away the velocity
+			// into the wall and keeps the velocity along it.
 			d = vm_vec_dot(&pi->velocity,&hit.hit_wallnorm);
-			vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,fixmul(-d,DTU_WALL_BOUNCE));
+			if (Dtu_fix_wall_slide && Dtu_player_walk) {
+				if (d < -DTU_WALL_UNSTICK_SPEED/8)
+					vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,fixmul(-d,DTU_WALL_SLIDE));
+				else {
+					// The body touches the edge of the side, not the side: the
+					// velocity is along the side, and the move would hit the
+					// edge again on each try. The player moves out from it.
+					vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,DTU_WALL_UNSTICK_SPEED - d);
+					if ((Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_path)
+						vm_vec_scale_add2(&Dtu_jump_hvel,&hit.hit_wallnorm,DTU_WALL_UNSTICK_SPEED);
+				}
+			}
+			else
+				vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,fixmul(-d,DTU_WALL_BOUNCE));
 
 			obj->pos = start_pos;
 			Dtu_bob_mode = 0;
+			Dtu_wall_time = 0;
 		}
 		else if (fate == HIT_OBJECT) {				// 0x9E53D
 			object *other = &Objects[hit.hit_object];
@@ -2041,6 +2727,7 @@ int dtu_player_physics_sim(object *obj)
 		}
 	}
 
+	dtu_body_log(obj);
 	dtu_move_log(obj);
 
 	return 1;

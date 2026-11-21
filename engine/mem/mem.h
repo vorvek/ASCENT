@@ -55,6 +55,9 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #endif
 
 extern int show_mem_info;//moved out of the ifdef by KRB
+// ASCENT: 0 turns off the report of the blocks left at exit (the
+// release build, see dtu_init_dirs).
+extern int mem_report_leaks;
 
 // ASCENT: the functions are declared with and without NDEBUG. mem.c has
 // one allocator (see the comment there). mem_display_blocks() returns void,

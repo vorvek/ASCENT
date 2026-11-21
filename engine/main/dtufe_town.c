@@ -428,7 +428,17 @@ static int Mk_reward_stock[9][12][4] = {
 	  {4,16,75,-1}, {6,5,58,-1}, {6,5,59,-1}, {4,16,88,-1} },
 	{ {1,15,10,-1}, {1,15,52,-1}, {1,16,95,-1}, {1,5,69,-1}, {6,5,59,-1}, {4,16,75,-1}, {4,16,77,-1}, {4,16,88,-1}, {1,5,58,-1} } };
 
-#define MK_STORE_FILE	"geldor.dat"		// 0x12CE53, in the current directory
+// ASCENT: the files of the market are in the directory of the user
+// (dtu_user_path). Two buffers: one expression can name two files.
+static const char *mk_user_file(const char *name)
+{
+	static char path[2][600];
+	static int i;
+
+	i ^= 1;
+	return dtu_user_path(path[i], sizeof(path[i]), name);
+}
+#define MK_STORE_FILE	mk_user_file("geldor.dat")		// 0x12CE53, in the current directory
 
 // The game flag 107 of the player (bit array at P+0x1A33, 0xADAFE) doubles
 // the prices (0x86F5A). The port does not have these flags yet; a file
@@ -1175,10 +1185,10 @@ void fe_market_store(int s, int write)
 	sprintf(name, "TheStore.%d", s);			// 0x12D0FB
 	if (!write)
 		remove(MK_STORE_FILE);					// 0x87BFB
-	in = fopen(write ? MK_STORE_FILE : name, "rb");
+	in = fopen(write ? MK_STORE_FILE : mk_user_file(name), "rb");
 	if (!in)
 		return;
-	out = fopen(write ? name : MK_STORE_FILE, "wb");
+	out = fopen(write ? mk_user_file(name) : MK_STORE_FILE, "wb");
 	if (!out) {
 		fclose(in);
 		return;

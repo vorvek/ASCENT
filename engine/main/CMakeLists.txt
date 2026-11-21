@@ -7,12 +7,13 @@ set(MAIN_SOURCES
   menu.c newmenu.c kconfig.c joydefs.c gauges.c hud.c automap.c kmatrix.c
   endlevel.c terrain.c gamefont.c newdemo.c songs.c digi.c
   bm.c bmread.c piggy.c paging.c texmerge.c gamemine.c gamesave.c polyobj.c
-  dtufile.c acm.c dtumusic.c dtufoot.c
+  dtufile.c acm.c dtumusic.c dtuogg.c dtufoot.c
   robot.c vclip.c effects.c weapon.c powerup.c mglobal.c hash.c
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
-  dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuopts.c)
+  dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuopts.c
+  dtumovie.c mvedec.c dtusoak.c dtuhdui.c)
 
 add_library(d_main OBJECT EXCLUDE_FROM_ALL ${MAIN_SOURCES})
 target_include_directories(d_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -54,3 +55,10 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(test_dtudata PRIVATE
     -Wno-error=implicit-int -Wno-implicit-int -Wno-unknown-pragmas)
 endif()
+
+# The MVE decoder. With no argument test_mvedec checks a small movie that
+# it builds in memory; with a file name it decodes a movie of the game for
+# the compare with ffmpeg (docs/formats/mve.md).
+add_executable(test_mvedec test_mvedec.c mvedec.c)
+target_link_libraries(test_mvedec PRIVATE d_common)
+add_test(NAME test_mvedec COMMAND test_mvedec)

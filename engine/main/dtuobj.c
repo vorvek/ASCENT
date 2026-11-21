@@ -50,10 +50,15 @@
 #include "dtuchar.h"
 #include "digi.h"
 #include "sounds.h"
+#include "dtufoot.h"		// ASCENT: the footsteps of the creatures
 #include "fireball.h"
 #include "palette.h"
 #include "dtumusic.h"
 #include "dtuchar.h"
+#include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
+#include "dtucombat.h"	// ASCENT: the frame of the player for its body
+#include "dtumovie.h"
+#include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -85,6 +90,22 @@ int Dtu_fix_attack_sound = 1;
 // the two segments (0x9810D). The BRN files of the disc are copies of one
 // matrix that fits no level (docs/formats/brn.md), so the default is 1.
 int Dtu_fix_brain = 1;
+
+// The option -origobj (or -noimprovedpaths, a test option that changes
+// nothing else): Dtu_improved_pathfinding has no effect.
+static int Orig_obj = 0;
+
+// Dtu_improved_pathfinding (dtuopts.h): paths for the body of a person, a
+// body that stops at the reach of its weapon, and a corpse that lies on the
+// floor. See docs/re/ai.md, "Improved pathfinding".
+static int improved_paths(void)
+{
+	return Dtu_improved_pathfinding && !Orig_obj;
+}
+
+// The reach of the weapon of each model, see model_weapon_reach(). 0: not
+// computed, -1: no weapon box. Cleared at the setup of a level.
+static fix Model_reach[MAX_POLYGON_MODELS];
 
 //------------------------------------------------------------------------
 // Tables
@@ -169,6 +190,20 @@ typedef struct dtu_ai_local {
 	// all creatures (0x13A79C, 0x13A790, 0x167184)
 	int		flee_counter;
 	vms_vector flee_pos, flee_dir;
+	// Dtu_improved_pathfinding: the point of the path that the creature
+	// walks to (see path_target()), the last progress to it, and the number
+	// of new plans since the last point that it reached.
+	short		path_tgt;
+	short		prog_tgt;
+	fix		prog_time, prog_dist;
+	ubyte		replans;
+	short		stall_tgt;				// the point where the creature was blocked
+	ubyte		body_line;				// the line to the player is free for the body
+	// test log of -objlogpos: the hits of the move since the last line
+	short		log_hits[4];			// wall, top, floor, object
+	short		log_hit_seg, log_hit_side;
+	fix		log_wall_time;			// the game time of the last wall hit (-testkill N,1)
+	short		log_hit_obj;			// the object of the last object hit
 } dtu_ai_local;
 
 static dtu_ai_local Ail[MAX_OBJECTS];
@@ -233,6 +268,8 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 static fix spell_hit(int spell,object *target,object *attacker);
 static void push_dressing(object *mover,object *d,int strength);
 static int is_hostile(object *obj);
+static fix model_weapon_reach(object *obj);
+static fix creature_stop_dist(object *obj);
 
 // The attack of the player
 static int Player_swing_done = 0;
@@ -240,6 +277,8 @@ static int Player_swing_done = 0;
 static FILE *Obj_log = NULL;
 static int Obj_log_frames = 0;		// option -objlogframes: a line for each change of the animation frame
 static int Obj_log_pos = 0;			// option -objlogpos N: the place of each active creature each N frames
+static int Test_kill = 0;				// option -testkill N[,W] (test): each N frames the nearest active creature dies
+static int Test_kill_wall = 0;		// W 1: only a creature that hit a wall in the last half second
 static int Test_pos_pending;
 
 #define MAX_IGNORE_OBJS 100		// as in physics.c
@@ -398,8 +437,9 @@ void dtu_get_body_size(object *obj, fix *radius, fix *half_height)
 }
 
 // 0x748D9. The cylinder of the body for collisions. A model with a torso
-// box gives the torso. The executable uses model 16 for a player. The port
-// has the constants of physics.h for the player.
+// box gives the torso. The executable uses model 16 for a player (0x748F4):
+// the 17th model of the archive of the player, with the frame of the model
+// of the hand. Without that model the port has the constants of physics.h.
 void dtu_get_body_cylinder(object *obj, vms_vector *center, fix *radius, fix *half_height)
 {
 	polymodel *po = obj_model(obj);
@@ -408,6 +448,27 @@ void dtu_get_body_cylinder(object *obj, vms_vector *center, fix *radius, fix *ha
 	*center = obj->pos;
 
 	if (obj->type == OBJ_PLAYER) {
+		po = N_polygon_models > 16 ? &Polygon_models[16] : NULL;
+		frame = dtu_combat_view_frame();
+		if (Dtu_player_walk && po && po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius && po->n_frames > 0) {
+			if (frame < 0 || frame >= po->n_frames)
+				frame = 0;
+			if ((po->box_flags & DTU_BOX_TORSO) && po->torso_center && po->torso_radius && po->torso_half_height) {
+				vms_matrix m;
+				vms_vector ofs;
+
+				vm_copy_transpose_matrix(&m,&obj->orient);
+				vm_vec_rotate(&ofs,&po->torso_center[0],&m);
+				vm_vec_add2(center,&ofs);
+				*radius = po->torso_radius[0];
+				*half_height = po->torso_half_height[frame];
+			}
+			else {
+				*radius = po->body_radius[0];
+				*half_height = po->body_half_height[0];
+			}
+			return;
+		}
 		*radius = DTU_BODY_RAD;
 		*half_height = DTU_BODY_HALF_HEIGHT;
 		return;
@@ -656,6 +717,9 @@ void dtu_objects_init(void)
 	if (FindArg("-origobj"))
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break = Dtu_fix_push_frame = 0;
+	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
+	if (FindArg("-origobj") || FindArg("-noimprovedpaths"))
+		Orig_obj = 1;
 	if (FindArg("-noattack"))
 		Dtu_creatures_attack = 0;
 	if (FindArg("-idleanim"))
@@ -666,6 +730,8 @@ void dtu_objects_init(void)
 		Obj_log_frames = 1;
 	if ((t = FindArg("-objlogpos")) != 0 && t+1 < Num_args)
 		Obj_log_pos = atoi(Args[t+1]);
+	if ((t = FindArg("-testkill")) != 0 && t+1 < Num_args)
+		sscanf(Args[t+1],"%d,%d",&Test_kill,&Test_kill_wall);
 
 	if (!Dtu_objects_enabled)
 		return;
@@ -830,6 +896,7 @@ void dtu_objects_level_setup(void)
 	Dtu_clock = 0;
 	Ref_tick_count = Ref_ticks_now = 0;
 	Ref_tick_acc = 0;
+	memset(Model_reach,0,sizeof(Model_reach));
 
 	// 0xA7E97 at the end of each $MONSTER line: the NPC table replaces
 	// thaco and armor_class (and the spell levels and points, which
@@ -973,6 +1040,19 @@ void dtu_objects_level_setup(void)
 					Objects[i].contains_type,Objects[i].contains_id,Objects[i].contains_count,Objects[i].dtu.m_1b0 & DTU_SCRIPT_MASK,
 					Objects[i].rtype.pobj_info.model_num,f2fl(Objects[i].size),
 					f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
+		for (i=0;i<=Highest_object_index;i++)
+			if (Objects[i].type == OBJ_ROBOT) {
+				polymodel *po = obj_model(&Objects[i]);
+				int l = Dtu_anim_first[DAS_DIE+1] - 1;
+
+				if (po && po->body_half_height && po->body_center && po->box1_min && l < po->n_frames)
+					dtu_obj_log("body: obj %d %s model %d: rest hh %.2f center %.2f min %.2f r %.2f, dead hh %.2f center %.2f min %.2f max %.2f r %.2f, torso hh(last) %.2f r(0) %.2f, reach %.2f stop %.2f attack %.2f",
+						i,dtu_object_name(&Objects[i]),Objects[i].rtype.pobj_info.model_num,
+						f2fl(po->body_half_height[0]),f2fl(po->body_center[0].y),f2fl(po->box1_min[0].y),f2fl(po->body_radius[0]),
+						f2fl(po->body_half_height[l+1]),f2fl(po->body_center[l+1].y),f2fl(po->box1_min[l+1].y),f2fl(po->box1_max[l+1].y),f2fl(po->body_radius[l+1]),
+						po->torso_half_height ? f2fl(po->torso_half_height[l]) : -1.0,po->torso_radius ? f2fl(po->torso_radius[0]) : -1.0,
+						f2fl(model_weapon_reach(&Objects[i])),f2fl(creature_stop_dist(&Objects[i])),f2fl(Objects[i].size + ConsoleObject->size + i2f(2)));
+			}
 	}
 }
 
@@ -1004,6 +1084,28 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 
 	if (obj->type != OBJ_ROBOT && obj->type != OBJ_PLAYER)
 		frame = -1;
+
+	// ASCENT: animation interpolation (Dtu_anim_interp). The frame of the
+	// game rules stays; only the picture is between the frames. An active
+	// creature counts its frames by the game time (0x11018), so the time of
+	// one frame is known at the start of a state; the other animations
+	// learn it from the frame changes.
+	if (Dtu_anim_interp && frame >= 0) {
+		static polyobj_anim_track track[MAX_OBJECTS];
+		int objnum = obj-Objects, s = DTU_ANIM_STATE(obj), next = -1;
+		fix frac = 0, est = 0;
+
+		if (s >= 0 && s < DTU_N_ANIM_STATES) {
+			int first = Dtu_anim_first[s], last = Dtu_anim_first[s+1];
+
+			if (obj->type == OBJ_ROBOT && Ail[objnum].activity == 2 && last - first > 1 && state_time(po,s) > 0)
+				est = state_time(po,s) / (last - first - 1);
+			frac = polyobj_anim_track_update(&track[objnum],obj->signature,s,frame,first,last,est,
+				(obj->type == OBJ_ROBOT && (Ail[objnum].flags & AILF_BACKWARD)) ? -1 : 1,GameTime,&next);
+		}
+		draw_polygon_model_frame_lerp(&obj->pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,next,frac,show_hidden,light,glow,alt_textures);
+		return;
+	}
 
 	draw_polygon_model_frame(&obj->pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
 }
@@ -1248,6 +1350,58 @@ static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip)
 	object_create_explosion(segnum,pos,size,vclip);
 }
 
+// ASCENT: the splash of a step of the player on floor type 1 (water), code
+// 0x434AB to 0x4351B of the footstep function 0x433E0: vclip 10 (the
+// sparkles generic.abm) at the player with the size of the player, the
+// position half the size lower and 0x100 times the side step added to x
+// and to z, the life halved. The flags 0x40 and 0x1AE bit 2 (no
+// collisions) and the call 0x6B9B0 (it does nothing for a fireball) are
+// left out: a fireball does not move. side_step is the value after the
+// change of its sign.
+//
+// The white flashes in water of the original come from this splash:
+// - vclip 10 has vlighting=10.0 in all tables, the light of the large
+//   explosions. The splash starts at 5.0 (half life) and lights the floor,
+//   the walls and the arms near the player to full light for one second
+//   at each step (0.625 s, 0.3125 s in a run).
+// - x and z are world axes, so for half of the headings every second
+//   splash is 2.8 units in front of the player, and the player walks into
+//   the sprite (radius 4.7): white sparkles fill the bottom of the view.
+// The port gives the splash no light (dtu_object_light, lighting.c) and
+// puts it to the side of the walk, on the right vector of the player.
+#define N_SPLASH_SIG	16
+static int Splash_sig[N_SPLASH_SIG];
+static int Splash_next;
+
+void dtu_water_splash(object *obj,fix side_step)
+{
+	object *o;
+
+	if (obj == NULL || obj->segnum < 0 || Vclip[10].num_frames <= 0 || Vclip[10].play_time <= 0)
+		return;
+	o = object_create_explosion(obj->segnum,&obj->pos,obj->size,10);
+	if (o == NULL)
+		return;
+	o->pos.y -= obj->size >> 1;
+	o->lifeleft >>= 1;
+	// the length of the offset of the original: 0x100 * |side_step| * sqrt(2)
+	vm_vec_scale_add2(&o->pos,&obj->orient.rvec,fixmul(side_step << 8,0x16A0A));
+	Splash_sig[Splash_next] = o->signature;
+	Splash_next = (Splash_next + 1) % N_SPLASH_SIG;
+}
+
+int dtu_is_water_splash(object *obj)
+{
+	int i;
+
+	if (obj->type != OBJ_FIREBALL || obj->id != 10)
+		return 0;
+	for (i=0;i<N_SPLASH_SIG;i++)
+		if (Splash_sig[i] == obj->signature && obj->signature != 0)
+			return 1;
+	return 0;
+}
+
 // A number of the line of a weapon ($WEAPON).
 static int weapon_int(int w,char *key,int def)
 {
@@ -1319,6 +1473,155 @@ int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos)
 // (0x695E5 only holds it on the last frame of DIE). So the corpse stays.
 static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 
+// The test log of a corpse: the lowest point of the body of the last frame
+// of DIE and the floor under the center, from a ray that starts above the
+// body (a body that is in the floor has its center below the floor).
+static void log_corpse_height(object *obj)
+{
+	polymodel *po = obj_model(obj);
+	int l = Dtu_anim_first[DAS_DIE+1] - 1, fate, seg, k;
+	fvi_query fq;
+	fvi_info hit;
+	vms_vector p0, p1;
+	fix bottom;
+
+	if (po == NULL || po->box1_min == NULL || po->n_frames <= 0)
+		return;
+	if (l >= po->n_frames)
+		l = po->n_frames - 1;
+	bottom = obj->pos.y + po->box1_min[l+1].y;
+
+	p0 = obj->pos;
+	seg = obj->segnum;
+	for (k=12;k>0;k-=2) {
+		vms_vector p = obj->pos;
+		int s;
+
+		p.y += i2f(k);
+		if ((s = find_point_seg(&p,obj->segnum)) >= 0 && ray_is_free(&p,s,&obj->pos,obj-Objects)) {
+			p0 = p;
+			seg = s;
+			break;
+		}
+	}
+	p1 = p0;
+	p1.y -= i2f(60);
+	fq.p0 = &p0;
+	fq.p1 = &p1;
+	fq.startseg = seg;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	fate = find_vector_intersection(&fq,&hit);
+	if (fate != HIT_WALL) {
+		dtu_obj_log("corpse: obj %d %s seg %d pos %.2f %.2f %.2f bottom %.2f no floor (fate %d)",(int)(obj-Objects),dtu_object_name(obj),
+			obj->segnum,f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),f2fl(bottom),fate);
+		return;
+	}
+	dtu_obj_log("corpse: obj %d %s seg %d pos %.2f %.2f %.2f bottom %.2f floor %.2f (seg %d side %d ny %.2f) height %.2f",
+		(int)(obj-Objects),dtu_object_name(obj),obj->segnum,f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),f2fl(bottom),
+		f2fl(hit.hit_pnt.y),hit.hit_side_seg,hit.hit_side,f2fl(hit.hit_wallnorm.y),f2fl(bottom - hit.hit_pnt.y));
+}
+
+// ASCENT: Dtu_improved_pathfinding. The height of the floor under the
+// point p of the body of obj: a ray of radius 0 straight down from a point
+// above p. The center of the body, raised by the same height, must see that
+// point, so that a floor behind a wall does not count. Returns 0 if no
+// floor is found.
+static int floor_under_point(object *obj,vms_vector *p,fix *floor_y)
+{
+	vms_vector top, c, p1;
+	int k, seg = -1, fate;
+	fvi_query fq;
+	fvi_info hit;
+
+	for (k=12;k>=0;k-=3) {
+		int s, cs;
+
+		top = *p;
+		top.y = obj->pos.y + i2f(k);
+		c = obj->pos;
+		c.y = top.y;
+		if ((cs = find_point_seg(&c,obj->segnum)) < 0 || (s = find_point_seg(&top,cs)) < 0)
+			continue;
+		if (s != cs && !ray_is_free(&c,cs,&top,obj-Objects))
+			continue;
+		seg = s;
+		break;
+	}
+	if (seg < 0)
+		return 0;
+
+	p1 = top;
+	p1.y -= i2f(80);
+	fq.p0 = &top;
+	fq.p1 = &p1;
+	fq.startseg = seg;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	fate = find_vector_intersection(&fq,&hit);
+	if (fate != HIT_WALL)
+		return 0;
+	*floor_y = hit.hit_pnt.y;
+	return 1;
+}
+
+// ASCENT: Dtu_improved_pathfinding. The model of a creature has its origin
+// at the center of the standing body, and the box of the last frame of DIE
+// (the body on the ground) is far below that center: box1_min.y is -6.16
+// for the Ghoul, and body_half_height is only 4.35 because the box is not
+// centered on the origin (body_center.y -1.81). So the body is put with the
+// lowest point of that box on the floor. The floor is the highest floor
+// under the center of the box and under four points of the box (at 0.6 of
+// its half size), but not more than 3.0 above the floor under the origin,
+// so that a body on stairs lies on a step and is not drawn through one.
+// Returns 0 if no floor is found.
+static int corpse_on_floor(object *obj)
+{
+	static const signed char sx[5] = { 0, -1, 1, -1, 1 }, sz[5] = { 0, -1, -1, 1, 1 };
+	polymodel *po = obj_model(obj);
+	int l = Dtu_anim_first[DAS_DIE+1] - 1, i, seg;
+	vms_vector mn, mx, q, ofs, p;
+	vms_matrix m;
+	fix base, best, f;
+
+	if (po == NULL || po->box1_min == NULL || po->box1_max == NULL || po->n_frames <= 0)
+		return 0;
+	// a model with fewer frames (fMephit): its last frame
+	if (l >= po->n_frames)
+		l = po->n_frames - 1;
+	mn = po->box1_min[l+1];
+	mx = po->box1_max[l+1];
+	if (!floor_under_point(obj,&obj->pos,&base))
+		return 0;
+	best = base;
+
+	vm_copy_transpose_matrix(&m,&obj->orient);
+	for (i=0;i<5;i++) {
+		q.x = (mn.x + mx.x)/2 + sx[i] * fixmul(mx.x - mn.x,F1_0*3/10);
+		q.y = 0;
+		q.z = (mn.z + mx.z)/2 + sz[i] * fixmul(mx.z - mn.z,F1_0*3/10);
+		vm_vec_rotate(&ofs,&q,&m);
+		p = obj->pos;
+		p.x += ofs.x;
+		p.z += ofs.z;
+		if (floor_under_point(obj,&p,&f) && f > best && f - base < i2f(3))
+			best = f;
+	}
+
+	p = obj->pos;
+	p.y = best - mn.y;
+	if ((seg = find_point_seg(&p,obj->segnum)) < 0)
+		return 0;
+	obj->pos = p;
+	if (seg != obj->segnum)
+		obj_relink(obj-Objects,seg);
+	return 1;
+}
+
 static void creature_is_corpse(object *obj)
 {
 	polymodel *po = obj_model(obj);
@@ -1326,10 +1629,16 @@ static void creature_is_corpse(object *obj)
 	monster_info *mi = &Monster_info[obj->id];
 
 	// 0x6A48B to 0x6A510: the body is put on the floor ("RLH: pushing (%d)
-	// into floor by %.2f"). The executable measures with the cylinder of
-	// 0x748D9. The port uses the box of the body of the last frame, so
-	// that the body lies on the floor. (guess for the height)
-	if (po && po->body_half_height && frame >= 0 && frame < po->n_frames) {
+	// into floor by %.2f"). The executable takes d from 0x6C30E (the
+	// distance from the bottom of the torso box of the frame to the floor,
+	// a negative d is in the floor) and moves the body up by -d, or down by
+	// d plus torso_radius[0] of the model (the first value on the stack
+	// that 0x748D9 fills). The port uses the half height of the box of the
+	// body of the last frame (guess for the height). Both leave the body
+	// in the floor, see corpse_on_floor().
+	if (improved_paths() && corpse_on_floor(obj))
+		;
+	else if (po && po->body_half_height && frame >= 0 && frame < po->n_frames) {
 		fix d = creature_floor_dist(obj,0,po->body_half_height[frame+1]);
 
 		if (d != DTU_FLOOR_PROBE)
@@ -1362,6 +1671,8 @@ static void creature_is_corpse(object *obj)
 	obj->control_type = CT_NONE;
 	obj->movement_type = MT_NONE;
 	dtu_obj_log("obj %d %s: is a corpse",(int)(obj-Objects),dtu_object_name(obj));
+	if (Obj_log)
+		log_corpse_height(obj);
 }
 
 // The death of a creature in the damage function (0x2A091 to 0x2A245).
@@ -2226,7 +2537,11 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 			blood(other);
 			if (hp > i2f(2) && Monster_info[other->id].hit_sound > 0)
 				sound_at(Monster_info[other->id].hit_sound,other->segnum,point,F1_0);
-			else if (hp >= F1_0)
+			// ASCENT: the original plays no weapon sound when the hit
+			// kills (0x27650: die_sound, or monster_kill_sound, which no
+			// shipped table sets). The port plays the impact sound on the
+			// killing hit too (docs/re/bugs.md).
+			else
 				sound_at(weapon_int(weapon,"monster_hit_sound",-1),other->segnum,point,F1_0/4);
 		}
 		else
@@ -2464,6 +2779,115 @@ static void ai_fire(object *obj,fix dist)
 }
 
 //------------------------------------------------------------------------
+// ASCENT: Dtu_improved_pathfinding, the body of a creature at the player
+
+// The reach of the melee weapon of a model: the largest distance from the
+// center of the creature to the center of the player, straight in front of
+// the creature, at which the weapon test of weapon_test() touches the
+// cylinder of the player in a frame that can hit (frame 8 of ATTACK and
+// ATTACK2 to the end of the state). weapon_test() moves the test position
+// forward by the square root of 2, takes the weapon sphere of the frame
+// (get_weapon_sphere()) and tests the segment from its center outward by
+// its radius, with its radius, against the cylinder of the player. The
+// test itself does not change.
+
+static fix model_weapon_reach(object *obj)
+{
+	polymodel *po = obj_model(obj);
+	int n = obj->rtype.pobj_info.model_num, s, f, k;
+	fix best = -1;
+
+	if (po == NULL || n < 0 || n >= MAX_POLYGON_MODELS)
+		return 0;
+	if (Model_reach[n])
+		return Model_reach[n] > 0 ? Model_reach[n] : 0;
+
+	if ((po->box_flags & DTU_BOX_BODY) && po->weapon_center && po->weapon_radius)
+		for (s=DAS_ATTACK;s<=DAS_ATTACK2;s++)
+			for (f=Dtu_anim_first[s]+8;f<Dtu_anim_first[s+1] && f<po->n_frames;f++) {
+				vms_vector c = po->weapon_center[f], dir = c;
+				fix wr = po->weapon_radius[f], hit_r = DTU_BODY_RAD + wr;
+
+				vm_vec_normalize_quick(&dir);
+				c.z += 0x16a0a;		// the test position of weapon_test()
+				for (k=0;k<2;k++) {
+					fix x = c.x + (k ? fixmul(dir.x,wr) : 0);
+					fix z = c.z + (k ? fixmul(dir.z,wr) : 0);
+					fix d;
+
+					if (abs(x) >= hit_r)
+						continue;
+					d = z + fix_sqrt(fixmul(hit_r,hit_r) - fixmul(x,x));
+					if (d > best)
+						best = d;
+				}
+			}
+
+	Model_reach[n] = (best > 0) ? best : -1;
+	return (best > 0) ? best : 0;
+}
+
+// The distance in x and z from the player at which a creature that walks
+// to the player stops: the reach of its weapon minus 1.0 (the creature
+// turns to the player at a rate, and the player moves), but not more than
+// the distance at which it starts an attack (choose_attack_goal()) minus
+// 1.0, and not less than the bodies (torso cylinder and player cylinder).
+// 0: no stop (a creature with a ranged attack or with no weapon box).
+static fix creature_stop_dist(object *obj)
+{
+	fix reach, attack, r, hh;
+	vms_vector c;
+
+	if (Robot_info[obj->id].attack_type != 1)
+		return 0;
+	reach = model_weapon_reach(obj);
+	if (reach <= 0)
+		return 0;
+	attack = obj->size + ConsoleObject->size + i2f(2);
+	dtu_get_body_cylinder(obj,&c,&r,&hh);
+	reach -= F1_0;
+	if (reach > attack - F1_0)
+		reach = attack - F1_0;
+	if (reach < r + DTU_BODY_RAD)
+		reach = r + DTU_BODY_RAD;
+	return reach;
+}
+
+// A hostile creature that sees the player does not walk nearer to the
+// player than creature_stop_dist(): the part of its velocity toward the player is cut
+// so that it stops there. The test of a hit does not change, and the
+// player can still walk up to the creature.
+static void stop_at_player(object *obj)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	vms_vector d;
+	fix stop, dist, toward, allowed, r, hh;
+
+	if (!is_hostile(obj) || ConsoleObject == NULL || Player_is_dead || Dtu_player_dead)
+		return;
+	// only a creature that sees the player (not one behind a door)
+	if (!Ail[obj-Objects].previous_visibility)
+		return;
+	if ((stop = creature_stop_dist(obj)) <= 0)
+		return;
+	dtu_get_body_size(obj,&r,&hh);
+	if (abs(obj->pos.y - ConsoleObject->pos.y) > hh + DTU_BODY_HALF_HEIGHT)
+		return;
+
+	vm_vec_sub(&d,&obj->pos,&ConsoleObject->pos);
+	d.y = 0;
+	dist = vm_vec_normalize(&d);
+	if (dist < 0x100)
+		return;
+	toward = -vm_vec_dot(&pi->velocity,&d);
+	if (toward <= 0 || dist - stop > fixmul(toward,FrameTime))
+		return;
+	allowed = (dist > stop && FrameTime > 0) ? fixdiv(dist - stop,FrameTime) : 0;
+	if (toward > allowed)
+		vm_vec_scale_add2(&pi->velocity,&d,toward - allowed);
+}
+
+//------------------------------------------------------------------------
 // Movement of a creature (pmon.c, 0x9F153)
 
 // 0x6C662 for a creature: gravity and the lift out of the floor.
@@ -2496,7 +2920,10 @@ static void creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_h
 	}
 	else {
 		ail->push_acc = 0;
-		if (d != 0 && !is_flying(obj))
+		// Dtu_improved_pathfinding: a creature that flies falls when it
+		// dies. The executable has no gravity for it, so its body stays
+		// where it died, in the air.
+		if (d != 0 && (!is_flying(obj) || (improved_paths() && DTU_ANIM_STATE(obj) == DAS_DIE)))
 			accel->y -= fixmul(d,DTU_GRAVITY_K);
 	}
 }
@@ -2544,6 +2971,10 @@ void dtu_creature_physics_sim(object *obj)
 	int ignore_obj_list[MAX_IGNORE_OBJS], n_ignore_objs = 0;
 	fvi_query fq;
 	fvi_info hit;
+	// Dtu_improved_pathfinding: a body that hits a wall slides along it for
+	// the rest of the frame time (sim_time), as the ship of Descent 1 does.
+	int imp = improved_paths(), hits = 0;
+	fix sim_time = FrameTime, want = 0, moved = 0;
 
 	if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI)
 		return;
@@ -2596,8 +3027,13 @@ void dtu_creature_physics_sim(object *obj)
 		polymodel *po = obj_model(obj);
 		int frame = DTU_ANIM_FRAME(obj);
 
-		if (po && po->body_half_height && frame >= 0 && frame < po->n_frames)
+		if (po && po->body_half_height && frame >= 0 && frame < po->n_frames) {
 			half_height = po->body_half_height[frame+1];
+			// Dtu_improved_pathfinding: the distance from the origin down to
+			// the bottom of the box of the frame (see corpse_on_floor())
+			if (improved_paths() && po->box1_min && po->box1_min[frame+1].y < 0)
+				half_height = -po->box1_min[frame+1].y;
+		}
 	}
 
 	vm_vec_copy_scale(&accel,&pi->thrust,fixdiv(F1_0,pi->mass));
@@ -2606,7 +3042,7 @@ void dtu_creature_physics_sim(object *obj)
 
 	// A dying creature that does not fly falls: one eighth of the velocity
 	// in x and z on each frame (0x9F4E2).
-	if (!is_flying(obj) && obj->ctype.ai_info.CURRENT_STATE == DAIS_DEAD)
+	if ((!is_flying(obj) || improved_paths()) && obj->ctype.ai_info.CURRENT_STATE == DAIS_DEAD)
 		ail->falling = 1;
 	if (ail->falling) {
 		pi->velocity.x /= 8;
@@ -2618,7 +3054,11 @@ void dtu_creature_physics_sim(object *obj)
 	if (!is_flying(obj))
 		vm_vec_zero(&pi->thrust);
 
+	if (imp && DTU_ANIM_STATE(obj) != DAS_DIE)
+		stop_at_player(obj);
+
 	start_pos = obj->pos;
+	want = fixmul(vm_vec_mag(&pi->velocity),FrameTime);
 
 	for (;;) {
 
@@ -2628,9 +3068,9 @@ void dtu_creature_physics_sim(object *obj)
 			break;
 		}
 
-		frame_vec.x = fixmul(pi->velocity.x,FrameTime);
-		frame_vec.y = fixmul(pi->velocity.y,FrameTime);
-		frame_vec.z = fixmul(pi->velocity.z,FrameTime);
+		frame_vec.x = fixmul(pi->velocity.x,sim_time);
+		frame_vec.y = fixmul(pi->velocity.y,sim_time);
+		frame_vec.z = fixmul(pi->velocity.z,sim_time);
 
 		if (++tries > 5) {
 			ail->retry_count = 1;
@@ -2665,16 +3105,36 @@ void dtu_creature_physics_sim(object *obj)
 
 		Fvi_dtu_body = 1;
 		Fvi_dtu_rad2 = half_height;
+		// Dtu_improved_pathfinding: the top side is tested at the top of the
+		// body (half height above the center). The executable tests it at
+		// 1.5 times the half height, so a tall creature (an ogre, 28.7 from
+		// the floor) cannot enter a corridor that its body fits in.
+		if (imp)
+			Fvi_dtu_rad2 = half_height*2/3;
 		fate = find_vector_intersection(&fq,&hit);
 		Fvi_dtu_body = 0;
 
 		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
 			fate = 5;		// the floor
+		if (fate != HIT_NONE) {
+			int k = (fate == 5) ? 2 : (fate == HIT_OBJECT) ? 3 : (fate == HIT_WALL && hit.hit_side == WTOP) ? 1 : 0;
+
+			ail->log_hits[k]++;
+			if (k == 0)
+				ail->log_wall_time = GameTime;
+			if (fate != HIT_OBJECT) {
+				ail->log_hit_seg = hit.hit_side_seg;
+				ail->log_hit_side = hit.hit_side;
+			}
+			else
+				ail->log_hit_obj = hit.hit_object;
+		}
 
 		if (fate == HIT_NONE) {
 			int segnum = find_point_seg(&new_pos,obj->segnum);
 
 			if (segnum != -1) {
+				moved += vm_vec_dist(&obj->pos,&new_pos);
 				obj->pos = new_pos;
 				if (segnum != obj->segnum)
 					obj_relink(objnum,segnum);
@@ -2682,13 +3142,18 @@ void dtu_creature_physics_sim(object *obj)
 			ail->retry_count = 0;
 			ail->blocked_count = 0;
 			ail->blocker = -1;
+			// a slide that did not get far: the AI may take another way
+			if (imp && hits && moved*4 < want)
+				ail->retry_count = 1;
 			break;
 		}
 		else if (fate == 5) {				// 0x6CD45
 			vms_vector c1;
 			fix feet = obj->pos.y - half_height, diff;
 
-			obj->pos = start_pos;
+			// (obj->pos is start_pos here, but after a slide)
+			if (!imp)
+				obj->pos = start_pos;
 
 			// A floor that is less than 5.5 above the feet lifts the
 			// creature (0x6C186, see dtu_knee_high() in physics.c).
@@ -2702,7 +3167,7 @@ void dtu_creature_physics_sim(object *obj)
 				vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,-d);
 			}
 		}
-		else if (fate == HIT_WALL && hit.hit_side == WTOP) {
+		else if (fate == HIT_WALL && hit.hit_side == WTOP && !imp) {
 			// 0x9F97A: a hit on a top side (or a bottom side, above) is
 			// not a wall hit.
 			obj->pos = start_pos;
@@ -2727,6 +3192,34 @@ void dtu_creature_physics_sim(object *obj)
 				}
 			}
 
+			if (imp) {
+				// Dtu_improved_pathfinding: the body goes to the point where
+				// it touches the wall (or the ceiling), loses the part of the
+				// velocity into the wall, and moves on with the rest of the
+				// frame time. The executable takes 1.75 times that part away
+				// and stops the body for the frame, so a body that walks into
+				// the corner of an opening stays at the corner.
+				fix len = vm_vec_mag(&frame_vec);
+				int seg = find_point_seg(&hit.hit_pnt,obj->segnum);
+
+				hits++;
+				if (seg >= 0 && len > 0) {
+					fix m = vm_vec_dist(&obj->pos,&hit.hit_pnt);
+
+					if (m > len)
+						m = len;
+					moved += m;
+					sim_time -= fixmul(sim_time,fixdiv(m,len));
+					obj->pos = hit.hit_pnt;
+					if (seg != obj->segnum)
+						obj_relink(objnum,seg);
+				}
+				if (d < 0)
+					vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,-d);
+				if (sim_time <= 0)
+					break;
+				continue;
+			}
 			vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,fixmul(-d,DTU_WALL_BOUNCE));
 			obj->pos = start_pos;
 			ail->retry_count = 1;
@@ -2735,7 +3228,8 @@ void dtu_creature_physics_sim(object *obj)
 		else if (fate == HIT_OBJECT) {	// 0x9F9C0 and 0x9FB56
 			object *other = &Objects[hit.hit_object];
 
-			obj->pos = start_pos;
+			if (!imp)
+				obj->pos = start_pos;
 			ail->retry_count = ai_tick(objnum,2);
 
 			if (ail->blocker != hit.hit_object) {
@@ -2758,6 +3252,21 @@ void dtu_creature_physics_sim(object *obj)
 				ignore_obj_list[n_ignore_objs++] = hit.hit_object;
 				continue;
 			}
+			// Dtu_improved_pathfinding: the body goes around scenery. It
+			// loses the part of the velocity toward the center of the
+			// scenery and tries again.
+			if (imp && other->type == OBJ_DRESSING && !(other->flags & OF_SHOULD_BE_DEAD)) {
+				vms_vector n;
+				fix vn;
+
+				vm_vec_sub(&n,&obj->pos,&other->pos);
+				n.y = 0;
+				if (vm_vec_normalize(&n) > 0x100 && (vn = vm_vec_dot(&pi->velocity,&n)) < 0) {
+					hits++;
+					vm_vec_scale_add2(&pi->velocity,&n,-vn);
+					continue;
+				}
+			}
 			// The body stops at the player and at scenery.
 			pi->velocity.x = pi->velocity.z = 0;
 			break;
@@ -2779,6 +3288,10 @@ void dtu_creature_physics_sim(object *obj)
 			}
 		}
 	}
+
+	// ASCENT: 0x9FCF1, the footstep of a walking creature (dtufoot.c)
+	if (ail->activity == 2)
+		dtufoot_creature(obj);
 }
 
 //------------------------------------------------------------------------
@@ -3010,6 +3523,7 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
 	int head = 0, tail = 0, found = -1, i, n, cur;
 	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening;
+	int walker = improved_paths() && obj->type == OBJ_ROBOT && !is_flying(obj);
 
 	if (start < 0 || start > Highest_segment_index)
 		return 0;
@@ -3068,6 +3582,12 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 
 			if (child < 0 || visited[child])
 				continue;
+			// Dtu_improved_pathfinding: a creature that walks does not go
+			// up through the top side of a segment (an opening in the
+			// ceiling, side 1 in the levels of the game). The search of the
+			// executable is the one of the ships of Descent 1.
+			if (side == WTOP && walker)
+				continue;
 			if ((WALL_IS_DOORWAY(segp,side) & WID_FLY_FLAG) || door_is_openable(obj,segp,side)) {
 				visited[child] = 1;
 				parent[child] = cur;
@@ -3101,6 +3621,10 @@ static void path_set(object *obj,int len,int flag)
 	ail->path_dir = 1;
 	if (flag != 2)
 		ail->path_flag = flag;
+	ail->path_tgt = 0;
+	ail->prog_tgt = -1;
+	ail->replans = 0;
+	ail->stall_tgt = -1;
 }
 
 // 0x172DE create_n_segment_path
@@ -3181,6 +3705,241 @@ static void move_towards(object *obj,vms_vector *vec_to_player);
 static void add_move(object *obj,vms_vector *dir);
 static void turn_towards_vector(vms_vector *goal,object *obj,fix rate);
 
+//------------------------------------------------------------------------
+// ASCENT: Dtu_improved_pathfinding, paths for the body of a person.
+//
+// The path of the executable goes through the centers of the segments, and
+// the port of Dtu_fix_path_follow through the centers of the sides between
+// two segments. A creature that walks to the center of an opening from the
+// side touches the corner of the opening with its body, and the move of
+// the executable stops a body at a wall. Here each opening of the path has
+// two points: one in front of the opening and one behind it, both on the
+// line through the center of the opening that goes from the center of one
+// segment to the center of the next, at the radius of the body from the
+// opening. So the body goes through the opening straight. A creature goes
+// to a later point at once when the line to it is free for its body
+// (body_line_free()). When it does not come nearer to its point for 1.5
+// seconds it goes back to the point in front of the opening, and after
+// that it plans a new path that leaves out the segment behind the opening.
+// The move of the body slides along a wall (dtu_creature_physics_sim()).
+
+// The radius of the body for the paths: the torso cylinder of the model,
+// 1.0 to 6.0.
+static fix path_body_radius(object *obj)
+{
+	vms_vector c;
+	fix r, hh;
+
+	dtu_get_body_cylinder(obj,&c,&r,&hh);
+	if (r < F1_0)
+		r = F1_0;
+	if (r > i2f(6))
+		r = i2f(6);
+	return r;
+}
+
+// 1 if a body of the radius of obj can go in a straight line from its
+// center to p (walls only, objects do not count). The walls get the radius
+// of the body, the floor one half of it, the ceiling nothing (the query of
+// fvi.c with Fvi_dtu_body 1 adds 1.0 to the radius for the walls).
+static int body_line_free(object *obj,vms_vector *p)
+{
+	fvi_query fq;
+	fvi_info hit;
+	fix r = path_body_radius(obj) - F1_0;
+	int fate;
+
+	if (r < 0x1000)
+		r = 0x1000;
+	int k;
+
+	// The line to p, and the line at the height of the center of the body
+	// (the body walks level, a line that goes up a stair can be free where
+	// the body is not)
+	for (k=0;k<2;k++) {
+		vms_vector q = *p;
+
+		if (k)
+			q.y = obj->pos.y;
+		fq.p0 = &obj->pos;
+		fq.p1 = &q;
+		fq.startseg = obj->segnum;
+		fq.rad = r;
+		fq.thisobjnum = obj-Objects;
+		fq.ignore_obj_list = NULL;
+		fq.flags = 0;
+		Fvi_dtu_body = 1;
+		Fvi_dtu_rad2 = 0;
+		fate = find_vector_intersection(&fq,&hit);
+		Fvi_dtu_body = 0;
+		if (fate != HIT_NONE)
+			return 0;
+		if (is_flying(obj))
+			break;
+	}
+	return 1;
+}
+
+// The point t of the path of obj: 2k is in front of the opening from
+// path[k] to path[k+1], 2k+1 behind it, and 2(len-1) is the center of the
+// last segment.
+static void path_target(object *obj,int t,vms_vector *p)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	int k = t >> 1, side;
+	segment *segp;
+	vms_vector c, a, b, d;
+	fix off, lim;
+
+	if (k >= ail->path_len-1) {
+		compute_segment_center(p,&Segments[ail->path[ail->path_len-1]]);
+		return;
+	}
+	segp = &Segments[ail->path[k]];
+	for (side=0;side<MAX_SIDES_PER_SEGMENT;side++)
+		if (segp->children[side] == ail->path[k+1])
+			break;
+	if (side == MAX_SIDES_PER_SEGMENT) {
+		compute_segment_center(p,segp);
+		return;
+	}
+	compute_center_point_on_side(&c,segp,side);
+	compute_segment_center(&a,segp);
+	compute_segment_center(&b,&Segments[ail->path[k+1]]);
+	vm_vec_sub(&d,&b,&a);
+	d.y = 0;
+	if (vm_vec_normalize(&d) < 0x100) {
+		*p = c;
+		return;
+	}
+	// the radius of the body plus 0.5, but not farther than 0.4 of the way
+	// to the center of the segment
+	off = path_body_radius(obj) + F1_0/2;
+	vm_vec_sub(&a,(t & 1) ? &b : &a,&c);
+	a.y = 0;
+	lim = fixmul(vm_vec_mag(&a),F1_0*2/5);
+	if (off > lim)
+		off = lim;
+	vm_vec_scale_add(p,&c,&d,(t & 1) ? off : -off);
+}
+
+static int find_path(object *obj,int start,int end,short *out,int max_out,int max_depth,int random_flag,int avoid_seg);
+
+// path_advance() of Dtu_improved_pathfinding. Returns 0 at the end of the
+// path, else 1 with the point to walk to in *goal.
+static int path_advance_body(object *obj,vms_vector *goal)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	int last = 2*(ail->path_len-1), t = ail->path_tgt, k, j;
+	fix threshold = fixmul(vm_vec_mag_quick(&obj->mtype.phys_info.velocity),FrameTime)*2 + F1_0 + F1_0/2;
+	vms_vector v;
+	fix dist;
+
+	if (ail->path_len < 2)
+		return 0;
+	if (t < 0)
+		t = 0;
+
+	// A creature that is in a later segment of the path is through the
+	// openings before it (it still walks to the point behind the last one).
+	for (k=ail->path_len-1;k>0 && 2*k-1>t;k--)
+		if (ail->path[k] == obj->segnum) {
+			t = 2*k-1;
+			break;
+		}
+
+	// the points that the creature has reached
+	for (;;) {
+		if (t > last)
+			return 0;
+		path_target(obj,t,goal);
+		vm_vec_sub(&v,goal,&obj->pos);
+		if (!is_flying(obj))
+			v.y = 0;
+		if (vm_vec_mag(&v) >= threshold)
+			break;
+		t++;
+		if (t > ail->stall_tgt)
+			ail->replans = 0;
+	}
+
+	// A later point that the body can walk to in a straight line: the
+	// creature takes the short way (three points at most, on a reference
+	// tick).
+	if (Ref_ticks_now > 0)
+		for (j=(t+3 < last) ? t+3 : last;j>t;j--) {
+			vms_vector p;
+
+			path_target(obj,j,&p);
+			if (body_line_free(obj,&p)) {
+				t = j;
+				*goal = p;
+				break;
+			}
+		}
+
+	// The progress to the point. A creature that does not get 1.0 nearer
+	// in 1.5 seconds while it walks is blocked.
+	vm_vec_sub(&v,goal,&obj->pos);
+	if (!is_flying(obj))
+		v.y = 0;
+	dist = vm_vec_mag(&v);
+	if (t != ail->prog_tgt || anim_speed(obj,-1) == 0 || obj->ctype.ai_info.CURRENT_STATE == DAIS_ATAK) {
+		ail->prog_tgt = t;
+		ail->prog_time = GameTime;
+		ail->prog_dist = dist;
+	}
+	else if (dist < ail->prog_dist - F1_0) {
+		ail->prog_dist = dist;
+		ail->prog_time = GameTime;
+	}
+	else if (GameTime - ail->prog_time > F1_0*3/2) {
+		int goal_seg = ail->path[ail->path_len-1], avoid = -1, len;
+
+		ail->replans++;
+		if ((t & 1) && ail->replans == 1) {
+			// back to the point in front of the opening
+			ail->stall_tgt = t;
+			t--;
+			dtu_obj_log("path: obj %d %s: blocked at the opening from %d to %d, goes back in front of it",
+				(int)(obj-Objects),dtu_object_name(obj),ail->path[t>>1],ail->path[(t>>1)+1]);
+		}
+		else if (ail->replans > 3) {
+			// no way for the body: the AI goes on without the path
+			dtu_obj_log("path: obj %d %s: blocked, gives up the path",(int)(obj-Objects),dtu_object_name(obj));
+			ail->replans = 0;
+			ail->stall_tgt = -1;
+			ail->path_len = 0;
+			ail->path_tgt = 0;
+			return 0;
+		}
+		else {
+			// a new path, without the segment behind the opening
+			if ((t >> 1) + 1 < ail->path_len && ail->path[(t >> 1) + 1] != goal_seg)
+				avoid = ail->path[(t >> 1) + 1];
+			len = find_path(obj,obj->segnum,goal_seg,ail->path,DTU_PATH_MAX,-1,0,avoid);
+			if (len < 2 || ail->path[len-1] != goal_seg)
+				len = find_path(obj,obj->segnum,goal_seg,ail->path,DTU_PATH_MAX,-1,0,-1);
+			dtu_obj_log("path: obj %d %s: blocked, new path of %d segments from %d to %d without %d",
+				(int)(obj-Objects),dtu_object_name(obj),len,obj->segnum,goal_seg,avoid);
+			ail->path_len = len;
+			ail->path_dir = 1;
+			ail->stall_tgt = 2*DTU_PATH_MAX;
+			t = 0;
+			if (len < 2) {
+				ail->path_tgt = 0;
+				return 0;
+			}
+		}
+		ail->prog_tgt = -1;
+		path_target(obj,t,goal);
+	}
+
+	ail->path_tgt = t;
+	ail->path_idx = t >> 1;
+	return 1;
+}
+
 // 1 if the corrected rule of Dtu_fix_path_follow holds for this creature:
 // a creature that is not hostile and does not flee keeps the rule of the
 // executable (it turns to the player), so that the people of a level stay
@@ -3238,6 +3997,11 @@ static int path_advance(object *obj,vms_vector *goal)
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	fix threshold = fixmul(vm_vec_mag_quick(&obj->mtype.phys_info.velocity),FrameTime)*2 + i2f(2);
 	int tries = 0, k;
+
+	// Dtu_improved_pathfinding: the points of the body (not on the way back
+	// of a patrol)
+	if (improved_paths() && ail->path_dir > 0 && path_fix_applies(obj))
+		return path_advance_body(obj,goal);
 
 	// A creature that is in a later segment of the path is past the
 	// points before it. (port)
@@ -3353,7 +4117,11 @@ static void follow_path(object *obj,int visible,fix dist_to_player)
 			ail->mode = DAIM_RUN_FROM;
 			return;
 		}
-		// PATROL: back along the path
+		// PATROL: back along the path. ASCENT: an empty path (cleared by
+		// the step code) has no point to go back to; the index -1 read
+		// path[-1], before the array.
+		if (ail->path_len <= 0)
+			return;
 		ail->path_dir = -ail->path_dir;
 		ail->path_idx += 2*ail->path_dir;
 		if (ail->path_idx < 0) ail->path_idx = 0;
@@ -3495,6 +4263,14 @@ void dtu_break_dressing(object *d,object *by,int explode)
 
 	if (d->type != OBJ_DRESSING || d->id >= N_dressing_types || (d->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)))
 		return;
+	// ASCENT: 0xA6AF8: in level 0x20 (FLAME) object 3, the Flamesword, ends
+	// the game (0xA6786): the credits movie and the front end (dtumovie.c).
+	// The light and the 50 sounds of 0xA6786 before the movie are not in
+	// the port (docs/re/movies.md).
+	if (!explode && Current_level_num - 1 == 0x20 && d - Objects == 3) {
+		dtumovie_end_credits();
+		return;
+	}
 	di = &Dressing_info[d->id];
 	if (!explode && dtu_dressing_unbreakable(d))
 		return;
@@ -3531,6 +4307,23 @@ static int ai_to_anim_state(object *obj,int ai_state,fix dist);
 
 // The blocked move of do_ai_frame (0x14BA1). Returns 1: the mode switch
 // does not run in this frame.
+// Dtu_improved_pathfinding: a hostile creature on a path of the body
+// (path_advance_body()) slides along the wall and plans again by itself.
+// The blocked move would make a new path (which starts the path again) or
+// send it to a random side. Scenery in the way is still attacked.
+static int body_path_handles_block(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	if (!improved_paths() || !path_fix_applies(obj) || ail->path_len < 2 || ail->path_dir <= 0)
+		return 0;
+	if (ail->mode != DAIM_CHASE_OB && ail->mode != DAIM_FOL_PATH)
+		return 0;
+	if (ail->blocker >= 0 && Objects[ail->blocker].type == OBJ_DRESSING && ail->blocked_count >= 5)
+		return 0;
+	return 1;
+}
+
 static int blocked_move(object *obj,fix dist,vms_vector *vec_to_player,int visible)
 {
 	int objnum = obj-Objects;
@@ -4048,6 +4841,15 @@ void dtu_do_ai_frame(object *obj)
 		ail->activity = 0;
 		if (wake_test(obj))
 			ail->activity = 2;
+		// Dtu_improved_pathfinding: a hostile creature that follows a path
+		// to the segment of the player stays active. The test above fails at
+		// random when the player is behind the creature, which is often the
+		// case on a path around a wall, and the creature then stands for
+		// one animation before it sees the player again.
+		if (ail->activity == 0 && improved_paths() && is_hostile(obj) && ail->path_len >= 2 &&
+			 ail->path[ail->path_len-1] == ConsoleObject->segnum && (ail->mode == DAIM_CHASE_OB || ail->mode == DAIM_FOL_PATH) &&
+			 ail->target != -1 && !Player_is_dead && !Dtu_player_dead)
+			ail->activity = 2;
 		if (ail->activity == 0) {
 			ail->anim_start = GameTime + FrameTime;
 			aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
@@ -4182,7 +4984,7 @@ void dtu_do_ai_frame(object *obj)
 	// each reference frame time.
 	blocked = 0;
 	if (ail->retry_count && (DTU_ANIM_STATE(obj) == DAS_WALK || DTU_ANIM_STATE(obj) == DAS_RUN) && ail->blocker != 0 &&
-		 (!Dtu_fix_creature_move || Ref_ticks_now > 0))
+		 (!Dtu_fix_creature_move || Ref_ticks_now > 0) && !body_path_handles_block(obj))
 		blocked = blocked_move(obj,dist,&vec_to_player,visible);
 
 	// 0x15074: the mode
@@ -4237,8 +5039,28 @@ void dtu_do_ai_frame(object *obj)
 				circle = ri->turn_time[Difficulty_level] + ConsoleObject->size;		// the third group of $MONSTER_AI
 
 			if (!visible && dist > i2f(80) && aip->behavior != DAIB_STATION) {
-				if (aip->behavior == DAIB_HOME || aip->behavior == DAIB_GUARD)
+				// Dtu_improved_pathfinding: a hostile creature that knows
+				// where the player is walks to the player on a path. The
+				// executable makes a random path of 5 segments here on each
+				// frame and goes back to CHASE_OB on the next frame (the
+				// awareness is 1 or more), so the creature never moves.
+				if (improved_paths() && Dtu_fix_path_follow && aip->behavior != DAIB_HOME && aip->behavior != DAIB_GUARD &&
+					 ail->morale >= B && chase_by_path(obj))
+					;
+				else if (aip->behavior == DAIB_HOME || aip->behavior == DAIB_GUARD)
 					create_path_to_station(obj,15);
+				else if (improved_paths() && Dtu_fix_path_follow) {
+					// with no way to the player: the creature walks along
+					// the random path, and keeps it until its end
+					int k, on = 0;
+
+					for (k=0;k<ail->path_len;k++)
+						if (ail->path[k] == obj->segnum)
+							on = 1;
+					if (!on || ail->path_flag != -1 || ail->path_len < 2)
+						create_n_segment_path(obj,5,-1);
+					follow_path(obj,visible,dist);
+				}
 				else
 					create_n_segment_path(obj,5,-1);
 				aip->GOAL_STATE = DAIS_SRCH;
@@ -4250,7 +5072,12 @@ void dtu_do_ai_frame(object *obj)
 					create_path_to_player(obj,10);
 			}
 			else if (aip->CURRENT_STATE != DAIS_REST && aip->GOAL_STATE != DAIS_REST) {
-				if (Dtu_fix_path_follow && !visible && aip->behavior != DAIB_STATION && chase_by_path(obj)) {
+				// Dtu_improved_pathfinding: also a creature that sees the
+				// player but cannot walk to the player in a straight line
+				// (the line is not free for its body) takes the path.
+				if (improved_paths() && Ref_ticks_now > 0)
+					ail->body_line = (obj->segnum == ConsoleObject->segnum) || body_line_free(obj,&ConsoleObject->pos);
+				if (Dtu_fix_path_follow && (!visible || (improved_paths() && !ail->body_line)) && aip->behavior != DAIB_STATION && chase_by_path(obj)) {
 					// as in the mode FOL_PATH (0x153F0)
 					if (ail->morale >= B && aip->GOAL_STATE != DAIS_FLIN)
 						aip->GOAL_STATE = DAIS_LOCK;
@@ -4447,6 +5274,81 @@ void dtu_creature_wake(object *obj, int make_hostile)
 		aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
 	}
 	dtu_obj_log("obj %d %s: woken, hostile %d",(int)(obj-Objects),dtu_object_name(obj),is_hostile(obj));
+}
+
+// ASCENT: the state check of the soak test (dtusoak.c): the AI values of
+// each creature. Writes the first problem to msg and returns 1, or 0.
+int dtu_objects_check(char *msg, int size)
+{
+	int i;
+
+	for (i=0; i<=Highest_object_index; i++) {
+		object *obj = &Objects[i];
+		dtu_ai_local *ail = &Ail[i];
+		polymodel *po;
+		int s, f;
+
+		if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI)
+			continue;
+		if (obj->id >= N_robot_types) {
+			snprintf(msg,size,"obj %d: robot id %d of %d types",i,obj->id,N_robot_types);
+			return 1;
+		}
+		s = DTU_ANIM_STATE(obj);
+		if (s < 0 || s >= DTU_N_ANIM_STATES) {
+			snprintf(msg,size,"obj %d %s: animation state %d",i,dtu_object_name(obj),s);
+			return 1;
+		}
+		f = DTU_ANIM_FRAME(obj);
+		po = obj_model(obj);
+		if (po && po->n_frames > 0 && (f < -1 || f >= Dtu_anim_first[DTU_N_ANIM_STATES])) {
+			snprintf(msg,size,"obj %d %s: frame %d in state %d",i,dtu_object_name(obj),f,s);
+			return 1;
+		}
+		if (ail->target < -1 || ail->target > Highest_object_index) {
+			snprintf(msg,size,"obj %d %s: target %d",i,dtu_object_name(obj),ail->target);
+			return 1;
+		}
+		// (a path index past the end of an empty path is not used)
+		if (ail->path_len < 0 || ail->path_len > DTU_PATH_MAX || ail->path_idx < -1 || ail->path_idx > DTU_PATH_MAX) {
+			snprintf(msg,size,"obj %d %s: path index %d of %d",i,dtu_object_name(obj),ail->path_idx,ail->path_len);
+			return 1;
+		}
+		for (s=0; s<ail->path_len; s++)
+			if (ail->path[s] < 0 || ail->path[s] > Highest_segment_index) {
+				snprintf(msg,size,"obj %d %s: path point %d is segment %d",i,dtu_object_name(obj),s,ail->path[s]);
+				return 1;
+			}
+		if (ail->mode > DAIM_OPENDOOR) {
+			snprintf(msg,size,"obj %d %s: mode %d",i,dtu_object_name(obj),ail->mode);
+			return 1;
+		}
+	}
+	return 0;
+}
+
+// Turn undead (0xADC46, dtucombat.c): the result for one creature. The
+// executable sets the flags, calls 0xA6505 (the creature starts again,
+// also when it is active) and the morale function 0x10ADF.
+void dtu_creature_turn(object *obj, int turned)
+{
+	dtu_ai_local *ail;
+
+	if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI || obj->id >= N_robot_types || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return;
+	ail = &Ail[obj-Objects];
+	if (turned) {
+		// 0xAE1DD: target -1, fleeing, not hostile
+		ail->target = -1;
+		obj->dtu.m_1b0 = (obj->dtu.m_1b0 & ~DTU_HOSTILE) | DTU_FLEEING;
+	}
+	else
+		obj->dtu.m_1b0 |= DTU_HOSTILE;		// 0xAE0DC, 0xAE22B
+	ail->activity = 0;
+	dtu_creature_wake(obj,0);
+	// dtu_creature_wake() makes the morale check of a hostile creature
+	if (!is_hostile(obj))
+		morale_check(obj);
 }
 
 // gate_in_robot (0x1374D, 0x13407): a new creature at the center of the
@@ -4847,6 +5749,35 @@ void dtu_objects_frame(void)
 	missiles_frame();
 	dressing_move_frame();
 
+	// The option -testkill N (test): each N frames the active creature that
+	// is nearest to the player dies, for the test of the corpses.
+	if (Test_kill > 0 && FrameCount > 0 && (FrameCount % Test_kill) == 0) {
+		int i, best = -1;
+		fix best_d = 0;
+
+		for (i=0;i<=Highest_object_index;i++) {
+			object *o = &Objects[i];
+			fix d;
+
+			if (o->type != OBJ_ROBOT || o->control_type != CT_AI || Ail[i].activity != 2 || DTU_ANIM_STATE(o) == DAS_DIE)
+				continue;
+			if (o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED))
+				continue;
+			if (Test_kill_wall && (Ail[i].log_wall_time == 0 || GameTime - Ail[i].log_wall_time > F1_0/2))
+				continue;
+			d = vm_vec_dist(&o->pos,&ConsoleObject->pos);
+			if (best < 0 || d < best_d) {
+				best = i;
+				best_d = d;
+			}
+		}
+		if (best >= 0) {
+			dtu_obj_log("testkill: obj %d %s at %.2f %.2f %.2f seg %d",best,dtu_object_name(&Objects[best]),
+				f2fl(Objects[best].pos.x),f2fl(Objects[best].pos.y),f2fl(Objects[best].pos.z),Objects[best].segnum);
+			dtu_damage_creature_direct(&Objects[best],ConsoleObject,i2f(10000));
+		}
+	}
+
 	// The option -objlogpos N (test): the place of each active creature
 	if (Obj_log && Obj_log_pos > 0 && (FrameCount % Obj_log_pos) == 0) {
 		int i;
@@ -4855,9 +5786,12 @@ void dtu_objects_frame(void)
 			object *o = &Objects[i];
 
 			if (o->type == OBJ_ROBOT && o->control_type == CT_AI && Ail[i].activity == 2)
-				dtu_obj_log("pos: obj %d %s: seg %d pos %.1f %.1f %.1f dist %.1f mode %s path %d/%d player seg %d",i,dtu_object_name(o),o->segnum,
+				dtu_obj_log("pos: obj %d %s: seg %d pos %.1f %.1f %.1f dist %.1f mode %s path %d/%d player seg %d anim %s vis %d retry %d blocked %d/%d(%s) hits %d %d %d %d last %d:%d obj %d",i,dtu_object_name(o),o->segnum,
 					f2fl(o->pos.x),f2fl(o->pos.y),f2fl(o->pos.z),f2fl(vm_vec_dist(&o->pos,&ConsoleObject->pos)),
-					Ai_mode_names[Ail[i].mode % 7],Ail[i].path_idx,Ail[i].path_len,ConsoleObject->segnum);
+					Ai_mode_names[Ail[i].mode % 7],Ail[i].path_idx,Ail[i].path_len,ConsoleObject->segnum,
+					anim_name(DTU_ANIM_STATE(o)),Ail[i].previous_visibility,Ail[i].retry_count,Ail[i].blocked_count,Ail[i].blocker,Ail[i].blocker >= 0 ? dtu_object_name(&Objects[Ail[i].blocker]) : "-",
+					Ail[i].log_hits[0],Ail[i].log_hits[1],Ail[i].log_hits[2],Ail[i].log_hits[3],Ail[i].log_hit_seg,Ail[i].log_hit_side,Ail[i].log_hit_obj);
+				memset(Ail[i].log_hits,0,sizeof(Ail[i].log_hits));
 		}
 	}
 }

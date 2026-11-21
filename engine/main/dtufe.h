@@ -24,7 +24,7 @@ extern int Dtu_fe_original_input;
 // shows Waterdeep. If it is 0 the front end shows the main menu.
 extern int Dtu_fe_return_waterdeep;
 
-// Shows the title picture. The movies of the original are not played.
+// Plays the start movies (dtumovie_title) and shows the title picture.
 void dtufe_title(void);
 
 // Runs the front end until the player enters the dungeon or leaves the
@@ -68,5 +68,19 @@ int dtufe_escape_key(void);
 int dtufe_loading_picture(int entry);
 void dtufe_loading_picture_end(void);
 int dtufe_loading_from_frontend(void);
+
+// The menu "Improvements" (dtuopts.h) in the game, with newmenu. The ESC
+// menu and the options menu of F2 (menu.c) open it. It writes the
+// configuration file when it closes.
+void dtufe_improvements_menu(void);
+
+// The menu "Graphics" (dtuopts.h) in the game, with newmenu. The ESC menu,
+// the options menu of F2 (menu.c) and the key F5 open it. Escape and F5
+// close it. It writes the configuration file when it closes.
+void dtufe_graphics_menu(void);
+
+// The key F5 in the game: returns 1 and opens the Graphics menu after the
+// frame when the front end runs the game, else returns 0.
+int dtufe_graphics_key(void);
 
 #endif

@@ -123,19 +123,50 @@ void plat_input_mouse_motion(int dx, int dy, int x, int y)
 		Mouse_motion_handler(dx, dy, x, y);
 }
 
+// The wheel steps since the last plat_mouse_wheel call (the menus read it).
+static int Wheel_steps;
+static float Wheel_frac;
+
+void plat_input_mouse_wheel(int steps)
+{
+	Wheel_steps += steps;
+}
+
+int plat_mouse_wheel(void)
+{
+	int n = Wheel_steps;
+
+	Wheel_steps = 0;
+	return n;
+}
+
 // Set the relative mode of the window, if there is a window.
+// ASCENT: the system pointer is hidden at all times (video.c hides it),
+// because the game draws its own cursor. With the relative mode off, the
+// game draws its cursor at the pointer position. In full screen the
+// pointer is held in the window (mouse grab) also then.
+static int Grab_applied = -1;
+static int Grab_dirty = 1;
+
 static void apply_relative_mode(void)
 {
 	SDL_Window **windows;
 	int count = 0;
 
-	if (Relative_wanted == Relative_applied)
+	if (Relative_wanted == Relative_applied && !Grab_dirty)
 		return;
 	if (!SDL_WasInit(SDL_INIT_VIDEO))
 		return;
 	windows = SDL_GetWindows(&count);
-	if (windows && count > 0 && SDL_SetWindowRelativeMouseMode(windows[0], Relative_wanted != 0))
-		Relative_applied = Relative_wanted;
+	if (windows && count > 0) {
+		int grab = plat_is_fullscreen();		// ASCENT: the borderless full screen form of video.c
+		if (Relative_wanted != Relative_applied
+				&& SDL_SetWindowRelativeMouseMode(windows[0], Relative_wanted != 0))
+			Relative_applied = Relative_wanted;
+		if (grab != Grab_applied && SDL_SetWindowMouseGrab(windows[0], grab != 0))
+			Grab_applied = grab;
+		Grab_dirty = 0;
+	}
 	SDL_free(windows);
 }
 
@@ -266,6 +297,154 @@ int plat_joy_read_hat(void)
 }
 
 // ---------------------------------------------------------------------
+// ASCENT: gamepad (SDL_Gamepad)
+
+static SDL_Gamepad *Pad;
+static SDL_JoystickID Pad_id;
+static int Pad_started, Pad_test;
+static unsigned char Pad_buttons[PLAT_PAD_BUTTONS];
+static unsigned char Pad_presses[PLAT_PAD_BUTTONS];
+static int Pad_axes[PLAT_PAD_AXES];
+static Uint64 Pad_game_ticks;			// the time of the last game frame
+static int Pad_stick_dir[2];			// the arrow of the left stick in the menus
+
+static int pad_menu_mode(void)
+{
+	Uint64 now = SDL_GetTicks();
+
+	return Pad_game_ticks == 0 || (now >= Pad_game_ticks && now - Pad_game_ticks > 100);
+}
+
+void plat_pad_game_frame(void)
+{
+	Pad_game_ticks = SDL_GetTicks();
+	if (!Pad_game_ticks)
+		Pad_game_ticks = 1;
+}
+
+static void pad_key(int scancode, int down)
+{
+	plat_input_key(scancode, down);
+}
+
+void plat_input_pad_button(int button, int down)
+{
+	static const struct { int button, key; } menu_keys[] = {
+		{ PLAT_PAD_DPAD_UP, 0xC8 }, { PLAT_PAD_DPAD_DOWN, 0xD0 },
+		{ PLAT_PAD_DPAD_LEFT, 0xCB }, { PLAT_PAD_DPAD_RIGHT, 0xCD },
+		{ PLAT_PAD_A, 0x1C }, { PLAT_PAD_B, 0x01 } };
+	int i;
+
+	if (button < 0 || button >= PLAT_PAD_BUTTONS)
+		return;
+	down = down != 0;
+	if (!Pad)
+		Pad_test = 1;
+	if (down && !Pad_buttons[button] && Pad_presses[button] < 255)
+		Pad_presses[button]++;
+	Pad_buttons[button] = (unsigned char) down;
+	// Start is Escape everywhere; the others only in the menus. A press
+	// gives the key down and up, so that a held button does not repeat.
+	if (button == PLAT_PAD_START && down) {
+		pad_key(0x01, 1);
+		pad_key(0x01, 0);
+	}
+	if (down && pad_menu_mode())
+		for (i = 0; i < (int) (sizeof(menu_keys) / sizeof(menu_keys[0])); i++)
+			if (menu_keys[i].button == button) {
+				pad_key(menu_keys[i].key, 1);
+				pad_key(menu_keys[i].key, 0);
+			}
+}
+
+void plat_input_pad_axis(int axis, int value)
+{
+	if (axis < 0 || axis >= PLAT_PAD_AXES)
+		return;
+	if (!Pad)
+		Pad_test = 1;
+	if (value < -32768) value = -32768;
+	if (value > 32767) value = 32767;
+	Pad_axes[axis] = value;
+	// The left stick in the menus: an arrow key when it passes one half
+	if (axis == PLAT_PAD_LEFTX || axis == PLAT_PAD_LEFTY) {
+		int a = axis - PLAT_PAD_LEFTX;
+		int dir = value > 16384 ? 1 : value < -16384 ? -1 : 0;
+		if (dir != Pad_stick_dir[a]) {
+			Pad_stick_dir[a] = dir;
+			if (dir && pad_menu_mode()) {
+				int key = a == 0 ? (dir > 0 ? 0xCD : 0xCB) : (dir > 0 ? 0xD0 : 0xC8);
+				pad_key(key, 1);
+				pad_key(key, 0);
+			}
+		}
+	}
+}
+
+static void pad_release_all(void)
+{
+	int i;
+	for (i = 0; i < PLAT_PAD_BUTTONS; i++)
+		if (Pad_buttons[i])
+			plat_input_pad_button(i, 0);
+	for (i = 0; i < PLAT_PAD_AXES; i++)
+		plat_input_pad_axis(i, 0);
+}
+
+static void pad_open_first(void)
+{
+	SDL_JoystickID *ids;
+	int count = 0, i;
+
+	if (Pad || !Pad_started)
+		return;
+	ids = SDL_GetGamepads(&count);
+	for (i = 0; ids && i < count && !Pad; i++) {
+		Pad = SDL_OpenGamepad(ids[i]);
+		if (Pad)
+			Pad_id = ids[i];
+	}
+	SDL_free(ids);
+}
+
+int plat_pad_init(void)
+{
+	if (!Pad_started) {
+		if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD))
+			return 0;
+		Pad_started = 1;
+	}
+	pad_open_first();
+	return Pad != NULL;
+}
+
+int plat_pad_present(void)
+{
+	return Pad != NULL || Pad_test;
+}
+
+int plat_pad_button(int button)
+{
+	return button >= 0 && button < PLAT_PAD_BUTTONS ? Pad_buttons[button] : 0;
+}
+
+int plat_pad_axis(int axis)
+{
+	return axis >= 0 && axis < PLAT_PAD_AXES ? Pad_axes[axis] : 0;
+}
+
+int plat_pad_button_presses(int button)
+{
+	int n;
+
+	if (button < 0 || button >= PLAT_PAD_BUTTONS)
+		return 0;
+	n = Pad_presses[button];
+	Pad_presses[button] = 0;
+	return n;
+}
+
+// ---------------------------------------------------------------------
 // Events from plat_pump
 
 void plat_input_sdl_event(const SDL_Event *ev)
@@ -310,6 +489,26 @@ void plat_input_sdl_event(const SDL_Event *ev)
 		break;
 	}
 
+	case SDL_EVENT_MOUSE_WHEEL: {
+		// One step for each notch; a positive step is away from the user.
+		int n;
+		float y = ev->wheel.y;
+		if (ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
+			y = -y;
+		Wheel_frac += y;
+		n = (int) Wheel_frac;
+		Wheel_frac -= (float) n;
+		if (n)
+			plat_input_mouse_wheel(n);
+		break;
+	}
+
+	case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+	case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+		Grab_dirty = 1;
+		apply_relative_mode();
+		break;
+
 	case SDL_EVENT_WINDOW_FOCUS_LOST: {
 		// SDL releases the keys when the window loses the focus (it sends
 		// the key up events). Do the same for the mouse buttons.
@@ -341,6 +540,31 @@ void plat_input_sdl_event(const SDL_Event *ev)
 			plat_input_joy_button(ev->jbutton.button, ev->type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
 		break;
 
+	// ASCENT: the gamepad
+	case SDL_EVENT_GAMEPAD_ADDED:
+		pad_open_first();
+		break;
+
+	case SDL_EVENT_GAMEPAD_REMOVED:
+		if (Pad && ev->gdevice.which == Pad_id) {
+			SDL_CloseGamepad(Pad);
+			Pad = NULL;
+			pad_release_all();
+			pad_open_first();
+		}
+		break;
+
+	case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+	case SDL_EVENT_GAMEPAD_BUTTON_UP:
+		if (Pad && ev->gbutton.which == Pad_id)
+			plat_input_pad_button(ev->gbutton.button, ev->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
+		break;
+
+	case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+		if (Pad && ev->gaxis.which == Pad_id)
+			plat_input_pad_axis(ev->gaxis.axis, ev->gaxis.value);
+		break;
+
 	case SDL_EVENT_JOYSTICK_HAT_MOTION:
 		if (Joy && ev->jhat.which == Joy_id && ev->jhat.hat == 0)
 			plat_input_joy_hat(ev->jhat.value);
@@ -349,4 +573,12 @@ void plat_input_sdl_event(const SDL_Event *ev)
 	default:
 		break;
 	}
+}
+
+// ASCENT: video.c calls this after a change between the window and the
+// full screen form, so that the mouse grab follows.
+void plat_input_window_changed(void)
+{
+	Grab_dirty = 1;
+	apply_relative_mode();
 }

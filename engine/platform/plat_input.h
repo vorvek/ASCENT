@@ -11,5 +11,6 @@
 // The mouse position in the event is in frame pixels.
 // The relative mouse motion in the event is in device units.
 void plat_input_sdl_event(const SDL_Event *ev);
+void plat_input_window_changed(void);
 
 #endif

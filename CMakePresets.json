@@ -1,0 +1,22 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release build for the installer",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-rel",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ASCENT_RELEASE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "targets": [ "ascent", "ascent-import", "ascent-content" ]
+    }
+  ]
+}

@@ -224,6 +224,9 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include "dtutrig.h"		// ASCENT: dtu_player_use()
 #include "dtuthief.h"		// ASCENT: the thief keys and the climb
 #include "dtuspell.h"		// ASCENT: the jump key stops a cast
+#include "dtuopts.h"		// ASCENT: the Improvements of the movement
+#include "dtudisp.h"		// ASCENT: Dtu_immersive, the key V
+#include "dtuchar.h"		// ASCENT: the hand slot for Disarm
 #include "bm.h"
 #include "key.h"
 #include "joy.h"
@@ -315,6 +318,17 @@ void read_flying_controls( object * obj )
 
 extern fix fixed_frametime;		// in game.c
 
+// The rate of the turn keys, as a part of the rate of the executable
+// (1.25 turns per second). A default of the port, set by the owner of the
+// project: 0.75. -origphys gives the rate of the executable. The mouse
+// and the joystick are not scaled.
+fix Dtu_turn_scale = 0xc000;
+
+// ASCENT: Dtu_fix_turn_ramp with the turn inertia (physics.h)
+int Dtu_turn_dir = 0;
+fix Dtu_turn_hold = 0, Dtu_turn_full_thrust = 0, Dtu_turn_other_thrust = 0;
+static fix Turn_other_heading = 0;
+
 // The actions of the option -testmove
 #define TM_FORWARD	0x0001
 #define TM_BACK		0x0002
@@ -333,13 +347,14 @@ extern fix fixed_frametime;		// in game.c
 #define TM_PICKLOCK	0x4000		// ASCENT: the thief keys O, F and M (dtuthief.c)
 #define TM_SEARCH		0x8000
 #define TM_SNEAK		0x10000
+#define TM_DISARM		0x20000		// ASCENT: the key H, the empty hand
 
 static struct { char *name; int mask; } Test_action_names[] = {
 	{"forward",TM_FORWARD}, {"back",TM_BACK}, {"left",TM_LEFT}, {"right",TM_RIGHT},
 	{"slideleft",TM_SLIDELEFT}, {"slideright",TM_SLIDERIGHT}, {"run",TM_RUN},
 	{"jump",TM_JUMP}, {"lookup",TM_LOOKUP}, {"lookdown",TM_LOOKDOWN},
 	{"up",TM_UP}, {"down",TM_DOWN}, {"use",TM_USE}, {"attack",TM_ATTACK},
-	{"picklock",TM_PICKLOCK}, {"search",TM_SEARCH}, {"sneak",TM_SNEAK}, {"wait",0}
+	{"picklock",TM_PICKLOCK}, {"search",TM_SEARCH}, {"sneak",TM_SNEAK}, {"disarm",TM_DISARM}, {"wait",0}
 };
 
 #define MAX_TEST_STEPS	64
@@ -415,7 +430,21 @@ static void dtu_move_init(void)
 
 	if (FindArg("-origphys"))
 		Dtu_fix_physics_steps = Dtu_fix_frame_drag = Dtu_fix_stop_decay =
-			Dtu_fix_floor_push = Dtu_fix_look_return = Dtu_fix_fly_bob = Dtu_fix_turn_ramp = Dtu_fix_jump_exit = 0;
+			Dtu_fix_floor_push = Dtu_fix_look_return = Dtu_fix_fly_bob = Dtu_fix_turn_ramp = Dtu_fix_jump_exit =
+			Dtu_fix_jump_path = Dtu_fix_ladder = Dtu_fix_wall_slide = 0;
+	if (FindArg("-origphys"))
+		Dtu_turn_scale = F1_0;
+
+	// The Improvements of the movement are not the rules of the executable
+	if (FindArg("-origphys"))
+		Dtu_improved_physics = Dtu_improved_jump = 0;
+
+	// -improved PJ: the two Improvements of the movement for a test, for
+	// example -improved 01 (physics off, jump on)
+	if ((t = FindArg("-improved")) != 0 && t+1 < Num_args && strlen(Args[t+1]) == 2) {
+		Dtu_improved_physics = Args[t+1][0] == '1';
+		Dtu_improved_jump = Args[t+1][1] == '1';
+	}
 
 	if ((t = FindArg("-fixedfps")) != 0 && t+1 < Num_args && atoi(Args[t+1]) > 0)
 		fixed_frametime = F1_0 / atoi(Args[t+1]);
@@ -472,32 +501,55 @@ void dtu_move_log(object *obj)
 		return;
 
 	if (frame == 1)
-		fprintf(Move_log,"MOVEINFO mass %.4f drag %.4f max_thrust %.4f max_rotthrust %.4f eye_offset %.4f size %.4f flags %02x walk %d fix %d%d%d%d%d%d%d%d\n",
+		fprintf(Move_log,"MOVEINFO mass %.4f drag %.4f max_thrust %.4f max_rotthrust %.4f eye_offset %.4f size %.4f flags %02x walk %d fix %d%d%d%d%d%d%d%d%d%d%d improved %d%d\n",
 			f2fl(obj->mtype.phys_info.mass), f2fl(obj->mtype.phys_info.drag), f2fl(Player_ship->max_thrust), f2fl(Player_ship->max_rotthrust),
 			f2fl(N_player_types > 0 ? Player_type_info[0].eye_offset : 0), f2fl(obj->size), obj->mtype.phys_info.flags, Dtu_player_walk,
-			Dtu_fix_physics_steps, Dtu_fix_frame_drag, Dtu_fix_stop_decay, Dtu_fix_floor_push, Dtu_fix_look_return, Dtu_fix_fly_bob, Dtu_fix_turn_ramp, Dtu_fix_jump_exit);
+			Dtu_fix_physics_steps, Dtu_fix_frame_drag, Dtu_fix_stop_decay, Dtu_fix_floor_push, Dtu_fix_look_return, Dtu_fix_fly_bob, Dtu_fix_turn_ramp, Dtu_fix_jump_exit,
+			Dtu_fix_jump_path, Dtu_fix_ladder, Dtu_fix_wall_slide, Dtu_improved_physics, Dtu_improved_jump);
 
-	fprintf(Move_log,"MOVE %d t %.4f pos %.4f %.4f %.4f seg %d vel %.4f %.4f %.4f floor %.4f state %02x mode %d pitch %d\n",
+	fprintf(Move_log,"MOVE %d t %.4f pos %.4f %.4f %.4f seg %d vel %.4f %.4f %.4f floor %.4f state %02x mode %d pitch %d fvec %.4f %.4f\n",
 		frame, f2fl(GameTime),
 		f2fl(obj->pos.x), f2fl(obj->pos.y), f2fl(obj->pos.z), obj->segnum,
 		f2fl(obj->mtype.phys_info.velocity.x), f2fl(obj->mtype.phys_info.velocity.y), f2fl(obj->mtype.phys_info.velocity.z),
-		f2fl(Dtu_floor_dist), Dtu_player_state, Dtu_move_mode, Dtu_look_pitch);
+		f2fl(Dtu_floor_dist), Dtu_player_state, Dtu_move_mode, Dtu_look_pitch,
+		f2fl(obj->orient.fvec.x), f2fl(obj->orient.fvec.z));
 	fflush(Move_log);
 }
 
+// The integral of the turn ramp of the executable from the key down to the
+// time t (fix seconds), at the reference frame time T: the rate is k/8 in
+// frame k (k = 1 to 8, from (k-1)T to kT), then 1.
+static fix dtu_turn_ramp_integral(fix t)
+{
+	const int64_t T = DTU_REF_FRAMETIME;
+	int64_t n;
+
+	if (t <= 0)
+		return 0;
+	if (t >= 8*T)
+		return (fix) (T*36/8 + (t - 8*T));		// 36/8 T for the 8 steps
+	n = t / T;										// whole frames
+	return (fix) (T*n*(n+1)/16 + (n+1)*(t - n*T)/8);
+}
+
 // Reads the keyboard, the mouse and the joystick for the movement of the
-// player. The keys are the default keys of the manual of the game:
-//   8 or up, 2 or down       forward, backward
-//   4 or left, 6 or right    turn (side step in the side step mode)
-//   Z, X                     side step left, right
+// player. The keys come from the key table (kconfig.c, docs/re/controls.md),
+// which the Controls menu changes. The defaults of the port (the owner of
+// the project; the executable in brackets):
+//   W or up, S or down       forward, backward (up or keypad 8, down or keypad 2)
+//   left or keypad 4, right or keypad 6   turn (side step in the side step mode)
+//   A or keypad 1, D or keypad 3          side step left, right (Z, X)
 //   Alt                      side step mode on and off
-//   left Shift               run.  Caps Lock: run always, on and off
+//   Shift                    run.  Caps Lock: run always, on and off
 //   Space                    jump
 //   Page Up, Page Down       look up, look down
 //   Home, End                glance up, glance down (the view returns)
 //   Insert, Delete           up, down in flight and in levitation
 //   V                        mouse look on and off ("immersive mode")
-//   A                        use ("Activate": doors and triggers in front)
+//   E                        use ("Activate": doors and triggers in front) (A)
+//   H                        disarm: the empty hand (D)
+//   Ctrl                     attack.  C: the next hot key (Cycle Weapon)
+//   M, F, O                  Move silently, Find Traps, Open Locks
 // The time of a key is the frame time when the key is down. The
 // executable uses the time that the key was down in the frame.
 void dtu_read_controls(void)
@@ -512,25 +564,42 @@ void dtu_read_controls(void)
 	int t = dtu_test_keys();
 	int turn = 0, run, look = 0, glance = 0, key;
 
-	if (keyd_pressed[KEY_UP] || keyd_pressed[KEY_PAD8] || (t & TM_FORWARD))	fwd += ft;
-	if (keyd_pressed[KEY_DOWN] || keyd_pressed[KEY_PAD2] || (t & TM_BACK))		fwd -= ft;
-	if (keyd_pressed[KEY_LEFT] || keyd_pressed[KEY_PAD4] || (t & TM_LEFT))		turn--;
-	if (keyd_pressed[KEY_RIGHT] || keyd_pressed[KEY_PAD6] || (t & TM_RIGHT))	turn++;
-	if (keyd_pressed[KEY_Z] || (t & TM_SLIDELEFT))		side -= ft;
-	if (keyd_pressed[KEY_X] || (t & TM_SLIDERIGHT))		side += ft;
+	// ASCENT: the keys of the key table (kconfig.c, the items of the
+	// executable at 0x13C190), and the buttons of the mouse or joystick.
+	if (dtu_action_down(DTU_ACT_FORWARD) || (t & TM_FORWARD))		fwd += ft;
+	if (dtu_action_down(DTU_ACT_BACK) || (t & TM_BACK))				fwd -= ft;
+	if (dtu_action_down(DTU_ACT_TURN_LEFT) || (t & TM_LEFT))		turn--;
+	if (dtu_action_down(DTU_ACT_TURN_RIGHT) || (t & TM_RIGHT))		turn++;
+	if (dtu_action_down(DTU_ACT_SLIDE_LEFT) || (t & TM_SLIDELEFT))	side -= ft;
+	if (dtu_action_down(DTU_ACT_SLIDE_RIGHT) || (t & TM_SLIDERIGHT))	side += ft;
+	// ASCENT: the sticks of the gamepad (kconfig.c): the amount of the
+	// direction, after the dead zone
+	dtu_pad_frame();
+	fwd += fixmul(ft,dtu_pad_amount(DTU_ACT_FORWARD) - dtu_pad_amount(DTU_ACT_BACK));
+	side += fixmul(ft,dtu_pad_amount(DTU_ACT_SLIDE_RIGHT) - dtu_pad_amount(DTU_ACT_SLIDE_LEFT));
+	if (fwd > ft) fwd = ft;
+	if (fwd < -ft) fwd = -ft;
+	if (side > ft) side = ft;
+	if (side < -ft) side = -ft;
 
-	key = keyd_pressed[KEY_LALT];
+	key = dtu_action_down(DTU_ACT_SLIDE_ON);
 	if (key && !alt_last)
 		sidestep_mode = !sidestep_mode;
 	alt_last = key;
 
-	key = keyd_pressed[KEY_CAPSLOCK];
+	key = dtu_action_down(DTU_ACT_AUTO_RUN);
 	if (key && !caps_last)
 		autorun = !autorun;
 	caps_last = key;
 
-	key = keyd_pressed[KEY_V];
-	if (key && !v_last) {
+	// ASCENT: the display of the game (dtudisp.c, 0x54439) owns the
+	// Immersive Mode key: it toggles Dtu_immersive and adds the message. A
+	// second toggle here gave two messages for each press. This one acts
+	// only without the display.
+	key = dtu_action_down(DTU_ACT_IMMERSIVE);
+	if (Dtu_display_active)
+		mouse_look = Dtu_immersive;
+	else if (key && !v_last) {
 		mouse_look = !mouse_look;
 		HUD_init_message(mouse_look ? "Immersive Mode" : "Non-Immersive Mode");
 	}
@@ -538,25 +607,21 @@ void dtu_read_controls(void)
 
 	// 0x533DC, as in Descent 1: a turn key adds one eighth of its time to
 	// the heading time of the frame before. The turn has its whole rate
-	// after 8 frames. The corrected rule: after 8 reference frames.
+	// after 8 frames. The corrected rule: the ramp is a function of the
+	// time that the key is down (turn_ramp), with the steps of the
+	// executable at the reference frame time: the rate is k/8 in reference
+	// frame k, 1 from frame 8 on. The heading time of a frame is the
+	// integral of that function over the frame, so the angle after a time
+	// does not depend on the frame rate.
 	if (sidestep_mode || turn == 0)
 		turn_time = turn_ramp = 0;
 	else if (Dtu_fix_turn_ramp) {
-		if ((turn > 0 && turn_ramp < 0) || (turn < 0 && turn_ramp > 0))
+		if ((turn > 0 && turn_time < 0) || (turn < 0 && turn_time > 0))
 			turn_ramp = 0;
-		{
-			// The mean of the ramp over the frame. The ramp of the executable
-			// has steps: its mean is one half step (1/16) above a line.
-			fix old_ramp = turn_ramp, mean;
-
-			turn_ramp += turn * fixdiv(ft,8*DTU_REF_FRAMETIME);
-			if (turn_ramp > F1_0) turn_ramp = F1_0;
-			if (turn_ramp < -F1_0) turn_ramp = -F1_0;
-			mean = (old_ramp + turn_ramp)/2 + turn * (F1_0/16);
-			if (mean > F1_0) mean = F1_0;
-			if (mean < -F1_0) mean = -F1_0;
-			turn_time = fixmul(mean,ft);
-		}
+		turn_time = turn * (dtu_turn_ramp_integral(turn_ramp + ft) - dtu_turn_ramp_integral(turn_ramp));
+		Dtu_turn_hold = turn_ramp;			// for the turn with inertia (physics.c)
+		if (turn_ramp < 9*DTU_REF_FRAMETIME)
+			turn_ramp += ft;
 	}
 	else {
 		if ((turn > 0 && turn_time < 0) || (turn < 0 && turn_time > 0))
@@ -565,37 +630,50 @@ void dtu_read_controls(void)
 		if (turn_time > ft) turn_time = ft;
 		if (turn_time < -ft) turn_time = -ft;
 	}
+	Dtu_turn_dir = sidestep_mode ? 0 : turn;
 
 	if (sidestep_mode)
 		side += turn * ft;
+	else if (Dtu_fix_turn_ramp)
+		// rounded: the truncation lost 0.3% of the turn at 300 frames
+		heading += (fix) (((int64_t) turn_time * Dtu_turn_scale + (turn_time < 0 ? -0x8000 : 0x8000)) / 65536);
 	else
-		heading += turn_time;
+		heading += fixmul(turn_time,Dtu_turn_scale);
+	Turn_other_heading = heading;		// the turn keys; the rest is added below
 
-	// The joystick: left and right turn, forward and back walk. Guess.
-	if (joy_present) {
-		int jx, jy;
+	// ASCENT: the axes of the mouse (control type 5, only in the mouse look
+	// mode) or of the joystick (types 1 to 4), as the key table sets them:
+	// look up and down, turn, side step, up and down. The defaults of the
+	// executable: the mouse x turns and y looks, the joystick x turns and
+	// y looks. The scales are guesses.
+	{
+		int a_look, a_turn, a_slide, a_up;
+		int src = dtu_control_axes(&a_look, &a_turn, &a_slide, &a_up);
 
-		joy_get_pos(&jx,&jy);
-		if (abs(jx) > 16) heading += fixmuldiv(ft,jx,128);
-		if (abs(jy) > 16) fwd -= fixmuldiv(ft,jy,128);
+		if (src == 1 && mouse_look) {
+			heading += fixmuldiv(ft,a_turn,16);
+			look += a_look * 32;
+			side += fixmuldiv(ft,a_slide,16);
+			vert -= fixmuldiv(ft,a_up,16);
+		} else if (src == 2) {
+			if (abs(a_turn) > 16) heading += fixmuldiv(ft,a_turn,128);
+			if (abs(a_look) > 16) look += fixmuldiv(ft,a_look,128);
+			if (abs(a_slide) > 16) side += fixmuldiv(ft,a_slide,128);
+			if (abs(a_up) > 16) vert -= fixmuldiv(ft,a_up,128);
+		}
 	}
 
-	// The mouse in the mouse look mode: left and right turn, up and down
-	// look. The scale is a guess.
-	if (mouse_look) {
-		int dx, dy;
-
-		mouse_get_delta(&dx,&dy);
-		heading += fixmuldiv(ft,dx,16);
-		look += dy * 32;
-	}
+	// ASCENT: the gamepad turns with no ramp (as the mouse) and looks. The
+	// whole stick turns at the rate of a turn key, times the speed setting.
+	heading += fixmul(fixmul(ft,dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT)),Dtu_turn_scale);
+	look += fixmul(ft,dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP));
 
 	// The look keys: the pitch changes by the key time, as an angle
 	// (0x52BF9: time * sensitivity / 8, the sensitivity at 0x13BFEF is 8).
-	if (keyd_pressed[KEY_PAGEUP] || (t & TM_LOOKUP))		look -= ft;
-	if (keyd_pressed[KEY_PAGEDOWN] || (t & TM_LOOKDOWN))	look += ft;
-	if (keyd_pressed[KEY_HOME])	{ look -= ft; glance = 1; }
-	if (keyd_pressed[KEY_END])		{ look += ft; glance = 1; }
+	if (dtu_action_down(DTU_ACT_LOOK_UP) || (t & TM_LOOKUP))		look -= ft;
+	if (dtu_action_down(DTU_ACT_LOOK_DOWN) || (t & TM_LOOKDOWN))	look += ft;
+	if (dtu_action_down(DTU_ACT_QUICK_UP))		{ look -= ft; glance = 1; }
+	if (dtu_action_down(DTU_ACT_QUICK_DOWN))		{ look += ft; glance = 1; }
 
 	if (look) {
 		int p = Dtu_look_pitch + look;
@@ -625,11 +703,14 @@ void dtu_read_controls(void)
 
 	// Up and down, only in flight and in levitation
 	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) {
-		if (keyd_pressed[KEY_INSERT] || (t & TM_UP))		vert += ft;
-		if (keyd_pressed[KEY_DELETE] || (t & TM_DOWN))	vert -= ft;
+		if (dtu_action_down(DTU_ACT_FLOAT_UP) || (t & TM_UP))		vert += ft;
+		if (dtu_action_down(DTU_ACT_FLOAT_DOWN) || (t & TM_DOWN))	vert -= ft;
+		vert += fixmul(ft,dtu_pad_amount(DTU_ACT_FLOAT_UP) - dtu_pad_amount(DTU_ACT_FLOAT_DOWN));
 	}
+	else
+		vert = 0;			// the axis of the mouse or the joystick too
 
-	key = keyd_pressed[KEY_SPACEBAR] || (t & TM_JUMP);
+	key = dtu_action_down(DTU_ACT_JUMP) || (t & TM_JUMP);
 	if (key && !space_last) {
 		// 0x546CC: the jump key stops a cast when the player does not
 		// levitate (0x9305D with 0, "Your spell was aborted."); then no jump
@@ -645,8 +726,8 @@ void dtu_read_controls(void)
 	// waits half a second between two uses.
 	{
 		static int o_last = 0, f_last = 0, m_last = 0;
-		int ko = keyd_pressed[KEY_O] || (t & TM_PICKLOCK), kf = keyd_pressed[KEY_F] || (t & TM_SEARCH),
-			km = keyd_pressed[KEY_M] || (t & TM_SNEAK);
+		int ko = dtu_action_down(DTU_ACT_OPEN_LOCKS) || (t & TM_PICKLOCK), kf = dtu_action_down(DTU_ACT_FIND_TRAPS) || (t & TM_SEARCH),
+			km = dtu_action_down(DTU_ACT_MOVE_SILENTLY) || (t & TM_SNEAK);
 
 		if (ko && !o_last) dtu_thief_open_locks();
 		if (kf && !f_last) dtu_thief_search_toggle();
@@ -655,20 +736,57 @@ void dtu_read_controls(void)
 	}
 
 	// The use action: "Activate" of the key table of the executable
-	// (entries 39 and 40, default scan code 0x1E at 0x13C037). 0x53D6A
-	// calls it in each frame while the key is down, and the action itself
-	// waits half a second between two uses.
-	if (keyd_pressed[KEY_A] || (t & TM_USE))
+	// (entries 39 and 40, default scan code 0x1E at 0x13C037, the key A;
+	// the port has E). 0x53D6A calls it in each frame while the key is
+	// down, and the action itself waits half a second between two uses.
+	if (dtu_action_down(DTU_ACT_ACTIVATE) || (t & TM_USE))
 		dtu_player_use();
+
+	// Disarm: entry 50 of the key table (default D at 0x13C010; the port
+	// has H). 0x53E91: on each frame while the key is down, 0x43A5A(-3)
+	// "KCFG: Disarming": the empty hand (hand slot -1, model letter '_').
+	// 0x43A5A does nothing in the attack states 6 and 11.
+	if ((dtu_action_down(DTU_ACT_DISARM) || (t & TM_DISARM)) && Dtu_char.current.n >= 0 &&
+		dtu_combat_view_state() != DAS_ATTACK && dtu_combat_view_state() != DAS_ATTACK3) {
+		dtu_char_log("KCFG: Disarming");
+		dtu_char_set_current(-1);
+	}
 
 	// The attack with the item in the hand: Left Ctrl and Right Ctrl
 	// (keyboard items 18 and 19 of the key table, 0x13C010), on the key
 	// down (0x2FCBE). See dtucombat.c.
-	dtu_combat_attack_key(keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL] || (t & TM_ATTACK));
+	dtu_combat_attack_key(dtu_action_down(DTU_ACT_ATTACK) || (t & TM_ATTACK));
 	dtu_combat_frame();
 
+	// Cycle Weapon: items 28 and 29 of the key table (default C), on the
+	// key down. 0x544F2 goes through the hot keys from the one after the
+	// last chosen and takes the first that holds a weapon it can use
+	// (0x43A5A). The port takes the next hot key that holds an item that
+	// is not in the hand. The weapon tests of 0x544F2 are not ported.
+	{
+		static int c_last = 0;
+		int kc = dtu_action_down(DTU_ACT_CYCLE_WEAPON);
+
+		if (kc && !c_last) {
+			int i, h = -1;
+
+			for (i = 0; i < DTU_N_HOT_KEYS; i++)
+				if (Dtu_char.hot_key[i].n >= 0 && Dtu_char.hot_key[i].list == Dtu_char.current.list &&
+					Dtu_char.hot_key[i].n == Dtu_char.current.n)
+					h = i;
+			for (i = 1; i <= DTU_N_HOT_KEYS; i++) {
+				int k = (h + i + DTU_N_HOT_KEYS) % DTU_N_HOT_KEYS;
+				if (Dtu_char.hot_key[k].n >= 0 && k != h) {
+					dtu_char_select_hot_key(k);
+					break;
+				}
+			}
+		}
+		c_last = kc;
+	}
+
 	// 0x54033: the move mode. A run is 1.5 times the walk.
-	run = keyd_pressed[KEY_LSHIFT] || autorun || (t & TM_RUN);
+	run = dtu_action_down(DTU_ACT_RUN) || autorun || (t & TM_RUN);
 	Dtu_move_mode = 0;
 	if (fwd && !(Dtu_player_state & (DTU_PS_FALLING|DTU_PS_JUMPING|DTU_PS_CLIMBING))) {
 		Dtu_move_mode = 1;
@@ -687,6 +805,7 @@ void dtu_read_controls(void)
 
 	if (heading > ft) heading = ft;
 	if (heading < -ft) heading = -ft;
+	Turn_other_heading = heading - Turn_other_heading;		// the mouse and the joystick
 
 	Controls.pitch_time = 0;
 	Controls.bank_time = 0;
@@ -763,4 +882,9 @@ static void dtu_read_flying_controls(object *obj)
 	if ((ft < F1_0/2) && (ft << 15 <= Player_ship->max_rotthrust))
 		ft = (Player_ship->max_thrust >> 15) + 1;
 	vm_vec_scale( &pi->rotthrust, fixdiv(Player_ship->max_rotthrust,ft) );
+
+	// ASCENT: Dtu_fix_turn_ramp: the rotthrust of a whole turn key and that
+	// of the mouse and the joystick, for the turn with inertia (physics.c)
+	Dtu_turn_full_thrust = fixmul(fixmul(Dtu_turn_scale,DTU_ROTTHRUST_SCALE),Player_ship->max_rotthrust);
+	Dtu_turn_other_thrust = fixmul(fixmul(Turn_other_heading,DTU_ROTTHRUST_SCALE),fixdiv(Player_ship->max_rotthrust,ft));
 }

@@ -48,6 +48,10 @@ void dtu_thief_climb_frame(object *obj, vms_vector *accel);
 // The climb thrust of the controls (0x2C144): forward goes up, back goes
 // down. physics.c and controls.c call it.
 void dtu_thief_climb_thrust(object *obj, fix forward, fix side);
+// ASCENT: for Dtu_improved_physics (physics.c). The side of the segment
+// that is a ladder in reach of the player, with the tests of 0x9EBEB
+// (10.0, facing the player), or -1.
+int dtu_thief_ladder_side(object *obj, int segnum);
 // An attack ends Hide In Shadows and the search (mask 0xEC at 0x44402 and
 // 0x5706E).
 void dtu_thief_attack(void);

@@ -236,6 +236,37 @@ typedef struct polymodel {
 // flag DTU_SUBMODEL_F_HIDDEN.
 void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[]);
 
+// ASCENT: animation interpolation (Dtu_anim_interp, dtuopts.h). The same
+// draw with the joint angles and the body center between the frames
+// "frame" and "next", frac (0 to 1.0) of the way to "next". Each angle
+// takes the short way around. next -1 or frac 0 is draw_polygon_model_frame.
+void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int next,fix frac,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[]);
+
+// ASCENT: the frame times that the draw of an animated model sees, for the
+// interpolation. The game code sets the frame numbers as the original does
+// (by the game time, by steps or by frames); the tracker learns the time
+// that one frame of the current state lasts from the frame changes, and
+// gives the next frame and the fraction of the way to it. A change of the
+// state, or a frame change by more than 2 or against the direction of the
+// state, starts again: the new frame is drawn at once, with no blend.
+typedef struct polyobj_anim_track {
+	int	key;				// the object (signature). A zeroed tracker is empty
+	short	state, frame;
+	short	dir;				// +1 or -1 once seen, 0 before
+	short	n_adv;			// 0: no change seen, else 1 + the frames advanced since t_first
+	fix	t_frame;			// the game time when "frame" began
+	fix	t_first;			// the game time of the first frame change of the state
+	fix	dur;				// the time of one frame, 0 if not known
+} polyobj_anim_track;
+
+// Updates the tracker with the frame that the game shows now and returns
+// the fraction (0 to 1.0) of the way to *next. first and last are the
+// first frame of the state and the first frame after it; est is the time
+// of one frame if the caller knows it (else 0); def_dir is the direction
+// of the state if no change was seen yet (+1, or -1 for a state that runs
+// backward). *next is -1 when there is nothing to interpolate.
+fix polyobj_anim_track_update(polyobj_anim_track *t,int key,int state,int frame,int first,int last,fix est,int def_dir,fix now,int *next);
+
 // ASCENT: the offset from the origin of the model to the position of an
 // object in the given frame, in the space of the model (body_center[frame+1],
 // or zero for a model with no body boxes).

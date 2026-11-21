@@ -62,21 +62,27 @@ static int Cleanup_registered;
 
 static void state_path(char *out, int size, const char *name)
 {
-	snprintf(out, size, "%s/%s", STATE_DIR, name);
+	char rel[64];
+
+	snprintf(rel, sizeof(rel), "%s/%s", STATE_DIR, name);
+	dtu_user_path(out, size, rel);		// ASCENT: the directory of the user (dtufile.h)
 }
 
 static void make_dir(void)
 {
+	char dir[600];
+
+	dtu_user_path(dir, sizeof(dir), STATE_DIR);	// ASCENT: the directory of the user
 #ifdef _WIN32
-	_mkdir(STATE_DIR);
+	_mkdir(dir);
 #else
-	mkdir(STATE_DIR, 0777);
+	mkdir(dir, 0777);
 #endif
 }
 
 static FILE *state_open(const char *name, const char *mode)
 {
-	char path[64];
+	char path[600];
 
 	state_path(path, sizeof(path), name);
 	return fopen(path, mode);
@@ -84,7 +90,7 @@ static FILE *state_open(const char *name, const char *mode)
 
 static void state_delete(const char *name)
 {
-	char path[64];
+	char path[600];
 
 	state_path(path, sizeof(path), name);
 	remove(path);
@@ -126,7 +132,7 @@ static int copy_file(const char *from, const char *to)
 // 0xBA428: the move of a file (rename, else copy and delete)
 static int move_file(const char *from, const char *to)
 {
-	char a[64], b[64];
+	char a[600], b[600];
 
 	state_path(a, sizeof(a), from);
 	state_path(b, sizeof(b), to);

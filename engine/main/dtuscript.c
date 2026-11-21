@@ -21,8 +21,8 @@
  *   object is moved to the last segment of the path at the end of the run
  *   and the script runs in mode 2 (Dtu_script_walk_teleport).
  * - EB (spell at a segment): there is no area spell function in the port.
- * - D3 sound 0xFFFF (the end sequence) and the sounds of D4 to D7 at an
- *   object or a side: they are played at the player.
+ * - The sounds of D4 to D7 at an object or a side: they are played at the
+ *   player. (D3 sound 0xFFFF plays the movie FLAM1.MVE, dtumovie.c.)
  * - DB to segment 0xFFFF (the prison sequence 0xAA3F3).
  * - The turn of the object to the player in steps with frames between
  *   them (0xABE01): the port turns it at once.
@@ -62,6 +62,8 @@
 #include "dtuspell.h"
 #include "dtudlg.h"
 #include "dtuscript.h"
+#include "dtumovie.h"
+#include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1684,6 +1686,10 @@ static int sc_exec(sc_run *r)
 			int snd = num(r), vol = num(r);
 			if (peek(r) == 0xD8) r->p++;
 			slog("sound %d volume %d", snd, vol);
+			if (snd == 0xFFFF) {
+				dtumovie_flame();		// ASCENT: 0xA9A5B, the movie FLAM1.MVE (dtumovie.c)
+				break;
+			}
 			sound(snd, vol);
 			break;
 		}

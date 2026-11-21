@@ -40,9 +40,13 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 #include "dtutrig.h"
+#include "kconfig.h"		// ASCENT: the key table
 #include "dtucombat.h"
 #include "dtuspell.h"
+#include "dtuopts.h"
 #include "dtuthief.h"
+#include "text.h"
+#include "key.h"
 
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
@@ -72,6 +76,8 @@ static fix Last_attack = -0x7fffffff;	// 0x13B74B
 static fix Swing_time = F1_0;			// state_times[6] of the player model after 0x43A5A
 static fix Fire_next = 0, Fire_last = -0x7fffffff;	// 0x215D74, 0x215D7C (hand 1)
 static fix Swing_started = 0;			// for the log: the game time of the start of the swing
+static int Lift_model = -1;			// ASCENT: the model of Swing_lift (Dtu_improved_body)
+static fix Swing_lift = 0;				// ASCENT: the lift of the arms in a swing (Dtu_improved_body)
 
 static int is_attack_state(int s)
 {
@@ -210,6 +216,7 @@ static void change_player_model(int letter)
 
 	View_model = m;
 	View_letter = letter;
+	Lift_model = -1;					// ASCENT: the swing lift of the improved body
 	Swing_time = dtu_combat_swing_time();
 	// 0x43A8D and 0x43BDA: the pitch offset of the arms is off for an
 	// arrow or a bolt (the bow and the crossbow are held differently)
@@ -400,7 +407,15 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 			vm_vec_scale_add2(&creature->mtype.phys_info.thrust,&v,fixdiv(i2f(20),creature->mtype.phys_info.mass));
 		if (weapon >= 0) {
 			vclip_at(creature->segnum,hit_pnt,Weapon_info[weapon].impact_size,weapon_int(weapon,"monster_hit_vclip",-1));
-			sound_at(weapon_int(weapon,alive ? "monster_hit_sound" : "monster_kill_sound",-1),creature->segnum,hit_pnt,F1_0/2);
+			// ASCENT: the original plays monster_hit_sound only if the
+			// creature lives, and monster_kill_sound if it dies. No weapon
+			// of the shipped tables sets monster_kill_sound, so the killing
+			// blow had no impact sound at the hit point (docs/re/bugs.md,
+			// "Impact sound of the killing blow"). The port plays the hit
+			// sound on each hit, and the kill sound as well if a table sets it.
+			sound_at(weapon_int(weapon,"monster_hit_sound",-1),creature->segnum,hit_pnt,F1_0/2);
+			if (!alive)
+				sound_at(weapon_int(weapon,"monster_kill_sound",-1),creature->segnum,hit_pnt,F1_0/2);
 		}
 		if (alive)
 			sound_on_object(mi->hit_sound,creature,F1_0/2);
@@ -695,6 +710,223 @@ static void start_attack(void)
 }
 
 //------------------------------------------------------------------------
+// Turn undead (key T, 0xADC46; the Spider Piece 0x12 through dtuchar.c)
+
+int Dtu_fix_turn_undead = 1;
+
+// 0x145602: the names of the undead classes, compared with the start of the
+// robot name (strnicmp 0xDDE29) by the level init of the NPC list (0xAC4B4).
+static const char *Turn_names[9] = { "ske_", "zombie", "ghoul", "banegard", "ghast", "mummy", "gskel", "lich", "sfiend" };
+
+// 0xA6487: the number that the d20 must reach, by class and cleric level 1
+// to 14. -1: turned, -2 and -3: destroyed, -4: no effect (the creature can
+// be tried again).
+static const signed char Turn_table[9][14] = {
+	{ 10,  7,  4, -1, -1, -2, -2, -3, -3, -3, -3, -3, -3, -3 },
+	{ 13, 10,  7,  4, -1, -1, -2, -2, -3, -3, -3, -3, -3, -3 },
+	{ 16, 13, 10,  7,  4, -1, -1, -2, -2, -3, -3, -3, -3, -3 },
+	{ 20, 19, 16, 13, 10,  7,  4, -1, -1, -2, -2, -2, -2, -3 },
+	{ -4, 20, 19, 16, 13, 10,  7,  4, -1, -1, -1, -2, -2, -2 },
+	{ -4, -4, -4, 20, 19, 16, 13, 10,  7,  4,  4, -1, -1, -1 },
+	{ -4, -4, -4, -4, -4, 20, 19, 16, 13, 10, 10,  7,  7,  4 },
+	{ -4, -4, -4, -4, -4, -4, -4, 20, 19, 16, 16, 13, 13, 10 },
+	{ -4, -4, -4, -4, -4, -4, -4, -4, 20, 19, 19, 16, 16, 13 },
+};
+
+// The NPC list entry byte +3 of the executable: the class (low nibble) and
+// bit 0x10, "can be tried". The executable fills it at the level start for
+// the objects of the NPC list and never takes an entry out, so after a
+// death the object number can belong to a new object. The port keeps the
+// state by object number and signature, so a new object starts fresh.
+static struct { int signature; ubyte bits; } Turn_state[MAX_OBJECTS];
+static int Turn_level = -1;
+static fix Turn_last = 0;			// 0x145626
+
+// strnicmp(prefix, name, strlen(prefix)) == 0
+static int turn_prefix(const char *prefix,const char *name)
+{
+	for (; *prefix; prefix++, name++)
+		if (tolower((unsigned char)*prefix) != tolower((unsigned char)*name))
+			return 0;
+	return 1;
+}
+
+static int turn_bits(object *obj)
+{
+	int n = obj-Objects, i;
+
+	if (Turn_level != Current_level_num) {
+		Turn_level = Current_level_num;
+		for (i=0; i<MAX_OBJECTS; i++)
+			Turn_state[i].signature = -1;
+	}
+	if (Turn_state[n].signature != obj->signature) {
+		Turn_state[n].signature = obj->signature;
+		// 0xAC4C1: without a name match the class is from the levels of
+		// the player and bit 0x10 stays clear ("couldn't find undead")
+		Turn_state[n].bits = 8;
+		for (i=0; i<9; i++)
+			if (turn_prefix(Turn_names[i],Robot_names[obj->id])) {
+				Turn_state[n].bits = i | 0x10;
+				break;
+			}
+	}
+	return Turn_state[n].bits;
+}
+
+// 0xA66C9: the creature is alive
+static int turn_alive(object *obj)
+{
+	return obj->type == OBJ_ROBOT && obj->shields >= F1_0 && !(obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) &&
+		obj->ctype.ai_info.CURRENT_STATE != DAIS_DEAD && obj->ctype.ai_info.GOAL_STATE != DAIS_DEAD && DTU_ANIM_STATE(obj) != DAS_DIE;
+}
+
+// 0xADE2A to 0xADEED: the brain bit (always 1 in the port, Dtu_fix_brain)
+// and a ray from the creature to the player that hits nothing
+static int turn_sees_player(object *obj)
+{
+	fvi_query fq;
+	fvi_info hit;
+
+	if (obj->segnum < 0 || obj->segnum > Highest_segment_index)
+		return 0;
+	fq.p0 = &obj->pos;
+	fq.startseg = obj->segnum;
+	fq.p1 = &ConsoleObject->pos;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	return find_vector_intersection(&fq,&hit) == HIT_NONE;
+}
+
+static void turn_message(int tex,char *def,object *obj)
+{
+	char *f = (tex >= 0 && tex < N_TEXT_STRINGS && Text_string[tex] && Text_string[tex][0]) ? Text_string[tex] : def;
+
+	HUD_init_message(f,dtu_object_name(obj));
+}
+
+// level: the cleric level from 1, or 0 for the class and the cloak of the
+// character (the key T). Returns the number of creatures that it changed.
+int dtu_combat_turn_undead(int level)
+{
+	object *pl = ConsoleObject;
+	int order[MAX_OBJECTS], n = 0, i, j, roll, destroys, done = 0;
+	fix d;
+
+	if (!Dtu_objects_enabled || pl == NULL || pl->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead)
+		return 0;
+
+	// 0xADC54: half a second between two uses
+	d = GameTime - Turn_last;
+	if (d < 0) d = -d;
+	if (d < F1_0/2)
+		return 0;
+	Turn_last = GameTime;
+
+	if (level == 0) {
+		dtu_inv_item *cloak = NULL;
+		int allowed = Dtu_char.pa.class1 == DTU_CLASS_CLERIC || Dtu_char.pa.class2 == DTU_CLASS_CLERIC;	// 0x35A09
+
+		// 0xADC91: the cleric level is the level of class 2 if class 2 is
+		// the cleric, else the level of class 1
+		level = (Dtu_char.pa.class2 == DTU_CLASS_CLERIC ? Dtu_char.pa.class2_level : Dtu_char.pa.class1_level) + 1;
+		// 0xADCB3: armor 45 in the cloak place turns as a cleric of level 7
+		if (Dtu_char.slot[DTU_SLOT_CLOAK].list == 0 && Dtu_char.slot[DTU_SLOT_CLOAK].n >= 0 && Dtu_char.slot[DTU_SLOT_CLOAK].n < Dtu_n_inventory)
+			cloak = &Dtu_inventory[(int)Dtu_char.slot[DTU_SLOT_CLOAK].n];
+		if (cloak && cloak->id == 45) {
+			allowed = 1;
+			level = 7;
+		}
+		if (!allowed) {
+			turn_message(931,"You cannot perform this action.",pl);
+			return 0;
+		}
+	}
+
+	roll = rand() % 20 + 1;		// 0xADCFF
+	destroys = rand() % 11 + 2;	// 0xADD18: at most this many are destroyed
+	if (N_player_types > 0)
+		sound_at(tbl_int(Player_type_info[0].record,"banish_sound",-1),pl->segnum,&pl->pos,F1_0/6);	// 0x2AAA
+	if (level > 14)
+		level = 14;					// 0xADF0F
+	if (level < 1)
+		level = 1;
+
+	// The NPC list in the order of the object numbers, sorted by class
+	// (0xADB7D, the same exchange sort)
+	for (i=0; i<=Highest_object_index; i++)
+		if (Objects[i].type == OBJ_ROBOT && Objects[i].id < N_robot_types)
+			order[n++] = i;
+	for (i=0; i<n-1; i++)
+		for (j=i+1; j<n; j++)
+			if ((turn_bits(&Objects[order[j]]) & 0x0F) < (turn_bits(&Objects[order[i]]) & 0x0F)) {
+				int t = order[i]; order[i] = order[j]; order[j] = t;
+			}
+
+	dtu_obj_log("turn undead: level %d, roll %d, at most %d destroyed",level,roll,destroys);
+
+	for (i=0; i<n; i++) {
+		object *obj = &Objects[order[i]];
+		int bits, cls, t;
+
+		if (obj->type != OBJ_ROBOT || !(Monster_info[obj->id].flags & MONSTER_F_UNDEAD) || !turn_alive(obj) || !turn_sees_player(obj))
+			continue;
+		bits = turn_bits(obj);
+		cls = bits & 0x0F;
+		if (!(bits & 0x10)) {
+			HUD_init_message("You can no longer attempt to turn the %s.",dtu_object_name(obj));
+			continue;
+		}
+		// 0xADF57: the destroys are used up. The executable clears bit 0x10
+		// of this creature first (0xADF09), so it can never be tried
+		// again although nothing was tried. Dtu_fix_turn_undead keeps it.
+		if (destroys <= 0) {
+			if (!Dtu_fix_turn_undead)
+				Turn_state[obj-Objects].bits &= ~0x10;
+			break;
+		}
+		Turn_state[obj-Objects].bits &= ~0x10;
+		t = Turn_table[cls < 9 ? cls : 8][level-1];
+
+		if (t == -4) {
+			// 0xAE0DC: "unable to affect", the creature can be tried again
+			dtu_creature_turn(obj,0);
+			turn_message(927,"You are currently unable to affect the %s.",obj);
+			Turn_state[obj-Objects].bits |= 0x10;
+		}
+		else if (t == -3 || t == -2) {
+			// 0xAE14C, 0xAE158: destroyed. 0xA6ACB(obj, no attacker, its
+			// hit points) through the damage function with no attacker:
+			// the executable reads the attacker fields at address 0
+			// (0x29E3D, 0x2A054) there, the port gives no experience.
+			char name[64];
+
+			strncpy(name,dtu_object_name(obj),sizeof(name)-1);
+			name[sizeof(name)-1] = 0;
+			dtu_creature_wake(obj,0);
+			dtu_damage_creature_direct(obj,NULL,obj->shields + F1_0);
+			HUD_init_message(Text_string[928] && Text_string[928][0] ? Text_string[928] : "You destroyed the %s.",name);
+			destroys--;
+			done++;
+		}
+		else if (t == -1 || roll >= t) {
+			// 0xAE1AC, 0xAE1DD: turned
+			dtu_creature_turn(obj,1);
+			turn_message(929,"You successfully turned the %s.",obj);
+			done++;
+		}
+		else {
+			// 0xAE22B: failed
+			dtu_creature_turn(obj,0);
+			turn_message(930,"You failed to turn the %s.",obj);
+		}
+	}
+	return done;
+}
+
+//------------------------------------------------------------------------
 // Calls
 
 static void combat_init(void)
@@ -708,6 +940,7 @@ static void combat_init(void)
 		Dtu_fix_zero_dice = 0;
 		Dtu_fix_stoneskin_word = 0;
 		Dtu_fix_rary_manual = 0;
+		Dtu_fix_turn_undead = 0;
 	}
 }
 
@@ -763,6 +996,17 @@ void dtu_combat_frame(void)
 		return;
 	}
 
+	// Turn undead: items 52 and 53 of the key table (default T, kconfig.c).
+	// The key code of controls.c does not read it, so it is read here.
+	{
+		static int t_last = 0;
+		int t = dtu_action_down(DTU_ACT_TURN_UNDEAD);
+
+		if (t && !t_last)
+			dtu_combat_turn_undead(0);
+		t_last = t;
+	}
+
 	// 0x43A5A: a new item in the hand changes the model, not during the
 	// states 6 and 11
 	if (hand_letter() != View_letter && View_state != DAS_ATTACK && View_state != DAS_ATTACK3)
@@ -793,6 +1037,190 @@ int dtu_combat_view_state(void) { return View_state; }
 int dtu_combat_view_frame(void) { return View_frame; }
 int dtu_combat_view_model(void) { return View_model; }
 
+//------------------------------------------------------------------------
+// ASCENT: the Improvements setting Dtu_improved_body (dtuopts.h). Not in
+// the executable.
+//
+// The arms model of the player (<archive><letter>_p.pof) is the upper body
+// only: submodel 0 is the root, 1 the chest and pelvis (flag 0x02), 2 to 5
+// the right arm (shoulder, upper arm, forearm, hand with the weapon), 7 to
+// 10 the left arm, and a submodel with flag 0x04 and no polygons marks the
+// end of the weapon (6 in hmch_p.pof). There are no legs. So the whole
+// model turns with the view.
+//
+// With the setting on, the model is placed as the executable places it at
+// look pitch 0 (1.2207 above the center of the body, less for a bow) and
+// then turned with the view pitch about the eye (the center of the body
+// plus eye_offset along uvec, without the view bob, which the arms do not
+// have in the executable either). The orientation is the view matrix of
+// render_frame (orient * angles_2_matrix(pitch,0,0)). So the arms, the
+// chest and the weapon stay at the same place on the screen at every
+// pitch, and the distance of each point of the arms from the eye is the
+// distance at pitch 0: the arms do not reach further into a near wall.
+//
+// The swing lift. The stab of the short sword and of the dagger stays
+// under the view in all frames of the attack (docs/re/combat.md, C1). For
+// a model whose weapon is never in the view during the attack state, the
+// arms are moved up along the view uvec during the swing by the height
+// that puts the weapon of the frames of the hit window (6 to 8) at 0.6 of
+// the way from the center of the view to its lower edge. The lift rises
+// over the first 3/16 of the swing, holds, and falls over the last 4/16.
+// The hit test, the swing time and the missile start are not changed.
+
+#define BODY_LIFT_TARGET	(F1_0*6/10)		// the weapon at 0.6 of the half height under the center
+#define BODY_LIFT_MAX		(F1_0*4)
+
+
+// v = m * a with the columns rvec, uvec, fvec (the order of tools/model.py:
+// a.x * rvec + a.y * uvec + a.z * fvec)
+static void body_unrotate(vms_vector *v,vms_vector *a,vms_matrix *m)
+{
+	v->x = fixmul(a->x,m->rvec.x) + fixmul(a->y,m->uvec.x) + fixmul(a->z,m->fvec.x);
+	v->y = fixmul(a->x,m->rvec.y) + fixmul(a->y,m->uvec.y) + fixmul(a->z,m->fvec.y);
+	v->z = fixmul(a->x,m->rvec.z) + fixmul(a->y,m->uvec.z) + fixmul(a->z,m->fvec.z);
+}
+
+// The origin of submodel s in the space of the model, in the given frame
+// (the joint chain of models.md: origin = sum of parent matrix * offset).
+static void body_joint(polymodel *po,int frame,int s,vms_vector *out)
+{
+	int chain[MAX_POLYMODEL_SUBMODELS], n = 0, i;
+	vms_matrix m = vmd_identity_matrix;
+
+	vm_vec_zero(out);
+	while (s >= 0 && s < po->n_models && n < MAX_POLYMODEL_SUBMODELS) {
+		chain[n++] = s;
+		if (po->submodel_parents[s] == 0xff || po->submodel_parents[s] == s)
+			break;
+		s = po->submodel_parents[s];
+	}
+	for (i=n-1;i>=0;i--) {
+		int c = chain[i];
+		vms_vector t;
+		vms_matrix lm, nm;
+
+		body_unrotate(&t,&po->submodel_offsets[c],&m);
+		vm_vec_add2(out,&t);
+		vm_angles_2_matrix(&lm,&po->anim_angles[frame * po->n_models + c]);
+		body_unrotate(&nm.rvec,&lm.rvec,&m);
+		body_unrotate(&nm.uvec,&lm.uvec,&m);
+		body_unrotate(&nm.fvec,&lm.fvec,&m);
+		m = nm;
+	}
+}
+
+static fix body_eye_offset(void)
+{
+	if (N_player_types > 0 && Player_type_info[0].eye_offset)
+		return Player_type_info[0].eye_offset;
+	return DTU_EYE_OFFSET_DEFAULT;
+}
+
+// The middle of the weapon (between the hand joint and the end marker) of
+// a frame, relative to the eye, in the space of the player at pitch 0.
+// Returns 0 if the model has no end marker.
+static int body_weapon_point(polymodel *po,int frame,vms_vector *p)
+{
+	vms_vector tip, hand, bc;
+	int s, tip_sub = -1;
+
+	if (!po->submodel_flags || !po->anim_angles || frame < 0 || frame >= po->n_frames)
+		return 0;
+	for (s=0;s<po->n_models;s++)
+		if (po->submodel_flags[s] & 0x04) { tip_sub = s; break; }
+	if (tip_sub < 1 || po->submodel_parents[tip_sub] >= po->n_models)
+		return 0;
+	body_joint(po,frame,tip_sub,&tip);
+	body_joint(po,frame,po->submodel_parents[tip_sub],&hand);
+	polyobj_get_body_center(View_model,frame,&bc);
+	p->x = (tip.x + hand.x) / 2 - bc.x;
+	p->y = (tip.y + hand.y) / 2 - bc.y + (Pitch_offset ? 0x13880 : 0) - body_eye_offset();
+	p->z = (tip.z + hand.z) / 2 - bc.z;
+	return 1;
+}
+
+// The lift of the arms for the swing of the model in the hand (see above).
+static void body_compute_lift(polymodel *po)
+{
+	int first = Dtu_anim_first[DAS_ATTACK], end = Dtu_anim_first[DAS_ATTACK+1], f;
+	fix best = -1;
+	vms_vector p;
+
+	Lift_model = View_model;
+	Swing_lift = 0;
+	if (end <= first || end > po->n_frames || !Pitch_offset)
+		return;
+	// No lift if the weapon is in the view in some frame of the attack.
+	for (f=first;f<end;f++) {
+		if (!body_weapon_point(po,f,&p))
+			return;
+		if (p.z > F1_0/2 && abs(p.y) <= fixmul(Render_zoom,p.z) && abs(p.x) <= p.z)
+			return;
+	}
+	// The hit window: frames 6 to 8 of the state (0x6CFF8)
+	for (f=first+6;f<=first+8 && f<end;f++) {
+		fix need;
+
+		body_weapon_point(po,f,&p);
+		if (p.z <= F1_0/2)
+			continue;
+		need = -fixmul(fixmul(BODY_LIFT_TARGET,Render_zoom),p.z) - p.y;
+		if (best < 0 || need < best)
+			best = need;
+	}
+	if (best > 0)
+		Swing_lift = best < BODY_LIFT_MAX ? best : BODY_LIFT_MAX;
+	dtu_obj_log("combat: body lift of model %d for the swing %.3f",View_model,f2fl(Swing_lift));
+}
+
+// The lift at this moment of the swing
+static fix body_swing_lift(polymodel *po)
+{
+	fix t, r, k;
+
+	if (Lift_model != View_model)
+		body_compute_lift(po);
+	if (Swing_lift == 0 || !is_attack_state(View_state) || Swing_time <= 0)
+		return 0;
+	t = GameTime - View_anim_start;
+	if (t <= 0)
+		return 0;
+	r = fixdiv(t,Swing_time) * 16;		// the frame of the state, with the fraction
+	if (r >= 16*F1_0)
+		return 0;
+	if (r < 3*F1_0)
+		k = r / 3;
+	else if (r > 12*F1_0)
+		k = (16*F1_0 - r) / 4;
+	else
+		k = F1_0;
+	k = fixmul(fixmul(k,k),3*F1_0 - 2*k);	// smooth start and end
+	return fixmul(Swing_lift,k);
+}
+
+// The position and the orientation of the arms model with the setting on
+static void improved_body_place(object *obj,polymodel *po,vms_vector *pos,vms_matrix *orient)
+{
+	vms_matrix headm;
+	vms_angvec a;
+	vms_vector eye, l, w;
+	fix eye_offset = body_eye_offset();
+
+	a.p = Dtu_look_pitch; a.b = 0; a.h = 0;
+	vm_angles_2_matrix(&headm,&a);
+	vm_matrix_x_matrix(orient,&obj->orient,&headm);	// the view matrix of render_frame
+
+	eye = obj->pos;
+	vm_vec_scale_add2(&eye,&obj->orient.uvec,eye_offset);
+
+	// the place at pitch 0 relative to the eye, in the space of the player
+	l.x = 0;
+	l.y = (Pitch_offset ? 0x13880 : 0) - eye_offset + body_swing_lift(po);
+	l.z = 0;
+	body_unrotate(&w,&l,orient);
+	vm_vec_add(pos,&eye,&w);
+}
+
 // render_object 0x67C5A for the player object: the arms and the weapon.
 // The executable draws the player object like any object of its segment
 // (it has no test for the viewer). The port draws it after the mine, which
@@ -802,6 +1230,7 @@ void dtu_combat_draw_view(void)
 {
 	object *obj = ConsoleObject;
 	vms_vector pos;
+	vms_matrix orient;
 	fix light, glow[2] = { 0, 0 };
 	int show_hidden = 1;
 	polymodel *po = view_po();
@@ -812,9 +1241,12 @@ void dtu_combat_draw_view(void)
 		return;
 
 	pos = obj->pos;
+	orient = obj->orient;
 	// The floor type 1 lowers the arms by 0x1388 (not in the port: the
 	// floor type function is in physics.c and is not public).
-	if (Pitch_offset) {
+	if (Dtu_improved_body)
+		improved_body_place(obj,po,&pos,&orient);
+	else if (Pitch_offset) {
 		pos.y += 0x13880 - 16 * (fix)Dtu_look_pitch;
 		if (Dtu_look_pitch > 0) {
 			vms_angvec a;
@@ -836,5 +1268,22 @@ void dtu_combat_draw_view(void)
 	}
 
 	light = compute_object_light(obj,NULL);
-	draw_polygon_model_frame(&pos,&obj->orient,View_model,View_frame < po->n_frames ? View_frame : -1,show_hidden,light,glow,NULL);
+
+	// ASCENT: animation interpolation (Dtu_anim_interp, polyobj.h). The
+	// frame of the swing rules (View_frame) stays. view_animation() counts
+	// the frames by the time for a state time of 1.0 or more, so the time
+	// of one frame is known then.
+	if (Dtu_anim_interp && View_frame >= 0 && View_frame < po->n_frames && View_state >= 0 && View_state < DTU_N_ANIM_STATES) {
+		static polyobj_anim_track track;
+		int first = Dtu_anim_first[View_state], end = Dtu_anim_first[View_state+1], next;
+		fix st = state_time(View_state), est = 0, frac;
+
+		if (f2i(st) >= 1 && end > first)
+			est = st / (end - first);
+		frac = polyobj_anim_track_update(&track,View_model+1,View_state,View_frame,first,end,est,1,GameTime,&next);
+		draw_polygon_model_frame_lerp(&pos,&orient,View_model,View_frame,next,frac,show_hidden,light,glow,NULL);
+		return;
+	}
+
+	draw_polygon_model_frame(&pos,&orient,View_model,View_frame < po->n_frames ? View_frame : -1,show_hidden,light,glow,NULL);
 }

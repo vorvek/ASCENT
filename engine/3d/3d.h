@@ -354,5 +354,55 @@ bool g3_draw_morphing_model(void *model_ptr,grs_bitmap **model_bitmaps,vms_angve
 //The functions that had no return type (implicit int, with no defined
 //value in the assembly) return void.
 
+//ASCENT: the GPU renderer (gpu3d.c). The software path is used when the
+//GPU is not available or not enabled.
+
+//The source of a bitmap for the upscaled texture set (see
+//g3_gpu_options). kind 1: the bitmap egg/name of an EGG archive (lower
+//case, '#' of an animation frame replaced by '_'). kind 2: a merged wall
+//texture (texmerge.c): top drawn over bottom with the rotation orient.
+typedef struct g3_gpu_source {
+	int kind;
+	char egg[16];
+	char name[20];
+	grs_bitmap *bottom,*top;
+	int orient;
+} g3_gpu_source;
+
+//The settings of the GPU view, read at each g3_gpu_begin_view().
+typedef struct g3_gpu_options {
+	int rgb;				//the RGB form (else the 8-bit form, platform.h)
+	int anisotropic;		//RGB: mipmaps and 8x anisotropic filtering
+	int upscaled;			//RGB: the textures of the upscaled set when they exist
+	const char *hd_dir;		//the directory of the upscaled files (<hd>/textures/<egg>/<name>.png), or NULL
+	const ubyte *palette;	//the palette of the bitmaps (gr_palette)
+	//fills src for a bitmap, returns 0 if the bitmap has no source
+	int (*source)(grs_bitmap *bm,g3_gpu_source *src);
+} g3_gpu_options;
+void g3_gpu_set_options(const g3_gpu_options *o);
+
+//Start the 3D view on the current canvas. enable 0 selects the software
+//renderer. The GPU image is canvas width * scale by canvas height *
+//line_mul * scale pixels (line_mul is 2 when each line of the canvas is
+//shown two times), except for scale 1: then the image is the size of the
+//canvas, the original resolution (each line shown line_mul times).
+//depth_test 1: per pixel depth test. clear_color: the palette index of
+//the background. Returns 1 if the GPU draws the view:
+//then the 3d drawers on this canvas go to the GPU until g3_gpu_end_view(),
+//and the canvas is filled with color 255, the color that shows the GPU
+//image when the frame is shown.
+int g3_gpu_begin_view(int enable,int scale,int line_mul,int depth_test,int clear_color);
+//The polygons after this call are drawn over the earlier ones.
+void g3_gpu_clear_depth(void);
+void g3_gpu_end_view(void);
+//The view canvas is shown at (x,y) in the screen with w by h pixels.
+//Call it each time the canvas is copied to the screen.
+void g3_gpu_view_dest(int x,int y,int w,int h);
+//Darken the GPU image in a rectangle of screen pixels (x1, y1 not
+//included) with the fade table row level, as the 2d code darkens the
+//pixels of the screen (the fade table keeps color 255, the color that
+//shows the GPU image). Call it after g3_gpu_view_dest() of the frame.
+void g3_gpu_view_darken(int x0,int y0,int x1,int y1,int level);
+
 #endif
 

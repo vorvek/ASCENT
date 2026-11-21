@@ -701,8 +701,9 @@ minus 1, so the last segment is never marked.
   the spell cases decide (combat.md B3). **Code.**
 
 The port: `dtu_break_dressing()` and the push in `dtuobj.c` (settings
-`Dtu_fix_cant_break` and `Dtu_fix_push_frame`, see combat.md C3). The two
-level special cases are not in the port.
+`Dtu_fix_cant_break` and `Dtu_fix_push_frame`, see combat.md C3). Of the two
+level special cases the port has only the end of the game of level 0x20
+object 3: the credits movie (movies.md), without the light and the sounds.
 
 ### Creature melee status effects (verified: none)
 
@@ -811,6 +812,118 @@ Hands (spell 4, 1d3 fire plus 2 per level) as a missile. Each hit does 4.
 `-level BONES -testpos -20,-5,0,90`: trigger 1 runs trap 0, which gates a
 skeleton (type 0) in segment 1. It kills the player in 6.1 s. The death
 music plays 3 s later and the level starts again at 13.3 s.
+
+### Improved pathfinding (Dtu_improved_pathfinding)
+
+The setting of `dtuopts.h`, on by default. Off (or `-origobj`, or the test
+option `-noimprovedpaths`, which changes nothing else) gives the rules above.
+The code is in `dtuobj.c`. The creatures of the target game do not use
+`aipath.c` or `ai.c`.
+
+Causes found with `-objlogpos` (Code for the executable, the rest measured in
+the port):
+
+- The move of a creature (0x9E88D) stops the body for the frame at a wall hit
+  and takes 1.75 times the velocity into the wall away. A body that walks into
+  the corner of an opening stays at the corner. The top side is tested at 1.5
+  times the half height above the center (0x3F58C), so a tall body cannot
+  enter a corridor that it fits in (armOgre: 28.7 above the floor).
+- The path goes to the center of each side, also through the top side of a
+  segment (a hole in the ceiling), which a walking creature cannot use.
+- A body stops at scenery (a table) and waits for the blocked move.
+- With no sight and a distance above 80.0, CHASE_OB makes a random path on
+  each frame and goes back to CHASE_OB on the next frame: the creature never
+  moves (0x150DD with the awareness rule of 0x1487A).
+- The test of 0x14206 fails at random when the player is behind the
+  creature, so a creature on a path around a wall stops for one animation.
+
+Changes:
+
+- Path points: each opening of the path has a point in front of it and one
+  behind it, on the line from the center of one segment to the center of the
+  next, at the torso radius plus 0.5 from the opening (at most 0.4 of the way
+  to the segment center). A later point (three at most) is taken when the line
+  to it is free for the torso radius, at the creature height and to the point.
+  No progress of 1.0 in 1.5 seconds: back to the point in front of the
+  opening, then a new path without the segment behind it, after three new
+  paths the path is given up. A walking creature takes no path through a top
+  side.
+- Move: the body slides along a wall (it moves to the hit point and goes on
+  with the rest of the frame time), the top side is tested at the half
+  height, and the body goes around scenery.
+- A hostile creature that sees the player but has no free line for its body
+  takes the path. With no sight above 80.0 it takes a path to the player, or
+  walks along the random path. A creature on a path to the segment of the
+  player stays active.
+- Body: a hostile melee creature that sees the player stops at
+  `creature_stop_dist()`: the reach of the weapon minus 1.0, at most the
+  attack distance of `choose_attack_goal()` (size + player size + 2.0) minus
+  1.0, at least torso radius + 2.5. The reach is the largest distance in front
+  of the creature at which the weapon test of `weapon_test()` (frames 8 to the
+  end of ATTACK and ATTACK2, test position 1.414 forward, segment from the
+  weapon sphere outward by its radius) touches the player cylinder of radius
+  2.5. The hit test does not change. Values (reach / stop): Ghoul 10.12 /
+  9.12, Ghast 10.83 / 9.83, Zombie 8.93 / 7.93, ske_axe 10.96 / 9.96, ske_sci
+  14.60 / 12.76, gskelsci 15.13 / 12.75, Banegard 13.22 / 12.22, GiantRat 10.19
+  / 9.19, rmfg5 14.59 / 13.16, hmfg1 13.64 / 12.64, dmfw1 11.80 / 10.80,
+  gorcaaxe 16.88 / 14.45, gorcasci and Orcascim 22.36 / 16.46, armOgre and
+  Ogre2 28.52 / 20.25, Gargoyle 7.59 / 6.59, blackbat 7.39 / 6.39. Ranged
+  creatures do not stop.
+- Death: see the corpse below.
+
+The corpse (0x6A48B, Code): 0x6C30E gives d, the distance from the bottom of
+the torso box of the frame (torso_half_height of the frame) to the floor. A
+negative d lifts the body by -d, else the body goes down by d plus
+torso_radius[0] (the first stack value that 0x748D9 fills). On the last frame
+of DIE 0x748D9 gives a half height of 0.1. The port used body_half_height of
+the last frame. Neither takes the offset of the box: the model origin is the
+center of the standing body, and the box of the dead body is far below it
+(Ghoul: box1_min.y -6.16, body_half_height 4.35, body_center.y -1.81). So the
+body was 1.2 to 4.4 in the floor (measured: -1.17 to -4.37 for 19 creatures),
+and the software renderer draws it over the floor of its segment. A creature
+that flies (blackbat, Gargoyle) has no gravity in DIE and stayed in the air
+(measured: 19.4 to 35.4 above the floor). Improved: the bottom of the box of
+the frame is used in DIE, a flying creature falls when it dies, and the corpse
+is put with box1_min.y on the highest floor under the box center and four
+points of the box (at 0.6 of the half size), not more than 3.0 above the
+floor under the origin (a body on a step).
+
+Test options: `-testkill N[,1]` kills the active creature nearest to the
+player each N frames (with 1: only one that hit a wall in the last 0.5 s) and
+logs the corpse height above the floor. The `-objlogpos` lines have the
+animation, sight, blocker and the wall, top, floor and object hits.
+
+Measured (`-noattack`, 30 s at 60 frames per second, time to the attack
+position, off and on):
+
+- DROW1 `-testpos 139.8,21,219.4`: gorcaaxe obj 7 at the opening from seg
+  146 to 155 (corner seg 146 side 0, at 129,19,203): 9.2 s and 4.2 s.
+  gorcaaxe obj 8: not in 30 s and 10.2 s.
+- DROW1 `-testpos 235.4,0,326.9`: gorcasci obj 57 and 58, blocked by a
+  table (obj 54) in seg 249: not in 30 s, and 4.2 s.
+- MYRKUL `-testpos -81.8,-26,188.9`: ske_axe obj 65 at a table in seg 310:
+  13.7 s and 3.0 s.
+- MYRKUL `-testpos 115.5,-25,359.5`: Gargoyle obj 25 at the low opening of
+  seg 27 (top side): not in 30 s and 5.5 s.
+- MYRKUL `-testpos 89,-26,303.1`: ske_axe obj 67 took a path up through the
+  ceiling of seg 8 to seg 43: stuck 14.5 s and 5.0 s.
+- 14 places in BANE, CRYPTS, DROW1, MYRKUL: 802 and 427 seconds of creatures
+  that walk but do not move, 32 and 36 creatures at the player.
+- The same DROW1 fight at 20, 60, 200 frames per second: the three gorcaaxe
+  are at 16.0 from the player at 4.47, 4.50, 4.65 s (obj 6), 4.47, 4.25, 4.28
+  s (obj 7), 10.46, 10.25, 10.19 s (obj 8), and all stop at 14.6.
+- Smallest distance of melee creatures that attack: BANE ske_sci 6.9 and
+  12.8, Ghast 6.5 and 9.8, Zombie 5.7 and 8.0, DROW1 rmfg5 8.3 and 13.7. With
+  attacks: BANE 4 swings, 1 hit off, 3 swings, 2 hits on; DROW1 2 and 2 off,
+  5 and 4 on.
+- 19 deaths at walls (`-testkill 30,1`): -1.32 to -3.07 off, and 24 deaths
+  0.00 to 0.09 on, with two bodies on a step 0.44 and 0.86. Flying: 19.4 to
+  35.4 off, 0.01 to 0.04 on.
+
+Open: the stops in BANE are closed doors (no path for a creature without the
+door bit, as in the executable). The armOgre of CRYPTS (height 23) does not
+fit through the opening from seg 87 to seg 83 and walks back and forth. A
+creature without a path still walks straight at a wall.
 
 ## Animation step (0x11018)
 

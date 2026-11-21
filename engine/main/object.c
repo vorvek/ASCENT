@@ -891,7 +891,9 @@ void render_object(object *obj)
 			draw_polygon_object(obj); 
 
 			//"warn" robot if being shot at
-			if (obj->type == OBJ_ROBOT)
+			// ASCENT: not for a robot beyond the original render depth
+			// (Render_orig_visible, render.h)
+			if (obj->type == OBJ_ROBOT && Render_orig_visible)
 				set_robot_location_info(obj);
 
 //JOHN SAID TO:			if ( (obj->type==OBJ_PLAYER) && ((keyd_pressed[KEY_W]) || (keyd_pressed[KEY_I])))
@@ -2074,6 +2076,11 @@ void object_move_one( object * obj )
 		if (previous_segment != obj->segnum) {
 			int	connect_side,i;
 			for (i=0;i<n_phys_segs-1;i++) {
+				// ASCENT: the original checks the segment numbers (0x69C27). A
+				// bad list from the collision code crashed the port here.
+				if (phys_seglist[i] < 0 || phys_seglist[i] > Highest_segment_index ||
+						phys_seglist[i+1] < 0 || phys_seglist[i+1] > Highest_segment_index)
+					continue;
 				connect_side = find_connect_side(&Segments[phys_seglist[i+1]], &Segments[phys_seglist[i]]);
 				if (connect_side != -1)
 					check_trigger(&Segments[phys_seglist[i]], connect_side, obj-Objects);

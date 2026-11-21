@@ -212,6 +212,12 @@ static bool draw_poly_2d(int nv,g3s_point **bufptr)
 		Vertex_list[i*2+1] = p->p3_sy;
 	}
 
+	//ASCENT: the GPU renderer draws the face (globvars.h)
+	if (G3_GPU_ROUTE()) {
+		G3_gpu->poly(nv,bufptr);
+		return 0;
+	}
+
 	//DONT_USE_UPOLY was 1 in the assembly, so there is no trivial accept
 	//test here: the flat drawer is called for each face
 	(*flat_drawer_ptr)(nv,Vertex_list);
@@ -285,6 +291,12 @@ static bool draw_tmap_2d(int nv,g3s_point **bufptr,grs_bitmap *bm)
 
 		if (p->p3_flags & PF_OVERFLOW)		//Should not overflow after clip
 			return 1;
+	}
+
+	//ASCENT: the GPU renderer draws the face (globvars.h)
+	if (G3_GPU_ROUTE()) {
+		G3_gpu->tmap(nv,bufptr,bm,tmap_drawer_ptr != draw_tmap);
+		return 0;
 	}
 
 	//now call the texture mapper
@@ -371,6 +383,12 @@ void g3_draw_sphere(g3s_point *pnt,fix rad)
 
 	if (g3_div_overflow(n,pnt->z))		//on overflow, no draw
 		return;
+
+	//ASCENT: the GPU renderer draws the disk (globvars.h)
+	if (G3_GPU_ROUTE()) {
+		G3_gpu->sphere(pnt,g3_idiv(n,pnt->z));
+		return;
+	}
 
 	gr_disk(pnt->p3_sx,pnt->p3_sy,g3_idiv(n,pnt->z));
 }

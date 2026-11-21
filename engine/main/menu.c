@@ -69,6 +69,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include "playsave.h"
 #include "multi.h"
 #include "kconfig.h"
+#include "physics.h"		// ASCENT: Dtu_player_walk
 #include "titles.h"
 #include "credits.h"
 #include "texmap.h"
@@ -78,6 +79,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include "songs.h"
 #include "config.h"
 #include "platform.h"		// ASCENT: plat_pump reports that the window is closed
+#include "dtufe.h"		// ASCENT: dtufe_improvements_menu() and dtufe_graphics_menu() for the options menu
 
 #ifdef EDITOR
 #include "editor\editor.h"
@@ -808,17 +810,24 @@ void do_options_menu()
 		m[6].type = NM_TYPE_MENU; m[6].text=TXT_CONTROLS_;
 		m[7].type = NM_TYPE_MENU; m[7].text=TXT_DETAIL_LEVELS;
 		m[8].type = NM_TYPE_MENU; m[8].text=TXT_CAL_JOYSTICK;
-		m[9].type = NM_TYPE_TEXT; m[9].text="";
+		// ASCENT: the menu of the settings of dtuopts.h (dtufe.c). It takes
+		// the place of a blank line: the box is no higher than 200 pixels.
+		m[9].type = NM_TYPE_MENU; m[9].text="Improvements...";
 		m[10].type = NM_TYPE_SLIDER; m[10].text=TXT_JOYS_SENSITIVITY; m[10].value=Config_joystick_sensitivity; m[10].min_value =0; m[10].max_value = 8;
-		m[11].type = NM_TYPE_TEXT; m[11].text="";
+		// ASCENT: the Graphics menu (dtufe.c) takes the place of a blank line.
+		m[11].type = NM_TYPE_MENU; m[11].text="Graphics...";
 		m[12].type = NM_TYPE_CHECK; m[12].text="Ship auto-leveling"; m[12].value=Auto_leveling_on; 
 				
 		i = newmenu_do1( NULL, TXT_OPTIONS, 13, m, joydef_menuset, i );
 			
 		switch(i)	{
-			case 6: joydefs_config(); 			break;
+			// ASCENT: the Controls menu of Descent to Undermountain (0x50B4F,
+			// kconfig.c). The Descent 1 menu stays for the ship (-fly).
+			case 6: if (Dtu_player_walk) dtu_kconfig_menu(); else joydefs_config(); 	break;
 			case 7: do_detail_level_menu();	break;
 			case 8: joydefs_calibrate();		break;
+			case 9: dtufe_improvements_menu();	break;	// ASCENT
+			case 11: dtufe_graphics_menu();	break;	// ASCENT
 		}
 
 		Config_channels_reversed = m[2].value;

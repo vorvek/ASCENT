@@ -242,6 +242,12 @@ At `texture_offset`: `texture_howmany` records of 13 bytes, each a NUL terminate
 name. All five files hold the same count, 1489 names (1467 unique). Examples: `green`,
 `ladder`, `stone223`, `wood16`, `idor2#12`. Names with `#n` are animation frames.
 
+The name `ladder` is at index 5, 6, 7, 8 and 119 (checked in YPINN, BANE, DROW1,
+HUB1, FLAME and PRISON). The game takes a side with the texture of the first `ladder`
+or one of the three after it as a ladder (docs/re/physics.md, section 12). Solid sides
+with a texture 5 to 8 (overlay, or base texture when there is no overlay): 2 in BANE, 7 in DROW1, 4 in HUB1, 6 in FLAME, 3 in PRISON,
+none in YPINN.
+
 `tmap_num` and `tmap_num2` of a side are indexes into this table. The loader compares
 the table with the texture table of the running game. If they differ it builds a
 translation table by name and rewrites every `tmap_num` and `tmap_num2` (this is

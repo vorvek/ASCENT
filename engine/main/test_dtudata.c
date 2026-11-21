@@ -10,6 +10,12 @@
  *   -out DIR       write PNG pictures and one WAV file to DIR
  *   -sweep DIR     load every NAME.BIN of DIR (with its EGG) and print one
  *                  line for each. DIR must also be a data directory.
+ *   -texcheck DIR  list the model texture references of every table of DIR
+ *                  (with each player archive) that give no bitmap or a
+ *                  black, empty or transparent bitmap. DIR must also be a
+ *                  data directory.
+ *   -texorig       with -texcheck: also list what the header slot rule of
+ *                  DTUGAME.EXE gives for weapon, spell and arms models
  *   -v             print the messages of the loaders (stderr)
  *
  * The data directories are searched in the order given.
@@ -468,6 +474,249 @@ static void test_text_and_fonts(void)
 	}
 }
 
+// ---------------------------------------------------------------------
+// -texcheck: the texture references of the models. For each model of the
+// loaded archives, each texture number that a TMAPPOLY of its data uses is
+// resolved as draw_polygon_model_frame() does, and a reference is listed if
+// it gives bitmap 0, an empty bitmap, a bitmap with only transparent pixels
+// or a bitmap that is (almost) all black.
+
+static void tc_mark_used(const ubyte *data, int size, int ofs, int depth, ubyte *used)
+{
+	#define TC_W(o) (((ofs)+(o)+2 <= size) ? (data[ofs+(o)] | (data[ofs+(o)+1]<<8)) : 0)
+	int n;
+
+	if (depth > 64)
+		return;
+	for (;;) {
+		if (ofs < 0 || ofs+2 > size)
+			return;
+		switch (TC_W(0)) {
+		case 0: return;
+		case 1: ofs += 4 + TC_W(2)*12; break;
+		case 2: ofs += 30 + ((TC_W(2)*2)|2); break;
+		case 3:
+			n = (short) TC_W(28);
+			if (n >= 0 && n < MAX_POLYOBJ_TEXTURES) used[n] = 1;
+			n = TC_W(2);
+			ofs += 30 + ((n*2)|2) + n*12;
+			break;
+		case 4:
+			tc_mark_used(data, size, ofs+TC_W(28), depth+1, used);
+			tc_mark_used(data, size, ofs+TC_W(30), depth+1, used);
+			ofs += 32;
+			break;
+		case 5: ofs += 36; break;
+		case 6: tc_mark_used(data, size, ofs+TC_W(16), depth+1, used); ofs += 20; break;
+		case 7: ofs += 8 + TC_W(2)*12; break;
+		case 8: ofs += 4; break;
+		default: return;
+		}
+	}
+	#undef TC_W
+}
+
+// The role of a model in the table: weapon, arms, creature, ...
+static void tc_model_role(int mn, char *out, int len)
+{
+	int i, j;
+
+	out[0] = 0;
+	#define TC_ADD(...) do { int l_ = (int)strlen(out); if (l_ < len-1) snprintf(out+l_, len-l_, __VA_ARGS__); } while (0)
+	for (i=0; i<N_weapon_types; i++)
+		if (Weapon_info[i].model_num == mn || Weapon_info[i].model_num_inner == mn)
+			TC_ADD("weapon %d '%s' ", i, Weapon_item_info[i].name);
+	for (i=0; i<N_player_types; i++)
+		for (j=0; j<Player_type_info[i].n_models; j++)
+			if (Player_type_info[i].model_nums[j] == mn)
+				TC_ADD("arms/player ");
+	for (i=0; i<N_robot_types; i++)
+		if (Robot_info[i].model_num == mn)
+			TC_ADD("creature '%s' ", Monster_info[i].name);
+	for (i=0; i<N_dressing_types; i++)
+		if (Dressing_info[i].model_num == mn)
+			TC_ADD("dressing '%s' ", Dressing_info[i].name);
+	for (i=0; i<N_spell_types; i++)
+		if (Spell_info[i].model_num == mn)
+			TC_ADD("spell '%s' ", Spell_info[i].name);
+	for (i=0; i<N_misc_types; i++)
+		if (Misc_info[i].model_num == mn)
+			TC_ADD("object '%s' ", Misc_info[i].name);
+	for (i=0; i<N_armor_types; i++)
+		if (Armor_info[i].model_num == mn)
+			TC_ADD("armor '%s' ", Armor_info[i].name);
+	#undef TC_ADD
+	if (!out[0])
+		snprintf(out, len, "not named by the table ");
+}
+
+// 0 if the bitmap is good, else a reason
+static const char *tc_bitmap_problem(int index, int *black_pct)
+{
+	grs_bitmap *bm;
+	ubyte *pix;
+	int i, n, n_black = 0, n_clear = 0;
+
+	*black_pct = 0;
+	if (index <= 0 || index >= Num_bitmap_files)
+		return "bitmap 0 (missing)";
+	bm = &GameBitmaps[index];
+	if (bm->bm_w <= 0 || bm->bm_h <= 0 || bm->bm_data == NULL)
+		return "empty bitmap";
+	pix = bitmap_pixels(bm);
+	n = bm->bm_w * bm->bm_h;
+	for (i=0; i<n; i++) {
+		int c = pix[i];
+		if (c == 255 && (bm->bm_flags & BM_FLAG_TRANSPARENT))
+			n_clear++;
+		else if (gr_palette[c*3] + gr_palette[c*3+1] + gr_palette[c*3+2] <= 6)
+			n_black++;
+	}
+	free(pix);
+	if (n_clear == n)
+		return "all transparent";
+	*black_pct = n_black * 100 / (n - n_clear);
+	if (*black_pct >= 90)
+		return "black";
+	return NULL;
+}
+
+static int Tc_total_refs, Tc_total_bad, Tc_weapon_bad;
+static int Tc_orig = 0, Tc_orig_diff, Tc_orig_bad;		// -texorig
+
+static void texcheck_loaded(const char *label)
+{
+	int mn;
+
+	for (mn=0; mn<N_polygon_models; mn++) {
+		polymodel *po = &Polygon_models[mn];
+		ubyte used[MAX_POLYOBJ_TEXTURES];
+		char role[300];
+		int t, is_weapon;
+
+		if (po->model_data == NULL)
+			continue;
+		memset(used, 0, sizeof(used));
+		tc_mark_used(po->model_data, po->model_data_size, 0, 0, used);
+		tc_model_role(mn, role, sizeof(role));
+		is_weapon = strstr(role, "weapon") || strstr(role, "arms") || strstr(role, "creature");
+
+		for (t=0; t<MAX_POLYOBJ_TEXTURES; t++) {
+			const char *why = NULL;
+			char what[120];
+			int slot = -1, index = -1, pct = 0, k;
+
+			if (!used[t])
+				continue;
+			Tc_total_refs++;
+			what[0] = 0;
+			if (t >= po->n_textures)
+				why = "texture number beyond the list of the table (bitmap 0)";
+			else {
+				int ptr = po->first_texture + t;
+				slot = ObjBitmapPtrs[ptr];
+				// an eclip texture: check each frame
+				for (k=0; k<MAX_EFFECTS; k++)
+					if (Effects[k].changing_object_texture == slot && Effects[k].vc.num_frames > 0) {
+						int f;
+						for (f=0; f<Effects[k].vc.num_frames && !why; f++) {
+							index = Effects[k].vc.frames[f].index;
+							why = tc_bitmap_problem(index, &pct);
+							if (why) snprintf(what, sizeof(what), "eclip %d frame %d ", k, f);
+						}
+						break;
+					}
+				if (k == MAX_EFFECTS) {
+					index = ObjBitmaps[slot].index;
+					why = tc_bitmap_problem(index, &pct);
+				}
+			}
+			if (!po->dtu_bound && !why)
+				why = "model not named by the table (slots from 0)";
+
+			// The rule of DTUGAME.EXE for $PLAYER, $WEAPON and $SPELL models
+			// (models.md, "Textures"): the first_texture of the EGG header,
+			// plus 1 for a model of the level archive. Listed where it gives
+			// another bitmap than the port and that bitmap is bad.
+			if (Tc_orig && !why && po->dtu_bound && (strstr(role, "weapon") || strstr(role, "spell") || strstr(role, "arms"))) {
+				int fm = 0, nm = 0, egg_level = piggy_get_num_eggs() - 1, oslot, oindex, opct;
+				const char *owhy;
+				char oname[20] = "";
+
+				piggy_get_egg_counts(egg_level, NULL, NULL, &nm, NULL, NULL, &fm);
+				k = po->dtu_first_texture_file + t + (mn >= fm ? 1 : 0);
+				if (k >= 0 && k < MAX_OBJ_BITMAPS) {
+					oslot = ObjBitmapPtrs[k];
+					oindex = ObjBitmaps[oslot].index;
+					if (oindex != index) {
+						owhy = tc_bitmap_problem(oindex, &opct);
+						if (oindex > 0 && oindex < Num_bitmap_files) piggy_get_bitmap_name(oindex, oname);
+						Tc_orig_diff++;
+						if (owhy) Tc_orig_bad++;
+						printf("%-12s model %3d %-13s tex %2d: original rule slot %4d bitmap '%s' (%s, black %d%%), port bitmap %d %s\n",
+							label, mn, Pof_names[mn], t, k, oname, owhy ? owhy : "good", opct, index, role);
+					}
+				}
+			}
+			if (why) {
+				Tc_total_bad++;
+				if (is_weapon) Tc_weapon_bad++;
+				char bname[20] = "";
+				if (index > 0 && index < Num_bitmap_files) piggy_get_bitmap_name(index, bname);
+				printf("%-12s model %3d %-13s tex %2d of %2d (table %2d, first %4d) slot %4d bitmap %4d '%s' %s: %s%s (black %d%%)\n",
+					label, mn, Pof_names[mn], t, po->dtu_textures_used, po->n_textures, po->first_texture, slot,
+					index, bname, role, what, why, pct);
+			}
+		}
+	}
+}
+
+static void texcheck_sweep(char *dir)
+{
+	static char *players[] = { "hmc", "hmt" };
+	DIR *d = opendir(dir);
+	struct dirent *e;
+	char names[400][16];
+	int n = 0, i, j, p, n_loaded = 0;
+
+	if (!d) { printf("cannot read directory %s\n", dir); return; }
+	while ((e = readdir(d)) != NULL && n < 400) {
+		char *dot = strrchr(e->d_name, '.');
+		if (dot && (!stricmp(dot, ".BIN") || !stricmp(dot, ".HEN")) && dot - e->d_name <= 8) {
+			memcpy(names[n], e->d_name, dot - e->d_name);
+			names[n][dot - e->d_name] = 0;
+			n++;
+		}
+	}
+	closedir(d);
+	for (i=0; i<n; i++)
+		for (j=i+1; j<n; j++)
+			if (stricmp(names[i], names[j]) > 0) {
+				char t[16];
+				strcpy(t, names[i]); strcpy(names[i], names[j]); strcpy(names[j], t);
+			}
+
+	for (i=0; i<n; i++) {
+		if (i > 0 && !stricmp(names[i], names[i-1]))
+			continue;
+		if (!stricmp(names[i], "hmc") || !stricmp(names[i], "hmt"))
+			continue;
+		for (p=0; p<2; p++) {
+			char label[40];
+			if (!bm_load_level_tables(names[i], players[p]))
+				break;
+			n_loaded++;
+			snprintf(label, sizeof(label), "%s+%s", names[i], players[p]);
+			texcheck_loaded(label);
+		}
+	}
+	printf("texcheck: %d table loads, %d model texture references, %d bad (%d of weapon, arms or creature models)\n",
+		n_loaded, Tc_total_refs, Tc_total_bad, Tc_weapon_bad);
+	if (Tc_orig)
+		printf("texcheck: with the header rule of DTUGAME.EXE %d references of weapon, spell and arms models give another bitmap, %d of them a bad one\n",
+			Tc_orig_diff, Tc_orig_bad);
+}
+
 static void sweep(char *dir)
 {
 	DIR *d = opendir(dir);
@@ -532,7 +781,7 @@ static void sweep(char *dir)
 // --wrap=main, so the start code calls this function.
 int __wrap_main(int argc, char **argv)
 {
-	char *level = "ypinn", *player = "hmc", *sweep_dir = NULL;
+	char *level = "ypinn", *player = "hmc", *sweep_dir = NULL, *texcheck_dir = NULL;
 	int i, n_dirs = 0, verbose = 0;
 
 	for (i=1; i<argc; i++) {
@@ -540,6 +789,8 @@ int __wrap_main(int argc, char **argv)
 		else if (!strcmp(argv[i], "-player") && i+1 < argc) player = argv[++i];
 		else if (!strcmp(argv[i], "-out") && i+1 < argc) strncpy(Out_dir, argv[++i], sizeof(Out_dir)-1);
 		else if (!strcmp(argv[i], "-sweep") && i+1 < argc) sweep_dir = argv[++i];
+		else if (!strcmp(argv[i], "-texcheck") && i+1 < argc) texcheck_dir = argv[++i];
+		else if (!strcmp(argv[i], "-texorig")) Tc_orig = 1;
 		else if (!strcmp(argv[i], "-v")) verbose = 1;
 		else { dtu_add_data_dir(argv[i]); n_dirs++; }
 	}
@@ -573,6 +824,10 @@ int __wrap_main(int argc, char **argv)
 
 	bm_init();
 
+	if (texcheck_dir) {
+		texcheck_sweep(texcheck_dir);
+		return 0;
+	}
 	if (sweep_dir) {
 		sweep(sweep_dir);
 		return 0;

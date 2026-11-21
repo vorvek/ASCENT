@@ -155,6 +155,9 @@ static char rcsid[] = "$Id: lighting.c 2.1 1995/07/24 13:21:56 john Exp $";
 #include "player.h"
 #include "weapon.h"
 #include "powerup.h"
+#include "bm.h"			// ASCENT: Dressing_info (the light of scenery)
+#include "args.h"			// ASCENT: -origlight
+#include "dtuobj.h"		// ASCENT: dtu_is_water_splash
 
 //global saying how bright the light beam is
 fix	Beam_brightness = (F1_0/2);
@@ -164,6 +167,14 @@ int	use_beam;		//flag for beam effect
 int	Do_dynamic_light=1;
 
 fix	Dynamic_light[MAX_VERTICES];
+
+// ASCENT: see lighting.h. -origlight clears it.
+int	Dtu_fix_light_stable = 1;
+
+// ASCENT: 1 while set_dynamic_light() lights all the vertices of the
+// render list in each frame (Dtu_fix_light_stable). 0: the original, which
+// clears and lights one half of the list in each frame.
+static int Light_every_frame = 0;
 
 // ----------------------------------------------------------------------------------------------
 void apply_light(fix obj_intensity, int obj_seg, vms_vector *obj_pos, int n_render_vertices, short *render_vertices)
@@ -190,11 +201,20 @@ void apply_light(fix obj_intensity, int obj_seg, vms_vector *obj_pos, int n_rend
 					if (dist < MIN_LIGHT_DIST)
 						dist = MIN_LIGHT_DIST;
 
-					Dynamic_light[vertnum] += fixdiv(obj_intensity, dist);
+					// ASCENT: the original clears one half of the vertices in
+					// each frame, but adds a dim source in each frame, so the
+					// light of a vertex is 1 and 2 times the value in turn
+					// (1.5 on average). Light_every_frame clears each vertex in
+					// each frame: 1.5 times the value keeps the average.
+					if (Light_every_frame)
+						Dynamic_light[vertnum] += fixdiv(obj_intensity, dist) * 3 / 2;
+					else
+						Dynamic_light[vertnum] += fixdiv(obj_intensity, dist);
 				}
 			}
 		} else {
-			for (vv=FrameCount&1; vv<n_render_vertices; vv+=2) {
+			// ASCENT: Light_every_frame, see set_dynamic_light()
+			for (vv=Light_every_frame ? 0 : FrameCount&1; vv<n_render_vertices; vv+=Light_every_frame ? 1 : 2) {
 				int			vertnum;
 				vms_vector	*vertpos;
 				fix			dist;
@@ -202,6 +222,10 @@ void apply_light(fix obj_intensity, int obj_seg, vms_vector *obj_pos, int n_rend
 				vertnum = render_vertices[vv];
 				vertpos = &Vertices[vertnum];
 				dist = vm_vec_dist_quick(obj_pos, vertpos);
+				// ASCENT: DTUGAME.EXE (0x57728) squares a quarter of the
+				// distance here too, as for the dim sources. Descent 1 uses
+				// the distance.
+				dist = fixmul(dist/4, dist/4);
 
 				if (dist < obji_64) {
 					if (dist < MIN_LIGHT_DIST)
@@ -245,6 +269,50 @@ fix	Obj_light_xlate[16] =
 	 0x3123, 0x29af, 0x1f03, 0x032a};
 
 // ----------------------------------------------------------------------------------------------
+// ASCENT: the light that an object casts, as in DTUGAME.EXE (0x57A80 to
+// 0x57BED). The types and values differ from Descent 1: robots (the
+// creatures) and powerups cast no light, scenery (type 18) casts the
+// lightcast= value of its $DRESSING entry (0x19B34C + 32 * id, written by
+// the table reader at 0x22918), and the light of weapon id 1 is added to its
+// weapon light. The original skips a weapon whose byte 0x1AE has bit 4 (the
+// item was picked up); here a picked up item is no longer in a segment.
+static fix dtu_object_light(object *obj, int objnum)
+{
+	fix light = 0;
+
+	switch (obj->type) {
+		case OBJ_FIREBALL:
+			// ASCENT: the splash of a step in water casts no light (the
+			// white flashes, see dtu_water_splash in dtuobj.c)
+			if (dtu_is_water_splash(obj))
+				break;
+			if (obj->id != 0xff) {
+				if (obj->lifeleft < F1_0*4)
+					light = fixmul(fixdiv(obj->lifeleft, Vclip[obj->id].play_time), Vclip[obj->id].light_value);
+				else
+					light = Vclip[obj->id].light_value;
+			}
+			break;
+		case OBJ_WEAPON:
+			light = Weapon_info[obj->id].light;
+			if (obj->id == 1)
+				light += 2 * (min(light, obj->lifeleft) + ((GameTime ^ Obj_light_xlate[objnum&0x0f]) & 0x3fff));
+			break;
+		case OBJ_DEBRIS:
+			light = F1_0/4;
+			break;
+		case OBJ_LIGHT:
+			light = obj->ctype.light_info.intensity;
+			break;
+		case OBJ_DRESSING:
+			if (obj->id < N_dressing_types)
+				light = Dressing_info[obj->id].lightcast;
+			break;
+	}
+	return light;
+}
+
+// ----------------------------------------------------------------------------------------------
 void set_dynamic_light(void)
 {
 	int	objnum,vertnum;
@@ -252,9 +320,19 @@ void set_dynamic_light(void)
 	short	render_vertices[MAX_VERTICES];
 	byte	render_vertex_flags[MAX_VERTICES];
 	int	render_seg,segnum, v;
+	static int init = 0;
+
+	// ASCENT: -origlight gives the light rules of the original
+	if (!init) {
+		init = 1;
+		if (FindArg("-origlight"))
+			Dtu_fix_light_stable = 0;
+	}
 
 	if (!Do_dynamic_light)
 		return;
+
+	Light_every_frame = Dtu_fix_light_stable;
 
 	memset(render_vertex_flags, 0, Highest_vertex_index+1);
 
@@ -274,13 +352,34 @@ void set_dynamic_light(void)
 					render_vertex_flags[vnum] = 1;
 					render_vertices[n_render_vertices++] = vnum;
 				}
-				//--old way-- for (s=0; s<n_render_vertices; s++)
-				//--old way-- 	if (render_vertices[s] == vnum)
-				//--old way-- 		break;
-				//--old way-- if (s == n_render_vertices)
-				//--old way-- 	render_vertices[n_render_vertices++] = vnum;
 			}
 		}
+	}
+
+	// ASCENT: Dtu_fix_light_stable. The original clears and lights one half
+	// of the vertices of the render list in each frame (by the place of the
+	// vertex in the list, which changes with the view), and it takes the
+	// lights from the objects in the segments of the render list only. So
+	// the light of a wall changed when the player turned: a light behind
+	// the player went off. Here all the light is computed again in each
+	// frame, from each object in the level. apply_light() keeps the radius
+	// of each light, so a far object adds nothing.
+	if (Light_every_frame) {
+		memset(Dynamic_light, 0, (Highest_vertex_index+1) * sizeof(Dynamic_light[0]));
+
+		cast_muzzle_flash_light(n_render_vertices, render_vertices);
+
+		for (objnum=0; objnum<=Highest_object_index; objnum++) {
+			object	*obj = &Objects[objnum];
+			fix		obj_intensity;
+
+			if (obj->type == OBJ_NONE || obj->segnum < 0 || obj->segnum > Highest_segment_index)
+				continue;
+			obj_intensity = dtu_object_light(obj, objnum);
+			if (obj_intensity)
+				apply_light(obj_intensity, obj->segnum, &obj->pos, n_render_vertices, render_vertices);
+		}
+		return;
 	}
 
 	for (vertnum=FrameCount&1; vertnum<n_render_vertices; vertnum+=2) {
@@ -301,41 +400,11 @@ void set_dynamic_light(void)
 		while (objnum != -1) {
 			object		*obj = &Objects[objnum];
 			vms_vector	*objpos = &obj->pos;
-			int			objtype = obj->type;
 			fix			obj_intensity;
-	
-			switch (objtype) {
-				case OBJ_FIREBALL:
-					if (obj->id != 0xff) {
-						if (obj->lifeleft < F1_0*4)
-							obj_intensity = fixmul(fixdiv(obj->lifeleft, Vclip[obj->id].play_time), Vclip[obj->id].light_value);
-						else
-							obj_intensity = Vclip[obj->id].light_value;
-					} else
-						obj_intensity = 0;
-					break;
-				case OBJ_ROBOT:
-					obj_intensity = F1_0/2;	// + (FrameCount & 0x1f)*F1_0/16;
-					break;
-				case OBJ_WEAPON:
-					obj_intensity = Weapon_info[obj->id].light;
-					if (obj->id == FLARE_ID )
-						obj_intensity = 2* (min(obj_intensity, obj->lifeleft) + ((GameTime ^ Obj_light_xlate[objnum&0x0f]) & 0x3fff));
-					break;
-				case OBJ_POWERUP:
-					obj_intensity = Powerup_info[obj->id].light;
-					break;
-				case OBJ_DEBRIS:
-					obj_intensity = F1_0/4;
-					break;
-				case OBJ_LIGHT:
-					obj_intensity = obj->ctype.light_info.intensity;
-					break;
-				default:
-					obj_intensity = 0;
-					break;
-			}
-	
+
+			// ASCENT: the object light of DTUGAME.EXE, see dtu_object_light()
+			obj_intensity = dtu_object_light(obj, objnum);
+
 			if (obj_intensity)
 				apply_light(obj_intensity, obj->segnum, objpos, n_render_vertices, render_vertices);
 
@@ -343,6 +412,10 @@ void set_dynamic_light(void)
 		}
 	}
 
+	// ASCENT: not ported: DTUGAME.EXE also casts a flickering light from
+	// each side of the render list that has a light texture (0x57963 to
+	// 0x57A76: the center of the side moved by a random amount, the light
+	// of the table at 0x13CCC0 for (segment + side) & 7).
 }
 
 // ---------------------------------------------------------
@@ -364,7 +437,10 @@ fix compute_headlight_light(vms_vector *point,fix face_light)
 		if (face_light < 0)
 			face_light = 0;
 
-		point_dist = vm_vec_mag_quick(point);
+		// ASCENT: vm_vec_mag_quick() is off by up to 1/8 by the direction of
+		// the vector, so the light of a point changed when the player
+		// turned. Dtu_fix_light_stable uses the exact length.
+		point_dist = Dtu_fix_light_stable ? vm_vec_mag(point) : vm_vec_mag_quick(point);
 
 		//note: beam scale not used if !use_beam
 

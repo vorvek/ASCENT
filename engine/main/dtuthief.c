@@ -753,6 +753,20 @@ void dtu_thief_climb_thrust(object *obj, fix forward, fix side)
 	}
 }
 
+// ASCENT: for Dtu_improved_physics, see dtuthief.h
+int dtu_thief_ladder_side(object *obj, int segnum)
+{
+	static const int sides[4] = { 0, 2, 4, 5 };
+	int i;
+
+	if (segnum < 0 || segnum > Highest_segment_index)
+		return -1;
+	for (i = 0; i < 4; i++)
+		if (wall_distance(obj, &Segments[segnum], sides[i], i2f(10)) >= 0 && side_is_ladder(&Segments[segnum], sides[i]))
+			return sides[i];
+	return -1;
+}
+
 // pcons.c 0x9EBEB(obj, 10.0)
 void dtu_thief_climb_frame(object *obj, vms_vector *accel)
 {
@@ -760,14 +774,22 @@ void dtu_thief_climb_frame(object *obj, vms_vector *accel)
 	segment *segp = &Segments[obj->segnum];
 	static const int sides[4] = { 0, 2, 4, 5 };
 	int i, side = -1;
-	fix d = 0, height = dtu_get_floor_dist(obj);
+	fix height = dtu_get_floor_dist(obj);
 	vms_vector *n;
 
+	// ASCENT: 0x9EBEB goes on to the next side when a wall in reach is no
+	// ladder and the player cannot climb it (0x9EDE6 to 0x9EE24 jump to
+	// 0x9EF8B). A side wall of a ladder shaft no longer ends the climb.
 	for (i = 0; i < 4; i++) {
 		fix dd = wall_distance(obj, segp, sides[i], i2f(10));
-		if (dd >= 0) {
+		if (dd < 0)
+			continue;
+		// nearer than 4.0: out of the wall
+		if (dd < i2f(4))
+			vm_vec_scale_add2(&obj->pos, &segp->sides[sides[i]].normals[0], i2f(4) - dd);
+		if ((Dtu_player_state & DTU_PS_JUMPING) || side_is_ladder(segp, sides[i]) ||
+			(can_climb_by_skill(obj) && !hand_is_weapon() && !(segp->sides[sides[i]].pad & 1))) {
 			side = sides[i];
-			d = dd;
 			break;
 		}
 	}
@@ -785,9 +807,6 @@ void dtu_thief_climb_frame(object *obj, vms_vector *accel)
 		return;
 	}
 	n = &segp->sides[side].normals[0];
-	// nearer than 4.0: out of the wall
-	if (d < i2f(4))
-		vm_vec_scale_add2(&obj->pos, n, i2f(4) - d);
 	if (Dtu_player_state & DTU_PS_JUMPING) {
 		// 0x9F028: the jump lets go
 		Dtu_player_state &= ~DTU_PS_CLIMBING;
@@ -798,11 +817,6 @@ void dtu_thief_climb_frame(object *obj, vms_vector *accel)
 	}
 	if (side_is_ladder(segp, side)) {
 		Dtu_player_state &= ~DTU_PS_FALLING;
-		return;
-	}
-	if (!(can_climb_by_skill(obj) && !hand_is_weapon())) {
-		Dtu_player_state &= ~DTU_PS_CLIMBING;
-		Dtu_thief_bits &= ~DTU_TS_CLIMB_SKILL;
 		return;
 	}
 	pi->thrust.x = fixmul(pi->thrust.x, 0x6666);

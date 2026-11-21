@@ -1,0 +1,5 @@
+// ASCENT: the resources of the game: the icon and the manifest.
+#include <winuser.h>
+
+1 ICON "ascent.ico"
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "game.manifest"

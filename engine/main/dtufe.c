@@ -52,9 +52,12 @@
 #include "gamefont.h"
 #include "dtufe.h"
 #include "dtufe_int.h"
+#include "dtumovie.h"
 #include "dtustate.h"
 #include "dtuscript.h"
 #include "screens.h"
+#include "dtuopts.h"
+#include "dtuhdui.h"		// ASCENT: the upscaled pictures
 
 int Dtu_fe_original_input = 0;
 int Dtu_fe_return_waterdeep = 0;
@@ -158,6 +161,17 @@ static ubyte *read_part(char *name, int offset, int size)
 //   quit            leave the program
 //   gamekeys        from now on the script also runs in the frames of the
 //                   game, and its keys go to the game
+//   hold NAME N     (ASCENT) hold the key down for N frames of the game
+//                   or of a menu; the script goes on at once
+//   padbutton NAME D  (ASCENT) a gamepad button down (D 1) or up (D 0):
+//                   a b x y back guide start ls rs lb rb dup ddown dleft dright
+//   padaxis NAME V  (ASCENT) a gamepad axis to V (-32768 to 32767):
+//                   lx ly rx ry lt rt. Both go through the functions that
+//                   plat_pump calls for the events of a real gamepad.
+//   wheel N         (ASCENT) N steps of the mouse wheel (negative: toward
+//                   the user)
+// ASCENT: a key name can start with "ctrl-" (Ctrl and the key), and the
+// names tab, home, end, ins, del, lctrl, lshift, lalt, f11, f12 exist.
 // While the script has commands the clock of the front end is the frame
 // count (30 frames are one second), so a run always gives the same frames.
 
@@ -170,6 +184,8 @@ static char Script_text[80];
 static int Script_text_pos;
 static char *Script_shot;
 static int Script_in_game;			// the command "gamekeys" was run
+static int Script_hold_key, Script_hold_frames;	// ASCENT: the command "hold"
+static int Script_moved;			// ASCENT: a command put the cursor at Fe_mx, Fe_my
 
 static int script_active(void)
 {
@@ -221,8 +237,14 @@ static int script_key(char *name)
 		{ "pgup", KEY_PAGEUP }, { "pgdn", KEY_PAGEDOWN }, { "left", KEY_LEFT },
 		{ "right", KEY_RIGHT }, { "up", KEY_UP }, { "down", KEY_DOWN }, { "backsp", KEY_BACKSP },
 		{ "f1", KEY_F1 }, { "f2", KEY_F2 }, { "f3", KEY_F3 }, { "f4", KEY_F4 }, { "f5", KEY_F5 },
-		{ "f6", KEY_F6 }, { "f7", KEY_F7 }, { "f8", KEY_F8 }, { "f9", KEY_F9 }, { "f10", KEY_F10 } };
+		{ "f6", KEY_F6 }, { "f7", KEY_F7 }, { "f8", KEY_F8 }, { "f9", KEY_F9 }, { "f10", KEY_F10 },
+		// ASCENT: more names for the key table tests
+		{ "f11", KEY_F11 }, { "f12", KEY_F12 }, { "tab", KEY_TAB }, { "home", KEY_HOME }, { "end", KEY_END },
+		{ "ins", KEY_INSERT }, { "del", KEY_DELETE }, { "lctrl", KEY_LCTRL }, { "lshift", KEY_LSHIFT }, { "lalt", KEY_LALT } };
 	int i;
+
+	if (!strnicmp(name, "ctrl-", 5) && name[5])
+		return KEY_CTRLED | (script_key(name + 5) & 0xFF);
 
 	for (i = 0; i < (int) (sizeof(names) / sizeof(names[0])); i++)
 		if (!stricmp(name, names[i].name))
@@ -234,6 +256,7 @@ static int script_key(char *name)
 static void script_frame(void)
 {
 	Fe_key = 0;
+	Script_moved = 0;
 	if (Script_btn == 1 || Script_rbtn) {		// the frame after a click: release
 		Script_btn = Script_rbtn = 0;
 		return;
@@ -258,18 +281,18 @@ static void script_frame(void)
 			Script_wait = x > 0 ? x - 1 : 0;
 			return;
 		} else if (!stricmp(cmd, "move")) {
-			Fe_mx = x; Fe_my = y;
+			Fe_mx = x; Fe_my = y; Script_moved = 1;
 		} else if (!stricmp(cmd, "click")) {
-			Fe_mx = x; Fe_my = y; Script_btn = 1;
+			Fe_mx = x; Fe_my = y; Script_btn = 1; Script_moved = 1;
 			return;
 		} else if (!stricmp(cmd, "press")) {
-			Fe_mx = x; Fe_my = y; Script_btn = 2;
+			Fe_mx = x; Fe_my = y; Script_btn = 2; Script_moved = 1;
 			return;
 		} else if (!stricmp(cmd, "release")) {
 			Script_btn = 0;
 			return;
 		} else if (!stricmp(cmd, "rclick")) {
-			Fe_mx = x; Fe_my = y; Script_rbtn = 1;
+			Fe_mx = x; Fe_my = y; Script_rbtn = 1; Script_moved = 1;
 			return;
 		} else if (!stricmp(cmd, "key")) {
 			Fe_key = script_key(arg);
@@ -286,10 +309,39 @@ static void script_frame(void)
 		} else if (!stricmp(cmd, "quit")) {
 			Fe_quit = 1;
 			return;
+		} else if (!stricmp(cmd, "padbutton") || !stricmp(cmd, "padaxis")) {
+			static char *buttons[] = { "a", "b", "x", "y", "back", "guide", "start", "ls", "rs", "lb", "rb",
+				"dup", "ddown", "dleft", "dright" };
+			static char *axes[] = { "lx", "ly", "rx", "ry", "lt", "rt" };
+			char pname[16];
+			int v = 0, i, is_axis = !stricmp(cmd, "padaxis");
+			pname[0] = 0;
+			sscanf(arg, "%15s %d", pname, &v);
+			for (i = 0; i < (is_axis ? 6 : 15); i++)
+				if (!stricmp(pname, is_axis ? axes[i] : buttons[i])) {
+					if (is_axis)
+						plat_input_pad_axis(i, v);
+					else
+						plat_input_pad_button(i, v);
+					break;
+				}
+			return;
+		} else if (!stricmp(cmd, "hold")) {
+			char kname[32];
+			int n = 0;
+			kname[0] = 0;
+			sscanf(arg, "%31s %d", kname, &n);
+			Script_hold_key = script_key(kname) & 0xFF;
+			Script_hold_frames = n;
+			if (Script_hold_key && n > 0)
+				plat_input_key(Script_hold_key, 1);
 		} else if (!stricmp(cmd, "gamekeys")) {
 			// ASCENT: from here on the script also runs in the frames of
 			// the game; its keys go to the game (dtufe_game_frame)
 			Script_in_game = 1;
+		} else if (!stricmp(cmd, "wheel")) {
+			plat_input_mouse_wheel(x);		// ASCENT: the menus read it
+			return;
 		} else
 			printf("Script: unknown command '%s'\n", s);
 	}
@@ -311,12 +363,30 @@ int dtufe_menu_script_frame(void)
 			printf("Cannot write %s\n", Script_shot);
 		Script_shot = NULL;
 	}
+	// ASCENT: the key of the command "hold" goes up after its frames
+	if (Script_hold_frames > 0 && --Script_hold_frames == 0)
+		plat_input_key(Script_hold_key, 0);
 	if (script_active()) {
 		script_frame();
 		if (Fe_key) {
+			if (Fe_key & KEY_CTRLED)		// ASCENT: Ctrl with the key
+				plat_input_key(KEY_LCTRL, 1);
 			plat_input_key(Fe_key & 0xFF, 1);
 			plat_input_key(Fe_key & 0xFF, 0);
+			if (Fe_key & KEY_CTRLED)
+				plat_input_key(KEY_LCTRL, 0);
 			Fe_key = 0;
+		}
+		// ASCENT: move, click and rclick also drive the mouse pointer of
+		// the menus and of the conversation window (newmenu.c, dtudlg.c)
+		{
+			static int last_l, last_r;
+			if (Script_moved)
+				plat_input_mouse_motion(0, 0, Fe_mx, Fe_my);
+			if ((Script_btn != 0) != last_l)
+				plat_input_mouse_button(0, last_l = (Script_btn != 0));
+			if ((Script_rbtn != 0) != last_r)
+				plat_input_mouse_button(1, last_r = (Script_rbtn != 0));
 		}
 	}
 	Fe_frame_count++;
@@ -378,6 +448,7 @@ int fe_frame_begin(void)
 		int y;
 		for (y = 0; y < sb->bm_h; y++)
 			memcpy(sb->bm_data + y * sb->bm_rowsize, Fe_bg->bm_data + y * Fe_bg->bm_rowsize, sb->bm_w);
+		dtu_hdui_blit(Fe_bg, 0, 0, sb->bm_w, sb->bm_h, sb, 0, 0, sb->bm_w, sb->bm_h);
 	} else
 		gr_clear_canvas(0);
 
@@ -551,6 +622,8 @@ void fe_blit_part(grs_bitmap *bm, int sx, int sy, int w, int h, int x, int y, in
 				if (s[i] != trans)
 					d[i] = s[i];
 	}
+	if (trans < 0)
+		dtu_hdui_blit(bm, sx, sy, w, h, sb, x, y, w, h);	// ASCENT: the upscaled picture
 }
 
 void fe_blit(grs_bitmap *bm, int x, int y, int trans)
@@ -1342,6 +1415,49 @@ static int start_edit(fe_menu_item *m, char *save, int index)
 	return index;
 }
 
+// ASCENT: the hue of a disabled item: the darkest of the hues 1 to 6 that
+// is brighter than the shadow, in the palette of the screen.
+static int fe_dark_hue(void)
+{
+	int h, best = FE_HUE_5, best_l = 0x7FFFFFFF;
+
+	for (h = FE_HUE_1; h <= FE_HUE_6; h++) {
+		int c = fe_hue(h), l = Fe_pal[c * 3] * 3 + Fe_pal[c * 3 + 1] * 6 + Fe_pal[c * 3 + 2];
+		if (l > 60 && l < best_l) {
+			best = h;
+			best_l = l;
+		}
+	}
+	return best;
+}
+
+// ASCENT: the text of the value of an FE_MI_CHOICE item.
+static void choice_text(fe_menu_item *m, int value, char *t, int size)
+{
+	if (m->labels)
+		snprintf(t, size, "%s", m->labels[value - m->min_value]);
+	else
+		snprintf(t, size, "x%d", value);
+}
+
+// ASCENT: the change of an FE_MI_CHOICE item by d. With wrap set, the value
+// goes round from the last to the first.
+static void choice_step(fe_menu_item *m, int d, int wrap)
+{
+	int v = m->value + d;
+
+	if (m->disabled)
+		return;
+	if (v < m->min_value)
+		v = wrap ? m->max_value : m->min_value;
+	if (v > m->max_value)
+		v = wrap ? m->min_value : m->max_value;
+	if (v != m->value) {
+		m->value = v;
+		if (m->changed) m->changed(m);
+	}
+}
+
 int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, int box)
 {
 	grs_bitmap *box_bm = NULL;
@@ -1363,6 +1479,16 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 		fe_string_size(Fe_font_m, items[i].text ? items[i].text : "", &a, &b);
 		if (items[i].type == FE_MI_SLIDER) a += 12 + SLIDER_W;
 		if (items[i].type == FE_MI_CHECK) a += 22;
+		if (items[i].type == FE_MI_CHOICE) {
+			char t[32];
+			int c, v, most = 0;
+			for (v = items[i].min_value; v <= items[i].max_value; v++) {
+				choice_text(&items[i], v, t, sizeof(t));
+				fe_string_size(Fe_font_m, t, &c, &b);
+				if (c > most) most = c;
+			}
+			a += 16 + most;
+		}
 		if (items[i].type == FE_MI_INPUT || items[i].type == FE_MI_INPUT_MENU) {
 			int c;
 			if (items[i].type == FE_MI_INPUT_MENU)
@@ -1435,6 +1561,8 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 				if (it->changed) it->changed(it);
 			} else if (it->type == FE_MI_INPUT_MENU)
 				editing = start_edit(it, edit_save, cur);
+			else if (it->type == FE_MI_CHOICE)
+				choice_step(it, 1, 1);
 			else if (it->type != FE_MI_SLIDER)
 				result = cur;
 		} else if (k == KEY_SPACEBAR && it->type == FE_MI_CHECK) {
@@ -1459,6 +1587,13 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 				if (it->changed) it->changed(it);
 			}
 		}
+		if (it->type == FE_MI_CHOICE) {
+			// ASCENT: a new press of left or right changes the value by one
+			if (Dtu_fe_original_input ? key_repeat(KEY_LEFT, &rep_l) : k == KEY_LEFT)
+				choice_step(it, -1, 0);
+			else if (Dtu_fe_original_input ? key_repeat(KEY_RIGHT, &rep_r) : k == KEY_RIGHT)
+				choice_step(it, 1, 0);
+		}
 
 		// the mouse: the item under the cursor becomes the current one
 		for (i = 0; i < n; i++) {
@@ -1477,8 +1612,11 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 				else if (m->type == FE_MI_CHECK) {
 					m->value = !m->value;
 					if (m->changed) m->changed(m);
-				}
+				} else if (m->type == FE_MI_CHOICE && Fe_press)
+					choice_step(m, 1, 1);
 			}
+			if (m->type == FE_MI_CHOICE && Fe_rpress)
+				choice_step(m, -1, 1);
 			if (m->type == FE_MI_SLIDER && Fe_down && Fe_mx >= m->x + iw - SLIDER_W) {
 				int v = m->min_value + ((Fe_mx - (m->x + iw - SLIDER_W)) * (m->max_value - m->min_value + 1)) / SLIDER_W;
 				if (v > m->max_value) v = m->max_value;
@@ -1511,6 +1649,8 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 		for (i = 0; i < n; i++) {
 			fe_menu_item *m = &items[i];
 			int hue = (i == cur && m->type != FE_MI_TEXT) ? FE_HUE_7 : FE_HUE_5;
+			if (m->disabled)
+				hue = i == cur ? FE_HUE_5 : fe_dark_hue();	// ASCENT
 			if (m->type == FE_MI_INPUT_MENU && editing != i) {
 				fe_string(Fe_font_m, m->x, m->y, hue, FE_HUE_BLACK, m->buf);
 				continue;
@@ -1530,6 +1670,12 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 				fe_rect(sx, m->y + 2, SLIDER_W, ih - 6, fe_hue(FE_HUE_BLACK));
 				if (range > 0)
 					fe_rect(sx + 1, m->y + 3, ((SLIDER_W - 2) * (m->value - m->min_value)) / range, ih - 8, fe_hue(hue));
+			} else if (m->type == FE_MI_CHOICE) {
+				char t[32];
+				int cw, chh;
+				choice_text(m, m->value, t, sizeof(t));
+				fe_string_size(Fe_font_m, t, &cw, &chh);
+				fe_string(Fe_font_m, m->x + iw - cw, m->y, hue, FE_HUE_BLACK, t);
 			} else if (m->type == FE_MI_CHECK) {
 				int sx = m->x + iw - 14;
 				fe_rect(sx, m->y + 2, 12, ih - 6, fe_hue(hue));
@@ -1597,6 +1743,255 @@ static void opt_reverse(fe_menu_item *it)
 	Config_channels_reversed = (ubyte) it->value;
 }
 
+//------------------------------------------------------------------------
+// ASCENT: the menu "Improvements" (dtuopts.h). It is not in the executable.
+// The front end shows it with fe_menu, the game with newmenu
+// (dtufe_improvements_menu). A change sets the global at once; the game
+// reads the globals each frame. The settings are written to the
+// configuration file when the menu closes.
+
+static struct { char *text; int *value; } Impr_switch[] = {
+	{ "Improved physics",       &Dtu_improved_physics },
+	{ "Improved jump controls", &Dtu_improved_jump },
+	{ "Improved pathfinding",   &Dtu_improved_pathfinding },
+	{ "Improved 3D body",       &Dtu_improved_body },
+	{ "Streaming safe music",   &Dtu_safe_music },		// dtumusic.c
+};
+#define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
+
+static void impr_changed(fe_menu_item *it)
+{
+	if (it->buf_len >= 0 && it->buf_len < N_IMPR)
+		*Impr_switch[it->buf_len].value = it->value;
+}
+
+static void fe_improvements(void)
+{
+	fe_menu_item m[N_IMPR];
+	int i;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < N_IMPR; i++) {
+		m[i].type = FE_MI_CHECK;
+		m[i].text = Impr_switch[i].text;
+		m[i].value = *Impr_switch[i].value;
+		m[i].buf_len = i;			// the index in Impr_switch
+		m[i].changed = impr_changed;
+	}
+	fe_menu("Improvements", NULL, m, N_IMPR, 0, 1);
+	dtu_opts_save();
+}
+
+// The in-game form: newmenu, as the Descent options menu (F2).
+static void impr_menuset(int nitems, newmenu_item *items, int *last_key, int citem)
+{
+	int i;
+
+	for (i = 0; i < N_IMPR && i < nitems; i++)
+		*Impr_switch[i].value = items[i].value;
+}
+
+void dtufe_improvements_menu(void)
+{
+	newmenu_item m[N_IMPR];
+	int i;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < N_IMPR; i++) {
+		m[i].type = NM_TYPE_CHECK;
+		m[i].text = Impr_switch[i].text;
+		m[i].value = *Impr_switch[i].value;
+	}
+	newmenu_do1(NULL, "Improvements", N_IMPR, m, impr_menuset, 0);
+	for (i = 0; i < N_IMPR; i++)
+		*Impr_switch[i].value = m[i].value;
+	dtu_opts_save();
+}
+
+//------------------------------------------------------------------------
+// ASCENT: the menu "Graphics" (dtuopts.h). It is not in the executable.
+// The options menu of the front end, the ESC menu, the options menu of F2
+// and the key F5 in the game open it. A change sets the global at once:
+// the renderer (render.c), the scale, the filtering and the shader read
+// the globals each frame. The settings are written to the configuration
+// file when the menu closes. With the software renderer the other items
+// are dark and do not change.
+
+static char *Gfx_onoff[] = { "Off", "On" };
+static char *Gfx_renderer[] = { "Software", "GPU" };
+static char *Gfx_shader[] = { "Off", "Subtle", "VGA" };
+
+static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[] = {
+	{ "Renderer",              &Dtu_gpu_renderer,       0, 1, Gfx_renderer },
+	{ "Animation interpolation", &Dtu_anim_interp,      0, 1, Gfx_onoff },	// both renderers
+	{ "Improved occlusion",    &Dtu_improved_occlusion, 0, 1, Gfx_onoff },
+	{ "Internal resolution",   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, NULL },
+	{ "Upscaled textures",     &Dtu_upscaled_textures,  0, 1, Gfx_onoff },
+	{ "Upscaled movies",       &Dtu_upscaled_movies,    0, 1, Gfx_onoff },
+	{ "Anisotropic filtering", &Dtu_anisotropic,        0, 1, Gfx_onoff },
+	{ "Shader",                &Dtu_shader,             DTU_SHADER_OFF, DTU_SHADER_VGA, Gfx_shader },
+};
+#define N_GFX	((int) (sizeof(Gfx_item) / sizeof(Gfx_item[0])))
+#define GFX_FIRST_GPU	2		// the items from here on need the GPU renderer
+// The note with the software renderer. The lines are short: the box of
+// newmenu is no wider than 320 pixels.
+#define GFX_NOTE_1	"The software renderer"
+#define GFX_NOTE_2	"ignores these settings."
+#define N_GFX_LINES	(N_GFX + 3)			// the items, a blank line, the note
+
+static fe_menu_item *Gfx_fe;
+
+static void gfx_fe_update(void)
+{
+	int i;
+
+	for (i = GFX_FIRST_GPU; i < N_GFX; i++)
+		Gfx_fe[i].disabled = !Dtu_gpu_renderer;
+	Gfx_fe[N_GFX + 1].text = Dtu_gpu_renderer ? "" : GFX_NOTE_1;
+	Gfx_fe[N_GFX + 2].text = Dtu_gpu_renderer ? "" : GFX_NOTE_2;
+}
+
+static void gfx_fe_changed(fe_menu_item *it)
+{
+	if (it->buf_len >= 0 && it->buf_len < N_GFX)
+		*Gfx_item[it->buf_len].value = it->value;
+	gfx_fe_update();
+}
+
+static void fe_graphics(void)
+{
+	fe_menu_item m[N_GFX_LINES];
+	int i;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < N_GFX; i++) {
+		m[i].type = FE_MI_CHOICE;
+		m[i].text = Gfx_item[i].text;
+		m[i].value = *Gfx_item[i].value;
+		m[i].min_value = Gfx_item[i].min;
+		m[i].max_value = Gfx_item[i].max;
+		m[i].labels = Gfx_item[i].labels;
+		m[i].buf_len = i;			// the index in Gfx_item
+		m[i].changed = gfx_fe_changed;
+	}
+	for (; i < N_GFX_LINES; i++) {
+		m[i].type = FE_MI_TEXT;
+		m[i].text = "";
+	}
+	Gfx_fe = m;
+	gfx_fe_update();
+	fe_menu("Graphics", NULL, m, N_GFX_LINES, 0, 1);
+	Gfx_fe = NULL;
+	dtu_opts_save();
+}
+
+// The in-game form: newmenu. Each item is a menu item "name<tab>value".
+// Left and right change the value, Enter and a click go round. Escape and
+// F5 close the menu.
+static char Gfx_text[N_GFX][48];
+
+static void gfx_set_text(newmenu_item *items, int i)
+{
+	int v = *Gfx_item[i].value;
+
+	if (Gfx_item[i].labels)
+		snprintf(Gfx_text[i], sizeof(Gfx_text[i]), "%s\t%s", Gfx_item[i].text, Gfx_item[i].labels[v - Gfx_item[i].min]);
+	else
+		snprintf(Gfx_text[i], sizeof(Gfx_text[i]), "%s\tx%d", Gfx_item[i].text, v);
+	items[i].text = Gfx_text[i];
+	items[i].redraw = 1;
+}
+
+static void gfx_set_note(newmenu_item *items)
+{
+	items[N_GFX + 1].text = Dtu_gpu_renderer ? "" : GFX_NOTE_1;
+	items[N_GFX + 2].text = Dtu_gpu_renderer ? "" : GFX_NOTE_2;
+	items[N_GFX + 1].redraw = items[N_GFX + 2].redraw = 1;
+}
+
+// Changes item i by d. With wrap set, the value goes round.
+static void gfx_step(newmenu_item *items, int i, int d, int wrap)
+{
+	int v;
+
+	if (i < 0 || i >= N_GFX || (i >= GFX_FIRST_GPU && !Dtu_gpu_renderer))
+		return;
+	v = *Gfx_item[i].value + d;
+	if (v < Gfx_item[i].min)
+		v = wrap ? Gfx_item[i].max : Gfx_item[i].min;
+	if (v > Gfx_item[i].max)
+		v = wrap ? Gfx_item[i].min : Gfx_item[i].max;
+	if (v == *Gfx_item[i].value)
+		return;
+	*Gfx_item[i].value = v;
+	gfx_set_text(items, i);
+	if (i == 0)
+		gfx_set_note(items);
+}
+
+static void gfx_menuset(int nitems, newmenu_item *items, int *last_key, int citem)
+{
+	int k = *last_key;
+
+	if (k == KEY_F5) {
+		*last_key = KEY_ESC;
+		return;
+	}
+	if (citem < 0 || citem >= N_GFX)
+		return;
+	if (k == KEY_LEFT || k == KEY_PAD4)
+		gfx_step(items, citem, -1, 0);
+	else if (k == KEY_RIGHT || k == KEY_PAD6)
+		gfx_step(items, citem, 1, 0);
+	else if (k == KEY_ENTER || k == KEY_PADENTER)
+		gfx_step(items, citem, 1, 1);
+	else
+		return;
+	*last_key = 0;
+}
+
+void dtufe_graphics_menu(void)
+{
+	newmenu_item m[N_GFX_LINES];
+	int i, c = 0;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < N_GFX; i++) {
+		m[i].type = NM_TYPE_MENU;
+		gfx_set_text(m, i);
+	}
+	for (; i < N_GFX_LINES; i++) {
+		m[i].type = NM_TYPE_TEXT;
+		m[i].text = "";
+	}
+	gfx_set_note(m);
+	// A click on an item ends newmenu with that item: change it and show
+	// the menu again.
+	while ((c = newmenu_do1(NULL, "Graphics", N_GFX_LINES, m, gfx_menuset, c)) >= 0 && c < N_GFX)
+		gfx_step(m, c, 1, 1);
+	dtu_opts_save();
+}
+
+// ASCENT: the Controls menu of the game (kconfig.c) from the options of the
+// front end. The executable has it only in the game. The menu and the key
+// screens are drawn as in the game: the palette of the game (PALETTE.256)
+// while they are open, then the palette of the front end again.
+static void fe_controls(void)
+{
+	grs_canvas *save = grd_curcanv;
+
+	gr_palette_clear();
+	gr_set_current_canvas(NULL);
+	dtu_load_palette();
+	gr_clear_canvas(BM_XRGB(0,0,0));
+	dtu_kconfig_menu();
+	gr_set_current_canvas(save);
+	memcpy(gr_palette, Fe_pal, 768);
+	gr_palette_load(Fe_pal);
+	fe_input_clear();
+	key_flush();
+}
+
 // While the front end is active (byte 0x13E338) the executable builds:
 // Music Volume (slider 0 to 8), a blank line, FX Volume, a blank line,
 // Reverse Stereo, two blank lines, Hires Dungeon Graphics (0x13A94B), and
@@ -1605,20 +2000,39 @@ static void opt_reverse(fe_menu_item *it)
 // the menu in the game only. The port leaves out Hires Dungeon Graphics:
 // its form of the dungeon is chosen at the start (option -lowres) and
 // cannot change while the program runs. The language is English.
+// ASCENT: the last items "Improvements..." and "Graphics..." open the
+// menus of the settings of dtuopts.h (fe_improvements, fe_graphics). They
+// are not in the executable.
 static void fe_options(void)
 {
-	fe_menu_item m[7];
-	int n = 0;
+	fe_menu_item m[10];
+	int n, impr, gfx, ctrl, choice = 0;
 
-	memset(m, 0, sizeof(m));
-	m[n].type = FE_MI_SLIDER; m[n].text = fe_text(350); m[n].value = Config_midi_volume; m[n].max_value = 8; m[n++].changed = opt_music;
-	m[n].type = FE_MI_TEXT; m[n++].text = "";
-	m[n].type = FE_MI_SLIDER; m[n].text = fe_text(349); m[n].value = Config_digi_volume; m[n].max_value = 8; m[n++].changed = opt_fx;
-	m[n].type = FE_MI_TEXT; m[n++].text = "";
-	m[n].type = FE_MI_CHECK; m[n].text = fe_text(351); m[n].value = Config_channels_reversed; m[n++].changed = opt_reverse;
-	if (m[0].value > 8) m[0].value = 8;
-	if (m[2].value > 8) m[2].value = 8;
-	fe_menu(fe_text(208), NULL, m, n, 0, 1);
+	do {
+		n = 0;
+		memset(m, 0, sizeof(m));
+		m[n].type = FE_MI_SLIDER; m[n].text = fe_text(350); m[n].value = Config_midi_volume; m[n].max_value = 8; m[n++].changed = opt_music;
+		m[n].type = FE_MI_TEXT; m[n++].text = "";
+		m[n].type = FE_MI_SLIDER; m[n].text = fe_text(349); m[n].value = Config_digi_volume; m[n].max_value = 8; m[n++].changed = opt_fx;
+		m[n].type = FE_MI_TEXT; m[n++].text = "";
+		m[n].type = FE_MI_CHECK; m[n].text = fe_text(351); m[n].value = Config_channels_reversed; m[n++].changed = opt_reverse;
+		m[n].type = FE_MI_TEXT; m[n++].text = "";
+		ctrl = n;
+		m[n].type = FE_MI_MENU; m[n++].text = fe_text(353);		// ASCENT: "Controls..."
+		impr = n;
+		m[n].type = FE_MI_MENU; m[n++].text = "Improvements...";
+		gfx = n;
+		m[n].type = FE_MI_MENU; m[n++].text = "Graphics...";
+		if (m[0].value > 8) m[0].value = 8;
+		if (m[2].value > 8) m[2].value = 8;
+		choice = fe_menu(fe_text(208), NULL, m, n, choice, 1);
+		if (choice == impr && !Fe_quit)
+			fe_improvements();
+		else if (choice == gfx && !Fe_quit)
+			fe_graphics();
+		else if (choice == ctrl && !Fe_quit)
+			fe_controls();
+	} while ((choice == impr || choice == gfx || choice == ctrl) && !Fe_quit);
 }
 
 //------------------------------------------------------------------------
@@ -1718,10 +2132,10 @@ static int sg_find(int slot, char *path, int size)
 	FILE *f;
 
 	sprintf(name, "SG%d.sg", slot);
-	f = fopen(name, "rb");
+	dtu_user_path(path, size, name);		// ASCENT: the directory of the user (dtufile.h)
+	f = fopen(path, "rb");
 	if (f) {
 		fclose(f);
-		snprintf(path, size, "%s", name);
 		return 1;
 	}
 	return dtu_find_file(name, path, size);
@@ -1895,7 +2309,10 @@ static int sg_write(int slot, char *desc, int between)
 	put_u32(b + 7362, 2);						// the difficulty (0x13CDCA)
 
 	sprintf(name, "SG%d.sg", slot);
-	f = fopen(name, "wb");
+	{
+		char path[600];		// ASCENT: the directory of the user (dtufile.h)
+		f = fopen(dtu_user_path(path, sizeof(path), name), "wb");
+	}
 	ok = f && fwrite(b, 1, size, f) == (size_t) size;
 	if (f && fclose(f))
 		ok = 0;
@@ -2130,9 +2547,8 @@ void dtufe_title(void)
 	int w, h;
 	char *version = "v1.3";
 
+	dtumovie_title();		// 0xB84F3: LOGO22S.MVE, INTRO2.MVE, TLOGOS.MVE (dtumovie.c)
 	fe_enter();
-	if (!FindArg("-notitles"))
-		dtu_log("Front end: the movies LOGO22S.MVE, INTRO2.MVE and TLOGOS.MVE are not played\n");
 	fe_show_picture(193);
 	gr_palette_clear();
 	fe_fade_in();
@@ -2205,6 +2621,7 @@ static int Fe_leave_game;				// 1: the game ends after this frame
 static int Fe_portal_exit;				// the player entered the exit of the inn
 static int Fe_portal_frame = -10;		// FrameCount of the last call of command 0
 
+static int Fe_graphics_menu;			// ASCENT: the key F5 was pressed in this frame
 static int Fe_escape_menu;				// the Escape key was pressed in this frame
 static int Fe_inn_flag;					// 0x13B254: command 0 of DTU.WRP was run in this game
 static int Fe_game_loaded;				// the ESC menu loaded a save game: the FE_GO_ mode
@@ -2235,6 +2652,17 @@ int dtufe_escape_key(void)
 	return 1;
 }
 
+// ASCENT: the key F5 opens the Graphics menu after the frame. F5 and F6
+// are the F keys that the key switch of the executable (0x42F9C) does not
+// handle; F3 changes the screen size there (dtudisp.c).
+int dtufe_graphics_key(void)
+{
+	if (!Fe_in_game)
+		return 0;
+	Fe_graphics_menu = 1;
+	return 1;
+}
+
 // 0x42352 to 0x423F5
 static void escape_menu(void)
 {
@@ -2249,8 +2677,29 @@ static void escape_menu(void)
 		}
 		return;
 	}
-	// The text of the executable is "ESC Menu\n" (0x1256FA)
-	c = nm_messagebox(NULL, 4, "Return to dungeon", "Load Game", "Save Game", "Abort Game", "ESC Menu\n");
+	// The text of the executable is "ESC Menu\n" (0x1256FA). ASCENT: the
+	// choices "Improvements" (dtufe_improvements_menu) and "Graphics"
+	// (dtufe_graphics_menu) are not in the executable. The ESC menu comes
+	// back after them. nm_messagebox takes at most 5 choices, so the items
+	// are built here; the box is the same.
+	do {
+		static char *choices[6] = { "Return to dungeon", "Load Game", "Save Game", "Improvements", "Graphics", "Abort Game" };
+		newmenu_item m[6];
+		int i;
+
+		memset(m, 0, sizeof(m));
+		for (i = 0; i < 6; i++) {
+			m[i].type = NM_TYPE_MENU;
+			m[i].text = choices[i];
+		}
+		c = newmenu_do(NULL, "ESC Menu\n", 6, m, NULL);
+		if (c == 3)
+			dtufe_improvements_menu();
+		else if (c == 4)
+			dtufe_graphics_menu();
+	} while (c == 3 || c == 4);
+	if (c == 5)
+		c = 4;			// the number of "Abort Game" in the original
 	switch (c) {
 	case 1:					// 0xBB780(1)
 		mode = fe_load_game(1);
@@ -2262,7 +2711,7 @@ static void escape_menu(void)
 	case 2:					// 0xBA99F(0)
 		ig_save_game();
 		break;
-	case 3:					// "Abort Game?" (text 103)
+	case 4:					// "Abort Game?" (text 103)
 		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(103)) == 0) {
 			// 0x42649: no character (0x141BBB = 0), the main menu
 			Fe_have_character = 0;
@@ -2300,12 +2749,14 @@ int dtufe_loading_picture(int entry)
 		for (x = 0; x < sb->bm_w; x++)
 			d[x] = s[x * bm->bm_w / sb->bm_w];
 	}
+	dtu_hdui_blit(bm, 0, 0, bm->bm_w, bm->bm_h, sb, 0, 0, sb->bm_w, sb->bm_h);	// ASCENT: the upscaled picture
 	gr_free_bitmap(bm);
 	memcpy(gr_palette, Loading_pal, 768);		// the screenshot of a script uses gr_palette
 	gr_palette_load(Loading_pal);
 	gr_present();
 	dtu_log("Front end: loading picture %d\n", entry);
-	printf("Loading picture %d\n", entry);
+	if (Dtu_debug)		// ASCENT: -debug or the debug build (dtufile.h)
+		printf("Loading picture %d\n", entry);
 	if (FindArg("-loadshots")) {		// test option: a screenshot of each loading picture
 		char name[32];
 		sprintf(name, "loading%d.ppm", entry);
@@ -2379,6 +2830,9 @@ int dtufe_game_frame(void)
 		escape_menu();
 	}
 	Fe_escape_menu = 0;
+	if (Fe_graphics_menu && !Fe_leave_game)
+		dtufe_graphics_menu();
+	Fe_graphics_menu = 0;
 	if (Fe_leave_game) {
 		Fe_leave_game = 0;
 		return 1;
@@ -2394,7 +2848,7 @@ int dtufe_game_ended(void)
 
 	Fe_in_game = 0;
 	Fe_leave_game = Fe_portal_exit = 0;
-	Fe_inn_flag = Fe_escape_menu = Fe_game_loaded = 0;
+	Fe_inn_flag = Fe_escape_menu = Fe_graphics_menu = Fe_game_loaded = 0;
 	if (Dtu_frames_done || Fe_quit || !plat_pump())
 		return 0;
 	// ASCENT: the test option -frames with no front end script: the

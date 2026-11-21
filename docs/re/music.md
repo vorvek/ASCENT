@@ -239,7 +239,52 @@ added to the game time. The call is skipped if the player object has a flag of
    **V**
 
 The rule uses the game time, so the rate of the steps does not depend on the frame
-rate. Strafing alone gives no steps.
+rate. Strafing alone gives no steps. 0x433E0 has one caller (0x437E7) and plays one
+sound for each step. **V** It also sets the switch 0x145360 to 1 on each frame on
+which the game time is above the time of the next step (also while the player stands
+still); the creature move reads it for the splash object only (below). **V**
+
+The position: the sound code (0x2E23B, as `digi_get_sound_loc` of Descent 1) takes
+the pan from the direction to the sound, not from its distance. With the offset of
+0x200 in x and z the direction is the world diagonal (1, 0, 1) or (-1, 0, -1), so
+the steps are panned hard to the left and to the right in turn, by the heading of the
+player. The volume is 0.5 less the path distance / 256 (about 0.5). **V** (code),
+port log: pan 8936 and 56598 of 65535, volume 16383 of 32767.
+
+Rate: the walk speed limit is 49.33 and the run speed limit 74.0 (physics.md; two
+units are one foot). One step each 0.625 s is 1.6 steps a second, one each 0.3125 s
+is 3.2: the cadence of a human walk and run. By distance the steps are long (30.8 and
+23.1 units). So the rate of the player is not too fast. **G** (judgement)
+
+The samples (`PORTAL.EGG`, decoded): each holds one footfall. `foot1`, `foot3` and
+`foot4` are 0.61 to 0.91 s long, with sound in the first 0.11 to 0.37 s; the `foot2`
+set (floor type 1) has sound for 0.8 s of 1.15 to 1.92 s. **V**
+
+### Footsteps of the creatures (0x9FCF1 to 0x9FDFB)
+
+At the end of the creature move 0x9F153 (pmon.c), for a creature with activity 2
+(0x1CC) whose animation state (0x170) is 2 (WALK) or 5 (RUN) and whose animation
+frame (0x172) is the first frame of that state (word table 0x13D9E0): **V**
+
+- not for a creature with `flying` (`Robot_info+0x98` bit 0x20) or object flag 0x800
+  (byte 0x89 bit 0x08), not for the monster type with `rat=` (0x13A820);
+- sound = base of the floor type (as for the player, the floor of the segment below
+  the creature, 0x9F236) + `(clock + objnum) % 4` (player struct 0x1D339F, ai.md);
+- `0x2E900(sound, segment, 3, creature position, 0, str << 10)` (`str`,
+  `Robot_info+0xDE`; volume str / 64, at most 0.5).
+
+The test has no timer: the sound plays on each game frame that shows the first frame.
+The AI shows the first frame for about one half of a frame time of the cycle
+(`state time / (2 * (frames - 1))`) after the start of each cycle. So one cycle gives
+several steps a few game frames apart. Port, CRYPTS soak with the original rule:
+1.32 steps a cycle at 20 fps, 3.40 at 60 fps (at most 5), with a cycle of 1.05 s; the
+steps of one cycle are 16 ms apart at 60 fps (log: `foot4dd` at 5.552, 5.568, 5.585,
+5.602 and 5.618 s). **V** (port measure of the original rule). This is the "too
+often, repeated too quickly" sound, and as the steps are at the creature they are
+heard at a distance.
+
+The floor type 1 block (0x9F35F) halves the acceleration of a creature that does not
+fly and, when the switch 0x145360 is set, creates a splash object (type 10).
 
 ## 7. The port
 
@@ -253,7 +298,8 @@ rate. Strafing alone gives no steps.
 | Warp table commands 100 to 198 | `dtumusic_level_start` reads them from `DTU.WRP`, `dtumusic_frame` runs the command of a segment when the segment of the player changes. |
 | CD audio of `songs.c` | `engine/main/songs.c` reads `DTU.SNG` and plays nothing. |
 | 16-bit effects | `digi.c` plays `piggy_get_sound_16` data with `plat_audio_play16` at the rate of the sound. `-sound8` or `Dtu_sound_16bit = 0` selects the 8-bit copy. |
-| Footsteps | `engine/main/dtufoot.c`, setting `Dtu_footsteps`. No splash object. The flag 0x145305 is taken as 0. |
+| Footsteps | `engine/main/dtufoot.c`, setting `Dtu_footsteps`. The splash is `dtu_water_splash` (dtuobj.c), with no light and to the side of the walk (bugs.md D13). The flag 0x145305 is taken as 0. The rate of the player is the original one. Correction `Dtu_fix_foot_pan` (on): the step of the player plays in the middle (pan 0.5) at the fixed volume 0.5, with no offset. |
+| Creature footsteps | `dtufoot_creature`, called at the end of `dtu_creature_physics_sim` (dtuobj.c) for a creature with activity 2. The sound choice is `rand() % 4`, not the clock. The `rat=` test is any monster type with the keyword. Correction `Dtu_fix_creature_steps` (on): one step when the creature enters the first frame of the WALK or RUN cycle, not one on each game frame that shows it. |
 
 Not in the port: the death music call (0x4249D) and the call at 0x43DAF have no call
 site yet, the front end music, the streamed effects and speech of `str_sfx.c` and
@@ -262,7 +308,11 @@ site yet, the front end music, the streamed effects and speech of `str_sfx.c` an
 Options of the port: `-nomusic`, `-nosound`, `-sound8`, `-music N` (play entry N in a
 loop from the start of the level), `-musiclog`, `-soundlog`,
 `-musicscript T:CODE:VALUE[,...]` (music command at T seconds of game time),
-`-musicwav TRACK FILE SECONDS` (write the output of the stream code to a WAV file).
+`-musicwav TRACK FILE SECONDS` (write the output of the stream code to a WAV file),
+`-origmusic` (no music at the start of a level, section 9), `-safemusic` and
+`-nosafemusic` (the replacement music on or off for one run, section 10),
+`-origsound` (the footsteps of the original: `Dtu_fix_foot_pan` and
+`Dtu_fix_creature_steps` are 0).
 
 ## 8. Checks of the port
 
@@ -282,8 +332,93 @@ loop from the start of the level), `-musiclog`, `-soundlog`,
   `foot3cd`, `foot3dd`, 16 bits, 22050 Hz) starts at 0.017, 0.650, 1.283 and 1.916 s,
   with the pan on the left and on the right in turn. The player walks through segment
   28 and `startpub.tun` starts there from the line of `DTU.WRP`.
+- Footsteps of the player, YPINN, `-testmove forward:2500ms,forward+run:2000ms
+  -soundlog`, time between steps (walk / run): 20 fps 0.650 / 0.350 s, 60 fps 0.633 /
+  0.317 s, 144 fps 0.632 / 0.319 s (the 0.625 and 0.3125 s rounded up to a frame), the
+  same with and without `-origsound`. Pan and volume: 8936 and 56598 in turn, volume
+  16383 with `-origsound`; 32767 (middle), volume 16384 with the correction.
+- Footsteps of the creatures, CRYPTS, `-soak 1 -objlog` for 40 s: steps for each walk
+  cycle (cycle 1.05 s) with `-origsound` 1.32 at 20 fps, 3.40 at 60 fps, 6.09 at 144
+  fps (at most 10); with the
+  correction 1.00 at 20, 60 and 144 fps.
 - Nobody listened to the result.
 
 To listen: `ascent -datadir <install> -datadir <disc DTU> -level YPINN -music 20`, and
 walk with the forward key. Or write a file and play it:
 `ascent -datadir <install> -datadir <disc DTU> -musicwav 20 startpub.wav 30`.
+
+## 9. The silent start of a level (port correction)
+
+The original starts no music when a level loads (section 4), and 0x69BC8 runs the
+command of a segment only when the player moves into it from another segment. The
+segment in which the player starts never runs its command. **V** So each level is
+silent until the player crosses a segment with a command. In YPINN the player starts in
+segment 2 (between the door to Waterdeep, segment 1, and the room); the music starts
+only when the player walks into segment 3, 28 or 22. A player who turns the other way
+hears nothing. When the player comes back from Waterdeep the start is segment 1, three
+steps from segment 3.
+
+`Dtu_fix_start_music` (dtumusic.c, on, not in a menu, cleared by `-origmusic`): at the
+first game frame after a level load (a new level, a warp, the return from Waterdeep, a
+saved game), the port runs the command of the start segment, or else the command of the
+nearest segment with a command (breadth first search through `children`). If that
+command starts a track and another track plays, the other track fades out (as with code
+106), so that the change does not wait for the end of the old track.
+
+Result at the start position of each level file (`-level NAME -musiclog`, the port):
+
+| Level | Start segment | Nearest command (segment, steps) | Track that the correction starts |
+|---|---|---|---|
+| YPINN | 2 | 151 (3, 1) | 20 startpub |
+| HUB1 | 136 | 151 (141, 1) | 16 healroom |
+| KOBOLDS | 12 | 151 (76, 19) | 8 drowcav3 |
+| BONES | 307 | 151 (307, 0) | 21 ud_aggr |
+| BAT | 2 | 151 (39, 19) | 33 UD_DWF2 |
+| THIEF0 | 2 | 151 (30, 11) | 25 DROWCAV1 |
+| THIEF1 | 320 | 151 (24, 14) | 11 ecorrid1 |
+| THIEF2 | 328 | 106 (379, 14) | none (fade) |
+| HUB2 | 188 | 151 (41, 1) | 28 GENMAG2B |
+| BANE | 1 | 151 (1, 0) | 13 genmag1b |
+| PRISON | 428 | 151 (427, 1) | 27 ECORRID2 |
+| MINE | 0 | 151 (2, 6) | 27 ECORRID2 |
+| CRYPTS | 384 | 151 (29, 1) | 12 genmag1a |
+| MULHOR1 | 1 | 151 (1, 0) | 11 ecorrid1 |
+| MULHOR2 | 75 | 151 (75, 0) | 35 UD_GEN1 |
+| HUB3 | 3 | 151 (7, 1) | 28 GENMAG2B |
+| MYRKUL | 113 | 151 (114, 1) | 18 insidep2 |
+| CLAN1 | 2 | 106 (34, 5) | none (fade) |
+| CLAN2 | 8 | no command in the level | none |
+| CLAN3 | 94 | 151 (26, 3) | 22 ud_dwf1 |
+| DROW1 | 422 | 151 (421, 1) | 25 DROWCAV1 |
+| DROW2 | 1 | 151 (2, 1) | 18 insidep2 |
+| DROW3 | 311 | 151 (267, 4) | 8 drowcav3 |
+| DROW4 | 235 | no command in the level | none |
+| HUB4 | 51 | 151 (51, 0) | 25 DROWCAV1 |
+| BEHOLDER | 5 | 106 (5, 0) | none (fade) |
+| BEHOLDR2 | 0 | no command in the level | none |
+| DROW5 | 1 | 106 (75, 5) | none (fade) |
+| IBBALAR | 723 | 151 (790, 2) | 19 spectat |
+| IBBALAR2 | 53 | no command in the level | none |
+| FLAME | 3 | 151 (4, 1) | 31 LOLTH2 |
+
+MADLANDS and PLAYGRND are in `DTU.MSN` but have no level file in the install or on the
+disc. In the original all 31 levels start silent, also BONES, BANE, MULHOR1, MULHOR2 and
+HUB4, whose start segment has the command. A warp puts the player in the destination
+segment of the warp line, not at this start position; the correction uses that segment.
+KOBOLDS at its start position warps the player to HUB1 in the first frame.
+
+## 10. Replacement music (port option)
+
+The setting "Streaming safe music" (`Dtu_safe_music`, Improvements menu, `SafeMusic` in
+`ascent.cfg`, off by default) plays `<hd>/music/NAME.ogg` in place of `NAME.TUN` when
+the file exists. It is for a track that a video platform claims: STARTPUB (entry 20) is
+claimed by a Content ID check. The Ogg Vorbis file is decoded by stb_vorbis
+(`engine/main/dtuogg.c`) in the same player as the ACM tracks: same queue, loop and fade,
+and the mixer resamples it. A change of the setting starts the track that plays again in
+the other form. `tools/music_replace.py TRACK INPUT` makes the file: 44100 Hz stereo,
+Vorbis quality 6, the silence at both ends removed, the RMS matched to the original TUN.
+
+Checks: `-safemusic -musicwav 20 safe.wav 240` against the ffmpeg decode of
+`STARTPUB.ogg`: 4899590 frames in one pass, at most 1 of difference in a value (the
+two Vorbis decoders round differently), three passes, the loop starts again at the first
+frame with no gap. RMS: original -20.7 dB, input -20.4 dB, file -20.7 dB.

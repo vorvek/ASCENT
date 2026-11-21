@@ -14,7 +14,18 @@
  *   renderer uses; how the view looks with it was not seen.
  * - The keys are those of the executable except Tab, which the interface
  *   uses: Up and Down (also the keypad), Enter (also the keypad), Space,
- *   Escape. The mouse and the scroll arrows FEBGND 186 to 189 are not done.
+ *   Escape. The scroll arrows FEBGND 186 to 189 are not done.
+ * - New in the port: the keys 1 to 9 (also the keypad digits) choose the
+ *   reply with that number at once. A keypad digit with no reply of that
+ *   number keeps its old use (8 Up, 2 Down). The play screen does not run
+ *   its hot keys while the window is open.
+ * - New in the port: the mouse. While the window waits for a choice, the
+ *   cursor of the play screen shows over it (also in the immersive mode,
+ *   which comes back after the conversation): the reply under the cursor
+ *   becomes the selection when the cursor moves, a click chooses it (a
+ *   click in the window with no replies is Enter), and the wheel scrolls
+ *   the text area or moves the selection in the reply area. With the
+ *   setting Dtu_fe_original_input the mouse does nothing here.
  * - Test options: -dlgauto LIST chooses the replies by itself, LIST is a
  *   comma separated list of reply numbers (from 1), "enter" or "esc", one
  *   item for each wait; -dlgdelay N is the number of frames that the window
@@ -35,6 +46,10 @@
 #include "dtudisp.h"
 #include "dtuscript.h"
 #include "dtudlg.h"
+#include "3d.h"			// ASCENT: g3_gpu_view_darken
+#include "mouse.h"
+#include "platform.h"		// plat_mouse_wheel
+#include "dtufe.h"		// Dtu_fe_original_input
 
 #define DLG_MAX_REPLIES		10			// 0xA7B56
 #define DLG_TEXT_SIZE		0x4000		// DLG_SEG_SIZE (0xB2099)
@@ -50,6 +65,14 @@ static int Dlg_sel = -1;				// 0x3D4990: the selected reply, -1 none
 static int Dlg_focus_replies = 1;		// 0x1466C4
 static int Dlg_scroll = 0;				// first line of the text area
 static int Dlg_wait_frames = 0;
+
+// The mouse (see the top of the file)
+static int Reply_y0[DLG_MAX_REPLIES], Reply_y1[DLG_MAX_REPLIES];	// the rows of each reply at the last draw
+static int Reply_shown = 0;				// the replies that the last draw showed
+static int Area_x0, Area_x1, Area_y0, Area_y1, Area_ry;	// the window at the last draw, ry: the reply area
+static int Ptr_x, Ptr_y;				// the cursor position at the last poll
+static int Ptr_forced = 0;				// the immersive mode was turned off for the window
+static int Ptr_idle = 0;				// the frames with the window not waiting
 
 // -dlgauto
 static char Auto_list[512];
@@ -90,6 +113,30 @@ static dlg_layout *layout(void)
 	return &Layout_main[hi];
 }
 
+// The cursor for a choice: the immersive mode goes off until the
+// conversation ends (ptr_restore).
+static void ptr_force(void)
+{
+	Ptr_idle = 0;
+	if (Ptr_forced || !Dtu_immersive || !Dtu_display_active || Dtu_fe_original_input)
+		return;
+	Ptr_forced = 1;
+	Dtu_immersive = 0;
+	mouse_set_relative(0);
+	mouse_get_pos(&Ptr_x, &Ptr_y);
+}
+
+static void ptr_restore(void)
+{
+	// A press of the immersive mode key in the conversation turned it on
+	// already.
+	if (Ptr_forced && !Dtu_immersive) {
+		Dtu_immersive = 1;
+		mouse_set_relative(1);
+	}
+	Ptr_forced = 0;
+}
+
 void dtu_dlg_open(void)
 {
 	auto_init();
@@ -110,6 +157,7 @@ void dtu_dlg_open(void)
 
 void dtu_dlg_close(void)
 {
+	ptr_restore();
 	Dlg_open = 0;
 	Dlg_waiting = 0;
 	Dlg_text_len = 0;
@@ -161,6 +209,78 @@ void dtu_dlg_start_choice(void)
 	Dlg_focus_replies = 1;
 	Dlg_scroll = 0;
 	Dlg_wait_frames = 0;
+	// ASCENT: a click from before the choice does not choose
+	mouse_button_down_count(0);
+	plat_mouse_wheel();
+	mouse_get_pos(&Ptr_x, &Ptr_y);
+}
+
+int dtu_dlg_is_waiting(void)
+{
+	return Dlg_open && Dlg_waiting;
+}
+
+// ASCENT: the reply for a key 1 to 9 or a keypad digit, or -1
+static int digit_reply(int key)
+{
+	static const int pad[9] = { KEY_PAD1, KEY_PAD2, KEY_PAD3, KEY_PAD4, KEY_PAD5,
+		KEY_PAD6, KEY_PAD7, KEY_PAD8, KEY_PAD9 };
+	int i, n = -1;
+
+	if (key >= KEY_1 && key <= KEY_9)
+		n = key - KEY_1;
+	for (i = 0; i < 9; i++)
+		if (key == pad[i])
+			n = i;
+	return n >= 0 && n < Dlg_n_replies ? n : -1;
+}
+
+static int chosen(int result);
+
+// ASCENT: the mouse of the window. Returns a choice as dtu_dlg_poll does,
+// or -1.
+static int mouse_poll(void)
+{
+	int x, y, i, hit = -1, moved, click, wheel;
+
+	if (Dtu_fe_original_input || Dtu_immersive)
+		return -1;
+	mouse_get_pos(&x, &y);
+	moved = x != Ptr_x || y != Ptr_y;
+	Ptr_x = x;
+	Ptr_y = y;
+	click = mouse_button_down_count(0) > 0;
+	wheel = plat_mouse_wheel();
+	if (x < Area_x0 || x > Area_x1 || y < Area_y0 || y >= Area_y1)
+		return -1;
+	for (i = 0; i < Reply_shown; i++)
+		if (y >= Reply_y0[i] && y < Reply_y1[i])
+			hit = i;
+	if (hit >= 0 && (moved || click)) {
+		Dlg_sel = hit;
+		Dlg_focus_replies = 1;
+	}
+	if (click) {
+		if (Dlg_n_replies == 0)
+			return chosen(0);
+		if (hit >= 0)
+			return chosen(hit);
+	}
+	if (wheel) {
+		if (y < Area_ry) {
+			Dlg_scroll -= wheel;
+			if (Dlg_scroll < 0)
+				Dlg_scroll = 0;
+		} else if (Dlg_n_replies) {
+			Dlg_sel -= wheel;
+			if (Dlg_sel < 0)
+				Dlg_sel = 0;
+			if (Dlg_sel >= Dlg_n_replies)
+				Dlg_sel = Dlg_n_replies - 1;
+			Dlg_focus_replies = 1;
+		}
+	}
+	return -1;
 }
 
 // 0xB23C6: the texts and the replies are cleared after a choice
@@ -217,7 +337,13 @@ int dtu_dlg_poll(void)
 		Dlg_sel = r;
 		return chosen(r);
 	}
+	ptr_force();
 	while ((key = key_inkey()) != 0) {
+		// ASCENT: 1 to 9 choose a reply at once
+		if ((r = digit_reply(key)) >= 0) {
+			Dlg_sel = r;
+			return chosen(r);
+		}
 		switch (key) {
 		case KEY_ESC:
 			// 0xB2D01: escape. With no reply the script goes on (0xA7ADC).
@@ -253,7 +379,7 @@ int dtu_dlg_poll(void)
 			break;
 		}
 	}
-	return -1;
+	return mouse_poll();
 }
 
 //------------------------------------------------------------------------
@@ -322,6 +448,10 @@ static void darken(int x0, int y0, int x1, int y1)
 	if (y0 < 0) y0 = 0;
 	if (x1 > bm->bm_w) x1 = bm->bm_w;
 	if (y1 > bm->bm_h) y1 = bm->bm_h;
+	// ASCENT: the fade table keeps color 255, the color that shows the
+	// image of the GPU renderer: the GPU image is darkened in the same
+	// rectangle.
+	g3_gpu_view_darken(x0 + bm->bm_x, y0 + bm->bm_y, x1 + bm->bm_x, y1 + bm->bm_y, GR_FADE_LEVELS/3);
 	for (y = y0; y < y1; y++) {
 		ubyte *p = bm->bm_data + y * bm->bm_rowsize + x0;
 		for (x = x0; x < x1; x++, p++)
@@ -347,6 +477,11 @@ void dtu_dlg_draw(void)
 	int c_speech, c_narr, c_sel, c_reply, c_frame;
 	int ry, rbottom;
 
+	// ASCENT: the immersive mode comes back when the window has not
+	// waited for a choice for half a second (dtu_dlg_close restores it at
+	// once)
+	if (Ptr_forced && !(Dlg_open && Dlg_waiting) && ++Ptr_idle > 15)
+		ptr_restore();
 	if (!Dlg_open || !GAME_FONT || !grd_curscreen)
 		return;
 	L = layout();
@@ -389,6 +524,12 @@ void dtu_dlg_draw(void)
 	// the reply area
 	ry = L->y + L->h1;
 	rbottom = ry + L->h2;
+	Area_x0 = L->x - 3;
+	Area_x1 = L->x + L->w + 3;
+	Area_y0 = L->y;
+	Area_y1 = rbottom;
+	Area_ry = ry;
+	Reply_shown = 0;
 	if (Dlg_waiting && Dlg_n_replies == 0) {
 		int w;
 		gr_set_fontcolor(c_sel, -1);
@@ -405,9 +546,12 @@ void dtu_dlg_draw(void)
 			sprintf(num, "%d)", i + 1);
 			gr_set_fontcolor(i == Dlg_sel ? c_sel : c_reply, -1);
 			gr_string(L->x, y, num);
+			Reply_y0[i] = y;
 			n = wrap(Dlg_reply[i], L->w - num_w, rs, rl, 20);
 			for (k = 0; k < n && y + line_h <= rbottom; k++, y += line_h)
 				draw_line(L->x + num_w, y, rs[k], rl[k]);
+			Reply_y1[i] = y;
+			Reply_shown = i + 1;
 		}
 	}
 
@@ -416,4 +560,8 @@ void dtu_dlg_draw(void)
 		frame_rect(L->x - 3, ry, L->x + L->w + 3, rbottom - 1, c_frame);
 	else
 		frame_rect(L->x - 3, L->y, L->x + L->w + 3, ry - 1, c_frame);
+
+	// ASCENT: the cursor over the window (dtu_display_frame leaves it out
+	// while the window is open)
+	dtu_display_draw_cursor();
 }
