@@ -22,6 +22,18 @@ The project is in the research phase. No playable build exists.
 This repository does not contain game files.
 You must own a copy of Descent to Undermountain to use this project.
 
+## Source layout
+
+- `engine/`: the Descent 1 source release (version 1.5) from Parallax Software. It is the base of the port.
+- `tools/`: Python tools that read the original game files.
+- `docs/formats/`: the file format documents.
+
+## License
+
+The code in `engine/` is the property of Parallax Software Corporation.
+The Parallax license permits use and derivative works only for non-commercial purposes.
+The full text is in `engine/readme.txt`. This project is non-commercial.
+
 ## Legal
 
 Descent to Undermountain is a trademark of its owners.
