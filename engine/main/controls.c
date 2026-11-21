@@ -369,6 +369,15 @@ static struct {
 static int N_test_steps = 0;
 static FILE *Move_log = NULL;
 
+// ASCENT: a line of the physics code in the log of -movelog.
+void dtu_move_log_line(char *text)
+{
+	if (Move_log) {
+		fputs(text,Move_log);
+		fflush(Move_log);
+	}
+}
+
 // -testmove ACTION[+ACTION]:LENGTH[,...]. LENGTH is a number of frames, or
 // a time in milliseconds with "ms" after the number. Example:
 // -testmove forward+run:2000ms,left:30,wait:10,jump:1
@@ -433,7 +442,7 @@ static void dtu_move_init(void)
 	if (FindArg("-origphys"))
 		Dtu_fix_physics_steps = Dtu_fix_frame_drag = Dtu_fix_stop_decay =
 			Dtu_fix_floor_push = Dtu_fix_look_return = Dtu_fix_fly_bob = Dtu_fix_turn_ramp = Dtu_fix_jump_exit =
-			Dtu_fix_jump_path = Dtu_fix_ladder = Dtu_fix_wall_slide = 0;
+			Dtu_fix_jump_path = Dtu_fix_ladder = Dtu_fix_wall_slide = Dtu_fix_wall_overlap = 0;
 	if (FindArg("-origphys"))
 		Dtu_turn_scale = F1_0;
 

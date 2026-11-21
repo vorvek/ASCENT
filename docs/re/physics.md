@@ -236,7 +236,10 @@ when the length of the velocity is 0x72 or less.
   back.
 - Results 2 and 4 (object): `pos` = start position, `collide_two_objects()`. An object
   of type 0x12 is pushed when a value of the player structure (0x1D33D3) is above a
-  value of the object type.
+  value of the object type. The loop goes on with the next try and the object is not
+  ignored, so scenery stops the player like a wall (ai.md, "Push of scenery"). An
+  object is ignored only after more than 30 hits in a row, for a try that goes away
+  from it (0x9E11A).
 
 After the loop: 0x69FB8 and 0x3D2BD (not read. Probably the segment of the object).
 
@@ -423,6 +426,7 @@ setting is 1 (corrected) by default. The option `-origphys` sets all to 0.
 | `Dtu_fix_jump_path` | The jump steps of the table, 28 for each second, and the velocity of a step divided by the frame time (section 5) | A throw with a constant gravity and the same height and air time (section 13) |
 | `Dtu_fix_ladder` | The climb ends below the top of a ladder (section 12), the climb thrust goes into the wall and the wall throws the player back on each frame | Section 13 |
 | `Dtu_fix_wall_slide` | 0.75 of the velocity into a wall comes back, on each frame while the player pushes, and the move of the frame is lost | The velocity into the wall is taken away, the velocity along it stays |
+| `Dtu_fix_wall_overlap` | (port) A body that starts inside the reach of a wall (rad + 1.0) hits it with each move and cannot move any more | The body is moved out of the reach of the wall along its normal (section 13) |
 
 Not corrected: the 8 tries of the move loop for each frame.
 
@@ -480,6 +484,22 @@ Other results: the walk speed limit is 49.33 and the run speed limit 74.0. In DR
 player stops at a wall after 80 units and moves 0.3 forward and back while the key is
 down (the bounce of 4.5). In BANE a wall at z 187 stops the player and lets the player pass after about 0.5 s (probably a door that opens at the hit). In YPINN
 (height 20) a jump ends at 3.0 at the ceiling. In PRISON (height 30) it goes to 7.5.
+
+Push of scenery (YPINN, `-testpos -80,-2.46,33,0`, `-testmove
+wait:300ms,forward:600ms,wait:3000ms`: a walk of 0.6 s into the chair obj 5 at z 48
+(`pushable` 1), the table obj 3 at z 59 (`pushable` 16) behind it, strength 17). End
+z of the chair, the table and the player:
+
+| Frames per second | Setup 1.0 | Now, Improved physics on | Now, off |
+|---|---|---|---|
+| 30 | 63.2, 72.1, 54.0 | 56.4, 62.2, 45.4 | 55.3, 62.2, 47.0 |
+| 60 | 67.0, 71.8, 53.6 | 56.3, 63.3, 47.1 | 56.0, 63.3, 48.2 |
+| 144 | 60.9, 72.4, 53.5 | 59.3, 65.2, 50.0 | 59.3, 65.8, 50.6 |
+
+Setup 1.0 let the player walk through the chair (player end 54 > chair start 48)
+and pushed the table 13 units. Now the chair stops the player and moves 8 to 11
+units ahead of it. How far the executable moves the chair in this test was not
+measured (no run of DTUGAME.EXE).
 
 ## 11. Creatures (pmon.c, 0x9F153)
 
@@ -610,6 +630,32 @@ a step back over the edge at the top starts the climb down.
 keeps the velocity along it. When the velocity is along the side (the body touches an
 edge of the side), the player gets 8.0 for each second away from the side, so the
 tries of the move loop do not stay at the same place.
+
+`Dtu_fix_wall_overlap`: the move query has another radius for each side (section 3:
+the floor `rad/2`, the walls `rad + 1.0`). A segment under the player is entered
+through its top side with the small radius, so a wall of that segment can be nearer
+than `rad + 1.0` to the center when it first comes into the query. This happens when
+the player walks off a ledge: the floor search (only floor sides, section 9) finds no
+floor as soon as the center is past the edge, the player falls, and the body is
+inside the reach of the wall under the edge. From such a start every move hits the
+wall (the hit point is behind the start of the query, also for a move away from the
+wall), so the player is held in the air and cannot move. The saved game of a user
+("stuck", HUB1): the center at (-67.92, -308.67, 223.83) in segment 179, 0.46 from
+the wall of segment 70 side 0 (the side under the edge of the floor of segment 180),
+falling, the position the same in each frame (`-movelog`, 120 frames). The
+correction: when a wall hit is behind the start of the query and the start is in
+front of the side and nearer than its radius (`rad + 1.0`, the ceiling `rad2 * 1.5`),
+the center moves along the normal of the side to 1/32 beyond that radius, when the
+way there is free and the point is in a segment, and the move starts again from
+there (physics.c, `dtu_push_out_of_wall`, the line `WALLOVERLAP` of `-movelog`).
+With it the saved game moves the player 4.08 away from the wall, the player falls
+to the floor of segment 71 (y -334.98) in 10 frames and walks. A walk over the same
+edge with short key presses (YPINN start position replaced by `-testpos
+-66.5,-304,223.8,270`, 2 frames forward every 15 frames) gives the stuck player at
+30 and 60 frames per second without the correction, and one `WALLOVERLAP` and a fall
+to the floor below with it. The same with Improved physics off. Whether the
+executable has the same defect was not tested (its floor search uses the radii of
+the move, so it holds the player on the edge longer).
 
 `Dtu_improved_physics` (menu):
 

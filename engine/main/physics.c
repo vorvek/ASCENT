@@ -1297,6 +1297,7 @@ set_thrust_from_velocity(object *obj)
 #include "gameseg.h"
 #include "render.h"
 #include "dtuobj.h"
+#include "dtugame.h"		// ASCENT: Dtu_objects_enabled
 #include "gauges.h"
 #include "player.h"
 #include "controls.h"
@@ -1324,6 +1325,7 @@ int Dtu_fix_jump_exit = 1;			// the velocity after a jump: the last step divided
 int Dtu_fix_jump_path = 1;			// the jump: a throw with a constant gravity, with the height and the air time of the table (15 steps, 28 per second)
 int Dtu_fix_ladder = 1;			// a ladder: no velocity into the wall, the hold of its top edge, the step onto the floor, the hold when the player steps down onto it
 int Dtu_fix_wall_slide = 1;		// a wall takes away the velocity into it, with no bounce back
+int Dtu_fix_wall_overlap = 1;	// a body that starts inside the reach of a wall is moved out of it (no stuck player)
 
 // The state of the player (the byte at 0x1AE of the object in the
 // executable) and the values that belong to it.
@@ -2310,6 +2312,77 @@ static void dtu_body_log(object *obj)
 	fflush(log);
 }
 
+// ASCENT: Dtu_fix_wall_overlap. The move query of the body has another
+// radius for each side (fvi.c, dtu_side_rad: the floor rad/2, the walls
+// rad + 1.0). A segment below the player is entered through its top side
+// with the small radius, so the body can already be inside the reach of a
+// wall of that segment when it comes into the query: the player who walks
+// off the edge of a ledge falls with the center less than rad + 1.0 from
+// the wall under the edge. From such a start each move hits the wall (the
+// hit point is behind the start), and the player cannot move any more
+// (the saved game "stuck": HUB1, segment 179, the wall of segment 70 side
+// 0, 0.44 from the center). This moves the center out of the reach of the
+// wall along its normal, when the start is in front of the wall and the
+// hit is not ahead of the start. Returns 1 if the player was moved.
+static int dtu_push_out_of_wall(object *obj,dtu_body *body,fvi_info *hit,vms_vector *move,vms_vector *start_pos)
+{
+	segment *segp;
+	vms_vector d, np;
+	fvi_query fq;
+	fvi_info h2;
+	fix dist, reach;
+	int k, seg;
+
+	if (hit->hit_side_seg < 0 || hit->hit_side < 0 || hit->hit_side == WBOTTOM)
+		return 0;
+	vm_vec_sub(&d,&hit->hit_pnt,&obj->pos);
+	if (vm_vec_dot(&d,move) > 0)
+		return 0;						// an ordinary hit, ahead of the start
+
+	reach = (hit->hit_side == WTOP) ? fixmul(body->move_rad2,0x18000) : body->move_rad + F1_0;
+	segp = &Segments[hit->hit_side_seg];
+	dist = 0x7fffffff;
+	for (k=0;k<4;k++) {
+		fix dk;
+
+		vm_vec_sub(&d,&obj->pos,&Vertices[segp->verts[Side_to_verts[hit->hit_side][k]]]);
+		dk = vm_vec_dot(&d,&hit->hit_wallnorm);
+		if (dk < dist)
+			dist = dk;
+	}
+	if (dist < 0 || dist > reach - F1_0/64)
+		return 0;						// behind the wall, or not inside its reach
+
+	vm_vec_scale_add(&np,&obj->pos,&hit->hit_wallnorm,reach - dist + F1_0/32);
+
+	fq.p0 = &obj->pos;
+	fq.p1 = &np;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&h2) != HIT_NONE)
+		return 0;
+	seg = find_point_seg(&np,obj->segnum);
+	if (seg < 0)
+		return 0;
+
+	{
+		char text[200];
+
+		snprintf(text,sizeof(text),"WALLOVERLAP seg %d side %d dist %.4f reach %.4f pos %.4f %.4f %.4f to %.4f %.4f %.4f\n",
+			hit->hit_side_seg,hit->hit_side,f2fl(dist),f2fl(reach),f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),
+			f2fl(np.x),f2fl(np.y),f2fl(np.z));
+		dtu_move_log_line(text);
+	}
+	obj->pos = np;
+	if (seg != obj->segnum)
+		obj_relink(obj-Objects,seg);
+	*start_pos = np;
+	return 1;
+}
+
 // ASCENT: Dtu_improved_physics. The body of the original (0x748D9) is so
 // wide (the walls stop the center at body_radius[0] / 2 + 1.0, 4.6 for a
 // human) that the edge of a wall side that is a step (BANE: a step of 3.5
@@ -2362,6 +2435,11 @@ static int dtu_improved_step(object *obj,dtu_body *body,fvi_info *hit)
 	return 1;
 }
 
+// 0x14534B, 0x14534F: the object that stopped the player in the last
+// tries, and the number of its hits in a row.
+static int Dtu_block_obj = -1;
+static int Dtu_block_hits = 0;
+
 int dtu_player_physics_sim(object *obj)
 {
 	static fix levitate_acc = 0;
@@ -2369,7 +2447,7 @@ int dtu_player_physics_sim(object *obj)
 	int objnum = obj-Objects;
 	fix sim_time = FrameTime;
 	vms_vector accel,start_pos,frame_vec,new_pos,p1;
-	int floor_type,tries = 0,fate;
+	int floor_type,tries = 0,fate,hit_an_object = 0;
 	int ignore_obj_list[MAX_IGNORE_OBJS],n_ignore_objs = 0;
 	fvi_query fq;
 	fvi_info hit;
@@ -2531,6 +2609,16 @@ int dtu_player_physics_sim(object *obj)
 
 		ignore_obj_list[n_ignore_objs] = -1;
 
+		// 0x9E11A: after more than 30 hits of the same object in a row the
+		// object is ignored when the move goes away from it, so that a
+		// body inside of it can get out.
+		if (Dtu_block_obj >= 0 && Dtu_block_hits > 30 && Dtu_block_obj <= Highest_object_index &&
+				vm_vec_dist(&Objects[Dtu_block_obj].pos,&new_pos) > vm_vec_dist(&Objects[Dtu_block_obj].pos,&start_pos) &&
+				n_ignore_objs < MAX_IGNORE_OBJS-1) {
+			ignore_obj_list[n_ignore_objs++] = Dtu_block_obj;
+			ignore_obj_list[n_ignore_objs] = -1;
+		}
+
 		fq.p0 = &obj->pos;
 		fq.p1 = &p1;
 		fq.startseg = obj->segnum;
@@ -2586,6 +2674,11 @@ int dtu_player_physics_sim(object *obj)
 			}
 
 			dtu_fall_damage(obj);
+		}
+		else if (fate == HIT_WALL && Dtu_fix_wall_overlap && dtu_push_out_of_wall(obj,&body,&hit,&frame_vec,&start_pos)) {
+			// ASCENT: Dtu_fix_wall_overlap. The move starts again from the
+			// position out of the reach of the wall.
+			continue;
 		}
 		else if (fate == HIT_WALL && Dtu_improved_physics && dtu_improved_step(obj,&body,&hit)) {
 			// ASCENT: Dtu_improved_physics, the step up a low wall. The move
@@ -2692,6 +2785,18 @@ int dtu_player_physics_sim(object *obj)
 			object *other = &Objects[hit.hit_object];
 
 			obj->pos = start_pos;
+			hit_an_object = 1;
+
+			// 0x9E54B: the hits of the same object in a row (0x14534B,
+			// 0x14534F). The executable counts a hit only when rad2 of the
+			// body is not below hit_pnt.y (a compare of a size with a
+			// coordinate); the port counts each hit.
+			if (hit.hit_object != Dtu_block_obj) {
+				Dtu_block_obj = hit.hit_object;
+				Dtu_block_hits = 0;
+			}
+			Dtu_block_hits++;
+
 			collide_two_objects(obj,other,&hit.hit_pnt);
 
 			if (obj->flags & OF_SHOULD_BE_DEAD)
@@ -2701,6 +2806,13 @@ int dtu_player_physics_sim(object *obj)
 			// other objects after the collision (an item that is taken).
 			if (other->type == OBJ_ROBOT || other->type == OBJ_PLAYER || other->type == OBJ_CNTRLCEN)
 				break;
+			// ASCENT: scenery stops the player too (0x9E5A1: the player
+			// goes back to the start of the frame and the move is tried
+			// again, the object is not ignored). The push of 0x9E5BE has
+			// moved it. Before this the player went through the scenery
+			// and pushed it from the inside in each frame.
+			if (other->type == OBJ_DRESSING && Dtu_objects_enabled)
+				continue;
 			if (n_ignore_objs < MAX_IGNORE_OBJS-1)
 				ignore_obj_list[n_ignore_objs++] = hit.hit_object;
 		}
@@ -2712,6 +2824,12 @@ int dtu_player_physics_sim(object *obj)
 	// the frame time. The executable keeps this velocity when the jump
 	// ends in this frame: the player is fast after a jump at a high frame
 	// rate. The corrected rule keeps the velocity of the reference frame.
+	// 0x9E797: a frame with no hit of an object ends the row of hits.
+	if (!hit_an_object) {
+		Dtu_block_obj = -1;
+		Dtu_block_hits = 0;
+	}
+
 	if (Dtu_jump_set_vel && !(Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_exit)
 		vm_vec_scale(&pi->velocity,fixdiv(sim_time,DTU_REF_FRAMETIME));
 

@@ -569,13 +569,54 @@ The four player handlers do the same steps (Code, misc at 0x280D7 to 0x2826B):
    The letter for misc is `_`, or `B` for a `bow` and `C` for a `crossbow`.
 7. If the insert works: object flag 2 (dead), 0x6A3CC(objnum), bit 4 at 0x1AE, a
    message made of the text pointer at 0x396A94 and the object name (0xB8C0F), and
-   0xB772D(type, id, a table value).
+   0xB772D(type, id, flag word).
 8. If not: a message with another text (0x396A90 to 0x396AA0), and the object number
    is put in the list at 0x30F10C (count 0x30F49C).
 
 Gold is misc id 1 (0x2806B): the message is "You pick up %d gold.", the amount is
 `shields` as an integer, and it is added to the int at 0x1D33F7 + Player_num * 6967.
-No level file has a gold object (Data).
+No level file has a gold object (Data). The gold path comes before the pick up delay
+0x31A0E, and it calls 0xB772D(0x10, 1, 0) (0x28089 to 0x28092).
+
+### The pick up sound (0xB772D)
+
+Verified in DTUGAME.EXE. 0xB772D(type, id, flags) is the only sound of a pick up:
+
+- If bit 0x10 of `flags` is set: `digi_play_sample(2216, 0.5)` (0x2D955(0x8A8,
+  0x8000), 0xB7732).
+- Then always `digi_play_sample(2215, 0.5)` (0x2D955(0x8A7, 0x8000), 0xB7741).
+
+The table of YPINN has `$SOUND 2215 2215 pugenr.rca` and `$SOUND 2216 2216
+pumagic.rca` (Data). Port test (YPINN, `-testpos 45,2,90,0 -testmove
+wait:20,forward:40 -objlog`): the Potion of Healing gives the log line "pickup: obj 4
+type 16 id 79 'Potion of Healing' ... sound 2216 2215".
+
+The flag word of each caller (the int at the address shifted right by 16, so the
+s16 at +2):
+
+| Caller | Type | Flag word | Bit 0x10 |
+|---|---|---|---|
+| 0x28092 gold | misc | 0 | never |
+| 0x281CC misc | 16 | `Misc_info` 0x22 (0x19BADC >> 16) | set by the fixup 0x1A344, see below |
+| 0x28387 spell | 17 | `Spell_info` 0x36 (word 0x1B56AC) | `cast_with_arrow` |
+| 0x284CC armor | 15 | `Armor_info` 0x10 (0x19FD32 >> 16) | `stackable` |
+| 0x2866A weapon | 5 | `Weapon_info` 0x3E (0x1E9D44 >> 16) | `magic`, also set by 0x1A344 |
+
+The table fixup 0x1A344 (called at the end of the table read, 0x1C8F9) sets bit
+0x10 of the misc flags for each misc type with `plot_item` not 0, a `+` in the name
+(0xDABAE) or one of the name parts `uring`, `yrkul`, `rystal`, `carab`, `speed`,
+`nsight`, `anegem`, `ursed`, `lamesword`, `otion` (0xDDA28, case sensitive), and bit
+0x20 for a name with ` Key`. For weapons (0x1AEF8) it sets bit 0x10 (`magic`) for
+`plot_item` not 0 or a `+` in the name. So a magic item plays 2216 and 2215, any
+other item and gold only 2215. For armor the bit is `stackable` (`magic` is bit 1),
+probably a mistake of the code; the port keeps it.
+
+The spell flag byte 0x36 has the cast field in bits 2 to 4: `cast_with_hands` clears
+it (0xE3 mask), `cast_with_wand` 4, `cast_with_scroll` 8, `cast_with_arrow` 0x10
+(0x253A8 to 0x2545D), so the last `cast_with_` word of a line decides.
+
+Port: `pickup_sound()` and `pickup_flag_10()` in `dtuobj.c`. Setup 1.0 of the port
+played no sound for a pick up.
 
 ### The byte at 0x1D5
 
@@ -804,8 +845,8 @@ Read in the code with the work on `engine/main/dtuobj.c`.
   the x-z plane and then compares the heights (`dtu_check_vector_to_object` in `fvi.c`).
   The test of the executable inside 0x3EFD9 was not read.
 - Pickup: the four player handlers are one function. The inventory is the list
-  `Dtu_inventory[]` of `dtuobj.h`, not the structure of 0xB65BB. The delay between two
-  pickups (0x31A0E) and the list of items that did not fit (0x30F10C) are not in the port.
+  `Dtu_inventory[]` of `dtuobj.h`, not the structure of 0xB65BB. The list of items
+  that did not fit (0x30F10C) is not in the port.
 
 ## Dynamic light
 
