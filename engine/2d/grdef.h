@@ -49,10 +49,24 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  *
  */
 
+// ASCENT: each 8-bit bitmap type is a linear frame in memory. The Mode X
+// and SVGA types stay for the game code, and the 2d library draws on them
+// with the linear code. The row size of the three types is the width.
+#define GR_IS_LINEAR(t) ((t)==BM_LINEAR || (t)==BM_MODEX || (t)==BM_SVGA)
+
+// ASCENT: the offset in gr_video_memory of the first pixel that
+// gr_present shows. gr_show_canvas sets it (page flip).
+extern int gr_display_start;
+
+// ASCENT: the vertical refresh rate of the emulated display, for
+// gr_sync_display and the palette fades. gr_set_mode sets it.
+extern int gr_refresh_hz;
+
 extern int  gr_modex_setmode(short mode);
 extern void gr_modex_setplane(short plane);
 extern void gr_modex_setstart(short x, short y, int wait_for_retrace);
 extern void gr_modex_uscanline( short x1, short x2, short y, unsigned char color );
+extern void gr_modex_line();
 
 extern void gr_pal_setblock( int start, int n, unsigned char * palette );
 extern void gr_pal_getblock( int start, int n, unsigned char * palette );
@@ -67,11 +81,18 @@ extern void gr_vesa_scanline(short x1, short x2, short y, unsigned char color );
 extern int  gr_vesa_setlogical(int pixels_per_scanline);
 extern void gr_vesa_bitblt( unsigned char * source_ptr, unsigned int vesa_address, int height, int width );
 extern void gr_vesa_pixel( unsigned char color, unsigned int offset );
+extern void gr_vesa_bitmap( grs_bitmap * source, grs_bitmap * dest, int x, int y );
 
-void gr_linear_movsb( void * source, void * dest, unsigned short nbytes);
-void gr_linear_movsw( void * source, void * dest, unsigned short nbytes);
-void gr_linear_movsd( void * source, void * dest, unsigned short nbytes);
-void gr_linear_stosd( void * source, unsigned char color, unsigned short nbytes);
+// ASCENT: gr_linear_movsb and gr_linear_movsw had no definition. The
+// functions below are in linear.c. The counts are int (the assembly used
+// the full register, the declarations here had unsigned short).
+void gr_linear_movsd( ubyte * src, ubyte * dest, int num_pixels );
+void gr_linear_rep_movsdm( ubyte * src, ubyte * dest, int num_pixels );
+void gr_linear_rep_movsdm_faded( ubyte * src, ubyte * dest, int num_pixels, ubyte fade_value );
+void gr_linear_rep_movsd_2x( ubyte * src, ubyte * dest, int num_dest_pixels );
+void gr_linear_stosd( void * dest, unsigned char color, int nbytes );
+// in lbitblt.c
+void gr_lbitblt( grs_bitmap * source, grs_bitmap * dest, int height, int width );
 extern unsigned int gr_var_color;
 extern unsigned int gr_var_bwidth;
 extern unsigned char * gr_var_bitmap;
@@ -98,4 +119,4 @@ extern unsigned char * gr_video_memory;
 
 void order( int *x1, int *x2 );
 
-
+

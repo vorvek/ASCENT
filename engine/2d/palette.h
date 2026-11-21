@@ -71,5 +71,11 @@ extern void gr_make_cthru_table(ubyte * table, ubyte r, ubyte g, ubyte b );
 extern int gr_find_closest_color_current( int r, int g, int b );
 extern void gr_palette_read(ubyte * palette);
 
+// ASCENT: the palette that the display shows (the VGA DAC registers
+// before). 256 entries of red, green, blue with 6 bits for each. The
+// palette functions write it, gr_palette_read reads it, and gr_present
+// passes it to the platform layer.
+extern ubyte gr_dac_palette[256*3];
+
 #endif
-
+

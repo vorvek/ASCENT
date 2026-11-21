@@ -94,6 +94,10 @@ extern int mouse_get_btns();
 extern void mouse_set_pos( int x, int y);
 extern void mouse_get_cyberman_pos( int *x, int *y );
 
+// ASCENT: new. on=1: relative mode, the pointer is hidden and held in the
+// window (the state after mouse_init). on=0: the system pointer is free.
+extern void mouse_set_relative( int on );
+
 // Returns how long this button has been down since last call.
 extern fix mouse_button_down_time(int button);
 
@@ -105,4 +109,4 @@ extern int mouse_button_state(int button);
 
 
 #endif
-
+

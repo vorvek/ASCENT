@@ -82,10 +82,8 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  * 
  */
 
-
-#pragma off (unreferenced)
+// ASCENT: the Watcom "#pragma off (unreferenced)" lines are removed.
 static char rcsid[] = "$Id: mem.c 1.18 1995/01/24 20:49:18 matt Exp $";
-#pragma on (unreferenced)
 
 
 // Warning( "MEM: Too many malloc's!" );
@@ -100,149 +98,191 @@ static char rcsid[] = "$Id: mem.c 1.18 1995/01/24 20:49:18 matt Exp $";
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#include <dos.h>
-#include <malloc.h>
+#include <stdint.h>
 
-#include "mono.h"
 #include "error.h"
 
-//#define FULL_MEM_CHECKING
-
-#ifdef FULL_MEM_CHECKING 
+// ASCENT: this file was written again. The original had two allocators.
+// The one with FULL_MEM_CHECKING kept the address of each block in an
+// "unsigned int" table with 10000 entries. The other one (the one that was
+// in use) read the block size from the 4 bytes before the block, which is
+// a detail of the Watcom heap, and its overwrite check was turned off.
+// The two of them are wrong on a 64-bit system. The DOS memory report (the
+// distance of the heap from the 4 megabyte load address) is removed too.
+//
+// The new allocator does what the FULL_MEM_CHECKING one did:
+//   - it puts CHECKSIZE check bytes after each block
+//   - it keeps the size, the variable name, the file and the line of each block
+//   - mem_free() checks the check bytes and refuses a pointer that it does not know
+//   - mem_display_blocks() (called at exit) reports the blocks that are left
+// The blocks are in a hash table that has the block address as the key.
+// The table grows, so the number of blocks has no limit.
+// The functions are not safe for use from two threads, as before.
 
 #define CHECKSIZE 16
 #define CHECKBYTE 0xFC
 
-#define MAX_INDEX 10000
+typedef struct mem_block {
+	void		*base;			// address of the block, NULL = entry is free
+	size_t	size;				// size that the caller asked for
+	char		*varname;
+	char		*filename;
+	int		line;
+} mem_block;
 
-static unsigned int MallocBase[MAX_INDEX];
-static unsigned int MallocSize[MAX_INDEX];
-static unsigned int MallocRealSize[MAX_INDEX];
-static unsigned char Present[MAX_INDEX];
-static char * Filename[MAX_INDEX];
-static char * Varname[MAX_INDEX];
-static int Line[MAX_INDEX];
-static int BytesMalloced = 0;
+#define INITIAL_TABLE_SIZE 1024		// must be a power of 2
 
-static unsigned int SmallestAddress = 0xFFFFFFF;
-static unsigned int LargestAddress = 0x0;
+static mem_block *Blocks = NULL;		// hash table with linear probing
+static size_t Table_size = 0;			// number of entries, a power of 2
+static size_t num_blocks = 0;
+static size_t BytesMalloced = 0;
+static size_t LargestBytesMalloced = 0;
 
-int show_mem_info = 1;
-
-static int free_list[MAX_INDEX];
-
-static int num_blocks = 0;
+int show_mem_info = 0;
 
 static int Initialized = 0;
-
-static int LargestIndex = 0;
 
 int out_of_memory = 0;
 
 void mem_display_blocks();
 
+static size_t mem_hash( void * ptr )
+{
+	uint64_t h = (uint64_t)(uintptr_t)ptr;
+
+	h *= 0x9E3779B97F4A7C15ull;
+	return (size_t)(h >> 32) & (Table_size-1);
+}
+
 void mem_init()
 {
-	int i;
-	
 	Initialized = 1;
 
-	for (i=0; i<MAX_INDEX; i++ )
-	{
-		free_list[i] = i;
-		MallocBase[i] = 0;
-		MallocSize[i] = 0;
-		MallocRealSize[i] = 0;
-		Present[i] = 0;
-		Filename[i] = NULL;
-		Varname[i] = NULL;
-		Line[i] = 0;
-	}
-
-	SmallestAddress = 0xFFFFFFF;
-	LargestAddress = 0x0;
-
 	num_blocks = 0;
-	LargestIndex = 0;
+	BytesMalloced = 0;
+	LargestBytesMalloced = 0;
 
 	atexit(mem_display_blocks);
-
 }
 
-void PrintInfo( int id )
+static void PrintInfo( mem_block * b )
 {
-	fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", Varname[id], Filename[id], Line[id] );
+	fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", b->varname, b->filename, b->line );
 }
 
+// Returns the table entry of a block, or NULL if the block is not in the table.
+static mem_block * mem_find_block( void * buffer )
+{
+	size_t i;
+
+	if (Table_size==0) return NULL;
+
+	for (i=mem_hash(buffer); Blocks[i].base!=NULL; i=(i+1)&(Table_size-1) )
+		if (Blocks[i].base == buffer )
+			return &Blocks[i];
+
+	// Didn't find it.
+	return NULL;
+}
+
+// Puts a block in a free table entry. The table must have a free entry.
+static void mem_insert_block( mem_block * b )
+{
+	size_t i;
+
+	for (i=mem_hash(b->base); Blocks[i].base!=NULL; i=(i+1)&(Table_size-1) )
+		;
+	Blocks[i] = *b;
+}
+
+// Makes the table two times as large. Returns 0 if there is no memory.
+static int mem_grow_table()
+{
+	mem_block * old_blocks = Blocks;
+	size_t old_size = Table_size, i;
+	mem_block * new_blocks;
+
+	new_blocks = calloc( old_size ? old_size*2 : INITIAL_TABLE_SIZE, sizeof(mem_block) );
+	if (new_blocks==NULL) return 0;
+
+	Blocks = new_blocks;
+	Table_size = old_size ? old_size*2 : INITIAL_TABLE_SIZE;
+
+	for (i=0; i<old_size; i++ )
+		if (old_blocks[i].base!=NULL)
+			mem_insert_block( &old_blocks[i] );
+
+	free( old_blocks );
+
+	return 1;
+}
+
+// Removes a table entry. Moves the entries that follow it, so that each
+// entry can still be found from its hash position.
+static void mem_remove_block( mem_block * b )
+{
+	size_t mask = Table_size-1;
+	size_t i = b - Blocks, j = i, k;
+
+	for (;;) {
+		j = (j+1) & mask;
+		if (Blocks[j].base==NULL) break;
+		k = mem_hash( Blocks[j].base );
+		if ( (i<=j) ? (i<k && k<=j) : (i<k || k<=j) )
+			continue;		// entry j is not after its hash position if it moves to i
+		Blocks[i] = Blocks[j];
+		i = j;
+	}
+	Blocks[i].base = NULL;
+}
 
 void * mem_malloc( unsigned int size, char * var, char * filename, int line, int fill_zero )
 {
-	unsigned int base;
-	int i, j, id;
+	mem_block b;
 	void *ptr;
 	char * pc;
-	int * data;
+	int i;
 
 	if (Initialized==0)
 		mem_init();
 
-	if ( num_blocks >= MAX_INDEX )	{
-		fprintf( stderr,"\nMEM_OUT_OF_SLOTS: Not enough space in mem.c to hold all the mallocs.\n" );		
-		fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", var, filename, line );
-		Error( "MEM_OUT_OF_SLOTS" );
+	if (size==0)	{
+		fprintf( stderr, "\nMEM_MALLOC_ZERO: Attempting to malloc 0 bytes.\n" );
+		fprintf( stderr, "\tVar %s, file %s, line %d.\n", var, filename, line );
+		Error( "MEM_MALLOC_ZERO" );
 	}
 
-	id = free_list[ num_blocks++ ];
+	// Keep the table less than half full.
+	if ( (num_blocks+1)*2 > Table_size )
+		if (!mem_grow_table())	{
+			out_of_memory = 1;
+			fprintf( stderr,"\nMEM_OUT_OF_SLOTS: Not enough space in mem.c to hold all the mallocs.\n" );
+			fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", var, filename, line );
+			Error( "MEM_OUT_OF_SLOTS" );
+		}
 
-	if (id > LargestIndex ) LargestIndex = id;
-
-	if (id==-1)
-	{
-		fprintf( stderr,"\nMEM_OUT_OF_SLOTS: Not enough space in mem.c to hold all the mallocs.\n" );		
-		fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", Varname[id], Filename[id], Line[id] );
-		Error( "MEM_OUT_OF_SLOTS" );
-	}
-
-	ptr = malloc( size+CHECKSIZE );
-
-	/*
-	for (j=0; j<=LargestIndex; j++ )
-	{
-		if (Present[j] && MallocBase[j] == (unsigned int)ptr )
-		{
-			fprintf( stderr,"\nMEM_SPACE_USED: Malloc returned a block that is already marked as preset.\n" );
-			fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", Varname[id], Filename[id], Line[id] );
-			Warning( "MEM_SPACE_USED" );
-			Int3();
-			}
-	}
-	*/
+	ptr = malloc( (size_t)size+CHECKSIZE );
 
 	if (ptr==NULL)
 	{
 		out_of_memory = 1;
 		fprintf( stderr, "\nMEM_OUT_OF_MEMORY: Malloc returned NULL\n" );
-		fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", Varname[id], Filename[id], Line[id] );
+		fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", var, filename, line );
 		Error( "MEM_OUT_OF_MEMORY" );
-		Int3();
 	}
 
-	base = (unsigned int)ptr;
-	if ( base < SmallestAddress ) SmallestAddress = base;
-	if ( (base+size) > LargestAddress ) LargestAddress = base+size;
-
-	MallocBase[id] = (unsigned int)ptr;
-	data = (int *)((int)MallocBase[id]-4);
-	MallocRealSize[id] = *data;
-	MallocSize[id] = size;
-	Varname[id] = var;
-	Filename[id] = filename;
-	Line[id] = line;
-	Present[id]    = 1;
+	b.base = ptr;
+	b.size = size;
+	b.varname = var;
+	b.filename = filename;
+	b.line = line;
+	mem_insert_block( &b );
+	num_blocks++;
 
 	pc = (char *)ptr;
 
 	BytesMalloced += size;
+	if (BytesMalloced > LargestBytesMalloced) LargestBytesMalloced = BytesMalloced;
 
 	for (i=0; i<CHECKSIZE; i++ )
 		pc[size+i] = CHECKBYTE;
@@ -254,47 +294,25 @@ void * mem_malloc( unsigned int size, char * var, char * filename, int line, int
 
 }
 
-int mem_find_id( void * buffer )
+// Returns the number of check bytes that are overwritten.
+static int mem_check_integrity( mem_block * b )
 {
-	int i;
-
-	for (i=0; i<=LargestIndex; i++ )
-		if (Present[i]==1)
-			if (MallocBase[i] == (unsigned int)buffer )
-				return i;
-
-	// Didn't find id.
-	return -1;
-}
-
-int mem_check_integrity( int block_number )
-{
-	int * data;
 	int i, ErrorCount;
-	char * CheckData;
+	unsigned char * CheckData;
 
-	CheckData = (char *)(MallocBase[block_number] + MallocSize[block_number]);
-
-	data = (int *)((int)MallocBase[block_number]-4);
-
-	if ( *data != MallocRealSize[block_number] )	{
-		fprintf( stderr, "\nMEM_BAD_LENGTH: The length field of an allocated block was overwritten.\n" );
-		PrintInfo( block_number );
-		//Int3();
-		*data = MallocRealSize[block_number];
-	}
+	CheckData = (unsigned char *)b->base + b->size;
 
 	ErrorCount = 0;
-			
+
 	for (i=0; i<CHECKSIZE; i++ )
 		if (CheckData[i] != CHECKBYTE ) {
 			ErrorCount++;
-			fprintf( stderr, "OA: %x ", &CheckData[i] );
+			fprintf( stderr, "OA: %p ", (void *)&CheckData[i] );
 		}
 
 	if (ErrorCount &&  (!out_of_memory))	{
 		fprintf( stderr, "\nMEM_OVERWRITE: Memory after the end of allocated block overwritten.\n" );
-		PrintInfo( block_number );
+		PrintInfo( b );
 		fprintf( stderr, "\t%d/%d check bytes were overwritten.\n", ErrorCount, CHECKSIZE );
 	}
 
@@ -304,7 +322,7 @@ int mem_check_integrity( int block_number )
 
 void mem_free( void * buffer )
 {
-	int id;
+	mem_block * b;
 
 	if (Initialized==0)
 		mem_init();
@@ -317,208 +335,101 @@ void mem_free( void * buffer )
 		return;
 	}
 
-	id = mem_find_id( buffer );
+	b = mem_find_block( buffer );
 
-	if (id==-1 &&  (!out_of_memory))
+	if (b==NULL)
 	{
-		fprintf( stderr, "\nMEM_FREE_NOMALLOC: An attempt was made to free a ptr that wasn't\nallocated with mem.h included.\n" );
-		Warning( "MEM: Freeing a non-malloced pointer!" );
-		Int3();
+		// ASCENT: the original went on with the index -1 when out_of_memory was set.
+		if (!out_of_memory)	{
+			fprintf( stderr, "\nMEM_FREE_NOMALLOC: An attempt was made to free a ptr that wasn't\nallocated with mem.h included.\n" );
+			Warning( "MEM: Freeing a non-malloced pointer!" );
+			Int3();
+		}
 		return;
 	}
-	
-	mem_check_integrity( id );
-	
-	BytesMalloced -= MallocSize[id];
+
+	mem_check_integrity( b );
+
+	BytesMalloced -= b->size;
 
 	free( buffer );
-	
-	
-	Present[id] = 0;
-	MallocBase[id] = 0;
-	MallocSize[id] = 0;
 
-	free_list[ --num_blocks ] = id;
+	mem_remove_block( b );
+	num_blocks--;
 }
 
+// ASCENT: reports the blocks that are left. It does not free them, because
+// an exit function that runs later can still use them.
 void mem_display_blocks()
 {
-	int i, numleft;
+	size_t i;
+	int numleft;
 
 	if (Initialized==0) return;
-	
+
 	numleft = 0;
-	for (i=0; i<=LargestIndex; i++ )
+	for (i=0; i<Table_size; i++ )
 	{
-		if (Present[i]==1 &&  (!out_of_memory))
+		if (Blocks[i].base!=NULL &&  (!out_of_memory))
 		{
 			numleft++;
 			if (show_mem_info)	{
 				fprintf( stderr, "\nMEM_LEAKAGE: Memory block has not been freed.\n" );
-				PrintInfo( i );
+				PrintInfo( &Blocks[i] );
 			}
-			mem_free( (void *)MallocBase[i] );
+			mem_check_integrity( &Blocks[i] );
 		}
 	}
 
 	if (numleft &&  (!out_of_memory))
 	{
-		Warning( "MEM: %d blocks were left allocated!", numleft );
+		fprintf( stderr, "\nMEM_LEAKAGE: %d blocks (%u bytes) of memory have not been freed.\n", numleft, (unsigned int)BytesMalloced );
 	}
 
 	if (show_mem_info)	{
 		fprintf( stderr, "\n\nMEMORY USAGE:\n" );
-		fprintf( stderr, "  %u Kbytes dynamic data\n", (LargestAddress-SmallestAddress+512)/1024 );
-		fprintf( stderr, "  %u Kbytes code/static data.\n", (SmallestAddress-(4*1024*1024)+512)/1024 );
-		fprintf( stderr, "  ---------------------------\n" );
-		fprintf( stderr, "  %u Kbytes required.\n\n", 	(LargestAddress-(4*1024*1024)+512)/1024 );
+		fprintf( stderr, "  %u Kbytes dynamic data in use\n", (unsigned int)((BytesMalloced+512)/1024) );
+		fprintf( stderr, "  %u Kbytes dynamic data at the largest\n\n", (unsigned int)((LargestBytesMalloced+512)/1024) );
 	}
 }
 
-void mem_validate_heap()
+int mem_validate_heap()
 {
-	int i;
-	
-	for (i=0; i<LargestIndex; i++  )
-		if (Present[i]==1 )
-			mem_check_integrity( i );
+	size_t i;
+	int n_bad = 0;
+
+	for (i=0; i<Table_size; i++  )
+		if (Blocks[i].base!=NULL )
+			if (mem_check_integrity( &Blocks[i] ))
+				n_bad++;
+
+	return n_bad;
 }
 
 void mem_print_all()
 {
 	FILE * ef;
-	int i, size = 0;
+	size_t i, size = 0;
 
 	ef = fopen( "DESCENT.MEM", "wt" );
-	
-	for (i=0; i<LargestIndex; i++  )
-		if (Present[i]==1 )	{
-			size += MallocSize[i];
+	if (ef==NULL) return;
+
+	for (i=0; i<Table_size; i++  )
+		if (Blocks[i].base!=NULL )	{
+			size += Blocks[i].size;
 			//fprintf( ef, "Var:%s\t File:%s\t Line:%d\t Size:%d Base:%x\n", Varname[i], Filename[i], Line[i], MallocSize[i], MallocBase[i] );
-			fprintf( ef, "%12d bytes in %s declared in %s, line %d\n", MallocSize[i], Varname[i], Filename[i], Line[i]  );
+			fprintf( ef, "%12u bytes in %s declared in %s, line %d\n", (unsigned int)Blocks[i].size, Blocks[i].varname, Blocks[i].filename, Blocks[i].line  );
 		}
-	fprintf( ef, "%d bytes (%d Kbytes) allocated.\n", size, size/1024 ); 
+	fprintf( ef, "%u bytes (%u Kbytes) allocated.\n", (unsigned int)size, (unsigned int)(size/1024) );
 	fclose(ef);
 }
 
-#else
-
-static int Initialized = 0;
-static unsigned int SmallestAddress = 0xFFFFFFF;
-static unsigned int LargestAddress = 0x0;
-static unsigned int BytesMalloced = 0;
-
-void mem_display_blocks();
-
-#define CHECKSIZE 16
-#define CHECKBYTE 0xFC
-
-int show_mem_info = 0;
-
-void mem_init()
+int mem_num_blocks()
 {
-	Initialized = 1;
-
-	SmallestAddress = 0xFFFFFFF;
-	LargestAddress = 0x0;
-
-	atexit(mem_display_blocks);
+	return (int)num_blocks;
 }
 
-void * mem_malloc( unsigned int size, char * var, char * filename, int line, int fill_zero )
+unsigned int mem_bytes_malloced()
 {
-	unsigned int base;
-	void *ptr;
-	int * psize;
-
-	if (Initialized==0)
-		mem_init();
-
-	if (size==0)	{
-		fprintf( stderr, "\nMEM_MALLOC_ZERO: Attempting to malloc 0 bytes.\n" );
-		fprintf( stderr, "\tVar %s, file %s, line %d.\n", var, filename, line );
-		Error( "MEM_MALLOC_ZERO" );
-		Int3();
-	}
-
-	ptr = malloc( size + CHECKSIZE );
-
-	if (ptr==NULL)	{
-		fprintf( stderr, "\nMEM_OUT_OF_MEMORY: Malloc returned NULL\n" );
-		fprintf( stderr, "\tVar %s, file %s, line %d.\n", var, filename, line );
-		Error( "MEM_OUT_OF_MEMORY" );
-		Int3();
-	}
-
-	base = (unsigned int)ptr;
-	if ( base < SmallestAddress ) SmallestAddress = base;
-	if ( (base+size) > LargestAddress ) LargestAddress = base+size;
-
-
-	psize = (int *)ptr;
-	psize--;
-	BytesMalloced += *psize;
-
-	if (fill_zero)
-		memset( ptr, 0, size );
-
-	return ptr;
+	return (unsigned int)BytesMalloced;
 }
-
-void mem_free( void * buffer )
-{
-	int ErrorCount;
-	int * psize = (int *)buffer;
-	psize--;
-
-	if (Initialized==0)
-		mem_init();
-
-	if (buffer==NULL)	{
-		fprintf( stderr, "\nMEM_FREE_NULL: An attempt was made to free the null pointer.\n" );
-		Warning( "MEM: Freeing the NULL pointer!" );
-		Int3();
-		return;
-	}
-
-	ErrorCount = 0;
-
-	if (ErrorCount)	{
-		fprintf( stderr, "\nMEM_OVERWRITE: Memory after the end of allocated block overwritten.\n" );
-		fprintf( stderr, "\tBlock at 0x%x, size %d\n", buffer, *psize );
-		fprintf( stderr, "\t%d/%d check bytes were overwritten.\n", ErrorCount, CHECKSIZE );
-	}
-
-	BytesMalloced -= *psize;
-
-	free( buffer );
-}
-
-void mem_display_blocks()
-{
-	if (Initialized==0) return;
-
-	if (BytesMalloced != 0 )	{
-		fprintf( stderr, "\nMEM_LEAKAGE: %d bytes of memory have not been freed.\n", BytesMalloced );
-	}
-
-	if (show_mem_info)	{
-		fprintf( stderr, "\n\nMEMORY USAGE:\n" );
-		fprintf( stderr, "  %u Kbytes dynamic data\n", (LargestAddress-SmallestAddress+512)/1024 );
-		fprintf( stderr, "  %u Kbytes code/static data.\n", (SmallestAddress-(4*1024*1024)+512)/1024 );
-		fprintf( stderr, "  ---------------------------\n" );
-		fprintf( stderr, "  %u Kbytes required.\n", 	(LargestAddress-(4*1024*1024)+512)/1024 );
-	}
-}
-
-void mem_validate_heap()
-{
-}
-
-void mem_print_all()
-{
-}
-
-#endif
-
-

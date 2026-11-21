@@ -59,16 +59,17 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  *
  */
 
-#pragma off (unreferenced)
+// ASCENT: the Watcom "#pragma off (unreferenced)" lines are removed.
 static char rcsid[] = "$Id: error.c 1.12 1994/12/07 18:49:39 matt Exp $";
-#pragma on (unreferenced)
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <signal.h>
 
-#include "mono.h"
+// ASCENT: mono.h (the monochrome debug screen) is not used. It belongs to
+// the bios library, and the bios library uses this one.
 #include "error.h"
 
 #define MAX_MSG_LEN 256
@@ -77,6 +78,11 @@ int initialized=0;
 
 char exit_message[MAX_MSG_LEN]="";
 char warn_message[MAX_MSG_LEN];
+
+// ASCENT: see error.h
+int Int3_break_enabled=0;
+
+static void (*error_func)(char *msg)=NULL;
 
 //takes string in register, calls printf with string on stack
 void warn_printf(char *s)
@@ -98,16 +104,39 @@ void clear_warn_func(void (*f)(char *s))
 	warn_func = warn_printf;
 }
 
+// ASCENT: provides a function that Error() calls with the message
+void set_error_func(void (*f)(char *msg))
+{
+	error_func = f;
+}
+
+// ASCENT: replaces the inline "int 3h". No assembly is used.
+#ifdef _WIN32
+__declspec(dllimport) void __stdcall DebugBreak(void);
+#endif
+
+void debug_break(void)
+{
+#if defined(_WIN32)
+	DebugBreak();
+#elif defined(SIGTRAP)
+	raise(SIGTRAP);
+#else
+	abort();
+#endif
+}
+
 void set_exit_message(char *fmt,...)
 {
 	va_list arglist;
 	int len;
 
+	// ASCENT: vsnprintf, so that a long message cannot write past the buffer
 	va_start(arglist,fmt);
-	len = vsprintf(exit_message,fmt,arglist);
+	len = vsnprintf(exit_message,MAX_MSG_LEN,fmt,arglist);
 	va_end(arglist);
 
-	if (len==-1 || len>MAX_MSG_LEN) Error("Message too long in set_exit_message (len=%d, max=%d)",len,MAX_MSG_LEN);
+	if (len<0 || len>=MAX_MSG_LEN) Error("Message too long in set_exit_message (len=%d, max=%d)",len,MAX_MSG_LEN);
 
 }
 
@@ -116,12 +145,18 @@ void _Assert(int expr,char *expr_text,char *filename,int linenum)
 	if (!(expr)) Error("Assertion failed: %s, file %s, line %d",expr_text,filename,linenum);
 
 }
+
+// ASCENT: Assert and Int3 are macros in error.h. The functions stay for
+// code that was compiled without the macros.
+#undef Assert
+#undef Int3
+
 //#ifdef NDEBUG		//macros for debugging
-//Assert and Int3 Added by KRB because I couldn't get the macros to link 
+//Assert and Int3 Added by KRB because I couldn't get the macros to link
 void Assert(int my_expr)
 {
 	//if (!(expr)) Error("Assertion failed: %s, file %s, line %d",expr_text,filename,linenum);
-	
+
 	return;
 }
 void Int3()
@@ -129,6 +164,17 @@ void Int3()
 	return;
 }
 //#endif
+
+// ASCENT: the function behind the Int3() macro. The DOS game installed a
+// handler that ignored "int 3" when no debugger was present, so the default
+// is to report the place and continue.
+void _Int3(char *filename,int linenum)
+{
+	if (Int3_break_enabled)
+		debug_break();
+	else
+		fprintf(stderr,"Int3: file %s, line %d\n",filename,linenum);
+}
 
 void print_exit_message()
 {
@@ -140,12 +186,30 @@ void print_exit_message()
 void Error(char *fmt,...)
 {
 	va_list arglist;
+	static int in_error=0;
+	int len;
 
 	strcpy(exit_message,"\nError: ");
+	len = (int) strlen(exit_message);
 
+	// ASCENT: vsnprintf, so that a long message cannot write past the buffer
 	va_start(arglist,fmt);
-	vsprintf(exit_message+strlen(exit_message),fmt,arglist);
+	vsnprintf(exit_message+len,MAX_MSG_LEN-len,fmt,arglist);
 	va_end(arglist);
+
+	// ASCENT: a second call (from the error function or from an exit
+	// function) must not call exit() again. Print and stop at once.
+	if (in_error) {
+		fprintf(stderr,"%s\n",exit_message);
+		_Exit(1);
+	}
+	in_error = 1;
+
+	if (Int3_break_enabled)			//the debug build did "int 3" here
+		debug_break();
+
+	if (error_func != NULL)
+		(*error_func)(exit_message+1);		//skip the newline
 
 	if (!initialized) print_exit_message();
 
@@ -156,17 +220,19 @@ void Error(char *fmt,...)
 void Warning(char *fmt,...)
 {
 	va_list arglist;
+	int len;
 
 	if (warn_func == NULL)
 		return;
 
 	strcpy(warn_message,"Warning: ");
+	len = (int) strlen(warn_message);
 
 	va_start(arglist,fmt);
-	vsprintf(warn_message+strlen(warn_message),fmt,arglist);
+	vsnprintf(warn_message+len,MAX_MSG_LEN-len,fmt,arglist);
 	va_end(arglist);
 
-	mprintf((0, "%s\n", warn_message));
+	// ASCENT: the mprintf call (monochrome debug screen) is removed
 	(*warn_func)(warn_message);
 
 }
@@ -181,9 +247,9 @@ int error_init(char *fmt,...)
 
 	if (fmt != NULL) {
 		va_start(arglist,fmt);
-		len = vsprintf(exit_message,fmt,arglist);
+		len = vsnprintf(exit_message,MAX_MSG_LEN,fmt,arglist);
 		va_end(arglist);
-		if (len==-1 || len>MAX_MSG_LEN) Error("Message too long in error_init (len=%d, max=%d)",len,MAX_MSG_LEN);
+		if (len<0 || len>=MAX_MSG_LEN) Error("Message too long in error_init (len=%d, max=%d)",len,MAX_MSG_LEN);
 	}
 
 	initialized=1;

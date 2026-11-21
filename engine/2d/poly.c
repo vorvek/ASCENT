@@ -42,7 +42,10 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "gr.h"
 #include "grdef.h"
 
-//#define USE_POLY_CODE 1
+// ASCENT: the original built this file without USE_POLY_CODE, so the
+// library had no gr_poly and no gr_upoly (the game draws its polygons
+// with the texture mapper). The port builds the two functions.
+#define USE_POLY_CODE 1
 
 #define  MAX_SCAN_LINES 1200
 
@@ -298,4 +301,4 @@ void gr_poly(int nverts, int *vert )
 }
 
 #endif
-
+

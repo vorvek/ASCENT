@@ -42,24 +42,18 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "gr.h"
 #include "grdef.h"
 
+// ASCENT: the Mode X and SVGA bitmap types are linear frames in memory
+// (see grdef.h). The cases that selected a VGA plane or a VESA page are
+// removed, and the three types use the linear code.
+
 unsigned char gr_ugpixel( grs_bitmap * bitmap, int x, int y )
 {
 	switch(bitmap->bm_type)
 	{
 	case BM_LINEAR:
-		return bitmap->bm_data[ bitmap->bm_rowsize*y + x ];
 	case BM_MODEX:
-		x += bitmap->bm_x;
-		y += bitmap->bm_y;
-		gr_modex_setplane( x & 3 );
-		return gr_video_memory[(bitmap->bm_rowsize * y) + (x/4)];
 	case BM_SVGA:
-		{
-		unsigned int offset;
-		offset = (unsigned int)bitmap->bm_data + (unsigned int)bitmap->bm_rowsize * y + x;
-		gr_vesa_setpage( offset >> 16 );
-		return gr_video_memory[offset & 0xFFFF];
-		}
+		return bitmap->bm_data[ bitmap->bm_rowsize*y + x ];
 	}
 	return 0;
 }
@@ -71,20 +65,9 @@ unsigned char gr_gpixel( grs_bitmap * bitmap, int x, int y )
 	switch(bitmap->bm_type)
 	{
 	case BM_LINEAR:
-		return bitmap->bm_data[ bitmap->bm_rowsize*y + x ];
 	case BM_MODEX:
-		x += bitmap->bm_x;
-		y += bitmap->bm_y;
-		gr_modex_setplane( x & 3 );
-		return gr_video_memory[(bitmap->bm_rowsize * y) + (x/4)];
 	case BM_SVGA:
-		{
-		unsigned int offset;
-		offset = (unsigned int)bitmap->bm_data + (unsigned int)bitmap->bm_rowsize * y + x;
-		gr_vesa_setpage( offset >> 16 );
-		return gr_video_memory[offset & 0xFFFF];
-		}
+		return bitmap->bm_data[ bitmap->bm_rowsize*y + x ];
 	}
 	return 0;
 }
-

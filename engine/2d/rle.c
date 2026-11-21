@@ -91,7 +91,6 @@ static char rcsid[] = "$Id: rle.c 1.19 1995/01/14 19:18:31 john Exp $";
 #pragma on (unreferenced)
 
 #include <stdlib.h>
-#include <malloc.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -101,9 +100,9 @@ static char rcsid[] = "$Id: rle.c 1.19 1995/01/14 19:18:31 john Exp $";
 
 #include "gr.h"
 #include "grdef.h"
-#include "dpmi.h"
 #include "error.h"
-#include "key.h"
+#include "rle.h"
+// ASCENT: removed "dpmi.h" and "key.h" (not used), added "rle.h".
 
 //#define RLE_CODE 		0xC0
 //#define NOT_RLE_CODE	63
@@ -111,50 +110,42 @@ static char rcsid[] = "$Id: rle.c 1.19 1995/01/14 19:18:31 john Exp $";
 #define RLE_CODE 			0xE0
 #define NOT_RLE_CODE		31
 
-int gr_rle_decode_asm( ubyte * src, ubyte * dest );
-#pragma aux gr_rle_decode_asm parm [esi] [edi] value [edi] modify exact [eax ebx ecx edx esi edi] = \
-"  cld					"\
-"	xor	ecx, ecx		"\		
-"	cld					"\		
-"	jmp	NextByte		"\																						
-"							"\																				
-"Unique:					"\																				
-"	mov	[edi],al		"\
-"	inc	edi			"\		
-"							"\																				
-"NextByte:				"\																			
-"	mov	al,[esi]		"\		
-"	inc	esi			"\		
-"							"\																		
-"	mov	ah, al		"\
-"	and	ah, 0xE0    "\
-"  cmp	ah, 0xE0		"\
-"	jne   Unique		"\		
-"							"\																		
-"	mov	cl, al		"\		
-"	and	cl, 31  		"\		
-"	je		done			"\
-"							"\												
-"	mov	al,[esi]		"\		
-"	inc	esi			"\		
-"	mov	ah, al		"\
-"	shr	ecx,1			"\		
-"	rep	stosw			"\		
-"	jnc	NextByte		"\
-"	mov	[edi],al		"\
-"	inc	edi			"\		
-"							"\
-"	jmp	NextByte		"\	
-"							"\				
-"done:					";
+// ASCENT: C replacement for the inline assembly (#pragma aux).
+// Expands one row of run length data from src to dest. Returns the
+// address after the last pixel that it wrote (the assembly returned it
+// in an int, which is too small for a pointer now).
+ubyte * gr_rle_decode_asm( ubyte * src, ubyte * dest )
+{
+	ubyte data, count;
+
+	for (;;)	{
+		data = *src++;
+		if ( (data & RLE_CODE) != RLE_CODE )	{
+			// unique
+			*dest++ = data;
+			continue;
+		}
+		count = data & NOT_RLE_CODE;
+		if ( count == 0 )
+			break;
+		data = *src++;
+		memset( dest, data, count );
+		dest += count;
+	}
+	return dest;
+}
 
 void gr_rle_decode( ubyte * src, ubyte * dest )
 {
 	gr_rle_decode_asm( src, dest );
 }
 
-void rle_stosb(char *dest, int len, int color);
-#pragma aux rle_stosb = "cld rep	stosb" parm [edi] [ecx] [eax] modify exact [edi ecx];
+// ASCENT: C replacement for the inline assembly (#pragma aux).
+static void rle_stosb(ubyte *dest, int len, int color)
+{
+	if (len > 0)
+		memset( dest, color, (size_t)len );
+}
 
 // Given pointer to start of one scanline of rle data, uncompress it to
 // dest, from source pixels x1 to x2.
@@ -162,7 +153,7 @@ void gr_rle_expand_scanline_masked( ubyte *dest, ubyte *src, int x1, int x2  )
 {
 	int i = 0;
 	ubyte count;
-	ubyte color;
+	ubyte color = 0;		// ASCENT: was not initialized (not used with a count of 0)
 
 	if ( x2 < x1 ) return;
 
@@ -222,7 +213,7 @@ void gr_rle_expand_scanline( ubyte *dest, ubyte *src, int x1, int x2  )
 {
 	int i = 0;
 	ubyte count;
-	ubyte color;
+	ubyte color = 0;		// ASCENT: was not initialized (not used with a count of 0)
 
 	if ( x2 < x1 ) return;
 
@@ -512,7 +503,7 @@ void rle_expand_texture_sub( grs_bitmap * bmp, grs_bitmap * rle_temp_bitmap_1 )
 	rle_temp_bitmap_1->bm_flags = bmp->bm_flags & (~BM_FLAG_RLE);
 
 	for (i=0; i < 64; i++ )    {
-		dbits1=(unsigned char *)gr_rle_decode_asm( sbits, dbits );
+		dbits1=gr_rle_decode_asm( sbits, dbits );
 		sbits += (int)bmp->bm_data[4+i];
 		dbits += 64;
 		Assert( dbits == dbits1 );		// Get John, bogus rle data!
@@ -524,7 +515,7 @@ void gr_rle_expand_scanline_generic( grs_bitmap * dest, int dx, int dy, ubyte *s
 {
 	int i = 0, j;
 	int count;
-	ubyte color;
+	ubyte color = 0;		// ASCENT: was not initialized (not used with a count of 0)
 
 	if ( x2 < x1 ) return;
 
@@ -579,4 +570,4 @@ void gr_rle_expand_scanline_generic( grs_bitmap * dest, int dx, int dy, ubyte *s
 		}
 	}	
 }
-
+

@@ -145,10 +145,11 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  *
  */
 
-#include <conio.h>
+// ASCENT: removed <conio.h> and <io.h>. The functions wrote the palette
+// to the VGA DAC ports (3C6h to 3C9h). Now they write gr_dac_palette, and
+// gr_present gives that palette to the platform layer.
 #include <stdlib.h>
 #include <stdio.h>
-#include <io.h>
 
 
 #include "types.h"
@@ -159,12 +160,14 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "error.h"
 #include "mono.h"
 #include "fix.h"
-#include "key.h"
+#include "palette.h"
+#include "platform.h"
 
 extern int gr_installed;
 
 ubyte gr_palette[256*3];
 ubyte gr_current_pal[256*3];
+ubyte gr_dac_palette[256*3];		// ASCENT: see palette.h
 ubyte gr_fade_table[256*34];
 
 ushort gr_palette_selector;
@@ -238,7 +241,9 @@ void add_computed_color(int r, int g, int b, int color_num)
 		add_index = Num_computed_colors;
 		Num_computed_colors++;
 	} else
-		add_index = (rand() * MAX_COMPUTED_COLORS) >> 15;
+		// ASCENT: the expression needs a rand() of 15 bits (the Watcom C
+		// RAND_MAX is 32767). Other libraries can return more bits.
+		add_index = ((rand() & 0x7fff) * MAX_COMPUTED_COLORS) >> 15;
 
 	Computed_colors[add_index].r = r;
 	Computed_colors[add_index].g = g;
@@ -357,61 +362,81 @@ void gr_palette_step_up( int r, int g, int b )
 	last_g = g;
 	last_b = b;
 
-	outp( 0x3c6, 0xff );
-	outp( 0x3c8, 0 );
 	p=gr_palette;
 	for (i=0; i<256; i++ )	{
 		temp = (int)(*p++) + r + gr_palette_gamma;
 		if (temp<0) temp=0;
 		else if (temp>63) temp=63;
-		outp( 0x3c9, temp );
+		gr_dac_palette[i*3+0] = temp;
 		temp = (int)(*p++) + g + gr_palette_gamma;
 		if (temp<0) temp=0;
 		else if (temp>63) temp=63;
-		outp( 0x3c9, temp );
+		gr_dac_palette[i*3+1] = temp;
 		temp = (int)(*p++) + b + gr_palette_gamma;
 		if (temp<0) temp=0;
 		else if (temp>63) temp=63;
-		outp( 0x3c9, temp );
+		gr_dac_palette[i*3+2] = temp;
 	}
+	// ASCENT: no gr_present here. The game calls this function in each
+	// frame, and the gr_present of that frame shows the new palette.
 }
 
 void gr_palette_clear()
 {
 	int i;
-	outp( 0x3c6, 0xff );
-	outp( 0x3c8, 0 );
 	for (i=0; i<768; i++ )	{
-		outp( 0x3c9, 0 );
+		gr_dac_palette[i] = 0;
 	}
 	gr_palette_faded_out = 1;
+	gr_present();		// ASCENT: the VGA showed the new palette at once
 }
 
-void gr_palette_load( ubyte * pal )	
+void gr_palette_load( ubyte * pal )
 {
 	int i;
 	ubyte c;
-	outp( 0x3c6, 0xff );
-	outp( 0x3c8, 0 );
 	for (i=0; i<768; i++ )	{
 		c = pal[i] + gr_palette_gamma;
 		if ( c > 63 ) c = 63;
-		outp( 0x3c9,c);
+		gr_dac_palette[i] = c;
  		gr_current_pal[i] = pal[i];
 	}
 	gr_palette_faded_out = 0;
 
 	init_computed_colors();
+	gr_present();		// ASCENT: the VGA showed the new palette at once
 }
 
+// ASCENT: the original fade loops waited for the vertical retrace
+// (gr_sync_display) before each step, so a fade of n steps took n frames
+// of the display (32 steps at 70 Hz are 0.46 seconds). The port keeps
+// that time. Step number 'step' (from 0) ends at fade_start plus
+// (step+1) retrace periods. The function shows the frame with the new
+// palette and waits for that time. If the window is slower than the
+// emulated display (for example, 60 Hz with vertical sync), a step that
+// is late is not shown, so that the fade does not take longer. The last
+// step is always shown. The function also processes the window events.
+static void gr_palette_fade_show_step( uint64_t fade_start, int step, int nsteps )
+{
+	uint64_t period = 1000000u / (unsigned int)(gr_refresh_hz > 0 ? gr_refresh_hz : 70);
+	uint64_t target = fade_start + (uint64_t)(step+1) * period;
 
+	if ( (plat_time_us() < target) || (step == nsteps-1) )
+		gr_present();
 
-int gr_palette_fade_out(ubyte *pal, int nsteps, int allow_keys )	
+	plat_pump();
+
+	while ( plat_time_us() < target )
+		plat_sleep_ms(1);
+}
+
+int gr_palette_fade_out(ubyte *pal, int nsteps, int allow_keys )
 {
 	ubyte c;
 	int i,j;
 	fix fade_palette[768];
 	fix fade_palette_delta[768];
+	uint64_t fade_start;
 
 	allow_keys  = allow_keys;
 
@@ -422,29 +447,30 @@ int gr_palette_fade_out(ubyte *pal, int nsteps, int allow_keys )
 		fade_palette_delta[i] = fade_palette[i] / nsteps;
 	}
 
+	fade_start = plat_time_us();
+
 	for (j=0; j<nsteps; j++ )	{
-		gr_sync_display();
-		outp( 0x3c6, 0xff );
-		outp( 0x3c8, 0 );
-		for (i=0; i<768; i++ )	{		
+		for (i=0; i<768; i++ )	{
 			fade_palette[i] -= fade_palette_delta[i];
 			if (fade_palette[i] < 0 )
 				fade_palette[i] = 0;
 			c = f2i(fade_palette[i]);
 			if ( c > 63 ) c = 63;
-			outp( 0x3c9, c );								
+			gr_dac_palette[i] = c;
 		}
+		gr_palette_fade_show_step( fade_start, j, nsteps );
 	}
 	gr_palette_faded_out = 1;
 	return 0;
 }
 
-int gr_palette_fade_in(ubyte *pal, int nsteps, int allow_keys)	
+int gr_palette_fade_in(ubyte *pal, int nsteps, int allow_keys)
 {
 	int i,j;
 	ubyte c;
 	fix fade_palette[768];
 	fix fade_palette_delta[768];
+	uint64_t fade_start;
 
 	allow_keys  = allow_keys;
 
@@ -456,18 +482,18 @@ int gr_palette_fade_in(ubyte *pal, int nsteps, int allow_keys)
 		fade_palette_delta[i] = i2f(pal[i]+gr_palette_gamma) / nsteps;
 	}
 
+	fade_start = plat_time_us();
+
 	for (j=0; j<nsteps; j++ )	{
-		gr_sync_display();
-		outp( 0x3c6, 0xff );
-		outp( 0x3c8, 0 );
-		for (i=0; i<768; i++ )	{		
+		for (i=0; i<768; i++ )	{
 			fade_palette[i] += fade_palette_delta[i];
 			if (fade_palette[i] > i2f(pal[i]+gr_palette_gamma) )
 				fade_palette[i] = i2f(pal[i]+gr_palette_gamma);
 			c = f2i(fade_palette[i]);
 			if ( c > 63 ) c = 63;
-			outp( 0x3c9, c );								
+			gr_dac_palette[i] = c;
 		}
+		gr_palette_fade_show_step( fade_start, j, nsteps );
 	}
 	gr_palette_faded_out = 0;
 	return 0;
@@ -489,34 +515,12 @@ void gr_make_cthru_table(ubyte * table, ubyte r, ubyte g, ubyte b )
 	}
 }
 
+// ASCENT: reads the palette that the display shows (the DAC registers
+// before).
 void gr_palette_read(ubyte * palette)
 {
 	int i;
-	outp( 0x3c6, 0xff );
-	outp( 0x3c7, 0 );
 	for (i=0; i<768; i++ )	{
-		*palette++ = inp( 0x3c9 );
+		*palette++ = gr_dac_palette[i];
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

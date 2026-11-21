@@ -99,24 +99,27 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  */
 
 
-#pragma off (unreferenced)
+// ASCENT: the Watcom "#pragma off (unreferenced)" lines are removed.
 static char rcsid[] = "$Id: cfile.c 1.24 1995/03/15 14:20:27 john Exp $";
-#pragma on (unreferenced)
 
+// ASCENT: the DOS headers (conio.h, dos.h, io.h, fcntl.h, sys\stat.h) are removed.
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
-#include <conio.h>
-#include <dos.h>
-#include <fcntl.h>
-#include <io.h>
-#include <sys\types.h>
-#include <sys\stat.h>
 #include <errno.h>
 #include <string.h>
+#include <stdint.h>
+
+// ASCENT: dirent.h is used to find a file when the case of its name is
+// different (see cfile_find_nocase). MSVC has no dirent.h, and Windows
+// does not need the search.
+#ifndef _MSC_VER
+#include <dirent.h>
+#define CFILE_HAVE_DIRENT
+#endif
 
 #include "cfile.h"
 
@@ -127,6 +130,8 @@ typedef struct hogfile {
 } hogfile;
 
 #define MAX_HOGFILES 250
+
+#define CFILE_MAX_PATH 512		// ASCENT: longest path that the case search handles
 
 hogfile HogFiles[MAX_HOGFILES];
 char Hogfile_initialized = 0;
@@ -140,9 +145,119 @@ char AltHogFilename[64];
 char AltHogDir[64];
 char AltHogdir_initialized = 0;
 
+// ASCENT: replaces stricmp() and strcmpi(), which are not in standard C.
+// Compares two strings and ignores the case of the letters A to Z.
+static int cfile_stricmp( const char * a, const char * b )
+{
+	int ca, cb;
+
+	do {
+		ca = (unsigned char)*a++;
+		cb = (unsigned char)*b++;
+		if ( ca>='A' && ca<='Z' ) ca += 'a'-'A';
+		if ( cb>='A' && cb<='Z' ) cb += 'a'-'A';
+	} while ( ca==cb && ca!=0 );
+
+	return ca-cb;
+}
+
+#ifdef CFILE_HAVE_DIRENT
+
+// ASCENT: new function. Finds the real name of a file when the case of the
+// letters in 'path' can be different from the names on the disk. It looks
+// at one part of the path after the other. A name with the same case wins
+// over a name with a different case. '\' and '/' separate the parts.
+// Writes the real path (with '/') to 'out' and returns 1, or returns 0
+// when no such file or directory exists.
+int cfile_find_nocase( const char * path, char * out, int out_size )
+{
+	const char * p = path;
+	char part[256], best[256];
+	int out_len = 0;
+
+	// A name that matches has the same length, so 'out' is not longer than 'path'.
+	if ( (int)strlen(path) >= out_size ) return 0;
+
+	if ( isalpha((unsigned char)p[0]) && p[1]==':' )	{		// drive letter
+		out[out_len++] = *p++;
+		out[out_len++] = *p++;
+	}
+	if ( *p=='/' || *p=='\\' )	{									// root directory
+		out[out_len++] = '/';
+		while ( *p=='/' || *p=='\\' ) p++;
+	}
+	out[out_len] = 0;
+
+	while ( *p )	{
+		int n = 0, found = 0, had_separator = 0;
+
+		while ( p[n] && p[n]!='/' && p[n]!='\\' ) n++;
+		if ( n >= (int)sizeof(part) ) return 0;
+		memcpy( part, p, n );
+		part[n] = 0;
+		p += n;
+		while ( *p=='/' || *p=='\\' ) { p++; had_separator = 1; }
+
+		if ( !strcmp(part,".") || !strcmp(part,"..") )	{
+			strcpy( best, part );
+			found = 1;
+		} else {
+			DIR * dir;
+			struct dirent * ent;
+
+			dir = opendir( out_len ? out : "." );
+			if ( dir==NULL ) return 0;
+			while ( (ent=readdir(dir)) != NULL )	{
+				if ( !strcmp(ent->d_name,part) )	{			// same case, the best match
+					strcpy( best, part );
+					found = 1;
+					break;
+				}
+				if ( !found && !cfile_stricmp(ent->d_name,part) )	{
+					strcpy( best, ent->d_name );				// has the same length as 'part'
+					found = 1;
+				}
+			}
+			closedir( dir );
+		}
+
+		if ( !found ) return 0;
+
+		memcpy( out+out_len, best, n );
+		out_len += n;
+		if ( had_separator && *p )
+			out[out_len++] = '/';
+		out[out_len] = 0;
+	}
+
+	return 1;
+}
+
+#endif
+
+// ASCENT: new function. Opens a file. On a file system that is case
+// sensitive, it tries again with the real name of the file when the first
+// open fails. The DOS file system (and Windows) ignores the case, and the
+// game data uses names with mixed case.
+static FILE * cfile_fopen_nocase( char * filename, char * mode )
+{
+	FILE * fp;
+
+	fp = fopen( filename, mode );
+#if defined(CFILE_HAVE_DIRENT) && !defined(_WIN32)
+	if ( fp==NULL )	{
+		char temp[CFILE_MAX_PATH];
+		if ( cfile_find_nocase( filename, temp, sizeof(temp) ) )
+			fp = fopen( temp, mode );
+	}
+#endif
+	return fp;
+}
+
 void cfile_use_alternate_hogdir( char * path )
 {
-	if ( path )	{
+	// ASCENT: a path that is too long for AltHogDir is refused
+	if ( path && strlen(path) < sizeof(AltHogDir) )	{
 		strcpy( AltHogDir, path );
 		AltHogdir_initialized = 1;
 	} else {
@@ -150,30 +265,32 @@ void cfile_use_alternate_hogdir( char * path )
 	}
 }
 
-extern int descent_critical_error;
+// ASCENT: the checks of descent_critical_error are removed. The DOS critical
+// error handler (drive not ready) set that variable. fopen() returns NULL now.
 
 FILE * cfile_get_filehandle( char * filename, char * mode )
 {
 	FILE * fp;
 	char temp[128];
-	
-	descent_critical_error = 0;
-	fp = fopen( filename, mode );
-	if ( fp && descent_critical_error )	{
-		fclose(fp);
-		fp = NULL;
-	}
-	if ( (fp==NULL) && (AltHogdir_initialized) )	{
+
+	fp = cfile_fopen_nocase( filename, mode );
+	if ( (fp==NULL) && (AltHogdir_initialized) && (strlen(AltHogDir)+strlen(filename) < sizeof(temp)) )	{
 		strcpy( temp, AltHogDir );
 		strcat( temp, filename );
-		descent_critical_error = 0;
-		fp = fopen( temp, mode );
-		if ( fp && descent_critical_error )	{
-			fclose(fp);
-			fp = NULL;
-		}
-	} 
+		fp = cfile_fopen_nocase( temp, mode );
+	}
 	return fp;
+}
+
+// ASCENT: new function. Reads a 32-bit integer that has the low byte
+// first, as the hog file stores it. Returns 1 if ok, 0 at the end of the file.
+static int cfile_read_int32( FILE * fp, int * value )
+{
+	unsigned char b[4];
+
+	if ( fread( b, 1, 4, fp ) != 4 ) return 0;
+	*value = (int)( (uint32_t)b[0] | ((uint32_t)b[1]<<8) | ((uint32_t)b[2]<<16) | ((uint32_t)b[3]<<24) );
+	return 1;
 }
 
 void cfile_init_hogfile(char *fname, hogfile * hog_files, int * nfiles )
@@ -187,14 +304,14 @@ void cfile_init_hogfile(char *fname, hogfile * hog_files, int * nfiles )
 	fp = cfile_get_filehandle( fname, "rb" );
 	if ( fp == NULL ) return;
 
-	fread( id, 3, 1, fp );
-	if ( strncmp( id, "DHF", 3 ) )	{
+	// ASCENT: a file that is shorter than the id is not a hog file
+	if ( fread( id, 3, 1, fp ) != 1 || strncmp( id, "DHF", 3 ) )	{
 		fclose(fp);
 		return;
 	}
 
-	while( 1 )	
-	{	
+	while( 1 )
+	{
 		if ( *nfiles >= MAX_HOGFILES ) {
 			printf( "ERROR: HOGFILE IS LIMITED TO %d FILES\n",  MAX_HOGFILES );
 			fclose(fp);
@@ -205,8 +322,10 @@ void cfile_init_hogfile(char *fname, hogfile * hog_files, int * nfiles )
 			fclose(fp);
 			return;
 		}
-		i = fread( &len, 4, 1, fp );
-		if ( i != 1 )	{
+		hog_files[*nfiles].name[12] = 0;		// ASCENT: the name always has an end
+		// ASCENT: reads the 4 bytes of the length one by one. The original
+		// read them into an int, which is correct only when the low byte is first.
+		if ( !cfile_read_int32( fp, &len ) || len < 0 )	{
 			fclose(fp);
 			return;
 		}
@@ -225,7 +344,7 @@ FILE * cfile_find_libfile(char * name, int * length)
 
 	if ( AltHogfile_initialized )	{
 		for (i=0; i<AltNum_hogfiles; i++ )	{
-			if ( !stricmp( AltHogFiles[i].name, name ))	{
+			if ( !cfile_stricmp( AltHogFiles[i].name, name ))	{
 				fp = cfile_get_filehandle( AltHogFilename, "rb" );
 				if ( fp == NULL ) return NULL;
 				fseek( fp,  AltHogFiles[i].offset, SEEK_SET );
@@ -241,7 +360,7 @@ FILE * cfile_find_libfile(char * name, int * length)
 	}
 
 	for (i=0; i<Num_hogfiles; i++ )	{
-		if ( !stricmp( HogFiles[i].name, name ))	{
+		if ( !cfile_stricmp( HogFiles[i].name, name ))	{
 			fp = cfile_get_filehandle( "DESCENT.HOG", "rb" );
 			if ( fp == NULL ) return NULL;
 			fseek( fp,  HogFiles[i].offset, SEEK_SET );
@@ -254,7 +373,8 @@ FILE * cfile_find_libfile(char * name, int * length)
 
 void cfile_use_alternate_hogfile( char * name )
 {
-	if ( name )	{
+	// ASCENT: a name that is too long for AltHogFilename is refused
+	if ( name && strlen(name) < sizeof(AltHogFilename) )	{
 		strcpy( AltHogFilename, name );
 		cfile_init_hogfile( AltHogFilename, AltHogFiles, &AltNum_hogfiles );
 		AltHogfile_initialized = 1;
@@ -284,13 +404,13 @@ int cfexist( char * filename )
 }
 
 
-CFILE * cfopen(char * filename, char * mode ) 
+CFILE * cfopen(char * filename, char * mode )
 {
 	int length;
 	FILE * fp;
 	CFILE *cfile;
-	
-	if (strcmpi( mode, "rb"))	{
+
+	if (cfile_stricmp( mode, "rb"))	{
 		printf( "CFILES CAN ONLY BE OPENED WITH RB\n" );
 		exit(1);
 	}
@@ -317,7 +437,10 @@ CFILE * cfopen(char * filename, char * mode )
 			return NULL;
 		}
 		cfile->file = fp;
-		cfile->size = filelength( fileno(fp) );
+		// ASCENT: filelength( fileno(fp) ) is replaced with fseek() and ftell()
+		fseek( fp, 0, SEEK_END );
+		cfile->size = ftell( fp );
+		fseek( fp, 0, SEEK_SET );
 		cfile->lib_offset = 0;
 		cfile->raw_position = 0;
 		return cfile;
@@ -329,14 +452,14 @@ int cfilelength( CFILE *fp )
 	return fp->size;
 }
 
-int cfgetc( CFILE * fp ) 
+int cfgetc( CFILE * fp )
 {
 	int c;
 
 	if (fp->raw_position >= fp->size ) return EOF;
 
 	c = getc( fp->file );
-	if (c!=EOF) 
+	if (c!=EOF)
 		fp->raw_position++;
 
 //	Assert( fp->raw_position==(ftell(fp->file)-fp->lib_offset) );
@@ -366,7 +489,7 @@ char * cfgets( char * buf, size_t n, CFILE * fp )
 	return  t;
 }
 
-size_t cfread( void * buf, size_t elsize, size_t nelem, CFILE * fp ) 
+size_t cfread( void * buf, size_t elsize, size_t nelem, CFILE * fp )
 {
 	int i;
 	if ((fp->raw_position+(elsize*nelem)) > fp->size ) return EOF;
@@ -376,7 +499,7 @@ size_t cfread( void * buf, size_t elsize, size_t nelem, CFILE * fp )
 }
 
 
-int cftell( CFILE *fp )	
+int cftell( CFILE *fp )
 {
 	return fp->raw_position;
 }
@@ -397,19 +520,15 @@ int cfseek( CFILE *fp, long int offset, int where )
 		break;
 	default:
 		return 1;
-	}	
+	}
 	c = fseek( fp->file, fp->lib_offset + goal_position, SEEK_SET );
 	fp->raw_position = ftell(fp->file)-fp->lib_offset;
 	return c;
 }
 
-void cfclose( CFILE * fp ) 
-{	
+void cfclose( CFILE * fp )
+{
 	fclose(fp->file);
 	free(fp);
 	return;
 }
-
-
-
-

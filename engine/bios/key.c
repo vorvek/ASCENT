@@ -137,29 +137,29 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 //#define PASS_KEYS_TO_BIOS	1			//if set, bios gets keys
 
-#pragma off (unreferenced)
 static char rcsid[] = "$Id: key.c 1.35 1995/01/25 20:13:30 john Exp $";
-#pragma on (unreferenced)
+
+// ASCENT: the keyboard interrupt handler (INT 9, port 60h) is replaced by
+// key_handler below. The platform layer calls it from plat_pump for each
+// key event, on the thread of the game. The DPMI memory locks, the BIOS
+// buffer access and the interrupt disable and enable calls are removed.
+// The functions that read the key buffer call plat_pump, because no
+// interrupt fills the buffer while the game waits in a loop.
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <conio.h>
-#include <dos.h>
-#include <i86.h>
 
-//#define WATCOM_10
-
-#include "error.h"
 #include "key.h"
 #include "timer.h"
-#include "dpmi.h"
+#include "platform.h"
 
 #define KEY_BUFFER_SIZE 16
 
 //-------- Variable accessed by outside functions ---------
-unsigned char 				keyd_buffer_type;		// 0=No buffer, 1=buffer ASCII, 2=buffer scans
-unsigned char 				keyd_repeat;
-unsigned char 				keyd_editor_mode;
+// ASCENT: plain char (unsigned in this build), to agree with key.h.
+char 							keyd_buffer_type;		// 0=No buffer, 1=buffer ASCII, 2=buffer scans
+char 							keyd_repeat;
+char 							keyd_editor_mode;
 volatile unsigned char 	keyd_last_pressed;
 volatile unsigned char 	keyd_last_released;
 volatile unsigned char	keyd_pressed[256];
@@ -173,17 +173,13 @@ typedef struct keyboard	{
 	unsigned int		NumDowns[256];
 	unsigned int		NumUps[256];
 	unsigned int 		keyhead, keytail;
-	unsigned char 		E0Flag;
-	unsigned char 		E1Flag;
-	int 					in_key_handler;
-	void (__interrupt __far *prev_int_9)();
 } keyboard;
 
-static volatile keyboard key_data;
+static keyboard key_data;
 
 static unsigned char Installed=0;
 
-unsigned char ascii_table[128] = 
+unsigned char ascii_table[128] =
 { 255, 255, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=',255,255,
   'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 255, 255,
   'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', 39, '`',
@@ -194,17 +190,16 @@ unsigned char ascii_table[128] =
   255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
   255,255,255,255,255,255,255,255 };
 
-unsigned char shifted_ascii_table[128] = 
+unsigned char shifted_ascii_table[128] =
 { 255, 255, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+',255,255,
   'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 255, 255,
-  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~', 
+  'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
   255, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 255,255,
   255, ' ', 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,255,255,
   255, 255, 255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
   255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
   255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,
   255,255,255,255,255,255,255,255 };
-
 
 extern char key_to_ascii(int keycode )
 {
@@ -222,19 +217,12 @@ extern char key_to_ascii(int keycode )
 		return ascii_table[keycode];
 }
 
-void key_clear_bios_buffer_all()
+// ASCENT: process the window events. This takes the place of the
+// interrupts that arrived while the original code waited.
+static void key_poll()
 {
-	// Clear keyboard buffer...
-	*(ushort *)0x41a=*(ushort *)0x41c;
-	// Clear the status bits...
-	*(ubyte *)0x417 = 0;
-	*(ubyte *)0x418 = 0;
-}
-
-void key_clear_bios_buffer()
-{
-	// Clear keyboard buffer...
-	*(ushort *)0x41a=*(ushort *)0x41c;
+	if (Installed)
+		plat_pump();
 }
 
 void key_flush()
@@ -242,10 +230,9 @@ void key_flush()
 	int i;
 	fix CurTime;
 
-	_disable();
-
-	// Clear the BIOS buffer
-	key_clear_bios_buffer();
+	// ASCENT: read the events that wait in the queue, so that the flush
+	// also removes the key presses that the handler did not see yet.
+	key_poll();
 
 	key_data.keyhead = key_data.keytail = 0;
 
@@ -254,7 +241,7 @@ void key_flush()
 		key_data.keybuffer[i] = 0;
 		key_data.time_pressed[i] = 0;
 	}
-	
+
 	//Clear the keyboard array
 
 	CurTime =timer_get_fixed_secondsX();
@@ -266,7 +253,6 @@ void key_flush()
 		key_data.NumDowns[i]=0;
 		key_data.NumUps[i]=0;
 	}
-	_enable();
 }
 
 int add_one( int n )
@@ -281,13 +267,10 @@ int key_checkch()
 {
 	int is_one_waiting = 0;
 
-	_disable();
-
-	key_clear_bios_buffer();
+	key_poll();
 
 	if (key_data.keytail!=key_data.keyhead)
 		is_one_waiting = 1;
-	_enable();
 	return is_one_waiting;
 }
 
@@ -295,15 +278,12 @@ int key_inkey()
 {
 	int key = 0;
 
-	_disable();
-
-	key_clear_bios_buffer();
+	key_poll();
 
 	if (key_data.keytail!=key_data.keyhead)	{
 		key = key_data.keybuffer[key_data.keyhead];
 		key_data.keyhead = add_one(key_data.keyhead);
 	}
-	_enable();
 	return key;
 }
 
@@ -311,33 +291,25 @@ int key_inkey_time(fix * time)
 {
 	int key = 0;
 
-	_disable();
-
-	key_clear_bios_buffer();
+	key_poll();
 
 	if (key_data.keytail!=key_data.keyhead)	{
 		key = key_data.keybuffer[key_data.keyhead];
 		*time = key_data.time_pressed[key_data.keyhead];
 		key_data.keyhead = add_one(key_data.keyhead);
 	}
-	_enable();
 	return key;
 }
-
-
 
 int key_peekkey()
 {
 	int key = 0;
 
-	_disable();
-
-	key_clear_bios_buffer();
+	key_poll();
 
 	if (key_data.keytail!=key_data.keyhead)	{
 		key = key_data.keybuffer[key_data.keyhead];
 	}
-	_enable();
 	return key;
 }
 
@@ -345,23 +317,27 @@ int key_peekkey()
 //	Else returns pending key (or waits for one if none waiting).
 int key_getch()
 {
-	int dummy=0;
-	
+	// ASCENT: the original code called getch() of the C library when the
+	// handler was not installed. Here it reads a character from stdin.
 	if (!Installed)
-		return getch();
+		return getchar();
 
-	while (!key_checkch())
-		dummy++;
+	// ASCENT: the original loop did nothing while it waited for the
+	// interrupt. This loop processes the window events and sleeps.
+	// If the user closes the window, the wait ends with KEY_ESC.
+	while (key_data.keytail==key_data.keyhead)	{
+		if (!plat_pump())
+			return KEY_ESC;
+		if (key_data.keytail==key_data.keyhead)
+			plat_sleep_ms(1);
+	}
+
 	return key_inkey();
 }
 
 unsigned int key_get_shift_status()
 {
 	unsigned int shift_status = 0;
-
-	_disable();
-
-	key_clear_bios_buffer();
 
 	if ( keyd_pressed[KEY_LSHIFT] || keyd_pressed[KEY_RSHIFT] )
 		shift_status |= KEY_SHIFTED;
@@ -377,8 +353,6 @@ unsigned int key_get_shift_status()
 		shift_status |=KEY_DEBUGGED;
 #endif
 
-	_enable();
-
 	return shift_status;
 }
 
@@ -390,10 +364,8 @@ fix key_down_time(int scancode)	{
 
 #ifndef NDEBUG
 	if (keyd_editor_mode && key_get_shift_status() )
-		return 0;  
+		return 0;
 #endif
-
-	_disable();
 
 	if ( !keyd_pressed[scancode] )	{
 		time_down = key_data.TimeKeyHeldDown[scancode];
@@ -403,7 +375,6 @@ fix key_down_time(int scancode)	{
 		time_down =  time - key_data.TimeKeyWentDown[scancode];
 		key_data.TimeKeyWentDown[scancode] = time;
 	}
-	_enable();
 
 	return time_down;
 }
@@ -414,10 +385,8 @@ unsigned int key_down_count(int scancode)	{
 
 	if ((scancode<0)|| (scancode>255)) return 0;
 
-	_disable();
 	n = key_data.NumDowns[scancode];
 	key_data.NumDowns[scancode] = 0;
-	_enable();
 
 	return n;
 }
@@ -429,146 +398,86 @@ unsigned int key_up_count(int scancode)	{
 
 	if ((scancode<0)|| (scancode>255)) return 0;
 
-	_disable();
 	n = key_data.NumUps[scancode];
 	key_data.NumUps[scancode] = 0;
-	_enable();
 
 	return n;
 }
 
-// Use intrinsic forms so that we stay in the locked interrup code.
-
-void Int5();
-#pragma aux Int5 = "int 5";
-
-#pragma off (check_stack)
-void __interrupt __far key_handler()
+// ASCENT: this was the interrupt handler. The platform layer now does the
+// work of the first part (read port 60h, the E0 and E1 prefixes, the make
+// and break bit) and passes the scan code and the direction. The rest is
+// the original code. A press event for a key that is already down is a
+// repeat from the operating system, as the typematic repeat of the
+// keyboard was in the original. It goes to the buffer only if keyd_repeat
+// is set, and it never changes the counts.
+// The debug break on left shift + backspace (INT 5) is removed.
+void key_handler(int scancode_in, int down)
 {
 	unsigned char scancode, breakbit, temp;
 	unsigned short keycode;
 
-#ifndef WATCOM_10
+	if ( scancode_in <= 0 || scancode_in > 255 )
+		return;
+
+	scancode = (unsigned char) scancode_in;
+	breakbit = !down;
+
+	if (breakbit)	{
+		// Key going up
+		keyd_last_released = scancode;
+		keyd_pressed[scancode] = 0;
+		key_data.NumUps[scancode]++;
+		temp = 0;
+		temp |= keyd_pressed[KEY_LSHIFT] || keyd_pressed[KEY_RSHIFT];
+		temp |= keyd_pressed[KEY_LALT] || keyd_pressed[KEY_RALT];
+		temp |= keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL];
 #ifndef NDEBUG
-	ubyte * MONO = (ubyte *)(0x0b0000+24*80*2);
-	if (  ((MONO[0]=='D') && (MONO[2]=='B') && (MONO[4]=='G') && (MONO[6]=='>')) ||
-			((MONO[14]=='<') && (MONO[16]=='i') && (MONO[18]=='>') && (MONO[20]==' ') && (MONO[22]=='-')) ||
-			((MONO[0]==200 ) && (MONO[2]==27) && (MONO[4]==17) )
-		)
- 		_chain_intr( key_data.prev_int_9 );
-#endif
-#endif
-
-	// Read in scancode
-	scancode = inp( 0x60 );
-
-	switch( scancode )	{
-	case 0xE0:
-		key_data.E0Flag = 0x80;
-		break;
-	default:
-		// Parse scancode and break bit
-		if (key_data.E1Flag > 0 )	{		// Special code for Pause, which is E1 1D 45 E1 9D C5
-			key_data.E1Flag--;
-			if ( scancode == 0x1D )	{
-				scancode	= KEY_PAUSE;
-				breakbit	= 0;
-			} else if ( scancode == 0x9d ) {
-				scancode	= KEY_PAUSE;
-				breakbit	= 1;
-			} else {
-				break;		// skip this keycode
-			}
-		} else if ( scancode==0xE1 )	{
-			key_data.E1Flag = 2;
-			break;
-		} else {
-			breakbit	= scancode & 0x80;		// Get make/break bit
-			scancode &= 0x7f;						// Strip make/break bit off of scancode
-			scancode |= key_data.E0Flag;					// Add in extended key code
-		}
-		key_data.E0Flag = 0;								// Clear extended key code
-
-		if (breakbit)	{
-			// Key going up
-			keyd_last_released = scancode;
-			keyd_pressed[scancode] = 0;
-			key_data.NumUps[scancode]++;
-			temp = 0;
-			temp |= keyd_pressed[KEY_LSHIFT] || keyd_pressed[KEY_RSHIFT];
-			temp |= keyd_pressed[KEY_LALT] || keyd_pressed[KEY_RALT];
-			temp |= keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL];
-#ifndef NDEBUG
-			temp |= keyd_pressed[KEY_DELETE];
-			if ( !(keyd_editor_mode && temp) )
+		temp |= keyd_pressed[KEY_DELETE];
+		if ( !(keyd_editor_mode && temp) )
 #endif		// NOTICE LINK TO ABOVE IF!!!!
-				key_data.TimeKeyHeldDown[scancode] += timer_get_fixed_secondsX() - key_data.TimeKeyWentDown[scancode];
-		} else {
-			// Key going down
-			keyd_last_pressed = scancode;
-			keyd_time_when_last_pressed = timer_get_fixed_secondsX();
-			if (!keyd_pressed[scancode])	{
-				// First time down
-				key_data.TimeKeyWentDown[scancode] = timer_get_fixed_secondsX();
-				keyd_pressed[scancode] = 1;
-				key_data.NumDowns[scancode]++;
-#ifndef NDEBUG
-				if ( (keyd_pressed[KEY_LSHIFT]) && (scancode == KEY_BACKSP) ) 	{
-					keyd_pressed[KEY_LSHIFT] = 0;
-					Int5();
-				}
-#endif
-			} else if (!keyd_repeat) {
-				// Don't buffer repeating key if repeat mode is off
-				scancode = 0xAA;		
-			} 
+			key_data.TimeKeyHeldDown[scancode] += timer_get_fixed_secondsX() - key_data.TimeKeyWentDown[scancode];
+	} else {
+		// Key going down
+		keyd_last_pressed = scancode;
+		keyd_time_when_last_pressed = timer_get_fixed_secondsX();
+		if (!keyd_pressed[scancode])	{
+			// First time down
+			key_data.TimeKeyWentDown[scancode] = timer_get_fixed_secondsX();
+			keyd_pressed[scancode] = 1;
+			key_data.NumDowns[scancode]++;
+		} else if (!keyd_repeat) {
+			// Don't buffer repeating key if repeat mode is off
+			scancode = 0xAA;
+		}
 
-			if ( scancode!=0xAA ) {
-				keycode = scancode;
+		if ( scancode!=0xAA ) {
+			keycode = scancode;
 
-				if ( keyd_pressed[KEY_LSHIFT] || keyd_pressed[KEY_RSHIFT] )
-					keycode |= KEY_SHIFTED;
+			if ( keyd_pressed[KEY_LSHIFT] || keyd_pressed[KEY_RSHIFT] )
+				keycode |= KEY_SHIFTED;
 
-				if ( keyd_pressed[KEY_LALT] || keyd_pressed[KEY_RALT] )
-					keycode |= KEY_ALTED;
+			if ( keyd_pressed[KEY_LALT] || keyd_pressed[KEY_RALT] )
+				keycode |= KEY_ALTED;
 
-				if ( keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL] )
-					keycode |= KEY_CTRLED;
+			if ( keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL] )
+				keycode |= KEY_CTRLED;
 
 #ifndef NDEBUG
-				if ( keyd_pressed[KEY_DELETE] )
-					keycode |= KEY_DEBUGGED;
+			if ( keyd_pressed[KEY_DELETE] )
+				keycode |= KEY_DEBUGGED;
 #endif
 
-				temp = key_data.keytail+1;
-				if ( temp >= KEY_BUFFER_SIZE ) temp=0;
+			temp = key_data.keytail+1;
+			if ( temp >= KEY_BUFFER_SIZE ) temp=0;
 
-				if (temp!=key_data.keyhead)	{
-					key_data.keybuffer[key_data.keytail] = keycode;
-					key_data.time_pressed[key_data.keytail] = keyd_time_when_last_pressed;
-					key_data.keytail = temp;
-				}
+			if (temp!=key_data.keyhead)	{
+				key_data.keybuffer[key_data.keytail] = keycode;
+				key_data.time_pressed[key_data.keytail] = keyd_time_when_last_pressed;
+				key_data.keytail = temp;
 			}
 		}
 	}
-
-#ifndef NDEBUG
-#ifdef PASS_KEYS_TO_BIOS
-	_chain_intr( key_data.prev_int_9 );
-#endif
-#endif
-
-	temp = inp(0x61);		// Get current port 61h state
-	temp |= 0x80;			// Turn on bit 7 to signal clear keybrd
-	outp( 0x61, temp );	// Send to port
-	temp &= 0x7f;			// Turn off bit 7 to signal break
-	outp( 0x61, temp );	// Send to port
-	outp( 0x20, 0x20 );	// Reset interrupt controller
-}
-
-#pragma on (check_stack)
-
-void key_handler_end()	{		// Dummy function to help calculate size of keyboard handler function
 }
 
 void key_init()
@@ -578,9 +487,6 @@ void key_init()
 	keyd_time_when_last_pressed = timer_get_fixed_seconds();
 	keyd_buffer_type = 1;
 	keyd_repeat = 1;
-	key_data.in_key_handler = 0;
-	key_data.E0Flag = 0;
-	key_data.E1Flag = 0;
 
 	// Clear the keyboard array
 	key_flush();
@@ -588,46 +494,8 @@ void key_init()
 	if (Installed) return;
 	Installed = 1;
 
-	//--------------- lock everything for the virtal memory ----------------------------------
-	if (!dpmi_lock_region ((void near *)key_handler, (char *)key_handler_end - (char near *)key_handler))	{
-		printf( "Error locking keyboard handler!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&key_data, sizeof(keyboard)))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&keyd_buffer_type, sizeof(char)))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&keyd_repeat, sizeof(char)))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&keyd_editor_mode, sizeof(char)))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&keyd_last_pressed, sizeof(char)))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&keyd_last_released, sizeof(char)))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&keyd_pressed, sizeof(char)*256))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-	if (!dpmi_lock_region (&keyd_time_when_last_pressed, sizeof(int)))	{
-		printf( "Error locking keyboard handler's data!\n" );
-		exit(1);
-	}
-
-	key_data.prev_int_9 = _dos_getvect( 9 );
-	_dos_setvect( 9, key_handler );
+	// ASCENT: the platform layer calls key_handler for each key event.
+	plat_set_key_handler( key_handler );
 
 	atexit( key_close );
 }
@@ -636,12 +504,6 @@ void key_close()
 {
 	if (!Installed) return;
 	Installed = 0;
-	
-	_dos_setvect( 9, key_data.prev_int_9 );
 
-	_disable();
-	key_clear_bios_buffer_all();
-	_enable();
-
+	plat_set_key_handler( NULL );
 }
-

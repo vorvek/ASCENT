@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include "platform.h"
+#include "plat_input.h"
 
 static SDL_Window *Window;
 static SDL_Renderer *Renderer;
@@ -94,8 +95,25 @@ int plat_pump(void)
 	SDL_Event ev;
 
 	while (SDL_PollEvent(&ev)) {
-		if (ev.type == SDL_EVENT_QUIT)
+		if (ev.type == SDL_EVENT_QUIT) {
 			Quit_requested = 1;
+		} else {
+			// Pass the input events to input.c. The mouse position
+			// becomes frame pixels. The relative motion stays in
+			// device units, so that it does not depend on the window size.
+			float xrel = 0, yrel = 0;
+			if (ev.type == SDL_EVENT_MOUSE_MOTION) {
+				xrel = ev.motion.xrel;
+				yrel = ev.motion.yrel;
+			}
+			if (Renderer)
+				SDL_ConvertEventToRenderCoordinates(Renderer, &ev);
+			if (ev.type == SDL_EVENT_MOUSE_MOTION) {
+				ev.motion.xrel = xrel;
+				ev.motion.yrel = yrel;
+			}
+			plat_input_sdl_event(&ev);
+		}
 	}
 	return !Quit_requested;
 }

@@ -72,7 +72,9 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 extern void timer_init();
 extern void timer_close();
 extern void timer_set_rate(int count_val);
-extern void timer_set_function( void _far * function );
+// ASCENT: the parameter was a far pointer. The function is stored and
+// nothing calls it, because no timer interrupt runs. See timer.c.
+extern void timer_set_function( void * function );
 
 //==========================================================================
 // These functions return the time since the timer was initialized in
@@ -86,6 +88,9 @@ extern fix timer_get_fixed_seconds();	// Rolls about every 9 hours...
 extern fix timer_get_fixed_secondsX(); // Assume interrupts already disabled
 extern fix timer_get_approx_seconds();		// Returns time since program started... accurate to 1/120th of a second
 
+// ASCENT: new. Waits for the given time. Processes the window events during the wait.
+extern void timer_delay(fix seconds);
+
 //NOT_USED extern unsigned int timer_get_microseconds();
 //NOT_USED extern unsigned int timer_get_milliseconds100();
 //NOT_USED extern unsigned int timer_get_milliseconds10();
@@ -94,9 +99,12 @@ extern fix timer_get_approx_seconds();		// Returns time since program started...
 
 //==========================================================================
 // Use to access the BIOS ticker... ie...   i = TICKER
-#define TICKER (*(volatile int *)0x46C)
+// ASCENT: was (*(volatile int *)0x46C), the tick count in the BIOS data area.
+// It is the number of 18.2 Hz ticks since midnight. It is not an lvalue now.
+extern int timer_get_bios_ticks(void);
+#define TICKER (timer_get_bios_ticks())
 #define USECS_PER_READING( start, stop, frames ) (((stop-start)*54945)/frames)
 
 #endif
 
-
+

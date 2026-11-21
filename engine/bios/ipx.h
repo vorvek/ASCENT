@@ -100,6 +100,8 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #ifndef _IPX_H
 #define _IPX_H
 
+#include "types.h"		// ASCENT: for ubyte and ushort
+
 // The default socket to use.
 #define IPX_DEFAULT_SOCKET 0x5100		// 0x869d
 													
@@ -142,4 +144,4 @@ extern void ipx_read_network_file(char * filename);
 
 #endif
 
-
+

@@ -55,7 +55,14 @@ void gr_rle_expand_scanline( ubyte *dest, ubyte *src, int x1, int x2  );
 
 grs_bitmap * rle_expand_texture( grs_bitmap * bmp );
 
-rle_cache_flush();
+void rle_cache_flush();
+
+// ASCENT: declarations for functions that the 2d library used without one.
+void rle_expand_texture_sub( grs_bitmap * bmp, grs_bitmap * rle_temp_bitmap_1 );
+void gr_rle_expand_scanline_generic( grs_bitmap * dest, int dx, int dy, ubyte *src, int x1, int x2  );
+void gr_bm_ubitblt00_rle(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest);
+void gr_bm_ubitblt00m_rle(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest);
+void gr_bm_ubitblt0x_rle(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest);
 
 #endif
-
+

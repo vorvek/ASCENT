@@ -122,102 +122,11 @@ ubyte *gr_bitblt_fade_table=NULL;
 
 extern void gr_vesa_bitmap( grs_bitmap * source, grs_bitmap * dest, int x, int y );
 
-// This code aligns edi so that the destination is aligned to a dword boundry before rep movsd
-void gr_linear_movsd(ubyte * src, ubyte * dest, int num_pixels );
-#pragma aux gr_linear_movsd parm [esi] [edi] [ecx] modify exact [ecx esi edi eax ebx] = \
-" cld "					\
-" mov		ebx, ecx	"	\
-" mov		eax, edi"	\
-" and		eax, 011b"	\
-" jz		d_aligned"	\
-" mov		ecx, 4"		\
-" sub		ecx, eax"	\
-" sub		ebx, ecx"	\
-" rep		movsb"		\
-" d_aligned: "			\
-" mov		ecx, ebx"	\
-" shr		ecx, 2"		\
-" rep 	movsd"		\
-" mov		ecx, ebx"	\
-" and 	ecx, 11b"	\
-" rep 	movsb";
-
-void gr_linear_rep_movsdm(ubyte * src, ubyte * dest, int num_pixels );
-#pragma aux gr_linear_rep_movsdm parm [esi] [edi] [ecx] modify exact [ecx esi edi eax] = \
-"nextpixel:"					\
-	"mov	al,[esi]"			\
-	"inc	esi"					\
-	"cmp	al, 255"				\
-	"je	skip_it"				\
-	"mov	[edi], al"			\
-"skip_it:"						\
-	"inc	edi"					\
-	"dec	ecx"					\
-	"jne	nextpixel";
-
-void gr_linear_rep_movsdm_faded(ubyte * src, ubyte * dest, int num_pixels, ubyte fade_value );
-#pragma aux gr_linear_rep_movsdm_faded parm [esi] [edi] [ecx] [ebx] modify exact [ecx esi edi eax ebx] = \
-"  xor eax, eax"	\
-"  mov ah, bl"  \
-"nextpixel:"					\
-	"mov	al,[esi]"			\
-	"inc	esi"					\
-	"cmp	al, 255"				\
-	"je	skip_it"				\
-	"mov  al, gr_fade_table[eax]"	\
-	"mov	[edi], al"			\
-"skip_it:"						\
-	"inc	edi"					\
-	"dec	ecx"					\
-	"jne	nextpixel";
-
-
-void gr_linear_rep_movsd_2x(ubyte * src, ubyte * dest, int num_dest_pixels );
-#pragma aux gr_linear_rep_movsd_2x parm [esi] [edi] [ecx] modify exact [ecx esi edi eax ebx] = \
-	"shr	ecx, 1"				\
-	"jnc	nextpixel"			\
-	"mov	al, [esi]"			\
-	"mov	[edi], al"			\
-	"inc	esi"					\
-	"inc	edi"					\
-	"cmp	ecx, 0"				\
-	"je	done"					\
-"nextpixel:"					\
-	"mov	al,[esi]"			\
-	"mov	ah, al"				\
-	"mov	[edi], ax"			\
-	"inc	esi"					\
-	"inc	edi"					\
-	"inc	edi"					\
-	"dec	ecx"					\
-	"jne	nextpixel"			\
-"done:"
-
-
-
-void modex_copy_column(ubyte * src, ubyte * dest, int num_pixels, int src_rowsize, int dest_rowsize );
-#pragma aux modex_copy_column parm [esi] [edi] [ecx] [ebx] [edx] modify exact [ecx esi edi] = \
-"nextpixel:"							\
-	"mov	al,[esi]"			\
-	"add	esi, ebx"	\
-	"mov	[edi], al"	\
-	"add	edi, edx"	\
-	"dec	ecx"			\
-	"jne	nextpixel"	
-
-void modex_copy_column_m(ubyte * src, ubyte * dest, int num_pixels, int src_rowsize, int dest_rowsize );
-#pragma aux modex_copy_column_m parm [esi] [edi] [ecx] [ebx] [edx] modify exact [ecx esi edi] = \
-"nextpixel:"							\
-	"mov	al,[esi]"			\
-	"add	esi, ebx"	\
-	"cmp	al, 255"		\
-	"je	skip_itx"		\
-	"mov	[edi], al"	\
-"skip_itx:"				\
-	"add	edi, edx"	\
-	"dec	ecx"			\
-	"jne	nextpixel"	
-
+// ASCENT: the inline assembly functions (#pragma aux) gr_linear_movsd,
+// gr_linear_rep_movsdm, gr_linear_rep_movsdm_faded and
+// gr_linear_rep_movsd_2x are C functions in linear.c now (see grdef.h).
+// The Mode X column and scan line functions are removed with the planar
+// video memory.
 
 void gr_ubitmap00( int x, int y, grs_bitmap *bm )
 {
@@ -286,147 +195,9 @@ void gr_ubitmap00m( int x, int y, grs_bitmap *bm )
 //"		jne	alignstart			"	\
 //"aligned4:							"	\
 
-void modex_copy_scanline( ubyte * src, ubyte * dest, int npixels );
-#pragma aux modex_copy_scanline parm [esi] [edi] [ecx] modify exact [ecx esi edi eax ebx edx] = \
-"		mov	ebx, ecx				"	\
-"		and	ebx, 11b				"	\
-"		shr	ecx, 2				"	\
-"		cmp	ecx, 0				"	\
-"		je		no2group				"	\
-"next4pixels:						"	\
-"		mov	al, [esi+8]			"	\
-"		mov	ah, [esi+12]		"	\
-"		shl	eax, 16				"	\
-"		mov	al, [esi]			"	\
-"		mov	ah, [esi+4]			"	\
-"		mov	[edi], eax			"	\
-"		add	esi, 16				"	\
-"		add	edi, 4				"	\
-"		dec	ecx					"	\
-"		jne	next4pixels			"	\
-"no2group:							"	\
-"		cmp	ebx, 0				"	\
-"		je		done2					"	\
-"finishend:							"	\
-"		mov	al, [esi]			"	\
-"		add	esi, 4				"	\
-"		mov	[edi], al			"	\
-"		inc	edi					"	\
-"		dec	ebx					"	\
-"		jne	finishend			"	\
-"done2:								";
-
-void modex_copy_scanline_2x( ubyte * src, ubyte * dest, int npixels );
-#pragma aux modex_copy_scanline_2x parm [esi] [edi] [ecx] modify exact [ecx esi edi eax ebx edx] = \
-"		mov	ebx, ecx				"	\
-"		and	ebx, 11b				"	\
-"		shr	ecx, 2				"	\
-"		cmp	ecx, 0				"	\
-"		je		no2group				"	\
-"next4pixels:						"	\
-"		mov	al, [esi+4]			"	\
-"		mov	ah, [esi+6]			"	\
-"		shl	eax, 16				"	\
-"		mov	al, [esi]			"	\
-"		mov	ah, [esi+2]			"	\
-"		mov	[edi], eax			"	\
-"		add	esi, 8				"	\
-"		add	edi, 4				"	\
-"		dec	ecx					"	\
-"		jne	next4pixels			"	\
-"no2group:							"	\
-"		cmp	ebx, 0				"	\
-"		je		done2					"	\
-"finishend:							"	\
-"		mov	al, [esi]			"	\
-"		add	esi, 2				"	\
-"		mov	[edi], al			"	\
-"		inc	edi					"	\
-"		dec	ebx					"	\
-"		jne	finishend			"	\
-"done2:								";
-
-
-
-// From Linear to ModeX
-void gr_bm_ubitblt01(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest)
-{
-	ubyte * dbits;
-	ubyte * sbits;
-	int sstep,dstep;
-	int y,plane;
-	int w1;
-
-	if ( w < 4 ) return;
-
-	sstep = src->bm_rowsize;
-	dstep = dest->bm_rowsize << gr_bitblt_dest_step_shift;
-
-	if (!gr_bitblt_double)	{
-		for (plane=0; plane<4; plane++ )	{
-			gr_modex_setplane( (plane+dx)&3 );
-			sbits = src->bm_data + (src->bm_rowsize * sy) + sx + plane;
-			dbits = &gr_video_memory[(dest->bm_rowsize * dy) + ((plane+dx)/4) ];
-			w1 = w >> 2;
-			if ( (w&3) > plane ) w1++;
-			for (y=dy; y < dy+h; y++ )		{
-				modex_copy_scanline( sbits, dbits, w1 );		
-				dbits += dstep;
-				sbits += sstep;
-			}
-		}
-	} else {
-		for (plane=0; plane<4; plane++ )	{
-			gr_modex_setplane( (plane+dx)&3 );
-			sbits = src->bm_data + (src->bm_rowsize * sy) + sx + plane/2;
-			dbits = &gr_video_memory[(dest->bm_rowsize * dy) + ((plane+dx)/4) ];
-			w1 = w >> 2;
-			if ( (w&3) > plane ) w1++;
-			for (y=dy; y < dy+h; y++ )		{
-				modex_copy_scanline_2x( sbits, dbits, w1 );		
-				dbits += dstep;
-				sbits += sstep;
-			}
-		}
-	}
-}
-
-
-// From Linear to ModeX masked
-void gr_bm_ubitblt01m(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest)
-{
-	//ubyte * dbits1;
-	//ubyte * sbits1;
-	
-	ubyte * dbits;
-	ubyte * sbits;
-
-	int x;
-//	int y;
-
-	sbits =   src->bm_data  + (src->bm_rowsize * sy) + sx;
-	dbits =   &gr_video_memory[(dest->bm_rowsize * dy) + dx/4];
-
-	for (x=dx; x < dx+w; x++ )	{	
-		gr_modex_setplane( x&3 );
-
-		//sbits1 = sbits;
-		//dbits1 = dbits;
-		//for (y=0; y < h; y++ )    {
-		//	*dbits1 = *sbits1;
-		//	sbits1 += src_bm_rowsize;
-		//	dbits1 += dest_bm_rowsize;
-		//	}
-		modex_copy_column_m(sbits, dbits, h, src->bm_rowsize, dest->bm_rowsize << gr_bitblt_dest_step_shift );
-
-		sbits++;
-		if ( (x&3)==3 )
-			dbits++;
-	}
-}
-
-
-
+// ASCENT: removed modex_copy_scanline, modex_copy_scanline_2x,
+// gr_bm_ubitblt01 (linear to Mode X) and gr_bm_ubitblt01m. A Mode X
+// bitmap is a linear frame in memory and uses the linear functions.
 
 void gr_ubitmap012( int x, int y, grs_bitmap *bm )
 {
@@ -491,6 +262,8 @@ void gr_ubitmapGENERICm(int x, int y, grs_bitmap * bm)
 }
 
 
+// ASCENT: in the two functions below the Mode X and SVGA destinations
+// use the linear code (see grdef.h).
 void gr_ubitmap( int x, int y, grs_bitmap *bm )
 {   int source, dest;
 
@@ -501,19 +274,12 @@ void gr_ubitmap( int x, int y, grs_bitmap *bm )
 		switch( dest )
 		{
 		case BM_LINEAR:
+		case BM_SVGA:
+		case BM_MODEX:
 			if ( bm->bm_flags & BM_FLAG_RLE )
 				gr_bm_ubitblt00_rle(bm->bm_w, bm->bm_h, x, y, 0, 0, bm, &grd_curcanv->cv_bitmap );
 			else
 				gr_ubitmap00( x, y, bm );
-			return;
-		case BM_SVGA:
-			if ( bm->bm_flags & BM_FLAG_RLE )
-				gr_bm_ubitblt0x_rle(bm->bm_w, bm->bm_h, x, y, 0, 0, bm, &grd_curcanv->cv_bitmap );
-			else
-				gr_vesa_bitmap( bm, &grd_curcanv->cv_bitmap, x, y );
-			return;
-		case BM_MODEX:
-			gr_bm_ubitblt01(bm->bm_w, bm->bm_h, x+XOFFSET, y+YOFFSET, 0, 0, bm, &grd_curcanv->cv_bitmap);
 			return;
 		default:
 			gr_ubitmap012( x, y, bm );
@@ -534,16 +300,12 @@ void gr_ubitmapm( int x, int y, grs_bitmap *bm )
 		switch( dest )
 		{
 		case BM_LINEAR:
+		case BM_SVGA:
+		case BM_MODEX:
 			if ( bm->bm_flags & BM_FLAG_RLE )
 				gr_bm_ubitblt00m_rle(bm->bm_w, bm->bm_h, x, y, 0, 0, bm, &grd_curcanv->cv_bitmap );
 			else
 				gr_ubitmap00m( x, y, bm );
-			return;
-		case BM_SVGA:
-			gr_ubitmapGENERICm(x, y, bm);
-			return;
-		case BM_MODEX:
-			gr_bm_ubitblt01m(bm->bm_w, bm->bm_h, x+XOFFSET, y+YOFFSET, 0, 0, bm, &grd_curcanv->cv_bitmap);
 			return;
 		default:
 			gr_ubitmap012m( x, y, bm );
@@ -554,104 +316,9 @@ void gr_ubitmapm( int x, int y, grs_bitmap *bm )
 	}
 }
 
-
-
-// From linear to SVGA
-void gr_bm_ubitblt02(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest)
-{
-	unsigned char * sbits;
-
-	unsigned int offset, EndingOffset, VideoLocation;
-
-	int sbpr, dbpr, y1, page, BytesToMove;
-
-	sbpr = src->bm_rowsize;
-
-	dbpr = dest->bm_rowsize << gr_bitblt_dest_step_shift;
-
-	VideoLocation = (unsigned int)dest->bm_data + (dest->bm_rowsize * dy) + dx;
-
-	sbits = src->bm_data + ( sbpr*sy ) + sx;
-
-	for (y1=0; y1 < h; y1++ )    {
-
-		page    = VideoLocation >> 16;
-		offset  = VideoLocation & 0xFFFF;
-
-		gr_vesa_setpage( page );
-
-		EndingOffset = offset+w-1;
-
-		if ( EndingOffset <= 0xFFFF )
-		{
-			if ( gr_bitblt_double )
-				gr_linear_rep_movsd_2x( (void *)sbits, (void *)(offset+0xA0000), w );
-			else
-				gr_linear_movsd( (void *)sbits, (void *)(offset+0xA0000), w );
-
-			VideoLocation += dbpr;
-			sbits += sbpr;
-		}
-		else
-		{
-			BytesToMove = 0xFFFF-offset+1;
-
-			if ( gr_bitblt_double )
-				gr_linear_rep_movsd_2x( (void *)sbits, (void *)(offset+0xA0000), BytesToMove );
-			else
-				gr_linear_movsd( (void *)sbits, (void *)(offset+0xA0000), BytesToMove );
-
-			page++;
-			gr_vesa_setpage(page);
-
-			if ( gr_bitblt_double )
-				gr_linear_rep_movsd_2x( (void *)(sbits+BytesToMove/2), (void *)0xA0000, EndingOffset - 0xFFFF );
-			else
-				gr_linear_movsd( (void *)(sbits+BytesToMove), (void *)0xA0000, EndingOffset - 0xFFFF );
-
-			VideoLocation += dbpr;
-			sbits += sbpr;
-		}
-	}
-}
-
-// From SVGA to linear
-void gr_bm_ubitblt20(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest)
-{
-	unsigned char * dbits;
-
-	unsigned int offset, offset1, offset2;
-
-	int sbpr, dbpr, y1, page;
-
-	dbpr = dest->bm_rowsize;
-
-	sbpr = src->bm_rowsize;
-
-	for (y1=0; y1 < h; y1++ )    {
-
-		offset2 =   (unsigned int)src->bm_data  + (sbpr * (y1+sy)) + sx;
-		dbits   =   dest->bm_data + (dbpr * (y1+dy)) + dx;
-
-		page = offset2 >> 16;
-		offset = offset2 & 0xFFFF;
-		offset1 = offset+w-1;
-		gr_vesa_setpage( page );
-
-		if ( offset1 > 0xFFFF )  {
-			// Overlaps two pages
-			while( offset <= 0xFFFF )
-				*dbits++ = gr_video_memory[offset++];
-			offset1 -= (0xFFFF+1);
-			offset = 0;
-			page++;
-			gr_vesa_setpage(page);
-		}
-		while( offset <= offset1 )
-			*dbits++ = gr_video_memory[offset++];
-
-	}
-}
+// ASCENT: removed gr_bm_ubitblt02 (linear to SVGA) and gr_bm_ubitblt20
+// (SVGA to linear). They copied through the 64K VESA window. An SVGA
+// bitmap is a linear frame in memory and uses gr_bm_ubitblt00.
 
 //@extern int Interlacing_on;
 
@@ -710,7 +377,6 @@ void gr_bm_ubitblt00m(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap *
 }
 
 
-extern void gr_lbitblt( grs_bitmap * source, grs_bitmap * dest, int height, int width );
 
 void gr_bm_bitblt(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * src, grs_bitmap * dest)
 {
@@ -751,9 +417,11 @@ void gr_bm_ubitblt(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * sr
 {
 	register int x1, y1;
 
-	if ( (src->bm_type == BM_LINEAR) && (dest->bm_type == BM_LINEAR ))
+	// ASCENT: the linear, Mode X and SVGA types are all linear frames in
+	// memory (see grdef.h). The copies between them use the linear code.
+	if ( GR_IS_LINEAR(src->bm_type) && GR_IS_LINEAR(dest->bm_type) )
 	{
-		if ( src->bm_flags & BM_FLAG_RLE )	
+		if ( src->bm_flags & BM_FLAG_RLE )
 			gr_bm_ubitblt00_rle( w, h, dx, dy, sx, sy, src, dest );
 		else
 			gr_bm_ubitblt00( w, h, dx, dy, sx, sy, src, dest );
@@ -763,24 +431,6 @@ void gr_bm_ubitblt(int w, int h, int dx, int dy, int sx, int sy, grs_bitmap * sr
 	if ( (src->bm_flags & BM_FLAG_RLE ) && (src->bm_type == BM_LINEAR) )	{
 		gr_bm_ubitblt0x_rle(w, h, dx, dy, sx, sy, src, dest );
 	 	return;
-	}
-
-	if ( (src->bm_type == BM_LINEAR) && (dest->bm_type == BM_SVGA ))
-	{
-		gr_bm_ubitblt02( w, h, dx, dy, sx, sy, src, dest );
-		return;
-	}
-
-	if ( (src->bm_type == BM_SVGA) && (dest->bm_type == BM_LINEAR ))
-	{
-		gr_bm_ubitblt20( w, h, dx, dy, sx, sy, src, dest );
-		return;
-	}
-
-	if ( (src->bm_type == BM_LINEAR) && (dest->bm_type == BM_MODEX ))
-	{
-		gr_bm_ubitblt01( w, h, dx+XOFFSET, dy+YOFFSET, sx, sy, src, dest );
-		return;
 	}
 
 	for (y1=0; y1 < h; y1++ )    {
@@ -826,7 +476,7 @@ void gr_bitmapm( int x, int y, grs_bitmap *bm )
 		
 	// Draw bitmap bm[x,y] into (dx1,dy1)-(dx2,dy2)
 
-	if ( (bm->bm_type == BM_LINEAR) && (grd_curcanv->cv_bitmap.bm_type == BM_LINEAR ))
+	if ( (bm->bm_type == BM_LINEAR) && GR_IS_LINEAR(grd_curcanv->cv_bitmap.bm_type) )	// ASCENT: see grdef.h
 	{
 		if ( bm->bm_flags & BM_FLAG_RLE )	
 			gr_bm_ubitblt00m_rle(dx2-dx1+1,dy2-dy1+1, dx1, dy1, sx, sy, bm, &grd_curcanv->cv_bitmap );
@@ -994,4 +644,4 @@ void gr_bm_ubitblt0x_rle(int w, int h, int dx, int dy, int sx, int sy, grs_bitma
 }
 
 
-
+

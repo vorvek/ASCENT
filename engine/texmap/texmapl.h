@@ -75,6 +75,7 @@ extern	void texture_map_flat(g3ds_tmap *t,int color);
 extern fix compute_dx_dy(g3ds_tmap *t, int top_vertex,int bottom_vertex, fix recip_dy);
 extern void compute_y_bounds(g3ds_tmap *t, int *vlt, int *vlb, int *vrt, int *vrb,int *bottom_y_ind);
 extern void asm_tmap_scanline_flat(void);
+extern void asm_tmap_scanline_shaded(void);	// ASCENT: was declared in tmapflat.c
 extern void asm_tmap_scanline_matt(void);
 extern void asm_tmap_scanline_lin_v(void);
 
@@ -112,7 +113,8 @@ extern	int	fx_r,fx_g,fx_b,fx_dr_dx,fx_dg_dx,fx_db_dx;
 extern	unsigned char *pixptr;
 
 extern	int	bytes_per_row;
-extern	int	write_buffer;
+// ASCENT: write_buffer holds an address. An int cannot hold a 64-bit pointer.
+extern	ubyte	*write_buffer;
 extern	int  	window_left;
 extern	int	window_right;
 extern	int	window_top;
@@ -124,7 +126,8 @@ extern	int	linear_if_far_flag;
 extern	int	dither_intensity_lighting;
 extern	int	Interlacing_on;
 
-extern	short	_pixel_data_selector;
+// ASCENT: no segment selectors. The texture is read through pixptr.
+//extern	short	_pixel_data_selector;
 
 extern ubyte * tmap_flat_cthru_table;
 extern ubyte tmap_flat_color;
@@ -137,4 +140,37 @@ extern void init_interface_vars_to_assembler(void);
 extern int prevmod(int val,int modulus);
 
 #define FIX_RECIP_TABLE_SIZE	321
-
+
+// ASCENT: helpers for the C versions of the assembly scanline renderers
+// (tmap_per.c, tmap_lin.c, tmap_ll.c, tmap_flt.c, tmapfade.c, tmap_fl1.c).
+
+//	Index into a 64x64 texture from packed coordinates: v in the high word,
+//	u in the low word, each with 6 bits integer and 10 bits fraction.
+#define TMAP_UV_INDEX(uv)	((((uv) >> 26) << 6) | (((uv) >> 10) & 63))
+
+//	Lighting values in the renderers have 8 bits of fraction. The integer part
+//	selects a row of gr_fade_table.
+#define TMAP_LIGHT_LIMIT	(GR_FADE_LEVELS << 8)
+
+//	The assembly read gr_fade_table with the low 8 bits of the integer part of
+//	the lighting value and did no range check. A span whose lighting leaves
+//	the table read memory outside the table. Here such a span gets its end
+//	values clamped to the table. Other spans are not changed.
+//	steps = number of times the renderer adds dl.
+static inline void tmap_guard_light(fix *l, fix *dl, int steps)
+{
+	int64_t	l0 = *l;
+	int64_t	l1 = l0 + (int64_t) *dl * steps;
+
+	if (l0 >= 0 && l0 < TMAP_LIGHT_LIMIT && l1 >= 0 && l1 < TMAP_LIGHT_LIMIT)
+		return;
+
+	if (l0 < 0) l0 = 0;
+	if (l0 > TMAP_LIGHT_LIMIT-1) l0 = TMAP_LIGHT_LIMIT-1;
+	if (l1 < 0) l1 = 0;
+	if (l1 > TMAP_LIGHT_LIMIT-1) l1 = TMAP_LIGHT_LIMIT-1;
+
+	*l = (fix) l0;
+	*dl = (steps > 0) ? (fix) ((l1 - l0) / steps) : 0;
+}
+

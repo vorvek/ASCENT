@@ -41,9 +41,18 @@ typedef int8_t byte;
 
 //define unsigned types;
 typedef uint8_t ubyte;
+// ASCENT: glibc defines ushort, uint and ulong in <sys/types.h>, and its
+// ulong has 64 bits. Include that header first, then replace the names.
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/types.h>
+#define ushort uint16_t
+#define uint uint32_t
+#define ulong uint32_t
+#else
 typedef uint16_t ushort;
 typedef uint32_t uint;
 typedef uint32_t ulong;
+#endif
 
 //define a boolean
 // ASCENT: <stdbool.h> defines bool as a macro. Do not define it again.

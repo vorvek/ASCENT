@@ -14,7 +14,7 @@ endif()
 # The order is the dependency order.
 set(ASCENT_LIBS
   fix vecmat div mem misc cfile iff pslib
-  platform bios 2d 3d texmap ui main)
+  platform bios 2d 3d texmap ui main demo)
 foreach(lib ${ASCENT_LIBS})
   if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${lib}/CMakeLists.txt)
     add_subdirectory(${lib})

@@ -75,7 +75,6 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  */
 
 #include <stdlib.h>
-#include <malloc.h>
 #include <stdio.h>
 
 #include "mem.h"
@@ -83,7 +82,9 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #include "gr.h"
 #include "grdef.h"
-#include "dpmi.h"
+// ASCENT: removed "dpmi.h" (no selectors).
+
+void build_colormap_good( ubyte * palette, ubyte * colormap, int * freq );
 
 grs_bitmap *gr_create_bitmap(int w, int h )
 {
@@ -155,7 +156,7 @@ grs_bitmap *gr_create_sub_bitmap(grs_bitmap *bm, int x, int y, int w, int h )
 }
 
 
-gr_free_bitmap(grs_bitmap *bm )
+void gr_free_bitmap(grs_bitmap *bm )
 {
 	if (bm->bm_data!=NULL)	
     free(bm->bm_data);
@@ -164,7 +165,7 @@ gr_free_bitmap(grs_bitmap *bm )
     free(bm);
 }
 
-gr_free_sub_bitmap(grs_bitmap *bm )
+void gr_free_sub_bitmap(grs_bitmap *bm )
 {
 	if (bm!=NULL)
     free(bm);
@@ -197,17 +198,18 @@ gr_free_sub_bitmap(grs_bitmap *bm )
 //NO_INVERSE_TABLE 	"dec	ecx"					\
 //NO_INVERSE_TABLE 	"jne	again2x"				\
 
-void decode_data_asm(ubyte *data, int num_pixels, ubyte * colormap, int * count );
-#pragma aux decode_data_asm parm [esi] [ecx] [edi] [ebx] modify exact [esi edi eax ebx ecx] = \
-"again_ddn:"							\
-	"xor	eax,eax"				\
-	"mov	al,[esi]"			\
-	"inc	dword ptr [ebx+eax*4]"		\
-	"mov	al,[edi+eax]"		\
-	"mov	[esi],al"			\
-	"inc	esi"					\
-	"dec	ecx"					\
-	"jne	again_ddn"
+// ASCENT: C replacement for the inline assembly (#pragma aux).
+// Counts each color of the data in count[], and replaces each pixel
+// with its entry in colormap. The assembly loop does not test for a
+// size of 0.
+void decode_data_asm(ubyte *data, int num_pixels, ubyte * colormap, int * count )
+{
+	while (num_pixels-- > 0)	{
+		count[*data]++;
+		*data = colormap[*data];
+		data++;
+	}
+}
 
 void gr_remap_bitmap( grs_bitmap * bmp, ubyte * palette, int transparent_color, int super_transparent_color )
 {
@@ -269,12 +271,11 @@ void gr_remap_bitmap_good( grs_bitmap * bmp, ubyte * palette, int transparent_co
 }
 
 
+// ASCENT: there are no selectors. The function stays for the callers and
+// returns 0 (no error).
 int gr_bitmap_assign_selector( grs_bitmap * bmp )
 {
-	if (!dpmi_allocate_selector( bmp->bm_data, bmp->bm_w*bmp->bm_h, &bmp->bm_selector )) {
-		bmp->bm_selector = 0;
-		return 1;
-	}
+	bmp->bm_selector = 0;
 	return 0;
 }
 
@@ -298,4 +299,4 @@ void gr_bitmap_check_transparency( grs_bitmap * bmp )
 	bmp->bm_flags = 0;
 
 }
-
+

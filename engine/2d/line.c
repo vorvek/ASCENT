@@ -63,7 +63,6 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #include "clip.h"
 
-extern void gr_modex_line();
 int modex_line_vertincr;
 int modex_line_incr1;
 int modex_line_incr2;		
@@ -305,18 +304,16 @@ int gr_uline(fix _a1, fix _b1, fix _a2, fix _b2)
 	int a1,b1,a2,b2;
 	a1 = f2i(_a1); b1 = f2i(_b1); a2 = f2i(_a2); b2 = f2i(_b2);
 
+	// ASCENT: the Mode X and SVGA types are linear frames (see grdef.h)
+	// and use the linear line. The original used a Bresenham line in
+	// assembly for Mode X and gr_universal_uline for SVGA, which can
+	// give other pixels between the end points.
 	switch(TYPE)
 	{
 	case BM_LINEAR:
-		gr_linear_line( a1, b1, a2, b2 );
-		return 0;
 	case BM_MODEX:
-		modex_line_x1 = a1+XOFFSET;		
-		modex_line_y1 = b1+YOFFSET;		
-		modex_line_x2 = a2+XOFFSET;		
-		modex_line_y2 = b2+YOFFSET;		
-		modex_line_Color = grd_curcanv->cv_color;
-		gr_modex_line();
+	case BM_SVGA:
+		gr_linear_line( a1, b1, a2, b2 );
 		return 0;
 	default:
 		gr_universal_uline( a1, b1, a2, b2 );
@@ -345,4 +342,4 @@ int gr_line(fix a1, fix b1, fix a2, fix b2)
 
 }
 
-
+

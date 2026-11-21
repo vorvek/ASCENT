@@ -67,7 +67,6 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  */
 
 #include <stdlib.h>
-#include <malloc.h>
 #include <stdio.h>
 
 #include "mem.h"
@@ -140,10 +139,9 @@ void gr_init_canvas(grs_canvas *canv, unsigned char * pixdata, int pixtype, int 
 
 	canv->cv_bitmap.bm_x = 0;
 	canv->cv_bitmap.bm_y = 0;
-	if (pixtype==BM_MODEX)
-		canv->cv_bitmap.bm_rowsize = w / 4;
-	else
-		canv->cv_bitmap.bm_rowsize = w;
+	// ASCENT: a Mode X canvas had a row size of w/4 (4 planes). It is a
+	// linear frame now (see grdef.h), with a row size of w.
+	canv->cv_bitmap.bm_rowsize = w;
 	canv->cv_bitmap.bm_w = w;
 	canv->cv_bitmap.bm_h = h;
 	canv->cv_bitmap.bm_flags = 0;
@@ -187,17 +185,18 @@ void gr_free_sub_canvas(grs_canvas *canv)
 
 int gr_wait_for_retrace = 1;
 
+// ASCENT: the original function set the start address of the display
+// (the page flip of the Mode X and SVGA modes) and did nothing for a
+// linear canvas. Now it sets the start of the visible frame in the video
+// memory for each canvas type, and shows the frame (gr_present).
+// gr_wait_for_retrace has no effect: the platform layer synchronizes
+// gr_present with the display.
 void gr_show_canvas( grs_canvas *canv )
 {
 	if (canv->cv_bitmap.bm_type == BM_MODEX )
 		gr_modex_setstart( canv->cv_bitmap.bm_x, canv->cv_bitmap.bm_y, gr_wait_for_retrace );
-
-	else if (canv->cv_bitmap.bm_type == BM_SVGA )
+	else
 		gr_vesa_setstart( canv->cv_bitmap.bm_x, canv->cv_bitmap.bm_y );
-
-		//	else if (canv->cv_bitmap.bm_type == BM_LINEAR )
-		// Int3();		// Get JOHN!
-		//gr_linear_movsd( canv->cv_bitmap.bm_data, (void *)0xA0000, 320*200);
 }
 
 void gr_set_current_canvas( grs_canvas *canv )
@@ -229,4 +228,4 @@ void gr_setcolor(int color)
 	gr_var_color = color;
 
 }
-
+

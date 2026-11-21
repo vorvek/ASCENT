@@ -136,22 +136,20 @@ static char rcsid[] = "$Id: ntmap.c 1.52 1995/03/14 15:13:06 john Exp $";
 #include <math.h>
 #include <limits.h>
 #include <stdio.h>
-#include <conio.h>
+// ASCENT: no conio.h, mono.h and key.h. The file does not use them.
 #include <stdlib.h>
 
-#include "mono.h"
 #include "fix.h"
 #include "3d.h"
 #include "gr.h"
 #include "error.h"
-#include "key.h"
 
 #include "texmap.h"
 #include "texmapl.h"
 #include "rle.h"
 #include "scanline.h"
 
-#include "..\main\textures.h"
+// ASCENT: no main/textures.h. It gave NUM_TMAPS for the two unused arrays below.
 
 #define	EDITOR_TMAP	1		//if in, include extra stuff
 
@@ -164,8 +162,9 @@ int	SC2000 = SC2000K;
 // Temporary texture map, interface from Matt's 3d system to Mike's texture mapper.
 g3ds_tmap Tmap1;
 
-grs_bitmap Texmap_ptrs[NUM_TMAPS];
-grs_bitmap Texmap4_ptrs[NUM_TMAPS];
+// ASCENT: no code uses the two arrays.
+//grs_bitmap Texmap_ptrs[NUM_TMAPS];
+//grs_bitmap Texmap4_ptrs[NUM_TMAPS];
 
 fix Range_max=0; // debug, kill me
 
@@ -183,14 +182,13 @@ extern int Window_clip_left, Window_clip_bot, Window_clip_right, Window_clip_top
 //	They should be set only when they change, which is generally when the window bounds change.  And, even still, it's
 //	a pretty bad interface.
 int	bytes_per_row=-1;
-int	write_buffer;
+ubyte	*write_buffer;		// ASCENT: was int. It holds an address.
 int  	window_left;
 int	window_right;
 int	window_top;
 int	window_bottom;
 int  	window_width;
 int  	window_height;
-int	write_buffer;
 #ifdef EDITOR_TMAP
 #define	MAX_Y_POINTERS	480
 #else
@@ -198,7 +196,8 @@ int	write_buffer;
 #endif
 int	y_pointers[MAX_Y_POINTERS];
 
-short	pixel_data_selector;		// selector for current pixel data for texture mapper
+// ASCENT: no segment selectors. The scanline renderers read the texture through pixptr.
+//short	pixel_data_selector;		// selector for current pixel data for texture mapper
 
 fix fix_recip[FIX_RECIP_TABLE_SIZE];
 
@@ -244,7 +243,9 @@ void init_interface_vars_to_assembler(void)
 
 	Assert(bp!=NULL);
 	Assert(bp->bm_data!=NULL);
-	Assert(bp->bm_h <= MAX_Y_POINTERS);
+	// ASCENT: the C scanline renderers compute y*bytes_per_row and do not read
+	// y_pointers, thus the canvas height has no limit.
+	//Assert(bp->bm_h <= MAX_Y_POINTERS);
 
 	//	If bytes_per_row has changed, create new table of pointers.
 	if (bytes_per_row != (int) bp->bm_rowsize) {
@@ -259,7 +260,7 @@ void init_interface_vars_to_assembler(void)
 		}
 	}
 
-	write_buffer = (int) bp->bm_data;
+	write_buffer = bp->bm_data;
 
 	window_left = 0;
 	window_right = (int) bp->bm_w-1;
@@ -278,11 +279,8 @@ void init_interface_vars_to_assembler(void)
 		init_fix_recip_table();
 }
 
-int tmap_set_selector(int selector, void *buffer, unsigned int size);
-
 // -------------------------------------------------------------------------------------
 //                             VARIABLES
-extern short	pixel_data_selector;		// selector for current pixel data for texture mapper
 extern g3ds_tmap Tmap1;
 
 // -------------------------------------------------------------------------------------
@@ -593,6 +591,10 @@ void ntexture_map_lighted(grs_bitmap *srcb, g3ds_tmap *t)
 
 	v3d = t->verts;
 
+	// ASCENT: with no lighting the code passes these to the scanline function
+	// and does not set them. Give them a value.
+	lleft = lright = dl_dy_left = dl_dy_right = 0;
+
 #if SC2000K
 if (Do_vertical_scan) {
 	texture_map_hyp_lin_v(srcb, t);
@@ -613,7 +615,7 @@ if (Do_vertical_scan) {
 
 	// Set amount to change x coordinate for each advance to next scanline.
 	dy = f2i(t->verts[vlb].y2d) - f2i(t->verts[vlt].y2d);
-	if (dy < FIX_RECIP_TABLE_SIZE)
+	if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 		recip_dyl = fix_recip[dy];
 	else
 		recip_dyl = F1_0/dy;
@@ -624,7 +626,7 @@ if (Do_vertical_scan) {
 	dz_dy_left = compute_dz_dy(t,vlt,vlb, recip_dyl);
 
 	dy = f2i(t->verts[vrb].y2d) - f2i(t->verts[vrt].y2d);
-	if (dy < FIX_RECIP_TABLE_SIZE)
+	if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 		recip_dyr = fix_recip[dy];
 	else
 		recip_dyr = F1_0/dy;
@@ -675,7 +677,7 @@ if (Do_vertical_scan) {
 			next_break_left = f2i(v3d[vlb].y2d);
 
 			dy = f2i(t->verts[vlb].y2d) - f2i(t->verts[vlt].y2d);
-			if (dy < FIX_RECIP_TABLE_SIZE)
+			if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 				recip_dy = fix_recip[dy];
 			else
 				recip_dy = F1_0/dy;
@@ -711,7 +713,7 @@ if (Do_vertical_scan) {
 			next_break_right = f2i(v3d[vrb].y2d);
 
 			dy = f2i(t->verts[vrb].y2d) - f2i(t->verts[vrt].y2d);
-			if (dy < FIX_RECIP_TABLE_SIZE)
+			if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 				recip_dy = fix_recip[dy];
 			else
 				recip_dy = F1_0/dy;
@@ -862,6 +864,10 @@ void ntexture_map_lighted_linear(grs_bitmap *srcb, g3ds_tmap *t)
 
 	v3d = t->verts;
 
+	// ASCENT: with no lighting the code passes these to the scanline function
+	// and does not set them. Give them a value.
+	lleft = lright = dl_dy_left = dl_dy_right = 0;
+
 	// Determine top and bottom y coords.
 	compute_y_bounds(t,&vlt,&vlb,&vrt,&vrb,&max_y_vertex);
 
@@ -875,13 +881,13 @@ void ntexture_map_lighted_linear(grs_bitmap *srcb, g3ds_tmap *t)
 		boty = Window_clip_bot;
 
 	dy = f2i(t->verts[vlb].y2d) - f2i(t->verts[vlt].y2d);
-	if (dy < FIX_RECIP_TABLE_SIZE)
+	if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 		recip_dyl = fix_recip[dy];
 	else
 		recip_dyl = F1_0/dy;
 
 	dy = f2i(t->verts[vrb].y2d) - f2i(t->verts[vrt].y2d);
-	if (dy < FIX_RECIP_TABLE_SIZE)
+	if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 		recip_dyr = fix_recip[dy];
 	else
 		recip_dyr = F1_0/dy;
@@ -934,7 +940,7 @@ void ntexture_map_lighted_linear(grs_bitmap *srcb, g3ds_tmap *t)
 			next_break_left = f2i(v3d[vlb].y2d);
 
 			dy = f2i(t->verts[vlb].y2d) - f2i(t->verts[vlt].y2d);
-			if (dy < FIX_RECIP_TABLE_SIZE)
+			if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 				recip_dy = fix_recip[dy];
 			else
 				recip_dy = F1_0/dy;
@@ -966,7 +972,7 @@ void ntexture_map_lighted_linear(grs_bitmap *srcb, g3ds_tmap *t)
 			}
 
 			dy = f2i(t->verts[vrb].y2d) - f2i(t->verts[vrt].y2d);
-			if (dy < FIX_RECIP_TABLE_SIZE)
+			if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 				recip_dy = fix_recip[dy];
 			else
 				recip_dy = F1_0/dy;
@@ -1033,6 +1039,9 @@ void draw_tmap(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 
 	Assert(nverts <= MAX_TMAP_VERTS);
 
+	// ASCENT: Tmap1.verts has MAX_TMAP_VERTS entries.
+	if (nverts < 1 || nverts > MAX_TMAP_VERTS)
+		return;
 
 #ifdef USE_MULT_CODE
 	if ( !divide_table_filled ) fill_divide_table();
@@ -1053,12 +1062,14 @@ void draw_tmap(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 	if (bp->bm_flags & BM_FLAG_NO_LIGHTING)
 		Lighting_on = 0;
 
-	//	Set selector for current texture map.
-	if ( bp->bm_selector == 0 )	{
-		if (gr_bitmap_assign_selector( bp ) )
-			Error( "Couldn't assign selector in ntmap.c!\n" );
+	// ASCENT: no selector for the texture map. The scanline renderers read
+	// 64 rows of 64 pixels from bm_data and wrap u and v. If the bitmap is
+	// smaller than that, draw flat. The original code read past its end.
+	if (bp->bm_data == NULL || (int) bp->bm_rowsize * bp->bm_h < 64*64) {
+		Lighting_on = lighting_on_save;
+		draw_tmap_flat(bp, nverts, vertbuf);
+		return;
 	}
-	pixel_data_selector = bp->bm_selector;
 
 	// Setup texture map in Tmap1
 	Tmap1.nv = nverts;						// Initialize number of vertices
@@ -1185,4 +1196,4 @@ void draw_tmap(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 
 }
 
-
+

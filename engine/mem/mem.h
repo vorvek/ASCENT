@@ -41,24 +41,48 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  * 
  */
 
+#ifndef _MEM_H
+#define _MEM_H
+
+// ASCENT: the system headers that declare malloc() and free() must come
+// before the macros below. A system header that comes after the macros
+// would not compile.
+#include <stdlib.h>
+#if defined(__has_include)
+#if __has_include(<malloc.h>)
+#include <malloc.h>
+#endif
+#endif
+
 extern int show_mem_info;//moved out of the ifdef by KRB
+
+// ASCENT: the functions are declared with and without NDEBUG. mem.c has
+// one allocator (see the comment there). mem_display_blocks() returns void,
+// as its definition always did.
+void mem_display_blocks();
+extern void * mem_malloc( unsigned int size, char * var, char * file, int line, int fill_zero );
+extern void mem_free( void * buffer );
+
+// Checks to see if any blocks are overwritten
+// ASCENT: returns the number of blocks that are overwritten
+int mem_validate_heap();
+
+// Writes the list of the blocks to the file DESCENT.MEM
+void mem_print_all();
+
+// ASCENT: new functions, for tests and for statistics
+int mem_num_blocks();						// number of blocks that are allocated now
+unsigned int mem_bytes_malloced();		// number of bytes that are allocated now
 
 #ifndef NDEBUG
 
 //extern int show_mem_info;
-
-void * mem_display_blocks();
-extern void * mem_malloc( unsigned int size, char * var, char * file, int line, int fill_zero );
-extern void mem_free( void * buffer );
 
 #define malloc(size)    mem_malloc((size),"Unknown", __FILE__,__LINE__, 0 )
 #define calloc(n,size)  mem_malloc((n*size),"Unknown", __FILE__,__LINE__, 1 )
 #define free(ptr)       do{ mem_free(ptr); ptr=NULL; } while(0)
 
 #define MALLOC( var, type, count )   (var=(type *)mem_malloc((count)*sizeof(type),#var, __FILE__,__LINE__,0 ))
-
-// Checks to see if any blocks are overwritten
-void mem_validate_heap();
 
 #else
 
@@ -68,4 +92,4 @@ void mem_validate_heap();
 
 #endif
 
-
+#endif

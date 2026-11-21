@@ -51,16 +51,23 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 int Gr_scanline_darkening_level = GR_FADE_LEVELS;
 
-void gr_linear_darken( ubyte * dest, int darkening_level, int count, ubyte * fade_table );
-#pragma aux gr_linear_darken parm [edi] [eax] [ecx] [edx] modify exact [eax ebx ecx edx edi] = \
-"					xor	ebx, ebx					"	\
-"					mov	bh, al					"  \
-"gld_loop:		mov	bl, [edi]				"	\
-"					mov	al, [ebx+edx]			"	\
-"					mov	[edi], al				"	\
-"					inc	edi						"	\
-"					dec	ecx						"	\
-"					jnz	gld_loop					"	
+// ASCENT: C replacement for the inline assembly (#pragma aux).
+// Each pixel goes through the row darkening_level of fade_table.
+// The assembly loop does not test for a count less than 1.
+static void gr_linear_darken( ubyte * dest, int darkening_level, int count, ubyte * fade_table )
+{
+	ubyte * fade = fade_table + ((darkening_level & 0xff) << 8);
+
+	while (count-- > 0)	{
+		*dest = fade[*dest];
+		dest++;
+	}
+}
+
+// ASCENT: the Mode X and SVGA bitmap types are linear frames in memory
+// (see grdef.h) and use the linear code. The original Mode X and SVGA
+// cases did not darken (they filled with the color). Now the three types
+// darken in the same way.
 
 void gr_uscanline( int x1, int x2, int y )
 {
@@ -68,26 +75,18 @@ void gr_uscanline( int x1, int x2, int y )
 		switch(TYPE)
 		{
 		case BM_LINEAR:
-			gr_linear_stosd( DATA + ROWSIZE*y + x1, COLOR, x2-x1+1);
-			break;
 		case BM_MODEX:
-			gr_modex_uscanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
-			break;
 		case BM_SVGA:
-			gr_vesa_scanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
+			gr_linear_stosd( DATA + ROWSIZE*y + x1, COLOR, x2-x1+1);
 			break;
 		}
 	} else {
 		switch(TYPE)
 		{
 		case BM_LINEAR:
-			gr_linear_darken( DATA + ROWSIZE*y + x1, Gr_scanline_darkening_level, x2-x1+1, gr_fade_table);
-			break;
 		case BM_MODEX:
-			gr_modex_uscanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
-			break;
 		case BM_SVGA:
-			gr_vesa_scanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
+			gr_linear_darken( DATA + ROWSIZE*y + x1, Gr_scanline_darkening_level, x2-x1+1, gr_fade_table);
 			break;
 		}
 	}
@@ -109,29 +108,20 @@ void gr_scanline( int x1, int x2, int y )
 		switch(TYPE)
 		{
 		case BM_LINEAR:
-			gr_linear_stosd( DATA + ROWSIZE*y + x1, COLOR, x2-x1+1);
-			break;
 		case BM_MODEX:
-			gr_modex_uscanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
-			break;
 		case BM_SVGA:
-			gr_vesa_scanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
+			gr_linear_stosd( DATA + ROWSIZE*y + x1, COLOR, x2-x1+1);
 			break;
 		}
 	} else {
 		switch(TYPE)
 		{
 		case BM_LINEAR:
-			gr_linear_darken( DATA + ROWSIZE*y + x1, Gr_scanline_darkening_level, x2-x1+1, gr_fade_table);
-			break;
 		case BM_MODEX:
-			gr_modex_uscanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
-			break;
 		case BM_SVGA:
-			gr_vesa_scanline( x1+XOFFSET, x2+XOFFSET, y+YOFFSET, COLOR );
+			gr_linear_darken( DATA + ROWSIZE*y + x1, Gr_scanline_darkening_level, x2-x1+1, gr_fade_table);
 			break;
 		}
 	}
 }
 
-

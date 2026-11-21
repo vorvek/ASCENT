@@ -59,47 +59,64 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
  *
  */
 
+#ifndef _ERROR_H
+#define _ERROR_H
+
+// ASCENT: Error() never returns. The Watcom form was "#pragma aux Error aborts".
+#if defined(__GNUC__) || defined(__clang__)
+#define ERROR_NORETURN __attribute__((noreturn))
+#elif defined(_MSC_VER)
+#define ERROR_NORETURN __declspec(noreturn)
+#else
+#define ERROR_NORETURN
+#endif
+
 int error_init(char *fmt,...);			//init error system, set default message, returns 0=ok
 void set_exit_message(char *fmt,...);	//specify message to print at exit
 void Warning(char *fmt,...);				//print out warning message to user
 void set_warn_func(void (*f)(char *s));//specifies the function to call with warning messages
 void clear_warn_func(void (*f)(char *s));//say this function no longer valid
 void _Assert(int expr,char *expr_text,char *filename,int linenum);	//assert func
-void Error(char *fmt,...);					//exit with error code=1, print message
+ERROR_NORETURN void Error(char *fmt,...);					//exit with error code=1, print message
 
 void Assert(int expr);
 void Int3();
+
+// ASCENT: hooks for the platform layer and for a debugger.
+
+//Error() calls this function with the message ("Error: ...") before it
+//prints the message and exits. The platform layer can show a message box
+//in it. Pass NULL to remove the function.
+void set_error_func(void (*f)(char *msg));
+
+//Stops in the debugger. Without a debugger the system ends the program.
+void debug_break(void);
+
+//When this is 0 (the default), Int3() prints the file and the line and
+//the program continues. When it is not 0, Int3() and Error() call
+//debug_break(). Set it when a debugger is attached.
+extern int Int3_break_enabled;
+
+//the function behind the Int3() macro
+void _Int3(char *filename,int linenum);
+
+// ASCENT: the "#pragma aux" lines made Int3 an inline "int 3h" and put an
+// "int 3" before the calls of Error() and of _Assert(). Int3() and Assert()
+// are now macros. Assert() calls _Assert(), and _Assert() calls Error() when
+// the expression is false. With NDEBUG, Assert() still evaluates the
+// expression, as the function Assert() of the source release did, because
+// some callers depend on it, for example Assert(fseek(...)==0) in iff.c.
 
 #ifndef NDEBUG		//macros for debugging
 
-//void Int3(void);									//generate int3
-#pragma aux Int3 = "int 3h";
-
-//#define Assert(expr) _Assert(expr,#expr,__FILE__,__LINE__)
-
-//make error do int3, then call func
-#pragma aux Error aborts = \
-	"int	3"	\
-	"jmp Error";
-
-//#pragma aux Error aborts;
-
-//make assert do int3 (if expr false), then call func
-#pragma aux _Assert parm [eax] [edx] [ebx] [ecx] = \
-	"test eax,eax"		\
-	"jnz	no_int3"		\
-	"int	3"				\
-	"no_int3:"			\
-	"call _Assert";
+#define Assert(expr) _Assert((expr)!=0,#expr,__FILE__,__LINE__)
+#define Int3() _Int3(__FILE__,__LINE__)
 
 #else					//macros for real game
 
-#pragma aux Error aborts;
-//Changed Assert and Int3 because I couldn't get the macros to compile -KRB
-//#define Assert(__ignore) ((void)0)
-void Assert(int expr);
-//#define Int3() ((void)0)
-void Int3();
+#define Assert(expr) ((void)(expr))
+#define Int3() ((void)0)
+
 #endif
 
-
+#endif

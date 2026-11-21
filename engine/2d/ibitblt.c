@@ -49,10 +49,9 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: ibitblt.c 1.6 1994/11/28 17:07:29 john Exp $";
 #pragma on (unreferenced)
 
-#include <conio.h>
-#include <dos.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "types.h"
 #include "gr.h"
@@ -64,118 +63,42 @@ static char rcsid[] = "$Id: ibitblt.c 1.6 1994/11/28 17:07:29 john Exp $";
 #define MODE_SKIP		1
 #define MODE_DRAW		2
 
-#define OPCODE_ADD 			0x81			
-#define OPCODE_ESI			0xC6			// Followed by a dword	(add esi, ????)
-#define OPCODE_EDI		 	0xC7			// Followed by a dword  (add edi, ????)
-#define OPCODE_MOV_ECX		0xB9			// Followed by a dword  (mov ecx,????)
-#define OPCODE_MOVSB   		0xA4			// movsb
-#define OPCODE_16BIT 		0x66			// movsw
-#define OPCODE_MOVSD 		0xA5			// movsd
-#define OPCODE_REP			0xF3			// rep
-#define OPCODE_RET			0xC3			// ret
+// ASCENT: the original functions wrote 386 machine code into the mask
+// (ADD ESI, ADD EDI, MOVSB, MOVSW, REP MOVSD, RET) and gr_ibitblt called
+// that code. Now the mask is a list of records. Each record is 3 values
+// of 4 bytes: the number of bytes to skip in the source, the number of
+// bytes to skip in the destination, and the number of bytes to copy.
+// A record with a copy count of 0 ends the list (the RET before).
+// The mask is still one block from malloc that the caller frees, and
+// the copied pixels are the same.
+#define IBITBLT_RECORD_SIZE		12
 
 ubyte *Code_pointer = NULL;
 int Code_counter = 0;
 
 void move_and_count( int dsource, int ddest, int ecx )
 {
-	int blocks;
-	if ( ecx <= 0 )	
+	if ( ecx <= 0 )
 		return;
 
-	if ( dsource > 0 )
-		Code_counter+=6;		// ADD ESI, dsource
-
-	if ( ddest > 0 )
-		Code_counter+=6;		// ADD EDI, ddest
-
-	while ( ecx > 0 )	{
-		switch(ecx)	{
-		case 1: Code_counter++; ecx = 0; break;	// MOVSB
-		case 2: Code_counter+=2; ecx = 0; break;	// MOVSW
-		case 3: Code_counter+=3; ecx = 0; break;	// MOVSW, MOVSB
-		case 4: Code_counter++; ecx = 0; break; 	// MOVSD
-		default:
-			blocks = ecx / 4;
-			if ( blocks == 1 )
-				Code_counter++;	// MOVSD
-			else 
-				Code_counter+=7;
-			ecx -= blocks*4;
-		}
-	}
+	Code_counter += IBITBLT_RECORD_SIZE;
 }
 
 
 void move_and_draw( int dsource, int ddest, int ecx )
 {
-	int blocks;
-	int * iptr;
+	int32_t record[3];
 
 	if ( ecx <= 0 )
 		return;
 
-	if ( dsource > 0 )	{
-		// ADD ESI, dsource
-		*Code_pointer++ = OPCODE_ADD;
-		*Code_pointer++ = OPCODE_ESI;
-		iptr = (int *)Code_pointer;
-		*iptr++ = dsource;
-		Code_pointer = (ubyte *)iptr;						
-	}
-	if ( ddest > 0 )	{
-		// ADD EDI, ddest
-		*Code_pointer++ = OPCODE_ADD;
-		*Code_pointer++ = OPCODE_EDI;
-		iptr = (int *)Code_pointer;
-		*iptr++ = ddest;
-		Code_pointer = (ubyte *)iptr;						
-	}
-
-	while ( ecx > 0 )	{
-		switch( ecx )	{
-		case 1:
-			// MOVSB
-			*Code_pointer++ = OPCODE_MOVSB;
-			ecx = 0;
-			break;
-		case 2:
-			// MOVSW
-			*Code_pointer++ = OPCODE_16BIT;
-			*Code_pointer++ = OPCODE_MOVSD;
-			ecx = 0;
-			break;
-		case 3:
-			// MOVSW, MOVSB
-			*Code_pointer++ = OPCODE_16BIT;
-			*Code_pointer++ = OPCODE_MOVSD;
-			*Code_pointer++ = OPCODE_MOVSB;
-			ecx = 0;
-			break;
-		case 4:
-			// MOVSD
-			*Code_pointer++ = OPCODE_MOVSD;
-			ecx = 0;
-			break;
-		default:
-			blocks = ecx / 4;
-
-			if ( blocks == 1 )	{	
-				// MOVSD
-				*Code_pointer++ = OPCODE_MOVSD;
-			} else {
-				// MOV ECX, blocks
-				*Code_pointer++ = OPCODE_MOV_ECX;
-				iptr = (int *)Code_pointer;
-				*iptr++ = blocks;
-				Code_pointer = (ubyte *)iptr;						
-				// REP MOVSD
-				*Code_pointer++ = OPCODE_REP;
-				*Code_pointer++ = OPCODE_MOVSD;
-			}
-			ecx -= blocks*4;
-		}
-	}
+	// The original code added to ESI and EDI only for a distance
+	// greater than 0.
+	record[0] = (dsource > 0) ? dsource : 0;
+	record[1] = (ddest > 0) ? ddest : 0;
+	record[2] = ecx;
+	memcpy( Code_pointer, record, IBITBLT_RECORD_SIZE );
+	Code_pointer += IBITBLT_RECORD_SIZE;
 }
 
 //-----------------------------------------------------------------------------------------
@@ -239,7 +162,7 @@ int gr_ibitblt_find_code_size( grs_bitmap * mask_bmp, int sx, int sy, int sw, in
 		draw_mode = MODE_NONE;
 		source_offset += (srowsize - sw);
 	}
-	Code_counter++;		// for return
+	Code_counter += IBITBLT_RECORD_SIZE;		// for return (ASCENT: the end record)
 
 	//printf( "Code will be %d bytes\n", Code_counter );
 
@@ -319,7 +242,9 @@ ubyte	*gr_ibitblt_create_mask( grs_bitmap * mask_bmp, int sx, int sy, int sw, in
 		draw_mode = MODE_NONE;
 		source_offset += (srowsize - sw);
 	}
-	*Code_pointer++ = OPCODE_RET;
+	// ASCENT: the end record (a RET instruction before).
+	memset( Code_pointer, 0, IBITBLT_RECORD_SIZE );
+	Code_pointer += IBITBLT_RECORD_SIZE;
 
 	if ( Code_pointer >= &code[code_size-1] )	
 		Error( "ibitblt overwrote allocated code block\n" );
@@ -330,13 +255,24 @@ ubyte	*gr_ibitblt_create_mask( grs_bitmap * mask_bmp, int sx, int sy, int sw, in
 }
 
 
-void gr_ibitblt_do_asm(char *start_si, char *start_di, ubyte * code);
-#pragma aux gr_ibitblt_do_asm parm [esi] [edi] [eax] modify [ecx edi esi eax] = \
-	"pusha"	\
-	"cld"		\
-	"call	eax"	\
-	"popa"
+// ASCENT: C replacement for the inline assembly that called the
+// machine code in the mask. Executes the records of the mask.
+static void gr_ibitblt_do_asm(ubyte *start_si, ubyte *start_di, ubyte * code)
+{
+	int32_t record[3];
 
+	for (;;)	{
+		memcpy( record, code, IBITBLT_RECORD_SIZE );
+		code += IBITBLT_RECORD_SIZE;
+		if ( record[2] <= 0 )
+			break;
+		start_si += record[0];
+		start_di += record[1];
+		memmove( start_di, start_si, (size_t)record[2] );
+		start_si += record[2];
+		start_di += record[2];
+	}
+}
 
 void gr_ibitblt(grs_bitmap * source_bmp, grs_bitmap * dest_bmp, ubyte * mask )
 {
@@ -373,4 +309,4 @@ void	gr_ibitblt_find_hole_size( grs_bitmap * mask_bmp, int *minx, int *miny, int
 		Error( "Bitmap for ibitblt doesn't have transparency!\n" );
 	}
 }
-
+

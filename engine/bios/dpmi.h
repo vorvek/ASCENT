@@ -69,13 +69,13 @@ typedef struct dpmi_real_regs {
     ushort es,ds,fs,gs,ip,cs,sp,ss;
 } dpmi_real_regs;
 
-#pragma intrinsic( inp );
-#pragma intrinsic( outp );
-#pragma intrinsic( _enable );
-#pragma intrinsic( _disable );
+// ASCENT: the Watcom intrinsic pragmas for inp, outp, _enable and _disable
+// were here. Port I/O and the interrupt flag are not used in this port.
 
-#define DPMI_real_segment(P)	((((uint) (P)) >> 4) & 0xFFFF)
-#define DPMI_real_offset(P)	(((uint) (P)) & 0xF)
+// ASCENT: uintptr_t, because a pointer has 64 bits. The results have no
+// meaning without real mode memory.
+#define DPMI_real_segment(P)	((((uintptr_t) (P)) >> 4) & 0xFFFF)
+#define DPMI_real_offset(P)	(((uintptr_t) (P)) & 0xF)
 
 // Initializes dpmi. Returns zero if failed.
 extern int dpmi_init(int verbose);
@@ -94,7 +94,7 @@ extern int dpmi_modify_selector_limit( ushort selector, int size  );
 
 
 // Sets the PM handler. Returns 0 if succssful
-extern int dpmi_set_pm_handler(unsigned intnum, void far * isr );
+extern int dpmi_set_pm_handler(unsigned intnum, void * isr );		// ASCENT: was a far pointer
 
 extern unsigned int dpmi_virtual_memory;
 extern unsigned int dpmi_available_memory;
@@ -102,4 +102,4 @@ extern unsigned int dpmi_physical_memory;
 extern unsigned int dpmi_dos_memory;
 
 #endif
-
+

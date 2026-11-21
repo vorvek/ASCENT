@@ -73,12 +73,11 @@ static char rcsid[] = "$Id: tmapflat.c 1.13 1995/02/20 18:23:24 john Exp $";
 // #include <graph.h>
 #include <limits.h>
 #include <stdio.h>
-#include <conio.h>
+// ASCENT: no conio.h and no mono.h. The file does not use them.
 #include <stdlib.h>
 
 // #include "hack3df.h"
 #include "fix.h"
-#include "mono.h"
 #include "gr.h"
 #include "grdef.h"
 // #include "ui.h"
@@ -88,9 +87,10 @@ static char rcsid[] = "$Id: tmapflat.c 1.13 1995/02/20 18:23:24 john Exp $";
 
 //#include "tmapext.h"
 
-void (*scanline_func)();
+// ASCENT: the function pointer has the real parameter types.
+void (*scanline_func)(int y, fix xleft, fix xright);
 
-extern void asm_tmap_scanline_shaded();	// In tmapfade.asm
+// ASCENT: asm_tmap_scanline_shaded (tmapfade.c) is declared in texmapl.h.
 
 // -------------------------------------------------------------------------------------
 //	Texture map current scanline.
@@ -167,7 +167,7 @@ void texture_map_flat(g3ds_tmap *t, int color)
 
 	// Set amount to change x coordinate for each advance to next scanline.
 	dy = f2i(t->verts[vlb].y2d) - f2i(t->verts[vlt].y2d);
-	if (dy < FIX_RECIP_TABLE_SIZE)
+	if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 		recip_dy = fix_recip[dy];
 	else
 		recip_dy = F1_0/dy;
@@ -175,7 +175,7 @@ void texture_map_flat(g3ds_tmap *t, int color)
 	dx_dy_left = compute_dx_dy(t,vlt,vlb, recip_dy);
 
 	dy = f2i(t->verts[vrb].y2d) - f2i(t->verts[vrt].y2d);
-	if (dy < FIX_RECIP_TABLE_SIZE)
+	if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 		recip_dy = fix_recip[dy];
 	else
 		recip_dy = F1_0/dy;
@@ -202,7 +202,7 @@ void texture_map_flat(g3ds_tmap *t, int color)
 				vlb = prevmod(vlb,t->nv);
 			}
 			dy = f2i(t->verts[vlb].y2d) - f2i(t->verts[vlt].y2d);
-			if (dy < FIX_RECIP_TABLE_SIZE)
+			if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 				recip_dy = fix_recip[dy];
 			else
 				recip_dy = F1_0/dy;
@@ -221,7 +221,7 @@ void texture_map_flat(g3ds_tmap *t, int color)
 			}
 
 			dy = f2i(t->verts[vrb].y2d) - f2i(t->verts[vrt].y2d);
-			if (dy < FIX_RECIP_TABLE_SIZE)
+			if (dy >= 0 && dy < FIX_RECIP_TABLE_SIZE)	// ASCENT: no read before the table
 				recip_dy = fix_recip[dy];
 			else
 				recip_dy = F1_0/dy;
@@ -259,7 +259,7 @@ typedef struct pnt2d {
 	fix x,y;
 } pnt2d;
 
-#pragma off (unreferenced)		//bp not referenced
+// ASCENT: removed the Watcom pragma "off (unreferenced)".
 
 //this takes the same partms as draw_tmap, but draws a flat-shaded polygon
 void draw_tmap_flat(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
@@ -269,7 +269,7 @@ void draw_tmap_flat(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 	fix	average_light;
 	int	color;
 
-	Assert(nverts < MAX_TMAP_VERTS);
+	Assert(nverts <= MAX_TMAP_VERTS);		// ASCENT: was <. points[] has MAX_TMAP_VERTS entries.
 
 	average_light = vertbuf[0]->p3_l;
 	for (i=1; i<nverts; i++)
@@ -296,16 +296,19 @@ void draw_tmap_flat(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 	gr_upoly_tmap(nverts,(int *) points);
 
 }
-#pragma on (unreferenced)
 
 
 //	-----------------------------------------------------------------------------------------
 //This is like gr_upoly_tmap() but instead of drawing, it calls the specified
 //function with ylr values
-void gr_upoly_tmap_ylr(int nverts, int *vert, void *ylr_func() )
+void gr_upoly_tmap_ylr(int nverts, int *vert, void (*ylr_func)(int y, fix xleft, fix xright) )
 {
 	g3ds_tmap	my_tmap;
 	int			i;
+
+	// ASCENT: my_tmap.verts has MAX_TMAP_VERTS entries.
+	if (nverts < 1 || nverts > MAX_TMAP_VERTS)
+		return;
 
 	//--now called from g3_start_frame-- init_interface_vars_to_assembler();
 
@@ -321,4 +324,4 @@ void gr_upoly_tmap_ylr(int nverts, int *vert, void *ylr_func() )
 	texture_map_flat(&my_tmap, COLOR);
 }
 
-
+

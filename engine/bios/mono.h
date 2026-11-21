@@ -43,6 +43,9 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #ifndef _MONO_H
 #define _MONO_H
 
+// ASCENT: there is no mono screen. on=1 sends the text to stderr. See mono.c.
+extern void mono_set_stderr( int on );
+
 #if !(defined(NDEBUG) || defined(NMONO))		//normal, functioning versions
 
 //==========================================================================

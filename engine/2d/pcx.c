@@ -45,6 +45,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: pcx.c 1.6 1995/03/01 15:38:12 john Exp $";
 #pragma on (unreferenced)
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -72,6 +73,22 @@ typedef struct	{
 	short		BytesPerLine;
 	ubyte		filler[60];
 } PCXHeader;
+
+// ASCENT: the code reads and writes this structure as the 128 bytes of
+// the file header. The asserts prove that the compiler adds no padding.
+// The fields are little endian in the file.
+_Static_assert( sizeof(PCXHeader) == 128, "PCX header size" );
+_Static_assert( offsetof(PCXHeader, Xmin) == 4, "PCX header layout" );
+_Static_assert( offsetof(PCXHeader, Hdpi) == 12, "PCX header layout" );
+_Static_assert( offsetof(PCXHeader, ColorMap) == 16, "PCX header layout" );
+_Static_assert( offsetof(PCXHeader, Reserved) == 64, "PCX header layout" );
+_Static_assert( offsetof(PCXHeader, Nplanes) == 65, "PCX header layout" );
+_Static_assert( offsetof(PCXHeader, BytesPerLine) == 66, "PCX header layout" );
+_Static_assert( offsetof(PCXHeader, filler) == 68, "PCX header layout" );
+
+// ASCENT: declarations for functions that are used before their definition.
+int pcx_encode_line(ubyte *inBuff, int inLen, FILE * fp);
+int pcx_encode_byte(ubyte byt, ubyte cnt, FILE * fid);
 
 
 int pcx_read_bitmap( char * filename, grs_bitmap * bmp,int bitmap_type ,ubyte * palette )
@@ -332,4 +349,4 @@ char *pcx_errormsg(int error_number)
 	return p;
 
 }
-
+

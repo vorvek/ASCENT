@@ -96,6 +96,9 @@ extern fix compute_lighting_value(g3s_point *vertptr);
 //	vertbuf is a pointer to an array of vertex pointers
 extern void draw_tmap(grs_bitmap *bp, int nverts, g3s_point **vertbuf);
 
+// ASCENT: prototype added. This takes the same parms as draw_tmap, but draws a flat-shaded polygon.
+extern void draw_tmap_flat(grs_bitmap *bp, int nverts, g3s_point **vertbuf);
+
 // -------------------------------------------------------------------------------------------------------
 // Texture map vertex.
 //	The fields r,g,b and l are mutually exclusive.  r,g,b are used for rgb lighting.
@@ -134,8 +137,9 @@ extern	int	Max_flat_depth;				//	Deepest segment at which flat shading will be u
 
 //	These are pointers to texture maps.  If you want to render texture map #7, then you will render
 //	the texture map defined by Texmap_ptrs[7].
-extern	grs_bitmap Texmap_ptrs[];
-extern	grs_bitmap Texmap4_ptrs[];
+// ASCENT: no code uses the two arrays. Their size came from main/textures.h.
+//extern	grs_bitmap Texmap_ptrs[];
+//extern	grs_bitmap Texmap4_ptrs[];
 
 // Interface for sky renderer
 extern void texture_map_lin_lin_sky(grs_bitmap *srcb, g3ds_tmap *t);
@@ -150,7 +154,8 @@ void gr_upoly_tmap(int nverts, int *vert );
 
 //This is like gr_upoly_tmap() but instead of drawing, it calls the specified
 //function with ylr values
-void gr_upoly_tmap_ylr(int nverts, int *vert, void *ylr_func() );
+// ASCENT: the function pointer has the real parameter types.
+void gr_upoly_tmap_ylr(int nverts, int *vert, void (*ylr_func)(int y, fix xleft, fix xright) );
 
 extern int Transparency_on,per2_flag;
 

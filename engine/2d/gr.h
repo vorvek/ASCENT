@@ -171,6 +171,9 @@ typedef struct _grs_point {
 	fix	x,y;
 } grs_point;
 
+// ASCENT: this is the font in memory. The pointers have the size of the
+// machine, so the structure is not the header of a font file. gr_init_font
+// (font.c) reads each field of the file header.
 typedef struct _grs_font {
 	short		ft_w,ft_h;		// Width and height in pixels
 	short		ft_flags;		// Proportional?
@@ -290,8 +293,31 @@ extern void gr_pal_clear();
 extern void gr_pal_setblock( int start, int number, unsigned char * pal );
 extern void gr_pal_getblock( int start, int number, unsigned char * pal );
 
+// ASCENT: there is no selector for the screen segment. The function
+// stays for the callers and returns 0.
 extern int gr_init_A0000();         // Initializes _A0000. Returns true if failed.
-extern unsigned short _A0000;       // Selector for screen segment
+
+// ASCENT: the screen is a linear 8-bit frame in memory (see gr.c).
+// gr_present shows the visible part of that frame in the window, with
+// the palette that the palette functions wrote (gr_dac_palette).
+//
+// The VGA showed each change of the video memory without a call. The
+// port shows the frame only in gr_present. The 2d library calls it:
+//   - in gr_palette_load and gr_palette_clear,
+//   - in each step of gr_palette_fade_in and gr_palette_fade_out,
+//   - in gr_show_canvas (the page flip of the Mode X and SVGA modes).
+// The game must call gr_present one time for each frame that it draws
+// into the screen canvas without a call to gr_show_canvas: after the
+// copy of the render buffer to the screen in the game loop, and in each
+// loop that draws on the screen and waits for input (menus, automap,
+// briefing and title screens).
+// gr_palette_step_up does not call gr_present: the game calls it in each
+// frame, and the next gr_present shows the new palette.
+extern void gr_present(void);
+
+// Waits for the next vertical retrace of the emulated display
+// (gr_refresh_hz times in each second) and processes the window events.
+extern void gr_sync_display(void);
 
 //shut down the 2d.  Restore the screen mode.
 int gr_close();
@@ -315,6 +341,9 @@ int gr_check_mode(int mode);
 extern int gr_save_mode();
 extern void gr_restore_mode();
 
+// ASCENT: the declarations in this file had no return type (implicit int
+// in Watcom C). They now have the type of the definition.
+
 //=========================================================================
 // Canvas functions:
 
@@ -332,23 +361,23 @@ grs_canvas *gr_create_sub_canvas(grs_canvas *canv,int x,int y,int w, int h);
 // Initialize the specified canvas. the raw pixel data buffer is passed as
 // a parameter. no memory allocation is performed.
 
-gr_init_canvas(grs_canvas *canv,unsigned char *pixdata,int pixtype, int w,int h);
+void gr_init_canvas(grs_canvas *canv,unsigned char *pixdata,int pixtype, int w,int h);
 
 // Initialize the specified sub canvas. no memory allocation is performed.
 
-gr_init_sub_canvas(grs_canvas *new,grs_canvas *src,int x,int y,int w, int h);
+void gr_init_sub_canvas(grs_canvas *new,grs_canvas *src,int x,int y,int w, int h);
 
 // Free up the canvas and its pixel data.
 
-gr_free_canvas(grs_canvas *canv);
+void gr_free_canvas(grs_canvas *canv);
 
 // Free up the canvas. do not free the pixel data, which belongs to the
 // parent canvas.
 
-gr_free_sub_canvas(grs_canvas *canv);
+void gr_free_sub_canvas(grs_canvas *canv);
 
 // Clear the current canvas to the specified color
-gr_clear_canvas(int color);
+void gr_clear_canvas(int color);
 
 //=========================================================================
 // Bitmap functions:
@@ -363,10 +392,10 @@ grs_bitmap *gr_create_bitmap_raw(int w, int h, unsigned char * raw_data );
 grs_bitmap *gr_create_sub_bitmap(grs_bitmap *bm,int x,int y,int w, int h);
 
 // Free the bitmap and its pixel data
-gr_free_bitmap(grs_bitmap *bm);
+void gr_free_bitmap(grs_bitmap *bm);
 
 // Free the bitmap, but not the pixel data buffer
-gr_free_sub_bitmap(grs_bitmap *bm);
+void gr_free_sub_bitmap(grs_bitmap *bm);
 
 void gr_bm_pixel( grs_bitmap * bm, int x, int y, unsigned char color );
 void gr_bm_upixel( grs_bitmap * bm, int x, int y, unsigned char color );
@@ -387,7 +416,7 @@ void gr_use_palette_table(char * filename );
 // Drawing functions:
 
 // For solid, XOR, or other fill modes.
-gr_set_drawmode(int mode);
+int gr_set_drawmode(int mode);
 
 // Sets the color in the current canvas.  should be a macro
 // Use: gr_setcolor(int color);
@@ -399,13 +428,13 @@ void gr_setcolor(int color);
 // but not necessarily shaded as a concave polygon. It shouldn't hang.
 // probably good solution is to shade from minx to maxx on each scan line.
 // int should really be fix
-gr_poly(int nverts,int *verts);
-gr_upoly(int nverts,int *verts);
+void gr_poly(int nverts,int *verts);
+void gr_upoly(int nverts,int *verts);
 
 
 // Draws a point into the current canvas in the current color and drawmode.
-gr_pixel(int x,int y);
-gr_upixel(int x,int y);
+void gr_pixel(int x,int y);
+void gr_upixel(int x,int y);
 
 // Gets a pixel;
 unsigned char gr_gpixel( grs_bitmap * bitmap, int x, int y );
@@ -420,27 +449,27 @@ int gr_aaline(fix x0,fix y0,fix x1,fix y1);
 int gr_uaaline(fix x0,fix y0,fix x1,fix y1);
 
 // Draw the bitmap into the current canvas at the specified location.
-gr_bitmap(int x,int y,grs_bitmap *bm);
-gr_ubitmap(int x,int y,grs_bitmap *bm);
+void gr_bitmap(int x,int y,grs_bitmap *bm);
+void gr_ubitmap(int x,int y,grs_bitmap *bm);
 // bitmap function with transparency
-gr_bitmapm( int x, int y, grs_bitmap *bm );
-gr_ubitmapm( int x, int y, grs_bitmap *bm );
+void gr_bitmapm( int x, int y, grs_bitmap *bm );
+void gr_ubitmapm( int x, int y, grs_bitmap *bm );
 
 // Draw a rectangle into the current canvas.
-gr_rect(int left,int top,int right,int bot);
-gr_urect(int left,int top,int right,int bot);
+void gr_rect(int left,int top,int right,int bot);
+void gr_urect(int left,int top,int right,int bot);
 
 // Draw a filled circle
 int gr_disk(fix x,fix y,fix r);
 int gr_udisk(fix x,fix y,fix r);
 
 // Draw an outline circle
-gr_circle(fix x,fix y,fix r);
-gr_ucircle(fix x,fix y,fix r);
+int gr_circle(fix x,fix y,fix r);
+int gr_ucircle(fix x,fix y,fix r);
 
 // Draw an unfilled rectangle into the current canvas
-gr_box(int left,int top,int right,int bot);
-gr_ubox(int left,int top,int right,int bot);
+void gr_box(int left,int top,int right,int bot);
+void gr_ubox(int left,int top,int right,int bot);
 
 void gr_scanline( int x1, int x2, int y );
 void gr_uscanline( int x1, int x2, int y );
@@ -494,6 +523,8 @@ extern ubyte gr_palette[256*3];
 extern ubyte gr_fade_table[256*GR_FADE_LEVELS];
 extern ubyte gr_inverse_table[32*32*32];
 
+// ASCENT: there are no selectors. The variables stay for the callers
+// and are always 0. The same applies to bm_selector in grs_bitmap.
 extern ushort gr_palette_selector;
 extern ushort gr_inverse_table_selector;
 extern ushort gr_fade_table_selector;
@@ -547,4 +578,4 @@ extern void gr_merge_textures_3( ubyte * lower, ubyte * upper, ubyte * dest );
 
 #endif
 
-
+

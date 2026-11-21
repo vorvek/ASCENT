@@ -69,8 +69,8 @@ static char rcsid[] = "$Id: scale.c 1.12 1995/03/14 15:14:11 john Exp $";
 #include <math.h>
 #include <limits.h>
 #include <stdio.h>
-#include <conio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "mono.h"
 #include "fix.h"
@@ -121,34 +121,42 @@ void scale_row_c( ubyte * sbits, ubyte * dbits, int width, fix u, fix du )
 // ebx = u
 // edx = du
 
-void scale_row_asm_transparent( ubyte * sbits, ubyte * dbits, int width, fix u, fix du );
-#pragma aux scale_row_asm_transparent parm [esi] [edi] [ecx] [ebx] [edx] modify exact [edi eax ebx ecx] = \
-"newpixel:	mov	eax, ebx			" \
-"				shr	eax, 16			" \
-"				mov	al, [esi+eax]	" \
-"				cmp	al, 255			" \
-"				je		skip_it			" \
-"				mov	[edi], al		" \
-"skip_it:	add	ebx, edx			" \
-"				inc	edi				" \
-"				dec	ecx				" \
-"				jne	newpixel			"
+// ASCENT: C replacements for the inline assembly (#pragma aux).
+// The assembly loops do not test for a width less than 1.
+// u is used as an unsigned number (shr), as in the assembly.
+static void scale_row_asm_transparent( ubyte * sbits, ubyte * dbits, int width, fix u, fix du )
+{
+	ubyte c;
 
-void scale_row_asm( ubyte * sbits, ubyte * dbits, int width, fix u, fix du );
-#pragma aux scale_row_asm parm [esi] [edi] [ecx] [ebx] [edx] modify exact [edi eax ebx ecx] = \
-"newpixel1:	mov	eax, ebx			" \
-"				shr	eax, 16			" \
-"				mov	al, [esi+eax]	" \
-"				add	ebx, edx			" \
-"				mov	[edi], al		" \
-"				inc	edi				" \
-"				dec	ecx				" \
-"				jne	newpixel1		"
+	while (width-- > 0)	{
+		c = sbits[ (uint32_t)u >> 16 ];
+		if ( c != 255 )
+			*dbits = c;
+		u += du;
+		dbits++;
+	}
+}
 
+void scale_row_asm( ubyte * sbits, ubyte * dbits, int width, fix u, fix du )
+{
+	while (width-- > 0)	{
+		*dbits++ = sbits[ (uint32_t)u >> 16 ];
+		u += du;
+	}
+}
 
-void rep_movsb( ubyte * sbits, ubyte * dbits, int width );
-#pragma aux rep_movsb parm [esi] [edi] [ecx] modify exact [esi edi ecx] = \
-"rep movsb"
+void rep_movsb( ubyte * sbits, ubyte * dbits, int width )
+{
+	if (width > 0)
+		memmove( dbits, sbits, (size_t)width );
+}
+
+// ASCENT: declarations for functions that scale_bitmap uses before
+// their definition.
+void scale_bitmap_asm(grs_bitmap *source_bmp, grs_bitmap *dest_bmp, int x0, int y0, int x1, int y1, fix u0, fix v0,  fix u1, fix v1  );
+void scale_bitmap_asm_rle(grs_bitmap *source_bmp, grs_bitmap *dest_bmp, int x0, int y0, int x1, int y1, fix u0, fix v0,  fix u1, fix v1  );
+void scale_bitmap_cc_asm(grs_bitmap *source_bmp, grs_bitmap *dest_bmp, int x0, int y0, int x1, int y1, fix u0, fix v0,  fix u1, fix v1  );
+void scale_bitmap_cc_asm_rle(grs_bitmap *source_bmp, grs_bitmap *dest_bmp, int x0, int y0, int x1, int y1, fix u0, fix v0,  fix u1, fix v1  );
 
 #define FIND_SCALED_NUM(x,x0,x1,y0,y1) (fixmuldiv((x)-(x0),(y1)-(y0),(x1)-(x0))+(y0))
 
@@ -374,11 +382,12 @@ void DrawHorizontalRun(char *ScreenPtr, int RunLength, int Color)
       *ScreenPtr++ = Color;
 }
 
-void rep_stosb(char *ScreenPtr, int RunLength, int Color);
-#pragma aux rep_stosb = \
-"				rep	stosb"	\
-parm [EDI] [ECX] [EAX]\
-modify [];
+// ASCENT: C replacement for the inline assembly (#pragma aux).
+static void rep_stosb(char *ScreenPtr, int RunLength, int Color)
+{
+	if (RunLength > 0)
+		memset( ScreenPtr, Color, (size_t)RunLength );
+}
 
 void rls_stretch_scanline( char * source, char * dest, int XDelta, int YDelta )
 {
@@ -504,4 +513,4 @@ void rls_stretch_scanline_setup( int XDelta, int YDelta )
       }
 
 }
-
+

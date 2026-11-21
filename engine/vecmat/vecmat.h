@@ -194,19 +194,24 @@ typedef struct vms_matrix {
 										m->uvec.x = m->uvec.z = \
 										m->fvec.x = m->fvec.y = 0;} while (0)
 
-vms_vector *vm_vec_make(vms_vector *v,fix x,fix y,fix z);
+// ASCENT: C replacements for the Watcom inline assembly.
+static inline vms_vector *vm_vec_make(vms_vector *v,fix x,fix y,fix z)
+{
+	v->x = x;
+	v->y = y;
+	v->z = z;
 
-#pragma aux vm_vec_make "*_" parm [eax] [edx] [ebx] [ecx] value [eax] modify exact [] = \
-	"mov 0[eax],edx"	\
-	"mov 4[eax],ebx"	\
-	"mov 8[eax],ecx";
+	return v;
+}
 
-vms_angvec *vm_angvec_make(vms_angvec *v,fixang p,fixang b,fixang h);
+static inline vms_angvec *vm_angvec_make(vms_angvec *v,fixang p,fixang b,fixang h)
+{
+	v->p = p;
+	v->b = b;
+	v->h = h;
 
-#pragma aux vm_angvec_make "*_" parm [eax] [dx] [bx] [cx] value [eax] modify exact [] = \
-	"mov 0[eax],dx"	\
-	"mov 2[eax],bx"	\
-	"mov 4[eax],cx";
+	return v;
+}
 
 //Global constants
 
@@ -369,26 +374,10 @@ fix vm_vec_dot(vms_vector *v0,vms_vector *v1);
 
 #else
 
-#define vm_vec_dotprod(v0,v1) vm_vec_dot((v0),(v1))
-
+// ASCENT: the inline assembly version of the dot product (with no
+// saturation) is gone. The function in vecmat.c is the one version.
 fix vm_vec_dotprod(vms_vector *v0,vms_vector *v1);
-#pragma aux vm_vec_dotprod parm [esi] [edi] value [eax] modify exact [eax ebx ecx edx] = \
-	"mov	eax,[esi]"				\
-	"imul	dword ptr [edi]"		\
-	"mov	ebx,eax"					\
-	"mov	ecx,edx"					\
-										\
-	"mov	eax,4[esi]"				\
-	"imul	dword ptr 4[edi]"		\
-	"add	ebx,eax"					\
-	"adc	ecx,edx"					\
-										\
-	"mov	eax,8[esi]"				\
-	"imul	dword ptr 8[edi]"		\
-	"add	eax,ebx"					\
-	"adc	edx,ecx"					\
-										\
-	"shrd	eax,edx,16";
+fix vm_vec_dot(vms_vector *v0,vms_vector *v1);
 
 #endif
 
@@ -463,57 +452,16 @@ vms_angvec *vm_extract_angles_vector(vms_angvec *a,vms_vector *v);
 //distance is signed, so negative dist is on the back of the plane
 fix vm_dist_to_plane(vms_vector *checkp,vms_vector *norm,vms_vector *planep);
 
-//Pragmas for functions
+//extract heading and pitch from a normalized vector, assuming bank==0
+vms_angvec *vm_extract_angles_vector_normalized(vms_angvec *a,vms_vector *v);
 
-#ifndef INLINE
-#pragma aux vm_vec_add "*" parm [eax] [esi] [edi] value [eax] modify exact [];
-#pragma aux vm_vec_sub "*" parm [eax] [esi] [edi] value [eax] modify exact [];
-#pragma aux vm_vec_add2 "*" parm [edi] [esi] value [edi] modify exact [];
-#pragma aux vm_vec_sub2 "*" parm [edi] [esi] value [edi] modify exact [];
-#endif
-#pragma aux vm_vec_avg "*" parm [eax] [esi] [edi] value [eax] modify exact [];
-#pragma aux vm_vec_avg4 "*" parm [eax] [esi] [edi] [ecx] [edx] value [eax] modify exact [];
-#pragma aux vm_vec_scale "*" parm [ebx] [ecx] value [ebx] modify exact [];
-#pragma aux vm_vec_copy_scale "*" parm [edi] [ebx] [ecx] value [edi] modify exact [];
-#pragma aux vm_vec_scale2 "*" parm [edi] [ebx] [ecx] value [edi] modify exact [];
-#pragma aux vm_vec_mag "*" parm [esi] value [eax] modify exact [eax];
-#pragma aux vm_vec_dist "*" parm [esi] [edi] value [eax] modify exact [eax];
-#pragma aux vm_vec_mag_quick "*" parm [esi] value [eax] modify exact [eax];
-#pragma aux vm_vec_dist_quick "*" parm [esi] [edi] value [eax] modify exact [eax];
-#pragma aux vm_vec_normalize "*" parm [esi] value [ecx] modify exact [ecx];
-#pragma aux vm_vec_normalize_quick "*" parm [esi] value [ecx] modify exact [ecx];
-#pragma aux vm_vec_copy_normalize "*" parm [edi] [esi] value [ecx] modify exact [ecx];
-#pragma aux vm_vec_copy_normalize_quick "*" parm [edi] [esi] value [ecx] modify exact [ecx];
-#ifndef INLINE
-#pragma aux vm_vec_dotprod "*" parm [esi] [edi] value [eax] modify exact [eax];
-#pragma aux vm_vec_dot "vm_vec_dotprod" parm [esi] [edi] value [eax] modify exact [eax];
-#endif
-#pragma aux vm_vec_crossprod "*" parm [eax esi edi] value [eax] modify exact [];
-#pragma aux vm_vec_cross "vm_vec_crossprod" parm [eax esi edi] value [eax] modify exact [];
-#pragma aux vm_vec_normal "*" parm [ebx] [eax] [esi] [edi] value [eax] modify exact [eax];
-#pragma aux vm_vec_perp "*" parm [ebx] [eax] [esi] [edi] value [eax] modify exact [eax];
-#pragma aux vm_angles_2_matrix "*" parm [edi] [esi] value [edi] modify exact [];
-#pragma aux vm_vector_2_matrix "*" parm [edi] [esi] [eax] [ebx] value [edi] modify exact [eax ebx esi];
-#pragma aux vm_vector_2_matrix_norm "*" parm [edi] [esi] [eax] [ebx] value [edi] modify exact [eax ebx esi];
-#pragma aux vm_vec_rotate "*" parm [eax] [esi] [edi] value [eax] modify exact [];
-#pragma aux vm_transpose_matrix "*" parm [edi] value [edi] modify exact [];
-#pragma aux vm_transpose "vm_transpose_matrix" parm [edi] value [edi] modify exact [];
-#pragma aux vm_copy_transpose_matrix "*" parm [edi] [esi] value [edi] modify exact [];
-#pragma aux vm_copy_transpose "vm_copy_transpose_matrix" parm [edi] [esi] value [edi] modify exact [];
-#pragma aux vm_matrix_x_matrix "*" parm [eax] [esi] [edi] value [eax] modify exact [];
-#pragma aux vm_vec_delta_ang "*" parm [esi] [edi] [eax] value [ax] modify exact [eax];
-#pragma aux vm_vec_delta_ang_norm "*" parm [esi] [edi] [eax] value [ax] modify exact [eax];
-#pragma aux vm_vec_ang_2_matrix "*" parm [edi] [esi] [eax] value [edi] modify exact [];
-#pragma aux vm_dist_to_plane "*" parm [esi] [ebx] [edi] value [eax] modify exact [eax];
-#pragma aux vm_extract_angles_matrix "*" parm [edi] [esi] value [edi] modify exact [];
-#pragma aux vm_vec_scale_add "*" parm [edi] [ebx] [esi] [ecx] value [edi] modify exact [];
-#pragma aux vm_vec_scale_add2 "*" parm [edi] [esi] [ecx] value [edi] modify exact [];
-
-#pragma aux vm_vec_normalized_dir "*" parm [edi] [esi] [ebx] value [ecx] modify exact [ecx];
-#pragma aux vm_vec_normalized_dir_quick "*" parm [edi] [esi] [ebx] value [ecx] modify exact [ecx];
-
-#pragma aux vm_extract_angles_vector "*" parm [edi] [esi] value [edi] modify exact [esi];
-#pragma aux vm_extract_angles_vector_normalized "*" parm [edi] [esi] value [edi] modify exact [];
+// ASCENT: the "pragma aux" lines that gave the registers of the assembly
+// functions are gone. The functions are C functions in vecmat.c.
+// vm_vec_dot, vm_vec_cross, vm_transpose and vm_copy_transpose were other
+// names for one assembly label. They are functions that call the long name.
+// vm_vec_delta_ang() normalizes its two vectors in place, as the assembly.
+// vm_vector_2_matrix_norm() was not assembled in vecmat.asm (V2MN_ENABLED
+// = 0) and is not in vecmat.c.
 
 /*
 	Questions:
@@ -523,5 +471,3 @@ fix vm_dist_to_plane(vms_vector *checkp,vms_vector *norm,vms_vector *planep);
 */
 
 #endif
-
-
