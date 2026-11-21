@@ -1631,7 +1631,9 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   the nearest color of the palette, so the frame stays 8-bit and the tint shows with
   both renderers. The cursor that holds an item and the cursor over the
   conversation window are not tinted. The port draws no cursor in the immersive
-  mode, so there is no hint there. Spread missiles (Burning Hands without a target)
+  mode; there the tinted cursor shows at the center of the view only while the
+  hint is on (checked in BANE, `-testpos 25,-1,235,0`, V in the script: the mark
+  shows in reach and not out of reach, both renderers). Spread missiles (Burning Hands without a target)
   and movement after the test are not predicted. A large body (the beetle, radius
   11.8) reaches through a thin wall: the swing touches it and the hint shows it.
   Checked in BANE (`-noattack`, `-objlog` line `combat: target hint`): long sword

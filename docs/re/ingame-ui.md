@@ -359,8 +359,10 @@ of the play screen has a warm red tint while the attack of the item in the hand
 would reach a hostile creature that it can hurt. The test is the attack code
 itself, see combat.md, C1. The tint is a remap of the cursor colors to the nearest
 palette colors, so it shows in the 8-bit frame of both renderers and over the
-upscaled interface pictures. The cursor that holds an item, the cursor over the
-conversation window and the immersive mode (no cursor) have no hint.
+upscaled interface pictures. The cursor that holds an item and the cursor over the
+conversation window have no hint. The immersive mode has no cursor: with the hint,
+the tinted cursor shows at the center of the view only while the attack would
+reach a creature (dtudisp.c, after `draw_cursor`).
 
 ## Input defect
 

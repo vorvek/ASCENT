@@ -1674,4 +1674,9 @@ void dtu_display_frame(void)
 	// cursor after the window (dtu_display_draw_cursor)
 	if (!Dtu_immersive && !dtu_dlg_is_open())
 		draw_cursor(mx, my);
+	// ASCENT: immersive mode has no cursor. With the target hint, the tinted
+	// cursor shows at the center of the view while an attack can reach a
+	// hostile creature, and nothing shows at other times.
+	else if (Dtu_immersive && !dtu_dlg_is_open() && View_dest_set && dtu_combat_target_hint())
+		draw_cursor(View_dest[0] + View_dest[2] / 2, View_dest[1] + View_dest[3] / 2);
 }
