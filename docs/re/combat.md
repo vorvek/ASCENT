@@ -1695,7 +1695,7 @@ With the option `-origobj` (dtuobj.c, 1 by default):
 | Setting | Rule of the executable (0) | Corrected rule (1) |
 |---|---|---|
 | `Dtu_fix_cant_break` | the keyword `cant_break` is ignored: every scenery object breaks (portals, coffins) | `cant_break` keeps the object whole |
-| `Dtu_fix_push_frame` | pushed scenery slows down in each frame (velocity / 2, x and z / 4) | once in each reference frame |
+| `Dtu_fix_push_frame` | pushed scenery slows down in each frame (velocity / 2, x and z / 4) | once in each reference frame, and always once in the frame of a push (the push gives 8 times the velocity of the mover, the slow down of that frame gives it back; without it a frame with no reference tick moved the scenery with 8 times the speed of the player) |
 
 ## C4. Test options
 

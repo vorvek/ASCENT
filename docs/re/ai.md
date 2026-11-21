@@ -658,10 +658,29 @@ minus 1, so the last segment is never marked.
 - Effect: scenery velocity x and z (+0xFC, +0x104) = 8 times the velocity of
   the mover, thrust x and z (+0x108, +0x110) = 8 times its thrust; vel.y
   stays; movement type +0x0B = 1. The mover goes back to its start position
-  (0x30F478). The player does this only until it has hit the same object 9
-  times in a row (counter 0x1452F1, object 0x1452F5). Then
-  `collide_two_objects` 0x29455. No mass is used and the push does not break
-  the scenery.
+  (0x30F478). Then `collide_two_objects` 0x29455. No mass is used and the
+  push does not break the scenery.
+- The player (0x9E53D to 0x9E766), verified: the push happens at each hit.
+  The counter 0x1452F1 (hits of the object 0x1452F5 in a row, cleared by a
+  frame whose move is free, 0x9E423) only decides whether the position goes
+  back to the start (below 9 hits, 0x9E598); the position of a try is the
+  start anyway, so the count changes nothing. (Correction: an earlier
+  version of this note said the push stops after 9 hits.) The move loop goes
+  on with the next try (up to 8, section 4.5 of physics.md) and the object is
+  not put into the ignore list: scenery stops the player. The player thrust
+  is 0 at that time (pcons.c clears it before the move), so the scenery gets
+  no thrust. The ignore list gets the object only after more than 30 hits of
+  the same object in a row (0x14534F, object 0x14534B, 0x9E11A) and when the
+  end point of the try is farther from it than the start, so that a body
+  inside of it can get out. 0x9E54B counts a hit only when `rad2` of the
+  body (0x30F4DC) is not below `hit_pnt.y` (a compare of a size with a
+  coordinate). A frame with no object hit clears the count (0x9E797).
+- The velocity of the push: in 0x9FE68 the velocity is halved and x, z are
+  shifted right by 2 before the move, so in the frame of the push the
+  scenery moves with the velocity of the mover. Then thrust and drag
+  (0x6CB68 with the thrust as the acceleration, no mass) with thrust 0 and
+  the drag of the object (0 for the scenery of the level files), so the
+  velocity goes down by 8 times in each frame.
 - The move of scenery with movement type 1 is 0x9FE68, each frame: the
   velocity is halved, x and z are shifted right by 2, gravity 0x6C662, then
   fvi. Movement type goes back to 0 on fvi result 3, or on result 1 with the
@@ -701,7 +720,14 @@ minus 1, so the last segment is never marked.
   the spell cases decide (combat.md B3). **Code.**
 
 The port: `dtu_break_dressing()` and the push in `dtuobj.c` (settings
-`Dtu_fix_cant_break` and `Dtu_fix_push_frame`, see combat.md C3). Of the two
+`Dtu_fix_cant_break` and `Dtu_fix_push_frame`, see combat.md C3). The move
+of the player (`dtu_player_physics_sim`, physics.c) stops at scenery and
+keeps the count of 0x14534F (the port counts each hit). Setup 1.0 of the
+port let the player go through the scenery after the hit and stopped the
+push after 9 hits; at frame rates above 21 the push frame often had no slow
+down, so the scenery moved with 8 times the speed of the player. Measured
+(YPINN, chair obj 5 and table obj 3, strength 17, walk of 0.25 s into the
+chair): see physics.md section 10. Of the two
 level special cases the port has only the end of the game of level 0x20
 object 3: the credits movie (movies.md), without the light and the sounds.
 

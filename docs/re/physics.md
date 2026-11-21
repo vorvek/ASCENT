@@ -236,7 +236,10 @@ when the length of the velocity is 0x72 or less.
   back.
 - Results 2 and 4 (object): `pos` = start position, `collide_two_objects()`. An object
   of type 0x12 is pushed when a value of the player structure (0x1D33D3) is above a
-  value of the object type.
+  value of the object type. The loop goes on with the next try and the object is not
+  ignored, so scenery stops the player like a wall (ai.md, "Push of scenery"). An
+  object is ignored only after more than 30 hits in a row, for a try that goes away
+  from it (0x9E11A).
 
 After the loop: 0x69FB8 and 0x3D2BD (not read. Probably the segment of the object).
 
@@ -481,6 +484,22 @@ Other results: the walk speed limit is 49.33 and the run speed limit 74.0. In DR
 player stops at a wall after 80 units and moves 0.3 forward and back while the key is
 down (the bounce of 4.5). In BANE a wall at z 187 stops the player and lets the player pass after about 0.5 s (probably a door that opens at the hit). In YPINN
 (height 20) a jump ends at 3.0 at the ceiling. In PRISON (height 30) it goes to 7.5.
+
+Push of scenery (YPINN, `-testpos -80,-2.46,33,0`, `-testmove
+wait:300ms,forward:600ms,wait:3000ms`: a walk of 0.6 s into the chair obj 5 at z 48
+(`pushable` 1), the table obj 3 at z 59 (`pushable` 16) behind it, strength 17). End
+z of the chair, the table and the player:
+
+| Frames per second | Setup 1.0 | Now, Improved physics on | Now, off |
+|---|---|---|---|
+| 30 | 63.2, 72.1, 54.0 | 56.4, 62.2, 45.4 | 55.3, 62.2, 47.0 |
+| 60 | 67.0, 71.8, 53.6 | 56.3, 63.3, 47.1 | 56.0, 63.3, 48.2 |
+| 144 | 60.9, 72.4, 53.5 | 59.3, 65.2, 50.0 | 59.3, 65.8, 50.6 |
+
+Setup 1.0 let the player walk through the chair (player end 54 > chair start 48)
+and pushed the table 13 units. Now the chair stops the player and moves 8 to 11
+units ahead of it. How far the executable moves the chair in this test was not
+measured (no run of DTUGAME.EXE).
 
 ## 11. Creatures (pmon.c, 0x9F153)
 

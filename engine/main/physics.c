@@ -1297,6 +1297,7 @@ set_thrust_from_velocity(object *obj)
 #include "gameseg.h"
 #include "render.h"
 #include "dtuobj.h"
+#include "dtugame.h"		// ASCENT: Dtu_objects_enabled
 #include "gauges.h"
 #include "player.h"
 #include "controls.h"
@@ -2434,6 +2435,11 @@ static int dtu_improved_step(object *obj,dtu_body *body,fvi_info *hit)
 	return 1;
 }
 
+// 0x14534B, 0x14534F: the object that stopped the player in the last
+// tries, and the number of its hits in a row.
+static int Dtu_block_obj = -1;
+static int Dtu_block_hits = 0;
+
 int dtu_player_physics_sim(object *obj)
 {
 	static fix levitate_acc = 0;
@@ -2441,7 +2447,7 @@ int dtu_player_physics_sim(object *obj)
 	int objnum = obj-Objects;
 	fix sim_time = FrameTime;
 	vms_vector accel,start_pos,frame_vec,new_pos,p1;
-	int floor_type,tries = 0,fate;
+	int floor_type,tries = 0,fate,hit_an_object = 0;
 	int ignore_obj_list[MAX_IGNORE_OBJS],n_ignore_objs = 0;
 	fvi_query fq;
 	fvi_info hit;
@@ -2602,6 +2608,16 @@ int dtu_player_physics_sim(object *obj)
 		p1.z = obj->pos.z + fixmul(frame_vec.z,0x13333);
 
 		ignore_obj_list[n_ignore_objs] = -1;
+
+		// 0x9E11A: after more than 30 hits of the same object in a row the
+		// object is ignored when the move goes away from it, so that a
+		// body inside of it can get out.
+		if (Dtu_block_obj >= 0 && Dtu_block_hits > 30 && Dtu_block_obj <= Highest_object_index &&
+				vm_vec_dist(&Objects[Dtu_block_obj].pos,&new_pos) > vm_vec_dist(&Objects[Dtu_block_obj].pos,&start_pos) &&
+				n_ignore_objs < MAX_IGNORE_OBJS-1) {
+			ignore_obj_list[n_ignore_objs++] = Dtu_block_obj;
+			ignore_obj_list[n_ignore_objs] = -1;
+		}
 
 		fq.p0 = &obj->pos;
 		fq.p1 = &p1;
@@ -2769,6 +2785,18 @@ int dtu_player_physics_sim(object *obj)
 			object *other = &Objects[hit.hit_object];
 
 			obj->pos = start_pos;
+			hit_an_object = 1;
+
+			// 0x9E54B: the hits of the same object in a row (0x14534B,
+			// 0x14534F). The executable counts a hit only when rad2 of the
+			// body is not below hit_pnt.y (a compare of a size with a
+			// coordinate); the port counts each hit.
+			if (hit.hit_object != Dtu_block_obj) {
+				Dtu_block_obj = hit.hit_object;
+				Dtu_block_hits = 0;
+			}
+			Dtu_block_hits++;
+
 			collide_two_objects(obj,other,&hit.hit_pnt);
 
 			if (obj->flags & OF_SHOULD_BE_DEAD)
@@ -2778,6 +2806,13 @@ int dtu_player_physics_sim(object *obj)
 			// other objects after the collision (an item that is taken).
 			if (other->type == OBJ_ROBOT || other->type == OBJ_PLAYER || other->type == OBJ_CNTRLCEN)
 				break;
+			// ASCENT: scenery stops the player too (0x9E5A1: the player
+			// goes back to the start of the frame and the move is tried
+			// again, the object is not ignored). The push of 0x9E5BE has
+			// moved it. Before this the player went through the scenery
+			// and pushed it from the inside in each frame.
+			if (other->type == OBJ_DRESSING && Dtu_objects_enabled)
+				continue;
 			if (n_ignore_objs < MAX_IGNORE_OBJS-1)
 				ignore_obj_list[n_ignore_objs++] = hit.hit_object;
 		}
@@ -2789,6 +2824,12 @@ int dtu_player_physics_sim(object *obj)
 	// the frame time. The executable keeps this velocity when the jump
 	// ends in this frame: the player is fast after a jump at a high frame
 	// rate. The corrected rule keeps the velocity of the reference frame.
+	// 0x9E797: a frame with no hit of an object ends the row of hits.
+	if (!hit_an_object) {
+		Dtu_block_obj = -1;
+		Dtu_block_hits = 0;
+	}
+
 	if (Dtu_jump_set_vel && !(Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_exit)
 		vm_vec_scale(&pi->velocity,fixdiv(sim_time,DTU_REF_FRAMETIME));
 

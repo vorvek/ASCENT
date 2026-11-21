@@ -226,6 +226,7 @@ static dtu_missile Missile[MAX_OBJECTS];
 // pcons.c 0x9FE68 moves it.
 static ubyte Dressing_fall[MAX_OBJECTS];
 static int Dressing_sig[MAX_OBJECTS];
+static ubyte Dressing_pushed[MAX_OBJECTS];	// pushed in this frame (Dtu_fix_push_frame)
 // The push of scenery depends on the frame rate: 0x9FE68 halves the
 // velocity and divides x and z by 4 in each frame. 1 (default): once in
 // each reference frame (3/64 second). 0 (-origobj): in each frame.
@@ -263,6 +264,7 @@ static void morale_check(object *obj);
 static void player_dies(object *player,object *attacker);
 static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 static item_info *item_table_entry(int type,int id);
+static int dressing_pushable(object *d);
 static fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
 static fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
 static fix spell_hit(int spell,object *target,object *attacker);
@@ -1031,6 +1033,15 @@ void dtu_objects_level_setup(void)
 		dtu_obj_log("level %s (number %d): %d creatures, %d dressing, %d misc, %d armor, %d spell, %d weapon objects, brain %s",
 			Gamesave_current_filename,Current_level_num,n[OBJ_ROBOT],n[OBJ_DRESSING],n[OBJ_MISC],n[OBJ_ARMOR],n[OBJ_SPELL],n[OBJ_WEAPON],
 			Brain ? (Dtu_fix_brain ? "loaded, not used" : "used") : "none");
+		for (i=0;i<=Highest_object_index;i++)
+			if (Objects[i].type == OBJ_DRESSING)
+				dtu_obj_log("obj %d %s: dressing %d pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f",
+					i,dtu_object_name(&Objects[i]),Objects[i].id,dressing_pushable(&Objects[i]),
+					f2fl(Objects[i].mtype.phys_info.mass),f2fl(Objects[i].mtype.phys_info.drag),f2fl(Objects[i].size),
+					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
+			else if (Objects[i].type == OBJ_MISC || Objects[i].type == OBJ_ARMOR || Objects[i].type == OBJ_SPELL || Objects[i].type == OBJ_WEAPON)
+				dtu_obj_log("obj %d %s: item type %d id %d seg %d pos %.2f %.2f %.2f",i,dtu_object_name(&Objects[i]),Objects[i].type,Objects[i].id,
+					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
 		for (i=0;i<=Highest_object_index;i++)
 			if (Objects[i].type == OBJ_ROBOT)
 				dtu_obj_log("obj %d %s: hp %d hostile %d behavior 0x%x attack %d weapon %d spell_level %d door %d seg %d contains %d/%d/%d script %d model %d size %.2f pos %.2f %.2f %.2f",
@@ -5585,9 +5596,6 @@ static void pick_up_item(object *player,object *item)
 //------------------------------------------------------------------------
 // Pushed scenery (pmon.c 0x9FA41, pcons.c 0x9E5BE, the move 0x9FE68)
 
-static object *Push_last = NULL;
-static int Push_count = 0;
-
 static int dressing_pushable(object *d)
 {
 	int p;
@@ -5613,6 +5621,7 @@ static void push_dressing(object *mover,object *d,int strength)
 	pi->thrust.z = 8 * mover->mtype.phys_info.thrust.z;
 	Dressing_fall[n] = 1;
 	Dressing_sig[n] = d->signature;
+	Dressing_pushed[n] = 1;
 	dtu_obj_log("push: obj %d %s (strength %d) pushes obj %d %s (pushable %d), velocity %.1f %.1f",(int)(mover-Objects),
 		dtu_object_name(mover),strength,n,dtu_object_name(d),dressing_pushable(d),f2fl(pi->velocity.x),f2fl(pi->velocity.z));
 }
@@ -5637,7 +5646,7 @@ static void dressing_move_frame(void)
 		fvi_query fq;
 		fvi_info hit;
 		fix speed;
-		int k, fate;
+		int k, fate, n_ticks;
 
 		if (!Dressing_fall[i])
 			continue;
@@ -5645,7 +5654,18 @@ static void dressing_move_frame(void)
 			Dressing_fall[i] = 0;
 			continue;
 		}
-		for (k=0;k<ticks;k++) {
+		// ASCENT: Dtu_fix_push_frame. The push gives 8 times the velocity
+		// of the mover, and the slow down before the move of the frame
+		// divides it by 8, so that the scenery moves with the mover in
+		// that frame. Then the velocity goes down by 8 times in each
+		// reference frame. A frame of a push has that one slow down at each
+		// frame rate (without it, a frame that has no reference tick moved
+		// the scenery with 8 times the velocity of the mover).
+		n_ticks = ticks;
+		if (Dtu_fix_push_frame && Dressing_pushed[i])
+			n_ticks = 1;
+		Dressing_pushed[i] = 0;
+		for (k=0;k<n_ticks;k++) {
 			pi->velocity.x = (pi->velocity.x / 2) >> 2;
 			pi->velocity.z = (pi->velocity.z / 2) >> 2;
 			pi->velocity.y /= 2;
@@ -5731,16 +5751,12 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 				break;
 			case OBJ_DRESSING:
 				// 0x9E5BE (pcons.c): the player pushes scenery when the
-				// strength (P+0xB7) is above "pushable"; the push stops after
-				// 9 hits of the same object in a row (0x1452F1, 0x1452F5)
-				if (b == Push_last)
-					Push_count++;
-				else {
-					Push_last = b;
-					Push_count = 1;
-				}
-				if (Push_count < 9)
-					push_dressing(a,b,Dtu_char.created ? Dtu_char.pa.strength : 18);
+				// strength (P+0xB7) is above "pushable", at each hit. The
+				// count of 0x1452F1 (hits of the object 0x1452F5 in a row)
+				// decides only whether the player goes back to the start of
+				// the frame (0x9E598), not the push. The player stays out
+				// of the scenery (physics.c).
+				push_dressing(a,b,Dtu_char.created ? Dtu_char.pa.strength : 18);
 				break;
 		}
 	}
