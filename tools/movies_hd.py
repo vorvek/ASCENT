@@ -39,6 +39,17 @@ HD_DIR = os.path.join(ROOT, "gamedata", "hd")
 GAME_DIRS = [os.path.join(ROOT, "gamedata", "cd", "DTU"), "E:/UNDAMONTAN/DTU"]
 MOVIES = ["LOGO22S.MVE", "INTRO2.MVE", "TLOGOS.MVE", "FLAM1.MVE", "CREDITV1.MVE"]
 
+# The upscale method of each movie. "esrgan": Real-ESRGAN (the model of
+# --model). "gauss": a plain resample with a gaussian filter (ffmpeg
+# swscale, flags=gauss), soft and without invented detail. The two company
+# logos (LOGO22S: Interplay, TLOGOS: TSR) are rendered 3D pictures with fine
+# noise, and Real-ESRGAN turns them into hard, smeared shapes.
+METHOD = {"LOGO22S.MVE": "gauss", "TLOGOS.MVE": "gauss"}
+# After the gaussian resample, a gaussian blur with this sigma (in output
+# pixels, about 0.4 source pixels at 4x) removes the dither grain of the
+# 256-color pictures. The grain also made the MPEG-1 files 4 to 8 times larger.
+GAUSS_BLUR_SIGMA = 1.5
+
 ESRGAN_URL = ("https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/"
               "realesrgan-ncnn-vulkan-20220424-windows.zip")
 ESRGAN_SHA256 = "abc02804e17982a3be33675e4d471e91ea374e65b70167abc09e31acb412802d"
@@ -128,10 +139,16 @@ def make(movie, args, ffmpeg, esrgan):
     if n_in != count:
         sys.exit("%s: ffmpeg wrote %d pictures, the file has %d" % (movie, n_in, count))
     t1 = time.time()
-    run([esrgan, "-i", fin, "-o", fup, "-n", args.model, "-s", str(args.scale), "-f", "png"])
+    method = args.method or METHOD.get(movie, "esrgan")
+    if method == "gauss":
+        run([ffmpeg, "-v", "error", "-y", "-start_number", "0", "-i", os.path.join(fin, "%05d.png"),
+             "-vf", "scale=iw*%d:ih*%d:flags=gauss,gblur=sigma=%g" % (args.scale, args.scale, GAUSS_BLUR_SIGMA),
+             "-start_number", "0", os.path.join(fup, "%05d.png")])
+    else:
+        run([esrgan, "-i", fin, "-o", fup, "-n", args.model, "-s", str(args.scale), "-f", "png"])
     n_up = len(os.listdir(fup))
     if n_up != count:
-        sys.exit("%s: Real-ESRGAN wrote %d pictures of %d" % (movie, n_up, count))
+        sys.exit("%s: the upscale (%s) wrote %d pictures of %d" % (movie, method, n_up, count))
     t2 = time.time()
     # One MPEG-1 picture for each MVE picture. The rate in the stream (30) is
     # not used: the player takes the timing from the MVE file.
@@ -141,9 +158,9 @@ def make(movie, args, ffmpeg, esrgan):
     t3 = time.time()
     if not args.keep:
         shutil.rmtree(work, ignore_errors=True)
-    print("%s: %d pictures, decode %.1f s, upscale %.1f s (%.3f s per picture), encode %.1f s; "
+    print("%s (%s): %d pictures, decode %.1f s, upscale %.1f s (%.3f s per picture), encode %.1f s; "
           "%s %.1f MB -> %s %.1f MB" % (
-              movie, count, t1 - t0, t2 - t1, (t2 - t1) / max(count, 1), t3 - t2,
+              movie, method, count, t1 - t0, t2 - t1, (t2 - t1) / max(count, 1), t3 - t2,
               movie, os.path.getsize(src) / 1e6, os.path.basename(out), os.path.getsize(out) / 1e6))
 
 
@@ -155,6 +172,8 @@ def main():
     ap.add_argument("--game-dir", action="append", default=None, help="directory of the MVE files")
     ap.add_argument("--model", default="realesrgan-x4plus",
                     help="Real-ESRGAN model (realesrgan-x4plus, realesr-animevideov3, ...)")
+    ap.add_argument("--method", choices=["esrgan", "gauss"],
+                    help="the upscale method for all movies given (default: METHOD of each movie)")
     ap.add_argument("--scale", type=int, default=4)
     ap.add_argument("--quality", type=int, default=2, help="MPEG-1 quantizer, 2 (best) to 31")
     ap.add_argument("--keep", action="store_true", help="keep the PNG pictures")

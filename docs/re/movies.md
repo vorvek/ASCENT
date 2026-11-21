@@ -140,5 +140,10 @@ runs in place of the normal break **V**:
   as the original: 1:1 in the middle of a 640x480 frame.
 - Upscaled pictures: see dtumovie.h (`-hddir`, `-nohdmovies`) and
   `tools/movies_hd.py`. The sound and the timing stay those of the MVE file.
+  `INTRO2`, `FLAM1` and `CREDITV1` are upscaled with Real-ESRGAN x4plus. The
+  two company logos, `LOGO22S` (Interplay) and `TLOGOS` (TSR), use a gaussian
+  resample (ffmpeg `flags=gauss`) and a gaussian blur of sigma 1.5 output
+  pixels: Real-ESRGAN made hard, smeared shapes of their rendered 3D
+  pictures, and without the blur the dither grain of the 256 colors stayed.
 - `-nomovies` plays no movie. `-playmovie NAME [-movieframes N]
   [-movieshot FILE.ppm] [-moviefast]` is the test option.
