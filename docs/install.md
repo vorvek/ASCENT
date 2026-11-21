@@ -1,6 +1,6 @@
 # Installer and downloadable content
 
-The setup program (`installer/ascent.iss`, Inno Setup 6.5 or later) installs ASCENT
+The setup program (`installer/ascent.iss`, Inno Setup 6.5 or later) installs ASCENT-DTU
 for one user, makes the data folder from the original game files, gets the files of
 the 1.3 patch, and can download the upscaled content.
 `installer/build.sh` builds it.
@@ -18,7 +18,7 @@ The `DTU` folder of the disc has 519 files and the subfolder `STUFF` (121 files)
 | `STUFF/` | WAV, PCX, IFF, TGA, BMP files. The game does not read them. |
 | `*.EXE`, `*.BAT`, `*.386`, `DOS4GW.EXE` | DOS programs and drivers. |
 | `*.BNK`, `*.HMP` | FM sound banks and a MIDI song of the DOS sound drivers. |
-| `*.ICO`, `*.INI`, `*.CFG`, `*.CFF`, `KCFG.*` | Setup and configuration files of the DOS game. |
+| `*.ICO` (but `DTU.ICO`), `*.INI`, `*.CFG`, `*.CFF`, `KCFG.*` | Setup and configuration files of the DOS game. |
 | `INSTALL.DAT`, `SETUP.DAT`, `SETUPE.TEX`, `README.TXT`, `DIGITEST.RAW` | Install program, setup program, sound test. |
 | `*.LVV` | The 4 `.LVV` files are equal to the `.LV2` files of the 1.3 patch. The port reads `.LV2`. |
 
@@ -38,6 +38,10 @@ The files that the port reads (from the code: `dtu_load_file`, `dtu_find_file`):
 | `FEBGND`, `FESEQ`, `FESTREAM`, `FETXTE`, `WERDZ` (`.DAT` and `.JRG`) | Front end art, sounds, speech, text. |
 | `GABE.DAT`, `GABE.RLH` | Dialog texts (English). |
 | `DTU.MSN`, `DTU.WRP`, `DISCO.JRG`, `DTU.SNG`, `DTUE.TEX`, `IPHOF.TXT`, `PALETTE.256`, `FNT*.FNT` | Mission, music tables, texts, palette, fonts. |
+
+The import copies `DTU.ICO`, the icon of the game (`formats/misc.md`). The game window
+uses it, and the setup program uses it for the shortcuts and the uninstall entry. The
+setup program and the port do not contain the icon.
 
 The import also copies the files that the port does not read today but that are game
 data: the other languages (`FETXT?.*`, `GAB?.*`, `DTU?.TEX`), `*.EOI`, `*.THN`,
@@ -98,7 +102,7 @@ is found) or an extracted patch folder, and checks each file.
   the player stay in the current folder, as before.
 - Without `-datadir` (installed game): the data folder is `data` next to the executable
   (`SDL_GetBasePath`), and the files of the player go to the folder of the user
-  (`SDL_GetPrefPath`, `%APPDATA%\ASCENT`): `ascent.cfg`, `SG<n>.sg`, the `SAVE`
+  (`SDL_GetPrefPath`, `%APPDATA%\ASCENT-DTU`): `ascent.cfg`, `SG<n>.sg`, the `SAVE`
   folder of the level states, `geldor.dat` and `TheStore.<n>`. If the data folder has
   no `DTU.MSN`, a message box says so. `Error()` shows a message box too.
 - `-userdir DIR` changes the folder of the user.
@@ -230,7 +234,7 @@ limit per address; a provider budget alert on the egress of the VM covers the co
 
 ## ascent-content
 
-The content tool is installed with the game ("ASCENT Content" in the Start menu).
+The content tool is installed with the game ("ASCENT-DTU Content" in the Start menu).
 
 - Without a command it opens a window: the list of the packs of the server and of the
   installed packs (version installed, version available, size, status), and the buttons
@@ -246,7 +250,7 @@ The content tool is installed with the game ("ASCENT Content" in the Start menu)
 
 ## The setup program
 
-`installer/build.sh [CONTENT_DIR]` builds `build-rel/setup/ascent-setup-<version>.exe`
+`installer/build.sh [CONTENT_DIR]` builds `build-rel/setup/ascent-dtu-setup-<version>.exe`
 (the download sizes come from `CONTENT_DIR/manifest.txt`).
 
 The pages: installation folder (default `%LOCALAPPDATA%\Programs\ASCENT`, no
@@ -257,11 +261,11 @@ checked; desktop shortcut; "Upscaled textures and interface (download, about 493
 checked; "Upscaled movies (download, about 463 MB)", unchecked because of the size),
 ready, the progress page of the patch download and the import (a failure stops Setup
 with the message of the tool), the content downloads (a failure is a warning: the game
-works without them), and the last page with "Play ASCENT".
+works without them), and the last page with "Play ASCENT-DTU".
 
 Command line: `/SOURCE=`, `/PATCH=`, `/CONTENTURL=`, and `/DIR=`,
 `/TASKS=`, `/VERYSILENT`, `/SUPPRESSMSGBOXES`, `/LOG=`.
 
 The uninstaller (Windows "Installed apps") removes the program, `data`, `hd` and
-`content`. It asks before it removes `%APPDATA%\ASCENT` (saves and settings); the
+`content`. It asks before it removes `%APPDATA%\ASCENT-DTU` (saves and settings); the
 default answer, also in a silent uninstall, keeps them.

@@ -1,11 +1,11 @@
-# ASCENT
+# ASCENT-DTU
 
-ASCENT is a source port of Descent to Undermountain (Interplay, 1997).
+ASCENT-DTU is a source port of Descent to Undermountain (Interplay, 1997).
 
 The original game runs on DOS and uses a modified Descent engine. It had a troubled development, not helped by using an engine meant for spaceships flying mining tunnels instead of
 dungeon crawling humanoids. Version 1.3 of the game still has many defects.
 
-ASCENT aims to make the game playable in modern Windows, alongside bugfixes and optional improvements.
+ASCENT-DTU aims to make the game playable in modern Windows, alongside bugfixes and optional improvements.
 
 ## New features
 
@@ -29,7 +29,7 @@ The server they download this content from uses Cloudflare.
 
 Some internet providers block Cloudflare addresses at some times. For example, providers in Spain block them during football matches.
 If a download stops with a timeout, try again later or use a VPN.
-Then start "ASCENT Content" from the Start menu to download the files that are missing.
+Then start "ASCENT-DTU Content" from the Start menu to download the files that are missing.
 
 The upscaled files are not necessary to play. The 1.3 patch is also available at [The Patches Scrolls](https://www.patches-scrolls.de/patch/1215/7/41518/download).
 

@@ -40,6 +40,78 @@ void plat_set_start_hidden(int hidden)
 	Start_hidden = (hidden != 0);
 }
 
+// ASCENT: the window icon, a Windows .ICO file (DTU.ICO of the game disc,
+// docs/formats/misc.md). The image with the most colors is used. The file
+// has BMP images without compression (1, 4 or 8 bits for each pixel, rows
+// from the bottom up) and a mask of 1 bit for each pixel (1: transparent).
+static char Icon_path[1024];
+
+void plat_set_window_icon_file(const char *path)
+{
+	SDL_snprintf(Icon_path, sizeof(Icon_path), "%s", path ? path : "");
+}
+
+static unsigned rd16(const Uint8 *p) { return p[0] | (p[1] << 8); }
+static Uint32 rd32(const Uint8 *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((Uint32) p[3] << 24); }
+
+static void apply_window_icon(void)
+{
+	size_t size;
+	Uint8 *d;
+	unsigned n, i, best = 0, best_bpp = 0;
+	SDL_Surface *s;
+
+	if (!Icon_path[0] || !Window)
+		return;
+	d = SDL_LoadFile(Icon_path, &size);
+	if (!d)
+		return;
+	n = size >= 6 && rd16(d) == 0 && rd16(d + 2) == 1 ? rd16(d + 4) : 0;
+	for (i = 0; i < n && 6 + 16 * (i + 1) <= size; i++) {
+		Uint32 off = rd32(d + 6 + 16 * i + 12);
+		unsigned bpp;
+		if (off + 40 > size || rd32(d + off) != 40 || rd32(d + off + 16) != 0)
+			continue;
+		bpp = rd16(d + off + 14);
+		if ((bpp == 1 || bpp == 4 || bpp == 8) && bpp > best_bpp) {
+			best_bpp = bpp;
+			best = i;
+		}
+	}
+	if (best_bpp) {
+		Uint32 off = rd32(d + 6 + 16 * best + 12);
+		int w = (int) rd32(d + off + 4), h = (int) rd32(d + off + 8) / 2;
+		unsigned ncol = rd32(d + off + 32) ? rd32(d + off + 32) : 1u << best_bpp;
+		const Uint8 *pal = d + off + 40;
+		const Uint8 *xor_rows = pal + 4 * ncol;
+		size_t xor_pitch = ((size_t) w * best_bpp + 31) / 32 * 4;
+		size_t and_pitch = ((size_t) w + 31) / 32 * 4;
+		const Uint8 *and_rows = xor_rows + xor_pitch * h;
+
+		if (w > 0 && w <= 256 && h > 0 && h <= 256 && ncol <= 256 &&
+				(size_t) (and_rows - d) + and_pitch * h <= size &&
+				(s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ARGB8888)) != NULL) {
+			int x, y;
+			for (y = 0; y < h; y++) {
+				const Uint8 *xr = xor_rows + xor_pitch * (h - 1 - y);
+				const Uint8 *ar = and_rows + and_pitch * (h - 1 - y);
+				Uint32 *out = (Uint32 *) ((Uint8 *) s->pixels + s->pitch * y);
+				for (x = 0; x < w; x++) {
+					unsigned c, bit = x * best_bpp;
+					const Uint8 *q;
+					c = (xr[bit / 8] >> (8 - best_bpp - bit % 8)) & ((1u << best_bpp) - 1);
+					q = pal + 4 * (c < ncol ? c : 0);		// blue, green, red, 0
+					out[x] = ((ar[x / 8] >> (7 - x % 8)) & 1) ? 0 :
+						0xFF000000u | ((Uint32) q[2] << 16) | ((Uint32) q[1] << 8) | q[0];
+				}
+			}
+			SDL_SetWindowIcon(Window, s);
+			SDL_DestroySurface(s);
+		}
+	}
+	SDL_free(d);
+}
+
 int plat_set_frame_size(int w, int h)
 {
 	if (Use_gl) {
@@ -158,6 +230,7 @@ int plat_init(const char *title, int w, int h, int scale)
 
 	if (open_gl_window(title, Win_w, Win_h) == 0) {
 		Use_gl = 1;
+		apply_window_icon();
 		// The game draws its own cursor.
 		SDL_HideCursor();
 		return plat_set_frame_size(w, h);
@@ -170,6 +243,7 @@ int plat_init(const char *title, int w, int h, int scale)
 		return -1;
 	if (!Start_hidden && !Start_windowed)
 		enter_borderless();
+	apply_window_icon();
 	SDL_SetRenderVSync(Renderer, 1);
 	SDL_HideCursor();
 	return plat_set_frame_size(w, h);

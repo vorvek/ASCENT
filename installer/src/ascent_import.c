@@ -108,6 +108,10 @@ static int excluded(const char *name)
 	const char *e = inst_ext(name);
 	int i;
 
+	// The icon of the game: the window, the shortcuts and the uninstall
+	// entry use it.
+	if (!inst_stricmp(name, "DTU.ICO"))
+		return 0;
 	for (i = 0; ext[i]; i++)
 		if (!inst_stricmp(e, ext[i]))
 			return 1;

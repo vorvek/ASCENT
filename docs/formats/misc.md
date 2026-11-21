@@ -234,3 +234,28 @@ Verified in the files and in the code: 0xAEEE8 reads the file of the language
 (0x1456F8) from the table 0x1457AB, which has no entry for English (0): the English
 names are those of the code, and `KCFG.ENG` is not read. The port uses the names of
 the code (`docs/re/controls.md`).
+
+## DTU.ICO: the icon of the game
+
+On the disc (`DTU\DTU.ICO`, 2998 bytes). The installed game in `E:\UNDAMONTAN\DTU` does
+not have it. A Windows icon file. Verified in the file:
+
+| Offset | Size | Value |
+|---|---|---|
+| 0 | 2 | 0 (reserved) |
+| 2 | 2 | 1 (icon) |
+| 4 | 2 | 2 (number of images) |
+| 6 | 16 for each image | width 32, height 32, colors (16, then 0 for 256), reserved 0, planes 0, bits 0, size in bytes, offset of the image |
+
+| Image | Offset | Size | BITMAPINFOHEADER |
+|---|---|---|---|
+| 0 | 38 | 744 | 40 bytes, 32 x 64 (the image and the mask), 1 plane, 4 bits for each pixel, no compression |
+| 1 | 782 | 2216 | 40 bytes, 32 x 64, 1 plane, 8 bits for each pixel, no compression |
+
+After the header: the palette (16 or 256 entries of blue, green, red, 0), the image
+(rows from the bottom up, each row a multiple of 4 bytes: 16 or 32 bytes), then the
+mask (1 bit for each pixel, 1 is transparent, rows of 4 bytes from the bottom up). The
+sizes add up: 40 + 64 + 512 + 128 = 744 and 40 + 1024 + 1024 + 128 = 2216.
+
+The port (`apply_window_icon`, `engine/platform/video.c`) uses the image with the most
+colors for the game window.

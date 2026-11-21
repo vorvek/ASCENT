@@ -5,7 +5,7 @@
 #
 # 1. the release build (CMake preset "release", folder build-rel)
 # 2. "cmake --install" into build-rel/stage
-# 3. ISCC with installer/ascent.iss: build-rel/setup/ascent-setup-<version>.exe
+# 3. ISCC with installer/ascent.iss: build-rel/setup/ascent-dtu-setup-<version>.exe
 #
 # CONTENT_DIR (default gamedata/content) is the folder of the content packs
 # (tools/content_pack.py). Its manifest.txt gives the download sizes that

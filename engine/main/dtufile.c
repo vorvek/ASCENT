@@ -75,7 +75,7 @@ static int dtu_dir_exists(const char *path)
 
 static void dtu_error_box(char *msg)
 {
-	plat_message_box("ASCENT", msg);
+	plat_message_box("ASCENT-DTU", msg);
 }
 
 void dtu_init_dirs(void)
@@ -104,7 +104,7 @@ void dtu_init_dirs(void)
 			dtu_add_data_dir(path);
 		} else
 			Dtu_install_dir[0] = 0;
-		if (!plat_pref_dir("ASCENT", Dtu_user_dir, sizeof(Dtu_user_dir)))
+		if (!plat_pref_dir("ASCENT-DTU", Dtu_user_dir, sizeof(Dtu_user_dir)))
 			Dtu_user_dir[0] = 0;
 		set_error_func(dtu_error_box);		// the release build has no console
 		if (!dtu_find_file("DTU.MSN", path, sizeof(path))) {
@@ -116,7 +116,7 @@ void dtu_init_dirs(void)
 			if (FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"))
 				fprintf(stderr, "%s\n", msg);
 			else
-				plat_message_box("ASCENT", msg);
+				plat_message_box("ASCENT-DTU", msg);
 			exit(1);
 		}
 	}

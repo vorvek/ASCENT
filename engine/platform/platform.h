@@ -218,6 +218,9 @@ void plat_set_start_windowed(int windowed);
 // A hidden window for automated runs (tests). It is not full screen and
 // does not take the focus. Call it before plat_init.
 void plat_set_start_hidden(int hidden);
+// The window icon: a Windows .ICO file (DTU.ICO of the game disc). NULL or
+// a file that cannot be read: the default icon. Call it before plat_init.
+void plat_set_window_icon_file(const char *path);
 // Send silence to the audio device (the mixer still runs). Automated test
 // runs and the option -mute use it. It can be called before the audio init.
 void plat_audio_set_muted(int muted);

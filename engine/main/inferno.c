@@ -650,6 +650,7 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include <time.h>
 
 #include "platform.h"
+#include "dtufile.h"
 #include "gr.h"
 #ifdef EDITOR
 #include "ui.h"
@@ -1058,7 +1059,7 @@ static int dtu_run_level(char *level_name)
 	plat_set_start_hidden(FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
 	// ASCENT: an automated run (a test) has no sound output.
 	plat_audio_set_muted(FindArg("-mute") || FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
-	if (plat_init("ASCENT", Dtu_hires ? 640 : 320, Dtu_hires ? 480 : 200, Dtu_hires ? 2 : 3) != 0)
+	if (plat_init("ASCENT-DTU", Dtu_hires ? 640 : 320, Dtu_hires ? 480 : 200, Dtu_hires ? 2 : 3) != 0)
 		Error("Cannot open the window");
 	atexit(plat_shutdown);
 
@@ -1212,6 +1213,13 @@ int main(int argc,char **argv)
 	// do not go through the title screens and menus. -checklevel opens no
 	// window.
 	dtu_read_datadir_args();
+	{
+		// ASCENT: the window icon is the icon of the original (DTU.ICO of
+		// the disc, copied by ascent-import). The port does not ship it.
+		char ico[300];
+		if (dtu_find_file("DTU.ICO", ico, sizeof(ico)))
+			plat_set_window_icon_file(ico);
+	}
 	dtu_opts_load();		// ASCENT: the Improvements settings (dtuopts.h)
 	plat_gpu_bind_settings(&Dtu_gpu_renderer, &Dtu_shader);	// ASCENT: the screen shader reads the settings
 
@@ -1384,7 +1392,7 @@ int main(int argc,char **argv)
 	plat_set_start_hidden(FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
 	// ASCENT: an automated run (a test) has no sound output.
 	plat_audio_set_muted(FindArg("-mute") || FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
-	if (plat_init("ASCENT", 320, 200, 3) != 0)
+	if (plat_init("ASCENT-DTU", 320, 200, 3) != 0)
 		Error("Cannot open the window");
 	atexit(plat_shutdown);
 

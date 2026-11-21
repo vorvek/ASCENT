@@ -35,21 +35,21 @@
 
 [Setup]
 AppId={{6C2E9A57-3B1D-4E8F-9A40-5D1E0C7A2B13}
-AppName=ASCENT
+AppName=ASCENT-DTU
 AppVersion={#APPVERSION}
-AppVerName=ASCENT {#APPVERSION}
-AppPublisher=ASCENT project
-DefaultDirName={userpf}\ASCENT
+AppVerName=ASCENT-DTU {#APPVERSION}
+AppPublisher=ASCENT-DTU project
+DefaultDirName={userpf}\ASCENT-DTU
 DisableProgramGroupPage=yes
-DefaultGroupName=ASCENT
+DefaultGroupName=ASCENT-DTU
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OUTDIR}
-OutputBaseFilename=ascent-setup-{#APPVERSION}
+OutputBaseFilename=ascent-dtu-setup-{#APPVERSION}
 SetupIconFile=res\ascent.ico
-UninstallDisplayIcon={app}\ascent.exe
-UninstallDisplayName=ASCENT
+UninstallDisplayIcon={app}\data\DTU.ICO
+UninstallDisplayName=ASCENT-DTU
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -63,8 +63,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "startmenu"; Description: "Create a &Start menu entry"; GroupDescription: "Shortcuts:"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
-Name: "hdtextures"; Description: "Upscaled textures and interface (download, about {#TEXTURES_MB} MB)"; GroupDescription: "Downloadable content (needs the GPU renderer, can be added later with ASCENT Content):"; Check: HasContentServer
-Name: "hdmovies"; Description: "Upscaled movies (download, about {#MOVIES_MB} MB)"; GroupDescription: "Downloadable content (needs the GPU renderer, can be added later with ASCENT Content):"; Flags: unchecked; Check: HasContentServer
+Name: "hdtextures"; Description: "Upscaled textures and interface (download, about {#TEXTURES_MB} MB)"; GroupDescription: "Downloadable content (needs the GPU renderer, can be added later with ASCENT-DTU Content):"; Check: HasContentServer
+Name: "hdmovies"; Description: "Upscaled movies (download, about {#MOVIES_MB} MB)"; GroupDescription: "Downloadable content (needs the GPU renderer, can be added later with ASCENT-DTU Content):"; Flags: unchecked; Check: HasContentServer
 
 [Files]
 Source: "{#STAGE}\ascent.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -75,12 +75,14 @@ Source: "{#STAGE}\content.ini"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#STAGE}\LICENSE-*.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\ASCENT\ASCENT"; Filename: "{app}\ascent.exe"; WorkingDir: "{app}"; Tasks: startmenu
-Name: "{autoprograms}\ASCENT\ASCENT Content"; Filename: "{app}\ascent-content.exe"; WorkingDir: "{app}"; Tasks: startmenu
-Name: "{autodesktop}\ASCENT"; Filename: "{app}\ascent.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+; The icon of the game comes from the disc (ascent-import copies DTU.ICO).
+; The setup program does not contain it.
+Name: "{autoprograms}\ASCENT-DTU\ASCENT-DTU"; Filename: "{app}\ascent.exe"; WorkingDir: "{app}"; IconFilename: "{app}\data\DTU.ICO"; Tasks: startmenu
+Name: "{autoprograms}\ASCENT-DTU\ASCENT-DTU Content"; Filename: "{app}\ascent-content.exe"; WorkingDir: "{app}"; Tasks: startmenu
+Name: "{autodesktop}\ASCENT-DTU"; Filename: "{app}\ascent.exe"; WorkingDir: "{app}"; IconFilename: "{app}\data\DTU.ICO"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ascent.exe"; WorkingDir: "{app}"; Description: "Play ASCENT"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ascent.exe"; WorkingDir: "{app}"; Description: "Play ASCENT-DTU"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; The files that ascent-import and ascent-content made
@@ -211,7 +213,7 @@ var
   L: TNewStaticText;
 begin
   SourcePage := CreateCustomPage(wpSelectDir, 'Game disc',
-    'ASCENT needs the disc of Descent to Undermountain.');
+    'ASCENT-DTU needs the disc of Descent to Undermountain.');
   L := AddLabel('Select the location of the game disc. A CD drive, a folder with a copy of the disc, ' +
     'or a disc image (an .iso file, or a .bin and .cue pair) work. Setup copies the game files into the ' +
     'installation folder. The original files are not changed.', 0);
@@ -341,7 +343,7 @@ begin
     'Downloading the ' + What + '...');
   if R <> 0 then
     SuppressibleMsgBox('The ' + What + ' cannot be installed now. The game works without them; ' +
-      'install them later with ASCENT Content in the Start menu.' + #13#10#13#10 + ToolError, mbError, MB_OK, IDOK);
+      'install them later with ASCENT-DTU Content in the Start menu.' + #13#10#13#10 + ToolError, mbError, MB_OK, IDOK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -372,9 +374,9 @@ var
   Dir: String;
 begin
   if CurUninstallStep = usPostUninstall then begin
-    Dir := ExpandConstant('{userappdata}\ASCENT');
+    Dir := ExpandConstant('{userappdata}\ASCENT-DTU');
     if DirExists(Dir) then
-      if SuppressibleMsgBox('Remove your saved games and settings of ASCENT too?' + #13#10#13#10 + Dir,
+      if SuppressibleMsgBox('Remove your saved games and settings of ASCENT-DTU too?' + #13#10#13#10 + Dir,
           mbConfirmation, MB_YESNO or MB_DEFBUTTON2, IDNO) = IDYES then
         DelTree(Dir, True, True, True);
   end;

@@ -5,7 +5,7 @@
  *
  * This file is new. The DOS game had no downloadable content.
  *
- * Without a command it opens a window ("ASCENT Content"). The commands:
+ * Without a command it opens a window ("ASCENT-DTU Content"). The commands:
  *   ascent-content [--root DIR] [--url URL] list
  *   ascent-content [--root DIR] [--url URL] download PACK FILE
  *   ascent-content [--root DIR] [--url URL] install PACK...
@@ -806,7 +806,7 @@ static void start_job(int cmd)
 		if (cmd == ID_REMOVE) {
 			char q[300];
 			snprintf(q, sizeof(q), "Remove %s?", Packs[Job_pack].title);
-			if (MessageBoxA(Main_wnd, q, "ASCENT Content", MB_YESNO | MB_ICONQUESTION) != IDYES)
+			if (MessageBoxA(Main_wnd, q, "ASCENT-DTU Content", MB_YESNO | MB_ICONQUESTION) != IDYES)
 				return;
 		}
 	}
@@ -932,11 +932,11 @@ static LRESULT CALLBACK wnd_proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
 		fill_list();
 		set_buttons();
 		if (Job_rc && Job_cmd != ID_REFRESH)
-			MessageBoxA(w, text, "ASCENT Content", MB_OK | MB_ICONWARNING);
+			MessageBoxA(w, text, "ASCENT-DTU Content", MB_OK | MB_ICONWARNING);
 		return 0;
 	}
 	case WM_CLOSE:
-		if (Busy && MessageBoxA(w, "A download or an installation is running. Stop it and close?", "ASCENT Content",
+		if (Busy && MessageBoxA(w, "A download or an installation is running. Stop it and close?", "ASCENT-DTU Content",
 				MB_YESNO | MB_ICONQUESTION) != IDYES)
 			return 0;
 		DestroyWindow(w);
@@ -973,7 +973,7 @@ static int run_window(void)
 	RegisterClassExA(&wc);
 	if (get_dpi)
 		dpi = (int) get_dpi();
-	w = CreateWindowExA(0, wc.lpszClassName, "ASCENT Content", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+	w = CreateWindowExA(0, wc.lpszClassName, "ASCENT-DTU Content", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
 		MulDiv(760, dpi, 96), MulDiv(420, dpi, 96), NULL, NULL, wc.hInstance, NULL);
 	ShowWindow(w, SW_SHOWDEFAULT);		// the show state of the caller (STARTUPINFO)
 	while (GetMessageA(&m, NULL, 0, 0) > 0) {
