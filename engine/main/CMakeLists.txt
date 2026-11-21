@@ -12,7 +12,7 @@ set(MAIN_SOURCES
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
-  dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c)
+  dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuopts.c)
 
 add_library(d_main OBJECT EXCLUDE_FROM_ALL ${MAIN_SOURCES})
 target_include_directories(d_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

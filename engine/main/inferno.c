@@ -720,7 +720,8 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtudisp.h"		// ASCENT: the interface of the target game
-#include "dtufe.h"		// ASCENT: the front end of the target game
+#include "dtufe.h"
+#include "dtuopts.h"		// ASCENT: the Improvements settings		// ASCENT: the front end of the target game
 #include "gamefont.h"
 #include "playsave.h"
 
@@ -1206,6 +1207,7 @@ int main(int argc,char **argv)
 	// do not go through the title screens and menus. -checklevel opens no
 	// window.
 	dtu_read_datadir_args();
+	dtu_opts_load();		// ASCENT: the Improvements settings (dtuopts.h)
 
 	if ((t = FindArg( "-checklevel" )) != 0 && t+1 < Num_args)
 		return dtu_check_level(Args[t+1]);
