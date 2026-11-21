@@ -231,6 +231,8 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include "key.h"
 #include "joy.h"
 #include "gauges.h"
+#include "segment.h"
+#include "automap.h"		// ASCENT: the map of the map screen takes the controls
 
 static void dtu_move_init(void);
 static void dtu_read_flying_controls(object *obj);
@@ -563,6 +565,13 @@ void dtu_read_controls(void)
 	fix fwd = 0, side = 0, heading = 0, vert = 0;
 	int t = dtu_test_keys();
 	int turn = 0, run, look = 0, glance = 0, key;
+
+	// ASCENT: while the map of the map screen has the controls, the player
+	// gets none (0x40E50)
+	if (dtu_automap_read_controls()) {
+		Dtu_move_mode = 0;
+		return;
+	}
 
 	// ASCENT: the keys of the key table (kconfig.c, the items of the
 	// executable at 0x13C190), and the buttons of the mouse or joystick.

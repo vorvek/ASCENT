@@ -51,4 +51,31 @@ extern void automap_clear_visited();
 extern ubyte Automap_visited[MAX_SEGMENTS];
 extern void modex_print_message(int x, int y, char *str);
 
+// ASCENT: the automap of the target game, in the circle of the map screen
+// (interface mode 4). See docs/re/automap.md.
+
+// 1 while the map has the controls (0x13A7F8): a click in the map turns it
+// on, a click outside it, Escape and a new map screen turn it off. While it
+// is off the map follows the player.
+extern int Dtu_automap_active;
+
+// 1: the D key does not show the whole level (the original does, while the
+// map has the controls). -origui gives the original.
+extern int Dtu_fix_automap_reveal;
+
+// Draws the map into the rectangle (x, y, w, h) of the canvas (0x1887E).
+// The caller draws the frame of the circle over it.
+extern void dtu_automap_frame(struct _grs_canvas *canv, int x, int y, int w, int h);
+
+// A key of the map: KEY_MINUS, KEY_EQUAL, KEY_ESC, KEY_ALTED+KEY_F, KEY_D.
+extern void dtu_automap_key(int key);
+
+// 1 if the map takes this key of the game key loop
+extern int dtu_automap_owns_key(int key);
+
+// Called at the start of the controls of the player (dtu_read_controls of
+// controls.c). While the map has the controls, it reads them for the next
+// map frame, clears the controls of the player and returns 1.
+extern int dtu_automap_read_controls(void);
+
 #endif

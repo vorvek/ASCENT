@@ -216,6 +216,7 @@ static char rcsid[] = "$Id: automap.c 2.2 1995/03/21 14:41:26 john Exp $";
 #include "powerup.h"
 #include "network.h" 
 #include "platform.h"		// ASCENT: plat_pump reports that the window is closed
+#include "args.h"			// ASCENT: FindArg for -origui
 
 #define EF_USED			1		// This edge is used
 #define EF_DEFINING		2		// A structure defining edge that should always draw.
@@ -224,6 +225,7 @@ static char rcsid[] = "$Id: automap.c 2.2 1995/03/21 14:41:26 john Exp $";
 #define EF_GRATE			16		// A grate... draw it all the time.
 #define EF_NO_FADE		32		// An edge that doesn't fade with distance
 #define EF_TOO_FAR		64		// An edge that is too far away
+#define EF_FLICKER		128	// ASCENT: the target game: the brightness of the edge changes at random (0x192ED)
 
 typedef struct Edge_info {
 	union {
@@ -288,7 +290,14 @@ static fix Automap_zoom = 0x9000;
 static vms_vector view_target;
 static fix Automap_farthest_dist = (F1_0 * 20 * 50);		// 50 segments away
 static vms_matrix	ViewMatrix;
-static fix ViewDist=0;
+static fix ViewDist=ZOOM_DEFAULT;			// ASCENT: 0x13A804 starts with 200.0
+
+// ASCENT: were locals of do_automap. The map of the target game keeps
+// them between frames (0x13A808, 0x13A816) and draw_all_edges reads the
+// first one.
+static int Max_segments_away = 1;
+static int SegmentLimit = 1;
+static int Edge_flicker = 0;				// 0x13A80C: add_one_edge sets EF_FLICKER
 
 // ASCENT: prototypes for functions that this file calls before their
 // definition. Watcom C accepted the implicit declarations.
@@ -309,6 +318,31 @@ void automap_clear_visited()
 }
 
 grs_canvas *name_canv;
+
+// ASCENT: the player of the target game (0x18567): a triangle without the
+// sphere, the shaft and the up line. The tip is 3 sizes forward, the base
+// corners are 2/3 size forward and 2/3 size to each side (the factors are
+// the doubles 0.6667 and -1.0 at 0x120A90, truncated to an integer).
+static void draw_player_dtu( object * obj )
+{
+	vms_vector arrow_pos, head_pos;
+	g3s_point arrow_point, head_point, head_point2;
+	fix s = (fix) (obj->size * (2.0 / 3.0));
+
+	vm_vec_scale_add( &arrow_pos, &obj->pos, &obj->orient.fvec, obj->size*3 );
+	g3_rotate_point(&arrow_point,&arrow_pos);
+
+	vm_vec_scale_add( &head_pos, &obj->pos, &obj->orient.fvec, s );
+	vm_vec_scale_add2( &head_pos, &obj->orient.rvec, s );
+	g3_rotate_point(&head_point,&head_pos);
+	g3_draw_line( &head_point, &arrow_point );
+
+	vm_vec_scale_add( &head_pos, &obj->pos, &obj->orient.fvec, s );
+	vm_vec_scale_add2( &head_pos, &obj->orient.rvec, (fix) (obj->size * (2.0 / 3.0) * -1.0) );
+	g3_rotate_point(&head_point2,&head_pos);
+	g3_draw_line( &head_point2, &arrow_point );
+	g3_draw_line( &head_point2, &head_point );
+}
 
 void draw_player( object * obj )
 {
@@ -518,8 +552,6 @@ void do_automap( int key_code )	{
 	fix t1, t2;
 	control_info saved_control_info;
 	grs_bitmap Automap_background;
-	int Max_segments_away = 0;
-	int SegmentLimit = 1;
 
 	key_code = key_code;	// disable warning...
 
@@ -885,9 +917,26 @@ void draw_all_edges()
 		if ( e->flags & EF_NO_FADE )	{
 			gr_setcolor( e->color );
 		} else {
-			dist = F1_0 - fixdiv( dist, Automap_farthest_dist );
-			color = f2i( dist*31 );
-			gr_setcolor( gr_fade_table[e->color+color*256] );	
+			// ASCENT: the target game (0x19022) fades an edge with the
+			// depth of its first segment (half of the 31 levels at the
+			// largest depth) and with the height of the segment center
+			// above or below the player (one level each 5.0 units). An
+			// edge with EF_FLICKER takes a random level from the result
+			// to full brightness in each frame.
+			vms_vector center;
+			fix dy;
+			object *plr = &Objects[Players[Player_num].objnum];
+
+			compute_segment_center(&center, &Segments[e->segnum[0]]);
+			color = Automap_visited[e->segnum[0]] * 31 / (Max_segments_away ? Max_segments_away : 1) / 2;
+			dy = center.y - plr->pos.y;
+			if (dy < 0) dy = -dy;
+			color += f2i(dy) / 5;
+			if (color >= 31) color = 31;
+			color = 31 - color;
+			if ( e->flags & EF_FLICKER )
+				color = 31 - rand() % (color + 1);
+			gr_setcolor( gr_fade_table[e->color+color*256] );
 		}
 		g3_draw_line( p1, p2 );
 	}
@@ -989,6 +1038,8 @@ void add_one_edge( short va, short vb, ubyte color, ubyte side, short segnum, in
 		e->flags|=EF_SECRET;		// Mark this as a hidden edge
 	if ( no_fade )
 		e->flags |= EF_NO_FADE;
+	if ( Edge_flicker )
+		e->flags |= EF_FLICKER;		// ASCENT: 0x192E1
 }
 
 void add_one_unknown_edge( short va, short vb )	{
@@ -1009,111 +1060,151 @@ void add_one_unknown_edge( short va, short vb )	{
 
 extern obj_position Player_init[];
 
+// ASCENT: the edges of a segment in the target game (0x19335). It replaces
+// the Descent 1 function: the colors and the rules of the walls are new,
+// there are no grate diagonals, no no-fade edges and no start segment.
+// The colors are 0 to 63 values of gr_find_closest_color (0xD9ADC).
+#define DTU_WALL_SECRET			0x40		// wall flag: secret door (wall.c)
+#define DTU_SIDE_TRIGGER_FOUND	0x04		// side flag (pad): a found trigger (docs/re/combat.md)
+#define DTU_SIDE_TRAP_FOUND		0x08		// side flag (pad): a found trap
+#define DTU_SIDE_SECRET_FOUND		0x10		// side flag (pad): a found secret door
+
 void add_segment_edges(segment *seg)
 {
-	int 	is_grate, no_fade;
-	ubyte	color;
 	int	sn;
 	int	segnum = seg-Segments;
-	int	hidden_flag;
-	
+	int	normal = BM_XRGB( 29, 29, 29 );
+	int	blue = gr_find_closest_color( 0, 0, 62 );
+	int	green = gr_find_closest_color( 0, 62, 0 );
+	int	magenta = gr_find_closest_color( 62, 0, 62 );
+	int	dark_cyan = gr_find_closest_color( 0, 30, 30 );
+
 	for (sn=0;sn<MAX_SIDES_PER_SEGMENT;sn++) {
 		short	vertex_list[4];
+		int	child = seg->children[sn];
+		segment *cseg = NULL;
+		int	cside = -1;
+		int	flags = seg->sides[sn].pad, cflags = 0;
+		int	wid = WALL_IS_DOORWAY(seg, sn), cwid = 0;
+		int	hidden = 0;
+		int	color = normal;
 
-		hidden_flag = 0;
+		Edge_flicker = 0;
 
-		is_grate = 0;
-		no_fade = 0;
-
-		color = 255;
-		if (seg->children[sn] == -1) {
-			color = WALL_NORMAL_COLOR;
+		if (child > -1) {
+			cseg = &Segments[child];
+			cside = find_connect_side(seg, cseg);
+			if (cside != -1) {
+				cflags = cseg->sides[cside].pad;
+				cwid = WALL_IS_DOORWAY(cseg, cside);
+			}
 		}
 
-		switch( seg->special )	{
-		case SEGMENT_IS_FUELCEN:
-			color = BM_XRGB( 29, 27, 13 );
-			break;
-		case SEGMENT_IS_CONTROLCEN:
-			color = BM_XRGB( 29, 0, 0 );
-			break;
-		case SEGMENT_IS_ROBOTMAKER:
-			color = BM_XRGB( 29, 0, 31 );
-			break;
-		}
+		if (seg->sides[sn].wall_num > -1) {
+			wall *w = &Walls[seg->sides[sn].wall_num];
 
-		if (seg->sides[sn].wall_num > -1)	{
-
-			switch( Walls[seg->sides[sn].wall_num].type )	{
-			case WALL_DOOR:
-				if (Walls[seg->sides[sn].wall_num].keys == KEY_BLUE) {
-					no_fade = 1;
-					color = WALL_DOOR_BLUE;
-					//mprintf((0, "Seg %i, side %i has BLUE wall\n", segnum, sn));
-				} else if (Walls[seg->sides[sn].wall_num].keys == KEY_GOLD) {
-					no_fade = 1;
-					color = WALL_DOOR_GOLD;
-					//mprintf((0, "Seg %i, side %i has GOLD wall\n", segnum, sn));
-				} else if (Walls[seg->sides[sn].wall_num].keys == KEY_RED) {
-					no_fade = 1;
-					color = WALL_DOOR_RED;
-					//mprintf((0, "Seg %i, side %i has RED wall\n", segnum, sn));
-				} else if (!(WallAnims[Walls[seg->sides[sn].wall_num].clip_num].flags & WCF_HIDDEN)) {
-					int	connected_seg = seg->children[sn];
-					if (connected_seg != -1) {
-						int connected_side = find_connect_side(seg, &Segments[connected_seg]);
-						int	keytype = Walls[Segments[connected_seg].sides[connected_side].wall_num].keys;
-						if ((keytype != KEY_BLUE) && (keytype != KEY_GOLD) && (keytype != KEY_RED))
-							color = WALL_DOOR_COLOR;
-						else {
-							switch (Walls[Segments[connected_seg].sides[connected_side].wall_num].keys) {
-								case KEY_BLUE:	color = WALL_DOOR_BLUE;	no_fade = 1; break;
-								case KEY_GOLD:	color = WALL_DOOR_GOLD;	no_fade = 1; break;
-								case KEY_RED:	color = WALL_DOOR_RED;	no_fade = 1; break;
-								default:	Error("Inconsistent data.  Supposed to be a colored wall, but not blue, gold or red.\n");
-							}
-							//mprintf((0, "Seg %i, side %i has a colored door on the other side.\n", segnum, sn));
-						}
-					}
-				} else {
-					color = WALL_NORMAL_COLOR;
-					hidden_flag = 1;
-					//mprintf((0, "Wall at seg:side %i:%i is hidden.\n", seg-Segments, sn));
+			switch (w->type) {
+			case WALL_DOOR:		// 0x1952D
+				if (w->state != WALL_DOOR_CLOSED)
+					color = 255;
+				else if (!cseg)
+					color = normal;
+				else if (w->flags & DTU_WALL_SECRET) {
+					hidden = 1;
+					if (!Automap_visited[segnum] || !Automap_visited[child])
+						color = normal;
+					else
+						color = (w->keys == KEY_NONE) ? magenta : dark_cyan;
+				} else if (wid == WID_TRANSILLUSORY_WALL && cwid == wid)
+					color = 255;
+				// The original reads the side -1 of the other segment when
+				// no side connects. The port takes the normal color.
+				else if (cside < 0 || seg->sides[sn].tmap_num2 != cseg->sides[cside].tmap_num2)
+					color = normal;
+				else
+					color = (w->keys == KEY_NONE) ? gr_find_closest_color( 20, 62, 62 ) : dark_cyan;
+				break;
+			case WALL_ILLUSION:	// 0x195FE
+				if (w->flags & WALL_ILLUSION_OFF) {
+					color = 255;
+					break;
 				}
+				hidden = 1;
+				if (!Automap_visited[segnum])
+					break;
+				if (!cseg) {
+					color = magenta;
+					break;
+				}
+				if (!Automap_visited[child])
+					break;
+				if (wid == WID_TRANSILLUSORY_WALL && cwid == wid)
+					color = 255;
+				else if (wid == WID_TRANSILLUSORY_WALL || cwid == WID_TRANSILLUSORY_WALL ||
+						wid == WID_ILLUSORY_WALL || cwid == WID_ILLUSORY_WALL)
+					color = magenta;
+				else
+					color = normal;
 				break;
-			case WALL_CLOSED:
-				// Make grates draw properly
-				color = WALL_NORMAL_COLOR;
-				is_grate = 1;
+			case WALL_OPEN:		// 0x194CC
+				color = 255;
 				break;
-			case WALL_BLASTABLE:
-				// Hostage doors
-				color = WALL_DOOR_COLOR;	
+			case WALL_CLOSED:		// 0x194F9
+				if (!cseg)
+					break;
+				if (wid == WID_TRANSILLUSORY_WALL || cwid == WID_TRANSILLUSORY_WALL ||
+						wid == WID_ILLUSORY_WALL || cwid == WID_ILLUSORY_WALL)
+					color = 255;
+				else
+					color = normal;
 				break;
 			}
 		}
-	
-		if (segnum==Player_init[Player_num].segnum)
-			color = BM_XRGB(31,0,31);
 
-		if ( color != 255 )	{
-			// If they have a map powerup, draw unvisited areas in dark blue.
-			if (Players[Player_num].flags & PLAYER_FLAGS_MAP_ALL && (!Automap_visited[segnum]))	
-				color = BM_XRGB( 0, 0, 25 );
+		// 0x194D1: the special segments
+		if (seg->special == 6 || seg->special == 2)
+			color = gr_find_closest_color( 58, 54, 26 );
+		else if (seg->special == 3)
+			color = gr_find_closest_color( 62, 32, 0 );
 
-			get_side_verts(vertex_list,segnum,sn);
-			add_one_edge( vertex_list[0], vertex_list[1], color, sn, segnum, hidden_flag, 0, no_fade );
-			add_one_edge( vertex_list[1], vertex_list[2], color, sn, segnum, hidden_flag, 0, no_fade );
-			add_one_edge( vertex_list[2], vertex_list[3], color, sn, segnum, hidden_flag, 0, no_fade );
-			add_one_edge( vertex_list[3], vertex_list[0], color, sn, segnum, hidden_flag, 0, no_fade );
+		// 0x1968A: the found triggers, traps and secret doors of this side
+		// or the side on the other segment
+		if ((flags | cflags) & DTU_SIDE_TRIGGER_FOUND)
+			color = blue;
+		else if ((flags | cflags) & DTU_SIDE_TRAP_FOUND)
+			color = green;
+		else if ((flags | cflags) & DTU_SIDE_SECRET_FOUND)
+			color = magenta;
 
-			if ( is_grate )	{
-				add_one_edge( vertex_list[0], vertex_list[2], color, sn, segnum, hidden_flag, 1, no_fade );
-				add_one_edge( vertex_list[1], vertex_list[3], color, sn, segnum, hidden_flag, 1, no_fade );
-			}
+		if (color == blue || color == green || color == magenta || color == dark_cyan)
+			Edge_flicker = 1;
+
+		// 0x1972D: the segment of the player
+		if (segnum == Objects[Players[Player_num].objnum].segnum) {
+			color = gr_find_closest_color( 62, 20, 20 );
+			hidden = 1;
+			Edge_flicker = 1;
 		}
+
+		// 0x1977A: a side of the normal color only where there is no
+		// segment behind it, or with the hidden flag
+		if (color == normal) {
+			if (child != -1 && !hidden)
+				continue;
+		} else if (color == 255)
+			continue;
+
+		// If they have a map powerup, draw unvisited areas in dark blue.
+		if ((Players[Player_num].flags & PLAYER_FLAGS_MAP_ALL) && !Automap_visited[segnum])
+			color = gr_find_closest_color( 0, 0, 50 );
+
+		get_side_verts(vertex_list,segnum,sn);
+		add_one_edge( vertex_list[0], vertex_list[1], color, sn, segnum, hidden, 0, 0 );
+		add_one_edge( vertex_list[1], vertex_list[2], color, sn, segnum, hidden, 0, 0 );
+		add_one_edge( vertex_list[2], vertex_list[3], color, sn, segnum, hidden, 0, 0 );
+		add_one_edge( vertex_list[3], vertex_list[0], color, sn, segnum, hidden, 0, 0 );
 	}
-
+	Edge_flicker = 0;
 }
 
 
@@ -1160,31 +1251,21 @@ void automap_build_edge_list()
 	Num_edges = 0;
 	Highest_edge_index = -1;
 
+	// ASCENT: the target game (0x19968) tests the segnum of each segment and
+	// does not add the unknown edges (add_unknown_segment_edges).
 	if (Automap_cheat || (Players[Player_num].flags & PLAYER_FLAGS_MAP_ALL) )	{
 		// Cheating, add all edges as visited
 		for (s=0; s<=Highest_segment_index; s++)
-			#ifdef EDITOR
 			if (Segments[s].segnum != -1)
-			#endif
 			{
 				add_segment_edges(&Segments[s]);
 			}
 	} else {
-		// Not cheating, add visited edges, and then unvisited edges
+		// Not cheating, add visited edges
 		for (s=0; s<=Highest_segment_index; s++)
-			#ifdef EDITOR
 			if (Segments[s].segnum != -1)
-			#endif
 				if (Automap_visited[s]) {
 					add_segment_edges(&Segments[s]);
-				}
-	
-		for (s=0; s<=Highest_segment_index; s++)
-			#ifdef EDITOR
-			if (Segments[s].segnum != -1)
-			#endif
-				if (!Automap_visited[s]) {
-					add_unknown_segment_edges(&Segments[s]);
 				}
 	}
 
@@ -1202,7 +1283,10 @@ void automap_build_edge_list()
 					get_side_normal(&Segments[e->segnum[e2]], e->sides[e2], 0, &v2 );
 					if ( vm_vec_dot(&v1,&v2) > (F1_0-(F1_0/10))  )	{
 					#else
-					if ( vm_vec_dot( &Segments[e->segnum[e1]].sides[e->sides[e1]].normals[0], &Segments[e->segnum[e2]].sides[e->sides[e2]].normals[0] ) > (F1_0-(F1_0/10))  )	{
+					// ASCENT: the target game (0x19B3B) keeps the edges that
+					// do not have the normal color
+					if ( vm_vec_dot( &Segments[e->segnum[e1]].sides[e->sides[e1]].normals[0], &Segments[e->segnum[e2]].sides[e->sides[e2]].normals[0] ) > (F1_0-(F1_0/10))
+							&& e->color == WALL_NORMAL_COLOR )	{
 					#endif
 						e->flags &= (~EF_DEFINING);
 						break;
@@ -1216,4 +1300,224 @@ void automap_build_edge_list()
 
 	mprintf( (0, "Automap used %d / %d edges\n", Num_edges, Max_edges  ));
 
+}
+
+//==================================================================
+//
+// ASCENT: the automap of the target game (docs/re/automap.md)
+//
+//==================================================================
+
+// The map is a part of the map screen (interface mode 4), not a mode of
+// its own: the game goes on and the view shows the 3D image. Each frame of
+// the screen (0x414D9) calls 0x1887E. While the map does not have the
+// controls, the frame starts the map again: the edge list, the depths of
+// the segments and the view of the player, so that the map follows the
+// player. While it has the controls, the keys and the flight controls move
+// the map and the player gets no controls (0x40E50).
+
+#define DTU_ROT_SPEED_DIVISOR	11500		// 0x18AB9 (Descent 1: 115000)
+#define DTU_ZOOM_SPEED_FACTOR	500		// 0x18A9F (Descent 1: 1500)
+
+int Dtu_automap_active = 0;
+int Dtu_fix_automap_reveal = 1;
+
+static vms_angvec Dtu_tangles = { PITCH_DEFAULT, 0, 0 };		// 0x13A810
+static control_info Dtu_map_controls;
+
+static void dtu_automap_args(void)
+{
+	static int done = 0;
+
+	if (done)
+		return;
+	done = 1;
+	if (FindArg("-origui"))
+		Dtu_fix_automap_reveal = 0;
+}
+
+// 0x18A6D: the start of the map from the player
+static void dtu_automap_start(object *plr)
+{
+	Max_edges = min(MAX_EDGES_FROM_VERTS(Num_vertices),MAX_EDGES);
+	automap_build_edge_list();
+	ViewMatrix = plr->orient;
+	Dtu_tangles.p = PITCH_DEFAULT;
+	Dtu_tangles.b = 0;
+	Dtu_tangles.h = 0;
+	view_target = plr->pos;
+	Max_segments_away = set_segment_depths(plr->segnum, Automap_visited);
+	SegmentLimit = Max_segments_away;
+	adjust_segment_limit(SegmentLimit);
+}
+
+// The keys of 0x1893F (key_inkey while the map has the controls)
+void dtu_automap_key(int key)
+{
+	object *plr = &Objects[Players[Player_num].objnum];
+	int i;
+
+	dtu_automap_args();
+	if (!Dtu_automap_active)
+		return;
+	switch (key) {
+	case KEY_ESC:
+		Dtu_automap_active = 0;
+		break;
+	case KEY_ALTED+KEY_F:		// Alt+F shows the full map, if cheats are on
+		if (Cheats_enabled) {
+			uint t = Players[Player_num].flags;
+			Players[Player_num].flags |= PLAYER_FLAGS_MAP_ALL_CHEAT;
+			automap_build_edge_list();
+			Players[Player_num].flags = t;
+		}
+		break;
+	case KEY_D:					// 0x189E2: all segments visited
+		if (Dtu_fix_automap_reveal)
+			break;
+		for (i=0; i<=Highest_segment_index; i++)
+			Automap_visited[i] = 1;
+		automap_build_edge_list();
+		Max_segments_away = set_segment_depths(plr->segnum, Automap_visited);
+		SegmentLimit = Max_segments_away;
+		adjust_segment_limit(SegmentLimit);
+		break;
+	case KEY_MINUS:
+		if (SegmentLimit > 1) {
+			SegmentLimit--;
+			adjust_segment_limit(SegmentLimit);
+		}
+		break;
+	case KEY_EQUAL:
+		if (SegmentLimit < Max_segments_away) {
+			SegmentLimit++;
+			adjust_segment_limit(SegmentLimit);
+		}
+		break;
+	}
+}
+
+int dtu_automap_owns_key(int key)
+{
+	dtu_automap_args();
+	if (!Dtu_automap_active)
+		return 0;
+	switch (key) {
+	case KEY_ESC:
+	case KEY_ALTED+KEY_F:
+	case KEY_MINUS:
+	case KEY_EQUAL:
+		return 1;
+	case KEY_D:
+		return !Dtu_fix_automap_reveal;
+	}
+	return 0;
+}
+
+// The original map uses the Descent control values of the frame (pitch,
+// heading, bank, forward, vertical and sideways thrust, the attack count)
+// and then clears them and the keys (0x40E50), so the player does not
+// move. The port reads the walking controls in dtu_read_controls; this
+// function gives the map the same values from the actions: forward and
+// back zoom, turn left and right turn, slide left and right and float up
+// and down move the center, look up and down pitch (a guess: the key
+// table of the executable has no pitch item), attack resets the view.
+int dtu_automap_read_controls(void)
+{
+	static int attack_was = 0;
+	control_info *c = &Dtu_map_controls;
+	fix ft = FrameTime;
+	int a = dtu_action_down(DTU_ACT_ATTACK);
+
+	if (!Dtu_automap_active) {
+		attack_was = a;
+		return 0;
+	}
+	memset(c, 0, sizeof(*c));
+	if (dtu_action_down(DTU_ACT_FORWARD)) c->forward_thrust_time += ft;
+	if (dtu_action_down(DTU_ACT_BACK)) c->forward_thrust_time -= ft;
+	if (dtu_action_down(DTU_ACT_TURN_LEFT)) c->heading_time -= ft;
+	if (dtu_action_down(DTU_ACT_TURN_RIGHT)) c->heading_time += ft;
+	if (dtu_action_down(DTU_ACT_SLIDE_LEFT)) c->sideways_thrust_time -= ft;
+	if (dtu_action_down(DTU_ACT_SLIDE_RIGHT)) c->sideways_thrust_time += ft;
+	if (dtu_action_down(DTU_ACT_FLOAT_UP)) c->vertical_thrust_time += ft;
+	if (dtu_action_down(DTU_ACT_FLOAT_DOWN)) c->vertical_thrust_time -= ft;
+	if (dtu_action_down(DTU_ACT_LOOK_UP)) c->pitch_time -= ft;
+	if (dtu_action_down(DTU_ACT_LOOK_DOWN)) c->pitch_time += ft;
+	c->forward_thrust_time += fixmul(ft, dtu_pad_amount(DTU_ACT_FORWARD) - dtu_pad_amount(DTU_ACT_BACK));
+	c->heading_time += fixmul(ft, dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT));
+	c->sideways_thrust_time += fixmul(ft, dtu_pad_amount(DTU_ACT_SLIDE_RIGHT) - dtu_pad_amount(DTU_ACT_SLIDE_LEFT));
+	c->pitch_time += fixmul(ft, dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP));
+	if (a && !attack_was)
+		c->fire_primary_down_count = 1;
+	attack_was = a;
+	memset(&Controls, 0, sizeof(Controls));
+	return 1;
+}
+
+void dtu_automap_frame(grs_canvas *parent, int x, int y, int w, int h)
+{
+	object *plr;
+	control_info *c = &Dtu_map_controls;
+	vms_matrix tempm;
+	vms_vector viewer_position;
+	grs_canvas canv;
+	int color;
+
+	if (Players[Player_num].objnum < 0 || Players[Player_num].objnum > Highest_object_index)
+		return;
+	plr = &Objects[Players[Player_num].objnum];
+	if (plr->segnum < 0 || plr->segnum > Highest_segment_index)
+		return;
+
+	if (!Dtu_automap_active) {
+		dtu_automap_start(plr);
+		memset(c, 0, sizeof(*c));
+	} else {
+		if (c->fire_primary_down_count) {
+			// 0x18A76: the attack key resets the distance and the angles
+			ViewDist = ZOOM_DEFAULT;
+			Dtu_tangles.p = PITCH_DEFAULT;
+			Dtu_tangles.h = 0;
+			Dtu_tangles.b = 0;
+		}
+		ViewDist -= c->forward_thrust_time*DTU_ZOOM_SPEED_FACTOR;
+		Dtu_tangles.p += fixdiv( c->pitch_time, DTU_ROT_SPEED_DIVISOR );
+		Dtu_tangles.h += fixdiv( c->heading_time, DTU_ROT_SPEED_DIVISOR );
+		Dtu_tangles.b += fixdiv( c->bank_time, DTU_ROT_SPEED_DIVISOR*2 );
+		if ( c->vertical_thrust_time || c->sideways_thrust_time ) {
+			vms_vector old_vt = view_target;
+			vm_angles_2_matrix(&tempm,&Dtu_tangles);
+			vm_matrix_x_matrix(&ViewMatrix,&plr->orient,&tempm);
+			vm_vec_scale_add2( &view_target, &ViewMatrix.uvec, c->vertical_thrust_time*SLIDE_SPEED );
+			vm_vec_scale_add2( &view_target, &ViewMatrix.rvec, c->sideways_thrust_time*SLIDE_SPEED );
+			if ( vm_vec_dist_quick( &view_target, &plr->pos) > i2f(1000) )
+				view_target = old_vt;
+		}
+		// the map uses the controls of a frame of the player once
+		memset(c, 0, sizeof(*c));
+	}
+
+	vm_angles_2_matrix(&tempm,&Dtu_tangles);
+	vm_matrix_x_matrix(&ViewMatrix,&plr->orient,&tempm);
+	if ( ViewDist < ZOOM_MIN_VALUE ) ViewDist = ZOOM_MIN_VALUE;
+	if ( ViewDist > ZOOM_MAX_VALUE ) ViewDist = ZOOM_MAX_VALUE;
+
+	// 0x186BC: the map in a canvas of the screen, cleared with color 255
+	gr_init_sub_canvas(&canv, parent, x, y, w, h);
+	gr_set_current_canvas(&canv);
+	gr_clear_canvas(255);
+	g3_start_frame();
+	render_start_frame();
+	vm_vec_scale_add(&viewer_position,&view_target,&ViewMatrix.fvec,-ViewDist );
+	g3_set_view_matrix(&viewer_position,&ViewMatrix,Automap_zoom);
+	draw_all_edges();
+	// The color of the player is entry Player_num + 1 of player_rgb, a
+	// red (27, 0, 0) in a single player game. The objects of Descent 1
+	// (hostages, keys) and the texts are not drawn.
+	color = Player_num + 1;
+	gr_setcolor(BM_XRGB(player_rgb[color].r,player_rgb[color].g,player_rgb[color].b));
+	draw_player_dtu(plr);
+	g3_end_frame();
+	gr_set_current_canvas(parent);
 }
