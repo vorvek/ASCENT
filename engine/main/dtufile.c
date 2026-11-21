@@ -111,7 +111,12 @@ void dtu_init_dirs(void)
 			char msg[DTU_MAX_PATH+200];
 			snprintf(msg, sizeof(msg), "The game data is not in %s/data.\n\n"
 				"Run the setup program again, or start the game with -datadir.", Dtu_install_dir);
-			plat_message_box("ASCENT", msg);
+			// An automated run (a test, see inferno.c) shows no message
+			// box: the box stops the run and opens on the screen of the user.
+			if (FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"))
+				fprintf(stderr, "%s\n", msg);
+			else
+				plat_message_box("ASCENT", msg);
 			exit(1);
 		}
 	}
