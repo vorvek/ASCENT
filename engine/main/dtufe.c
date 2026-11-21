@@ -1757,6 +1757,7 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ "Improved jump controls", &Dtu_improved_jump },
 	{ "Improved pathfinding",   &Dtu_improved_pathfinding },
 	{ "Improved 3D body",       &Dtu_improved_body },
+	{ "Target hint",            &Dtu_target_hint },		// dtucombat.c
 	{ "Streaming safe music",   &Dtu_safe_music },		// dtumusic.c
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))

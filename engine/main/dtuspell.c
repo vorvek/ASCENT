@@ -1448,26 +1448,28 @@ int dtu_spell_in_hand(void)
 	return hand_spell(&source) >= 0;
 }
 
-// 0x356E0 and 0x41A4D: the checks of a spell of a book
-static int cast_checks(int spell)
+// 0x356E0 and 0x41A4D: the checks of a spell of a book. Returns 1 if the
+// spell can be cast, else 0 and the message (empty for none) in msg.
+static int cast_allowed(int spell,char *msg,int size)
 {
 	int b = spell_book_of(spell), lvl = spell_level(spell), cl;
 
+	msg[0] = 0;
 	if (!char_is(DTU_CLASS_MAGE) && !char_is(DTU_CLASS_CLERIC)) {
-		HUD_init_message("You are not a spell caster.");
+		snprintf(msg,size,"You are not a spell caster.");
 		return 0;
 	}
-	if (b == 0 && !char_is(DTU_CLASS_MAGE)) { HUD_init_message("You are not a Mage."); return 0; }
-	if (b == 1 && !char_is(DTU_CLASS_CLERIC)) { HUD_init_message("You are not a Cleric."); return 0; }
+	if (b == 0 && !char_is(DTU_CLASS_MAGE)) { snprintf(msg,size,"You are not a Mage."); return 0; }
+	if (b == 1 && !char_is(DTU_CLASS_CLERIC)) { snprintf(msg,size,"You are not a Cleric."); return 0; }
 	if (b < 0)
 		return 0;
 	cl = char_class_level(b == 0 ? DTU_CLASS_MAGE : DTU_CLASS_CLERIC);
 	if (lvl - 1 > cl) {
-		HUD_init_message("Spell is of too high a level.");
+		snprintf(msg,size,"Spell is of too high a level.");
 		return 0;
 	}
 	if (lvl < 1 || lvl > 9 || Dtu_spell_slots_left[b][lvl-1] <= 0) {
-		HUD_init_message("Out of spell points for this spell level.");
+		snprintf(msg,size,"Out of spell points for this spell level.");
 		return 0;
 	}
 	// A mage spell in armor that is not MAGIC_OK
@@ -1475,15 +1477,26 @@ static int cast_checks(int spell)
 		int a = Dtu_char.slot[DTU_SLOT_ARMOR].n;
 		if (a >= 0 && a < Dtu_n_inventory && Dtu_inventory[a].type == OBJ_ARMOR && Dtu_inventory[a].id < N_armor_types &&
 			 !bm_tbl_has_flag(Armor_info[Dtu_inventory[a].id].record,"MAGIC_OK")) {
-			HUD_init_message("You cannot cast a spell while wearing %s.",Dtu_inventory[a].name);
+			snprintf(msg,size,"You cannot cast a spell while wearing %s.",Dtu_inventory[a].name);
 			return 0;
 		}
 	}
 	if (ConsoleObject->dtu.m_88 & DTU_FX_LEVITATE) {
-		HUD_init_message("You cannot cast a spell while climbing.");
+		snprintf(msg,size,"You cannot cast a spell while climbing.");
 		return 0;
 	}
 	return 1;
+}
+
+static int cast_checks(int spell)
+{
+	char msg[100];
+
+	if (cast_allowed(spell,msg,sizeof(msg)))
+		return 1;
+	if (msg[0])
+		HUD_init_message("%s",msg);
+	return 0;
 }
 
 // The number of missiles of a spell (0x56FF6)
@@ -1500,14 +1513,49 @@ static int missile_count(int spell,int L)
 	return 1;
 }
 
+// The start and the direction of a spell missile: the view with the look
+// pitch, from the position plus 2.0 up (0x562BB).
+static void spell_aim(object *player,vms_vector *dir,vms_vector *pos)
+{
+	vms_angvec a;
+	vms_matrix head, view;
+
+	a.p = Dtu_look_pitch; a.b = 0; a.h = 0;
+	vm_angles_2_matrix(&head,&a);
+	vm_matrix_x_matrix(&view,&player->orient,&head);
+	*dir = view.fvec;
+	*pos = player->pos;
+	pos->y += i2f(2);
+}
+
+// The missile template (byte 4 of the entry): 2 hands, 3 wand, 4 scroll,
+// 5 arrow
+static int spell_template(int spell,int source)
+{
+	int w = (source == 2) ? 3 : (source == 1) ? 4 : spell_flag(spell,"cast_with_arrow") ? 5 : 2;
+
+	return (w >= N_weapon_types) ? 0 : w;
+}
+
+static int spell_homes(int spell)
+{
+	return spell_flag(spell,"homing") && (spell != 33 || char_is(DTU_CLASS_MAGE));
+}
+
+// 0x56FF6: the life of the missile (W+0xA8): 30.0, Lightning Bolt 2.0,
+// Melf's Acid Arrow (L/3 + 1) rounds. The duration and the range of the
+// line are not used.
+static fix spell_missile_life(int spell,int L)
+{
+	return (spell == 32) ? i2f(2) : (spell == 36) ? (L/3 + 1)*MINUTE : i2f(30);
+}
+
 static void cast_now(int spell,int source)
 {
 	object *player = ConsoleObject;
 	int L = dtu_spell_player_level(spell), i, n, template_w, target = -1;
 	fix speed = spell_fix(spell,"speed",i2f(100));
 	vms_vector dir, pos;
-	vms_angvec a;
-	vms_matrix head, view;
 
 	sound_at(spell_int(spell,"cast_sound",10),player->segnum,&player->pos,F1_0/2);
 	dtu_spell_log("spell: the player casts '%s' (%d) at level %d, source %d, at %.3f",spell_name(spell),spell,L,source,f2fl(GameTime));
@@ -1524,22 +1572,14 @@ static void cast_now(int spell,int source)
 
 	// The missile template (byte 4 of the entry): 2 hands, 3 wand, 4
 	// scroll, 5 arrow
-	template_w = (source == 2) ? 3 : (source == 1) ? 4 : spell_flag(spell,"cast_with_arrow") ? 5 : 2;
-	if (template_w >= N_weapon_types)
-		template_w = 0;
+	template_w = spell_template(spell,source);
 
 	// Casting a missile ends Invisibility (0x5705B)
 	if (player->dtu.m_88 & DTU_FX_INVISIBLE)
 		fx_end(player,17);
 
-	a.p = Dtu_look_pitch; a.b = 0; a.h = 0;
-	vm_angles_2_matrix(&head,&a);
-	vm_matrix_x_matrix(&view,&player->orient,&head);
-	dir = view.fvec;
-	pos = player->pos;
-	pos.y += i2f(2);		// 0x562BB
-
-	if (spell_flag(spell,"homing") && (spell != 33 || char_is(DTU_CLASS_MAGE)))
+	spell_aim(player,&dir,&pos);
+	if (spell_homes(spell))
 		target = find_homing_target(player,&dir);
 
 	n = missile_count(spell,L);
@@ -1559,10 +1599,7 @@ static void cast_now(int spell,int source)
 		if (objnum < 0)
 			break;
 		vm_vec_copy_scale(&Objects[objnum].mtype.phys_info.velocity,&d,speed);
-		// 0x56FF6: the life of the missile (W+0xA8): 30.0, Lightning Bolt
-		// 2.0, Melf's Acid Arrow (L/3 + 1) rounds. The duration and the
-		// range of the line are not used.
-		dtu_missile_set_life(objnum,(spell == 32) ? i2f(2) : (spell == 36) ? (L/3 + 1)*MINUTE : i2f(30));
+		dtu_missile_set_life(objnum,spell_missile_life(spell,L));
 		track_missile(objnum,spell,L,target);
 		dtu_spell_log("spell: missile obj %d of '%s', speed %.0f, target %d",objnum,spell_name(spell),f2fl(speed),target);
 	}
@@ -1623,6 +1660,35 @@ int dtu_spell_fire(void)
 	cast_now(spell,source);
 	dtu_char_use_up(Dtu_char.current.n);
 	return 1;
+}
+
+// ASCENT: the target hint (dtuspell.h). The aim of cast_now and the
+// flight of its missile, with no effect.
+int dtu_spell_hint_target(void)
+{
+	object *player = ConsoleObject;
+	int source, spell = hand_spell(&source), seg, target;
+	vms_vector dir, pos;
+
+	char msg[100];
+
+	if (spell < 0 || spell_not_in_port(spell) || spell_flag(spell,"self_cast_ok"))
+		return -2;
+	// a spell of a book: the checks of dtu_spell_fire (a scroll and a wand
+	// have none)
+	if (source == 0 && !cast_allowed(spell,msg,sizeof(msg)))
+		return -1;
+	spell_aim(player,&dir,&pos);
+	if (spell_homes(spell)) {
+		target = find_homing_target(player,&dir);
+		if (target >= 0)
+			return target;
+	}
+	seg = find_point_seg(&pos,player->segnum);
+	if (seg < 0)
+		seg = player->segnum;
+	return dtu_missile_path_target(&pos,seg,&dir,spell_template(spell,source),spell,player-Objects,
+		fixmul(spell_fix(spell,"speed",i2f(100)),spell_missile_life(spell,dtu_spell_player_level(spell))));
 }
 
 //------------------------------------------------------------------------

@@ -57,6 +57,12 @@ extern int Dtu_improved_body;
 // software renderer.
 extern int Dtu_anim_interp;
 
+// Target hint: the cursor of the play screen has a warm red tint while the
+// attack of the item in the hand (the swing of a melee weapon, a missile, a
+// spell missile) would reach a hostile creature that it can hurt, by the
+// same test as the attack (dtucombat.c). Off: the cursor of the original.
+extern int Dtu_target_hint;
+
 // The 3D view uses the GPU renderer. 0 selects the software renderer of
 // the original. Option -software sets 0. The software renderer disables
 // the other graphics settings.

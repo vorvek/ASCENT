@@ -72,6 +72,13 @@ void dtu_combat_frame(void);
 // viewer, draw_polygon_model 0x727A5).
 void dtu_combat_draw_view(void);
 
+// ASCENT: the target hint (Dtu_target_hint, dtuopts.h). 1 if the attack of
+// the item in the hand would reach a hostile creature that it can hurt
+// first, by the test of the attack itself (the swing sphere, the flight of
+// a missile or of a spell missile), at the time of the last
+// dtu_combat_frame(). The cursor of the play screen (dtudisp.c) shows it.
+int dtu_combat_target_hint(void);
+
 // The state of the arms, for tests and for the display.
 int dtu_combat_view_state(void);
 int dtu_combat_view_frame(void);

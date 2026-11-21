@@ -43,6 +43,7 @@
 #include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
 #include "segment.h"
 #include "automap.h"		// ASCENT: the map of the map screen
+#include "dtucombat.h"		// ASCENT: the target hint of the cursor
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -1284,10 +1285,43 @@ void dtu_display_hide_cursor(void)
 	Cur_data = NULL;
 }
 
+// ASCENT: the target hint (Dtu_target_hint, dtucombat.c): the colors of the
+// cursor with a warm red tint. Each color is moved towards red (red stays,
+// green times 0.62, blue times 0.48) and matched to the nearest color of
+// the palette, so the frame stays 8-bit and the tint shows in both
+// renderers. Color 255 (transparent) is not used.
+static ubyte *hint_tint_map(void)
+{
+	static ubyte map[256], map_pal[768];
+	static int map_ok;
+	int c, j;
+
+	if (map_ok && !memcmp(map_pal, gr_palette, sizeof(map_pal)))
+		return map;
+	memcpy(map_pal, gr_palette, sizeof(map_pal));
+	for (c = 0; c < 256; c++) {
+		int r = map_pal[c*3], g = map_pal[c*3+1] * 62 / 100, b = map_pal[c*3+2] * 48 / 100;
+		int best = c, best_d = 0x7FFFFFFF;
+
+		for (j = 0; j < 255; j++) {
+			int dr = r - map_pal[j*3], dg = g - map_pal[j*3+1], db = b - map_pal[j*3+2];
+			int d = dr*dr + dg*dg + db*db;
+			if (d < best_d) {
+				best_d = d;
+				best = j;
+			}
+		}
+		map[c] = (ubyte) best;
+	}
+	map_ok = 1;
+	return map;
+}
+
 static void draw_cursor_main(int mx, int my)
 {
 	grs_bitmap *dest = &grd_curcanv->cv_bitmap;
 	int x, y, half = Cursor_size / 2;
+	ubyte *tint = NULL;
 
 	// 0x3074A: the cursor that holds an item is the icon of the item
 	if (Inv_held >= 0 && Inv_held < Dtu_n_inventory && entry_icon(Inv_held) > 0 && Icons_bm) {
@@ -1296,6 +1330,8 @@ static void draw_cursor_main(int mx, int my)
 		return;
 	}
 	if (!Cursor_src) return;
+	if (dtu_combat_target_hint() && !dtu_dlg_is_open())
+		tint = hint_tint_map();
 	for (y = 0; y < Cursor_size; y++)
 		for (x = 0; x < Cursor_size; x++) {
 			int c = Cursor_src->bm_data[y * Cursor_src->bm_rowsize + x];
@@ -1304,7 +1340,7 @@ static void draw_cursor_main(int mx, int my)
 			// the picture is color 255, the transparent color.
 			if (c == 255) continue;
 			if (dx < 0 || dy < 0 || dx >= dest->bm_w || dy >= dest->bm_h) continue;
-			dest->bm_data[dy * dest->bm_rowsize + dx] = c;
+			dest->bm_data[dy * dest->bm_rowsize + dx] = tint ? tint[c] : c;
 		}
 }
 

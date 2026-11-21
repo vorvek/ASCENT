@@ -421,6 +421,26 @@ sets it (dtucombat.c `player_hits_creature`); a missile that kills plays the
 weapon `monster_hit_sound` at 0.25 at the hit point (dtuobj.c). The die sound is
 not changed. See bugs.md, D10.
 
+### Feedback of a miss and of a swing at nothing
+
+From the facts above (A3, A4, 0x278B5, 0x29A9C):
+
+- A swing that touches nothing: no sound, no text, no vclip. The swing plays to
+  its end.
+- A swing that touches a creature: the swing ends at once on a contact at rel 6
+  or 7 (A3 step 7). Before the to-hit roll the weapon `monster_hit_sound` and the
+  creature `hit_sound` play (linked to the creature, 0.5).
+- A missed roll: then only `monster_miss_vclip` and `monster_miss_sound`, which no
+  weapon line of the shipped tables sets, so a miss adds nothing to the contact.
+  0x29A9C prints its text only for damage (hit points went down) or a kill.
+- A swing into a wall (not the floor or the ceiling): the swing ends at once as for
+  a creature, with no sound, and the trigger touch 0x95019 runs.
+
+So a miss and a swing at the air differ only by the contact sounds (which some
+creature and weapon pairs do not have) and the shorter swing. The port has all of
+these (`player_hits_creature`, `swing_hit_test` of dtucombat.c). The target hint
+(C1) is an addition, not a restored behavior.
+
 ## A5. Missile and thrown weapons
 
 ### When the player fires (verified, 0x56A0D, called by 0x44300 each frame while the request is pending)
@@ -1584,6 +1604,42 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   1.42 and dagger 1.32 for the human, elf and K models, 2.62 and 2.52 for the D and F
   models (also warhammer 1.05 and empty hand 0.73 there); all other weapons 0. The hit
   test, the swing time and the missile start do not change. Off: the rule of 0x67C5A.
+- The setting `Dtu_target_hint` ("Target hint" in Improvements, `TargetHint` in
+  `ascent.cfg`, on by default, not in the executable; `-notargethint` turns it off
+  for one run). In each frame `dtu_combat_frame` tests the attack of the item in the
+  hand with the code of the attack itself and with no effect:
+  - melee weapon or empty hand: `swing_test` (the sphere test of 0x6CFF8 that
+    `swing_hit_test` uses) for the hit frames rel 6 to n/2 of state 6, in order. The
+    first frame with a contact (an object, or a wall that is not side 1 or 3)
+    decides, because the swing ends there.
+  - missile or thrown weapon: the start of the shot (`missile_start`, the position
+    plus 2.0 up, the view with the look pitch), then `dtu_missile_path_target` of
+    dtuobj.c: the wall query and the body test of `missiles_frame` (shared
+    `missile_path_object`) along the line for speed times life. No hint without
+    the bow or the crossbow that the ammunition needs.
+  - spell, scroll, wand: `dtu_spell_hint_target` of dtuspell.c: no hint for a spell
+    on the caster or a spell of a book that the checks of 0x356E0 refuse; the homing
+    target of `cast_now` if there is one; else the line of the missile (template
+    weapon, size of the spell model, spell speed times the missile life).
+
+  The hint is on when the first object is a creature that the attack can hurt:
+  hostile (`dtu_creature_is_hostile`), 1.0 hit points or more, not dying, and not
+  `weapon_resistant` against a weapon without `magic` (the rule of 0x29D9D; not
+  applied to spells). Scenery, a corpse, a creature that is not hostile or a wall in
+  front turns it off. The cursor of the play screen (dtudisp.c `draw_cursor_main`)
+  then has its colors moved to red (green times 0.62, blue times 0.48), matched to
+  the nearest color of the palette, so the frame stays 8-bit and the tint shows with
+  both renderers. The cursor that holds an item and the cursor over the
+  conversation window are not tinted. The port draws no cursor in the immersive
+  mode, so there is no hint there. Spread missiles (Burning Hands without a target)
+  and movement after the test are not predicted. A large body (the beetle, radius
+  11.8) reaches through a thin wall: the swing touches it and the hint shows it.
+  Checked in BANE (`-noattack`, `-objlog` line `combat: target hint`): long sword
+  at `-testpos 25,-1,235,0` hint 1 and the swing touches the skeleton (roll missed),
+  at `25,-1,233,0` hint 0 and no contact; dart at `25,-1,215,0` hint 1 and the dart
+  hits the skeleton; dart at `-160.7,14.6,162.7,0` hint 0 and the dart hits the
+  wall; Magic Missile (SG0.SG) at `25,-1,215,0` hint 1, the missile homes on the
+  skeleton; Burning Hands at the wall hint 0, the missiles hit the wall.
 
 ## C2. Spells
 

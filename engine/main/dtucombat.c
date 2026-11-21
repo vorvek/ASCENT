@@ -442,34 +442,40 @@ static int big_sphere_weapon(int w)
 	return 0;
 }
 
-static void swing_hit_test(void)
+// The result of the sphere test of one frame of the swing.
+typedef struct {
+	int		object;		// the nearest object in the sphere, or -1
+	vms_vector ip;		// the hit point on that object
+	int		fate;			// of the wall query
+	fvi_info	hit;
+	vms_vector center;	// the sphere
+	fix		radius;
+} swing_contact;
+
+// 1 if the swing stops at the contact: an object, or a wall whose side is
+// not 1 or 3 ((guess) not the ceiling, not the floor).
+static int swing_stops(swing_contact *sc)
+{
+	return sc->object >= 0 || (sc->fate == HIT_WALL && sc->hit.hit_side != 1 && sc->hit.hit_side != 3);
+}
+
+// The weapon sphere test of 0x6CFF8 for one frame of the arms model, with no
+// effect on the game. The hit test of the swing and the target hint use it.
+// Returns 0 if the frame has no test (no weapon sphere).
+static int swing_test(int frame,int weapon,swing_contact *sc)
 {
 	object *obj = ConsoleObject;
 	polymodel *po = view_po();
-	int s = View_state, n, rel, weapon = hand_weapon(), fate, i, best = -1;
-	vms_vector test_pos, center, ofs, dir, p1, ip, best_ip;
+	int fate, i, seg;
+	vms_vector test_pos, center, ofs, dir, p1, ip;
 	vms_matrix m;
 	fix radius, best_d = 0x7fffffff;
 	fvi_query fq;
-	fvi_info hit;
-	int seg, ended = 0;
 
-	if (!is_attack_state(s)) {
-		Smack = 0;
-		return;
-	}
-	n = Dtu_anim_first[s+1] - Dtu_anim_first[s];
-	rel = View_frame - Dtu_anim_first[s];
-	if (rel < 6 || rel > n - rel)
-		return;
 	if (po == NULL || !(po->box_flags & 1) || !(po->box_flags & 2) || po->weapon_center == NULL)
-		return;
-	if (View_frame < 0 || View_frame >= po->n_frames)
-		return;
-	// A missile weapon does not hit with the swing (guess: 0x7473F gives the
-	// item in the hand, the shot is in 0x56A0D)
-	if (weapon >= 0 && weapon_int(weapon,"attack_type",1) != 1)
-		return;
+		return 0;
+	if (frame < 0 || frame >= po->n_frames)
+		return 0;
 
 	// 0x6D017 to 0x6D066: the position moves forward by the square root of
 	// 2 in the x-z plane for the test
@@ -486,15 +492,15 @@ static void swing_hit_test(void)
 
 	// 0x7473F: the weapon sphere of the frame
 	vm_copy_transpose_matrix(&m,&obj->orient);
-	vm_vec_rotate(&ofs,&po->weapon_center[View_frame],&m);
+	vm_vec_rotate(&ofs,&po->weapon_center[frame],&m);
 	vm_vec_add(&center,&test_pos,&ofs);
-	radius = po->weapon_radius[View_frame];
+	radius = po->weapon_radius[frame];
 	if (big_sphere_weapon(weapon))
 		radius *= 8;
 
 	seg = find_point_seg(&center,obj->segnum);
 	if (seg < 0)
-		return;
+		return 0;
 
 	vm_vec_sub(&dir,&center,&test_pos);
 	vm_vec_normalize_quick(&dir);
@@ -507,7 +513,11 @@ static void swing_hit_test(void)
 	fq.thisobjnum = obj-Objects;
 	fq.ignore_obj_list = NULL;
 	fq.flags = 0;
-	fate = find_vector_intersection(&fq,&hit);
+	fate = find_vector_intersection(&fq,&sc->hit);
+	sc->fate = fate;
+	sc->object = -1;
+	sc->center = center;
+	sc->radius = radius;
 
 	// The objects (flag 1 of the query of the executable): each body
 	for (i=0;i<=Highest_object_index;i++) {
@@ -520,22 +530,48 @@ static void swing_hit_test(void)
 			continue;
 		if (vm_vec_dist_quick(&o->pos,&center) > i2f(40))
 			continue;
-		d = dtu_object_hit_test(&ip,&center,fate == HIT_WALL ? &hit.hit_pnt : &p1,radius,o,obj);
+		d = dtu_object_hit_test(&ip,&center,fate == HIT_WALL ? &sc->hit.hit_pnt : &p1,radius,o,obj);
 		if (d > 0 && d < best_d) {
 			best_d = d;
-			best = i;
-			best_ip = ip;
+			sc->object = i;
+			sc->ip = ip;
 		}
 	}
+	return 1;
+}
+
+static void swing_hit_test(void)
+{
+	object *obj = ConsoleObject;
+	int s = View_state, n, rel, weapon = hand_weapon(), best;
+	swing_contact sc;
+	fvi_info *hit = &sc.hit;
+	int ended = 0;
+
+	if (!is_attack_state(s)) {
+		Smack = 0;
+		return;
+	}
+	n = Dtu_anim_first[s+1] - Dtu_anim_first[s];
+	rel = View_frame - Dtu_anim_first[s];
+	if (rel < 6 || rel > n - rel)
+		return;
+	// A missile weapon does not hit with the swing (guess: 0x7473F gives the
+	// item in the hand, the shot is in 0x56A0D)
+	if (weapon >= 0 && weapon_int(weapon,"attack_type",1) != 1)
+		return;
+	if (!swing_test(View_frame,weapon,&sc))
+		return;
+	best = sc.object;
 
 	{
 		vms_vector rel_c;
-		vm_vec_sub(&rel_c,&center,&obj->pos);
+		vm_vec_sub(&rel_c,&sc.center,&obj->pos);
 		dtu_obj_log("combat: test frame %d, sphere %.2f %.2f %.2f from the body, radius %.2f, wall %d side %d, object %d",
-			View_frame,f2fl(rel_c.x),f2fl(rel_c.y),f2fl(rel_c.z),f2fl(radius),fate,fate == HIT_WALL ? hit.hit_side : -1,best);
+			View_frame,f2fl(rel_c.x),f2fl(rel_c.y),f2fl(rel_c.z),f2fl(sc.radius),sc.fate,sc.fate == HIT_WALL ? hit->hit_side : -1,best);
 	}
 
-	if (best < 0 && !(fate == HIT_WALL && hit.hit_side != 1 && hit.hit_side != 3))
+	if (!swing_stops(&sc))
 		return;
 
 	// 0x6D3D0: a hit. The byte 0x1AF is cleared before the hit (the defect
@@ -552,7 +588,7 @@ static void swing_hit_test(void)
 
 		if (other->type == OBJ_ROBOT) {
 			if (!(other->type == OBJ_ROBOT && DTU_ANIM_STATE(other) == DAS_DIE))
-				player_hits_creature(other,weapon,&best_ip);
+				player_hits_creature(other,weapon,&sc.ip);
 		}
 		else if (other->type == OBJ_DRESSING) {
 			// 0x6D4EC: scenery that can break: hit points cut to 20.0, 100.0
@@ -568,9 +604,9 @@ static void swing_hit_test(void)
 		}
 	}
 	else {
-		dtu_obj_log("combat: the weapon hits the wall of segment %d side %d",hit.hit_seg,hit.hit_side);
-		if (hit.hit_seg >= 0)
-			dtu_trig_touch(hit.hit_seg,hit.hit_side,4,obj);
+		dtu_obj_log("combat: the weapon hits the wall of segment %d side %d",hit->hit_seg,hit->hit_side);
+		if (hit->hit_seg >= 0)
+			dtu_trig_touch(hit->hit_seg,hit->hit_side,4,obj);
 	}
 
 	if (ended)
@@ -589,6 +625,33 @@ static void view_dir(vms_vector *dir)
 	vm_angles_2_matrix(&head,&a);
 	vm_matrix_x_matrix(&view,&ConsoleObject->orient,&head);
 	*dir = view.fvec;
+}
+
+// The start of the shot (0x562BB): the position plus 2.0 up, along the view
+// with the look pitch. Returns the segment.
+static int missile_start(vms_vector *pos,vms_vector *dir)
+{
+	object *obj = ConsoleObject;
+	int seg;
+
+	*pos = obj->pos;
+	pos->y += i2f(2);
+	seg = find_point_seg(pos,obj->segnum);
+	if (seg < 0)
+		seg = obj->segnum;
+	view_dir(dir);
+	return seg;
+}
+
+// 0x41A4D step 3: an arrow needs a bow, a bolt a crossbow. Returns the
+// message, or NULL if the weapon can be fired.
+static char *missile_needs(int w)
+{
+	if (weapon_flag(w,"arrow") && Dtu_char.slot[DTU_SLOT_BOW].n < 0)
+		return "You need a bow to fire arrows.";
+	if (weapon_flag(w,"bolt") && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0)
+		return "You need a crossbow to fire bolts.";
+	return NULL;
 }
 
 // Returns 1 if the request is done.
@@ -614,13 +677,7 @@ static int fire_missile_weapon(int w)
 		int seg, objnum;
 
 		Fire_next += Weapon_info[w].fire_wait > 0 ? Weapon_info[w].fire_wait : F1_0;
-		// 0x562BB: the start is the position plus 2.0 up
-		pos = obj->pos;
-		pos.y += i2f(2);
-		seg = find_point_seg(&pos,obj->segnum);
-		if (seg < 0)
-			seg = obj->segnum;
-		view_dir(&dir);
+		seg = missile_start(&pos,&dir);
 		objnum = dtu_create_missile(&dir,&pos,seg,obj-Objects,w,-1,1);
 		dtu_obj_log("combat: the player fires weapon %d '%s', missile obj %d",w,Weapon_item_info[w].name,objnum);
 		if (objnum >= 0)
@@ -657,14 +714,10 @@ static void start_attack(void)
 
 	w = hand_weapon();
 	if (w >= 0 && weapon_int(w,"attack_type",1) != 1) {
-		// 0x41A4D step 3: an arrow needs a bow, a bolt a crossbow
-		if (weapon_flag(w,"arrow") && Dtu_char.slot[DTU_SLOT_BOW].n < 0) {
-			HUD_init_message("You need a bow to fire arrows.");
-			Request = 0;
-			return;
-		}
-		if (weapon_flag(w,"bolt") && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0) {
-			HUD_init_message("You need a crossbow to fire bolts.");
+		char *need = missile_needs(w);
+
+		if (need) {
+			HUD_init_message("%s",need);
 			Request = 0;
 			return;
 		}
@@ -927,6 +980,76 @@ int dtu_combat_turn_undead(int level)
 }
 
 //------------------------------------------------------------------------
+// ASCENT: the target hint (Dtu_target_hint, dtuopts.h). Not in the
+// executable. In each frame the attack of the item in the hand is tested as
+// the game would do it now, with no effect: the swing of a melee weapon or
+// of the empty hand (the sphere test of the hit frames, swing_test), the
+// flight of a missile (dtu_missile_path_target) or of the missile of a
+// spell (dtu_spell_hint_target). The hint is on if the first object that
+// the attack reaches is a creature that it can hurt: hostile, alive, not in
+// the death animation, and not weapon_resistant against a weapon that is not
+// magic. A wall, scenery, a corpse or a creature that is not hostile in
+// front of it turns the hint off. Movement after the test is not predicted.
+
+static int Target_hint = 0;
+
+// The rule of player_hits_creature and of the missile hit (dtuobj.c).
+// weapon: the weapon type, -1 for the empty hand, -2 for a spell.
+static int hint_creature(int objnum,int weapon)
+{
+	object *o;
+
+	if (objnum < 0 || objnum > Highest_object_index)
+		return 0;
+	o = &Objects[objnum];
+	if (!dtu_creature_is_hostile(o) || o->id >= N_robot_types)
+		return 0;
+	if ((o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) || o->shields < F1_0 || DTU_ANIM_STATE(o) == DAS_DIE)
+		return 0;
+	if (weapon != -2 && (Monster_info[o->id].flags & MONSTER_F_WEAPON_RESISTANT) && !(weapon >= 0 && weapon_flag(weapon,"magic")))
+		return 0;
+	return 1;
+}
+
+// The swing: the frames of the hit window of the attack state (rel 6 to
+// n/2, swing_hit_test) in their order. The first frame with a contact
+// decides, since the swing ends there.
+static int melee_hint(int weapon)
+{
+	int s = DAS_ATTACK, n = Dtu_anim_first[s+1] - Dtu_anim_first[s], rel;
+	swing_contact sc;
+
+	for (rel = 6; rel <= n - rel; rel++) {
+		if (!swing_test(Dtu_anim_first[s] + rel,weapon,&sc))
+			continue;
+		if (sc.object >= 0)
+			return hint_creature(sc.object,weapon);
+		if (swing_stops(&sc))
+			return 0;
+	}
+	return 0;
+}
+
+static int target_hint(void)
+{
+	int w;
+
+	if (dtu_spell_in_hand())
+		return hint_creature(dtu_spell_hint_target(),-2);
+	w = hand_weapon();
+	if (w >= 0 && weapon_int(w,"attack_type",1) != 1) {
+		vms_vector pos, dir;
+		int seg;
+
+		if (missile_needs(w))
+			return 0;
+		seg = missile_start(&pos,&dir);
+		return hint_creature(dtu_missile_path_target(&pos,seg,&dir,w,-1,ConsoleObject-Objects,dtu_missile_weapon_range(w)),w);
+	}
+	return melee_hint(w);
+}
+
+//------------------------------------------------------------------------
 // Calls
 
 static void combat_init(void)
@@ -976,6 +1099,7 @@ void dtu_combat_frame(void)
 	static int last_level = -1;
 
 	combat_init();
+	Target_hint = 0;
 	if (!Dtu_objects_enabled || ConsoleObject == NULL || ConsoleObject->type != OBJ_PLAYER)
 		return;
 
@@ -1031,6 +1155,19 @@ void dtu_combat_frame(void)
 	view_animation();
 	swing_hit_test();
 	start_attack();
+	Target_hint = Dtu_target_hint ? target_hint() : 0;
+	{
+		static int last = -1;
+
+		if (Target_hint != last)
+			dtu_obj_log("combat: target hint %d",Target_hint);
+		last = Target_hint;
+	}
+}
+
+int dtu_combat_target_hint(void)
+{
+	return Dtu_target_hint && Target_hint && ConsoleObject && !Player_is_dead && !Dtu_player_dead;
 }
 
 int dtu_combat_view_state(void) { return View_state; }

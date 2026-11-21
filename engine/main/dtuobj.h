@@ -313,6 +313,16 @@ int dtu_gate_in_creature(int type, int segnum);
 // object number of the missile or -1.
 int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent, int weapon_type, int spell, int make_sound);
 
+// ASCENT: the target hint (Dtu_target_hint, dtucombat.c). The object that
+// a missile fired now from pos along dir would hit first (the test of the
+// missile movement: the walls, then the bodies on the line), or -1. range
+// is the length of its flight. Nothing is created.
+int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range);
+// The length of the flight of a missile weapon: its speed for its life.
+fix dtu_missile_weapon_range(int weapon_type);
+// 1 if the object is a creature that is hostile to the player.
+int dtu_creature_is_hostile(object *obj);
+
 // The burst of a weapon with a min_speed (0x93294): fragments in random
 // directions.
 void dtu_create_burst(int weapon_type, int segnum, vms_vector *pos);
