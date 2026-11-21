@@ -252,6 +252,24 @@ them, they are not interface bitmaps and their names match. The fault above is
 the cause found for a texture that stays 8-bit; the exact game state of the
 report (a level change or a load) was not reproduced.
 
+## Making a set of version 2 again
+
+One run does it: `python -I tools/textures_hd.py` (all archives, no `--force`).
+Version 3 marks every archive directory as stale, so every file is linked again
+from the cache. A bitmap whose cache key changed is upscaled again:
+
+- every tiling bitmap (the 3 x 3 padding is in its key): 56916 files of the 57
+  archives, 3653 distinct bitmaps (2083 64 x 64 wall textures with the detail
+  method, 1534 64 x 64 bitmaps with x4plus, 36 wall textures of other sizes),
+- every bitmap with an effect color (the fill of those colors is in its key; the
+  same files as `--redo-effects`).
+
+All other bitmaps come from the cache. Measured at the 3 x 3 padding: 7.7 detail
+and 15 x4plus bitmaps of 64 x 64 per second, so the tiling bitmaps take about 6
+to 7 minutes; with the effect bitmaps and the links of 60282 files, 10 to 15
+minutes. Then the interface: `python -I tools/ui_hd.py --force --only
+10,195,27,...,56` (32 pictures, about 30 s).
+
 ## Time and size
 
 RTX 4080 SUPER, 16 GB. PORTAL: 3293 distinct bitmaps upscaled in 97 s (34 per
