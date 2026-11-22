@@ -175,6 +175,8 @@ void dtu_spell_frame(void);
 // hand (0x41A4D and 0x56A0D). Returns 1 when the request is done (cast,
 // or refused), 0 while the cast time runs.
 int dtu_spell_fire(void);
+// The homing missile of a spell from the player (Spider Piece 0x14, 0x387B0).
+void dtu_spell_piece_missile(int spell);
 // 1 if the item in the hand is a spell, a scroll or a wand: the attack
 // key casts.
 int dtu_spell_in_hand(void);

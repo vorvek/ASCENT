@@ -111,4 +111,8 @@ void dtu_fear_view_start(object *player, fix duration);
 // stands at the center of its segment with its orientation.
 void dtu_fear_view_end(object *player);
 
+// The use of the Spider Pieces 0x14 and 0x17 (0x385D3, 0x38268): their
+// frame loops, one step at each game frame.
+void dtu_spider_tour_start(int piece);
+
 #endif

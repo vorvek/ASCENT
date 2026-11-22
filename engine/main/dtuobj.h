@@ -101,6 +101,9 @@ extern int Dtu_fix_creature_move;
 // one matrix that fits no level. Corrected: a ray from the creature to the
 // player.
 extern int Dtu_fix_brain;
+// 0x9810D for the segment of the creature and of the player (the rule of
+// Dtu_fix_brain).
+int dtu_brain_sees_player(object *obj);
 
 // 0 (default) is the executable: do_ai_frame puts a creature that is not
 // active back to the first frame of STAND each time it is processed
