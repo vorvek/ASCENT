@@ -6,9 +6,10 @@ formats and the server setup.
 
 Usage:
     python -I tools/content_pack.py [--hd DIR] [--patch ZIP_OR_DIR] [--out DIR]
-                                    [--version V] [PACK ...]
+                                    [--lang DIR] [--version V] [PACK ...]
 
-PACK is one of patch13, textures, ui, movies (default: all).
+PACK is one of patch13, textures, ui, movies, lang_es (default: all but
+lang_es).
 
   patch13   the files of the 1.3 patch that ascent-import needs
             (installer/patch13.txt), from the patch archive dtu1_3.zip or a
@@ -16,6 +17,11 @@ PACK is one of patch13, textures, ui, movies (default: all).
   textures  <hd>/textures without the .cache folder
   ui        <hd>/ui
   movies    <hd>/*.m1v
+  lang_es   the Spanish text: es.catalog (the translation of the game files)
+            and the subtitles *.es.srt of the folder --lang (default
+            gamedata/lang, made by tools/lang_extract.py merge), installed
+            as <hd>/lang/... (docs/formats/lang.md). The catalog is checked
+            first: an error of `lang_extract.py check` stops the pack.
 
 A pack is a ZIP archive. The PNG and M1V files are stored, the text files
 are compressed. Each pack has:
@@ -42,7 +48,9 @@ TITLES = {
     'textures': 'Upscaled textures',
     'ui': 'Upscaled interface pictures',
     'movies': 'Upscaled movies',
+    'lang_es': 'Spanish text (translation and subtitles)',
 }
+DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
@@ -129,6 +137,26 @@ def write_pack(out_dir, name, version, target, entries, data=None):
             'title': TITLES[name]}
 
 
+def lang_files(lang_dir, code):
+    """The files of a language pack: <code>.catalog and <MOVIE>.<code>.srt of
+    lang_dir, installed as lang/<name> in the hd folder. The catalog must pass
+    the check of tools/lang_extract.py."""
+    import subprocess
+    cat = os.path.join(lang_dir, '%s.catalog' % code)
+    if not os.path.exists(cat):
+        raise SystemExit('no %s: run tools/lang_extract.py merge first' % cat)
+    r = subprocess.run([sys.executable, '-I', os.path.join(ROOT, 'tools', 'lang_extract.py'), 'check',
+                        '--dir', lang_dir, '--lang', code], capture_output=True, text=True)
+    print(r.stdout.splitlines()[0] if r.stdout else '')
+    if r.returncode != 0:
+        raise SystemExit('the check of %s found errors:\n%s' % (cat, r.stdout))
+    out = [('lang/%s.catalog' % code, cat)]
+    for f in sorted(os.listdir(lang_dir)):
+        if f.lower().endswith('.%s.srt' % code):
+            out.append(('lang/' + f, os.path.join(lang_dir, f)))
+    return out
+
+
 def patch13_data(patch):
     """The bytes of the 1.3 files from a ZIP archive or a folder, checked."""
     need = read_patch13_list()
@@ -157,16 +185,18 @@ def main(argv):
     hd = os.path.join(ROOT, 'gamedata', 'hd')
     patch = os.path.join(ROOT, 'gamedata', 'patch', 'ps', 'dtu1_3.zip')
     out = os.path.join(ROOT, 'gamedata', 'content')
+    lang = os.path.join(ROOT, 'gamedata', 'lang')
     version = '1'
     packs = []
     i = 1
     while i < len(argv):
         a = argv[i]
-        if a in ('--hd', '--patch', '--out', '--version') and i + 1 < len(argv):
+        if a in ('--hd', '--patch', '--out', '--version', '--lang') and i + 1 < len(argv):
             v = argv[i + 1]
             if a == '--hd': hd = v
             elif a == '--patch': patch = v
             elif a == '--out': out = v
+            elif a == '--lang': lang = v
             else: version = v
             i += 2
         elif a in TITLES:
@@ -175,7 +205,7 @@ def main(argv):
         else:
             print(__doc__)
             return 1
-    packs = packs or list(TITLES)
+    packs = packs or list(DEFAULT_PACKS)
     out = os.path.abspath(out)
     if out == ROOT or out.startswith(os.path.join(ROOT, '')) and not out.startswith(os.path.join(ROOT, 'gamedata', '')):
         raise SystemExit('the output must be outside the repository or in gamedata/ (ignored by git)')
@@ -199,6 +229,8 @@ def main(argv):
             m = write_pack(out, name, version, 'hd', files_of_tree(hd, 'textures'))
         elif name == 'ui':
             m = write_pack(out, name, version, 'hd', files_of_tree(hd, 'ui'))
+        elif name.startswith('lang_'):
+            m = write_pack(out, name, version, 'hd', lang_files(lang, name[5:]))
         else:
             m = write_pack(out, name, version, 'hd',
                            [(f, os.path.join(hd, f)) for f in sorted(os.listdir(hd)) if f.lower().endswith('.m1v')])
