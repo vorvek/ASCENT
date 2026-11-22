@@ -851,6 +851,8 @@ int check_vector_to_sphere_1(vms_vector *intp,vms_vector *p0,vms_vector *p1,vms_
 #include "dtugame.h"
 #include "dtuobj.h"
 #include "bm.h"
+#include "polyobj.h"
+#include <math.h>
 
 // Set by the caller for one query: a start point that is inside of the
 // body of an object hits it. The move of a body does not set it, so that two
@@ -936,6 +938,192 @@ fix dtu_object_hit_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,o
 	return d;
 }
 
+// ASCENT: the object test of the query of DTUGAME.EXE (0x3EE70 with
+// 0x4F7D5), as the swing of the player uses it (0x6CFF8). The query has a
+// horizontal radius rad_h (query +0x14) and a vertical radius rad_v (query
+// +0x18); the swing passes 0 and the radius of the weapon sphere.
+//
+// The body (0x748D9) of a model with the box flag 1 is a capped cylinder
+// about obj->pos (not the torso center) along the y axis of the object:
+// radius body_radius[0] + rad_h, half height + rad_v, where the half height
+// is torso_half_height[frame] for a model with the torso box (flag 8) and
+// body_half_height[0] else. Other objects are a sphere of size + rad_h
+// (0x3ED76).
+//
+// 0x4F7D5: a start point inside the cylinder is a hit at distance
+// radius + rad_h; a segment shorter than 0x3F hits nothing else; a segment
+// that points away from obj->pos hits nothing; else the ray test of a
+// capped cylinder (0x4F4B6 the infinite cylinder, 0x4F68D the two cap
+// planes; it is the method of Cychosz and Waggenspack, Graphics Gems IV):
+// the entry distance must be 0 or more and at most the length, and the
+// exit distance 0 or more. The test of an entry at a negative distance
+// fails, so a start point above the body and within its radius misses.
+static int dtu_cyl_clip(double base_n,double dir_n,double *in,double *out)
+{
+	// one cap plane: base_n is the signed distance of the ray base from the
+	// plane (positive outside), dir_n the dot of the ray with the normal
+	if (fabs(dir_n) < 0x3f / 65536.0)
+		return base_n < 0;
+	{
+		double t = -base_n / dir_n;
+
+		if (dir_n >= 0) {
+			if (t > *in && t < *out)
+				*out = t;
+			if (t < *in)
+				return 0;
+		}
+		else {
+			if (t > *in && t < *out)
+				*in = t;
+			if (t > *out)
+				return 0;
+		}
+	}
+	return 1;
+}
+
+fix dtu_body_query_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad_h,fix rad_v,object *obj)
+{
+	polymodel *po = NULL;
+	double a[3], d[3], c[3], u[3], w[3], dn[3], mag, h0, R, H, hd;
+	int i, n = obj->rtype.pobj_info.model_num;
+
+	if (obj->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
+		return 0;
+	// "pass_thru": the executable sets the flag 0x40 of such a creature,
+	// and the query skips objects with that flag
+	if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types && Dressing_info[obj->id].pass_thru)
+		return 0;
+	if (obj->type == OBJ_ROBOT && obj->id < N_robot_types && (Monster_info[obj->id].flags & MONSTER_F_PASS_THRU))
+		return 0;
+
+	if (obj->render_type == RT_POLYOBJ && n >= 0 && n < N_polygon_models && Polygon_models[n].dtu_block)
+		po = &Polygon_models[n];
+	if (po == NULL || !(po->box_flags & DTU_BOX_BODY) || po->body_radius == NULL)
+		return check_vector_to_sphere_1(intp,p0,p1,&obj->pos,obj->size+rad_h);
+
+	R = f2fl(po->body_radius[0] + rad_h);
+	if ((po->box_flags & DTU_BOX_TORSO) && po->torso_half_height && po->n_frames > 0) {
+		int frame = DTU_ANIM_FRAME(obj);
+
+		if (frame < 0 || frame >= po->n_frames)
+			frame = 0;
+		H = f2fl(po->torso_half_height[frame] + rad_v);
+	}
+	else
+		H = f2fl(po->body_half_height[0] + rad_v);
+
+	a[0] = f2fl(p0->x); a[1] = f2fl(p0->y); a[2] = f2fl(p0->z);
+	c[0] = f2fl(obj->pos.x); c[1] = f2fl(obj->pos.y); c[2] = f2fl(obj->pos.z);
+	d[0] = f2fl(p1->x) - a[0]; d[1] = f2fl(p1->y) - a[1]; d[2] = f2fl(p1->z) - a[2];
+	// 0x3EEE6: the vector (0,1,0) rotated by the orientation (0xD76E7)
+	u[0] = f2fl(obj->orient.rvec.y); u[1] = f2fl(obj->orient.uvec.y); u[2] = f2fl(obj->orient.fvec.y);
+	{
+		double l = sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]);
+
+		if (l <= 0) { u[0] = u[2] = 0; u[1] = 1; }
+		else for (i=0;i<3;i++) u[i] /= l;
+	}
+	mag = sqrt(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]);
+
+	// the start point in the body
+	h0 = (a[0]-c[0])*u[0] + (a[1]-c[1])*u[1] + (a[2]-c[2])*u[2];
+	if (h0 < H && h0 > -H) {
+		for (i=0;i<3;i++)
+			w[i] = c[i] - a[i] + u[i]*h0;	// from the start to the axis, across it
+		hd = sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2]);
+		if (hd < R) {
+			vms_vector v;
+
+			if (hd > 0)
+				for (i=0;i<3;i++)
+					w[i] /= hd;
+			v.x = fl2f(c[0] - R*w[0]); v.y = fl2f(c[1] - R*w[1]); v.z = fl2f(c[2] - R*w[2]);
+			*intp = v;
+			return fl2f(R) > 0 ? fl2f(R) : 1;
+		}
+	}
+	if (mag < 0x3f / 65536.0)
+		return 0;
+	for (i=0;i<3;i++)
+		dn[i] = d[i] / mag;
+	// moving away from the object
+	if (dn[0]*(c[0]-a[0]) + dn[1]*(c[1]-a[1]) + dn[2]*(c[2]-a[2]) < 0)
+		return 0;
+
+	{
+		double rc[3], nv[3], ln, tin, tout;
+
+		for (i=0;i<3;i++)
+			rc[i] = a[i] - c[i];
+		// 0x4F4B6: n = dir x axis
+		nv[0] = dn[1]*u[2] - dn[2]*u[1];
+		nv[1] = dn[2]*u[0] - dn[0]*u[2];
+		nv[2] = dn[0]*u[1] - dn[1]*u[0];
+		ln = sqrt(nv[0]*nv[0] + nv[1]*nv[1] + nv[2]*nv[2]);
+		if (ln < 0x3f / 65536.0) {
+			// parallel to the axis: the distance from the axis
+			double k = rc[0]*u[0] + rc[1]*u[1] + rc[2]*u[2], e[3];
+
+			for (i=0;i<3;i++)
+				e[i] = rc[i] - u[i]*k;
+			if (sqrt(e[0]*e[0] + e[1]*e[1] + e[2]*e[2]) > R)
+				return 0;
+			tin = -1e30;
+			tout = 1e30;
+		}
+		else {
+			double dist, o[3], t, s, oc, ol;
+
+			for (i=0;i<3;i++)
+				nv[i] /= ln;
+			dist = fabs(rc[0]*nv[0] + rc[1]*nv[1] + rc[2]*nv[2]);
+			if (!(dist < R))
+				return 0;
+			// t = -((RC x axis) . n) / ln
+			o[0] = rc[1]*u[2] - rc[2]*u[1];
+			o[1] = rc[2]*u[0] - rc[0]*u[2];
+			o[2] = rc[0]*u[1] - rc[1]*u[0];
+			t = -(o[0]*nv[0] + o[1]*nv[1] + o[2]*nv[2]) / ln;
+			// O = n x axis, normalized; s = |sqrt(r^2 - d^2) / (dir . O)|
+			o[0] = nv[1]*u[2] - nv[2]*u[1];
+			o[1] = nv[2]*u[0] - nv[0]*u[2];
+			o[2] = nv[0]*u[1] - nv[1]*u[0];
+			ol = sqrt(o[0]*o[0] + o[1]*o[1] + o[2]*o[2]);
+			if (ol > 0)
+				for (i=0;i<3;i++)
+					o[i] /= ol;
+			oc = dn[0]*o[0] + dn[1]*o[1] + dn[2]*o[2];
+			if (fabs(oc) < 0x3f / 65536.0)
+				return 0;
+			s = fabs(sqrt(R*R - dist*dist) / oc);
+			tin = t - s;
+			tout = t + s;
+			if (tin < 0 || tout < 0)
+				return 0;
+		}
+
+		// 0x4F68D: the bottom cap (normal -axis) and the top cap (normal axis)
+		{
+			double dir_u = dn[0]*u[0] + dn[1]*u[1] + dn[2]*u[2];
+
+			if (!dtu_cyl_clip(-h0 - H,-dir_u,&tin,&tout))
+				return 0;
+			if (!dtu_cyl_clip(h0 - H,dir_u,&tin,&tout))
+				return 0;
+			if (!(tin < tout))
+				return 0;
+		}
+		if (tin < 0 || tout < 0 || tin > mag)
+			return 0;
+		intp->x = fl2f(a[0] + dn[0]*tin);
+		intp->y = fl2f(a[1] + dn[1]*tin);
+		intp->z = fl2f(a[2] + dn[2]*tin);
+		return fl2f(tin) > 0 ? fl2f(tin) : 1;
+	}
+}
+
 //determine if a vector intersects with an object
 //if no intersects, returns 0, else fills in intp and returns dist
 fix check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,object *obj,object *otherobj)
@@ -987,6 +1175,9 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 //   2: rad/2 for the floor, 0 for the other sides (the search for the floor)
 //   3: rad + 1.0 for the walls, 0 for the floor and the ceiling (the
 //      head sphere of the capsule of the player, physics.c)
+//   4: the same three radii for a query whose first radius is 0 (the swing
+//      of the player, 0x6CFF8: walls 1.0, the floor 0, the ceiling
+//      rad2 * 1.5), whatever rad is
 // The modes 2 and 3 are not in the executable. The mode 2 keeps a wall
 // that is near the player out of the search for the floor.
 int Fvi_dtu_body = 0;
@@ -1002,6 +1193,8 @@ fix Fvi_dtu_cap_down = 0, Fvi_dtu_cap_up = 0;
 
 static fix dtu_side_rad(int side,fix rad)
 {
+	if (Fvi_dtu_body == 4)
+		return side == WBOTTOM ? 0 : side == WTOP ? fixmul(Fvi_dtu_rad2,0x18000) : F1_0;
 	if (!Fvi_dtu_body || rad == 0)
 		return rad;
 	if (Fvi_dtu_body == 3)

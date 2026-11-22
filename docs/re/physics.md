@@ -88,6 +88,31 @@ robot or a player object (the object test 0x3EE70 returns 1, not 2).
 **V** `fvi_sub` sets bit `1 << side` in 0x13D448 for each wall hit. pcons.c reverses the
 velocity when the value is 10 (floor and ceiling in one query, "dubble wammo.").
 
+**V** The object test 0x3EE70 (eax hit point, edx p0, ebx p1, ecx rad, then rad2, the
+second line and its radii, the result word, the object). It asks 0x748D9 for the body.
+A model with the box flag 1 (and render type 1): 0x4F7D5(p0, p1, `obj->pos`, the vector
+(0,1,0) turned by the orientation of the object, rad, rad2, `body_radius[0]`, the half
+height), where the half height is `torso_half_height[frame]` with the torso box (flag 8)
+and `body_half_height[0]` else; the torso center of 0x748D9 is not used. The result is 2
+on a hit. Other objects: the sphere test 0x3ED76 with `size + rad`. 0x4F7D5 is a capped
+cylinder about the position, radius `body_radius[0] + rad`, half height `+ rad2`:
+
+1. A start point in the cylinder (the height along the axis within the half height, the
+   distance across within the radius) is a hit at distance `body_radius[0] + rad`, at
+   the point of the surface toward p0.
+2. Else no hit for a line shorter than 0x3F, or a line that points away from the
+   position (direction . (pos - p0) < 0).
+3. Else the ray test of a capped cylinder of Graphics Gems IV (Cychosz and
+   Waggenspack): 0x4F4B6 the infinite cylinder (a miss if the entry or the exit is
+   behind p0), 0x4F68D the two cap planes. A hit needs the entry distance 0 or more and
+   at most the length of the line; it is the distance.
+
+The object loop of fvi_sub skips the object itself, objects with the flag 2 or 0x40
+(0x40 is `pass_thru`, objects.md), the ignore list and related weapons (0x55369). A
+wall hit replaces a nearer object hit, except the floor (side 3) against an object hit
+(0x3F8FF). The port uses this test for the swing of the player (`dtu_body_query_test`
+in fvi.c, combat.md A3).
+
 **G** How the second line (+8, +0xC) is used was not read. It starts at the position
 plus an offset of the model. It is probably the line of the second bounding box, for
 the test against objects.
