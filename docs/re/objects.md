@@ -162,8 +162,8 @@ table. `picture=` of a `$MONSTER` line does not take a slot: it calls the bitmap
 | 0x26 | s16 | `plot_item` | 0 |
 | 0x28 | fix | `size` | 5.0 |
 | 0x2C | fix | `duration` | 1.0 |
-| 0x30 | fix | `player_light` | 0 |
-| 0x34 | fix | `mass` or `weight` | 1.0 |
+| 0x30 | fix | `mass` or `weight` (0x23A25, 0x2389E) | 1.0 |
+| 0x34 | fix | `player_light` (0x23B5B) | 0 |
 | 0x38 | int | `speed` | 1.0 |
 | 0x3C | fix | `modifier` | 1.0 |
 | 0x40 | int | flags 2: `pass_thru` 2 | 0 |
@@ -223,7 +223,7 @@ fields that object setup uses.
 | 0x2E | s16 | `uses` |
 | 0x32 | s16 | `icon` |
 | 0x34 | s16 | `value` |
-| 0x3E | u8 | flags: `stackable` 2, `magic` 0x10 |
+| 0x3E | u8 | flags (the reader, 0x222E0 to 0x223FA): `2_handed_weapon` 1, `stackable` 2, `arrow` 4, `bolt` 8, `magic` 0x10, `bonus_exempt` 0x20, `auto_hit` 0x40, `non_hotkey_item` 0x80 |
 | 0x58 | fix | `size` |
 | 0x8C | fix | `mass` or `weight` |
 

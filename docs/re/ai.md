@@ -1498,7 +1498,9 @@ All addresses are linear addresses in `dtu_flat.bin` (base 0x10000).
 | +0xEA | 4 | int | `moola` | 0 | integer |
 | +0xEE | 4 | fix | `regonzo` | 0 | fix |
 
-The bytes +0x60 and +0x92 to +0x93 are not written by the reader.
+Every byte from +0x00 to +0xF1 is written. +0x60 is the fifth byte of the group at +0x5C
+(the loop at 0x1D8E4 stores 5 bytes, `mov byte ptr [ecx + ebx], al`, `cmp ebx, 5`), and
++0x92 to +0x93 is the fifth word of the group at +0x8A (DTU-Decomp `recovered/structures.md`).
 
 The keyword at 0x121659 (between `weapon_type` and `mass`) is `iq`.
 

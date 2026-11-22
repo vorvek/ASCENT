@@ -36,7 +36,7 @@ init 0x95718, loader 0x95797). "guess" marks inferred names.
 | 0x0B | s16 | sound | -1 | Sound number. -1 selects a default sound (3108 or 2001, by a side flag) (code). Always -1 in files. |
 | 0x0D | s16 | next_trap | -1 | Next trap in the chain run by one trigger (code). |
 | 0x0F | u32 | flags | 0 | See below. |
-| 0x13 | s16 | weapon_type | -1 | When not -1: creates a weapon or spell effect of this type at pos in seg (code path 0x946AE, target function near the string "Weapon_create_new"; the name is a guess). Files hold 7, 8, 11, 15. |
+| 0x13 | s16 | weapon_type | -1 | When not -1: an index into Weapon_info (records of 217 bytes at 0x1E9D08). 0x946AE reads the word at +0x13 (`mov ecx, dword ptr [eax + 0x11]`, `sar ecx, 0x10`), multiplies it by 217 and tests `min_speed` (+0xC6, `cmp dword ptr [eax + 0x1e9dce], 0`): above 0 a burst (0x93294), else one missile of that weapon (0x934A8). Files hold 7, 8, 11, 15. |
 | 0x15 | fix[3] | pos | | World position of the trap (code: sound and effect origin). |
 | 0x21 | fix[3] | vec21 | | Unit vector in all 331 level records (verified). Guess: facing or firing direction. Not seen in the traced code. |
 | 0x2D | s16 | spawn_object | -1 | When not -1: creates an object from template table entry N at pos (code path 0x946FA; guess: an item). Files hold 6, 16, 32. |
@@ -92,6 +92,6 @@ Bits set in the level files: 0x01, 0x08, 0x10, 0x20, 0x40, 0x100, 0x200, 0x8000.
 ## Unknown
 
 - unk03, unk09, unk2f, unk3b, unk3d, robot_arg, the 16 bytes at 0x4F.
-- What exactly weapon_type and spawn_object index into.
+- What exactly spawn_object indexes into (weapon_type is a Weapon_info line, see 0x13).
 - The loader logs "Loading the trap texture file names." and opens `NAME.hk1` as text
   only in editor mode. No such file ships.
