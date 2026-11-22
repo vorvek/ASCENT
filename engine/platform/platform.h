@@ -345,7 +345,9 @@ void plat_gpu_texture_delete(int texture);
 // the job is copied. If no file of the job is valid, the texture keeps its
 // content. A layer is a PNG file (path) that is scale times the original
 // size, or, if path is NULL or not valid, the original pixels (rgba). The
-// alpha of the result is 0 where the original pixel has alpha 0.
+// alpha of the result is 0 or 255: the alpha of the file cut at 128 (the
+// mask upscaled with smooth edges), or the alpha of the original pixels;
+// the top is blended over the base with the alpha of its file.
 typedef struct plat_gpu_hd_layer {
 	const char *path;		// the PNG file, or NULL
 	int w, h;				// the original size
