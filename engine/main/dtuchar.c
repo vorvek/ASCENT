@@ -2121,11 +2121,11 @@ int dtu_char_attack_roll(object *target, int weapon)
 		else {
 			// 0x2A949: one of three texts; the arms go to state 10 and the
 			// attack request ends
-			static const char *what[3] = { "You lost your balance!", "Your weapon was entangled!", "The wind was knocked out of you!" };
+			static const char *what[3] = { LN("You lost your balance!"), LN("Your weapon was entangled!"), LN("The wind was knocked out of you!") };
 			int n = rand() % 3;
 
 			dtu_combat_fumble();
-			HUD_init_message("%s", what[n]);
+			HUD_init_message("%s", LT(what[n]));
 			dtu_char_log("attack roll: fumble, d20 %d not above dexterity %d: %s", r2, Dtu_char.pa.dexterity, what[n]);
 		}
 		result = -1;

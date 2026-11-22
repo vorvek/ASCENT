@@ -105,9 +105,9 @@ id: port.you_feel_refreshed
 en: You feel refreshed
 tr: Recuperas las fuerzas
 
-id: port.your_character_has_attained_new_s_level
-en: Your character has attained new %s level
-tr: Tu personaje ha alcanzado un nuevo nivel de %s
+id: port.ok
+en: Ok
+tr: Aceptar
 
 id: port.you_made_a_critical_hit
 en: You made a critical hit!
@@ -116,6 +116,18 @@ tr: ¡Has asestado un golpe crítico!
 id: port.you_made_a_critical_fumble
 en: You made a critical fumble!
 tr: ¡Has cometido una pifia!
+
+id: port.you_lost_your_balance
+en: You lost your balance!
+tr: ¡Has perdido el equilibrio!
+
+id: port.your_weapon_was_entangled
+en: Your weapon was entangled!
+tr: ¡Se te ha enredado el arma!
+
+id: port.the_wind_was_knocked_out_of_you
+en: The wind was knocked out of you!
+tr: ¡Te has quedado sin aliento!
 
 id: port.your_backstab_was_very_successful
 en: Your backstab was very successful!
@@ -401,17 +413,29 @@ id: port.enter_qty
 en: Enter Qty
 tr: Cantidad
 
+id: port.you_are_protected_by_stoneskin_spell
+en: You are protected by StoneSkin Spell.
+tr: Te protege el conjuro Piel de Piedra.
+
+id: port.s_protected_by_stoneskin_spell
+en: %s protected by StoneSkin Spell.
+tr: El conjuro Piel de Piedra protege a %s.
+
 id: port.you_killed_s
 en: You killed %s.
 tr: Has matado a %s.
 
-id: port.you_hit_s_for_d
-en: You hit %s for %d.
-tr: Golpeas a %s: %d de daño.
+id: port.you_hit_s_for_d_damage
+en: You hit %s for %d damage.
+tr: Golpeas a %s y causas %d de daño.
 
-id: port.s_hits_you_for_d
-en: %s hits you for %d.
-tr: %s te golpea: %d de daño.
+id: port.you_are_protected_by_invulnerability
+en: You are protected by Invulnerability.
+tr: Te protege la Invulnerabilidad.
+
+id: port.s_hit_you_for_d_damage
+en: %s hit You for %d damage.
+tr: %s te golpea y causa %d de daño.
 
 id: port.you_took_d_damage
 en: You took %d damage.
@@ -428,6 +452,10 @@ tr: Recoges: %s.
 id: port.you_cannot_carry_s
 en: You cannot carry %s.
 tr: No puedes llevar: %s.
+
+id: port.drow_2
+en: drow
+tr: drow
 
 id: port.s_tries_to_speak_but_nothing_happens
 en: %s tries to speak, but nothing happens.
@@ -1100,10 +1128,6 @@ tr: Guardar
 id: port.error
 en: ERROR
 tr: ERROR
-
-id: port.ok
-en: Ok
-tr: Aceptar
 
 id: port.connectivity_errors_detected_in_mine_see
 en: Connectivity errors detected in\nmine.  See monochrome screen for\ndetails, and contact Matt or Mike.
