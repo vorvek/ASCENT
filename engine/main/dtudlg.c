@@ -9,8 +9,6 @@
  * 3D view: the text area on top and the reply area under it, with the
  * layout of the table at 0x1465F4 for the interface mode. The port draws
  * the same areas on the screen after the interface. Port decisions:
- * - The area of the window is darkened (the color table of the lighting at
- *   half light). New in the port.
  * - The dark view: the executable ramps the value 0x14C4CE from 1 to 15
  *   when the window opens and back to 0 when it closes, one step for each
  *   0x800 of game time, and the texture mappers draw every lit texture in
@@ -50,7 +48,6 @@
 #include "dtudisp.h"
 #include "dtuscript.h"
 #include "dtudlg.h"
-#include "3d.h"			// ASCENT: g3_gpu_view_darken
 #include "mouse.h"
 #include "platform.h"		// plat_mouse_wheel
 #include "dtufe.h"		// Dtu_fe_original_input
@@ -497,27 +494,6 @@ static void draw_line(int x, int y, const char *s, int len)
 	gr_string(x, y, buf);
 }
 
-// Half light for the pixels of a rectangle of the screen
-static void darken(int x0, int y0, int x1, int y1)
-{
-	grs_bitmap *bm = &grd_curcanv->cv_bitmap;
-	int x, y;
-
-	if (x0 < 0) x0 = 0;
-	if (y0 < 0) y0 = 0;
-	if (x1 > bm->bm_w) x1 = bm->bm_w;
-	if (y1 > bm->bm_h) y1 = bm->bm_h;
-	// ASCENT: the fade table keeps color 255, the color that shows the
-	// image of the GPU renderer: the GPU image is darkened in the same
-	// rectangle.
-	g3_gpu_view_darken(x0 + bm->bm_x, y0 + bm->bm_y, x1 + bm->bm_x, y1 + bm->bm_y, GR_FADE_LEVELS/3);
-	for (y = y0; y < y1; y++) {
-		ubyte *p = bm->bm_data + y * bm->bm_rowsize + x0;
-		for (x = x0; x < x1; x++, p++)
-			*p = gr_fade_table[(GR_FADE_LEVELS/3) * 256 + *p];
-	}
-}
-
 static void frame_rect(int x0, int y0, int x1, int y1, int color)
 {
 	gr_setcolor(color);
@@ -578,8 +554,6 @@ void dtu_dlg_draw(void)
 	c_sel = rgb6(63, 32, 0);
 	c_reply = rgb6(32, 32, 32);
 	c_frame = rgb6(63, 0, 63);
-
-	darken(L->x - 3, L->y, L->x + L->w + 4, L->y + L->h1 + L->h2);
 
 	// 0xB170B: the column of the numbers is as wide as the widest "%d) "
 	// of the MaxDialogResponses (0x1465A8: 8) numbers. The text column

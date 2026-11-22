@@ -290,11 +290,9 @@ scale of the new color. Flat polygons (no texture) keep their colors, as the
 rule is in the texture mapper. A level start and a loaded game end the dark
 view at once.
 
-The half light of the window area (`darken` in dtudlg.c, fade table row 11)
-is new in the port; with it the view behind the text is darker than in the
-DOS game. The RGB form of the GPU renderer scales the colors by the average
-scale of that row: the light of the fade table through the nearest palette
-color gave the smooth upscaled sword texture swirls of purple and orange.
+The port had an extra half light of the window area (fade table row 11). It
+made the view behind the text darker than in the DOS game, so it was
+removed: the lavender grey view alone is the original look.
 
 Test (YPINN, Durnan, `-level YPINN -fixedfps 30 -testpos -60,-8.7,9,270
 -testmove wait:10,use:1,wait:400 -dlgauto esc,esc,esc,esc -dlgdelay 10`,
