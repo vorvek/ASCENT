@@ -62,6 +62,7 @@
 #include "dtutrig.h"
 #include "dtuspell.h"
 #include "dtudlg.h"
+#include "dtuscroll.h"		// ASCENT: dtu_scroll_reset at a new level
 #include "dtuscript.h"
 #include "dtumovie.h"
 #include "dtulog.h"		// ASCENT: the session log
@@ -2188,6 +2189,7 @@ void dtu_script_level_start(void)
 	Walk_obj = -1;
 	dtu_dlg_close();
 	dtu_dlg_reset_view();
+	dtu_scroll_reset();
 }
 
 // A warp of DB to another level (0x59C3C after the run)

@@ -354,6 +354,7 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "dtudisp.h"		// ASCENT: the interface of the target game
 #include "dtuscript.h"	// ASCENT: the scripts and the conversation window
 #include "dtudlg.h"
+#include "dtuscroll.h"		// ASCENT: the scroll text screen
 #include "endlevel.h"
 #include "joydefs.h"
 #include "kconfig.h"
@@ -1935,6 +1936,7 @@ void game_render_frame_mono(void)
 		game_draw_hud_stuff();
 		dtu_display_frame();
 		dtu_dlg_draw();			// ASCENT: the conversation window (dtudlg.c)
+		dtu_scroll_draw();		// ASCENT: the scroll text screen (dtuscroll.c)
 		return;
 	}
 
@@ -4204,8 +4206,13 @@ mem_check();
 			do_controlcen_dead_frame();
 
 		// ASCENT: while a script waits (a conversation, dtuscript.c) the
-		// keys go to the conversation window
-		if (ReadControlsFlag && !dtu_script_waiting())
+		// keys go to the conversation window. While the scroll text screen
+		// is open the frame reads no controls and gives the keys to the
+		// screen (0x435F8 to 0x436D5, dtuscroll.c).
+		if (dtu_scroll_is_open()) {
+			memset(&Controls, 0, sizeof(Controls));
+			dtu_scroll_frame();
+		} else if (ReadControlsFlag && !dtu_script_waiting())
 			ReadControls();
 		else
 			memset(&Controls, 0, sizeof(Controls));

@@ -44,6 +44,7 @@
 #include "automap.h"
 #include "fuelcen.h"	// ASCENT: the fire of a rest place
 #include "dtuscript.h"	// ASCENT: the script 0x1FC of the Spider Piece 0x18
+#include "dtuscroll.h"	// ASCENT: the text screen of the Scroll
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1744,9 +1745,21 @@ static int use_misc(dtu_inv_item *e)
 			dtu_hook_script_event(0x1FE);
 			return 0;
 		case 0x66:		// Scroll: 0x9DC42 shows the scroll text of the count
-		case 0x7F:		// thief scroll: the text 1
-			dtu_char_log("use: '%s' shows the scroll text %d (the text screen 0x9DC42 is not in the port)", e->name,
-				e->id == 0x7F ? 1 : e->count);
+		case 0x7F:		// thief scroll: the text 1 (0x37DE0)
+			// The port counts the Scroll of count 0 (the mission summary)
+			// as 1 (dtu_char_load_save, the new character); no level has
+			// a Scroll of count 1 (they have 2 to 27).
+			n = e->count;
+			if (e->has_record) {
+				dtu_item_record rec;
+				memcpy(&rec, e->record, sizeof(rec));
+				n = rec.count;
+			} else if (n == 1)
+				n = 0;
+			if (e->id == 0x7F)
+				n = 1;
+			dtu_char_log("use: '%s' shows the scroll text %d", e->name, n);
+			dtu_scroll_show(n);		// dtuscroll.c
 			return 0;
 		case 0x6A:		// Cursed Scroll
 			{

@@ -60,6 +60,7 @@
 #include "switch.h"
 #include "dtuscript.h"
 #include "dtudlg.h"		// ASCENT: dtu_dlg_reset_view
+#include "dtuscroll.h"		// ASCENT: dtu_scroll_reset
 #include "screens.h"
 #include "dtuopts.h"
 #include "dtuhdui.h"		// ASCENT: the upscaled pictures
@@ -2397,6 +2398,7 @@ int fe_load_game(int in_game)
 	if ((int) get_u32(b + SG_GAME_TIME) > 0)
 		GameTime = (fix) get_u32(b + SG_GAME_TIME);
 	dtu_dlg_reset_view();		// ASCENT: no dark view of a conversation in the loaded game
+	dtu_scroll_reset();			// ASCENT: no scroll text screen in the loaded game
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
 	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
 	dtu_mission_read_save(path);			// ASCENT: the mission and global flags (dtuscript.c)

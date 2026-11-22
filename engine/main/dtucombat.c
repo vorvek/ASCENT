@@ -48,6 +48,7 @@
 #include "dtuthief.h"
 #include "text.h"
 #include "key.h"
+#include "dtuscroll.h"		// ASCENT: the scroll text screen skips the animation
 
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
@@ -1184,7 +1185,9 @@ void dtu_combat_frame(void)
 
 	// The order of the game frame (0x435A6): the animation, the movement
 	// of the objects with the hit test, then the start of the attack.
-	view_animation();
+	// The scroll text screen skips the animation (0x43823).
+	if (!dtu_scroll_is_open())
+		view_animation();
 	swing_hit_test();
 	start_attack();
 	Target_hint = Dtu_target_hint ? target_hint() : 0;

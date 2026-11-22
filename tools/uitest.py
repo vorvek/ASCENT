@@ -272,6 +272,22 @@ def test_doll_drop(t):
     assert differ(region(s["base"], *ARMOR_SLOT), region(s["worn"], *ARMOR_SLOT)) > 0.1, "the armor slot is empty"
 
 
+# The text box of the scroll text screen, high resolution (85 + 85, 40 + 80)
+SCROLLTEXT = (170, 120, 300, 200)
+
+
+def test_scroll_text(t):
+    """Using the Scroll opens the scroll text screen over the play screen
+    (0x9DC42); while it is open a key goes to the screen and closes it
+    (0x9D165), so I does not open the inventory."""
+    s, _ = t.run("scroll_text", ["gamekeys", "wait 20", "move 600 400", "wait 3", "shot base", "wait 40",
+                                 "shot open", "key i", "wait 10", "shot closed"],
+                 extra=["-fixedfps", "30", "-chartest", "30:use=16.102"])
+    assert differ(region(s["base"], *SCROLLTEXT), region(s["open"], *SCROLLTEXT)) > 0.3, "the scroll did not open"
+    assert differ(region(s["base"], *SCROLLTEXT), region(s["closed"], *SCROLLTEXT)) < 0.05, "the scroll did not close"
+    assert differ(region(s["base"], *LEFT), region(s["closed"], *LEFT)) < 0.02, "I opened the inventory"
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 

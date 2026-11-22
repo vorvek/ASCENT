@@ -491,6 +491,95 @@ behavior.
   asserts at 0x35D2C; the variable 0x13ADB1, the button SPELLS). 0x35ABD is the
   test of a point in a rectangle.
 
+## The scroll text screen (dispscrl.c)
+
+Verified in the instructions of 0x9C00B to 0x9DC42 (the asserts name
+`dispscrl.c`). The use function 0x37A6A calls 0x9DC42 with the count of the
+item (word +8 of the entry) for misc 0x66 (Scroll, 0x37DC9) and with 1 for
+misc 0x7F (thief scroll, 0x37DE0). The item is not used up (both jump to
+0x396A0).
+
+0x9DC42(n):
+
+1. 0x9CB62, once: 13 colors with 0xD9ADC (closest palette color of 6-bit
+   r, g, b) for the markup `~c0` to `~c12`: (0,0,0), (63,63,63), (63,0,0),
+   (0,63,0), (0,0,63), (32,32,32), (63,32,0), (63,63,0), (63,32,16),
+   (63,0,63), (63,50,50), (15,31,15), (47,0,16).
+2. 0x9D43B: loads FEBGND entry 0x144DDD[hi] (152 low, 236x199; 151 high,
+   470x399) with 0x800A4 and centers it on the screen (0x45392C, the screen,
+   width and height minus the picture, halved). Returns 1 (nothing opens)
+   if the load fails. The background is 0x13B606, the canvas that the frame
+   renders into. A second bitmap of the picture size (0xDCB00, cleared with
+   0xD84D0) holds each step.
+3. 0x9CEA3(n) writes the text into the picture. n = 0: FETXT entry
+   0x1451E5[mission] (mission 0x8445A, 0 to 39: entries 271 to 310, the
+   mission summaries of Khelben); n = 1 to 127: 0x144FE5[n] (low) or
+   0x144DE5[n] (high). Both tables: [0] 269 "Your current mission", [1] 270
+   `~pc3`, then [n] = 141 + n - 2 (low) or 13 + n - 2 (high). The high
+   texts are longer versions of the low ones. The text is loaded with
+   0x97461. The canvas is the picture with the font `[0x13B844] + 0x10`
+   (the game font), color 1, no background, and the sub-canvas of the
+   text box 0x144D8D, 0x144D95, 0x144D9D, 0x144DA5: (43, 39) 151 x 133
+   low, (85, 80) 302 x 264 high.
+4. The steps (0x9CDED): the hidden width of step 0 is the box width W, of
+   step i W - i * W / 16 (16.16 fixed point), and the last of the 16 steps
+   is 0. So 16 steps.
+5. The game time stops (0x40DF9) unless the game is a network game
+   (0x13B69B & 0x26) and 0x1468CC is 2. The frame function 0x1452DD becomes
+   0x9D08D, the step 0 and the time 0x3BCAE0 0, and 0x9D279 draws step 0.
+
+The layout 0x9D5F1(w, h): the words come from `strtok` with the
+separators space, LF, CR, tab (0x144D78), so a line break of the text is a
+space. x and y start at 0; the line height is `ft_h` of the font, the space
+width that of " ".
+
+- `~n` or `~N`: x = 0, y += ft_h + 1.
+- `~c` or `~C` and a number: the font color is color N, or color 1 if N is
+  not 0 to 12 (the texts use `~c999` for that).
+- `~p` or `~P`, one character, a number N (atoi from the fourth character,
+  `~pc3`): if N is 0 to 3, FEBGND entry 0x1452B9[N][hi] (133/104, 131/89,
+  132/90, 191/192, low/high) is loaded; if it loads: y += ft_h if x is not
+  0, y += 4, the picture is copied without a mask at ((w - width) / 2, y),
+  y += height + 4, x = 0.
+- `~i` or `~I`, one character, a number N from 0 to 256: the same with icon
+  N of the icon sheet (0x1BD584, 8 icons in a row, size 0x13B54C), drawn
+  with mask. No text uses it.
+- Another word starting with `~` is left out.
+- A word: if it is not narrower than w it is left out. If x + width >= w: x
+  = 0, y += ft_h + 1, and the layout ends if y >= h. The word is drawn
+  (0x9D8CF): first in color 0 at (x + 1, y + 1) unless the font color is
+  color 0, then at (x, y). x += width + space width; if x >= w: x = 0, y +=
+  ft_h + 1.
+- After each word the layout ends if y >= h.
+
+A step (0x9D279, `gr_bm_ubitblt` 0xE0820 and the masked copy 0xE1280, which
+does not draw 255): the background under the picture is copied into the
+step bitmap; the picture from column t (the hidden width of the step) to the
+right edge is drawn at column 0; the background is copied again over the
+first 0x144D8D / 2 columns (21 low, 42 high) and the picture columns 0 to
+that width are drawn there. So the paper comes out from under the left
+roller. 0x9D228 copies the step bitmap to the screen.
+
+The game frame 0x435A6 calls 0x9CC99 at its start: while 0x1452DD (or
+0x1452E1, another mode of this file that the game does not use) is set,
+0x1C7FD4 is 1 and the frame (0x435F8 to 0x436D5) renders nothing, reads no
+controls (0x2FB10 and the controls 0x1E9A68 are cleared) and skips the
+player animation 0x4450C (0x43823). It reads one key (0xDA3E4); key 0x29
+(`) writes a screenshot (0x80DA1) and becomes 0; then the other keys are
+read and lost. A mouse button only does that. The key goes to 0x1452DD
+(0x9CCAE). The rest of the frame runs (objects, AI): the stop of the game
+time does not hold, because 0x40E91 sets the last time in every frame.
+
+- 0x9D08D (opening): a key sets the time 0 and, if the step is not the
+  last, the last step (drawn at once). When the timer 0xDFAE0 reaches the
+  time, the step goes to the screen and the step + 1; at the 16th the frame
+  function becomes 0x9D165, else the next step is drawn and the time is the
+  timer + 0x800 (1/32 s).
+- 0x9D165 (open): key 0x29 writes a screenshot; any other key closes: the
+  frame function 0, the game time starts (0x40E2A, with the same test as
+  the stop), and 0x9D5B6 frees the picture and the step bitmap. The next
+  frame renders the play screen again.
+
 ## State of the port (engine/main/dtudisp.c)
 
 Implemented from the verified facts: the interface picture of each mode, the

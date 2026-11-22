@@ -1177,7 +1177,7 @@ Misc (type 16), by line number (`YPINN.BIN` names; the same in all tables):
 | 0x57 | Potion of Speed | bit 13 (Haste) for (rand % 16 + 5) * 60 s; vclip of 21 |
 | 0x58 | Potion of Toughening | if max hp < current hp (already toughened): "You don't feel so good." and a system shock roll: d100 > table 0x2FACC[constitution - 1] (25 30 35 40 45 50 55 60 65 70 75 80 85 88 90 95 97 99 99) kills the player. Else Bless bit on object 0 with timer GameTime + (rand % 6 + 7) * 600 s and shields += rand % 17 + 2, "You feel tougher." (the extra hp go when Bless ends) |
 | 0x65 | Orb of Insight | script event 0x1FE |
-| 0x66 | Scroll | 0x9DC42(word +8 of the entry): shows a scroll text (guess: the number selects the text) |
+| 0x66 | Scroll | 0x9DC42(word +8 of the entry): shows scroll text n (ingame-ui.md, "The scroll text screen") |
 | 0x6A | Cursed Scroll | screen shake; each with 50%: spells 7, 9, 44, 22, 16 on the player, map forgotten, and strength, dexterity, constitution, intelligence, wisdom, charisma each set to rand % value + 1; then damage rand % hp; "You no longer think that reading the scroll was such a good idea..." |
 | 0x7F | thief scroll | 0x9DC42(1) |
 
@@ -1259,11 +1259,14 @@ The scrolls: misc 0x66 (Scroll) calls 0x9DC42(word +8 of the entry), misc
 dispscrl.c (0x9CB62 colors, 0x9D43B the scroll picture, 0x9CEA3 the text).
 0x9CEA3(n): n = 0 takes the Khelben blurb of the current mission, FETXT entry
 0x1451E5[mission] (271 is "Quest One: Corner the Kobolds"); n = 1 to 0x7F takes
-FETXT entry 0x144FE5[n] (0x144DE5[n] when 0x13A94B is set; it is 0 in the image).
+FETXT entry 0x144FE5[n] (0x144DE5[n] when 0x13A94B is set: entries 13 to 138, longer texts
+for the high resolution).
 The Scroll of a new character has count 0, so it shows the current mission. The
 Scrolls in the levels have counts 2 to 27 (objects.md): 0x144FE5[2] = 141 "A
 Brief History of Undermountain", [3] = 142, a note of Colvin Rowander. The thief
-scroll shows entry 270, the picture markup `~pc3` (a clue picture, "ClueBg").
+scroll shows entry 270, the picture markup `~pc3` (FEBGND 191 low, 192 high, a map
+of Waterdeep). The screen is in [ingame-ui.md](ingame-ui.md), "The scroll text
+screen", and in the port in `dtuscroll.c`.
 
 The Gem of Curing compares its use counter, byte P+0x1A57 (0x1D4D73 absolute,
 read at 0x3891B, + 1 at 0x389E0, no other writer), with 0x8445A(), the mission
@@ -1822,7 +1825,7 @@ Pieces 0x13, 0x16, 0x19, 0x1A (0x12, 0x14, 0x17, 0x18 are not in the port), the 
 Scroll, weapon 13, armor 45, the Orb of Insight and weapon 13 through the weak hook
 `dtu_hook_script_event()` (dtuscript.c may give it), the potion timers 0x396B2, Luck,
 the worn item effects of B6a, the Ring of Wizardry. The text screen of the Scroll
-(0x9DC42) is not in the port: the use only writes the log. Scrolls of spells and wands
+(0x9DC42, `dtuscroll.c`). Scrolls of spells and wands
 cast as in C2.
 
 Thief skills (B7, `dtuthief.c`): Open Locks (key O), Find/Remove Traps (key F, the box
