@@ -1800,6 +1800,13 @@ stands (guess for the rule: the controls of the executable request 2 each frame 
 0x2BFF2, 17 in flight, 10 with the missile flag 8; the stand request was not found).
 The dead code `dtu_player_attack` and `player_animation` of dtuobj.c is removed.
 
+The audit of the combat rules ([../audit/combat.md](../audit/combat.md)) added the
+effects of 0x2A7F3 and 0x2AF5E for every attacker (`dtu_hit_test`,
+`dtu_weapon_extra_damage` in `dtuobj.c`), the protections of the player in
+0x2A24A, the fumble texts, Flame Tongue, Mace of Disruption, the fire dice of
+weapons, the strength 18 columns and the invisibility in 0x165C4. Its table lists
+what is still open.
+
 ## C3. Settings
 
 All are global variables, 1 by default; the option `-origcombat` clears them.
