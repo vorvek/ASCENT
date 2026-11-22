@@ -605,14 +605,6 @@ id: port.s_cast_s_on_you_for_d_damage
 en: %s cast %s on you for %d damage.
 tr: %s te lanza %s: %d de daño.
 
-id: port.you_miss_s_with_s
-en: You miss %s with %s.
-tr: Fallas a %s con %s.
-
-id: port.s_misses_you_with_s
-en: %s misses you with %s.
-tr: %s te falla con %s.
-
 id: port.you
 en: You
 tr: Tú
@@ -1341,6 +1333,14 @@ id: port.you_set_off_a_fire_trap
 en: You set off a fire trap!!!
 tr: ¡¡¡Has activado una trampa de fuego!!!
 
+id: port.you_miss_s_with_s
+en: You miss %s with %s.
+tr: Fallas a %s con %s.
+
+id: port.s_misses_you_with_s
+en: %s misses you with %s.
+tr: %s te falla con %s.
+
 id: port.hide_in_shadows
 en: Hide In Shadows
 tr: Esconderse
@@ -1368,4 +1368,16 @@ tr: Debes gastar todos los puntos
 id: port.you_have_some_thief_skill_points_availab
 en: You have some thief skill\npoints available.\nSpend them Now?
 tr: Tienes puntos de habilidad\nde ladrón disponibles.\n¿Quieres gastarlos ahora?
+
+id: port.passage_in_and_out_of_undermountain_cost
+en: Passage in and out of\nUndermountain costs one gold.\nYou will need 2 gold\npieces to venture into\nthe dungeon and return to\nWaterdeep
+tr: Entrar y salir de Undermountain\ncuesta una pieza de oro.\nNecesitarás 2 piezas de oro\npara aventurarte en la\nmazmorra y volver a\nWaterdeep
+
+id: port.if_you_enter_the_well_now_you_will_not_h
+en: If you enter the well\nnow you will not have\nenough gold for passage\nback to Waterdeep.\nProceed anyway?
+tr: Si entras en el pozo ahora\nno tendrás oro suficiente\npara volver a Waterdeep.\n¿Entrar de todos modos?
+
+id: port.it_costs_1_gold_piece_to_ascend_back_to_
+en: It costs 1 gold piece\nto ascend back to Waterdeep.\nYou do not have any gold.\nYou will need to search\nthe dungeon for gold
+tr: Volver a Waterdeep cuesta\n1 pieza de oro.\nNo tienes oro.\nTendrás que buscar oro\nen la mazmorra
 

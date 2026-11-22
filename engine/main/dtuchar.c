@@ -2767,6 +2767,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // str=STRENGTH.PERCENT,
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
+// gold=N, goseg=N (the center of segment N),
 // dump.
 
 static void dump_character(void)
@@ -2859,6 +2860,17 @@ static void run_command(char *cmd, char *value)
 			ConsoleObject->pos = p;
 			obj_relink(ConsoleObject - Objects, seg);
 		}
+	}
+	else if (!strcmp(cmd, "gold")) {		// test: gold=N, the gold of the player
+		Dtu_gold = a;
+		Dtu_char.pa.gold = a;
+	}
+	else if (!strcmp(cmd, "goseg") && a >= 0 && a <= Highest_segment_index) {		// test: goseg=N, the center of segment N
+		vms_vector c;
+
+		compute_segment_center(&c, &Segments[a]);
+		ConsoleObject->pos = c;
+		obj_relink(ConsoleObject - Objects, a);
 	}
 	else if (!strcmp(cmd, "goobj") && a >= 0 && a < MAX_OBJECTS) {		// test: goobj=N, 4.0 in front of object N
 		object *o = &Objects[a];

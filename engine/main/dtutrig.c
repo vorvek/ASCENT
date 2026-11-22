@@ -42,6 +42,9 @@
 #include "dtutrig.h"
 #include "dtustate.h"
 #include "dtulog.h"		// ASCENT: the session log
+#include "dtuchar.h"		// the choice box and the character record (the well passage)
+
+char *fe_text(int n);		// dtufe.c: Text_string[n]
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1178,6 +1181,42 @@ static void warp_place_player(int dest_seg, int value)
 	warp_set_facing(obj, value);
 }
 
+// The passage gold of the well (0x59F0B to 0x5A026). A warp from level 0
+// (the Yawning Portal) or to level 0 costs 1 gold when the mission index
+// (0x297F2C, set by the mission loader 0x59644) is 0; the port has only
+// that mission. From the inn: 0 gold is refused (text 0x13CE3A), 1 gold
+// asks first (0x13CEBE, Yes is choice 0). To the inn: 0 gold is refused
+// (0x13CF25). The game takes 1 gold from the player and from the character
+// record, each clamped at 0 (0x5A026). A warp between dungeon levels is
+// free. The texts are in the executable, not in DTUE.TEX. The check runs
+// when the player enters the segment (dtu_trig_frame), so a refusal asks
+// again only at the next entry.
+// D:\dev\DTU-Decomp recovered/world-warp.md and src/world_warp.c.
+static int well_pay_passage(int from_level, int to_level)
+{
+	if (from_level != 0 && to_level != 0)
+		return 1;
+	if (from_level == 0) {
+		if (Dtu_gold < 1) {
+			dtu_char_choice(LN("Passage in and out of\nUndermountain costs one gold.\nYou will need 2 gold\npieces to venture into\nthe dungeon and return to\nWaterdeep"), 1, fe_text(34));
+			dtulog_event("Well: no gold for the passage into Undermountain, no warp");
+			return 0;
+		}
+		if (Dtu_gold < 2 && dtu_char_choice(LN("If you enter the well\nnow you will not have\nenough gold for passage\nback to Waterdeep.\nProceed anyway?"), 2, fe_text(32), fe_text(33)) != 0) {
+			dtulog_event("Well: the player does not enter with 1 gold, no warp");
+			return 0;
+		}
+	} else if (Dtu_gold < 1) {
+		dtu_char_choice(LN("It costs 1 gold piece\nto ascend back to Waterdeep.\nYou do not have any gold.\nYou will need to search\nthe dungeon for gold"), 1, fe_text(34));
+		dtulog_event("Well: no gold for the passage back to the inn, no warp");
+		return 0;
+	}
+	Dtu_gold = (Dtu_gold > 0) ? Dtu_gold - 1 : 0;
+	Dtu_char.pa.gold = (Dtu_char.pa.gold > 0) ? Dtu_char.pa.gold - 1 : 0;
+	dtulog_event("Well: the passage costs 1 gold, %d left", Dtu_gold);
+	return 1;
+}
+
 // Returns 0 for no warp, 1 for a warp and 2 for a command line.
 static int warp_check(int segnum, object *obj)
 {
@@ -1213,6 +1252,9 @@ static int warp_check(int segnum, object *obj)
 	}
 
 	if (!dtu_hook_warp_allowed(Level_index, dest_level))
+		return 0;
+
+	if (obj == ConsoleObject && !well_pay_passage(Level_index, dest_level))
 		return 0;
 
 	if (dest_level == Level_index) {
