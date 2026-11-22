@@ -610,7 +610,8 @@ menu, anything else shows the menu again.
 - Load slot menu 0xBA647: ten slots `SG%d.sg`; a slot is valid if it starts
   with `DGSS` and version 12; the item is its 20-byte description, else
   TEX[67] "-empty-" as a text item. A text item of four empty lines comes
-  first. No valid slot: TEX[797] "No saved games were found" with TEX[34]
+  first (0xBA665); newmenu_do3 (0x63FB2) gets 11 items, the item width 190
+  and the first slot as the current item (0xBA7FF). No valid slot: TEX[797] "No saved games were found" with TEX[34]
   "Ok". Subtitle TEX[798] "Select Game to Restore".
 - Save slot menu 0xBA486: ten input menu items (type 6, 19 characters),
   subtitle TEX[796] "Save Game". An error gives TEX[800].

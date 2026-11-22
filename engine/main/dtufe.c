@@ -1385,6 +1385,9 @@ void fe_run_screen(fe_screen *s)
 // (0x63C7A). The box is a part of the stone picture of the screen (0x632E8).
 
 static void (*Menu_backdrop)(void);
+// ASCENT: the "width" of newmenu_do3 for the next fe_menu (-1: the widest
+// item). The load menu (0xBA647) asks for 190.
+static int Menu_width = -1;
 
 static int key_repeat(int scancode, fix *next)
 {
@@ -1466,7 +1469,7 @@ static void choice_step(fe_menu_item *m, int d, int wrap)
 int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, int box)
 {
 	grs_bitmap *box_bm = NULL;
-	int tw = 0, th = 0, sw = 0, sh = 0, iw = 0, w, h, x, y, i, ih, ix, top;
+	int tw = 0, th = 0, sw = 0, sh = 0, iw = 0, w, h, x, y, i, ih, ix, top, items_h = 0;
 	int last_mx = Fe_mx, last_my = Fe_my, result = -2, border = 15;
 	int editing = -1;				// the FE_MI_INPUT_MENU item that is edited, or -1
 	char edit_save[80];
@@ -1504,13 +1507,21 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 		}
 		items[i].w = a;
 		items[i].h = ih;
+		// newmenu: a text item of several lines is as high as its lines
+		// (the load menu starts with four empty lines, 0xBA665)
+		if (items[i].type == FE_MI_TEXT && items[i].text && strchr(items[i].text, '\n') && b + 2 > ih)
+			items[i].h = b + 2;
+		items_h += items[i].h;
 		if (a > iw) iw = a;
 	}
+	if (Menu_width > 0)
+		iw = Menu_width;
+	Menu_width = -1;
 	w = iw;
 	if (tw > w) w = tw;
 	if (sw > w) w = sw;
 	top = th + sh + 8;
-	h = top + n * ih;
+	h = top + items_h;
 	w += 30 + 2 * border;
 	h += 30 + 2 * border;
 	if (w > FE_W) w = FE_W;
@@ -1518,9 +1529,10 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 	x = (FE_W - w) / 2;
 	y = (FE_H - h) / 2;
 	ix = x + (w - iw) / 2;
-	for (i = 0; i < n; i++) {
+	for (i = 0, items_h = 0; i < n; i++) {
 		items[i].x = ix;
-		items[i].y = y + border + 15 + top + i * ih;
+		items[i].y = y + border + 15 + top + items_h;
+		items_h += items[i].h;
 	}
 	if (cur < 0 || cur >= n) cur = 0;
 	while (cur < n - 1 && items[cur].type == FE_MI_TEXT) cur++;
@@ -2205,25 +2217,32 @@ static void loaded_character(void)
 // game); the front end draws them with its fonts.
 static int slot_menu_nm(int save, char desc[10][24])
 {
-	newmenu_item m[10];
-	int i, n_valid = 0;
+	newmenu_item m[11], *slot = save ? m : m + 1;
+	int i, n_valid = 0, choice;
 
 	memset(m, 0, sizeof(m));
 	for (i = 0; i < 10; i++) {
 		if (save) {
-			m[i].type = NM_TYPE_INPUT_MENU;			// 0xBA486: type 6, 19 characters
-			m[i].text_len = 19;
+			slot[i].type = NM_TYPE_INPUT_MENU;		// 0xBA486: type 6, 19 characters
+			slot[i].text_len = 19;
 		} else if (desc[i][0] && strcmp(desc[i], fe_text(67)))
 			n_valid++;
 		else
-			m[i].type = NM_TYPE_TEXT;
-		m[i].text = desc[i];
+			slot[i].type = NM_TYPE_TEXT;
+		slot[i].text = desc[i];
 	}
-	if (!save && !n_valid) {
+	if (save)
+		return newmenu_do(NULL, fe_text(796), 10, m, NULL);
+	if (!n_valid) {
 		nm_messagebox(NULL, 1, fe_text(34), fe_text(797));	// "No saved games were found"
 		return -1;
 	}
-	return newmenu_do(NULL, fe_text(save ? 796 : 798), 10, m, NULL);
+	// 0xBA7FF: a text item of four empty lines first, the item width 190,
+	// the first slot is the current item
+	m[0].type = NM_TYPE_TEXT;
+	m[0].text = "\n\n\n\n";
+	choice = newmenu_do3(NULL, fe_text(798), 11, m, NULL, 1, NULL, 190, -1);
+	return choice > 0 ? choice - 1 : -1;
 }
 
 // The whole file of a slot, or NULL
@@ -2246,21 +2265,23 @@ static ubyte *sg_read(int slot, char *path, int path_size, int *size)
 
 int fe_load_game(int in_game)
 {
-	fe_menu_item m[10];
+	fe_menu_item m[11];
 	char desc[10][24], path[600];
 	ubyte *b;
 	int i, size = 0, n_valid = 0, choice, mode, between;
 
 	memset(m, 0, sizeof(m));
+	m[0].type = FE_MI_TEXT;			// 0xBA665: a text item of four empty lines first
+	m[0].text = "\n\n\n\n";
 	for (i = 0; i < 10; i++) {
 		if (sg_description(i, desc[i])) {
-			m[i].type = FE_MI_MENU;
+			m[i + 1].type = FE_MI_MENU;
 			n_valid++;
 		} else {
-			m[i].type = FE_MI_TEXT;
+			m[i + 1].type = FE_MI_TEXT;
 			snprintf(desc[i], sizeof(desc[i]), "%s", fe_text(67));	// "-empty-"
 		}
-		m[i].text = desc[i];
+		m[i + 1].text = desc[i];
 	}
 	if (in_game) {
 		choice = slot_menu_nm(0, desc);
@@ -2273,9 +2294,10 @@ int fe_load_game(int in_game)
 			fe_message_box(NULL, fe_text(797), 1, fe_text(34), NULL);	// "No saved games were found"
 			return 0;
 		}
-		// 0xBA647 puts a text item of four empty lines first. The port
-		// leaves it out.
-		choice = fe_menu(NULL, fe_text(798), m, 10, 0, 1);			// "Select Game to Restore"
+		// 0xBA7FF: newmenu_do3 with the item width 190 and the first
+		// slot as the current item
+		Menu_width = 190;
+		choice = fe_menu(NULL, fe_text(798), m, 11, 1, 1) - 1;		// "Select Game to Restore"
 		if (choice < 0 || Fe_quit)
 			return 0;
 	}
