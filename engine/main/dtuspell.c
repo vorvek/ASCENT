@@ -863,6 +863,24 @@ static int save_number(int cls,int level,int cat)
 	}
 }
 
+// ASCENT: the save number of the player for a category 0 to 4, from the
+// class levels of the character (the test -chartest rules reads it).
+int dtu_spell_player_save_number(int cat)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int l1 = pa->class1_level + 1, l2 = pa->class2_level + 1, level, need;
+
+	if (cat < 0 || cat > 4)
+		cat = 4;
+	level = l1 > l2 ? l1 : l2;
+	need = save_number(pa->class1,level,cat);
+	if (pa->class2 >= 0 && pa->class2 <= 3) {
+		int n2 = save_number(pa->class2,level,cat);
+		if (n2 < need) need = n2;
+	}
+	return need;
+}
+
 int dtu_spell_save(object *obj,int cat)
 {
 	int need = 20, roll = rand() % 20 + 1, level;

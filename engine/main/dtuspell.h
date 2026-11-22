@@ -257,6 +257,8 @@ int dtu_spell_area(int spell, vms_vector *pos, int segnum, object *caster, int l
 
 // The saving throw (0xAE596): 1 if the object saves.
 int dtu_spell_save(object *obj, int category);
+// ASCENT: the save number of the player for a category 0 to 4 (test).
+int dtu_spell_player_save_number(int category);
 
 // The caster level of the player for a spell (0x91EC1).
 int dtu_spell_player_level(int spell);
