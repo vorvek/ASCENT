@@ -386,7 +386,9 @@ void dtu_obj_log(char *format, ...);
 
 // Scenery (0xA6ACB, 0x9FA41): settings, see dtuobj.c. -origobj clears them.
 extern int Dtu_fix_cant_break;		// 1: the keyword cant_break works
-extern int Dtu_fix_push_frame;		// 1: the slow down of pushed scenery for each reference frame
+extern int Dtu_fix_push_body;		// 1: pushed scenery and the bodies: no stop inside of the player
+extern int Dtu_fix_push_rate;		// 1: pushed scenery: the lead at the end of a push of the reference frame
+extern int Dtu_fix_push_wall;		// 1: pushed scenery: the box of the model stays out of the walls
 // 1 if the scenery cannot break
 int dtu_dressing_unbreakable(object *d);
 // 0xA6ACB (explode 0) or 0x911AA with 0x3CA7E (explode 1): the scenery
