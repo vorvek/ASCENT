@@ -270,6 +270,8 @@ static char rcsid[] = "$Id: fuelcen.c 2.3 1995/03/21 14:38:40 john Exp $";
 #include "network.h"
 #include "multi.h"
 #include "multibot.h"
+#include "render.h"	// ASCENT: Render_list for the fire of a rest place
+#include "dtuchar.h"	// ASCENT: dtu_char_rest_ready()
 
 // The max number of fuel stations per mine.
 
@@ -859,15 +861,77 @@ void controlcen_proc( FuelCenter * controlcen )
 #define M_PI 3.14159
 
 //-------------------------------------------------------------
+// ASCENT: the fire of a rest place (the "Charged Rest Stop Fireball", the
+// rotating ankh). docs/re/character.md, section 9.
+
+#define REST_FIRE_FLAG		0x40		// object flag of the fire
+#define REST_FIRE_VCLIP		91
+#define REST_FIRE_SIZE		(F1_0*3)
+
+// 0x3DC0F: the first object of the segment that is a fireball with the
+// flag 0x40. The executable returns 0 for none, the port -1.
+int fuelcen_rest_fire(int segnum)
+{
+	int objnum, n = 0;
+
+	if (segnum < 0 || segnum > Highest_segment_index)
+		return -1;
+	for (objnum = Segments[segnum].objects; objnum >= 0 && objnum <= Highest_object_index && n <= Highest_object_index; objnum = Objects[objnum].next, n++)
+		if (Objects[objnum].type == OBJ_FIREBALL && (Objects[objnum].flags & REST_FIRE_FLAG))
+			return objnum;
+	return -1;
+}
+
+// 0x3DD3E: the station frame works only for a segment of the visible list
+// (0x38C060 through 0x389A06). The port takes the segments of the last
+// rendered frame, as dtuspell.c does.
+static int segment_visible(int segnum)
+{
+	int i;
+
+	for (i=0; i<N_render_segs && i<RENDER_LIST_SIZE; i++)
+		if (Render_list[i] == segnum)
+			return 1;
+	return 0;
+}
+
+// 0x3E037 to 0x3E118 in the station frame 0x3DCAF: a rest place (station
+// type 2 or 6) whose time has passed and that has no fire gets a new one:
+// an explosion of vclip 91, size 3.0, at the center of the segment, with
+// the object type 1 and the flag 0x40 (and bit 2 at 0x1AE, which the port
+// does not keep). The vclip ends after its play time and the next frame
+// makes it again, so the ankh turns all the time. A level state removes the
+// fireballs (0xBB2E6), and this makes the fire again after a load.
+static void rest_fire_proc(FuelCenter *robotcen)
+{
+	object *obj;
+
+	if (!dtu_char_rest_ready(robotcen->segnum))
+		return;
+	if (!segment_visible(robotcen->segnum))
+		return;
+	if (fuelcen_rest_fire(robotcen->segnum) >= 0)
+		return;
+	obj = object_create_explosion(robotcen->segnum, &robotcen->Center, REST_FIRE_SIZE, REST_FIRE_VCLIP);
+	if (obj) {
+		obj->type = OBJ_FIREBALL;
+		obj->flags |= REST_FIRE_FLAG;
+	}
+}
+
+//-------------------------------------------------------------
 // Called once per frame, replenishes fuel supply.
 void fuelcen_update_all()
 {
 	int i;
 	fix AmountToreplenish;
-	
+
 	AmountToreplenish = fixmul(FrameTime,Fuelcen_refill_speed);
 
 	for (i=0; i<Num_fuelcenters; i++ )	{
+		if (Station[i].Type == SEGMENT_IS_REPAIRCEN || Station[i].Type == 6)
+			rest_fire_proc(&Station[i]);		// ASCENT: a rest place
+
 		if ( Station[i].Type == SEGMENT_IS_ROBOTMAKER )	{
 			if (! (Game_suspended & SUSP_ROBOTS))
 				robotmaker_proc( &Station[i] );
