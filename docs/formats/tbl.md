@@ -301,6 +301,25 @@ Stored only, `$SPELL`: `level`, `range`, `level_range`, `cast_time`, `duration`,
 flag words `mage_use`, `cleric_use`, `cast_with_hands`, `cast_with_wand`,
 `cast_in_front`, `self_cast_ok`, `always`, `homing`, `stackable`.
 
+Verified in DTUGAME.EXE 1.3 for `$SPELL`: `cast_in_front` sets the bits 0 and 2 of
+the flag byte Spell_info+0x37 (0x253C7), the same bit 0 as `self_cast_ok` (0x25535),
+and the cast of the player tests bit 0 (0x56D36), so a `cast_in_front` line is cast
+on the caster. `duration` (+0x4E) and `level_duration` (+0x52) are read only at
+0x43E3A, for a spell in the hand whose `uses` is -1 (no line has it), into P+0x47.
+
+### Rule values in all tables
+
+`tools/wiki_rules.py --tables DIR` compares the rule values of the `$WEAPON`,
+`$ARMOR`, `$OBJECT` and `$SPELL` lines (names, dice, bonuses, `pc_spell`, `uses`,
+`fire_wait`, armor class, spell level, cast time, range, radius, durations, the class
+and type flags) of each table with `YPINN.BIN`. Verified on the 82 tables of
+`gamedata/unpacked`: the 39 tables of the newer dialect (`YPINN.BIN` and all levels of `DTU.MSN` that
+have a table) have the same values in every line (89 weapons, 53 armor, 128 misc, 56
+spells). The tables of the older dialect differ: `BASE` (other `fire_wait` values),
+`DEMO`, `MINES1`, `MOIN1`, `PRISON1`, `SPIDER`, `TRAIN1` (83 weapons, 107 misc or 52
+spells in some, armor 42 is Bracers of Defense AC8, armor 48 has
+`armor_class_decrement=3`).
+
 ### $WEAPON
 
 Decoded into `weapon_info` (Descent 1 meaning): `weapon_pof=` with its textures,
