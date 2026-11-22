@@ -35,6 +35,14 @@
  *
  * ASCENT: the music at the start of a level (Dtu_fix_start_music), see
  * start_music below and docs/re/music.md.
+ *
+ * The ambient sounds. The second part of this file follows str_sfx.c of
+ * the original (0xA1BF8 to 0xA2AB6): one more stream with its own queue
+ * and fade, which plays the 74 entries of WHAMMO.JRG and WHAMMO.DAT
+ * (docs/formats/jrg.md). The lines of DTU.WRP with a command code from
+ * 200 to 298 start and fade it (docs/formats/wrp.md). It uses the same
+ * player and the same callback as the music, on the second stream of the
+ * mixer, with the same rule for the two threads.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +59,7 @@
 #include "dtufile.h"
 #include "dtumusic.h"
 #include "dtuopts.h"
+#include "kconfig.h"		// Config_digi_volume (0x13BFEB)
 #include "platform.h"
 
 // stb_vorbis (public domain, engine/third_party/stb). dtuogg.c compiles
@@ -113,10 +122,23 @@ static int Queue_loops[QUEUE_SIZE];	// 0x1454E4
 static int Queue_volume[QUEUE_SIZE];	// 0x1454E8
 static int Queue_count = 0;
 
-// The music commands of DTU.WRP for the segments of the level. code 0: none.
+// The music and ambient commands of DTU.WRP for the segments of the level.
+// code 0: none.
 static short Wrp_code[MAX_SEGMENTS];
 static ubyte Wrp_value[MAX_SEGMENTS];
 static int Wrp_last_seg = -1;
+
+// ASCENT: Dtu_fix_wrp_sound. The table of the original has one command for
+// each segment, and a later line for the same segment replaces the earlier
+// one (0x599C3). DTU.WRP has 13 segments with a music line and an ambient
+// line (the comments say MUSIC and AMB), and 4 with a sound line and then
+// a game event line: in 1.3 only the last line of each runs. With the
+// correction Wrp_code keeps the music command, Wrp_amb_code keeps the
+// ambient command, and a line of another kind erases neither. The option
+// -origmusic clears it.
+int Dtu_fix_wrp_sound = 1;
+static short Wrp_amb_code[MAX_SEGMENTS];
+static ubyte Wrp_amb_value[MAX_SEGMENTS];
 
 // ASCENT: the music at the start of a level, see start_music. The option
 // -origmusic clears it: the level is silent until the player enters a
@@ -332,6 +354,23 @@ static int player_open_ogg(music_player *p, const char *name)
 	return 1;
 }
 
+// Open the ACM stream that p->file holds (the player takes the memory).
+// Returns 1 if it can play; else the memory is released.
+static int player_open_acm(music_player *p, const char *name, int loops)
+{
+	p->acm = acm_stream_open( player_read, p, &p->info );
+	if ( p->acm == NULL || p->info.rate <= 0 ) {
+		dtu_log( "MUSIC: '%s' is not an ACM stream\n", name );
+		if ( p->acm ) acm_stream_close( p->acm );
+		p->acm = NULL;
+		free( p->file );
+		p->file = NULL;
+		return 0;
+	}
+	p->loops = loops;
+	return 1;
+}
+
 // Load a track and make the player ready. The mixer does not have the
 // player now. Returns 1 if the track can play.
 static int player_open(music_player *p, const char *name, int loops)
@@ -347,16 +386,7 @@ static int player_open(music_player *p, const char *name, int loops)
 		dtu_log( "MUSIC: the file '%s' is not in the data directories\n", name );
 		return 0;
 	}
-	p->acm = acm_stream_open( player_read, p, &p->info );
-	if ( p->acm == NULL || p->info.rate <= 0 ) {
-		dtu_log( "MUSIC: '%s' is not an ACM stream\n", name );
-		if ( p->acm ) acm_stream_close( p->acm );
-		p->acm = NULL;
-		free( p->file );
-		return 0;
-	}
-	p->loops = loops;
-	return 1;
+	return player_open_acm( p, name, loops );
 }
 
 static void player_close(music_player *p)
@@ -390,8 +420,11 @@ static void start_job(int index, int loops, int volume)
 			Player.ogg ? " (replacement)" : "", loops, volume );
 }
 
+static void ambient_stop(void);
+static void ambient_flush(void);
+
 // 0xA3DB9: stop the job.
-void dtumusic_stop(void)
+static void music_stop(void)
 {
 	Fade_target = -1;
 	if ( !Playing )
@@ -407,6 +440,16 @@ void dtumusic_stop(void)
 	Total_underruns += Player.underruns;
 	Total_passes += Player.passes;
 	player_close( &Player );
+}
+
+// The callers of this function are the places where the original stops
+// all its streams (0xA48D0, and 0x2DE40 which calls 0xA3D83 and 0xA2233),
+// so it also stops the ambient sound.
+void dtumusic_stop(void)
+{
+	music_stop();
+	ambient_flush();
+	ambient_stop();
 }
 
 int dtumusic_enabled(void)
@@ -518,7 +561,7 @@ static void fade_step(void)
 	if ( Cur_volume > 0 )
 		plat_audio_music_set_volume( Cur_volume );
 	else {
-		dtumusic_stop();
+		music_stop();
 		return;
 	}
 	if ( Fade_target == Cur_volume )
@@ -529,7 +572,7 @@ void dtumusic_command(int code, int value)
 {
 	int bits, loops = 0;
 
-	if ( code < 100 || code >= 199 )
+	if ( code < 100 || code >= 199 || !Music_ready )
 		return;
 	bits = code - 100;
 	value &= 0xff;
@@ -550,20 +593,342 @@ void dtumusic_command(int code, int value)
 		dtumusic_fade( 0 );
 }
 
+//-----------------------------------------------------------------------
+// The ambient sounds: str_sfx.c of the original.
+
+#define AMBIENT_STREAMS	74				// 0xA1C4B: NUM_SSFX_STREAMS, the count of WHAMMO.JRG
+
+static struct { unsigned offset, size; } Whammo[AMBIENT_STREAMS];	// 0x1453F8
+static char Whammo_dat[700];				// the path of WHAMMO.DAT
+static int Amb_ready = 0;
+static music_player Amb_player;
+static int Amb_playing = 0;				// the mixer has Amb_player as its source
+static int Amb_index = -1;				// 0x1453E8
+static int Amb_volume = 0;				// 0x3CDFB8, from 0 to 0x7fff
+static int Amb_fade_target = -1;		// 0x145420, -1 = no fade
+static fix Amb_fade_time;
+static int Amb_passes;					// the passes of the player that the game thread has seen
+static int Amb_tracks = 0;				// for the line at the end
+
+static int Amb_queue_index[QUEUE_SIZE];	// 0x145410 (0xA1D80: three queues of 8 entries)
+static int Amb_queue_loops[QUEUE_SIZE];	// 0x145414
+static int Amb_queue_volume[QUEUE_SIZE];	// 0x145418
+static int Amb_queue_count = 0;
+
+// 0x2D7DD with the byte 0x13BFEB: the driver volume of the effects volume
+// setting. The table is the one of the music.
+static int ambient_setting_volume(void)
+{
+	int level = Config_digi_volume;
+
+	if ( level < 0 ) level = 0;
+	if ( level > 8 ) level = 8;
+	return Volume_table[level];
+}
+
+// Read one entry of WHAMMO.DAT. The caller releases the memory with free.
+static ubyte *ambient_load(int index, int *size)
+{
+	FILE *f = fopen( Whammo_dat, "rb" );
+	ubyte *data;
+
+	if ( f == NULL )
+		return NULL;
+	*size = (int)Whammo[index].size;
+	data = malloc( Whammo[index].size );
+	if ( data && (fseek( f, (long)Whammo[index].offset, SEEK_SET ) != 0 || fread( data, 1, Whammo[index].size, f ) != Whammo[index].size) ) {
+		free( data );
+		data = NULL;
+	}
+	fclose( f );
+	return data;
+}
+
+// 0xA247A: start a job.
+static void ambient_start_job(int index, int loops, int volume)
+{
+	char name[32];
+
+	Amb_fade_target = -1;
+	Amb_volume = volume;
+
+	memset( &Amb_player, 0, sizeof(Amb_player) );
+	Amb_player.file = ambient_load( index, &Amb_player.file_size );
+	if ( Amb_player.file == NULL ) {
+		dtu_log( "AMBIENT: cannot read entry %d of WHAMMO.DAT\n", index );
+		return;
+	}
+	snprintf( name, sizeof(name), "WHAMMO.DAT entry %d", index );
+	if ( !player_open_acm( &Amb_player, name, loops ) )
+		return;
+	Amb_index = index;
+	Amb_playing = 1;
+	Amb_passes = 0;
+	Amb_tracks++;
+	plat_audio_stream_set_volume( PLAT_AUDIO_STREAM_AMBIENT, Amb_volume );
+	plat_audio_stream_start( PLAT_AUDIO_STREAM_AMBIENT, music_callback, &Amb_player, Amb_player.info.rate );
+	dtu_log( "AMBIENT: start %d, loops %d, volume %d\n", index, loops, volume );
+	if ( Music_log )
+		printf( "AMBIENT: t %.2f start %d, loops %d, volume %d\n", f2fl(GameTime), index, loops, volume );
+}
+
+// 0xA223B: stop the job.
+static void ambient_stop(void)
+{
+	Amb_fade_target = -1;
+	if ( !Amb_playing )
+		return;
+	plat_audio_stream_stop( PLAT_AUDIO_STREAM_AMBIENT );		// the callback does not run after this call
+	Amb_playing = 0;
+	dtu_log( "AMBIENT: stop %d after %u frames, %d repeats, %d underruns\n", Amb_index,
+		Amb_player.frames_out, Amb_player.passes, Amb_player.underruns );
+	if ( Music_log )
+		printf( "AMBIENT: t %.2f stop %d after %u frames (%.2f s), %d repeats, %d underruns, volume %d\n", f2fl(GameTime), Amb_index,
+			Amb_player.frames_out, (double)Amb_player.frames_out / Amb_player.info.rate, Amb_player.passes, Amb_player.underruns, Amb_volume );
+	player_close( &Amb_player );
+}
+
+// 0xA20E7: the entry that plays now, or -1.
+static int ambient_current(void)
+{
+	if ( !Amb_ready || !Amb_playing || Amb_player.done )
+		return -1;
+	return Amb_index;
+}
+
+// 0xA2406
+static int ambient_is_queued(int index)
+{
+	int i;
+
+	for (i=0; i<Amb_queue_count; i++ )
+		if ( Amb_queue_index[i] == index )
+			return 1;
+	return 0;
+}
+
+// 0xA1FB7: empty the queues. Not as the flush of the music (0xA3AB0), it
+// leaves the loop count of the sound that plays.
+static void ambient_flush(void)
+{
+	Amb_queue_count = 0;
+}
+
+// 0xA22B9: eax = entry, edx = loop count. The volume is the one of the
+// effects volume setting.
+static int ambient_play(int index, int loops)
+{
+	int i, volume;
+
+	if ( !Amb_ready )
+		return 1;
+	if ( index < 0 || index >= AMBIENT_STREAMS || loops < -1 )
+		return 1;
+	volume = ambient_setting_volume();
+	if ( volume < 1 )
+		return 1;
+	if ( Amb_queue_count >= QUEUE_SIZE )
+		return 1;
+
+	// The sounds that wait and the sound that plays do not repeat again.
+	if ( Amb_queue_count > 0 ) {
+		for (i=0; i<Amb_queue_count; i++ )
+			Amb_queue_loops[i] = 0;
+	} else if ( Amb_playing )
+		Amb_player.no_more_loops = 1;			// 0xA2914
+
+	Amb_queue_index[Amb_queue_count] = index;
+	Amb_queue_volume[Amb_queue_count] = volume;
+	Amb_queue_loops[Amb_queue_count] = loops;
+	Amb_queue_count++;
+	return 0;
+}
+
+// 0xA291F: eax = the volume in percent of the setting volume.
+static void ambient_fade(int percent)
+{
+	if ( !Amb_ready )
+		return;
+	if ( percent < 0 ) percent = 0;
+	if ( percent > 100 ) percent = 100;
+	Amb_fade_target = ambient_setting_volume() * percent / 100;
+	Amb_fade_time = timer_get_fixed_seconds();
+}
+
+// 0xA29AF: one step of the fade. The steps (0x145424, 0x145428) have the
+// values of the music.
+static void ambient_fade_step(void)
+{
+	if ( Amb_fade_target < 0 )
+		return;
+	if ( Amb_fade_target == Amb_volume ) {		// 0xA296B
+		Amb_fade_target = -1;
+		return;
+	}
+	if ( !Amb_playing )						// 0xA296B: the target stays
+		return;
+
+	if ( Amb_fade_target > Amb_volume ) {
+		Amb_volume += FADE_STEP_UP;
+		if ( Amb_volume > Amb_fade_target )
+			Amb_volume = Amb_fade_target;
+	} else {
+		Amb_volume -= FADE_STEP_DOWN;
+		if ( Amb_volume < Amb_fade_target )
+			Amb_volume = Amb_fade_target;
+	}
+
+	if ( Amb_volume > 0 )
+		plat_audio_stream_set_volume( PLAT_AUDIO_STREAM_AMBIENT, Amb_volume );
+	else {
+		ambient_stop();
+		return;
+	}
+	if ( Amb_fade_target == Amb_volume )
+		Amb_fade_target = -1;
+}
+
+// 0x5B5F2: an ambient command of DTU.WRP, code from 200 to 298.
+static void ambient_command(int code, int value)
+{
+	int bits, loops = 0;
+
+	if ( code < 200 || code >= 299 || !Amb_ready )
+		return;
+	bits = code - 200;
+	value &= 0xff;
+
+	if ( (bits & 0x10) && ambient_current() == value )
+		return;
+	if ( (bits & 8) && ambient_is_queued( value ) )
+		return;
+	if ( Music_log )
+		printf( "AMBIENT: t %.2f command %d value %d\n", f2fl(GameTime), code, value );
+	if ( bits & 0x20 )
+		loops = DTUMUSIC_LOOP_FOREVER;
+	if ( bits & 2 )
+		ambient_flush();
+	if ( bits & 1 )
+		ambient_play( value, loops );
+	if ( bits & 4 )
+		ambient_fade( 0 );
+}
+
+// 0xA29AF from the timer event 0xA4FAD, and the service function 0xA2848.
+static void ambient_frame(void)
+{
+	fix now = timer_get_fixed_seconds();
+	int i, index, loops, volume;
+
+	if ( Amb_fade_target >= 0 ) {
+		if ( now < Amb_fade_time || now - Amb_fade_time > F1_0 )
+			Amb_fade_time = now - FADE_TICK;
+		while ( Amb_fade_target >= 0 && now - Amb_fade_time >= FADE_TICK ) {
+			Amb_fade_time += FADE_TICK;
+			ambient_fade_step();
+			if ( !Amb_playing )
+				break;
+		}
+	}
+
+	// 0xA2893: the sound starts again. The original starts the job again
+	// with the volume of the setting, and that ends a fade (0xA24D4). If
+	// the setting is 0 the sound ends. In the port the callback has
+	// started the next pass already; the game thread sees it here.
+	if ( Amb_playing && Amb_player.passes != Amb_passes ) {
+		Amb_passes = Amb_player.passes;
+		volume = ambient_setting_volume();
+		if ( volume < 1 )
+			ambient_stop();
+		else {
+			Amb_fade_target = -1;
+			Amb_volume = volume;
+			plat_audio_stream_set_volume( PLAT_AUDIO_STREAM_AMBIENT, Amb_volume );
+		}
+	}
+
+	// 0xA28F0: the sound has ended, and the next sound of the queue.
+	if ( Amb_playing && Amb_player.done && Amb_player.ring_count == 0 )
+		ambient_stop();
+	if ( !Amb_playing && Amb_queue_count > 0 ) {
+		index = Amb_queue_index[0];
+		loops = Amb_queue_loops[0];
+		volume = Amb_queue_volume[0];
+		Amb_queue_count--;
+		for (i=0; i<Amb_queue_count; i++ ) {
+			Amb_queue_index[i] = Amb_queue_index[i+1];
+			Amb_queue_loops[i] = Amb_queue_loops[i+1];
+			Amb_queue_volume[i] = Amb_queue_volume[i+1];
+		}
+		ambient_start_job( index, loops, volume );
+	}
+}
+
+// 0xA1BF8: read WHAMMO.JRG. The original stops if the count is not 74.
+static void ambient_init(void)
+{
+	ubyte *data;
+	int size, i;
+
+	if ( FindArg( "-noambient" ) )
+		return;
+	data = dtu_load_file( "WHAMMO.JRG", &size );
+	if ( data == NULL || !dtu_find_file( "WHAMMO.DAT", Whammo_dat, sizeof(Whammo_dat) ) ) {
+		dtu_log( "AMBIENT: WHAMMO.JRG or WHAMMO.DAT is not in the data directories\n" );
+		if ( data ) free( data );
+		return;
+	}
+	if ( size < 4 + 8*AMBIENT_STREAMS || (data[0] | (data[1]<<8) | (data[2]<<16) | ((unsigned)data[3]<<24)) != AMBIENT_STREAMS ) {
+		dtu_log( "AMBIENT: WHAMMO.JRG does not have %d entries\n", AMBIENT_STREAMS );
+		free( data );
+		return;
+	}
+	for (i=0; i<AMBIENT_STREAMS; i++ ) {
+		ubyte *e = data + 4 + 8*i;
+		Whammo[i].offset = e[0] | (e[1]<<8) | (e[2]<<16) | ((unsigned)e[3]<<24);
+		Whammo[i].size = e[4] | (e[5]<<8) | (e[6]<<16) | ((unsigned)e[7]<<24);
+		if ( Whammo[i].size == 0 || Whammo[i].size > 0x4000000 ) {
+			dtu_log( "AMBIENT: entry %d of WHAMMO.JRG is not valid\n", i );
+			free( data );
+			return;
+		}
+	}
+	free( data );
+	Amb_queue_count = 0;
+	Amb_index = -1;
+	Amb_fade_target = -1;
+	Amb_playing = 0;
+	Amb_ready = 1;
+}
+
+// A command of DTU.WRP with the destination level -2 (0x5B3AC): the music
+// (100 to 198) or the ambient sound (200 to 298).
+static void wrp_command(int code, int value)
+{
+	if ( code >= 200 )
+		ambient_command( code, value );
+	else
+		dtumusic_command( code, value );
+}
+
 // 0x599C3: the lines of DTU.WRP for one level. A line is
 // "level,segment dest_level,dest_segment value". The table of the original
 // has one entry for each segment, and a later line for the same segment
-// replaces the earlier one. This function keeps only the music commands:
-// dest_level -2 and a command code from 100 to 198.
+// replaces the earlier one. This function keeps only the music commands
+// and the ambient commands: dest_level -2 and a command code from 100 to
+// 198 or from 200 to 298. The original stops at the first line that is not
+// a comment and has less than 4 values; DTU.WRP has no such line
+// (docs/formats/wrp.md).
 void dtumusic_level_start(int level_index)
 {
 	char *text, *p, *end, line[104];
-	int size, n, level, seg, dest_level, code, value, count = 0, t;
+	int size, n, level, seg, dest_level, code, value, count = 0, ambient_count = 0, t;
 
 	memset( Wrp_code, 0, sizeof(Wrp_code) );
+	memset( Wrp_amb_code, 0, sizeof(Wrp_amb_code) );
 	Wrp_last_seg = -1;
 
-	if ( !Music_ready )
+	if ( !Music_ready && !Amb_ready )
 		return;
 
 	text = (char *)dtu_load_file( "DTU.WRP", &size );
@@ -583,21 +948,38 @@ void dtumusic_level_start(int level_index)
 				continue;
 			if ( (level & 0xff) != level_index || seg < 0 || seg >= MAX_SEGMENTS )
 				continue;
+			if ( Dtu_fix_wrp_sound ) {			// ASCENT: Dtu_fix_wrp_sound
+				if ( dest_level == -2 && code >= 100 && code < 199 ) {
+					Wrp_code[seg] = (short)code;
+					Wrp_value[seg] = (ubyte)value;
+					count++;
+				} else if ( dest_level == -2 && code >= 200 && code < 299 ) {
+					Wrp_amb_code[seg] = (short)code;
+					Wrp_amb_value[seg] = (ubyte)value;
+					ambient_count++;
+				}
+				continue;
+			}
 			Wrp_code[seg] = 0;
-			if ( dest_level == -2 && code >= 100 && code < 199 ) {
+			if ( dest_level == -2 && ((code >= 100 && code < 199) || (code >= 200 && code < 299)) ) {
 				Wrp_code[seg] = (short)code;
 				Wrp_value[seg] = (ubyte)value;
-				count++;
+				if ( code < 199 )
+					count++;
+				else
+					ambient_count++;
 			}
 		}
 		free( text );
 	} else
 		dtu_log( "MUSIC: the file DTU.WRP is not in the data directories\n" );
-	dtu_log( "MUSIC: level %d has %d music commands in DTU.WRP\n", level_index, count );
+	dtu_log( "MUSIC: level %d has %d music commands and %d ambient commands in DTU.WRP\n", level_index, count, ambient_count );
 
 	// ASCENT: the option -music N plays entry N of DISCO.JRG from the start
 	// of the level, for a test by ear. The original starts no music here:
 	// the first music command of a segment starts it.
+	if ( !Music_ready )
+		return;
 	if ( (t = FindArg( "-music" )) != 0 && t+1 < Num_args ) {
 		dtumusic_flush();
 		dtumusic_play( atoi( Args[t+1] ), DTUMUSIC_LOOP_FOREVER, 100 );
@@ -639,7 +1021,7 @@ static void start_music(int start_seg)
 	queue[tail++] = (short)start_seg;
 	while ( head < tail ) {
 		s = queue[head++];
-		if ( Wrp_code[s] ) {
+		if ( Wrp_code[s] >= 100 && Wrp_code[s] < 199 ) {		// not an ambient command
 			found = s;
 			break;
 		}
@@ -677,7 +1059,7 @@ void dtumusic_frame(void)
 	fix now;
 	int seg, i, index, loops, volume;
 
-	if ( !Music_ready )
+	if ( !Music_ready && !Amb_ready )
 		return;
 
 	// 0x69BC8: the command of the segment that the player entered.
@@ -688,20 +1070,28 @@ void dtumusic_frame(void)
 		// function.
 		if ( Start_pending && GameTime != Start_gametime && seg >= 0 && seg < MAX_SEGMENTS ) {
 			Start_pending = 0;
-			start_music( seg );
+			if ( Music_ready )
+				start_music( seg );
 			Wrp_last_seg = seg;
 		}
 		if ( seg >= 0 && seg < MAX_SEGMENTS && seg != Wrp_last_seg ) {
 			if ( Wrp_last_seg >= 0 && Wrp_code[seg] )
-				dtumusic_command( Wrp_code[seg], Wrp_value[seg] );
+				wrp_command( Wrp_code[seg], Wrp_value[seg] );
+			if ( Wrp_last_seg >= 0 && Wrp_amb_code[seg] )		// ASCENT: Dtu_fix_wrp_sound
+				wrp_command( Wrp_amb_code[seg], Wrp_amb_value[seg] );
 			Wrp_last_seg = seg;
 		}
 	}
 
 	while ( Script_next < Script_count && GameTime >= Script[Script_next].time ) {
-		dtumusic_command( Script[Script_next].code, Script[Script_next].value );
+		wrp_command( Script[Script_next].code, Script[Script_next].value );
 		Script_next++;
 	}
+
+	if ( Amb_ready )
+		ambient_frame();
+	if ( !Music_ready )
+		return;
 
 	// 0xA4FAD: the fade, ten steps each second.
 	now = timer_get_fixed_seconds();
@@ -728,14 +1118,14 @@ void dtumusic_frame(void)
 			index = Cur_index;
 			loops = Player.no_more_loops ? 0 : Player.loops;
 			volume = Cur_volume;
-			dtumusic_stop();
+			music_stop();
 			start_job( index, loops, volume );
 		}
 	}
 
 	// 0xA46A9: the track has ended, and the next track of the queue.
 	if ( Playing && Player.done && Player.ring_count == 0 )
-		dtumusic_stop();
+		music_stop();
 	if ( !Playing && Queue_count > 0 ) {
 		index = Queue_index[0];
 		loops = Queue_loops[0];
@@ -752,9 +1142,16 @@ void dtumusic_frame(void)
 
 void dtumusic_close(void)
 {
+	if ( Amb_ready ) {
+		ambient_flush();
+		ambient_stop();
+		Amb_ready = 0;
+		if ( Amb_tracks > 0 && Dtu_debug )
+			printf( "AMBIENT: %d sounds started\n", Amb_tracks );
+	}
 	if ( !Music_ready )
 		return;
-	dtumusic_stop();
+	music_stop();
 	Queue_count = 0;
 	Music_ready = 0;
 	if ( Total_tracks > 0 && Dtu_debug )		// ASCENT: -debug or the debug build (dtufile.h)
@@ -795,22 +1192,28 @@ void dtumusic_init(void)
 	extern int digi_driver_board;
 	int t;
 
-	if ( Music_ready )
+	if ( Music_ready || Amb_ready )
 		return;
-	if ( FindArg( "-nomusic" ) || FindArg( "-nosound" ) || digi_driver_board < 1 )
+	if ( FindArg( "-nosound" ) || digi_driver_board < 1 )
 		return;
-	if ( !disco_load() )
-		return;
-	Queue_count = 0;
-	Cur_index = -1;
-	Fade_target = -1;
-	Playing = 0;
-	Music_ready = 1;
-
 	if ( FindArg( "-musiclog" ) )
 		Music_log = 1;
-	if ( FindArg( "-origmusic" ) )		// ASCENT: the start of a level as in the original
+	// The ambient sounds are effects: -nomusic does not turn them off.
+	ambient_init();
+	if ( !FindArg( "-nomusic" ) && disco_load() ) {
+		Queue_count = 0;
+		Cur_index = -1;
+		Fade_target = -1;
+		Playing = 0;
+		Music_ready = 1;
+	}
+	if ( !Music_ready && !Amb_ready )
+		return;
+
+	if ( FindArg( "-origmusic" ) ) {		// ASCENT: the start of a level and DTU.WRP as in the original
 		Dtu_fix_start_music = 0;
+		Dtu_fix_wrp_sound = 0;
+	}
 	safe_music_args();
 	if ( (t = FindArg( "-musicscript" )) != 0 && t+1 < Num_args ) {
 		char *p = Args[t+1];

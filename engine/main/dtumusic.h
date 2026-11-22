@@ -22,6 +22,12 @@
 // default, not in a menu; the option -origmusic clears it.
 extern int Dtu_fix_start_music;
 
+// ASCENT: a segment of DTU.WRP keeps one music command and one ambient
+// command; a later line of another kind for the same segment does not
+// erase them. The original keeps only the last line (see dtumusic.c). On
+// by default; the option -origmusic clears it.
+extern int Dtu_fix_wrp_sound;
+
 // Load DISCO.JRG. Call it after digi_init(). The music stays off if the
 // sound is off or the command line has -nomusic.
 void dtumusic_init(void);
@@ -46,7 +52,9 @@ void dtumusic_flush(void);
 // A track that reaches the volume 0 stops (0xA451E, 0xA45AE).
 void dtumusic_fade(int volume);
 
-// Stop the track now (0xA3DB9).
+// Stop the track now (0xA3DB9), and the ambient sound with its queue
+// (0xA1FB7, 0xA223B): the callers are the places where the original stops
+// all its streams.
 void dtumusic_stop(void);
 
 // The entry that plays now, or -1 (0xA3C37).

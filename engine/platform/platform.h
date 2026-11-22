@@ -202,6 +202,17 @@ void plat_audio_music_start(plat_audio_music_callback callback, void *user, int 
 void plat_audio_music_stop(void);
 void plat_audio_music_set_volume(int volume);
 
+// The mixer has PLAT_AUDIO_STREAMS streams of this kind. The music
+// functions above use the stream PLAT_AUDIO_STREAM_MUSIC. The functions
+// below do the same for the stream that `stream` names; each stream has
+// its own source and volume.
+#define PLAT_AUDIO_STREAMS          2
+#define PLAT_AUDIO_STREAM_MUSIC     0
+#define PLAT_AUDIO_STREAM_AMBIENT   1
+void plat_audio_stream_start(int stream, plat_audio_music_callback callback, void *user, int rate);
+void plat_audio_stream_stop(int stream);
+void plat_audio_stream_set_volume(int stream, int volume);
+
 // Play signed 16-bit mono PCM. The other arguments, the return value and
 // the rule for the data are those of plat_audio_play. A sample value of
 // 32767 gives the same output as the value 255 of an 8-bit sample, within
