@@ -288,8 +288,18 @@ in each frame, and a held button in the bar moves the list with the cursor
 (a drag). The bar has no page step. The executable reads no mouse wheel.
 
 The message box scroll bar (0x2FF58) works the same way with step 1 on the
-word at 0x13AE24 and the maximum (word 0x13AE26) minus the visible lines
-(0x1BD57C). The arguments of its draw call (0x34795) were not read.
+first line (word 0x13AE24) and the maximum line count (word 0x13AE26) minus
+the visible lines (0x1BD57C), in each frame while the button is down, only
+with more lines than visible lines. Its draw call (0x3475B to 0x34795)
+passes the first line (0 if negative) and the line count minus 3. With the
+reverse flag 0 the up arrow takes 1 off the first line, so it shows newer
+lines, although the newest line is at the bottom of the box, and the slider
+is at the top for the newest line. The port reverses both
+(`Dtu_fix_msg_scroll`, `-origui` gives the original): the up arrow shows
+older lines, the slider is drawn with the position maximum minus the first
+line and the count maximum plus 1 (at the bottom for the newest line), and a
+place in the bar is taken the same way. The port adds the mouse wheel over
+the box (older lines away from the user).
 
 ## Areas (dispcanv.c)
 

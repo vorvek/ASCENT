@@ -116,6 +116,59 @@ def test_equal_minus(t):
     assert differ(region(s["main"], *LEFT), region(s["back"], *LEFT)) < 0.02, "- did not return to the main screen"
 
 
+# The text of the message box of the main screen, high resolution
+MSGBOX = (131, 306, 470, 77)
+MSG_V = ["gamekeys", "wait 20"] + ["key v", "wait 3"] * 10 + ["move 300 200", "wait 3", "shot base"]
+
+
+def test_msg_arrows(t):
+    """The arrows of the message box scroll bar (0x2FF58): the up arrow
+    shows older lines (Dtu_fix_msg_scroll), the down arrow newer ones."""
+    s, _ = t.run("msg_arrows", MSG_V + ["click 618 314", "wait 3", "move 300 200", "wait 3", "shot up",
+                                        "click 617 375", "wait 3", "move 300 200", "wait 3", "shot down"])
+    assert differ(region(s["base"], *MSGBOX), region(s["up"], *MSGBOX)) > 0.002, "the up arrow did not scroll"
+    assert differ(region(s["base"], *MSGBOX), region(s["down"], *MSGBOX)) < 0.001, "the down arrow did not scroll back"
+
+
+def test_msg_arrows_orig(t):
+    """-origui: the up arrow of the original shows newer lines, so at the
+    newest line it does nothing, and the down arrow shows older lines."""
+    s, _ = t.run("msg_arrows_orig", MSG_V + ["click 618 314", "wait 3", "move 300 200", "wait 3", "shot up",
+                                             "click 617 375", "wait 3", "move 300 200", "wait 3", "shot down"],
+                 extra=["-origui"])
+    assert differ(region(s["base"], *MSGBOX), region(s["up"], *MSGBOX)) < 0.001, "the up arrow scrolled"
+    assert differ(region(s["base"], *MSGBOX), region(s["down"], *MSGBOX)) > 0.002, "the down arrow did not scroll"
+
+
+def test_msg_bar_and_hold(t):
+    """A click at the top of the bar shows the oldest lines; a held down
+    arrow comes back to the newest line; the wheel scrolls."""
+    s, _ = t.run("msg_bar", MSG_V + ["click 615 326", "wait 3", "move 300 200", "wait 3", "shot top",
+                                     "press 617 375", "wait 60", "release", "move 300 200", "wait 3", "shot held",
+                                     "move 300 340", "wheel 2", "wait 3", "shot wheel"])
+    assert differ(region(s["base"], *MSGBOX), region(s["top"], *MSGBOX)) > 0.002, "the bar did not scroll"
+    assert differ(region(s["base"], *MSGBOX), region(s["held"], *MSGBOX)) < 0.001, "the held arrow did not scroll back"
+    assert differ(region(s["base"], *MSGBOX), region(s["wheel"], *MSGBOX)) > 0.002, "the wheel did not scroll"
+
+
+# The inventory list of the high resolution inventory screen
+INVLIST = (5, 5, 80, 290)
+
+
+def test_inv_sbar(t):
+    """The arrows of the inventory list scroll bar (0x3010C) move the list
+    by one row."""
+    if not t.args.char:
+        print("skip test_inv_sbar: no --char")
+        return
+    s, _ = t.run("inv_sbar", ["gamekeys", "wait 20", "key i", "wait 5", "move 300 200", "wait 3", "shot base",
+                              "click 98 285", "wait 3", "move 300 200", "wait 3", "shot down",
+                              "click 99 16", "wait 3", "move 300 200", "wait 3", "shot up"],
+                 extra=["-char", t.args.char])
+    assert differ(region(s["base"], *INVLIST), region(s["down"], *INVLIST)) > 0.05, "the down arrow did not scroll"
+    assert differ(region(s["base"], *INVLIST), region(s["up"], *INVLIST)) < 0.001, "the up arrow did not scroll back"
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 
@@ -125,6 +178,7 @@ def main():
     p.add_argument("--datadir", action="append", default=[])
     p.add_argument("--hddir")
     p.add_argument("--only")
+    p.add_argument("--char")
     args = p.parse_args()
     t = Runner(args)
     failed = 0
