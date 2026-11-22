@@ -2170,6 +2170,7 @@ void dtu_script_level_start(void)
 	Warp_level = -1;
 	Walk_obj = -1;
 	dtu_dlg_close();
+	dtu_dlg_reset_view();
 }
 
 // A warp of DB to another level (0x59C3C after the run)

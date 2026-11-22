@@ -64,7 +64,7 @@ static inline fix tmap_pdiv(fix a, fix z)
 static void per_loop_divide(ubyte *dest, int loop_count, fix u, fix v, fix z, fix l, fix dl)
 {
 	const ubyte	*src = pixptr;
-	const ubyte	*fade = gr_fade_table;
+	const ubyte	*fade = Tmap_dim ? Tmap_dim_fade : gr_fade_table;	// ASCENT: tmapfx.c
 	fix	du = fx_du_dx, dv = fx_dv_dx, dz = fx_dz_dx;
 	uint	c;
 
@@ -101,7 +101,7 @@ static void per_loop_divide(ubyte *dest, int loop_count, fix u, fix v, fix z, fi
 static void per_loop_fast(ubyte *dest, int loop_count, fix u, fix v, fix z, fix l, fix dl)
 {
 	const ubyte	*src = pixptr;
-	const ubyte	*fade = gr_fade_table;
+	const ubyte	*fade = Tmap_dim ? Tmap_dim_fade : gr_fade_table;	// ASCENT: tmapfx.c
 	fix	du = fx_du_dx, dv = fx_dv_dx, dz = fx_dz_dx;
 	fix	U0, V0, U1, V1, DU1, DV1, DZ1;
 	uint32_t	uv, duv;

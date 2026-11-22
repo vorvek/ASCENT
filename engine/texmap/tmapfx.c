@@ -26,6 +26,14 @@
  * the span after its start ("behind"), and the pixel 2k-1 of the next
  * screen row from its left edge ("below"), which wraps at the width of the
  * view.
+ *
+ * The dark view of the conversation window (docs/re/scripts.md, section
+ * 4): while the window opens, 0x458BA(1) ramps the byte 0x14C4CE (D) from
+ * 1 to 15, and back to 0 when it closes. The same functions test it before
+ * the effect colors: a texel c (not 255) of a merged bitmap with
+ * (c & 15) <= D becomes (fade[max(r - 5, 0)][c] & 15) | 8, a color of the
+ * dark half of palette row 0 (grey). The port puts the rule into a copy of
+ * the fade table (Tmap_dim_fade) that the mappers use for such a polygon.
  */
 
 #include <stdlib.h>
@@ -39,6 +47,9 @@
 
 int Tmap_fx;					// the bitmap of draw_tmap has BM_FLAG_DTU_EFFECTS
 int Tmap_fx_row = 25;		// 0x14C4E1
+int Tmap_dim;					// 0x14C4CE for the polygon of draw_tmap
+ubyte Tmap_dim_fade[256*GR_FADE_LEVELS];
+static int Tmap_dim_view;	// 0x14C4CE for the view
 
 int tmap_fx_color_code(int c)
 {
@@ -47,6 +58,45 @@ int tmap_fx_color_code(int c)
 			return 1;
 	}
 	return 0;
+}
+
+// 0xEC4EF to 0xEC504: the dark view is tested before the effect colors
+int tmap_fx_effect(int c)
+{
+	return tmap_fx_color_code(c) && !(Tmap_dim && (c & 15) <= Tmap_dim);
+}
+
+// 0xEC4EF to 0xEC523 (0x105A99 in the copy) with 0x14C4CF at 0, the value of
+// the conversation window
+void tmap_dim_set_view(int dim)
+{
+	int r, c;
+
+	if (dim < 0) dim = 0;
+	if (dim > 15) dim = 15;
+	Tmap_dim_view = dim;
+	Tmap_dim = 0;
+	if (!dim)
+		return;
+	for (r=0; r<GR_FADE_LEVELS; r++) {
+		int r5 = r - 5 < 0 ? 0 : r - 5;
+
+		for (c=0; c<256; c++) {
+			if (c != 255 && (c & 15) <= dim)
+				Tmap_dim_fade[r*256 + c] = (ubyte) ((gr_fade_table[r5*256 + c] & 15) | 8);
+			else
+				Tmap_dim_fade[r*256 + c] = gr_fade_table[r*256 + c];
+		}
+	}
+}
+
+// 0xEA503 to 0xEA525: the functions do the rule only for a bitmap with the
+// flag 0x20 (a merged wall), an object with a tint (0x14C4CD, not in the
+// port) or 0x14C4CF (not set by the conversation window). They are the
+// functions of the lit mappers.
+void tmap_dim_polygon(int bm_flags, int lighting)
+{
+	Tmap_dim = (Tmap_dim_view && lighting && (bm_flags & BM_FLAG_DTU_MERGED)) ? Tmap_dim_view : 0;
 }
 
 // The color of the effect color c (0x105A81 and 0xEC4D7 from the test of
@@ -123,7 +173,7 @@ void tmap_fx_fix_span(ubyte *dest, const ubyte *raw, int n, const ubyte *saved, 
 	for (i = 0; i < n; i++) {
 		int c = raw[i], behind, below;
 
-		if (c == 255 || !tmap_fx_color_code(c))
+		if (c == 255 || !tmap_fx_effect(c))
 			continue;
 		k++;
 		// the pixels before i have their final colors; i and the pixels

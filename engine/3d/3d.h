@@ -419,6 +419,10 @@ extern int G3_gpu_heat;
 //The pulsing fade table row of the effect color 0xCF (Tmap_fx_row of the
 //texture mapper, tmapfx.c). The game sets it at the start of each view.
 extern int G3_gpu_fx_row;
+//The dark view of the conversation window (Tmap_dim of the texture mapper,
+//tmapfx.c): 0 to 15 for the lit merged walls. The game sets it at the start
+//of each view.
+extern int G3_gpu_dim;
 
 #endif
 
