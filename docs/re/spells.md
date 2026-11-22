@@ -11,49 +11,117 @@ Sources:
 - The `$SPELL` lines of all 46 level tables (`gamedata/unpacked/*.BIN`, read with
   `tools/objcheck.py` `table_lines`; the installed `YPINN.BIN` has the same lines).
   `cast_time=` is the same in all 46 tables for every spell (spells 52 to 55 are in
-  44 tables).
-- The code: 0x41A4D (game.c, the cast), 0x24C13 (the table reader), 0x8CFFF (the
-  cases), 0x9002C (the ends), the strings 0x12D88A to 0x12E5E5.
+  44 tables), but the game does not use it (section 1).
+- The code: 0x41A4D (game.c, the cast), 0x24C13 (the table reader), 0x1A344 (the
+  table fixup), 0x8CFFF (the cases), 0x9002C (the ends), the strings 0x12D88A to
+  0x12E5E5.
 
-## 1. Cast time (Code)
+## 1. Cast time (Code, DOS game)
 
 - Reader 0x24BEC: `cast_time=N` is `atoi` into the word Spell_info+0x04 (record
-  0x1B567A + spell * 127). No scale. Default 0.
+  0x1B567A + spell * 127). No scale. Default 0 (0x243C6).
+- Fixup 0x1A344, called at the end of each table read (0x1C8F9, after the `$SPELL`
+  reader 0x242F6 that the dispatcher calls at 0x1C45C): for each spell line read
+  (0 to N_spell_types 0x13A853 - 1), word 0x1B567A + spell * 127 = word 0x13A8DB +
+  spell * 2 (0x1AED5 to 0x1AEF2). No condition. So `cast_time=` of the tables never
+  reaches the game: the cast time is the table of 56 words at 0x13A8DB (initialized
+  data, no other writer; the next variable starts at 0x13A94B).
 - 0x41C9F (the first frame of the attack key with a spell of a book, after the checks
-  of 0x356E0, the armor and the climbing tests): `0x153EBC = GameTime + (cast_time
-  << 16)`. GameTime (0x13CD30) is the Descent game clock: `GameTime += FrameTime`
-  (0x43800, 0x43A24), FrameTime is the timer delta in seconds, between 0x1B4 and
-  0x3333 (0.2 s; 0x40F1A). So the unit is one second of game time.
-- Text: `cast_time > 60`: "Casting time: %d minutes ..." with `cast_time / 60`;
+  of 0x356E0, the armor and the climbing tests): `0x153EBC = GameTime + (word << 16)`.
+  GameTime (0x13CD30) is the Descent game clock: `GameTime += FrameTime` (0x43800,
+  0x43A24), FrameTime is the timer delta in seconds, between 0x1B4 and 0x3333 (0.2 s;
+  0x40F1A). So the unit is one second of game time. The words are the AD&D casting
+  times: a number of segments as seconds, 60 for 1 round, 600 for 1 turn.
+- Text (0x41CC2, the word): `> 60`: "Casting time: %d minutes ..." with the value / 60;
   `> 1`: "Casting time: %d seconds ..."; else "Casting time: 1 second ...".
 - Each later frame: while `0x153EBC > GameTime` nothing (0x41D27); then
-  `0x153EBC = 0x3FFFFFFF` and the spell fires (0x41E36 returns 1). A scroll, a wand or
-  a creature (B10: `+0x1C0 = GameTime + cast_time`) use the same value; a scroll and
-  a wand skip it.
+  `0x153EBC = 0x3FFFFFFF` and the spell fires (0x41E36 returns 1). A creature (B10,
+  0x9231F: `+0x1C0 = GameTime + word`) uses the same word. A scroll and a wand skip
+  it. The other readers of the record word (0x255DE, 0x28312, 0x875DE, 0xB64CC) read
+  the byte at +0x00, the class, and 0x56FF6 prints it in a debug text only.
 - The request flag 0x13B69F stays set while the time runs (the key need not be
   held); the hot keys refuse a change in that time (character.md, 0x43A5A).
 
-`cast_time=` of the tables (seconds; the text that the cast shows):
+DOS game (DTUGAME.EXE 1.3, sha256 be645b64..., in DOSBox-X 2026 with `-nosound
+-notitles`, the shipped save `SG0.SG` of Elmac with the book entry of Spider Climb
+changed to Armor in a scratch copy; keys sent with AUTOTYPE, the window captured
+each 0.5 s or 1 s):
 
-| s | Spells |
-|---|---|
-| 0 (none for 32, 33, 37, 44) | 2 Armor, 4 Burning Hands, 6 Color Spray, 14 Fear, 19 Fly, 41 Rary's Mnemonic Enhancer, 51 Burning Hands (cold), 32 Lightning Bolt, 33 Magic Missile, 37 Melf's Minute Meteors, 44 Scare: "1 second", the cast in the next frame |
-| 1 | 24 Improved Invisibility, 26 Invisibility: "1 second" |
-| 10 | 5, 7, 15, 16, 21, 22, 23, 25, 27, 28, 29, 30, 36, 39, 40, 42, 43, 45 Shield, 46 Sleep, 48, 49, 50, 52, 53: "10 seconds" |
-| 24 | 31 Light (Cleric), 34 Magical Stone |
-| 30 | 1 Aid, 10 Cure Light Wounds, 18 Flame Walk |
-| 36 | 8, 9 Continual Light, 13, 55 Dispel Magic, 17 Flaming Sphere, 38 Prayer |
-| 42 | 11 Cure Serious Wounds, 20 Free Action |
-| 60 | 0 Abjure, 3 Bless, 12, 54 Detect Magic, 35 Magical Vestment, 47 Slow: "60 seconds" (not above 60, so no minutes text) |
+- Armor: "Casting time: 60 seconds ..." at 78.4 to 79.4 s of the capture, "You have
+  9 armor hit points." at 138.4 to 139.4 s: 60 s (+/- 1 s).
+- Shield (`cast_time=10` in the table): "Casting time: 1 second ..." at 78.5 to 79.0
+  s, "You are Shielded for 5 minutes." at 79.5 to 80.0 s: 1 s, not 10.
+- After that, hot key 3 (Burning Hands in the hand) and the attack key ended the
+  program with a page fault about 3 s later ("Crash address (unrelocated) =
+  1:000D51FF"); not examined.
 
-No line has a cast time above 60, so the minutes text never shows.
+The cast time of each spell (word of 0x13A8DB, game seconds, and the text of the
+cast) beside `cast_time=` of the tables, which has no effect:
 
-Armor: `cast_time=0` in all 46 tables, the code adds no other wait: the executable
-shows "Casting time: 1 second ..." and casts Armor in the frame after the key. The
-AD&D rule (1 round, one minute) is not in the data or the code. The port did the same
-before this audit and does now (checked: the cast starts at 1.033 s, Armor at 1.066 s
-at 30 frames per second). A report of one minute in the original is not explained by
-DTUGAME.EXE 1.3 with these tables; it needs a check in the DOS game.
+| # | Spell | Class, level | `cast_time=` | Seconds | Text |
+|---|---|---|---|---|---|
+| 0 | Abjure | cleric 4 | 60 | 7 | "7 seconds" |
+| 1 | Aid | cleric 2 | 30 | 5 | "5 seconds" |
+| 2 | Armor | mage 1 | 0 | 60 | "60 seconds" |
+| 3 | Bless | cleric 1 | 60 | 60 | "60 seconds" |
+| 4 | Burning Hands | mage 1 | 0 | 1 | "1 second" |
+| 5 | Chill Touch | mage 1 | 10 | 1 | "1 second" |
+| 6 | Color Spray | mage 1 | 0 | 1 | "1 second" |
+| 7 | Confusion | mage 4 | 10 | 4 | "4 seconds" |
+| 8 | Continual Light (Cleric) | cleric 3 | 36 | 6 | "6 seconds" |
+| 9 | Continual Light (Mage) | mage 2 | 36 | 2 | "2 seconds" |
+| 10 | Cure Light Wounds | cleric 1 | 30 | 5 | "5 seconds" |
+| 11 | Cure Serious Wounds | cleric 4 | 42 | 7 | "7 seconds" |
+| 12 | Detect Magic | mage 1 | 60 | 1 | "1 second" |
+| 13 | Dispel Magic | mage 3 | 36 | 3 | "3 seconds" |
+| 14 | Fear | mage 4 | 0 | 4 | "4 seconds" |
+| 15 | Feather Fall | mage 1 | 10 | 1 | "1 second" |
+| 16 | Fireball | mage 3 | 10 | 3 | "3 seconds" |
+| 17 | Flaming Sphere | mage 2 | 36 | 7 | "7 seconds" |
+| 18 | Flame Walk | cleric 3 | 30 | 5 | "5 seconds" |
+| 19 | Fly | mage 3 | 0 | 3 | "3 seconds" |
+| 20 | Free Action | cleric 4 | 42 | 7 | "7 seconds" |
+| 21 | Haste | mage 3 | 10 | 3 | "3 seconds" |
+| 22 | Hold Person | mage 3 | 10 | 3 | "3 seconds" |
+| 23 | Hold Undead | mage 3 | 10 | 5 | "5 seconds" |
+| 24 | Improved Invisibility | mage 4 | 1 | 4 | "4 seconds" |
+| 25 | Infravision | mage 3 | 10 | 60 | "60 seconds" |
+| 26 | Invisibility | mage 2 | 1 | 2 | "2 seconds" |
+| 27 | Jump | mage 1 | 10 | 1 | "1 second" |
+| 28 | Knock | mage 2 | 10 | 1 | "1 second" |
+| 29 | Levitate | mage 2 | 10 | 2 | "2 seconds" |
+| 30 | Light (Mage) | mage 1 | 10 | 1 | "1 second" |
+| 31 | Light (Cleric) | cleric 1 | 24 | 4 | "4 seconds" |
+| 32 | Lightning Bolt | mage 3 | none | 3 | "3 seconds" |
+| 33 | Magic Missile | mage 1 | none | 1 | "1 second" |
+| 34 | Magical Stone | cleric 1 | 24 | 4 | "4 seconds" |
+| 35 | Magical Vestment | cleric 3 | 60 | 60 | "60 seconds" |
+| 36 | Melf's Acid Arrows | mage 2 | 10 | 2 | "2 seconds" |
+| 37 | Melf's Minute Meteors | mage 3 | none | 3 | "3 seconds" |
+| 38 | Prayer | cleric 3 | 36 | 6 | "6 seconds" |
+| 39 | Protection From Evil | mage 1 | 10 | 1 | "1 second" |
+| 40 | Protection From Fire | cleric 3 | 10 | 6 | "6 seconds" |
+| 41 | Rary's Mnemonic Enhancer | mage 4 | 0 | 600 | "10 minutes" |
+| 42 | Resist Cold | cleric 2 | 10 | 60 | "60 seconds" |
+| 43 | Resist Fire | cleric 2 | 10 | 5 | "5 seconds" |
+| 44 | Scare | mage 2 | none | 2 | "2 seconds" |
+| 45 | Shield | mage 1 | 10 | 1 | "1 second" |
+| 46 | Sleep | mage 1 | 10 | 1 | "1 second" |
+| 47 | Slow | mage 3 | 60 | 3 | "3 seconds" |
+| 48 | Spider Climb | mage 1 | 10 | 1 | "1 second" |
+| 49 | Stone Skin | mage 4 | 10 | 1 | "1 second" |
+| 50 | Strength | mage 2 | 10 | 600 | "10 minutes" |
+| 51 | Burning Hands | mage 1 | 0 | 5 | "5 seconds" |
+| 52 | Hold Person | cleric 2 | 10 | 5 | "5 seconds" |
+| 53 | Protection From Evil | cleric 1 | 10 | 4 | "4 seconds" |
+| 54 | Detect Magic | cleric 1 | 60 | 60 | "60 seconds" |
+| 55 | Dispel Magic | cleric 3 | 36 | 6 | "6 seconds" |
+
+Spells 41 (Rary's Mnemonic Enhancer) and 50 (Strength) are the only ones above 60
+seconds: "Casting time: 10 minutes ...". The port before this audit read
+`cast_time=` of the line (Armor in the next frame); it now uses the words of
+0x13A8DB (`spell_cast_time` in `dtuspell.c`), checked with `-testspell 2`:
+the cast starts at 2.033 s and Armor acts at 62.052 s; Shield at 2.033 s and 3.066 s.
 
 ## 2. The texts of 0x8CFFF (Code)
 
@@ -130,55 +198,55 @@ Port before = the port at d9d72f6. "same" = the port follows B3 of combat.md.
 
 | # | Spell | Executable (combat.md B3, B1) | Port before | Port after |
 |---|---|---|---|---|
-| 0 | Abjure | C4, target; 60 s | same; text only for the player caster | text by 0x8CEAE |
-| 1 | Aid | C2, 30 s; +1d8 hp with no cap (0x8D46A), Bless (L+1) min, the Bless timer replaced; sound 0x2E900 with the sound word P+0x1B33 | hp cut to the maximum, "You feel better.", Bless not renewed when on | hp above the maximum (`dtu_char_add_hit_points`), timer renewed, the Aid text; the sound is not in the port |
-| 2 | Armor | M1, 0 s; pool 8 + L, AC 6 | same | text by 0x8CEAE |
+| 0 | Abjure | C4, target; 7 s | same; text only for the player caster | text by 0x8CEAE |
+| 1 | Aid | C2, 5 s; +1d8 hp with no cap (0x8D46A), Bless (L+1) min, the Bless timer replaced; sound 0x2E900 with the sound word P+0x1B33 | hp cut to the maximum, "You feel better.", Bless not renewed when on | hp above the maximum (`dtu_char_add_hit_points`), timer renewed, the Aid text; the sound is not in the port |
+| 2 | Armor | M1, 60 s; pool 8 + L, AC 6 | same | text by 0x8CEAE |
 | 3 | Bless | C1, 60 s; 360 s | generic "Bless for 6 minutes." | original text |
-| 4 | Burning Hands | M1, 0 s; 6 missiles, fire 1d3 + 2L, save half | same | same |
-| 5 | Chill Touch | M1, 10 s; self, (L+3) min | generic text | original text |
-| 6 | Color Spray | M1, 0 s; 1d6 missiles; sleep, blind or stun by level | generic texts | original texts |
-| 7 | Confusion | M4, 10 s; 1d4 + L missiles; save; (L+2) min | generic text | original text |
-| 8, 9 | Continual Light | C3, M2, 36 s; area; blind, no end | "Blindness." | original text |
-| 10, 11 | Cure Light / Serious Wounds | C1, C4, 30 s, 42 s; 1d8, 3..17, at most the maximum | "You feel better." | original text |
-| 12, 54 | Detect Magic | M1, C1, 60 s; 2L min, 10 min | generic text | original text, only for the player |
-| 13, 55 | Dispel Magic | M3, C3, 36 s | same | same |
-| 14 | Fear | M4, 0 s; save; L min | generic texts (Fear and Hold) | "Fear cast on %s by %s." |
-| 15 | Feather Fall | M1, 10 s; L min; no end text | generic texts, "Feather Fall expired." | original text, no end text |
-| 16 | Fireball | M3, 10 s; fire min(L,10) dice of 0 sides (each adds 0) + 6L | same | same |
-| 17 | Flaming Sphere | M2, 36 s | same | same |
-| 18 | Flame Walk | C3, 30 s; (L+1) min | generic text | original text |
-| 19 | Fly | M3, 0 s; 10 (1d6 + L) min | generic text | original text |
-| 20 | Free Action | C4, 42 s; self; 10L min | generic text | original text |
-| 21 | Haste | M3, 10 s; (L+3) min | generic text | original text |
-| 22, 52 | Hold Person | M3, C2, 10 s; 2L min, / (wisdom/2) for the player | generic text | original text with seconds below 60 s |
-| 23 | Hold Undead | M3, 10 s; (1d4 + L) min | generic text | original text |
-| 24 | Improved Invisibility | M4, 1 s; (L+4) min | generic text; end "Improved Invisibility expired." | original texts, end sound 161 |
-| 25 | Infravision | M3, 10 s; (6L + 12) * 10 min | generic text in minutes | original text in hours |
-| 26 | Invisibility | M2, 1 s; no end | "Invisibility." | original text, end sound 161 |
-| 27 | Jump | M1, 10 s; (1d3 + L) min | generic text | original text |
-| 28 | Knock | M2, 10 s; nothing | same | same |
-| 29 | Levitate | M2, 10 s; 10L min | generic text | original text |
-| 30, 31 | Light | M1, C1, 10 s, 24 s; 10L, 10(L+6) min | "Blindness for N minutes." | original text |
-| 32 | Lightning Bolt | M3, 0 s | same | same |
-| 33 | Magic Missile | M1, 0 s; min(L/2 + 1, 5) homing missiles, 1d4 | same | same |
-| 34 | Magical Stone | C1, 24 s; 1d3 missiles, 1d4 (2d4 undead) | same | same |
+| 4 | Burning Hands | M1, 1 s; 6 missiles, fire 1d3 + 2L, save half | same | same |
+| 5 | Chill Touch | M1, 1 s; self, (L+3) min | generic text | original text |
+| 6 | Color Spray | M1, 1 s; 1d6 missiles; sleep, blind or stun by level | generic texts | original texts |
+| 7 | Confusion | M4, 4 s; 1d4 + L missiles; save; (L+2) min | generic text | original text |
+| 8, 9 | Continual Light | C3, M2, 6 s / 2 s; area; blind, no end | "Blindness." | original text |
+| 10, 11 | Cure Light / Serious Wounds | C1, C4, 5 s / 7 s, 42 s; 1d8, 3..17, at most the maximum | "You feel better." | original text |
+| 12, 54 | Detect Magic | M1, C1, 1 s / 60 s; 2L min, 10 min | generic text | original text, only for the player |
+| 13, 55 | Dispel Magic | M3, C3, 3 s / 6 s | same | same |
+| 14 | Fear | M4, 4 s; save; L min | generic texts (Fear and Hold) | "Fear cast on %s by %s." |
+| 15 | Feather Fall | M1, 1 s; L min; no end text | generic texts, "Feather Fall expired." | original text, no end text |
+| 16 | Fireball | M3, 3 s; fire min(L,10) dice of 0 sides (each adds 0) + 6L | same | same |
+| 17 | Flaming Sphere | M2, 7 s | same | same |
+| 18 | Flame Walk | C3, 5 s; (L+1) min | generic text | original text |
+| 19 | Fly | M3, 3 s; 10 (1d6 + L) min | generic text | original text |
+| 20 | Free Action | C4, 7 s; self; 10L min | generic text | original text |
+| 21 | Haste | M3, 3 s; (L+3) min | generic text | original text |
+| 22, 52 | Hold Person | M3, C2, 3 s / 5 s; 2L min, / (wisdom/2) for the player | generic text | original text with seconds below 60 s |
+| 23 | Hold Undead | M3, 5 s; (1d4 + L) min | generic text | original text |
+| 24 | Improved Invisibility | M4, 4 s; (L+4) min | generic text; end "Improved Invisibility expired." | original texts, end sound 161 |
+| 25 | Infravision | M3, 60 s; (6L + 12) * 10 min | generic text in minutes | original text in hours |
+| 26 | Invisibility | M2, 2 s; no end | "Invisibility." | original text, end sound 161 |
+| 27 | Jump | M1, 1 s; (1d3 + L) min | generic text | original text |
+| 28 | Knock | M2, 1 s; nothing | same | same |
+| 29 | Levitate | M2, 2 s; 10L min | generic text | original text |
+| 30, 31 | Light | M1, C1, 1 s / 4 s, 24 s; 10L, 10(L+6) min | "Blindness for N minutes." | original text |
+| 32 | Lightning Bolt | M3, 3 s | same | same |
+| 33 | Magic Missile | M1, 1 s; min(L/2 + 1, 5) homing missiles, 1d4 | same | same |
+| 34 | Magical Stone | C1, 4 s; 1d3 missiles, 1d4 (2d4 undead) | same | same |
 | 35 | Magical Vestment | C3, 60 s; 5L min | generic text | original text |
-| 36 | Melf's Acid Arrows | M2, 10 s; one missile, 4 L acid, save for half, no attack roll | same | the AD&D 2nd edition rule, `Dtu_fix_melf_acid` (section 10) |
-| 37 | Melf's Minute Meteors | M3, 0 s; min(L, 5) missiles | same | same |
-| 38 | Prayer | C3, 36 s; Bless L min | generic text | original text |
-| 39, 53 | Protection From Evil | M1, C1, 10 s; 2L, 3L min | generic text | original text |
-| 40 | Protection From Fire | C3, 10 s; pool += 12L | "Protection From Fire for N hit points." | original text with the pool |
-| 41 | Rary's Mnemonic Enhancer | M4, 0 s | "You have ... for 1 day." for the player only | original text by 0x8CEAE |
-| 42 | Cure Blindness or Deafness | C2, 10 s | "You are no longer blind or deaf." | original texts |
-| 43 | Resist Fire | C2, 10 s; L min | generic text | original text |
-| 44 | Scare | M2, 0 s; (1d4 + L) min | generic texts | "Scare cast on %s by %s." |
-| 45 | Shield | M1, 10 s; 5L min, AC 3 | "Shield for 5 minutes." | "You are Shielded for 5 minutes." |
-| 46 | Sleep | M1, 10 s; 5L min, level 3 or less | generic text | original text |
-| 47 | Slow | M3, 60 s; (L+3) min | generic text | original text |
-| 48 | Spider Climb | M1, 10 s; (L+3) min | generic text | original text |
-| 49 | Stone Skin | M4, 10 s; 1d4 + L/2 attacks | "Stoneskin for N attacks." for the player | original text by 0x8CEAE |
-| 50 | Strength | M2, 10 s; L hours: L * 225 << 20 in 32 bits, which wraps from level 10 on (the effect ends at once) | `L*3600*F1_0` (signed overflow in C) | the 32 bit wrap of the executable, the text in hours |
-| 51 | Find Traps | M1, 0 s; 30 min | generic text | original text |
+| 36 | Melf's Acid Arrows | M2, 2 s; one missile, 4 L acid, save for half, no attack roll | same | the AD&D 2nd edition rule, `Dtu_fix_melf_acid` (section 10) |
+| 37 | Melf's Minute Meteors | M3, 3 s; min(L, 5) missiles | same | same |
+| 38 | Prayer | C3, 6 s; Bless L min | generic text | original text |
+| 39, 53 | Protection From Evil | M1, C1, 1 s / 4 s; 2L, 3L min | generic text | original text |
+| 40 | Protection From Fire | C3, 6 s; pool += 12L | "Protection From Fire for N hit points." | original text with the pool |
+| 41 | Rary's Mnemonic Enhancer | M4, 600 s | "You have ... for 1 day." for the player only | original text by 0x8CEAE |
+| 42 | Cure Blindness or Deafness | C2, 60 s | "You are no longer blind or deaf." | original texts |
+| 43 | Resist Fire | C2, 5 s; L min | generic text | original text |
+| 44 | Scare | M2, 2 s; (1d4 + L) min | generic texts | "Scare cast on %s by %s." |
+| 45 | Shield | M1, 1 s; 5L min, AC 3 | "Shield for 5 minutes." | "You are Shielded for 5 minutes." |
+| 46 | Sleep | M1, 1 s; 5L min, level 3 or less | generic text | original text |
+| 47 | Slow | M3, 3 s; (L+3) min | generic text | original text |
+| 48 | Spider Climb | M1, 1 s; (L+3) min | generic text | original text |
+| 49 | Stone Skin | M4, 1 s; 1d4 + L/2 attacks | "Stoneskin for N attacks." for the player | original text by 0x8CEAE |
+| 50 | Strength | M2, 600 s; L hours: L * 225 << 20 in 32 bits, which wraps from level 10 on (the effect ends at once) | `L*3600*F1_0` (signed overflow in C) | the 32 bit wrap of the executable, the text in hours |
+| 51 | Find Traps | M1, 5 s; 30 min | generic text | original text |
 
 ## 5. The cast (0x41A4D, 0x9305D)
 

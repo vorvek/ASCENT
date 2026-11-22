@@ -111,6 +111,29 @@ static int spell_int(int spell,char *key,int def)
 	return atoi(v);
 }
 
+// The cast time in seconds of game time. The table fixup 0x1A344, called at
+// the end of each table read (0x1C8F9), writes the words of 0x13A8DB over
+// the cast_time= value (Spell_info+0x04, word 0x1B567A) of each spell line
+// read, so cast_time= of the tables has no effect in 1.3. The values are the
+// AD&D casting times: a number for segments, 60 for a round, 600 for a turn.
+// Checked in DOSBox-X: Armor says "Casting time: 60 seconds ..." and acts
+// 60 s later; Shield (cast_time=10 in the table) says "1 second".
+static const short Cast_time_13[56] = {
+	7, 5, 60, 60, 1, 1, 1, 4, 6, 2,			// 0 to 9
+	5, 7, 1, 3, 4, 1, 3, 7, 5, 3,			// 10 to 19
+	7, 3, 3, 5, 4, 60, 2, 1, 1, 2,			// 20 to 29
+	1, 4, 3, 1, 4, 60, 2, 3, 6, 1,			// 30 to 39
+	6, 600, 60, 5, 2, 1, 1, 3, 1, 1,		// 40 to 49
+	600, 5, 5, 4, 60, 6,				// 50 to 55
+};
+
+static int spell_cast_time(int spell)
+{
+	if (spell >= 0 && spell < (int)(sizeof(Cast_time_13) / sizeof(Cast_time_13[0])) && spell < N_spell_types)
+		return Cast_time_13[spell];
+	return spell_int(spell,"cast_time",0);
+}
+
 static fix spell_fix(int spell,char *key,fix def)
 {
 	char v[32];
@@ -2366,11 +2389,12 @@ int dtu_spell_fire(void)
 				Cast_timer = DTU_FX_NO_END;
 				return 1;
 			}
-			// 0x41C9F: cast_time= of the line is a number of seconds of game
-			// time (0x153EBC = GameTime + cast_time << 16). The text divides
-			// by 60 above 60 seconds and says "1 second" for 0 and 1. The
-			// cast follows in the first frame after the timer.
-			t = spell_int(spell,"cast_time",0);
+			// 0x41C9F: the cast time is a number of seconds of game time
+			// (0x153EBC = GameTime + cast_time << 16), from 0x13A8DB, not
+			// from the table line (spell_cast_time). The text divides by 60
+			// above 60 seconds and says "1 second" for 0 and 1. The cast
+			// follows in the first frame after the timer.
+			t = spell_cast_time(spell);
 			Cast_timer = GameTime + i2f(t);
 			Cast_spell = spell;
 			if (t > 60) snprintf(msg,sizeof(msg),LT("Casting time: %d minutes ..."),t / 60);
@@ -2925,7 +2949,7 @@ static void creature_choose(object *obj,fix dist)
 			continue;
 		Cspell[n].cond &= ~Cspell_table[e].cond;
 		Cspell[n].chosen = e;
-		Cspell[n].cast_time = GameTime + i2f(spell_int(s,"cast_time",0));
+		Cspell[n].cast_time = GameTime + i2f(spell_cast_time(s));	// 0x9231F reads the same word
 		dtu_spell_log("cspell: obj %d %s chooses '%s' (%d), weight %d, roll %d, cast at %.2f",n,target_name(obj),spell_name(s),s,w,roll,
 			f2fl(Cspell[n].cast_time));
 		return;
