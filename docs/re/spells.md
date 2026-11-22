@@ -212,7 +212,7 @@ Port before = the port at d9d72f6. "same" = the port follows B3 of combat.md.
 | 13, 55 | Dispel Magic | M3, C3, 3 s / 6 s | same | same |
 | 14 | Fear | M4, 4 s; save; L min | generic texts (Fear and Hold) | "Fear cast on %s by %s." |
 | 15 | Feather Fall | M1, 1 s; L min; no end text | generic texts, "Feather Fall expired." | original text, no end text |
-| 16 | Fireball | M3, 3 s; fire min(L,10) dice of 0 sides (each adds 0) + 6L | same | same |
+| 16 | Fireball | M3, 3 s; fire min(L,10) d6 (the fixup 0x1A9C7 gives 6 sides, 0 per level), save for half | same | same |
 | 17 | Flaming Sphere | M2, 7 s | same | same |
 | 18 | Flame Walk | C3, 5 s; (L+1) min | generic text | original text |
 | 19 | Fly | M3, 3 s; 10 (1d6 + L) min | generic text | original text |
@@ -425,7 +425,8 @@ normal items keep their colors. Duration: 2 minutes per level (mage), 10 minutes
 
 1.3 (0x8EFE0, checked in the Ghidra export of 0x8CFFF: the case writes
 `#acid_damage_dice` = 2 (L/3) + 2 and calls 0x911AA, with no attack roll): one
-missile, 4 L acid damage in one hit (the dice have 0 sides and add 0), a save for
+missile, (2 (L/3) + 2) d4 acid damage in one hit (the fixup gives the acid dice 4
+sides and 0 per level; the table text alone has 0 sides and 4 per level), a save for
 half, acid ends regeneration. The missile lives (L/3 + 1) minutes (0x56FF6). The game
 has no text of the spell and the manual tells little, so the port follows the 2nd
 edition rule. `-origcombat` gives the 1.3 rule.
@@ -468,8 +469,9 @@ Check (`-hidden -mute -fixedfps 30 -noattack`, BANE, `-char SG0.SG` (thief/mage)
   a drow mage (DROW1 obj 13 `rmmk5`, `-testpos 105,-3,10,0` and others, no
   `-noattack`) casts it at the player of armor class 6: d20 17 against THAC0 19: hit,
   round 1 of 1 (5); in another run a natural 1 misses.
-- `-origcombat`, the large skeleton: level 9 "8 dice with 0 sides add 0", the save
-  succeeds, 18 damage in one hit; level 3 the save fails, 12 damage.
+- `-origcombat`, the large skeleton: one hit of (2 (L/3) + 2) d4 with a save for half.
+  (An older run of this note, before the port had the table fixup, logged "8 dice with
+  0 sides add 0"; that is the table text, not 1.3.)
 
 ## 11. Wizard spells of the third audit (Code)
 

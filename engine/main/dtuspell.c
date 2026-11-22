@@ -1939,7 +1939,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (fx_set(target,DTU_FX_FEATHER_FALL,spell_time(15,L,ROLL)))
 				say_effect(self,"%s %s feather fall for %d minutes.",V_HAVE,"Feather fall cast on %s by %s for %d minutes.",L);
 			break;
-		case 16:		// Fireball: min(L, 10) fire dice + 6 L
+		case 16:		// Fireball: min(L, 10) d6 of fire (the fixup 0x1A9C7: 6 sides, 0 per level)
 			{
 				int g, n, l;
 
@@ -2038,7 +2038,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (fx_set(target,DTU_FX_LEVITATE,spell_time(29,L,ROLL)))
 				say_effect(self,"%s can levitate for %d minutes.",V_NONE,"Levitate cast on %s by %s for %d minutes.",10*L);
 			break;
-		case 32:		// Lightning Bolt: min(L, 10) electric dice + 6 L
+		case 32:		// Lightning Bolt: min(L, 10) d6 of electricity (the fixup 0x1AAE9)
 			{
 				int g, n, l;
 

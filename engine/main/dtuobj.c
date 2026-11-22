@@ -3313,8 +3313,10 @@ int dtu_creature_is_active(object *obj)
 // case of 0x8CFFF writes into the table first (Fireball min(L, 10) at
 // 0x8E592, Lightning Bolt 0x8EEAB, Melf's Acid Arrows 2 (L/3) + 2 at
 // 0x8EFE0).
-// A die of 0 sides (these three spells, in every table) adds 0, as in
-// 1.3: the idiv by 0 (0x91C25, 0x91C8E, 0x91CEC, 0x91D4E) goes to the
+// A die of 0 sides adds 0, as in 1.3. The table text of these three
+// spells has 0 sides, but the table fixup gives them 6, 6 and 4 sides
+// (0x1A9C7, 0x1AAE9, dtutblfix.c), so only a line that the fixup does not
+// write can have it: the idiv by 0 (0x91C25, 0x91C8E, 0x91CEC, 0x91D4E) goes to the
 // divide error handler of div0.asm (div0_init(1) at 0xB8323, handler
 // 0xF6D94, saturate mode). Its int3 at 0xF6E17 returns without a debugger
 // and its decoder takes the SIB byte of `idiv dword ptr [esp]` (F7 3C 24)
