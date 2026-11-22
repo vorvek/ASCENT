@@ -47,6 +47,7 @@
 #include "dtutrig.h"
 #include "dtufe.h"
 #include "dtustate.h"
+#include "dtuchar.h"		// ASCENT: dtu_char_update() after a restore
 #include "args.h"
 
 // The messages of the state code go to the log and to stdout
@@ -1461,6 +1462,11 @@ int dtustate_restore_level(int level_index)
 		SLOG("State: cannot read %s\n", names[0]);
 		return 0;
 	}
+	// ASCENT: the player object of the file has the spell effects (+0x88).
+	// dtu_char_level_start() ran before the read, so the armor class of
+	// an effect such as Armor is computed again here. The record of a
+	// save of 1.3 has the armor class with the effects (P+0xAD).
+	dtu_char_update();
 	return 1;
 }
 
