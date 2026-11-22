@@ -1091,6 +1091,7 @@ static void combat_init(void)
 		Dtu_fix_stoneskin_word = 0;
 		Dtu_fix_chill_touch = 0;
 		Dtu_fix_rary_manual = 0;
+		Dtu_fix_melf_acid = 0;
 		Dtu_fix_turn_undead = 0;
 	}
 }

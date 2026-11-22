@@ -85,6 +85,19 @@ extern int Dtu_fix_stoneskin_word;
 // 1 (default): the rule of the manual. 0: the rule of the executable.
 extern int Dtu_fix_rary_manual;
 
+// Melf's Acid Arrows (line 36, 0x8EFE0). The executable: no attack roll,
+// 4 L acid damage in one hit (the 2 (L/3) + 2 dice have 0 sides and add
+// 0), a save for half. The game has no text of the spell
+// and the manual tells little, so the port follows the AD&D 2nd edition
+// rule: one arrow, an attack roll with the THAC0 of a fighter of the
+// caster level against the armor class of the target (a natural 1
+// misses, a natural 20 hits), no other bonus. A hit does 2d4 acid damage,
+// and 2d4 more at the start of each of the next L/3 rounds (ACID_ROUND
+// in dtuspell.c, 60.0 seconds). No save. The acid stops when the target dies or the level ends.
+// The acid of the later rounds is not in the level state: it ends at a
+// save and load. 1 (default): the 2nd edition rule. 0: the executable.
+extern int Dtu_fix_melf_acid;
+
 // The creature spells (0x9231F) take rand() % n with n = 0 or less for
 // some spells (Scare at caster level 4 and up, Hold Person at a distance
 // that is a multiple of 50). The executable has the saturating divide

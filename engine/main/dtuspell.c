@@ -50,6 +50,7 @@ void make_random_vector(vms_vector *vec);		// ai.c
 int Dtu_fix_chill_touch = 1;
 int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
+int Dtu_fix_melf_acid = 1;
 
 // Rary's Mnemonic Enhancer: the extra mage slots of spell levels 1 to 3
 // (P+0x23 to P+0x25 of the executable). Rary_rest: the number of rests
@@ -909,13 +910,14 @@ static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip)
 // "group" and "count" are the dice count that the case of 0x8CFFF writes
 // into the table before the roll (Fireball, Lightning Bolt, Melf's Acid
 // Arrows).
+static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,int save);
+
 static fix spell_damage(int spell,object *target,object *caster,int level,int group,int count,int extra)
 {
 	static char *keys[4][2] = {
 		{ "damage_dice", "#damage_dice" }, { "fire_damage_dice", "#fire_damage_dice" },
 		{ "acid_damage_dice", "#acid_damage_dice" }, { "elec_damage_dice", "#elec_damage_dice" } };
 	int dmg, g;
-	fix dealt = 0;
 
 	if (target->type != OBJ_ROBOT && target->type != OBJ_PLAYER)
 		return 0;
@@ -934,9 +936,19 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 	// the case writes the number of dice of its group (0x8E592, 0x8EEAB,
 	// 0x8EFE0) before the roll
 	dmg = (group >= 0 ? dtu_spell_damage_roll_count(spell,target,level,group,count) : dtu_spell_damage_roll(spell,target,level)) + extra;
+	return spell_deal(spell,target,caster,level,dmg,1);
+}
+
+// The part of 0x911AA after the roll: Invulnerability, the save for half
+// ("save" 0: none, Dtu_fix_melf_acid), the Armor pool, the sound, the
+// vclip, the text and the damage
+static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,int save)
+{
+	fix dealt = 0;
+
 	if (target->type == OBJ_PLAYER && (target->dtu.m_88 & DTU_FX_INVULNERABLE))
 		dmg = 0;		// 0x9178B
-	if (dmg > 0 && dtu_spell_save(target,DTU_SAVE_SPELL))
+	if (dmg > 0 && save && dtu_spell_save(target,DTU_SAVE_SPELL))
 		dmg /= 2;
 	else if (dmg > 0)
 		dtu_spell_interrupt(target,1);		// 0x913A7, 0x917D5
@@ -1272,6 +1284,141 @@ static fix object_spell(int spell,object *t,object *caster,int L)
 			return 0;
 	}
 	return 0;
+}
+
+//------------------------------------------------------------------------
+// ASCENT: Melf's Acid Arrows by the rule of AD&D 2nd edition
+// (Dtu_fix_melf_acid in dtuspell.h)
+
+#define MAX_ACID	32
+// The length of one round of the acid: one AD&D round as MINUTE (60.0
+// seconds of game time). Whether 1.3 counts its spell times in rounds of
+// 60.0 is checked elsewhere; change this one value if that changes.
+#define ACID_ROUND	MINUTE
+
+typedef struct acid_burn {
+	int	used;
+	short	obj, caster;
+	int	obj_sig, caster_sig;
+	short	spell, level;
+	short	round, rounds;		// the round of the last damage, the last round
+	fix	start, next;		// GameTime of the hit, of the next damage
+} acid_burn;
+
+static acid_burn Acid[MAX_ACID];
+
+static void acid_clear(void)
+{
+	int i;
+
+	for (i=0;i<MAX_ACID;i++)
+		Acid[i].used = 0;
+}
+
+static int acid_target_gone(object *t)
+{
+	if (t->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED))
+		return 1;
+	if (t->type == OBJ_ROBOT)
+		return t->shields < F1_0 || DTU_ANIM_STATE(t) == DAS_DIE;
+	if (t->type == OBJ_PLAYER)
+		return Player_is_dead || Dtu_player_dead;
+	return 1;
+}
+
+// One round of acid: 2d4, the acid rule of 0x91BC3 (the regeneration of
+// the target ends; no table has an acid immunity), no save
+static fix acid_damage(int spell,object *target,object *caster,int level)
+{
+	int dmg = rnd(4) + rnd(4);
+
+	target->dtu.m_88 &= ~DTU_FX_REGENERATE;
+	return spell_deal(spell,target,caster,level,dmg,0);
+}
+
+// The hit of the arrow. The THAC0 of a fighter is the fighter row of the
+// table 0x146590 (dtuchar.c): 21 - L, at most 20, at least 3 (level 18).
+static fix melf_acid_hit(int spell,object *target,object *caster,int L)
+{
+	int thac0 = 21 - L, d20 = rnd(20), ac = 0, hit, i, rounds = L/3;
+	fix dealt;
+
+	if (thac0 > 20) thac0 = 20;
+	if (thac0 < 3) thac0 = 3;
+	if (d20 == 1)
+		hit = 0;
+	else
+		hit = dtu_hit_test(target,caster,d20 == 20 ? 100 : d20,thac0,&ac);
+	if (d20 == 1)
+		dtu_spell_log("spell: '%s' (Dtu_fix_melf_acid): attack roll d20 1: a natural 1 misses",spell_name(spell));
+	else
+		dtu_spell_log("spell: '%s' (Dtu_fix_melf_acid): attack roll d20 %d against fighter THAC0 %d (level %d) and armor class %d: %s",
+			spell_name(spell),d20,thac0,L,ac,hit ? "hit" : "miss");
+	if (!hit) {
+		if (caster && caster->type == OBJ_PLAYER)
+			HUD_init_message("You miss %s with %s.",dtu_object_display_name(target),spell_name(spell));
+		else if (target->type == OBJ_PLAYER && caster)
+			HUD_init_message("%s misses you with %s.",dtu_object_display_name(caster),spell_name(spell));
+		return 0;
+	}
+	dtu_spell_log("spell: '%s': acid round 1 of %d on obj %d %s at %.2f",spell_name(spell),rounds + 1,(int)(target-Objects),
+		target_name(target),f2fl(GameTime));
+	dealt = acid_damage(spell,target,caster,L);
+	if (rounds < 1 || acid_target_gone(target))
+		return dealt;
+	for (i=0;i<MAX_ACID && Acid[i].used;i++)
+		;
+	if (i == MAX_ACID) {
+		dtu_spell_log("spell: '%s': no free acid entry, the acid ends after the first round",spell_name(spell));
+		return dealt;
+	}
+	Acid[i].used = 1;
+	Acid[i].obj = target-Objects;
+	Acid[i].obj_sig = target->signature;
+	Acid[i].caster = caster ? caster-Objects : -1;
+	Acid[i].caster_sig = caster ? caster->signature : 0;
+	Acid[i].spell = spell;
+	Acid[i].level = L;
+	Acid[i].round = 1;
+	Acid[i].rounds = rounds + 1;
+	Acid[i].start = GameTime;
+	Acid[i].next = GameTime + ACID_ROUND;
+	return dealt;
+}
+
+// Each frame: the acid of the later rounds
+static void acid_frame(void)
+{
+	int i;
+
+	for (i=0;i<MAX_ACID;i++) {
+		acid_burn *a = &Acid[i];
+		object *t, *c = NULL;
+
+		if (!a->used)
+			continue;
+		t = &Objects[a->obj];
+		if (t->signature != a->obj_sig || acid_target_gone(t) || GameTime < a->start) {
+			dtu_spell_log("spell: '%s': the acid on obj %d ends after round %d of %d (the target is gone)",spell_name(a->spell),
+				a->obj,a->round,a->rounds);
+			a->used = 0;
+			continue;
+		}
+		if (GameTime < a->next)
+			continue;
+		if (a->caster >= 0 && Objects[a->caster].signature == a->caster_sig &&
+			 (Objects[a->caster].type == OBJ_PLAYER || Objects[a->caster].type == OBJ_ROBOT))
+			c = &Objects[a->caster];
+		a->round++;
+		dtu_spell_log("spell: '%s': acid round %d of %d on obj %d %s at %.2f",spell_name(a->spell),a->round,a->rounds,a->obj,
+			target_name(t),f2fl(GameTime));
+		acid_damage(a->spell,t,c,a->level);
+		a->next += ACID_ROUND;
+		if (a->round >= a->rounds) {
+			dtu_spell_log("spell: '%s': the acid on obj %d ends",spell_name(a->spell),a->obj);
+			a->used = 0;
+		}
+	}
 }
 
 //------------------------------------------------------------------------
@@ -1620,7 +1767,9 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s %s Magical Vestment for %d minutes.",V_HAVE,"Magical Vestment cast on %s by %s for %d minutes.",5*L);
 			break;
 		case 36:		// Melf's Acid Arrows: 2 (L/3) + 2 acid dice + 4 L
-			if (!self)
+			if (!self && Dtu_fix_melf_acid)
+				dealt = melf_acid_hit(spell,target,caster,L);
+			else if (!self)
 				dealt = spell_damage(spell,target,caster,L,GROUP_ACID,2*(L/3) + 2,0);
 			break;
 		case 38:		// Prayer: Bless for L rounds on the caster and on the others
@@ -2844,6 +2993,7 @@ void dtu_spell_frame(void)
 		memcpy(Dtu_spell_slots_left,Dtu_spell_slots_max,sizeof(Dtu_spell_slots_left));		// 0x4225A calls 0x3551B
 		Cast_timer = DTU_FX_NO_END;
 		memset(Tracked,0,sizeof(Tracked));
+		acid_clear();
 		// Test options: -testslots N gives N slots for each spell level,
 		// -testspell N puts spell N into the book and into the hand.
 		if ((t = FindArg("-testslots")) != 0 && t+1 < Num_args) {
@@ -2868,6 +3018,7 @@ void dtu_spell_frame(void)
 		if ((o->type == OBJ_PLAYER || o->type == OBJ_ROBOT) && o->dtu.m_88)
 			fx_expire(o,0);
 	}
+	acid_frame();
 
 	tracked_frame();
 }

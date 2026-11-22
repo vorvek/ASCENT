@@ -163,7 +163,7 @@ Port before = the port at d9d72f6. "same" = the port follows B3 of combat.md.
 | 33 | Magic Missile | M1, 0 s; min(L/2 + 1, 5) homing missiles, 1d4 | same | same |
 | 34 | Magical Stone | C1, 24 s; 1d3 missiles, 1d4 (2d4 undead) | same | same |
 | 35 | Magical Vestment | C3, 60 s; 5L min | generic text | original text |
-| 36 | Melf's Acid Arrows | M2, 10 s | same | same |
+| 36 | Melf's Acid Arrows | M2, 10 s; one missile, 4 L acid, save for half, no attack roll | same | the AD&D 2nd edition rule, `Dtu_fix_melf_acid` (section 10) |
 | 37 | Melf's Minute Meteors | M3, 0 s; min(L, 5) missiles | same | same |
 | 38 | Prayer | C3, 36 s; Bless L min | generic text | original text |
 | 39, 53 | Protection From Evil | M1, C1, 10 s; 2L, 3L min | generic text | original text |
@@ -193,7 +193,8 @@ Port before = the port at d9d72f6. "same" = the port follows B3 of combat.md.
 ## 6. Kept differences
 
 Settings (combat.md C3), not changed: `Dtu_fix_stoneskin_word`,
-`Dtu_fix_rary_manual`, `Dtu_fix_wizardry_ring`. New: `Dtu_fix_chill_touch` (section 8).
+`Dtu_fix_rary_manual`, `Dtu_fix_wizardry_ring`. New: `Dtu_fix_chill_touch` (section 8),
+`Dtu_fix_melf_acid` (section 10).
 
 Not in the port (combat.md C2): the view of the player in the gated creature of Fear
 and Scare, the blindness and deafness of Fireball within 6.0, the global counters
@@ -348,3 +349,53 @@ normal items keep their colors. Duration: 2 minutes per level (mage), 10 minutes
 - In player terms: a cleric knows every cleric spell of each spell level that the
   character can cast: level 1 spells from the start, level 2 at cleric level 3,
   level 3 at 5, level 4 at 7. Spell slots per level are unchanged.
+
+## 10. Melf's Acid Arrows by the AD&D 2nd edition rule (`Dtu_fix_melf_acid`)
+
+1.3 (0x8EFE0, checked in the Ghidra export of 0x8CFFF: the case writes
+`#acid_damage_dice` = 2 (L/3) + 2 and calls 0x911AA, with no attack roll): one
+missile, 4 L acid damage in one hit (the dice have 0 sides and add 0), a save for
+half, acid ends regeneration. The missile lives (L/3 + 1) minutes (0x56FF6). The game
+has no text of the spell and the manual tells little, so the port follows the 2nd
+edition rule. `-origcombat` gives the 1.3 rule.
+
+- One arrow (`missile_count` is 1 for line 36 in both rules).
+- The attack roll: d20 against the THAC0 of a fighter of the caster level (21 - L, the
+  fighter row of the table 0x146590, 20 at most, 3 at least) and the armor class of
+  the target, through `dtu_hit_test` (dtuobj.c, the port of 0x2AA5B to 0x2AF4F): the
+  effects of the attacker and of the target count (Bless, Slow, Levitate, Protection
+  From Evil, an unseen target -4, the armor class spells of a creature, and Stone Skin
+  takes the hit). No strength, dexterity, weapon or range modifier. A natural 1 misses,
+  a natural 20 hits. A miss does nothing; the player gets "You miss %s with %s." or
+  "%s misses you with %s." (new port texts, es_port.catalog).
+- A hit: 2d4 acid at once, then 2d4 at the start of each of the next L/3 rounds
+  (`ACID_ROUND` in dtuspell.c, 60.0 seconds; one constant so that the length can
+  change). Levels 1-2 one round, 3-5 two, 6-8 three, 9-11 four. No save. Each round
+  takes the acid part of 0x91BC3 (the regeneration bit 24 ends; no table has an acid
+  immunity or resistance) and the rest of 0x911AA (Invulnerability of the player, the
+  Armor pool, the sound and vclip, the damage texts, the interruption of a cast).
+- The later rounds are a list of the port (`Acid` in dtuspell.c, 32 entries) by object
+  number and signature. The acid ends when the target dies or goes, at the level
+  start, and when the game time goes back (a load). It is not in the level state file
+  (the object record of 1.3 has no room for it): a save and load ends the acid.
+
+Check (`-hidden -mute -fixedfps 30 -noattack`, BANE, `-char SG0.SG` (thief/mage),
+`-testslots 5 -testspell 36 -testmove wait:30,attack:2`, the mage level by
+`-chartest 1:xp=N`; `-objlog` lines `spell:`):
+
+- Level 9 (`xp=300000`) at the large skeleton (obj 14, 72 hp, armor class 0, `-testpos
+  -135,17,35,0`): d20 15 against THAC0 12: hit; round 1 of 4 at 11.20 (4), round 2 at
+  71.22 (4), round 3 at 131.20 (6), round 4 at 191.22 (7), then the end.
+- Level 6 (`xp=80000`), same target: d20 18 against THAC0 15: hit; rounds 1 to 3 at
+  11.20, 71.22, 131.20 (6, 4, 4).
+- Level 3 (`xp=10000`): at the large skeleton d20 5, 12 and 2 against THAC0 18 miss
+  (armor class 0); at the skeleton of `-testpos 25,-1,215,0` (8 hp, armor class 7) d20
+  12: hit, round 1 of 2 (5), round 2 at 71.22 (7, the skeleton dies, the acid ends).
+- Level 9 at that skeleton: round 1 (4), round 2 at 71.22 kills it; the next frame
+  logs that the acid ends after round 2 of 4.
+- A level 1 mage does not cast the spell of level 2 (no cast starts). Caster level 2:
+  a drow mage (DROW1 obj 13 `rmmk5`, `-testpos 105,-3,10,0` and others, no
+  `-noattack`) casts it at the player of armor class 6: d20 17 against THAC0 19: hit,
+  round 1 of 1 (5); in another run a natural 1 misses.
+- `-origcombat`, the large skeleton: level 9 "8 dice with 0 sides add 0", the save
+  succeeds, 18 damage in one hit; level 3 the save fails, 12 damage.

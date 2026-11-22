@@ -605,6 +605,14 @@ id: port.s_cast_s_on_you_for_d_damage
 en: %s cast %s on you for %d damage.
 tr: %s te lanza %s: %d de daño.
 
+id: port.you_miss_s_with_s
+en: You miss %s with %s.
+tr: Fallas a %s con %s.
+
+id: port.s_misses_you_with_s
+en: %s misses you with %s.
+tr: %s te falla con %s.
+
 id: port.you
 en: You
 tr: Tú
