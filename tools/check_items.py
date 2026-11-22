@@ -90,7 +90,8 @@ class Runner:
             if re.search(r"f\d+\s+character '", line):
                 block = [line]
                 for nxt in lines[i + 1:]:
-                    if re.search(r"f\d+\s+  ", nxt) and ("str " in nxt or "effects " in nxt or "entry " in nxt):
+                    if re.search(r"f\d+\s+  ", nxt) and ("str " in nxt or "effects " in nxt or "entry " in nxt
+                                                         or "dungeon level " in nxt):
                         block.append(nxt)
                     else:
                         break
@@ -151,6 +152,22 @@ def test_potions(t):
           "Anti-Magic: effects 0x%x, potions %s, flag 77 %d" % (anti.fx, anti.potions, anti.flag77))
     check(anti.str == 17 and anti.dex == 14, "Anti-Magic: strength %d dexterity %d" % (anti.str, anti.dex))
     return "17 potions"
+
+
+def test_potion_class(t):
+    """Dtu_fix_potion_class: a mage cannot drink the two fighter potions
+    (80, 84; table fixup 0x1A344). With -origcombat any class drinks them
+    (0x37A6A has no class test). test_potions covers the fighter."""
+    cmds = ["class=1", "give=16.80.1", "give=16.84.1", "use=16.80", "use=16.84", "dump"]
+    d, _, _ = t.run("potion_class", cmds)
+    m = d[0]
+    check(m.count(16, 80) == 1 and m.count(16, 84) == 1, "a mage drank a fighter potion")
+    check(m.str == 17 and not m.has("invulnerable"), "mage: strength %d, effects 0x%x" % (m.str, m.fx))
+    d, _, _ = t.run("potion_class_orig", cmds, ["-origcombat"])
+    m = d[0]
+    check(m.count(16, 80) == 0 and m.count(16, 84) == 0, "-origcombat: a mage did not drink the fighter potions")
+    check(m.str == 19 and m.has("invulnerable"), "-origcombat mage: strength %d, effects 0x%x" % (m.str, m.fx))
+    return "a mage refuses potions 80 and 84, -origcombat drinks them"
 
 
 # ---------------------------------------------------------------------
@@ -255,7 +272,7 @@ def test_misc(t):
     return "Cursed Scroll, Gem of Curing, plot item drop"
 
 
-TESTS = [test_potions, test_wands, test_rings, test_armor_set, test_whin, test_misc]
+TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_whin, test_misc]
 
 
 def main():
@@ -271,10 +288,10 @@ def main():
         if args.only and args.only != name:
             continue
         try:
-            print("%-10s ok   %s" % (name, test(t)))
+            print("%-12s ok   %s" % (name, test(t)))
         except AssertionError as e:
             failed += 1
-            print("%-10s FAIL %s" % (name, e))
+            print("%-12s FAIL %s" % (name, e))
     print("logs in %s" % t.tmp)
     return 1 if failed else 0
 
