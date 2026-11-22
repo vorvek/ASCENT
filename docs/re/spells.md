@@ -467,3 +467,65 @@ Check (`-hidden -mute -fixedfps 30 -noattack`, BANE, `-char SG0.SG` (thief/mage)
   round 1 of 1 (5); in another run a natural 1 misses.
 - `-origcombat`, the large skeleton: level 9 "8 dice with 0 sides add 0", the save
   succeeds, 18 damage in one hit; level 3 the save fails, 12 damage.
+
+## 11. Wizard spells of the third audit (Code)
+
+The wizard spell audit is `docs/audit/spells-wizard.md` (each spell with its case
+address). New corrections, all cleared by `-origcombat`:
+
+- **Fireball and Lightning Bolt (`Dtu_fix_spell_dice`).** The cases 0x8E55C and
+  0x8EE76 write min(L, 10) into the dice count of the fire group (Spell_info
+  +0x3E, 0x1B56B4) or of the electric group (+0x47, 0x1B56BD). The lines have
+  `fire_damage_dice=0` / `elec_damage_dice=0` (the sides) and `..._level=6`, so
+  0x91BC3 adds 0 for each die and 6 for each level: 6L with no limit. The code
+  intends the 10 dice limit of AD&D; the sides are missing. Corrected by AD&D 2nd
+  edition: Ld6, at most 10d6, a save for half. The fire rule of 0x91BC3 stays
+  (fire_immune, fire_resistant, Resist Fire, the pool of Protection From Fire);
+  an electricity immune creature takes 0.
+- **Magic Missile (`Dtu_fix_magic_missile`).** The reader 0x242F6 writes
+  `damage_bonus=` as a word at 0x1B5674 + spell * 0x7F, 2 bytes before the record
+  (which starts at 0x1B5676). No code reads that word: 0xB6BB3 reads the dword at
+  that address only for the class bits of +0x00. So the `damage_bonus=1` of line 33
+  has no effect: 1d4 for each missile. 0x911AA gives a save for half. 0x56FF6
+  gives (L >> 1) + 1 missiles, at most 5: 2 at level 2. The manual and AD&D 2nd
+  edition: 1d4 + 1, no save, one more missile at levels 3, 5, 7 and 9. Corrected
+  to that rule.
+- **Flaming Sphere (`Dtu_fix_flaming_sphere`).** Line 17 has no damage key; the
+  case 0x8E5B1 goes to 0x911AA, which rolls 0. Corrected by AD&D 2nd edition: the
+  sphere burns the target it hits for 1 round for each caster level, 2d4 fire each
+  round, a save each round negates. The later rounds use the list of Melf's Acid
+  Arrows (section 10, one round is 60.0 seconds), so they end at the death of the
+  target, at the level start and at a load.
+- **Knock (`Dtu_fix_knock`).** Line 28 has `self_cast_ok` and `cast_in_front`, so
+  0x56D36 casts it on the caster and the case is the common end 0x8FFE5: nothing.
+  The wall hit of a Knock missile (0x26C2F) calls the door function 0x7E859 with
+  unlock 1, which opens a locked door unless its keys have the magic bit. Corrected:
+  the spell fires a missile (for a creature too). Checked: BANE, mage level 3,
+  `-chartest 1:xp=10000,3:goside=488.4 -testspell 28`: "Knock hits seg 488 side 4"
+  (wall 84, a locked door); with `-origcombat` "Knock has no effect".
+- **Strength and Infravision (`Dtu_fix_spell_hours`).** 0x8FF5D computes L * 225 << 20
+  (L hours) and the Infravision case (L + 2) hours in 32 bits. From caster level 10
+  (Strength) and 8 (Infravision) the value wraps below 0 and the effect ends at once.
+  The port also reads a duration of 0x3FFFFFFF (16383 s) or more as no end, so at
+  levels 5 to 9 (Strength) and 3 to 7 (Infravision) the effect never ended.
+  Corrected: no wrap, and the duration stops at 16383 seconds (4 hours 33 minutes),
+  the longest timer below the no end value. Checked: `-origcombat` Infravision L3
+  "no end", L8 -29536 s; corrected 16383 s for both.
+- **Spell 51.** Line 51 is named "Burning Hands" with cold dice in all 46 tables,
+  but its case 0x8E4F6 is Find Traps (30 minutes): the cold dice are never rolled.
+  Only the weapon Ice Shards (`pc_spell=51`, weapon 79) casts it, and no level
+  places Ice Shards or a scroll of spell 51. Not changed.
+
+Kept differences from the manual: Melf's Minute Meteors at most 5 meteors (0x56FF6,
+`min(L, 5)`), 1d4 normal damage with a save for half and no attack roll; Scare affects
+level 6 (the manual: level 6 or more is safe); Sleep spares level 4 and up.
+
+The test aid `-chartest FRAME:spelltest=SPELL.LEVEL.OBJ.TRIALS` (`dtu_spell_test`):
+the player casts SPELL at caster LEVEL on object OBJ (-1: the player; a spell cast on
+the caster acts on the player), with each missile of 0x56FF6 and the area of an AREA
+line, and no cast time, slot or flight. The `-objlog` lines `spelltest:` give the hit
+points, the effects and their times. TRIALS 1 or more puts the target and the
+character back after each trial and prints the mean damage; 0 keeps one cast, so
+the later rounds of acid and Flaming Sphere run. The player cannot be the target of
+a spell that skips the caster (Hold Person, Sleep). Rary's Mnemonic Enhancer opens
+its choice box.
