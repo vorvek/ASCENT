@@ -200,20 +200,63 @@ back (V for the code, G for the effect: not run).
 
 `engine/main/dtustate.c` follows sections 2 to 8 with these differences:
 
-- P: the files are in `SAVE` under the current directory of the port.
-  The port never writes into the game directory.
-- P: the `.lvl`, `.tig` and `.tap` files have the original names and
-  roles, but their content is the data of the port: the header `ASLS`, a
-  version and the sizes of the structures, then the objects (the `object`
-  structure of the port), the walls, the moving doors, the wall and
-  texture numbers of the sides, the side flags (`pad` byte), the automap
-  bytes, and the trigger and trap records of `dtutrig.h`. A file with
-  other sizes is not read. The original files (479-byte object images)
-  are not read.
-- P: the AI state of the creatures (static data of dtuobj.c) is not in the
-  file. After a restore the port calls `dtu_objects_level_setup()` again,
-  as the executable sets up each object again (0xAE3F2): each creature
-  starts with a new AI state.
+- P: the files are in `SAVE` in the directory of the user. The port never
+  writes into the game directory. Names are found with any case of the
+  letters; new files get the upper case names of the DOS directory
+  (`TEMP3.LVL`, `SG1_3.LVL`, `CSUF.LS`).
+- The `.LVL`, `.TIG` and `.TAP` files have the format of the executable
+  (section 3, tig.md, tap.md), so the level states of a 1.3 save load in the
+  port and those of the port load in 1.3. The port also reads the files of
+  its earlier builds (header `ASLS`, `ASLT`, `ASLP`), but no longer writes
+  them.
+- The object image (479 bytes). Offsets verified with the read order of
+  `read_object` (0x47D90): 0x00 signature, 0x04 type, 0x05 id, 0x06 next,
+  0x08 prev, 0x0A control, 0x0B movement, 0x0C render, 0x0D flags, 0x0E
+  segnum, 0x10 the s16 of the level record, 0x12 attached object (-1), 0x14
+  pos, 0x20 orient, 0x44 copy of orient, 0x68 size, 0x6C shields, 0x70
+  last_pos, 0x7C contains type, id, count, 0x7F matcen_creator, 0x80 to 0xF8
+  the block of the level record (0x84 lifeleft), 0xFC physics (velocity,
+  thrust 0x108, mass 0x114, drag 0x118, brakes 0x11C, rotvel 0x120,
+  rotthrust 0x12C, turnroll s16 0x138, flags u16 0x13E), 0x140 control part
+  (ai_static: behavior, flags[11] 0x141, hide_segment 0x14C, hide_index
+  0x14E, path_length 0x150, cur_path_index 0x152, follow path 0x154 and
+  0x156, danger laser 0x158 and 0x15C; explosion: spawn 0x140, delete 0x144,
+  objnum 0x148; light: intensity 0x140, s16 0x144), 0x162 render part
+  (polygon: model 0x162, subobj_flags 0x166, tmap_override 0x16A, 0x16E,
+  0x170, 0x172, 0x176; vclip: number 0x162, frametime 0x166, frame 0x16A;
+  item: s16 bitmap 0x162), 0x1B0 script word, 0x1D5 count of an item. The
+  other bytes (docs/re/objects.md, ai.md) are kept from the file that the
+  level came from.
+- Model numbers. Verified in `SAVE\SG1_0.LVL` (YPINN), `SG1_2.LVL`
+  (KOBOLDS) and `SG1_3.LVL` (BONES): the executable numbers the models of
+  the level archive from 0 (`ske_gg.pof` is 37 in BONES), the port has the
+  21 models of the player archive first (58). The port converts with
+  `Bm_level_first_model` (bmread.c). The player model of the executable
+  (3 in BONES, the dagger in the hand) is a number outside this rule; the
+  writer keeps the number of the loaded file, or 0.
+- Texture numbers. The sides and `tmap_override` of the file hold the
+  numbers of the texture table of the level file (verified: all 1362 sides
+  of `SG1_0.LVL` and 3078 of `SG1_3.LVL` equal those of YPINN.LVL and
+  BONES.LVL). The port translates them as `level_translate_textures()`.
+- Scenery: the executable gives all scenery the movement type 1 (all 55 of
+  BONES). The port reads it as movement none (it moves pushed scenery
+  itself) and writes 1.
+- A dead creature with the flags 0x40 and 2 (0xC6) stays in the list of the
+  executable and does nothing (0xBAFE0, 0x6A3CC). The port deletes it at the
+  read; the file of the port has a free entry there.
+- The AI block (section 3, step 8). The ai_local record of a creature
+  (47 bytes, docs/re/ai.md) is read into the AI state of the port after
+  `dtu_objects_level_setup()` and written from it: awareness, retry count,
+  mode (only still, wander, chase and run from: the port keeps the path of
+  a creature in its own list, not in `Point_segs`), flags, goal segment, the
+  times and the morale; from the object image the activity, the target,
+  the regeneration and spell times, the script word, the AI state and the
+  animation state. The rest of the block (`Point_segs`, the cloak records,
+  the values before and after) is written back as it was read. A level that
+  was not read from such a file gets 0x13A6C0 = 1, the last value 6.0, no
+  path points, and path_length 0 for each creature.
+- The save game (SG file) sets `GameTime` from its offset 49 as 0xBBA2F,
+  so the times of the level files count from the same clock.
 - P: the port takes a door out of the list of moving doors when it is
   open (Descent 1 `do_door_open`). To give the result of the executable,
   the warp closes every door wall that is not closed (state, flag 2 and
@@ -256,3 +299,22 @@ slot 9, a move to segment 18, the ESC menu "Load Game") and `-statetest
 12,5,2,18,-1` in YPINN, the load gives "Restoring sg10_0.lvl." and the door
 of segment 12 in state 2 (open) with flags 0x12, creature 2 dead, and the
 player at the position of the save (segment 2, not 18).
+
+Saves of the DOS game (two saves of a played 1.3 game, level BONES, with the
+level files of YPINN, HUB1, KOBOLDS and BONES; `-fescript`, `-statelog`):
+
+- Both slots load: the character, 20 and 21 items, 7 mage spells, the key
+  item, the hot keys and the 7 fuel centers of the save; "Restoring
+  SG1_3.LVL" with 150 objects, all models but the player's as in the level.
+- A save in the port right after the load: the TIG and TAP files are byte for
+  byte those of the original, the walls, sides, side flags, automap, path
+  points and cloak records are equal; the objects differ in the dead
+  creatures (freed) and the values that the frames changed.
+- Load, warp to HUB1 (`SG2_1.LVL` restored) and back (`TEMP3.LVL` of the
+  port restored), save in the port, load that save: "Restoring SG4_3.LVL".
+- `-level BONES -statetest 0,5,42,381,170`: a level with no file of the
+  executable is written with the AI values of a new level and read back.
+- The saves of an earlier build of the port (`ASLS` files) load.
+
+Option `-statelog`: prints the model numbers that differ from the level and
+the objects that lie outside their segment after a restore.

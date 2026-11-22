@@ -25,6 +25,9 @@
 #define DTU_MAX_TRIGGERS			254		// the loader accepts 1..254
 #define DTU_MAX_TRAPS				1024		// the loader accepts 0..1024
 #define DTU_TRIG_SEG_TABLE			900		// segment table of the TIG file
+#define DTU_TIG_HEADER				1806		// u32 version, s16 count, 900 s16
+#define DTU_TIG_RECORD				89
+#define DTU_TAP_RECORD				95
 #define DTU_MAX_ACTIVE_TRAPS		32			// list at 0x3A7CD0
 #define DTU_TRIG_CHAIN_LIMIT		50			// steps in a chain of triggers or traps
 
@@ -106,6 +109,18 @@ typedef struct dtu_trap {
 	ushort		interval, delay;	// in clock units, see dtu_trap_clock()
 	uint			timestamp;			// clock of the last run, 0xFFFFFFFF at the start
 } dtu_trap;
+
+// ASCENT: the TIG and TAP formats (docs/formats/tig.md, tap.md). The
+// state files of a level (SAVE\TEMP<L>.TIG, .TAP and the copies of the
+// save slots) have the format of the level files; a state file holds the
+// time values of the traps in clock units (from_state 1). The readers
+// return 1 if the data has the format. The writers return memory that the
+// caller releases with free(). The records keep the bytes that the port
+// does not use from the last read.
+int dtu_trig_read_tig(ubyte *data, int size, int from_state);
+int dtu_trig_read_tap(ubyte *data, int size, int from_state);
+ubyte *dtu_trig_write_tig(int *size);
+ubyte *dtu_trig_write_tap(int *size);
 
 extern dtu_trigger	Dtu_triggers[DTU_MAX_TRIGGERS];
 extern int				Dtu_num_triggers;

@@ -96,6 +96,14 @@ static char *Char_script = NULL;
 static int Char_frame = 0;
 static int Known_n_inventory = 0;
 
+// ASCENT: the player record of the last loaded save game. dtu_char_pack
+// starts from it, so the fields that the port does not use (docs/re/
+// character.md lists the known ones) go back into a save unchanged and a
+// save of the port stays a save of the original.
+static ubyte Loaded_record[DTU_PLAYER_RECORD_SIZE];
+static int Have_loaded_record;
+extern char Dtu_player_archive[16];		// dtugame.c
+
 // The time when a rest place works again (0x1C5E40 of the station table,
 // here for each segment).
 static fix Rest_time[MAX_SEGMENTS];
@@ -1916,6 +1924,7 @@ static void clear_character(void)
 	int i;
 
 	memset(&Dtu_char, 0, sizeof(Dtu_char));
+	Have_loaded_record = 0;
 	Dtu_char.current.n = -1;
 	for (i = 0; i < DTU_N_HOT_KEYS; i++) Dtu_char.hot_key[i].n = -1;
 	for (i = 0; i < DTU_N_SLOTS; i++) Dtu_char.slot[i].n = -1;
@@ -2008,14 +2017,41 @@ static void load_ref(dtu_item_ref *ref, ubyte *p, int *map, int n_map)
 		ref->n = map[p[1]];
 }
 
+// The entries of a list of the record go into Dtu_inventory[] as they are
+// (no stacking). map[i] is the index of entry i.
+static int load_list(ubyte *p, int count_off, int list_off, int max, int *map)
+{
+	dtu_item_record rec;
+	int n, i, e;
+
+	n = get_s32(p + count_off);
+	if (n < 0) n = 0;
+	if (n > max) n = max;
+	for (i = 0; i < n; i++) {
+		memcpy(&rec, p + list_off + 16 * i, 16);
+		// The Scroll (misc 102) has count 0 and a key item -1 in the
+		// executable; the port counts them as 1.
+		e = dtu_inventory_append(rec.type, rec.id, rec.count > 0 ? rec.count : 1);
+		if (map)
+			map[i] = e;
+		if (e < 0) {
+			dtu_char_log("save game: entry %d (type %d id %d) does not fit the inventory", i, rec.type, rec.id);
+			continue;
+		}
+		Dtu_inventory[e].level = rec.level;
+		Dtu_inventory[e].has_record = 1;
+		memcpy(Dtu_inventory[e].record, &rec, 16);
+	}
+	return n;
+}
+
 // SG0.SG: the player record is at 141, the attributes without items at
 // 7108 (docs/formats/misc.md).
 int dtu_char_load_save(char *filename)
 {
 	FILE *f;
 	ubyte *buf, *p;
-	int size, n, i, map[128];
-	dtu_item_record rec;
+	int size, n, i, spell, map[128];
 
 	f = fopen(filename, "rb");
 	if (!f)
@@ -2030,6 +2066,8 @@ int dtu_char_load_save(char *filename)
 	p = buf + DTU_SG_PLAYER_OFFSET;
 
 	clear_character();
+	memcpy(Loaded_record, p, DTU_PLAYER_RECORD_SIZE);
+	Have_loaded_record = 1;
 	memcpy(Dtu_char.name, p + DTU_P_NAME, 16);
 	memcpy(&Dtu_char.pa, p + DTU_P_ATTR, sizeof(dtu_player_attr));
 	memcpy(&Dtu_char.base, p + DTU_PLAYER_RECORD_SIZE, sizeof(dtu_player_attr));
@@ -2041,19 +2079,16 @@ int dtu_char_load_save(char *filename)
 	Dtu_char.created = 1;
 	Dtu_gold = Dtu_char.pa.gold;
 
-	n = get_s32(p + DTU_P_N_ITEMS);
-	if (n < 0) n = 0;
-	if (n > 127) n = 127;
+	// The item list (P+0x103), then the key item list (P+0x18D3): the port
+	// keeps both in one list.
 	for (i = 0; i < 128; i++) map[i] = -1;
-	for (i = 0; i < n; i++) {
-		memcpy(&rec, p + DTU_P_ITEMS + 16 * i, 16);
-		map[i] = dtu_inventory_add(rec.type, rec.id, rec.count > 0 ? rec.count : 1);
-		if (map[i] >= 0)
-			Dtu_inventory[map[i]].level = rec.level;
-	}
+	n = load_list(p, DTU_P_N_ITEMS, DTU_P_ITEMS, DTU_MAX_ITEM_ENTRIES, map);
+	load_list(p, DTU_P_N_KEYS, DTU_P_KEYS, DTU_MAX_KEY_ENTRIES, NULL);
 	for (i = 0; i < Dtu_n_inventory; i++)
 		entry_name(i);
 	Known_n_inventory = Dtu_n_inventory;
+	// The spell books and the spell slots (dtuspell.c)
+	dtu_spell_books_from_record(p);
 	load_ref(&Dtu_char.current, p + DTU_P_CURRENT, map, n);
 	for (i = 0; i < DTU_N_HOT_KEYS; i++)
 		load_ref(&Dtu_char.hot_key[i], p + DTU_P_HOT_KEYS + 2 * i, map, n);
@@ -2061,60 +2096,146 @@ int dtu_char_load_save(char *filename)
 		load_ref(&Dtu_char.slot[i], p + DTU_P_SLOTS + 2 * i, map, n);
 	load_ref(&Dtu_char.slot[DTU_SLOT_BOW], p + DTU_P_BOW, map, n);
 	load_ref(&Dtu_char.slot[DTU_SLOT_CROSSBOW], p + DTU_P_CROSSBOW, map, n);
+	// A spell in the hand (list 1 or 2)
+	spell = dtu_spell_of_ref(p[DTU_P_CURRENT], (byte) p[DTU_P_CURRENT + 1]);
+	if (spell >= 0)
+		dtu_spell_select(spell);
 	free(buf);
 	dtu_display_inventory_reset();		// 0xBB867
 
 	dtu_char_update();
-	dtu_char_log("character '%s' from %s: class %d/%d level %d/%d, %d of %d hit points, armor class %d, THAC0 %d, %d items",
+	dtu_char_log("character '%s' from %s: class %d/%d level %d/%d, %d of %d hit points, armor class %d, THAC0 %d, %d items, %d mage and %d cleric spells",
 		Dtu_char.name, filename, Dtu_char.pa.class1, Dtu_char.pa.class2, Dtu_char.pa.class1_level + 1, Dtu_char.pa.class2_level + 1,
-		Dtu_char.pa.hit_points, Dtu_char.pa.max_hit_points, Dtu_char.pa.armor_class, Dtu_char.thac0, Dtu_n_inventory);
+		Dtu_char.pa.hit_points, Dtu_char.pa.max_hit_points, Dtu_char.pa.armor_class, Dtu_char.thac0, Dtu_n_inventory,
+		Dtu_spell_book_n[0], Dtu_spell_book_n[1]);
+	for (i = 0; i < Dtu_n_inventory; i++)
+		dtu_char_log("  item %d: type %d id %d count %d level %d '%s'", i, Dtu_inventory[i].type, Dtu_inventory[i].id,
+			Dtu_inventory[i].count, Dtu_inventory[i].level, Dtu_inventory[i].name);
 	return 1;
+}
+
+// The index of an entry of Dtu_inventory[] in the item list of the record
+// (the key items are not in that list), or -1.
+static int record_index(int index)
+{
+	int i, n = 0;
+
+	if (index < 0 || index >= Dtu_n_inventory || DTU_IS_KEY_ITEM(Dtu_inventory[index].type, Dtu_inventory[index].id))
+		return -1;
+	for (i = 0; i < index; i++)
+		if (!DTU_IS_KEY_ITEM(Dtu_inventory[i].type, Dtu_inventory[i].id))
+			n++;
+	return n;
 }
 
 static void pack_ref(ubyte *p, dtu_item_ref ref)
 {
+	int n = ref.list == 0 ? record_index(ref.n) : -1;
+
 	p[0] = 0;
-	p[1] = (ubyte) ref.n;
+	p[1] = (ubyte) n;
+}
+
+// One entry of a list: the record of the save game if the entry has one,
+// else the values of the table (0xB65BB).
+static void pack_entry(ubyte *e, int index)
+{
+	dtu_inv_item *it = &Dtu_inventory[index];
+	dtu_item_record rec;
+	dtu_item_data d;
+
+	memset(&rec, 0, sizeof(rec));
+	if (it->has_record && it->record[0] == it->type && it->record[1] == it->id)
+		memcpy(&rec, it->record, 16);
+	else {
+		rec.letter = '_';
+		if (entry_data(index, &d)) {
+			rec.icon = d.icon;
+			rec.class_mask = d.class_mask;
+		}
+		rec.modifier = F1_0;
+	}
+	rec.type = it->type;
+	rec.id = it->id;
+	rec.level = it->level;
+	// the count 0 of the Scroll and -1 of a key item stay
+	if (!(it->has_record && it->count == 1 && rec.count <= 0))
+		rec.count = it->count;
+	memcpy(e, &rec, 16);
+}
+
+static void pack_empty_list(ubyte *list, int n)
+{
+	dtu_item_record rec;
+	int i;
+
+	memset(&rec, 0, sizeof(rec));
+	rec.letter = '_';						// an empty entry of the executable
+	rec.level = 1;
+	for (i = 0; i < n; i++)
+		memcpy(list + 16 * i, &rec, 16);
 }
 
 void dtu_char_pack(ubyte *record)
 {
-	int i;
-	dtu_item_record rec;
-	dtu_item_data d;
+	int i, n_items = 0, n_keys = 0, list, index;
+	ubyte old_hot[2 * DTU_N_HOT_KEYS];
 
-	memset(record, 0, DTU_PLAYER_RECORD_SIZE);
+	if (Have_loaded_record)
+		memcpy(record, Loaded_record, DTU_PLAYER_RECORD_SIZE);
+	else
+		memset(record, 0, DTU_PLAYER_RECORD_SIZE);
+	memcpy(old_hot, record + DTU_P_HOT_KEYS, sizeof(old_hot));
+	memset(record + DTU_P_NAME, 0, 16);
 	strncpy((char *) record + DTU_P_NAME, Dtu_char.name, 15);
+	memset(record + DTU_P_NAME2, 0, 16);
+	strncpy((char *) record + DTU_P_NAME2, Dtu_char.name, 15);
 	put_s32(record + DTU_P_HIT_POINTS, Players[Player_num].shields);
 	put_s32(record + DTU_P_EXPERIENCE, Dtu_char.experience[0]);
 	put_s32(record + DTU_P_EXPERIENCE + 4, Dtu_char.experience[1]);
 	Dtu_char.pa.gold = Dtu_gold;
 	memcpy(record + DTU_P_ATTR, &Dtu_char.pa, sizeof(dtu_player_attr));
-	put_s32(record + DTU_P_N_ITEMS, Dtu_n_inventory);
-	for (i = 0; i < 127; i++) {
-		memset(&rec, 0, sizeof(rec));
-		rec.letter = '_';						// an empty entry of the executable
-		rec.level = 1;
-		if (i < Dtu_n_inventory && entry_data(i, &d)) {
-			rec.type = Dtu_inventory[i].type;
-			rec.id = Dtu_inventory[i].id;
-			rec.icon = d.icon;
-			rec.class_mask = d.class_mask;
-			rec.level = Dtu_inventory[i].level;
-			rec.count = Dtu_inventory[i].count;
-			rec.modifier = F1_0;
-		}
-		memcpy(record + DTU_P_ITEMS + 16 * i, &rec, 16);
+
+	// The item list and the key item list
+	pack_empty_list(record + DTU_P_ITEMS, DTU_MAX_ITEM_ENTRIES);
+	pack_empty_list(record + DTU_P_KEYS, DTU_MAX_KEY_ENTRIES);
+	for (i = 0; i < Dtu_n_inventory; i++) {
+		if (DTU_IS_KEY_ITEM(Dtu_inventory[i].type, Dtu_inventory[i].id)) {
+			if (n_keys < DTU_MAX_KEY_ENTRIES)
+				pack_entry(record + DTU_P_KEYS + 16 * n_keys++, i);
+		} else if (n_items < DTU_MAX_ITEM_ENTRIES)
+			pack_entry(record + DTU_P_ITEMS + 16 * n_items++, i);
 	}
+	put_s32(record + DTU_P_N_ITEMS, n_items);
+	put_s32(record + DTU_P_N_KEYS, n_keys);
+	// The spell books and the spell slots (dtuspell.c)
+	dtu_spell_books_to_record(record);
+
 	record[DTU_P_THAC0] = Dtu_char.thac0;
 	pack_ref(record + DTU_P_CURRENT, Dtu_char.current);
-	for (i = 0; i < DTU_N_HOT_KEYS; i++)
-		pack_ref(record + DTU_P_HOT_KEYS + 2 * i, Dtu_char.hot_key[i]);
+	if (Dtu_char.current.n < 0 && Dtu_spell_current >= 0 && dtu_spell_book_ref(Dtu_spell_current, &list, &index)) {
+		record[DTU_P_CURRENT] = (ubyte) list;
+		record[DTU_P_CURRENT + 1] = (ubyte) index;
+	}
+	for (i = 0; i < DTU_N_HOT_KEYS; i++) {
+		ubyte *h = record + DTU_P_HOT_KEYS + 2 * i;
+
+		pack_ref(h, Dtu_char.hot_key[i]);
+		// The port has no spells in the hot keys: a spell of the loaded
+		// record stays in its box while the box is free.
+		if (h[1] == 0xFF && dtu_spell_of_ref(old_hot[2 * i], (byte) old_hot[2 * i + 1]) >= 0) {
+			h[0] = old_hot[2 * i];
+			h[1] = old_hot[2 * i + 1];
+		}
+	}
 	for (i = 0; i < 10; i++)
 		pack_ref(record + DTU_P_SLOTS + 2 * i, Dtu_char.slot[i]);
 	pack_ref(record + DTU_P_BOW, Dtu_char.slot[DTU_SLOT_BOW]);
 	pack_ref(record + DTU_P_CROSSBOW, Dtu_char.slot[DTU_SLOT_CROSSBOW]);
 	put_s32(record + DTU_P_PORTRAIT, Dtu_char.portrait);
+	// The model of the player (P+0x1AED): race, sex, class and "d_p.pof"
+	if (!record[DTU_P_MODEL] && Dtu_player_archive[0])
+		snprintf((char *) record + DTU_P_MODEL, 13, "%.3sd_p.pof", Dtu_player_archive);
 }
 
 //------------------------------------------------------------------------

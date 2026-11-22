@@ -472,8 +472,17 @@ of 0x93D93).
 
 Differences and guesses of the port:
 
-- The list has 64 entries (`DTU_MAX_INVENTORY` of `dtuobj.h`), not 127. The key
-  items are in the same list. The Scroll has count 1, not 0.
+- The list has 149 entries (`DTU_MAX_INVENTORY` of `dtuobj.h`): the 127 items and the
+  22 key items of the executable, with these limits each. The key items are in the
+  same list; a save writes them into the key item list (P+0x18D3, count P+0xFF). The
+  Scroll has count 1, not 0 (a save writes the 0 of the loaded record back).
+- Save games: the load keeps the entries of the item list as they are (no stacking)
+  with their 16 bytes, the key items, the two spell lists, the spell slots (P+0x23 to
+  P+0x42) and the spell in the hand. The save starts from the loaded record and writes
+  the fields that the port has; the bytes of an entry come from the loaded entry. The
+  port has no spells in the hot keys: a spell reference of the loaded record stays in
+  its box while the box is free. The slots of a class that the character does not have
+  stay as loaded (the executable gives a thief and mage one cleric slot).
 - The ability scores, alignment, age and gold of the default character are a
   guess. The front end sets them in the original.
 - The class bits are tested when an item is worn or taken in the hand (messages

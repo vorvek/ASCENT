@@ -54,6 +54,8 @@
 #include "dtufe_int.h"
 #include "dtumovie.h"
 #include "dtustate.h"
+#include "fuelcen.h"		// ASCENT: the lists of a save game
+#include "switch.h"
 #include "dtuscript.h"
 #include "screens.h"
 #include "dtuopts.h"
@@ -2105,24 +2107,37 @@ static void fe_credits(void)
 //------------------------------------------------------------------------
 // Save games (autosave.c of the executable: save 0xBA99F with the slot
 // menu 0xBA486, load 0xBB780 with the slot menu 0xBA647). The file of slot
-// n (0 to 9) is SG<n>.sg (docs/formats/misc.md). The port reads a slot in
-// the current directory first and then in the directories of the game
-// data, and writes it in the current directory. It writes and reads only
-// the parts that it has: the header, the Khelben state, the player record
-// and the attribute block. The level files of the SAVE directory and the
-// market stock (TheStore.<n+1>) are not written or read, the 19 mission
-// flags are written as 0, and a game that was saved in a level starts
-// that level again from its start.
+// n (0 to 9) is SG<n>.SG (docs/formats/misc.md). The port reads a slot in
+// the directory of the user first and then in the directories of the game
+// data, and writes it in the directory of the user. The files have the
+// format of the executable: a save of DTUGAME.EXE 1.3 loads in the port and
+// a save of the port loads in DTUGAME.EXE. The parts that the port does not
+// use come from the file that was loaded.
 
 #define SG_VERSION			12
 #define SG_BETWEEN			28		// u32: 1 = saved in Waterdeep
 #define SG_LEVEL				41		// u32: Current_level_num
+#define SG_GAME_TIME			49		// fix: GameTime (0x13CD30)
 #define SG_KHELBEN			133	// u32 mission, u32 blurb
 #define SG_ATTR				(DTU_SG_PLAYER_OFFSET + DTU_PLAYER_RECORD_SIZE)	// 7108
 #define SG_RLPD				7188
+#define SG_DIFFICULTY		7362	// u32 0x13CDCA, u32 0x13B7A3, u32 0x13B697
 #define SG_SIZE_BETWEEN		7374	// the size of a file with "between levels" 1
+#define SG_MAX_SIZE			(SG_SIZE_BETWEEN + 12 + 54 * MAX_TRIGGERS + 16 * MAX_ROBOT_CENTERS + 40 * MAX_NUM_FUELCENS)
 
 int Fe_load_level;
+
+// The file of the last load: the base of the next save
+static ubyte *Loaded_sg;
+static int Loaded_sg_size;
+
+static void sg_forget(void)
+{
+	if (Loaded_sg)
+		free(Loaded_sg);
+	Loaded_sg = NULL;
+	Loaded_sg_size = 0;
+}
 
 static void put_u32(ubyte *p, uint v)
 {
@@ -2133,15 +2148,10 @@ static void put_u32(ubyte *p, uint v)
 static int sg_find(int slot, char *path, int size)
 {
 	char name[16];
-	FILE *f;
 
-	sprintf(name, "SG%d.sg", slot);
-	dtu_user_path(path, size, name);		// ASCENT: the directory of the user (dtufile.h)
-	f = fopen(path, "rb");
-	if (f) {
-		fclose(f);
+	sprintf(name, "SG%d.SG", slot);			// "SG%d.sg"
+	if (dtu_user_find(name, path, size))		// ASCENT: the directory of the user, any case
 		return 1;
-	}
 	return dtu_find_file(name, path, size);
 }
 
@@ -2205,13 +2215,30 @@ static int slot_menu_nm(int save, char desc[10][24])
 	return newmenu_do(NULL, fe_text(save ? 796 : 798), 10, m, NULL);
 }
 
+// The whole file of a slot, or NULL
+static ubyte *sg_read(int slot, char *path, int path_size, int *size)
+{
+	FILE *f;
+	ubyte *b;
+
+	if (!sg_find(slot, path, path_size) || (f = fopen(path, "rb")) == NULL)
+		return NULL;
+	b = malloc(SG_MAX_SIZE);
+	if (!b) {
+		fclose(f);
+		return NULL;
+	}
+	*size = (int) fread(b, 1, SG_MAX_SIZE, f);
+	fclose(f);
+	return b;
+}
+
 int fe_load_game(int in_game)
 {
 	fe_menu_item m[10];
 	char desc[10][24], path[600];
-	ubyte b[DTU_SG_PLAYER_OFFSET];
-	FILE *f;
-	int i, n_valid = 0, choice, mode;
+	ubyte *b;
+	int i, size = 0, n_valid = 0, choice, mode, between;
 
 	memset(m, 0, sizeof(m));
 	for (i = 0; i < 10; i++) {
@@ -2242,58 +2269,75 @@ int fe_load_game(int in_game)
 			return 0;
 	}
 
-	if (!sg_find(choice, path, sizeof(path)) || (f = fopen(path, "rb")) == NULL)
-		return 0;
-	i = (int) fread(b, 1, sizeof(b), f);
-	fclose(f);
-	if (i != (int) sizeof(b) || !dtu_char_load_save(path)) {
+	b = sg_read(choice, path, sizeof(path), &size);
+	if (!b || size < SG_SIZE_BETWEEN || !dtu_char_load_save(path)) {
+		if (b)
+			free(b);
 		if (in_game)
 			nm_messagebox(NULL, 1, fe_text(34), fe_text(802));
 		else
 			fe_message_box(NULL, fe_text(802), 1, fe_text(34), NULL);	// "Incompatible save file version"
 		return 0;
 	}
+	sg_forget();
+	Loaded_sg = b;
+	Loaded_sg_size = size;
+	between = get_u32(b + SG_BETWEEN) != 0;
 	// ASCENT: 0xBC51D: the level state of the slot, and the market
 	// (delete geldor.dat, 0x87C05(S, 0))
 	dtustate_load_slot(choice + 1);
 	fe_market_store(choice + 1, 0);
+	// 0xBBA2F: the game time of the save (the times in the level state
+	// files count from it)
+	if ((int) get_u32(b + SG_GAME_TIME) > 0)
+		GameTime = (fix) get_u32(b + SG_GAME_TIME);
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
 	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
 	dtu_mission_read_save(path);			// ASCENT: the mission and global flags (dtuscript.c)
-	mode = get_u32(b + SG_BETWEEN) ? FE_GO_WATERDEEP : FE_GO_LEVEL;
+	// 0xBBCF2: a save in a level has three lists after 7374 (the Descent 1
+	// triggers, the matcens and the fuel centers); the level start applies
+	// them before the level state.
+	dtustate_set_save_lists(between ? NULL : b + SG_SIZE_BETWEEN, between ? 0 : size - SG_SIZE_BETWEEN);
+	mode = between ? FE_GO_WATERDEEP : FE_GO_LEVEL;
 	Fe_load_level = (int) get_u32(b + SG_LEVEL);
 	if (Fe_load_level < 1)
 		Fe_load_level = 1;
 	loaded_character();
 	Fe_have_character = 1;				// 0x141BBB
-	dtu_log("Front end: loaded %s: '%s', %s\n", path, Dtu_char.name,
-		mode == FE_GO_WATERDEEP ? "in Waterdeep" : "in a level");
+	dtu_log("Front end: loaded %s: '%s', %s, level %d, %d items, %d bytes\n", path, Dtu_char.name,
+		mode == FE_GO_WATERDEEP ? "in Waterdeep" : "in a level", Fe_load_level, Dtu_n_inventory, size);
+	printf("Front end: loaded %s: '%s', %s, level %d, %d items\n", path, Dtu_char.name,
+		mode == FE_GO_WATERDEEP ? "in Waterdeep" : "in a level", Fe_load_level, Dtu_n_inventory);
 	return mode;
 }
 
 // Writes the character as a save game "between levels" (the saves of the
 // main menu and of Waterdeep, 0xBA99F(1)), or as a save in a level
 // (0xBA99F(0)): then "between levels" is 0 and the three lists at 7374
-// follow (the port writes the three counts as 0, as in SG0.SG). The
-// level and the position of the player are in the level state files.
+// follow. The level and the position of the player are in the level state
+// files.
 static int sg_write(int slot, char *desc, int between)
 {
 	char name[16];
 	ubyte *b;
 	FILE *f;
-	int ok, level = Current_level_num > 0 ? Current_level_num : 1;
-	int size = between ? SG_SIZE_BETWEEN : SG_SIZE_BETWEEN + 12;
+	int ok, size, level = Current_level_num > 0 ? Current_level_num : 1;
 
-	b = calloc(1, size);
+	b = calloc(1, SG_MAX_SIZE);
 	if (!b)
 		return 0;
+	// The parts that the port does not use: the file of the last load
+	if (Loaded_sg && Loaded_sg_size >= SG_SIZE_BETWEEN)
+		memcpy(b, Loaded_sg, SG_SIZE_BETWEEN);
 	memcpy(b, "DGSS", 4);
 	put_u32(b + 4, SG_VERSION);
+	memset(b + 8, 0, 20);
 	strncpy((char *) b + 8, desc, 19);
 	put_u32(b + SG_BETWEEN, between ? 1 : 0);
+	memset(b + 32, 0, 9);
 	strcpy((char *) b + 32, "DTU");				// the mission
 	put_u32(b + SG_LEVEL, level);
-	put_u32(b + 49, GameTime);
+	put_u32(b + SG_GAME_TIME, GameTime);
 	put_u32(b + 53, 19);							// the count of the mission flags (0x13CDD4)
 	put_u32(b + SG_KHELBEN, Fe_khelben_mission);
 	put_u32(b + SG_KHELBEN + 4, Fe_khelben_blurb);
@@ -2302,26 +2346,30 @@ static int sg_write(int slot, char *desc, int between)
 	memcpy(b + SG_ATTR, &Dtu_char.base, sizeof(dtu_player_attr));
 	dtu_mission_write_save(b);				// ASCENT: the mission and global flags (dtuscript.c)
 	// The block of playsave.c (0x71729), with the values of SG0.SG
-	memcpy(b + SG_RLPD, "RLPD", 4);
-	b[SG_RLPD + 4] = 14;
-	b[SG_RLPD + 6] = 25;
-	put_u32(b + SG_RLPD + 8, 1);					// one mission record
-	put_u32(b + SG_RLPD + 12, 2);				// the difficulty
-	put_u32(b + SG_RLPD + 16, 1);
-	strcpy((char *) b + SG_RLPD + 20, "DTU");
-	b[SG_RLPD + 29] = (ubyte) level;
-	put_u32(b + 7362, 2);						// the difficulty (0x13CDCA)
-
-	sprintf(name, "SG%d.sg", slot);
-	{
-		char path[600];		// ASCENT: the directory of the user (dtufile.h)
-		f = fopen(dtu_user_path(path, sizeof(path), name), "wb");
+	if (memcmp(b + SG_RLPD, "RLPD", 4)) {
+		memcpy(b + SG_RLPD, "RLPD", 4);
+		b[SG_RLPD + 4] = 14;
+		b[SG_RLPD + 6] = 25;
+		put_u32(b + SG_RLPD + 8, 1);				// one mission record
+		put_u32(b + SG_RLPD + 12, 2);			// the difficulty
+		put_u32(b + SG_RLPD + 16, 1);
+		strcpy((char *) b + SG_RLPD + 20, "DTU");
 	}
+	b[SG_RLPD + 29] = (ubyte) level;
+	if (!get_u32(b + SG_DIFFICULTY))
+		put_u32(b + SG_DIFFICULTY, 2);			// the difficulty (0x13CDCA)
+	size = SG_SIZE_BETWEEN;
+	if (!between)
+		size += dtustate_write_save_lists(b + SG_SIZE_BETWEEN, SG_MAX_SIZE - SG_SIZE_BETWEEN);
+
+	sprintf(name, "SG%d.SG", slot);
+	f = dtu_user_fopen(name, "wb");			// ASCENT: the directory of the user
 	ok = f && fwrite(b, 1, size, f) == (size_t) size;
 	if (f && fclose(f))
 		ok = 0;
 	free(b);
-	dtu_log("Front end: %s %s: '%s'\n", ok ? "wrote" : "cannot write", name, Dtu_char.name);
+	dtu_log("Front end: %s %s: '%s', %d bytes\n", ok ? "wrote" : "cannot write", name, Dtu_char.name, size);
+	printf("Front end: %s %s: '%s', %d bytes\n", ok ? "wrote" : "cannot write", name, Dtu_char.name, size);
 	return ok;
 }
 
@@ -2443,6 +2491,7 @@ static void fe_main_menu(void)
 			// market (geldor.dat is deleted). The market keeps the charisma
 			// of the new character (0x13E38C, see fe_market).
 			dtustate_new_game();
+			sg_forget();				// ASCENT: no loaded save game is the base of a save
 			fe_market_new_character();
 			Fe_mode = FE_GO_WATERDEEP;
 		}
@@ -2649,6 +2698,7 @@ void dtufe_direct_start(void)
 	if (Script_n)
 		Script_in_game = 1;
 	dtustate_new_game();
+	sg_forget();
 }
 
 // 0x4225A: game() shows its ESC menu when the game loop ended with another
