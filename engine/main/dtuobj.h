@@ -169,6 +169,15 @@ extern int Dtu_fix_guild_peace;
 // (100, set by the same fix). -origobj and -origdrow5 clear it.
 extern int Dtu_fix_drow5_shields;
 
+// ASCENT: the pick up of a stack that does not fit (0xB65BB, 0xB67D3 to
+// 0xB68C1). Original: the count is added and cut to stack_limit, the
+// items above the limit are lost. Corrected: the inventory takes what
+// fits, the rest stays on the floor. 0 (-origobj): the rule of the
+// executable. Dtu_inventory_left: the items of the last
+// dtu_inventory_add() that it did not take.
+extern int Dtu_fix_partial_stack;
+extern int Dtu_inventory_left;
+
 // The spellcaster of KOBOLDS (object 19). Original: the level fix 0xACF23
 // gives its type weapon 18 only on a level with no saved state, so after
 // the player comes back the creature setup makes the spell weapon -33 of

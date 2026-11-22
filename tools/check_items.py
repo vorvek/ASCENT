@@ -246,10 +246,13 @@ def test_whin(t):
 def test_misc(t):
     """The Cursed Scroll stays (0x3817F), the Scroll stays, the Gem of Curing
     is not used up."""
-    d, _, _ = t.run("misc", ["give=16.106.1", "use=16.106", "dump", "damage=4", "use=16.2", "dump"])
+    d, _, _ = t.run("misc", ["give=16.106.1", "use=16.106", "dump", "damage=4", "use=16.2", "dump",
+                             "give=16.103.1", "drop=16.103", "give=16.4.1", "drop=16.4", "dump"])
     check(d[0].count(16, 106) == 1, "the Cursed Scroll was used up")
     check(d[1].count(16, 2) == 1 and d[1].hp > d[0].hp - 4, "Gem of Curing")
-    return "Cursed Scroll, Gem of Curing"
+    check(d[2].count(16, 103) == 1, "the Banegem (plot_item) was dropped (0xB611C)")
+    check(d[2].count(16, 4) == 0, "the Ruby was not dropped")
+    return "Cursed Scroll, Gem of Curing, plot item drop"
 
 
 TESTS = [test_potions, test_wands, test_rings, test_armor_set, test_whin, test_misc]

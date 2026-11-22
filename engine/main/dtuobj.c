@@ -117,6 +117,11 @@ int Dtu_fix_guild_peace = 1;
 // (dtuobj.h). The options -origobj and -origdrow5 clear it.
 int Dtu_fix_drow5_shields = 1;
 
+// ASCENT: a pick up of a stack that does not fit (dtuobj.h). -origobj
+// clears it.
+int Dtu_fix_partial_stack = 1;
+int Dtu_inventory_left = 0;
+
 // The weapon of the spellcaster of KOBOLDS also with a saved state, the hit
 // points of scenery at a restore, the texture of the spinning scenery of
 // BANE (dtuobj.h). -origobj clears them.
@@ -974,6 +979,7 @@ int dtu_inventory_add(int type, int id, int count)
 	item_info *it = item_table_entry(type,id);
 	int i;
 
+	Dtu_inventory_left = 0;
 	if (it == NULL || count <= 0)
 		return -1;
 
@@ -995,9 +1001,20 @@ int dtu_inventory_add(int type, int id, int count)
 			if (Dtu_inventory[i].type == type && Dtu_inventory[i].id == id) {
 				int limit = it->stack_limit > 0 ? it->stack_limit : 10;
 
-				if (Dtu_inventory[i].count + count > limit)
+				// ASCENT: 0xB67D3: a full stack or an endless one (count -1)
+				// takes nothing; else the count is added and cut to the limit
+				// (the rest is lost). Dtu_fix_partial_stack: the rest stays.
+				if (Dtu_inventory[i].count >= limit || Dtu_inventory[i].count < 0)
 					return -1;
-				Dtu_inventory[i].count += count;
+				if (Dtu_inventory[i].count + count > limit) {
+					if (Dtu_fix_partial_stack)
+						Dtu_inventory_left = Dtu_inventory[i].count + count - limit;
+					dtu_obj_log("inventory: stack of %d '%s' full at %d, %d left%s",id,it->name,limit,
+						Dtu_inventory[i].count + count - limit,Dtu_fix_partial_stack ? "" : " (lost, the rule of 0xB65BB)");
+					Dtu_inventory[i].count = limit;
+				}
+				else
+					Dtu_inventory[i].count += count;
 				return i;
 			}
 
@@ -1065,7 +1082,7 @@ void dtu_objects_init(void)
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
-			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = 0;
+			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = 0;
 	if (FindArg("-origdrow5"))
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))
@@ -7187,7 +7204,11 @@ static void pick_up_item(object *player,object *item)
 	if (index >= 0) {
 		int flag_10 = pickup_flag_10(item->type,it);
 
-		item->flags |= OF_SHOULD_BE_DEAD;
+		// ASCENT: Dtu_fix_partial_stack: what did not fit stays on the floor
+		if (Dtu_inventory_left > 0 && Dtu_inventory_left < 128)
+			item->dtu.m_1d5 = Dtu_inventory_left;
+		else
+			item->flags |= OF_SHOULD_BE_DEAD;
 		HUD_init_message("You pick up %s.",dtu_tr_name(it->name));
 		pickup_sound(flag_10);
 		dtu_obj_log("pickup: obj %d type %d id %d '%s' count %d, inventory entry %d, sound %s",(int)(item-Objects),

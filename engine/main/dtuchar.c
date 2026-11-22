@@ -100,6 +100,7 @@ static struct {
 	int	gem_uses;			// P+0x1A57 Gem of Curing: the uses (byte, saved)
 	int	str_gain, pct_gain;	// P+0x1A55, P+0x1A56: the gain of the spell Strength
 	fix	intel_acc;			// Dtu_fix_potion_frame
+	int	load_left[4];		// ASCENT: the seconds left of the four timers of a loaded save (0xBA911), for the level start
 } Potion;
 static int Worn_bits = 0;		// 0x1458AC: the effect bits of the worn items
 static int Wizardry_count = 0;	// doublings of the Ring of Wizardry
@@ -1500,6 +1501,9 @@ void dtu_char_potions_end(int force)
 	// 0x124735)
 	if (Potion.intel_end && (force || GameTime > Potion.intel_end)) {
 		Potion.intel_end = 0;
+		// ASCENT: 0x396B2 sets the intelligence of word 0x187BB6 (the value
+		// without items) again; the port kept the potion value
+		Dtu_char.pa.intelligence = Dtu_char.base.intelligence;
 		HUD_init_message("Potion of Hill Giant Intelligence expired.");
 		changed = 1;
 	}
@@ -1547,6 +1551,25 @@ void dtu_char_potions_end(int force)
 		dtu_char_log("potion: a potion effect ends%s", force ? " (force)" : "");
 		dtu_char_update();
 	}
+}
+
+// ASCENT: 0xB6FE3, called first by 0xB7084 (use one): a stack of a
+// stackable type above its stack_limit drops to the limit. The executable
+// also makes a count below 1 into 1, so an endless stack (-1) goes at its
+// first use; the port keeps the endless stack (a defect, no setting: no
+// shipped item has one).
+static void clamp_stacks(void)
+{
+	dtu_item_data d;
+	int i;
+
+	for (i = 0; i < Dtu_n_inventory; i++)
+		if (dtu_item_get(Dtu_inventory[i].type, Dtu_inventory[i].id, &d) && d.stackable &&
+				!(Dtu_inventory[i].type == OBJ_MISC && Dtu_inventory[i].id == 102) && Dtu_inventory[i].count > d.stack_limit) {
+			dtu_char_log("use: entry %d '%s' count %d cut to the stack limit %d (0xB6FE3)", i, Dtu_inventory[i].name,
+				Dtu_inventory[i].count, d.stack_limit);
+			Dtu_inventory[i].count = d.stack_limit;
+		}
 }
 
 static int any_potion(void)
@@ -1907,6 +1930,7 @@ int dtu_char_use(int index)
 	}
 	// 0x39694: 0xB7084, one item of the entry is used up
 	dtu_char_update();
+	clamp_stacks();
 	inv_remove(index, 1);
 	return 1;
 }
@@ -1916,6 +1940,7 @@ int dtu_char_use(int index)
 // no limit. At 0 the entry goes away and the references follow the list.
 void dtu_char_use_up(int index)
 {
+	clamp_stacks();
 	if (index < 0 || index >= Dtu_n_inventory || Dtu_inventory[index].count < 0)
 		return;
 	inv_remove(index, 1);
@@ -1953,6 +1978,30 @@ int dtu_char_drop(int index)
 	if (!it || Highest_object_index >= 700) {
 		HUD_init_message("%s", game_text(784, "You can't drop that."));
 		return -1;
+	}
+	// ASCENT: 0xB611C: no drop of an item whose table line has plot_item
+	// (Weapon_info +0x52, Armor_info +0x24, Misc_info +0x26, Spell_info
+	// +0x26)
+	if (rec_int(it->record, "plot_item", 0) != 0) {
+		dtu_char_log("drop: entry %d '%s' is a plot item (0xB611C)", index, e->name);
+		HUD_init_message("%s", game_text(784, "You can't drop that."));
+		return -1;
+	}
+	// ASCENT: 0xB7197 to 0xB7230, weapon 13 (the talking sword): global
+	// flag 0x8A at each try; d18 above intelligence or d7 above the class 1
+	// level (from 1): flag 0x90, script 0x1FD, no drop.
+	if (e->type == OBJ_WEAPON && e->id == 13) {
+		int r1 = rand() % 18 + 1, r2 = 0;
+
+		dtu_script_set_gflag(0x8A, 1);
+		if (r1 <= Dtu_char.pa.intelligence)
+			r2 = rand() % 7 + 1;
+		if (r1 > Dtu_char.pa.intelligence || r2 > Dtu_char.pa.class1_level + 1) {
+			dtu_char_log("drop: weapon 13 refuses, d18 %d, d7 %d", r1, r2);
+			dtu_script_set_gflag(0x90, 1);
+			dtu_hook_script_event(0x1FD);
+			return -1;
+		}
 	}
 	size = rec_fix(it->record, "size", i2f(5));
 
@@ -2472,7 +2521,7 @@ static void clear_character(void)
 
 	memset(&Dtu_char, 0, sizeof(Dtu_char));
 	Have_loaded_record = 0;
-	Potion.gem_uses = 0;
+	memset(&Potion, 0, sizeof(Potion));		// ASCENT: no potion of the game before a load
 	Last_hot_key = -1;
 	Dtu_char.current.n = -1;
 	for (i = 0; i < DTU_N_HOT_KEYS; i++) { Dtu_char.hot_key[i].list = 0; Dtu_char.hot_key[i].n = -1; }
@@ -2626,6 +2675,15 @@ int dtu_char_load_save(char *filename)
 	Dtu_char.portrait = get_s32(p + DTU_P_PORTRAIT);
 	Dtu_char.pa.hit_points = get_s32(p + DTU_P_HIT_POINTS) >> 16;
 	Potion.gem_uses = p[DTU_P_GEM_USES];
+	// ASCENT: 0xBA911: the four potion timers of the save are seconds left.
+	// The level start makes them end times (potion_timers_from_save).
+	for (i = 0; i < 4; i++) {
+		int s = get_s32(p + DTU_P_POTIONS + 4 * i);
+
+		Potion.load_left[i] = (s > 0 && s < 0x8000) ? s : 0;
+	}
+	Potion.intel = Dtu_char.pa.intelligence;
+	Potion.dragon_extra = Dtu_char.pa.strength_extra;
 	Dtu_char.thief_paid = p[DTU_P_THIEF_PAID];
 	Dtu_char.thief_points = p[DTU_P_THIEF_POINTS] | (p[DTU_P_THIEF_POINTS + 1] << 8);
 	Dtu_char.created = 1;
@@ -2773,6 +2831,20 @@ void dtu_char_pack(ubyte *record)
 
 	record[DTU_P_THAC0] = Dtu_char.thac0;
 	record[DTU_P_GEM_USES] = (ubyte) Potion.gem_uses;
+	// ASCENT: 0xBA87E: the four potion timers as whole seconds left, 0 for
+	// none or past
+	{
+		fix t[4];
+		int s;
+
+		t[0] = Potion.intel_end; t[1] = Potion.str_end; t[2] = Potion.dragon_end; t[3] = Potion.dex_end;
+		for (i = 0; i < 4; i++) {
+			s = (t[i] && t[i] > GameTime) ? f2i(t[i] - GameTime) : 0;
+			if (!t[i] && Potion.load_left[i])
+				s = Potion.load_left[i];
+			put_s32(record + DTU_P_POTIONS + 4 * i, s);
+		}
+	}
 	record[DTU_P_THIEF_PAID] = (ubyte) Dtu_char.thief_paid;
 	record[DTU_P_THIEF_POINTS] = (ubyte) Dtu_char.thief_points;
 	record[DTU_P_THIEF_POINTS + 1] = (ubyte) (Dtu_char.thief_points >> 8);
@@ -3084,6 +3156,18 @@ void dtu_char_level_start(void)
 	if (Dtu_char.pa.hit_points < 1)
 		Dtu_char.pa.hit_points = Dtu_char.pa.max_hit_points;
 	set_hit_points(Dtu_char.pa.hit_points);
+	// ASCENT: the potion timers of a loaded save (0xBA911: now + seconds)
+	{
+		fix *t[4];
+
+		t[0] = &Potion.intel_end; t[1] = &Potion.str_end; t[2] = &Potion.dragon_end; t[3] = &Potion.dex_end;
+		for (i = 0; i < 4; i++)
+			if (Potion.load_left[i]) {
+				*t[i] = GameTime + i2f(Potion.load_left[i]);
+				dtu_char_log("level start: potion timer %d from the save, %d seconds", i, Potion.load_left[i]);
+				Potion.load_left[i] = 0;
+			}
+	}
 	Dtu_player_portrait = Dtu_char.portrait;
 	sync_inventory();
 	spell_save_repair();

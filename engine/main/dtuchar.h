@@ -166,6 +166,7 @@ typedef struct dtu_item_ref {
 #define DTU_P_THIEF_PAID	0x1A53		// byte, the thief level + 1 that Mirt last paid points for (0xABB53)
 #define DTU_P_GEM_USES		0x1A57		// byte, the uses of the Gem of Curing (0x3891B)
 #define DTU_P_THAC0			0x1A5C		// byte
+#define DTU_P_POTIONS		0x1A93		// ASCENT: four ints, the seconds left of the potions of intelligence, Hill Giant Strength, Dragon's Blood and Agility in a save (0xBA87E, 0xBA911)
 #define DTU_P_THIEF_POINTS	0x1AB3		// word, the thief skill points to spend (0xB4ECF)
 #define DTU_P_BOW				0x1AB9
 #define DTU_P_CROSSBOW		0x1ABB
