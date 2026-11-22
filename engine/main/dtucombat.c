@@ -1576,3 +1576,74 @@ void dtu_fire_trap(object *d)
 	for (i = 0; i < 2; i++)
 		dtu_spell_area(16, &pos, seg, caster, level);
 }
+
+//------------------------------------------------------------------------
+// The view of a frightened player (spells.c 0x8E3C4, 0x8F5F4, 0x903D4)
+
+static int Fear_viewer = -1, Fear_viewer_sig;
+static ubyte Fear_render_type, Fear_movement_type;
+
+// 0x8E3C4 (Fear) and 0x8F5F4 (Scare), the player only: 0x13407(segment of
+// the player, type 0, flag 0) gates a creature of Robot_info[0] at the
+// center of the segment. If there is one: Viewer (0x13D628) = it, 0x69ED3,
+// its Fear timer +0xAC = the end of the Fear of the player and its lifeleft
+// +0x84 the same value (a time, not a span, so it lasts longer than the
+// Fear), 0xA6505(creature, 0), 0x10ADF, and the render type 0 for it and
+// for the player. Flag 0 of 0x13407 makes it not hostile (+0x1B0 = 0).
+void dtu_fear_view_start(object *player, fix duration)
+{
+	object *v;
+	int objnum;
+
+	if (player != ConsoleObject || Fear_viewer >= 0)
+		return;
+	objnum = dtu_gate_in_creature(0, player->segnum);
+	if (objnum <= 0) {
+		dtu_char_log("fear: no creature for the view");
+		return;
+	}
+	v = &Objects[objnum];
+	v->dtu.m_1b0 = 0;
+	Viewer = v;
+	dtu_spell_set_effect(v, DTU_FX_FEAR, duration, 0, 0);
+	v->lifeleft = GameTime + duration;
+	dtu_creature_wake(v, 0);
+	v->render_type = RT_NONE;
+	Fear_viewer = objnum;
+	Fear_viewer_sig = v->signature;
+	Fear_render_type = player->render_type;
+	Fear_movement_type = player->movement_type;
+	player->render_type = RT_NONE;
+	dtu_char_log("fear: the view moves to obj %d in segment %d for %.1f s", objnum, v->segnum, f2fl(duration));
+}
+
+// 0x903D4, in 0x9002C at the end of Fear on the player: if Viewer is not
+// the player: the creature becomes type 13, should be dead, and 0x6A3CC
+// deletes it; 0x13899 puts the player at the center of its segment; the
+// player takes its orientation (+0x20 and the copy +0x44); Viewer = the
+// player, movement type 1, render type 1. Then "Fear expired.".
+void dtu_fear_view_end(object *player)
+{
+	object *v;
+	int seg;
+
+	if (player != ConsoleObject || Fear_viewer < 0)
+		return;
+	v = &Objects[Fear_viewer];
+	Fear_viewer = -1;
+	Viewer = player;
+	player->render_type = Fear_render_type;
+	player->movement_type = Fear_movement_type;
+	// ASCENT: the executable uses the object even when it is gone; the port
+	// leaves the player in place then
+	if (v->signature != Fear_viewer_sig || v->type != OBJ_ROBOT || v->segnum < 0 || v->segnum > Highest_segment_index) {
+		dtu_char_log("fear: the view creature is gone, the player stays");
+		return;
+	}
+	seg = v->segnum;
+	player->orient = v->orient;
+	compute_segment_center(&player->pos, &Segments[seg]);
+	obj_relink(player - Objects, seg);
+	obj_delete(v - Objects);
+	dtu_char_log("fear: the view ends, the player is in segment %d", seg);
+}

@@ -2715,7 +2715,8 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
-// gosecret=N, goobj=N, break=N, str=STRENGTH.PERCENT,
+// gosecret=N, goobj=N, move=N, break=N, castby=SPELL.OBJ,
+// str=STRENGTH.PERCENT,
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // dump.
@@ -2779,13 +2780,26 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
+	else if (!strcmp(cmd, "castby") && b >= 0 && b < MAX_OBJECTS)		// test: castby=SPELL.OBJ, on the player
+		dtu_spell_cast_on(a, ConsoleObject, &Objects[b]);
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
 	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
 	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
 	else if (!strcmp(cmd, "gosecret"))	dtu_thief_goto_secret(a);		// test: gosecret=N
-	else if (!strcmp(cmd, "goobj") && a >= 0 && a <= Highest_object_index) {		// test: goobj=N, 4.0 in front of object N
+	else if (!strcmp(cmd, "move")) {		// test: move=N, N units forward (in the segment of the point)
+		vms_vector p;
+		int seg;
+
+		vm_vec_scale_add(&p, &ConsoleObject->pos, &ConsoleObject->orient.fvec, i2f(a));
+		seg = find_point_seg(&p, ConsoleObject->segnum);
+		if (seg >= 0) {
+			ConsoleObject->pos = p;
+			obj_relink(ConsoleObject - Objects, seg);
+		}
+	}
+	else if (!strcmp(cmd, "goobj") && a >= 0 && a < MAX_OBJECTS) {		// test: goobj=N, 4.0 in front of object N
 		object *o = &Objects[a];
 		vms_vector to;
 
@@ -2795,7 +2809,7 @@ static void run_command(char *cmd, char *value)
 		vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
 		obj_relink(ConsoleObject - Objects, find_point_seg(&ConsoleObject->pos, o->segnum) >= 0 ? find_point_seg(&ConsoleObject->pos, o->segnum) : o->segnum);
 	}
-	else if (!strcmp(cmd, "break") && a >= 0 && a <= Highest_object_index)		// test: break=N, the scenery N breaks
+	else if (!strcmp(cmd, "break") && a >= 0 && a < MAX_OBJECTS)		// test: break=N, the scenery N breaks
 		dtu_break_dressing(&Objects[a], ConsoleObject, 0);
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
 	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL

@@ -655,6 +655,10 @@ static void fx_end(object *obj,int b)
 		case 16: case 17:	// the two invisibilities end together
 			obj->dtu.m_88 &= ~(DTU_FX_IMP_INVIS|DTU_FX_INVISIBLE);
 			break;
+		case 8:		// Fear: the view of the player comes back (0x903D4, dtucombat.c)
+			if (obj->type == OBJ_PLAYER)
+				dtu_fear_view_end(obj);
+			break;
 		case 26:	// Sleep also ends the blindness
 			obj->dtu.m_88 &= ~DTU_FX_BLIND;
 			break;
@@ -1352,11 +1356,12 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 					else
 						dtu_creature_drop_contents(target);
 				}
-				// The player: Hold for the same time. The executable also
-				// moves the view into a gated creature that flees (0x13407,
-				// 0x13D628); not in the port.
-				if (target->type == OBJ_PLAYER)
+				// The player: the view moves into a gated creature that
+				// flees (0x8E3C4, dtucombat.c), and Hold for the same time
+				if (target->type == OBJ_PLAYER) {
+					dtu_fear_view_start(target,d);
 					fx_set(target,DTU_FX_HOLD,d);
+				}
 				if (spell == 14)
 					say("Fear cast on %s by %s.",Msg_t,Msg_c);
 				else

@@ -103,4 +103,12 @@ void dtu_fireball_blind_deaf(object *o, fix dist);
 // Portal). dtu_break_dressing() calls it; it does nothing for others.
 void dtu_fire_trap(object *d);
 
+// Fear and Scare on the player (0x8E3C4, 0x8F5F4): a creature of type 0
+// is gated in at the player and becomes the viewer until the end of the
+// effect; the player is not drawn. duration is the time of the Fear.
+void dtu_fear_view_start(object *player, fix duration);
+// The end of Fear on the player (0x903D4): the creature goes, the player
+// stands at the center of its segment with its orientation.
+void dtu_fear_view_end(object *player);
+
 #endif

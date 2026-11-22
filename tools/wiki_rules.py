@@ -306,7 +306,7 @@ SPELLS = {
                  "its weapon on d100 <= 65 - 5 x its level. A player is held and may drop the weapon; "
                  "on a player the time is divided by half the Wisdom. A frightened player also loses "
                  "the view: it follows a creature that runs off, and when Fear ends the player stands "
-                 "where that creature went. ASCENT does not have this view yet."),
+                 "where that creature went."),
     15: dict(src="0x8E464, 0x9DEDD", dur="1 minute per level", save="None", target="You",
              eff="You fall slowly, at most 7.5 ft per second. No message when it ends."),
     16: dict(src="0x8E55C, 0x91BC3", dur="Instant", save="Half", target="The creature the missile hits",
@@ -1740,7 +1740,6 @@ RULE_SOURCES = [
 NOT_IN_ASCENT = [
     "The text screen of the Scroll and the thief scroll (0x9DC42).",
     "The thief skill point screen (thiefpts.c, 0xB5B49).",
-    "The view of a frightened player (0x13407).",
     "The Spider Pieces 20, 23 and 24.",
     "The screen effect of Detect Magic (being decoded).",
 ]
