@@ -27,6 +27,7 @@
 #include "dtudisp.h"
 #include "dtufe.h"
 #include "dtufe_int.h"
+#include "dtuspell.h"		// ASCENT: the spell lists of a new character
 
 extern char Dtu_player_archive[16];
 
@@ -1066,9 +1067,14 @@ static int Start_items[4][4][2] = {
 	{ { OBJ_WEAPON, 18 }, { OBJ_MISC, 79 }, { 0, 0 }, { 0, 0 } },
 	{ { OBJ_WEAPON, 27 }, { OBJ_ARMOR, 1 }, { OBJ_MISC, 79 }, { 0, 0 } } };
 
+// 0xB6BB3: a spell is in the list of its class (mage bit first), or an
+// entry of the item list has the type and the number
 static int has_item(int type, int id)
 {
-	int i;
+	int i, list, index;
+
+	if (type == OBJ_SPELL && dtu_spell_book_ref(id, &list, &index))
+		return 1;
 
 	for (i = 0; i < Dtu_n_inventory; i++)
 		if (Dtu_inventory[i].type == type && Dtu_inventory[i].id == id)
@@ -1186,9 +1192,10 @@ static void make_player(void)
 				dtu_inventory_add(OBJ_SPELL, id, 1);
 		}
 	}
+	// 0x8BDB4: a cleric gets all cleric spells of the spell levels of the
+	// cleric level, here spell level 1 (0xB75A8(0x145ED8[0]))
 	if (Class_mask & CM_CLERIC)
-		if (!has_item(OBJ_SPELL, 0))
-			dtu_inventory_add(OBJ_SPELL, 0, 1);		// 0xB75A8(0)
+		dtu_spell_grant_cleric();
 	dtu_display_inventory_reset();			// 0x8BC69
 
 	dtu_char_update();

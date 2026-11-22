@@ -44,6 +44,7 @@ static int Hd_log;			//ASCENT_GPU_HDLOG=1: print the requests of upscaled textur
 int G3_gpu_heat;			//3d.h
 int G3_gpu_fx_row = 25;	//3d.h
 int G3_gpu_dim;			//3d.h
+int G3_gpu_tint;			//3d.h
 
 // ---------------------------------------------------------------------
 // The index of the upscaled set: <hd>/textures/<egg>/index.txt, one line
@@ -789,6 +790,8 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	//the dark view of the conversation window: every lit texture, the
 	//walls and the models (texmap/tmapfx.c, Tmap_dim)
 	m.dim = m.lit ? G3_gpu_dim : 0;
+	//the tint of Detect Magic (texmap/tmapfx.c, Tmap_tint): lit textures
+	m.tint = m.lit ? G3_gpu_tint : 0;
 	draw_face(nv,pointlist,&m);
 }
 

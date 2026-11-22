@@ -485,6 +485,7 @@ void object_goto_next_viewer()
 void draw_object_blob(object *obj,bitmap_index bmi)
 {
 	grs_bitmap * bm = &GameBitmaps[bmi.index];
+	int tint = dtu_object_tint_begin(obj);		// ASCENT: Detect Magic (0x671E2, dtuobj.h)
 	PIGGY_PAGE_IN( bmi );
 
 	if (bm->bm_w > bm->bm_h)
@@ -495,6 +496,7 @@ void draw_object_blob(object *obj,bitmap_index bmi)
 
 		g3_draw_bitmap(&obj->pos,fixmuldiv(obj->size,bm->bm_w,bm->bm_h),obj->size,bm);
 
+	dtu_object_tint_end(tint);
 }
 
 //draw an object that is a texture-mapped rod
@@ -521,7 +523,12 @@ void draw_object_tmap_rod(object *obj,bitmap_index bitmapi,int lighted)
 	else
 		light = f1_0;
 
-	g3_draw_rod_tmap(bitmap,&bot_p,obj->size,&top_p,obj->size,light);
+	{
+		int tint = dtu_object_tint_begin(obj);		// ASCENT: Detect Magic (0x67347, dtuobj.h)
+
+		g3_draw_rod_tmap(bitmap,&bot_p,obj->size,&top_p,obj->size,light);
+		dtu_object_tint_end(tint);
+	}
 
 }
 
@@ -662,7 +669,13 @@ void draw_polygon_object(object *obj)
 	// ASCENT: a model of an EGG archive is drawn in the animation frame of
 	// the object, see dtuobj.c
 	if (Dtu_objects_enabled) {
+		// ASCENT: Detect Magic: a magic object (0x670D4 returns 1) is drawn
+		// with the tint 0x40 (0x67995), and the tint is 0 after the model
+		// (0x67A0A), also when an object before it left the tint on.
+		if (dtu_magic_look(obj) == 1)
+			dtu_set_tint(0x40);
 		dtu_draw_polygon_object(obj,light,&engine_glow_value,NULL);
+		dtu_set_tint(0);
 		Interpolation_method = imsave;
 		return;
 	}

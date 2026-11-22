@@ -291,6 +291,8 @@ typedef struct plat_gpu_material {
 	int dim;				// TEXTURED, lit: the dark view of the conversation window (0 to 15,
 						// texmap/tmapfx.c): a texel of brightness step <= dim becomes
 						// (fade[max(row - 5, 0)][c] & 15) | 8
+	int tint;			// TEXTURED, lit: the tint of the object (texmap/tmapfx.c, 0x14C4CD). 0x40 (Detect
+						// Magic): a texel c gets the color (c & 15) | 0x20 before the light
 } plat_gpu_material;
 
 // The effect colors of the GPU renderer (texmap/tmapfx.c,

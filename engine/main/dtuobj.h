@@ -144,6 +144,23 @@ extern int Dtu_fix_attack_sound;
 // floor, also a corpse of a loaded level.
 extern int Dtu_fix_corpse_floor;
 
+// The tint of Detect Magic (0x14C4CD, docs/re/spells.md). Original: a
+// magic bitmap or rod object leaves the tint on for the next polygons until
+// a polygon model clears it, and the linear texture mapper tints only the
+// first scanline after a change, near black. Corrected: the tint is for the
+// object only, and both mappers draw the blue ramp. -origobj clears it.
+extern int Dtu_fix_magic_tint;
+// 0x670D4: 0, 1 a magic object, 2 a creature with a magic weapon.
+int dtu_magic_look(object *obj);
+void dtu_set_tint(int tint);
+int dtu_get_tint(void);
+// The blob and the rod: dtu_object_tint_end(dtu_object_tint_begin(obj))
+// around the draw.
+int dtu_object_tint_begin(object *obj);
+void dtu_object_tint_end(int old);
+// The weapon type of a spell missile (0x571B2).
+void dtu_spell_template_used(int weapon_type);
+
 // Seconds from the death of the player to the death screen (3.0 in the
 // executable, 0x423F5), and from there to the new start of the level in
 // the port (the executable shows the death menu there).
@@ -184,7 +201,10 @@ extern int Dtu_n_inventory;		// entries in use, they are at the start of the lis
 extern int Dtu_gold;					// the gold of the player (misc id 1)
 
 // Adds "count" items. Returns the index of the entry, or -1 if the list is
-// full. A stackable type goes to the entry that has it already.
+// full. A stackable type goes to the entry that has it already. A spell of
+// a class of the character goes to its spell list (0xB65BB): the result is
+// then DTU_INV_SPELL_LIST, not an index.
+#define DTU_INV_SPELL_LIST	9999
 int dtu_inventory_add(int type, int id, int count);
 // ASCENT: a new entry at the end of the list, with no stacking (the load of
 // a save game keeps the entries of the file). Returns the index or -1.
@@ -280,6 +300,9 @@ fix dtu_spell_hit(int spell, object *target, object *caster, int level);
 // Protection From Fire and ends the regeneration of the target on fire or
 // acid damage.
 int dtu_spell_damage_roll(int spell, object *target, int level);
+// The same with the number of dice "count" for the group "group" (0 base,
+// 1 fire, 2 acid, 3 electricity), as the cases of 0x8CFFF write it.
+int dtu_spell_damage_roll_count(int spell, object *target, int level, int group, int count);
 
 
 // The body cylinder of an object for collisions (0x748D9) and the size for

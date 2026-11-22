@@ -66,16 +66,11 @@
 // Settings. 1 (default) is the corrected rule, 0 the rule of the
 // executable. -origcombat clears them.
 
-// The dice of Fireball, Lightning Bolt and Melf's Acid Arrows have 0 sides
-// in all tables (fire_damage_dice=0, elec_damage_dice=0, no
-// acid_damage_dice), and the cases set the number of the dice to 1 or
-// more. 0x91BC3 divides by the sides (idiv at 0x91C8E): the executable
-// would stop with a divide error on a hit. Corrected: a group with 0
-// sides throws no dice, the damage is the part for each level (6 for each
-// level for Fireball and Lightning Bolt, 4 for Melf's Acid Arrows), which
-// is what dtu_spell_damage_roll() of dtuobj.c does. 0: the spell does no
-// damage and the log tells that the executable faults here.
-extern int Dtu_fix_zero_dice;
+// Chill Touch (5) has no self_cast_ok in any table: the cast fires a
+// missile, and its case (0x8D633) sets the effect only when the target is
+// the caster, so the spell does nothing. Corrected: the cast is on the
+// caster (no missile), who gets the effect for L + 3 minutes.
+extern int Dtu_fix_chill_touch;
 
 // Stone Skin (0x8FC7A) writes the whole effect word: all other effects of
 // the target end without their end action. Corrected: only its bit is set.
@@ -195,6 +190,13 @@ int dtu_spell_select(int spell);
 // Adds a spell to the book of its class (0xB69AD). Returns 0 if added, 2
 // if it is there already, 1 if no book takes it.
 int dtu_spell_learn(int spell);
+// The spell part of the item insert 0xB65BB: -1 when the spell is not for a
+// list of the character (it goes to the item list), else the result of
+// dtu_spell_learn.
+int dtu_spell_insert(int spell);
+// A cleric gets every cleric spell of the spell levels of the cleric level
+// (0x8BDB4 at the creation, 0xAF8F5 at each new level). Returns the count.
+int dtu_spell_grant_cleric(void);
 // ASCENT: the spell books and the spell slots in a player record of a
 // save game (6967 bytes, docs/re/character.md). The writer keeps the
 // bytes of the entries that the last read had.

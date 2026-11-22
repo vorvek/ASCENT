@@ -50,6 +50,7 @@
 #include "dtutrig.h"
 #include "dtuspell.h"	// ASCENT: the spells of the creatures, the area of a missile
 #include "dtuthief.h"	// ASCENT: Hide In Shadows and Move Silently in the AI
+#include "tmapfx.h"	// ASCENT: the tint of Detect Magic
 #include "dtuchar.h"
 #include "digi.h"
 #include "sounds.h"
@@ -948,6 +949,19 @@ int dtu_inventory_add(int type, int id, int count)
 	if (it == NULL || count <= 0)
 		return -1;
 
+	// 0xB660C: a spell of a class of the character goes to its spell list
+	// (0xB69AD); a spell that the list has already goes to the item list
+	if (type == OBJ_SPELL) {
+		int r = dtu_spell_insert(id);
+
+		if (r == 0) {
+			dtu_obj_log("inventory: spell %d '%s' goes to the spell list",id,it->name);
+			return DTU_INV_SPELL_LIST;
+		}
+		if (r == 1)
+			return -1;
+	}
+
 	if (item_is_stackable(it))
 		for (i=0;i<Dtu_n_inventory;i++)
 			if (Dtu_inventory[i].type == type && Dtu_inventory[i].id == id) {
@@ -1021,7 +1035,8 @@ void dtu_objects_init(void)
 	if (FindArg("-origobj"))
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
-			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor = 0;
+			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
+			Dtu_fix_magic_tint = 0;
 	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
 	if (FindArg("-origobj") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
@@ -2667,13 +2682,27 @@ int dtu_creature_is_active(object *obj)
 // roll and no dice (spells, traps, dtu_damage_creature_direct).
 #define DTU_DIRECT	(-2)
 
-// The dice of a spell: "count" rolls of rand() % sides + 1, plus
-// per_level * level (0x91BC3). The executable divides by 0 for a count
-// with no sides. The port counts 0.
-static int spell_dice(int record,char *sides_key,char *count_key,char *level_key,int level)
+// One group of dice of a spell (0x91BC3): nothing when the sides and the
+// count are 0, else "count" rolls of rand() % sides + 1, plus per_level *
+// level. count < 0: the count of the table line; else the count that the
+// case of 0x8CFFF writes into the table first (Fireball min(L, 10) at
+// 0x8E592, Lightning Bolt 0x8EEAB, Melf's Acid Arrows 2 (L/3) + 2 at
+// 0x8EFE0).
+// A die of 0 sides (these three spells, in every table) adds 0, as in
+// 1.3: the idiv by 0 (0x91C25, 0x91C8E, 0x91CEC, 0x91D4E) goes to the
+// divide error handler of div0.asm (div0_init(1) at 0xB8323, handler
+// 0xF6D94, saturate mode). Its int3 at 0xF6E17 returns without a debugger
+// and its decoder takes the SIB byte of `idiv dword ptr [esp]` (F7 3C 24)
+// for a ModRM byte, so it resumes after the `inc edx` with EDX 0. Checked
+// in DOSBox-X with the bytes of 0x91C25 run after div0_init: EDX 0, EBX,
+// ECX, ESI, EDI and EBP kept. The part for each level is added after the
+// loop.
+static int spell_dice(int record,char *sides_key,char *count_key,char *level_key,int level,int count)
 {
-	int sides = tbl_int(record,sides_key,0), count = tbl_int(record,count_key,0), sum = 0, i;
+	int sides = tbl_int(record,sides_key,0), sum = 0, i;
 
+	if (count < 0)
+		count = tbl_int(record,count_key,0);
 	if (sides == 0 && count == 0)
 		return 0;
 	if (sides > 0)
@@ -2693,15 +2722,20 @@ static int spell_dice(int record,char *sides_key,char *count_key,char *level_key
 // damage ends the regeneration (bit 24) of the target.
 int dtu_spell_damage_roll(int spell, object *target, int level)
 {
+	return dtu_spell_damage_roll_count(spell,target,level,-1,0);
+}
+
+int dtu_spell_damage_roll_count(int spell, object *target, int level, int group, int count)
+{
 	int rec, base, fire, acid, elec;
 
 	if (spell < 0 || spell >= N_spell_types || target == NULL)
 		return 0;
 	rec = Spell_info[spell].record;
-	base = spell_dice(rec,"damage_dice","#damage_dice","damage_level",level);
-	fire = spell_dice(rec,"fire_damage_dice","#fire_damage_dice","fire_damage_level",level);
-	acid = spell_dice(rec,"acid_damage_dice","#acid_damage_dice","acid_damage_level",level);
-	elec = spell_dice(rec,"elec_damage_dice","#elec_damage_dice","elec_damage_level",level);
+	base = spell_dice(rec,"damage_dice","#damage_dice","damage_level",level,group == 0 ? count : -1);
+	fire = spell_dice(rec,"fire_damage_dice","#fire_damage_dice","fire_damage_level",level,group == 1 ? count : -1);
+	acid = spell_dice(rec,"acid_damage_dice","#acid_damage_dice","acid_damage_level",level,group == 2 ? count : -1);
+	elec = spell_dice(rec,"elec_damage_dice","#elec_damage_dice","elec_damage_level",level,group == 3 ? count : -1);
 
 	if (target->type == OBJ_ROBOT && target->id < N_robot_types) {
 		monster_info *mi = &Monster_info[target->id];
@@ -3330,6 +3364,8 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 	m->parent = parent;
 	m->parent_sig = (parent >= 0) ? Objects[parent].signature : -1;
 	m->spell = spell;
+	if (spell >= 0)
+		dtu_spell_template_used(weapon_type);		// 0x571B2: the template is magic
 	m->bounce = bounce;
 
 	// The time to live. The port keeps it here: the object code of
@@ -6556,6 +6592,96 @@ static void pickup_sound(int flag_10)
 	if (flag_10)
 		digi_play_sample(0x8A8,F1_0/2);
 	digi_play_sample(0x8A7,F1_0/2);
+}
+
+// The weapon types that a spell missile has used: 0x56FF6 writes the flag
+// word W+0x3E of the template (2 hands, 3 wand, 4 scroll, 5 arrow) to 0x10
+// at each cast (0x571B2), so from then on the type is magic.
+static unsigned Spell_template_magic;
+
+void dtu_spell_template_used(int weapon_type)
+{
+	if (weapon_type >= 0 && weapon_type < 32)
+		Spell_template_magic |= 1u << weapon_type;
+}
+
+// 0x670D4: the magic look of an object for the view of Viewer. 0 when the
+// viewer has no Detect Magic (+0x88 bit 0x40). Else 1 for: a spell item
+// (type 17); armor with "magic" (0x19FD34 bit 0, 0x23392); a misc item
+// with flag 0x10 of 0x1A344 (a plot item, a name with '+' or one of the
+// nine name parts, as the pickup sound); scenery with "magic" (0x19B340
+// bit 0, 0x229EE); a weapon object whose type has W+0x3E bit 0x10 ("magic",
+// a plot item, a name with '+', or a spell missile template). 2 for a
+// creature whose weapon type is below 0 or magic: draw_polygon_model then
+// tints the submodels with flag 0x20, which no model file has. Else 0.
+int dtu_magic_look(object *obj)
+{
+	item_info *it;
+
+	if (obj == NULL || Viewer == NULL || !(Viewer->dtu.m_88 & DTU_FX_DETECT_MAGIC))
+		return 0;
+	switch (obj->type) {
+		case OBJ_SPELL:
+			return 1;
+		case OBJ_ARMOR:
+			it = item_table_entry(obj->type,obj->id);
+			return it && it->record >= 0 && bm_tbl_has_flag(it->record,"magic");
+		case OBJ_MISC:
+			it = item_table_entry(obj->type,obj->id);
+			return it && pickup_flag_10(obj->type,it);
+		case OBJ_DRESSING:
+			return obj->id < N_dressing_types && (Dressing_info[obj->id].flags & DRESSING_F_MAGIC) != 0;
+		case OBJ_WEAPON:
+			if (obj->id < 32 && (Spell_template_magic & (1u << obj->id)))
+				return 1;
+			it = item_table_entry(obj->type,obj->id);
+			return it && pickup_flag_10(obj->type,it);
+		case OBJ_ROBOT:
+			if (obj->id < N_robot_types) {
+				int w = Robot_info[obj->id].weapon_type;
+				if (w < 0)
+					return 2;
+				it = item_table_entry(OBJ_WEAPON,w);
+				return (it && pickup_flag_10(OBJ_WEAPON,it)) ? 2 : 0;
+			}
+			return 0;
+	}
+	return 0;
+}
+
+// The tint of the current object (0x14C4CD) for both renderers.
+int Dtu_fix_magic_tint = 1;
+
+void dtu_set_tint(int tint)
+{
+	Tmap_tint = tint;
+	G3_gpu_tint = tint;
+	Tmap_tint_fix = Dtu_fix_magic_tint;
+}
+
+int dtu_get_tint(void)
+{
+	return Tmap_tint;
+}
+
+// draw_object_blob (0x671D6) and draw_object_tmap_rod (0x67273) set the
+// tint for a magic object and do not clear it: the value stays for the
+// next polygons (the walls of the nearer segments, other objects) until a
+// polygon model clears it (0x67A0A). Dtu_fix_magic_tint: the tint is only
+// for the object. Returns the value to give back to dtu_object_tint_end.
+int dtu_object_tint_begin(object *obj)
+{
+	int old = Tmap_tint;
+
+	if (dtu_magic_look(obj) != 0)
+		dtu_set_tint(0x40);
+	return old;
+}
+
+void dtu_object_tint_end(int old)
+{
+	if (Dtu_fix_magic_tint)
+		dtu_set_tint(old);
 }
 
 int dtu_weapon_is_item(object *obj)

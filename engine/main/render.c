@@ -342,6 +342,8 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "dtucombat.h"	// ASCENT: dtu_combat_draw_view()
 #include "dtuopts.h"		// ASCENT: the GPU renderer settings
 #include "dtuinfra.h"		// ASCENT: infravision
+#include "dtuobj.h"		// ASCENT: the tint of Detect Magic
+#include "dtuspell.h"		// ASCENT: DTU_FX_DETECT_MAGIC
 #include "dtudisp.h"		// ASCENT: Dtu_hires, Dtu_display_active
 #include "palette.h"		// ASCENT: gr_palette for the GPU renderer
 #include "platform.h"		// ASCENT: plat_gpu_bind_settings
@@ -822,7 +824,45 @@ fix	Min_n0_n1_dot	= (F1_0*15/16);
 // -----------------------------------------------------------------------------------
 //	Render a side.
 //	Check for normal facing.  If so, render faces on side dictated by sidep->type.
+// ASCENT: Detect Magic on a side (0x75707 to 0x75827): with the effect bit
+// 0x40 of the player object, the tint 0x40 for a side with bit 0x20 of the
+// side byte 1 (pad; no level file has it), a side of a segment of special
+// 2, 3 or 6, or an illusion wall that is on (wall type 3, no flag 0x20)
+// whose child segment connects back and that is an illusory wall
+// (WALL_IS_DOORWAY 3). The tint of the faces of the side; the value of
+// before is given back after the side (0x75C1E).
+static int side_shows_magic(segment *segp, int sidenum)
+{
+	side *sidep = &segp->sides[sidenum];
+	int w = sidep->wall_num, child = segp->children[sidenum];
+
+	if (ConsoleObject == NULL || !(ConsoleObject->dtu.m_88 & DTU_FX_DETECT_MAGIC))
+		return 0;
+	if ((sidep->pad & 0x20) || segp->special == 6 || segp->special == 2 || segp->special == 3)
+		return 1;
+	if (w < 0 || w >= Num_walls || Walls[w].type != WALL_ILLUSION || (Walls[w].flags & WALL_ILLUSION_OFF))
+		return 0;
+	if (child <= -1 || child > Highest_segment_index || find_connect_side(segp, &Segments[child]) == -1)
+		return 0;
+	return WALL_IS_DOORWAY(segp,sidenum) == WID_ILLUSORY_WALL;
+}
+
+static void render_side_faces(segment *segp, int sidenum);
+
 void render_side(segment *segp, int sidenum)
+{
+	int tint;
+
+	if (!(WALL_IS_DOORWAY(segp,sidenum) & WID_RENDER_FLAG))
+		return;
+	tint = dtu_get_tint();
+	if (side_shows_magic(segp,sidenum))
+		dtu_set_tint(0x40);
+	render_side_faces(segp,sidenum);
+	dtu_set_tint(tint);
+}
+
+static void render_side_faces(segment *segp, int sidenum)
 {
 	short			vertnum_list[4];
 	side			*sidep = &segp->sides[sidenum];

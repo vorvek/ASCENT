@@ -1064,6 +1064,7 @@ void draw_tmap(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 		Lighting_on = 0;
 	Tmap_fx = (bp->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;	// ASCENT: tmapfx.c
 	tmap_dim_polygon(Lighting_on);		// ASCENT: the conversation window (tmapfx.c)
+	tmap_tint_polygon(Lighting_on);		// ASCENT: the tint of Detect Magic (tmapfx.c)
 
 	// ASCENT: no selector for the texture map. The scanline renderers read
 	// 64 rows of 64 pixels from bm_data and wrap u and v. If the bitmap is

@@ -67,6 +67,15 @@ _Static_assert(DTU_P_ATTR + sizeof(dtu_player_attr) == 0xE7, "player record");
 
 dtu_character Dtu_char;
 int Dtu_fix_multiclass_thac0 = 1;
+// ASCENT: the spell lists of a save of an older version of the port, which
+// put the spells of a new character and the picked up spells into the item
+// list and gave a new cleric only Abjure (1.3: 0xB65BB, 0x8BDB4, 0xAF8F5).
+// At the first level start after a load: the spells of the item list that a
+// list of the character takes and has not go to it, one item each, and a
+// cleric gets the cleric spells of the levels. A save of 1.3 has nothing to
+// change. -origchar clears it.
+int Dtu_fix_spell_save_repair = 1;
+static int Spell_repair_pending;
 int Dtu_fix_wizardry_ring = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
@@ -203,7 +212,7 @@ static void read_options(void)
 	if ((t = FindArg("-chartest")) != 0 && t + 1 < Num_args)
 		Char_script = Args[t + 1];
 	if (FindArg("-origchar"))
-		Dtu_fix_multiclass_thac0 = 0;
+		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
@@ -2058,6 +2067,10 @@ static void check_levels(void)
 	Dtu_char.base.max_hit_points += hp;
 	Dtu_char.base.hit_points += hp;
 	set_hit_points(dtu_char_hit_points() + hp);
+	// 0xAF8F5 (the end of 0xAF694): a cleric gets every cleric spell of the
+	// spell levels of the cleric level (0xB75A8)
+	if (has_class(DTU_CLASS_CLERIC))
+		dtu_spell_grant_cleric();
 	update_thac0();
 }
 
@@ -2505,6 +2518,7 @@ int dtu_char_load_save(char *filename)
 	Known_n_inventory = Dtu_n_inventory;
 	// The spell books and the spell slots (dtuspell.c)
 	dtu_spell_books_from_record(p);
+	Spell_repair_pending = 1;
 	load_ref(&Dtu_char.current, p + DTU_P_CURRENT, map, n);
 	for (i = 0; i < DTU_N_HOT_KEYS; i++) {
 		ubyte *h = p + DTU_P_HOT_KEYS + 2 * i;
@@ -2832,6 +2846,38 @@ static void run_script(void)
 //------------------------------------------------------------------------
 // Calls from the game
 
+// Dtu_fix_spell_save_repair: the first level start after a load (the
+// spell tables of the level are loaded).
+static void spell_save_repair(void)
+{
+	int i, n_moved = 0, n_cleric = 0;
+
+	if (!Spell_repair_pending)
+		return;
+	Spell_repair_pending = 0;
+	if (!Dtu_fix_spell_save_repair)
+		return;
+	for (i = 0; i < Dtu_n_inventory; ) {
+		dtu_inv_item *e = &Dtu_inventory[i];
+
+		if (e->type == OBJ_SPELL && e->count > 0 && dtu_spell_insert(e->id) == 0) {
+			int n = Dtu_n_inventory;
+
+			dtu_char_log("repair: spell %d '%s' of item %d goes to the spell list", e->id, e->name, i);
+			n_moved++;
+			inv_remove(i, 1);
+			if (Dtu_n_inventory < n)
+				continue;
+		}
+		i++;
+	}
+	if (has_class(DTU_CLASS_CLERIC))
+		n_cleric = dtu_spell_grant_cleric();
+	if (n_moved || n_cleric)
+		dtu_char_log("repair: %d spells from the item list, %d cleric spells; %d mage and %d cleric spells",
+			n_moved, n_cleric, Dtu_spell_book_n[0], Dtu_spell_book_n[1]);
+}
+
 void dtu_char_level_start(void)
 {
 	int i;
@@ -2851,6 +2897,7 @@ void dtu_char_level_start(void)
 	set_hit_points(Dtu_char.pa.hit_points);
 	Dtu_player_portrait = Dtu_char.portrait;
 	sync_inventory();
+	spell_save_repair();
 	dtu_char_update();
 	dtu_char_log("level start: '%s', %d of %d hit points", Dtu_char.name, Dtu_char.pa.hit_points, Dtu_char.pa.max_hit_points);
 }
