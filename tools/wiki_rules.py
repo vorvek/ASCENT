@@ -18,6 +18,11 @@ DTUGAME.EXE 1.3. The reverse engineering notes are docs/re/combat.md
 The player pages are written in game terms. Addresses, table keywords and
 the evidence of each rule go to Sources.md only.
 
+The item corrections of ASCENT come from engine/main/dtuitemfix.c (read by
+tools/check_itemfix.py): an item has its corrected name with the name of 1.3
+in its notes, and each value that the setting "Rulebook items" changes is
+marked in the notes of the item and listed on the Magic items page.
+
 usage: python -I tools/wiki_rules.py GAME_DIR OUT_DIR [--tables DIR]
 
 GAME_DIR  the installed game: YPINN.BIN and DTUGAME.EXE of version 1.3.
@@ -39,6 +44,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import egg  # noqa: E402
+import check_itemfix  # noqa: E402  (the tables of engine/main/dtuitemfix.c)
 
 
 # ---------------------------------------------------------------------
@@ -92,8 +98,17 @@ class Record:
     def has(self, flag):
         return flag.lower() in self.flags
 
-    def name(self):
+    shown = None        # the corrected name (dtuitemfix.c), set by Pages
+    fix_notes = ()      # the notes of the corrections of the item
+
+    def name13(self):
         return (self.get("name") or self.get("weapon_name") or "?").strip()
+
+    def name(self):
+        return self.shown or self.name13()
+
+    def note(self):
+        return " ".join(self.fix_notes)
 
 
 class Exe:
@@ -337,8 +352,9 @@ SPELLS = {
     24: dict(src="0x8EB53", dur="4 minutes + 1 per level", save="None", target="You",
              eff="Creatures do not see you, even while you attack. Open Locks -15% while invisible."),
     25: dict(src="0x8EBE8", dur="2 hours + 1 per level", save="None", target="You",
-             eff="Lets you turn on infravision (key N). Works only for a human or half-elf; the other "
-                 "races have infravision already."),
+             eff="Lets you turn on infravision (key N). It is of use only to a human: every other "
+                 "race has infravision already. (The game gives the effect to a human or a half-elf; "
+                 "a half-elf gains nothing from it.)"),
     26: dict(src="0x8ECB4", dur="Until you attack", save="None", target="You",
              eff="Creatures do not see you. Ends when you make a weapon attack or cast a spell missile. "
                  "No effect while you have Improved Invisibility. Open Locks -15% while invisible."),
@@ -480,12 +496,13 @@ WORN = {
     ("armor", 19): "Fly while worn.",
     ("armor", 20): "Free Action while worn.",
     ("armor", 21): "Constitution 18 while worn, also if yours is higher.",
-    ("armor", 22): "Infravision while worn, only for a human or half-elf.",
+    ("armor", 22): "Infravision while worn (key N). It is of use only to a human: every other race, the "
+                   "half-elf too, has infravision already.",
     ("armor", 23): "Jump while worn.",
     ("armor", 24): "Detect Magic while worn.",
     ("armor", 25): "Haste while worn.",
     ("armor", 26): "Strength 18/00 while worn, also if yours is higher.",
-    ("armor", 27): "This is the Ring of Wizardry of the 1.3 readme. Doubles your mage spell slots of "
+    ("armor", 27): "Doubles your mage spell slots of "
                    "levels 1 to 3. The original 1.3 game doubles them again at each change of "
                    "equipment and halves them once when you take it off; ASCENT corrects this and "
                    "doubles them once.",
@@ -498,8 +515,7 @@ WORN = {
     ("armor", 38): "Strength 19 while worn.",
     ("armor", 43): "Hide In Shadows 95% while worn.",
     ("armor", 44): "Improved Invisibility while worn.",
-    ("armor", 45): "This is the Cloak of Lathandar of the 1.3 readme (it repeats the name Cloak of "
-                   "Elvenkind). Worn: key T turns undead as a cleric of level 7, for any class. USE: "
+    ("armor", 45): "Worn: key T turns undead as a cleric of level 7, for any class. USE: "
                    "Continual Light around you.",
     ("armor", 46): "Invisibility while worn. It ends when you attack and comes back at the next change "
                    "of equipment.",
@@ -541,6 +557,10 @@ FIXES = [
                                             "1.3 sets it to 1."),
     ("Dtu_fix_bane_texture", "-origobj", "Two spinning objects in Bane's level get their own texture; 1.3 "
                                          "takes it from the level played before."),
+    ("Dtu_fix_item_names", "-origitems", "Items with a wrong name show the right one: the Cloak of Lathander, "
+                                         "the Ring of Wizardry, the Potion of Invisibility and four more."),
+    ("Dtu_rulebook_items (off by default)", "-rulebookitems, -norulebookitems",
+     "The setting Rulebook items: some item values and class limits of the AD&D 2nd edition rulebooks."),
 ]
 
 
@@ -602,6 +622,47 @@ class Pages:
         self.check = check
         self.mission = set(mission)
         self.counts = {}
+        self.item_fixes()
+
+    # -- the corrections of ASCENT (engine/main/dtuitemfix.c) ------------
+    def item_fixes(self):
+        """Sets the corrected name and the notes of each item line that
+        dtuitemfix.c names, and keeps the rows for the pages."""
+        self.name_fixes, self.rules = check_itemfix.read_tables()
+        secs = {"W": self.W, "A": self.A, "M": self.O}
+        self.rule_rows = []
+        for n in self.name_fixes:
+            r = secs[n["kind"]][n["id"]]
+            if r.name13() != n["name13"].strip():
+                raise SystemExit("dtuitemfix.c: %s %d is %r, not %r" % (n["kind"], n["id"], r.name13(), n["name13"]))
+            r.shown = n["name"]
+            r.fix_notes += ("The original 1.3 game calls it \"%s\"; ASCENT corrects the name." % r.name13(),)
+        by_item = collections.OrderedDict()
+        for x in self.rules:
+            by_item.setdefault((x["kind"], x["id"]), []).append(x)
+        for (kind, i), rows in by_item.items():
+            r = secs[kind][i]
+            new = {x["key"].lower(): x["v"] for x in rows}
+            parts13, parts = [], []
+            if any(k in new for k in ("damage_dice", "#damage_dice", "damage_bonus", "to_hit_bonus")):
+                def dice(get):
+                    b, h = int(get("damage_bonus", 0)), int(get("to_hit_bonus", 0))
+                    return "%dd%d%s, to hit %s" % (int(get("#damage_dice", 1)), int(get("damage_dice", 6)),
+                                                    signed(b) if b else "", signed(h) if h else "0")
+                parts13.append(dice(lambda k, d: r.num(k, d)))
+                parts.append(dice(lambda k, d: new.get(k, r.num(k, d))))
+            if new.get("thief_use") == "0":
+                parts13.append("a thief can use it")
+                parts.append("not for a thief")
+            if new.get("all_use") == "0" and new.get("mage_use") == "1":
+                parts13.append("every class can use it")
+                parts.append("only a mage can use it")
+            if new.get("magic") == "1":
+                parts13.append("not magic")
+                parts.append("magic")
+            source = "; ".join(collections.OrderedDict((x["source"].split(":")[0], 1) for x in rows))
+            r.fix_notes += ("With Rulebook items: %s (%s)." % ("; ".join(parts), source),)
+            self.rule_rows.append([r.name(), "; ".join(parts13), "; ".join(parts), source])
 
     # -- helpers --------------------------------------------------------
     def slots(self, cls):
@@ -723,7 +784,7 @@ class Pages:
             ["Move Silently with no roll and without the thief class (not in chain or plate mail)",
              "elf, drow, halfling"],
             ["Find/Remove Traps 50% without the thief class", "dwarf"],
-            ["The spell and the Ring of Infravision work", "human and half-elf only"],
+            ["The spell, the potion and the Ring of Infravision are of use", "human only"],
             ["Finds secret doors while searching (key F)", ", ".join(sec)],
         ]
         self.count("Races", len(rows) + len(crow) + len(trow) + len(special))
@@ -759,8 +820,9 @@ class Pages:
             "",
             "Saving throws have no racial bonus: only the class and the level count.",
             "",
-            "A half-elf counts as a human for the rules that test for a human (the spell and the "
-            "Ring of Infravision).",
+            "A half-elf has infravision, as in the AD&D rules. The spell and the Ring of Infravision "
+            "also give their effect to a half-elf (the game tests for the human kind, and a half-elf "
+            "is of it), but a half-elf gains nothing from them.",
             "",
             "## Thief skills by race",
             "",
@@ -854,7 +916,7 @@ class Pages:
             ["Lockpicks in the lockpick place (thief only)",
              "Open Locks: Lockpicks +5, Apprentice +10, Journeyman +15, Master +20"],
             ["Gloves of Dexterity", "Open Locks +10 (thief); 37 for others"],
-            ["Cloak of Elvenkind (the first one)", "Hide In Shadows 95"],
+            ["Cloak of Elvenkind", "Hide In Shadows 95"],
             ["Invisible (spell, potion, cloak)", "Open Locks -15"],
             ["Spider Climb, Levitate", "Climb Walls 100"],
             ["Sword of W'hin in the hand", "Find/Remove Traps 95"],
@@ -1008,7 +1070,7 @@ class Pages:
             "",
             "## Turn undead",
             "",
-            "Key T. A cleric turns at the cleric level; anyone who wears the Cloak of Lathandar turns "
+            "Key T. A cleric turns at the cleric level; anyone who wears the Cloak of Lathander turns "
             "as a cleric of level 7. One d20 counts for all undead in sight, and at most 2 to 12 are "
             "destroyed. A number: the d20 must reach it. T: turned. D: destroyed. -: no effect (you "
             "can try again later).",
@@ -1069,6 +1131,8 @@ class Pages:
             notes.append("Also called %s." % r.get("weapon_name"))
         if i in WEAPON_NOTES:
             notes.append(WEAPON_NOTES[i])
+        if r.note():
+            notes.append(r.note())
         return [r.name(), dice, signed(h) if h else "0", dtype,
                 "yes" if r.has("magic") else "no", speed, classes_of(r), value_of(r), " ".join(notes)]
 
@@ -1167,6 +1231,8 @@ class Pages:
                 note.append("Magic armor: rings of protection and the Cloak of Protection do not count.")
             elif r.has("shield"):
                 note.append("The Cloak of Protection does not count.")
+            if r.note():
+                note.append(r.note())
             rows.append([r.name(), "shield" if r.has("shield") else "body", signed(-ac) if ac else "0",
                          str(10 + ac), classes_of(r), r.num("value", 0), " ".join(note)])
         for i in (8, 9):
@@ -1235,7 +1301,8 @@ class Pages:
                     eff = "Counts only without magic armor or bracers. Of two of these rings only the better counts."
                 if i == 33:
                     ac = 0
-                rows.append([r.name(), signed(-ac) if ac else "0", classes_of(r), r.num("value", 0), eff or "AC only."])
+                eff = " ".join(x for x in (eff or "AC only.", r.note()) if x)
+                rows.append([r.name(), signed(-ac) if ac else "0", classes_of(r), r.num("value", 0), eff])
             if title == "Amulets":
                 rows.append([self.O[5].name(), "0", classes_of(self.O[5]), "-", "Quest item. No other effect."])
             if title == "Cloaks":
@@ -1288,13 +1355,22 @@ class Pages:
                 "Potions, wands and scrolls have their own pages: [[Potions]], [[Wands]], [[Scrolls]].", "",
                 "## Notes", "",
                 "- The 1.3 readme lists new items: Potion of Invisibility, Ring of Wizardry, Cloak of "
-                "Lathandar, Drowslayer and +3 Longsword. In the game the Potion of Invisibility is the "
-                "second \"Potion of Agility\", the Ring of Wizardry is the \"Ring of Warmth\", and the "
-                "Cloak of Lathandar is the second \"Cloak of Elvenkind\". There is no Drowslayer and no "
+                "Lathandar, Drowslayer and +3 Longsword. In the original 1.3 game the Potion of "
+                "Invisibility is the second \"Potion of Agility\", the Ring of Wizardry is the \"Ring of "
+                "Warmth\", and the cloak is the second \"Cloak of Elvenkind\". ASCENT shows the names of "
+                "the readme, with the name of the god spelled Lathander. There is no Drowslayer and no "
                 "+3 Longsword.",
+                "- ASCENT corrects these item names (the option -origitems gives the names of 1.3): "
+                + "; ".join("\"%s\" is %s" % (n["name13"], n["name"]) for n in self.name_fixes) + ".",
                 "- The game does not identify items: every item shows its real name.", "",
+                "## Rulebook items", "",
+                "The setting \"Rulebook items\" of the Improvements menu gives these items the values of "
+                "the AD&D 2nd edition rulebooks. It is off by default, because it changes the balance of "
+                "the game. The tables of the pages show the values of 1.3. PHB: Player's Handbook. DMG: "
+                "Dungeon Master Guide.", "",
+                md_table(["Item", "1.3", "Rulebook items", "Source"], self.rule_rows), "",
                 pages_note(), ""]
-        self.count("Magic-Items", total)
+        self.count("Magic-Items", total + len(self.rule_rows))
         return "\n".join(out)
 
     # -- Potions --------------------------------------------------------
@@ -1303,7 +1379,7 @@ class Pages:
         for i in range(72, 89):
             r = self.O[i]
             eff, _ = POTIONS[i]
-            rows.append([r.name(), eff, r.num("value", 0)])
+            rows.append([r.name(), " ".join(x for x in (eff, r.note()) if x), r.num("value", 0)])
         self.count("Potions", len(rows))
         return "\n".join([
             "# Potions",
@@ -1332,6 +1408,7 @@ class Pages:
                 note = "Cast on you."
             if s in (16, 32):
                 note = "6 damage per caster level."
+            note = " ".join(x for x in (note, r.note()) if x)
             rows.append([r.name(), self.S[s].name(), r.num("uses", 1), classes_of(r), value_of(r), note])
         self.count("Wands", len(rows))
         return "\n".join([
@@ -1360,7 +1437,7 @@ class Pages:
     def scrolls(self):
         rows = []
         for i in (102, 106, 126, 127):
-            rows.append([self.O[i].name().strip(), SCROLLS[i]])
+            rows.append([self.O[i].name().strip(), " ".join(x for x in (SCROLLS[i], self.O[i].note()) if x)])
         self.count("Scrolls", len(rows))
         return "\n".join([
             "# Scrolls",
@@ -1637,12 +1714,13 @@ WEAPON_NOTES = {
     8: "Homes in on the target.",
     45: "A backstab with a hit roll of 19 or 20 does +3 to 6 damage.",
     54: "In the hand: Chill Touch, Resist Fire, Feather Fall, Free Action, Jump, Detect Magic, Haste, "
-        "Improved Invisibility and (human or half-elf) Infravision with no end, and Find/Remove Traps 95%.",
+        "Improved Invisibility and Infravision (of use to a human only) with no end, and Find/Remove Traps 95%.",
     69: "Its name promises speed, but it has no other power.",
     70: "Against undead: double damage on d100 <= 5 x (level of the undead - 4); otherwise the undead "
         "is destroyed.",
     71: "+2 to hit and +2 fire damage against a regenerating target, +4 and +4 against undead.",
-    75: "Not magic, despite the +2.",
+    75: "Not magic, despite the +2, and no bonus to hit.",
+    74: "No bonus to hit, despite the +1.",
 }
 
 # 0x37A6A, combat.md B6
@@ -1661,8 +1739,7 @@ POTIONS = {
          "forgotten now and then. The original 1.3 game rolls this each frame, so it depends on the "
          "frame rate; ASCENT corrects this.", "case 0x51"),
     82: ("Infravision for 10 to 80 minutes, in steps of 10.", "case 0x52"),
-    83: ("Invisibility for 30, 40, 50 or 60 minutes. This is the Potion of Invisibility of the 1.3 "
-         "readme; it repeats the name Potion of Agility.", "case 0x53"),
+    83: ("Invisibility for 30, 40, 50 or 60 minutes.", "case 0x53"),
     84: ("Invulnerability for 5 to 20 minutes: no spell damage, armor class -2, and creatures below "
          "level 4 or without a magic weapon cannot hurt you.", "case 0x54, 0x2A24A"),
     85: ("The spell Jump on you: 1d3 minutes + 1 per level.", "case 0x55"),
