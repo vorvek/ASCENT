@@ -10,6 +10,7 @@
  */
 
 #include "dtulang.h"		// ASCENT: the language of the text
+#include "dtulangart.h"	// ASCENT: the pictures of the language
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -167,6 +168,7 @@ static grs_bitmap *febgnd_load(int n)
 		bit++;
 	}
 	free(src);
+	dtu_lang_art_febgnd(bm, n);		// ASCENT: the picture of the language (dtulangart.h)
 	dtu_hdui_loaded(bm, n);		// ASCENT: the reference of the upscaled picture
 	return bm;
 }
@@ -384,6 +386,21 @@ static void blit(grs_bitmap *src, int sx, int sy, int w, int h, int dx, int dy, 
 		gr_bm_ubitblt(w, h, dx, dy, sx, sy, src, dest);
 		dtu_hdui_blit(src, sx, sy, w, h, dest, dx, dy, w, h);	// ASCENT: the upscaled picture
 	}
+}
+
+// ASCENT: the button sheet of the language, see dtu_display_init
+static int Button_sheet_lang = -1;
+
+static void load_button_sheet(void)
+{
+	int entry = Dtu_hires ? 70 : 78;
+
+	if (dtu_lang_art_has_febgnd(entry + dtu_lang_art_index()))
+		entry += dtu_lang_art_index();
+	if (Button_sheet)
+		gr_free_bitmap(Button_sheet);
+	Button_sheet = febgnd_load(entry);
+	Button_sheet_lang = Dtu_language;
 }
 
 static void fill(int x, int y, int w, int h, int color)
@@ -915,6 +932,11 @@ void dtu_display_select_mode(int mode)
 	Inv_held = -1;				// 0x361BF: the cursor lets go of the item
 	Inv_held_spell = -1;
 
+	// ASCENT: a new language loads the sheet and the picture again
+	if (Button_sheet_lang != Dtu_language && Button_sheet) {
+		load_button_sheet();
+		Interface_entry = -1;
+	}
 	if (mode_has_interface(mode)) {
 		entry = mode_picture(mode);
 		if (entry != Interface_entry || !Interface_bm) {
@@ -999,8 +1021,10 @@ int dtu_display_init(void)
 	Cursor_size = Dtu_hires ? 31 : 15;
 	// 0x98B78 and 0xAEEC4: the button sheet of the language. The tables at
 	// 0x145718 (high) and 0x145734 (low) give entry 70 + language and
-	// 78 + language. ASCENT: the language is English (0).
-	Button_sheet = febgnd_load(Dtu_hires ? 70 : 78);
+	// 78 + language. ASCENT: the language of the text; the sheets of the
+	// other languages on the disc are empty templates, so a language uses
+	// its sheet only if it has the picture (dtulangart.h), else English.
+	load_button_sheet();
 	if (Dtu_hires && !Patch_ok) {
 		char path[512];
 		memset(&Patch_bm, 0, sizeof(Patch_bm));

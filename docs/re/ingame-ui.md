@@ -136,6 +136,9 @@ Verified by loading code and by comparing the palettes:
   tables at 0x145718 and 0x145734. The entries 69 and 77 are empty templates
   ("English interface buttons" with rows Main, Inv, Map, Stat). The button
   records hold the positions of both images in the sheet.
+  The languages and the sheets on the disc: frontend.md, section 14; the
+  port uses the sheet of the language of the text when the language has
+  its picture (docs/formats/lang.md).
 - `HRISBTN.PCH`: a PCX file (96x80) with two 76x32 images of the button SPELLS
   of the high resolution inventory screen, both with the text "INV.": (2,2) the
   pressed image (PatchBtnDn), (2,36) the image at rest (PatchBtnUp). 0x9881C loads

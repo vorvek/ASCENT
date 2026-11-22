@@ -548,6 +548,10 @@ green. The grass of the original is a fine grain of green, brown and red pixels.
 difference max 3.7, mean 0.74, against 12.8 and 2.49 for the detail method). Make
 it again with `python -I tools/ui_hd.py --only 10 --force`.
 
+A language with pictures of its own (docs/formats/lang.md, "Pictures of the language") has an RGBA
+overlay `<hd>/lang/<code>/ui/febgnd_<n>.png` for a picture with English words; gpu.c draws it over
+the upscaled file when it makes the texture.
+
 Not upscaled: the portraits (87 to 150), icons (22 to 24), buttons (69 to 84) and
 cursors: they are drawn as the changing part of the interface. Picture 13 (the menu box stone of screen 5)
 has a palette that differs from the palette of its screen (picture 12), and

@@ -29,7 +29,7 @@ cmake --install build-rel --prefix build-rel/stage
 # Spanish text
 TEX_MB=520
 MOV_MB=490
-ES_KB=393
+ES_KB=2775
 if [ -f "$CONTENT/manifest.txt" ]; then
   TEX_MB=$(awk -F'\t' '$1=="textures"||$1=="ui" {s+=$5} END {printf "%d", s/1048576+0.5}' "$CONTENT/manifest.txt")
   MOV_MB=$(awk -F'\t' '$1=="movies" {s+=$5} END {printf "%d", s/1048576+0.5}' "$CONTENT/manifest.txt")

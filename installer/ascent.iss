@@ -36,7 +36,7 @@
   #define MOVIES_MB "490"
 #endif
 #ifndef LANG_ES_KB
-  #define LANG_ES_KB "393"
+  #define LANG_ES_KB "2775"
 #endif
 ; The content server: the one place is installer/content.ini.
 #define BaseUrl ReadIni(SourcePath + "content.ini", "content", "base_url", "")

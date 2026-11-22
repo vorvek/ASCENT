@@ -244,3 +244,52 @@ lower by the height of the accent; the inverted marks are the glyphs upside
 down). The other new characters (161 to 255) are drawn as a space. The font
 files do not change. The text functions read the bytes of a string as unsigned
 values (the Latin-1 letters are above 127).
+
+## Pictures of the language
+
+Some interface pictures have English words painted into them (the buttons of
+the play screen, the labels of the character creation, the market buttons).
+The list of the pictures and of the language versions on the disc is in
+`docs/re/frontend.md`, section "The words in the pictures". The pictures of a
+language are in `<lang dir>/<code>/` (the lang dir is the one of the catalog,
+above; the content pack installs them as `<hd>/lang/es/`):
+
+| File | Content |
+|---|---|
+| `orig/febgnd_<n>.png` | the 8-bit picture n of `FEBGND.DAT` |
+| `orig/egg_<name>.png` | the 8-bit bitmap `<name>` (small letters) of `PORTAL.EGG` |
+| `ui/febgnd_<n>.png` | the upscaled picture n: RGBA of the size of `<hd>/ui/febgnd_<n>.png`, drawn over it with its alpha when the texture is made |
+
+An 8-bit file is a PNG (gray and alpha, 8 bits) of the size of the picture:
+the gray value is the palette index, a pixel with alpha 0 keeps the pixel of
+the game file (alpha 128 or more: the index of the file). A file with alpha
+255 on every pixel is the whole picture. The program reads the files with
+stb_image (`engine/main/dtulangart.c`); a file of another size is not used.
+English has no files.
+
+Where the program uses them:
+
+- `febgnd_load` (`dtudisp.c`, all FEBGND pictures of the play screen, the
+  menus and the front end) changes the pixels of picture n after the load,
+  before the pixels become the reference of the upscaled picture. So the
+  upscaled picture is shown where the frame has the pixels of the language
+  picture.
+- The button sheet of the play screen is FEBGND 70 + language (640x480) or
+  78 + language (320x200), language 4 for Spanish (the tables 0x145718 and
+  0x145734 of DTUGAME.EXE; the sheets on the disc for the languages 4 to 6
+  are empty templates). The port loads the sheet of the language if the
+  language has the file `orig/febgnd_74.png` (or 82), else the English sheet.
+  A change of the language loads the sheet and the picture of the play
+  screen again at the next change of the mode.
+- `fe_egg_bitmap` (`dtufe.c`): a name whose last letter is `e` (the English
+  letter of 0xAEDC3) takes the letter of the language (`efgi123`, 0x145750:
+  `1` for Spanish) if the language has the file `orig/egg_<that name>.png`;
+  the file is the whole bitmap (the Spanish bitmaps on the disc are empty
+  templates).
+- The upscaled interface (`dtuhdui.c`, `plat_gpu_ui_picture`) draws
+  `ui/febgnd_<n>.png` over the upscaled file when it makes the texture; a
+  change of the language makes the texture again.
+
+`tools/ui_lang.py` makes the files (Codex CLI image generation on crops of
+the upscaled pictures, see its comment); `tools/content_pack.py lang_es`
+packs them.

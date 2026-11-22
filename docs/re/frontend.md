@@ -746,6 +746,81 @@ Settings (on by default, each corrects a defect of the executable):
 | `Dtu_fix_market_sell_count` | dtufe_town.c | a sale adds to the stock the items the player had in the line, not the items sold (0x8564F) | the items sold |
 | `Dtu_fix_escape_load_waterdeep` | dtufe.c | a save of Waterdeep loaded from the ESC menu gives the character but the game goes on in the level (0x423E1) | the player is in Waterdeep |
 
+## 14. The words in the pictures (V)
+
+DTUGAME.EXE has three ways to show an interface picture in another language
+(checked in `dtu_flat.bin` and in the files of the install):
+
+- The button sheets of the play screen: FEBGND 70 + language (602x188,
+  640x480 screen) and 78 + language (570x60 or 563x60, 320x200 screen); the
+  tables 0x145718 and 0x145734 hold 70 to 76 and 78 to 84. The language
+  numbers follow the letters `efgi123` at 0x145750: 0 English, 1 French,
+  2 German, 3 Italian, 4 Spanish, 5 and 6 (labelled "Nonsense" and
+  "Martian" on their sheets). The text of the sheets: English M I S R, USE,
+  LOCKS, DROP, SPELLS, INV., REST, MAP, STATS; French (71, 79) C I P R,
+  UTILISER, SELECT, LAISSER, SPELLS (English), INVENTAIRE, REPOS (one image
+  still REST), CARTE, PARAMETRES; German (72, 80) K I S A, BENUTZEN,
+  WAHLEN, WERFEN, SPELLS, INVENTAR, AUSRUHEN, KARTE, STATISTIK; Italian (73,
+  81) M I S P, USA, FISSO, RILASCIA, SPELLS, INVENTORIO, PAUSA, MAPPA,
+  STATISTICHE. 74 (Spanish), 75 and 76 are the English sheet with the name
+  of the language written over each button (templates), and so are 82 to
+  84. The low resolution sheets 80 and 81 have a width of 563 and 564 in
+  the index and look sheared when decoded with that width (not checked
+  further). `HRISBTN.PCH` (the second images of SPELLS, "INV.") has no
+  language version.
+- The bitmaps of PORTAL.EGG whose name ends with the language letter
+  (0xAEDC3 puts the letter of `efgi123` in place of the last `_`): the
+  pressed images of the market (`lbmwpnd_`, `lbmarmd_`, `lbmmscd_`,
+  `lbmbuyd_`, `lbmseld_`), of the quantity window (`lbpyesd_`, `lbprejd_`)
+  and the selected alignment labels (`lb4lg_d_`, `lb4ng_d_`, `lb4ln_d_`,
+  `lb4nu_d_`, `lb4cg_d_`, `lb4cn_d_`). Each has the versions `e`, `f`, `g`,
+  `i` (English, French, German, Italian words) and `1`, `2`, `3` (empty
+  templates: "Unknown 1, 2, or 3").
+- The language overlays of localize.c (0xAECAF, run after the load of a
+  screen; not read): FEBGND 162 to 167 (the five market buttons; 162
+  French ACHETER, VENDRE, ARMES, ARMURES, DIVERS, 163 German KAUFEN,
+  VERKAUFEN, WAFFEN, PANZER, VERSCHIED, 164 Italian ACQUISTA, VENDI, ARMI,
+  ARMATURA, VARIE, 165 to 167 templates), 168 to 172 (the name of the
+  Waterdeep screen: 168 French EAUPROFONDE, the others not read), 173 to
+  178 (the six alignment labels: all six are templates with the name of
+  the language) and 179 to 184 (ACCEPT and REJECT of the quantity window:
+  templates). The order is French first, so the entry is 161 + language
+  (and 167, 172, 178 + language): a guess from the order, the code was not
+  read.
+
+The English words of the pictures without a language version are painted
+into the pictures: FEBGND 2 (the title of character creation 1, in a mock
+Greek alphabet: XPEATION-XHA), 5 (NAME, PORTRAIT, ALIGNMENT and the six
+alignment labels), 14 (BUY, SELL, WEAPON, ARMOR, MISC.), 25 (ACCEPT,
+REJECT), the play screens 57 to 61, 63, 64, 65, 67 (the buttons, the
+same images as the sheet), 10 (WATERDEEP: a name, it stays). The play
+screens have the M I S R table also under the 3D view (not visible), and 66
+and 68 are unused test pictures.
+
+The port shows Spanish pictures (`docs/formats/lang.md`, "Pictures of the
+language"), made with `tools/ui_lang.py`:
+
+| Picture | Rectangle (x, y, w, h) | English | Spanish |
+|---|---|---|---|
+| FEBGND 2 | (262, 44, 140, 32) | XPEATION-XHA | XPEAXION-ΠJ (the same mock alphabet: CREACION-PJ) |
+| FEBGND 5 | (52, 54, 136, 36) | NAME | NOMBRE |
+| FEBGND 5 | (232, 64, 134, 34) | PORTRAIT | RETRATO |
+| FEBGND 5 | (414, 86, 158, 34) | ALIGNMENT | ALINEAMIENTO |
+| FEBGND 5, `lb4??_d1` | (434, 168..351, 128, 22) | LAWFUL GOOD, NEUTRAL GOOD, LAWFUL NEUTRAL, TRUE NEUTRAL, CHAOTIC GOOD, CHAOTIC NEUTRAL | LEGAL BUENO, NEUTRAL BUENO, LEGAL NEUTRAL, NEUTRAL AUTÉNTICO, CAÓTICO BUENO, CAÓTICO NEUTRAL |
+| FEBGND 14, `lbm???d1` | the buttons (427,15), (532,15), (452,81), (452,174), (453,265) | BUY, SELL, WEAPON, ARMOR, MISC. | COMPRAR, VENDER, ARMAS, ARMADURAS, VARIOS |
+| FEBGND 25, `lbp???d1` | (54,258) 145x56, (217,259) 143x56 | ACCEPT, REJECT | ACEPTAR, RECHAZAR |
+| FEBGND 74 (sheet 70) | all images of the buttons below | S, USE, DROP, SPELLS, MAP, REST, STATS | C, USAR, SOLTAR, CONJUROS, MAPA, REPOSO, CARACT. |
+| FEBGND 82 (sheet 78) | the images of S, USE, DROP | S, USE, DROP | C, USAR, SOLTAR |
+| FEBGND 63 | (16,348) 42x38 | S | C |
+| FEBGND 65 | (541,312), (454,354), (548,354), (18,324) | S, USE, DROP, SPELLS | C, USAR, SOLTAR, CONJUROS |
+| FEBGND 64, 67 | (454,312), (454,354), (547,354) | MAP, STATS, REST | MAPA, CARACT., REPOSO |
+| FEBGND 57, 58, 61 | (8,176), (227,177), (227,178) | S | C |
+| FEBGND 59, 60 | (274,156), (227,178), (273,178) | S, USE, DROP | C, USAR, SOLTAR |
+
+The M I S R table: M Mapa, I Inventario, C Características (the French sheet
+has P, the German S for Statistik), R Reposo. INV. (Inventario) stays.
+LOCKS (sheet 70, used by no button list of the port) stays English.
+
 ## Open questions
 
 1. The market: the meaning of node +0x25 (0x3533C, never read) and the order
