@@ -129,6 +129,11 @@ TESTS = [
     T("script_warp_state", "HUB1", "20:give=16.107,30:goseg=61,50:wall=40.4,60:warp=3.376,100:quest,110:warp=1.61,150:wall=40.4,155:quest",
       [r"wall 40\.4: type 4[\s\S]*quest: level 3 [\s\S]*wall 40\.4: type 4[\s\S]*quest: level 1 "], frames=170,
       extra=["-triglog", "-statelog"]),
+    # THIEF1: after the restore of its state, 0x5A855(0) switches trigger 34
+    # off (0x5A94E, the `on` byte 34 * 0x59 + 0x0E; D-070).
+    T("thief1_restore_rule", "THIEF1", "20:warp=7.612,60:warp=6.1,100:quest",
+      [r"level rule of the restore \(0x5A855\), level 6", r"quest: level 6 "], frames=120,
+      extra=["-triglog", "-statelog"]),
     # The spell effects of the player (the bits +0x88 of the player object)
     # stay after a warp (0xBB563).
     T("warp_keeps_effects", "HUB1", "10:damage=5,12:fx=3.600,14:cast=20,20:quest,30:warp=3.376,60:quest",

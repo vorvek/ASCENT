@@ -946,9 +946,10 @@ static void trig_level_rules(int last_trigger)
 // 0x5A855(0): after the restore of a level state (0x5AA75), fixed changes
 // of the triggers of five levels. level_index is the index in DTU.MSN.
 // - 2 (kobolds): trigger 1 (the one-time message of seg 167) is off.
-// - 6 (thief1): the executable clears byte 6 of trigger 34, a byte of the
-//   y coordinate of its position (sound position only, no effect seen). The
-//   port does not change the position.
+// - 6 (thief1): trigger 34 is off. ASCENT: 0x5A94E `mov byte ptr [esi +
+//   0xbe0], 0` is 34 * 0x59 + 0x0E, the `on` byte (the KOBOLDS store at
+//   0x5A945 is 0x59 + 0x0E). An older note read it as byte 6 of the
+//   position and left the rule out (D-070).
 // - 7 (thief2): the triggers 43 and 46 are on, and trigger 46 gets the
 //   flags, masks, textures, count, traps and message of trigger 43 (0x5A95A).
 // - 21 (drow2): trigger 20 runs the script of object 42 (object_num).
@@ -961,6 +962,10 @@ void dtu_trig_state_rules(int level_index)
 		case 2:
 			if (Dtu_num_triggers > 1)
 				Dtu_triggers[1].on = 0;
+			break;
+		case 6:
+			if (Dtu_num_triggers > 34)
+				Dtu_triggers[34].on = 0;
 			break;
 		case 7:
 			if (Dtu_num_triggers <= 46)

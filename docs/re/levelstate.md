@@ -131,7 +131,7 @@ of all triggers and traps.
 | Level | Rule |
 |---|---|
 | 2 kobolds | trigger 1 off (the one-time message of segment 167) |
-| 6 thief1 | byte 6 of trigger 34 = 0. That byte is part of the y coordinate of the position of the trigger (the sound position), not the `on` byte at 0x0E: a defect with no seen effect |
+| 6 thief1 | trigger 34 off: 0x5A94E `mov byte ptr [esi + 0xbe0], 0`, and 0xBE0 = 34 * 0x59 + 0x0E is the `on` byte (the KOBOLDS store at 0x5A945 is 0x59 + 0x0E). An older version of this note read it as byte 6 of the position |
 | 7 thief2 | triggers 43 and 46 on; trigger 46 gets the flags, the masks, the sound, the textures, the count, the skip count, the trap and trigger numbers, `object_num` and the message of trigger 43 (so it runs trap 17 in place of 18) |
 | 21 drow2 | `object_num` of trigger 20 = 42 (the script that 0xACCDB gives to object 42, objects.md) |
 | 32 flame | triggers 26, 32 and 33 on again (the one-time triggers of Lolth, object 36) |
