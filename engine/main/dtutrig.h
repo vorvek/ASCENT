@@ -143,8 +143,8 @@ extern int Dtu_fix_trigger_table;
 
 // The executable multiplies the trap times of the TAP file (seconds) by
 // 18.2 and compares the result with a clock that counts 1/100 second. A
-// time of 10 seconds is 1.82 seconds in the game. 0 (default): this rule.
-// 1: the times are seconds.
+// time of 10 seconds is 1.82 seconds in the game. 0 (-origtrig): this rule.
+// 1 (default): the times are seconds.
 extern int Dtu_fix_trap_seconds;
 
 // The trap action "close door" of the executable passes a wall number to
