@@ -3746,6 +3746,9 @@ void ReadControls()
 
 				case KEY_PAUSE:			do_game_pause(1); 		break;
 	  			case KEY_PRINT_SCREEN: 	save_screen_shot(0);		break;
+				// ASCENT: the key ` is a screenshot key of the target game
+				// (0x42FEC, the same call 0x80DA1 as Print Screen)
+				case KEY_LAPOSTRO:		if (Dtu_display_active) save_screen_shot(0);	break;
 
 				case KEY_SHIFTED+KEY_MINUS:
 				case KEY_MINUS:			shrink_window();			break;
