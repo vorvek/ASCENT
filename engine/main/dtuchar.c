@@ -356,11 +356,16 @@ int dtu_item_get(int type, int id, dtu_item_data *d)
 		d->melee = 1;
 		if (bm_tbl_get(r, "attack_type", value, sizeof(value)) && !stricmp(value, "PROJECTILE"))
 			d->melee = 0;
-		d->dice_sides = rec_int(r, "damage_dice", 0);
+		// ASCENT: the values of a line with no key are the ones of 0x207E7
+		// (the reader 0x209F3 calls it first): 1d6 (+0x0D 6, +0x0E 1) and a
+		// fire_wait of 0.25 (+0x64 0x4000), as bm_read_weapon. The port took
+		// 0 sides and 1.0: the arrows of the tables (weapon 10, 12, 74, 75)
+		// have no damage_dice key and rolled no dice.
+		d->dice_sides = rec_int(r, "damage_dice", 6);
 		d->dice_n = rec_int(r, "#damage_dice", 1);
 		d->damage_bonus = rec_int(r, "damage_bonus", 0);
 		d->to_hit_bonus = rec_int(r, "to_hit_bonus", 0);
-		d->attack_wait = rec_fix(r, "fire_wait", F1_0);
+		d->attack_wait = rec_fix(r, "fire_wait", F1_0 / 4);
 		d->hot_key_ok = 1;
 	}
 	else
@@ -2609,7 +2614,12 @@ static void weapon_attack(int weapon, dtu_attack *a)
 		a->dice_sides = 2;
 		return;
 	}
-	if (weapon >= 0 && dtu_item_get(OBJ_WEAPON, weapon, &d) && d.dice_sides > 0) {
+	// ASCENT: 0x2AAE7 and 0x2B06A take each weapon number that is not
+	// negative, with no test of the dice. The port sent a weapon with 0
+	// sides to the empty hand: the Flame Tongue (weapon 71, the table fixup
+	// 0x1B04A gives it 0d0 and 1d8 of fire) lost its +1, its fire and its
+	// bonus against undead. The damage roll adds nothing for 0 sides.
+	if (weapon >= 0 && dtu_item_get(OBJ_WEAPON, weapon, &d)) {
 		// 0x2AAE7 and 0x2B06A: the weapon
 		a->weapon_id = weapon;
 		a->melee = d.melee;
