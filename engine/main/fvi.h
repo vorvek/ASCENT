@@ -139,5 +139,7 @@ extern fix Fvi_dtu_cap_down, Fvi_dtu_cap_up;
 extern int Fvi_dtu_inside_hits;		// ASCENT: see dtu_check_vector_to_object() in fvi.c
 struct object;
 fix dtu_object_hit_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,struct object *obj,struct object *otherobj);
+// ASCENT: the object test of the query of DTUGAME.EXE (0x3EE70), see fvi.c
+fix dtu_body_query_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad_h,fix rad_v,struct object *obj);
 
 #endif

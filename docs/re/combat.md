@@ -275,8 +275,15 @@ the fire frame on (models.md, "The missile in the hand").
    Dagger, Short Sword, Short Sword +1, +2, Dagger +1, +2, Dagger of
    Impaling, Short Sword of Quickness).
 6. `find_vector_intersection` 0x3EFD9 from the center to `center + r *
-   normalize(center - position)`, radius r, flags 1 (objects), this object
-   = the attacker.
+   normalize(center - position)`, flags 1 (objects), this object = the
+   attacker. The query has the radius 0 at +0x14 and r at +0x18 (0x6D33E,
+   0x6D348; physics.md section 3): the walls are tested with 1.0, the floor
+   with 0 and the ceiling with 1.5 r (0x3F58C). The object test (0x3EE70,
+   0x4F7D5, physics.md section 3) adds 0 to the radius of a body and r to its
+   half height: r is a vertical reach only. The swing of a dagger (r about
+   17 with the factor 8) reaches far up and down, not to the sides.
+   fvi_sub keeps the nearest contact; a wall that is nearer than the object
+   wins, except the floor (side 3) against an object (0x3F8FF).
 7. Player only (0x6D3D0): if the query hit an object, or a wall whose side
    number (dword at hit data +0x14) is not 1 and not 3 ((guess) not the
    ceiling, not the floor): byte 0x1AF = 0, `[0x13D430]` = hit object, and the
@@ -1575,6 +1582,17 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   the bodies of creatures and scenery. A hit on frame 6 or 7 ends the swing. A wall that
   is not side 1 or 3 ends the swing and touches the trigger of the side
   (`dtu_trig_touch`, type 4).
+- The body test of the swing is the object test of the query of the executable
+  (`dtu_body_query_test` in fvi.c, A3 step 6): a capped cylinder about the position of
+  the object with the radius `body_radius[0]` and the half height `torso_half_height`
+  of the frame (`body_half_height[0]` without the torso box) plus r. The walls take the
+  radii of the swing query (`Fvi_dtu_body` 4 in fvi.c). The nearest contact wins, as in
+  fvi_sub. Before this the port used its general body test (`dtu_object_hit_test`): the
+  torso cylinder with r added to its radius, and any start point in it a hit at
+  distance 1, so the object with the lowest number won. With the dagger (r about 17)
+  the swing hit scenery and creatures beside and behind the player, and a creature in
+  front (the giant rats of BONES) lost to them, so the target hint never showed it.
+  The creature swing (dtuobj.c) still uses the general test.
 - The hit (0x278B5, 0x29A9C): the sounds of the contact, the to-hit roll of the
   character (`dtu_char_attack_roll`) against the armor class of the creature with its
   spell effects and the bonus of the effects of the player (Bless, Strength, Slow), a
@@ -1644,7 +1662,8 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   11.8) reaches through a thin wall: the swing touches it and the hint shows it.
   Checked in BANE (`-noattack`, `-objlog` line `combat: target hint`): long sword
   at `-testpos 25,-1,235,0` hint 1 and the swing touches the skeleton (roll missed),
-  at `25,-1,233,0` hint 0 and no contact; dart at `25,-1,215,0` hint 1 and the dart
+  at `25,-1,231,0` hint 0 and no contact (233 is in reach with the body test of the
+  executable, see C5); dart at `25,-1,215,0` hint 1 and the dart
   hits the skeleton; dart at `-160.7,14.6,162.7,0` hint 0 and the dart hits the
   wall; Magic Missile (SG0.SG) at `25,-1,215,0` hint 1, the missile homes on the
   skeleton; Burning Hands at the wall hint 0, the missiles hit the wall.
@@ -1868,3 +1887,24 @@ d20 of each attack roll.
     from 1 to 4 to 7, the first rest fills 7, the second rest ends it (1); the rule of
     the executable (`-origcombat`): the second cast has no effect, the maximum stays 4
     through three rests.
+- The body test of the swing (30 frames per second, `-noattack`, `-objlog` lines
+  `combat: contact obj`). Before is the port with its general body test, after the test
+  of the executable.
+  - BONES, the character of the user (half-elf thief with a dagger, r 16.97 to 17.78),
+    giant rat obj 8 (`-testpos -49.86,-3,Z,0`, the rat 6 to 16 ahead, it closes to
+    9.19): before, the swings hit the zombie obj 4 (not in front) in 2 or 3 of 3
+    swings at every distance and the hint changed on and off; after, all contacts are
+    the rat, from 6.0 to 12.0 across and 5.86 under the body, and the hint is 1 until
+    the rat dies. Long sword: the rat is touched before and after. Looking down
+    (`lookdown:20`) and `-noimprovements` give the same contacts (the test uses the
+    orientation of the body, not the view).
+  - BONES, crypts (tombstones) in rows of three 12.5 apart (obj 35, 37, 36 at z 62.5,
+    obj 38, 40, 39 at z 37.5), the player at x 122.5 facing +z: before, the dagger hit
+    the side crypt obj 35 first at z 50 to 57, and obj 35 or 36 from z 42 to 46 (crypts
+    behind and beside); after, only the middle crypt obj 37, from z 55 (dagger and long
+    sword), and nothing from z 42 to 53.
+  - BANE skeleton obj 10, long sword, `-testpos 25,-1,Z,0`: before, contact from z 235;
+    after, from z 233 (10.64 across: `body_radius[0]` of the skeleton is larger than
+    the torso radius that the port used). The fight of C5 above (a step and an attack
+    each 1.2 s from z 233): the same hits and kill times before and after (20 frames
+    per second: hit, kill at 1.90 s; 60: hit, miss, miss, kill at 4.18 s).

@@ -512,20 +512,29 @@ static int swing_test(int frame,int weapon,swing_contact *sc)
 	vm_vec_normalize_quick(&dir);
 	vm_vec_scale_add(&p1,&center,&dir,radius);
 
+	// 0x6D312 to 0x6D353: the query has the horizontal radius 0 (+0x14)
+	// and the vertical radius r (+0x18). fvi_sub (0x3F58C) then tests the
+	// walls with 1.0, the floor with 0 and the ceiling with 1.5 r.
 	fq.p0 = &center;
 	fq.p1 = &p1;
 	fq.startseg = seg;
-	fq.rad = radius;
+	fq.rad = 0;
 	fq.thisobjnum = obj-Objects;
 	fq.ignore_obj_list = NULL;
 	fq.flags = 0;
+	Fvi_dtu_body = 4;
+	Fvi_dtu_rad2 = radius;
 	fate = find_vector_intersection(&fq,&sc->hit);
+	Fvi_dtu_body = 0;
+	Fvi_dtu_rad2 = 0;
 	sc->fate = fate;
 	sc->object = -1;
 	sc->center = center;
 	sc->radius = radius;
 
-	// The objects (flag 1 of the query of the executable): each body
+	// The objects (flag 1 of the query of the executable): each body, with
+	// the object test of the query (0x3EE70, dtu_body_query_test in fvi.c).
+	// The nearest contact wins, as in fvi_sub.
 	for (i=0;i<=Highest_object_index;i++) {
 		object *o = &Objects[i];
 		fix d;
@@ -536,13 +545,18 @@ static int swing_test(int frame,int weapon,swing_contact *sc)
 			continue;
 		if (vm_vec_dist_quick(&o->pos,&center) > i2f(40))
 			continue;
-		d = dtu_object_hit_test(&ip,&center,fate == HIT_WALL ? &sc->hit.hit_pnt : &p1,radius,o,obj);
+		d = dtu_body_query_test(&ip,&center,&p1,0,radius,o);
 		if (d > 0 && d < best_d) {
 			best_d = d;
 			sc->object = i;
 			sc->ip = ip;
 		}
 	}
+	// fvi_sub 0x3F8FF: a wall nearer than the object wins, but not the floor
+	// (side 3) against an object. The distance of an object is the return
+	// of the object test (the radius of the body for a start point in it).
+	if (sc->object >= 0 && fate == HIT_WALL && sc->hit.hit_side != 3 && vm_vec_dist(&sc->hit.hit_pnt,&center) < best_d)
+		sc->object = -1;
 	return 1;
 }
 
@@ -575,6 +589,11 @@ static void swing_hit_test(void)
 		vm_vec_sub(&rel_c,&sc.center,&obj->pos);
 		dtu_obj_log("combat: test frame %d, sphere %.2f %.2f %.2f from the body, radius %.2f, wall %d side %d, object %d",
 			View_frame,f2fl(rel_c.x),f2fl(rel_c.y),f2fl(rel_c.z),f2fl(sc.radius),sc.fate,sc.fate == HIT_WALL ? hit->hit_side : -1,best);
+		if (best >= 0) {
+			vms_vector r = Objects[best].pos;
+			vm_vec_sub2(&r,&obj->pos);
+			dtu_obj_log("combat: contact obj %d at %.2f across, %.2f up from the body",best,f2fl(fix_sqrt(fixmul(r.x,r.x) + fixmul(r.z,r.z))),f2fl(r.y));
+		}
 	}
 
 	if (!swing_stops(&sc))
