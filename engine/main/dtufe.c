@@ -2043,8 +2043,10 @@ static void fe_options(void)
 }
 
 //------------------------------------------------------------------------
-// Credits (0x2C61B): the lines of IPHOF.TXT move up over the picture of
-// the screen, in a column at x 112 that is 416 wide. The music is track 2.
+// Credits (0x2C61B): the lines of IPHOF.TXT move up over FEBGND 160, in a
+// column at x 112 that is 416 wide. The music is track 2.
+
+#define CREDITS_PICTURE	160		// 0x2C67D: 0x2C5E6(0xA0)
 
 static void fe_credits(void)
 {
@@ -2069,6 +2071,14 @@ static void fe_credits(void)
 		if (*p == '\n') *p++ = 0;
 	}
 	total = n * Fe_font_m->ft_h;
+
+	// 0x2C5E6(0xA0): FEBGND 160 into the picture of the screen (0x80202),
+	// then fade out, show it and fade in (0x7F4CF). At the end 0x2C5E6(0xA)
+	// shows the Waterdeep picture again (the main menu loads its screen).
+	fe_fade_out();
+	gr_palette_clear();
+	fe_show_picture(CREDITS_PICTURE);
+	fe_fade_in();
 
 	dtumusic_play(DTUMUSIC_CREDITS, DTUMUSIC_LOOP_FOREVER, 100);
 	fe_input_clear();

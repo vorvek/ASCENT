@@ -626,10 +626,12 @@ game.
 
 ## 11. Credits (credits.c, 0x2C61B) (V)
 
-`iphof.txt`, music stream 2 (khelben.tun) looped at volume 100. The lines
-scroll up in a column at x 112, 416 wide, 470 high from y 5 (blit
-0xE0820), over the picture of the screen that was loaded before (Waterdeep
-from the menu). Defaults (0x2CEA7): medium font, row height = the height of
+`iphof.txt`, music stream 2 (khelben.tun) looped at volume 100. 0x2C5E6(0xA0)
+loads FEBGND 160 (a street of Waterdeep at dusk) into the picture of the
+screen (0x80202) and shows it with a fade out and a fade in (0x7F4CF); at the
+end 0x2C5E6(0xA) shows FEBGND 10 (Waterdeep) the same way. The lines scroll
+up in a column at x 112, 416 wide, 470 high from y 5 (blit 0xE0820), over
+that picture. Defaults (0x2CEA7): medium font, row height = the height of
 the medium font, hue 7, transparent background, centered. A line that starts
 with `;` is a comment and `~` starts a command (0x2CBD1): `~Sl` / `~Ss` large
 or small font, `~Jc` `~Jl` `~Jr` justification, `~cN` hue N. IPHOF.TXT has
