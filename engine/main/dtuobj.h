@@ -153,6 +153,39 @@ extern int Dtu_fix_corpse_floor;
 // first scanline after a change, near black. Corrected: the tint is for the
 // object only, and both mappers draw the blue ramp. -origobj clears it.
 extern int Dtu_fix_magic_tint;
+
+// The members of the Shadow Thieves at the level start when the player
+// is in the guild (quest flag 67). Original: the creature setup by name
+// (0xAC7B2) makes 15 of their creature types peaceful, then add_npc
+// (0xAC431) makes each one without a "say" script hostile again, with no
+// act of the player. Corrected: the peace of the setup stays. -origobj
+// and -origguildpeace clear it. See docs/re/ai.md, "Creature setup by name".
+extern int Dtu_fix_guild_peace;
+
+// The hatchling of DROW5 (object 83) at the level fixes (0xAD2A1).
+// Original: its shields come from the hit points of the type with the
+// object number as the index (past the monster table, a word that is 0),
+// so it starts with 0 hit points. Corrected: the hit points of its type
+// (100, set by the same fix). -origobj and -origdrow5 clear it.
+extern int Dtu_fix_drow5_shields;
+
+// The spellcaster of KOBOLDS (object 19). Original: the level fix 0xACF23
+// gives its type weapon 18 only on a level with no saved state, so after
+// the player comes back the creature setup makes the spell weapon -33 of
+// the table weapon 33 with 1d4. Corrected: weapon 18 at each visit.
+extern int Dtu_fix_kobold_weapon;
+
+// The hit points of scenery at the restore of a level (0xAE3F2 at
+// 0xBB1A7). Original: each piece gets 1.0, also one that the level fix
+// gave 256 (DROW5 object 13, IBBALAR object 2) or that was hit. Corrected:
+// the saved hit points stay.
+extern int Dtu_fix_scenery_restore;
+
+// The texture of the two spinning pieces of scenery of BANE (0xAD003).
+// Original: one of four lava texture numbers that the start of the
+// previous level looked up (0 if that level has no such texture).
+// Corrected: the numbers of BANE.
+extern int Dtu_fix_bane_texture;
 // 0x670D4: 0, 1 a magic object, 2 a creature with a magic weapon.
 int dtu_magic_look(object *obj);
 void dtu_set_tint(int tint);

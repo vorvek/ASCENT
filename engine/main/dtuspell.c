@@ -2686,6 +2686,26 @@ static int cspell_state(object *obj)
 	return n;
 }
 
+// The restore of a level (0xAE3F2 at 0xBB1A7): the points of the type, the
+// two times are the time of the restore, no condition bits. The chosen
+// entry (ailp+0x2C) comes from the saved AI block in the executable; the
+// port has none there and keeps no entry.
+void dtu_spell_creature_restore(object *obj)
+{
+	int n;
+
+	if (obj == NULL || obj->type != OBJ_ROBOT)
+		return;
+	n = obj-Objects;
+	Cspell[n].signature = obj->signature;
+	Cspell[n].points[0] = creature_points(obj,0);
+	Cspell[n].points[1] = creature_points(obj,1);
+	Cspell[n].recharge_time = GameTime;
+	Cspell[n].cast_time = GameTime;
+	Cspell[n].chosen = -1;
+	Cspell[n].cond = 0;
+}
+
 void dtu_spell_creature_event(object *obj,int bits)
 {
 	if (obj == NULL || obj->type != OBJ_ROBOT)

@@ -2173,6 +2173,16 @@ static void test_flags(void)
 	}
 }
 
+void dtu_script_test_flags(void)
+{
+	static int first = 1;
+
+	if (first) {
+		first = 0;
+		test_flags();
+	}
+}
+
 void dtu_script_level_start(void)
 {
 	static int first = 1;

@@ -42,6 +42,10 @@ too.
   end loads and saves of save games, level states). At most 3000 in one session.
 - `Error()`, `Warning()` and `Int3()` (at most 500 warnings), the messages of SDL, the
   OpenGL errors (`glGetError` every 5 seconds, at most 50), the shader errors.
+- With the test option `-setuplog`: one line for each creature setup by name at a level
+  start (`creature setup (0xAC7B2), level L: obj N NAME type T script S: ...; before ...;
+  after ...`, the values of the type before and after) and one for each `add_npc`
+  (`hostile` or `peaceful`, awareness, target). `tools/check_creature_setup.py` reads them.
 - The last line `Session end: normal exit` or `Session end: exit after an error`. A log
   without it is the log of a session that crashed or was stopped.
 

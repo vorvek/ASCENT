@@ -427,12 +427,10 @@ item are the values of table entry `[id]`. The values of the file are not used.
 4. Open the script data file (the "GAB data file").
 5. For each object 1 to the highest index:
    - Type 2: `creature_fixes` (0xAC7B2). It changes table entries by the name of the
-     creature type (`hatchlng`, `fmephit`, `imephit`, `lmephit`, `flayer`, `flaynpc`,
-     `spectatr`, `gargoyle`, names that start with `lich`, and a list of `s...` names).
-     On level 0 it also gives each creature 200 hit points (`shields` = 200.0, table
-     `max_hit_points` = 200, `str` = 19, `score_value` = 10000) (0xACC3C).
+     creature type and the object. See ai.md, "Creature setup by name".
    - Type 2, or any type with a script number: if the object is not yet in the NPC
-     table (0xAC3C3), add it (`add_npc`, 0xAC431).
+     table (0xAC3C3), add it (`add_npc`, 0xAC431). A full table (100) ends the loop.
+   Steps 4 and 5 run only if the script data file opens (0xAD771 skips them).
 
 `init_ai_objects` (0x1065D) still exists, but it skips type 2 (0x10685). It calls
 `init_ai_object` (0x1038B) only for an AI object that is not a creature, and that
@@ -498,12 +496,30 @@ segment 486) ends the game after the death of Lolth. Without these two
 script numbers the last level cannot be finished.
 
 The port: `level_fixes_tables` and `level_fixes_objects` in dtuobj.c, called
-by `dtu_objects_level_setup` before the creatures are set up (the object part
-not in the setup of a restore, `dtu_objects_level_setup_restore`). Not in the
-port: object flag 0x40, the run time texture of BANE, the hit points of
-DROW5 object 83, +0x7C of CLAN3, the YPINN values (the `add_npc` of the port
-makes these creatures peaceful at each setup), the times of KOBOLDS object
-19 and control type 0 of MYRKUL object 3 (the hold keeps it in place).
+by `dtu_objects_level_setup`. The table part runs before the object setup,
+the object part after it (setup_creature is the object setup of the load in
+the executable) and before the creature setup by name; the object part is
+not in the setup of a restore (`dtu_objects_level_setup_restore`). The
+saved-state test of KOBOLDS also guards the weapon of the type: with a state
+the creature setup gives the weapon -33 of the table the weapon 33 and 1d4
+(checked with the decompilation, recovered/level_fixes.md). A restore keeps
+the type entries of the setup of the level file (dtuobj.c `Setup_ext`), as
+the executable reads no type table from the state.
+
+DROW5 object 83 (the hatchling): the executable reads the hit points of the
+type with the object number as the index (Robot_info[83] + 0x78, 0x393232,
+past the table: a word that is 0 in each run, recovered/level_fixes.md), so
+the hatchling starts with 0 hit points. `Dtu_fix_drow5_shields` (on;
+`-origobj` and `-origdrow5` clear it) gives it the 100 hit points of its type.
+
+Not in the port: object flag 0x40 and +0x1AE bit 2 (MULHOR1, FLAME; the
+meaning is not known), +0x144 bit 0 of YPINN object 41 (a piece of scenery),
+the texture of BANE objects 26 and 27 (the executable takes one of four
+texture numbers that the previous level start looked up: `lava02`, `lava`,
+`lavaflo`, `magma`, 0xAD744, so the value depends on the level before),
++0x1A8 (the port has one spell timer, +0x1C0), and control type 0 of MYRKUL
+object 3 (the damage and AI code of the port test CT_AI; the hold with no end
+keeps it in place).
 
 Test: `-level FLAME -testpos 0,-7.92,452.5,0 -testmove wait:20,use:5,wait:100
 -scriptlog -objlog FILE`: the object log has "level fix (0xACCDB), level 32:
