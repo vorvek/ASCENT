@@ -759,9 +759,33 @@ PH_RE = re.compile(r'%[-+ #0]*(?:\d+|\*)?(?:\.(?:\d+|\*))?(?:hh|h|ll|l|L|z|j|t)?
 MARK_RE = re.compile(r'~[a-z]\d*')
 TOK_RE = re.compile(r'\{(?:%s)\}' % '|'.join(GAB_TOKENS), re.I)
 ESC_RE = re.compile(r'\\x[0-9A-Fa-f]{2}')
+# The sex of the player: {sex:MALE|FEMALE} (docs/formats/lang.md)
+SEX_RE = re.compile(r'\{sex:([^{}|]*)\|([^{}|]*)\}')
+SEX_ANY_RE = re.compile(r'\{\s*sex', re.I)
+
+
+def sex_forms(tr):
+    """The text for a male and for a female player."""
+    return SEX_RE.sub(lambda m: m.group(1), tr), SEX_RE.sub(lambda m: m.group(2), tr)
 
 
 def check_entry(e, tr, problems):
+    if SEX_ANY_RE.search(SEX_RE.sub('', tr)):
+        problems.append(('error', e['id'], 'a token {sex:MALE|FEMALE} is not well formed: '
+                         'exactly one "|", no braces and no "|" in the forms'))
+    forms = sorted(set(sex_forms(tr)), key=lambda f: len(unescape(f)))
+    found = []
+    for form in forms:
+        for p in check_form(e, form):
+            # the room: the longer form counts
+            if p not in found and (p[0] != 'long' or form is forms[-1]):
+                found.append(p)
+    problems.extend(found)
+
+
+def check_form(e, tr):
+    """The problems of one form of a translation (the tokens resolved)."""
+    problems = []
     en = e['en']
     kind = e['id'].split('.')[0]
     if kind in ('port', 'tex', 'say', 'gab', 'tbl'):
@@ -808,6 +832,7 @@ def check_entry(e, tr, problems):
                 problems.append(('long', e['id'], '%d characters, the room is about %d' % (len(l), limit)))
     elif kind == 'tex' and '\\n' not in en and len(en) >= 6 and len(tr) > len(en) * 1.6 + 4:
         problems.append(('long', e['id'], '%d characters, the English text has %d (check the place)' % (len(tr), len(en))))
+    return problems
 
 
 def cmd_merge(args, write=True):
