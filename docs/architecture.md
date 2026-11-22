@@ -119,9 +119,8 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origmusic` | `start_music` | `dtumusic.c` |
 | `-origlight` | `light_stable` | `lighting.c` |
 
-`Dtu_fix_trap_seconds` is an exception: it is off by default and the option
-`-trapseconds` turns it on, because the state files store the trap timers
-in the unit of the original. Five corrections have no option yet:
+`Dtu_fix_trap_seconds` is on by default as the others (`-origtrig` clears it).
+The state files keep the trap timers in the unit of the original. Five corrections have no option yet:
 `escape_load_waterdeep` (`dtufe.c`), `market_charisma` and
 `market_sell_count` (`dtufe_town.c`), `script_new_char` and
 `script_abilities` (`dtuscript.c`).

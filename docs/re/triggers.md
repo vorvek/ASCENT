@@ -387,8 +387,8 @@ that are on. `-trapseconds` sets `Dtu_fix_trap_seconds`.
 
 `Dtu_fix_trap_seconds` is on: the loader of the executable scales seconds by 18.2
 but its clock counts 1/100 second, so a trap time of N seconds lasts 0.182 * N
-seconds. This is a unit defect. The old reason to keep it off was that the executable does not depend on the frame
-rate here, and the levels were tested with the short times.
+seconds. This is a unit defect. The shipped levels were
+tested with the short times, so `-origtrig` restores them.
 
 ## 10. Not known
 
