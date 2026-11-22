@@ -3,15 +3,18 @@
 
 Output: <hd>/textures/<egg>/<name>.png, RGBA 8-bit, 4 times the width and the
 height of the bitmap. <egg> is the archive base name in lower case, <name> is
-the bitmap name of the EGG in lower case with '#' replaced by '_'. Alpha is 0
-where the bitmap has the transparent flag and the pixel is color 255, 255
-elsewhere. <hd>/textures/<egg>/index.txt has one "name w h" line per file
+the bitmap name of the EGG in lower case with '#' replaced by '_'. Alpha is
+255 for a bitmap without the transparent flag; with it, the mask of color 255
+upscaled with smooth edges (0 outside, 255 inside, a ramp of about one pixel
+between). <hd>/textures/<egg>/index.txt has one "name w h" line per file
 (the EGG name with '#', the original size). The default <hd> is gamedata/hd,
 which git ignores. Never commit the output: it is derived from the game data.
 
   python -I tools/textures_hd.py [--setup] [--only portal,bane] [--method NAME]
   python -I tools/textures_hd.py --compare      (comparison sheets of the methods)
   python -I tools/textures_hd.py --check portal (quality checks of a finished set)
+  python -I tools/textures_hd.py --out DIR --only kobolds --names flame8,well1
+                                (only these bitmaps again, into a copy of a set)
 
 --setup makes a virtual environment in <hd>/venv (PyTorch with CUDA, spandrel,
 Pillow, numpy) and downloads the models into <hd>/models. The tool runs itself
@@ -26,10 +29,14 @@ Steps for each bitmap (interface art, flag 0x40, is skipped):
      bitmap) are padded by wrapping with TILE_PAD pixels (a 3x3 tiling of a
      64x64 texture), the others by mirroring with PAD pixels,
   3. upscale x4 (the method, on the GPU), crop the padding,
-  4. alpha: the opaque mask is upscaled (bicubic, same padding) and cut at
-     50 percent,
+  4. alpha: the opaque mask (same padding) is blurred, upscaled bicubic and
+     cut at 50 percent with a ramp of one output pixel (smooth_alpha),
   5. the mean color of the opaque pixels is moved back to the mean of the
-     original (a constant offset per channel).
+     original (a constant offset per channel),
+  6. animations (frames base#N with a static part, anim_groups): the pixels
+     that change little or not at all take the result of one reference
+     frame plus the color change, so that the static parts do not shimmer
+     (anim_merge).
 Equal bitmaps (same pixels, size, flags and tiling rule) are upscaled once;
 the other files are hard links (or copies) of the first one.
 """
@@ -49,16 +56,43 @@ ROOT = os.path.normpath(os.path.join(HERE, ".."))
 HD_DIR = os.path.join(ROOT, "gamedata", "hd")
 GAME_DIR = "E:/UNDAMONTAN/DTU"
 UNPACKED = os.path.join(ROOT, "gamedata", "unpacked")
+MODELS_DIR = None    # --models; else <out>/models, then gamedata/hd/models
 sys.path.insert(0, HERE)
 import egg  # noqa: E402
 
-VERSION = 3          # bump when the processing changes; written to .method, so
+VERSION = 4          # bump when the processing changes; written to .method, so
                      # that a run makes the files of an archive again
                      # 2: wall textures use the "detail" method
                      # 3: tiling textures padded by TILE_PAD (a 3x3 tiling)
+                     # 4: soft alpha edges (ALPHA_VERSION), animations with
+                     #    a common static part (ANIM_VERSION)
 CACHE_VERSION = 2    # part of the cache key of every bitmap; the key of a
                      # tiling bitmap also has TILE_PAD, so a change of the
                      # tiling padding does not redo the other bitmaps
+# The key of a bitmap with transparency has ALPHA_VERSION, the key of a
+# frame of an animation has ANIM_VERSION, so a change of one of them redoes
+# only those bitmaps.
+ALPHA_VERSION = 2    # 2: the mask is blurred, upscaled and cut with a
+                     # 1 pixel ramp (smooth_alpha)
+ANIM_VERSION = 1     # 1: one reference frame for the pixels that change
+                     # little or not at all (anim_merge)
+# smooth_alpha: the sigma of the gaussian blur of the mask, source pixels
+ALPHA_SIGMA = 1.0
+# anim_merge: a pixel whose color differs from the reference frame by more
+# than ANIM_LIGHT (of 255, largest channel) is a changing pixel. The result
+# of the reference is used fully from ANIM_RAMP0 + ANIM_RAMP source pixels
+# away from the changing pixels, not at all up to ANIM_RAMP0. An animation
+# needs ANIM_MIN_STATIC of its opaque pixels equal in all frames (a torch in
+# a niche: 64 to 98 percent; lava and waterfalls change everywhere and keep
+# the result of each frame).
+ANIM_LIGHT = 40
+# the color difference to the reference is blurred with this sigma (source
+# pixels): the light of a flame is drawn as a dither that changes from frame
+# to frame, which would show as a grain at 4x
+ANIM_LIGHT_SIGMA = 1.0
+ANIM_RAMP0 = 0.5
+ANIM_RAMP = 2.0
+ANIM_MIN_STATIC = 0.3
 SCALE = 4
 PAD = 16             # source pixels of padding on each side
 TILE_PAD = 64        # the same for a tiling bitmap, by wrapping: a 64x64
@@ -278,6 +312,8 @@ def ensure_venv(hd):
         pass
     vpy = venv_python(hd)
     if not os.path.isfile(vpy):
+        vpy = venv_python(HD_DIR)       # an --out directory with no venv of its own
+    if not os.path.isfile(vpy):
         sys.exit("no virtual environment in %s: run with --setup first" % hd)
     if os.path.abspath(sys.executable).lower() == os.path.abspath(vpy).lower():
         sys.exit("the virtual environment lacks numpy, torch or Pillow: run with --setup")
@@ -324,7 +360,9 @@ class Upscaler:
     def model(self, method):
         if method not in self.models:
             import spandrel
-            p = os.path.join(self.hd, "models", MODELS[method][0])
+            p = os.path.join(MODELS_DIR or os.path.join(self.hd, "models"), MODELS[method][0])
+            if not os.path.isfile(p):
+                p = os.path.join(HD_DIR, "models", MODELS[method][0])
             if not os.path.isfile(p):
                 sys.exit("%s: missing, run with --setup" % p)
             desc = spandrel.ModelLoader().load_from_file(p)
@@ -433,8 +471,52 @@ def pad_img(a, tiling):
     return np.pad(a, pw, mode="wrap" if tiling else "symmetric")
 
 
+def gauss_blur(a, sigma):
+    """Separable gaussian blur of a 2D float image (edges by reflection)."""
+    import numpy as np
+    r = max(1, int(sigma * 3 + 0.5))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k = (k / k.sum()).astype(np.float32)
+    p = np.pad(a, r, mode="reflect")
+    h, w = a.shape
+    t = sum(k[i] * p[:, i:i + w] for i in range(2 * r + 1))
+    return sum(k[i] * t[i:i + h, :] for i in range(2 * r + 1))
+
+
+def smooth_alpha(opaque, tiling):
+    """Alpha (float 0..1) at SCALE times the size of the opaque mask, with smooth edges.
+
+    The mask (padded as the colors) is blurred with ALPHA_SIGMA, upscaled
+    bicubic, and cut at 0.5 with a ramp of one output pixel: the signed
+    distance to the 0.5 line is estimated as (f - 0.5) / |grad f|. A plain
+    upscale of the 1-bit mask keeps the stair steps of the source pixels;
+    the blur makes them a smooth line. A source pixel that the blur would
+    lose (a line or a dot of 1 pixel, opaque or transparent) keeps its
+    square, so that a line of 1 pixel stays a line (a disk for each pixel
+    made a dotted line of the transparent top row of arch4)."""
+    import numpy as np
+    import torch
+    S = SCALE
+    h, w = opaque.shape
+    p = pad_of(tiling)
+    b = gauss_blur(pad_img(opaque.astype(np.float32), tiling), ALPHA_SIGMA)
+    f = torch.nn.functional.interpolate(torch.from_numpy(np.ascontiguousarray(b))[None, None],
+                                        scale_factor=S, mode="bicubic", align_corners=False)[0, 0].numpy()
+    gy, gx = np.gradient(f)
+    c = p * S
+    f = f[c:c + h * S, c:c + w * S]
+    g = np.hypot(gy, gx)[c:c + h * S, c:c + w * S]
+    d = np.clip((f - 0.5) / np.maximum(g, 1e-3), -S, S)
+    bs = b[p:p + h, p:p + w]
+    weak_in = (opaque & (bs < 0.5)).repeat(S, 0).repeat(S, 1)
+    weak_out = (~opaque & (bs >= 0.5)).repeat(S, 0).repeat(S, 1)
+    d = np.where(weak_in, np.maximum(d, 1.0), d)
+    d = np.where(weak_out, np.minimum(d, -1.0), d)
+    return np.clip(0.5 + d, 0.0, 1.0)
+
+
 class Job:
-    __slots__ = ("key", "w", "h", "tiling", "rgb", "opaque", "has_alpha", "result", "meth")
+    __slots__ = ("key", "w", "h", "tiling", "rgb", "opaque", "has_alpha", "result", "meth", "idx")
 
 
 def make_job(m, pal, tiling, method):
@@ -458,12 +540,15 @@ def make_job(m, pal, tiling, method):
         h.update(("wrap%d|" % TILE_PAD).encode())
     h.update(opaque.tobytes())
     h.update(np.ascontiguousarray(rgb).tobytes())
+    if j.has_alpha:
+        h.update(("alpha%d|" % ALPHA_VERSION).encode())
     if effect.any():
         # a new key for the bitmaps with effect colors only: the others
         # keep their files and cache entries
         h.update(b"effect|")
         h.update(effect.tobytes())
     j.key = h.hexdigest()
+    j.idx = idx
     j.result = None
     j.meth = method
     return j
@@ -472,22 +557,19 @@ def make_job(m, pal, tiling, method):
 def finish(j, up_rgb, method):
     """Crop, alpha, mean color. Returns (RGBA uint8, color diff before, after)."""
     import numpy as np
-    import torch
     W, H = j.w * SCALE, j.h * SCALE
     c = pad_of(j.tiling) * SCALE
     rgb = up_rgb[c:c + H, c:c + W] * 255.0
     if j.has_alpha:
         if method == "nearest":
-            a = j.opaque.repeat(SCALE, 0).repeat(SCALE, 1)
+            soft = j.opaque.repeat(SCALE, 0).repeat(SCALE, 1).astype(np.float32)
         else:
-            m = torch.from_numpy(pad_img(j.opaque.astype(np.float32), j.tiling))[None, None]
-            m = torch.nn.functional.interpolate(m, scale_factor=SCALE, mode="bicubic",
-                                                align_corners=False)[0, 0].numpy()
-            a = m[c:c + H, c:c + W] >= 0.5
-            if not a.any():
-                a = j.opaque.repeat(SCALE, 0).repeat(SCALE, 1)
+            soft = smooth_alpha(j.opaque, j.tiling)
+            if not (soft >= 0.5).any():
+                soft = j.opaque.repeat(SCALE, 0).repeat(SCALE, 1).astype(np.float32)
     else:
-        a = np.ones((H, W), bool)
+        soft = np.ones((H, W), np.float32)
+    a = soft >= 0.5
     orig = j.rgb[j.opaque] * 255.0
     mo = orig.mean(0) if len(orig) else np.zeros(3)
     sel = rgb[a] if a.any() else rgb.reshape(-1, 3)
@@ -497,7 +579,7 @@ def finish(j, up_rgb, method):
     after = np.abs(rgb[a].astype(np.float64).mean(0) - mo).max() if len(orig) and a.any() else 0.0
     out = np.empty((H, W, 4), np.uint8)
     out[..., :3] = rgb
-    out[..., 3] = np.where(a, 255, 0)
+    out[..., 3] = np.rint(soft * 255).astype(np.uint8)
     return out, float(before), float(after)
 
 
@@ -520,6 +602,121 @@ def upscale_jobs(jobs, ups, progress=None):
             done += len(part)
             if progress:
                 progress(done)
+
+
+# ---------------------------------------------------------------- animations
+
+def anim_groups(bitmaps):
+    """base name -> frames (in frame order) of the animations that anim_merge changes:
+    two or more frames of one size that are not all equal, with at least
+    ANIM_MIN_STATIC of the opaque pixels equal in all frames."""
+    import numpy as np
+    groups = {}
+    for m in bitmaps:
+        if m.frame is not None and not m.error and not m.flags & egg.BM_UNKNOWN_40:
+            groups.setdefault(m.base, []).append(m)
+    out = {}
+    for base, fl in groups.items():
+        fl.sort(key=lambda m: m.frame)
+        if len(fl) < 2 or len({(m.w, m.h) for m in fl}) != 1:
+            continue
+        idx = np.stack([np.frombuffer(m.pix, np.uint8) for m in fl])
+        static = (idx == idx[0]).all(0)
+        opaque = np.stack([(i != 255) | (not m.flags & egg.BM_TRANSPARENT)
+                           for i, m in zip(idx, fl)]).any(0)
+        if not static.all() and opaque.any() and (static & opaque).sum() >= ANIM_MIN_STATIC * opaque.sum():
+            out[base] = fl
+    return out
+
+
+def anim_key(raw_keys, i):
+    """The cache key of frame i of an animation: its own key and the keys of all frames."""
+    h = hashlib.sha1(("anim%d|%g|%g|%g|%g|%d|" % (ANIM_VERSION, ANIM_LIGHT, ANIM_LIGHT_SIGMA, ANIM_RAMP0,
+                                                   ANIM_RAMP, i)).encode())
+    for k in raw_keys:
+        h.update(k.encode())
+    return h.hexdigest()
+
+
+def static_weight(static, tiling):
+    """Weight (float, SCALE times the size) of the common static result: 0 up to
+    ANIM_RAMP0 source pixels from a pixel that changes, 1 from ANIM_RAMP0 +
+    ANIM_RAMP on, linear between. The distance is an octagonal estimate
+    (alternate 4- and 8-neighbor steps at the output size), wrapped for a
+    tiling bitmap."""
+    import numpy as np
+    S = SCALE
+    dyn = (~static).repeat(S, 0).repeat(S, 1)
+    steps = int(np.ceil((ANIM_RAMP0 + ANIM_RAMP) * S)) + 1
+    dist = np.full(dyn.shape, float(steps), np.float32)
+    dist[dyn] = 0.0
+    cur = dyn.copy()
+    for k in range(1, steps + 1):
+        if tiling:
+            p = np.pad(cur, 1, mode="wrap")
+        else:
+            p = np.pad(cur, 1, mode="edge")
+        n = p[1:-1, :-2] | p[1:-1, 2:] | p[:-2, 1:-1] | p[2:, 1:-1]
+        if k % 2 == 0:
+            n |= p[:-2, :-2] | p[:-2, 2:] | p[2:, :-2] | p[2:, 2:]
+        new = n & ~cur
+        dist[new] = k
+        cur |= n
+    # the distance from the edge of the changing pixels, in source pixels
+    d = np.maximum(dist - 0.5, 0) / S
+    return np.clip((d - ANIM_RAMP0) / ANIM_RAMP, 0.0, 1.0)
+
+
+def anim_merge(jobs, results):
+    """Make the frames of one animation agree where the source pixels agree.
+
+    Each frame is upscaled alone, so the parts that do not move (the niche
+    and the holder of a torch, the wall behind) come out a little different
+    in each frame and shimmer when the animation plays. In a torch the light
+    of the flame also changes the colors of the niche by a few shades from
+    frame to frame; the model turns these small changes into changes of the
+    shapes. So one frame is the reference (the frame closest to the median
+    of the frames). Where a frame differs from the reference by up to
+    ANIM_LIGHT, its result is the result of the reference plus the bicubic
+    upscale of the color difference: the same detail in every frame, the
+    colors of the frame. Where it differs more (the flame), the frame keeps
+    its own result; between the two the weight ramps over ANIM_RAMP source
+    pixels (static_weight), so no seam shows. A pixel that no frame changes
+    gets the result of the reference in every frame. Equal frames stay
+    equal. jobs: the jobs of the frames (rgb, opaque); results: RGBA uint8
+    per frame. Returns the new list."""
+    import numpy as np
+    import torch
+    S = SCALE
+    rgb = np.stack([j.rgb for j in jobs]) * 255.0
+    op = np.stack([j.opaque for j in jobs])
+    med = np.median(rgb, axis=0)
+    r = int(np.argmin([np.abs(c - med)[o].sum() for c, o in zip(rgb, op)]))
+    tiling = jobs[0].tiling
+    p = pad_of(tiling)
+    h, w = jobs[0].h, jobs[0].w
+    ref = results[r].astype(np.float32)
+    out = []
+    for k, j in enumerate(jobs):
+        if j.key == jobs[r].key:
+            out.append(results[r])
+            continue
+        d = rgb[k] - rgb[r]
+        big = ((np.abs(d).max(-1) > ANIM_LIGHT) & (op[k] | op[r])) | (op[k] != op[r])
+        d[big] = 0.0
+        d[~(op[k] | op[r])] = 0.0
+        wt = static_weight(~big, tiling)[..., None] if big.any() else np.ones((h * S, w * S, 1), np.float32)
+        dp = pad_img(d.astype(np.float32), tiling)
+        dp = np.stack([gauss_blur(dp[..., c], ANIM_LIGHT_SIGMA) for c in range(3)], -1)
+        dt = torch.from_numpy(np.ascontiguousarray(dp.transpose(2, 0, 1)))[None]
+        du = torch.nn.functional.interpolate(dt, scale_factor=S, mode="bicubic",
+                                             align_corners=False)[0].numpy().transpose(1, 2, 0)
+        du = du[p * S:p * S + h * S, p * S:p * S + w * S]
+        light = ref.copy()
+        light[..., :3] += du
+        own = results[k].astype(np.float32)
+        out.append(np.clip(np.rint(wt * light + (1 - wt) * own), 0, 255).astype(np.uint8))
+    return out
 
 
 def save_png(path, rgba):
@@ -618,7 +815,7 @@ def halo_score(o4, up):
     import numpy as np
 
     def edge_lum(img):
-        op = img[..., 3] > 0
+        op = img[..., 3] >= 128     # a soft edge counts from half
         p = np.pad(op, 1, mode="constant", constant_values=True)
         nb = p[:-2, 1:-1] & p[2:, 1:-1] & p[1:-1, :-2] & p[1:-1, 2:]
         e = op & ~nb
@@ -652,17 +849,43 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats):
             continue
         dst = os.path.join(outdir, out_name(m.name) + ".png")
         index.append((m, dst))
+        if args.names is not None:
+            if m.base.lower() in args.names:
+                todo.append((m, dst))
+            else:
+                kept += 1
+            continue
         if (not args.force and not stale and os.path.isfile(dst) and os.path.getmtime(dst) > src_mtime
                 and not (args.redo_effects and has_effect_colors(m))):
             kept += 1
             continue
         todo.append((m, dst))
     # build jobs, reuse the cache of equal bitmaps
-    jobs, pending, linked = {}, [], 0
-    for m, dst in todo:
+    groups = anim_groups(bitmaps)
+
+    def job_of(m):
         wall = m.base.lower() in walls
         tiling = (m.w == 64 and m.h == 64) or wall
-        j = make_job(m, pal, tiling, sub_method(args.method, wall))
+        return make_job(m, pal, tiling, sub_method(args.method, wall))
+
+    jobs, pending, linked = {}, [], 0
+    anims = {}          # base -> (jobs of all frames, final keys, {frame number: [dst]})
+    for m, dst in todo:
+        if m.base in groups:
+            if m.base not in anims:
+                gj = [job_of(f) for f in groups[m.base]]
+                keys = [anim_key([g.key for g in gj], i) for i in range(len(gj))]
+                anims[m.base] = (gj, keys, {})
+            gj, keys, want = anims[m.base]
+            i = [f.frame for f in groups[m.base]].index(m.frame)
+            cp = os.path.join(cache_dir, keys[i] + ".png")
+            if os.path.isfile(cp):
+                link(cp, dst)
+                linked += 1
+                continue
+            want.setdefault(i, []).append(dst)
+            continue
+        j = job_of(m)
         cp = os.path.join(cache_dir, j.key + ".png")
         if os.path.isfile(cp):
             link(cp, dst)
@@ -671,7 +894,8 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats):
         if j.key not in jobs:
             jobs[j.key] = (j, [])
         jobs[j.key][1].append(dst)
-    total = len(jobs)
+    anims = {b: a for b, a in anims.items() if a[2]}
+    total = len(jobs) + sum(len({g.key for g in a[0]}) for a in anims.values())
     last = [time.time()]
 
     def progress(done):
@@ -696,11 +920,29 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats):
                 link(cp, d)
             report.append((eggname, os.path.basename(dsts[0]), before, after))
             j.result = j.rgb = None
+    # animations: all frames of a group, then the common static part
+    done = len(lst)
+    for base, (gj, keys, want) in sorted(anims.items()):
+        uniq = {}
+        for g in gj:
+            uniq.setdefault(g.key, g)
+        upscale_jobs(list(uniq.values()), ups)
+        done += len(uniq)
+        progress(done)
+        res = anim_merge(gj, [uniq[g.key].result[0] for g in gj])
+        for i, dsts in want.items():
+            cp = os.path.join(cache_dir, keys[i] + ".png")
+            save_png(cp, res[i])
+            for d in dsts:
+                link(cp, d)
+            r = uniq[gj[i].key].result
+            report.append((eggname, os.path.basename(dsts[0]), r[1], r[2]))
     with open(os.path.join(outdir, "index.txt"), "w", newline="\n") as f:
         for m, dst in index:
             f.write("%s %d %d\n" % (m.name, m.w, m.h))
-    with open(mfile, "w") as f:
-        f.write("%s %d\n" % (args.method, VERSION))
+    if args.names is None:      # a run of some names leaves the other files as they are
+        with open(mfile, "w") as f:
+            f.write("%s %d\n" % (args.method, VERSION))
     el = time.time() - t0
     size = sum(os.path.getsize(d) for _, d in index if os.path.isfile(d))
     print("%s: %d files (%d kept, %d from the cache, %d upscaled), %d interface skipped, "
@@ -762,7 +1004,7 @@ def check_set(args):
         outdir = os.path.join(args.out, "textures", name)
         bm = [m for m in read_archive(archives[name]) if not m.error and not m.flags & egg.BM_UNKNOWN_40]
         seams, seams_o, colors, halos, sizes_ok = [], [], [], [], 0
-        alpha_ok = 0
+        alpha_ok, alpha_soft = 0, 0
         frames = {}
         ups = {}
         for m in bm:
@@ -773,14 +1015,16 @@ def check_set(args):
             ok = im.mode == "RGBA" and up.shape == (m.h * 4, m.w * 4, 4)
             sizes_ok += ok
             a = up[..., 3]
-            alpha_ok += bool(np.isin(a, (0, 255)).all())
+            binary = bool(np.isin(a, (0, 255)).all())
+            alpha_ok += binary or bool(m.flags & egg.BM_TRANSPARENT)
+            alpha_soft += not binary
             tiling = (m.w == 64 and m.h == 64) or m.base.lower() in walls
             op = o[..., 3] > 0
             if tiling and op.all() and m.base.lower() in walls and m.w == m.h == 64:
                 seams.append((m, up))
             if op.any():
                 mo = o[..., :3][op].astype(np.float64).mean(0)
-                mu = up[..., :3][a > 0].astype(np.float64).mean(0) if (a > 0).any() else mo
+                mu = up[..., :3][a >= 128].astype(np.float64).mean(0) if (a >= 128).any() else mo
                 colors.append((float(np.abs(mu - mo).max()), m.name))
             if not op.all() and op.any():
                 h = halo_score(o.repeat(4, 0).repeat(4, 1), up)
@@ -789,7 +1033,8 @@ def check_set(args):
             if m.frame is not None:
                 frames.setdefault(m.base, []).append((m.frame, m.name))
             ups[m.name] = (o, up)
-        print("%s: %d files, size and mode right: %d, alpha only 0/255: %d" % (name, len(bm), sizes_ok, alpha_ok))
+        print("%s: %d files, size and mode right: %d, alpha 0/255 or a transparent bitmap: %d, soft alpha: %d"
+              % (name, len(bm), sizes_ok, alpha_ok, alpha_soft))
         if seams:
             seam_check(seams, pal, walls, outdir, args)
         if colors:
@@ -826,6 +1071,20 @@ def check_set(args):
             worst_pairs.sort(reverse=True)
             print("  largest ratios: " + ", ".join("%s/%s %.2f (%.2f -> %.2f)" % (a, b, r, do, du)
                                                      for r, do, du, a, b in worst_pairs[:4]))
+        # the animations of anim_merge: the output of the pixels that no
+        # frame changes, frame to frame (0 in the middle of a static area)
+        st = []
+        for base, fl in anim_groups(bm).items():
+            idx = np.stack([np.frombuffer(m.pix, np.uint8).reshape(m.h, m.w) for m in fl])
+            static = ((idx == idx[0]).all(0)).repeat(4, 0).repeat(4, 1)
+            outs = [ups[m.name][1].astype(np.float32) for m in fl]
+            for ua, ub in zip(outs, outs[1:]):
+                sel = static & (ua[..., 3] == 255) & (ub[..., 3] == 255)
+                if sel.any():
+                    st.append((float(np.abs(ua[..., :3] - ub[..., :3]).max(-1)[sel].mean()), base))
+        if st:
+            print("  animations with a static part: %d frame pairs, mean difference of the static pixels "
+                  "median %.2f, max %.2f (%s)" % (len(st), np.median([v for v, _ in st]), max(st)[0], max(st)[1]))
 
 
 # ---------------------------------------------------------------- comparison sheets
@@ -913,10 +1172,22 @@ def main():
     ap.add_argument("--force", action="store_true", help="redo existing files")
     ap.add_argument("--redo-effects", action="store_true",
                     help="redo the files of the bitmaps with effect colors (a set made before the fill of these colors)")
+    ap.add_argument("--names", help="make only the bitmaps of these base names (comma separated, "
+                    "frames included) again, in the archives of --only or all; the other files and "
+                    "the .method file stay")
+    ap.add_argument("--unpacked", help="directory of the unpacked archives (default gamedata/unpacked)")
+    ap.add_argument("--models", help="directory of the models (default <out>/models)")
     ap.add_argument("--compare", action="store_true", help="make comparison sheets in <hd>/work/texcompare")
     ap.add_argument("--compare-methods", default="nearest,scale4x,bicubic," + ",".join(MODELS) + ",combo")
     ap.add_argument("--check", help="check finished archives (comma separated)")
     args = ap.parse_args()
+    global UNPACKED, MODELS_DIR
+    if args.unpacked:
+        UNPACKED = args.unpacked
+    if args.models:
+        MODELS_DIR = args.models
+    args.names = ({n.strip().lower() for n in args.names.split(",") if n.strip()}
+                  if args.names else None)
     os.makedirs(args.out, exist_ok=True)
     if args.method not in ("combo", "detail") and args.method not in MODELS and args.method not in PLAIN_METHODS:
         sys.exit("unknown method %s" % args.method)

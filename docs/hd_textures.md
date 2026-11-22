@@ -12,7 +12,14 @@ python -I tools/textures_hd.py                      # all 57 archives (PORTAL, H
 python -I tools/textures_hd.py --only portal,bane   # some archives
 python -I tools/textures_hd.py --check portal,hmc   # quality checks of finished archives
 python -I tools/textures_hd.py --compare            # comparison sheets in gamedata/hd/work/texcompare
+python -I tools/textures_hd.py --out DIR --only kobolds --names flame8,well1
+                                                    # only these bitmaps (all frames) again, in DIR
 ```
+
+`--names` makes the named bitmaps again and leaves the other files and the `.method`
+file alone, for a test in a copy of a set (hard links of the archive directories).
+`--unpacked DIR` and `--models DIR` give the unpacked archives and the models when
+the tool runs from another checkout (a git worktree has no `gamedata`).
 
 `--method NAME` picks another method (`combo`, the default, or one model or baseline
 of the table below), `--force` redoes existing files, `--redo-effects` redoes the
@@ -39,10 +46,12 @@ case, `<name>` the EGG bitmap name in lower case with `#` replaced by `_`. RGBA 
 `name w h` per file (EGG name with `#`, original size). No two bitmaps of one archive
 map to the same file name (checked for all 57 archives).
 
-Alpha is 0 or 255. It is 0 only where the bitmap has the transparent flag (0x01) and
-color 255 (after the 4x upscale of the mask, see below). The RGB of transparent
-pixels holds the color of the nearest opaque pixels, so bilinear filtering in the
-renderer makes no dark fringe.
+Alpha is 255 for a bitmap without the transparent flag (0x01). With the flag it is
+the mask of color 255 upscaled with smooth edges (step 4 below): 0 outside, 255
+inside, and a ramp of about one output pixel at the edge (since version 4; 0 or 255
+before). The RGB of transparent pixels holds the color of the nearest opaque
+pixels, so neither the bilinear filter nor the blend of a soft edge makes a dark or
+bright fringe.
 
 Equal bitmaps (same pixels, size, flags and rule) are upscaled once. They are stored in
 `textures/.cache/<sha1>.png`, and the archive files are hard links to them. The level
@@ -84,10 +93,14 @@ For each bitmap:
    models is larger than that, so the result depended on where the picture ended
    (see Seams below).
 3. Upscale x4 on the GPU (fp16, batches of equal size), then crop the padding.
-4. Alpha: the opaque mask, padded the same way, upscaled bicubic and cut at 0.5.
+4. Alpha: the opaque mask, padded the same way, blurred (gaussian, sigma 1 source
+   pixel), upscaled bicubic and cut at 0.5 with a ramp of one output pixel (see
+   Smooth edges below). Before version 4: upscaled bicubic and cut at 0.5.
 5. Mean color: the mean RGB of the opaque output pixels is moved to the mean of the
    original opaque pixels with one offset per channel (the game applies its own
    lighting, so a brightness shift by the model would be wrong).
+6. Animations: the frames of an animation with a static part get the same result
+   where their source pixels change little or not at all (see Animations below).
 
 The method `combo` uses two models by a fixed rule:
 
@@ -160,6 +173,7 @@ shows double edges.
 
 `--check` result for all 57 archives (60282 files):
 
+- (Version 2 and 3; version 4 has a soft alpha edge, see Smooth edges.)
 - Size and mode: all 60282 files are RGBA at 4 times the size. Alpha holds only 0
   and 255 in all files.
 - Seams (opaque 64 x 64 wall textures, 617 to 684 per level archive): mean
@@ -240,9 +254,8 @@ player visit every segment with 4 headings.
 - The edge of a wall overlay (a door or a sign over a wall, `merge_top` of
   gputex.c) was cut with the mask of the original pixels, so the outline of
   `dleft2` (KOBOLDS segment 469) and of the sign `plate21` (segment 3) was
-  made of 4 x 4 blocks. The merge now uses the alpha of the upscaled overlay;
-  the holes of a super transparent overlay (color 254) still follow the
-  original pixels.
+  made of 4 x 4 blocks. The merge now uses the alpha of the upscaled overlay
+  (see Smooth edges for version 4).
 
 The red and brown double doors near the sign "Flood Control Unit 3" (HUB1
 segment 150: `gdor2` on `wood12`, segments 148, 149; KOBOLDS: `glasdr1` on
@@ -251,6 +264,134 @@ fresh start of the level, also during the opening of the door: no rule skips
 them, they are not interface bitmaps and their names match. The fault above is
 the cause found for a texture that stays 8-bit; the exact game state of the
 report (a level change or a load) was not reproduced.
+
+## Smooth edges (version 4)
+
+The outline of an overlay was still made of stair steps after the merge used the
+alpha of the file: the bicubic upscale of a 1-bit mask cut at 0.5 follows the
+source pixels and only rounds their corners. A torch niche (`flame8` on `wall1`,
+KOBOLDS segment 115; `flame4` on `wood22`, YPINN segment 119), the round stone ring
+of `sewge1` and the round opening of `well1` showed steps of one source pixel (4
+output pixels) along every curve.
+
+The tool (`smooth_alpha`): the mask is blurred with a gaussian of sigma 1 source
+pixel before the bicubic upscale, so a staircase becomes a straight or a curved
+line, and the cut at 0.5 has a ramp of one output pixel (the distance to the 0.5
+line is estimated as (f - 0.5) / |grad f|). A source pixel that the blur would lose
+(an opaque or a transparent dot or line of 1 pixel) keeps a disk of one source
+pixel across at its center. The opaque area stays the same: 0.1973 against 0.1980
+of the original for `flame4#0`, 0.5937 against 0.5945 for `sewge1`, 0.7462 against
+0.7468 for `well1`. Sigma 0.7 left small waves on the arch of `flame4` and the
+ring of `well1`; 1.0 does not.
+
+The engine (gputex.c):
+
+- `merge_top` blends the overlay over the wall with its alpha (the color under
+  the soft edge is the filled color of step 1, so no fringe). A wall pixel with
+  alpha 0 takes the overlay only where its alpha is 128 or more, so the merged
+  alpha stays 0 or 255 (the effect codes use the values between).
+- The holes of a super transparent overlay (color 254, the dark center of `well1`
+  and of the round openings) come from a smooth mask (`smooth_mask`: the same
+  blur of sigma 1, sampled bilinear and cut at 0.5, dots kept as disks) instead of
+  the 4 x 4 blocks of the original pixels.
+- The effect texels of a merged wall (`plat_gpu_fx_mark`, the see-through parts
+  of water and waterfalls) come from the same smooth mask of the effect colors; a
+  texel takes the code of the nearest source pixel with an effect color around
+  it. A texel that had an effect color but is outside the mask gets its color
+  from the texels around it (not the bright red of the palette entry). At the
+  original size (the 8-bit textures of the GPU renderer) the texels are the
+  source pixels, as before; the software renderer does not change.
+- A layer that is not an overlay (a sprite, a grate) cuts the alpha of its file
+  at 128 (0 or 255 for the alpha test), instead of using the mask of the
+  original pixels.
+
+A set of version 3 still works with the new engine: its alpha is 0 or 255, and the
+blend of `merge_top` then gives the merge of before. The new holes and effect
+masks need no new files.
+
+Game screenshots (1920 x 1440, `-fixedfps 30 -frames 60`, old engine and set
+against new engine and the files made again): the arch of `flame8` (KOBOLDS
+`-testpos -110,37.5,347.5,270`) and of `flame4` (YPINN `-testpos -140,0,200,0`,
+90 frames) has a smooth outline with no dark or bright fringe; the round opening
+with water behind it (KOBOLDS `-testpos 0,-15,327,0`) has a smooth hole edge, and
+the effect texels of the waterfall `wfal04` at the left are round dots and smooth
+areas instead of squares.
+
+## Animations (version 4)
+
+Each frame of a flipbook was upscaled alone. The model reacts to the whole
+picture, so the parts that do not move (the niche and the holder of a torch, the
+wall behind it) came out a little different in each frame and shimmered when the
+animation played. In the torch niches the original frames also change most of
+the niche by a few shades (the light of the flame, drawn as a dither that changes
+from frame to frame): of the 871 changing opaque pixels of `flame8`, 723 change by
+less than 24 of 255; the model turns these small changes into changes of the
+shapes of the stones.
+
+`anim_merge` takes the frames of one base name (`name#0`, `name#1`, ...; the
+frame number is in the EGG header, the tables play them as a `$WCLIP` or
+`$ECLIP`). An animation qualifies when its frames have one size, are not all
+equal, and at least 30 percent of the opaque pixels are equal in all frames
+(`ANIM_MIN_STATIC`). The reference is the frame closest to the per-pixel median.
+For each other frame:
+
+- a pixel whose color differs from the reference by more than 40 of 255
+  (`ANIM_LIGHT`, the largest channel) or whose transparency differs is a changing
+  pixel (the flame);
+- elsewhere the result is the result of the reference plus the bicubic upscale of
+  the color difference to the reference, blurred with sigma 1 source pixel (the
+  dither of the light would show as a grain): the same detail in every frame, the
+  colors of the frame;
+- the weight of that result ramps from 0 at 0.5 source pixels from a changing
+  pixel to 1 at 2.5 (`ANIM_RAMP0`, `ANIM_RAMP`), so no seam shows; the changing
+  pixels keep the frame's own result. The distance wraps for tiling bitmaps.
+
+Pixels that no frame changes get the result of the reference in every frame, and
+equal frames stay equal. The cache key of a frame has the keys of all frames of
+its animation and `ANIM_VERSION`.
+
+Over all 57 archives 81 base names qualify: the torches and candles (`flm1` to
+`flm7`, `flame2` to `flame19`, `candle1`, `candle2`), the door and lift clips
+(`gdor*`, `hdor*`, `idor1`, `dup*`, `down*`, `up*`, `dwide3`, `dwide4`,
+`glasdr1`, `shelfup1`, `wald1`, `wald2`), `light1` to `light3`, `port01` to
+`port04`, `magma`, `water2`, `chain1`, `blob03`, `arrow_a`, and the skins
+`beh_be01`, `beh_sp01`, `pq_a01`. Lava (`lava`, `lava02`, `lavaflo`) and the
+waterfalls change everywhere and keep the result of each frame.
+
+Measured on the files (consecutive frame pairs, pixels opaque in both, mean of the
+largest channel difference of 255; "detail" is the difference after a high-pass
+of sigma 4 output pixels, the change of shapes):
+
+| Animation | Static pixels, before | after | Light pixels (change 1 to 40), detail, before | after |
+|---|---|---|---|---|
+| `flame8` (14 frames) | 2.25 | 0.23 | 6.16 | 2.73 |
+| `flame4` (13) | 3.17 | 0.45 | 9.27 | 5.71 |
+| `flame3` (14) | 3.26 | 1.26 | | |
+| `gdor2` (13) | 2.76 | 0.15 | | |
+| `light1` (5) | 2.93 | 0.59 | | |
+| `magma` (6) | 4.25 | 2.18 | | |
+
+The changing pixels (the flame) keep their difference: 99.9 before, 99.7 after
+for `flame8`. In the game (KOBOLDS `flame8`, 6 screenshots 2 frames apart at
+`-fixedfps 30`), the mean difference of consecutive screenshots in the niche
+without the flame fell from 2.96 to 1.18 of 255, the high-pass part (the shimmer
+of the shapes) from 1.47 to 0.28; a wall area beside the niche has 0.00 in both,
+so the view did not move.
+
+## Making a set of version 4
+
+One run: `python -I tools/textures_hd.py` (all archives, no `--force`). Version 4
+marks every archive directory as stale, so every file is linked again from the
+cache. New cache keys, so these are upscaled again: every bitmap with the
+transparent flag and color 255 that is not in these animations (32970 archive
+files), and every frame of the 81
+animations above (15156 files); about 2800 distinct bitmaps (1574 wall bitmaps
+with the detail method, 1031 tiling and 201 other bitmaps with x4plus). The other
+bitmaps come from the cache. Measured: KOBOLDS alone, with the cache of version
+3, upscaled 2469 bitmaps (most of them shared with PORTAL) and linked 664 in 4
+minutes 23 s (about 10 per second). The other archives share most of these, so
+the full run should take about 10 to 15 minutes (estimate; the full run was not
+made).
 
 ## Making a set of version 2 again
 
