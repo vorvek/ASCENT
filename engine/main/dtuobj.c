@@ -1758,6 +1758,20 @@ static int damage_dice(object *attacker,object *target,int weapon)
 	sum += bonus;
 	if (weapon >= 0)
 		fire = dtu_weapon_extra_damage(attacker,target,weapon,&sum);
+	// 0x2B50C: the player is hurt: hard_sound when the damage as a fix is
+	// above the maximum hit points / 16 as an integer (nearly always), else
+	// hit_sound, at the player, volume 1/3, at most every 0.25 s (0x25C50)
+	if (target && target->type == OBJ_PLAYER) {
+		static fix next_hurt_sound = 0;
+
+		if (next_hurt_sound > GameTime + F1_0)
+			next_hurt_sound = 0;
+		if (next_hurt_sound < GameTime) {
+			next_hurt_sound = GameTime + F1_0/4;
+			sound_at(player_type_sound(i2f(sum) > f2i(dtu_player_max_hit_points()) / 16 ? "hard_sound" : "hit_sound"),
+				target->segnum,&target->pos,0x5555);
+		}
+	}
 	return rat_damage(attacker,sum,sum + fire);
 }
 
