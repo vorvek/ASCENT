@@ -18,7 +18,8 @@
 
 // Player movement without the drift of the Descent ship physics: the
 // player stops when the keys are released and does not slide in turns and
-// side steps. Objects (also dead creatures) settle on the floor. The
+// side steps. Objects settle on the floor (a dead creature: always, see
+// Dtu_fix_corpse_floor in dtuobj.h). The
 // corrections of the frame rate (jump, ladders, walls) are not here: they
 // are always on (Dtu_fix_* in physics.c).
 extern int Dtu_improved_physics;
@@ -30,8 +31,7 @@ extern int Dtu_improved_jump;
 
 // Paths for creatures of the size of a person: no stop at the openings of
 // corridors, and a larger body so that creatures stay at the distance of
-// their weapon. A dead creature lies on the floor (see docs/re/ai.md,
-// "Improved pathfinding").
+// their weapon (see docs/re/ai.md, "Improved pathfinding").
 extern int Dtu_improved_pathfinding;
 
 // The 3D view is rendered at this multiple of the original view size,

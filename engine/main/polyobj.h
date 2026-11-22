@@ -281,6 +281,13 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 // ASCENT: find a loaded model by its POF name (no case). Returns -1 if none.
 int polyobj_find_model(const char *name);
 
+// ASCENT: the box of the points of a model in the frame (-1: the rest
+// pose) as draw_polygon_model_frame() draws them, in the axes of the
+// model, relative to the position of the object (the body center of the
+// frame is taken away). The joint angles are applied, the hidden
+// submodels count. Returns 0 if the model has no points.
+int polyobj_frame_points_box(int model_num,int frame,vms_vector *mn,vms_vector *mx);
+
 // ASCENT: release all models. The next model gets number 0.
 void polyobj_free_all_models(void);
 

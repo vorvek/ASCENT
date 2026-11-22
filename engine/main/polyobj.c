@@ -1025,6 +1025,182 @@ void polyobj_get_body_center(int model_num,int frame,vms_vector *center)
 	*center = po->body_center[frame+1];
 }
 
+// ASCENT: the box of the drawn points of a model (see polyobj.h). The
+// matrix m is held as its columns (rvec, uvec, fvec): m p is
+// p.x*rvec + p.y*uvec + p.z*fvec, as g3_start_instance_angles() uses it.
+static void pts_mat_vec(vms_vector *dst,const vms_matrix *m,const vms_vector *p)
+{
+	dst->x = fixmul(p->x,m->rvec.x) + fixmul(p->y,m->uvec.x) + fixmul(p->z,m->fvec.x);
+	dst->y = fixmul(p->x,m->rvec.y) + fixmul(p->y,m->uvec.y) + fixmul(p->z,m->fvec.y);
+	dst->z = fixmul(p->x,m->rvec.z) + fixmul(p->y,m->uvec.z) + fixmul(p->z,m->fvec.z);
+}
+
+#define PTS_LE16(p)	((int)((p)[0] | ((p)[1] << 8)))
+#define PTS_LE32(p)	((int)((uint)(p)[0] | ((uint)(p)[1] << 8) | ((uint)(p)[2] << 16) | ((uint)(p)[3] << 24)))
+
+typedef struct {
+	const polymodel *po;
+	vms_matrix m;
+	vms_vector o;
+	vms_vector mn, mx;
+	int n;
+} pts_box_state;
+
+static void pts_box_point(pts_box_state *st,const ubyte *p)
+{
+	vms_vector v, w;
+
+	v.x = (fix)PTS_LE32(p);
+	v.y = (fix)PTS_LE32(p+4);
+	v.z = (fix)PTS_LE32(p+8);
+	pts_mat_vec(&w,&st->m,&v);
+	vm_vec_add2(&w,&st->o);
+	if (st->n == 0)
+		st->mn = st->mx = w;
+	else {
+		if (w.x < st->mn.x) st->mn.x = w.x;
+		if (w.y < st->mn.y) st->mn.y = w.y;
+		if (w.z < st->mn.z) st->mn.z = w.z;
+		if (w.x > st->mx.x) st->mx.x = w.x;
+		if (w.y > st->mx.y) st->mx.y = w.y;
+		if (w.z > st->mx.z) st->mx.z = w.z;
+	}
+	st->n++;
+}
+
+// The points of the opcode stream at ofs (the opcodes of interp.c).
+// Returns 0 if the stream leaves the model data.
+static int pts_box_walk(pts_box_state *st,int ofs,int depth)
+{
+	const ubyte *d = st->po->model_data;
+	int size = st->po->model_data_size, i;
+
+	if (depth > 32)
+		return 0;
+	while (ofs >= 0 && ofs + 4 <= size) {
+		int op = PTS_LE16(d+ofs), nv;
+
+		switch (op) {
+			case 0:		// OP_EOF
+				return 1;
+			case 1:		// OP_DEFPOINTS
+				nv = PTS_LE16(d+ofs+2);
+				if (ofs + 4 + 12*nv > size)
+					return 0;
+				for (i=0;i<nv;i++)
+					pts_box_point(st,d+ofs+4+12*i);
+				ofs += 4 + 12*nv;
+				break;
+			case 7:		// OP_DEFP_START
+				nv = PTS_LE16(d+ofs+2);
+				if (ofs + 8 + 12*nv > size)
+					return 0;
+				for (i=0;i<nv;i++)
+					pts_box_point(st,d+ofs+8+12*i);
+				ofs += 8 + 12*nv;
+				break;
+			case 2:		// OP_FLATPOLY
+				nv = PTS_LE16(d+ofs+2);
+				ofs += 30 + ((nv & ~1) + 1) * 2;
+				break;
+			case 3:		// OP_TMAPPOLY
+				nv = PTS_LE16(d+ofs+2);
+				ofs += 30 + ((nv & ~1) + 1) * 2 + 12*nv;
+				break;
+			case 4:		// OP_SORTNORM: both sides
+				if (ofs + 32 > size)
+					return 0;
+				if (!pts_box_walk(st,ofs + PTS_LE16(d+ofs+28),depth+1) ||
+					!pts_box_walk(st,ofs + PTS_LE16(d+ofs+30),depth+1))
+					return 0;
+				ofs += 32;
+				break;
+			case 5:		// OP_RODBM
+				ofs += 36;
+				break;
+			case 6:		// OP_SUBCALL (not in the models of the target game)
+				ofs += 20;
+				break;
+			case 8:		// OP_GLOW
+				ofs += 4;
+				break;
+			default:
+				return 0;
+		}
+	}
+	return 0;
+}
+
+static int pts_box_submodel(pts_box_state *st,int s,const vms_angvec *angles,const vms_matrix *pm,const vms_vector *po_,int depth)
+{
+	const polymodel *po = st->po;
+	vms_matrix lm, m;
+	vms_vector o;
+	const ubyte *row;
+	int i;
+
+	if (depth > MAX_POLYMODEL_SUBMODELS)
+		return 0;
+	if (angles)
+		vm_angles_2_matrix(&lm,(vms_angvec *)&angles[s]);
+	else
+		lm = vmd_identity_matrix;
+	// m = pm * lm (the columns of lm through pm), o = po + pm * offset
+	pts_mat_vec(&m.rvec,pm,&lm.rvec);
+	pts_mat_vec(&m.uvec,pm,&lm.uvec);
+	pts_mat_vec(&m.fvec,pm,&lm.fvec);
+	pts_mat_vec(&o,pm,&po->submodel_offsets[s]);
+	vm_vec_add2(&o,(vms_vector *)po_);
+
+	st->m = m;
+	st->o = o;
+	if (!pts_box_walk(st,po->submodel_ptrs[s],0))
+		return 0;
+	if (po->submodel_children == NULL)
+		return 1;
+	row = po->submodel_children + s*po->n_models;
+	for (i=0;i<po->n_models && row[i] != 0xff;i++)
+		if (row[i] < po->n_models && !pts_box_submodel(st,row[i],angles,&m,&o,depth+1))
+			return 0;
+	return 1;
+}
+
+int polyobj_frame_points_box(int model_num,int frame,vms_vector *mn,vms_vector *mx)
+{
+	pts_box_state st;
+	const vms_angvec *angles;
+	vms_matrix id;
+	vms_vector zero = ZERO_VECTOR, c;
+
+	if (model_num < 0 || model_num >= N_polygon_models)
+		return 0;
+	st.po = &Polygon_models[model_num];
+	if (st.po->model_data == NULL || st.po->n_models <= 0)
+		return 0;
+	if (frame > -1 && (st.po->anim_angles == NULL || frame >= st.po->n_frames))
+		frame = -1;
+	angles = (frame == -1) ? NULL : st.po->anim_angles + frame*st.po->n_models;
+	st.n = 0;
+	id = vmd_identity_matrix;
+	if (st.po->n_models > 1) {
+		if (!pts_box_submodel(&st,0,angles,&id,&zero,0))
+			return 0;
+	}
+	else {
+		// draw_polygon_model_frame() draws one submodel with no instance
+		st.m = id;
+		st.o = zero;
+		if (!pts_box_walk(&st,0,0))
+			return 0;
+	}
+	if (st.n == 0)
+		return 0;
+	polyobj_get_body_center(model_num,frame,&c);
+	vm_vec_sub(mn,&st.mn,&c);
+	vm_vec_sub(mx,&st.mx,&c);
+	return 1;
+}
+
 // The sorted draw of a model with more than one submodel (0x66E13 in
 // DTUGAME.EXE, newmodel.c). The model data has no SUBCALL opcode. Pass 1
 // walks the tree of the submodels and keeps the instance state and the
