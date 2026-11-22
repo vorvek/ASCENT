@@ -34,6 +34,10 @@ The assert strings name the files. Functions found so far:
 | displays.c | 0x3627E | load a portrait picture ("ImageNum < NumPics") |
 | displays.c | 0x36815 | scroll bar create (asserts name the `SBarDef` fields) |
 | displays.c | 0x3654C | scroll bar draw |
+| displays.c | 0x36704 | scroll bar: both arrows at rest (masked) |
+| displays.c | 0x363D4 | scroll bar: a click (arrows, bar) on a first-entry variable |
+| displays.c | 0x36DED | scroll bar: the point is in the whole scroll bar |
+| displays.c | 0x36F2A | the current list of the inventory screen: first-entry variable and count |
 | displays.c | 0x37253 | experience to the next level |
 | displays.c | 0x3601A, 0x3602E, 0x36038, 0x36042, 0x36024 | button actions: select mode 3, 4, 5, 0, 6 |
 | displays.c | 0x360D5 | button action: rest |
@@ -206,6 +210,86 @@ Tables of positions (pairs of 16-bit x, y; verified):
   down (604,366) 26x20 pressed image at (387,263). Low: bar (307,158) 7x29,
   up (307,150) 7x8 pressed at (300,150), down (307,187) 7x8 pressed at
   (300,187). High slider source (323,271) 25x12 (0x142F48).
+  These rectangles are parts of the `SBarDef` records of the next section.
+
+## Scroll bars (SBar, displays.c)
+
+Verified from 0x36815 (create), 0x3654C (draw), 0x36704, 0x363D4 (click),
+0x36DED and the callers 0x2FC3C, 0x2FF58, 0x3010C, 0x32945.
+
+`SBarDef` record (0x21 bytes): byte 0 vertical flag (1 in all four records),
+then 8 pointers to rectangles (x, y, w, h, 4 integers): `UpArrow`, `DnArrow`
+(the arrows on the screen), `GrabSlider` (source of the slider),
+`GrabBar` (the bar; it is also the place of the bar on the screen),
+`GrabUpArrowUp`, `GrabUpArrowDn`, `GrabDnArrowUp`, `GrabDnArrowDn` (sources
+of the arrow images at rest and pressed). All sources are in the interface
+picture (`Src`, 0x1B5654). The arrow images have the size of `UpArrow` and
+`DnArrow`.
+
+| SBar | Def high / low | UpArrow | DnArrow | GrabSlider | GrabBar | UpArrowUp | UpArrowDn | DnArrowUp | DnArrowDn |
+|---|---|---|---|---|---|---|---|---|---|
+| message box 0x1BD5B0, high | 0x14319A | (605,304) 26x20 | (604,365) 26x20 | (323,271) 25x12 | (605,324) 26x42 | (605,304) | (354,263) | (604,366) | (387,263) |
+| message box, low | 0x1431BB | (307,150) 7x8 | (307,187) 7x8 | (300,158) 7x4 | (307,158) 7x29 | (307,150) | (300,150) | (307,187) | (300,187) |
+| inventory list 0x1BD622, high | 0x143158 | (90,8) 19x16 | (89,277) 19x16 | (451,51) 17x12 | (89,24) 19x255 | (89,8) | (449,13) | (89,279) | (449,32) |
+| inventory list, low | 0x143179 | (46,3) 7x7 | (46,139) 7x7 | (9,65) 7x7 | (46,10) 7x129 | (30,96) | (9,96) | (30,122) | (9,122) |
+
+The sources of the high resolution inventory images at x 449 to 468 are under
+the game port (the 3D view covers them). The low resolution sources at x 9
+and 30 are inside list boxes of the picture (the areas cover them). The rest
+images of the high resolution arrows are taken 1 pixel left (up) and 2 pixels
+lower (down) than the place where they are drawn.
+
+SBar record (from 0x36815): +0x00 to +0x14 the six images, +0x18 a sub
+canvas of the screen at `GrabBar`, +0x1C and +0x20 sub canvases at the
+arrows, +0x24 the vertical flag, +0x25 1 while the arrows show the pressed
+images, +0x26 a reverse flag (0 in both creations), +0x2A the whole rectangle:
+x and y of `UpArrow`, the width of `GrabBar`, the height from the top of
+`UpArrow` to the bottom of `DnArrow` minus 1. +0x3A `GrabBar`, +0x4A the
+size of the slider, +0x52 `UpArrow`, +0x62 `DnArrow`.
+
+0x340BA creates the message box scroll bar in mode 0, 0x34197 the inventory
+scroll bar in the modes 3 and 6 (both resolutions; the flag 0x13AD44 is 1
+then).
+
+Draw 0x3654C (SBar, position p, count c): copy the bar image to the bar.
+If c > 0: p = min(p, c); the slider y in the bar is 0 for p = 0, bar height
+minus slider height for p >= c - 1, else p * fixdiv(bar height - slider
+height, c) in 16.16 (floor). The slider x is 0 (the left edge of the bar).
+The slider is drawn masked (color 255 is transparent). Then the arrows: with
+the mouse in `UpArrow` the pressed up image and the down image at rest, with
+the mouse in `DnArrow` the up image at rest and the pressed down image
+(both not masked, +0x25 = 1); else 0x36704: both rest images masked, +0x25 = 0.
+The inventory list calls it at its update (0x32945) with the first entry of
+the current list and the count minus 8, or 0 for ten entries or less (no
+slider).
+
+The list update and the draw run only when the dirty bit 2 of 0x1BD5A5 is
+set. 0x2FC3C: with no mouse button down and the click flag 0x13AD08 clear,
+arrows that show the pressed images (+0x25) are drawn at rest again.
+
+Click 0x363D4 (x, y, step, pointer to the first entry, maximum, SBar): in the
+whole rectangle only. In `UpArrow`: first -= step, 0 if below 0. In `DnArrow`:
+first += step, at most the maximum. In `GrabBar`: first = (y - bar y) /
+fixdiv(bar height - slider height, maximum) in 16.16 (the divisor is at least
+1), then clamped to 0..maximum. Each part sets the click flag 0x13AD08.
+
+Inventory list (0x3010C): in the modes 3 and 6, with the mouse button down,
+no item or spell at the cursor (0x13ADAF clear), the scroll bar present
+(0x13AD44) and the point in the whole rectangle (0x36DED). 0x36F2A gives the
+first-entry variable of the current list (0x13AD9F items, 0x13ADA5 mage
+spells, 0x13ADA9 cleric spells) and its count. A count of ten or less does
+nothing. Else 0x363D4 with step 2 (one row) and the maximum ((count - 1) / 10)
+* 10, then the first entry is clamped to ((count + 1) & ~1) - 10. The dirty
+bit 2 of 0x1BD5A5 is set and the click goes no further (no list box, no paper
+doll). A click in the bar can give an odd first entry. The test 0x1E9C70 is
+the state of the buttons in this frame (0x5299B), not a new press: the code
+runs in each frame while the button is down. So a held arrow moves one row
+in each frame, and a held button in the bar moves the list with the cursor
+(a drag). The bar has no page step. The executable reads no mouse wheel.
+
+The message box scroll bar (0x2FF58) works the same way with step 1 on the
+word at 0x13AE24 and the maximum (word 0x13AE26) minus the visible lines
+(0x1BD57C). The arguments of its draw call (0x34795) were not read.
 
 ## Areas (dispcanv.c)
 
@@ -415,8 +499,15 @@ levels, the six abilities, the five thief skills), the portrait number.
 The map screen draws the automap (automap.md). The SPELLS button and the spell
 lists of the inventory screen, and spells in the hot key boxes, are in the port
 (character.md, sections 6 and 14). Frame only: the spell tables of the
-statistics screen, the scroll bar of the inventory list. `HRISBTN.PCH` gives the
-second images of the button SPELLS.
+statistics screen. `HRISBTN.PCH` gives the second images of the button SPELLS.
+
+The scroll bar of the inventory list (item list and spell lists) is in the
+port as the original draws and handles it (section "Scroll bars"), with these
+port changes: an arrow acts at the press and repeats after 0.4 s ten times a
+second while the button is down (`Dtu_ui_key_repeat` 1: in each frame, as the
+original); the scroll bar acts only for a press that began on it (not with
+`Dtu_ui_key_repeat` 1); the mouse wheel over the list or the scroll bar moves
+the list one row (two entries) for each step (an addition).
 
 Guesses in the port: the keys (I, Tab, V, R, F3 from the manual, the key
 code of the original was not read), F3 changes between mode 0 and mode 7,
