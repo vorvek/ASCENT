@@ -354,7 +354,13 @@ in the image: version 1.3 never shows the eyes), torches (fetorch.c: table
 0x96263, which draws the next frame of each torch every 0x1000 (1/16 s), not
 masked, and starts again after the last), the scrolling text of
 the mission (FETXT, table 0x142840) with markup `~c ~s ~p ~e ~n ~m`, music
-stream 2 at volume 25. Exit circle (551,422) r 32 keys Esc X.
+stream 2 at volume 25. The phases of the frame callback (0x13E922): 0x8313C
+prepares the text and sets the start 2 s ahead; 0x83278 at that time starts
+the scroll; 0x8329A moves one pixel in a frame when the time 0x13E90C has
+come and sets the next 0x2800 after a new read of the clock (a late frame
+moves one pixel only); at the end of the text it calls SMusFade(100) and
+sets 10 s (0xA0000); then 0x83386 and 0x8339E release the text and install
+the empty phase 0x83A75. Exit circle (551,422) r 32 keys Esc X.
 
 Market (0x8474B, record 0x13F29E, FEBGND 14): section 6a.
 

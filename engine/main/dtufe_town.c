@@ -148,10 +148,13 @@ static int Bs_n_events, Bs_next_event;
 static grs_bitmap *Bs_face, *Bs_picture;
 static int Bs_frame, Bs_prev_frame;
 static fix Bs_start, Bs_face_time, Bs_end_time;
+// The text moves one pixel in a frame at most, when the time of the next
+// pixel (0x13E90C) has come (0x8329A)
+static int Bs_scroll;
+static fix Bs_pixel_time;
 // ASCENT: the time of the last frame of the screen. A frame that takes more
 // than BS_MAX_STEP (a load of upscaled pictures, a pause of the window)
-// moves the timers forward by the rest, so the text pauses instead of
-// jumping ahead. The original had no such long frames.
+// moves the timers forward by the rest. The original had no such long frames.
 static fix Bs_last;
 #define BS_MAX_STEP	(F1_0 / 10)
 static int Bs_state;			// 0: wait 2 seconds, 1: the text moves, 2: wait 10 seconds, 3: done
@@ -275,6 +278,8 @@ static void bs_init(fe_screen *s)
 
 	Bs_next_event = 0;
 	Bs_state = 0;
+	Bs_scroll = 0;
+	Bs_pixel_time = 0;
 	Bs_start = fe_time() + 2 * F1_0;			// 0x8313C
 	Bs_face_time = 0;
 	Bs_last = fe_time();
@@ -289,15 +294,27 @@ static void bs_frame(fe_screen *s)
 	if (now - Bs_last > BS_MAX_STEP) {
 		fix lost = now - Bs_last - BS_MAX_STEP;
 		Bs_start += lost;
+		Bs_pixel_time += lost;
 		Bs_end_time += lost;
 		Bs_face_time += lost;
 	}
 	Bs_last = now;
-	if (Bs_state == 0 && now >= Bs_start)
-		Bs_state = 1;
-	if (Bs_state == 1) {
-		// 0x8329A: one pixel each 0x2800 (0.156 seconds)
-		scroll = (int) ((now - Bs_start) / 0x2800);
+	if (Bs_state == 0) {
+		// 0x83278: at the time the scroll starts with the next pixel due
+		// at once, but the first pixel waits for the next frame
+		if (now >= Bs_start) {
+			Bs_state = 1;
+			Bs_scroll = 0;
+			Bs_pixel_time = 0;
+		}
+	} else if (Bs_state == 1) {
+		// 0x8329A: one pixel when its time has come, the next 0x2800
+		// (0.156 seconds) after this frame. A late frame moves one pixel.
+		if (now >= Bs_pixel_time) {
+			Bs_pixel_time = now + 0x2800;
+			Bs_scroll++;
+		}
+		scroll = Bs_scroll;
 		visible = scroll / line_h;				// lines that have started to show
 		while (Bs_next_event < Bs_n_events && Bs_event[Bs_next_event].line <= visible) {
 			bs_event *e = &Bs_event[Bs_next_event++];
@@ -309,14 +326,16 @@ static void bs_frame(fe_screen *s)
 				Bs_picture = (e->type == 'p') ? fe_febgnd(27 + e->value, pal) : NULL;		// 0x13E886
 			}
 		}
+		// 0x8329A: at the end of the text the music fades (SMusFade(100))
+		// in the same frame and the text stays for 10 seconds (0xA0000),
+		// then 0x83386 and 0x8339E release it
 		if (scroll >= Bs_n_lines * line_h) {
 			Bs_state = 2;
 			Bs_end_time = now + 10 * F1_0;
+			dtumusic_fade(100);
 		}
-	} else if (Bs_state == 2 && now >= Bs_end_time) {
+	} else if (Bs_state == 2 && now >= Bs_end_time)
 		Bs_state = 3;
-		dtumusic_fade(100);
-	}
 
 	// 0x82DEC: while the speech plays, another picture of the mouth
 	// after 0.1 to 0.15 seconds. With no speech: picture 2.
@@ -345,7 +364,7 @@ static void bs_draw(fe_screen *s)
 		fe_blit(Bs_picture, 80 - Bs_picture->bm_w / 2, 400 - Bs_picture->bm_h / 2, -1);
 
 	if (Bs_state == 1 || Bs_state == 2) {
-		scroll = (int) ((fe_time() - Bs_start) / 0x2800);
+		scroll = Bs_scroll;
 		if (scroll > Bs_n_lines * line_h)
 			scroll = Bs_n_lines * line_h;
 		gr_init_sub_canvas(&area, &grd_curscreen->sc_canvas, BS_TEXT_X, BS_TEXT_Y, BS_TEXT_W, BS_LINES * line_h);

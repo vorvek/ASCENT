@@ -75,8 +75,13 @@ static int Dim_up = 0;
 static fix Dim_time = 0;
 
 // The mouse (see the top of the file)
-static int Reply_y0[DLG_MAX_REPLIES], Reply_y1[DLG_MAX_REPLIES];	// the rows of each reply at the last draw
-static int Reply_shown = 0;				// the replies that the last draw showed
+static int Reply_y0[DLG_MAX_REPLIES], Reply_y1[DLG_MAX_REPLIES];	// the rows of each shown reply at the last draw
+static int Reply_shown = 0;				// the replies that the last draw showed, from Dlg_first
+
+// The replies in the reply area: the first (0x3D498C) and the count
+// (0x3D4984). A choice starts with none (0xB2280).
+static int Dlg_first = 0;
+static int Dlg_visible = 0;
 static int Area_x0, Area_x1, Area_y0, Area_y1, Area_ry;	// the window at the last draw, ry: the reply area
 static int Ptr_x, Ptr_y;				// the cursor position at the last poll
 static int Ptr_forced = 0;				// the immersive mode was turned off for the window
@@ -265,6 +270,8 @@ void dtu_dlg_start_choice(void)
 	Dlg_sel = -1;
 	Dlg_focus_replies = 1;
 	Dlg_scroll = 0;
+	Dlg_first = 0;
+	Dlg_visible = 0;
 	Dlg_wait_frames = 0;
 	// ASCENT: a click from before the choice does not choose
 	mouse_button_down_count(0);
@@ -293,6 +300,7 @@ static int digit_reply(int key)
 }
 
 static int chosen(int result);
+static void keep_reply_visible(void);
 
 // ASCENT: the mouse of the window. Returns a choice as dtu_dlg_poll does,
 // or -1.
@@ -312,7 +320,7 @@ static int mouse_poll(void)
 		return -1;
 	for (i = 0; i < Reply_shown; i++)
 		if (y >= Reply_y0[i] && y < Reply_y1[i])
-			hit = i;
+			hit = Dlg_first + i;
 	if (hit >= 0 && (moved || click)) {
 		Dlg_sel = hit;
 		Dlg_focus_replies = 1;
@@ -385,7 +393,7 @@ static int auto_choice(void)
 
 int dtu_dlg_poll(void)
 {
-	int key, r;
+	int key, r, replies, any = 0;
 
 	if (!Dlg_waiting)
 		return -1;
@@ -396,6 +404,10 @@ int dtu_dlg_poll(void)
 	}
 	ptr_force();
 	while ((key = key_inkey()) != 0) {
+		// the input function of the frame (0xB28F0 with the focus on the
+		// replies, 0xB2BED on the text, 0xB2B6F with no reply)
+		replies = Dlg_focus_replies && Dlg_n_replies > 0;
+		any = 1;
 		// ASCENT: 1 to 9 choose a reply at once
 		if ((r = digit_reply(key)) >= 0) {
 			Dlg_sel = r;
@@ -407,11 +419,20 @@ int dtu_dlg_poll(void)
 			return chosen(-2);
 		case KEY_ENTER:
 		case KEY_PADENTER:
-			if (Dlg_n_replies == 0)
-				return chosen(0);
-			// 0xB2A5E: the selection; -1 is no choice yet
-			if (Dlg_focus_replies && Dlg_sel >= 0)
-				return chosen(Dlg_sel);
+			// 0xB2B6F: with no reply Enter goes on, but only with the
+			// focus on the replies; with the focus on the text (0xB2BED)
+			// it does nothing
+			if (Dlg_n_replies == 0) {
+				if (Dlg_focus_replies)
+					return chosen(0);
+				break;
+			}
+			// 0xB2A5E: the selection. It is -1 only before the first
+			// frame of the choice; the window closes with it and 0xA7ADC
+			// ends the run as for Escape. The port returns -2 for it,
+			// since -1 here is "no choice yet".
+			if (Dlg_focus_replies)
+				return chosen(Dlg_sel >= 0 ? Dlg_sel : -2);
 			break;
 		case KEY_SPACEBAR:
 		case KEY_TAB:
@@ -428,7 +449,7 @@ int dtu_dlg_poll(void)
 			if (Dlg_focus_replies && Dlg_n_replies) {
 				if (--Dlg_sel < 0)						// 0xB2988
 					Dlg_sel = 0;
-			} else if (Dlg_scroll > 0)
+			} else if (!Dlg_focus_replies && Dlg_scroll > 0)	// 0xB2BED; 0xB2B6F: nothing
 				Dlg_scroll--;
 			break;
 		case KEY_DOWN:
@@ -436,12 +457,22 @@ int dtu_dlg_poll(void)
 			if (Dlg_focus_replies && Dlg_n_replies) {
 				if (++Dlg_sel >= Dlg_n_replies)		// 0xB2A1F
 					Dlg_sel = Dlg_n_replies - 1;
-			} else
+			} else if (!Dlg_focus_replies)				// 0xB2BED; 0xB2B6F: nothing
 				Dlg_scroll++;
 			break;
 		}
+		if (replies)
+			keep_reply_visible();
 	}
-	return mouse_poll();
+	// 0xB28F0 in a frame with no key: also with the selection -1, which
+	// becomes the first reply
+	if (!any && Dlg_focus_replies && Dlg_n_replies > 0)
+		keep_reply_visible();
+	r = mouse_poll();
+	// ASCENT: the wheel can move the selection out of the reply area
+	if (r == -1 && Dlg_focus_replies && Dlg_n_replies > 0)
+		keep_reply_visible();
+	return r;
 }
 
 //------------------------------------------------------------------------
@@ -522,6 +553,89 @@ static int area_lines(int h, int m, int fh, int *top)
 	return n;
 }
 
+// 0xB170B: the column of the numbers is as wide as the widest "%d) "
+// of the MaxDialogResponses (0x1465A8: 8) numbers. The text column
+// starts 10 pixels after it and ends at the right edge (0xB1778).
+// Returns the width of the number column. The font is the current one.
+static int number_width(void)
+{
+	int num_w = 0, n_num = Dlg_n_replies > 8 ? Dlg_n_replies : 8, i, h, aw;
+
+	for (i = 1; i <= n_num; i++) {
+		char num[16];
+		int w;
+		sprintf(num, "%d) ", i);
+		gr_get_string_size(num, &w, &h, &aw);
+		if (w > num_w)
+			num_w = w;
+	}
+	return num_w;
+}
+
+// The lines of a reply in the text column of width text_w
+static int reply_lines(int i, int text_w)
+{
+	const char *rs[20];
+	int rl[20];
+
+	return wrap(Dlg_reply[i], text_w, rs, rl, 20);
+}
+
+// Adds the replies after (direction 1) or before (-1) the selection while
+// they fit: each reply takes its lines and one empty line, and a reply
+// that fills the rest of the area exactly fits.
+static void extend_visible(const int *lines, int rows, int direction, int *used)
+{
+	int i;
+
+	for (i = Dlg_sel + direction; i >= 0 && i < Dlg_n_replies; i += direction) {
+		if (*used + lines[i] > rows)
+			break;
+		*used += lines[i] + 1;
+		Dlg_visible++;
+		if (direction < 0)
+			Dlg_first = i;
+	}
+}
+
+// The end of 0xB28F0: when the selection is above the replies of the area
+// (also -1, which becomes 0), the area starts at the selection and takes
+// the later replies, then the earlier ones with the rest of the rows
+// (0xB29A1). When it is below, the area takes the earlier replies first
+// (0xB2ABC). The selection always has its place, also when it is higher
+// than the area.
+static void keep_reply_visible(void)
+{
+	dlg_layout *L = layout();
+	grs_font *old;
+	int lines[DLG_MAX_REPLIES], text_w, rows, top, used, direction, i;
+
+	if (Dlg_n_replies <= 0 || !GAME_FONT || !grd_curcanv)
+		return;
+	if (Dlg_sel < Dlg_first) {
+		if (Dlg_sel < 0)
+			Dlg_sel = 0;
+		direction = 1;
+	} else if (Dlg_sel >= Dlg_first + Dlg_visible)
+		direction = -1;
+	else
+		return;
+
+	old = grd_curcanv->cv_font;
+	gr_set_curfont(GAME_FONT);
+	text_w = L->w - number_width() - 10;
+	for (i = 0; i < Dlg_n_replies; i++)
+		lines[i] = reply_lines(i, text_w);
+	grd_curcanv->cv_font = old;
+	rows = area_lines(L->h2, Dtu_hires ? 16 : 10, GAME_FONT->ft_h, &top);
+
+	Dlg_first = Dlg_sel;
+	Dlg_visible = 1;
+	used = lines[Dlg_sel] + 1;
+	extend_visible(lines, rows, direction, &used);
+	extend_visible(lines, rows, -direction, &used);
+}
+
 // The executable draws each part into a sub-canvas of the screen, which
 // clips the text (0xB17EB to 0xB1891).
 static void sub_canvas(grs_canvas *c, int x, int y, int w, int h)
@@ -538,7 +652,7 @@ void dtu_dlg_draw(void)
 	int lens[DLG_MAX_LINES], kinds[DLG_MAX_LINES];
 	int n_lines = 0, fh, i, y, visible, num_w, text_x, text_w, h, aw;
 	int c_speech, c_narr, c_sel, c_reply, c_frame;
-	int ry, rbottom, margin, ty, rty, rh, n_num;
+	int ry, rbottom, margin, ty, rty, rh;
 	grs_canvas text_canv, num_canv, reply_canv, area_canv;
 
 	// ASCENT: the immersive mode comes back when the window has not
@@ -561,19 +675,7 @@ void dtu_dlg_draw(void)
 	c_reply = rgb6(32, 32, 32);
 	c_frame = rgb6(63, 0, 63);
 
-	// 0xB170B: the column of the numbers is as wide as the widest "%d) "
-	// of the MaxDialogResponses (0x1465A8: 8) numbers. The text column
-	// starts 10 pixels after it and ends at the right edge (0xB1778).
-	num_w = 0;
-	n_num = Dlg_n_replies > 8 ? Dlg_n_replies : 8;
-	for (i = 1; i <= n_num; i++) {
-		char num[16];
-		int w;
-		sprintf(num, "%d) ", i);
-		gr_get_string_size(num, &w, &h, &aw);
-		if (w > num_w)
-			num_w = w;
-	}
+	num_w = number_width();
 	text_w = L->w - num_w - 10;
 	text_x = L->x + L->w - text_w;
 
@@ -623,11 +725,13 @@ void dtu_dlg_draw(void)
 	} else {
 		// 0xB2D90: the number "%d)" in the number column and the reply in
 		// the text column at the same row; the next reply starts one empty
-		// line (ft_h) after the last line of the reply
+		// line (ft_h) after the last line of the reply. The replies are
+		// those of the area (Dlg_first, Dlg_visible), see
+		// keep_reply_visible.
 		sub_canvas(&num_canv, L->x, rty, num_w, rh);
 		sub_canvas(&reply_canv, text_x, rty, text_w, rh);
 		y = 0;
-		for (i = 0; i < Dlg_n_replies && y < rh; i++) {
+		for (i = Dlg_first; i < Dlg_first + Dlg_visible && i < Dlg_n_replies; i++) {
 			char num[16];
 			const char *rs[20];
 			int rl[20], k, n;
@@ -641,9 +745,9 @@ void dtu_dlg_draw(void)
 			n = wrap(Dlg_reply[i], text_w, rs, rl, 20);
 			for (k = 0; k < n; k++)
 				draw_line(0, y + k * fh, rs[k], rl[k]);
-			Reply_y0[i] = rty + y;
-			Reply_y1[i] = rty + y + n * fh;
-			Reply_shown = i + 1;
+			Reply_y0[i - Dlg_first] = rty + y;
+			Reply_y1[i - Dlg_first] = rty + y + n * fh;
+			Reply_shown = i - Dlg_first + 1;
 			y += n * fh + fh;
 		}
 	}
