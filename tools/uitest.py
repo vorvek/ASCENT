@@ -151,6 +151,7 @@ def test_dlg_tab_focus(t):
     s, _ = t.run("dlg_tab", ["gamekeys", "wait 60", "shot open", "key tab", "wait 5", "shot tab",
                              "key esc", "wait 30"], extra=DURNAN)
     assert differ(region(s["open"], *TEXTFRAME), region(s["tab"], *TEXTFRAME)) > 0.003, "Tab did not move the focus"
+    assert differ(region(s["open"], *LEFT), region(s["tab"], *LEFT)) < 0.02, "Tab opened the map"
 
 
 def test_shift_fkeys_and_grave(t):
@@ -178,6 +179,15 @@ def test_map_minus_equal(t):
     assert differ(region(s["map"], *info), region(s["less"], *info)) < 0.02, "minus changed the screen"
     assert differ(region(s["map"], *info), region(s["more"], *info)) < 0.02, "equal changed the screen"
     assert differ(region(s["map"], *mapr), region(s["less"], *mapr)) > 0.001, "minus did not change the map"
+
+
+def test_immersive_off_centers_mouse(t):
+    """Immersive mode off puts the mouse in the middle of the view
+    (0x54470 to 0x544D7)."""
+    s, _ = t.run("immersive", ["gamekeys", "wait 20", "move 40 260", "wait 3", "shot before",
+                               "key v", "wait 5", "key v", "wait 5", "shot after"])
+    spot = (25, 245, 30, 30)
+    assert differ(region(s["before"], *spot), region(s["after"], *spot)) > 0.05, "the cursor stayed in place"
 
 
 # The text of the message box of the main screen, high resolution

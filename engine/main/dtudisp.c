@@ -2077,6 +2077,10 @@ static void do_input(int mx, int my)
 		char *text;
 		Dtu_immersive = !Dtu_immersive;
 		mouse_set_relative(Dtu_immersive);
+		// 0x54470 to 0x544D7: off, the mouse goes to the middle of the view
+		// (0xE89A8), as after a mode change (dtu_display_init_cockpit)
+		if (!Dtu_immersive)
+			mouse_set_pos(View.x + View.w / 2, View.y + View.h * (Dtu_hires ? 2 : 1) / 2);
 		text = Text_string[Dtu_immersive ? 817 : 818];
 		Msg_next_color = rgb6(30, 30, 46);
 		dtu_display_add_message(text ? text : (Dtu_immersive ? "Immersive mode is on." : "Immersive mode is off."));
