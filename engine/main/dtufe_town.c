@@ -146,6 +146,12 @@ static int Bs_n_events, Bs_next_event;
 static grs_bitmap *Bs_face, *Bs_picture;
 static int Bs_frame, Bs_prev_frame;
 static fix Bs_start, Bs_face_time, Bs_end_time;
+// ASCENT: the time of the last frame of the screen. A frame that takes more
+// than BS_MAX_STEP (a load of upscaled pictures, a pause of the window)
+// moves the timers forward by the rest, so the text pauses instead of
+// jumping ahead. The original had no such long frames.
+static fix Bs_last;
+#define BS_MAX_STEP	(F1_0 / 10)
 static int Bs_state;			// 0: wait 2 seconds, 1: the text moves, 2: wait 10 seconds, 3: done
 
 // The markup of the text (0x8399D): ~cN color, ~sN speech, ~pN picture,
@@ -234,6 +240,7 @@ static void bs_init(fe_screen *s)
 	Bs_state = 0;
 	Bs_start = fe_time() + 2 * F1_0;			// 0x8313C
 	Bs_face_time = 0;
+	Bs_last = fe_time();
 	dtumusic_play(DTUMUSIC_CREDITS, DTUMUSIC_LOOP_FOREVER, 25);		// khelben.tun, volume 25
 }
 
@@ -242,6 +249,13 @@ static void bs_frame(fe_screen *s)
 	fix now = fe_time();
 	int line_h = Fe_font_m->ft_h + 2, scroll, visible;
 
+	if (now - Bs_last > BS_MAX_STEP) {
+		fix lost = now - Bs_last - BS_MAX_STEP;
+		Bs_start += lost;
+		Bs_end_time += lost;
+		Bs_face_time += lost;
+	}
+	Bs_last = now;
 	if (Bs_state == 0 && now >= Bs_start)
 		Bs_state = 1;
 	if (Bs_state == 1) {
