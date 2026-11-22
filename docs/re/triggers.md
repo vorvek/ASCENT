@@ -379,13 +379,15 @@ warp line is 0 to 3.
 | `Dtu_fix_trigger_table` | 1 | Follows the segment table and the `next_in_seg` chains of the TIG file. In 7 files some triggers are in no chain and cannot fire | Makes the table and the chains again from the `seg` field of each record |
 | `Dtu_fix_trigger_repeat` | 1 | The floor triggers of a segment with a warp command line fire in each frame while the player is in the segment | They fire one time for each entry of the segment |
 | `Dtu_fix_trap_close_door` | 1 | Trap flag 2 calls `wall_close_door` with a wall number | The door of the trap starts to close. Off: no action |
-| `Dtu_fix_trap_seconds` | 0 | A trap time of N seconds is 0.182 * N seconds | The time is N seconds |
+| `Dtu_fix_trap_seconds` | 1 | A trap time of N seconds is 0.182 * N seconds | The time is N seconds |
 | `Dtu_trig_log` | 0 | | Prints each trigger and trap event |
 
-Options: `-triglog` sets `Dtu_trig_log`. `-origtrig` clears the three fix settings
+Options: `-triglog` sets `Dtu_trig_log`. `-origtrig` clears the four fix settings
 that are on. `-trapseconds` sets `Dtu_fix_trap_seconds`.
 
-`Dtu_fix_trap_seconds` is off because the executable does not depend on the frame
+`Dtu_fix_trap_seconds` is on: the loader of the executable scales seconds by 18.2
+but its clock counts 1/100 second, so a trap time of N seconds lasts 0.182 * N
+seconds. This is a unit defect. The old reason to keep it off was that the executable does not depend on the frame
 rate here, and the levels were tested with the short times.
 
 ## 10. Not known

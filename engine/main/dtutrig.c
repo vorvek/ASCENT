@@ -68,7 +68,7 @@ dtu_trap		Dtu_traps[DTU_MAX_TRAPS];
 int			Dtu_num_traps = 0;
 
 int Dtu_fix_trigger_table = 1;
-int Dtu_fix_trap_seconds = 0;
+int Dtu_fix_trap_seconds = 1;
 int Dtu_fix_trap_close_door = 1;
 int Dtu_fix_trigger_repeat = 1;
 int Dtu_trig_log = 0;
