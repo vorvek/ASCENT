@@ -33,6 +33,11 @@ Then start "ASCENT-DTU Content" from the Start menu to download the files that a
 
 The upscaled files are not necessary to play. The 1.3 patch is also available at [The Patches Scrolls](https://www.patches-scrolls.de/patch/1215/7/41518/download).
 
+## Troubleshooting
+
+Each run writes a log in `%APPDATA%\ASCENT-DTU\logs`. If the game fails or crashes, send the newest `ascent-*.log` (and the `.dmp` file with the same name after a crash).
+See [docs/debug_logs.md](docs/debug_logs.md).
+
 ## Source layout
 
 - `engine/`: the Descent 1 source release (version 1.5) from Parallax Software. It is the base of the port.

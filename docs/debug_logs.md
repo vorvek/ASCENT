@@ -1,0 +1,118 @@
+# Debug logs
+
+Each run of the game writes a session log. When something goes wrong, the log (and,
+after a crash, the crash dump) is what a developer needs to look into it.
+
+## Where the logs are
+
+- Installed game: `%APPDATA%\ASCENT-DTU\logs` (paste this into the address bar of the
+  Explorer).
+- Development run: the `logs` folder of the `-userdir` folder, or of the current folder
+  when there is no `-userdir`.
+
+The name is the start date and time, for example `ascent-2026-11-22_14-05-33.log`. The
+game keeps the last 20 logs and deletes the older ones with their crash dumps. The log
+is never written into the installation folder. `-nolog` turns the log off.
+
+## What to send
+
+After a problem, send the newest `ascent-*.log`. After a crash, send also the `.dmp`
+file with the same name: a message box names the two files (the release build, not in a
+test run). If the game stopped with no message, the next start writes a note in its log
+that the previous session did not end cleanly; send the log of the previous session
+too.
+
+## What the log has
+
+- The version (`ASCENT_VERSION` of the build and `git describe`), the build type, the
+  compiler, the command line.
+- The system: Windows version, CPU, memory, SDL version.
+- The folders: installation, user, data folders (the one with `DTU.MSN` is marked), `hd`.
+- The settings of `ascent.cfg` (Improvements and Graphics), after the arguments.
+- The video driver, each display, the window, the OpenGL vendor, renderer and version.
+  If the OpenGL 3.3 window cannot be made, the reason (the SDL renderer is used then).
+- The events of the game: game start, each level load (name, time, segments, objects),
+  the character at each level start (name, race, classes and levels, hit points,
+  experience, gold), level finished, death.
+- The messages of the data loaders (`dtu_log()`: tables, archives, music, movies, front
+  end loads and saves of save games, level states). At most 3000 in one session.
+- `Error()`, `Warning()` and `Int3()` (at most 500 warnings), the messages of SDL, the
+  OpenGL errors (`glGetError` every 5 seconds, at most 50), the shader errors.
+- The last line `Session end: normal exit` or `Session end: exit after an error`. A log
+  without it is the log of a session that crashed or was stopped.
+
+Each line starts with the seconds since the start. Each line is written to the disk at
+once, so a crash keeps the lines before it.
+
+## Crash report
+
+An unhandled exception (on Windows: `SetUnhandledExceptionFilter`), `abort()` and an
+invalid parameter of the C runtime write a report to the log:
+
+```
+[    2.660] CRASH: unhandled exception in thread 3620
+[    2.660] Exception 0xC0000005 (access violation)
+[    2.660] Address 0x00007FF7201E609E  ascent.exe+0x14609E  (addr2line 0x14014609E)
+[    2.660] The code wrote the address 0x0000000000000000
+[    2.660] Registers:
+[    2.660]   RAX 0000000000000000  RBX 0000000000000032  ...
+[    2.660] Stack (9 frames):
+[    2.660]   #0   0x00007FF7201E609E  ascent.exe+0x14609E  (addr2line 0x14014609E)
+[    2.660]   #1   0x00007FF7201608C5  ascent.exe+0xC08C5  (addr2line 0x1400C08C5)
+...
+[    2.776] Minidump: ...\logs\ascent-2026-11-22_02-23-44.dmp
+[    2.776] CRASH report end
+```
+
+Each address has its module and the offset in the module. For `ascent.exe` the value
+after `addr2line` is the address in the file (the image base of the file plus the
+offset: Windows loads the program at another address each time). The stack comes from
+the x64 unwind tables (`RtlVirtualUnwind`). The minidump (`MiniDumpWriteDump`, written
+from a second thread so that a stack overflow can still write it) has the threads, their
+stacks and the modules.
+
+## Turning a crash address into a function
+
+The release build (`cmake --preset release`, `cmake --build --preset release`) compiles
+the game with `-g`, keeps a copy of the executable with its debug information and a map
+file in `build-rel`, and then removes the debug information from `ascent.exe`:
+
+- `build-rel/ascent-symbols.exe`: the same code as the installed `ascent.exe`, with
+  the debug information. It is not installed.
+- `build-rel/ascent.map`: the linker map. Its addresses are offsets in the module (the
+  `ascent.exe+0x...` values of the report).
+
+Keep the two files of each release that players get (for example with the setup
+program). With the values after `addr2line` in the report:
+
+```sh
+export PATH=/c/msys64/ucrt64/bin:$PATH
+addr2line -f -p -e build-rel/ascent-symbols.exe 0x14014609E 0x1400C08C5 0x140009A41
+```
+
+```
+dtulog_frame at engine/main/dtulog.c:229
+dtu_frame_done at engine/main/dtugame.c:245
+game at engine/main/game.c:2897
+```
+
+A development build (`build`, RelWithDebInfo) has the debug information in
+`build/engine/main/ascent.exe`: use that file with `addr2line`.
+
+The test option `-testcrash N [KIND]` makes a crash at game frame N to check the report.
+KIND is `null` (default, a write to address 0), `abort`, `error` (`Error()`),
+`overflow` (stack overflow) or `divide` (integer divide by zero):
+
+```sh
+build/engine/main/ascent.exe -datadir E:/UNDAMONTAN/DTU -datadir gamedata/cd/DTU \
+  -hidden -mute -nomovies -userdir <scratch> -level BANE -frames 200 -testcrash 50
+```
+
+## Code
+
+- `engine/platform/plat_log.c`: the log file, the rotation, the system and video lines,
+  the SDL messages, the OpenGL error check, the crash handler.
+- `engine/main/dtulog.c`: the start lines, the settings, the game events, the hook of
+  `Error()`, `Warning()` and `Int3()` (`set_log_func` in `engine/misc/error.c`), the
+  forward of `dtu_log()`, `-testcrash`.
+- `cmake/version.cmake`: `ascent_version.h` with the version, made at each build.

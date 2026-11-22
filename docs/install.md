@@ -106,6 +106,7 @@ is found) or an extracted patch folder, and checks each file.
   folder of the level states, `geldor.dat` and `TheStore.<n>`. If the data folder has
   no `DTU.MSN`, a message box says so. `Error()` shows a message box too.
 - `-userdir DIR` changes the folder of the user.
+- The session logs go to `logs` in the folder of the user (docs/debug_logs.md).
 - `dtu_user_path()` gives the path of a file of the player. dtuopts.c, dtufe.c (save
   and load), dtustate.c and dtufe_town.c (market) use it.
 - The upscaled files: an installed game uses only `hd` next to the executable (or
@@ -126,7 +127,13 @@ cmake --install build-rel --prefix build-rel/stage
 ```
 
 - `ASCENT_RELEASE`: no developer messages without `-debug`, Windows subsystem (no
-  console). The asserts stay (`-DNDEBUG` is removed): the original code has parts that
+  console). The session log and the crash report work as in the development build
+  (docs/debug_logs.md); the crash shows a message box with the files to send.
+- The game is compiled with `-g`. `build-rel/ascent-symbols.exe` and
+  `build-rel/ascent.map` keep the symbols for the crash addresses; the debug
+  information is then removed from `ascent.exe` (docs/debug_logs.md). Keep the two
+  files of each release. `installer/build.sh` passes its version as `ASCENT_VERSION`
+  (the version line of the log). The asserts stay (`-DNDEBUG` is removed): the original code has parts that
   exist only without `NDEBUG` (`fixed_frametime`).
 - The executables have the icon `installer/res/ascent.ico` (original art, made by
   `tools/make_icon.py`) and a manifest with the UTF-8 code page, so that paths with
