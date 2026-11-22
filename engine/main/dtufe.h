@@ -59,6 +59,12 @@ int dtufe_menu_script_frame(void);
 // does.
 int dtufe_escape_key(void);
 
+// ASCENT: the keys Alt+F2 (save) and Alt+F3 (load) in the game. Return 1 if
+// the front end shows its slot menu after this frame, as Save Game and Load
+// Game of the ESC menu, else 0.
+int dtufe_save_key(void);
+int dtufe_load_key(void);
+
 // The loading pictures (0x7C1E5, 0x7C2BB). dtufe_loading_picture shows
 // FEBGND entry "entry" over the screen of the game and returns 1 if it is
 // shown. dtufe_loading_picture_end fades it out and gives the screen back

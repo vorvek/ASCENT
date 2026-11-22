@@ -81,6 +81,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include "platform.h"		// ASCENT: plat_pump reports that the window is closed
 #include "dtufe.h"		// ASCENT: dtufe_improvements_menu() and dtufe_graphics_menu() for the options menu
 #include "dtulang.h"		// ASCENT: LN() marks the text of the code that newmenu translates
+#include "dtudisp.h"		// ASCENT: Dtu_display_active (the options menu of the target game)
 
 #ifdef EDITOR
 #include "editor\editor.h"
@@ -796,10 +797,102 @@ void joydef_menuset(int nitems, newmenu_item * items, int *last_key, int citem )
 #define	TXT_JOYS_SENSITIVITY "Joystick/Mouse\nSensitivity"
 #endif
 
+// ASCENT: the options menu of the target game in the game: 0x58C18 with
+// the front end not active (0x7F13D returns 0). The items, in this order:
+// Brightness (slider 0 to 8), a blank, Music Volume, a blank, FX Volume
+// (sliders 0 to 8), a blank, Reverse Stereo, a blank, Detail levels...,
+// Controls..., Joystick/Mouse Sensitivity (slider 0 to 7: 0x58E95 lowers a
+// value above 7 to 7), Calibrate Joystick only for the control types 1 to
+// 4 (the joysticks, 0x58EE4), a blank. The port puts "Improvements..." in
+// the place of the blank after Reverse Stereo, "Language..." in the place of
+// the blank after FX Volume, and "Graphics..." in the
+// place of the last blank. The front end has its own menu (dtufe.c).
+static void dtu_options_menuset(int nitems, newmenu_item * items, int *last_key, int citem )
+{
+	nitems=nitems;
+	*last_key = *last_key;
+
+	if ( citem==0)
+		gr_palette_set_gamma(items[0].value);
+	if (Config_midi_volume != items[2].value ) {
+		Config_midi_volume = items[2].value;
+		digi_set_midi_volume( (Config_midi_volume*128)/8 );
+	}
+	if ( Config_digi_volume != items[4].value ) {
+		Config_digi_volume = items[4].value;
+		digi_set_digi_volume( (Config_digi_volume*32768)/8 );
+		digi_play_sample_once( SOUND_DROP_BOMB, F1_0 );
+	}
+}
+
+static void dtu_options_menu(void)
+{
+	newmenu_item m[13];
+	int i = 0, n, calibrate, graphics;
+
+	do {
+		memset(m, 0, sizeof(m));
+		m[0].type = NM_TYPE_SLIDER; m[0].text=TXT_BRIGHTNESS; m[0].value=gr_palette_get_gamma(); m[0].min_value=0; m[0].max_value=8;
+		m[1].type = NM_TYPE_TEXT; m[1].text="";
+		m[2].type = NM_TYPE_SLIDER; m[2].text=TXT_MUSIC_VOLUME; m[2].value=Config_midi_volume; m[2].min_value=0; m[2].max_value=8;
+		m[3].type = NM_TYPE_TEXT; m[3].text="";
+		m[4].type = NM_TYPE_SLIDER; m[4].text=TXT_FX_VOLUME; m[4].value=Config_digi_volume; m[4].min_value=0; m[4].max_value=8;
+		// ASCENT: the Language menu (dtufe.c, dtulang.h) takes the place of
+		// the blank after FX Volume.
+		m[5].type = NM_TYPE_MENU; m[5].text=LN("Language...");
+		m[6].type = NM_TYPE_CHECK; m[6].text=TXT_REVERSE_STEREO; m[6].value=Config_channels_reversed;
+		m[7].type = NM_TYPE_MENU; m[7].text=LN("Improvements...");
+		m[8].type = NM_TYPE_MENU; m[8].text=TXT_DETAIL_LEVELS;
+		m[9].type = NM_TYPE_MENU; m[9].text=TXT_CONTROLS_;
+		if (Config_joystick_sensitivity > 7)
+			Config_joystick_sensitivity = 7;
+		m[10].type = NM_TYPE_SLIDER; m[10].text=TXT_JOYS_SENSITIVITY; m[10].value=Config_joystick_sensitivity; m[10].min_value=0; m[10].max_value=7;
+		n = 11;
+		calibrate = -1;
+		if (Dtu_control_type >= 1 && Dtu_control_type <= 4) {
+			calibrate = n;
+			m[n].type = NM_TYPE_MENU; m[n++].text=TXT_CAL_JOYSTICK;
+		}
+		graphics = n;
+		m[n].type = NM_TYPE_MENU; m[n++].text=LN("Graphics...");
+
+		i = newmenu_do1( NULL, TXT_OPTIONS, n, m, dtu_options_menuset, i );
+
+		if (i == 5)
+			dtufe_language_menu();
+		else if (i == 7)
+			dtufe_improvements_menu();
+		else if (i == 8)
+			do_detail_level_menu();
+		else if (i == 9)
+			dtu_kconfig_menu();
+		else if (i >= 0 && i == calibrate)
+			joydefs_calibrate();
+		else if (i >= 0 && i == graphics)
+			dtufe_graphics_menu();
+
+		Config_channels_reversed = m[6].value;
+		Config_joystick_sensitivity = m[10].value;
+	} while( i>-1 );
+
+	if ( Config_midi_volume < 1 )	{
+		digi_play_midi_song( NULL, NULL, NULL, 0 );
+	}
+
+	write_player_file();
+}
+
 void do_options_menu()
 {
 	newmenu_item m[13];
 	int i = 0;
+
+	// ASCENT: the menu of the target game (the Descent 1 menu stays for the
+	// ship, -fly)
+	if (Dtu_display_active && Dtu_player_walk) {
+		dtu_options_menu();
+		return;
+	}
 
 	do {
 		m[0].type = NM_TYPE_SLIDER; m[0].text=TXT_FX_VOLUME; m[0].value=Config_digi_volume;m[0].min_value=0; m[0].max_value=8; 

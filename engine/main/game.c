@@ -3746,6 +3746,9 @@ void ReadControls()
 
 				case KEY_PAUSE:			do_game_pause(1); 		break;
 	  			case KEY_PRINT_SCREEN: 	save_screen_shot(0);		break;
+				// ASCENT: the key ` is a screenshot key of the target game
+				// (0x42FEC, the same call 0x80DA1 as Print Screen)
+				case KEY_LAPOSTRO:		if (Dtu_display_active) save_screen_shot(0);	break;
 
 				case KEY_SHIFTED+KEY_MINUS:
 				case KEY_MINUS:			shrink_window();			break;
@@ -3788,8 +3791,10 @@ void ReadControls()
 					digi_play_sample( SOUND_BAD_SELECTION, F1_0 );
 					break;
 #else
-				case KEY_ALTED+KEY_F2:	state_save_all( 0 );		break;	// 0 means not between levels.
-				case KEY_ALTED+KEY_F3:	state_restore_all(1);		break;
+				// ASCENT: the save and the load of the target game
+				// (0x432B8, 0x432C2) when the front end runs the game
+				case KEY_ALTED+KEY_F2:	if (!dtufe_save_key()) state_save_all( 0 );		break;	// 0 means not between levels.
+				case KEY_ALTED+KEY_F3:	if (!dtufe_load_key()) state_restore_all(1);		break;
 #endif
 
 				case KEY_SHIFTED+KEY_Z:
