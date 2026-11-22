@@ -23,6 +23,7 @@
 #include "types.h"
 #include "mem.h"		// malloc and free of the game (the callers include it too)
 #include "dtufile.h"
+#include "dtulog.h"
 #include "args.h"		// ASCENT: -datadir, -userdir, -debug
 #include "error.h"		// set_error_func
 #include "platform.h"	// the directories of an installed game
@@ -124,6 +125,11 @@ void dtu_init_dirs(void)
 	// -userdir DIR: the files of the player go to DIR (for tests).
 	if ((i = FindArg("-userdir")) != 0 && i+1 < Num_args && dtu_dir_exists(Args[i+1]))
 		snprintf(Dtu_user_dir, sizeof(Dtu_user_dir), "%s", Args[i+1]);
+}
+
+const char *dtu_data_dir(int i)
+{
+	return i >= 0 && i < Dtu_num_dirs ? Dtu_dirs[i] : NULL;
 }
 
 const char *dtu_install_dir(void)
@@ -424,6 +430,7 @@ void dtu_log(const char *format, ...)
 	}
 	if ( Dtu_log_to_stderr )
 		fputs( buf, stderr );
+	dtulog_message( buf );		// ASCENT: the session log (dtulog.c)
 }
 
 void dtu_log_clear(void)

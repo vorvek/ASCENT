@@ -89,6 +89,11 @@ void Int3();
 //in it. Pass NULL to remove the function.
 void set_error_func(void (*f)(char *msg));
 
+//The session log: Error(), Warning() and Int3() call this function with
+//the kind ("Error", "Warning", "Int3") and the message, before they do
+//anything else. Pass NULL to remove the function.
+void set_log_func(void (*f)(const char *kind,const char *msg));
+
 //Stops in the debugger. Without a debugger the system ends the program.
 void debug_break(void);
 

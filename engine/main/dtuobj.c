@@ -59,6 +59,7 @@
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
+#include "dtulog.h"		// ASCENT: the session log
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1946,6 +1947,7 @@ static void player_dies(object *player,object *attacker)
 	Player_death_stage = 1;
 	Player_death_time = GameTime;
 	dtu_obj_log("player: dies, killed by %s",attacker ? dtu_object_name(attacker) : "nothing");
+	dtulog_event("Player dies on level %d, killed by %s", Current_level_num, attacker ? dtu_object_name(attacker) : "nothing");	// ASCENT: the session log
 }
 
 // 0x33C5E: the status display finds the hit points of the player below

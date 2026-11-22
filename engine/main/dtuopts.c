@@ -17,6 +17,7 @@
 #include "fix.h"
 #include "kconfig.h"		// the key table, written to the same file
 #include "dtufile.h"		// ASCENT: dtu_user_path, dtu_install_dir
+#include "dtulog.h"		// ASCENT: the session log
 
 int Dtu_improved_physics = 1;
 int Dtu_improved_jump = 1;
@@ -140,6 +141,18 @@ void dtu_opts_save(void)
 	}
 	dtu_kconfig_cfg_write(f);		// ASCENT: the key table (kconfig.c)
 	fclose(f);
+}
+
+// ASCENT: the settings in the session log (dtulog.h)
+void dtu_opts_log(void)
+{
+	char line[1024];
+	int i, n;
+
+	n = snprintf(line, sizeof(line), "Settings (ascent.cfg and arguments):");
+	for (i = 0; i < N_OPTS && n < (int) sizeof(line) - 2; i++)
+		n += snprintf(line + n, sizeof(line) - n, " %s=%d", Opts[i].name, *Opts[i].value);
+	dtulog_event("%s", line);
 }
 
 static int is_dir(const char *path)

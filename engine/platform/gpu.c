@@ -149,7 +149,7 @@ static int load_gl(void)
 {
 #define X(ret, name, args) \
 	qgl##name = (ret (APIENTRY *) args) SDL_GL_GetProcAddress("gl" #name); \
-	if (!qgl##name) { fprintf(stderr, "GPU: no gl%s\n", #name); return -1; }
+	if (!qgl##name) { plat_log_error("GPU: no gl%s\n", #name); return -1; }
 	GL_FUNCS(X)
 #undef X
 	return 0;
@@ -642,7 +642,7 @@ static GLuint compile(GLenum type, const char *src)
 	qglGetShaderiv(s, GL_COMPILE_STATUS, &ok);
 	if (!ok) {
 		qglGetShaderInfoLog(s, sizeof(log), NULL, log);
-		fprintf(stderr, "GPU: shader error: %s\n", log);
+		plat_log_error("GPU: shader error: %s\n", log);
 		qglDeleteShader(s);
 		return 0;
 	}
@@ -668,7 +668,7 @@ static GLuint link_program(const char *vs, const char *fs)
 	qglGetProgramiv(p, GL_LINK_STATUS, &ok);
 	if (!ok) {
 		qglGetProgramInfoLog(p, sizeof(log), NULL, log);
-		fprintf(stderr, "GPU: link error: %s\n", log);
+		plat_log_error("GPU: link error: %s\n", log);
 		qglDeleteProgram(p);
 		return 0;
 	}

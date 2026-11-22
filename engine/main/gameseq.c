@@ -336,6 +336,8 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtuchar.h"		// ASCENT: the character of the target game
 #include "dtustate.h"	// ASCENT: the level state files
+#include "dtulog.h"		// ASCENT: the session log
+#include "platform.h"	// ASCENT: plat_time_us
 #ifdef NETWORK
 #include "netmisc.h"
 #endif
@@ -922,6 +924,7 @@ void LoadLevel(int level_num)
 {
 	char *level_name;
 	player save_player;
+	uint64_t load_start_us;		// ASCENT: the time of the load in the session log
 
 #ifdef REQUIRE_CD
 	{
@@ -970,6 +973,10 @@ void LoadLevel(int level_num)
 	else					//normal level
 		level_name = Level_names[level_num-1];
 #endif
+
+	// ASCENT: the session log (dtulog.h)
+	dtulog_event("Level load: %s (level %d)", level_name, level_num);
+	load_start_us = plat_time_us();
 
 	// ASCENT: the loading picture of the level loader (0x494EB, dtustate.c)
 	dtustate_level_loading(level_name);
@@ -1021,6 +1028,9 @@ void LoadLevel(int level_num)
 	// the player enters a segment (dtumusic.c).
 	dtumusic_level_start( Current_level_num - 1 );
 
+	dtulog_event("Level loaded: %s in %.2f s, %d segments, %d objects", level_name,
+		(double) (plat_time_us() - load_start_us) / 1e6, Highest_segment_index + 1, Highest_object_index + 1);
+	dtulog_character("level start");
 }
 
 //sets up Player_num & ConsoleObject  
@@ -1048,6 +1058,7 @@ extern void game_disable_cheats();
 //starts a new game on the given level
 void StartNewGame(int start_level)		// ASCENT: return type added
 {
+	dtulog_event("Game start at level %d", start_level);	// ASCENT: the session log
 	Game_mode = GM_NORMAL;
 	Function_mode = FMODE_GAME;
 
@@ -1204,6 +1215,8 @@ void PlayerFinishedLevel(int secret_flag)		// ASCENT: return type added
 {
 	int	rval;
 	int 	was_multi = 0;
+
+	dtulog_event("Level finished: level %d%s", Current_level_num, secret_flag ? " (secret exit)" : "");	// ASCENT: the session log
 
 	//credit the player for hostages
 	Players[Player_num].hostages_rescued_total += Players[Player_num].hostages_on_board;

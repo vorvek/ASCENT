@@ -20,7 +20,7 @@ CONTENT=${1:-gamedata/content}
 ISCC=${ISCC:-"$LOCALAPPDATA/Programs/Inno Setup 6/ISCC.exe"}
 [ -x "$ISCC" ] || ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
 
-cmake --preset release
+cmake --preset release -DASCENT_VERSION="$VERSION"
 cmake --build --preset release
 rm -rf build-rel/stage
 cmake --install build-rel --prefix build-rel/stage

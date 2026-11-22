@@ -723,6 +723,7 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "dtudisp.h"		// ASCENT: the interface of the target game
 #include "dtufe.h"
 #include "dtuopts.h"		// ASCENT: the Improvements settings		// ASCENT: the front end of the target game
+#include "dtulog.h"		// ASCENT: the session log
 #include "gamefont.h"
 #include "playsave.h"
 
@@ -1062,6 +1063,7 @@ static int dtu_run_level(char *level_name)
 	if (plat_init("ASCENT-DTU", Dtu_hires ? 640 : 320, Dtu_hires ? 480 : 200, Dtu_hires ? 2 : 3) != 0)
 		Error("Cannot open the window");
 	atexit(plat_shutdown);
+	dtulog_video();		// ASCENT: the display and the renderer in the session log
 
 	timer_init();
 	timer_set_rate( digi_timer_rate );
@@ -1213,6 +1215,7 @@ int main(int argc,char **argv)
 	// do not go through the title screens and menus. -checklevel opens no
 	// window.
 	dtu_read_datadir_args();
+	dtulog_start();			// ASCENT: the session log (dtulog.h)
 	{
 		// ASCENT: the window icon is the icon of the original (DTU.ICO of
 		// the disc, copied by ascent-import). The port does not ship it.
@@ -1221,6 +1224,7 @@ int main(int argc,char **argv)
 			plat_set_window_icon_file(ico);
 	}
 	dtu_opts_load();		// ASCENT: the Improvements settings (dtuopts.h)
+	dtu_opts_log();			// ASCENT: the settings in the session log
 	plat_gpu_bind_settings(&Dtu_gpu_renderer, &Dtu_shader);	// ASCENT: the screen shader reads the settings
 
 	if ((t = FindArg( "-checklevel" )) != 0 && t+1 < Num_args)

@@ -84,6 +84,14 @@ int Int3_break_enabled=0;
 
 static void (*error_func)(char *msg)=NULL;
 
+// ASCENT: the session log (see error.h)
+static void (*log_func)(const char *kind,const char *msg)=NULL;
+
+void set_log_func(void (*f)(const char *kind,const char *msg))
+{
+	log_func = f;
+}
+
 //takes string in register, calls printf with string on stack
 void warn_printf(char *s)
 {
@@ -170,6 +178,11 @@ void Int3()
 // is to report the place and continue.
 void _Int3(char *filename,int linenum)
 {
+	if (log_func != NULL) {
+		char msg[300];
+		snprintf(msg,sizeof(msg),"file %s, line %d",filename,linenum);
+		(*log_func)("Int3",msg);
+	}
 	if (Int3_break_enabled)
 		debug_break();
 	else
@@ -197,6 +210,10 @@ void Error(char *fmt,...)
 	vsnprintf(exit_message+len,MAX_MSG_LEN-len,fmt,arglist);
 	va_end(arglist);
 
+	// ASCENT: the session log
+	if (log_func != NULL)
+		(*log_func)(in_error ? "Error (in Error)" : "Error",exit_message+len);
+
 	// ASCENT: a second call (from the error function or from an exit
 	// function) must not call exit() again. Print and stop at once.
 	if (in_error) {
@@ -222,7 +239,8 @@ void Warning(char *fmt,...)
 	va_list arglist;
 	int len;
 
-	if (warn_func == NULL)
+	// ASCENT: the session log gets the warning also without a warning function
+	if (warn_func == NULL && log_func == NULL)
 		return;
 
 	strcpy(warn_message,"Warning: ");
@@ -231,6 +249,11 @@ void Warning(char *fmt,...)
 	va_start(arglist,fmt);
 	vsnprintf(warn_message+len,MAX_MSG_LEN-len,fmt,arglist);
 	va_end(arglist);
+
+	if (log_func != NULL)
+		(*log_func)("Warning",warn_message+len);
+	if (warn_func == NULL)
+		return;
 
 	// ASCENT: the mprintf call (monochrome debug screen) is removed
 	(*warn_func)(warn_message);
