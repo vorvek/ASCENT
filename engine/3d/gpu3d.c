@@ -637,6 +637,18 @@ static int bitmap_texture(grs_bitmap *bm)
 	return e->tex_rgb;
 }
 
+int g3_gpu_preload(grs_bitmap *bm)
+{
+	if (!bm || !plat_gpu_available() || !Opt.rgb || !Opt.upscaled)
+		return 0;
+	return bitmap_texture(bm) != 0;
+}
+
+int g3_gpu_texture_generation(void)
+{
+	return Rgb_gen;
+}
+
 // ---------------------------------------------------------------------
 // Polygons
 

@@ -380,6 +380,15 @@ typedef struct g3_gpu_options {
 	int (*source)(grs_bitmap *bm,g3_gpu_source *src);
 } g3_gpu_options;
 void g3_gpu_set_options(const g3_gpu_options *o);
+//Make the RGB texture of a bitmap now and ask for its upscaled form, so
+//that the first view that shows the bitmap has the upscaled form (the
+//frames of a door animation, the texture of a switch). Only with the RGB
+//form and the upscaled set (g3_gpu_set_options). Returns 1 if the bitmap
+//has a texture.
+int g3_gpu_preload(grs_bitmap *bm);
+//Changes each time that the RGB textures must be made again (the palette,
+//the upscaled setting or the directory of the set changed).
+int g3_gpu_texture_generation(void);
 
 //Start the 3D view on the current canvas. enable 0 selects the software
 //renderer. The GPU image is canvas width * scale by canvas height *

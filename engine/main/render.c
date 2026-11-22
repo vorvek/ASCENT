@@ -347,6 +347,10 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "platform.h"		// ASCENT: plat_gpu_bind_settings
 #include "args.h"			// ASCENT: -lightlog
 #include "tmapfx.h"		// ASCENT: Tmap_fx_row
+#include "effects.h"		// ASCENT: the preload of the upscaled textures
+#include "dtutrig.h"
+#include "gamemine.h"
+#include "gameseq.h"
 #include <stdio.h>
 #include <ctype.h>
 
@@ -1983,6 +1987,182 @@ static int gpu_set_options(void)
 	return o.rgb;		// ASCENT: the form of the view (infravision)
 }
 
+// ASCENT: the preload of the upscaled textures that a level shows later.
+// The GPU renderer makes the texture of a bitmap the first time that a
+// view draws it and loads the upscaled form in the background
+// (gputex.c), so that view shows the 8-bit form, and the upscaled form
+// comes a frame or more later. A door or a switch changes its texture
+// during play: the first opening of a door showed each frame of the
+// animation in the 8-bit form first, a blurred door that went sharp, and
+// the next door of the same kind was sharp. Descent 1 pages in the frames
+// of all wall animations at the level start (paging_touch_walls,
+// paging.c); this does the same for the GPU textures: the frames of the
+// door animations of the walls, the textures of the triggers and the
+// traps (the switches), and the frames of the animated textures of the
+// sides (the effects), each merged with the other texture of its side as
+// the view merges it (texmerge.c). It runs after the first view of a
+// level, so that the upscaled loads of that view come first, and again
+// when the RGB textures are made again (g3_gpu_texture_generation). It
+// makes all the textures at one time: in the tests a texture made between
+// the draws of the views cost several times more than in one batch.
+// ASCENT_GPU_NOPRELOAD=1 turns it off (a test aid).
+
+#define GPU_PRELOAD_PAIRS	8192		// power of 2
+
+// the pairs of textures done (bottom << 16 | top, plus 1), a hash set, so
+// that the many sides with the same textures are merged one time
+static uint32_t Gpu_preload_set[GPU_PRELOAD_PAIRS];
+static int Gpu_preload_pairs, Gpu_preload_count;
+
+// the effect that animates texture t, or -1
+static int gpu_preload_effect(int t)
+{
+	int i;
+
+	for (i = 0; i < Num_effects; i++)
+		if (Effects[i].changing_wall_texture == t && Effects[i].vc.num_frames > 0)
+			return i;
+	return -1;
+}
+
+static int gpu_preload_tmap_ok(int t)
+{
+	return t >= 0 && t < MAX_TEXTURES && Textures[t].index > 0 && Textures[t].index < MAX_BITMAP_FILES;
+}
+
+// The bottom texture t1 and the top texture t2 (with the rotation in the
+// top 2 bits, 0 if none) of a side, with each frame of their effects.
+static void gpu_preload_pair(int t1, int t2)
+{
+	int top = t2 & 0x3FFF;
+	int e1, e2, n1, n2, i, j, n;
+	uint32_t k, h;
+	bitmap_index s1, s2;
+
+	if (!gpu_preload_tmap_ok(t1) || (top && !gpu_preload_tmap_ok(top)) || Gpu_preload_pairs >= GPU_PRELOAD_PAIRS / 2)
+		return;
+	k = ((uint32_t) t1 << 16 | (uint32_t) (t2 & 0xFFFF)) + 1;
+	h = (k * 2654435761u) >> 19 & (GPU_PRELOAD_PAIRS - 1);
+	for (n = 0; n < GPU_PRELOAD_PAIRS && Gpu_preload_set[h]; n++, h = (h + 1) & (GPU_PRELOAD_PAIRS - 1))
+		if (Gpu_preload_set[h] == k)
+			return;
+	Gpu_preload_set[h] = k;
+	Gpu_preload_pairs++;
+
+	e1 = gpu_preload_effect(t1);
+	e2 = top ? gpu_preload_effect(top) : -1;
+	n1 = e1 >= 0 ? Effects[e1].vc.num_frames : 1;
+	n2 = e2 >= 0 ? Effects[e2].vc.num_frames : 1;
+	s1 = Textures[t1];
+	s2 = Textures[top];
+	for (i = 0; i < n1; i++)
+		for (j = 0; j < n2; j++) {
+			grs_bitmap *bm;
+
+			if (e1 >= 0)
+				Textures[t1] = Effects[e1].vc.frames[i];
+			if (e2 >= 0)
+				Textures[top] = Effects[e2].vc.frames[j];
+			bm = top ? texmerge_get_cached_bitmap(t1, t2) : &GameBitmaps[Textures[t1].index];
+			Gpu_preload_count += g3_gpu_preload(bm);
+		}
+	Textures[top] = s2;
+	Textures[t1] = s1;
+}
+
+// a texture number of the level file (a trigger or a trap) as a top
+// texture of the game, as set_side_tmap2 (dtutrig.c) converts it
+static int gpu_preload_level_tmap(int tex)
+{
+	int t = tex & 0x3FFF;
+
+	if (tex < 0 || t == 0 || t >= Num_level_tmap_names || Level_tmap_xlate[t] <= 0)
+		return 0;
+	return Level_tmap_xlate[t] | (tex & ~0x3FFF & 0xFFFF);
+}
+
+static void gpu_preload_side_tex(int seg, int side, int tex)
+{
+	int t2 = gpu_preload_level_tmap(tex);
+
+	if (seg < 0 || seg > Highest_segment_index || side < 0 || side >= MAX_SIDES_PER_SEGMENT || !t2)
+		return;
+	gpu_preload_pair(Segments[seg].sides[side].tmap_num, t2);
+}
+
+static void gpu_preload_level(void)
+{
+	static int done_level = -1, done_piggy = -1, done_gen = -1, wait_loads = 0;
+	int gen = g3_gpu_texture_generation();
+	int i, j, s, n_walls, n_trig;
+	uint64_t t0;
+	const char *off = getenv("ASCENT_GPU_NOPRELOAD");
+	int log = getenv("ASCENT_GPU_HDLOG") != NULL;
+
+	if (!Dtu_upscaled_textures || (off && off[0] == '1'))
+		return;
+	if (done_level == Current_level_num && done_piggy == Piggy_generation && done_gen == gen) {
+		if (wait_loads && plat_gpu_hd_pending() == 0) {
+			wait_loads = 0;
+			if (log)
+				printf("GPU hd: preload: the upscaled loads are done at frame %d\n", FrameCount);
+		}
+		return;
+	}
+	done_level = Current_level_num;
+	done_piggy = Piggy_generation;
+	done_gen = gen;
+	wait_loads = 1;
+	Gpu_preload_pairs = Gpu_preload_count = 0;
+	memset(Gpu_preload_set, 0, sizeof(Gpu_preload_set));
+	t0 = plat_time_us();
+
+	// the frames of the door animations (paging_touch_walls), as
+	// wall_set_tmap_num (wall.c) sets them
+	for (i = 0; i < Num_walls; i++) {
+		wall *w = &Walls[i];
+		wclip *anim;
+		side *sp;
+
+		if (w->clip_num < 0 || w->clip_num >= Num_wall_anims || w->segnum < 0 || w->segnum > Highest_segment_index
+				|| w->sidenum < 0 || w->sidenum >= MAX_SIDES_PER_SEGMENT)
+			continue;
+		anim = &WallAnims[w->clip_num];
+		sp = &Segments[w->segnum].sides[w->sidenum];
+		for (j = 0; j < anim->num_frames && j < MAX_CLIP_FRAMES; j++) {
+			if (anim->flags & WCF_TMAP1)
+				gpu_preload_pair(anim->frames[j], sp->tmap_num2);
+			else
+				gpu_preload_pair(sp->tmap_num, anim->frames[j]);
+		}
+	}
+	n_walls = Gpu_preload_pairs;
+	// the textures that the triggers and the traps put on their sides
+	for (i = 0; i < Dtu_num_triggers; i++) {
+		gpu_preload_side_tex(Dtu_triggers[i].seg, Dtu_triggers[i].side, Dtu_triggers[i].tex_on);
+		gpu_preload_side_tex(Dtu_triggers[i].seg, Dtu_triggers[i].side, Dtu_triggers[i].tex_off);
+	}
+	for (i = 0; i < Dtu_num_traps; i++) {
+		gpu_preload_side_tex(Dtu_traps[i].seg, Dtu_traps[i].side, Dtu_traps[i].tex_enabled);
+		gpu_preload_side_tex(Dtu_traps[i].seg, Dtu_traps[i].side, Dtu_traps[i].tex_disabled);
+	}
+	n_trig = Gpu_preload_pairs - n_walls;
+	// the frames of the animated textures of the sides
+	for (s = 0; s <= Highest_segment_index; s++)
+		for (j = 0; j < MAX_SIDES_PER_SEGMENT; j++) {
+			side *sp = &Segments[s].sides[j];
+
+			if (!(WALL_IS_DOORWAY(&Segments[s], j) & WID_RENDER_FLAG))
+				continue;
+			if (gpu_preload_effect(sp->tmap_num) >= 0 || (sp->tmap_num2 && gpu_preload_effect(sp->tmap_num2 & 0x3FFF) >= 0))
+				gpu_preload_pair(sp->tmap_num, sp->tmap_num2);
+		}
+	if (log)
+		printf("GPU hd: preload of level %d at frame %d: %d pairs (%d of the doors, %d of the triggers), %d bitmaps, %.1f ms\n",
+			Current_level_num, FrameCount, Gpu_preload_pairs, n_walls, n_trig, Gpu_preload_count,
+			(plat_time_us() - t0) / 1000.0);
+}
+
 // ASCENT: a test aid. ASCENT_RENDER_STATS=1 prints at exit the size of the
 // render list (the segments drawn), the deepest level of the segment
 // search and the CPU time of render_mine (the search, the light and the
@@ -2202,6 +2382,8 @@ void render_frame(fix eye_offset)
 
 	g3_gpu_end_view();		// ASCENT: see g3_gpu_begin_view
 	dtu_infra_end_view(gpu_view);
+	if (gpu_view)
+		gpu_preload_level();	// ASCENT: after the textures of the first view
 
 	g3_end_frame();
 
