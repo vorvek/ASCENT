@@ -81,6 +81,9 @@ int dtu_combat_target_hint(void);
 
 // The state of the arms, for tests and for the display.
 int dtu_combat_view_state(void);
+// 1 while the attack key was pressed and its attack or cast has not started
+// (0x13B69F); also while the cast time of a spell runs.
+int dtu_combat_attack_pending(void);
 int dtu_combat_view_frame(void);
 int dtu_combat_view_model(void);
 

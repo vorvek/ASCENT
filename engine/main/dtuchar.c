@@ -1085,6 +1085,78 @@ void dtu_char_select_hot_key(int key)
 	Last_hot_key = key;
 }
 
+// The refusal of 0x43B0D: sound 3000 (0xBB8) with the volume 1.0 (0x2D955)
+#define SOUND_REFUSE	3000
+
+static void refuse(int key, char *why)
+{
+	digi_play_sample(SOUND_REFUSE, F1_0);
+	dtu_char_log("hot key %d refused: %s (sound %d)", key, why, SOUND_REFUSE);
+}
+
+// 0x43A5A with a box from a key 1 to 0, a click on a box or Cycle Weapon,
+// with its tests in this order:
+// - nothing in the attack states 6 and 11 of the arms (0x43ADC);
+// - the attack key was pressed and its attack or cast has not started
+//   (0x13B69F, the port's Request of dtucombat.c, which stays set while
+//   the cast time of a spell runs): sound 3000 (0x43AF7). The executable
+//   skips the sound when 0x13D2C8 is 2 (not traced);
+// - an empty box: the empty hand, the last box becomes -1 (0x43CBD);
+// - a box whose entry 0x35863 does not find: sound 3000 (0x43B7D);
+// - arrows without the bow or bolts without the crossbow: "You need a %s to
+//   fire %ss" and sound 3000 (0x43B85 to 0x43CB4);
+// - the box that was chosen last (0x13AD15): sound 3000 (0x43D32).
+void dtu_char_press_hot_key(int key)
+{
+	int s = dtu_combat_view_state(), n;
+
+	if (key < 0 || key >= DTU_N_HOT_KEYS)
+		return;
+	if (s == DAS_ATTACK || s == DAS_ATTACK3)
+		return;
+	if (dtu_combat_attack_pending()) {
+		refuse(key, "an attack or a cast waits");
+		return;
+	}
+	if (Dtu_char.hot_key[key].n < 0) {
+		dtu_char_log("hot key %d: empty box, the empty hand", key);
+		dtu_char_set_current(-1);
+		Last_hot_key = -1;
+		return;
+	}
+	n = dtu_char_hot_key_item(key);
+	if (n < 0 && dtu_char_hot_key_spell(key) < 0) {
+		refuse(key, "no entry");
+		return;
+	}
+	if (n >= 0 && Dtu_inventory[n].type == OBJ_WEAPON && Dtu_inventory[n].id < N_weapon_types) {
+		int r = Weapon_item_info[Dtu_inventory[n].id].record;
+		int arrow = bm_tbl_has_flag(r, "arrow"), bolt = bm_tbl_has_flag(r, "bolt");
+
+		if ((arrow && Dtu_char.slot[DTU_SLOT_BOW].n < 0) || (!arrow && bolt && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0)) {
+			// 0x1258C0 with "bow" and "arrow" or "crossbow" and "bolt"
+			HUD_init_message("You need a %s to fire %ss", arrow ? "bow" : "crossbow", arrow ? "arrow" : "bolt");
+			refuse(key, "no launcher");
+			return;
+		}
+	}
+	if (key == Last_hot_key) {
+		refuse(key, "the box that was chosen last");
+		return;
+	}
+	dtu_char_select_hot_key(key);
+}
+
+int dtu_char_last_hot_key(void)
+{
+	return Last_hot_key;
+}
+
+void dtu_char_forget_hot_key(void)
+{
+	Last_hot_key = -1;
+}
+
 // 0x35CE5 (the held spell is put on the figure of the paper doll, 0x35ADF):
 // a spell that the character can use and that is in no box goes into the
 // first free box, or into the box that was chosen last (box 0 if none),
@@ -1103,7 +1175,9 @@ int dtu_char_arm_spell(int spell)
 	Dtu_char.hot_key[key].list = (ubyte) list;
 	Dtu_char.hot_key[key].n = (byte) index;
 	dtu_char_log("hot key %d: spell %d '%s' (paper doll)", key, spell, dtu_spell_name(spell));
-	dtu_char_select_hot_key(key);
+	// 0x35E79: 0x13AD15 = -100, then 0x43A5A(box) with its tests
+	Last_hot_key = -100;
+	dtu_char_press_hot_key(key);
 	return 1;
 }
 
