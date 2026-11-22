@@ -34,6 +34,7 @@
 #include "weapon.h"
 #include "dtuobj.h"
 #include "dtuchar.h"
+#include "dtudesc.h"		// ASCENT: the description window of the market
 
 
 int Fe_khelben_mission;			// MsnNum (0x13E588)
@@ -991,6 +992,7 @@ static void mk_draw(fe_screen *s)
 		sprintf(buf, "%d", Mk_trans_qty);
 		mk_text_in(Fe_font_m, px + 175, py + 144, 62, 37, FE_HUE_7, buf);		// 0x86A63
 	}
+	dtu_desc_draw_fe();		// ASCENT: the description window (mk_frame)
 }
 
 //------------------------------------------------------------------------
@@ -1121,8 +1123,48 @@ static fe_feature Mk_features[9] = {
 	{ 366, 43, 396, 73, 0, 0, 0, 1, 0, KEY_UP, 0, -1, mk_help, NULL, mk_scroll, 7, 1 },
 	{ 365, 96, 395, 126, 0, 0, 0, 2, 0, KEY_DOWN, 0, -1, mk_help, NULL, mk_scroll, 8, 1 } };
 
+// ASCENT: the description window (dtudesc.c). A right click on a line of
+// the catalog opens it, a click or a key closes it. While it is open the
+// screen has no features, so no other input acts and no help shows. The
+// catalog of 1.3 acts on the release of any button (0x84BE4); the port
+// takes a buy or a sale on the left button only, so the right button had
+// no use here.
+static fe_feature Mk_no_features[1];
+
+static void mk_frame(fe_screen *s)
+{
+	int x = Fe_mx - MK_ROW_X, y = Fe_my - MK_ROW_Y, row = 0;
+	mk_entry *e;
+
+	if (dtu_desc_is_open()) {
+		if (Fe_press || Fe_rpress || Fe_key) {
+			dtu_desc_close();
+			mk_popup_close(s);		// the features and the help bar of the catalog again
+		}
+		fe_input_clear();
+		return;
+	}
+	if (!Fe_rpress || Mk_popup_on || x < 0 || y < 0 || x >= MK_ROW_W || y >= 0x148)
+		return;
+	while (row < MK_ROWS && y >= MK_ROW_H) {		// the rows of 0x84BE4
+		y -= MK_ROW_STEP;
+		row++;
+	}
+	if (row >= MK_ROWS || row >= mk_cur()->n || !(e = mk_shown(row)))
+		return;
+	// the count of the line: the quantity of a stack, the charges (the
+	// count of one item) of another line; -1 for the stock with no limit
+	if (dtu_desc_open_fe(e->type, e->id, mk_stackable(e->type, e->id) ? (e->qty >= 0 ? e->qty : -1) : e->cond,
+			Mk_sell ? e->sell_price : e->buy_price, Mk_sell)) {
+		s->features = Mk_no_features;
+		s->n_features = 0;
+		s->help_x2 = s->help_x1;
+	}
+	fe_input_clear();
+}
+
 static fe_screen Mk = { Mk_controls, 7, { { 17, -1, -1 }, { 18, 40, 41 } }, Mk_features, 9,
-	33, 408, 442, 461, FE_SCR_MARKET, -1, NULL, mk_draw, NULL, NULL, 0 };
+	33, 408, 442, 461, FE_SCR_MARKET, -1, NULL, mk_draw, mk_frame, NULL, 0 };
 
 //------------------------------------------------------------------------
 // The quantity window (0x84EEA, FEBGND 25)
@@ -1306,6 +1348,7 @@ void fe_market(void)
 	dtu_log("Market: charisma %d, gold %d\n", Mk_charisma, Dtu_gold);
 	fe_run_screen(&Mk);
 	// 0x847DE: the stock goes into geldor.dat
+	dtu_desc_close();		// ASCENT: the description window
 	mk_popup_close(&Mk);
 	mk_write_stock();
 }

@@ -26,4 +26,9 @@ void dtu_scroll_draw(void);
 // ASCENT: closes the screen at once (a new level or a loaded game).
 void dtu_scroll_reset(void);
 
+// ASCENT: the picture of the scroll (an entry of FEBGND) and its text box,
+// for the low (hi 0) or the high resolution (the description window,
+// dtudesc.c).
+void dtu_scroll_box(int hi, int *art, int *x, int *y, int *w, int *h);
+
 #endif

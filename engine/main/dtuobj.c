@@ -4071,7 +4071,12 @@ static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,
 			}
 			dtu_obj_log("missile: the area spell %d of obj %d hits a wall",m->spell,(int)(obj-Objects));
 			missile_remove(obj);
-			dtu_spell_area(m->spell,&p,seg,parent,parent ? caster_level(parent) : 1);
+			// ASCENT: 0x90CEF computes the caster level itself (0x90D01: the
+			// player 0x91EC1, else the creature level 0xAE3BB), as
+			// dtu_spell_hit does for a missile that hits a body. The port
+			// passed caster_level(), which is 1 for the player: a Fireball of
+			// the player that hit a wall did 1d6 at each level.
+			dtu_spell_area(m->spell,&p,seg,parent,parent ? dtu_spell_object_level(parent,m->spell) : 1);
 			return;
 		}
 	}

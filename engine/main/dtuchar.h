@@ -449,4 +449,100 @@ void dtu_hook_script_event(int event);
 // inventory is Dtu_inventory[] with dtu_inventory_add() and
 // dtu_char_take().
 
+//------------------------------------------------------------------------
+// ASCENT: the rules of the items as values, for the description window
+// (dtudesc.c). The item code reads the same values, so the text of the
+// window and the game cannot disagree.
+
+// What one use of a misc item does (use_misc, 0x37A6A)
+#define DTU_MU_NONE			0		// no use
+#define DTU_MU_HEAL			1		// lo to hi hit points, at most the maximum
+#define DTU_MU_DEXTERITY	2		// dexterity at least lo for the time
+#define DTU_MU_DRAGON		3		// strength at least lo for 1 to (class 1 level) minutes; a fighter gets a random percent value
+#define DTU_MU_GIANT		4		// strength at least lo for the time
+#define DTU_MU_INTEL		5		// intelligence lo to hi for the time
+#define DTU_MU_EFFECT		6		// the effect fx for the time
+#define DTU_MU_SPELLS		7		// casts the spells on the player
+#define DTU_MU_DISPEL		8		// all spell and potion effects end
+#define DTU_MU_LUCK			9		// for the time: one attack roll is a natural 20 or one damage roll the highest
+#define DTU_MU_TOUGH		10		// lo to hi hit points above the maximum and Bless for the time; a second one while above the maximum: system shock
+#define DTU_MU_GEM			11		// cures blindness, else the spell lo; one use for each mission
+#define DTU_MU_SCROLL		12		// shows a text
+#define DTU_MU_CURSED		13		// harm of chance; not used up
+#define DTU_MU_TURN			14		// Spider Piece 0x12: Turn Undead as a cleric of level (class 1 level) * 2 + 1
+#define DTU_MU_MAP			17		// Spider Piece 0x13: the whole map is known
+#define DTU_MU_ATTACK		18		// Spider Piece 0x14: a missile at each creature in sight
+#define DTU_MU_AREA_SPELLS	19		// Spider Piece 0x16: the area spell lo, then the spells on the player
+#define DTU_MU_TOUR			20		// Spider Piece 0x17: the view visits each creature
+#define DTU_MU_ABILITY		21		// Spider Piece 0x18: one point more of an ability (script 0x1FC)
+#define DTU_MU_FULL_HEAL	22		// Spider Piece 0x1A: all hit points, then the spells on the player
+// The Spider Pieces (DTU_MU_TURN to DTU_MU_FULL_HEAL and DTU_MU_SPELLS_KEEP) use one charge for each use.
+#define DTU_MU_QUEST		15		// an event of the quest (a script)
+#define DTU_MU_SPELLS_KEEP	16		// casts the spells on the player; four effects have no end
+
+typedef struct dtu_misc_use {
+	short	id;					// the misc number
+	short	kind;					// DTU_MU_
+	short	lo, hi;				// the range of the value of the kind
+	short	t_mod, t_add, t_unit;	// the time: (rand() % t_mod + t_add) * t_unit seconds (t_mod 1: no roll; 0: none)
+	int		fx;					// DTU_FX_ of an effect
+	short	n_spells;
+	short	spells[9];			// the spells, in the order of the cast
+} dtu_misc_use;
+
+// The use of misc number id, or NULL if it has no use.
+const dtu_misc_use *dtu_char_misc_use(int id);
+// The longest time of the Potion of Dragon's Blood in minutes, and the
+// class 1 level number (from 0) of the Turn Undead of the Spider Piece 0x12,
+// for the character of now.
+int dtu_char_dragon_minutes(void);
+int dtu_char_spider_turn_level(void);
+
+// The values that a worn item sets in dtu_char_update (0xAFB55)
+#define DTU_GIRDLE_STRENGTH		19		// armor 38, Girdle of Hill Giant Strength (belt)
+#define DTU_OGRE_STRENGTH		18		// armor 52, Gauntlets of Ogre Power: 18/00
+#define DTU_RING_STRENGTH		18		// armor 26, Ring of Strength: 18/00
+#define DTU_RING_CONSTITUTION	18		// armor 21, Ring of Health
+#define DTU_ELVENKIND_HIDE		95		// armor 43, Cloak of Elvenkind: Hide In Shadows
+#define DTU_GLOVES_LOCKS_THIEF	10		// armor 50, Gloves of Dexterity: Open Locks + for a thief
+#define DTU_GLOVES_LOCKS			37		// armor 50: Open Locks of another class
+#define DTU_SKILL_LOSS			250		// the heavy armor, misc 9 (Gauntlets): the skills go to 0
+#define DTU_WHIN_SKILL			250		// weapon 54, Sword of W'hin: Find/Remove Traps and Climb Walls
+#define DTU_SKILL_MAX			95		// 0xB0B7E: each thief skill is 0 to 95
+
+// The powers of a worn item (dtu_char_item_powers)
+#define DTU_IP_STRENGTH		1		// value, value2 the percent value (100: 18/00)
+#define DTU_IP_CONSTITUTION	2		// value
+#define DTU_IP_DEXTERITY		3		// value more dexterity (the table of the gloves, for the character of now)
+#define DTU_IP_HIDE			4		// Hide In Shadows becomes value
+#define DTU_IP_LOCKS_THIEF	5		// Open Locks + value for a thief
+#define DTU_IP_LOCKS_OTHER	6		// Open Locks of another class is value
+#define DTU_IP_NO_SKILLS		7		// value 1: Hide In Shadows, Move Silently, Climb Walls; 2: Find/Remove Traps and Open Locks
+#define DTU_IP_TRAPS_CLIMB	8		// Find/Remove Traps and Climb Walls value
+#define DTU_IP_PROT_CLOAK		9		// no armor class with a shield, magic or heavy armor
+#define DTU_IP_PROT_RING		10		// of two rings of protection the better one counts
+#define DTU_IP_RING_NO_MAGIC	11		// no armor class with magic armor
+#define DTU_IP_ARMORING		12		// a mage: 1 better after each cap of Armor, Magical Vestment and Shield
+#define DTU_IP_WIZARDRY		13		// the mage slots of the spell levels 1 to 3 double
+#define DTU_IP_USE_SPELL		14		// USE casts spell value around the player
+#define DTU_IP_TURN_UNDEAD	15		// the key of Turn Undead works
+#define DTU_IP_INFRA_HUMAN	16		// the Infravision effect only for a human
+typedef struct dtu_item_power {
+	int		kind, value, value2;
+} dtu_item_power;
+// Fills at most n powers of the item; returns the count.
+int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n);
+// The effects (DTU_FX_) that the item gives while it is worn, or in the
+// hand for a weapon (0xAFB55 with 0xB08A8).
+int dtu_char_item_fx(int type, int id);
+// The armor class that the item adds in its slot (negative is better), as
+// dtu_char_update counts it before the rules that need other items.
+int dtu_char_item_ac(int type, int id);
+// The slot of the paper doll where the item goes, -1 for none, DTU_N_SLOTS
+// for the hand (a weapon).
+int dtu_char_item_slot(int type, int id);
+// The Open Locks bonus of a lockpick item in the lockpick slot of a thief
+// (0xB02BE), 0 for another item.
+int dtu_char_lockpick_bonus(int id);
+
 #endif

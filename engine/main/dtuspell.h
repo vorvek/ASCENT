@@ -321,4 +321,72 @@ void dtu_spell_screen_keys(int prev, int next, int take);
 // The log of the option -objlog.
 void dtu_spell_log(char *format, ...);
 
+//------------------------------------------------------------------------
+// ASCENT: the rules of a spell as values, for the description window
+// (dtudesc.c). dtu_spell_get_facts reads the helpers that the cases of the
+// effect function use (the duration, the amount, the damage dice, the
+// missile count), so the text and the cast cannot disagree.
+
+#define DTU_SS_NONE		0		// no saving throw
+#define DTU_SS_HALF		1		// a save halves the damage
+#define DTU_SS_NEGATES	2		// a save stops the effect
+#define DTU_SS_SOME		3		// a save only for some targets
+
+#define DTU_SK_NONE			0		// the effect function has no code for it
+#define DTU_SK_DAMAGE		1		// the damage dice
+#define DTU_SK_HEAL			2		// amount hit points
+#define DTU_SK_GIVE			3		// gives the effect fx
+#define DTU_SK_CAUSE			4		// causes the effect fx on the target
+#define DTU_SK_AC			5		// the effect fx: the armor class is at most ac
+#define DTU_SK_ARMOR			6		// armor class at most ac until amount points of weapon damage
+#define DTU_SK_AID			7		// amount hit points above the maximum and Bless
+#define DTU_SK_DISPEL		8		// all effects of the target end
+#define DTU_SK_ABJURE		9		// an extraplanar creature leaves or dies
+#define DTU_SK_RARY			10		// more spell slots
+#define DTU_SK_KNOCK			11		// opens a locked door
+#define DTU_SK_CURE_SENSES	12		// cures blindness and deafness
+#define DTU_SK_FIRE_POOL		13		// takes amount points of fire damage
+#define DTU_SK_STONESKIN		14		// stops amount attacks
+#define DTU_SK_STRENGTH		15		// amount more strength
+#define DTU_SK_BLIND			16		// blinds the target (light)
+#define DTU_SK_COLOR			17		// sleep, blindness or stun by the level of the target
+#define DTU_SK_SLEEP			18		// sleep on targets of level amount or less
+#define DTU_SK_SCARE			19		// fear on targets of level amount or less
+#define DTU_SK_HOLD_UNDEAD	20		// holds undead of level amount or less
+#define DTU_SK_FEAR			21		// fear; the target may drop its weapon
+#define DTU_SK_ACID			22		// the dice now and in each of amount later rounds
+#define DTU_SK_HOLD			23		// holds up to amount humanoids
+
+typedef struct dtu_spell_facts {
+	int	book;					// 0 mage, 1 cleric, -1 none
+	int	level;					// the spell level
+	int	caster_level;			// L of the rules below
+	int	cast_time;				// seconds
+	int	self;					// cast on the caster
+	int	area;					// 1: an area
+	int	radius;					// the radius of the area in units
+	int	range;					// the flight of a missile in units, 0 on the caster
+	int	missiles_lo, missiles_hi;
+	int	save;					// DTU_SS_
+	int	kind;					// DTU_SK_
+	int	fx;						// the effect bit (DTU_FX_), 0 none
+	int	time_lo, time_hi;		// the duration in seconds; -1 no end; 0 none
+	int	amount_lo, amount_hi;	// the amount of the kind
+	int	ac;						// the armor class at most (DTU_SK_AC, DTU_SK_ARMOR)
+	int	dice_n[4], dice_sides[4], dice_add[4];	// damage: normal, fire, acid, electric
+	int	undead_die;				// sides of one more die against undead, 0 none
+} dtu_spell_facts;
+
+// The facts of a spell at caster level L (-1: the level of the player).
+// Returns 0 if the spell has no table line.
+int dtu_spell_get_facts(int spell, int L, dtu_spell_facts *f);
+// The armor class of a player of armor class 10 with the effects of the
+// mask (Armor, Magical Vestment, Shield); 10 with none of them.
+int dtu_spell_fx_ac(int fx);
+// The classes that can use the spell as an item (dtu_spell_usable), as
+// DTU_USE_ bits of dtuchar.h.
+int dtu_spell_use_classes(int spell);
+// The English name of an effect bit (the names of 0x9002C), "" for none.
+const char *dtu_spell_fx_name(int mask);
+
 #endif

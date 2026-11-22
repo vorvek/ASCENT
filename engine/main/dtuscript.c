@@ -59,6 +59,7 @@
 #include "dtuspell.h"
 #include "dtudlg.h"
 #include "dtuscroll.h"		// ASCENT: dtu_scroll_reset at a new level
+#include "dtudesc.h"		// ASCENT: dtu_desc_reset at a new level
 #include "dtuthiefpts.h"	// ASCENT: the thief skill point screen
 #include "dtuscript.h"
 #include "dtumovie.h"
@@ -2530,6 +2531,7 @@ void dtu_script_level_start(void)
 	dtu_dlg_close();
 	dtu_dlg_reset_view();
 	dtu_scroll_reset();
+	dtu_desc_reset();		// ASCENT: the description window (dtudesc.c)
 }
 
 // A warp of DB to another level (0x59C3C after the run)

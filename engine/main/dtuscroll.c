@@ -323,6 +323,16 @@ static void close_scroll(void)
 	dtu_char_log("scroll: closed");
 }
 
+void dtu_scroll_box(int hi, int *art, int *x, int *y, int *w, int *h)
+{
+	hi = hi != 0;
+	*art = Scroll_art[hi];
+	*x = Box_x[hi];
+	*y = Box_y[hi];
+	*w = Box_w[hi];
+	*h = Box_h[hi];
+}
+
 void dtu_scroll_reset(void)
 {
 	if (Open)

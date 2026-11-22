@@ -45,6 +45,7 @@
 #include "dtuhdui.h"		// ASCENT: the upscaled interface pictures
 #include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
 #include "dtuscroll.h"		// ASCENT: no input and no cursor while the scroll text screen is open
+#include "dtudesc.h"		// ASCENT: the description window (right click, key /)
 #include "segment.h"
 #include "automap.h"		// ASCENT: the map of the map screen
 #include "dtucombat.h"		// ASCENT: the target hint of the cursor
@@ -368,6 +369,7 @@ static int Inv_held_spell = -1;			// the spell that the cursor holds (a referenc
 static int Inv_browse = 0;				// the list of the inventory screen, see there
 static int next_browse(int b);
 static int Mouse_was_down = 0;
+static int Rmouse_was_down = 0;		// ASCENT: the right button (the description window)
 
 //------------------------------------------------------------------------
 // Drawing helpers. All coordinates are screen coordinates. The current
@@ -1834,6 +1836,50 @@ static int inv_click(int mx, int my)
 	return 0;
 }
 
+// ASCENT: a right click opens the description window (dtudesc.c) for the
+// item or the spell under the cursor: a hot key box, a slot of the paper
+// doll, an entry of the list. 1.3 reads any mouse button as a click of the
+// interface (0x2FB10 tests the button mask 0x1E9C70); the port reads only
+// the left one, so the right button had no use here. Returns 1 if a
+// window opened.
+static int inv_rclick(int mx, int my)
+{
+	int cell, slot, size = SC(16), x, y, qy, i;
+
+	if (hot_keys_visible())
+		for (i = 0; i < DTU_N_HOT_KEYS; i++) {
+			hot_key_pos(i, &x, &y, &qy);
+			if (mx >= x && my >= y && mx < x + size && my < y + size) {
+				if (dtu_char_hot_key_spell(i) >= 0)
+					return dtu_desc_open_spell(dtu_char_hot_key_spell(i));
+				if (dtu_char_hot_key_item(i) >= 0)
+					return dtu_desc_open_entry(dtu_char_hot_key_item(i));
+				return 0;
+			}
+		}
+	if (!inventory_mode())
+		return 0;
+	for (slot = 0; slot < DTU_N_SLOTS; slot++) {
+		x = Slot_pos[Dtu_hires][slot][0];
+		y = Slot_pos[Dtu_hires][slot][1];
+		if (mx >= x && my >= y && mx < x + size && my < y + size)
+			return Dtu_char.slot[slot].n >= 0 && dtu_desc_open_entry(Dtu_char.slot[slot].n);
+	}
+	if (!Dtu_hires && Dtu_interface_mode != DTU_IM_INVENTORY)
+		return 0;
+	for (cell = 0; cell < 10; cell++) {
+		inv_cell_pos(cell, &x, &y, &qy);
+		if (mx >= x && my >= y && mx < x + size && my < y + size) {
+			if (Inv_browse) {
+				int spell = browse_spell(Spell_first[Inv_browse - 1] + cell);
+				return spell >= 0 && dtu_desc_open_spell(spell);
+			}
+			return Inv_first + cell < Dtu_n_inventory && dtu_desc_open_entry(Inv_first + cell);
+		}
+	}
+	return 0;
+}
+
 //------------------------------------------------------------------------
 // The scroll bar of the inventory list (SBar 0x1BD622). 0x3416C creates it
 // for the modes 3 and 6 with the SBarDef at 0x143158 (high) and 0x143179
@@ -2382,6 +2428,8 @@ int dtu_display_owns_key(int key)
 	case KEY_U:
 	case KEY_BACKSP:
 		return inventory_mode() || Dtu_interface_mode == DTU_IM_STATS;
+	case KEY_DIVIDE:					// ASCENT: the description window
+		return inventory_mode();
 	}
 	return 0;
 }
@@ -2422,8 +2470,9 @@ static void do_input(int mx, int my)
 	// and button states current, so that nothing acts when it closes. The
 	// same while the scroll text screen is open: the frame skips 0x2FB10
 	// (0x435F8).
-	if (dtu_dlg_is_open() || dtu_scroll_is_open()) {
-		static const int keys[] = { KEY_F3, KEY_EQUAL, KEY_MINUS, KEY_COMMA, KEY_PERIOD, KEY_ENTER, KEY_U, KEY_BACKSP };
+	// ASCENT: the same while the description window is open (dtudesc.c).
+	if (dtu_dlg_is_open() || dtu_scroll_is_open() || dtu_desc_is_open()) {
+		static const int keys[] = { KEY_F3, KEY_EQUAL, KEY_MINUS, KEY_COMMA, KEY_PERIOD, KEY_ENTER, KEY_U, KEY_BACKSP, KEY_DIVIDE };
 		for (i = 0; i < (int) (sizeof(Screen_actions) / sizeof(Screen_actions[0])); i++)
 			action_acts(Screen_actions[i]);
 		for (i = 0; i < DTU_N_HOT_ACTIONS; i++)
@@ -2433,6 +2482,7 @@ static void do_input(int mx, int my)
 		for (i = 0; i < (int) (sizeof(keys) / sizeof(keys[0])); i++)
 			key_acts(keys[i]);
 		Mouse_was_down = !Dtu_immersive && (mouse_get_btns() & 1);
+		Rmouse_was_down = !Dtu_immersive && (mouse_get_btns() & 2);
 		Button_pressed = -1;
 		Sbar_active = Sbar_grab = 0;
 		return;
@@ -2563,6 +2613,8 @@ static void do_input(int mx, int my)
 		if (key_acts(KEY_PERIOD) && Spell_sel[b] < Dtu_spell_book_n[b] - 1) Spell_first[b] = (++Spell_sel[b] / 10) * 10;
 		if (key_acts(KEY_ENTER) && browse_spell(Spell_sel[b]) >= 0) dtu_char_arm_spell(browse_spell(Spell_sel[b]));
 		key_acts(KEY_U); key_acts(KEY_BACKSP);
+		// ASCENT: / describes the spell (dtudesc.c)
+		if (key_acts(KEY_DIVIDE) && browse_spell(Spell_sel[b]) >= 0) dtu_desc_open_spell(browse_spell(Spell_sel[b]));
 	} else if (inventory_mode()) {
 		if (key_acts(KEY_COMMA) && Inv_sel > 0) inv_show_entry(--Inv_sel);
 		if (key_acts(KEY_PERIOD) && Inv_sel < Dtu_n_inventory - 1) inv_show_entry(++Inv_sel);
@@ -2573,10 +2625,12 @@ static void do_input(int mx, int my)
 		}
 		if (key_acts(KEY_U) && Inv_sel < Dtu_n_inventory) dtu_char_use(Inv_sel);
 		if (key_acts(KEY_BACKSP) && Inv_sel < Dtu_n_inventory) dtu_char_drop(Inv_sel);
+		// ASCENT: / describes the entry (dtudesc.c)
+		if (key_acts(KEY_DIVIDE) && Inv_sel < Dtu_n_inventory) dtu_desc_open_entry(Inv_sel);
 	} else {
 		// keep the key state current, so that a held key does not act when
 		// the screen opens
-		key_acts(KEY_COMMA); key_acts(KEY_PERIOD); key_acts(KEY_ENTER); key_acts(KEY_U); key_acts(KEY_BACKSP);
+		key_acts(KEY_COMMA); key_acts(KEY_PERIOD); key_acts(KEY_ENTER); key_acts(KEY_U); key_acts(KEY_BACKSP); key_acts(KEY_DIVIDE);
 	}
 	inv_check();
 	inv_describe(mx, my);
@@ -2598,7 +2652,18 @@ static void do_input(int mx, int my)
 	if (Dtu_immersive || !mode_has_interface(Dtu_interface_mode)) {
 		Button_pressed = -1;
 		Sbar_active = Sbar_grab = 0;
+		Rmouse_was_down = 0;
 		return;
+	}
+	// ASCENT: the right button opens the description window (inv_rclick)
+	{
+		int rdown = (mouse_get_btns() & 2) != 0, rpressed = rdown && !Rmouse_was_down;
+
+		Rmouse_was_down = rdown;
+		// not while the cursor holds an item or a spell, or drags a scroll bar
+		if (rpressed && !down && Inv_held < 0 && Inv_held_spell < 0 && !Sbar_grab && Button_pressed < 0 &&
+				inv_rclick(mx, my))
+			return;
 	}
 
 	// 0x3010C: the scroll bar of the inventory list, in each frame while
@@ -2714,7 +2779,7 @@ void dtu_display_frame(void)
 	}
 	// ASCENT: with the conversation window open, dtu_dlg_draw() draws the
 	// cursor after the window (dtu_display_draw_cursor)
-	if (!Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open())
+	if (!Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open() && !dtu_desc_is_open())
 		draw_cursor(mx, my);
 	// ASCENT: immersive mode has no cursor. With the target hint, the tinted
 	// cursor shows at the center of the view while an attack can reach a

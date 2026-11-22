@@ -584,6 +584,85 @@ def test_fe_death_picture_key(t):
         "\n".join(l for l in text.splitlines() if "Front end" in l)
 
 
+# The description window (engine/main/dtudesc.c, docs/description_window.md)
+# uses the picture and the text box of the scroll text screen. The cells
+# of the inventory list, high resolution: entry 1 (Broad Sword) at 51,9,
+# entry 2 (Leather Armor) at 9,67, entry 4 (Potion of Healing) at 9,125.
+DESC_CELLS = {"weapon": (67, 25), "armor": (25, 83), "potion": (25, 141)}
+DESC_EMPTY = (67, 141)      # the cell of entry 5
+
+
+def save_png(img, path):
+    """Writes a screenshot as PNG (to look at it), if Pillow is there."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return
+    w, h, px = img
+    Image.frombytes("RGB", (w, h), px).save(path)
+
+
+def test_desc_window(t):
+    """A right click on an entry of the inventory opens the description
+    window over the play screen; a click closes it. / opens it for the
+    entry of the keys. The window of a spell (descspell) and of a line of
+    the market (-testmarket, a right click on the first row)."""
+    log = os.path.join(t.tmp, "desc_items", "char.log")
+    lines = ["gamekeys", "wait 20", "key i", "wait 5", "move 600 400", "wait 3", "shot base"]
+    for name, (x, y) in DESC_CELLS.items():
+        lines += ["rclick %d %d" % (x, y), "wait 5", "shot " + name, "click 600 400", "wait 5", "shot closed_" + name]
+    lines += ["key /", "wait 5", "shot slash", "key x", "wait 5", "shot closed_slash"]
+    # an empty cell (the character has five entries): no window
+    lines += ["rclick %d %d" % DESC_EMPTY, "wait 5", "shot empty"]
+    # a right click with the window open closes it and opens no new one
+    x, y = DESC_CELLS["weapon"]
+    lines += ["rclick %d %d" % (x, y), "wait 5", "rclick %d %d" % (x, y), "wait 5", "shot twice"]
+    # with an item on the cursor: no window; a click on no place puts the item back
+    lines += ["click %d %d" % (x, y), "wait 5", "rclick %d %d" % DESC_CELLS["armor"], "wait 5", "move 600 400", "wait 3",
+              "shot held", "click 600 400", "wait 5"]
+    s, d = t.run("desc_items", lines, extra=["-charlog", log])
+    # the longest texts in the small box of the low resolution, in Spanish
+    # and in English, to look at (--shots)
+    longest = {}
+    for lang in ("es", "en"):
+        for what, cmd in (("item", "descitem=5.54"), ("spell", "descspell=5"), ("spell2", "descspell=41")):
+            sh, dl = t.run("desc_low_%s_%s" % (lang, what), ["gamekeys", "wait 60", "shot w"],
+                           extra=["-fixedfps", "30", "-lowres", "-language", lang, "-chartest", "30:" + cmd])
+            longest["low_%s_%s" % (lang, what)] = sh["w"]
+    sh, dl = t.run("desc_high_es_item", ["gamekeys", "wait 60", "shot w"],
+                   extra=["-fixedfps", "30", "-language", "es", "-chartest", "30:descitem=5.54"])
+    longest["high_es_item"] = sh["w"]
+    sp, d2 = t.run("desc_spell", ["gamekeys", "wait 60", "shot spell"],
+                   extra=["-fixedfps", "30", "-chartest", "30:descspell=16"])
+    mk, d3 = t.run("desc_market", ["wait 60", "move 600 300", "wait 3", "shot market_base", "rclick 120 53", "wait 5",
+                                   "shot market", "click 600 300", "wait 5", "shot market_closed"],
+                   extra=["-testmarket"], level="")
+    if t.args.shots:
+        os.makedirs(t.args.shots, exist_ok=True)
+        for name in list(DESC_CELLS) + ["slash"]:
+            save_png(s[name], os.path.join(t.args.shots, "desc_%s.png" % name))
+        save_png(sp["spell"], os.path.join(t.args.shots, "desc_spell.png"))
+        save_png(mk["market"], os.path.join(t.args.shots, "desc_market.png"))
+        for name, img in longest.items():
+            save_png(img, os.path.join(t.args.shots, "desc_%s.png" % name))
+    for name in DESC_CELLS:
+        assert differ(region(s["base"], *SCROLLTEXT), region(s[name], *SCROLLTEXT)) > 0.3, "no window for the " + name
+        assert differ(region(s["base"], *SCROLLTEXT), region(s["closed_" + name], *SCROLLTEXT)) < 0.05, \
+            "the window of the %s did not close" % name
+    assert differ(region(s["base"], *SCROLLTEXT), region(s["slash"], *SCROLLTEXT)) > 0.3, "/ did not open the window"
+    for name, what in (("closed_slash", "a key did not close the window"), ("empty", "a window for an empty cell"),
+                       ("twice", "a second right click left a window open"), ("held", "a window with an item on the cursor")):
+        assert differ(region(s["base"], *SCROLLTEXT), region(s[name], *SCROLLTEXT)) < 0.05, what
+    with open(log) as f:
+        text = f.read()
+    for word in ("Broad Sword", "Leather Armor", "Heals 4 to 10 hit points."):
+        assert word in text, "the window has no " + word
+    assert differ(region(s["base"], *SCROLLTEXT), region(sp["spell"], *SCROLLTEXT)) > 0.3, "no window for the spell"
+    # the front end screenshot is not scaled: compare the whole frame
+    assert differ(mk["market_base"][2], mk["market"][2]) > 0.2, "no window in the market"
+    assert differ(mk["market_base"][2], mk["market_closed"][2]) < 0.02, "the window of the market did not close"
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 
@@ -594,6 +673,7 @@ def main():
     p.add_argument("--hddir")
     p.add_argument("--only")
     p.add_argument("--char")
+    p.add_argument("--shots", help="write the screenshots of some tests as PNG files to this directory")
     args = p.parse_args()
     t = Runner(args)
     failed = 0

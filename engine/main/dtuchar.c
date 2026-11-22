@@ -49,6 +49,7 @@
 #include "wall.h"			// ASCENT: the test command wall of -chartest
 #include "gameseq.h"		// ASCENT: Current_level_num for the test command quest
 #include "dtuscroll.h"	// ASCENT: the text screen of the Scroll
+#include "dtudesc.h"		// ASCENT: the test commands of the description window
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -355,11 +356,16 @@ int dtu_item_get(int type, int id, dtu_item_data *d)
 		d->melee = 1;
 		if (bm_tbl_get(r, "attack_type", value, sizeof(value)) && !stricmp(value, "PROJECTILE"))
 			d->melee = 0;
-		d->dice_sides = rec_int(r, "damage_dice", 0);
+		// ASCENT: the values of a line with no key are the ones of 0x207E7
+		// (the reader 0x209F3 calls it first): 1d6 (+0x0D 6, +0x0E 1) and a
+		// fire_wait of 0.25 (+0x64 0x4000), as bm_read_weapon. The port took
+		// 0 sides and 1.0: the arrows of the tables (weapon 10, 12, 74, 75)
+		// have no damage_dice key and rolled no dice.
+		d->dice_sides = rec_int(r, "damage_dice", 6);
 		d->dice_n = rec_int(r, "#damage_dice", 1);
 		d->damage_bonus = rec_int(r, "damage_bonus", 0);
 		d->to_hit_bonus = rec_int(r, "to_hit_bonus", 0);
-		d->attack_wait = rec_fix(r, "fire_wait", F1_0);
+		d->attack_wait = rec_fix(r, "fire_wait", F1_0 / 4);
 		d->hot_key_ok = 1;
 	}
 	else
@@ -455,6 +461,47 @@ static int table_ac(dtu_inv_item *e)
 	return d.ac_bonus;
 }
 
+// ASCENT: the numbers that 0xAFB55 tests, as names (dtu_char_update and
+// dtu_char_item_powers use them)
+static int is_shield(dtu_inv_item *e)		{ return armor_is(e, 2, 2) || armor_is(e, 12, 13); }		// 0xAF9CF
+static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || armor_is(e, 39, 42); }		// 0xAF9F3, 0xAF982
+static int is_heavy_armor(dtu_inv_item *e)	{ return armor_is(e, 3, 4) || armor_is(e, 7, 11); }		// 0xB0B0A
+static int is_prot_cloak(dtu_inv_item *e)	{ return armor_is(e, 47, 49); }								// 0xAF930
+static int is_prot_ring(dtu_inv_item *e)	{ return armor_is(e, 0, 0) || armor_is(e, 14, 15); }		// 0xAF9AB
+#define LATHANDER_SPELL	8		// armor 45: USE casts Continual Light (0x37A6A)
+
+// ASCENT: the armor class that an item adds in a slot (DTU_N_SLOTS: the
+// hand), before the rules that need other items (the cloaks and the rings
+// of protection, magic armor). dtu_char_update and dtu_char_item_ac use it.
+static int slot_ac(dtu_inv_item *e, int slot)
+{
+	switch (slot) {
+		case DTU_SLOT_BOOT:		// 0xAFBC8: the boot place reads only armor
+		case DTU_SLOT_ARMOR:
+			return e->type == OBJ_ARMOR ? table_ac(e) : 0;
+		case DTU_SLOT_NECKLACE:	// armor 33 (Amulet of Shield) gives a spell effect only
+			return armor_is(e, 33, 33) ? 0 : table_ac(e);
+		case DTU_N_SLOTS:		// the item in the hand (0xB0356)
+			return (e->type == OBJ_WEAPON || e->type == OBJ_MISC) ? table_ac(e) : 0;
+		case DTU_SLOT_BELT: case DTU_SLOT_SHIELD: case DTU_SLOT_GAUNTLET: case DTU_SLOT_CLOAK:
+		case DTU_SLOT_RING1: case DTU_SLOT_RING2:
+			return table_ac(e);
+	}
+	return 0;		// the lockpicks, the bow and the crossbow
+}
+
+// 0xB02BE: Open Locks of a thief with lockpicks
+int dtu_char_lockpick_bonus(int id)
+{
+	switch (id) {
+		case 10: return 5;
+		case 13: return 10;
+		case 11: return 15;
+		case 12: return 20;
+	}
+	return 0;
+}
+
 // The effect bits of the worn items (0xAFB55 collects them in edx). Item
 // bit n gives the effect of Worn_fx[n] (0xB08A8, 0xB0A98).
 static const int Worn_fx[15] = {
@@ -470,72 +517,96 @@ static int armor_id(dtu_item_ref ref)
 	return (e && e->type == OBJ_ARMOR) ? e->id : -1;
 }
 
+// ASCENT: the item bits (Worn_fx) of one item in one slot (0xAFB55 with
+// the jump tables 0xAFAE5, 0xAFAF5, 0xAFB25); slot DTU_N_SLOTS is the hand.
+// worn_item_bits and the description window (dtu_char_item_fx) use it.
+// any_race: the tests of the race pass (a human).
+static int item_bits(int type, int id, int slot, int any_race)
+{
+	int bits = 0, human = any_race || Dtu_char.pa.race == 0;
+	item_info *it;
+	dtu_item_data d;
+
+	switch (slot) {
+		case DTU_SLOT_BOOT:			// boots (0xAFBEE, jump table 0xAFAE5)
+			if (type == OBJ_ARMOR)
+				switch (id) {
+					case 34: bits |= 1 << 4; break;		// Winged Boots: Fly
+					case 35: bits |= 1 << 3; break;		// Boots of Feather Falling
+					case 36: bits |= 1 << 11; break;		// Boots of Levitation
+					case 37: bits |= 1 << 9; break;		// Boots of Speed: Haste
+				}
+			break;
+		case DTU_SLOT_NECKLACE:		// 33: Amulet of Shield (0xAFCBA tests the number only)
+			if (id == 33)
+				bits |= 1 << 10;
+			break;
+		case DTU_SLOT_GAUNTLET:		// 51: Glim-Gauntlet, Detect Magic (0xAFD99)
+			if (type == OBJ_ARMOR && id == 51)
+				bits |= 1 << 8;
+			break;
+		case DTU_SLOT_CLOAK:			// 44: Chameleon Cloak, Improved Invisibility; 46: Elven Cloak, Invisibility (0xAFF54)
+			if (type == OBJ_ARMOR && id == 44) bits |= 1 << 12;
+			if (type == OBJ_ARMOR && id == 46) bits |= 1 << 13;
+			break;
+		case DTU_SLOT_RING1:			// rings (jump tables 0xAFAF5 and 0xAFB25). Ring 16
+		case DTU_SLOT_RING2:			// (Armoring) sets no effect bit: see armoring_ac().
+			if (type == OBJ_ARMOR)
+				switch (id) {
+					case 17: bits |= 1 << 1; break;		// Ring of Coolness: Resist Fire
+					case 18: bits |= 1 << 3; break;		// Feather Fall
+					case 19: bits |= 1 << 4; break;		// Flying
+					case 20: bits |= 1 << 5; break;		// Free Action
+					case 22: if (any_race || Dtu_char.pa.race <= 0) bits |= 1 << 6; break;		// Infravision, humans only
+					case 23: bits |= 1 << 7; break;		// Jumping
+					case 24: bits |= 1 << 8; break;		// Magic Detection
+					case 25: bits |= 1 << 9; break;		// Quickness: Haste
+				}
+			break;
+		case DTU_SLOT_BOW:
+			// ASCENT: Dtu_fix_speed_items. The line of the Short Bow of Speed has
+			// pc_spell1=21 (Haste). The executable has no such keyword and 0xAFB55
+			// does not read the bow slot.
+			it = item_entry(type, id);
+			if (it)
+				bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell1", -1), Dtu_fix_speed_items);
+			break;
+		case DTU_N_SLOTS:
+			// weapon 54 in the hand (0xB038F): bits 0, 1, 3, 5, 7, 8, 9, 12,
+			// and 6 for a human
+			if (type == OBJ_WEAPON && id == 54) {
+				bits |= 0x2b | 0x1380;
+				if (human)
+					bits |= 0x40;
+			}
+			// ASCENT: Dtu_fix_speed_items. The line of the Short Sword of
+			// Quickness has pc_spell=21; the executable reads PC_spell only for
+			// a weapon with attack_type 0 (0x44300).
+			if (type == OBJ_WEAPON) {
+				it = item_entry(type, id);
+				if (it && dtu_item_get(type, id, &d) && d.melee)
+					bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell", -1), Dtu_fix_speed_items);
+			}
+			break;
+	}
+	return bits;
+}
+
 static int worn_item_bits(void)
 {
-	int bits = 0, id, r;
+	static const int slots[7] = { DTU_SLOT_BOOT, DTU_SLOT_NECKLACE, DTU_SLOT_GAUNTLET, DTU_SLOT_CLOAK,
+		DTU_SLOT_RING1, DTU_SLOT_RING2, DTU_SLOT_BOW };
+	int bits = 0, i;
 	dtu_inv_item *e;
 
-	// boots (0xAFBEE, jump table 0xAFAE5)
-	switch (armor_id(Dtu_char.slot[DTU_SLOT_BOOT])) {
-		case 34: bits |= 1 << 4; break;		// Winged Boots: Fly
-		case 35: bits |= 1 << 3; break;		// Boots of Feather Falling
-		case 36: bits |= 1 << 11; break;		// Boots of Levitation
-		case 37: bits |= 1 << 9; break;		// Boots of Speed: Haste
-	}
-	// necklace 33: Amulet of Shield (0xAFCBA tests the number only)
-	e = ref_entry(Dtu_char.slot[DTU_SLOT_NECKLACE]);
-	if (e && e->id == 33)
-		bits |= 1 << 10;
-	// gauntlet 51: Glim-Gauntlet, Detect Magic (0xAFD99)
-	if (armor_id(Dtu_char.slot[DTU_SLOT_GAUNTLET]) == 51)
-		bits |= 1 << 8;
-	// cloak 44: Chameleon Cloak, Improved Invisibility; 46: Elven Cloak,
-	// Invisibility (0xAFF54)
-	id = armor_id(Dtu_char.slot[DTU_SLOT_CLOAK]);
-	if (id == 44) bits |= 1 << 12;
-	if (id == 46) bits |= 1 << 13;
-	// rings (jump tables 0xAFAF5 and 0xAFB25). Ring 16 (Armoring) sets no
-	// effect bit: see armoring_ac().
-	for (r = 0; r < 2; r++) {
-		switch (armor_id(Dtu_char.slot[r ? DTU_SLOT_RING2 : DTU_SLOT_RING1])) {
-			case 17: bits |= 1 << 1; break;		// Ring of Coolness: Resist Fire
-			case 18: bits |= 1 << 3; break;		// Feather Fall
-			case 19: bits |= 1 << 4; break;		// Flying
-			case 20: bits |= 1 << 5; break;		// Free Action
-			case 22: if (Dtu_char.pa.race <= 0) bits |= 1 << 6; break;		// Infravision, humans only
-			case 23: bits |= 1 << 7; break;		// Jumping
-			case 24: bits |= 1 << 8; break;		// Magic Detection
-			case 25: bits |= 1 << 9; break;		// Quickness: Haste
-		}
-	}
-	// weapon 54 in the hand (0xB038F): bits 0, 1, 3, 5, 7, 8, 9, 12, and 6
-	// for a human
-	e = ref_entry(Dtu_char.current);
-	if (e && e->type == OBJ_WEAPON && e->id == 54) {
-		bits |= 0x2b | 0x1380;
-		if (Dtu_char.pa.race == 0)
-			bits |= 0x40;
-	}
-	// ASCENT: Dtu_fix_speed_items. The line of the Short Bow of Speed has
-	// pc_spell1=21 (Haste). The executable has no such keyword and 0xAFB55
-	// does not read the bow slot. The line of the Short Sword of Quickness
-	// has pc_spell=21; the executable reads PC_spell only for a weapon with
-	// attack_type 0 (0x44300).
-	e = ref_entry(Dtu_char.slot[DTU_SLOT_BOW]);
-	if (e) {
-		item_info *it = item_entry(e->type, e->id);
-
-		if (it)
-			bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell1", -1), Dtu_fix_speed_items);
+	for (i = 0; i < 7; i++) {
+		e = ref_entry(Dtu_char.slot[slots[i]]);
+		if (e)
+			bits |= item_bits(e->type, e->id, slots[i], 0);
 	}
 	e = ref_entry(Dtu_char.current);
-	if (e && e->type == OBJ_WEAPON) {
-		dtu_item_data d;
-		item_info *it = item_entry(e->type, e->id);
-
-		if (it && dtu_item_get(e->type, e->id, &d) && d.melee)
-			bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell", -1), Dtu_fix_speed_items);
-	}
+	if (e)
+		bits |= item_bits(e->type, e->id, DTU_N_SLOTS, 0);
 	return bits;
 }
 
@@ -606,21 +677,23 @@ static int armoring_ac(int ac)
 static void potion_values(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa;
+	// ASCENT: the values of the table of use_misc
+	int giant = dtu_char_misc_use(0x50)->lo, dragon = dtu_char_misc_use(0x4A)->lo, dex = dtu_char_misc_use(0x48)->lo;
 
 	if (Potion.str_end) {								// Hill Giant Strength: at least 19
-		if (pa->strength < 19) {
-			pa->strength = 19;
+		if (pa->strength < giant) {
+			pa->strength = giant;
 			pa->strength_extra = 0;
 		}
 	}
 	if (Potion.dragon_end) {							// Dragon's Blood: at least 18
-		if (pa->strength < 18) {
-			pa->strength = 18;
+		if (pa->strength < dragon) {
+			pa->strength = dragon;
 			pa->strength_extra = Potion.dragon_extra;
 		}
 	}
-	if (Potion.dex_end && pa->dexterity < 18)	// Agility: at least 18
-		pa->dexterity = 18;
+	if (Potion.dex_end && pa->dexterity < dex)	// Agility: at least 18
+		pa->dexterity = dex;
 	if (Potion.intel_end)
 		pa->intelligence = Potion.intel;
 	if (Potion.str_gain || Potion.pct_gain) {	// the spell Strength
@@ -695,50 +768,50 @@ void dtu_char_update(void)
 
 	// boot
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_BOOT]);
-	if (e && e->type == OBJ_ARMOR)
-		sum += table_ac(e);
+	if (e)
+		sum += slot_ac(e, DTU_SLOT_BOOT);
 
 	// belt. Armor 38 is the Girdle of Hill Giant Strength.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_BELT]);
 	if (e) {
-		sum += table_ac(e);
+		sum += slot_ac(e, DTU_SLOT_BELT);
 		if (armor_is(e, 38, 38)) {
-			pa->strength = 19;
+			pa->strength = DTU_GIRDLE_STRENGTH;
 			pa->strength_extra = 0;
 		}
 	}
 
 	// necklace. Armor 33 (Amulet of Shield) gives a spell effect only.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_NECKLACE]);
-	if (e && !armor_is(e, 33, 33))
-		sum += table_ac(e);
+	if (e)
+		sum += slot_ac(e, DTU_SLOT_NECKLACE);
 
 	// shield. 0xAF9CF: the numbers 2, 12 and 13 are shields.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_SHIELD]);
 	if (e) {
-		shield = armor_is(e, 2, 2) || armor_is(e, 12, 13);
-		sum += table_ac(e);
+		shield = is_shield(e);
+		sum += slot_ac(e, DTU_SLOT_SHIELD);
 	}
 
 	// gauntlet
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_GAUNTLET]);
 	if (e) {
-		sum += table_ac(e);
+		sum += slot_ac(e, DTU_SLOT_GAUNTLET);
 		if (armor_is(e, 52, 52)) {					// Gauntlets of Ogre Power
-			pa->strength = 18;
+			pa->strength = DTU_OGRE_STRENGTH;
 			pa->strength_extra = 0;
 		}
 		else if (armor_is(e, 50, 50)) {			// Gloves of Dexterity
 			if (pa->dexterity <= 19)
 				pa->dexterity += Dex_glove[pa->dexterity];
 			if (has_class(DTU_CLASS_THIEF))
-				pa->open_locks += 10;
+				pa->open_locks += DTU_GLOVES_LOCKS_THIEF;
 			else
-				pa->open_locks = 37;
+				pa->open_locks = DTU_GLOVES_LOCKS;
 		}
 		else if (e->type == OBJ_MISC && e->id == 9) {	// Gauntlets (0xB0B5F)
-			pa->find_traps -= 250;
-			pa->open_locks -= 250;
+			pa->find_traps -= DTU_SKILL_LOSS;
+			pa->open_locks -= DTU_SKILL_LOSS;
 		}
 	}
 
@@ -747,13 +820,13 @@ void dtu_char_update(void)
 	// 11 (chain mail, plate mail) three thief skills do not work.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_ARMOR]);
 	if (e && e->type == OBJ_ARMOR) {
-		sum += table_ac(e);
-		magic_armor = armor_is(e, 5, 11) || armor_is(e, 39, 42);
-		heavy_armor = armor_is(e, 3, 4) || armor_is(e, 7, 11);
+		sum += slot_ac(e, DTU_SLOT_ARMOR);
+		magic_armor = is_magic_armor(e);
+		heavy_armor = is_heavy_armor(e);
 		if (heavy_armor) {								// 0xB0B36
-			pa->hide_in_shadows -= 250;
-			pa->move_silently -= 250;
-			pa->climb_walls -= 250;
+			pa->hide_in_shadows -= DTU_SKILL_LOSS;
+			pa->move_silently -= DTU_SKILL_LOSS;
+			pa->climb_walls -= DTU_SKILL_LOSS;
 		}
 	}
 
@@ -762,10 +835,10 @@ void dtu_char_update(void)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_CLOAK]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
-			if (!armor_is(e, 47, 49) || (!shield && !magic_armor && !heavy_armor))
-				sum += table_ac(e);
+			if (!is_prot_cloak(e) || (!shield && !magic_armor && !heavy_armor))
+				sum += slot_ac(e, DTU_SLOT_CLOAK);
 			if (e->id == 43)								// Cloak of Elvenkind
-				pa->hide_in_shadows = 95;
+				pa->hide_in_shadows = DTU_ELVENKIND_HIDE;
 		}
 		else
 			sum += table_ac(e);
@@ -777,13 +850,13 @@ void dtu_char_update(void)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_RING1]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
-			prot_ring = armor_is(e, 0, 0) || armor_is(e, 14, 15);
+			prot_ring = is_prot_ring(e);
 			if (!magic_armor) {
 				if (prot_ring) ring_best = table_ac(e);
 				else sum += table_ac(e);
 			}
-			if (e->id == 21) pa->constitution = 18;
-			if (e->id == 26) { pa->strength = 18; pa->strength_extra = 0; }
+			if (e->id == 21) pa->constitution = DTU_RING_CONSTITUTION;
+			if (e->id == 26) { pa->strength = DTU_RING_STRENGTH; pa->strength_extra = 0; }
 		}
 		else
 			sum += table_ac(e);
@@ -791,7 +864,7 @@ void dtu_char_update(void)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_RING2]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
-			int this_prot = armor_is(e, 0, 0) || armor_is(e, 14, 15);
+			int this_prot = is_prot_ring(e);
 			int v = table_ac(e);
 
 			prot_ring |= this_prot;
@@ -799,8 +872,8 @@ void dtu_char_update(void)
 				if (prot_ring) { if (v < ring_best) ring_best = v; }
 				else if (!this_prot) sum += v;
 			}
-			if (e->id == 21) pa->constitution = 18;
-			if (e->id == 26) { pa->strength = 18; pa->strength_extra = 0; }
+			if (e->id == 21) pa->constitution = DTU_RING_CONSTITUTION;
+			if (e->id == 26) { pa->strength = DTU_RING_STRENGTH; pa->strength_extra = 0; }
 		}
 		else
 			sum += table_ac(e);
@@ -809,12 +882,8 @@ void dtu_char_update(void)
 
 	// lockpicks, for a thief (0xB02BE)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_LOCKPICK]);
-	if (e && e->type == OBJ_MISC && has_class(DTU_CLASS_THIEF)) {
-		if (e->id == 10) pa->open_locks += 5;
-		if (e->id == 13) pa->open_locks += 10;
-		if (e->id == 11) pa->open_locks += 15;
-		if (e->id == 12) pa->open_locks += 20;
-	}
+	if (e && e->type == OBJ_MISC && has_class(DTU_CLASS_THIEF))
+		pa->open_locks += dtu_char_lockpick_bonus(e->id);
 
 	// 0xB030B: invisible (effect bits 16, 17): Open Locks - 15. 0xB032A: the
 	// Find Traps effect (bit 20): Find/Remove Traps 100.
@@ -827,14 +896,14 @@ void dtu_char_update(void)
 
 	// the item in the hand (0xB0356)
 	e = ref_entry(Dtu_char.current);
-	if (e && (e->type == OBJ_WEAPON || e->type == OBJ_MISC))
-		sum += table_ac(e);
+	if (e)
+		sum += slot_ac(e, DTU_N_SLOTS);
 	// 0xB038F: weapon 54 (Sword of W'hin) in the hand: Find/Remove Traps
 	// and Climb Walls 250 (95 after the limit). ASCENT: Climb Walls was
 	// missing (0xB03C2).
 	if (e && e->type == OBJ_WEAPON && e->id == 54) {
-		pa->find_traps = 250;
-		pa->climb_walls = 250;
+		pa->find_traps = DTU_WHIN_SKILL;
+		pa->climb_walls = DTU_WHIN_SKILL;
 	}
 
 	// The potions (0x396B2) and the spell Strength (0x8FCFA) change the
@@ -845,7 +914,7 @@ void dtu_char_update(void)
 	worn_effects();
 
 	// 0xB0B7E: each thief skill is 0 to 95
-	#define CLAMP95(v) do { if ((v) < 0) (v) = 0; if ((v) > 95) (v) = 95; } while (0)
+	#define CLAMP95(v) do { if ((v) < 0) (v) = 0; if ((v) > DTU_SKILL_MAX) (v) = DTU_SKILL_MAX; } while (0)
 	CLAMP95(pa->hide_in_shadows);
 	CLAMP95(pa->move_silently);
 	CLAMP95(pa->find_traps);
@@ -983,6 +1052,106 @@ static int slot_wear_bit(int slot)
 		DTU_WEAR_BOW, DTU_WEAR_CROSSBOW };
 
 	return (slot >= 0 && slot < DTU_N_SLOTS) ? bits[slot] : 0;
+}
+
+//------------------------------------------------------------------------
+// ASCENT: the rules of one item, for the description window (dtudesc.c)
+
+int dtu_char_item_slot(int type, int id)
+{
+	dtu_item_data d;
+	int slot;
+
+	if (type == OBJ_WEAPON)
+		return DTU_N_SLOTS;
+	if (!dtu_item_get(type, id, &d))
+		return -1;
+	for (slot = 0; slot < DTU_N_SLOTS; slot++)
+		if (d.wear_mask & slot_wear_bit(slot))
+			return slot;
+	return -1;
+}
+
+int dtu_char_item_ac(int type, int id)
+{
+	dtu_inv_item e;
+	int slot = dtu_char_item_slot(type, id);
+
+	memset(&e, 0, sizeof(e));
+	e.type = type;
+	e.id = id;
+	return slot < 0 ? 0 : slot_ac(&e, slot);
+}
+
+int dtu_char_item_fx(int type, int id)
+{
+	int slot = dtu_char_item_slot(type, id), bits, fx = 0, i;
+
+	if (slot < 0)
+		return 0;
+	bits = item_bits(type, id, slot, 1);
+	for (i = 0; i < 15; i++)
+		if (bits & (1 << i))
+			fx |= Worn_fx[i];
+	return fx;
+}
+
+int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
+{
+	dtu_inv_item e;
+	int k = 0, slot = dtu_char_item_slot(type, id);
+
+	#define ADD(a, b, c) do { if (k < n) { p[k].kind = (a); p[k].value = (b); p[k].value2 = (c); } k++; } while (0)
+	memset(&e, 0, sizeof(e));
+	e.type = type;
+	e.id = id;
+	// the values of dtu_char_update, in its order
+	if (slot == DTU_SLOT_BELT && armor_is(&e, 38, 38))
+		ADD(DTU_IP_STRENGTH, DTU_GIRDLE_STRENGTH, 0);
+	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 52, 52))
+		ADD(DTU_IP_STRENGTH, DTU_OGRE_STRENGTH, 100);
+	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 50, 50)) {
+		// the points for the base dexterity of the character of now
+		ADD(DTU_IP_DEXTERITY, Dex_glove[Dtu_char.base.dexterity < 0 ? 0 : Dtu_char.base.dexterity > 19 ? 19 : Dtu_char.base.dexterity], 0);
+		ADD(DTU_IP_LOCKS_THIEF, DTU_GLOVES_LOCKS_THIEF, 0);
+		ADD(DTU_IP_LOCKS_OTHER, DTU_GLOVES_LOCKS, 0);
+	}
+	if (slot == DTU_SLOT_GAUNTLET && type == OBJ_MISC && id == 9)
+		ADD(DTU_IP_NO_SKILLS, 2, 0);
+	if (slot == DTU_SLOT_ARMOR && is_heavy_armor(&e))
+		ADD(DTU_IP_NO_SKILLS, 1, 0);
+	if (slot == DTU_SLOT_CLOAK && is_prot_cloak(&e))
+		ADD(DTU_IP_PROT_CLOAK, 0, 0);
+	if (slot == DTU_SLOT_CLOAK && armor_is(&e, 43, 43))
+		ADD(DTU_IP_HIDE, DTU_ELVENKIND_HIDE, 0);
+	if (slot == DTU_SLOT_RING1 && type == OBJ_ARMOR) {
+		if (is_prot_ring(&e))
+			ADD(DTU_IP_PROT_RING, 0, 0);
+		if (table_ac(&e))
+			ADD(DTU_IP_RING_NO_MAGIC, 0, 0);
+		if (id == 21)
+			ADD(DTU_IP_CONSTITUTION, DTU_RING_CONSTITUTION, 0);
+		if (id == 26)
+			ADD(DTU_IP_STRENGTH, DTU_RING_STRENGTH, 100);
+		if (id == 16)
+			ADD(DTU_IP_ARMORING, 0, 0);
+		if (id == 27)
+			ADD(DTU_IP_WIZARDRY, 0, 0);
+	}
+	if (slot == DTU_SLOT_LOCKPICK && dtu_char_lockpick_bonus(id))
+		ADD(DTU_IP_LOCKS_THIEF, dtu_char_lockpick_bonus(id), 0);
+	if (slot == DTU_N_SLOTS && id == 54)
+		ADD(DTU_IP_TRAPS_CLIMB, DTU_WHIN_SKILL < DTU_SKILL_MAX ? DTU_WHIN_SKILL : DTU_SKILL_MAX, 0);
+	// the use (dtu_char_use) and the key of Turn Undead (0xADCB3)
+	if (type == OBJ_ARMOR && id == 45) {
+		ADD(DTU_IP_USE_SPELL, LATHANDER_SPELL, 0);
+		ADD(DTU_IP_TURN_UNDEAD, 0, 0);
+	}
+	// 0xB0968: the effect Infravision of a worn item only for a human
+	if (dtu_char_item_fx(type, id) & DTU_FX_INFRAVISION)
+		ADD(DTU_IP_INFRA_HUMAN, 0, 0);
+	#undef ADD
+	return k < n ? k : n;
 }
 
 int dtu_char_slot_of(int index)
@@ -1627,6 +1796,80 @@ static void spell_on_player(int spell)
 // 0x2FACC: the system shock of constitution 1 to 19
 static const ubyte System_shock[19] = { 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 88, 90, 95, 97, 99, 99 };
 
+// ASCENT: the values of the cases of use_misc (0x37A6A) as a table, so that
+// the description window (dtu_char_misc_use, dtudesc.c) reads what the use
+// does. Times: (rand() % t_mod + t_add) * t_unit seconds, no roll for
+// t_mod 1. The Gem of Curing has its spell in lo, the Spider Piece 0x16 its
+// area spell in lo.
+static const dtu_misc_use Misc_use[] = {
+	{ 0x02, DTU_MU_GEM, 11, 11 },
+	{ 0x12, DTU_MU_TURN },
+	{ 0x13, DTU_MU_MAP },
+	{ 0x14, DTU_MU_ATTACK },
+	{ 0x16, DTU_MU_AREA_SPELLS, 14, 14, 0, 0, 0, 0, 7, { 1, 35, 19, 40, 43, 18, 50 } },
+	{ 0x17, DTU_MU_TOUR },
+	{ 0x18, DTU_MU_ABILITY },
+	{ 0x19, DTU_MU_SPELLS_KEEP, 0, 0, 0, 0, 0, 0, 4, { 48, 20, 21, 25 } },
+	{ 0x1A, DTU_MU_FULL_HEAL, 0, 0, 0, 0, 0, 0, 9, { 1, 45, 15, 24, 35, 38, 39, 43, 49 } },
+	{ 0x48, DTU_MU_DEXTERITY, 18, 18, 1, 10, 60 },
+	{ 0x49, DTU_MU_DISPEL },
+	{ 0x4A, DTU_MU_DRAGON, 18, 18 },
+	{ 0x4B, DTU_MU_HEAL, 6, 27 },
+	{ 0x4C, DTU_MU_EFFECT, 0, 0, 1, 10, 60, DTU_FX_RESIST_FIRE },
+	{ 0x4D, DTU_MU_SPELLS, 0, 0, 0, 0, 0, 0, 1, { 19 } },
+	{ 0x4E, DTU_MU_EFFECT, 0, 0, 4, 5, 600, DTU_FX_FREE_ACTION },
+	{ 0x4F, DTU_MU_HEAL, 4, 10 },
+	{ 0x50, DTU_MU_GIANT, 19, 19, 4, 5, 600 },
+	{ 0x51, DTU_MU_INTEL, 5, 7, 4, 5, 600 },
+	{ 0x52, DTU_MU_EFFECT, 0, 0, 8, 1, 600, DTU_FX_INFRAVISION },
+	{ 0x53, DTU_MU_EFFECT, 0, 0, 4, 3, 600, DTU_FX_INVISIBLE },
+	{ 0x54, DTU_MU_EFFECT, 0, 0, 16, 5, 60, DTU_FX_INVULNERABLE },
+	{ 0x55, DTU_MU_SPELLS, 0, 0, 0, 0, 0, 0, 1, { 27 } },
+	{ 0x56, DTU_MU_LUCK, 0, 0, 1, 60, 60 },
+	{ 0x57, DTU_MU_EFFECT, 0, 0, 16, 5, 60, DTU_FX_HASTE },
+	{ 0x58, DTU_MU_TOUGH, 2, 18, 6, 7, 600 },
+	{ 0x65, DTU_MU_QUEST },
+	{ 0x66, DTU_MU_SCROLL },
+	{ 0x6A, DTU_MU_CURSED, 0, 0, 0, 0, 0, 0, 5, { 7, 9, 44, 22, 16 } },
+	{ 0x7F, DTU_MU_SCROLL },
+};
+
+const dtu_misc_use *dtu_char_misc_use(int id)
+{
+	int i;
+
+	for (i = 0; i < (int) (sizeof(Misc_use) / sizeof(Misc_use[0])); i++)
+		if (Misc_use[i].id == id)
+			return &Misc_use[i];
+	return NULL;
+}
+
+// ASCENT: two values of use_misc that the description window shows too
+// (dtudesc.c). 0x38BE9: the Potion of Dragon's Blood lasts 1 to this many
+// minutes (the level of class 1, from 1).
+int dtu_char_dragon_minutes(void)
+{
+	return Dtu_char.pa.class1_level + 1;
+}
+
+// 0x38196: the Spider Piece 0x12 makes class 1 a cleric of this level
+// number (0 is the first level) for the Turn Undead call.
+int dtu_char_spider_turn_level(void)
+{
+	return (Dtu_char.pa.class1_level + 1) * 2;
+}
+
+// The value of a use: rand() % (hi - lo + 1) + lo
+static int use_roll(const dtu_misc_use *u)
+{
+	return rand() % (u->hi - u->lo + 1) + u->lo;
+}
+
+static fix use_time(const dtu_misc_use *u)
+{
+	return u->t_mod > 1 ? rnd_time(u->t_mod, u->t_add, u->t_unit) : i2f(u->t_add * u->t_unit);
+}
+
 // The misc items. Returns 1 if the item is used up (the cases that go to
 // 0x39694), 0 if not, -1 if the item has no use.
 static int use_misc(dtu_inv_item *e)
@@ -1634,7 +1877,10 @@ static int use_misc(dtu_inv_item *e)
 	dtu_player_attr *pa = &Dtu_char.pa;
 	object *p = ConsoleObject;
 	int hp = dtu_char_hit_points(), max = dtu_char_max_hit_points(), n, i;
+	const dtu_misc_use *u = dtu_char_misc_use(e->id);
 
+	if (!u)
+		return -1;
 	switch (e->id) {
 		case 0x02:		// Gem of Curing: not used up
 			// 0x3891B: the use counter P+0x1A57 must not be above the
@@ -1651,7 +1897,7 @@ static int use_misc(dtu_inv_item *e)
 				HUD_init_message("...And now you can see!");
 			}
 			else if (hp < max)
-				spell_on_player(11);
+				spell_on_player(u->lo);
 			Potion.gem_uses++;
 			dtu_char_log("use: Gem of Curing, use %d", Potion.gem_uses);
 			return 0;
@@ -1667,10 +1913,9 @@ static int use_misc(dtu_inv_item *e)
 			return 0;
 		case 0x16:		// Spider Piece: area Fear and seven spells on the player
 			if (e->count > 0) {
-				static const int s[7] = { 1, 35, 19, 40, 43, 18, 50 };
-				dtu_spell_area(14, &p->pos, p->segnum, p, dtu_spell_player_level(14));
-				for (i = 0; i < 7; i++)
-					spell_on_player(s[i]);
+				dtu_spell_area(u->lo, &p->pos, p->segnum, p, dtu_spell_player_level(u->lo));
+				for (i = 0; i < u->n_spells; i++)
+					spell_on_player(u->spells[i]);
 				e->count--;
 			}
 			else
@@ -1678,10 +1923,9 @@ static int use_misc(dtu_inv_item *e)
 			return 0;
 		case 0x19:		// Assembled Spider: four effects with no end
 			if (e->count > 0) {
-				static const int s[4] = { 48, 20, 21, 25 };
 				static const int m[4] = { DTU_FX_SPIDER_CLIMB, DTU_FX_FREE_ACTION, DTU_FX_HASTE, DTU_FX_INFRAVISION };
-				for (i = 0; i < 4; i++) {
-					spell_on_player(s[i]);
+				for (i = 0; i < u->n_spells && i < 4; i++) {
+					spell_on_player(u->spells[i]);
 					if (p->dtu.m_88 & m[i])
 						dtu_spell_set_effect(p, m[i], DTU_FX_NO_END, 0, 0);
 				}
@@ -1692,10 +1936,9 @@ static int use_misc(dtu_inv_item *e)
 			return 0;
 		case 0x1A:		// Spider Piece: all hit points and nine spells
 			if (e->count > 0) {
-				static const int s[9] = { 1, 45, 15, 24, 35, 38, 39, 43, 49 };
 				dtu_char_heal(max);
-				for (i = 0; i < 9; i++)
-					spell_on_player(s[i]);
+				for (i = 0; i < u->n_spells; i++)
+					spell_on_player(u->spells[i]);
 				if (p->dtu.m_88 & (DTU_FX_BLIND|DTU_FX_DEAF))
 					spell_on_player(42);
 				e->count--;
@@ -1712,7 +1955,7 @@ static int use_misc(dtu_inv_item *e)
 				int c1 = pa->class1, l1 = pa->class1_level;
 
 				pa->class1 = DTU_CLASS_CLERIC;
-				pa->class1_level = (l1 + 1) * 2;
+				pa->class1_level = dtu_char_spider_turn_level();
 				dtu_combat_turn_undead(0);
 				pa->class1 = c1;
 				pa->class1_level = l1;
@@ -1741,9 +1984,9 @@ static int use_misc(dtu_inv_item *e)
 				HUD_init_message("Nothing happens...");
 			return 0;
 		case 0x48:		// Potion of Agility: dexterity 18 for 600 s
-			if (pa->dexterity < 18) {
-				Potion.dex_end = GameTime + i2f(600);
-				HUD_init_message("You have increased agility for %d minutes.", 10);		// ASCENT: 0x38A6C
+			if (pa->dexterity < u->lo) {
+				Potion.dex_end = GameTime + use_time(u);
+				HUD_init_message("You have increased agility for %d minutes.", u->t_add * u->t_unit / 60);		// ASCENT: 0x38A6C
 				spell_vclip(21);
 			}
 			break;
@@ -1755,8 +1998,8 @@ static int use_misc(dtu_inv_item *e)
 			spell_vclip(13);
 			break;
 		case 0x4A:		// Potion of Dragon's Blood: strength 18 for 1 to (level + 1) rounds
-			if (pa->strength < 18) {
-				n = rand() % (pa->class1_level + 1) + 1;
+			if (pa->strength < u->lo) {
+				n = rand() % dtu_char_dragon_minutes() + 1;
 				Potion.dragon_end = GameTime + i2f(n * 60);
 				Potion.dragon_extra = has_class(DTU_CLASS_FIGHTER) ? rand() % 100 : 0;
 				HUD_init_message("You have increased strength for %d minutes.", n);		// ASCENT: 0x38BE9
@@ -1765,67 +2008,67 @@ static int use_misc(dtu_inv_item *e)
 			break;
 		case 0x4B:		// Potion of Extra-Healing: 6 to 27 hit points
 			if (hp < max) {
-				n = dtu_char_heal(rand() % 22 + 6);
+				n = dtu_char_heal(use_roll(u));
 				HUD_init_message("You feel much better.");
 				dtu_char_log("use: '%s', %d hit points, %d -> %d of %d", e->name, n, hp, dtu_char_hit_points(), max);
 			}
 			spell_vclip(11);
 			break;
 		case 0x4C:		// Potion of Fire Resistance: Resist Fire for 600 s
-			effect_on_player(DTU_FX_RESIST_FIRE, i2f(600));
+			effect_on_player(u->fx, use_time(u));
 			spell_vclip(43);
-			HUD_init_message("You have Fire Resistance for %d minutes.", 10);		// ASCENT: 0x38D75
+			HUD_init_message("You have Fire Resistance for %d minutes.", u->t_add * u->t_unit / 60);		// ASCENT: 0x38D75
 			break;
 		case 0x4D:		// Potion of Flying: the spell Fly
-			spell_on_player(19);
+			spell_on_player(u->spells[0]);
 			break;
 		case 0x4E:		// Potion of Freedom: Free Action for 50 to 80 rounds
-			effect_on_player(DTU_FX_FREE_ACTION, rnd_time(4, 5, 600));
+			effect_on_player(u->fx, use_time(u));
 			HUD_init_message("You are immune to paralysis for awhile.");
 			break;
 		case 0x4F:		// Potion of Healing: 4 to 10 hit points
 			if (hp < max) {
-				n = dtu_char_heal(rand() % 7 + 4);
+				n = dtu_char_heal(use_roll(u));
 				HUD_init_message("You feel better.");
 				dtu_char_log("use: '%s', %d hit points, %d -> %d of %d", e->name, n, hp, dtu_char_hit_points(), max);
 			}
 			spell_vclip(10);
 			break;
 		case 0x50:		// Potion of Hill Giant Strength: 19 for 50 to 80 rounds
-			if (pa->strength < 19) {
-				Potion.str_end = GameTime + rnd_time(4, 5, 600);
+			if (pa->strength < u->lo) {
+				Potion.str_end = GameTime + use_time(u);
 				HUD_init_message("You have Hill Giant strength for awhile.");
 				spell_vclip(50);		// ASCENT: 0x38C09
 			}
 			break;
 		case 0x51:		// Poshun uv Hil Gient Inteljuns: intelligence 5 to 7
-			Potion.intel = rand() % 3 + 5;
-			Potion.intel_end = GameTime + rnd_time(4, 5, 600);
+			Potion.intel = use_roll(u);
+			Potion.intel_end = GameTime + use_time(u);
 			HUD_init_message("%s", game_text(977, "Yooz fielz mor smartr."));		// ASCENT: 0x39013, TEX 977
 			// a random vclip and a flash for each point of intelligence: the
 			// vclip of one spell here
 			spell_vclip(7);
 			break;
 		case 0x52:		// Potion of Infravision: 10 to 80 rounds
-			effect_on_player(DTU_FX_INFRAVISION, rnd_time(8, 1, 600));
+			effect_on_player(u->fx, use_time(u));
 			spell_vclip(25);
 			HUD_init_message("%s", game_text(968, "You have infravision for some time."));		// ASCENT: 0x391A7, TEX 968
 			break;
 		case 0x53:		// the second "Potion of Agility": Invisibility for 30 to 60 rounds
-			effect_on_player(DTU_FX_INVISIBLE, rnd_time(4, 3, 600));
+			effect_on_player(u->fx, use_time(u));
 			spell_vclip(26);
 			HUD_init_message("%s", game_text(969, "You are invisible for now."));		// ASCENT: 0x3923E, TEX 969
 			break;
 		case 0x54:		// Potion of Invulnerability: 5 to 20 rounds
-			effect_on_player(DTU_FX_INVULNERABLE, rnd_time(16, 5, 60));
+			effect_on_player(u->fx, use_time(u));
 			spell_vclip(28);
 			HUD_init_message("%s", game_text(970, "You presently feel invincible."));		// ASCENT: 0x39335, TEX 970
 			break;
 		case 0x55:		// Potion of Jumping: the spell Jump
-			spell_on_player(27);
+			spell_on_player(u->spells[0]);
 			break;
 		case 0x56:		// Potion of Luck: one hour, one critical hit
-			Potion.luck_end = GameTime + i2f(3600);
+			Potion.luck_end = GameTime + use_time(u);
 			// ASCENT: the vclips of the spells 1, 3 and 38 and global flag 77
 			// (0x393A3 to 0x393D6). Script 508 of a Spider Piece reads the flag.
 			spell_vclip(1);
@@ -1835,7 +2078,7 @@ static int use_misc(dtu_inv_item *e)
 			HUD_init_message("You feel lucky today.");
 			break;
 		case 0x57:		// Potion of Speed: Haste for 5 to 20 rounds
-			effect_on_player(DTU_FX_HASTE, rnd_time(16, 5, 60));
+			effect_on_player(u->fx, use_time(u));
 			spell_vclip(21);
 			HUD_init_message("%s", game_text(972, "You feel faster."));		// ASCENT: 0x3944C, TEX 972
 			break;
@@ -1851,8 +2094,8 @@ static int use_misc(dtu_inv_item *e)
 					dtu_damage_player(p, NULL, i2f(hp + 1));
 			}
 			else {
-				n = rand() % 17 + 2;
-				dtu_spell_set_effect(p, DTU_FX_BLESS, rnd_time(6, 7, 600), 0, 0);
+				n = use_roll(u);
+				dtu_spell_set_effect(p, DTU_FX_BLESS, use_time(u), 0, 0);
 				set_hit_points(hp + n);
 				HUD_init_message("You feel tougher.");
 				dtu_char_log("use: Potion of Toughening: %d hit points, %d of %d", n, dtu_char_hit_points(), max);
@@ -1881,13 +2124,12 @@ static int use_misc(dtu_inv_item *e)
 			return 0;
 		case 0x6A:		// Cursed Scroll
 			{
-				static const int s[5] = { 7, 9, 44, 22, 16 };
 				ushort *a[6] = { &Dtu_char.base.strength, &Dtu_char.base.dexterity, &Dtu_char.base.constitution,
 					&Dtu_char.base.intelligence, &Dtu_char.base.wisdom, &Dtu_char.base.charisma };
 
-				for (i = 0; i < 5; i++)
+				for (i = 0; i < u->n_spells; i++)
 					if (rand() % 2)
-						spell_on_player(s[i]);
+						spell_on_player(u->spells[i]);
 				if (rand() % 2)
 					for (i = 0; i <= Highest_segment_index; i++)
 						Automap_visited[i] = 0;
@@ -1947,7 +2189,7 @@ int dtu_char_use(int index)
 	}
 	if (e->type == OBJ_ARMOR) {
 		if (e->id == 45)		// armor 45 (Cloak of Elvenkind): area Continual Light
-			dtu_spell_area(8, &ConsoleObject->pos, ConsoleObject->segnum, ConsoleObject, dtu_spell_player_level(8));
+			dtu_spell_area(LATHANDER_SPELL, &ConsoleObject->pos, ConsoleObject->segnum, ConsoleObject, dtu_spell_player_level(LATHANDER_SPELL));
 		return 0;
 	}
 	if (e->type != OBJ_MISC)
@@ -2388,7 +2630,12 @@ static void weapon_attack(int weapon, dtu_attack *a)
 		a->dice_sides = 2;
 		return;
 	}
-	if (weapon >= 0 && dtu_item_get(OBJ_WEAPON, weapon, &d) && d.dice_sides > 0) {
+	// ASCENT: 0x2AAE7 and 0x2B06A take each weapon number that is not
+	// negative, with no test of the dice. The port sent a weapon with 0
+	// sides to the empty hand: the Flame Tongue (weapon 71, the table fixup
+	// 0x1B04A gives it 0d0 and 1d8 of fire) lost its +1, its fire and its
+	// bonus against undead. The damage roll adds nothing for 0 sides.
+	if (weapon >= 0 && dtu_item_get(OBJ_WEAPON, weapon, &d)) {
 		// 0x2AAE7 and 0x2B06A: the weapon
 		a->weapon_id = weapon;
 		a->melee = d.melee;
@@ -3273,6 +3520,9 @@ static void run_command(char *cmd, char *value)
 		dump_character();
 	}
 	else if (!strcmp(cmd, "priestcheck"))	dtu_spell_priest_check();		// ASCENT: test, docs/audit/spells-priest.md
+	else if (!strcmp(cmd, "desc"))		dtu_desc_log_all(a);			// ASCENT: test, desc or desc=CASTER_LEVEL: the texts of the description window (dtudesc.h)
+	else if (!strcmp(cmd, "descitem"))	dtu_desc_open_item(a, b, 1, -1, 0);	// ASCENT: test, descitem=TYPE.ID opens the window
+	else if (!strcmp(cmd, "descspell"))	dtu_desc_open_spell(a);			// ASCENT: test, descspell=SPELL opens the window
 	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
 	else if (!strcmp(cmd, "castby") && b >= 0 && b < MAX_OBJECTS)		// test: castby=SPELL.OBJ, on the player
