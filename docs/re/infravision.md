@@ -16,9 +16,14 @@ the code or the data. **G** marks a guess.
 ## The key N (0x54632)
 
 - **V** The key gate 0x545F5 lets the key act at most once in 36.4 clock ticks.
-- **V** The player can use it when the race value (`P+0xB5`, or 5 with bit 1 of
-  `P+0xFA`, the test at 0x5464B to 0x54664) is not 0, or when the byte 0x2B069D has bit
-  0x80. 0x2B069D is the byte 0x89 of the player object at 0x2B0614, so the test is the
+- **V** The player can use it when the race value is not 0, or when the byte 0x2B069D
+  has bit 0x80. The race value (0x5464B to 0x54664) is 5 when bit 0 of the byte at
+  0x1D33FB (+ player * 0x1B37) is set, else the byte at 0x1D33B6. These are the race
+  byte and the half-elf flag that the statistics screen uses for the race name
+  (0x32C94, 0x32CBB; the port: `pa.race`, `DTU_PF_HALF_ELF`). So every race but
+  human has infravision: dwarf, elf, dark elf, halfling and half-elf. (An earlier
+  version of this note named the byte `P+0xB5`, the `infravision` field, which is
+  wrong; the port then gave infravision to no race.) 0x2B069D is the byte 0x89 of the player object at 0x2B0614, so the test is the
   effect bit 15 of the int at 0x88 (the spell, the potion, the ring).
 - **V** Without it: TEX 819 "You don't have Infravision." (0x396A78).
 - **V** Else the byte 0x14C4DA changes (0 to 1 or 1 to 0). On: TEX 820 and bit 8 of the

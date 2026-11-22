@@ -1490,14 +1490,19 @@ static void do_input(int mx, int my)
 	if (action_acts(DTU_ACT_REST)) do_action(ACT_REST);
 	if (action_acts(DTU_ACT_STATS)) toggle_screen(DTU_IM_STATS);
 	if (action_acts(DTU_ACT_INFRAVISION)) {
-		// 0x54632: without infravision of the race (P+0xB5, 5 with the
-		// bit 1 of P+0xFA) and without the Infravision effect (bit 15 of
-		// the effects of the player object, the spell, the potion, the
-		// ring) TEX 819, else the flag 0x14C4DA changes with TEX 820 or
-		// 821 and the bit 8 of the byte 0x1AE of the player object
-		// (DTU_PS_INFRAVISION). The 3D view is in dtuinfra.c.
+		// 0x54632: the race value (0x5464B to 0x54661: 5 with the half-elf
+		// flag, else the race byte; the same byte and flag as the race
+		// name of the statistics screen, 0x32C94 and 0x32CBB). A race
+		// other than human, or the half-elf, has infravision. Without it
+		// and without the Infravision effect (bit 15 of the effects of the
+		// player object: the spell, the potion, the ring) TEX 819, else
+		// the flag 0x14C4DA changes with TEX 820 or 821 and the bit 8 of
+		// the byte 0x1AE of the player object (DTU_PS_INFRAVISION). The 3D
+		// view is in dtuinfra.c.
+		dtu_player_attr *pa = &Dtu_char.pa;
+		int race = (pa->flags & DTU_PF_HALF_ELF) ? 5 : pa->race;
 		char *text;
-		if (!Dtu_char.pa.infravision && !(ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_INFRAVISION)))
+		if (race == 0 && !(ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_INFRAVISION)))
 			text = Text_string[819];
 		else {
 			Dtu_player_state ^= DTU_PS_INFRAVISION;
