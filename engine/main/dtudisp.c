@@ -45,6 +45,8 @@
 #include "automap.h"		// ASCENT: the map of the map screen
 #include "dtucombat.h"		// ASCENT: the target hint of the cursor
 #include "pcx.h"				// ASCENT: HRISBTN.PCH, the second images of SPELLS
+#include "timer.h"			// ASCENT: the repeat of a held scroll bar arrow
+#include "platform.h"		// ASCENT: plat_mouse_wheel
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -341,6 +343,11 @@ static int Mouse_was_down = 0;
 // Drawing helpers. All coordinates are screen coordinates. The current
 // canvas is the screen.
 
+static int in_rect(int x, int y, int rx, int ry, int rw, int rh)
+{
+	return x >= rx && y >= ry && x < rx + rw && y < ry + rh;
+}
+
 static int rgb6(int r, int g, int b)
 {
 	return gr_find_closest_color(r, g, b);
@@ -614,10 +621,11 @@ static void msg_draw(void)
 		gr_string(r->x + 2, r->y + 3 + 10 * i, Msg_text[line]);
 	}
 	if (Msg_count > n) {
-		// 0x3654C draws the scroll bar. It was not read. The port shows the
-		// bar and the arrows of the interface picture again (the black
-		// rectangle above covered them). The place of the slider is a guess
-		// (in proportion to the first line).
+		// 0x3654C draws the scroll bar (sbar_draw below, docs/re/ingame-ui.md).
+		// The arguments of its call here (0x34795) were not read. The port
+		// shows the bar and the arrows of the interface picture again (the
+		// black rectangle above covered them). The place of the slider is a
+		// guess (in proportion to the first line).
 		for (i = 0; i < 5; i += (i == 0) ? 1 : 2)
 			blit(Interface_bm, sb[i].x, sb[i].y, sb[i].w, sb[i].h, sb[i].x, sb[i].y, 0);
 		if (Dtu_hires) {
@@ -1322,6 +1330,208 @@ static int inv_click(int mx, int my)
 }
 
 //------------------------------------------------------------------------
+// The scroll bar of the inventory list (SBar 0x1BD622). 0x3416C creates it
+// for the modes 3 and 6 with the SBarDef at 0x143158 (high) and 0x143179
+// (low); 0x36815 copies the images out of the interface picture.
+// [0] low resolution, [1] high resolution.
+
+typedef struct dtu_sbar {
+	dtu_rect up, dn;			// the arrows on the screen
+	dtu_rect slider;			// GrabSlider: the source of the slider
+	dtu_rect bar;				// GrabBar: the bar, at the same place on the screen
+	dtu_rect up_rest, up_pressed, dn_rest, dn_pressed;	// sources of the arrow images
+} dtu_sbar;
+
+static dtu_sbar Inv_sbar[2] = {
+	{ { 46, 3, 7, 7 }, { 46, 139, 7, 7 }, { 9, 65, 7, 7 }, { 46, 10, 7, 129 },
+	  { 30, 96, 7, 7 }, { 9, 96, 7, 7 }, { 30, 122, 7, 7 }, { 9, 122, 7, 7 } },
+	{ { 90, 8, 19, 16 }, { 89, 277, 19, 16 }, { 451, 51, 17, 12 }, { 89, 24, 19, 255 },
+	  { 89, 8, 19, 16 }, { 449, 13, 19, 16 }, { 89, 279, 19, 16 }, { 449, 32, 19, 16 } },
+};
+
+static int Sbar_active = 0;			// the scroll bar took the mouse button in this frame
+static int Sbar_grab = 0;			// ASCENT: the press began on the scroll bar
+static fix Sbar_repeat_time = 0;	// ASCENT: the next repeat of a held arrow
+
+// 0x36F2A: the first entry and the count of the current list
+static int *inv_list(int *count)
+{
+	if (Inv_browse >= 1 && Inv_browse <= 2) {
+		*count = Dtu_spell_book_n[Inv_browse - 1];
+		return &Spell_first[Inv_browse - 1];
+	}
+	*count = Dtu_n_inventory;
+	return &Inv_first;
+}
+
+// The whole scroll bar (SBar +0x2A): from the top of the up arrow to the
+// bottom of the down arrow (one line less), the width of the bar.
+static void sbar_rect(dtu_rect *r)
+{
+	dtu_sbar *s = &Inv_sbar[Dtu_hires];
+
+	r->x = s->up.x;
+	r->y = s->up.y;
+	r->w = s->bar.w;
+	r->h = s->dn.y + s->dn.h - 1 - s->up.y;
+}
+
+// 0x3013D: after a change the first entry is at most the even count above
+// the count, minus ten.
+static void inv_list_clamp(int *first, int n)
+{
+	int max = ((n + 1) & ~1) - 10;
+
+	if (*first > max) *first = max;
+	if (*first < 0) *first = 0;
+}
+
+// 0x363D4 with the step 2 and the maximum ((count - 1) / 10) * 10, then
+// the clamp of 0x3013D. part: 0 the up arrow, 1 the down arrow, 2 the bar.
+static void sbar_act(int part, int my)
+{
+	dtu_sbar *s = &Inv_sbar[Dtu_hires];
+	int n, *first = inv_list(&n), max = ((n - 1) / 10) * 10;
+
+	if (part == 0) {
+		*first -= 2;
+		if (*first < 0) *first = 0;
+	} else if (part == 1) {
+		*first += 2;
+		if (*first > max) *first = max;
+	} else {
+		// 16.16 numbers as in the original: the first entry is in
+		// proportion to the place of the cursor in the bar. It can be odd.
+		int range = s->bar.h - s->slider.h;
+		if (range > 0 && max > 0) {
+			long long q = ((long long) range << 16) / max;
+			if (q == 0) q = 1;
+			*first = (int) ((((long long) (my - s->bar.y)) << 16) / q);
+		} else
+			*first = 0;
+		if (*first < 0) *first = 0;
+		if (*first > max) *first = max;
+	}
+	inv_list_clamp(first, n);
+}
+
+// The mouse button is down in this frame (0x3010C). Returns 1 if the
+// scroll bar takes it; then the click does not reach the list or the paper
+// doll. The original acts in each frame while the button is down: an arrow
+// moves the list by one row (two entries) in each frame, a place in the bar
+// sets the list there (so a drag in the bar moves the list).
+static int sbar_input(int mx, int my, int pressed)
+{
+	dtu_sbar *s = &Inv_sbar[Dtu_hires];
+	dtu_rect r;
+	int n, part;
+
+	Sbar_active = 0;
+	// 0x30121: not with an item or a spell at the cursor, and only while
+	// the scroll bar exists (0x13AD44)
+	if (!inventory_mode() || Inv_held >= 0 || Inv_held_spell >= 0)
+		return 0;
+	sbar_rect(&r);
+	if (!in_rect(mx, my, r.x, r.y, r.w, r.h))
+		return 0;
+	// ASCENT: a press that began at another place does not scroll
+	if (pressed)
+		Sbar_grab = 1;
+	if (!Sbar_grab && !Dtu_ui_key_repeat)
+		return 0;
+	inv_list(&n);
+	if (n <= 10)
+		return 1;
+	Sbar_active = 1;
+	if (in_rect(mx, my, s->up.x, s->up.y, s->up.w, s->up.h))
+		part = 0;
+	else if (in_rect(mx, my, s->dn.x, s->dn.y, s->dn.w, s->dn.h))
+		part = 1;
+	else if (in_rect(mx, my, s->bar.x, s->bar.y, s->bar.w, s->bar.h))
+		part = 2;
+	else
+		return 1;
+	if (part < 2 && !Dtu_ui_key_repeat) {
+		// ASCENT: an arrow acts at the press, then repeats after 0.4 s ten
+		// times a second while the button is down (Dtu_ui_key_repeat 1:
+		// in each frame, as the original)
+		fix now = timer_get_fixed_seconds();
+		if (pressed)
+			Sbar_repeat_time = now + (2 * F1_0) / 5;
+		else if (now >= Sbar_repeat_time)
+			Sbar_repeat_time = now + F1_0 / 10;
+		else
+			return 1;
+	}
+	sbar_act(part, my);
+	return 1;
+}
+
+// ASCENT: the mouse wheel over the list or the scroll bar moves the list by
+// one row (two entries) for each step. The original (DOS) has no wheel.
+static void sbar_wheel(int mx, int my, int steps)
+{
+	dtu_rect r;
+	int n, *first;
+
+	if (!steps || !inventory_mode())
+		return;
+	sbar_rect(&r);
+	if (!in_rect(mx, my, 0, 0, r.x + r.w, r.y + r.h))
+		return;
+	first = inv_list(&n);
+	if (n <= 10)
+		return;
+	*first -= 2 * steps;
+	inv_list_clamp(first, n);
+}
+
+// A masked copy out of the interface picture (color 255 is transparent),
+// also in the upscaled picture
+static void sbar_blit_masked(dtu_rect *src, int w, int h, int dx, int dy)
+{
+	blit(Interface_bm, src->x, src->y, w, h, dx, dy, 1);
+	if (Interface_bm)
+		dtu_hdui_blit_key(Interface_bm, src->x, src->y, w, h, &grd_curcanv->cv_bitmap, dx, dy, w, h, 255);
+}
+
+// 0x3654C, called by 0x324DA with the first entry and the count minus 8
+// (0 for ten entries or less: no slider). The bar, the slider in it, and
+// the arrows: an arrow that the mouse holds shows its pressed image.
+static void sbar_draw(int mx, int my)
+{
+	dtu_sbar *s = &Inv_sbar[Dtu_hires];
+	int n, first = *inv_list(&n), c = n > 10 ? n - 8 : 0;
+
+	blit(Interface_bm, s->bar.x, s->bar.y, s->bar.w, s->bar.h, s->bar.x, s->bar.y, 0);
+	if (c > 0) {
+		int p = first < c ? first : c, range = s->bar.h - s->slider.h, y;
+		if (p <= 0)
+			y = 0;
+		else if (p >= c - 1)
+			y = range;
+		else {
+			long long q = ((long long) range << 16) / c;
+			y = (int) (((long long) p * q) >> 16);
+		}
+		sbar_blit_masked(&s->slider, s->slider.w, s->slider.h, s->bar.x, s->bar.y + y);
+	}
+	// 0x36693: the pressed images while the scroll bar has the button (the
+	// original draws them at its update after the click), else 0x36704:
+	// both arrows at rest, masked
+	if (Sbar_active && in_rect(mx, my, s->up.x, s->up.y, s->up.w, s->up.h)) {
+		blit(Interface_bm, s->up_pressed.x, s->up_pressed.y, s->up.w, s->up.h, s->up.x, s->up.y, 0);
+		blit(Interface_bm, s->dn_rest.x, s->dn_rest.y, s->dn.w, s->dn.h, s->dn.x, s->dn.y, 0);
+	} else if (Sbar_active && in_rect(mx, my, s->dn.x, s->dn.y, s->dn.w, s->dn.h)) {
+		blit(Interface_bm, s->up_rest.x, s->up_rest.y, s->up.w, s->up.h, s->up.x, s->up.y, 0);
+		blit(Interface_bm, s->dn_pressed.x, s->dn_pressed.y, s->dn.w, s->dn.h, s->dn.x, s->dn.y, 0);
+	} else {
+		sbar_blit_masked(&s->up_rest, s->up.w, s->up.h, s->up.x, s->up.y);
+		sbar_blit_masked(&s->dn_rest, s->dn.w, s->dn.h, s->dn.x, s->dn.y);
+	}
+}
+
+//------------------------------------------------------------------------
 // The statistics screen (mode 5). The areas are created at 0x99B11 with the
 // rectangles of the tables at 0x144938 to 0x144B40, and printed at 0x32BE0.
 
@@ -1694,11 +1904,6 @@ int dtu_display_owns_key(int key)
 	return 0;
 }
 
-static int in_rect(int x, int y, int rx, int ry, int rw, int rh)
-{
-	return x >= rx && y >= ry && x < rx + rw && y < ry + rh;
-}
-
 // The keys 1 to 0 (0x430C9 to 0x4310A, the scan codes 2 to 11). With a held
 // entry (0x31A46) the key puts it into the box with the tests of a click
 // (0x31A55); only if the box is the one that was chosen last, 0x13AD15
@@ -1845,6 +2050,13 @@ static void do_input(int mx, int my)
 	}
 	inv_check();
 	inv_describe(mx, my);
+	// ASCENT: the mouse wheel (the conversation window reads it while it
+	// is open)
+	if (!dtu_dlg_is_open()) {
+		int wheel = plat_mouse_wheel();
+		if (!Dtu_immersive)
+			sbar_wheel(mx, my, wheel);
+	}
 
 	down = !Dtu_immersive && (mouse_get_btns() & 1);
 	pressed = down && (!Mouse_was_down || Dtu_ui_key_repeat);
@@ -1852,8 +2064,16 @@ static void do_input(int mx, int my)
 	Mouse_was_down = down;
 	if (Dtu_immersive || !mode_has_interface(Dtu_interface_mode)) {
 		Button_pressed = -1;
+		Sbar_active = Sbar_grab = 0;
 		return;
 	}
+
+	// 0x3010C: the scroll bar of the inventory list, in each frame while
+	// the button is down. A click that it takes goes no further.
+	if (!down)
+		Sbar_active = Sbar_grab = 0;
+	else if (Button_pressed < 0 && sbar_input(mx, my, pressed))
+		return;
 
 	if (pressed) {
 		// 0x98E99: the pressed button shows its other image
@@ -1919,8 +2139,10 @@ void dtu_display_frame(void)
 			msg_draw();
 		} else {
 			draw_info_areas();
-			if (inventory_mode())
+			if (inventory_mode()) {
 				draw_inventory();
+				sbar_draw(mx, my);
+			}
 			else if (Dtu_interface_mode == DTU_IM_STATS) {
 				draw_stats();
 				dtu_spell_screen_draw(Dtu_hires);	// ASCENT: the spell books (dtuspell.c)
