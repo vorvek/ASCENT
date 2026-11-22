@@ -482,5 +482,11 @@ void plat_log_tick(void);
 // Windows, a minidump (the name of the log with .dmp). quiet 0: a message
 // box tells the player where the files are.
 void plat_crash_install(int quiet);
+// The return addresses of the callers of the caller of this function, at
+// most max. Returns the count (0 where the system gives none).
+int plat_stack_trace(void **frames, int max);
+// The load address of the executable (subtract it from an address of
+// plat_stack_trace and add the image base for addr2line), or NULL.
+void *plat_module_base(void);
 
 #endif

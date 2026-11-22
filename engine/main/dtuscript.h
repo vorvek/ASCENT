@@ -38,6 +38,10 @@ extern int Dtu_script_log;
 // dtu_script_level_start(); safe to call again.
 void dtu_script_init(void);
 
+// ASCENT: the contents of GABE.RLH and GABE.DAT (dtu_script_init loads
+// them; they stay until the exit). Returns 0 if they are not available.
+int dtu_script_gab_files(ubyte **rlh, int *rlh_size, ubyte **dat, int *dat_size);
+
 // At the start of a level, after the objects are set up. Ends a script
 // that still waits.
 void dtu_script_level_start(void);

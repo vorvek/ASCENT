@@ -77,9 +77,8 @@ static void gab_load(void)
 	if (Gab_tried)
 		return;
 	Gab_tried = 1;
-	Gab_rlh = dtu_load_file("GABE.RLH",&Gab_rlh_size);
-	Gab_dat = dtu_load_file("GABE.DAT",&Gab_dat_size);
-	if (Gab_rlh == NULL || Gab_dat == NULL)
+	// ASCENT: the files of dtuscript.c (loaded one time, freed at the exit)
+	if (!dtu_script_gab_files(&Gab_rlh,&Gab_rlh_size,&Gab_dat,&Gab_dat_size))
 		Gab_rlh_size = Gab_dat_size = 0;
 }
 

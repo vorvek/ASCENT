@@ -121,6 +121,7 @@ static char rcsid[] = "$Id: mem.c 1.18 1995/01/24 20:49:18 matt Exp $";
 
 #define CHECKSIZE 16
 #define CHECKBYTE 0xFC
+#define MEM_CALLERS 6
 
 typedef struct mem_block {
 	void		*base;			// address of the block, NULL = entry is free
@@ -128,6 +129,7 @@ typedef struct mem_block {
 	char		*varname;
 	char		*filename;
 	int		line;
+	void		*callers[MEM_CALLERS];	// ASCENT: see mem_stack_func
 } mem_block;
 
 #define INITIAL_TABLE_SIZE 1024		// must be a power of 2
@@ -140,6 +142,8 @@ static size_t LargestBytesMalloced = 0;
 
 int show_mem_info = 0;
 int mem_report_leaks = 1;		// ASCENT: see mem.h
+int (*mem_stack_func)(void **frames, int max) = NULL;
+void *mem_stack_base = NULL;
 
 static int Initialized = 0;
 
@@ -168,7 +172,15 @@ void mem_init()
 
 static void PrintInfo( mem_block * b )
 {
+	int i;
+
 	fprintf( stderr, "\tBlock '%s' created in %s, line %d.\n", b->varname, b->filename, b->line );
+	if ( b->callers[0] ) {		// ASCENT: see mem_stack_func
+		fprintf( stderr, "\tCallers:" );
+		for (i=0; i<MEM_CALLERS && b->callers[i]; i++ )
+			fprintf( stderr, " 0x%llx", (unsigned long long)((char *)b->callers[i] - (char *)mem_stack_base) );
+		fprintf( stderr, "\n" );
+	}
 }
 
 // Returns the table entry of a block, or NULL if the block is not in the table.
@@ -277,6 +289,9 @@ void * mem_malloc( unsigned int size, char * var, char * filename, int line, int
 	b.varname = var;
 	b.filename = filename;
 	b.line = line;
+	memset( b.callers, 0, sizeof(b.callers) );
+	if ( mem_stack_func )
+		mem_stack_func( b.callers, MEM_CALLERS );
 	mem_insert_block( &b );
 	num_blocks++;
 

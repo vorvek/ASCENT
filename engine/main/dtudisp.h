@@ -47,6 +47,10 @@ extern int Dtu_player_portrait;
 // the fonts must be loaded.
 int dtu_display_init(void);
 
+// ASCENT: frees the art of the interface. dtu_display_init registers it
+// with atexit.
+void dtu_display_close(void);
+
 // Selects an interface mode: loads the picture of the mode and sets the
 // view rectangle (0x407EB of the original).
 void dtu_display_select_mode(int mode);

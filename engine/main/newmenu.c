@@ -809,8 +809,12 @@ void nm_draw_background(int x1, int y1, int x2, int y2 )
 			// PALETTE.256, so they are copied with no remap. A remap to the
 			// palette of the moment gave wrong colors when the first box
 			// came in the front end.
-			if (bm)
-				nm_background = *bm;		// the pixel data stays allocated for the program
+			// The pixel data stays until newmenu_close; the structure is
+			// freed here.
+			if (bm) {
+				nm_background = *bm;
+				gr_free_sub_bitmap(bm);
+			}
 		}
 	}
 

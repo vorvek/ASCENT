@@ -200,6 +200,17 @@ static int script_active(void)
 	return Script_pos < Script_n || Script_wait > 0 || Script_btn || Script_rbtn || Script_text[Script_text_pos];
 }
 
+// ASCENT: the lines of the script are freed at the exit.
+static void script_free(void)
+{
+	int i;
+
+	for (i = 0; i < Script_n; i++)
+		if (Script_line[i])
+			free(Script_line[i]);
+	Script_n = Script_pos = 0;
+}
+
 static void script_load(void)
 {
 	FILE *f;
@@ -211,6 +222,7 @@ static void script_load(void)
 	if (loaded || !t || t + 1 >= Num_args)
 		return;
 	loaded = 1;
+	atexit(script_free);
 	f = fopen(Args[t+1], "r");
 	if (!f) {
 		printf("Cannot open the script %s\n", Args[t+1]);

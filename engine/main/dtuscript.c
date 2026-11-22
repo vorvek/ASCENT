@@ -155,11 +155,43 @@ static int Rec_size[SC_MAX_RECORDS];
 
 static const char Gab_key[] = "Although curiosity killed the cat, it still had 8 lives left to live.";
 
+// ASCENT: the files and the decoded records are freed at the exit.
+static void script_close(void)
+{
+	int i;
+
+	if (Gab_rlh) free(Gab_rlh);
+	if (Gab_dat) free(Gab_dat);
+	Gab_rlh_size = Gab_dat_size = 0;
+	for (i = 0; i < SC_MAX_RECORDS; i++)
+		if (Rec_data[i])
+			free(Rec_data[i]);
+	Gab_tried = 0;
+}
+
+// ASCENT: dtuhook.c reads the same two files; it takes them from here so
+// that they are in memory one time.
+int dtu_script_gab_files(ubyte **rlh, int *rlh_size, ubyte **dat, int *dat_size)
+{
+	dtu_script_init();
+	*rlh = Gab_rlh;
+	*rlh_size = Gab_rlh_size;
+	*dat = Gab_dat;
+	*dat_size = Gab_dat_size;
+	return Gab_rlh_size > 0 && Gab_dat_size > 0;
+}
+
 void dtu_script_init(void)
 {
 	if (Gab_tried)
 		return;
 	Gab_tried = 1;
+	{
+		static int registered = 0;		// ASCENT
+		if (!registered)
+			atexit(script_close);
+		registered = 1;
+	}
 	if (FindArg("-scriptlog"))
 		Dtu_script_log = 1;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
