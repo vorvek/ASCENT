@@ -70,6 +70,39 @@ Files:
 | `gamedata/lang/<MOVIE>.<code>.srt` | the subtitles of a language | no |
 | `engine/lang/<code>_port.catalog` | the translation of the text of the code | yes (our text) |
 
+## The sex of the player: {sex:MALE|FEMALE}
+
+A translation (any id: `tex`, `fe`, `gab`, `say`, `tbl`, `port`, `sub`) can
+have the token `{sex:MALE|FEMALE}`: the program shows MALE for a male player
+and FEMALE for a female player, for example `Has sido {sex:bendecido|bendecida}.`
+or `Bienvenid{sex:o|a}`. Only the exact form is a token: `{sex:` (small
+letters), the male form, one `|`, the female form, `}`. A form has no `{`,
+`}` or `|` and may be empty (`{sex:|a}`). A text can have several tokens.
+Anything else stays as it is. (The English text has braces only in the nine
+script tokens.)
+
+The sex: the character being created in the front end (from the choice of
+the first screen; male before a choice), else the character
+(`Dtu_char.pa.female`, a character not yet loaded is male). The program
+keeps both forms of each entry: a lookup returns the form for the sex at
+that time, and the strings of the text file (`tex`) change with the sex of
+the player (`dtu_lang_sync`, each frame). The places that show a formatted
+text (the HUD message, the message box of the game, `nm_messagebox`, the
+text of a script) resolve the tokens once more after the values are
+filled in; the subtitles are resolved when they are read. A token is
+resolved once: the result is not read again.
+
+The spell messages of `dtuspell.c` (`say`) resolve the tokens of the format
+for the subject of the message: the player's sex when the subject is the
+player ("You"), else the male form (a creature or a trap). For example the
+format `%s %s {sex:bendecido|bendecida} durante %d minutos.` gives
+`Tú estás bendecida durante 6 minutos.` for a female player, and the male
+form when a creature is the subject.
+
+`lang_extract.py merge` and `check` report a token that is not well formed
+(an error), check the placeholders of each form, and check the room with the
+longer form.
+
 ## Ids
 
 | Id | Source | English text at run time | Lookup |
