@@ -2001,7 +2001,8 @@ static int gpu_set_options(void)
 // door animations of the walls, the textures of the triggers and the
 // traps (the switches), and the frames of the animated textures of the
 // sides (the effects), each merged with the other texture of its side as
-// the view merges it (texmerge.c). It runs after the first view of a
+// the view merges it (texmerge.c), and then the textures of all the other
+// sides that a view can draw. It runs after the first view of a
 // level, so that the upscaled loads of that view come first, and again
 // when the RGB textures are made again (g3_gpu_texture_generation). It
 // makes all the textures at one time: in the tests a texture made between
@@ -2095,7 +2096,7 @@ static void gpu_preload_level(void)
 {
 	static int done_level = -1, done_piggy = -1, done_gen = -1, wait_loads = 0;
 	int gen = g3_gpu_texture_generation();
-	int i, j, s, n_walls, n_trig;
+	int i, j, s, n_walls, n_trig, n_anim;
 	uint64_t t0;
 	const char *off = getenv("ASCENT_GPU_NOPRELOAD");
 	int log = getenv("ASCENT_GPU_HDLOG") != NULL;
@@ -2158,9 +2159,22 @@ static void gpu_preload_level(void)
 			if (gpu_preload_effect(sp->tmap_num) >= 0 || (sp->tmap_num2 && gpu_preload_effect(sp->tmap_num2 & 0x3FFF) >= 0))
 				gpu_preload_pair(sp->tmap_num, sp->tmap_num2);
 		}
+	n_anim = Gpu_preload_pairs - n_walls - n_trig;
+	// the other textures of the sides: a wall seen for the first time
+	// after a turn showed its 8-bit form for a frame or more. A level has
+	// 30 to 100 such pairs more (10 to 30 MB of upscaled textures).
+	// ASCENT_GPU_NOPRELOAD=2 leaves them out (a test aid)
+	for (s = 0; s <= Highest_segment_index && !(off && off[0] == '2'); s++)
+		for (j = 0; j < MAX_SIDES_PER_SEGMENT; j++) {
+			side *sp = &Segments[s].sides[j];
+
+			if (!(WALL_IS_DOORWAY(&Segments[s], j) & WID_RENDER_FLAG))
+				continue;
+			gpu_preload_pair(sp->tmap_num, sp->tmap_num2);
+		}
 	if (log)
-		printf("GPU hd: preload of level %d at frame %d: %d pairs (%d of the doors, %d of the triggers), %d bitmaps, %.1f ms\n",
-			Current_level_num, FrameCount, Gpu_preload_pairs, n_walls, n_trig, Gpu_preload_count,
+		printf("GPU hd: preload of level %d at frame %d: %d pairs (%d of the doors, %d of the triggers, %d of the effects), %d bitmaps, %.1f ms\n",
+			Current_level_num, FrameCount, Gpu_preload_pairs, n_walls, n_trig, n_anim, Gpu_preload_count,
 			(plat_time_us() - t0) / 1000.0);
 }
 

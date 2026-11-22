@@ -470,9 +470,20 @@ Tests (`-hidden -fixedfps 30`, `ASCENT_SHOT_PRESENT` for each frame):
   switch of trigger 2 (segment 544 side 4, `swtch03b` to `swtch03a` on
   `eroc39`). With `ASCENT_GPU_NOPRELOAD=1` the first present after the use
   shows the 8-bit form; with the preload it shows the upscaled form.
-- Not covered: a texture that a level shows for the first time in another way
-  (a static wall seen for the first time after a turn) still shows the 8-bit
-  form for a frame; the merge table keeps 1024 entries and its sweep (60
+- Static walls: a wall seen for the first time after a turn showed its 8-bit
+  form for a frame. The preload now also makes the textures of all the other
+  sides that a view can draw (`WID_RENDER_FLAG`), after the doors, the
+  triggers and the effects. It adds 30 to 100 pairs to a level and 10 to 30 MB
+  of upscaled textures: BANE 142 pairs (89 before), 490 bitmaps; CRYPTS 247
+  (185), 741 bitmaps, 254 MB in all (236); HUB1 104 (71); YPINN 116 (78);
+  MYRKUL 342 (245); DROW1 201 (162). No sweep in any of these runs. Test: BANE
+  `-fixedfps 30 -testmove wait:60,left:150,forward+run:100,right:80` with
+  `ASCENT_GPU_HDLOG=1`: after "the upscaled loads are done" the wall textures
+  `eroc42 + empty` and `stone223` were still asked for (shown 8-bit first);
+  with the preload of the static sides only the sprite frames `cswound_*`
+  are. `ASCENT_GPU_NOPRELOAD=2` leaves out the static sides (a test aid).
+- Not covered: the bitmaps of objects (sprites, models) are made when a view
+  first draws them; the merge table keeps 1024 entries and its sweep (60
   frames, at 3/4 full) or the budget sweep (768 MB) can delete a preloaded
   texture before its door is used in a large level.
 
