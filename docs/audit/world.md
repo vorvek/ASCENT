@@ -56,7 +56,7 @@ Most important first.
 | W10 | Statement E5 (walk) moves the object to the end of the path at the end of the run (`Dtu_script_walk_teleport`, a port decision) because the script code has no access to the AI paths. | scripts.md section 10. | Open, medium (walk with the AI path code of dtuobj.c) |
 | W11 | The Lolth hit of FLAME (0x6D184): object 36 hits the player once in each swing, with no roll and no reach test, text "Lolth struck you with a mighty blow!". | 0x6D184 to 0x6D1FE (`cmp eax, 0x24`, 0x29A9C, 0x347A2). | Open, small (combat code) |
 | W12 | Parts of the level fixes that are not ported: object flag 0x40 (MULHOR1 misc objects 1, 2, 34, 60, 73, 91; FLAME 2, 3, 35), the `tmap_override` of the two spinning pieces of BANE (a table made at run time), the shields of DROW5 object 83 (the executable reads past the end of the monster table: a defect), +0x7C of the CLAN3 type, the times of KOBOLDS object 19, the control type 0 of MYRKUL object 3 (the Hold effect keeps it in place). | objects.md, "Level fixes (0xACCDB)". | Open, small (flag 0x40 needs its meaning first) |
-| W13 | The creature setup by name 0xAC7B2 (`creature_fixes`) is not in the port (lich, mephits, flayers, gargoyles, hatchling, spectator, the `s...` names, 200 hit points for the NPCs of YPINN). | Same as combat C4. | Open, medium (shared with combat) |
+| W13 | The creature setup by name 0xAC7B2 (`creature_fixes`) is not in the port (lich, mephits, flayers, gargoyles, hatchling, spectator, the `s...` names, 200 hit points for the NPCs of YPINN). | Same as combat C4. | Fixed, 5f68994 (combat C4). The level fixes now run after the object setup and before the creature setup; the KOBOLDS weapon, the CLAN3 touch spell, the YPINN guests, the DROW5 hatchling shields (`Dtu_fix_drow5_shields`), the BANE texture (`Dtu_fix_bane_texture`) and the timers were added; objects.md, "Level fixes" |
 | W14 | The sounds of the statements D4 to D7 play at the player, not at the object or side, and the stop statements D6 and D7 do nothing. | `dtuscript.c` 0xD4 to 0xD7. | Open, small |
 | W15 | Global flag 0x81 of the WEAPON 13 talk and condition 98 (the morale; the port uses 0 + 500) are not ported. | scripts.md section 10. | Open, small |
 | W16 | The thief hold of a wall at the end of a fall (0x9EBEB, "PCONS: you fell!") and the push of a new object above the floor (0x6A490) are not in the port. | physics.md section 2. | Open, small to medium |
@@ -83,6 +83,6 @@ went on in CLAN1 (747 segments). Other deaths came after the end of the tour
 
 - The text paths: no change. The new code prints only log lines.
 - Combat C4: the 0xACCDB half is done here (W1); `creature_fixes` 0xAC7B2 is
-  open (W13).
+  fixed in 5f68994 (W13).
 - The soak answers the inn exit question with No (`Dtu_soak` in dtufe.c, the
   front end file); nothing else in dtufe.c changed.
