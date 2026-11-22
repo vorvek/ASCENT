@@ -166,8 +166,11 @@ Items (built by 0x57F28; action numbers for `do_option` 0x582CC, jump table
 
 - Title "" and subtitle TEX[963] "Descent to Undermountain\nMain Menu" at the
   middle of the Waterdeep picture (screen 0), no box. The executable passes
-  the picture name "scroll2.pcx", which is not in its picture table
-  (0x631D2). The copyright line TEX[964] is drawn with the small font, hue 2,
+  the picture name "scroll2.pcx". Its picture table at 0x13E328 has one
+  entry, "scroll2.pcx" and 17 (0x7F37D reads it), so 0x631D2 draws FEBGND
+  entry 17 (490 x 480) centered at x = 75, y = 0, with color 255
+  transparent; its palette is not used (DTU-Decomp `docs/frontend-menus.md`
+  2.3). The copyright line TEX[964] is drawn with the small font, hue 2,
   centered, 15 pixels above the bottom (0x58158).
 - The first current item is the last choice (0x13CCE9, 0 at the start, -1
   after a cancelled quit).
