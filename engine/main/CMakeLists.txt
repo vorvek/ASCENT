@@ -13,7 +13,7 @@ set(MAIN_SOURCES
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuatk.c dtuspell.c dtuthief.c
   dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuscroll.c dtuthiefpts.c dtucheat.c dtuopts.c
-  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c dtuitemfix.c)
+  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c dtuitemfix.c dtutblfix.c)
 
 # ASCENT: the translations of the text of the code (dtulang.c,
 # docs/formats/lang.md) are part of the program: each
@@ -90,6 +90,13 @@ add_test(NAME test_data_io COMMAND test_data_io)
 # tables and the lookups without the game data. tools/check_itemfix.py
 # checks the Spanish names of the corrected items and, when ASCENT_DATA_DIR
 # has YPINN.BIN, compares the tables with the item lines of the game.
+# ASCENT: the table fixup of 1.3 (dtutblfix.c, 0x1A344). test_dtutblfix
+# applies it to records of the mission tables and checks a sample of each
+# group of writes.
+add_executable(test_dtutblfix test_dtutblfix.c dtutblfix.c)
+target_include_directories(test_dtutblfix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME test_dtutblfix COMMAND test_dtutblfix)
+
 add_executable(test_dtuitemfix test_dtuitemfix.c dtuitemfix.c)
 target_include_directories(test_dtuitemfix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME test_dtuitemfix COMMAND test_dtuitemfix)
@@ -98,6 +105,10 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
   add_test(NAME check_itemfix
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/check_itemfix.py --game "${ASCENT_DATA_DIR}")
+  # The table fixup of the port and of tools/tblfix.py on YPINN.BIN
+  add_test(NAME check_tblfix
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/check_tblfix.py "${ASCENT_DATA_DIR}/YPINN.BIN"
+      --exe $<TARGET_FILE:test_dtutblfix>)
 endif()
 
 # Check of the data layer against the game data (see test_dtudata.c). It is

@@ -97,6 +97,7 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 #include <ctype.h>
 #include "dtufile.h"		// ASCENT: the game data files
 #include "dtuitemfix.h"	// ASCENT: the rulebook values of the item lines
+#include "dtutblfix.h"	// ASCENT: the table fixup of 1.3 (0x1A344)
 
 // ASCENT: from here on this file is changed in most places. Descent 1
 // parsed BITMAPS.TBL only in the editor build, loaded IFF bitmaps and POF
@@ -706,6 +707,103 @@ static char *bm_load_bin( char * name, char * egg_name )
 	return text;
 }
 
+// ASCENT: the records of the table fixup of 1.3 (dtutblfix.h)
+static item_info *tblfix_item( int kind, int id )
+{
+	if ( id < 0 ) return NULL;
+	switch ( kind ) {
+		case DTU_TK_MISC:		return id < N_misc_types ? &Misc_info[id] : NULL;
+		case DTU_TK_ARMOR:	return id < N_armor_types ? &Armor_info[id] : NULL;
+		case DTU_TK_WEAPON:	return id < N_weapon_types ? &Weapon_item_info[id] : NULL;
+		case DTU_TK_SPELL:	return id < N_spell_types ? &Spell_info[id] : NULL;
+	}
+	return NULL;
+}
+
+static int tblfix_count( int kind )
+{
+	switch ( kind ) {
+		case DTU_TK_MISC:		return N_misc_types;
+		case DTU_TK_ARMOR:	return N_armor_types;
+		case DTU_TK_WEAPON:	return N_weapon_types;
+		case DTU_TK_SPELL:	return N_spell_types;
+	}
+	return 0;
+}
+
+static char *tblfix_text( int kind, int id )
+{
+	item_info *it = tblfix_item( kind, id );
+
+	if ( it == NULL || it->record < 0 || it->record >= N_tbl_records )
+		return NULL;
+	return Tbl_records[it->record].text;
+}
+
+static void tblfix_set_text( int kind, int id, char * text )
+{
+	item_info *it = tblfix_item( kind, id );
+
+	if ( it == NULL || it->record < 0 || it->record >= N_tbl_records ) {
+		free( text );
+		return;
+	}
+	if ( Tbl_records[it->record].text )
+		free( Tbl_records[it->record].text );
+	Tbl_records[it->record].text = text;
+}
+
+static char *tblfix_name( int kind, int id )
+{
+	item_info *it = tblfix_item( kind, id );
+
+	return it ? it->name : NULL;
+}
+
+// The copy of a whole line (memcpy 0xD7CD2): the record and the name stay.
+static void tblfix_copy_line( int kind, int dst, int src )
+{
+	item_info *d = tblfix_item( kind, dst ), *s = tblfix_item( kind, src );
+	item_info keep;
+
+	if ( d == NULL || s == NULL )
+		return;
+	keep = *d;
+	*d = *s;
+	d->record = keep.record;
+	memcpy( d->name, keep.name, sizeof(d->name) );
+	if ( kind == DTU_TK_WEAPON )
+		Weapon_info[dst] = Weapon_info[src];
+}
+
+// The fields of item_info that the readers take from the text
+static void tblfix_sync( int kind, int id )
+{
+	item_info *it = tblfix_item( kind, id );
+	char *t = tblfix_text( kind, id ), v[32];
+
+	if ( it == NULL || t == NULL )
+		return;
+	if ( dtu_tblfix_get( t, "value", v, sizeof(v) ) )		it->value = atoi(v);
+	if ( dtu_tblfix_get( t, "icon", v, sizeof(v) ) )		it->icon = atoi(v);
+	if ( dtu_tblfix_get( t, "inv_icon", v, sizeof(v) ) )	it->inv_icon = atoi(v);
+	if ( kind == DTU_TK_SPELL ) {
+		it->vclip_num = dtu_tblfix_get( t, "weapon_vclip", v, sizeof(v) ) ? atoi(v) : -1;
+		if ( !dtu_tblfix_get( t, "weapon_pof", v, sizeof(v) ) )
+			it->model_num = -1;
+	}
+}
+
+static void tblfix_log( const char * text )
+{
+	dtu_log( "%s\n", text );
+}
+
+static const dtu_tblfix_io Tblfix_io = {
+	tblfix_count, tblfix_text, tblfix_set_text, tblfix_name, DTU_NAME_LENGTH,
+	tblfix_copy_line, tblfix_sync, tblfix_log
+};
+
 int bm_load_level_tables( char * level_name, char * player_name )
 {
 	char egg_name[16], player_egg_name[16];
@@ -782,6 +880,14 @@ int bm_load_level_tables( char * level_name, char * player_name )
 		free( Player_tbl_text );
 		Player_tbl_text = NULL;
 	}
+
+	// ASCENT: the table fixup of 1.3 (0x1A344, the end of bm_read_all
+	// 0x1C8F9), after both tables. -rawtables keeps the table text.
+	Dtu_raw_tables = FindArg( "-rawtables" ) != 0;
+	if ( !Dtu_raw_tables )
+		dtu_tblfix_apply( &Tblfix_io );
+	else
+		dtu_log( "Table fixup of 1.3 not applied (-rawtables)\n" );
 
 	NumTextures = texture_count;
 	Num_tmaps = tmap_count;
