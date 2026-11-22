@@ -301,9 +301,15 @@ fly and, when the switch 0x145360 is set, creates a splash object (type 10).
 | Footsteps | `engine/main/dtufoot.c`, setting `Dtu_footsteps`. The splash is `dtu_water_splash` (dtuobj.c), with no light and to the side of the walk (bugs.md D13). The flag 0x145305 is taken as 0. The rate of the player is the original one. Correction `Dtu_fix_foot_pan` (on): the step of the player plays in the middle (pan 0.5) at the fixed volume 0.5, with no offset. |
 | Creature footsteps | `dtufoot_creature`, called at the end of `dtu_creature_physics_sim` (dtuobj.c) for a creature with activity 2. The sound choice is `rand() % 4`, not the clock. The `rat=` test is any monster type with the keyword. Correction `Dtu_fix_creature_steps` (on): one step when the creature enters the first frame of the WALK or RUN cycle, not one on each game frame that shows it. |
 
-Not in the port: the death music call (0x4249D) and the call at 0x43DAF have no call
-site yet, the front end music, the streamed effects and speech of `str_sfx.c` and
-`str_dlg.c` (the ambient commands from 200 of `DTU.WRP` use them).
+The death music (0x4249D) plays in `dtu_player_death_frame` (dtuobj.c) and on the death
+screen of the front end (dtufe.c). The speech of `str_dlg.c` (WERDZ.DAT) plays for
+Khelben in the front end (dtufe.c).
+
+Not in the port: the call at 0x43DAF has no call site, and the streamed effects of
+`str_sfx.c` (WHAMMO.JRG, WHAMMO.DAT) are not played. So the ambient commands from 200
+of `DTU.WRP` (codes 223 and 255, 157 lines; code 206, the fade, 59 lines) do nothing:
+`dtumusic_level_start` keeps only the codes 100 to 198 and `dtumusic_command` returns
+for the other codes. See docs/audit/presentation.md (A1).
 
 Options of the port: `-nomusic`, `-nosound`, `-sound8`, `-music N` (play entry N in a
 loop from the start of the level), `-musiclog`, `-soundlog`,
