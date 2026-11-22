@@ -568,6 +568,82 @@ The function 0x16366 is the Descent 1 awareness spread (segment awareness to
 objects). It raises the awareness of hostile creatures only, sets the time to
 3.0 and calls the morale function for each raised creature.
 
+Verified (code, 2026-11-22), details of 0x160AB:
+
+- The loop runs from object 1 while the index is below
+  `Highest_object_index` (the last object is never alerted). The tests:
+  type robot, activity (+0x1CC) not 2, +0x1B0 bit 0x200 (peaceful) and bit
+  0x800000 (fleeing) clear, `0x9810D(robot segment, caller segment)`.
+- 0x161BC: `rand() % vm_vec_dist_quick(robot, caller) <= iq << 16`. rand()
+  (0xD7AC4) is at most 0x7FFF, so this always passes.
+- 0x10815(robot, 0): the ray from the robot to the player (not to the
+  caller). Then the vector caller - robot; a robot with effect bit 4
+  (deafness, +0x88 bit 0x10) needs a positive dot product with its forward
+  vector. 0xD74C3 and 0x6B088 turn the robot to the caller.
+- Hostile bit set, then 0xA6505(robot, sound) with sound = (a player field
+  at 0x1D339F + index) % 2: every other robot plays its see sound. Levels 2,
+  3 and 4 set bit 2, 3 or 4 of +0x15E (no reader found).
+
+The callers and their level (`mov edx, level` before `call 0x160AB`):
+
+| Call | Level | Caller object | Event |
+|---|---|---|---|
+| 0x11EBC | 1 | the creature | end of `ai_fire` |
+| 0x13F04 | 1 | the creature | wake up in `do_ai_frame` |
+| 0x7DBF0, 0x7DE67 | 1 | the player | `wall_open_door`, `wall_close_door` |
+| 0x26147, 0x26199 | 2 | the player | the player runs into scenery fast (0x25FB0) |
+| 0x26541 | 2 | the missile | a missile hits scenery (0x2641C) |
+| 0x26693 | 2 | the player | the player hits a wall fast (0x265C1) |
+| 0x26F78 | 2 | the missile | a missile hits a wall (0x26C2F) |
+| 0x9347C | 2 | the burst | 0x93294 |
+| 0x2707F | 3 | the creature | the player runs into a hostile creature (`collide_robot_and_player`) |
+| 0x274BC | 3 | the creature | a missile of the player hits it (`collide_robot_and_weapon`) |
+| 0x27B44 | 3 | the player | the melee hit of the player (0x278B5) |
+| 0x9E712 | 3 | the creature | the player bumps a hostile creature (`player_physics`) |
+| 0x14607 | 4 | the creature | the revive |
+| 0x6A45F | 4 | the body | a body becomes a corpse (`remove_level_object`) |
+| 0xA94A6 | 4 | the creature | a script makes it hostile (0xA9418) |
+| 0x3E2C6 | 5 | the player | a rest (0x3E1F6) |
+| 0xAB085 | 5 | the object | the script statement 0xC5 (set) with flag 3 (fleeing) |
+
+### Awareness events (0x16055, 0x16304, 0x162A1, 0x16366), verified (code)
+
+- 0x16055(obj, type): for type 2, 3 or 4 first 0x15FBC (the believed
+  positions of the 8 `Ai_cloak_info` entries become the position of the
+  player, with the time GameTime). Then, if fewer than 64 events (count
+  0x13A6BC), the event gets the segment (+0x0E), the position (+0x14) and
+  the type (16 bytes each at 0x153AB0). It returns 1, and `ai_alert` adds 1
+  to the agitation 0x167174 (limit 100) when `rand() * (level + 4) >> 15`
+  is above 4.
+- 0x16366 (each frame, from 0x438AC): 0x16304 clears New_awareness (bytes at
+  0x166DD0) of all segments and calls 0x162A1(event segment, type, 1) for
+  each event, then sets the count to 0. Then each object with control type
+  AI and the hostile bit whose awareness is below New_awareness of its
+  segment gets that awareness, the time 3.0 (`Ai_local_info+0x10`) and
+  `ai_morale`.
+- 0x162A1(seg, type, depth): New_awareness[seg] = type if it is higher; if
+  depth <= 5, the same for each child (>= 0) of the 6 sides with depth + 1
+  and type 5 made 4. No visited set: one event makes up to 6^5 calls. The
+  event reaches the segments up to 5 steps away, through any wall.
+
+The port: `dtu_creature_alert`, `awareness_event` and
+`awareness_events_frame` (dtuobj.c) give the same values with a search by
+distance. The agitation, the bits of +0x15E and the believed positions
+(0x15FBC, see `compute_vis_and_vec`) are not in the port. The alerts of
+0x25FB0, 0x265C1 and 0x93294 have no call in the port.
+
+### Regeneration and revive
+
+See step 10 of `do_ai_frame`. The damage function clears all effects of a
+creature that dies (0x2A1D0; spell damage 0x916D9), so the bit 0x01000000
+is gone and the revive never runs in 1.3. The kill gives no experience while
+the bit is set: the test before 0x4EA50 runs before the clear.
+`remove_level_object` (0x6A3CC) also has a branch
+for a body with the bit (goal state 2, no corpse), which the same clear
+makes dead code. The port corrects this (`Dtu_fix_revive`, dtuobj.h,
+`corpse_regen_frame`): the bit stays unless fire or acid took it, and the
+corpse gets up with the values of step 10.
+
 ## How a creature moves
 
 Verified (code), added with the port.
@@ -614,10 +690,11 @@ mage or cleric level (0x92D99, 0x9231F, 0x91FDC, dtuspell.c, combat.md B10),
 the push and the break of scenery (below), the NPC table (0xA7E97, below),
 Hide In Shadows and Move Silently in the sight tests (0x165C4, 0x13D8E).
 
-Not in the port: the evasion of
-weapons, the
-alert function and the awareness events, the revive of a regenerating
-creature.
+Not in the port: the evasion of weapons, the believed position of a hidden
+player (`compute_vis_and_vec` 0x12BE8, 0x15FBC). In the port since the
+monster audit (docs/audit/monsters.md): the alert function and the awareness
+events, the revive of a regenerating creature (`Dtu_fix_revive`), the touch
+spell of the lich.
 
 Rules of the port that are not in the executable (marked "guess" in the
 code): a hostile creature that sees the player keeps the awareness 1 at least
@@ -804,6 +881,8 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_fire_once` | one missile in each frame that the fire frame lasts (0x13A2A) | one missile for each attack animation |
 | `Dtu_fix_attack_sound` | the attack sound of compute_vis_and_vec needs visibility 2, which never comes | the sound plays by the rules of that code |
 | `Dtu_fix_corpse_floor` | the corpse goes to the floor by the torso box (0x6A48B), a flyer has no gravity in DIE | the dying body falls, the corpse lies with its lowest drawn point on the floor, also in a loaded level. See "The corpse" |
+
+| `Dtu_fix_revive` | the death clears the regeneration bit (0x2A1D0), so a regenerating creature never gets up | the bit stays unless fire or acid took it, and the corpse gets up (0x1440C); option `-origrevive` |
 
 `Dtu_idle_anim_near` (default 0, option `-idleanim`) leaves out the reset of
 step 20. `Dtu_creatures_attack` (default 1, option `-noattack`) is the attack
