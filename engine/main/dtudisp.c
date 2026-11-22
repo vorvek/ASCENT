@@ -50,6 +50,7 @@
 #include "dtucombat.h"		// ASCENT: the target hint of the cursor
 #include "pcx.h"				// ASCENT: HRISBTN.PCH, the second images of SPELLS
 #include "timer.h"			// ASCENT: the repeat of a held scroll bar arrow
+#include "dtuopts.h"		// ASCENT: Dtu_fix_lowres_aspect, the shape of the shown pixel
 #include "platform.h"		// ASCENT: plat_mouse_wheel
 
 int Dtu_hires = 1;					// 0x13A94B
@@ -235,14 +236,28 @@ static dtu_sbar Msg_sbar[2] = {
 // the box. -origui gives the original.
 int Dtu_fix_msg_scroll = 1;
 
-// ASCENT: the pixel aspect of the 3D view in high resolution. Before each
-// frame 0x41193 sets the aspect of the screen to 0x13333 (1.2, the pixel
-// of 320x200 on a 4:3 monitor) or, with 0x13A94B set, to 0x26666 (2.4).
-// A rendered line of the high resolution shows as two lines of the
-// 640x480 screen, whose pixels are square: the right aspect is 2.0. With
-// 2.4 a thing that is square in the scene is 1.2 times too wide, in each
-// screen size. 1 (default): 2.0. -origui gives the original.
-int Dtu_fix_hires_aspect = 1;
+// ASCENT: the pixel aspect of the 3D view. Before each frame 0x41193 sets
+// the aspect of the screen to 0x13333 (1.2, the pixel of 320x200 on a 4:3
+// monitor) or, with 0x13A94B set, to 0x26666 (2.4). A rendered line of the
+// high resolution shows as two lines of the 640x480 screen, whose pixels
+// are square: the right aspect is 2.0. With 2.4 a thing that is square in
+// the scene is 1.2 times too wide, in each screen size. In low resolution
+// the port shows the 320x200 frame with square pixels unless "4:3 screen"
+// is on (Dtu_fix_lowres_aspect): the right aspect is 1.0 then, and 1.2
+// with the 4:3 screen. 1 (default): the aspect of the pixel that the
+// window shows. -origui gives the original (2.4 and 1.2).
+int Dtu_fix_view_aspect = 1;
+
+// ASCENT: the aspect of the screen for the 3D code (the view, the map),
+// for the pixel shape that the window shows (Dtu_fix_view_aspect).
+static fix shown_aspect(fix screen_aspect)
+{
+	if (!Dtu_fix_view_aspect)
+		return Dtu_hires ? 0x26666 : screen_aspect;
+	if (Dtu_hires)
+		return screen_aspect * 2;	// 640x480: square pixels, a line shown twice
+	return Dtu_fix_lowres_aspect ? screen_aspect : F1_0;	// 320x200 at 4:3 (1.2) or square
+}
 
 // Hot key boxes of the low resolution hot key screen (0x144680, 0x1446A8)
 static short Hotkey_lo_x[10] = { 107, 107, 107, 107, 107, 161, 161, 161, 161, 161 };
@@ -1004,7 +1019,16 @@ static void draw_map(void)
 	dtu_rect r;
 
 	map_rect(&r);
-	dtu_automap_frame(grd_curcanv, r.x, r.y, r.w, r.h);
+	{
+		// ASCENT: the map with the aspect of the shown pixel (shown_aspect):
+		// the screen of the frame has 1.2 in low resolution and 1.0 in high
+		// resolution, where the map is drawn in screen lines
+		fix a = grd_curscreen->sc_aspect;
+		if (Dtu_fix_view_aspect && !Dtu_hires)
+			grd_curscreen->sc_aspect = shown_aspect(a);
+		dtu_automap_frame(grd_curcanv, r.x, r.y, r.w, r.h);
+		grd_curscreen->sc_aspect = a;
+	}
 	if (Interface_bm)
 		blit(Interface_bm, r.x, r.y, r.w, r.h, r.x, r.y, 1);
 }
@@ -1244,7 +1268,7 @@ int dtu_display_init(void)
 	if (Icons_bm) Icons_bm->bm_flags |= BM_FLAG_TRANSPARENT;
 	Interface_entry = -1;
 	if (FindArg("-origui"))
-		Dtu_fix_msg_scroll = Dtu_fix_hires_aspect = 0;
+		Dtu_fix_msg_scroll = Dtu_fix_view_aspect = 0;
 	Msg_count = 0;
 	Msg_first = 0;
 	memset(Key_was_down, 0, sizeof(Key_was_down));
@@ -1268,9 +1292,10 @@ void dtu_display_begin_render(void)
 	// does not depend on the view size (0x41193), so each screen size
 	// (F3, minus, equal, the screens) shows the same shapes; the angle of
 	// view in y is the same and the one in x follows the width of the view
-	// (g3_start_frame, 0xD93E8).
-	if (Dtu_display_active && Dtu_hires)
-		grd_curscreen->sc_aspect = Dtu_fix_hires_aspect ? Saved_aspect * 2 : 0x26666;
+	// (g3_start_frame, 0xD93E8). ASCENT: the aspect of the shown pixel
+	// (shown_aspect).
+	if (Dtu_display_active)
+		grd_curscreen->sc_aspect = shown_aspect(Saved_aspect);
 }
 
 // ASCENT: the projection of the last render, for dtu_display_print_view
@@ -1291,22 +1316,26 @@ void dtu_display_end_render(void)
 static int View_dest[4], View_dest_set;
 
 // ASCENT: for tools/uitest.py (the script command viewstate). The view
-// rectangle in the units of a 4:3 screen of 640x480, the tangents of the
-// half angles of view, and the shape: the width over the height on that
-// screen of a thing that is square in the scene (1 is right).
+// rectangle in frame pixels (dest) and in pixels of 640x480 with the pixel
+// shape that the window shows (view), the tangents of the half angles of
+// view, and the shape: the width over the height on that screen of a thing
+// that is square in the scene (1 is right).
 void dtu_display_print_view(void)
 {
 	double dw, dh, tx, ty, shape;
 
 	if (!View_dest_set || !Last_scale.x || !Last_scale.y)
 		return;
+	// ASCENT: a pixel of 320x200 is 2 by 2.4 pixels of 640x480 at 4:3
+	// (Dtu_fix_lowres_aspect) and 2 by 2 with square pixels
 	dw = View_dest[2] * (Dtu_hires ? 1.0 : 2.0);
-	dh = View_dest[3] * (Dtu_hires ? 1.0 : 2.4);
+	dh = View_dest[3] * (Dtu_hires ? 1.0 : Dtu_fix_lowres_aspect ? 2.4 : 2.0);
 	tx = (double) Last_scale.z / Last_scale.x;
 	ty = (double) Last_scale.z / Last_scale.y;
 	shape = (dw * Last_scale.x) / (dh * Last_scale.y);
-	printf("Viewstate mode=%d hires=%d canvas=%dx%d view=%.0fx%.0f aspect=%.4f tanx=%.4f tany=%.4f shape=%.4f\n",
-		Dtu_interface_mode, Dtu_hires, Last_canvas_w, Last_canvas_h, dw, dh, Last_aspect / 65536.0, tx, ty, shape);
+	printf("Viewstate mode=%d hires=%d canvas=%dx%d dest=%dx%d view=%.0fx%.0f aspect=%.4f tanx=%.4f tany=%.4f shape=%.4f\n",
+		Dtu_interface_mode, Dtu_hires, Last_canvas_w, Last_canvas_h, View_dest[2], View_dest[3], dw, dh,
+		Last_aspect / 65536.0, tx, ty, shape);
 	fflush(stdout);
 }
 

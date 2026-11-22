@@ -249,11 +249,16 @@ VIEW_SIZES = ["gamekeys", "wait 30", "viewstate", "key =", "wait 10", "viewstate
 
 def test_view_aspect(t):
     """Each screen size (main, = and F3 full screen, the inventory) shows
-    the same shapes: a square thing is square on a 4:3 screen, and the
-    angle of view in y is the same (0x41193, g3_start_frame 0xD93E8). Also
-    with the low resolution and the software renderer. -origui: the 2.4
-    aspect of the executable in high resolution (Dtu_fix_hires_aspect)."""
-    for extra, want in (([], 1.0), (["-software"], 1.0), (["-lowres"], 1.0), (["-origui"], 1.2)):
+    the same shapes: a square thing is square with the pixel shape that the
+    window shows, and the angle of view in y is the same (0x41193,
+    g3_start_frame 0xD93E8). Also with the low resolution (square pixels
+    and -screen43) and the software renderer. -origui: the aspects of the
+    executable (2.4 in high resolution, 1.2 in low resolution), so a square
+    thing is 1.2 times too wide except on the 4:3 screen of the low
+    resolution (Dtu_fix_view_aspect)."""
+    for extra, want in (([], 1.0), (["-software"], 1.0), (["-lowres"], 1.0), (["-lowres", "-software"], 1.0),
+                        (["-lowres", "-screen43"], 1.0), (["-origui"], 1.2), (["-lowres", "-origui"], 1.2),
+                        (["-lowres", "-screen43", "-origui"], 1.0)):
         t.run("view_aspect", VIEW_SIZES, extra=extra)
         v = view_states(t)
         assert len(v) == 4, "%s: %d view states" % (extra, len(v))
@@ -265,6 +270,28 @@ def test_view_aspect(t):
         # g3_start_frame): its angle in x is the fixed one then
         for s in v[:3]:
             assert s["tany"] == v[0]["tany"], "%s: the angle in y changed in mode %s" % (extra, s["mode"])
+
+
+def test_view_screen_scale(t):
+    """The horizontal and the vertical scale of the 3D view agree in the
+    window: the window pixels per unit of the tangent of the angle of view
+    (the view rectangle of the frame times the window pixels of a frame
+    pixel, presentstate, over the tangent of the half angle, viewstate).
+    In low and high resolution, with "4:3 screen" off and on
+    (Dtu_fix_view_aspect, Dtu_fix_lowres_aspect)."""
+    lines = ["gamekeys", "wait 30", "viewstate", "presentstate", "key =", "wait 10", "viewstate", "presentstate",
+             "key -", "wait 5"]
+    for extra in ([], ["-screen43"], ["-lowres"], ["-lowres", "-screen43"]):
+        t.run("view_screen_scale", lines, extra=extra, env={"ASCENT_WINDOW_SIZE": "1280x720"})
+        v = view_states(t)
+        p = present_states(t)
+        assert len(v) == 2 and len(p) == 2, "%s: %d view and %d present states" % (extra, len(v), len(p))
+        for s, (ww, wh, fw, fh, rx, ry, rw, rh) in zip(v, p):
+            dw, dh = (int(x) for x in s["dest"].split("x"))
+            sx = dw * rw / fw / float(s["tanx"])
+            sy = dh * rh / fh / float(s["tany"])
+            print("    %s mode %s: x %.1f, y %.1f window pixels (ratio %.4f)" % (extra, s["mode"], sx, sy, sx / sy))
+            assert abs(sx / sy - 1) < 0.01, "%s mode %s: the scales %.1f and %.1f differ" % (extra, s["mode"], sx, sy)
 
 
 def present_states(t):
@@ -305,15 +332,19 @@ PRESENT = ["gamekeys", "wait 30", "presentstate", "shot main", "key esc", "wait 
 
 
 def test_present_aspect(t):
-    """The 320x200 frame of the low resolution fills a 4:3 rectangle of the
-    window, as on the 4:3 monitor of DOS (Dtu_fix_lowres_aspect), with black
+    """The 320x200 frame of the low resolution has square pixels (16:10) by
+    default. With -screen43 ("4:3 screen", Dtu_fix_lowres_aspect) it fills
+    a 4:3 rectangle of the window, as on the 4:3 monitor of DOS, with black
     bars at the sides of a 16:9 or 16:10 window, in both renderers, in the
-    game and in a menu. The 640x480 frame of the high resolution is 4:3 too.
-    -squarepixels gives square pixels (16:10). The screenshot of
-    ASCENT_SHOT_SIZE is the window as it shows the frame."""
-    cases = [(["-lowres"], "1280x720", 4 / 3), (["-lowres"], "960x720", 4 / 3), (["-lowres"], "1280x800", 4 / 3),
-             (["-lowres", "-software"], "1280x720", 4 / 3), ([], "1280x720", 4 / 3),
-             (["-lowres", "-squarepixels"], "1280x720", 1.6), (["-lowres", "ASCENT_NO_GL"], "1280x720", 4 / 3)]
+    game and in a menu. The 640x480 frame of the high resolution is 4:3 in
+    both forms. The screenshot of ASCENT_SHOT_SIZE is the window as it shows
+    the frame."""
+    q = ["-lowres", "-screen43"]
+    cases = [(q, "1280x720", 4 / 3), (q, "960x720", 4 / 3), (q, "1280x800", 4 / 3),
+             (q + ["-software"], "1280x720", 4 / 3), ([], "1280x720", 4 / 3), (["-screen43"], "1280x720", 4 / 3),
+             (["-lowres"], "1280x720", 1.6), (["-lowres", "-squarepixels"], "1280x720", 1.6),
+             (["-lowres", "-software"], "1280x720", 1.6), (q + ["ASCENT_NO_GL"], "1280x720", 4 / 3),
+             (["-lowres", "ASCENT_NO_GL"], "1280x720", 1.6)]
     for extra, size, want in cases:
         env = {"ASCENT_WINDOW_SIZE": size, "ASCENT_SHOT_SIZE": size}
         nogl = "ASCENT_NO_GL" in extra
@@ -341,13 +372,15 @@ def test_present_aspect(t):
 
 def test_window_mouse_16_9(t):
     """A mouse event of the system in a 16:9 window lands on the right
-    pixel of the 320x200 frame shown at 4:3 (the bars are 160 pixels wide in
-    a 1280x720 window, a frame pixel is 3 by 3.6 window pixels), in both
-    renderers and with -squarepixels (1152x720 at x 64, 3.6 by 3.6). A click
+    pixel of the 320x200 frame shown at 4:3 with -screen43 (the bars are 160
+    pixels wide in a 1280x720 window, a frame pixel is 3 by 3.6 window
+    pixels), in both renderers, and with square pixels, the default
+    (1152x720 at x 64, 3.6 by 3.6). A click
     on the item Graphics of the ESC menu opens the Graphics menu."""
     points = [(16, 20), (160, 100), (300, 180)]
-    for extra, x0, kx, nogl in ((["-lowres"], 160, 3.0, 0), (["-lowres", "-software"], 160, 3.0, 0),
-                                (["-lowres"], 160, 3.0, 1), (["-lowres", "-squarepixels"], 64, 3.6, 0)):
+    q = ["-lowres", "-screen43"]
+    for extra, x0, kx, nogl in ((q, 160, 3.0, 0), (q + ["-software"], 160, 3.0, 0),
+                                (q, 160, 3.0, 1), (["-lowres"], 64, 3.6, 0), (["-lowres"], 64, 3.6, 1)):
         lines = ["gamekeys", "wait 30", "key esc", "wait 10"]
         for fx, fy in points:
             lines += ["winmove %.1f %.1f" % (x0 + (fx + 0.5) * kx, (fy + 0.5) * 3.6), "wait 3", "mousestate"]

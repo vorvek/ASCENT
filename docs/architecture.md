@@ -146,12 +146,16 @@ settings, and others). They are in `ascent.cfg`, the menus change them, and
 `dtuopts.c` and `dtuopts.h` and a line to the table `Opts[]` of
 `dtuopts.c`.
 
-`Dtu_fix_lowres_aspect` (`dtuopts.c`) corrects the port, not 1.3: the
-window shows the 320x200 frame of the low resolution at 4:3, as the DOS
-monitor did (`plat_bind_vga_aspect`, docs/re/ingame-ui.md, "Aspect of the
-3D view"). It is on by default, it is the item "4:3 screen" of the Graphics
-menu and `LowresAspect` in `ascent.cfg`, and `-squarepixels` clears it for
-one run (square pixels: 320x200 at 16:10, the form of the port before).
+`Dtu_fix_lowres_aspect` (`dtuopts.c`) is the shape of the 320x200 frame
+of the low resolution in the window. It is off by default: square pixels
+(16:10), so the interface pictures have the shape of the high resolution.
+On, the window shows the frame at 4:3, as the DOS monitor did
+(`plat_bind_vga_aspect`, docs/re/ingame-ui.md, "Aspect of the 3D view").
+It is the item "4:3 screen" of the Graphics menu and `Lowres43` in
+`ascent.cfg`; `-squarepixels` and `-screen43` set it for one run. The 3D
+view follows the shown pixel (`Dtu_fix_view_aspect` in `dtudisp.c`: 1.0
+with square pixels, 1.2 at 4:3, 2.0 in high resolution; `-origui` gives
+the 1.2 and 2.4 of 1.3).
 
 ## Test aids
 
