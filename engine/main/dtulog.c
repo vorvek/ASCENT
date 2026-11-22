@@ -179,7 +179,10 @@ void dtulog_character(const char *why)
 		snprintf(cls + strlen(cls), sizeof(cls) - strlen(cls), " / %s %d", classes[(int) pa->class2], pa->class2_level + 1);
 	plat_log("Character (%s): '%s', %s %s, %s, hit points %d of %d, experience %d/%d, gold %d",
 		why, Dtu_char.name, pa->female ? "female" : "male", race, cls,
-		f2i(dtu_player_hit_points()), f2i(dtu_player_max_hit_points()),
+		// the record of the character: the player object gets its hit
+		// points after the level start (the object still has the 100 of
+		// Descent at this point)
+		pa->hit_points, pa->max_hit_points,
 		Dtu_char.experience[0], Dtu_char.experience[1], Dtu_gold);
 }
 
