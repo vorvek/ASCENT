@@ -1769,11 +1769,11 @@ void dead_player_frame(void)
 			if (!Player_exploded) {
 
 			if (Players[Player_num].hostages_on_board > 1)
-				HUD_init_message(TXT_SHIP_DESTROYED_2, Players[Player_num].hostages_on_board);
+				HUD_d1_message(TXT_SHIP_DESTROYED_2, Players[Player_num].hostages_on_board);
 			else if (Players[Player_num].hostages_on_board == 1)
-				HUD_init_message(TXT_SHIP_DESTROYED_1);
+				HUD_d1_message(TXT_SHIP_DESTROYED_1);
 			else
-				HUD_init_message(TXT_SHIP_DESTROYED_0);
+				HUD_d1_message(TXT_SHIP_DESTROYED_0);
 
 				Player_exploded = 1;
 				if (!Arcade_mode) {

@@ -138,6 +138,9 @@ extern void check_erase_message(void);
 // Call to flash a message on the HUD
 extern void HUD_render_message_frame();
 extern void HUD_init_message(char * format, ... );
+// ASCENT: a message of the Descent 1 code. DTUGAME.EXE fills its HUD ring
+// (0x4F31A) but never draws it, so the target game shows none of them.
+extern void HUD_d1_message(char * format, ... );
 extern void HUD_clear_messages();
 
 #define gauge_message HUD_init_message
