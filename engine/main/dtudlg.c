@@ -407,8 +407,14 @@ int dtu_dlg_poll(void)
 			return chosen(-2);
 		case KEY_ENTER:
 		case KEY_PADENTER:
-			if (Dlg_n_replies == 0)
-				return chosen(0);
+			// 0xB2B6F: with no reply Enter goes on, but only with the
+			// focus on the replies; with the focus on the text (0xB2BED)
+			// it does nothing
+			if (Dlg_n_replies == 0) {
+				if (Dlg_focus_replies)
+					return chosen(0);
+				break;
+			}
 			// 0xB2A5E: the selection; -1 is no choice yet
 			if (Dlg_focus_replies && Dlg_sel >= 0)
 				return chosen(Dlg_sel);
@@ -428,7 +434,7 @@ int dtu_dlg_poll(void)
 			if (Dlg_focus_replies && Dlg_n_replies) {
 				if (--Dlg_sel < 0)						// 0xB2988
 					Dlg_sel = 0;
-			} else if (Dlg_scroll > 0)
+			} else if (!Dlg_focus_replies && Dlg_scroll > 0)	// 0xB2BED; 0xB2B6F: nothing
 				Dlg_scroll--;
 			break;
 		case KEY_DOWN:
@@ -436,7 +442,7 @@ int dtu_dlg_poll(void)
 			if (Dlg_focus_replies && Dlg_n_replies) {
 				if (++Dlg_sel >= Dlg_n_replies)		// 0xB2A1F
 					Dlg_sel = Dlg_n_replies - 1;
-			} else
+			} else if (!Dlg_focus_replies)				// 0xB2BED; 0xB2B6F: nothing
 				Dlg_scroll++;
 			break;
 		}
