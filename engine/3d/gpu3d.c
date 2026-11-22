@@ -520,10 +520,22 @@ typedef struct merge_entry {
 static merge_entry Mt[MT_SIZE];
 static int Mt_used;
 
+//The first place of a merge in Mt. tc_hash() gives a place in Tc (TC_SIZE
+//places): without the mask of MT_SIZE three of four merges were written
+//after the end of Mt, into the entries of Tc that follow it in memory, so a
+//merged wall could show the texture of another merge, and a bitmap entry
+//could get the texture number of a merge.
+static unsigned mt_hash(const grs_bitmap *bottom,const grs_bitmap *top,int orient)
+{
+	return tc_hash((const ubyte *) bottom,orient,(int) (((uintptr_t) top >> 4) & 0xFFFF)) & (MT_SIZE-1);
+}
+
 static void mt_sweep(int keep_frames)
 {
 	static merge_entry old[MT_SIZE];
 	int i;
+
+	int before = Mt_used;
 
 	memcpy(old,Mt,sizeof(Mt));
 	memset(Mt,0,sizeof(Mt));
@@ -537,17 +549,19 @@ static void mt_sweep(int keep_frames)
 			plat_gpu_texture_delete(m->tex);
 			continue;
 		}
-		j = tc_hash((const ubyte *) m->bottom,m->orient,(int) (((uintptr_t) m->top >> 4) & 0xFFFF));
+		j = mt_hash(m->bottom,m->top,m->orient);
 		while (Mt[j].bottom)
 			j = (j+1) & (MT_SIZE-1);
 		Mt[j] = *m;
 		Mt_used++;
 	}
+	if (Hd_log)
+		printf("GPU hd: merge sweep (%d frames): %d of %d kept\n",keep_frames,Mt_used,before);
 }
 
 static int merge_texture(grs_bitmap *bm,const g3_gpu_source *src)
 {
-	unsigned j = tc_hash((const ubyte *) src->bottom,src->orient,(int) (((uintptr_t) src->top >> 4) & 0xFFFF));
+	unsigned j = mt_hash(src->bottom,src->top,src->orient);
 	merge_entry *m;
 	ubyte *pix,*rgba;
 
