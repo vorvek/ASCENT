@@ -1337,6 +1337,18 @@ The lockpick slot is not read here (it only adds to Open Locks in 0xAFB55).
   search for secret walls (TEX 948, 949; a d6 against 0x1466E8[race]: human 3,
   dwarf 6, elf 5, dark elf 5, halfling 3, half-elf 5). P+0xDF bit 0 counts as
   race 5.
+- 0xB3ECE(seg, side, player, dwarf), dwarf = race 1 of any class: the wall of
+  the side; if its byte +0x16 is set, return; else set it (so one roll for each
+  wall; 0xAD5BF clears +0x16 for all walls at a new level). 0xB3D1E: a dwarf on
+  a side with pad & 3 stops. Then rand() % 6 + 1 <= 0x1466E8[race]. Wall type 5
+  (closed): each trap that is on with seg and side of the side (+0x43, +0x45)
+  and its position (+0x15) within 40.0 of the player: 0xB3E57 (side pad |= 0x10
+  on both sides, sound 0xC20 = 3104, TEX 949 "You found a secret door!"), then
+  0xB3D4E: each trigger that is on with first_trap (+0x3B) = trap id (+0x00);
+  a trigger on another side needs its own racial d6; found: its side pad |= 4,
+  0x93B29(trigger, 0xFF, player). TEX 948 if none. Wall type 2 (door) with flag
+  0x40: the side center (0x4AD3E) within 40.0: 0xB3E57. A side without a wall
+  (wall number -1) reads Walls[-1] (the bytes before 0x39FEC8).
 - 0xB34E0, a harmful trap: on, and (dwarf flag: side pad & 3 == 0), and flags
   & 0x140 or weapon_type >= 0 or spawn >= 0 or stat_delta < 0 or robot_type >=
   0. 0xB353A: a trigger that is on and leads through first_trap, enable_trigger
@@ -1462,9 +1474,8 @@ GameTime limit), the light object lifetimes (+0x84).
 Frame dependent (Code):
 
 1. 0xB3ECE, called through 0xB4040 every frame while search mode (P+0xA0 bit
-   0x10) is on and the Find Traps spell is off: a new d6 racial roll each frame
-   for each special wall side within 40.0. At a higher frame rate special walls
-   are found sooner.
+   0x10) is on and the Find Traps spell is off. Not frame dependent: the wall
+   byte +0x16 is set before the d6, so each wall gets one roll for each level.
 2. 0xB4040 itself runs every frame, but its trap rolls are stored per level, so
    the result does not depend on the frame rate (except that toggling search
    mode resets the state bytes).

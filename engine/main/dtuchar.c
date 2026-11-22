@@ -2714,7 +2714,8 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // "frame:command=value" with commas between. Commands: damage=N,
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
-// armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, str=STRENGTH.PERCENT,
+// armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
+// gosecret=N, str=STRENGTH.PERCENT,
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // dump.
@@ -2781,6 +2782,9 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
+	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
+	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
+	else if (!strcmp(cmd, "gosecret"))	dtu_thief_goto_secret(a);		// test: gosecret=N
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
 	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL
 	else if (!strcmp(cmd, "armspell"))	dtu_char_arm_spell(a);

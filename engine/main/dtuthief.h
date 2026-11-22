@@ -65,4 +65,8 @@ int dtu_thief_hidden_from(object *creature);
 // (0x13D8E, 0x142BF: the player is behind the creature).
 int dtu_thief_unnoticed_by(object *creature);
 
+// ASCENT: test (-chartest gosecret=N): puts the player in front of the
+// secret wall N of the level (a secret door, or a closed wall with a
+// trap on the side). Returns 0 if the level has fewer.
+int dtu_thief_goto_secret(int n);
 #endif

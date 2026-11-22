@@ -687,7 +687,7 @@ class Pages:
              "elf, drow, halfling"],
             ["Find/Remove Traps 50% without the thief class", "dwarf"],
             ["The spell and the Ring of Infravision work", "human and half-elf only"],
-            ["Finds secret doors while searching (key F). Not in ASCENT yet.", ", ".join(sec)],
+            ["Finds secret doors while searching (key F)", ", ".join(sec)],
         ]
         self.count("Races", len(rows) + len(crow) + len(trow) + len(special))
         return "\n".join([
@@ -1740,7 +1740,6 @@ RULE_SOURCES = [
 NOT_IN_ASCENT = [
     "The text screen of the Scroll and the thief scroll (0x9DC42).",
     "The thief skill point screen (thiefpts.c, 0xB5B49).",
-    "The racial search for secret doors (0xB3ECE).",
     "The view of a frightened player (0x13407).",
     "The blindness and deafness of the fire trap of the Yawning Portal (0x90CEF).",
     "The Spider Pieces 20, 23 and 24.",
