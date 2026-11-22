@@ -44,7 +44,7 @@ ends it. The keys:
 | `dup` | The id of the first entry with the same English text (same source kind). |
 | `en` | The English text. |
 | `tr` | The translation. An empty `tr` (with a non-empty `en`) is no translation. |
-| `gender` | Only for a name of the tables (`tbl.*`): the grammatical gender of the translation, `m` or `f` (below). Optional. |
+| `gender` | Only for a name of the tables (`tbl.*`) and a creature name of the text file (`tex.*`): the grammatical gender of the translation, `m` or `f` (below). Optional. |
 | `plural` | Only for a name of the tables (`tbl.*`): the plural of the translation (below). Optional. |
 
 Values are one line. Escapes: `\n` line break, `\t` tab, `\\` backslash,
@@ -109,10 +109,23 @@ resolved once: the result is not read again.
 
 The spell messages of `dtuspell.c` (`say`) resolve the tokens of the format
 for the subject of the message: the player's sex when the subject is the
-player ("You"), else the male form (a creature or a trap). For example the
-format `%s %s {sex:bendecido|bendecida} durante %d minutos.` gives
-`Tú estás bendecida durante 6 minutos.` for a female player, and the male
-form when a creature is the subject.
+player ("You"), else the grammatical gender of the name of the creature or
+the item (the field `gender` of its catalog entry, below: `f` gives the
+second form), else the male form (a trap, a name with no gender). For
+example the format `%s %s {sex:bendecido|bendecida} durante %d minutos.`
+gives `Tú estás bendecida durante 6 minutos.` for a female player, and
+`%s %s {sex:noqueado|noqueada} (origen: %s).` gives `Araña gigante ha sido
+noqueada (origen: Tú).`
+
+## Gender of the creature names
+
+The creature names of the text file (`tex.845` to `tex.905`, the names of
+the messages, `Creature_names` of `dtuobj.c`) can have the field `gender`
+(`m` or `f`, the gender of the head noun: `Araña gigante` is `f`, `Guerrero
+drow` is `m`), and no `plural`. English has none. The program reads it with
+`dtu_text_gender()` and `dtu_object_name_gender()` (the creature or the item
+of an object). `lang_extract.py` reports a `plural` on a creature name as an
+error.
 
 Character creation (`dtufe_char.c`) joins the sex and the race of a choice
 with the formats `Male %s` and `Female %s` (the race word as the value):
@@ -120,7 +133,9 @@ English shows `Female Human`. The race word (`Human`, `Half Elven`, ...) is
 resolved for the sex of that choice, not for the sex chosen so far, so the
 help line of the female button names the female form. Spanish translates
 the race words as `{sex:Humano|Humana}` and both formats as `%s`, which
-gives `Haz clic aquí para elegir Humana`. The help lines that hold the sex
+gives `Haz clic aquí para elegir Humana`. The word `Drow` has one form for
+both sexes, so the race word of the code is `{sex:Drow (hombre)|Drow
+(mujer)}`: the two buttons of the race screen say which one they choose. The help lines that hold the sex
 and the race are whole formats of the code (`Click here to select a %s`,
 `You have selected a %s`, `Quickly generate a %s character`,
 `Quickly generate a %s %s character`, `I am a %s %s`) with the English text
@@ -173,7 +188,7 @@ plural: Dagas
 ```
 
 `gender` is `m` or `f`: the gender of the head noun of the name
-(`Poción de curación` is `f`, plural `Pociones de curación`). `plural` is
+(`Poción de sanación` is `f`, plural `Pociones de sanación`). `plural` is
 the whole name in the plural, with the same `\xNN` escapes as `tr`. A name
 that is plural already has its own text as the plural (`Botas`). A
 language without gender leaves both fields out (English has neither, and
@@ -392,4 +407,23 @@ Where the program uses them:
 
 `tools/ui_lang.py` makes the files (Codex CLI image generation on crops of
 the upscaled pictures, see its comment); `tools/content_pack.py lang_es`
-packs them.
+packs them. The name of the city on the Waterdeep picture (FEBGND 10, the
+job `p10_title`) is drawn by `tools/ui_lang_title.py` (the old letters
+filled with the parchment, the new words in a bold serif font with the
+color and the shading of the old letters), then `ui_lang.py build` makes
+the files as for the other jobs.
+
+## The thief skills of a language
+
+The statistics screen and the thief points screen show the long official
+names of the skills in a language other than English (`Esconderse en las
+sombras`, `Encontrar/desactivar trampas`). The statistics screen
+(`dtudisp.c`, `skill_row`) draws the percentage right-aligned in the row
+and the name in the room left of it, in two lines when it is wider; the low
+resolution has no room for two lines and cuts the name. The thief points
+screen (`dtuthiefpts.c`) makes its rows wider, into the free parchment (at
+most 22 pixels on each side in the high resolution, 10 in the low). Both
+screens use the texts 678 to 682 and the port strings of the names (also in
+the low resolution, where English shows the short `Find Traps`); the port
+string `Find Traps` is the name of the spell (`dtuspell.c`). English does
+not change.

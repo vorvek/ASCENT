@@ -85,6 +85,9 @@ void dtu_lang_sync(void);
 #define DTU_GENDER_F	2
 // DTU_GENDER_M, DTU_GENDER_F, or 0 (not known)
 int dtu_name_gender(const char *en);
+// The gender of the translation of text n of the text file (the field
+// gender of a creature name tex.N): DTU_GENDER_M, DTU_GENDER_F or 0
+int dtu_text_gender(int n);
 // The plural of the translation, or the translation (dtu_tr_name) if the
 // catalog has no plural
 char *dtu_tr_name_plural(const char *en);

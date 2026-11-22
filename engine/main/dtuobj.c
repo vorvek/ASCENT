@@ -653,6 +653,22 @@ char *dtu_object_display_name(object *obj)
 	return name;
 }
 
+// ASCENT: the gender of the name of dtu_object_display_name: the field
+// gender of the creature name (tex.N) or of the item name (tbl.*) of the
+// catalog
+int dtu_object_name_gender(object *obj)
+{
+	char *name = dtu_object_name(obj);
+	int i;
+
+	if (obj->type != OBJ_ROBOT)
+		return dtu_name_gender(dtu_item_shown_name(obj->type, obj->id, name));
+	for (i = 0; i < (int) (sizeof(Creature_names) / sizeof(Creature_names[0])); i++)
+		if (!stricmp(Creature_names[i].name, name))
+			return Creature_names[i].text < 0 ? 0 : dtu_text_gender(Creature_names[i].text);
+	return 0;
+}
+
 static char *anim_name(int s)
 {
 	static char buf[16];

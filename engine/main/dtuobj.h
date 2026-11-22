@@ -385,6 +385,9 @@ int dtu_weapon_extra_damage(object *attacker, object *target, int weapon, int *d
 // The name of an object in the messages to the player (0xA7F03): for a
 // creature the name of the list 0xA504A ("Kobold"), else dtu_object_name.
 char *dtu_object_display_name(object *obj);
+// ASCENT: the grammatical gender of that name in the language of the text
+// (dtulang.h: DTU_GENDER_M, DTU_GENDER_F, or 0 when not known)
+int dtu_object_name_gender(object *obj);
 // ASCENT: the English name of an item as the player sees it: name= of the
 // table line, or its correction (dtuitemfix.h). type is OBJ_WEAPON,
 // OBJ_ARMOR or OBJ_MISC; another type gives name.

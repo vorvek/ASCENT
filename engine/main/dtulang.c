@@ -373,8 +373,12 @@ static void add_entry(const char *id, const char *en_raw, const char *tr_raw, co
 		if (name)
 			unescape(plural_raw, plural, sizeof(plural), 0);
 		tab_put(key, NULL, tr, sex ? tr_f : NULL, name ? plural : NULL, gender);
-	} else
-		tab_put(id, en_raw ? en : NULL, tr, sex ? tr_f : NULL, NULL, 0);
+	} else {
+		// a creature name of the text file: the gender (dtu_text_gender)
+		if (!strncmp(id, "tex.", 4) && gender_raw)
+			gender = !strcmp(gender_raw, "m") ? DTU_GENDER_M : !strcmp(gender_raw, "f") ? DTU_GENDER_F : 0;
+		tab_put(id, en_raw ? en : NULL, tr, sex ? tr_f : NULL, NULL, gender);
+	}
 	Load_entries++;
 }
 
@@ -648,6 +652,21 @@ static void apply_text(void)
 		snprintf(id, sizeof(id), "tex.%d", i);
 		Text_string[i] = dtu_tr_id(id, Text_en[i]);
 	}
+}
+
+int dtu_text_gender(int n)
+{
+	char id[16];
+	lang_entry *e;
+
+	if (n < 0 || n >= N_TEXT_STRINGS || !Text_en[n] || Dtu_language == DTU_LANG_EN)
+		return 0;
+	load_language(Dtu_language);
+	snprintf(id, sizeof(id), "tex.%d", n);
+	e = tab_find(id);
+	if (!e || (e->en && strcmp(e->en, Text_en[n])))
+		return 0;
+	return e->gender;
 }
 
 void dtu_lang_text_loaded(void)

@@ -1098,7 +1098,8 @@ static const char *Msg_are, *Msg_have, *Msg_were;	// 0x3A6528, 0x3A6500, 0x3A651
 static int Msg_show;						// 0x3A65C4
 // ASCENT: the sex of the subject of a message (dtulang.h, the token
 // {sex:MALE|FEMALE}): the player's when the player is the target or the
-// caster, else male. Msg_female is the one of the next say().
+// caster, else the gender of the name of the creature (female for a
+// feminine name), else male. Msg_female is the one of the next say().
 static int Msg_t_female, Msg_c_female, Msg_female;
 
 #define V_NONE	0
@@ -1160,8 +1161,12 @@ static void msg_setup(object *target,object *caster)
 	Msg_are = (caster == ConsoleObject) ? LT("are") : LT("is");
 	Msg_have = (caster == ConsoleObject) ? LT("have") : LT("has");
 	Msg_show = message_rule(target,caster);
-	Msg_t_female = (target == ConsoleObject) && dtu_lang_female();
-	Msg_c_female = (caster == ConsoleObject) && dtu_lang_female();
+	// a creature or an item: the gender of its name in the language
+	// (the field gender of the catalog, docs/formats/lang.md)
+	Msg_t_female = (target == ConsoleObject) ? dtu_lang_female() :
+		target->type != OBJ_LIGHT && dtu_object_name_gender(target) == DTU_GENDER_F;
+	Msg_c_female = (caster == ConsoleObject) ? dtu_lang_female() :
+		caster != NULL && caster->type != OBJ_LIGHT && dtu_object_name_gender(caster) == DTU_GENDER_F;
 	Msg_female = Msg_t_female;
 }
 

@@ -847,12 +847,23 @@ def check_entry(e, tr, problems):
     problems.extend(found)
 
 
+def is_creature_name(e):
+    """A creature name of DTUE.TEX (the names of dtuobj.c, Creature_names)."""
+    return e['id'].startswith('tex.') and 'creature name' in e.get('ctx', '')
+
+
 def check_name(e, tr, t, problems):
     """The fields gender and plural t of the translation tr."""
     i = e['id']
     has = [k for k in NAME_FIELDS if k in t]
-    if has and not i.startswith('tbl.'):
-        problems.append(('error', i, 'the fields %s are only for the names of the tables (tbl.*)' % ', '.join(has)))
+    if is_creature_name(e):
+        # a creature name of the text file: the gender only (the messages
+        # of dtuspell.c agree with it)
+        if 'plural' in t:
+            problems.append(('error', i, 'a creature name has no plural field'))
+    elif has and not i.startswith('tbl.'):
+        problems.append(('error', i, 'the fields %s are only for the names of the tables (tbl.*) and the gender '
+                         'of the creature names (tex.*)' % ', '.join(has)))
         return
     if 'gender' in t and t['gender'] not in ('m', 'f'):
         problems.append(('error', i, 'gender is %r: m or f' % t['gender']))
