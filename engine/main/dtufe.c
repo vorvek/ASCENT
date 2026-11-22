@@ -43,6 +43,7 @@
 #include "dtumusic.h"
 #include "dtuobj.h"
 #include "dtuchar.h"
+#include "dtusoak.h"
 #include "object.h"
 #include "player.h"
 #include "game.h"
@@ -2732,7 +2733,9 @@ static void escape_menu(void)
 	if (Fe_inn_flag) {
 		// The byte 0x13B254 stays set after "No" to the question of the
 		// exit of the inn: the Escape key asks the question again.
-		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
+		// ASCENT: the soak test (-soak) stays in the inn: the box would wait
+		// for a key in the hidden window and the test would hang.
+		if (!Dtu_soak && nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
 			Dtu_fe_return_waterdeep = 1;
 			Fe_leave_game = 1;
 		}
@@ -2881,7 +2884,9 @@ int dtufe_game_frame(void)
 		// 0x5B3BE: command 0 saves the state of the inn before the question
 		Fe_inn_flag = 1;
 		dtustate_save_level(Current_level_num - 1);
-		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
+		// ASCENT: the soak test (-soak) stays in the inn: the box would wait
+		// for a key in the hidden window and the test would hang.
+		if (!Dtu_soak && nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
 			Dtu_fe_return_waterdeep = 1;
 			Fe_leave_game = 1;
 		}
