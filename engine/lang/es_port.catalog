@@ -1428,3 +1428,615 @@ en: Thief Scroll
 tr: Pergamino de ladrón
 gender: m
 plural: Pergaminos de ladrón
+
+id: port.d_to_d
+en: %d to %d
+tr: %d a %d
+
+id: port.1_second
+en: 1 second
+tr: 1 segundo
+
+id: port.d_seconds
+en: %d seconds
+tr: %d segundos
+
+id: port.d_to_d_seconds
+en: %d to %d seconds
+tr: %d a %d segundos
+
+id: port.1_hour
+en: 1 hour
+tr: 1 hora
+
+id: port.d_hours
+en: %d hours
+tr: %d horas
+
+id: port.d_to_d_hours
+en: %d to %d hours
+tr: %d a %d horas
+
+id: port.1_minute
+en: 1 minute
+tr: 1 minuto
+
+id: port.d_minutes
+en: %d minutes
+tr: %d minutos
+
+id: port.d_to_d_minutes
+en: %d to %d minutes
+tr: %d a %d minutos
+
+id: port.d_ft
+en: %d ft
+tr: %d pies
+
+id: port.fighter
+en: Fighter
+tr: Guerrero
+
+id: port.thief
+en: Thief
+tr: Ladrón
+
+id: port.mage
+en: Mage
+tr: Mago
+
+id: port.cleric
+en: Cleric
+tr: Clérigo
+
+id: port.all_classes
+en: All classes
+tr: Todas las clases
+
+id: port.none
+en: None
+tr: Ninguna
+
+id: port.lockpicks
+en: Lockpicks
+tr: Ganzúas
+
+id: port.cloak
+en: Cloak
+tr: Capa
+
+id: port.neck
+en: Neck
+tr: Cuello
+
+id: port.body
+en: Body
+tr: Cuerpo
+
+id: port.hands
+en: Hands
+tr: Manos
+
+id: port.shield_arm
+en: Shield arm
+tr: Brazo del escudo
+
+id: port.ring_finger
+en: Ring finger
+tr: Dedo
+
+id: port.waist
+en: Waist
+tr: Cintura
+
+id: port.feet
+en: Feet
+tr: Pies
+
+id: port.bow_2
+en: Bow
+tr: Arco
+
+id: port.crossbow_2
+en: Crossbow
+tr: Ballesta
+
+id: port.hand
+en: Hand
+tr: Mano
+
+id: port.sets_strength_to_s
+en: Sets strength to %s.
+tr: Fuerza %s.
+
+id: port.sets_constitution_to_d
+en: Sets constitution to %d.
+tr: Constitución %d.
+
+id: port.raises_dexterity
+en: Raises dexterity.
+tr: Aumenta la destreza.
+
+id: port.sets_hide_in_shadows_to_d
+en: Sets Hide In Shadows to %d%%.
+tr: Esconderse %d%%.
+
+id: port.open_locks_d_for_a_thief
+en: Open Locks +%d%% for a thief.
+tr: Abrir cerraduras +%d%% para un ladrón.
+
+id: port.open_locks_d_for_other_classes
+en: Open Locks %d%% for other classes.
+tr: Abrir cerraduras %d%% para las otras clases.
+
+id: port.a_thief_cannot_hide_in_shadows_move_silently_or_climb_walls_in_it
+en: A thief cannot Hide In Shadows, Move Silently or Climb Walls in it.
+tr: Con ella un ladrón no puede esconderse, moverse en silencio ni trepar muros.
+
+id: port.find_remove_traps_and_open_locks_do_not_work
+en: Find/Remove Traps and Open Locks do not work.
+tr: Encontrar y desactivar trampas y abrir cerraduras no funcionan.
+
+id: port.sets_find_remove_traps_and_climb_walls_to_d
+en: Sets Find/Remove Traps and Climb Walls to %d%%.
+tr: Encontrar y desactivar trampas y trepar muros %d%%.
+
+id: port.no_armor_class_bonus_with_a_shield_magic_armor_or_heavy_armor
+en: No armor class bonus with a shield, magic armor or heavy armor.
+tr: No mejora la CA con un escudo, una armadura mágica o una armadura pesada.
+
+id: port.of_two_rings_of_protection_only_the_better_one_counts
+en: Of two rings of protection only the better one counts.
+tr: De dos anillos de protección solo cuenta el mejor.
+
+id: port.no_armor_class_bonus_with_magic_armor
+en: No armor class bonus with magic armor.
+tr: No mejora la CA con una armadura mágica.
+
+id: port.a_mage_gets_1_better_armor_class_after_armor_magical_vestment_and_shield
+en: A mage gets 1 better armor class after Armor, Magical Vestment and Shield.
+tr: Un mago tiene 1 punto mejor de CA tras Armadura, Vestidura mágica y Escudo.
+
+id: port.doubles_the_mage_spell_slots_of_levels_1_to_3
+en: Doubles the mage spell slots of levels 1 to 3.
+tr: Duplica los conjuros de mago de los niveles 1 a 3.
+
+id: port.use_casts_s_around_you
+en: Use: casts %s around you.
+tr: Usar: lanza %s a tu alrededor.
+
+id: port.the_turn_undead_key_works_with_it
+en: The Turn Undead key works with it.
+tr: Con ella funciona la tecla de Expulsar muertos vivientes.
+
+id: port.infravision_only_for_a_human
+en: Infravision only for a human.
+tr: Infravisión solo para un humano.
+
+id: port.in_the_hand_s
+en: In the hand: %s.
+tr: En la mano: %s.
+
+id: port.while_worn_s
+en: While worn: %s.
+tr: Puesto: %s.
+
+id: port.heals_s_hit_points
+en: Heals %s hit points.
+tr: Cura %s puntos de golpe.
+
+id: port.dexterity_becomes_at_least_d_for_s
+en: Dexterity becomes at least %d for %s.
+tr: La destreza es al menos %d durante %s.
+
+id: port.strength_becomes_at_least_d_for_1_to_d_minutes
+en: Strength becomes at least %d for 1 to %d minutes.
+tr: La fuerza es al menos %d durante 1 a %d minutos.
+
+id: port.strength_becomes_at_least_d_for_s
+en: Strength becomes at least %d for %s.
+tr: La fuerza es al menos %d durante %s.
+
+id: port.intelligence_becomes_s_for_s
+en: Intelligence becomes %s for %s.
+tr: La inteligencia es %s durante %s.
+
+id: port.gives_s_for_s
+en: Gives %s for %s.
+tr: Da %s durante %s.
+
+id: port.casts_s_on_you
+en: Casts %s on you.
+tr: Lanza sobre ti %s.
+
+id: port.ends_all_spell_and_potion_effects_on_you
+en: Ends all spell and potion effects on you.
+tr: Termina todos los efectos de conjuros y pociones sobre ti.
+
+id: port.for_s_one_attack_roll_is_a_20_or_one_damage_roll_is_the_highest
+en: For %s, one attack roll is a 20 or one damage roll is the highest.
+tr: Durante %s, una tirada de ataque es un 20 o una tirada de daño es la máxima.
+
+id: port.adds_s_hit_points_above_the_maximum_and_bless_for_s
+en: Adds %s hit points above the maximum and Bless for %s.
+tr: Añade %s puntos de golpe por encima del máximo y Bendición durante %s.
+
+id: port.a_second_one_while_above_the_maximum_can_kill_system_shock
+en: A second one while above the maximum can kill (system shock).
+tr: Otra por encima del máximo puede matar (choque sistémico).
+
+id: port.cures_blindness_else_casts_s_one_use_for_each_mission
+en: Cures blindness, else casts %s. One use for each mission.
+tr: Cura la ceguera, si no lanza %s. Un uso por misión.
+
+id: port.shows_a_text
+en: Shows a text.
+tr: Muestra un texto.
+
+id: port.harms_you_by_chance_spells_the_map_your_abilities_and_hit_points_it_is_not_used_up
+en: Harms you by chance: spells, the map, your abilities and hit points. It is not used up.
+tr: Te daña al azar: conjuros, el mapa, tus características y puntos de golpe. No se gasta.
+
+id: port.turns_undead_as_a_cleric_of_level_d
+en: Turns undead as a cleric of level %d.
+tr: Expulsa muertos vivientes como un clérigo de nivel %d.
+
+id: port.shows_the_whole_map
+en: Shows the whole map.
+tr: Muestra todo el mapa.
+
+id: port.fires_a_missile_at_each_creature_in_sight
+en: Fires a missile at each creature in sight.
+tr: Dispara un proyectil a cada criatura a la vista.
+
+id: port.casts_s_around_you_then_s_on_you
+en: Casts %s around you, then %s on you.
+tr: Lanza %s a tu alrededor y luego sobre ti %s.
+
+id: port.the_view_visits_each_creature_of_the_level
+en: The view visits each creature of the level.
+tr: La vista visita cada criatura del nivel.
+
+id: port.raises_an_ability_by_one_point
+en: Raises an ability by one point.
+tr: Aumenta una característica en un punto.
+
+id: port.heals_all_hit_points_and_casts_s_on_you
+en: Heals all hit points and casts %s on you.
+tr: Cura todos los puntos de golpe y lanza sobre ti %s.
+
+id: port.casts_s_on_you_with_no_end
+en: Casts %s on you, with no end.
+tr: Lanza sobre ti %s, sin fin.
+
+id: port.quest_item_it_can_be_used
+en: Quest item. It can be used.
+tr: Objeto de la misión. Se puede usar.
+
+id: port.charges_d
+en: Charges: %d
+tr: Cargas: %d
+
+id: port.classes_s
+en: Classes: %s
+tr: Clases: %s
+
+id: port.each_use_casts_s
+en: Each use casts %s.
+tr: Cada uso lanza %s.
+
+id: port.damage_as_the_empty_hand
+en: Damage: as the empty hand
+tr: Daño: como la mano vacía
+
+id: port.damage_s
+en: Damage: %s
+tr: Daño: %s
+
+id: port.fire_damage_s
+en: Fire damage: %s
+tr: Daño de fuego: %s
+
+id: port.to_hit_s
+en: To hit: %s
+tr: Ataque: %s
+
+id: port.speed_one_attack_in_s_seconds
+en: Speed: one attack in %s seconds
+tr: Velocidad: un ataque cada %s segundos
+
+id: port.melee_weapon
+en: Melee weapon.
+tr: Arma cuerpo a cuerpo.
+
+id: port.thrown_weapon_range_s
+en: Thrown weapon, range %s.
+tr: Arma arrojadiza, alcance %s.
+
+id: port.arrow_for_a_bow_range_s
+en: Arrow for a bow, range %s.
+tr: Flecha para un arco, alcance %s.
+
+id: port.bolt_for_a_crossbow_range_s
+en: Bolt for a crossbow, range %s.
+tr: Virote para una ballesta, alcance %s.
+
+id: port.missile_range_s
+en: Missile, range %s.
+tr: Proyectil, alcance %s.
+
+id: port.count_d
+en: Count: %d
+tr: Cantidad: %d
+
+id: port.magic
+en: Magic.
+tr: Mágica.
+
+id: port.not_magic
+en: Not magic.
+tr: No mágica.
+
+id: port.armor_class_d_better_while_in_the_hand
+en: Armor class %d better while in the hand.
+tr: CA %d mejor en la mano.
+
+id: port.more_damage_and_to_hit_against_undead_and_regenerating_creatures
+en: More damage and to hit against undead and regenerating creatures.
+tr: Más ataque y daño contra muertos vivientes y criaturas que se regeneran.
+
+id: port.can_destroy_undead_creatures
+en: Can destroy undead creatures.
+tr: Puede destruir muertos vivientes.
+
+id: port.a_backstab_with_a_roll_of_19_or_20_does_more_damage
+en: A backstab with a roll of 19 or 20 does more damage.
+tr: Un golpe por la espalda con un 19 o un 20 hace más daño.
+
+id: port.arrows_get_s_to_hit_and_damage
+en: Arrows get %s to hit and damage.
+tr: Las flechas tienen %s al ataque y al daño.
+
+id: port.bolts_get_s_to_hit_and_damage
+en: Bolts get %s to hit and damage.
+tr: Los virotes tienen %s al ataque y al daño.
+
+id: port.slot_s
+en: Slot: %s
+tr: Lugar: %s
+
+id: port.armor_class_d
+en: Armor class: %d
+tr: Categoría de armadura: %d
+
+id: port.armor_class_d_better
+en: Armor class: %d better
+tr: Categoría de armadura: %d mejor
+
+id: port.key
+en: Key.
+tr: Llave.
+
+id: port.quest_item_it_cannot_be_dropped_or_sold
+en: Quest item. It cannot be dropped or sold.
+tr: Objeto de la misión. No se puede soltar ni vender.
+
+id: port.item
+en: Item.
+tr: Objeto.
+
+id: port.sale_price_d_gold
+en: Sale price: %d gold
+tr: Precio de venta: %d de oro
+
+id: port.price_d_gold
+en: Price: %d gold
+tr: Precio: %d de oro
+
+id: port.deals_s_damage
+en: Deals %s damage.
+tr: Hace %s de daño.
+
+id: port.deals_s_fire_damage
+en: Deals %s fire damage.
+tr: Hace %s de daño de fuego.
+
+id: port.deals_s_acid_damage
+en: Deals %s acid damage.
+tr: Hace %s de daño de ácido.
+
+id: port.deals_s_electric_damage
+en: Deals %s electric damage.
+tr: Hace %s de daño eléctrico.
+
+id: port.deals_no_damage
+en: Deals no damage.
+tr: No hace daño.
+
+id: port.s_more_damage_against_undead
+en: %s more damage against undead.
+tr: %s más de daño contra muertos vivientes.
+
+id: port.gives_s
+en: Gives %s.
+tr: Da %s.
+
+id: port.causes_s
+en: Causes %s.
+tr: Causa %s.
+
+id: port.armor_class_d_at_most
+en: Armor class %d at most.
+tr: CA %d como máximo.
+
+id: port.stops_magic_missile
+en: Stops Magic Missile.
+tr: Detiene Proyectil mágico.
+
+id: port.armor_class_d_at_most_until_s_points_of_weapon_damage
+en: Armor class %d at most, until %s points of weapon damage.
+tr: CA %d como máximo, hasta %s puntos de daño de armas.
+
+id: port.adds_s_hit_points_above_the_maximum_and_bless
+en: Adds %s hit points above the maximum, and Bless.
+tr: Añade %s puntos de golpe por encima del máximo, y Bendición.
+
+id: port.ends_all_spell_effects_on_the_target
+en: Ends all spell effects on the target.
+tr: Termina todos los efectos de conjuros del objetivo.
+
+id: port.an_extraplanar_creature_leaves_the_level_or_dies
+en: An extraplanar creature leaves the level or dies.
+tr: Una criatura extraplanar deja el nivel o muere.
+
+id: port.gives_more_spell_slots_three_of_level_1_one_of_level_1_and_one_of_level_2_or_one_of_level_3
+en: Gives more spell slots: three of level 1, one of level 1 and one of level 2, or one of level 3.
+tr: Da más conjuros: tres de nivel 1, uno de nivel 1 y uno de nivel 2, o uno de nivel 3.
+
+id: port.opens_a_locked_door
+en: Opens a locked door.
+tr: Abre una puerta cerrada con llave.
+
+id: port.cures_blindness_and_deafness
+en: Cures blindness and deafness.
+tr: Cura la ceguera y la sordera.
+
+id: port.takes_the_first_s_points_of_fire_damage
+en: Takes the first %s points of fire damage.
+tr: Absorbe los primeros %s puntos de daño de fuego.
+
+id: port.stops_the_next_s_attacks
+en: Stops the next %s attacks.
+tr: Detiene los %s ataques siguientes.
+
+id: port.adds_s_to_strength
+en: Adds %s to strength.
+tr: Añade %s a la fuerza.
+
+id: port.blinds_the_target
+en: Blinds the target.
+tr: Ciega al objetivo.
+
+id: port.puts_to_sleep_blinds_or_stuns_by_the_level_of_the_target
+en: Puts to sleep, blinds or stuns, by the level of the target.
+tr: Duerme, ciega o aturde, según el nivel del objetivo.
+
+id: port.causes_s_on_creatures_of_level_d_or_less
+en: Causes %s on creatures of level %d or less.
+tr: Causa %s a las criaturas de nivel %d o menos.
+
+id: port.holds_undead_of_level_d_or_less
+en: Holds undead of level %d or less.
+tr: Inmoviliza muertos vivientes de nivel %d o menos.
+
+id: port.causes_s_the_target_may_drop_its_weapon
+en: Causes %s. The target may drop its weapon.
+tr: Causa %s. El objetivo puede soltar su arma.
+
+id: port.an_attack_roll_a_hit_deals_s_acid_damage_and_again_in_each_of_the_next_d_rounds
+en: An attack roll; a hit deals %s acid damage, and again in each of the next %d rounds.
+tr: Una tirada de ataque; un impacto hace %s de daño de ácido, y otra vez en cada uno de los %d asaltos siguientes.
+
+id: port.an_attack_roll_a_hit_deals_s_acid_damage
+en: An attack roll; a hit deals %s acid damage.
+tr: Una tirada de ataque; un impacto hace %s de daño de ácido.
+
+id: port.holds_up_to_s_humanoids
+en: Holds up to %s humanoids.
+tr: Inmoviliza hasta %s humanoides.
+
+id: port.it_has_no_effect_in_this_game
+en: It has no effect in this game.
+tr: No tiene efecto en este juego.
+
+id: port.cleric_spell_level_d
+en: Cleric spell, level %d
+tr: Conjuro de clérigo, nivel %d
+
+id: port.mage_spell_level_d
+en: Mage spell, level %d
+tr: Conjuro de mago, nivel %d
+
+id: port.spell_level_d
+en: Spell, level %d
+tr: Conjuro, nivel %d
+
+id: port.cast_time_s
+en: Cast time: %s
+tr: Tiempo de lanzamiento: %s
+
+id: port.range_s
+en: Range: %s
+tr: Alcance: %s
+
+id: port.area_s
+en: Area: %s
+tr: Área: %s
+
+id: port.s_around_you
+en: %s around you
+tr: %s a tu alrededor
+
+id: port.s_where_it_lands
+en: %s where it lands
+tr: %s donde cae
+
+id: port.only_you
+en: Only you
+tr: Solo tú
+
+id: port.one_target
+en: One target
+tr: Un objetivo
+
+id: port.missiles_s
+en: Missiles: %s
+tr: Proyectiles: %s
+
+id: port.until_used_up
+en: Until used up
+tr: Hasta que se agote
+
+id: port.until_the_next_rest
+en: Until the next rest
+tr: Hasta el siguiente descanso
+
+id: port.until_dispel_magic
+en: Until Dispel Magic
+tr: Hasta Disipar magia
+
+id: port.until_you_attack
+en: Until you attack
+tr: Hasta que ataques
+
+id: port.no_end
+en: No end
+tr: Sin fin
+
+id: port.instant
+en: Instant
+tr: Instantáneo
+
+id: port.duration_s
+en: Duration: %s
+tr: Duración: %s
+
+id: port.saving_throw_s
+en: Saving throw: %s
+tr: Tirada de salvación: %s
+
+id: port.half_damage
+en: Half damage
+tr: Mitad de daño
+
+id: port.negates
+en: Negates
+tr: Anula
+
+id: port.some_targets
+en: Some targets
+tr: Algunos objetivos
+
+id: port.caster_level_d
+en: Caster level: %d
+tr: Nivel del lanzador: %d

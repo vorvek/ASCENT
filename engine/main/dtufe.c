@@ -2805,6 +2805,8 @@ void dtufe_title(void)
 int dtufe_run(void)
 {
 	fe_enter();
+	if (FindArg("-testmarket"))		// ASCENT: test option, the front end starts in the market (tools/uitest.py)
+		Fe_mode = FE_GO_MARKET;
 	while (!Fe_quit) {
 		switch (Fe_mode) {
 		case FE_GO_MENU:
