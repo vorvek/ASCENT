@@ -103,6 +103,15 @@ int Dtu_script_walk_teleport = 1;
 // worn goes to the thieves. Option -origprison.
 int Dtu_fix_prison_items = 1;
 
+// ASCENT: D-075, statement EB (0xAA8B3): the executable tests the segment
+// operand against the highest segment and then passes the object of the
+// script to 0x90CEF (0xAA8CF to 0xAA8DC), so the area effect is centered on
+// the speaker. Script 291 (IBBALAR) casts lights and fire at the segments
+// 177, 206, 207, 231 and 233, and in 1.3 they all go off at the speaker,
+// next to the player. 1 (default): the effect is centered on the named
+// segment. 0 (-origscript): the rule of the executable.
+int Dtu_fix_script_area_seg = 1;
+
 // The anger byte (ai_local +0x00) and 0xA9418 are in dtuobj.c.
 ubyte *dtu_script_anger(object *obj);
 void dtu_script_make_hostile(object *obj);
@@ -215,6 +224,8 @@ void dtu_script_init(void)
 		Dtu_script_walk_teleport = 0;
 	if (FindArg("-origprison"))
 		Dtu_fix_prison_items = 0;
+	if (FindArg("-origscript"))		// ASCENT: the script rules of the executable
+		Dtu_fix_script_new_char = Dtu_fix_script_abilities = Dtu_fix_script_area_seg = 0;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
 	// has the English text.
 	Gab_rlh = dtu_load_file("GABE.RLH", &Gab_rlh_size);
@@ -2063,11 +2074,18 @@ static int sc_exec(sc_run *r)
 			slog("area spell %d from obj %d (segment %d)", spell, r->objnum, seg);
 			// ASCENT: 0xAA8B3: 0x90CEF(spell, object, object), the area
 			// effect around the object of the script. The segment is only
-			// checked against the highest segment (a defect of the
-			// executable with no fix: the place of the effect that the
-			// scripts were tested with is the object).
-			if (spell <= 50 && seg <= Highest_segment_index && o)
-				dtu_spell_area(spell, &o->pos, o->segnum, o, dtu_spell_object_level(o, spell));
+			// checked against the highest segment (D-075).
+			// Dtu_fix_script_area_seg: the center of the segment.
+			if (spell <= 50 && seg <= Highest_segment_index && o) {
+				if (Dtu_fix_script_area_seg && seg >= 0) {
+					vms_vector c;
+
+					compute_segment_center(&c, &Segments[seg]);
+					slog("area spell %d at the center of segment %d (Dtu_fix_script_area_seg)", spell, seg);
+					dtu_spell_area(spell, &c, seg, o, dtu_spell_object_level(o, spell));
+				} else
+					dtu_spell_area(spell, &o->pos, o->segnum, o, dtu_spell_object_level(o, spell));
+			}
 			break;
 		}
 		case 0xEC:								// 0xAA8E4

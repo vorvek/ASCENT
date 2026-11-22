@@ -153,7 +153,7 @@ in GABE (tools/script.py stats).
 | E0 | [OBJ] ARITH | 0xAB3CA | the 4-bit variable (bits 24 to 27 of +0x1B0) | 104 |
 | E5 | HEX ... `E6` | 0xAB435 (0xAA79F) | walk a path through the segments (plain HEX, not NUM). Sets 0x145535 = 1 (flag 0 stays set), target -1, AI mode 2, ai_local +5 bits 0x30, speed. At the end of the path the AI runs the script in mode 2 (0x174FC) | 16 |
 | EA | NUM NUM | 0xAB47B (0xAA86C) | spell NUM (at most 50) from the current object at object NUM (0x8CFFF) | 130 |
-| EB | NUM NUM | 0xAB48F (0xAA8B3) | spell NUM from the current object (0x90CEF). The segment NUM is checked against the highest segment but not passed (a defect of the executable) | 87 |
+| EB | NUM NUM | 0xAB48F (0xAA8B3) | spell NUM from the current object (0x90CEF). The segment NUM is checked against the highest segment but not passed (a defect of the executable, D-075: script 291 of IBBALAR casts its lights and fires at the speaker, not at the segments 177 to 233). The port centers the spell on the segment (`Dtu_fix_script_area_seg`, `-origscript`) | 87 |
 | EC | NUM | 0xAB4A3 (0xAA8E4) | wait NUM ticks of the 1/100 s clock 0xEDC4C, with reduced frames 0x4391D | 206 |
 | ED | `C4` NUM SIDE \| NUM | 0xAB4B7 (0xAA908) | switch the trigger of the side off (0xA83BD), or kill object NUM (0xA6ACB) | 39 |
 | EE | NUM | 0xAB4C1 (0xAA989) | run the script of object NUM in mode 4, then go on. The pointer, slot, depth, label, object and 0x145535 are saved and restored; the mode is not (it stays 4) | 10 |
@@ -680,6 +680,9 @@ Settings (globals in dtuscript.c):
   0 (`-scriptwalk`): the creature gets the path of the AI (0xAA74E) and the
   script runs in mode 2 at its end; the creature did not move in the test,
   see ../audit/quests.md Q11.
+- `Dtu_fix_script_area_seg` (1): statement EB centers its area spell on the
+  segment that it names (D-075). `-origscript` clears it, `script_new_char`
+  and `script_abilities`.
 - `Dtu_fix_prison_items` (1): the prison sequence takes each item that is
   not worn. The executable reads the wrong entry after it removes one
   (`-origprison`).

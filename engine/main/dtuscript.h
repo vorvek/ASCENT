@@ -21,6 +21,11 @@
 // new game in one session kept the flags of the first character.
 extern int Dtu_fix_script_new_char;
 
+// ASCENT: D-075, 0xAA8B3: 1 (default): statement EB centers its area spell
+// on the named segment; the executable uses the object of the script.
+// -origscript clears it and the other script corrections.
+extern int Dtu_fix_script_area_seg;
+
 // 1: each statement and each event of the scripts is printed to stdout
 // (option -scriptlog).
 extern int Dtu_script_log;
