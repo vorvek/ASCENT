@@ -326,8 +326,10 @@ int dtu_item_get(int type, int id, dtu_item_data *d)
 			d->class_mask |= DTU_USE_THIEF;
 		}
 		// The table lines of the four lockpick items (10 to 13) of the disc
-		// have no wear word. The code of the lockpick slot knows these four
-		// numbers (0xB02D6). That they can go into the slot is a guess.
+		// have no wear word. The table fixup (0x1A528, dtutblfix.h) gives
+		// them the lockpick wear bit 0x800 and the thief bit, and the code
+		// of the lockpick slot knows these four numbers (0xB02D6). The test
+		// keeps the slot with -rawtables.
 		if (id >= 10 && id <= 13)
 			d->wear_mask |= DTU_WEAR_LOCKPICK;
 		// 0x145A04: armor class of the misc numbers 0 to 127

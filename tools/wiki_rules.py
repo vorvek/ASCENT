@@ -45,15 +45,20 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import egg  # noqa: E402
 import check_itemfix  # noqa: E402  (the tables of engine/main/dtuitemfix.c)
+import tblfix  # noqa: E402  (the table fixup of 1.3, engine/main/dtutblfix.c)
 
 
 # ---------------------------------------------------------------------
 # Readers
 
 class Table:
-    """The record lines of a .BIN table, by section word ($WEAPON ...)."""
+    """The record lines of a .BIN table, by section word ($WEAPON ...).
 
-    def __init__(self, path):
+    fixup: the lines get the table fixup of 1.3 (0x1A344, tools/tblfix.py,
+    engine/main/dtutblfix.c), as the game shows them. self.fixed is the set
+    of changed lines, or None (another table, or fixup=False)."""
+
+    def __init__(self, path, fixup=True):
         with open(path, "rb") as f:
             raw = f.read()
         _, text = egg.decode_bin(raw)
@@ -65,6 +70,7 @@ class Table:
             m = re.match(r"(\$[A-Z_]+)\b", line)
             if m:
                 self.sections[m.group(1)].append(Record(line))
+        self.fixed = tblfix.apply(self) if fixup else None
 
     def __getitem__(self, sec):
         return self.sections[sec]
@@ -316,11 +322,14 @@ SPELLS = {
     12: dict(src="0x8E019", dur="2 minutes per level", save="None", target="You",
              eff="DETECT_MAGIC",
              tech="Sets effect bit 6. The renderer reads it (0x670DB, 0x75726)."),
-    13: dict(src="0x8E0B5, 0x56D36", dur="Instant", save="None", target="You",
-             eff="In 1.3 the mage version is cast on yourself: all your spell effects and potion "
-                 "effects end.",
-             tech="The line has cast_in_front, which sets the self-cast bit (+0x37 bit 0, 0x253C7), "
-                  "so 0x56A0D casts it on the player."),
+    13: dict(src="0x8E0B5, 0x90CEF", dur="Instant", save="None", target="Everything within {r} ft of where the missile lands",
+             eff="Each creature in the area loses all its spell effects, with no save. It also acts "
+                 "on things: a spell missile is destroyed unless it saves (d20 >= 10), a potion on the "
+                 "floor breaks on d20 >= 23 - your level, magic scenery breaks unless it saves, and a "
+                 "spell light goes out unless it saves.",
+             tech="The table fixup (0x1A8ED) writes flags 0x803: AREA, and +0x37 bit 3, with which "
+                  "0x90CEF also takes objects that are not creatures. The table line had "
+                  "cast_in_front (a cast on the caster); the fixup removes it."),
     14: dict(src="0x8E2D8, 0x13407, 0x903D4", dur="1 minute per level", save="Negates", target="The creature the missile hits",
              eff="Not on undead or creatures that cannot be scared. The target flees. A creature drops "
                  "its weapon on d100 <= 65 - 5 x its level. A player is held and may drop the weapon; "
@@ -329,13 +338,16 @@ SPELLS = {
                  "where that creature went."),
     15: dict(src="0x8E464, 0x9DEDD", dur="1 minute per level", save="None", target="You",
              eff="You fall slowly, at most 7.5 ft per second. No message when it ends."),
-    16: dict(src="0x8E55C, 0x91BC3", dur="Instant", save="Half", target="The creature the missile hits",
-             eff="6 fire damage per level. Scenery that it hits can break.",
-             tech="The case sets #fire_damage_dice = min(L, 10); the sides are 0 (fire_damage_dice=0 "
-                  "in every table). Each 0-sided die adds 0 (see the divide error handler), so the "
-                  "damage is fire_damage_level x L = 6L. Type TARGET: only the creature hit."),
-    17: dict(src="0x8E5B1", dur="Instant", save="Half", target="The creature the missile hits",
-             eff="No damage: the spell has no damage dice. Scenery that it hits can break."),
+    16: dict(src="0x8E55C, 0x91BC3", dur="Instant", save="Half", target="Everything within {r} ft of where the missile lands",
+             eff="1d6 fire damage per level, at most 10d6. Scenery in the area can break.",
+             tech="The table fixup (0x1A972) writes fire_damage_dice=6, #1, level 0 and flags 0x803 "
+                  "(AREA, objects too); the case sets #fire_damage_dice = min(L, 10). The table text "
+                  "has 0 sides and 6 per level (6L, one target)."),
+    17: dict(src="0x8E5B1, 0x91BC3", dur="Instant", save="Half", target="Everything within {r} ft of where the missile lands",
+             eff="1d4 + 1 per level fire damage. Scenery in the area can break.",
+             tech="The table fixup (0x1AD67) makes line 17 (Flaming Sphere, mage) the cleric spell "
+                  "Produce Fire of level 4: fire 1d4 + 1 per level, the flags of Fireball (AREA, "
+                  "objects too), radius 24, the sounds of Fireball, the value of Abjure."),
     18: dict(src="0x8E5D1", dur="1 minute + 1 per level", save="None", target="You",
              eff="Fire damage to you is halved, as with Resist Fire."),
     19: dict(src="0x8E665", dur="10 to 60 minutes + 10 per level", save="None", target="You",
@@ -363,11 +375,11 @@ SPELLS = {
                  "No effect while you have Improved Invisibility. Open Locks -15% while invisible."),
     27: dict(src="0x8ED20, 0x9EA62", dur="1d3 minutes + 1 per level", save="None", target="You",
              eff="You jump higher: jump strength 2.0 instead of 1.5."),
-    28: dict(src="0x8FFE5, 0x26C2F", dur="Instant", save="None", target="You",
-             eff="Has no effect: the spell is cast on yourself, so no missile flies. A Knock missile "
-                 "would open the door it hits, also a locked one, unless the lock is magic.",
+    28: dict(src="0x8FFE5, 0x26C2F", dur="Instant", save="None", target="The door the missile hits",
+             eff="The missile opens the door it hits, also a locked one, unless the lock is magic.",
              tech="The case of 0x8CFFF has no code; the door code is in the wall hit 0x26C2F "
-                  "(0x7E859), which a self-cast spell never reaches."),
+                  "(0x7E859). The table line has self_cast_ok and cast_in_front (a cast on the "
+                  "caster, no missile); the table fixup (0x1A73F) writes flags 2 and removes them."),
     29: dict(src="0x8EDB2, 0x9DEAE", dur="10 minutes per level", save="None", target="You",
              eff="You float and move only up and down. You cannot cast spells while you levitate."),
     30: dict(src="0x8DC1D, 0x90CEF", dur="10 minutes per level", save="Negates", target="Everyone within {r} ft of you",
@@ -375,15 +387,17 @@ SPELLS = {
                  "player in the area, except you and the blind, is blind for the duration unless it "
                  "saves. A light-sensitive creature that fails also takes 1d6 damage."),
     32: dict(src="0x8EE76, 0x91BC3", dur="Instant", save="Half", target="The creature the missile hits",
-             eff="6 electric damage per level. No damage to creatures immune to electricity. Scenery "
-                 "that it hits can break.",
-             tech="As Fireball: #elec_damage_dice = min(L, 10) dice of 0 sides add 0; "
-                  "elec_damage_level 6. The missile lives 2 s."),
+             eff="1d6 electric damage per level, at most 10d6. No damage to creatures immune to "
+                 "electricity. Scenery that it hits can break.",
+             tech="The table fixup (0x1AABA) writes elec_damage_dice=6, #1, level 0 and flags "
+                  "0x802; the case sets #elec_damage_dice = min(L, 10): 1d6 per level, at most "
+                  "10d6. The missile lives 2 s."),
     33: dict(src="0x8EED5, 0x56FF6", dur="Instant", save="Half",
              target="1 missile, +1 at levels 2, 4, 6 and 8 (at most 5)",
-             eff="1d4 damage per missile. The missiles home in on the target when a mage casts them. "
-                 "No damage to a target protected by Shield.",
-             tech="damage_bonus=1 of the line is not added (0x91BC3 does not read it)."),
+             eff="1d4 + 1 damage per missile. The missiles home in on the target when a mage casts "
+                 "them. No damage to a target protected by Shield.",
+             tech="The table fixup (0x1AABA) writes damage_level=1; the dice are rolled at level 1. "
+                  "damage_bonus=1 of the line is not added (0x91BC3 does not read it)."),
     34: dict(src="0x8EEFE", dur="Instant", save="Half", target="1d3 stones; each hits one creature",
              eff="1d4 damage per stone, 2d4 against undead."),
     35: dict(src="0x8EF49, 0xB0606", dur="5 minutes per level", save="None", target="You",
@@ -396,9 +410,9 @@ SPELLS = {
                  "minute). The acid stops when the target dies. Acid stops regeneration. The original "
                  "1.3 game has no attack roll and does 4 acid damage per level in one hit, with a saving "
                  "throw for half; ASCENT corrects this.",
-             tech="Dtu_fix_melf_acid (dtuspell.c melf_acid_hit, acid_frame). 1.3: #acid_damage_dice = "
-                  "2 (L/3) + 2 dice of 0 sides (no acid_damage_dice key in any table) add 0; "
-                  "acid_damage_level 4. The missile lives (L/3 + 1) minutes. The later rounds of acid "
+             tech="Dtu_fix_melf_acid (dtuspell.c melf_acid_hit, acid_frame). 1.3: the table fixup "
+                  "(0x1AB90) writes acid 4 sides and level 0; the case sets #acid_damage_dice = "
+                  "2 (L/3) + 2. The missile lives (L/3 + 1) minutes. The later rounds of acid "
                   "are not in the level state and end at a save and load."),
     37: dict(src="0x8F021", dur="Instant", save="Half", target="1 meteor per level (at most 5)",
              eff="1d4 damage per meteor. Scenery that it hits can break."),
@@ -446,11 +460,12 @@ SPELLS = {
                  "+1d6 for a thief or cleric and +1d4 for a mage, at most 18. From caster level 10 on "
                  "the spell ends at once (1.3 and ASCENT).",
              tech="The time L x 3600 s overflows the 16.16 fixed point timer from L = 10 on."),
-    51: dict(src="0x8E4F6", dur="30 minutes", save="None", target="", eff="",
-             tech="The line is a second Burning Hands (cold, ice.bbm), but the case is Find Traps: "
-                  "Find/Remove Traps counts as 100% and the search runs each frame. The line is type "
-                  "AREA and not self-cast: it fires one missile and gives the effect to everyone in "
-                  "the area at the hit. The creature weapon Ice Shards (weapon 79) casts it."),
+    51: dict(src="0x8E4F6", dur="30 minutes", save="None", target="You",
+             eff="Find/Remove Traps counts as 100 percent, and the search for traps runs all the time.",
+             tech="The table line is a second Burning Hands; the table fixup (0x1AE9A) names it Find "
+                  "Traps, a cleric spell of level 2 cast on the caster (flags 0x102). The case: "
+                  "Find/Remove Traps counts as 100% and the search runs each frame. The creature "
+                  "weapon Ice Shards (weapon 79) casts it."),
     53: dict(src="0x8F116", dur="3 minutes per level", save="None", target="You",
              eff="Attacks of extraplanar creatures miss you; other creatures get -2 to hit you. Your "
                  "attack on an extraplanar creature ends the spell."),
@@ -540,8 +555,6 @@ FIXES = [
      "shot to the next (Haste halves it, Slow doubles it); in 1.3 each key press fires."),
     ("Dtu_fix_speed_items", "-origcombat", "The Short Bow of Speed in the bow slot and the Short Sword of "
      "Quickness in the hand give Haste, as their table lines say; in 1.3 they have no power."),
-    ("Dtu_fix_chill_touch", "-origcombat", "Chill Touch acts on the caster; 1.3 fires it as a missile "
-                                           "and it does nothing."),
     ("Dtu_fix_magic_tint", "-origobj", "The blue tint of Detect Magic is drawn on all magic things in "
                                        "view; 1.3 draws it mostly on near ones."),
     ("Dtu_fix_spell_save_repair", "-origchar", "Saves of older ASCENT versions get their spells moved "
@@ -570,8 +583,8 @@ FIXES = [
                                             "1.3 sets it to 1."),
     ("Dtu_fix_bane_texture", "-origobj", "Two spinning objects in Bane's level get their own texture; 1.3 "
                                          "takes it from the level played before."),
-    ("Dtu_fix_item_names", "-origitems", "Items with a wrong name show the right one: the Cloak of Lathander, "
-                                         "the Ring of Wizardry, the Potion of Invisibility and four more."),
+    ("Dtu_fix_item_names", "-origitems", "Items with a wrong name show the right one: the Cloak of Lathander "
+                                         "(1.3: Lathandar), the Ring of Armoring and three more."),
     ("Dtu_rulebook_items (off by default)", "-rulebookitems, -norulebookitems",
      "The setting Rulebook items: some item values and class limits of the AD&D 2nd edition rulebooks."),
 ]
@@ -1225,7 +1238,12 @@ class Pages:
             "- The manual gives mages daggers and darts. The game also allows the Throwing Dagger.",
             "- The manual says the dagger is fast. In the game no melee weapon swings faster than "
             "1.0 s.",
-            "- The Warhammer does 3d10, more than any sword; the Warhammer +1 does 1d6+1.",
+            "- The game gives the Warhammer and the Club their rulebook damage (1d4+1, 1d6) from "
+            "its code: the table files say 3d10 and 1d4+1.",
+            "- Drowslayer and Longsword +3 are copies of the Long Sword +2 that the game makes when it "
+            "loads a level. The Drowslayer has +2 to hit and double damage against drow, and "
+            "its use casts Continual Light, Free Action and Protection From Evil for a Lawful Good "
+            "character.",
             "",
             pages_note(),
             "",
@@ -1369,11 +1387,10 @@ class Pages:
                 "Potions, wands and scrolls have their own pages: [[Potions]], [[Wands]], [[Scrolls]].", "",
                 "## Notes", "",
                 "- The 1.3 readme lists new items: Potion of Invisibility, Ring of Wizardry, Cloak of "
-                "Lathandar, Drowslayer and +3 Longsword. In the original 1.3 game the Potion of "
-                "Invisibility is the second \"Potion of Agility\", the Ring of Wizardry is the \"Ring of "
-                "Warmth\", and the cloak is the second \"Cloak of Elvenkind\". ASCENT shows the names of "
-                "the readme, with the name of the god spelled Lathander. There is no Drowslayer and no "
-                "+3 Longsword.",
+                "Lathandar, Drowslayer and +3 Longsword. The game makes them from other table lines "
+                "when it loads a level (the second Potion of Agility, the Ring of Warmth, the second "
+                "Cloak of Elvenkind, and two copies of the Long Sword +2). ASCENT spells the name of "
+                "the god Lathander.",
                 "- ASCENT corrects these item names (the option -origitems gives the names of 1.3): "
                 + "; ".join("\"%s\" is %s" % (n["name13"], n["name"]) for n in self.name_fixes) + ".",
                 "- The game does not identify items: every item shows its real name.", "",
@@ -1477,7 +1494,7 @@ class Pages:
 
     # -- Spells ---------------------------------------------------------
     def spell_range(self, s):
-        if self.spell_self(s) or s == 5:		# Chill Touch: self under Dtu_fix_chill_touch
+        if self.spell_self(s):
             return "You"
         if s == 32:
             return "%d ft" % (MISSILE_FT_PER_S * 2)
@@ -1496,7 +1513,9 @@ class Pages:
     def spell_page(self, cls):
         flag = "mage_use" if cls == "m" else "cleric_use"
         title = "Wizard spells" if cls == "m" else "Priest spells"
-        nums = [i for i, r in enumerate(self.S) if r.has(flag) and i not in OTHER_SPELL_LINES]
+        # 1.3 casts a spell with both class bits as a cleric spell (0x35683)
+        nums = [i for i, r in enumerate(self.S) if r.has(flag) and i not in OTHER_SPELL_LINES
+                and not (cls == "m" and r.has("cleric_use"))]
         by_level = collections.defaultdict(list)
         for i in nums:
             by_level[self.S[i].num("level", 1)].append(i)
@@ -1528,7 +1547,16 @@ class Pages:
                 r = self.S[s]
                 rule = SPELLS[s]
                 ct = self.c["cast_time"][s]
-                target = rule["target"].replace("{r}", feet(r.num("radius", 0)))
+                target = rule["target"]
+                # The area of the flags after the table fixup (dtutblfix.c)
+                if self.spell_area(s) and (target in ("You", "The creature the missile hits",
+                                                      "The target the missile hits")
+                                           or target.startswith(("Everyone within", "Everything within"))):
+                    target = ("You and everyone within {r} ft of you" if self.spell_self(s)
+                              else "Everyone within {r} ft of where the missile lands")
+                    if r.has("hit_objects"):
+                        target = target.replace("everyone", "everything").replace("Everyone", "Everything")
+                target = target.replace("{r}", feet(r.num("radius", 0)))
                 rows.append([self.spell_name(s), cast_text(ct), self.spell_range(s),
                              target, rule["dur"], rule["save"], self.spell_effect(s)])
             rows_total += len(rows)
@@ -1545,8 +1573,7 @@ class Pages:
     def spell_manual_notes(self, cls):
         if cls == "m":
             return [
-                "- Knock has no effect when you cast it. Chill Touch also has none in 1.3; ASCENT "
-                "corrects this.",
+                "- Chill Touch acts on you (the manual: a touch attack).",
                 "- The manual lists Flame Arrow (level 3). There is no such spell. The Flame Arrow is a "
                 "magic missile weapon (1d6 + 4d6 fire, mage only, [[Weapons]]).",
                 "- Fireball: the 1.3 readme says that a Fireball that bursts close may blind or deafen. "
@@ -1557,8 +1584,7 @@ class Pages:
                 "- Magic Missile: the manual gives 2 missiles at level 3; the game at level 2.",
                 "- Melf's Minute Meteors: the manual says one per level; the game gives at most 5.",
                 "- Sleep: the manual says level 5 or more is safe; the game spares level 4 and up.",
-                "- Scare: the manual says level 6 or more is safe and it is an area spell; the game "
-                "affects level 6 and lower, one target.",
+                "- Scare: the manual says level 6 or more is safe; the game affects level 6 and lower.",
                 "- Stone Skin: the manual says 1 to 4 attacks; the game 1d4 + 1 per 2 levels.",
                 "- Haste: the manual says faster attacks. The original 1.3 game makes them slower; "
                 "ASCENT corrects this.",
@@ -1568,14 +1594,17 @@ class Pages:
         return [
             "- Prayer: the manual adds penalties to enemies and bonuses to damage and saves. The game "
             "gives only Bless (+1 to hit) to you.",
-            "- Resist Cold cures blindness and deafness instead. The 1.3 readme lists Cure Blindness or "
-            "Deafness as a new spell.",
+            "- Resist Cold is not in the game: its line is Cure Blindness or Deafness, a new spell of "
+            "the 1.3 readme.",
             "- Flame Walk halves fire damage; the manual says it stops normal fire.",
             "- Magical Stone: the manual says three stones; the game 1d3.",
             "- Magical Vestment: the manual gives the armor class of chain mail (5); the game gives 6 "
             "at levels 1 and 2, 5 up to level 7, and better at higher levels.",
             "- The manual lists Silence, 15' Radius (level 2). There is no such spell.",
-            "- The 1.3 readme names a new spell Produce Fire. There is no such spell.",
+            "- Produce Fire (a new spell of the 1.3 readme) is a level 4 spell that bursts like a small "
+            "Fireball; the manual gives a fire in the hand.",
+            "- Protection From Fire also has the mage bit: a mage can learn it from a scroll but "
+            "cannot cast it (the cast check tests the cleric bit first).",
         ]
 
     # -- Sources --------------------------------------------------------
@@ -1591,7 +1620,7 @@ class Pages:
                    ["Item and spell names, damage dice, to-hit and damage bonuses, values, class flags, "
                     "spell levels, radii",
                     "the item and spell lines (`$WEAPON`, `$ARMOR`, `$OBJECT`, `$SPELL`) of the table "
-                    "`YPINN.BIN`"],
+                    "`YPINN.BIN`, after the table fixup of `DTUGAME.EXE` (below)"],
                    ["Race, class, ability, experience, THAC0, hit point, saving throw, slot, thief and "
                     "turn undead tables; armor class of the items",
                     "data tables of `DTUGAME.EXE` (below)"],
@@ -1607,6 +1636,16 @@ class Pages:
                "the default of the reader 0x242F6 is 100.0. They live 30 s, Lightning Bolt 2 s and "
                "Melf's Acid Arrows (L/3 + 1) minutes (0x56FF6 writes the life of the missile "
                "template).", "",
+               "## The table fixup", "",
+               "After it reads the tables, `DTUGAME.EXE` writes fixed values into fixed lines of the "
+               "item, weapon, armor and spell tables (0x1A344, called at 0x1C8F9). The game never "
+               "shows the table text of these fields, so the pages show the values after the fixup. "
+               "It renames ten items and spells (Produce Fire, Find Traps, Cure Blindness or "
+               "Deafness, Drowslayer, Longsword +3, Dwarven Scimitar, Ring of Wizardry, Gauntlets of "
+               "Dexterity, Cloak of Lathandar, Potion of Invisibility), copies four spell lines to "
+               "make the cleric versions 52 to 55, and changes ranges, radii, the area flag, damage "
+               "dice, classes and prices. The full list is in `engine/main/dtutblfix.c` of ASCENT; "
+               "`tools/check_tblfix.py` prints each change (%d lines of `YPINN.BIN`)." % len(self.t.fixed or ()), "",
                "## The tables of all levels", ""]
         if self.check is None:
             out += ["This build did not compare the level tables (no `--tables`).", ""]
@@ -1701,18 +1740,13 @@ class Pages:
 
 # Spell lines that are not real player spells (Sources.md).
 OTHER_SPELL_LINES = {
-    51: "A data artifact: a second Burning Hands line with the code of Find Traps.",
 }
 
 WEAPON_INTERNAL = {
     0: "the empty hand (1d2 plus strength, from the character record, not the line)",
     1: "Flare", 2: "template of a spell cast with the hands", 3: "template of a wand cast",
     4: "template of a scroll cast", 5: "template of a spell arrow", 10: "named DO NOT USE",
-    13: "a missile line without pc_spell, 5d6. 0x2B1F2 has code for weapon 13 (+2 to hit and double "
-        "damage against creatures with Robot_info+0xD9 bit 8, and a use that casts Continual Light, "
-        "Free Action and Protection From Evil for a Lawful Good character), probably the Drowslayer of "
-        "the readme; with this line the code is never reached",
-    14: "Black Lightning (creature)", 15: "Bomb (trap)", 16: "Lava Flames (trap)", 17: "Mini Flames (trap)",
+    15: "Bomb (trap)", 16: "Lava Flames (trap)", 17: "Mini Flames (trap)",
     25: "Slow Bomb (trap)", 26: "Fast Bomb (trap)", 63: "Wand of Genericness", 64: "Wand of Genericness",
     65: "Wand of Genericness", 66: "Rod of Genericness", 67: "Rod of Genericness", 68: "Rod of Genericness",
     76: "Temp", 77: "Wand (creature)", 78: "Acid Spittle (creature)", 80: "Myconid Spores (creature)",
@@ -1889,7 +1923,7 @@ UNUSED_ITEM_VALUES = [
     "the item number.",
     "Flame Arrow: `levels_per_use=5`.",
     "Armoring: `pc_spell=2` (Armor). The code sets an item bit that nothing reads.",
-    "Ring of Warmth: `pc_spell=42`. Its power is code for the item number.",
+    "Ring of Wizardry: `pc_spell=42`. Its power is code for the item number.",
     "Glim-Gauntlet: `player_light=1`. Lantern: `player_light=3`, `lightcast=3`.",
     "Gloves, Glim-Gauntlet, Gauntlets of Ogre Power, Elven Cloak: the AC bonus is in the executable "
     "table 0x145C04 only; the lines have no `armor_class_decrement`. Where a line has one, it agrees "

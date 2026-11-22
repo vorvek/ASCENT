@@ -27,6 +27,7 @@ int main(void)
 {
 	int i, j;
 	const char *plain = "Cloak of Elvenkind";
+	const char *ring = "Ring of Wizardry";
 
 	// The tables
 	for (i = 0; i < dtu_itemfix_n_names(); i++) {
@@ -57,13 +58,13 @@ int main(void)
 	check(Dtu_rulebook_items == 0, "the rulebook items are off by default");
 
 	// The names
-	check(str_is(dtu_itemfix_name(DTU_IK_ARMOR, 45, "Cloak of Elvenkind"), "Cloak of Lathander"), "armor 45 is the Cloak of Lathander");
+	// The names after the table fixup of 1.3 (dtutblfix.h)
+	check(str_is(dtu_itemfix_name(DTU_IK_ARMOR, 45, "Cloak of Lathandar"), "Cloak of Lathander"), "armor 45 is the Cloak of Lathander");
 	check(dtu_itemfix_name(DTU_IK_ARMOR, 43, plain) == plain, "armor 43 stays the Cloak of Elvenkind");
-	check(str_is(dtu_itemfix_name(DTU_IK_ARMOR, 27, "Ring of Warmth"), "Ring of Wizardry"), "armor 27 is the Ring of Wizardry");
-	check(str_is(dtu_itemfix_name(DTU_IK_MISC, 83, "Potion of Agility"), "Potion of Invisibility"), "misc 83 is the Potion of Invisibility");
-	check(str_is(dtu_itemfix_name(DTU_IK_MISC, 72, "Potion of Agility"), "Potion of Agility"), "misc 72 stays the Potion of Agility");
+	check(dtu_itemfix_name(DTU_IK_ARMOR, 27, ring) == ring, "the fixup names the Ring of Wizardry: no row");
+	check(str_is(dtu_itemfix_name(DTU_IK_MISC, 83, "Potion of Invisibility"), "Potion of Invisibility"), "the fixup names the Potion of Invisibility: no row");
 	check(str_is(dtu_itemfix_name(DTU_IK_MISC, 127, "thief scroll  "), "Thief Scroll"), "spaces at the end of a name do not count");
-	check(str_is(dtu_itemfix_name(DTU_IK_WEAPON, 45, "Cloak of Elvenkind"), "Cloak of Elvenkind"), "the table counts");
+	check(str_is(dtu_itemfix_name(DTU_IK_WEAPON, 45, "Cloak of Lathandar"), "Cloak of Lathandar"), "the table counts");
 	check(str_is(dtu_itemfix_name(DTU_IK_ARMOR, 45, "Old Cloak"), "Old Cloak"), "another name at the number is not changed");
 	check(dtu_itemfix_name(DTU_IK_ARMOR, 45, NULL) == NULL, "no name");
 	Dtu_fix_item_names = 0;
@@ -71,27 +72,22 @@ int main(void)
 	Dtu_fix_item_names = 1;
 
 	// The rulebook values
-	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "damage_dice"), "6"), "defect: Warhammer d6");
-	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "#damage_dice"), "1"), "defect: Warhammer 1 die");
-	Dtu_fix_item_stats = 0;
-	check(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "damage_dice") == NULL, "off: no value");
-	Dtu_fix_item_stats = 1;
+	check(dtu_itemfix_value(DTU_IK_WEAPON, 70, "Mace of Disruption", "damage_bonus") == NULL, "off: no value");
 	check(dtu_itemfix_flag(DTU_IK_ARMOR, 2, "Shield", "thief_use") == -1, "off: no word");
 	Dtu_rulebook_items = 1;
-	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "#damage_dice"), "1"), "Warhammer: 1 die");
-	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "damage_dice"), "4"), "Warhammer: d4");
-	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "Damage_Bonus"), "1"), "Warhammer: +1, keys without case");
-	check(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "value") == NULL, "Warhammer: the other keys stay");
-	check(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Hammer", "damage_dice") == NULL, "another name at the number: no value");
-	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 29, "Club", "damage_dice"), "6"), "Club: d6");
+	// The table fixup gives the Warhammer 1d4+1 and the Club 1d6: no rule
+	check(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "damage_dice") == NULL, "Warhammer: the fixup value");
+	check(dtu_itemfix_value(DTU_IK_WEAPON, 29, "Club", "damage_dice") == NULL, "Club: the fixup value");
+	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 70, "Mace of Disruption", "Damage_Bonus"), "2"), "Mace of Disruption: +2, keys without case");
+	check(dtu_itemfix_value(DTU_IK_WEAPON, 70, "Mace of Disruption", "value") == NULL, "Mace of Disruption: the other keys stay");
+	check(dtu_itemfix_value(DTU_IK_WEAPON, 70, "Mace", "damage_bonus") == NULL, "another name at the number: no value");
 	check(dtu_itemfix_flag(DTU_IK_WEAPON, 9, "Scimitar", "thief_use") == 0, "Scimitar: no thief");
 	check(dtu_itemfix_flag(DTU_IK_WEAPON, 9, "Scimitar", "fighter_use") == -1, "Scimitar: the fighter stays");
 	check(dtu_itemfix_flag(DTU_IK_WEAPON, 73, "Dwarven Scimitar", "thief_use") == 0, "a line with two names: the second");
 	check(dtu_itemfix_flag(DTU_IK_WEAPON, 73, "Scimitar", "thief_use") == 0, "a line with two names: the first");
 	check(dtu_itemfix_flag(DTU_IK_ARMOR, 2, "Shield", "THIEF_USE") == 0, "Shield: no thief, words without case");
-	check(dtu_itemfix_flag(DTU_IK_WEAPON, 75, "Arrows +2", "magic") == 1, "Arrows +2: magic");
-	check(dtu_itemfix_flag(DTU_IK_ARMOR, 27, "Ring of Warmth", "all_use") == 0 && dtu_itemfix_flag(DTU_IK_ARMOR, 27, "Ring of Warmth", "mage_use") == 1,
-		"Ring of Wizardry: the mage only");
+	check(dtu_itemfix_flag(DTU_IK_WEAPON, 75, "Arrows +2", "magic") == -1, "Arrows +2: magic by the fixup, no rule");
+	check(dtu_itemfix_flag(DTU_IK_ARMOR, 27, ring, "mage_use") == -1, "Ring of Wizardry: the mage only by the fixup, no rule");
 	check(dtu_itemfix_flag(DTU_IK_WEAPON, 59, "Wand of Lightning Bolts", "all_use") == 0 && dtu_itemfix_flag(DTU_IK_WEAPON, 59, "Wand of Lightning Bolts", "mage_use") == 1,
 		"Wand of Lightning Bolts: the mage only");
 	check(dtu_itemfix_flag(DTU_IK_WEAPON, 13, "Wand of Lightning Bolts", "all_use") == -1, "weapon 13 (the missile) has no rule");

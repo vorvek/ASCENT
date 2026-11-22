@@ -5,11 +5,12 @@
  * Two layers:
  *
  * 1. Item names (Dtu_fix_item_names, on by default, the option -origitems
- *    clears it). 1.3 shows some items under a wrong name: the Cloak of
- *    Lathander is a second "Cloak of Elvenkind", the Ring of Wizardry is the
- *    "Ring of Warmth". Only the name that the player sees changes. The
- *    name of the table line stays, because the game rules read it (a name
- *    with "otion" or '+', 0x1A344).
+ *    clears it). 1.3 shows some items under a wrong name or spelling: the
+ *    Cloak of Lathandar, "Armoring" for a ring. The names that the table
+ *    fixup of 1.3 writes (dtutblfix.h: the Ring of Wizardry, the Potion of
+ *    Invisibility) are 1.3 and not corrections. Only the name that the
+ *    player sees changes. The name of the table line stays, because the
+ *    game rules read it (a name with "otion" or '+', 0x1A344).
  *
  * 2. Rulebook items (Dtu_rulebook_items, off by default, "Rulebook items"
  *    of the Improvements menu, RulebookItems of ascent.cfg, the options
@@ -33,15 +34,13 @@
 
 // 1: the corrected item names are shown. -origitems: the names of 1.3.
 extern int Dtu_fix_item_names;
-// 1: the defects of the item tables of 1.3 are corrected (Warhammer 3d10 to 1d6). -origitems: 1.3.
-extern int Dtu_fix_item_stats;
 // 1: the item lines have the values of the rulebooks. See the top.
 extern int Dtu_rulebook_items;
 
 // One corrected name.
 typedef struct dtu_item_name_fix {
 	int			kind, id;	// DTU_IK_, the number of the line
-	const char	*name13;		// the name of 1.3 (name= or weapon_name=). The correction applies only to this name.
+	const char	*name13;		// the name of 1.3 after the table fixup (name= or weapon_name=). The correction applies only to this name.
 	const char	*name;		// the corrected name
 	const char	*why;			// the evidence, for the maintainer
 } dtu_item_name_fix;
@@ -52,7 +51,7 @@ typedef struct dtu_item_rule {
 	const char	*name13;		// the name of 1.3; names separated by '|' when the line has two. The rule applies only to these names.
 	int			flag;			// 0: key=value. 1: a word of the line (thief_use, magic)
 	const char	*key;
-	const char	*v13;			// the value of 1.3. "" for a key that the line does not have. A word: "1" or "0".
+	const char	*v13;			// the value of 1.3 after the table fixup. "" for a key that the line does not have. A word: "1" or "0".
 	const char	*v;			// the rulebook value
 	const char	*source;		// book and page
 } dtu_item_rule;

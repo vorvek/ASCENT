@@ -196,14 +196,14 @@ Only the fields that object setup uses.
 
 | Offset | Type | Keyword or meaning |
 |---|---|---|
-| 0x00 | u16 | class mask (guess from the use at 0x28302) |
+| 0x00 | u16 | class mask: `cleric_use` 1, `mage_use` 2 (reader 0x242F6) |
 | 0x02 | s16 | `icon` |
 | 0x24 | s16 | bitmap_num, from `picture` |
 | 0x26 | u8 | `plot_item` |
 | 0x28 | s16 | `uses`, default 1 |
 | 0x2A | s16 | `uses_per_level` |
 | 0x2C | s16 | `levels_per_use` |
-| 0x36 | u8 | flags. The mask 2 is tested as "stackable" by 0xB61B2 |
+| 0x36 | u8 | flags. The mask 2 is tested as "stackable" by 0xB61B2. All bits: "The table fixup" below |
 | 0x38 | u8 | render type of the missile: 2 for `weapon_pof`, 3 for `weapon_vclip` |
 | 0x4E | fix | `duration`, default 30.0 |
 | 0x56 | fix | `size` |
@@ -303,6 +303,155 @@ line (0x1EF9F to 0x1F35E).
 | 0xEE | fix | `regonzo` |
 
 The reader does not store a size. A creature has the radius of its model.
+
+## The table fixup (0x1A344)
+
+`bm_read_all` (0x1B2F5) calls 0x1A344 once at its end (0x1C8F9), after the level table
+and the player table. 0x1A344 has no condition. It writes fixed values into fixed line
+numbers of `Misc_info`, `Spell_info`, `Weapon_info`, `Armor_info` and the name tables.
+So 1.3 never shows the table text of these fields. Checked in the Ghidra C
+(`functions/0001a344.c`) and in the instructions of `dtu13.elf` (the size of each
+write, the arguments of the copies).
+
+The first loop of 0x1A344 sets the misc flag bits 0x10 and 0x20 by name. The port has
+it in `pickup_flag_10` (dtuobj.c). The rest is the list below.
+
+### The fields that the fixup writes
+
+The keyword of each offset comes from the readers (0x242F6 spells, 0x209F3 weapons,
+0x23780 misc, 0x22BB1 armor).
+
+`Spell_info`, 127 bytes at 0x1B5676. The reader stores `damage_bonus` at -2 (0x1B5674),
+so one entry is the bytes -2 to +0x7C. The copies (memcpy 0xD7CD2, 127 bytes) start
+at -2.
+
+| Offset | Size | Keyword |
+|---|---|---|
+| +0x00 | u16 | class mask: `cleric_use` 1, `mage_use` 2 (the reader knows no other bit) |
+| +0x02 | s16 | `icon` |
+| +0x04 | s16 | `cast_time` |
+| +0x06, +0x08 | s16 | `range`, `radius` (default 20) |
+| +0x0A, +0x0C | s16 | `level_range`, `level_radius` |
+| +0x0E | s16 | `cast_sound` (default 10) |
+| +0x10 to +0x18 | s16 | `monster_hit_sound`, `monster_miss_sound`, `monster_kill_sound`, `wall_hit_sound`, `armor_hit_sound` |
+| +0x1A to +0x22 | s16 | `cast_vclip`, `monster_hit_vclip`, `monster_miss_vclip`, `wall_hit_vclip`, `armor_hit_vclip` |
+| +0x24 | s16 | bitmap of `picture` |
+| +0x26, +0x27 | u8 | `plot_item`, `type=sub_use_count` |
+| +0x28, +0x2A, +0x2C | s16 | `uses`, `uses_per_level`, `levels_per_use` |
+| +0x2E | s16 | `to_hit_bonus` |
+| +0x30 | s16 | the model of `weapon_pof` |
+| +0x32 | s16 | `weapon_vclip` |
+| +0x36 | u8 | flags: `type=AREA` 1 (`type=TARGET` clears it), `stackable` 2, `cast_with_wand` 4, `cast_with_scroll` 8, `cast_with_arrow` 0x10 (`cast_with_hands` clears the three), `potion` 0x20, `always` 0x40, `homing` 0x80 |
+| +0x37 | u8 | flags: `self_cast_ok` 1, `non_hotkey_item` 2, `cast_in_front` 1 and 4. Bit 8 has no keyword: only the fixup sets it |
+| +0x38 | u8 | render type: 2 for `weapon_pof`, 3 for `weapon_vclip` |
+| +0x39 | u8 | `level` (default 1) |
+| +0x3A to +0x48 | u8 | `damage_dice`, `#damage_dice`, `damage_level`, then the same three for `fire_`, `cold_`, `acid_`, `elec_` |
+| +0x5A | fix | `player_light` |
+| +0x6E | s16 | `combustion` |
+| +0x70 | s16 | `value` (default 10000) |
+
+Bit 8 of +0x37: the effect code 0x8CFFF skips its test "the target is the player or a
+creature" when the bit is set (0x8D053), and the area code 0x90CEF takes each object,
+not only the player and the creatures (0x90DA6). The port calls it the word
+`hit_objects`.
+
+`Weapon_info`, 217 bytes at 0x1E9D08: +0x0D `damage_dice`, +0x0E `#damage_dice`, +0x0F
+`fire_damage_dice`, +0x10 `#fire_damage_dice`, +0x12 `attack_type` (`projectile` 0,
+`melee` 1), +0x13 `weapon_char` (one letter), +0x20 `flash_sound`, +0x24 to +0x2C
+`monster_hit_sound`, `monster_miss_sound`, `monster_kill_sound`, `wall_hit_sound`,
+`armor_hit_sound`, +0x34 `value`, +0x36 `to_hit_bonus`, +0x38 `damage_bonus`, +0x3A
+`PC_spell`, +0x3C `enemy_spell`, +0x3E flags (`magic` 0x10), +0x52 `plot_item`.
+
+`Misc_info` and `Armor_info`: see their tables above. The fixup writes the class mask,
+the wear mask (bit 0x800 is the wear bit of `lockpick`), `icon`, `value` and `uses`.
+
+Example: the Warhammer (weapon 28) has `damage_dice=10 #damage_dice=3` in every table.
+The fixup writes +0x0E 1, +0x0D 4, +0x36 0, +0x38 1 (0x1AFC5): 1.3 has a Warhammer of
+1d4+1.
+
+### Order
+
+The order matters, because some writes copy fields of lines that a later write changes.
+Fear and Haste take the missile of Light (Mage) before the fixup changes it, and Produce
+Fire takes the flags of Fireball after the fixup changes them. The weapon magic loop
+runs before the two copies of weapon 33, so Drowslayer and Longsword +3 have the magic
+bit of the Long Sword +2.
+
+### The lines
+
+The record numbers are fixed. The 39 tables of the mission levels have the same lines at
+these numbers. Seven older tables (BASE, DEMO, MINES1, MOIN1, PRISON1, SPIDER, TRAIN1)
+have other lines at some numbers, and 1.3 writes onto those other items there. The port
+applies the fixup only when each line that it changes or reads has the name of the
+mission tables (Guard[] in dtutblfix.c). `tools/check_tblfix.py --tables` checks that
+the 39 tables pass and the seven do not.
+
+Results that a player sees:
+
+- New names: misc 83 Potion of Invisibility (the second Potion of Agility), spell 17
+  Produce Fire (Flaming Sphere), spell 42 Cure Blindness or Deafness (Resist Cold),
+  spell 51 Find Traps (the second Burning Hands), weapon 13 Drowslayer, weapon 14
+  Longsword +3, weapon 73 Dwarven Scimitar, armor 27 Ring of Wizardry (Ring of Warmth),
+  armor 45 Cloak of Lathandar (the second Cloak of Elvenkind), armor 50 Gauntlets of
+  Dexterity (Gloves of Dexterity).
+- The cleric spells 52 to 55 are copies of the mage spells 22, 39, 12 and 13 with
+  their own name and the cleric class.
+- Area spells: Fear, Feather Fall, Haste (around the caster), Dispel Magic,
+  Fireball, Produce Fire, Hold Person, Hold Undead, Sleep, Slow, Scare and the four
+  Light spells (where the missile lands). Knock loses the cast on the caster and fires
+  its missile. Chill Touch gets the cast on the caster.
+- Protection From Fire (40) gets class 0x27 (cleric and mage). The cast check 0x35683
+  tests the cleric bit first, so 1.3 casts it as a cleric spell. A mage can learn it
+  (0xB65BB tests the mage bit) but cannot cast it.
+- Weapons 13 and 14 become copies of the Long Sword +2. The creatures with
+  `weapon_type=13` (drowfem, thashasa, Mage Spirit, prstsprt) or 14 (flayer) fire
+  this weapon in 1.3. Not checked in the game.
+
+### The port
+
+`engine/main/dtutblfix.c` has the writes as one list (Fixups[]) in the order of
+0x1A344. The port reads the table text (`bm_tbl_get`, `bm_tbl_has_flag`), so each
+write changes the text of the record: `key=value`, a flag word, the class words, the
+name keys. A copy copies the text and the decoded fields (`item_info`, and
+`Weapon_info` for a weapon) but not the name. `bm_load_level_tables` (bmread.c) applies
+the list after both tables. The debug option `-rawtables` skips it.
+`tools/tblfix.py` applies the same list to a table for the tools (`wiki_rules.Table`
+does it by default). `test_dtutblfix` checks a sample of each group, and
+`tools/check_tblfix.py` prints the change of each line of a real table and compares the
+C code with `tools/tblfix.py` (ctest `check_tblfix`).
+
+The writes in order (the rows of Fixups[], the address of the first write of each
+group):
+
+| # | Code | Writes, in order |
+|---|---|---|
+| 1 | 0x1A46D: misc values and names | misc 2 `uses=-1`; misc 2 `value=5000`; misc 72 `value=900`; misc 73 `value=2400`; misc 74 `value=700`; misc 75 `value=1000`; misc 76 `value=400`; misc 77 `value=750`; misc 78 `value=900`; misc 79 `value=400`; misc 80 `value=900`; misc 80 class 4; misc 82 `value=500`; misc 83 `value=500`; misc 83 name "Potion of Invisibility"; misc 84 `value=500`; misc 84 class 4; misc 86 `value=1500`; misc 87 `value=450`; misc 88 `value=600` |
+| 2 | 0x1A528: the four lockpicks: thief class bit and lockpick wear bit | misc 10 class \|= 0x20; misc 10 wear \|= 0x800; misc 11 class \|= 0x20; misc 11 wear \|= 0x800; misc 12 class \|= 0x20; misc 12 wear \|= 0x800; misc 13 class \|= 0x20; misc 13 wear \|= 0x800; misc 106 `icon` of misc 127 |
+| 3 | 0x1A56C: the spider pieces: every class, one use | misc 18 class \|= 0x3F; misc 19 class \|= 0x3F; misc 23 class \|= 0x3F; misc 22 class \|= 0x3F; misc 24 class \|= 0x3F; misc 26 class \|= 0x3F; misc 20 class \|= 0x3F; misc 25 class \|= 0x3F; misc 18 `uses=1`; misc 19 `uses=1`; misc 23 `uses=1`; misc 22 `uses=1`; misc 24 `uses=1`; misc 26 `uses=1`; misc 20 `uses=1`; misc 25 `uses=1` |
+| 4 | 0x1A5EB: Aid | spell 1 `range=0`; spell 1 `radius=0`; spell 1 `level_range=0`; spell 1 `level_radius=0`; spell 1 flags 0x102 |
+| 5 | 0x1A615: Abjure, Burning Hands, Color Spray, Confusion | spell 0 `cast_sound=2129`; spell 0 `damage_dice=8`; spell 0 `#damage_dice=2`; spell 0 `damage_level=3`; spell 4 `fire_damage_dice=3`; spell 4 `#fire_damage_dice=1`; spell 4 `fire_damage_level=2`; spell 6 `cast_sound=2104`; spell 7 flags 0x2 |
+| 6 | 0x1A65E: Chill Touch: cast on the caster (+0x37 bit 0), not AREA | spell 5 flags \|= 0x100; spell 5 flags &= 0xFFFE; spell 5 `cast_sound=2131`; spell 5 `radius=3` |
+| 7 | 0x1A67D: Detect Magic: a mage spell, copied to 54 as a cleric spell | spell 12 class 2; spell 54 = copy of spell 12 (not the name); spell 54 class 1 |
+| 8 | 0x1A6A3: Fear, Haste (the missile of Light (Mage) before its change) | spell 14 `range=0`; spell 14 `radius=90`; spell 14 `level_range=0`; spell 14 `level_radius=0`; spell 14 flags 0x103; spell 14 missile of spell 30 (+0x30, +0x32, +0x38); spell 21 `range=0`; spell 21 `radius=80`; spell 21 `level_range=0`; spell 21 `level_radius=0`; spell 21 flags 0x103; spell 21 missile of spell 30 (+0x30, +0x32, +0x38) |
+| 9 | 0x1A73F: Knock (+0x30 and +0x38 only), the Light spells | spell 28 `range=360`; spell 28 `radius=0`; spell 28 `level_range=0`; spell 28 `level_radius=20`; spell 28 missile of spell 17 (+0x30, +0x38); spell 28 flags 0x2; spell 30 `range=360`; spell 30 `radius=3`; spell 30 `level_range=0`; spell 30 `level_radius=0`; spell 30 missile of spell 17 (+0x30, +0x32, +0x38); spell 30 flags 0x3; spell 30 `player_light=20`; spell 30 class 2; spell 31 `range=720`; spell 31 `radius=3`; spell 31 `level_range=0`; spell 31 `level_radius=0`; spell 31 missile of spell 17 (+0x30, +0x32, +0x38); spell 31 flags 0x3; spell 31 `player_light=20`; spell 31 class 1; spell 9 `range=360`; spell 9 `radius=3`; spell 9 `level_range=0`; spell 9 `level_radius=0`; spell 9 missile of spell 17 (+0x30, +0x32, +0x38); spell 9 flags 0x3; spell 9 `player_light=60`; spell 9 class 2; spell 8 `range=720`; spell 8 `radius=3`; spell 8 `level_range=0`; spell 8 `level_radius=0`; spell 8 missile of spell 17 (+0x30, +0x32, +0x38); spell 8 flags 0x3; spell 8 `player_light=60`; spell 8 class 1 |
+| 10 | 0x1A8ED: Dispel Magic, copied to 55 as a cleric spell | spell 13 `range=720`; spell 13 `radius=60`; spell 13 `level_range=0`; spell 13 `level_radius=0`; spell 13 missile of spell 6 (+0x30, +0x38); spell 13 `weapon_vclip=176`; spell 13 flags 0x803; spell 13 `cast_sound` of spell 42; spell 13 `player_light=0`; spell 13 class 2; spell 55 = copy of spell 13 (not the name); spell 55 class 1 |
+| 11 | 0x1A972: Feather Fall, Fireball | spell 15 `range=60`; spell 15 `radius=20`; spell 15 `level_range=6`; spell 15 `level_radius=0`; spell 15 flags 0x103; spell 16 `range=60`; spell 16 `radius=40`; spell 16 `level_range=60`; spell 16 `level_radius=0`; spell 16 flags 0x803; spell 16 `fire_damage_dice=6`; spell 16 `#fire_damage_dice=1`; spell 16 `fire_damage_level=0`; spell 16 `damage_dice=0`; spell 16 `#damage_dice=0`; spell 16 `damage_level=0` |
+| 12 | 0x1A9F5: Hold Person, copied to 52 as a cleric spell of level 2 | spell 22 `range=720`; spell 22 `radius=40`; spell 22 `level_range=0`; spell 22 `level_radius=0`; spell 22 flags 0x3; spell 22 class 2; spell 52 = copy of spell 22 (not the name); spell 52 `level=2`; spell 52 class 1 |
+| 13 | 0x1AA4F: Hold Undead, Invisibility, Improved Invisibility | spell 23 `range=120`; spell 23 `radius=80`; spell 23 `level_range=0`; spell 23 `level_radius=0`; spell 23 flags 0x3; spell 26 `range=3`; spell 26 `radius=3`; spell 26 `level_range=0`; spell 26 `level_radius=0`; spell 24 `range=3`; spell 24 `radius=3`; spell 24 `level_range=0`; spell 24 `level_radius=0` |
+| 14 | 0x1AABA: Lightning Bolt, Magic Missile, Magical Stone | spell 32 `range=240`; spell 32 `radius=5`; spell 32 `level_range=60`; spell 32 `level_radius=0`; spell 32 flags 0x802; spell 32 `elec_damage_dice=6`; spell 32 `#elec_damage_dice=1`; spell 32 `elec_damage_level=0`; spell 32 `damage_dice=0`; spell 32 `#damage_dice=0`; spell 32 `damage_level=0`; spell 32 `combustion=-1`; spell 33 `range=360`; spell 33 `radius=3`; spell 33 `level_range=60`; spell 33 `level_radius=0`; spell 33 `damage_dice=4`; spell 33 `#damage_dice=1`; spell 33 `damage_level=1`; spell 34 `range=180`; spell 34 `radius=0`; spell 34 `level_range=0`; spell 34 `level_radius=0`; spell 34 `damage_dice=4`; spell 34 `#damage_dice=1`; spell 34 `damage_level=0` |
+| 15 | 0x1AB90: Melf's Acid Arrows, Melf's Minute Meteors | spell 36 `range=1080`; spell 36 `radius=3`; spell 36 `level_range=0`; spell 36 `level_radius=0`; spell 36 `damage_dice=0`; spell 36 `#damage_dice=0`; spell 36 `damage_level=0`; spell 36 `fire_damage_dice=0`; spell 36 `#fire_damage_dice=0`; spell 36 `fire_damage_level=0`; spell 36 `acid_damage_dice=4`; spell 36 `#acid_damage_dice=2`; spell 36 `acid_damage_level=0`; spell 37 `range=420`; spell 37 `radius=6`; spell 37 `level_range=60`; spell 37 `level_radius=0`; spell 37 flags 0x802; spell 37 `fire_damage_dice=4`; spell 37 `#fire_damage_dice=1`; spell 37 `fire_damage_level=0`; spell 37 `damage_dice=0`; spell 37 `#damage_dice=0`; spell 37 `damage_level=0` |
+| 16 | 0x1AC4A: Prayer, Protection From Evil (copied to 53), Protection From Fire | spell 38 `range=0`; spell 38 `radius=120`; spell 38 `level_range=0`; spell 38 `level_radius=0`; spell 38 flags 0x102; spell 39 `range=3`; spell 39 `radius=3`; spell 39 `level_range=0`; spell 39 `level_radius=0`; spell 39 flags 0x102; spell 39 class 0x26; spell 53 = copy of spell 39 (not the name); spell 53 class 0x25; spell 40 class 0x27 |
+| 17 | 0x1ACD4: Scare, Sleep, Slow, Spider Climb | spell 44 `range=180`; spell 44 `radius=30`; spell 44 `level_range=60`; spell 44 `level_radius=0`; spell 44 flags 0x3; spell 46 `range=180`; spell 46 `radius=60`; spell 46 `level_range=0`; spell 46 `level_radius=0`; spell 46 flags 0x3; spell 47 `range=540`; spell 47 `radius=80`; spell 47 `level_range=60`; spell 47 `level_radius=0`; spell 47 flags 0x3; spell 48 `icon` of misc 5 |
+| 18 | 0x1AD67: Flaming Sphere becomes the cleric spell Produce Fire | spell 17 name "Produce Fire"; spell 17 `damage_bonus=0`; spell 17 class 1; spell 17 `range=240`; spell 17 `radius=24`; spell 17 `level_range=0`; spell 17 `level_radius=0`; spell 17 `cast_sound` of spell 16; spell 17 `monster_hit_sound` of spell 16; spell 17 `monster_miss_sound` of spell 16; spell 17 `monster_kill_sound` of spell 16; spell 17 `wall_hit_sound` of spell 16; spell 17 `armor_hit_sound` of spell 16; spell 17 `to_hit_bonus=0`; spell 17 flags of spell 16; spell 17 `damage_dice=0`; spell 17 `#damage_dice=0`; spell 17 `damage_level=0`; spell 17 `fire_damage_dice=4`; spell 17 `#fire_damage_dice=1`; spell 17 `fire_damage_level=1`; spell 17 `combustion=26`; spell 17 `value` of spell 0; spell 17 `level=4` |
+| 19 | 0x1AE54: Resist Cold becomes Cure Blindness or Deafness | spell 42 name "Cure Blindness or Deafness"; spell 42 class 1; spell 42 flags 0x102; spell 42 `level=3`; spell 42 `value` of spell 38; spell 42 `cast_vclip` of spell 13 |
+| 20 | 0x1AE9A: the second Burning Hands becomes Find Traps | spell 51 name "Find Traps"; spell 51 class 1; spell 51 `icon` of misc 0; spell 51 flags 0x102; spell 51 `level=2`; spell 51 `value` of spell 43 |
+| 21 | 0x1AEDC: the cast times, 0x1AF11: the magic flag of the weapons | each spell: `cast_time` from the words at 0x13A8DB; each weapon with `plot_item` or a `+` in the name: `magic` |
+| 22 | 0x1AF4B: Bomb, SLow Bomb, fast Bomb: fire 1d6, sounds 2105 | weapon 15 `damage_dice=0`; weapon 15 `#damage_dice=0`; weapon 15 `fire_damage_dice=6`; weapon 15 `#fire_damage_dice=1`; weapon 15 `flash_sound=2105`; weapon 15 `wall_hit_sound=2105`; weapon 25 `damage_dice=0`; weapon 25 `#damage_dice=0`; weapon 25 `fire_damage_dice=6`; weapon 25 `#fire_damage_dice=1`; weapon 25 `flash_sound=2105`; weapon 25 `wall_hit_sound=2105`; weapon 26 `damage_dice=0`; weapon 26 `#damage_dice=0`; weapon 26 `fire_damage_dice=6`; weapon 26 `#fire_damage_dice=1`; weapon 26 `flash_sound=2105`; weapon 26 `wall_hit_sound=2105` |
+| 23 | 0x1AFC5: Warhammer 1d4+1, Warhammer +1 1d4+2 (+1 to hit), Club 1d6, Club+1 1d6+1 | weapon 28 `weapon_char` of weapon 24; weapon 28 `#damage_dice=1`; weapon 28 `damage_dice=4`; weapon 28 `to_hit_bonus=0`; weapon 28 `damage_bonus=1`; weapon 40 `weapon_char` of weapon 53; weapon 40 `#damage_dice=1`; weapon 40 `damage_dice=4`; weapon 40 `to_hit_bonus=1`; weapon 40 `damage_bonus=2`; weapon 29 `damage_dice=6`; weapon 29 `to_hit_bonus=0`; weapon 29 `damage_bonus=0`; weapon 41 `damage_dice=6`; weapon 41 `to_hit_bonus=1`; weapon 41 `damage_bonus=1`; weapon 41 `value=1000` |
+| 24 | 0x1B04A: Short Sword of Quickness, Mace of Disruption, Flame Tongue, Scimitar | weapon 69 `value=8000`; weapon 70 `value=17500`; weapon 70 `to_hit_bonus=1`; weapon 70 `damage_bonus=1`; weapon 71 `damage_dice=0`; weapon 71 `#damage_dice=0`; weapon 71 `fire_damage_dice=8`; weapon 71 `#fire_damage_dice=1`; weapon 73 name "Dwarven Scimitar"; weapon 45 `value=1500`; weapon 45 `to_hit_bonus=2`; weapon 45 `damage_bonus=2` |
+| 25 | 0x1B0B4: the wands and the rod: the spell, a missile | weapon 55 `PC_spell=33`; weapon 55 `attack_type=PROJECTILE`; weapon 56 `PC_spell=7`; weapon 56 `attack_type=PROJECTILE`; weapon 57 `PC_spell=14`; weapon 57 `attack_type=PROJECTILE`; weapon 58 `PC_spell=16`; weapon 58 `attack_type=PROJECTILE`; weapon 59 `PC_spell=32`; weapon 59 `attack_type=PROJECTILE`; weapon 60 `PC_spell=12`; weapon 60 `attack_type=PROJECTILE`; weapon 61 `PC_spell=22`; weapon 61 `attack_type=PROJECTILE`; weapon 62 `PC_spell=32`; weapon 62 `attack_type=PROJECTILE` |
+| 26 | 0x1B134: two copies of the Long Sword +2: Drowslayer and Longsword +3 | weapon 13 = copy of weapon 33 (not the name); weapon 13 name "Drowslayer"; weapon 13 `value=9000`; weapon 14 = copy of weapon 33 (not the name); weapon 14 name "Longsword +3"; weapon 14 `value` = value of weapon 32 x 3; weapon 14 `to_hit_bonus=3`; weapon 14 `damage_bonus=3` |
+| 27 | 0x1B1B6: the magic flag of the armor, then armor values and names | each armor with `plot_item`: `magic`; armor 16 `value=10000`; armor 42 `value=4000`; armor 19 `value=8000`; armor 27 name "Ring of Wizardry"; armor 27 `value=32000`; armor 27 class 2; armor 47 `value=10000`; armor 48 `value=20000`; armor 49 `value=30000`; armor 34 `value=20000`; armor 35 `value=7000`; armor 36 `value=15000`; armor 37 `value=20000`; armor 38 `value=20000`; armor 50 name "Gauntlets of Dexterity"; armor 50 `value=10000`; armor 52 `value=10000`; armor 43 `value=6000`; armor 45 name "Cloak of Lathandar"; armor 45 `value=17500`; armor 44 `value=4500`; armor 46 `value=6000` |
 
 ## Order of operations at level load
 

@@ -338,12 +338,15 @@ dro: the human and drow fighters and casters). Checked: pool 4, the Giant Rat
 (max 4 hit points) costs 1, 3 left.
 
 **Chill Touch (`Dtu_fix_chill_touch`).** No table has `self_cast_ok` on line 5,
-so the cast fires a missile; the case 0x8D633 returns unless the target is the
-caster (and the effect bit 3 is clear), so in 1.3 the spell does nothing. The
+but the table fixup 0x1A344 sets the cast on the caster (0x1A65E, +0x37 |= 1), and
+the cast tests that bit (0x56D36). So 1.3 casts it on the caster. The case 0x8D633
+returns unless the target is the caster (and the effect bit 3 is clear). The
 effect: bit 3 of +0x88, timer +0x9C, (L + 3) minutes. A melee hit of the holder
 (0x29E3D player, 0x2A49B creature) makes the target save (category 4); on a
 failure an undead target gets Fear for 1d4 + L minutes (L of 0x91EC1 for spell
-5), another target 1d4 more damage. Corrected: the cast is on the caster. Checked:
+5), another target 1d4 more damage. The port gets the cast on the caster from the
+table fixup (dtutblfix.c); `Dtu_fix_chill_touch` gives it with `-rawtables` too, and
+`-origcombat` keeps it. Checked:
 "You have chill touch for 4 minutes." at level 1; a dagger hit on a skeleton that
 failed its save: Fear for 180 s.
 
@@ -501,8 +504,8 @@ wizard spells after the fixup:
   that fires the missile: BANE, wall 84 (seg 488 side 4, a locked door), "Knock hits
   seg 488 side 4". The table text (`self_cast_ok`) casts it on the caster: nothing.
 - **Chill Touch.** The fixup sets the cast on the caster (flags+1 |= 1). So 1.3 casts
-  it on the caster; `Dtu_fix_chill_touch` (section 8) gives the 1.3 result by default,
-  and its `-origcombat` path gives a missile that 1.3 never had.
+  it on the caster. The port applies the fixup (dtutblfix.c), and `-origcombat` no
+  longer clears `Dtu_fix_chill_touch`.
 - **Area spells.** After the fixup Fear (radius 90), Haste (80) and Feather Fall (20)
   are AREA around the caster (flags 0x103); Light (3), Continual Light (3), Dispel
   Magic (60), Hold Person (40), Hold Undead (80), Scare (30), Sleep (60) and Slow (80)
