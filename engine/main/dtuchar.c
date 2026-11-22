@@ -1111,7 +1111,8 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 52, 52))
 		ADD(DTU_IP_STRENGTH, DTU_OGRE_STRENGTH, 100);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 50, 50)) {
-		ADD(DTU_IP_DEXTERITY, 0, 0);
+		// the points for the base dexterity of the character of now
+		ADD(DTU_IP_DEXTERITY, Dex_glove[Dtu_char.base.dexterity < 0 ? 0 : Dtu_char.base.dexterity > 19 ? 19 : Dtu_char.base.dexterity], 0);
 		ADD(DTU_IP_LOCKS_THIEF, DTU_GLOVES_LOCKS_THIEF, 0);
 		ADD(DTU_IP_LOCKS_OTHER, DTU_GLOVES_LOCKS, 0);
 	}
@@ -1843,6 +1844,21 @@ const dtu_misc_use *dtu_char_misc_use(int id)
 	return NULL;
 }
 
+// ASCENT: two values of use_misc that the description window shows too
+// (dtudesc.c). 0x38BE9: the Potion of Dragon's Blood lasts 1 to this many
+// minutes (the level of class 1, from 1).
+int dtu_char_dragon_minutes(void)
+{
+	return Dtu_char.pa.class1_level + 1;
+}
+
+// 0x38196: the Spider Piece 0x12 makes class 1 a cleric of this level
+// number (0 is the first level) for the Turn Undead call.
+int dtu_char_spider_turn_level(void)
+{
+	return (Dtu_char.pa.class1_level + 1) * 2;
+}
+
 // The value of a use: rand() % (hi - lo + 1) + lo
 static int use_roll(const dtu_misc_use *u)
 {
@@ -1939,7 +1955,7 @@ static int use_misc(dtu_inv_item *e)
 				int c1 = pa->class1, l1 = pa->class1_level;
 
 				pa->class1 = DTU_CLASS_CLERIC;
-				pa->class1_level = (l1 + 1) * 2;
+				pa->class1_level = dtu_char_spider_turn_level();
 				dtu_combat_turn_undead(0);
 				pa->class1 = c1;
 				pa->class1_level = l1;
@@ -1983,7 +1999,7 @@ static int use_misc(dtu_inv_item *e)
 			break;
 		case 0x4A:		// Potion of Dragon's Blood: strength 18 for 1 to (level + 1) rounds
 			if (pa->strength < u->lo) {
-				n = rand() % (pa->class1_level + 1) + 1;
+				n = rand() % dtu_char_dragon_minutes() + 1;
 				Potion.dragon_end = GameTime + i2f(n * 60);
 				Potion.dragon_extra = has_class(DTU_CLASS_FIGHTER) ? rand() % 100 : 0;
 				HUD_init_message("You have increased strength for %d minutes.", n);		// ASCENT: 0x38BE9
@@ -3504,7 +3520,7 @@ static void run_command(char *cmd, char *value)
 		dump_character();
 	}
 	else if (!strcmp(cmd, "priestcheck"))	dtu_spell_priest_check();		// ASCENT: test, docs/audit/spells-priest.md
-	else if (!strcmp(cmd, "desc"))		dtu_desc_log_all();			// ASCENT: test, the texts of the description window (dtudesc.h)
+	else if (!strcmp(cmd, "desc"))		dtu_desc_log_all(a);			// ASCENT: test, desc or desc=CASTER_LEVEL: the texts of the description window (dtudesc.h)
 	else if (!strcmp(cmd, "descitem"))	dtu_desc_open_item(a, b, 1, -1, 0);	// ASCENT: test, descitem=TYPE.ID opens the window
 	else if (!strcmp(cmd, "descspell"))	dtu_desc_open_spell(a);			// ASCENT: test, descspell=SPELL opens the window
 	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);

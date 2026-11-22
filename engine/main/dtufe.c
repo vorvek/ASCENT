@@ -63,6 +63,7 @@
 #include "dtuscript.h"
 #include "dtudlg.h"		// ASCENT: dtu_dlg_reset_view
 #include "dtuscroll.h"		// ASCENT: dtu_scroll_reset
+#include "dtudesc.h"		// ASCENT: dtu_desc_reset
 #include "screens.h"
 #include "dtuopts.h"
 #include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items
@@ -2476,6 +2477,7 @@ int fe_load_game(int in_game)
 	Difficulty_level = 2;
 	dtu_dlg_reset_view();		// ASCENT: no dark view of a conversation in the loaded game
 	dtu_scroll_reset();			// ASCENT: no scroll text screen in the loaded game
+	dtu_desc_reset();			// ASCENT: no description window (dtudesc.c)
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
 	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
 	dtu_mission_read_save(path);			// ASCENT: the mission and global flags (dtuscript.c)

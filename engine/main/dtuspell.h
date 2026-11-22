@@ -380,6 +380,12 @@ typedef struct dtu_spell_facts {
 // The facts of a spell at caster level L (-1: the level of the player).
 // Returns 0 if the spell has no table line.
 int dtu_spell_get_facts(int spell, int L, dtu_spell_facts *f);
+// The armor class of a player of armor class 10 with the effects of the
+// mask (Armor, Magical Vestment, Shield); 10 with none of them.
+int dtu_spell_fx_ac(int fx);
+// The classes that can use the spell as an item (dtu_spell_usable), as
+// DTU_USE_ bits of dtuchar.h.
+int dtu_spell_use_classes(int spell);
 // The English name of an effect bit (the names of 0x9002C), "" for none.
 const char *dtu_spell_fx_name(int mask);
 

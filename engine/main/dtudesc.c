@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 #include "inferno.h"
 #include "types.h"
@@ -35,7 +36,8 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 #include "dtuspell.h"
-#include "dtuatk.h"			// dtu_atk_state_time: the time of a melee swing
+#include "dtuatk.h"			// the attack timing rules
+#include "dtucombat.h"		// Dtu_fix_haste_attack, Dtu_fix_missile_rate
 #include "dtudisp.h"		// Dtu_hires, dtu_febgnd_load
 #include "dtufe_int.h"		// Fe_font_s
 #include "dtuhdui.h"		// the upscaled picture
@@ -124,10 +126,28 @@ static char *time_text(char *buf, int lo, int hi)
 	return buf;
 }
 
+// A number with one decimal place, with the decimal mark of the language
+static char *decimal(char *buf, int tenths)
+{
+	if (tenths % 10)
+		sprintf(buf, LT("%d.%d"), tenths / 10, tenths % 10);
+	else
+		sprintf(buf, "%d", tenths / 10);
+	return buf;
+}
+
+// A time of the attack rules in seconds, to a tenth
+static char *seconds(char *buf, fix t)
+{
+	return decimal(buf, (int) (((int64_t) t * 10 + F1_0 / 2) / F1_0));
+}
+
 // A distance in units of the game: 2 units are 1 foot (tools/wiki_rules.py)
 static char *feet(char *buf, int units)
 {
-	sprintf(buf, LT("%d ft"), units / 2);
+	char n[32];
+
+	sprintf(buf, LT("%s ft"), decimal(n, units * 5));
 	return buf;
 }
 
@@ -224,7 +244,7 @@ static void power_lines(int type, int id)
 				line(LT("Sets strength to %s."), buf);
 				break;
 			case DTU_IP_CONSTITUTION:	line(LT("Sets constitution to %d."), p[i].value); break;
-			case DTU_IP_DEXTERITY:		line(LT("Raises dexterity.")); break;
+			case DTU_IP_DEXTERITY:		line(LT("Raises your dexterity by %d."), p[i].value); break;
 			case DTU_IP_HIDE:			line(LT("Sets Hide In Shadows to %d%%."), p[i].value); break;
 			case DTU_IP_LOCKS_THIEF:	line(LT("Open Locks +%d%% for a thief."), p[i].value); break;
 			case DTU_IP_LOCKS_OTHER:	line(LT("Open Locks %d%% for other classes."), p[i].value); break;
@@ -251,6 +271,9 @@ static void fx_line(int type, int id, int hand)
 
 	if (fx)
 		line(hand ? LT("In the hand: %s.") : LT("While worn: %s."), fx_names(buf, sizeof(buf), fx));
+	// the armor class of the effects Armor, Magical Vestment and Shield
+	if (dtu_spell_fx_ac(fx) < 10)
+		line(LT("Armor class %d at most."), dtu_spell_fx_ac(fx));
 }
 
 // What one use of a misc item does (dtu_char_misc_use)
@@ -268,7 +291,10 @@ static void use_line(const dtu_misc_use *u)
 	switch (u->kind) {
 		case DTU_MU_HEAL:		line(LT("Heals %s hit points."), a); break;
 		case DTU_MU_DEXTERITY:	line(LT("Dexterity becomes at least %d for %s."), u->lo, t); break;
-		case DTU_MU_DRAGON:		line(LT("Strength becomes at least %d for 1 to %d minutes."), u->lo, Dtu_char.pa.class1_level + 1); break;
+		case DTU_MU_DRAGON:
+			line(LT("Strength becomes at least %d for %s."), u->lo, time_text(t, 60, 60 * dtu_char_dragon_minutes()));
+			line(LT("A fighter gets a random percent value with it."));
+			break;
 		case DTU_MU_GIANT:		line(LT("Strength becomes at least %d for %s."), u->lo, t); break;
 		case DTU_MU_INTEL:		line(LT("Intelligence becomes %s for %s."), a, t); break;
 		case DTU_MU_EFFECT:		line(LT("Gives %s for %s."), fx_names(s2, sizeof(s2), u->fx), t); break;
@@ -282,7 +308,7 @@ static void use_line(const dtu_misc_use *u)
 		case DTU_MU_GEM:		line(LT("Cures blindness, else casts %s. One use for each mission."), dtu_spell_name(u->lo)); break;
 		case DTU_MU_SCROLL:		line(LT("Shows a text.")); break;
 		case DTU_MU_CURSED:		line(LT("Harms you by chance: spells, the map, your abilities and hit points. It is not used up.")); break;
-		case DTU_MU_TURN:		line(LT("Turns undead as a cleric of level %d."), (Dtu_char.pa.class1_level + 1) * 2 + 1); break;
+		case DTU_MU_TURN:		line(LT("Turns undead as a cleric of level %d."), dtu_char_spider_turn_level() + 1); break;
 		case DTU_MU_MAP:		line(LT("Shows the whole map.")); break;
 		case DTU_MU_ATTACK:		line(LT("Fires a missile at each creature in sight.")); break;
 		case DTU_MU_AREA_SPELLS:	line(LT("Casts %s around you, then %s on you."), dtu_spell_name(u->lo), s); break;
@@ -299,52 +325,80 @@ static int charged(const dtu_misc_use *u)
 	return u && ((u->kind >= DTU_MU_TURN && u->kind <= DTU_MU_FULL_HEAL) || u->kind == DTU_MU_SPELLS_KEEP);
 }
 
+// 1 if the count of the entry is a number of items or of uses. The count
+// of a scroll is the number of its text (0x9DC42), and the Gem of Curing,
+// the Cursed Scroll and the Orb of Insight are not used up (use_misc).
+static int counted(const dtu_misc_use *u)
+{
+	return u->kind != DTU_MU_SCROLL && u->kind != DTU_MU_GEM && u->kind != DTU_MU_CURSED && u->kind != DTU_MU_QUEST;
+}
+
+static void class_line(int mask)
+{
+	char buf[128];
+
+	line(LT("Classes: %s"), classes(buf, mask));
+}
+
 static void weapon_text(int id, dtu_item_data *d, int count, int r)
 {
-	char buf[256], b2[64];
-	int pc_spell = tbl_int(r, "pc_spell", -1), range;
+	char buf[256], b2[64] = "";
+	int pc_spell = tbl_int(r, "pc_spell", -1), range, fx;
+	fix wait;
 
 	if (pc_spell >= 0 && !d->melee) {
 		// a wand: the usable item layout (0x56A0D casts pc_spell, one charge)
 		if (count >= 0)
 			line(LT("Charges: %d"), count);
-		line(LT("Classes: %s"), classes(buf, d->class_mask));
+		if (d->class_mask & 0xff)
+			class_line(d->class_mask);
 		line(LT("Each use casts %s."), dtu_spell_name(pc_spell));
 		return;
 	}
-	// weapon_attack (dtuchar.c): a weapon with no dice attacks as the empty
-	// hand, with no bonus and no fire
-	if (d->dice_sides <= 0)
-		line(LT("Damage: as the empty hand"));
-	else
-		line(LT("Damage: %s"), dice(buf, d->dice_n, d->dice_sides, d->damage_bonus));
-	if (d->dice_sides > 0 && tbl_int(r, "fire_damage_dice", 0) && tbl_int(r, "#fire_damage_dice", 0))
+	// weapon_attack and dtu_char_weapon_damage (dtuchar.c): the dice and
+	// the bonus of the table line; a weapon with 0 sides rolls no dice
+	line(LT("Damage: %s"), dice(buf, d->dice_n, d->dice_sides, d->damage_bonus));
+	// dtu_weapon_extra_damage (dtuobj.c, 0x2B327)
+	if (tbl_int(r, "fire_damage_dice", 0) > 0 && tbl_int(r, "#fire_damage_dice", 0) > 0)
 		line(LT("Fire damage: %s"), dice(buf, tbl_int(r, "#fire_damage_dice", 0), tbl_int(r, "fire_damage_dice", 0), 0));
 	sprintf(buf, "%+d", d->to_hit_bonus);
 	line(LT("To hit: %s"), buf);
+	// the Haste or the Slow that the weapon itself gives in the hand
+	fx = dtu_char_item_fx(OBJ_WEAPON, id) & (DTU_ATK_HASTE | DTU_ATK_SLOW);
 	if (d->melee) {
-		// dtucombat.c: the time of the attack state of a melee weapon
-		fix t = dtu_atk_state_time(1, d->attack_wait, F1_0, 0, 0);
-		sprintf(buf, "%.1f", f2fl(t));
-		line(LT("Speed: one attack in %s seconds"), buf);
-		line(LT("Melee weapon."));
+		// dtu_combat_swing_time and the gate of the next attack
+		// (dtucombat.c, docs/re/combat.md A8)
+		fix t = dtu_atk_state_time(1, Weapon_info[id].fire_wait, F1_0, fx, Dtu_fix_haste_attack);
+
+		line(LT("Melee weapon, %s s for each attack."), seconds(buf, dtu_atk_melee_wait(t, fx, Dtu_fix_haste_attack)));
 	}
 	else {
+		// the life of the missile at its speed (missiles_frame, dtuobj.c);
+		// a missile with no life of its own (a spell missile) has no range
+		// of the weapon line
 		range = f2i(dtu_missile_weapon_range(id));
-		feet(b2, range);
+		if (range > 0)
+			feet(b2, range);
 		if (tbl_int(r, "thrown", 0) == 1)
-			line(LT("Thrown weapon, range %s."), b2);
+			line(range > 0 ? LT("Thrown weapon, range %s.") : LT("Thrown weapon."), b2);
 		else if (bm_tbl_has_flag(r, "arrow"))
-			line(LT("Arrow for a bow, range %s."), b2);
+			line(range > 0 ? LT("Arrow for a bow, range %s.") : LT("Arrow for a bow."), b2);
 		else if (bm_tbl_has_flag(r, "bolt"))
-			line(LT("Bolt for a crossbow, range %s."), b2);
+			line(range > 0 ? LT("Bolt for a crossbow, range %s.") : LT("Bolt for a crossbow."), b2);
 		else
-			line(LT("Missile, range %s."), b2);
+			line(range > 0 ? LT("Missile, range %s.") : LT("Missile."), b2);
+		// missile_wait (dtucombat.c): 0 with the rule of the executable,
+		// where the time of the arm model sets the rate
+		wait = dtu_atk_missile_wait(Weapon_info[id].fire_wait, fx, Dtu_fix_missile_rate, Dtu_fix_haste_attack);
+		if (wait > 0)
+			line(LT("%s s for each shot."), seconds(buf, wait));
 		if (count >= 0 && d->stackable)
 			line(LT("Count: %d"), count);
 	}
 	line(bm_tbl_has_flag(r, "magic") ? LT("Magic.") : LT("Not magic."));
-	line(LT("Classes: %s"), classes(buf, d->class_mask));
+	// a line with no class is a weapon of the creatures
+	if (d->class_mask & 0xff)
+		class_line(d->class_mask);
 	if (dtu_char_item_ac(OBJ_WEAPON, id))
 		line(LT("Armor class %d better while in the hand."), -dtu_char_item_ac(OBJ_WEAPON, id));
 	fx_line(OBJ_WEAPON, id, 1);
@@ -386,17 +440,20 @@ int dtu_desc_item_text(int type, int id, int count, int price, int sell, char *o
 		// a spell in the item list: a scroll that casts it (0x56A0D)
 		if (count > 0)
 			line(LT("Charges: %d"), count);
-		line(LT("Classes: %s"), classes(buf, DTU_USE_ALL));
+		class_line(dtu_spell_use_classes(id));		// dtu_spell_usable
 		line(LT("Each use casts %s."), dtu_spell_name(id));
 	}
 	else if (slot == DTU_SLOT_BOW || slot == DTU_SLOT_CROSSBOW) {
 		// 0x2AB36, 0x2B0EE: the to_hit_bonus of the launcher goes to the
 		// attack and the damage of the arrows or the bolts
 		sprintf(buf, "%+d", d.to_hit_bonus);
-		line(slot == DTU_SLOT_BOW ? LT("Arrows get %s to hit and damage.") : LT("Bolts get %s to hit and damage."), buf);
+		// launcher_bonus (dtuchar.c, 0x2AB0A): the bow for a weapon with the
+		// flag arrow, the crossbow for each other missile weapon. No code
+		// reads the flag magic of a misc line.
+		line(slot == DTU_SLOT_BOW ? LT("Arrows get %s to hit and damage.") :
+			LT("Bolts and thrown weapons get %s to hit and damage."), buf);
 		line(LT("Slot: %s"), slot_name(slot));
-		line(bm_tbl_has_flag(r, "magic") ? LT("Magic.") : LT("Not magic."));
-		line(LT("Classes: %s"), classes(buf, d.class_mask));
+		class_line(d.class_mask);
 		fx_line(type, id, 0);
 	}
 	else if (slot >= 0) {
@@ -407,14 +464,14 @@ int dtu_desc_item_text(int type, int id, int count, int price, int sell, char *o
 		else if (ac)
 			line(LT("Armor class: %d better"), -ac);
 		line(LT("Slot: %s"), slot_name(slot));
-		line(LT("Classes: %s"), classes(buf, d.class_mask));
+		class_line(d.class_mask);
 		fx_line(type, id, 0);
 		power_lines(type, id);
 	}
 	else if (u) {
-		if (count >= 0)
+		if (count >= 0 && counted(u))
 			line(charged(u) ? LT("Charges: %d") : LT("Count: %d"), count);
-		line(LT("Classes: %s"), classes(buf, d.class_mask));
+		class_line(d.class_mask);
 		use_line(u);
 	}
 	else if (type == OBJ_MISC && DTU_IS_KEY_ITEM(type, id))
@@ -423,9 +480,31 @@ int dtu_desc_item_text(int type, int id, int count, int price, int sell, char *o
 		line(LT("Quest item. It cannot be dropped or sold."));		// 0xB611C, the market lists 0x870A0
 	else
 		line(LT("Item."));
-	if (price >= 0)
+	// the market takes the price for each item of a stack
+	if (price >= 0 && d.stackable && count != 1)
+		line(sell ? LT("Sale price: %d gold each") : LT("Price: %d gold each"), price);
+	else if (price >= 0)
 		line(sell ? LT("Sale price: %d gold") : LT("Price: %d gold"), price);
 	return Out_lines;
+}
+
+// The line of the highest damage of a spell whose dice grow with the
+// caster level up to a limit: the facts of two high levels are the same
+// and are not the ones of the caster level.
+static void damage_cap(int spell, dtu_spell_facts *f)
+{
+	dtu_spell_facts a, b;
+	char buf[64];
+	int g;
+
+	if (!dtu_spell_get_facts(spell, 30, &a) || !dtu_spell_get_facts(spell, 40, &b))
+		return;
+	for (g = 0; g < 4; g++)
+		if (a.dice_n[g] == b.dice_n[g] && a.dice_add[g] == b.dice_add[g] &&
+				(a.dice_n[g] != f->dice_n[g] || a.dice_add[g] != f->dice_add[g]))
+			line(LT("With more caster levels: up to %s."), dice(buf, a.dice_n[g], a.dice_sides[g], a.dice_add[g]));
+	if (a.missiles_hi == b.missiles_hi && a.missiles_hi > f->missiles_hi)
+		line(LT("With more caster levels: up to %d missiles."), a.missiles_hi);
 }
 
 static void spell_effect(int spell, dtu_spell_facts *f)
@@ -446,13 +525,21 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 				}
 			if (!any)
 				line(LT("Deals no damage."));
+			damage_cap(spell, f);
 			if (f->undead_die) {
 				sprintf(a, "1d%d", f->undead_die);
 				line(LT("%s more damage against undead."), a);
 			}
 			break;
 		case DTU_SK_HEAL:		line(LT("Heals %s hit points."), a); break;
-		case DTU_SK_GIVE:		line(LT("Gives %s."), b); break;
+		case DTU_SK_GIVE:
+			line(LT("Gives %s."), b);
+			// 0x29E3D (dtucombat.c): the effect acts in the melee hit of the player
+			if (f->fx == DTU_FX_CHILL_TOUCH)
+				line(LT("Each melee hit: the target saves or takes 1d4 more damage; undead get Fear."));
+			if (f->fx == DTU_FX_INFRAVISION && spell == 25)
+				line(LT("Only for a human."));		// case 25
+			break;
 		case DTU_SK_CAUSE:		line(LT("Causes %s."), b); break;
 		case DTU_SK_AC:
 			line(LT("Armor class %d at most."), f->ac);
@@ -461,15 +548,18 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 			break;
 		case DTU_SK_ARMOR:		line(LT("Armor class %d at most, until %s points of weapon damage."), f->ac, a); break;
 		case DTU_SK_AID:		line(LT("Adds %s hit points above the maximum, and Bless."), a); break;
-		case DTU_SK_DISPEL:		line(LT("Ends all spell effects on the target.")); break;
-		case DTU_SK_ABJURE:		line(LT("An extraplanar creature leaves the level or dies.")); break;
+		// case 13 has no test of the caster: the area takes the player too
+		case DTU_SK_DISPEL:		line(LT("Ends all spell effects in the area, yours too.")); break;
+		// case 0: a d20 roll by the levels, then the creature leaves or dies
+		case DTU_SK_ABJURE:		line(LT("An extraplanar creature may leave the level or die.")); break;
 		case DTU_SK_RARY:		line(LT("Gives more spell slots: three of level 1, one of level 1 and one of level 2, or one of level 3.")); break;
 		case DTU_SK_KNOCK:		line(LT("Opens a locked door.")); break;
 		case DTU_SK_CURE_SENSES:	line(LT("Cures blindness and deafness.")); break;
 		case DTU_SK_FIRE_POOL:	line(LT("Takes the first %s points of fire damage."), a); break;
 		case DTU_SK_STONESKIN:	line(LT("Stops the next %s attacks."), a); break;
 		case DTU_SK_STRENGTH:	line(LT("Adds %s to strength."), a); break;
-		case DTU_SK_BLIND:		line(LT("Blinds the target.")); break;
+		// light_object (dtuspell.c): the light stays where the missile lands
+		case DTU_SK_BLIND:		line(LT("Makes a light where it lands. Blinds a creature that it hits.")); break;
 		case DTU_SK_COLOR:		line(LT("Puts to sleep, blinds or stuns, by the level of the target.")); break;
 		case DTU_SK_SLEEP:
 		case DTU_SK_SCARE:		line(LT("Causes %s on creatures of level %d or less."), b, f->amount_hi); break;
@@ -519,7 +609,7 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 	else
 		line(LT("Spell, level %d"), f.level);
 	line(LT("Cast time: %s"), time_text(a, f.cast_time, f.cast_time));
-	line(LT("Range: %s"), f.self ? LT("You") : feet(a, f.range));
+	line(LT("Range: %s"), f.self ? LT("Self") : feet(a, f.range));
 	if (f.area)
 		line(LT("Area: %s"), (sprintf(b, f.self ? LT("%s around you") : LT("%s where it lands"), feet(a, f.radius)), b));
 	else
@@ -562,24 +652,48 @@ static void text_box(int hi, int *art, int *x, int *y, int *w, int *h)
 	}
 }
 
+// The pictures stay until the exit of the program
+static void free_pics(void)
+{
+	int i;
+
+	for (i = 0; i < 2; i++)
+		if (Clean[i]) {
+			gr_free_bitmap(Clean[i]);
+			Clean[i] = NULL;
+		}
+	if (Fe_pic)
+		gr_free_bitmap(Fe_pic);
+	Fe_pic = NULL;
+}
+
 static grs_bitmap *clean_pic(int hi)
 {
+	static int at_exit = 0;
 	int art, x, y, w, h;
 
 	text_box(hi, &art, &x, &y, &w, &h);
-	if (!Clean[hi])
+	if (!Clean[hi]) {
 		Clean[hi] = dtu_febgnd_load(art, NULL);
+		if (!at_exit)
+			atexit(free_pics);
+		at_exit = 1;
+	}
 	return Clean[hi];
 }
 
 // Lays out Text in the box of the current canvas: the first line (the name)
 // centered, the others from the left, words that do not fit go to the
-// next line. draw 0: only measures. Returns the height used.
-static int layout(int w, int draw, int c_title, int c_text, int c_shadow)
+// next line. tight 0: one pixel between the lines and a gap after the name;
+// 1: no pixel between the lines; 2: no gap too. draw 0: only measures.
+// Returns the height used; *wide gets the width of the widest row.
+static int layout(int w, int tight, int draw, int c_title, int c_text, int c_shadow, int *wide)
 {
 	grs_font *font = grd_curcanv->cv_font;
-	int lh = font->ft_h + 1, y = 0, first = 1;
+	int lh = font->ft_h + (tight ? 0 : 1), y = 0, first = 1;
 	char *p = Text;
+
+	*wide = 0;
 
 	while (*p) {
 		char ln[512], row[512];
@@ -602,9 +716,13 @@ static int layout(int w, int draw, int c_title, int c_text, int c_shadow)
 				gr_get_string_size(test, &tw, &th, &aw);
 			}
 			if (!q || (tw > w && row[0])) {
+				gr_get_string_size(row, &tw, &th, &aw);
+				if (tw > *wide)
+					*wide = tw;
 				if (draw) {
-					gr_get_string_size(row, &tw, &th, &aw);
 					x = first ? (w - tw) / 2 : 0;
+					if (x < 0)
+						x = 0;
 					gr_set_fontcolor(c_shadow, -1);
 					gr_string(x + 1, y + 1, row);
 					gr_set_fontcolor(first ? c_title : c_text, -1);
@@ -618,24 +736,50 @@ static int layout(int w, int draw, int c_title, int c_text, int c_shadow)
 			else
 				strcpy(row, test);
 		}
-		if (first)
+		if (first && tight < 2)
 			y += lh / 2;		// a gap after the name
 		first = 0;
 	}
 	return y;
 }
 
+// The loosest line spacing with which Text fits the height h, the tightest
+// one if none fits.
+static int spacing(int w, int h, int *used, int *wide)
+{
+	int tight;
+
+	for (tight = 0; tight < 3; tight++)
+		if ((*used = layout(w, tight, 0, 0, 0, 0, wide)) <= h)
+			return tight;
+	return 2;
+}
+
 static void draw_text_box(grs_canvas *parent, int x, int y, int w, int h, grs_font *font)
 {
 	grs_canvas box, *save = grd_curcanv;
+	int used, wide, tight, top;
 
+	// The place of the text in the box: a short text is in the middle of
+	// the height; a long one starts a tenth of the height below the top, or
+	// higher if it needs the room.
 	gr_init_sub_canvas(&box, parent, x, y, w, h);
+	gr_set_current_canvas(&box);
+	gr_set_curfont(font);
+	tight = spacing(w, h, &used, &wide);
+	top = (h - used) / 2;
+	if (top < h / 10)
+		top = h - used < h / 10 ? h - used : h / 10;
+	if (top < 0)
+		top = 0;
+	gr_init_sub_canvas(&box, parent, x, y + top, w, h - top);
 	gr_set_current_canvas(&box);
 	gr_set_curfont(font);
 	box.cv_drawmode = 0;
 	// the colors of the scroll text (0x9CB62): ~c7 yellow for the name,
 	// ~c1 white for the text, the shadow of color 0
-	layout(w, 1, gr_find_closest_color(63, 63, 0), gr_find_closest_color(63, 63, 63), gr_find_closest_color(0, 0, 0));
+	layout(w, tight, 1, gr_find_closest_color(63, 63, 0), gr_find_closest_color(63, 63, 63),
+		gr_find_closest_color(0, 0, 0), &wide);
 	gr_set_current_canvas(save);
 }
 
@@ -709,6 +853,13 @@ void dtu_desc_close(void)
 	Time_stopped = 0;
 	Open = 0;
 	dtu_char_log("desc: closed");
+}
+
+// A new level or a loaded game: no window (as dtu_scroll_reset)
+void dtu_desc_reset(void)
+{
+	dtu_desc_close();
+	Pressed = 0;
 }
 
 void dtu_desc_frame(void)
@@ -805,11 +956,12 @@ void dtu_desc_draw_fe(void)
 //------------------------------------------------------------------------
 // The test aid
 
-// The height of Text in the box of the scroll with a font, against the box
+// The height and the width of Text in the box of the scroll with a font,
+// against the box. A row is wider than the box if one word is.
 static int fits(grs_font *font, int hi, int *used)
 {
 	grs_canvas c, *save = grd_curcanv;
-	int art, bx, by, bw, bh;
+	int art, bx, by, bw, bh, wide = 0;
 
 	*used = 0;
 	if (!font)
@@ -818,9 +970,9 @@ static int fits(grs_font *font, int hi, int *used)
 	gr_init_canvas(&c, NULL, BM_LINEAR, bw, bh);
 	gr_set_current_canvas(&c);
 	gr_set_curfont(font);
-	*used = layout(bw, 0, 0, 0, 0);
+	spacing(bw, bh, used, &wide);
 	gr_set_current_canvas(save);
-	return *used <= bh;
+	return *used <= bh && wide <= bw;
 }
 
 // Checks Text: a broken text (empty, no name, a pattern that was not
@@ -851,18 +1003,22 @@ static int check(char *what, grs_font *font, int hi)
 	return bad != 0;
 }
 
-int dtu_desc_log_all(void)
+int dtu_desc_log_all(int L)
 {
 	static const int types[3] = { OBJ_WEAPON, OBJ_ARMOR, OBJ_MISC };
 	static const int *counts[3] = { &N_weapon_types, &N_armor_types, &N_misc_types };
 	char what[64];
-	int t, i, fail = 0, n = 0;
-	grs_font *fe_font = Fe_font_s;
+	static const int counts_tried[4] = { -1, 0, 1, 30000 };
+	int t, i, c, fail = 0, n = 0, extra = 0;
+	grs_font *fe_font = Fe_font_s, *own_font = NULL;
 	char path[600];
+
+	if (L < 1)
+		L = -1;
 
 	// a run that starts at a level has not loaded the fonts of the front end
 	if (!fe_font && dtu_find_file("FNTEMFS_.FNT", path, sizeof(path)))
-		fe_font = gr_init_font(path);
+		fe_font = own_font = gr_init_font(path);
 
 	for (t = 0; t < 3; t++)
 		for (i = 0; i < *counts[t]; i++) {
@@ -887,15 +1043,46 @@ int dtu_desc_log_all(void)
 	for (i = 0; i < N_spell_types; i++) {
 		if (Spell_info[i].record < 0)
 			continue;
-		dtu_desc_spell_text(i, -1, Text, sizeof(Text));
+		dtu_desc_spell_text(i, L, Text, sizeof(Text));
 		sprintf(what, "spell %d", i);
 		fail += check(what, GAME_FONT, Dtu_hires != 0);
 		n++;
 	}
+	// Each number that a caller can pass, also the ones with no table line
+	// and the numbers outside the tables, with each kind of count, in a
+	// small buffer too: the text must end and nothing must be read outside
+	// a table. A spell as an item is a scroll.
+	for (t = 0; t < 5; t++) {
+		int type = t < 3 ? types[t] : t == 3 ? OBJ_SPELL : 99;
+
+		for (i = -2; i < 260; i++)
+			for (c = 0; c < 4; c++) {
+				char small[24];
+
+				dtu_desc_item_text(type, i, counts_tried[c], c == 3 ? 2000000000 : -1, c & 1, Text, sizeof(Text));
+				dtu_desc_item_text(type, i, counts_tried[c], 0, c & 1, small, sizeof(small));
+				if (!Text[0] || strlen(Text) >= sizeof(Text) || strlen(small) >= sizeof(small))
+					fail++;
+				extra++;
+			}
+	}
+	for (i = -2; i < 260; i++)
+		for (c = 0; c < 41; c += 8) {
+			char small[24];
+
+			dtu_desc_spell_text(i, c, Text, sizeof(Text));
+			dtu_desc_spell_text(i, c, small, sizeof(small));
+			if (!Text[0] || strlen(Text) >= sizeof(Text) || strlen(small) >= sizeof(small))
+				fail++;
+			extra++;
+		}
+	printf("desc: %d texts of numbers of all kinds\n", extra);
 	if (!fe_font)
 		printf("desc: the market texts were not checked: no font of the front end\n");
 	printf("desc: %d texts, %d failed\n", n, fail);
 	dtu_char_log("desc: %d texts, %d failed", n, fail);
 	Text[0] = 0;
+	if (own_font)
+		gr_close_font(own_font);
 	return fail;
 }

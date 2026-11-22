@@ -675,12 +675,20 @@ char *dtu_spell_name(int spell)
 // entry (0x352F7). The count test of 0x3533C passes for a list entry.
 int dtu_spell_usable(int spell)
 {
-	if (spell == 39 || spell == 40 || spell == 53)
+	int m = dtu_spell_use_classes(spell);
+
+	if (m == DTU_USE_ALL)
 		return 1;
-	if (!char_is(DTU_CLASS_MAGE) && !char_is(DTU_CLASS_CLERIC))
-		return 0;
-	return (spell_flag(spell,"mage_use") && char_is(DTU_CLASS_MAGE)) ||
-		(spell_flag(spell,"cleric_use") && char_is(DTU_CLASS_CLERIC));
+	return ((m & DTU_USE_MAGE) && char_is(DTU_CLASS_MAGE)) || ((m & DTU_USE_CLERIC) && char_is(DTU_CLASS_CLERIC));
+}
+
+// ASCENT: the classes of the rule above as DTU_USE_ bits (dtuchar.h), for
+// the description window too (dtudesc.c).
+int dtu_spell_use_classes(int spell)
+{
+	if (spell == 39 || spell == 40 || spell == 53)
+		return DTU_USE_ALL;
+	return (spell_flag(spell,"mage_use") ? DTU_USE_MAGE : 0) | (spell_flag(spell,"cleric_use") ? DTU_USE_CLERIC : 0);
 }
 
 // The letter of the list entry of the spell in the hand (byte 5: K hands,
@@ -2769,6 +2777,13 @@ static int effects_ac(int ac,int w,int vestment_level)
 	if ((w & DTU_FX_SHIELD) && ac > 3) ac = 3;
 	if (w & DTU_FX_SLOW) ac += 4;
 	return ac;
+}
+
+// ASCENT: the armor class that the effects of a mask give to a player
+// with armor class 10 (the description window, dtudesc.c)
+int dtu_spell_fx_ac(int fx)
+{
+	return effects_ac(10,fx & (DTU_FX_ARMOR|DTU_FX_VESTMENT|DTU_FX_SHIELD),dtu_spell_player_level(35));
 }
 
 int dtu_spell_player_ac(int ac,int stage)

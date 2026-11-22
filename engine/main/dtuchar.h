@@ -492,6 +492,11 @@ typedef struct dtu_misc_use {
 
 // The use of misc number id, or NULL if it has no use.
 const dtu_misc_use *dtu_char_misc_use(int id);
+// The longest time of the Potion of Dragon's Blood in minutes, and the
+// class 1 level number (from 0) of the Turn Undead of the Spider Piece 0x12,
+// for the character of now.
+int dtu_char_dragon_minutes(void);
+int dtu_char_spider_turn_level(void);
 
 // The values that a worn item sets in dtu_char_update (0xAFB55)
 #define DTU_GIRDLE_STRENGTH		19		// armor 38, Girdle of Hill Giant Strength (belt)
@@ -508,7 +513,7 @@ const dtu_misc_use *dtu_char_misc_use(int id);
 // The powers of a worn item (dtu_char_item_powers)
 #define DTU_IP_STRENGTH		1		// value, value2 the percent value (100: 18/00)
 #define DTU_IP_CONSTITUTION	2		// value
-#define DTU_IP_DEXTERITY		3		// the dexterity table of the gloves
+#define DTU_IP_DEXTERITY		3		// value more dexterity (the table of the gloves, for the character of now)
 #define DTU_IP_HIDE			4		// Hide In Shadows becomes value
 #define DTU_IP_LOCKS_THIEF	5		// Open Locks + value for a thief
 #define DTU_IP_LOCKS_OTHER	6		// Open Locks of another class is value

@@ -28,6 +28,8 @@ int dtu_desc_open_fe(int type, int id, int count, int price, int sell);
 
 int dtu_desc_is_open(void);
 void dtu_desc_close(void);
+// No window at a new level and in a loaded game.
+void dtu_desc_reset(void);
 // The game frame while the window is open: the keys and the mouse buttons.
 void dtu_desc_frame(void);
 // Draws the window over the play screen (after the interface) or over the
@@ -39,6 +41,7 @@ void dtu_desc_draw_fe(void);
 // the three item tables and of each spell to the -charlog file and to
 // stdout ("desc: " lines), with a check that each text fits the scroll
 // box of both interfaces. Returns the number of failures.
-int dtu_desc_log_all(void);
+// L: the caster level of the spell texts, 0 for the level of the player.
+int dtu_desc_log_all(int L);
 
 #endif

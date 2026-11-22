@@ -2507,7 +2507,9 @@ static void do_input(int mx, int my)
 		int rdown = (mouse_get_btns() & 2) != 0, rpressed = rdown && !Rmouse_was_down;
 
 		Rmouse_was_down = rdown;
-		if (rpressed && !down && inv_rclick(mx, my))
+		// not while the cursor holds an item or a spell, or drags a scroll bar
+		if (rpressed && !down && Inv_held < 0 && Inv_held_spell < 0 && !Sbar_grab && Button_pressed < 0 &&
+				inv_rclick(mx, my))
 			return;
 	}
 
