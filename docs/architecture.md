@@ -1,0 +1,244 @@
+# Architecture
+
+This document describes how the source of ASCENT-DTU is organized. The facts
+about the original game are in `docs/re/` and `docs/formats/`.
+
+## Source layout
+
+| Path | Content |
+|---|---|
+| `CMakeLists.txt`, `CMakePresets.json` | The top build file and the presets `debug` and `release`. |
+| `cmake/` | Build scripts: `version.cmake` (the version header), `embed_text.cmake` (translations of the code into C arrays). |
+| `engine/` | The Descent 1 source release of Parallax (version 1.5), with the port changes and the new game code. |
+| `engine/includes/` | `types.h` and the shared assembler includes. `d_common` puts it on the include path. |
+| `engine/fix`, `vecmat`, `div` | Fixed point math, vectors and matrices. |
+| `engine/mem`, `misc`, `cfile`, `iff`, `pslib` | Memory, errors and arguments, file access, IFF pictures. `pslib` builds no code. |
+| `engine/platform/` | The SDL3 layer: window, GPU renderer, audio, input, paths, log. Only this directory calls SDL. |
+| `engine/bios/` | Keyboard, mouse, joystick and timer of the original, on top of the platform layer. |
+| `engine/2d`, `3d`, `texmap` | The 8-bit 2D library, the 3D pipeline and the software texture mappers. |
+| `engine/main/` | The game. The Descent 1 files and the new `dtu*.c` files. |
+| `engine/demo/` | `cube`, a program that links the real libraries together. |
+| `engine/lang/` | The translations of the text of the code (`<code>_port.catalog`). |
+| `engine/third_party/` | stb_image, stb_vorbis and pl_mpeg, with their licenses. |
+| `engine/main/editor/`, `engine/ui/` | The level editor of Descent 1 and its interface library. Not built. |
+| `installer/` | `ascent-import`, `ascent-content`, the Inno Setup script and the content server worker. Windows only. |
+| `tools/` | Python tools for the game files. See `tools/README.md`. |
+| `docs/` | The documents. See `docs/README.md`. |
+
+`engine/CMakeLists.txt` adds each library directory that has a
+`CMakeLists.txt`. Each library is a target `d_<directory>`. The game is the
+target `ascent` (`engine/main/CMakeLists.txt`). It is not in the default
+build: build it by name. The library list of the game, `MAIN_SOURCES`, is
+the list of `DESCENT_OBJS` of the original makefile with the new files.
+
+Files that the build does not use, and why they stay, are listed in
+[reference-sources.md](reference-sources.md).
+
+The game program builds on Windows (MSYS2 UCRT64). The libraries and the
+tests also build on Linux. The game code still calls `stricmp`, `strnicmp`
+and `strlwr`, which Linux does not have.
+
+## Game code
+
+Each new file of `engine/main` starts with a comment that says what it
+replaces and which document has the facts. The table is a summary of these
+comments.
+
+| File | System | Facts |
+|---|---|---|
+| `dtugame.c` | Start of a level without the Descent menus: `-datadir`, `-level`, `-checklevel`, `-frames`, `-screenshot`. Weak definitions of the data layer. | |
+| `dtufile.c` | Access to the game files: the game directories, the disc directory, the packed files (DOG, COW, HEN). Replaces the HOG file. | `formats/packed.md` |
+| `dtuobj.c` | Objects other than the player: setup of creatures, scenery and items at level load, model animation, creature AI and movement, melee, missiles, damage, death, pushed scenery, pickup and inventory. | `re/objects.md`, `re/ai.md`, `re/models.md` |
+| `dtuchar.c` | The player character: attributes, equipment, item use, rest, experience, levels, choice boxes. Replaces the ship values. | `re/character.md` |
+| `dtucombat.c` | The weapon attack of the player, missile and thrown weapons, the arms in the view, Turn Undead. | `re/combat.md` part A |
+| `dtuspell.c` | Spell books, slots, casting, spell effects, area effects, durations, saving throws, scrolls, wands. | `re/combat.md` part B, `re/spells.md` |
+| `dtuthief.c` | Thief skills: Open Locks, Find/Remove Traps, Move Silently, Hide In Shadows, Climb Walls, backstab. | `re/combat.md` B7 |
+| `dtuthiefpts.c` | The thief skill point screen. | `re/combat.md` B7 |
+| `dtutrig.c` | Triggers, traps, level messages, the use action and the warps of DTU.WRP. Replaces the triggers of `switch.c`. | `re/triggers.md` |
+| `dtuhook.c` | The creature and world hooks of `dtutrig.c`, the use action on an object, the start of a talk. | `re/triggers.md`, `re/ai.md` |
+| `dtuscript.c` | The dialogue script interpreter, the global flags, the mission flags, the mission switch of Khelben. | `re/scripts.md` |
+| `dtudlg.c` | The conversation window. | `re/scripts.md` section 4 |
+| `dtudisp.c` | The in-game interface: play screen, buttons, cursor, message box, the screens that open during play. Replaces the cockpit and HUD. | `re/ingame-ui.md` |
+| `dtuscroll.c` | The text screen of the Scroll. | `re/ingame-ui.md` |
+| `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
+| `dtufe.c` | The front end: frame, input, `-fescript`, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
+| `dtufe_char.c` | Character generation. | `re/frontend.md` |
+| `dtufe_town.c` | Waterdeep, Blackstaff tower and the market. | `re/frontend.md` |
+| `dtustate.c` | Level state files and their copies in the save slots. Same format as the DOS game. | `re/levelstate.md` |
+| `dtumusic.c` | Streamed music (TUN files) and the music commands of DTU.WRP. Replaces the MIDI songs. | `re/music.md`, `formats/tun.md` |
+| `dtufoot.c` | Footstep sounds of the player and the creatures. | `re/music.md` |
+| `dtumovie.c`, `mvedec.c` | The movie player and the MVE decoder. | `re/movies.md`, `formats/mve.md` |
+| `acm.c` | The Interplay ACM audio decoder (sounds of the EGG archives). | `formats/tun.md` |
+| `dtuogg.c` | The Ogg Vorbis decoder for replacement music (stb_vorbis). | |
+| `dtuhdui.c` | Upscaled interface pictures on the GPU renderer. New in the port. | `hd_textures.md` |
+| `dtulang.c` | The language of the text: catalogs and lookups. New in the port. | `formats/lang.md` |
+| `dtulangart.c` | The interface pictures of a language. New in the port. | `formats/lang.md` |
+| `dtuopts.c` | The Improvements and Graphics settings and `ascent.cfg`. New in the port. | |
+| `dtulog.c` | The session log and crash reports. New in the port. | `debug_logs.md` |
+| `dtusoak.c` | The soak test. New in the port. | `re/bugs.md` |
+
+Descent 1 files with large port changes: `physics.c` (player movement,
+`re/physics.md`), `game.c` (the frame), `inferno.c` (start and options),
+`gamesave.c` and `gamemine.c` (the level loader, `formats/lvl.md`), `bm.c`
+and `piggy.c` (tables and EGG archives), `render.c`, `lighting.c`,
+`automap.c`, `newmenu.c`. Each change has an `ASCENT:` comment.
+
+Comments with an address (0x...) name the function or data of DTUGAME.EXE
+1.3 that the code follows. The addresses are linear addresses of the image
+with object 1 at 0x10000. The marks "(code)", "(doc)" and "(guess)" say how
+the fact was found.
+
+## Corrections of the original: Dtu_fix_*
+
+The fidelity rule (see `CONTRIBUTING.md`) says that a defect of 1.3 is
+ported as a correction that a player can turn off. A correction is a global
+`int` named `Dtu_fix_<name>`:
+
+- It is defined in the file that owns the rule, next to the other
+  corrections of that file, with the value 1. Example: `int Dtu_fix_one_hit = 1;`
+  in `dtucombat.c`.
+- It is declared `extern` in the header of that file, with a comment that
+  gives the defect and the original address.
+- The code tests it where the rules differ: `if (!Dtu_fix_one_hit) { the 1.3 rule } else { the correct rule }`.
+- The init function of the file clears it when an `-orig*` option is on
+  the command line. The options are read once, with `FindArg`.
+
+The corrections are not in `ascent.cfg` and have no menu item. They are on
+in every normal run. The options give the exact 1.3 rules for a compare:
+
+| Option | Corrections that it clears | Where |
+|---|---|---|
+| `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` | `controls.c` |
+| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture` | `dtuobj.c` |
+| `-origdrow5`, `-origguildpeace` | one each: `drow5_shields`, `guild_peace` | `dtuobj.c` |
+| `-origcombat` | `one_hit`, `haste_attack`, `stoneskin_word`, `chill_touch`, `rary_manual`, `melf_acid`, `turn_undead` (`dtucombat.c`); `wizardry_ring`, `potion_frame`, `luck_coin` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
+| `-origchar` | `multiclass_thac0`, `spell_save_repair` | `dtuchar.c` |
+| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat` | `dtutrig.c` |
+| `-origui` | `automap_reveal`, `msg_scroll` | `automap.c`, `dtudisp.c` |
+| `-origsound` | `foot_pan`, `creature_steps` | `dtufoot.c` |
+| `-origmusic` | `start_music` | `dtumusic.c` |
+| `-origlight` | `light_stable` | `lighting.c` |
+
+`Dtu_fix_trap_seconds` is an exception: it is off by default and the option
+`-trapseconds` turns it on, because the state files store the trap timers
+in the unit of the original. Five corrections have no option yet:
+`escape_load_waterdeep` (`dtufe.c`), `market_charisma` and
+`market_sell_count` (`dtufe_town.c`), `script_new_char` and
+`script_abilities` (`dtuscript.c`).
+
+To add a correction:
+
+1. Verify the defect in the decompilation or the executable. Write it in
+   the document of the system in `docs/re/`, with the address.
+2. Define `int Dtu_fix_<name> = 1;` in the owner file, with the other
+   corrections of the file, and declare it in its header with a comment.
+3. Keep the 1.3 rule in the code under `if (!Dtu_fix_<name>)`.
+4. Clear it in the existing `-orig*` option of the file. Add a new option
+   only for a new area.
+5. Where 1.3 is broken or unclear, the corrected rule follows AD&D 2nd
+   Edition.
+6. Add the correction to the table above.
+
+Changes that go beyond the original are not corrections. They are the
+Improvements settings of `dtuopts.h` (`Dtu_improved_physics`,
+`Dtu_improved_jump`, `Dtu_improved_pathfinding`, the GPU and upscale
+settings, and others). They are in `ascent.cfg`, the menus change them, and
+`-noimprovements` turns them all off. To add one, add the variable to
+`dtuopts.c` and `dtuopts.h` and a line to the table `Opts[]` of
+`dtuopts.c`.
+
+## Test aids
+
+ctest runs 16 programs (`test_*.c` in the library directories). None needs
+the game files: `test_2d` skips its data checks when `ASCENT_DATA_DIR` has
+no font files. CI runs them on Windows and Linux
+(`.github/workflows/build.yml`).
+
+Tests that need the game files:
+
+| Aid | Use |
+|---|---|
+| `test_dtudata` | Checks the data layer against the game files. Build it by name. Not in ctest. |
+| `tools/uitest.py` | Interface tests: starts the game hidden at a level, drives it with `-fescript`, compares the screenshots. |
+| `tools/lvlcheck.py` | Compares the level loader (`-checklevel`) with `tools/lvl.py`. |
+| `tools/check_creature_setup.py` | Compares the creature setup by name (`-setuplog`) with the reference library of the decompilation. |
+| `tools/objcheck.py` | Checks the object records of the levels against the level tables. |
+
+Command line options for tests. An automated run (with `-hidden`, `-frames`,
+`-fescript` or `-playmovie`) has a hidden window, no sound and no message
+boxes.
+
+| Option | Use |
+|---|---|
+| `-datadir DIR` | A game data directory. Repeat it for the disc directory. A run with it uses the current directory for the settings and the logs. |
+| `-level NAME` | Start a level without the front end. |
+| `-checklevel NAME` | Load a level, print a summary, exit. |
+| `-frames N` | Leave the game after N frames. |
+| `-screenshot FILE` | Write the last frame to a PPM file. |
+| `-fixedfps N` | A fixed frame time from the first frame, so that two runs give the same moves. |
+| `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of the script code in `dtufe.c`. |
+| `-testmove ACTIONS` | Press movement keys for a time: `forward+run:2000ms,left:30,jump:1`. |
+| `-testpos X,Y,Z[,H]` | Put the player at a position at the first frame. |
+| `-testobjpos N,X,Y,Z[,H];...` | Put objects at positions at the first frame (pushed scenery tests). |
+| `-testtour [FRAMES]` | Visit the center of each segment with 4 headings (texture coverage). |
+| `-testkill N[,W]` | Every N frames the nearest active creature dies. |
+| `-testdeath N` | The player dies at frame N. |
+| `-testcrash N [KIND]` | Make a crash at frame N to test the crash report. |
+| `-statetest DOOR,SIDE,OBJ[,WARP,BACK[,DAMAGE]]` | Open a door, damage a creature, warp away and back, and print the level state. |
+| `-chartest LIST` | Character commands at frames: `str=`, `attackedby=`, `equip=`, `use=`, `xp=`, `castby=` and more (see `run_command` in `dtuchar.c`). |
+| `-autochoice N` | Choice boxes answer N. |
+| `-dlgauto LIST` | Conversations take their replies from the list. |
+| `-testspell N`, `-testslots N` | Put spell N in the book and hand; give N slots for each spell level. |
+| `-soak SEED` | The soak test: random player actions with a check of all objects after each frame. Prints `SOAK FAIL` and `SOAK CRASH` lines. With `-soakdeath`, `-soakabort`, `-soaklog`. |
+| `-loadshots`, `-movieshot` | Screenshots of the loading pictures and of movie frames. |
+| `-setuplog`, `-objlog`, `-triglog`, `-scriptlog`, `-charlog`, `-musiclog`, `-soundlog`, `-movelog`, `-statelog` | Logs of one system. |
+
+`engine/main/cc.sh` compiles single files of `engine/main` with the flags
+of a build directory.
+
+## Content packs and localization
+
+The port runs with the original files only. Optional content is made from
+the game files on the computer of the owner and downloaded by the
+installer or by `ascent-content`. No content is in the repository.
+
+1. `tools/textures_hd.py`, `tools/ui_hd.py` and `tools/movies_hd.py` make
+   the upscaled textures, interface pictures and movies in `gamedata/hd`
+   (`docs/hd_textures.md`). `tools/music_replace.py` makes replacement music.
+2. `tools/content_pack.py` builds ZIP packs (`patch13`, `textures`, `ui`,
+   `movies`, `lang_<code>`) and `manifest.txt` in `gamedata/content`
+   (`docs/install.md`, "Content packs").
+3. The owner copies the packs to the content server
+   (`installer/server/worker.js`, `installer/content.ini`).
+4. The setup program (`installer/build.sh`, `installer/ascent.iss`) and
+   `ascent-content` download and verify the packs.
+
+Localization (`docs/formats/lang.md`):
+
+1. `tools/lang_extract.py extract` reads the English text of the game files
+   and of the code and writes `en.catalog`. The strings of the code are the
+   arguments of `LT`, `LN` and a few message functions in `MAIN_SOURCES`.
+2. `split` cuts the catalog into parts for translators. `merge` joins the
+   translations into `<code>.catalog`. `check` validates it.
+3. The translation of the text of the code is in the repository
+   (`engine/lang/<code>_port.catalog`). `cmake/embed_text.cmake` puts it into
+   the program as `Lang_port_<code>`.
+4. The translation of the game text is derived from the game files, so it
+   is not in the repository. The pack `lang_<code>` installs it with the
+   subtitles and the pictures of `tools/ui_lang.py`.
+5. `dtulang.c` loads the catalog of the language of the setting
+   `Language=` and looks up each text by id or by its English text.
+
+## The decompilation project
+
+DTU-Decomp is a separate repository: a Ghidra project of DTUGAME.EXE 1.3,
+the decompiled C of each function, labels, and checked C reconstructions of
+some systems (`recovered/`), built as a reference library with differential
+tests against the original x86 code. It also has a cross reference table
+from the port functions to the original functions.
+
+ASCENT uses it as evidence: a rule in the port names the address of the
+original function, and the function can be read in the decompilation.
+`tools/check_creature_setup.py` runs the reference library to compare the
+port with the original routine. The port does not include code or data
+from the decompilation project.
