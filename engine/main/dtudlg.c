@@ -86,6 +86,7 @@ static int Area_x0, Area_x1, Area_y0, Area_y1, Area_ry;	// the window at the las
 static int Ptr_x, Ptr_y;				// the cursor position at the last poll
 static int Ptr_forced = 0;				// the immersive mode was turned off for the window
 static int Ptr_idle = 0;				// the frames with the window not waiting
+static int Ptr_center = 0;				// ASCENT: center the cursor at the next poll (0xB2433)
 
 // -dlgauto
 static char Auto_list[512];
@@ -277,6 +278,7 @@ void dtu_dlg_start_choice(void)
 	mouse_button_down_count(0);
 	plat_mouse_wheel();
 	mouse_get_pos(&Ptr_x, &Ptr_y);
+	Ptr_center = 1;
 }
 
 int dtu_dlg_is_waiting(void)
@@ -310,6 +312,16 @@ static int mouse_poll(void)
 
 	if (Dtu_fe_original_input || Dtu_immersive)
 		return -1;
+	// ASCENT: the first poll of a choice puts the cursor in the middle of
+	// the window (0xB2433: x + width / 2, y + height / 2, 0xE89A8). The
+	// poller 0xB249C then keeps the cursor in the window; the port does not
+	// hold the cursor of the desktop.
+	if (Ptr_center && Area_x1 > Area_x0) {
+		Ptr_center = 0;
+		Ptr_x = (Area_x0 + Area_x1) / 2;
+		Ptr_y = (Area_y0 + Area_y1) / 2;
+		mouse_set_pos(Ptr_x, Ptr_y);
+	}
 	mouse_get_pos(&x, &y);
 	moved = x != Ptr_x || y != Ptr_y;
 	Ptr_x = x;

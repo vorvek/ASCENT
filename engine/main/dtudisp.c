@@ -443,6 +443,56 @@ static void area_icon(int x, int y, int icon)
 	blit(Icons_bm, (icon & 7) * size, (icon / 8) * size, size, size, x, y, 1);
 }
 
+// ASCENT: 0x9C6C4: icon 199 of the sheet over an area, masked (the mark of
+// an entry that the character cannot use)
+static void area_icon_unusable(int x, int y)
+{
+	int size = SC(16);
+
+	if (Icons_bm)
+		blit(Icons_bm, (199 & 7) * size, (199 / 8) * size, size, size, x, y, 1);
+}
+
+// ASCENT: method +0x4C of an area (0x9C537): each pixel becomes gray,
+// (r + g + b) / 3, and then the nearest color of the palette (the mark of
+// an entry that is in use)
+static void area_gray(int x, int y, int w, int h)
+{
+	grs_bitmap *bm = &grd_curcanv->cv_bitmap;
+	ubyte map[256];
+	int i, j;
+
+	for (i = 0; i < 256; i++) {
+		int g = (gr_palette[i * 3] + gr_palette[i * 3 + 1] + gr_palette[i * 3 + 2]) / 3;
+		map[i] = (ubyte) gr_find_closest_color(g, g, g);
+	}
+	if (x < 0 || y < 0 || x + w > bm->bm_w || y + h > bm->bm_h)
+		return;
+	for (j = 0; j < h; j++) {
+		ubyte *p = bm->bm_data + (y + j) * bm->bm_rowsize + x;
+		for (i = 0; i < w; i++)
+			p[i] = map[p[i]];
+	}
+}
+
+// ASCENT: 0x323F3: the entry n of the list (0 items, 1 mage spells, 2
+// cleric spells) is in use: armor and wearable misc items in a slot of
+// the paper doll (0x3223E), weapons, other misc items and spells in a hot
+// key box (0x323B0)
+static int entry_in_use(int list, int n)
+{
+	int i;
+
+	for (i = 0; i < DTU_N_HOT_KEYS; i++)
+		if (Dtu_char.hot_key[i].list == list && Dtu_char.hot_key[i].n == n)
+			return 1;
+	if (list == 0)
+		for (i = 0; i < DTU_N_SLOTS; i++)
+			if (Dtu_char.slot[i].list == 0 && Dtu_char.slot[i].n == n)
+				return 1;
+	return 0;
+}
+
 // The border function of an area (0x9C890)
 static void area_border(int x, int y, int w, int h, int color, int t)
 {
@@ -701,6 +751,9 @@ static void msg_insert(char *line, int color)
 // dtu_display_add_trigger_message().
 static int Msg_next_color = -1;
 
+static char Desc_msg[101];				// ASCENT: the last message in the modes 3 and 6 (0x1BD69C)
+static int Desc_msg_on;
+
 void dtu_display_add_message(char *text)
 {
 	char line[MSG_LENGTH];
@@ -715,6 +768,13 @@ void dtu_display_add_message(char *text)
 		snprintf(resolved, sizeof(resolved), "%s", text);
 		dtu_lang_sex_text(resolved);
 		p = text = resolved;
+	}
+	// ASCENT: 0x34A83 to 0x34AD2: in the modes 3 and 6 the first 100
+	// characters of the message also go to the description bar (0x319FF),
+	// which the message box is not on
+	if (Dtu_interface_mode == DTU_IM_INVENTORY || Dtu_interface_mode == DTU_IM_HOTKEYS) {
+		snprintf(Desc_msg, sizeof(Desc_msg), "%s", text);
+		Desc_msg_on = 1;
 	}
 	// The color of a message is the first byte of the line in the original.
 	// The callers were not traced: gray is a guess.
@@ -1210,7 +1270,7 @@ static int Inv_first = 0;				// the first entry that is shown (0x13AD9F)
 static int Inv_sel = 0;					// ASCENT: the entry that the keys act on
 // Inv_held (above): the entry that the cursor holds (0x13ADAF, 0x1BD694), or -1
 static int Inv_known = 0;
-static char Desc_text[80];				// the text of the description bar (area 0x3BC524)
+static char Desc_text[101];				// the text of the description bar (area 0x3BC524)
 
 static short Inv_lo_y[5] = { 2, 31, 61, 90, 119 };
 
@@ -1338,6 +1398,13 @@ static void draw_inventory(void)
 				continue;
 			}
 			area_icon(x, y, spell == Inv_held_spell ? 0 : dtu_spell_icon(spell));
+			// ASCENT: 0x32899 to 0x328CD: the marks of the list
+			if (spell != Inv_held_spell) {
+				if (!dtu_spell_usable(spell))
+					area_icon_unusable(x, y);
+				else if (entry_in_use(Inv_browse, n))
+					area_gray(x, y, size, size);
+			}
 			spell_level_text(spell, text);
 			area_text(x, qy, size, SC(6), text, rgb6(32, 0, 0));
 			if (n == Spell_sel[Inv_browse - 1])
@@ -1354,7 +1421,27 @@ static void draw_inventory(void)
 				continue;
 			}
 			// The entry that the cursor holds is drawn at the cursor.
-			area_icon(x, y, n == Inv_held ? 0 : entry_icon(n));
+			// ASCENT: 0x32822 to 0x32865: a spell in the item list has icon
+			// 142 (a scroll), the Scroll (misc 102) with a count of 0 icon
+			// 141. Then the marks (0x32899 to 0x328CD): icon 199 over an
+			// entry that the character cannot use (0x3533C, 0x9C6C4), else
+			// gray for an entry in use (0x323F3, method +0x4C).
+			if (n == Inv_held)
+				area_icon(x, y, 0);
+			else {
+				dtu_inv_item *e = &Dtu_inventory[n];
+
+				if (e->type == OBJ_SPELL)
+					area_icon(x, y, 142);
+				else if (e->type == OBJ_MISC && e->id == 102 && e->count == 0)
+					area_icon(x, y, 141);
+				else
+					area_icon(x, y, entry_icon(n));
+				if (!dtu_char_item_usable(n))
+					area_icon_unusable(x, y);
+				else if (entry_in_use(0, n))
+					area_gray(x, y, size, size);
+			}
 			item_count_text(n, text);
 			area_text(x, qy, size, SC(6), text, rgb6(32, 0, 0));
 			// ASCENT: the mark of the entry that the keys act on. The original
@@ -1378,6 +1465,8 @@ static void inv_describe(int mx, int my)
 	int cell, slot, size = SC(16), x, y, qy, i;
 
 	Desc_text[0] = 0;
+	if (Dtu_interface_mode != DTU_IM_INVENTORY && Dtu_interface_mode != DTU_IM_HOTKEYS)
+		Desc_msg_on = 0;			// ASCENT: the bar is drawn again in another mode
 	if (hot_keys_visible())
 		for (i = 0; i < DTU_N_HOT_KEYS; i++) {
 			hot_key_pos(i, &x, &y, &qy);
@@ -1388,8 +1477,13 @@ static void inv_describe(int mx, int my)
 					strncpy(Desc_text, Dtu_inventory[dtu_char_hot_key_item(i)].name, sizeof(Desc_text) - 1);
 			}
 		}
-	if (!inventory_mode())
+	if (!inventory_mode()) {
+		if (Desc_text[0])
+			Desc_msg_on = 0;
+		else if (Desc_msg_on && Dtu_interface_mode == DTU_IM_HOTKEYS)
+			snprintf(Desc_text, sizeof(Desc_text), "%s", Desc_msg);
 		return;
+	}
 	for (cell = 0; cell < 10; cell++) {
 		inv_cell_pos(cell, &x, &y, &qy);
 		if (!(mx >= x && my >= y && mx < x + size && my < y + size))
@@ -1411,6 +1505,14 @@ static void inv_describe(int mx, int my)
 			else
 				strncpy(Desc_text, gtext(Slot_text[slot], ""), sizeof(Desc_text) - 1);
 		}
+	}
+	// ASCENT: a message of the message box stays in the bar until the
+	// cursor shows another text there (0x34A83 to 0x34AD2)
+	if (Desc_text[0])
+		Desc_msg_on = 0;
+	else if (Desc_msg_on) {
+		snprintf(Desc_text, sizeof(Desc_text), "%s", Desc_msg);
+		return;
 	}
 	// ASCENT: with the cursor on no item the bar shows the entry of the keys
 	if (!Desc_text[0] && Inv_held >= 0 && Inv_held < Dtu_n_inventory)
@@ -1702,13 +1804,15 @@ static void draw_stats(void)
 	} else
 		strcpy(text, gtext(649 + ((pa->race < 0 || pa->race > 4) ? 5 : pa->race), "Human"));
 	area_text_left(x, Dtu_hires ? 147 : 72, w, h, text, gray);
+	// ASCENT: the class lines have the color of their areas (63,48,32),
+	// set at 0x99F25 (areas 0x3BC1E8, 0x3BC244)
 	if (pa->class1 >= 0 && pa->class1 <= 3) {
 		sprintf(text, Dtu_hires ? LT("Lvl %d %s") : " %d %s", pa->class1_level + 1, gtext(class_text[pa->class1], class_def[pa->class1]));
-		area_text_left(x, Dtu_hires ? 163 : 81, w, h, text, gray);
+		area_text_left(x, Dtu_hires ? 163 : 81, w, h, text, rgb6(63, 48, 32));
 	}
 	if (pa->class2 >= 0 && pa->class2 <= 3) {
 		sprintf(text, Dtu_hires ? LT("Lvl %d %s") : " %d %s", pa->class2_level + 1, gtext(class_text[pa->class2], class_def[pa->class2]));
-		area_text_left(x, Dtu_hires ? 179 : 90, w, h, text, gray);
+		area_text_left(x, Dtu_hires ? 179 : 90, w, h, text, rgb6(63, 48, 32));
 	}
 
 	// the six abilities (0x32E3B to 0x330C3)
@@ -1722,21 +1826,65 @@ static void draw_stats(void)
 		area_text_left(x + (Dtu_hires ? 27 : 19), y, Dtu_hires ? 14 : 9, h, text, white);
 	}
 
-	// the thief skills (0x330C3 with 0x32172). The colors are a guess.
+	// the thief skills (0x330C3 with 0x32172): the color of the areas
+	// (63,48,32, 0x9A0B0); (24,24,24) when the character is no thief
+	// (0x35A4D) and the value is 0
 	skill[0] = pa->hide_in_shadows; skill[1] = pa->move_silently; skill[2] = pa->open_locks;
 	skill[3] = pa->find_traps; skill[4] = pa->climb_walls;
 	h = Dtu_hires ? 20 : 11;
 	for (i = 0; i < 5; i++) {
 		int thief = (pa->class1 == DTU_CLASS_THIEF || pa->class2 == DTU_CLASS_THIEF);
+		int c = (!thief && skill[i] == 0) ? rgb6(24, 24, 24) : rgb6(63, 48, 32);
 
 		y = Dtu_hires ? 62 + 20 * i : 30 + 11 * i;
 		area_text_left(Dtu_hires ? 218 : 108, y, Dtu_hires ? 120 : 75, h,
-			(i == 3 && !Dtu_hires) ? LT("Find Traps") : gtext(678 + i, skill_def[i]), thief ? white : gray);
+			(i == 3 && !Dtu_hires) ? LT("Find Traps") : gtext(678 + i, skill_def[i]), c);
 		sprintf(text, "%d%c", skill[i], '%');
-		area_text_left(Dtu_hires ? 338 : 183, y, Dtu_hires ? 50 : 24, h, text, thief ? white : gray);
+		area_text_left(Dtu_hires ? 338 : 183, y, Dtu_hires ? 50 : 24, h, text, c);
 	}
-	// The spell tables of the screen (areas 0x3BA134 to 0x3BA584) are not in
-	// the port.
+
+	// ASCENT: the spell tables (0x331AC to 0x334A6, areas made at 0x9A312
+	// from the tables 0x144CA8 to 0x144D40): the headers "Mage Spells" and
+	// "Cleric Spells" (TEX 765, 766), and for the spell levels 1 to 4 the
+	// label "Level n" (TEX 767) and the slots that are left. The color of
+	// the areas is (63,48,32). A label is (24,24,24) without the class or
+	// with no slot of the level (P+0x23, P+0x35); the count is "n/a" in
+	// (24,24,24) without the class, "none" in (32,32,32) with no slot left
+	// (P+0x2C, P+0x3C), else the number.
+	{
+		static short hdr_lo[2][4] = { { 19, 139, 56, 10 }, { 108, 139, 56, 10 } };
+		static short hdr_hi[2][4] = { { 44, 283, 96, 21 }, { 230, 283, 96, 21 } };
+		static short lbl_x[2][2] = { { 19, 108 }, { 42, 228 } };		// [hires][mage, cleric]
+		static short cnt_x[2][2] = { { 76, 165 }, { 142, 328 } };
+		int hi = Dtu_hires ? 1 : 0, k, base = rgb6(63, 48, 32), dim = rgb6(24, 24, 24);
+		int has[2];
+
+		has[0] = (pa->class1 == DTU_CLASS_MAGE || pa->class2 == DTU_CLASS_MAGE);		// 0x35A2B
+		has[1] = (pa->class1 == DTU_CLASS_CLERIC || pa->class2 == DTU_CLASS_CLERIC);	// 0x35A09
+		for (k = 0; k < 2; k++) {
+			short *r = hi ? hdr_hi[k] : hdr_lo[k];
+			area_text_left(r[0], r[1], r[2], r[3], gtext(765 + k, k ? "Cleric Spells" : "Mage Spells"), base);
+		}
+		for (i = 0; i < 4; i++) {
+			int ly = hi ? 305 + 20 * i : 150 + 11 * i, lw = hi ? 99 : 56, cw = hi ? 48 : 24, lh = hi ? 20 : 11;
+
+			for (k = 0; k < 2; k++) {
+				int left = Dtu_spell_slots_left[k][i];
+
+				sprintf(text, "%s %d", gtext(767, "Level"), i + 1);
+				area_text_left(lbl_x[hi][k], ly, lw, lh, text,
+					(has[k] && Dtu_spell_slots_max[k][i]) ? base : dim);
+				if (!has[k])
+					area_text(cnt_x[hi][k], ly, cw, lh, "n/a", dim);
+				else if (left == 0)
+					area_text(cnt_x[hi][k], ly, cw, lh, "none", rgb6(32, 32, 32));
+				else {
+					sprintf(text, "%d", left);
+					area_text(cnt_x[hi][k], ly, cw, lh, text, base);
+				}
+			}
+		}
+	}
 }
 
 // The character information of the screens (0x99449): name, hit points,
@@ -2240,12 +2388,6 @@ static void do_input(int mx, int my)
 		}
 		if (key_acts(KEY_U) && Inv_sel < Dtu_n_inventory) dtu_char_use(Inv_sel);
 		if (key_acts(KEY_BACKSP) && Inv_sel < Dtu_n_inventory) dtu_char_drop(Inv_sel);
-	} else if (Dtu_interface_mode == DTU_IM_STATS) {
-		// ASCENT: the spell list of the statistics screen: comma and period
-		// choose a spell, Enter takes it in the hand (dtuspell.c)
-		int prev = key_acts(KEY_COMMA), next = key_acts(KEY_PERIOD), take = key_acts(KEY_ENTER);
-		dtu_spell_screen_keys(prev, next, take);
-		key_acts(KEY_U); key_acts(KEY_BACKSP);
 	} else {
 		// keep the key state current, so that a held key does not act when
 		// the screen opens
@@ -2377,7 +2519,8 @@ void dtu_display_frame(void)
 			}
 			else if (Dtu_interface_mode == DTU_IM_STATS) {
 				draw_stats();
-				dtu_spell_screen_draw(Dtu_hires);	// ASCENT: the spell books (dtuspell.c)
+				// ASCENT: the list of the spell books that the port drew here
+				// before the spell tables of 0x331AC is gone
 			} else if (Dtu_interface_mode == DTU_IM_MAP)
 				draw_map();				// 0x414FD
 		}
