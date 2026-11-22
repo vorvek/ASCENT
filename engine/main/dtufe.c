@@ -1955,13 +1955,15 @@ void dtufe_improvements_menu(void)
 static char *Gfx_onoff[] = { LN("Off"), LN("On") };
 static char *Gfx_renderer[] = { LN("Software"), LN("GPU") };
 static char *Gfx_shader[] = { LN("Off"), LN("Subtle"), LN("VGA") };
+// ASCENT: the internal resolution, from x1/2 (0, dtuopts.h) to x6
+static char *Gfx_scale[] = { "x1/2", "x1", "x2", "x3", "x4", "x5", "x6" };
 
 static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[] = {
 	{ LN("Renderer"),              &Dtu_gpu_renderer,       0, 1, Gfx_renderer },
 	{ LN("Animation interpolation"), &Dtu_anim_interp,      0, 1, Gfx_onoff },	// both renderers
 	{ LN("4:3 screen"),            &Dtu_fix_lowres_aspect,  0, 1, Gfx_onoff },	// both renderers (dtuopts.h)
 	{ LN("Improved occlusion"),    &Dtu_improved_occlusion, 0, 1, Gfx_onoff },
-	{ LN("Internal resolution"),   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, NULL },
+	{ LN("Internal resolution"),   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, Gfx_scale },
 	{ LN("Upscaled textures"),     &Dtu_upscaled_textures,  0, 1, Gfx_onoff },
 	{ LN("Upscaled movies"),       &Dtu_upscaled_movies,    0, 1, Gfx_onoff },
 	{ LN("Anisotropic filtering"), &Dtu_anisotropic,        0, 1, Gfx_onoff },

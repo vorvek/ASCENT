@@ -35,9 +35,12 @@ extern int Dtu_improved_jump;
 extern int Dtu_improved_pathfinding;
 
 // The 3D view is rendered at this multiple of the original view size,
-// from 1 to 6. The interface is not scaled by it. Default 3.
+// from 1 to 6. The interface is not scaled by it. Default 3. ASCENT: 0 is
+// "x1/2": half the shown size in each direction (320x240 for the full
+// screen view of the 640x480 interface), as the 320x200 game drew it.
+// The GPU renderer only; the software renderer draws at x1.
 extern int Dtu_render_scale;
-#define DTU_RENDER_SCALE_MIN	1
+#define DTU_RENDER_SCALE_MIN	0
 #define DTU_RENDER_SCALE_MAX	6
 
 // Depth test for each pixel on the GPU: a part of a creature behind a
@@ -100,10 +103,13 @@ extern int Dtu_shader;
 // 320x200 frame on a 4:3 monitor, so each pixel was 1.2 times taller than
 // wide; the 3D view (aspect 1.2, 0x41193) is made for that. The interface
 // pictures are those of 640x480 at half size, so DOS showed them 1.2 times
-// taller than in high resolution. 1 (default): the window shows the 320x200
-// frame at 4:3, as DOS did (plat_bind_vga_aspect), in both renderers. 0:
-// square pixels (16:10), the form of the port before. "4:3 screen" in the Graphics menu, LowresAspect
-// in ascent.cfg; the option -squarepixels sets 0 for one run.
+// taller than in high resolution. 0 (default): square pixels (16:10), so
+// the pictures have the shape of the high resolution; the 3D view then
+// uses the aspect 1.0 (Dtu_fix_view_aspect, dtudisp.c). 1: the window shows
+// the 320x200 frame at 4:3, as DOS did (plat_bind_vga_aspect), in both
+// renderers, with the aspect 1.2. "4:3 screen" in the Graphics menu,
+// Lowres43 in ascent.cfg; the options -squarepixels and -screen43 set 0
+// and 1 for one run.
 extern int Dtu_fix_lowres_aspect;
 
 // Streaming safe music: the file <hd>/music/NAME.ogg plays in place of

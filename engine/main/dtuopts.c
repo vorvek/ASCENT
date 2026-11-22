@@ -37,7 +37,7 @@ int Dtu_safe_music = 0;
 int Dtu_anim_interp = 1;
 int Dtu_improved_infravision = 1;
 int Dtu_target_hint = 1;
-int Dtu_fix_lowres_aspect = 1;		// ASCENT: the 320x200 frame at 4:3 (dtuopts.h)
+int Dtu_fix_lowres_aspect = 0;		// ASCENT: 1: the 320x200 frame at 4:3 (dtuopts.h)
 
 #define DTU_OPTS_FILE	"ascent.cfg"
 #define DTU_DEFAULTS_FILE	"default.cfg"	// ASCENT: in the installation folder
@@ -75,7 +75,9 @@ static dtu_opt Opts[] = {
 	{ "ImprovedInfravision", &Dtu_improved_infravision, 0, 1 },
 	{ "TargetHint",          &Dtu_target_hint,          0, 1 },
 	{ "RulebookItems",       &Dtu_rulebook_items,       0, 1 },		// dtuitemfix.h
-	{ "LowresAspect",        &Dtu_fix_lowres_aspect,    0, 1 },
+	// ASCENT: a new key: LowresAspect=1 (the default of one day) is ignored,
+	// so a file of that time gets square pixels
+	{ "Lowres43",            &Dtu_fix_lowres_aspect,    0, 1 },
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
@@ -139,7 +141,10 @@ void dtu_opts_load(void)
 		Dtu_gpu_renderer = Arg_gpu_renderer = 0;
 	}
 	if ((t = FindArg("-renderscale")) != 0 && t + 1 < Num_args) {
-		int v = atoi(Args[t + 1]);
+		const char *a = Args[t + 1];
+		// ASCENT: 0.5, 1/2 or half: the step x1/2 (0)
+		int v = !strcmp(a, "0.5") || !strcmp(a, "1/2") || !strcmp(a, "half") ? 0
+			: strspn(a, "0123456789") == strlen(a) && a[0] ? atoi(a) : -1;
 		if (v >= DTU_RENDER_SCALE_MIN && v <= DTU_RENDER_SCALE_MAX) {
 			File_render_scale = Dtu_render_scale;
 			Dtu_render_scale = Arg_render_scale = v;
@@ -166,11 +171,11 @@ void dtu_opts_load(void)
 	}
 	if (FindArg("-origitems"))
 		Dtu_fix_item_names = 0;
-	// ASCENT: -squarepixels shows the 320x200 frame with square pixels for
-	// one run (Dtu_fix_lowres_aspect)
-	if (FindArg("-squarepixels")) {
+	// ASCENT: -squarepixels shows the 320x200 frame with square pixels and
+	// -screen43 at 4:3 for one run (Dtu_fix_lowres_aspect)
+	if (FindArg("-squarepixels") || FindArg("-screen43")) {
 		File_lowres_aspect = Dtu_fix_lowres_aspect;
-		Dtu_fix_lowres_aspect = Arg_lowres_aspect = 0;
+		Dtu_fix_lowres_aspect = Arg_lowres_aspect = !FindArg("-squarepixels");
 	}
 	if (FindArg("-notargethint"))		// a comparison with the original cursor
 		Dtu_target_hint = 0;

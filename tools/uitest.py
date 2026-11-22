@@ -249,11 +249,16 @@ VIEW_SIZES = ["gamekeys", "wait 30", "viewstate", "key =", "wait 10", "viewstate
 
 def test_view_aspect(t):
     """Each screen size (main, = and F3 full screen, the inventory) shows
-    the same shapes: a square thing is square on a 4:3 screen, and the
-    angle of view in y is the same (0x41193, g3_start_frame 0xD93E8). Also
-    with the low resolution and the software renderer. -origui: the 2.4
-    aspect of the executable in high resolution (Dtu_fix_hires_aspect)."""
-    for extra, want in (([], 1.0), (["-software"], 1.0), (["-lowres"], 1.0), (["-origui"], 1.2)):
+    the same shapes: a square thing is square with the pixel shape that the
+    window shows, and the angle of view in y is the same (0x41193,
+    g3_start_frame 0xD93E8). Also with the low resolution (square pixels
+    and -screen43) and the software renderer. -origui: the aspects of the
+    executable (2.4 in high resolution, 1.2 in low resolution), so a square
+    thing is 1.2 times too wide except on the 4:3 screen of the low
+    resolution (Dtu_fix_view_aspect)."""
+    for extra, want in (([], 1.0), (["-software"], 1.0), (["-lowres"], 1.0), (["-lowres", "-software"], 1.0),
+                        (["-lowres", "-screen43"], 1.0), (["-origui"], 1.2), (["-lowres", "-origui"], 1.2),
+                        (["-lowres", "-screen43", "-origui"], 1.0)):
         t.run("view_aspect", VIEW_SIZES, extra=extra)
         v = view_states(t)
         assert len(v) == 4, "%s: %d view states" % (extra, len(v))
@@ -265,6 +270,75 @@ def test_view_aspect(t):
         # g3_start_frame): its angle in x is the fixed one then
         for s in v[:3]:
             assert s["tany"] == v[0]["tany"], "%s: the angle in y changed in mode %s" % (extra, s["mode"])
+
+
+def test_view_screen_scale(t):
+    """The horizontal and the vertical scale of the 3D view agree in the
+    window: the window pixels per unit of the tangent of the angle of view
+    (the view rectangle of the frame times the window pixels of a frame
+    pixel, presentstate, over the tangent of the half angle, viewstate).
+    In low and high resolution, with "4:3 screen" off and on
+    (Dtu_fix_view_aspect, Dtu_fix_lowres_aspect)."""
+    lines = ["gamekeys", "wait 30", "viewstate", "presentstate", "key =", "wait 10", "viewstate", "presentstate",
+             "key -", "wait 5"]
+    for extra in ([], ["-screen43"], ["-lowres"], ["-lowres", "-screen43"]):
+        t.run("view_screen_scale", lines, extra=extra, env={"ASCENT_WINDOW_SIZE": "1280x720"})
+        v = view_states(t)
+        p = present_states(t)
+        assert len(v) == 2 and len(p) == 2, "%s: %d view and %d present states" % (extra, len(v), len(p))
+        for s, (ww, wh, fw, fh, rx, ry, rw, rh) in zip(v, p):
+            dw, dh = (int(x) for x in s["dest"].split("x"))
+            sx = dw * rw / fw / float(s["tanx"])
+            sy = dh * rh / fh / float(s["tany"])
+            print("    %s mode %s: x %.1f, y %.1f window pixels (ratio %.4f)" % (extra, s["mode"], sx, sy, sx / sy))
+            assert abs(sx / sy - 1) < 0.01, "%s mode %s: the scales %.1f and %.1f differ" % (extra, s["mode"], sx, sy)
+
+
+def pair_equal(img, box, axis, offset):
+    """The fraction of the pixel pairs (p, p + 1) along axis (0: x, 1: y)
+    with p - box start = offset mod 2 that are equal, in box (x, y, w, h)."""
+    iw, ih, px = img
+    x0, y0, w, h = box
+    same = n = 0
+    for y in range(y0, y0 + h - 1):
+        for x in range(x0, x0 + w - 1):
+            if (x - x0 if axis == 0 else y - y0) % 2 != offset:
+                continue
+            a = (y * iw + x) * 3
+            b = a + 3 if axis == 0 else a + iw * 3
+            n += 1
+            same += max(abs(px[a + c] - px[b + c]) for c in range(3)) <= 8
+    return same / max(1, n)
+
+
+def test_render_scale_half(t):
+    """The internal resolution x1/2 (Dtu_render_scale 0, -renderscale half)
+    renders the full screen view of the 640x480 interface at 320x239: with
+    the nearest scale filter each view pixel is a block of 2 by 2 frame
+    pixels. At x1 the view is 640x239 (each line shown twice): blocks of 1
+    by 2. The interface is not scaled. -renderscale 0.5 is the same step."""
+    lines = ["gamekeys", "wait 30", "key =", "wait 10", "shot full", "key -", "wait 5"]
+    env = {"ASCENT_SCALE_FILTER": "nearest", "ASCENT_SHOT_SCALE": "1"}
+    box = (40, 40, 560, 380)        # inside the full screen view (0, 0) 640x478
+    got = {}
+    for arg in ("half", "0.5", "1"):
+        s, d = t.run("render_scale_half", lines, extra=["-renderscale", arg], env=env)
+        img = s["full"]
+        assert img[:2] == (640, 480), "%s: the shot is %dx%d" % (arg, img[0], img[1])
+        got[arg] = [pair_equal(img, box, axis, o) for axis in (0, 1) for o in (0, 1)]
+        print("    -renderscale %s: equal pairs x %.3f / %.3f, y %.3f / %.3f" % ((arg,) + tuple(got[arg])))
+        if arg != "1":
+            from_shot = os.path.join(d, "full.ppm")
+            print("    screenshot %s" % from_shot)
+    for arg in ("half", "0.5"):
+        x0, x1, y0, y1 = got[arg]
+        # one phase of each axis is inside a block (all equal), the other
+        # is the edge between two blocks
+        assert max(x0, x1) > 0.99 and min(x0, x1) < 0.9, "%s: no blocks of 2 in x" % arg
+        assert max(y0, y1) > 0.99 and min(y0, y1) < 0.9, "%s: no blocks of 2 in y" % arg
+    x0, x1, y0, y1 = got["1"]
+    assert max(x0, x1) < 0.9, "x1: blocks in x"
+    assert max(y0, y1) > 0.99, "x1: the lines are not doubled"
 
 
 def present_states(t):
@@ -305,15 +379,19 @@ PRESENT = ["gamekeys", "wait 30", "presentstate", "shot main", "key esc", "wait 
 
 
 def test_present_aspect(t):
-    """The 320x200 frame of the low resolution fills a 4:3 rectangle of the
-    window, as on the 4:3 monitor of DOS (Dtu_fix_lowres_aspect), with black
+    """The 320x200 frame of the low resolution has square pixels (16:10) by
+    default. With -screen43 ("4:3 screen", Dtu_fix_lowres_aspect) it fills
+    a 4:3 rectangle of the window, as on the 4:3 monitor of DOS, with black
     bars at the sides of a 16:9 or 16:10 window, in both renderers, in the
-    game and in a menu. The 640x480 frame of the high resolution is 4:3 too.
-    -squarepixels gives square pixels (16:10). The screenshot of
-    ASCENT_SHOT_SIZE is the window as it shows the frame."""
-    cases = [(["-lowres"], "1280x720", 4 / 3), (["-lowres"], "960x720", 4 / 3), (["-lowres"], "1280x800", 4 / 3),
-             (["-lowres", "-software"], "1280x720", 4 / 3), ([], "1280x720", 4 / 3),
-             (["-lowres", "-squarepixels"], "1280x720", 1.6), (["-lowres", "ASCENT_NO_GL"], "1280x720", 4 / 3)]
+    game and in a menu. The 640x480 frame of the high resolution is 4:3 in
+    both forms. The screenshot of ASCENT_SHOT_SIZE is the window as it shows
+    the frame."""
+    q = ["-lowres", "-screen43"]
+    cases = [(q, "1280x720", 4 / 3), (q, "960x720", 4 / 3), (q, "1280x800", 4 / 3),
+             (q + ["-software"], "1280x720", 4 / 3), ([], "1280x720", 4 / 3), (["-screen43"], "1280x720", 4 / 3),
+             (["-lowres"], "1280x720", 1.6), (["-lowres", "-squarepixels"], "1280x720", 1.6),
+             (["-lowres", "-software"], "1280x720", 1.6), (q + ["ASCENT_NO_GL"], "1280x720", 4 / 3),
+             (["-lowres", "ASCENT_NO_GL"], "1280x720", 1.6)]
     for extra, size, want in cases:
         env = {"ASCENT_WINDOW_SIZE": size, "ASCENT_SHOT_SIZE": size}
         nogl = "ASCENT_NO_GL" in extra
@@ -341,13 +419,15 @@ def test_present_aspect(t):
 
 def test_window_mouse_16_9(t):
     """A mouse event of the system in a 16:9 window lands on the right
-    pixel of the 320x200 frame shown at 4:3 (the bars are 160 pixels wide in
-    a 1280x720 window, a frame pixel is 3 by 3.6 window pixels), in both
-    renderers and with -squarepixels (1152x720 at x 64, 3.6 by 3.6). A click
+    pixel of the 320x200 frame shown at 4:3 with -screen43 (the bars are 160
+    pixels wide in a 1280x720 window, a frame pixel is 3 by 3.6 window
+    pixels), in both renderers, and with square pixels, the default
+    (1152x720 at x 64, 3.6 by 3.6). A click
     on the item Graphics of the ESC menu opens the Graphics menu."""
     points = [(16, 20), (160, 100), (300, 180)]
-    for extra, x0, kx, nogl in ((["-lowres"], 160, 3.0, 0), (["-lowres", "-software"], 160, 3.0, 0),
-                                (["-lowres"], 160, 3.0, 1), (["-lowres", "-squarepixels"], 64, 3.6, 0)):
+    q = ["-lowres", "-screen43"]
+    for extra, x0, kx, nogl in ((q, 160, 3.0, 0), (q + ["-software"], 160, 3.0, 0),
+                                (q, 160, 3.0, 1), (["-lowres"], 64, 3.6, 0), (["-lowres"], 64, 3.6, 1)):
         lines = ["gamekeys", "wait 30", "key esc", "wait 10"]
         for fx, fy in points:
             lines += ["winmove %.1f %.1f" % (x0 + (fx + 0.5) * kx, (fy + 0.5) * 3.6), "wait 3", "mousestate"]

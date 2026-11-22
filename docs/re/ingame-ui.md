@@ -107,7 +107,7 @@ wide in low resolution: there the angle in x is the fixed one.
 Defect: 2.4 is the pixel of 320x200 on a 4:3 monitor (1.2) times the two
 screen lines of a rendered line. The pixels of 640x480 are square, so the
 right value is 2.0. In high resolution a square thing is 1.2 times too wide,
-in each screen size. The port uses 2.0 (`Dtu_fix_hires_aspect`, `-origui`
+in each screen size. The port uses 2.0 (`Dtu_fix_view_aspect`, `-origui`
 gives 2.4).
 
 Measured in the port (script command `viewstate`, `test_view_aspect`; the
@@ -120,14 +120,17 @@ tangents of the half angles in x and y):
 | 3 inventory | 176x156, 0.635 / 0.5625 | 88x78, 0.5625 / 0.598 |
 
 With `-origui` the high resolution has 0.850 / 0.5625 in mode 0 and 0.628 /
-0.5625 in mode 7.
+0.5625 in mode 7. The low resolution column is the 4:3 screen (aspect 1.2);
+with square pixels (the default, aspect 1.0, see below) the angle in x is
+that of the high resolution (1.020 in mode 0).
 
 The shape column of `viewstate` assumes a 4:3 screen. That is right for the
 DOS game: each VGA mode filled the 4:3 monitor, so a pixel of 320x200 was
 1.2 times taller than wide, and the aspect 1.2 of 0x41193 is made for that.
-The port showed the 320x200 frame with square pixels (16:10) before, so in
-low resolution the 3D scene was 1.2 times too wide on its screen (measured
-with the script command `presentstate`: 1152x720 in a 1280x720 window).
+The port first showed the 320x200 frame with square pixels (16:10) and the
+aspect 1.2, so in low resolution the 3D scene was 1.2 times too wide on its
+screen (measured with the script command `presentstate`: 1152x720 in a
+1280x720 window).
 
 The interface pictures of the low resolution are not made for that pixel.
 They are the pictures of the high resolution at half size in x and in y.
@@ -136,11 +139,12 @@ of the 640x480 frame (picture 64) and 156x159 pixels of the 320x200 frame
 (picture 58); the portrait is about 103x93 and 51x46. So on the DOS monitor
 the low resolution pictures were 1.2 times taller than the same pictures in
 high resolution (the porthole was an upright ellipse), while the 3D view had
-the right shape. The port now shows that, as the DOS monitor did; with
-square pixels the pictures have the shape of the high resolution and the 3D
-view is 1.2 times too wide.
+the right shape. The 4:3 screen of the port shows that, as the DOS monitor
+did. With square pixels (the default) the pictures have the shape of the
+high resolution, and the port renders the 3D view with the aspect 1.0, so
+it keeps the right shape too.
 
-The port now shows a frame of 320x200 (also 320x400 and 640x400, the other
+The port can show a frame of 320x200 (also 320x400 and 640x400, the other
 VGA modes that filled the monitor) at 4:3, in the middle of the window with
 black bars (`plat_frame_aspect`, `plat_fit_frame` in video.c; gpu.c and the
 SDL_Renderer form use them). Measured: 960x720 at x 160 in a 1280x720
@@ -156,9 +160,25 @@ in the view rectangle of the frame, so both follow the shape of the frame
 by 572 and 486 by 581 window pixels).
 The window of the first start is 960x720 (it was 960x600).
 
-`Dtu_fix_lowres_aspect` (dtuopts.c) is on by default: "4:3 screen" in the
-Graphics menu, `LowresAspect` in ascent.cfg. `-squarepixels` gives square
-pixels for one run.
+`Dtu_fix_lowres_aspect` (dtuopts.c) is "4:3 screen" in the Graphics menu,
+`Lowres43` in ascent.cfg, `-screen43` (on) and `-squarepixels` (off) for one
+run. It is off by default: the user plays 1.3 in high resolution and wants
+the pictures (the portraits, the porthole) with the shape of the high
+resolution. With square pixels the 3D view uses the aspect 1.0, the pixel
+that the window shows (`Dtu_fix_view_aspect`, dtudisp.c `shown_aspect`),
+so a round thing stays round; with the 4:3 screen it keeps 1.2. The map
+of the map screen (drawn after the view, with the aspect of the screen)
+takes the same value in low resolution; in high resolution it is drawn in
+the lines of the 640x480 screen and keeps 1.0. `-origui` gives the aspects
+of 1.3 (1.2 low, 2.4 high) in both forms.
+
+Measured in a 1280x720 window (`test_view_screen_scale`: the view
+rectangle in window pixels over the tangent of the half angle, in x and in
+y): the two scales agree within 0.01% in modes 0 and 7, low and high
+resolution, 4:3 screen on and off (mode 0: 741.3 high, 889.6 low; mode 7:
+1274.7 high, 1280.0 low). The porthole disc of the map screen is 556x554
+window pixels in low resolution with square pixels, 461x464 in high
+resolution, and 463x554 with the 4:3 screen.
 
 ## Interface modes
 

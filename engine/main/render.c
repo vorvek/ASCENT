@@ -2013,7 +2013,7 @@ static int gpu_set_options(void)
 			case 1: Dtu_upscaled_textures = !Dtu_upscaled_textures; break;
 			case 2: Dtu_anisotropic = !Dtu_anisotropic; break;
 			case 3: Dtu_shader = (Dtu_shader + 1) % 3; break;
-			case 4: Dtu_render_scale = Dtu_render_scale % DTU_RENDER_SCALE_MAX + 1; break;
+			case 4: Dtu_render_scale = (Dtu_render_scale + 1) % (DTU_RENDER_SCALE_MAX + 1); break;	// ASCENT: with x1/2 (0)
 			}
 		}
 	}
