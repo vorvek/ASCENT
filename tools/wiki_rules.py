@@ -976,7 +976,9 @@ class Pages:
             "Skill points: Mirt, at the Yawning Portal, gives a thief 20 skill points for each thief "
             "level gained since the last visit, and 20 more at the first visit. Each point raises one "
             "skill by 1%, up to 95%. One skill can take at most half of the points of a visit. "
-            "ASCENT does not have the skill point screen yet.",
+            "The screen closes with Escape only when the points are spent or no skill can take more; "
+            "points that no skill can take are lost. If you answer No, Mirt offers the same points "
+            "at the next talk.",
             "",
             md_table(["Item or effect", "Change"], thief_items),
             "",
@@ -1563,8 +1565,9 @@ class Pages:
         out += ["## Corrections of ASCENT", "",
                 "ASCENT corrects these defects of 1.3. The option turns the correction off.", "",
                 md_table(["Setting", "Option", "Correction"], FIXES), ""]
-        out += ["## Not in ASCENT yet", "",
-                "\n".join("- " + x for x in NOT_IN_ASCENT), ""]
+        if NOT_IN_ASCENT:
+            out += ["## Not in ASCENT yet", "",
+                    "\n".join("- " + x for x in NOT_IN_ASCENT), ""]
         # Values of the lines that no code reads
         unused = []
         for s, r in enumerate(self.S):
@@ -1667,7 +1670,7 @@ POTIONS = {
 SCROLLS = {
     102: "USE: shows Khelben's summary of your current mission. A Scroll found in a dungeon level "
          "shows its own text instead: notes and histories of Undermountain. Not used up. Every new "
-         "character gets one. ASCENT does not show the text yet.",
+         "character gets one.",
     106: "USE: the screen shakes, then each of these with a 50% chance: Confusion, Continual Light, "
          "Scare, Hold Person and Fireball on you, the map forgotten, and each ability score set to a "
          "random value from 1 to its value. Then damage from 0 to your hit points - 1. Quest item.",
@@ -1701,8 +1704,9 @@ SOURCES_FINDINGS = [
     ["The Scroll shows Khelben's mission summary; found Scrolls show their own text.",
      "Case 0x66 calls 0x9DC42 with the count of the item. 0x9CEA3: count 0 (the Scroll of a new "
      "character) takes the mission blurb table 0x1451E5[mission]; another count n takes the text "
-     "table 0x144FE5[n]. Both hold entries of `FETXT` (for example 271 \"Quest One: Corner the "
-     "Kobolds\", 141 \"A Brief History of Undermountain\"). The levels give Scrolls counts 2 to 27."],
+     "table 0x144FE5[n] (0x144DE5[n], longer texts, in the high resolution). Both hold entries "
+     "of `FETXT` (for example 271 \"Quest One: Corner the Kobolds\", 141 \"A Brief History of "
+     "Undermountain\"). The levels give Scrolls counts 2 to 27."],
     ["The thief scroll shows a picture clue.",
      "Case 0x7F calls 0x9DC42(1): text 0x144FE5[1] = `FETXT` 270, which is the picture markup `~pc3`."],
     ["The Lantern gives no light.",
@@ -1770,8 +1774,6 @@ RULE_SOURCES = [
 ]
 
 NOT_IN_ASCENT = [
-    "The text screen of the Scroll and the thief scroll (0x9DC42).",
-    "The thief skill point screen (thiefpts.c, 0xB5B49).",
 ]
 
 UNUSED_ITEM_VALUES = [

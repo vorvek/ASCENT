@@ -1177,7 +1177,7 @@ Misc (type 16), by line number (`YPINN.BIN` names; the same in all tables):
 | 0x57 | Potion of Speed | bit 13 (Haste) for (rand % 16 + 5) * 60 s; vclip of 21 |
 | 0x58 | Potion of Toughening | if max hp < current hp (already toughened): "You don't feel so good." and a system shock roll: d100 > table 0x2FACC[constitution - 1] (25 30 35 40 45 50 55 60 65 70 75 80 85 88 90 95 97 99 99) kills the player. Else Bless bit on object 0 with timer GameTime + (rand % 6 + 7) * 600 s and shields += rand % 17 + 2, "You feel tougher." (the extra hp go when Bless ends) |
 | 0x65 | Orb of Insight | script event 0x1FE |
-| 0x66 | Scroll | 0x9DC42(word +8 of the entry): shows a scroll text (guess: the number selects the text) |
+| 0x66 | Scroll | 0x9DC42(word +8 of the entry): shows scroll text n (ingame-ui.md, "The scroll text screen") |
 | 0x6A | Cursed Scroll | screen shake; each with 50%: spells 7, 9, 44, 22, 16 on the player, map forgotten, and strength, dexterity, constitution, intelligence, wisdom, charisma each set to rand % value + 1; then damage rand % hp; "You no longer think that reading the scroll was such a good idea..." |
 | 0x7F | thief scroll | 0x9DC42(1) |
 
@@ -1259,11 +1259,14 @@ The scrolls: misc 0x66 (Scroll) calls 0x9DC42(word +8 of the entry), misc
 dispscrl.c (0x9CB62 colors, 0x9D43B the scroll picture, 0x9CEA3 the text).
 0x9CEA3(n): n = 0 takes the Khelben blurb of the current mission, FETXT entry
 0x1451E5[mission] (271 is "Quest One: Corner the Kobolds"); n = 1 to 0x7F takes
-FETXT entry 0x144FE5[n] (0x144DE5[n] when 0x13A94B is set; it is 0 in the image).
+FETXT entry 0x144FE5[n] (0x144DE5[n] when 0x13A94B is set: entries 13 to 138, longer texts
+for the high resolution).
 The Scroll of a new character has count 0, so it shows the current mission. The
 Scrolls in the levels have counts 2 to 27 (objects.md): 0x144FE5[2] = 141 "A
 Brief History of Undermountain", [3] = 142, a note of Colvin Rowander. The thief
-scroll shows entry 270, the picture markup `~pc3` (a clue picture, "ClueBg").
+scroll shows entry 270, the picture markup `~pc3` (FEBGND 191 low, 192 high, a map
+of Waterdeep). The screen is in [ingame-ui.md](ingame-ui.md), "The scroll text
+screen", and in the port in `dtuscroll.c`.
 
 The Gem of Curing compares its use counter, byte P+0x1A57 (0x1D4D73 absolute,
 read at 0x3891B, + 1 at 0x389E0, no other writer), with 0x8445A(), the mission
@@ -1280,13 +1283,66 @@ which also deletes the missile. A missile whose life ends has no area.
 
 ## B7. Thief skills (Code)
 
-thiefpts.c (0xB4419 to 0xB5B49, main 0xB5BB9) is only the screen where a thief
+thiefpts.c (0xB4419 to 0xB611B, main 0xB5BB9) is only the screen where a thief
 spends skill points at level up (strings "SkillIndex < NUM_SKILLS",
 "Difference >= 0", "%d%%"). The points come from Mirt (scripts.md: 0xABB53
 gives 20 per thief level since the last visit, 20 more at the first, into
 P+0x1AB3). 0xB4ECF sets the limit 0x146840 = points / 2 (at least 1); 0xB44B4
 adds 1 to a skill per point while the skill is below 95 (0x5F) and the skill has
-grown by less than the limit in this visit. The skill use code is in the file before it (0xB3038 to 0xB43B9; no
+grown by less than the limit in this visit. The port has the screen in
+`dtuthiefpts.c`. Verified in the instructions:
+
+- 0xB5B49: nothing unless the word P+0x1AB3 is at least 1 and one of the base
+  skills (the copy without items, `[0x13A883]` + 0x5C to 0x6C, the attributes
+  at 0x187B90) is below 95. Then the box 0x655FE with the exe string "You have
+  some thief skill
+points available.
+Spend them Now?" and TEX 32 "Yes", TEX
+  33 "No"; Yes (0) calls 0xB5BB9 and returns its result, else 0.
+- The skills in the order of the screen (0xB4DDE for the base copy, 0xB4E74
+  for the values in use at P+0xC7): +0x0 Hide In Shadows, +0x4 Move Silently,
+  +0x10 Open Locks, +0x8 Find/Remove Traps, +0xC Climb Walls; the names are
+  exe strings (table 0x146844). The screen works on a copy (0x3D4E20).
+- 0xB4419: a skill is full when it is 95 or more or has taken the limit.
+  0xB4499: all five full. 0xB5BB9 returns 0 at once if all are full or a
+  picture does not load (0xB4F32).
+- Pictures: FEBGND 0x146744[hi] (152 low, 151 high, the scroll of the scroll
+  text screen) drawn with mask in the middle of the screen over the play
+  screen (0xB58FE); FEBGND 190 (0xB5675, 160 x 70) has the buttons minus
+  up, plus up, minus down, plus down at x 1, 41, 81, 121, low at y 41
+  (26 x 26), high at y 1 (37 x 37) (0xB5619).
+- Layout (0xB503D): the content area is the picture without the margins
+  left, right, top, bottom 0x146750 to 0x146768: 47, 44, 43, 33 low and 100,
+  100, 130, 100 high. Fonts (0xB598F, 0xB59E0): the medium font of the front
+  end (0x13E380, FNTEMFM_.FNT) in the high resolution game, else the game
+  font. The bottom row of the area, centered: minus, 16, the points (as wide
+  as "999"), 16, plus, its height the largest of the three. Five rows from
+  the top, each as high as "555%%" (measured as written) + 6, 5 apart: the
+  value in a box 3 in from the left (as wide as "555%%"), the name in a box
+  from 5 after it to 3 from the right. A message line as high as the font
+  under the area (5 lower in the high resolution).
+- Colors (0xB4C45, closest palette colors): names white; values `%d%%` red
+  when the skill took points, else yellow; the points `%d` red; all text
+  centered in its box. The frame of the selected row (0xB4AB5, the function
+  of both modes of 0x146860): blue lines one pixel in, then magenta lines
+  at the edge (right and bottom one pixel in).
+- Loop (0xB5D49 to 0xB60E4), each pass: the message goes after 3 s; one key
+  (a key clears the mouse button of the pass); the mouse button and
+  position (the click point is the middle of the cursor, 0xB5DBC). With the
+  button down: on plus or minus, a point on the press only (the button was
+  up in the last pass); on a row, that row is selected. Keys: minus or left
+  a point back (0xB457D), equal or right a point (0xB44B4), up and down move
+  the selection around, ` a screenshot, Escape: with points left and a skill
+  that is not full "You must spend all points" in red on the message line,
+  sound 3000 (0x2DAD3, volume at most 0x8000), and the screen stays; else
+  it closes. The plus or minus button under the held mouse button shows its
+  down picture. The mouse stays in the area (0xB43B9). The music frame
+  0xA4F83 runs.
+- Close (0xB60EA): each skill in use gets the gain of its base value, the
+  base value takes the value of the screen (0xB4D2F), the displays are
+  marked for a redraw (0x1BD5A6 |= 8), the game time starts, and 0xB5BB9
+  returns 1. Points that are left stay in P+0x1AB3 until Mirt sets the next
+  number. The skill use code is in the file before it (0xB3038 to 0xB43B9; no
 source name string) and in the movement code.
 
 Text numbers are lines of DTUE.TEX (a pointer A is TEX[(A - 0x395DAC) / 4],
@@ -1822,7 +1878,7 @@ Pieces 0x13, 0x16, 0x19, 0x1A (0x12, 0x14, 0x17, 0x18 are not in the port), the 
 Scroll, weapon 13, armor 45, the Orb of Insight and weapon 13 through the weak hook
 `dtu_hook_script_event()` (dtuscript.c may give it), the potion timers 0x396B2, Luck,
 the worn item effects of B6a, the Ring of Wizardry. The text screen of the Scroll
-(0x9DC42) is not in the port: the use only writes the log. Scrolls of spells and wands
+(0x9DC42, `dtuscroll.c`). Scrolls of spells and wands
 cast as in C2.
 
 Thief skills (B7, `dtuthief.c`): Open Locks (key O), Find/Remove Traps (key F, the box
@@ -1831,7 +1887,8 @@ Climb Walls (Activate on a solid side, the thrust of 0x2C144 and the frame 0x9EB
 `physics.c`), the backstab, the slow move while sneaking or searching, Hide and Sneak in
 the sight of the creatures (0x165C4, 0x13D8E). Not in the port: the racial search for
 secret walls (0xB3ECE), the marker object of the Find Traps spell, the side pad bits
-of found traps, the fall damage skip of 0x6C8C8, the thief point screen (thiefpts.c).
+of found traps, the fall damage skip of 0x6C8C8. The thief point screen (thiefpts.c) is
+in `dtuthiefpts.c`.
 
 Scenery (ai.md): the break by a melee hit (0x6D4EC), by a blocked creature (0x14CA9)
 and by spells, the push by the player and by creatures (0x9FA41, 0x9E5BE) and the move

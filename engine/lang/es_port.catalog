@@ -1341,3 +1341,31 @@ id: port.you_set_off_a_fire_trap
 en: You set off a fire trap!!!
 tr: ¡¡¡Has activado una trampa de fuego!!!
 
+id: port.hide_in_shadows
+en: Hide In Shadows
+tr: Esconderse
+
+id: port.move_silently
+en: Move Silently
+tr: Moverse en silencio
+
+id: port.open_locks
+en: Open Locks
+tr: Abrir cerraduras
+
+id: port.find_remove_traps
+en: Find/Remove Traps
+tr: Desactivar trampas
+
+id: port.climb_walls
+en: Climb Walls
+tr: Trepar muros
+
+id: port.you_must_spend_all_points
+en: You must spend all points
+tr: Debes gastar todos los puntos
+
+id: port.you_have_some_thief_skill_points_availab
+en: You have some thief skill\npoints available.\nSpend them Now?
+tr: Tienes puntos de habilidad\nde ladrón disponibles.\n¿Quieres gastarlos ahora?
+

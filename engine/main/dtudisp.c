@@ -43,6 +43,7 @@
 #include "3d.h"			// ASCENT: g3_gpu_view_dest
 #include "dtuhdui.h"		// ASCENT: the upscaled interface pictures
 #include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
+#include "dtuscroll.h"		// ASCENT: no input and no cursor while the scroll text screen is open
 #include "segment.h"
 #include "automap.h"		// ASCENT: the map of the map screen
 #include "dtucombat.h"		// ASCENT: the target hint of the cursor
@@ -2085,8 +2086,10 @@ static void do_input(int mx, int my)
 	// frame 0x4391D: it draws the displays (0x324DA) but calls neither the
 	// input of the displays (0x2FB10) nor the key table (controls_read_all),
 	// so no key and no click of the interface acts. The port keeps the key
-	// and button states current, so that nothing acts when it closes.
-	if (dtu_dlg_is_open()) {
+	// and button states current, so that nothing acts when it closes. The
+	// same while the scroll text screen is open: the frame skips 0x2FB10
+	// (0x435F8).
+	if (dtu_dlg_is_open() || dtu_scroll_is_open()) {
 		static const int keys[] = { KEY_F3, KEY_EQUAL, KEY_MINUS, KEY_COMMA, KEY_PERIOD, KEY_ENTER, KEY_U, KEY_BACKSP };
 		for (i = 0; i < (int) (sizeof(Screen_actions) / sizeof(Screen_actions[0])); i++)
 			action_acts(Screen_actions[i]);
@@ -2383,11 +2386,11 @@ void dtu_display_frame(void)
 	}
 	// ASCENT: with the conversation window open, dtu_dlg_draw() draws the
 	// cursor after the window (dtu_display_draw_cursor)
-	if (!Dtu_immersive && !dtu_dlg_is_open())
+	if (!Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open())
 		draw_cursor(mx, my);
 	// ASCENT: immersive mode has no cursor. With the target hint, the tinted
 	// cursor shows at the center of the view while an attack can reach a
 	// hostile creature, and nothing shows at other times.
-	else if (Dtu_immersive && !dtu_dlg_is_open() && View_dest_set && dtu_combat_target_hint())
+	else if (Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open() && View_dest_set && dtu_combat_target_hint())
 		draw_cursor(View_dest[0] + View_dest[2] / 2, View_dest[1] + View_dest[3] / 2);
 }

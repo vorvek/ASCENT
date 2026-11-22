@@ -62,6 +62,8 @@
 #include "dtutrig.h"
 #include "dtuspell.h"
 #include "dtudlg.h"
+#include "dtuscroll.h"		// ASCENT: dtu_scroll_reset at a new level
+#include "dtuthiefpts.h"	// ASCENT: the thief skill point screen
 #include "dtuscript.h"
 #include "dtumovie.h"
 #include "dtulog.h"		// ASCENT: the session log
@@ -1895,26 +1897,22 @@ static int sc_exec(sc_run *r)
 //------------------------------------------------------------------------
 // run_script (0xABBE5)
 
-DTU_WEAK int dtu_hook_thief_points(int points)
-{
-	dtu_log("Thief skill points: %d (the screen of thiefpts.c is not in the port)\n", points);
-	return 0;
-}
-
-// The thief skill points byte P+0x1A53 (0xABB53)
-static int Thief_trained = 0;
-
-// 0xABB53: talking to Mirt in YPINN as a thief
+// 0xABB53: talking to Mirt in YPINN as a thief. The byte P+0x1A53 is the
+// thief level + 1 of the last visit (0 before the first); the points
+// (word P+0x1AB3) are set, not added. The screen (dtuthiefpts.c) returns 1
+// when it was shown; else the level is not paid.
 static void thief_points(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa;
-	int lv = (pa->class2 == DTU_CLASS_THIEF ? pa->class2_level : pa->class1_level) + 1, points;
+	int lv = (pa->class2 == DTU_CLASS_THIEF ? pa->class2_level : pa->class1_level) + 1;
+	int paid = Dtu_char.thief_paid & 0xff;
 
-	if (lv <= Thief_trained)
+	if (lv <= paid)
 		return;
-	points = (lv - Thief_trained) * 20 + (Thief_trained == 0 ? 20 : 0);
-	if (dtu_hook_thief_points(points))
-		Thief_trained = lv;
+	Dtu_char.thief_points = ((lv - paid) * 20 + (paid == 0 ? 20 : 0)) & 0xffff;
+	slog("thief points: level %d, paid %d, %d points", lv, paid, Dtu_char.thief_points);
+	if (dtu_thief_points_offer())
+		Dtu_char.thief_paid = lv & 0xff;
 }
 
 // 0xAAA32: the start label. Returns 1 if the script runs.
@@ -2188,6 +2186,7 @@ void dtu_script_level_start(void)
 	Walk_obj = -1;
 	dtu_dlg_close();
 	dtu_dlg_reset_view();
+	dtu_scroll_reset();
 }
 
 // A warp of DB to another level (0x59C3C after the run)

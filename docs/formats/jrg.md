@@ -201,6 +201,13 @@ outside 0x20 to 0x7E are LF and NUL. Example, entry 0 of FETXTE:
 The F, I and S files are not translated: they hold the English text with a
 marker such as `FRENCH FRENCH FRENCH` in front of entry 0.
 
+Markup of the scroll texts (entries 13 to 138, 141 to 266, 269 to 310, read
+by the layout 0x9D5F1, docs/re/ingame-ui.md, "The scroll text screen"): the
+words are separated by spaces and line breaks, which are all the same;
+`~n` starts a new line, `~cN` sets color N (0 to 12; the texts use 1 to 12
+and `~c999` for the default), `~pcN` shows picture N (only entry 270 has one,
+`~pc3`). Checked for all 294 entries of FETXTE: no other markup word.
+
 DTUGAME.EXE also holds the names `fetxt.jrg` and `fetxt.dat` with no language
 letter and the pattern `%s.jrg`. How the name is built was not traced.
 
