@@ -91,10 +91,17 @@ TESTS = [
       "140:goside=284.4,142:activate,160:wall=278.0,170:gflag=128,180:goside=279.5,182:activate,560:wall=278.0,565:quest",
       [r"run script 323 of obj 4", r"wall 278\.0: type 5", r"wall 278\.0: type 4"],
       frames=600, extra=["-triglog"]),
-    # FLAME: the use action on the Flamesword (object 3, script 322 of the
-    # level fixes) after the death of Lolth (object 36) ends the game.
-    T("flame_sword_lolth_alive", "FLAME", "20:goseg=486,40:aim=3,45:activate,120:obj=3",
-      [r"run script 322 of obj 3", r"obj 3: type 18 .* flags 0x0 "], [r"CREDITV1"], frames=140),
+    # FLAME: the level fixes give the altar (object 2) and the Flamesword
+    # (object 3, script 322) object flag 0x40: the use ray passes them while
+    # Lolth (object 36) lives. Her death (0x6A579, 0x6A374) clears the flag
+    # of the sword, stops the creatures and runs script 322, which ends the
+    # game with no use action. The use action after that also runs it.
+    T("flame_sword_lolth_alive", "FLAME", "20:goseg=486,40:aim=3,45:activate,120:obj=3,121:obj=2",
+      [r"obj 3: type 18 .* flags 0x40 ", r"obj 2: type 18 .* flags 0x40 "],
+      [r"run script 322 of obj 3", r"CREDITV1"], frames=140),
+    T("flame_lolth_death", "FLAME", "10:kill=36,15:obj=3",
+      [r"obj 3: type 18 .* flags 0x40 ", r"run script 322 of obj 3 .* in mode 0", r"YOU  HAVE  DESTROYED",
+       r"end of the game: CREDITV1"], frames=260),
     T("flame_ending", "FLAME", "10:kill=36,20:goseg=486,40:aim=3,45:activate",
       [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", r"end of the game: CREDITV1"], frames=260),
 
@@ -181,8 +188,18 @@ TESTS = [
     # then 600 experience at label 910. Flag 1 (the promise of label 600)
     # makes Straum wary: a talk starts only when a roll of 1 to 20 is not
     # above the charisma, so the test talks six times.
-    T("mulhor1_ankh", "MULHOR1", "20:goobj=33,21:face=33,100:quest",
-      [r"quest: items \[ .*16\.14 \]"], frames=110, extra=["-testmove", "wait:25,forward:60"]),
+    T("mulhor1_ankh", "MULHOR1", "20:goobj=33,21:face=33,22:obj=33,100:quest",
+      [r"obj 33: type 16 id 14 .* flags 0x0 ", r"quest: items \[ .*16\.14 \]"], frames=110,
+      extra=["-testmove", "wait:25,forward:60"]),
+    # The level fixes (0xAD0C0) give the other six Ankhs (1, 2, 34, 60, 73,
+    # 91) object flag 0x40: the object query (0x3F38F) skips them, so the
+    # player walks through them and does not take them. They stay drawn.
+    T("mulhor1_ankh_flagged", "MULHOR1",
+      "20:goobj=91,21:face=91,22:obj=91,23:obj=1,24:obj=2,25:obj=34,26:obj=60,27:obj=73,100:quest,101:obj=91",
+      [r"obj %d: type 16 id 14 .* flags 0x40 " % n for n in (91, 1, 2, 34, 60, 73)]
+      + [r"quest: items \[ [^\]]*\]\n[\s\S]*obj 91: type 16 id 14 .* flags 0x40 "],
+      [r"quest: items \[ .*16\.14 \]", r"pickup: obj 91"], frames=110,
+      extra=["-testmove", "wait:25,forward:60"]),
     T("bones_straum_ankh", "BONES",
       "10:give=16.14,12:kill=106,14:objflag=55.1,15:resume=55.700,20:talkscript=31,40:talkscript=31,60:talkscript=31,"
       "80:talkscript=31,100:talkscript=31,120:talkscript=31,1780:quest,1781:obj=55",

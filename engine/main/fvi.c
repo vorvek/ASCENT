@@ -991,6 +991,9 @@ fix dtu_body_query_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad_h
 
 	if (obj->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
 		return 0;
+	// ASCENT: the use ray: 0x3F38F skips an object with flag 0x40
+	if ((obj->flags & OF_DTU_NOHIT) && obj->type != OBJ_ROBOT)
+		return 0;
 	// "pass_thru": the executable sets the flag 0x40 of such a creature,
 	// and the query skips objects with that flag
 	if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types && Dressing_info[obj->id].pass_thru)
@@ -1414,6 +1417,8 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 	if (flags & FQ_CHECK_OBJS)
 		for (objnum=seg->objects;objnum!=-1;objnum=Objects[objnum].next)
 			if (	!(Objects[objnum].flags & OF_SHOULD_BE_DEAD) &&
+					// ASCENT: 0x3F38F skips an object with flag 0x40
+					!((Objects[objnum].flags & OF_DTU_NOHIT) && Objects[objnum].type != OBJ_ROBOT) &&
 				 	!(thisobjnum == objnum ) &&
 				 	(ignore_obj_list==NULL || !obj_in_list(objnum,ignore_obj_list)) &&
 				 	!laser_are_related( objnum, thisobjnum ) &&

@@ -318,6 +318,11 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define OF_SILENT				8		//this makes no sound when it hits a wall.  Added by MK for weapons, if you extend it to other types, do it completely!
 #define OF_ATTACHED			16		//this object is a fireball attached to another object
 #define OF_HARMLESS			32		//this object does no damage.  Added to make quad lasers do 1.5 damage as normal lasers.
+// ASCENT: object flag 0x40 of DTU. The object loop of fvi_sub (0x3F38F)
+// skips an object with it, so no move, shot or use ray touches it. The port
+// uses it for objects that are not creatures (the level fixes of MULHOR1
+// and FLAME); a creature with it is not handled yet (docs/re/objects.md).
+#define OF_DTU_NOHIT			64
 
 //Different Weapon ID types...
 #define WEAPON_ID_LASER			0
