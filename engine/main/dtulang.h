@@ -79,6 +79,27 @@ char *dtu_tr_sex(const char *en, int female);
 // (called each frame of the game and of the front end).
 void dtu_lang_sync(void);
 
+// The gender and the plural of a name of a table (the fields gender and
+// plural of a tbl entry, docs/formats/lang.md). English has neither.
+#define DTU_GENDER_M	1
+#define DTU_GENDER_F	2
+// DTU_GENDER_M, DTU_GENDER_F, or 0 (not known)
+int dtu_name_gender(const char *en);
+// The plural of the translation, or the translation (dtu_tr_name) if the
+// catalog has no plural
+char *dtu_tr_name_plural(const char *en);
+
+// The item shown in a text: the tokens {item:MASC|FEM} (the gender of the
+// name; MASC if not known), {qty:ONE|MANY} (ONE for a quantity of 1, MANY
+// for any other, also "many") and {item} (the name, the singular for a
+// quantity of 1, else the plural). The same form rules as {sex:}. Resolved
+// in place, the result cut at size bytes. name and plural are the shown
+// words (plural NULL: the name); qty < 0 means "many".
+void dtu_lang_item_tokens(char *s, int size, const char *name, const char *plural, int gender, int qty);
+// The same for the item of the English name en (a name of a table) in the
+// language of the text. Does nothing in English.
+void dtu_lang_item_text(char *s, int size, const char *en, int qty);
+
 // Markers for tools/lang_extract.py. LT(s) translates at run time. LN(s)
 // only marks a string that a menu, a message box or the message box of the
 // game translates when it shows it.

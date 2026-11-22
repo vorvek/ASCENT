@@ -55,6 +55,8 @@ typedef struct {
 	char *en;		// the English text of the catalog (game bytes), or NULL
 	char *tr;		// the translation (Latin-1), the tokens {sex:} for a male player
 	char *tr_f;		// the same for a female player, or NULL (no token)
+	char *plural;	// a name of a table: the plural (Latin-1), or NULL
+	int gender;		// a name of a table: DTU_GENDER_M, DTU_GENDER_F or 0
 } lang_entry;
 
 static lang_entry *Tab;
@@ -80,6 +82,7 @@ static void tab_clear(void)
 			free(Tab[i].en);
 			free(Tab[i].tr);
 			free(Tab[i].tr_f);
+			free(Tab[i].plural);
 		}
 	free(Tab);
 	Tab = NULL;
@@ -98,7 +101,7 @@ static lang_entry *tab_find(const char *key)
 	return NULL;
 }
 
-static void tab_put(const char *key, const char *en, const char *tr, const char *tr_f)
+static void tab_put(const char *key, const char *en, const char *tr, const char *tr_f, const char *plural, int gender)
 {
 	lang_entry *e;
 	unsigned i;
@@ -125,6 +128,7 @@ static void tab_put(const char *key, const char *en, const char *tr, const char 
 		free(e->en);
 		free(e->tr);
 		free(e->tr_f);
+		free(e->plural);
 	} else {
 		for (i = hash_str(key) & (Tab_size - 1); Tab[i].key; i = (i + 1) & (Tab_size - 1))
 			;
@@ -135,6 +139,8 @@ static void tab_put(const char *key, const char *en, const char *tr, const char 
 	e->en = en ? strdup(en) : NULL;
 	e->tr = strdup(tr);
 	e->tr_f = tr_f ? strdup(tr_f) : NULL;
+	e->plural = plural ? strdup(plural) : NULL;
+	e->gender = gender;
 }
 
 //------------------------------------------------------------------------
@@ -149,23 +155,31 @@ int dtu_lang_female(void)
 	return Dtu_char.pa.female ? 1 : 0;
 }
 
-// The length of the token at s (0: not a token) and the form for the sex
-static int sex_token(const char *s, int female, const char **form, int *len)
+// A token of two forms {TAG:FIRST|SECOND} at s (tag is "{TAG:"): the length
+// of the token (0: not a token) and the form chosen (second 0 or 1)
+static int choice_token(const char *s, const char *tag, int second, const char **form, int *len)
 {
 	const char *m, *bar, *end;
+	int t = (int) strlen(tag);
 
-	if (strncmp(s, "{sex:", 5))
+	if (strncmp(s, tag, t))
 		return 0;
-	m = s + 5;
+	m = s + t;
 	bar = m + strcspn(m, "|{}");
 	if (*bar != '|')
 		return 0;
 	end = bar + 1 + strcspn(bar + 1, "|{}");
 	if (*end != '}')
 		return 0;
-	*form = female ? bar + 1 : m;
-	*len = female ? (int) (end - bar - 1) : (int) (bar - m);
+	*form = second ? bar + 1 : m;
+	*len = second ? (int) (end - bar - 1) : (int) (bar - m);
 	return (int) (end + 1 - s);
+}
+
+// The length of the token at s (0: not a token) and the form for the sex
+static int sex_token(const char *s, int female, const char **form, int *len)
+{
+	return choice_token(s, "{sex:", female, form, len);
 }
 
 void dtu_lang_sex_resolve(char *s, int female)
@@ -191,6 +205,52 @@ void dtu_lang_sex_text(char *s)
 {
 	if (Dtu_language != DTU_LANG_EN)
 		dtu_lang_sex_resolve(s, dtu_lang_female());
+}
+
+//------------------------------------------------------------------------
+// The item shown: the tokens {item:MASC|FEM}, {qty:ONE|MANY} and {item}
+
+void dtu_lang_item_tokens(char *s, int size, const char *name, const char *plural, int gender, int qty)
+{
+	char out[1024];
+	const char *form = NULL, *p;
+	int len = 0, n, o = 0;
+
+	if (!s || size <= 0 || (!strstr(s, "{item") && !strstr(s, "{qty:")))
+		return;
+	if (!name)
+		name = "";
+	if (!plural || !plural[0])
+		plural = name;
+	for (p = s; *p && o < (int) sizeof(out) - 1; ) {
+		n = 0;
+		if (*p == '{') {
+			if (!strncmp(p, "{item}", 6)) {
+				form = qty == 1 ? name : plural;
+				len = (int) strlen(form);
+				n = 6;
+			} else if ((n = choice_token(p, "{item:", gender == DTU_GENDER_F, &form, &len)) == 0)
+				n = choice_token(p, "{qty:", qty != 1, &form, &len);
+		}
+		if (!n) {
+			out[o++] = *p++;
+			continue;
+		}
+		if (len > (int) sizeof(out) - 1 - o)
+			len = (int) sizeof(out) - 1 - o;
+		memcpy(out + o, form, len);
+		o += len;
+		p += n;
+	}
+	out[o] = 0;
+	snprintf(s, size, "%s", out);
+}
+
+void dtu_lang_item_text(char *s, int size, const char *en, int qty)
+{
+	if (Dtu_language == DTU_LANG_EN)
+		return;
+	dtu_lang_item_tokens(s, size, dtu_tr_name(en), dtu_tr_name_plural(en), dtu_name_gender(en), qty);
 }
 
 //------------------------------------------------------------------------
@@ -275,10 +335,10 @@ static void unescape(const char *in, char *out, int size, int tokens)
 static int Load_entries;
 
 // One entry: put it into the table
-static void add_entry(const char *id, const char *en_raw, const char *tr_raw)
+static void add_entry(const char *id, const char *en_raw, const char *tr_raw, const char *gender_raw, const char *plural_raw)
 {
-	static char en[8192], tr[8192], tr_f[8192], key[8200];
-	int tokens = !strncmp(id, "gab.", 4), sex;
+	static char en[8192], tr[8192], tr_f[8192], key[8200], plural[512];
+	int tokens = !strncmp(id, "gab.", 4), sex, gender = 0, name;
 
 	if (!id[0] || !tr_raw || (!tr_raw[0] && en_raw && en_raw[0]))
 		return;		// an empty translation: no translation
@@ -296,18 +356,25 @@ static void add_entry(const char *id, const char *en_raw, const char *tr_raw)
 		// found by the English text
 		if (!en_raw)
 			return;
-		key[0] = !strncmp(id, "tbl.", 4) ? 2 : 1;
+		name = !strncmp(id, "tbl.", 4);
+		key[0] = name ? 2 : 1;
 		snprintf(key + 1, sizeof(key) - 1, "%s", en);
-		tab_put(key, NULL, tr, sex ? tr_f : NULL);
+		// a name of a table: the gender and the plural
+		if (name && gender_raw)
+			gender = !strcmp(gender_raw, "m") ? DTU_GENDER_M : !strcmp(gender_raw, "f") ? DTU_GENDER_F : 0;
+		name = name && plural_raw && plural_raw[0];
+		if (name)
+			unescape(plural_raw, plural, sizeof(plural), 0);
+		tab_put(key, NULL, tr, sex ? tr_f : NULL, name ? plural : NULL, gender);
 	} else
-		tab_put(id, en_raw ? en : NULL, tr, sex ? tr_f : NULL);
+		tab_put(id, en_raw ? en : NULL, tr, sex ? tr_f : NULL, NULL, 0);
 	Load_entries++;
 }
 
 // Reads a catalog from memory (the text ends with a 0 byte).
 static void parse_catalog(char *text)
 {
-	char *line = text, *next, id[128] = "", *en = NULL, *tr = NULL;
+	char *line = text, *next, id[128] = "", *en = NULL, *tr = NULL, *gender = NULL, *plural = NULL;
 
 	for (; line && *line; line = next) {
 		char *e;
@@ -321,23 +388,27 @@ static void parse_catalog(char *text)
 			continue;
 		if (!line[0]) {
 			if (id[0] && tr)
-				add_entry(id, en, tr);
+				add_entry(id, en, tr, gender, plural);
 			id[0] = 0;
-			en = tr = NULL;
+			en = tr = gender = plural = NULL;
 			continue;
 		}
 		if (!strncmp(line, "id:", 3)) {
 			if (id[0] && tr)
-				add_entry(id, en, tr);
-			en = tr = NULL;
+				add_entry(id, en, tr, gender, plural);
+			en = tr = gender = plural = NULL;
 			snprintf(id, sizeof(id), "%s", line + 3 + (line[3] == ' '));
 		} else if (!strncmp(line, "en:", 3))
 			en = line + 3 + (line[3] == ' ');
 		else if (!strncmp(line, "tr:", 3))
 			tr = line + 3 + (line[3] == ' ');
+		else if (!strncmp(line, "gender:", 7))
+			gender = line + 7 + (line[7] == ' ');
+		else if (!strncmp(line, "plural:", 7))
+			plural = line + 7 + (line[7] == ' ');
 	}
 	if (id[0] && tr)
-		add_entry(id, en, tr);
+		add_entry(id, en, tr, gender, plural);
 }
 
 static int is_dir(const char *path)
@@ -511,6 +582,33 @@ char *dtu_tr_name(const char *en)
 	snprintf(key + 1, sizeof(key) - 1, "%s", en);
 	e = tab_find(key);
 	return e ? pick(e, dtu_lang_female()) : (char *) en;
+}
+
+// The entry of a name of a table
+static lang_entry *name_entry(const char *en)
+{
+	char key[256];
+
+	if (!en || !en[0] || Dtu_language == DTU_LANG_EN)
+		return NULL;
+	load_language(Dtu_language);
+	key[0] = 2;
+	snprintf(key + 1, sizeof(key) - 1, "%s", en);
+	return tab_find(key);
+}
+
+char *dtu_tr_name_plural(const char *en)
+{
+	lang_entry *e = name_entry(en);
+
+	return e && e->plural ? e->plural : dtu_tr_name(en);
+}
+
+int dtu_name_gender(const char *en)
+{
+	lang_entry *e = name_entry(en);
+
+	return e ? e->gender : 0;
 }
 
 char *dtu_tr_id(const char *id, const char *en)

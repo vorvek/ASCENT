@@ -27,8 +27,9 @@ Commands:
       translation, the format placeholders (%s %d ...), the markup of the
       front end (~c ~s ~p ~e ~n ~m and the number after it), the script
       tokens ({name} ...) and the escapes are the same, and the lengths fit
-      the places that show the text. Prints the problems, returns 1 on an
-      error.
+      the places that show the text, and the gender and plural of the item
+      names (gender m or f). Prints the problems (a warning is not an
+      error), returns 1 on an error.
 
 The catalogs hold text of the game (never commit them). The tool needs the
 Python 3 standard library only.
@@ -108,7 +109,9 @@ def unescape(s, tokens=False):
 
 # ---------------------------------------------------------------- catalog files
 
-FIELDS = ('id', 'src', 'ctx', 'max', 'dup', 'en', 'tr')
+FIELDS = ('id', 'src', 'ctx', 'max', 'dup', 'en', 'tr', 'gender', 'plural')
+# The fields of a name of a table (tbl.*) for a language with gender and plural
+NAME_FIELDS = ('gender', 'plural')
 
 
 def read_catalog(path):
@@ -751,6 +754,10 @@ TRANSLATOR_RULES = '''1. Take one part, for example `en.partC.catalog`. Write `e
    the developers ("This is hint scroll 27", "Foobar"): write `tr:` with the English text.
 10. Check your file: `python -I tools/lang_extract.py merge --dir gamedata/lang --lang es`
     (it works with some parts missing and lists what is missing).
+11. Item names (`tbl.weapon.*`, `tbl.armor.*`, `tbl.misc.*`, part F) in a language with
+    gender and plural: add `gender: m` or `gender: f` (the head noun) and `plural: <the
+    name in the plural>` after the `tr:` line. The market texts agree with them through
+    `{item:MASC|FEM}`, `{qty:ONE|MANY}` and `{item}` (docs/formats/lang.md).
 '''
 
 
@@ -763,6 +770,17 @@ ESC_RE = re.compile(r'\\x[0-9A-Fa-f]{2}')
 # The sex of the player: {sex:MALE|FEMALE} (docs/formats/lang.md)
 SEX_RE = re.compile(r'\{sex:([^{}|]*)\|([^{}|]*)\}')
 SEX_ANY_RE = re.compile(r'\{\s*sex', re.I)
+# The item shown: {item:MASC|FEM}, {qty:ONE|MANY}, {item} (docs/formats/lang.md)
+ITEM_RE = re.compile(r'\{item:([^{}|]*)\|([^{}|]*)\}')
+QTY_RE = re.compile(r'\{qty:([^{}|]*)\|([^{}|]*)\}')
+ITEM_ANY_RE = re.compile(r'\{\s*(?:item|qty)', re.I)
+# The texts whose code resolves the item tokens (dtufe_town.c, the market)
+ITEM_TOKEN_IDS = ('tex.701', 'tex.703', 'tex.704', 'tex.705')
+# The texts that the market breaks into lines to fit its window (mk_reflow)
+# and the lines of the window (the English tex.704 has 6)
+REFLOW_IDS = {'tex.704': 6, 'tex.705': 6}
+# The names of the market, the inventory, the pick-up messages and the HUD
+ITEM_NAME_KINDS = ('tbl.weapon.', 'tbl.armor.', 'tbl.misc.')
 
 
 def sex_forms(tr):
@@ -770,11 +788,53 @@ def sex_forms(tr):
     return SEX_RE.sub(lambda m: m.group(1), tr), SEX_RE.sub(lambda m: m.group(2), tr)
 
 
+def item_forms(tr, name):
+    """The text for each gender and number of the item shown (name: the
+    longest name and plural, for the room)."""
+    if not ITEM_RE.search(tr) and not QTY_RE.search(tr) and '{item}' not in tr:
+        return [tr]
+    out = []
+    for g in (1, 2):
+        for q in (1, 2):
+            t = ITEM_RE.sub(lambda m: m.group(g), tr)
+            t = QTY_RE.sub(lambda m: m.group(q), t)
+            out.append(t.replace('{item}', name))
+    return out
+
+
+def wrap_lines(raw, width):
+    """The lines of raw (bytes) broken at a space to width characters, as
+    the market breaks a text that is too wide (mk_reflow)."""
+    out = []
+    for line in raw.split(b'\n'):
+        cur = b''
+        for w in line.split(b' '):
+            if cur and len(cur) + 1 + len(w) > width:
+                out.append(cur)
+                cur = w
+            else:
+                cur = cur + b' ' + w if cur else w
+        out.append(cur)
+    return out
+
+
+Longest_name = 'X' * 24     # set by cmd_merge: the longest name or plural of an item
+
+
 def check_entry(e, tr, problems):
     if SEX_ANY_RE.search(SEX_RE.sub('', tr)):
         problems.append(('error', e['id'], 'a token {sex:MALE|FEMALE} is not well formed: '
                          'exactly one "|", no braces and no "|" in the forms'))
-    forms = sorted(set(sex_forms(tr)), key=lambda f: len(unescape(f)))
+    rest = QTY_RE.sub('', ITEM_RE.sub('', tr)).replace('{item}', '')
+    if ITEM_ANY_RE.search(rest):
+        problems.append(('error', e['id'], 'a token {item:MASC|FEM}, {qty:ONE|MANY} or {item} is not well formed: '
+                         'exactly one "|", no braces and no "|" in the forms'))
+    if rest != tr and e['id'] not in ITEM_TOKEN_IDS:
+        problems.append(('error', e['id'], 'the item tokens are resolved only in %s' % ', '.join(ITEM_TOKEN_IDS)))
+    forms = []
+    for f in sex_forms(tr):
+        forms.extend(item_forms(f, Longest_name))
+    forms = sorted(set(forms), key=lambda f: len(unescape(f)))
     found = []
     for form in forms:
         for p in check_form(e, form):
@@ -782,6 +842,43 @@ def check_entry(e, tr, problems):
             if p not in found and (p[0] != 'long' or form is forms[-1]):
                 found.append(p)
     problems.extend(found)
+
+
+def check_name(e, tr, t, problems):
+    """The fields gender and plural t of the translation tr."""
+    i = e['id']
+    has = [k for k in NAME_FIELDS if k in t]
+    if has and not i.startswith('tbl.'):
+        problems.append(('error', i, 'the fields %s are only for the names of the tables (tbl.*)' % ', '.join(has)))
+        return
+    if 'gender' in t and t['gender'] not in ('m', 'f'):
+        problems.append(('error', i, 'gender is %r: m or f' % t['gender']))
+    if 'plural' in t:
+        pl = t['plural']
+        if not pl.strip():
+            problems.append(('error', i, 'an empty plural'))
+        if PH_RE.search(pl) or '{' in pl or '}' in pl or '|' in pl:
+            problems.append(('error', i, 'the plural has a placeholder, a brace or a "|"'))
+        a, b = sorted(ESC_RE.findall(tr)), sorted(ESC_RE.findall(pl))
+        if a != b:
+            problems.append(('error', i, 'byte escapes of the plural %s, the translation has %s' % (' '.join(b) or '-', ' '.join(a) or '-')))
+        bad = [c for c in pl if ord(c) > 255 and c not in '\u2018\u2019\u201c\u201d\u2013\u2014\u2026']
+        if bad:
+            problems.append(('error', i, 'characters of the plural that the fonts cannot show: %s' % ''.join(sorted(set(bad)))))
+
+
+def check_names(en, tr, names, lang, problems):
+    """The gender and plural of the item names: each item name of a
+    language that uses them (any tbl entry has one) needs both."""
+    for i, t in names.items():
+        check_name(en[i], tr[i], t, problems)
+    if not any(names.values()):
+        return      # a language without gender and plural
+    for i in en:
+        if i.startswith(ITEM_NAME_KINDS) and i in tr and en[i]['en'].strip():
+            lack = [k for k in NAME_FIELDS if k not in names.get(i, {})]
+            if lack:
+                problems.append(('warning', i, 'no %s (the market and the inventory use it)' % ' and no '.join(lack)))
 
 
 def check_form(e, tr):
@@ -821,6 +918,13 @@ def check_form(e, tr):
         longest = int(re.search(r'(\d+) characters', m).group(1))
         sub = 'longest' not in m
         lines = raw.split(b'\n')
+        if e['id'] in REFLOW_IDS:
+            # the market breaks the lines to its width: the lines after the
+            # break, no more than the English text has
+            lines = wrap_lines(raw, longest)
+            if len(lines) > REFLOW_IDS[e['id']]:
+                problems.append(('long', e['id'], '%d lines after the line breaks of the market, the window has %d' % (len(lines), REFLOW_IDS[e['id']])))
+            lines = []
         if len(lines) > n_lines + (0 if sub else 1):
             problems.append(('long', e['id'], '%d lines, the English text has %d' % (len(lines), n_lines)))
         over = [len(l) for l in lines if len(l) > longest]
@@ -855,6 +959,7 @@ def cmd_merge(args, write=True):
     en = read_catalog(os.path.join(d, 'en.catalog'))
     problems = []
     tr = {}
+    names = {}      # id -> the fields gender and plural of the translation
     if write:
         for p in PART_NAMES + extra_parts(d, lang):
             path = os.path.join(d, '%s.part%s.catalog' % (lang, p))
@@ -870,11 +975,13 @@ def cmd_merge(args, write=True):
                     continue
                 if 'tr' in e and (e['tr'] != '' or en[i]['en'] == ''):
                     tr[i] = e['tr']
+                    names[i] = {k: e[k] for k in NAME_FIELDS if k in e}
     else:
         path = os.path.join(d, '%s.catalog' % lang)
         for i, e in read_catalog(path).items():
             if 'tr' in e:
                 tr[i] = e['tr']
+                names[i] = {k: e[k] for k in NAME_FIELDS if k in e}
         if os.path.exists(port_out):
             for i, e in read_catalog(port_out).items():
                 if 'tr' in e:
@@ -883,17 +990,25 @@ def cmd_merge(args, write=True):
     for i, e in en.items():
         if i not in tr and 'dup' in e and e['dup'] in tr:
             tr[i] = tr[e['dup']]
+            names[i] = dict(names.get(e['dup'], {}))
     missing = [i for i in en if i not in tr]
+    # the room of {item}: the longest name or plural of an item
+    global Longest_name
+    long_names = [unescape(v) for i in tr if i.startswith(ITEM_NAME_KINDS)
+                  for v in (tr[i], names.get(i, {}).get('plural', ''))]
+    if long_names:
+        Longest_name = 'X' * max(len(v) for v in long_names)
+    check_names(en, tr, names, lang, problems)
     for i in en:
         if i in tr:
             check_entry(en[i], tr[i], problems)
     if write:
-        game = [dict(id=i, en=e['en'], tr=tr[i]) for i, e in en.items() if i in tr and not i.startswith(('port.', 'sub.'))]
+        game = [dict(id=i, en=e['en'], tr=tr[i], **names.get(i, {})) for i, e in en.items() if i in tr and not i.startswith(('port.', 'sub.'))]
         port = [dict(id=i, en=e['en'], tr=tr[i]) for i, e in en.items() if i in tr and i.startswith('port.')]
         write_catalog(os.path.join(d, '%s.catalog' % lang), game,
                       ['ASCENT text catalog: %s (the text of the game files)' % lang,
                        'Made by tools/lang_extract.py merge. Holds text of the game: never commit it.',
-                       'Format: docs/formats/lang.md'], fields=('id', 'en', 'tr'))
+                       'Format: docs/formats/lang.md'], fields=('id', 'en', 'tr') + NAME_FIELDS)
         write_catalog(port_out, port,
                       ['ASCENT text catalog: %s, the text of the program (port strings)' % lang,
                        'Format: docs/formats/lang.md. tools/lang_extract.py merge writes this file.'], fields=('id', 'en', 'tr'))
@@ -914,7 +1029,8 @@ def cmd_merge(args, write=True):
         print('wrote %s (%d entries), %s (%d entries)' % (os.path.join(d, '%s.catalog' % lang), len(game), port_out, len(port)))
     errors = [p for p in problems if p[0] == 'error']
     longs = [p for p in problems if p[0] == 'long']
-    print('%d of %d entries translated, %d missing, %d errors, %d too long' % (len(tr), len(en), len(missing), len(errors), len(longs)))
+    warnings = [p for p in problems if p[0] == 'warning']
+    print('%d of %d entries translated, %d missing, %d errors, %d too long, %d warnings' % (len(tr), len(en), len(missing), len(errors), len(longs), len(warnings)))
     by = Counter(i.split('.')[0] for i in missing)
     if missing:
         print('missing by source: ' + ', '.join('%s %d' % kv for kv in sorted(by.items())))
