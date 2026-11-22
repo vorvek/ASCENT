@@ -4,8 +4,8 @@
  * Blackstaff (frontend.c, fetorch.c) and the market (femarket.c). Descent 1
  * has nothing like them. See docs/re/frontend.md.
  *
- * Not done in the port: the torches and the eyes of the Blackstaff screen,
- * the change of the mission by the quest flags and the rewards of Khelben.
+ * Not done in the port: the hidden animation of Khelben's face (0x83A93).
+ * The eyes (FESEQ 31) are not shown: 1.3 never calls their code (0x82C28).
  * The market trades (buy, sell, stock, prices) as femarket.c does.
  *
  * An address in a comment is an address of DTUGAME.EXE 1.3.
@@ -35,7 +35,6 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 
-#define DTU_WEAK __attribute__((weak))
 
 int Fe_khelben_mission;			// MsnNum (0x13E588)
 int Fe_khelben_blurb;			// 0x13E58C
@@ -112,8 +111,9 @@ int fe_waterdeep(void)
 	}
 	Wd_result = FE_GO_MENU;
 	fe_run_screen(&Wd);
-	if (Wd_result != FE_GO_MENU || Fe_quit)
-		dtumusic_stop();		// 0xA48D0
+	// 0x8C25A: all streams stop after the screen, also on the way to the
+	// main menu (the City Gates), which plays no music.
+	dtumusic_stop();		// 0xA48D0
 	return Wd_result;
 }
 
@@ -213,10 +213,45 @@ static void bs_parse(char *text)
 	}
 }
 
+// The torches of the tower (fetorch.c, table 0x13E594): FESEQ entry and
+// position. 0x96263 draws the next frame of each torch every 0x1000
+// (1/16 second), not masked, and starts again after the last frame.
+static struct { int seq, x, y, next, shown; } Bs_torch[6] = {
+	{ 23, 73, 135 }, { 24, 148, 162 }, { 25, 212, 168 }, { 26, 419, 174 }, { 27, 485, 165 }, { 28, 561, 128 } };
+static fix Bs_torch_time;
+
+// The executable draws a torch only at its step and the picture stays on
+// the screen; the port draws the screen again in each frame, so it draws
+// the frame of the last step.
+static void bs_torches(void)
+{
+	fix now = fe_time();
+	int i, step = now >= Bs_torch_time;
+
+	if (step)
+		Bs_torch_time = now + 0x1000;
+	for (i = 0; i < 6; i++) {
+		fe_seq *seq = fe_seq_get(Bs_torch[i].seq);
+		if (!seq || !seq->n_frames)
+			continue;
+		if (step) {
+			if (Bs_torch[i].next >= seq->n_frames)
+				Bs_torch[i].next = 0;
+			Bs_torch[i].shown = Bs_torch[i].next++;
+		}
+		if (Bs_torch[i].shown >= 0 && Bs_torch[i].shown < seq->n_frames)
+			fe_blit(seq->frames[Bs_torch[i].shown], Bs_torch[i].x, Bs_torch[i].y, -1);
+	}
+}
+
 static void bs_init(fe_screen *s)
 {
 	ubyte pal[768];
-	int first, count;
+	int first, count, i;
+
+	for (i = 0; i < 6; i++)			// 0x96198: the first frame
+		Bs_torch[i].next = Bs_torch[i].shown = 0;
+	Bs_torch_time = 0;
 
 	Bs_face = fe_febgnd(195, pal);			// 7 pictures of the face, 82x117 each
 	Bs_picture = NULL;
@@ -302,6 +337,7 @@ static void bs_draw(fe_screen *s)
 	grs_canvas area;
 	int line_h = Fe_font_m->ft_h + 2, scroll, i;
 
+	bs_torches();			// 0x830D4: 0x96263 first
 	if (Bs_face)
 		// The color around the face (the first pixel of the sheet) is not drawn.
 		fe_blit_part(Bs_face, 82 * Bs_frame, 0, 82, 117, 290, 124, Bs_face->bm_data[0]);
@@ -459,14 +495,8 @@ static const char *mk_user_file(const char *name)
 }
 #define MK_STORE_FILE	mk_user_file("GELDOR.DAT")		// "geldor.dat" 0x12CE53, in the current directory
 
-// The game flag 107 of the player (bit array at P+0x1A33, 0xADAFE) doubles
-// the prices (0x86F5A). The port does not have these flags yet; a file
-// that has them can define this function.
-DTU_WEAK int dtu_hook_game_flag(int n)
-{
-	(void) n;
-	return 0;
-}
+// The global flag 107 of the player (bit array at P+0x1A33, 0xADAFE)
+// doubles the prices (0x86F5A): dtu_script_gflag of dtuscript.c.
 
 static item_info *mk_item(int type, int id)
 {
@@ -546,7 +576,7 @@ static int mk_price(int type, int id, int cond, int sell)
 	price = value * (sell ? Mk_sell_percent[cha] : Mk_buy_percent[cha]) / 100;
 	if (price < 1)
 		price = 1;
-	if (dtu_hook_game_flag(107))
+	if (dtu_script_gflag(107))		// 0x86F5F
 		price *= 2;
 	return price;
 }

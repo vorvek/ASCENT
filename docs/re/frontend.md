@@ -336,7 +336,8 @@ percentile, thief flag, five thief skills (0x8BDE5), 0x66, flags, alignment,
 ## 6. Waterdeep, Blackstaff, market (fewdeep.c, femarket.c) (V)
 
 Waterdeep (0x8C206, record 0x14202D, screen 0, help bar (136,375)-(501,400)):
-music stream 0 (overview.tun); hot spots Blackstaff (275,120)-(334,189) keys
+music stream 0 (overview.tun), and after the screen 0x8C25A stops all
+streams (0xA48D0), also before the main menu, which starts no music; hot spots Blackstaff (275,120)-(334,189) keys
 B K, Yawning Portal (10,180)-(90,260) keys Y P, Market (215,190)-(304,264)
 keys M 4, City Gates (492,271)-(635,345) keys X Esc, Alt-F2 save
 (0xBA99F(1)), Alt-F3 load (0xBB780(0)). Before the first visit to Khelben
@@ -344,7 +345,14 @@ keys M 4, City Gates (492,271)-(635,345) keys X Esc, Alt-F2 save
 and the gates.
 
 Blackstaff (0x82B31, record 0x13EAF3, FEBGND 0): Khelben's face FEBGND 195 (7
-frames of 82x117 at (290,124)), eyes FESEQ 31, torches, the scrolling text of
+frames of 82x117 at (290,124)), eyes FESEQ 31 (the pre-load callback
+0x82BDB loads it and sets a timer of 8 s, but the blink code 0x82C28, six
+patterns at 0x13E711 drawn at (294,158), has no caller and no pointer to it
+in the image: version 1.3 never shows the eyes), torches (fetorch.c: table
+0x13E594 of 0x1C-byte records, FESEQ 23 to 28 at (73,135), (148,162),
+(212,168), (419,174), (485,165), (561,128); the frame callback 0x830D4 calls
+0x96263, which draws the next frame of each torch every 0x1000 (1/16 s), not
+masked, and starts again after the last), the scrolling text of
 the mission (FETXT, table 0x142840) with markup `~c ~s ~p ~e ~n ~m`, music
 stream 2 at volume 25. Exit circle (551,422) r 32 keys Esc X.
 
@@ -602,7 +610,8 @@ menu, anything else shows the menu again.
 - Load slot menu 0xBA647: ten slots `SG%d.sg`; a slot is valid if it starts
   with `DGSS` and version 12; the item is its 20-byte description, else
   TEX[67] "-empty-" as a text item. A text item of four empty lines comes
-  first. No valid slot: TEX[797] "No saved games were found" with TEX[34]
+  first (0xBA665); newmenu_do3 (0x63FB2) gets 11 items, the item width 190
+  and the first slot as the current item (0xBA7FF). No valid slot: TEX[797] "No saved games were found" with TEX[34]
   "Ok". Subtitle TEX[798] "Select Game to Restore".
 - Save slot menu 0xBA486: ten input menu items (type 6, 19 characters),
   subtitle TEX[796] "Save Game". An error gives TEX[800].
@@ -633,10 +642,12 @@ the port: there are only the English voices.
 
 ## 11. Credits (credits.c, 0x2C61B) (V)
 
-`iphof.txt`, music stream 2 (khelben.tun) looped at volume 100. The lines
-scroll up in a column at x 112, 416 wide, 470 high from y 5 (blit
-0xE0820), over the picture of the screen that was loaded before (Waterdeep
-from the menu). Defaults (0x2CEA7): medium font, row height = the height of
+`iphof.txt`, music stream 2 (khelben.tun) looped at volume 100. 0x2C5E6(0xA0)
+loads FEBGND 160 (a street of Waterdeep at dusk) into the picture of the
+screen (0x80202) and shows it with a fade out and a fade in (0x7F4CF); at the
+end 0x2C5E6(0xA) shows FEBGND 10 (Waterdeep) the same way. The lines scroll
+up in a column at x 112, 416 wide, 470 high from y 5 (blit 0xE0820), over
+that picture. Defaults (0x2CEA7): medium font, row height = the height of
 the medium font, hue 7, transparent background, centered. A line that starts
 with `;` is a comment and `~` starts a command (0x2CBD1): `~Sl` / `~Ss` large
 or small font, `~Jc` `~Jl` `~Jr` justification, `~cN` hue N. IPHOF.TXT has
@@ -655,10 +666,10 @@ each control).
 
 | Part | State |
 |---|---|
-| Title picture | done; the movies are not played (P) |
+| Title picture | done, after the movies LOGO22S, INTRO2 and TLOGOS (dtumovie.c; a key in a movie skips the rest, as 0x142254 does) |
 | Main menu | done, items and conditions as section 4 |
 | Character generation | done, all four screens and the quick character; the character goes to `Dtu_char` (dtuchar.h) and the game starts in YPINN through Waterdeep |
-| Waterdeep, Blackstaff | done (Khelben text, face, speech, torches) |
+| Waterdeep, Blackstaff | done (Khelben text, face, speech, torches); no eyes, as in 1.3; the hidden animation of the face (0x83A93, FESEQ 29 and 30) is not done |
 | Market | done: lists, prices, buy, sell, quantity window, stock file, `TheStore.<S>` in the saves (section 6a) |
 | Save, load | done, with the level state files (docs/re/levelstate.md) and the market stock; saves in a level |
 | Options | Music, FX, Reverse Stereo; Hires Dungeon Graphics is left out (P). The port adds "Improvements..." (the settings of `dtuopts.h`); the ESC menu and the F2 options menu of the game also have it |
@@ -667,7 +678,7 @@ each control).
 | Death | done: picture, music, Death Menu with Load Game and Abort Game |
 | ESC menu in the game | done (section 6b) |
 | Loading pictures | done (section 7a); the picture is scaled to the screen of the game (P) |
-| Movies (MVE) | not done |
+| Movies (MVE) | done (dtumovie.c, docs/formats/mve.md) |
 
 Decisions of the port (P):
 
@@ -695,8 +706,9 @@ Decisions of the port (P):
 - The market: `GELDOR.DAT` and `THESTORE.<S>` are in the directory of the user.
   The inventory of the port has the limits of the executable (127 items and 22
   key items, `DTU_MAX_INVENTORY`), and a buy stops there. Game flag 107 (the
-  double price) is the weak hook `dtu_hook_game_flag` (0 until the flags
-  exist). The mouse is not held in the quantity window.
+  double price) is the global flag of `dtu_script_gflag` (dtuscript.c), as
+  0x86F5F reads it (test: SG1.SG with flag 107 set shows each price
+  doubled). The mouse is not held in the quantity window.
 - The loading picture: the executable sets 640x480 and shows the picture;
   the port draws it scaled into the screen of the game, keeps it while the
   level loads and fades it out (0x7C2BB) after the level state is restored.
