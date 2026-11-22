@@ -234,7 +234,7 @@ skills for some items.
    Ring 26 strength 18 (percent 0), Ring 21 constitution 18, Gloves 50 dexterity
    plus 4, 2 or 1 (table 0x146240) and Open Locks plus 10 for a thief (37 for
    others), Cloak 43 Hide In Shadows 95, Ring 27 doubles the mage slots of the
-   levels 1 to 3, weapon 54 in the hand Find/Remove Traps 250. The spell
+   levels 1 to 3, weapon 54 in the hand Find/Remove Traps and Climb Walls 250 (0xB03BC, 0xB03C2). The spell
    effects of worn items: combat.md B6a.
 4. Heavy armor takes 250 from Hide In Shadows, Move Silently and Climb Walls.
    Misc 9 (Gauntlets) takes 250 from Find Traps and Open Locks. Lockpicks in

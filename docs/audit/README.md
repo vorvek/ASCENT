@@ -10,9 +10,10 @@ its commit, or open with an estimate of size).
 | In-game interface | [ingame-ui.md](ingame-ui.md) | keys under a conversation, F3 and minus/equal screen size, Alt+F2/F3, message box scroll bar, leftover Descent 1 keys, F2 options items, conversation focus keys, immersive mouse, screenshot key | the sensitivity slider has no effect, Descent 1 HUD messages, Descent 1 cheat codes |
 | Combat, spells and items | [combat.md](combat.md) | invisibility, player protections against creature attacks, 18/xx strength, Flame Tongue and Mace of Disruption, arrow and bolt bonuses, hit messages, level-up box, Chill Touch on undead, sounds, creature setup by name (0xAC7B2) | thief skill points at a new level, the lich touch spell (C16), three original defects without a correction |
 | World, scripts and levels | [world.md](world.md) | FLAME quest blocker (level fixes 0xACCDB), trigger rules after a restore, Lolth's conversation rules, YPINN soak "hangs", -testtour fall damage | the Shadow Thieves prison sequence, the WEAPON 13 warp check, script walk statement, the 1 gold fee at the well |
+| Item effects | [gear.md](gear.md) | Ring of Armoring, Climb Walls of the Sword of W'hin, Potion of Luck flag 77, potion texts, Cursed Scroll, Spider Piece turn level, weapon 13 use and drop, plot item drop, saved potion timers, partial stacks | drop placement 0x3C93B, the Luck timer in a save, Find Traps marker |
 | Rendering, audio and platform | [presentation.md](presentation.md) | static walls in 8-bit for one frame, the menu shadow on the GPU renderer, slow frame statistics | ambient sounds of DTU.WRP (WHAMMO), memory leaks at exit, spreading the level start texture loads |
 | Conversation input, HUD areas, Blackstaff timing (decompilation notes) | [decomp-gaps.md](decomp-gaps.md) | reply paging and first selection, Enter and Up/Down with no reply, Blackstaff pixel step and fade | Khelben's hidden face animation, cursor centering in the conversation |
 
 Test aids added by the audits: `tools/uitest.py` (interface tests, needs the
 game files), `-chartest str=` and `attackedby=`, `-testobjpos`, the soak test
-answers choice boxes and the "Leave the Yawning Portal?" box.
+answers choice boxes and the "Leave the Yawning Portal?" box, `tools/check_items.py` (item effects, needs the game files).

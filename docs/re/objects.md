@@ -1153,3 +1153,48 @@ player of the executable stops at a table where the port stops it (the move of
 the player in the port finds the objects of the segments that the query goes
 through, so a body in the next segment is found late, physics.c); creatures
 that push scenery were not measured.
+
+## Item effects (DTUGAME.EXE 1.3)
+
+The effects of the items are code for single item numbers. The keywords
+`pc_spell`, `pc_spell2`, `set_strength`, `duration` and `armor_class_decrement`
+of the `$OBJECT` and `$ARMOR` lines are not read by these functions. The
+details of each case are in combat.md B6 and B6a and character.md sections 5
+to 8; the audit of each item id is [gear.md](../audit/gear.md). (Code)
+
+- Use: 0x37A6A(index). A potion goes through 0xB7084 (use one); the Gem of
+  Curing, the Spider Pieces (charges in the count), the Scroll, the thief
+  scroll, the Orb of Insight and the Cursed Scroll are not used up.
+- Before each use 0xB6FE3 cuts each stack of a stackable type to its
+  `stack_limit` (and makes a count below 1 into 1).
+- Worn items: 0xAFB55 after each change of the equipment. Armor class =
+  10 + the sum of the table values (0x145C04 armor, 0x145A04 misc, 0x1458B8
+  weapons; the table value is minus `armor_class_decrement` for the armor
+  lines that have it), then the caps of Armor (6), Magical Vestment and
+  Shield (3), Slow +4, the dexterity value (0x14019A), Invulnerability -2,
+  limit -10 to 10. The boot and armor places read only armor; the necklace
+  skips number 33; a Cloak of Protection counts only without shield, magic
+  armor and heavy armor; no ring counts with magic armor; of two Rings of
+  Protection the better counts.
+- 0xAFAD1: with Ring 16 (Armoring) in a ring place, a mage gets 1 better
+  armor class after each of the three caps.
+- The effect bits of worn items (rings, boots, cloaks, Amulet of Shield,
+  Glim-Gauntlet, Sword of W'hin in the hand) are set with no end by 0xB08A8
+  and cleared by 0xB0A98 when the item goes.
+- The Sword of W'hin in the hand sets Find/Remove Traps and Climb Walls to
+  250 (95 after the limit) and gives 9 better armor class.
+- Potion timers: 0x396B2 each frame. The four timers of intelligence, Hill
+  Giant Strength, Dragon's Blood and Agility are saved as seconds left
+  (0xBA87E) and loaded as now + seconds (0xBA911). The Potion of Luck sets
+  global flag 77; its end and its use in a hit roll clear it.
+- Drop: 0xB717B. No drop with 700 objects; no drop of a `plot_item`
+  (0xB611C); weapon 13 refuses on a d18 above intelligence or a d7 above the
+  class 1 level (flags 0x8A, 0x90, script 0x1FD). The item is made with
+  0x3C93B (object_create_egg from the player). No pick up for 5 seconds.
+- Stacks: 0xB65BB adds a picked up count to the stack of the same item and
+  cuts it to `stack_limit`; a full stack takes nothing. The port takes what
+  fits and leaves the rest (`Dtu_fix_partial_stack`).
+- Wands: a weapon with `PC_spell` in the hand casts the spell with template 3
+  and uses one charge (0x56A0D).
+- There is no identification, no weight rule and no cursed item other than
+  the Cursed Scroll.
