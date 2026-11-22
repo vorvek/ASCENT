@@ -23,6 +23,8 @@ void dtu_add_data_dir(const char *path);
 // (%APPDATA%/ASCENT on Windows). With -datadir they stay in the current
 // directory. -userdir DIR changes the directory of the user.
 void dtu_init_dirs(void);
+// The data directory i (0 is the first), or NULL after the last one.
+const char *dtu_data_dir(int i);
 // The directory of the executable of an installed game, or NULL.
 const char *dtu_install_dir(void);
 // The directory of the user, or NULL for the current directory.

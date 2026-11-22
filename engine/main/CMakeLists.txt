@@ -13,10 +13,21 @@ set(MAIN_SOURCES
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
   dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuopts.c
-  dtumovie.c mvedec.c dtusoak.c dtuhdui.c)
+  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c)
 
 add_library(d_main OBJECT EXCLUDE_FROM_ALL ${MAIN_SOURCES})
 target_include_directories(d_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# ASCENT: the version in the session log (dtulog.c): ascent_version.h,
+# made at each build from "git describe" and ASCENT_VERSION (the version
+# of the setup program, installer/build.sh gives it).
+set(ASCENT_VERSION "" CACHE STRING "The version of the game for the session log (empty: git describe only)")
+add_custom_target(ascent_version
+  COMMAND ${CMAKE_COMMAND} -DSRC=${CMAKE_SOURCE_DIR} -DOUT=${CMAKE_CURRENT_BINARY_DIR}/ascent_version.h
+    -DVERSION=${ASCENT_VERSION} -DBUILD_TYPE=${CMAKE_BUILD_TYPE} -P ${CMAKE_SOURCE_DIR}/cmake/version.cmake
+  BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/ascent_version.h)
+add_dependencies(d_main ascent_version)
+target_include_directories(d_main PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(d_main PUBLIC
   d_common d_3d d_texmap d_2d d_bios d_iff d_cfile d_mem d_misc d_vecmat d_fix d_div d_platform)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -31,6 +42,21 @@ endif()
 # The executable is not part of the default build until the game code links.
 add_executable(ascent EXCLUDE_FROM_ALL $<TARGET_OBJECTS:d_main>)
 target_link_libraries(ascent PRIVATE d_main)
+
+# ASCENT: the symbols of the release build (docs/debug_logs.md). The build
+# folder keeps ascent-symbols.exe (the executable with its debug
+# information) and ascent.map; the installed ascent.exe has no debug
+# information. The code of the two files is the same, so addr2line with
+# ascent-symbols.exe gives the function and the line of an address of a
+# crash report.
+if(ASCENT_RELEASE AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  target_link_options(ascent PRIVATE -Wl,-Map=${CMAKE_BINARY_DIR}/ascent.map)
+  add_custom_command(TARGET ascent POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:ascent> ${CMAKE_BINARY_DIR}/ascent-symbols.exe
+    COMMAND ${CMAKE_STRIP} --strip-debug $<TARGET_FILE:ascent>
+    COMMENT "The symbols of ascent.exe: ascent-symbols.exe and ascent.map"
+    VERBATIM)
+endif()
 
 add_executable(test_fvi_math test_fvi_math.c)
 target_include_directories(test_fvi_math PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

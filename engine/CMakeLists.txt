@@ -10,6 +10,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     -Werror=implicit-function-declaration -Werror=incompatible-pointer-types)
 endif()
 
+# ASCENT: the release build keeps the debug information in the objects of
+# the game, so that ascent-symbols.exe (engine/main/CMakeLists.txt) can
+# turn the addresses of a crash report into functions and lines.
+if(ASCENT_RELEASE AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  add_compile_options(-g)
+endif()
+
 # A library is part of the build when its directory has a CMakeLists.txt file.
 # The order is the dependency order.
 set(ASCENT_LIBS
