@@ -568,11 +568,11 @@ def cast_text(sec):
 
 def classes_of(rec):
     if rec.has("all_use"):
-        return "F T M C"
+        return "F/T/M/C"
     out = []
     for flag, letter in (("fighter_use", "F"), ("thief_use", "T"), ("mage_use", "M"), ("cleric_use", "C")):
         out.append(letter if rec.has(flag) else "-")
-    return " ".join(out)
+    return "/".join(out)
 
 
 def value_of(rec):
@@ -636,8 +636,8 @@ class Pages:
             "ASCENT source port.",
             "",
             "ASCENT plays by these rules. Where the original 1.3 game has a defect that ASCENT "
-            "corrects, the page says so in one line. Start ASCENT with `-origcombat` (and "
-            "`-origchar` for THAC0) to play with the original behavior.",
+            "corrects, the page says so in one line. Start ASCENT with the options of the "
+            "[[Sources]] page (`-origcombat`, `-origchar`, `-origobj`) to play with the original behavior.",
             "",
             "## Pages",
             "",
@@ -880,7 +880,7 @@ class Pages:
                 ["Cleric", "d%d" % die[0], "items marked C", "cleric spells, turn undead (key T)"],
             ]),
             "",
-            "Each item is marked for the classes that may use it (the F T M C columns of the item "
+            "Each item is marked for the classes that may use it (the F/T/M/C columns of the item "
             "pages). You can pick up, carry and sell any item. In the inventory screen an item that "
             "none of your classes may use does not go onto the paper doll, into your hand or into a "
             "hot key box. There is no message.",
@@ -1094,7 +1094,7 @@ class Pages:
                     note = "Its name promises speed, but it has no other power."
                 launch.append([r.name(), "bow" if r.has("bow") else "crossbow", signed(r.num("to_hit_bonus", 0)),
                                classes_of(r), r.num("value", 0), note])
-        head = ["Weapon", "Damage", "To hit", "Damage type", "Magic", "Speed", "F T M C", "Value", "Notes"]
+        head = ["Weapon", "Damage", "To hit", "Damage type", "Magic", "Speed", "F/T/M/C", "Value", "Notes"]
         melee.sort(key=lambda x: x[0])
         thrown.sort(key=lambda x: x[0])
         ammo.sort(key=lambda x: (x[1], x[0]))
@@ -1111,7 +1111,7 @@ class Pages:
             "- Damage type: the game has no slashing, piercing or bludgeoning damage and no weapon "
             "sizes. It has fire dice, which fire resistance halves.",
             "- Magic: a creature that resists weapons takes no damage from a weapon that is not magic.",
-            "- F T M C: the classes that may use it ([[Classes]]).",
+            "- F/T/M/C: the classes that may use it ([[Classes]]).",
             "- Value: the base price in gold.",
             "",
             "## Melee weapons",
@@ -1136,7 +1136,7 @@ class Pages:
             "Worn in the bow or crossbow place of the paper doll. The bonus is added to the attack "
             "and the damage of the missile.",
             "",
-            md_table(["Launcher", "Kind", "To hit and damage", "F T M C", "Value", "Notes"], launch),
+            md_table(["Launcher", "Kind", "To hit and damage", "F/T/M/C", "Value", "Notes"], launch),
             "",
             "Wands are on [[Wands]].",
             "",
@@ -1185,11 +1185,11 @@ class Pages:
             "- AC alone: your armor class with only this item and Dexterity 7 to 14.",
             "- Mage spells: a mage cannot cast a mage spell while wearing any item on this page except "
             "boots and gauntlets.",
-            "- F T M C: the classes that may wear it ([[Classes]]).",
+            "- F/T/M/C: the classes that may wear it ([[Classes]]).",
             "",
             "Rings, amulets, cloaks, boots, bracers, gloves and girdles are on [[Magic Items|Magic-Items]].",
             "",
-            md_table(["Armor", "Place", "AC bonus", "AC alone", "F T M C", "Value", "Notes"], rows),
+            md_table(["Armor", "Place", "AC bonus", "AC alone", "F/T/M/C", "Value", "Notes"], rows),
             "",
             "There is no helmet: the paper doll has no place for one.",
             "",
@@ -1214,7 +1214,7 @@ class Pages:
                "The game shows no description of an item. This page says what each one does. A worn "
                "item works while you wear it and stops when you take it off.", "",
                "- AC bonus: how much the item lowers your armor class.",
-               "- F T M C: the classes that may wear it ([[Classes]]).",
+               "- F/T/M/C: the classes that may wear it ([[Classes]]).",
                "- Value: the base price in gold.", ""]
         total = 0
         for title, flags in groups.items():
@@ -1243,7 +1243,7 @@ class Pages:
             if title == "Girdles":
                 rows.append([self.O[7].name(), "0", classes_of(self.O[7]), self.O[7].num("value", 0), "A plain belt. No effect."])
             total += len(rows)
-            out += ["## " + title, "", md_table(["Item", "AC bonus", "F T M C", "Value", "Effect"], rows), ""]
+            out += ["## " + title, "", md_table(["Item", "AC bonus", "F/T/M/C", "Value", "Effect"], rows), ""]
             if title == "Rings":
                 out += ["You can wear two rings.", ""]
         wrows = []
@@ -1346,7 +1346,7 @@ class Pages:
             "a cleric; a fighter of level 8 casts Magic Missile at level 8. For a cleric spell it uses "
             "your cleric level. If you have no such class, it casts at level 1.",
             "",
-            md_table(["Wand", "Spell", "Charges", "F T M C", "Value", "Notes"], rows),
+            md_table(["Wand", "Spell", "Charges", "F/T/M/C", "Value", "Notes"], rows),
             "",
             "The spell rules: [[Wizard Spells|Wizard-Spells]].",
             "",
@@ -1414,8 +1414,8 @@ class Pages:
                + " Each row has all the rules of one spell. \"Level\" in a row means your %s level."
                % ("mage" if cls == "m" else "cleric"), "",
                "- Cast: the cast time in game seconds (the AD&D casting time: one second for each "
-               "segment, 60 for a round, 600 for a turn). The executable sets it for each spell; the "
-               "cast_time values of the spell table are not used. A hit on you while you cast stops "
+               "segment, 60 for a round, 600 for a turn). The game sets it for each spell; the "
+               "cast times of the spell table files are not used. A hit on you while you cast stops "
                "the spell, and the slot is lost. A scroll or a wand casts at once.",
                "- Range: \"You\" means the spell acts on you. The other spells fire missiles that fly "
                "50 ft per second until they hit something, for 30 seconds (1500 ft) unless the row "
