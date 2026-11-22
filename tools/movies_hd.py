@@ -4,7 +4,7 @@
 For each MVE file this tool:
   1. writes the decoded pictures as PNG files (ffmpeg; its decoder gives the
      same pixels as engine/main/mvedec.c, see docs/formats/mve.md),
-  2. upscales them with Real-ESRGAN (realesrgan-ncnn-vulkan, on the GPU),
+  2. upscales them (a gaussian resample and blur; Real-ESRGAN with --method esrgan),
   3. encodes them as an MPEG-1 video stream NAME.m1v, one picture for each
      picture of the MVE file, with no sound.
 
@@ -39,12 +39,15 @@ HD_DIR = os.path.join(ROOT, "gamedata", "hd")
 GAME_DIRS = [os.path.join(ROOT, "gamedata", "cd", "DTU"), "E:/UNDAMONTAN/DTU"]
 MOVIES = ["LOGO22S.MVE", "INTRO2.MVE", "TLOGOS.MVE", "FLAM1.MVE", "CREDITV1.MVE"]
 
-# The upscale method of each movie. "esrgan": Real-ESRGAN (the model of
-# --model). "gauss": a plain resample with a gaussian filter (ffmpeg
-# swscale, flags=gauss), soft and without invented detail. The two company
-# logos (LOGO22S: Interplay, TLOGOS: TSR) are rendered 3D pictures with fine
-# noise, and Real-ESRGAN turns them into hard, smeared shapes.
-METHOD = {"LOGO22S.MVE": "gauss", "TLOGOS.MVE": "gauss"}
+# The upscale method of each movie. "gauss" (the default for all movies): a
+# plain resample with a gaussian filter (ffmpeg swscale, flags=gauss), soft
+# and without invented detail. "esrgan": Real-ESRGAN (the model of --model),
+# only with --method esrgan. Real-ESRGAN upscales each picture alone, so the
+# details change from picture to picture and the movies wobble; it also
+# turned the rendered 3D pictures of the two company logos (LOGO22S:
+# Interplay, TLOGOS: TSR) into hard, smeared shapes.
+METHOD = {}
+DEFAULT_METHOD = "gauss"
 # After the gaussian resample, a gaussian blur with this sigma (in output
 # pixels, about 0.4 source pixels at 4x) removes the dither grain of the
 # 256-color pictures. The grain also made the MPEG-1 files 4 to 8 times larger.
@@ -139,7 +142,7 @@ def make(movie, args, ffmpeg, esrgan):
     if n_in != count:
         sys.exit("%s: ffmpeg wrote %d pictures, the file has %d" % (movie, n_in, count))
     t1 = time.time()
-    method = args.method or METHOD.get(movie, "esrgan")
+    method = args.method or METHOD.get(movie, DEFAULT_METHOD)
     if method == "gauss":
         run([ffmpeg, "-v", "error", "-y", "-start_number", "0", "-i", os.path.join(fin, "%05d.png"),
              "-vf", "scale=iw*%d:ih*%d:flags=gauss,gblur=sigma=%g" % (args.scale, args.scale, GAUSS_BLUR_SIGMA),
