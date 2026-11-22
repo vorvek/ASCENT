@@ -1093,6 +1093,11 @@ static void combat_init(void)
 		Dtu_fix_chill_touch = 0;
 		Dtu_fix_rary_manual = 0;
 		Dtu_fix_melf_acid = 0;
+		Dtu_fix_spell_dice = 0;
+		Dtu_fix_magic_missile = 0;
+		Dtu_fix_flaming_sphere = 0;
+		Dtu_fix_knock = 0;
+		Dtu_fix_spell_hours = 0;
 		Dtu_fix_turn_undead = 0;
 	}
 }

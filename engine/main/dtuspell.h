@@ -98,6 +98,37 @@ extern int Dtu_fix_rary_manual;
 // save and load. 1 (default): the 2nd edition rule. 0: the executable.
 extern int Dtu_fix_melf_acid;
 
+// Fireball (16, 0x8E592) and Lightning Bolt (32, 0x8EEAB) write min(L, 10)
+// as the dice count, but the lines have dice of 0 sides and 6 for each
+// level: 6 L, with no limit. Corrected by the AD&D 2nd edition rule: 1d6
+// for each caster level, at most 10d6, a save for half.
+extern int Dtu_fix_spell_dice;
+
+// Magic Missile (33). The executable: 1d4 for each missile (damage_bonus=1
+// of the line is never read), a save for half (0x911AA), one more missile
+// at levels 2, 4, 6 and 8 (0x56FF6). Corrected by the manual and the AD&D
+// 2nd edition rule: 1d4 + 1, no save, one more at levels 3, 5, 7 and 9.
+extern int Dtu_fix_magic_missile;
+
+// Flaming Sphere (17). The line has no damage dice, so the sphere does no
+// damage to a creature or a player. Corrected by the AD&D 2nd edition rule:
+// the sphere burns the target it hits for 1 round for each caster level,
+// 2d4 fire each round, a save each round negates (the list of the acid of
+// Melf's Acid Arrows, one round is ACID_ROUND).
+extern int Dtu_fix_flaming_sphere;
+
+// Knock (28) has self_cast_ok, so the cast is on the caster and nothing
+// happens (the case is the common end 0x8FFE5). The wall hit of a Knock
+// missile opens the door (0x26C2F calls 0x7E859 with unlock 1). Corrected:
+// Knock fires a missile.
+extern int Dtu_fix_knock;
+
+// Strength (50) and Infravision (25) compute the duration in 32 bits: it
+// wraps from caster level 10 (Strength) and 8 (Infravision) and the effect
+// ends at once. Corrected: no wrap; a duration stops at 4 hours 33 minutes,
+// the longest timer of the port below DTU_FX_NO_END.
+extern int Dtu_fix_spell_hours;
+
 // The creature spells (0x9231F) take rand() % n with n = 0 or less for
 // some spells (Scare at caster level 4 and up, Hold Person at a distance
 // that is a multiple of 50). The executable has the saturating divide
@@ -186,6 +217,10 @@ extern int Dtu_spell_slots_left[2][9];
 // effects of all objects (0x9002C), the cast that waits for its time,
 // the homing missiles of the player, the setup at the start of a level.
 void dtu_spell_frame(void);
+
+// ASCENT: the test aid -chartest spelltest=SPELL.LEVEL.OBJ.TRIALS (OBJ -1:
+// the player; TRIALS 0: one cast that stays). The results go to -objlog.
+void dtu_spell_test(int spell, int level, int objnum, int trials);
 
 // The attack key with a spell in the hand, or a scroll or a wand in the
 // hand (0x41A4D and 0x56A0D). Returns 1 when the request is done (cast,
