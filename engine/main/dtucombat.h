@@ -33,8 +33,16 @@ extern int Dtu_fix_one_hit;
 // time of the last attack while Haste (bit 13) is on, so the next swing
 // can start 1.5 swing times later: Haste makes the attacks slower.
 // Corrected (a guess of the intent): with Haste the swing takes one half
-// of the time.
+// of the time. With Dtu_fix_missile_rate the wait of a missile weapon is
+// halved too.
 extern int Dtu_fix_haste_attack;
+
+// The rate of missile and thrown weapons. The fire timer of 0x56A0D starts
+// again when the function was not called in the last two frames (0x56BB0),
+// and the request ends with each shot: fire_wait never limits the shots,
+// each key press fires. Corrected: fire_wait from one shot to the next
+// (two times with Slow, half with Haste), a press before that is consumed.
+extern int Dtu_fix_missile_rate;
 
 // Turn undead (0xADC46). When the number of creatures that a turn can
 // destroy is used up, the executable clears the "can be tried" bit of the
@@ -92,8 +100,9 @@ void dtu_combat_fumble(void);
 int dtu_combat_view_frame(void);
 int dtu_combat_view_model(void);
 
-// The time of a swing of the weapon in the hand (the state time of the
-// attack states, 0x441E9): max(fire_wait, 1.0), two times that with Slow.
+// The time of the attack state of the item in the hand (0x441E9):
+// max(fire_wait, 1.0) for a melee weapon, the time of the model for a
+// missile weapon or a spell; two times that with Slow (dtuatk.h).
 fix dtu_combat_swing_time(void);
 
 // 0x90CEF for spell 16 (Fireball): the blindness and the deafness of a

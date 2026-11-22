@@ -49,9 +49,11 @@
 #include "text.h"
 #include "key.h"
 #include "dtuscroll.h"		// ASCENT: the scroll text screen skips the animation
+#include "dtuatk.h"			// ASCENT: the attack timing rules
 
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
+int Dtu_fix_missile_rate = 1;
 
 extern char Dtu_player_archive[16];		// dtugame.c
 
@@ -76,7 +78,9 @@ static int Key_held = 0;				// Controls+0x19
 static int Key_last = 0;				// 0x13AD7E
 static fix Last_attack = -0x7fffffff;	// 0x13B74B
 static fix Swing_time = F1_0;			// state_times[6] of the player model after 0x43A5A
-static fix Fire_next = 0, Fire_last = -0x7fffffff;	// 0x215D74, 0x215D7C (hand 1)
+static fix Fire_next = 0, Fire_last = -0x7fffffff;	// 0x215D80, 0x215D78 (hand 1)
+static fix Missile_last = -0x7fffffff;	// ASCENT: the time of the last shot (Dtu_fix_missile_rate)
+static int Missile_passed = 0;			// ASCENT: the request has passed the wait of Dtu_fix_missile_rate
 static fix Swing_started = 0;			// for the log: the game time of the start of the swing
 static int Lift_model = -1;			// ASCENT: the model of Swing_lift (Dtu_improved_body)
 static fix Swing_lift = 0;				// ASCENT: the lift of the arms in a swing (Dtu_improved_body)
@@ -185,20 +189,31 @@ static int hand_letter(void)
 	return 'g';
 }
 
-// The swing time (0x441E9 to 0x44258): t = max(fire_wait, 1.0), 2 t with
-// the bit 0x08000000 (Slow).
+// The time of the attack state (state_times[6] of the model of the
+// player, 0x441E9 to 0x44258): max(fire_wait, 1.0) for a melee weapon and
+// the empty hand, two times that with the bit 0x08000000 (Slow).
+// ASCENT: a missile weapon, a thrown weapon and a spell keep the time of
+// the model, as in the executable (0x43A5A writes the time only for
+// attack_type 1). The port took max(fire_wait, 1.0) for them too: 2.0 for
+// an arrow, 3.0 for a bolt. Haste: Dtu_fix_haste_attack (dtuatk.c).
+static int hand_is_melee(void)
+{
+	int w = hand_weapon();
+
+	if (dtu_spell_in_hand())
+		return 0;
+	return w < 0 || weapon_int(w,"attack_type",1) == 1;
+}
+
 fix dtu_combat_swing_time(void)
 {
 	int w = hand_weapon();
-	fix t = F1_0;
+	fix model_time = F1_0;
 
-	if (w >= 0 && Weapon_info[w].fire_wait > t)
-		t = Weapon_info[w].fire_wait;
-	if (ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_SLOW))
-		t *= 2;
-	if (Dtu_fix_haste_attack && ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_HASTE))
-		t /= 2;
-	return t;
+	if (View_model >= 0 && View_model < N_polygon_models && Polygon_models[View_model].dtu_block)
+		model_time = Polygon_models[View_model].state_times[DAS_ATTACK];
+	return dtu_atk_state_time(hand_is_melee(),w >= 0 ? Weapon_info[w].fire_wait : 0,model_time,
+		ConsoleObject ? ConsoleObject->dtu.m_88 : 0,Dtu_fix_haste_attack);
 }
 
 // 0x43A5A: the model of the player for the item in the hand. The name is
@@ -276,7 +291,10 @@ static void view_animation(void)
 
 	// 0x44589: the frame is computed only for a state time of 1.0 or more
 	// (the test is on the integer part) and a state with frames
-	if (f2i(st) >= 1 && end > first) {
+	// ASCENT: with Dtu_fix_haste_attack the halved swing of Haste (0.5 for
+	// most weapons) is animated too. Before this the swing of a player with
+	// Haste never left its first frame and never ended: no attack at all.
+	if (dtu_atk_state_animates(st,is_attack_state(s),Dtu_fix_haste_attack) && end > first) {
 		fix elapsed = GameTime - View_anim_start;
 		View_frame = first + (int)((((int64_t)elapsed * ((int64_t)(end - first) << 16)) / st + 0x8000) >> 16);
 	}
@@ -683,6 +701,13 @@ static char *missile_needs(int w)
 	return NULL;
 }
 
+// ASCENT: the time from one shot of the weapon to the next
+// (Dtu_fix_missile_rate, dtuatk.c). 0 with the rule of the executable.
+static fix missile_wait(int w)
+{
+	return dtu_atk_missile_wait(Weapon_info[w].fire_wait,ConsoleObject->dtu.m_88,Dtu_fix_missile_rate,Dtu_fix_haste_attack);
+}
+
 // Returns 1 if the request is done.
 static int fire_missile_weapon(int w)
 {
@@ -696,6 +721,14 @@ static int fire_missile_weapon(int w)
 	fire_frame = po->fire_frames[s == DAS_ATTACK ? 0 : s == DAS_ATTACK2 ? 1 : s == DAS_ATTACK3 ? 2 : 3];
 	if (View_frame < fire_frame)
 		return 0;
+	// ASCENT: Dtu_fix_missile_rate: not before the end of the wait
+	{
+		fix since = GameTime - Missile_last;
+
+		if (since < 0) since = -since;
+		if (since < missile_wait(w))
+			return 0;
+	}
 
 	// The fire timer of the hand (Descent 1 style)
 	if (Fire_last + 2*FrameTime < GameTime)
@@ -716,6 +749,7 @@ static int fire_missile_weapon(int w)
 	}
 	if (!fired)
 		return 0;
+	Missile_last = GameTime;		// ASCENT: Dtu_fix_missile_rate
 	// 0xB7084: one item of the stack in the hand
 	if (e && e->count > 0)
 		dtu_char_use_up(Dtu_char.current.n);
@@ -750,6 +784,30 @@ static void start_attack(void)
 			Request = 0;
 			return;
 		}
+		// ASCENT: Dtu_fix_missile_rate. The executable has no wait from one
+		// shot to the next: the fire timer of 0x56A0D starts again with each
+		// key press (0x56BB0), so fire_wait (2.0 for an arrow, 3.0 for a
+		// bolt) never counts and each press fires. Corrected: the shots are
+		// fire_wait apart. A press starts the attack state when its fire
+		// frame comes at or after the end of the wait; an earlier press is
+		// consumed, like a press at the gate of a melee weapon. Haste halves
+		// the wait (Dtu_fix_haste_attack), which is the effect of the Short
+		// Bow of Speed (Dtu_fix_speed_items).
+		if (!Missile_passed) {
+			fix wait = missile_wait(w), lead = 0;
+			fix since = GameTime - Missile_last;
+			polymodel *po = view_po();
+
+			if (since < 0) since = -since;
+			if (!is_attack_state(View_state) && po)
+				lead = dtu_atk_fire_lead(Swing_time,Dtu_anim_first[DAS_ATTACK],Dtu_anim_first[DAS_ATTACK+1],po->fire_frames[0]);
+			if (since + lead < wait) {
+				Request = 0;
+				return;
+			}
+			Missile_passed = 1;
+			dtu_obj_log("combat: shot request accepted at %.3f, wait %.3f",f2fl(GameTime),f2fl(wait));
+		}
 		if (!is_attack_state(View_state)) {
 			Smack = 0;
 			View_goal = DAS_ATTACK;
@@ -770,9 +828,9 @@ static void start_attack(void)
 			Request = 0;
 			return;
 		}
-		Last_attack = GameTime;
-		if (!Dtu_fix_haste_attack && (ConsoleObject->dtu.m_88 & DTU_FX_HASTE))
-			Last_attack += t / 2;
+		// 0x41EC3: with Haste the executable adds half of the swing time
+		// (Haste is slower); dtuatk.c has the rule and its correction
+		Last_attack = GameTime + (dtu_atk_melee_wait(t,ConsoleObject->dtu.m_88,Dtu_fix_haste_attack) - t);
 	}
 
 	// 0x44300: the goal becomes ATTACK (state 6; the states 7, 11 and 12
@@ -1089,6 +1147,7 @@ static void combat_init(void)
 	if (FindArg("-origcombat")) {
 		Dtu_fix_one_hit = 0;
 		Dtu_fix_haste_attack = 0;
+		Dtu_fix_missile_rate = 0;
 		Dtu_fix_stoneskin_word = 0;
 		Dtu_fix_chill_touch = 0;
 		Dtu_fix_rary_manual = 0;
@@ -1119,6 +1178,8 @@ int dtu_combat_player_attack(void)
 			return 1;
 		}
 	}
+	if (!Request)
+		Missile_passed = 0;		// ASCENT: a new request (Dtu_fix_missile_rate)
 	Request = 1;
 	Key_held = 1;
 	return 1;
@@ -1141,6 +1202,7 @@ void dtu_combat_frame(void)
 		View_frame = Dtu_anim_first[DAS_STAND];
 		View_anim_start = GameTime;
 		Last_attack = GameTime - i2f(100);
+		Missile_last = GameTime - i2f(100);
 		Request = 0;
 		change_player_model(hand_letter());
 	}
