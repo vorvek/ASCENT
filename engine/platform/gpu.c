@@ -1447,13 +1447,24 @@ int64_t plat_gpu_texture_bytes(void)
 	return Tex_bytes;
 }
 
-// Upload the finished loads, up to about 24 MB in one frame, so that a
-// level start does not stop for all of them at once.
+// Upload the finished loads, up to about 24 MB and Upload_budget_us of
+// time in one frame (at least one load), so that a level start does not
+// stop for all of them at once: the preload of a level gives 300 to 700
+// loads. ASCENT_GPU_UPLOAD_MS sets the time (0: no time limit).
+static int64_t Upload_budget_us = -1;
+
 static void take_hd_results(void)
 {
 	int64_t budget = 24 << 20;
+	uint64_t start = now_us();
 	gputex_result *r;
 
+	if (Upload_budget_us < 0) {
+		const char *e = SDL_getenv("ASCENT_GPU_UPLOAD_MS");
+		Upload_budget_us = e ? (int64_t) (atof(e) * 1000.0) : 4000;
+		if (Upload_budget_us < 0)
+			Upload_budget_us = 0;
+	}
 	while (budget > 0 && (r = gputex_take()) != NULL) {
 		tex_info *ti = tex_info_get((GLuint) r->texture);
 		if (ti && ti->rgba && ti->serial == r->serial) {
@@ -1464,6 +1475,8 @@ static void take_hd_results(void)
 			budget -= (int64_t) r->w * r->h * 4;
 		}
 		gputex_free(r);
+		if (Upload_budget_us > 0 && (int64_t) (now_us() - start) >= Upload_budget_us)
+			break;
 	}
 }
 
