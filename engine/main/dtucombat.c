@@ -1178,6 +1178,17 @@ int dtu_combat_target_hint(void)
 
 int dtu_combat_view_state(void) { return View_state; }
 int dtu_combat_attack_pending(void) { return Request; }
+
+// 0x9305D, the player branch: the request of the attack key (0x13B69F and
+// 0x13B6A3) is cleared and the arms go at once to the flinch (+0x176 and
+// +0x170 = 8, P+0x57 = GameTime + FrameTime)
+void dtu_combat_cast_stopped(void)
+{
+	Request = 0;
+	View_state = View_goal = DAS_FLINCH;
+	View_frame = Dtu_anim_first[DAS_FLINCH];
+	View_anim_start = GameTime + FrameTime;
+}
 int dtu_combat_view_frame(void) { return View_frame; }
 int dtu_combat_view_model(void) { return View_model; }
 

@@ -84,6 +84,8 @@ int dtu_combat_view_state(void);
 // 1 while the attack key was pressed and its attack or cast has not started
 // (0x13B69F); also while the cast time of a spell runs.
 int dtu_combat_attack_pending(void);
+// 0x9305D: a cast of the player was interrupted or aborted.
+void dtu_combat_cast_stopped(void);
 int dtu_combat_view_frame(void);
 int dtu_combat_view_model(void);
 

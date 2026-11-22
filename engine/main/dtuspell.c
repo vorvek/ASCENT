@@ -36,6 +36,7 @@
 #include "gameseq.h"
 #include "digi.h"
 #include "fireball.h"
+#include "render.h"
 #include "dtugame.h"
 #include "dtuobj.h"
 #include "dtuchar.h"
@@ -584,6 +585,17 @@ static const char *Fx_name[32] = {
 	"Regeneration", "Shield", "Sleep", "Slow", "Spider Climb", "Stoneskin", "Strength", "Magical Vestment"
 };
 
+// The texts "NAME expired." of 0x9002C (0x12E385 to 0x12E5E5). NULL: no
+// text (Deafness, Feather Fall and Regeneration have none). The two
+// invisibilities clear both bits before the test of bit 16 (0x906B9), so
+// the text is always "Invisibility expired.".
+static const char *Fx_expired[32] = {
+	"Armor", "Bless", "Blinded", "Chill Touch", NULL, "Confusion", "Detect Magic", NULL,
+	"Fear", "Protection From Fire", "Resist Fire", "Flying", "Free Action", "Haste", "Hold Person", "Infravision",
+	"Invisibility", "Invisibility", "Invulnerability", "Jump", "Find Traps", "Levitate", "Rary's Mnemonic Enhancer", "Protection From Evil",
+	NULL, "Shield", "Sleep", "Slow", "Spider Climb", "Stoneskin", "Strength", "Magical Vestment"
+};
+
 static int fx_bit(int mask)
 {
 	int b = 0;
@@ -593,7 +605,8 @@ static int fx_bit(int mask)
 }
 
 // Sets an effect with a duration. Returns 0 if the effect is on already
-// (each case of 0x8CFFF returns at once then).
+// (each case of 0x8CFFF returns at once then). The message is the one of
+// the case (say_effect).
 static int fx_set(object *obj,int mask,fix duration)
 {
 	int b = fx_bit(mask);
@@ -603,14 +616,6 @@ static int fx_set(object *obj,int mask,fix duration)
 	obj->dtu.m_88 |= mask;
 	if (Fx_timer[b])
 		*timer_ref(obj,Fx_timer[b]) = (duration >= DTU_FX_NO_END) ? DTU_FX_NO_END : GameTime + duration;
-	if (obj->type == OBJ_PLAYER) {
-		if (duration >= DTU_FX_NO_END)
-			HUD_init_message("%s.",Fx_name[b]);
-		else if (duration >= MINUTE)
-			HUD_init_message("%s for %d minutes.",Fx_name[b],timer_ms(duration) / 60);
-		else
-			HUD_init_message("%s for %d seconds.",Fx_name[b],timer_ms(duration));
-	}
 	dtu_spell_log("spell: effect %s on obj %d %s for %.1f seconds",Fx_name[b],(int)(obj-Objects),target_name(obj),
 		duration >= DTU_FX_NO_END ? -1.0 : f2fl(duration));
 	return 1;
@@ -665,8 +670,17 @@ static void fx_end(object *obj,int b)
 	}
 	if (obj->type == OBJ_ROBOT)
 		dtu_spell_creature_event(obj,DTU_CSC_EXPIRED);		// 0x9002C sets +0x15F bit 3
+	// 0x9002C plays sound 161 at the end of the invisibilities (the player
+	// and the creatures) and sound 163 at the end of Invulnerability
+	if (b == 16 || b == 17)
+		digi_play_sample(161,F1_0);
+	else if (b == 18)
+		digi_play_sample(163,F1_0);
 	if (obj->type == OBJ_PLAYER) {
-		HUD_init_message("%s expired.",Fx_name[b]);
+		if (Fx_expired[b]) {
+			HUD_init_message("%s expired.",Fx_expired[b]);
+			dtu_spell_log("spell: message: %s expired.",Fx_expired[b]);
+		}
 		dtu_char_update();
 		dtu_spell_log("spell: the player has armor class %d",dtu_char_armor_class());
 	}
@@ -856,6 +870,106 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 	return dealt;
 }
 
+//------------------------------------------------------------------------
+// The messages of 0x8CFFF. The case writes the text into 0x3A64B0 and
+// 0x347A2 puts it into the message box when 0x8CEAE gave 1.
+
+static char Msg_t[48], Msg_c[48];		// 0x3A6584 target, 0x3A6548 caster
+static const char *Msg_are, *Msg_have, *Msg_were;	// 0x3A6528, 0x3A6500, 0x3A6514
+static int Msg_show;						// 0x3A65C4
+
+#define V_NONE	0
+#define V_ARE	1		// "are" / "is" of the caster
+#define V_HAVE	2		// "have" / "has" of the caster
+
+// 0x16636: a creature that is invisible (+0x147, set by the two
+// Invisibility spells) is not seen unless the player is blind (then the
+// test does not apply) or has an intelligence of 13 or more and a level of
+// 10 or more
+static int caster_unseen(object *c)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int l1 = pa->class1_level + 1, l2 = pa->class2_level + 1;
+
+	if (c->type != OBJ_ROBOT || !(c->dtu.m_88 & (DTU_FX_INVISIBLE|DTU_FX_IMP_INVIS)))
+		return 0;
+	if (ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_BLIND))
+		return 0;
+	return pa->intelligence < 13 || (l1 > l2 ? l1 : l2) < 10;
+}
+
+// 0x8CEAE(target, caster): 1 if the target or the caster is the player;
+// else the segment of the caster is in the visible list (0x38C060; the port
+// takes the segments of the last rendered frame), the caster is seen
+// (0x16636), and d20 <= intelligence - 2 (P+0xBD: the Spellcraft skill of
+// the 1.3 readme).
+static int message_rule(object *target,object *caster)
+{
+	int i, seen = 0;
+
+	if (target == ConsoleObject || caster == ConsoleObject)
+		return 1;
+	if (caster == NULL)
+		return 0;
+	for (i=0;i<N_render_segs && i<RENDER_LIST_SIZE;i++)
+		if (Render_list[i] == caster->segnum) {
+			seen = 1;
+			break;
+		}
+	if (!seen || caster_unseen(caster))
+		return 0;
+	return rand() % 20 + 1 <= (int)Dtu_char.pa.intelligence - 2;
+}
+
+// The names and verbs of 0x8CFFF (0x8D08D to 0x8D1B4): the player is
+// "You" (target "were", caster "are" and "have"), a trap "a trap", a
+// creature or another object its name ("was", "is", "has").
+static void msg_setup(object *target,object *caster)
+{
+	const char *t, *c;
+
+	t = (target == ConsoleObject) ? "You" : (target->type == OBJ_LIGHT) ? "a trap" : dtu_object_display_name(target);
+	c = (caster == ConsoleObject) ? "You" : (caster == NULL || caster->type == OBJ_LIGHT) ? "a trap" : dtu_object_display_name(caster);
+	snprintf(Msg_t,sizeof(Msg_t),"%s",t ? t : "");
+	snprintf(Msg_c,sizeof(Msg_c),"%s",c ? c : "");
+	Msg_were = (target == ConsoleObject) ? "were" : "was";
+	Msg_are = (caster == ConsoleObject) ? "are" : "is";
+	Msg_have = (caster == ConsoleObject) ? "have" : "has";
+	Msg_show = message_rule(target,caster);
+}
+
+static void say(const char *format, ...)
+{
+	char buf[200];
+	va_list args;
+
+	va_start(args,format);
+	vsnprintf(buf,sizeof(buf),format,args);
+	va_end(args);
+	dtu_spell_log("spell: message%s: %s",Msg_show ? "" : " (not shown)",buf);
+	if (Msg_show)
+		HUD_init_message("%s",buf);
+}
+
+// The pattern of most cases: on the caster himself "<target> <verb> ...
+// %d", else "... cast on <target> by <caster> ... %d"
+static void say_effect(int self,const char *self_format,int verb,const char *other_format,int n)
+{
+	if (!self)
+		say(other_format,Msg_t,Msg_c,n);
+	else if (verb == V_NONE)
+		say(self_format,Msg_t,n);
+	else
+		say(self_format,Msg_t,verb == V_ARE ? Msg_are : Msg_have,n);
+}
+
+// The minutes and hours of the texts: the duration in whole seconds
+// divided by 60 or 3600 (idiv, rounded down)
+#define MINUTES(d)	(f2i(d) / 60)
+#define HOURS(d)		(f2i(d) / 3600)
+
+// The hit points of Cure Light Wounds and Cure Serious Wounds, at most the
+// maximum (0x8DE4B, 0x8DF37)
 static void heal(object *target,int points,int spell)
 {
 	int before;
@@ -863,7 +977,6 @@ static void heal(object *target,int points,int spell)
 	if (target->type == OBJ_PLAYER) {
 		before = dtu_char_hit_points();
 		dtu_char_heal(points);
-		HUD_init_message("You feel better.");
 		dtu_spell_log("spell: '%s' heals the player by %d: %d -> %d of %d",spell_name(spell),points,before,dtu_char_hit_points(),dtu_char_max_hit_points());
 	}
 	else if (target->type == OBJ_ROBOT && target->id < N_robot_types) {
@@ -1079,11 +1192,29 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 
 	dtu_spell_log("spell: '%s' (%d) level %d on obj %d %s (level %d)",spell_name(spell),spell,L,(int)(target-Objects),target_name(target),T);
 
+	// The names, the verbs and 0x8CEAE, before the switch as in 0x8CFFF
+	msg_setup(target,caster);
+
 	switch (spell) {
-		case 1:		// Aid: 1d8 hit points and Bless for L+1 rounds
-			heal(target,rnd(8),spell);
-			fx_set(target,DTU_FX_BLESS,(L+1)*MINUTE);
+		case 1: {	// Aid (0x8D3F7): 1d8 hit points above the maximum, Bless
+			// for L+1 rounds. No test of Bless; the hit points go when Bless
+			// ends (0x9002C cuts them to the maximum).
+			int n = rnd(8);
+			fix d = (L+1)*MINUTE;
+
+			if (target->type == OBJ_PLAYER)
+				dtu_char_add_hit_points(n);
+			else
+				target->shields += i2f(n);
+			target->dtu.m_88 &= ~DTU_FX_BLESS;
+			fx_set(target,DTU_FX_BLESS,d);
+			dtu_spell_log("spell: Aid gives obj %d %s %d hit points",(int)(target-Objects),target_name(target),n);
+			if (self)
+				say("%s %s %d aid hit points for %d minutes.",Msg_t,Msg_have,n,MINUTES(d));
+			else
+				say("%d aid hit points cast on %s by %s for %d minutes.",n,Msg_t,Msg_c,MINUTES(d));
 			break;
+		}
 		case 2:		// Armor (0x8D4E7): bit 0 and a pool of 8 + L hit points
 			// (+0x90), armor class 6 at most. No timer: 0x9002C ends it when
 			// weapon damage has taken the pool (dtu_spell_armor_hit).
@@ -1091,25 +1222,17 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				break;
 			target->dtu.m_88 |= DTU_FX_ARMOR;
 			target->dtu.m_8c[1] = i2f(8 + L);
-			// The message (0x8D524) goes to the message box when the player
-			// is the target or the caster (0x8CEAE; its perception test for
-			// two creatures is not in the port): "%s %s %d armor hit
-			// points." (0x12D928) with "You have" or "<name> has" on the
-			// caster himself, else "%d armor hit points cast on %s by %s."
-			// (0x12D943) with "You" for the player.
-			if (target->type == OBJ_PLAYER || (caster && caster->type == OBJ_PLAYER)) {
-				char t[40], c[40];
-				strncpy(t,target->type == OBJ_PLAYER ? "You" : dtu_object_display_name(target),sizeof(t)-1); t[sizeof(t)-1] = 0;
-				strncpy(c,!caster || caster->type == OBJ_PLAYER ? "You" : dtu_object_display_name(caster),sizeof(c)-1); c[sizeof(c)-1] = 0;
-				if (self || caster == target)
-					HUD_init_message("%s %s %d armor hit points.",t,target->type == OBJ_PLAYER ? "have" : "has",8 + L);
-				else
-					HUD_init_message("%d armor hit points cast on %s by %s.",8 + L,t,c);
-			}
+			// "%s %s %d armor hit points." (0x12D928) on the caster himself,
+			// else "%d armor hit points cast on %s by %s." (0x12D943)
+			if (self)
+				say("%s %s %d armor hit points.",Msg_t,Msg_have,8 + L);
+			else
+				say("%d armor hit points cast on %s by %s.",8 + L,Msg_t,Msg_c);
 			dtu_spell_log("spell: effect Armor on obj %d %s, pool %d hit points",(int)(target-Objects),target_name(target),8 + L);
 			break;
 		case 3:		// Bless: 6 rounds
-			fx_set(target,DTU_FX_BLESS,i2f(360));
+			if (fx_set(target,DTU_FX_BLESS,i2f(360)))
+				say_effect(self,"%s %s blessed for %d minutes.",V_ARE,"Bless cast on %s by %s for %d minutes.",6);
 			break;
 		case 4:		// Burning Hands: fire 1d3 + 2 L
 		case 17:		// Flaming Sphere (no dice in the line)
@@ -1118,8 +1241,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
 			break;
 		case 5:		// Chill Touch: on the caster only, L+3 rounds
-			if (self)
-				fx_set(target,DTU_FX_CHILL_TOUCH,(L+3)*MINUTE);
+			if (self && fx_set(target,DTU_FX_CHILL_TOUCH,(L+3)*MINUTE))
+				say("%s %s chill touch for %d minutes.",Msg_t,Msg_have,L+3);
 			break;
 		case 6:		// Color Spray
 			if (self || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
@@ -1127,26 +1250,41 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if ((T > L || T >= 6) && dtu_spell_save(target,DTU_SAVE_SPELL))
 				break;
 			if (T <= L) {
-				if (fx_set(target,DTU_FX_SLEEP,(2 + rand() % 7)*MINUTE) && target->type == OBJ_PLAYER) {
-					target->dtu.m_88 |= DTU_FX_BLIND;
-					target->dtu.m_8c[3] = target->dtu.m_e8[0];
+				if (fx_set(target,DTU_FX_SLEEP,(2 + rand() % 7)*MINUTE)) {
+					if (target->type == OBJ_PLAYER) {
+						target->dtu.m_88 |= DTU_FX_BLIND;
+						target->dtu.m_8c[3] = target->dtu.m_e8[0];
+					}
+					say("%s %s struck unconscious by %s.",Msg_t,Msg_were,Msg_c);
 				}
 			}
-			else if (T <= L + 2)
-				fx_set(target,DTU_FX_BLIND,rnd(4)*MINUTE);
-			else if (!(target->dtu.m_88 & (DTU_FX_FREE_ACTION|DTU_FX_HOLD)))
-				fx_set(target,DTU_FX_HOLD,wisdom_cut(target,MINUTE));
+			else if (T <= L + 2) {
+				if (fx_set(target,DTU_FX_BLIND,rnd(4)*MINUTE))
+					say("%s %s blinded by %s.",Msg_t,Msg_were,Msg_c);
+			}
+			else if (!(target->dtu.m_88 & (DTU_FX_FREE_ACTION|DTU_FX_HOLD))) {
+				if (fx_set(target,DTU_FX_HOLD,wisdom_cut(target,MINUTE)))
+					say("%s %s stunned by %s.",Msg_t,Msg_were,Msg_c);
+			}
 			break;
 		case 7:		// Confusion: L+2 rounds
-			if (!dtu_spell_save(target,DTU_SAVE_SPELL))
-				fx_set(target,DTU_FX_CONFUSION,(L+2)*MINUTE);
+			if (!dtu_spell_save(target,DTU_SAVE_SPELL) && fx_set(target,DTU_FX_CONFUSION,(L+2)*MINUTE))
+				say("Confusion cast on %s by %s for %d minutes.",Msg_t,Msg_c,L+2);
 			break;
 		case 8: case 9:		// Continual Light: blind with no end
 		case 30: case 31:		// Light: blind for 10 L or 10 (L+6) rounds
 			if (self || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
 				break;
-			if (!dtu_spell_save(target,DTU_SAVE_SPELL))
-				fx_set(target,DTU_FX_BLIND,(spell == 30) ? 10*L*MINUTE : (spell == 31) ? 10*(L+6)*MINUTE : DTU_FX_NO_END);
+			if (!dtu_spell_save(target,DTU_SAVE_SPELL)) {
+				fix d = (spell == 30) ? 10*L*MINUTE : (spell == 31) ? 10*(L+6)*MINUTE : DTU_FX_NO_END;
+
+				if (fx_set(target,DTU_FX_BLIND,d)) {
+					if (d == DTU_FX_NO_END)
+						say("%s %s blinded by %s indefinitely.",Msg_t,Msg_were,Msg_c);
+					else
+						say("%s %s blinded by %s for %d minutes.",Msg_t,Msg_were,Msg_c,MINUTES(d));
+				}
+			}
 			if (mf & MONSTER_F_LIGHT_SENSITIVE)
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
 			break;
@@ -1155,12 +1293,16 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (mf & (MONSTER_F_UNDEAD|MONSTER_F_EXTRAPLANAR))
 				break;
 			heal(target,spell == 10 ? rnd(8) : rand() % 15 + 3,spell);
+			if (spell == 10)
+				say("Cure light wounds cast on %s by %s.",Msg_t,Msg_c);
+			else
+				say("Cure serious wounds cast on %s by %s.",Msg_t,Msg_c);
 			break;
 		case 12:		// Detect Magic (mage): 2 L rounds
-			fx_set(target,DTU_FX_DETECT_MAGIC,2*L*MINUTE);
-			break;
 		case 54:		// Detect Magic (cleric): 10 rounds
-			fx_set(target,DTU_FX_DETECT_MAGIC,i2f(600));
+			// The text only when the player is the target (0x8E08A)
+			if (fx_set(target,DTU_FX_DETECT_MAGIC,spell == 12 ? 2*L*MINUTE : i2f(600)) && target == ConsoleObject)
+				say("%s can detect magic for %d minutes.",Msg_t,spell == 12 ? 2*L : 10);
 			break;
 		case 13: case 55:	// Dispel Magic: all effects of the target end, no save
 			fx_expire(target,1);
@@ -1200,6 +1342,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				// 0x13D628); not in the port.
 				if (target->type == OBJ_PLAYER)
 					fx_set(target,DTU_FX_HOLD,d);
+				if (spell == 14)
+					say("Fear cast on %s by %s.",Msg_t,Msg_c);
+				else
+					say_effect(self,"%s %s Scared.",V_ARE,"Scare cast on %s by %s.",0);
 			}
 			break;
 		case 0:		// Abjure (0x8D297)
@@ -1217,8 +1363,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				if (target->type != OBJ_ROBOT || !(mf & MONSTER_F_EXTRAPLANAR) || roll < need) {
 					dtu_spell_log("spell: Abjure on obj %d %s: extraplanar %d, d20 %d against %d: not affected",
 						(int)(target-Objects),target_name(target),(mf & MONSTER_F_EXTRAPLANAR) != 0,roll,need);
-					if (caster && caster->type == OBJ_PLAYER)
-						HUD_init_message("%s was not affected by abjure.",dtu_object_display_name(target));
+					say("%s was not affected by abjure.",Msg_t);
 					return 0;		// 0x8D56D: no common end
 				}
 				// The creature stops and turns slowly (movement type 3)
@@ -1245,8 +1390,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				return 0;
 			}
 			target->dtu.m_88 |= DTU_FX_MNEMONIC;
+			say_effect(self,"%s %s Rary's Mnemonic Enhancer for 1 day.",V_HAVE,"Rary's Mnemonic Enhancer cast on %s by %s for 1 day.",0);
 			if (target->type == OBJ_PLAYER) {
-				HUD_init_message("You have Rary's Mnemonic Enhancer for 1 day.");
 				Rary_rest = 0;
 				{
 					// 0x655FE: the box returns the index of the choice. Escape
@@ -1257,67 +1402,93 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 15:		// Feather Fall: L rounds
-			fx_set(target,DTU_FX_FEATHER_FALL,L*MINUTE);
+			if (fx_set(target,DTU_FX_FEATHER_FALL,L*MINUTE))
+				say_effect(self,"%s %s feather fall for %d minutes.",V_HAVE,"Feather fall cast on %s by %s for %d minutes.",L);
 			break;
 		case 16:		// Fireball: min(L, 10) fire dice + 6 L
 			dealt = spell_damage(spell,target,caster,L,GROUP_FIRE,L < 10 ? L : 10,0);
 			break;
 		case 18:		// Flame Walk: L+1 rounds
-			fx_set(target,DTU_FX_RESIST_FIRE,(L+1)*MINUTE);
+			if (fx_set(target,DTU_FX_RESIST_FIRE,(L+1)*MINUTE))
+				say_effect(self,"%s %s fire tolerance for %d minutes.",V_HAVE,"Flame Walk cast on %s by %s for %d minutes.",L+1);
 			break;
 		case 19:		// Fly: 10 (1d6 + L) rounds
-			fx_set(target,DTU_FX_FLY,10*(rnd(6) + L)*MINUTE);
+			if (fx_set(target,DTU_FX_FLY,10*(rnd(6) + L)*MINUTE))
+				say_effect(self,"%s %s Flying.",V_HAVE,"Flying cast on %s by %s.",0);
 			break;
 		case 20:		// Free Action: ends Hold, 10 L rounds
 			if (!self)
 				break;
 			if (target->dtu.m_88 & DTU_FX_HOLD)
 				fx_end(target,14);
-			fx_set(target,DTU_FX_FREE_ACTION,10*L*MINUTE);
+			if (fx_set(target,DTU_FX_FREE_ACTION,10*L*MINUTE))
+				say_effect(self,"%s %s Free Action for %d minutes.",V_HAVE,"Free Action cast on %s by %s for %d minutes.",10*L);
 			break;
 		case 21:		// Haste: ends Slow, L+3 rounds
 			if (target->dtu.m_88 & DTU_FX_SLOW)
 				fx_end(target,27);
-			fx_set(target,DTU_FX_HASTE,(L+3)*MINUTE);
+			if (fx_set(target,DTU_FX_HASTE,(L+3)*MINUTE))
+				say_effect(self,"%s %s Haste for %d minutes.",V_HAVE,"Haste cast on %s by %s for %d minutes.",L+3);
 			break;
 		case 22: case 52:	// Hold Person: 2 L rounds, a humanoid or the player
 			if (self || (target->dtu.m_88 & (DTU_FX_HOLD|DTU_FX_FREE_ACTION)) || (mf & MONSTER_F_UNDEAD))
 				break;
 			if (target->type == OBJ_ROBOT && !(mf & MONSTER_F_HUMANOID))
 				break;
-			if (!dtu_spell_save(target,DTU_SAVE_SPELL))
-				fx_set(target,DTU_FX_HOLD,wisdom_cut(target,2*L*MINUTE));
+			if (!dtu_spell_save(target,DTU_SAVE_SPELL)) {
+				fix d = wisdom_cut(target,2*L*MINUTE);
+
+				// The text in seconds below one minute (0x8E9C5)
+				if (fx_set(target,DTU_FX_HOLD,d)) {
+					if (f2i(d) < 60)
+						say_effect(self,"%s %s held for %d seconds.",V_ARE,"Hold Person cast on %s by %s for %d seconds.",f2i(d));
+					else
+						say_effect(self,"%s %s held for %d minutes.",V_ARE,"Hold Person cast on %s by %s for %d minutes.",MINUTES(d));
+				}
+			}
 			break;
 		case 23:		// Hold Undead: 1d4 + L rounds, undead of level L or less
 			if (self || (target->dtu.m_88 & DTU_FX_HOLD) || !(mf & MONSTER_F_UNDEAD) || T > L)
 				break;
 			if (T > 2 && dtu_spell_save(target,DTU_SAVE_SPELL))
 				break;
-			fx_set(target,DTU_FX_HOLD,(rnd(4) + L)*MINUTE);
+			{
+				fix d = (rnd(4) + L)*MINUTE;
+				if (fx_set(target,DTU_FX_HOLD,d))
+					say("Hold Undead cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(d));
+			}
 			break;
 		case 24:		// Improved Invisibility: L+4 rounds
-			fx_set(target,DTU_FX_IMP_INVIS,(L+4)*MINUTE);
+			if (fx_set(target,DTU_FX_IMP_INVIS,(L+4)*MINUTE))
+				say_effect(self,"%s %s invisible for %d minutes.",V_ARE,"Improved Invisibility cast on %s by %s for %d minutes.",L+4);
 			break;
 		case 25:		// Infravision: humans only, 2 hours and 1 hour for each level
 			if (target->type == OBJ_PLAYER && Dtu_char.pa.race != DTU_RACE_HUMAN)
 				break;
 			if (monster_has(target,"infravision"))
 				break;
-			fx_set(target,DTU_FX_INFRAVISION,(6*L + 12)*10*MINUTE);
+			{
+				fix d = (6*L + 12)*10*MINUTE;
+				if (fx_set(target,DTU_FX_INFRAVISION,d))
+					say_effect(self,"%s %s Infravision for %d hours.",V_HAVE,"Infravision cast on %s by %s for %d hours.",HOURS(d));
+			}
 			break;
 		case 26:		// Invisibility: until an attack
 			if (target->dtu.m_88 & (DTU_FX_IMP_INVIS|DTU_FX_INVISIBLE))
 				break;
-			fx_set(target,DTU_FX_INVISIBLE,DTU_FX_NO_END);
+			if (fx_set(target,DTU_FX_INVISIBLE,DTU_FX_NO_END))
+				say_effect(self,"%s %s invisible.",V_ARE,"Invisibility cast on %s by %s.",0);
 			break;
 		case 27:		// Jump: 1d3 + L rounds
-			fx_set(target,DTU_FX_JUMP,(rnd(3) + L)*MINUTE);
+			if (fx_set(target,DTU_FX_JUMP,(rnd(3) + L)*MINUTE))
+				say_effect(self,"%s may leap for some time.",V_NONE,"Jump cast on %s by %s.",0);
 			break;
 		case 28:		// Knock: the case has no code (the table entry is the common end)
 			dtu_spell_log("spell: Knock has no effect in the executable");
 			break;
 		case 29:		// Levitate: 10 L rounds
-			fx_set(target,DTU_FX_LEVITATE,10*L*MINUTE);
+			if (fx_set(target,DTU_FX_LEVITATE,10*L*MINUTE))
+				say_effect(self,"%s can levitate for %d minutes.",V_NONE,"Levitate cast on %s by %s for %d minutes.",10*L);
 			break;
 		case 32:		// Lightning Bolt: min(L, 10) electric dice + 6 L
 			dealt = spell_damage(spell,target,caster,L,GROUP_ELEC,L < 10 ? L : 10,0);
@@ -1332,7 +1503,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,(mf & MONSTER_F_UNDEAD) ? rnd(4) : 0);
 			break;
 		case 35:		// Magical Vestment: 5 L rounds
-			fx_set(target,DTU_FX_VESTMENT,5*L*MINUTE);
+			if (fx_set(target,DTU_FX_VESTMENT,5*L*MINUTE))
+				say_effect(self,"%s %s Magical Vestment for %d minutes.",V_HAVE,"Magical Vestment cast on %s by %s for %d minutes.",5*L);
 			break;
 		case 36:		// Melf's Acid Arrows: 2 (L/3) + 2 acid dice + 4 L
 			if (!self)
@@ -1340,34 +1512,48 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			break;
 		case 38:		// Prayer: Bless for L rounds on the caster and on the others
 			// whose bit 0x200 of 0x1B0 is clear (as read)
-			if (self || !(target->dtu.m_1b0 & DTU_PEACEFUL))
-				fx_set(target,DTU_FX_BLESS,L*MINUTE);
+			if ((self || !(target->dtu.m_1b0 & DTU_PEACEFUL)) && fx_set(target,DTU_FX_BLESS,L*MINUTE))
+				say_effect(self,"%s %s Prayer for %d minutes.",V_HAVE,"Prayer cast on %s by %s for %d minutes.",L);
 			break;
 		case 39:		// Protection From Evil (mage): 2 L rounds
-			fx_set(target,DTU_FX_PROT_EVIL,2*L*MINUTE);
-			break;
 		case 53:		// Protection From Evil (cleric): 3 L rounds
-			fx_set(target,DTU_FX_PROT_EVIL,3*L*MINUTE);
+			if (fx_set(target,DTU_FX_PROT_EVIL,(spell == 39 ? 2 : 3)*L*MINUTE))
+				say_effect(self,"%s %s Protection From Evil for %d minutes.",V_HAVE,
+					"Protection From Evil cast on %s by %s for %d minutes.",(spell == 39 ? 2 : 3)*L);
 			break;
 		case 40:		// Protection From Fire: a pool of 12 L hit points
 			target->dtu.m_82 += 12*L;
 			target->dtu.m_88 |= DTU_FX_PROT_FIRE;
-			if (target->type == OBJ_PLAYER)
-				HUD_init_message("Protection From Fire for %d hit points.",12*L);
+			// the texts give the pool after the cast (+0x82)
+			if (self)
+				say("%s %s %d hit points of Fire Immunity.",Msg_t,Msg_have,target->dtu.m_82);
+			else
+				say("%d hit points of Protection From Fire cast on %s by %s.",target->dtu.m_82,Msg_t,Msg_c);
 			break;
 		case 42:		// "Resist Cold": the code cures blindness and deafness
 			if (!(target->dtu.m_88 & (DTU_FX_BLIND|DTU_FX_DEAF)))
 				break;
+			// 0x8F309: on the caster himself the text of the deafness
+			// replaces the one of the blindness in the buffer; the names are
+			// the ones of the caster
+			if (self) {
+				if (target->dtu.m_88 & DTU_FX_DEAF)
+					say("%s %s no longer deaf.",Msg_c,Msg_are);
+				else
+					say("%s %s no longer blind.",Msg_c,Msg_are);
+			}
+			else
+				say("Cure Blindness or Deafness cast on %s by %s.",Msg_t,Msg_c);
 			target->dtu.m_88 &= ~(DTU_FX_BLIND|DTU_FX_DEAF);
 			target->dtu.m_8c[3] = 0;
-			if (target->type == OBJ_PLAYER)
-				HUD_init_message("You are no longer blind or deaf.");
 			break;
 		case 43:		// Resist Fire: L rounds
-			fx_set(target,DTU_FX_RESIST_FIRE,L*MINUTE);
+			if (fx_set(target,DTU_FX_RESIST_FIRE,L*MINUTE))
+				say_effect(self,"%s %s Fire Resistance for %d minutes.",V_HAVE,"Resist Fire cast on %s by %s for %d minutes.",L);
 			break;
 		case 45:		// Shield: 5 L rounds
-			fx_set(target,DTU_FX_SHIELD,5*L*MINUTE);
+			if (fx_set(target,DTU_FX_SHIELD,5*L*MINUTE))
+				say_effect(self,"%s %s Shielded for %d minutes.",V_ARE,"Shield cast on %s by %s for %d minutes.",5*L);
 			break;
 		case 46:		// Sleep: 5 L rounds, targets of level 3 or less
 			if (self || (target->dtu.m_88 & DTU_FX_SLEEP) || (mf & (MONSTER_F_NO_SLEEP|MONSTER_F_UNDEAD)) || T > 3)
@@ -1376,9 +1562,12 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				if (Dtu_char.pa.race == DTU_RACE_ELF && rnd(10) <= 9) break;
 				if ((Dtu_char.pa.flags & DTU_PF_HALF_ELF) && rnd(10) <= 3) break;
 			}
-			if (fx_set(target,DTU_FX_SLEEP,5*L*MINUTE) && target->type == OBJ_PLAYER) {
-				target->dtu.m_88 |= DTU_FX_BLIND;
-				target->dtu.m_8c[3] = target->dtu.m_e8[0];
+			if (fx_set(target,DTU_FX_SLEEP,5*L*MINUTE)) {
+				if (target->type == OBJ_PLAYER) {
+					target->dtu.m_88 |= DTU_FX_BLIND;
+					target->dtu.m_8c[3] = target->dtu.m_e8[0];
+				}
+				say_effect(self,"%s will be Sleeping for %d minutes.",V_NONE,"Sleep cast on %s by %s for %d minutes.",5*L);
 			}
 			break;
 		case 47:		// Slow: ends Haste, L+3 rounds
@@ -1386,10 +1575,12 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				break;
 			if (target->dtu.m_88 & DTU_FX_HASTE)
 				fx_end(target,13);
-			fx_set(target,DTU_FX_SLOW,(L+3)*MINUTE);
+			if (fx_set(target,DTU_FX_SLOW,(L+3)*MINUTE))
+				say_effect(self,"%s %s Slowed for %d minutes.",V_ARE,"Slow cast on %s by %s for %d minutes.",L+3);
 			break;
 		case 48:		// Spider Climb: L+3 rounds
-			fx_set(target,DTU_FX_SPIDER_CLIMB,(L+3)*MINUTE);
+			if (fx_set(target,DTU_FX_SPIDER_CLIMB,(L+3)*MINUTE))
+				say_effect(self,"%s may Spider Climb for %d minutes.",V_NONE,"Spider Climb cast on %s by %s for %d minutes.",L+3);
 			break;
 		case 49:		// Stone Skin: 1d4 + L/2 hits
 			if (target->dtu.m_88 & DTU_FX_STONESKIN)
@@ -1399,8 +1590,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			else
 				target->dtu.m_88 = DTU_FX_STONESKIN;
 			target->dtu.m_80 = rnd(4) + L/2;
-			if (target->type == OBJ_PLAYER)
-				HUD_init_message("Stoneskin for %d attacks.",target->dtu.m_80);
+			say_effect(self,"%s %s Stone Skin for %d attacks.",V_HAVE,"Stone Skin cast on %s by %s for %d attacks.",target->dtu.m_80);
 			break;
 		case 50:		// Strength: L hours (0x8FCFA). The player gains strength.
 			if (target->dtu.m_88 & DTU_FX_STRENGTH)
@@ -1409,10 +1599,22 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				int gain = char_is(DTU_CLASS_FIGHTER) ? rnd(8) : (char_is(DTU_CLASS_THIEF) || char_is(DTU_CLASS_CLERIC)) ? rnd(6) : rnd(4);
 				dtu_char_strength_gain(gain,char_is(DTU_CLASS_FIGHTER));
 			}
-			fx_set(target,DTU_FX_STRENGTH,L*3600*F1_0);
+			{
+				// L * 225 << 20 in 32 bits (0x8FF5D): from the level 10 on the
+				// value wraps as in the executable
+				fix d = (fix)((unsigned)L * 3600u * (unsigned)F1_0);
+
+				if (fx_set(target,DTU_FX_STRENGTH,d))
+					say_effect(self,"%s %s Strength for %d hours.",V_HAVE,"Strength cast on %s by %s for %d hours.",HOURS(d));
+			}
 			break;
 		case 51:		// "Burning Hands" (cold): the code is Find Traps, 30 rounds
-			fx_set(target,DTU_FX_FIND_TRAPS,i2f(1800));
+			if (fx_set(target,DTU_FX_FIND_TRAPS,i2f(1800))) {
+				if (self)
+					say("%s can Find Traps for %d minutes.",Msg_t,30);
+				else
+					say("Find Traps cast on %s by %s for %d minutes.",Msg_t,Msg_c,30);
+			}
 			break;
 		default:
 			dtu_spell_log("spell: '%s' (%d) is not in the port",spell_name(spell),spell);
@@ -1684,7 +1886,9 @@ static int cast_allowed(int spell,char *msg,int size)
 			return 0;
 		}
 	}
-	if (ConsoleObject->dtu.m_88 & DTU_FX_LEVITATE) {
+	// Player object +0x1AE bit 0x80: set by Levitate (0x8EDB2) and by the
+	// climb of Climb Walls (0x9531D, 0x95413)
+	if ((ConsoleObject->dtu.m_88 & DTU_FX_LEVITATE) || (Dtu_player_state & DTU_PS_CLIMBING)) {
 		snprintf(msg,size,"You cannot cast a spell while climbing.");
 		return 0;
 	}
@@ -1697,6 +1901,10 @@ static int cast_checks(int spell)
 
 	if (cast_allowed(spell,msg,sizeof(msg)))
 		return 1;
+	// 0x41B0D and 0x41C2D: sound 3000 (volume 1.0) with the refusals of
+	// 0x356E0 and of the armor; the climbing test (0x41C6E) has no sound
+	if (strcmp(msg,"You cannot cast a spell while climbing."))
+		digi_play_sample(3000,F1_0);
 	if (msg[0])
 		HUD_init_message("%s",msg);
 	return 0;
@@ -1836,18 +2044,25 @@ int dtu_spell_fire(void)
 	if (source == 0) {
 		if (Cast_timer == DTU_FX_NO_END || Cast_spell != spell) {
 			int t;
+			char msg[64];
 
 			if (!cast_checks(spell)) {
 				Cast_timer = DTU_FX_NO_END;
 				return 1;
 			}
+			// 0x41C9F: cast_time= of the line is a number of seconds of game
+			// time (0x153EBC = GameTime + cast_time << 16). The text divides
+			// by 60 above 60 seconds and says "1 second" for 0 and 1. The
+			// cast follows in the first frame after the timer.
 			t = spell_int(spell,"cast_time",0);
 			Cast_timer = GameTime + i2f(t);
 			Cast_spell = spell;
-			if (t > 60) HUD_init_message("Casting time: %d minutes ...",t / 60);
-			else if (t > 1) HUD_init_message("Casting time: %d seconds ...",t);
-			else HUD_init_message("Casting time: 1 second ...");
-			dtu_spell_log("spell: the cast of '%s' starts, cast time %d seconds",spell_name(spell),t);
+			if (t > 60) snprintf(msg,sizeof(msg),"Casting time: %d minutes ...",t / 60);
+			else if (t > 1) snprintf(msg,sizeof(msg),"Casting time: %d seconds ...",t);
+			else snprintf(msg,sizeof(msg),"Casting time: 1 second ...");
+			HUD_init_message("%s",msg);
+			dtu_spell_log("spell: the cast of '%s' starts, cast_time=%d, the cast at %.3f: \"%s\"",spell_name(spell),t,
+				f2fl(Cast_timer),msg);
 			return 0;
 		}
 		if (Cast_timer > GameTime)
@@ -2020,6 +2235,7 @@ int dtu_spell_interrupt(object *obj,int hit)
 		if (Cast_timer == DTU_FX_NO_END || Cast_timer <= GameTime || Cast_spell < 0)
 			return 0;
 		Cast_timer = DTU_FX_NO_END;
+		dtu_combat_cast_stopped();
 		dtu_spell_log("spell: the cast of '%s' stops (%s) at %.3f",spell_name(Cast_spell),hit ? "a hit" : "the jump key",f2fl(GameTime));
 		if (hit) {
 			use_slot(Cast_spell);		// 0xB7084
