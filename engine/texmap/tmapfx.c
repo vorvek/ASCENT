@@ -30,10 +30,10 @@
  * The dark view of the conversation window (docs/re/scripts.md, section
  * 4): while the window opens, 0x458BA(1) ramps the byte 0x14C4CE (D) from
  * 1 to 15, and back to 0 when it closes. The same functions test it before
- * the effect colors: a texel c (not 255) of a merged bitmap with
- * (c & 15) <= D becomes (fade[max(r - 5, 0)][c] & 15) | 8, a color of the
- * dark half of palette row 0 (grey). The port puts the rule into a copy of
- * the fade table (Tmap_dim_fade) that the mappers use for such a polygon.
+ * the effect colors: a lit texel c (not 255) with (c & 15) <= D becomes
+ * (fade[max(r - 5, 0)][c] & 15) | 8, a color of the dark half of palette
+ * row 0 (lavender grey). The port puts the rule into a copy of the fade
+ * table (Tmap_dim_fade) that the mappers use for the lit polygons.
  */
 
 #include <stdlib.h>
@@ -90,13 +90,15 @@ void tmap_dim_set_view(int dim)
 	}
 }
 
-// 0xEA503 to 0xEA525: the functions do the rule only for a bitmap with the
-// flag 0x20 (a merged wall), an object with a tint (0x14C4CD, not in the
-// port) or 0x14C4CF (not set by the conversation window). They are the
-// functions of the lit mappers.
-void tmap_dim_polygon(int bm_flags, int lighting)
+// The rule is in the functions of the lit mappers. The original game changes
+// every lit texture of the view, the walls and the models (seen in the DOS
+// game). The code read so far gates the functions with 0x14C4D8 (draw_tmap
+// 0xEA503 to 0xEA525: bitmap flag 0x20, the tint 0x14C4CD or 0x14C4CF);
+// what sets it for all polygons while the window is open was not found
+// (docs/re/scripts.md, section 4).
+void tmap_dim_polygon(int lighting)
 {
-	Tmap_dim = (Tmap_dim_view && lighting && (bm_flags & BM_FLAG_DTU_MERGED)) ? Tmap_dim_view : 0;
+	Tmap_dim = (Tmap_dim_view && lighting) ? Tmap_dim_view : 0;
 }
 
 // The color of the effect color c (0x105A81 and 0xEC4D7 from the test of

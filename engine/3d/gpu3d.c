@@ -786,9 +786,9 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	//under the face (texmap/tmapfx.c); the lit mappers of the original do it
 	m.effects = m.lit && (bm->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;
 	m.fx_row = G3_gpu_fx_row;
-	//the dark view of the conversation window: the lit merged walls
-	//(texmap/tmapfx.c, Tmap_dim)
-	m.dim = (m.lit && (bm->bm_flags & BM_FLAG_DTU_MERGED)) ? G3_gpu_dim : 0;
+	//the dark view of the conversation window: every lit texture, the
+	//walls and the models (texmap/tmapfx.c, Tmap_dim)
+	m.dim = m.lit ? G3_gpu_dim : 0;
 	draw_face(nv,pointlist,&m);
 }
 

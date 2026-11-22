@@ -249,7 +249,7 @@ static const char *Scene_fs =
 	"	return cold;\n"
 	"}\n"
 	// The dark view of the conversation window (texmap/tmapfx.c): u_dim is
-	// 1 to 15 for a lit merged wall. A texel with the brightness step s <=
+	// 1 to 15 for a lit texture. A texel with the brightness step s <=
 	// u_dim (s: the low 4 bits of the palette index, 0 the brightest) gets
 	// the color (fade[max(row - 5, 0)][c] & 15) | 8, the dark half of
 	// palette row 0. The RGB form takes the steps of the nearest palette
@@ -459,7 +459,7 @@ static const char *Comp_fs =
 	"		return pal(c);\n"
 	"	}\n"
 	"	vec3 c = texelFetch(u_view, t, 0).rgb;\n"
-	"	if (dl >= 0) c = light(c, float(dl));\n"
+	"	if (dl >= 0) c = c * u_rowk[dl];\n"
 	"	return plut(c);\n"
 	"}\n"
 	// ASCENT: the same for the Gaussian filter: the RGB form gives the
@@ -510,7 +510,7 @@ static const char *Comp_fs =
 	"	vec3 c = sum / max(wsum, 1e-6);\n"
 	"	if (u_vrgb == 0)\n"
 	"		return c;\n"
-	"	if (dl >= 0) c = light(c, float(dl));\n"
+	"	if (dl >= 0) c = c * u_rowk[dl];\n"
 	"	return plut(c);\n"
 	"}\n"
 	"bool keyed(ivec2 ip) {\n"

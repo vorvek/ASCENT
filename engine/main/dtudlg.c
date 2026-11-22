@@ -13,8 +13,8 @@
  *   half light). New in the port.
  * - The dark view: the executable ramps the value 0x14C4CE from 1 to 15
  *   when the window opens and back to 0 when it closes, one step for each
- *   0x800 of game time, and the texture mappers draw the merged walls in
- *   dark grey with it (tmapfx.c). The executable waits for the end of the
+ *   0x800 of game time, and the texture mappers draw every lit texture in
+ *   lavender grey with it (tmapfx.c). The executable waits for the end of the
  *   ramp before it shows the window and goes on; the port does not wait.
  * - The keys are those of the executable except Tab, which the interface
  *   uses: Up and Down (also the keypad), Enter (also the keypad), Space,
