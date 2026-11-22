@@ -611,8 +611,10 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 	if (f.area)
 		line(LT("Area: %s"), (sprintf(b, f.self ? LT("%s around you") : LT("%s where it lands"), feet(a, f.radius)), b));
 	// ASCENT: the object loop of 0x90CEF has no test of the caster (0x90D54
-	// to 0x90DDA): an area that lands near the caster takes the caster too
-	if (f.area && !f.self && f.kind != DTU_SK_DISPEL)
+	// to 0x90DDA), and the Fireball case (0x8E55C) has none either: a burst
+	// near the caster burns the caster too. The cases of Burning Hands,
+	// Produce Fire and Melf's Minute Meteors skip the caster.
+	if (f.area && spell == 16)
 		line(LT("Also hits you when you are in the area."));
 	else
 		line(LT("Area: %s"), f.self ? LT("Only you") : LT("One target"));
