@@ -29,7 +29,7 @@ retail game.
 | D11 | Space and Tab move the focus in all three functions | 0xB2A47, 0xB2BB5, 0xB2CEB | `dtu_dlg_poll` | same | dialogue.c cases 0x0F, 0x39 |
 | D12 | Escape closes with -2 in all three functions | 0xB2D01 | `dtu_dlg_poll` | same | dialogue.c case 0x01 |
 | D13 | Backtick: a screenshot, then the redraw | 0xB297E, 0x80DA1 | `dtu_dlg_poll` KEY_LAPOSTRO | same | dialogue.c case 0x29 |
-| D14 | The first mouse poll centers the cursor and installs the poller that keeps the cursor in the window | 0xB2433, 0xB249C | `mouse_poll` | different (port decision): the port has its own mouse for the window (header of dtudlg.c) and neither centers nor confines the cursor | dialogue.md table |
+| D14 | The first mouse poll centers the cursor and installs the poller that keeps the cursor in the window | 0xB2433, 0xB249C | `mouse_poll` | centering fixed: the first poll of a choice puts the cursor in the middle of the window (`Ptr_center`). Confining: port decision, the port does not hold the desktop cursor | dialogue.md table |
 | D15 | Close clears the active flag; the wait loop ends on a result or on the flag | 0xB23C6, 0xB2FA2 | `chosen`, `dtu_script_frame` (dtuscript.c) | same | 000b2fa2.c |
 | D16 | Redraw, reply list and "Press Enter..." renderers | 0xB2D0D, 0xB2D90, 0xB2E91 | `dtu_dlg_draw` | same (the list starts at the first reply of the area since 6ba4143) | dtudlg.c comments |
 | D17 | No number keys | 0xB28F0 | `digit_reply` | different (port extension, documented in dtudlg.c) | dialogue.md "an explicit port extension" |
@@ -66,8 +66,8 @@ retail game.
 | T5 | At the end of the text: SMusFade(100) in the same frame, then a hold of 10 s (0xA0000) | 0x8329A | `bs_frame` | different: the port faded after the hold. Fixed 8ecc757 | 0008329a.c calls SMusFade after the deadline store |
 | T6 | After the hold: release the text, then the empty phase | 0x83386, 0x8339E, 0x83A75 | `bs_frame` state 3, `bs_draw` | same for the text; whether the release also clears the `~p` picture was not checked | town.c cases HOLD, CLEANUP |
 | T7 | A deadline that overflows to a negative clock becomes the interval itself | 0x8329A | none | different, not done: the game clock of the port would need about 9 hours in the screen to reach it | town.c `deadline` |
-| T8 | Null-phase fallback: the hidden animation of Khelben's face | 0x83A93 | none (dtufe_town.c header) | missing; the note finds no path to it in a normal visit | town.md |
-| T9 | The latch 0x13E91D and the cursor band test (318, 205) for T8 | 0x81D08, 0x13E91D | none | missing with T8 | town.c `dtu_town_face_gate` |
+| T8 | Null-phase fallback: the hidden animation of Khelben's face | 0x83A93 | none (dtufe_town.c header) | no 1.3: not reachable (0x82B31 sets the phase before the runner; frontend.md FE-6) | town.md |
+| T9 | The latch 0x13E91D and the cursor band test (318, 205) for T8 | 0x81D08, 0x13E91D | none | no 1.3, with T8 | town.c `dtu_town_face_gate` |
 | T10 | Each pixel step hides the cursor around the scroll blit when they overlap | 0x8329A, 0x81704, 0x8182A | none | N/A: the port draws the whole screen and the cursor each frame | 0008329a.c |
 
 The port keeps one extension in this screen: a frame longer than 0.1 s
@@ -78,8 +78,6 @@ The port keeps one extension in this screen: a frame longer than 0.1 s
 
 | Item | Size | Note |
 |---|---|---|
-| T8, T9: Khelben's hidden face animation and its cursor latch | medium, 1 to 2 days | The note finds no normal path to it, and its colors on the screen are not verified. Needs runtime evidence of reachability first. |
-| D14: centering and confining the cursor in the conversation window | small, half a day | Conflicts with the mouse of the port; only with `Dtu_fe_original_input`. |
 | H11: the two fixed statistics area tests | small to trace | Trace 0x321B9 and 0x32207 before a change. |
 | H2: area type 4 (attribute) | small | Only if an area of 1.3 is found that uses it. |
 | T7: the negative deadline | trivial | No visible effect in practice. |
