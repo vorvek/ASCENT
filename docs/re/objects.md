@@ -909,3 +909,178 @@ Descent 1 `compute_headlight_light`: `Beam_brightness` 0.5 (0x13CC78),
 the dot product of the view direction and the face normal, so the light of a
 wall depends on the view direction. `Dtu_fix_light_stable` (lighting.h)
 changes that in the port.
+
+## Pushed scenery
+
+### The rule of the executable (Code)
+
+The push itself is in ai.md, "Push of scenery (0x9FA41)": the player (0x9E5BE)
+or a creature (0x9FA41) whose strength is above `pushable` sets the velocity and
+the thrust x and z of the scenery to 8 times its own and the movement type to
+1. The player goes back to the start of the try and the next try hits the
+scenery again (up to 8 tries in a frame).
+
+0x69B4A (`object_move_one`) calls 0x9FE68 in each frame for a type 0x12 object
+with movement type 1. A polygon object with movement type 0 gets the same call
+in turn: the pointer 0x13D41F goes up by one at each call of `object_move_one`
+(0x69830) and skips objects with a movement type (up to 20), so one resting
+object a call is set down on the floor.
+
+0x9FE68, in each frame:
+
+1. Returns for the model number at 0x13A85F and for object flags 0x47.
+2. `velocity *= 0.5` (0xD6F25 with 0x8000), movement type 1, then
+   `vel.x >>= 2`, `vel.z >>= 2`: x and z go down by 8 times in each frame.
+3. The step count of the frame (FrameTime >> 10, at most 2) and the rest.
+4. With the fall bit 0x20 (+0x1AE): gravity 0x6C662, then `vel.x >>= 3`,
+   `vel.z >>= 3`. The fall bit is set when the floor is farther than 6.0
+   (0x6C30E). Thrust and drag 0x6CB68 with the thrust as the acceleration (0
+   after a push by the player, whose thrust is 0 at that time).
+5. The body 0x748D9 of the scenery: `rad` = `body_radius[0]`, then halved
+   (0x9FFD6); `rad2` = `body_half_height[0]`. Query flags 9 (objects), the
+   ignore list is empty.
+6. Up to 5 tries (0xA00C7): the move is `vel.x * FrameTime`, `vel.y` (not
+   scaled), `vel.z * FrameTime`; x and z are each doubled in 1 of 7 tries
+   (`rand() % 7 == 2`, 0xA007F). Result 0: the end point, done. Result 1: with
+   0x13D448 & 0xA the velocity is negated, else 0x9E88D (the velocity into the
+   wall comes back 0.75 times, the position goes back), movement type 0.
+   Results 2 and 4 (an object): the position goes back; an object of type
+   0x12 gets 8 times the velocity and the thrust of this one and movement
+   type 1, with no test of `pushable` (0xA02A8); movement type 0. Result 3:
+   movement type 0. Result 5: gravity. After 5 tries: the start position and
+   velocity 0.
+7. Sound 2706 while the speed is above 0x70, 0x69FB8.
+
+### Why a chair does not move at a high frame rate
+
+The object test of the query (0x3EE70 with 0x4F7D5, physics.md section 3)
+takes a start point that is inside of the body of an object as a hit. The body
+of the player there is model 16 with `body_radius[0]` (7.19 for `hmcr_p.pof`,
+twice the radius of the move query of the player), so the move of a chair
+(`body_radius[0]` 3.64, query radius 1.82) stops when its center is closer
+than 7.19 + 1.82 = 9.01 to the player. The player stops at the chair when its
+move query (radius 3.59, x and z of the move times 1.2) reaches the chair
+(radius 3.64): at 7.23 plus the rest of the last step, 0.2 to 1.2 steps. So the
+chair moves only when the player stops at least 1.78 short of the contact,
+which needs a step of 1.48 or more (1.2 steps above 1.78): below 33 frames per
+second at the walk speed limit (49.3 units a second), below 50 when the player
+runs, and then only for a part of the approaches. Once it moves, the gap stays
+and the push goes on; when it closes, the chair stays where it is. At 60
+frames per second and more the chair never moves. A table (`body_radius[0]`
+11.18) is never inside of the player (the player stops at 14.77, the test is
+7.19 + 5.59 = 12.78), so a table moves at every frame rate.
+
+The executable also tests the walls with the center of the scenery and half
+of `body_radius[0]`: a wall stops the center at 1.82 + 1.0 (chair) or 5.59 +
+1.0 (table), so a table (10 from the center to an end) goes 3.4 into a wall.
+
+### The port
+
+`dressing_move_frame`, `push_dressing` and the helpers above them in
+`dtuobj.c`. Three corrections, on by default; `-origobj` sets them to 0 and
+then the port has the rules of the executable above (also the start test in
+the player, the half radius, and the doubled moves), except the wall bounce of
+0x9E88D (a wall stops the move) and the y move (the port moves y by the
+velocity times the frame time and has its own gravity to the floor).
+
+- `Dtu_fix_push_body`: a body that the scenery starts in does not stop a move
+  away from it. The player has the radius of its move query (3.59), so the
+  player and the scenery stop at the same distance. Other scenery is the box
+  of its model (box 1 of the rest pose, an upright object only): the corners
+  and the mid points of the edges of each box are moved against the other box
+  (`dressing_box_hit`), not the circles of `body_radius[0]` (a chair at a
+  table is already inside of the circle of the table). Creatures are circles
+  of `body_radius[0]`. Scenery that hits other scenery pushes it only when the
+  strength of the first push is above `pushable` of the other one.
+- `Dtu_fix_push_rate`: see below.
+- `Dtu_fix_push_wall`: the corners and the mid points of the edges of the box
+  of the model, at the height of the middle of the box, move with the
+  scenery; the first wall that one of them hits stops the scenery 0.25 before
+  it (`dressing_wall_frac`). A point that is outside of the mine at the start
+  (scenery that the level puts into a wall) is not tested. A wall stops the
+  scenery: no slide along it.
+
+Before this, the port had moved the center with the radius `size / 2` and no
+object test (the chair went through other scenery), and it slowed the scenery
+down once in each reference frame (`Dtu_fix_push_frame`, removed): above 21
+frames per second the scenery kept the speed of the player for some frames and
+ran ahead, so the push grew with the frame rate. In the corner of segment 20
+of YPINN the center of a chair stopped 0.2 from both walls, and the center of a
+table at a wall stopped at the wall.
+
+### Frame rate
+
+With the slow down in each frame the push is a cycle of two frames: the mover
+stays where it is in the frame of the hit, the scenery moves the step of the
+mover in the next frame and one eighth of it in the one after, and the mover
+walks one step. Mover and scenery go on at one half of the walk speed, and all
+distances of the cycle are in proportion to the step, so the cycle is the same
+at each frame rate. The chosen behavior is that of the executable at about 21
+frames per second (the reference frame of the port, 3/64 second), when the
+push works: the corrected body test makes it work at each frame rate.
+
+What is left is the end of the push: the scenery ends ahead of the mover by
+the gap of the last hit and the moves after it, which are parts of a step:
+about 4 units at 20 frames per second and 0.4 at 200. `Dtu_fix_push_rate`: when
+the scenery stops (speed 0x70 or less), it slides
+`DTU_PUSH_LEAD * v * (DTU_REF_FRAMETIME - FrameTime)` along the fastest push
+of the row (the mover slows down at the end), with a velocity that goes down
+by e in each reference frame time. `DTU_PUSH_LEAD` is 1.3, measured: the mean
+lead of the scenery over the place where the player stopped, at 20 and 25
+frames per second, was 2.5 units in 10 walks, and 2.2 needs to be added at 144
+and 200 frames per second. (The expected value from the cycle, 0.7 + 8/7 = 1.84
+steps, is too large because the player slows down at the end.)
+
+### Measurements (Data)
+
+YPINN, strength 17, `-fixedfps N`. The chair (obj 5, `pushable` 1) at -80,
+-2, 44 with the table out of the way (`-testobjpos "3,-115,-6.5,30,0;5,-80,-2,44,0"`),
+or the table (obj 3, `pushable` 16) at -80, -6.5, 52 with the chair out of the
+way (`-testobjpos "3,-80,-6.5,52,0;5,-115,-2,40,0"`). The player at -80, -2.46,
+33 looks along +z: `-testmove wait:300ms,forward:Wms,wait:3000ms`. Distance the
+object moves, mean of the walks W = 400, 450, 500, 550 and 650 ms:
+
+| Frames per second | 20 | 25 | 60 | 144 | 200 |
+|---|---|---|---|---|---|
+| Chair, before | 8.39 | 9.22 | 9.62 | 11.99 | 12.70 |
+| Chair, after | 8.39 | 8.60 | 8.96 | 9.14 | 9.16 |
+| Chair, `-origobj -origphys -noimprovements` | 0 | 0 | 0 | 0 | 0 |
+| Table, before | 8.39 | 9.22 | 9.12 | 11.75 | 12.33 |
+| Table, after | 8.39 | 8.60 | 8.55 | 8.90 | 8.97 |
+| Table, `-origobj -origphys -noimprovements` | 6.87 | 9.97 | 8.15 | 7.04 | 7.38 |
+
+The walk of 450 ms alone, chair after: 6.33, 7.33, 7.54, 7.79, 7.63. One walk at
+20 or 25 frames per second has the phase of the last hit (0.2 to 1.2 steps of 2
+units): single values at these rates go from 5.3 to 11.5 for the same mean.
+
+The executable at a low frame rate, with its rules (`-origobj -origphys
+-noimprovements`, the chair at its place 48 in front of the table, 16 starts
+from z 30.0 to 33.0, walk 1.5 s): the chair moved in 5 of 16 approaches at 15
+frames per second, 1 at 20, 2 at 25, 0 at 30 and 60; when it moved, it went 6 to
+10 units and pushed the table (the push of other scenery has no strength
+test). The random doubling of the moves makes single runs differ.
+
+The original layout (chair 5 at 48 in front of table 3 at 59,
+`-testpos -80,-2.46,33,0`, walk 0.6 s), at 20, 60, 144 and 200 frames per
+second: before, the chair went into the table (chair 55.2, 56.1, 59.3, 59.9;
+table 61.6, 63.6, 65.2, 65.9: the player pushed the table through the chair).
+After, the chair stops at the box of the table and pushes it (strength 17 above
+16): chair 53.7, 55.6, 56.2, 56.2; table 64.1, 63.4, 64.0, 63.9. With a walk of
+1.5 s: chair 57.9, 57.9, 58.2 and table 65.7, 65.7, 66.0 at 20, 60 and 200
+frames per second (the table stops at the creature obj 17).
+
+Walls (positions from `-objlog`, screenshots): the wall at x -124.9 of
+segment 8 and the corner with the wall at z 12.7 in segment 20.
+
+| Test | Before | After (20, 60, 200 frames per second) |
+|---|---|---|
+| Table (heading 0, 10 from the center to the end) pushed along -x into the wall | center at x -124.0 to -124.9: half of the table in the wall | -114.75, -114.75, -114.99 |
+| Chair pushed along -x and -z (heading 250) into the wall | center at x -124.3 to -125.0 | -122.27, -122.27, -122.43 |
+| Chair pushed into the corner (heading 225) | center at -124.4, 12.6 (in both walls) | -121.6, 15.4 (-121.78, 15.22 at 200) |
+
+Not verified: no run of DTUGAME.EXE (the numbers of the executable are those of
+the port with `-origobj`); the y move and the wall bounce of 0x9FE68; whether the
+player of the executable stops at a table where the port stops it (the move of
+the player in the port finds the objects of the segments that the query goes
+through, so a body in the next segment is found late, physics.c); creatures
+that push scenery were not measured.

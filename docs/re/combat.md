@@ -1820,7 +1820,9 @@ With the option `-origobj` (dtuobj.c, 1 by default):
 | Setting | Rule of the executable (0) | Corrected rule (1) |
 |---|---|---|
 | `Dtu_fix_cant_break` | the keyword `cant_break` is ignored: every scenery object breaks (portals, coffins) | `cant_break` keeps the object whole |
-| `Dtu_fix_push_frame` | pushed scenery slows down in each frame (velocity / 2, x and z / 4) | once in each reference frame, and always once in the frame of a push (the push gives 8 times the velocity of the mover, the slow down of that frame gives it back; without it a frame with no reference tick moved the scenery with 8 times the speed of the player) |
+| `Dtu_fix_push_body` | the move of pushed scenery stops when its center is inside of the body of the player (twice the radius of the move query of the player plus half of the radius of the scenery, 0x3EE70 and 0x4F7D5), and the player stops closer than that to a chair unless its last step was long: a chair moves only below about 30 frames per second, and then only now and then | a body that the scenery starts in does not stop a move away from it; the player is as large as its move query; other scenery is the box of its model; the push of other scenery needs the strength of the first push (objects.md, "Pushed scenery") |
+| `Dtu_fix_push_rate` | the scenery ends a push about 1.84 steps of the mover ahead of where the mover stopped, and a step is the velocity times the frame time, so the lead is 4 units at 20 frames per second and 0.4 at 200 | at the end of a push the scenery slides the difference to the lead of the reference frame (DTU_PUSH_LEAD 1.3 steps of the reference frame, measured) |
+| `Dtu_fix_push_wall` | pushed scenery tests the walls with its center and half of `body_radius[0]` (walls `rad + 1.0`): the end of a table goes 3.4 into a wall; the port before this used `size / 2`, and in the test of objects.md the center of a pushed table stopped at the wall | the corners and the mid points of the edges of the box of the model stay 0.25 out of the walls |
 
 ## C4. Test options
 

@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <math.h>
 
 #include "inferno.h"
 #include "types.h"
@@ -248,11 +249,35 @@ static dtu_missile Missile[MAX_OBJECTS];
 // pcons.c 0x9FE68 moves it.
 static ubyte Dressing_fall[MAX_OBJECTS];
 static int Dressing_sig[MAX_OBJECTS];
-static ubyte Dressing_pushed[MAX_OBJECTS];	// pushed in this frame (Dtu_fix_push_frame)
-// The push of scenery depends on the frame rate: 0x9FE68 halves the
-// velocity and divides x and z by 4 in each frame. 1 (default): once in
-// each reference frame (3/64 second). 0 (-origobj): in each frame.
-int Dtu_fix_push_frame = 1;
+static int Dressing_str[MAX_OBJECTS];		// strength of the push (Dtu_fix_push_body)
+static vms_vector Dressing_vpush[MAX_OBJECTS];	// velocity of the mover at the push (Dtu_fix_push_rate)
+static vms_vector Dressing_slide[MAX_OBJECTS];	// velocity of the slide at the end of a push (Dtu_fix_push_rate)
+static ubyte Dressing_slid[MAX_OBJECTS];		// the slide of this push has started
+// Pushed scenery and the bodies of the player, the creatures and other
+// scenery. The executable stops the move of scenery whose center is inside
+// of the body of the player (twice the radius of its move query, plus half
+// of the radius of the scenery), and the player stops closer than that to
+// a chair unless its last step was long: the push of a chair works only
+// below about 30 frames per second (docs/re/objects.md). 1 (default): a
+// body that the scenery starts in does not stop a move away from it, and
+// the player is as large as its move query (dressing_hit_object). 0
+// (-origobj): the rule of the executable.
+int Dtu_fix_push_body = 1;
+// Pushed scenery and the walls. 1 (default): the box of the model stays
+// out of the walls (dressing_wall_frac). 0 (-origobj): the center with
+// half of the radius of the body, a table goes into a wall.
+int Dtu_fix_push_wall = 1;
+// The lead of pushed scenery at the end of a push. With the rule of the
+// executable the scenery ends up about 1.84 steps of the mover ahead of
+// the place where the mover stopped (the gap of the last hit, 0.2 to 1.2
+// steps, and the 8/7 step of the move after it), and a step is the
+// velocity times the frame time: 4 units at 20 frames per second, 0.4 at
+// 200. 1 (default): at the end of a push the scenery slides the
+// difference to the step of the reference frame (DTU_REF_FRAMETIME), so
+// that a push moves scenery as far at each frame rate as at 21 frames per
+// second. 0 (-origobj): no slide.
+int Dtu_fix_push_rate = 1;
+#define DTU_PUSH_LEAD	1.3
 
 dtu_inv_item Dtu_inventory[DTU_MAX_INVENTORY];
 int Dtu_n_inventory = 0;
@@ -993,8 +1018,8 @@ void dtu_objects_init(void)
 		Dtu_objects_enabled = 0;
 	if (FindArg("-origobj"))
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
-			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break = Dtu_fix_push_frame =
-			Dtu_fix_corpse_floor = 0;
+			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
+			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor = 0;
 	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
 	if (FindArg("-origobj") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
@@ -1319,11 +1344,16 @@ void dtu_objects_level_setup(void)
 			Gamesave_current_filename,Current_level_num,n[OBJ_ROBOT],n[OBJ_DRESSING],n[OBJ_MISC],n[OBJ_ARMOR],n[OBJ_SPELL],n[OBJ_WEAPON],
 			Brain ? (Dtu_fix_brain ? "loaded, not used" : "used") : "none");
 		for (i=0;i<=Highest_object_index;i++)
-			if (Objects[i].type == OBJ_DRESSING)
-				dtu_obj_log("obj %d %s: dressing %d pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f",
+			if (Objects[i].type == OBJ_DRESSING) {
+				polymodel *po = obj_model(&Objects[i]);
+				int b = po && po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius;
+
+				dtu_obj_log("obj %d %s: dressing %d pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f body flags %d r %.2f hh %.2f",
 					i,dtu_object_name(&Objects[i]),Objects[i].id,dressing_pushable(&Objects[i]),
 					f2fl(Objects[i].mtype.phys_info.mass),f2fl(Objects[i].mtype.phys_info.drag),f2fl(Objects[i].size),
-					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
+					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z),
+					po ? po->box_flags : -1,b ? f2fl(po->body_radius[0]) : 0.0,b ? f2fl(po->body_half_height[0]) : 0.0);
+			}
 			else if (Objects[i].type == OBJ_MISC || Objects[i].type == OBJ_ARMOR || Objects[i].type == OBJ_SPELL || Objects[i].type == OBJ_WEAPON)
 				dtu_obj_log("obj %d %s: item type %d id %d seg %d pos %.2f %.2f %.2f render %d size %.2f life %.1f count %d flags 0x%x parent %d/%d",
 					i,dtu_object_name(&Objects[i]),Objects[i].type,Objects[i].id,
@@ -6037,6 +6067,20 @@ static int dressing_pushable(object *d)
 	return p > 0 ? p : 999;		// the default of the reader is 999
 }
 
+// The body of scenery (0x748D9): radius body_radius[0] in the x-z plane and
+// half height body_half_height[0] of its model, else the size.
+static void dressing_body(object *d,fix *r,fix *hh)
+{
+	polymodel *po = obj_model(d);
+
+	if (po && po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius && po->body_half_height) {
+		*r = po->body_radius[0];
+		*hh = po->body_half_height[0];
+	}
+	else
+		*r = *hh = d->size;
+}
+
 // The velocity and the thrust of the scenery become 8 times those of the
 // mover in x and z; vel.y stays; movement type 1.
 static void push_dressing(object *mover,object *d,int strength)
@@ -6052,32 +6096,336 @@ static void push_dressing(object *mover,object *d,int strength)
 	pi->thrust.z = 8 * mover->mtype.phys_info.thrust.z;
 	Dressing_fall[n] = 1;
 	Dressing_sig[n] = d->signature;
-	Dressing_pushed[n] = 1;
+	Dressing_str[n] = strength;
+	// the fastest push of this row of pushes: the mover slows down at the
+	// end and its last pushes are slow
+	{
+		vms_vector v = mover->mtype.phys_info.velocity;
+
+		v.y = 0;
+		if (Dressing_slid[n] || vm_vec_mag_quick(&v) > vm_vec_mag_quick(&Dressing_vpush[n]))
+			Dressing_vpush[n] = v;
+	}
+	vm_vec_zero(&Dressing_slide[n]);
+	Dressing_slid[n] = 0;
 	dtu_obj_log("push: obj %d %s (strength %d) pushes obj %d %s (pushable %d), velocity %.1f %.1f",(int)(mover-Objects),
 		dtu_object_name(mover),strength,n,dtu_object_name(d),dressing_pushable(d),f2fl(pi->velocity.x),f2fl(pi->velocity.z));
+}
+
+// The body of another object that pushed scenery tests, as an upright
+// cylinder about its position: radius r, half height hh. Executable
+// (0x3EE70 with 0x748D9): the player has body_radius[0] of model 16 (twice
+// the radius of its move query) and the half height of its move query, a
+// creature or scenery body_radius[0] and the half height of its model.
+// Corrected (Dtu_fix_push_body): the player has the radius of its move
+// query, so that scenery and the player stop at the same distance.
+static int dressing_other_body(object *o,fix *r,fix *hh)
+{
+	if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
+		return 0;
+	if (o->type == OBJ_PLAYER) {
+		dtu_body b;
+
+		if (o != ConsoleObject)
+			return 0;
+		dtu_player_body(&b);
+		*r = Dtu_fix_push_body ? b.move_rad : 2*b.move_rad;
+		*hh = b.move_rad2;
+		return 1;
+	}
+	if (o->type == OBJ_ROBOT) {
+		polymodel *po = obj_model(o);
+
+		if (o->id < N_robot_types && (Monster_info[o->id].flags & MONSTER_F_PASS_THRU))
+			return 0;
+		if (po && po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius && po->body_half_height) {
+			*r = po->body_radius[0];
+			*hh = po->body_half_height[0];
+		}
+		else
+			*r = *hh = o->size;
+		return 1;
+	}
+	if (o->type == OBJ_DRESSING) {
+		if (o->render_type != RT_POLYOBJ)
+			return 0;
+		if (o->id < N_dressing_types && Dressing_info[o->id].pass_thru)
+			return 0;
+		dressing_body(o,r,hh);
+		return 1;
+	}
+	return 0;
+}
+
+// Dtu_fix_push_body: other scenery is the box of its model (box 1 of the
+// rest pose in the x-z plane of the object), not the circle of
+// body_radius[0] around the corners of the box: a chair at a table is
+// already inside of that circle. Only an upright object has a box: a
+// barrel on its side has no box in x-z.
+static int dressing_has_box(object *o)
+{
+	polymodel *po = obj_model(o);
+
+	return po && po->box1_min && po->box1_max && o->orient.uvec.y >= F1_0*9/10;
+}
+
+// The move mv of the point a against the box of o about the position c,
+// grown by r. *t is the part (0 to 1) of the move up to the box, or -1 for
+// no hit. A start inside of the box is a hit at 0 unless the move goes
+// away from the center.
+static void dressing_box_sweep(object *o,vms_vector *c,vms_vector *a_w,vms_vector *mv,double r,double *t)
+{
+	polymodel *po = obj_model(o);
+	double a[2], m[2], lo[2], hi[2], tin = 0, tout = 1;
+	vms_vector rel;
+	int k;
+
+	vm_vec_sub(&rel,a_w,c);
+	a[0] = f2fl(vm_vec_dot(&rel,&o->orient.rvec));
+	a[1] = f2fl(vm_vec_dot(&rel,&o->orient.fvec));
+	m[0] = f2fl(vm_vec_dot(mv,&o->orient.rvec));
+	m[1] = f2fl(vm_vec_dot(mv,&o->orient.fvec));
+	lo[0] = f2fl(po->box1_min[0].x) - r; hi[0] = f2fl(po->box1_max[0].x) + r;
+	lo[1] = f2fl(po->box1_min[0].z) - r; hi[1] = f2fl(po->box1_max[0].z) + r;
+	*t = -1;
+	if (a[0] > lo[0] && a[0] < hi[0] && a[1] > lo[1] && a[1] < hi[1]) {
+		double c0 = (lo[0]+hi[0])/2 - a[0], c1 = (lo[1]+hi[1])/2 - a[1];
+
+		if (m[0]*c0 + m[1]*c1 > 0)
+			*t = 0;
+		return;
+	}
+	for (k=0;k<2;k++) {
+		if (fabs(m[k]) < 1e-9) {
+			if (a[k] <= lo[k] || a[k] >= hi[k])
+				return;
+		}
+		else {
+			double t0 = (lo[k] - a[k]) / m[k], t1 = (hi[k] - a[k]) / m[k];
+
+			if (t0 > t1) { double s = t0; t0 = t1; t1 = s; }
+			if (t0 > tin) tin = t0;
+			if (t1 < tout) tout = t1;
+			if (tin > tout)
+				return;
+		}
+	}
+	*t = tin;
+}
+
+// The corners and the mid points of the edges of the box of o about the
+// position c, in the plane of the middle of the box.
+static void dressing_box_points(object *o,vms_vector *c,vms_vector pts[8])
+{
+	static const signed char px[8] = {-1,1,1,-1, 0,1,0,-1}, pz[8] = {-1,-1,1,1, -1,0,1,0};
+	polymodel *po = obj_model(o);
+	vms_matrix m;
+	int i;
+
+	vm_copy_transpose_matrix(&m,&o->orient);
+	for (i=0;i<8;i++) {
+		vms_vector local, ofs;
+
+		local.x = px[i] < 0 ? po->box1_min[0].x : px[i] > 0 ? po->box1_max[0].x : (po->box1_min[0].x + po->box1_max[0].x)/2;
+		local.z = pz[i] < 0 ? po->box1_min[0].z : pz[i] > 0 ? po->box1_max[0].z : (po->box1_min[0].z + po->box1_max[0].z)/2;
+		local.y = (po->box1_min[0].y + po->box1_max[0].y)/2;
+		vm_vec_rotate(&ofs,&local,&m);
+		vm_vec_add(&pts[i],c,&ofs);
+	}
+}
+
+// The move of scenery d from p0 to p1 against the box of scenery o. Two
+// boxes: the points of the box of d against the box of o, and the points
+// of the box of o against the box of d (the move the other way). Else the
+// circle of radius rad. Returns 0 when o has no box.
+static int dressing_box_hit(object *d,object *o,vms_vector *p0,vms_vector *p1,fix rad,double *t)
+{
+	vms_vector mv;
+
+	if (!dressing_has_box(o))
+		return 0;
+	vm_vec_sub(&mv,p1,p0);
+	if (dressing_has_box(d)) {
+		vms_vector pts[8], back;
+		double best = -1, u;
+		int i;
+
+		back = mv;
+		vm_vec_negate(&back);
+		dressing_box_points(d,p0,pts);
+		for (i=0;i<8;i++) {
+			dressing_box_sweep(o,&o->pos,&pts[i],&mv,0,&u);
+			if (u >= 0 && (best < 0 || u < best))
+				best = u;
+		}
+		dressing_box_points(o,&o->pos,pts);
+		for (i=0;i<8;i++) {
+			dressing_box_sweep(d,p0,&pts[i],&back,0,&u);
+			if (u >= 0 && (best < 0 || u < best))
+				best = u;
+		}
+		*t = best;
+		return 1;
+	}
+	dressing_box_sweep(o,&o->pos,p0,&mv,f2fl(rad),t);
+	return 1;
+}
+
+// The object that the move of scenery d from p0 to p1 hits first, and the
+// part (0 to 1) of the move up to it. rad and rad2 are the radii of the
+// query of d. Executable (0x4F7D5): a start point inside of a body is a
+// hit at once. Corrected (Dtu_fix_push_body): a body that d is in already
+// does not stop a move away from it, so that two bodies that overlap can
+// move apart.
+static int dressing_hit_object(object *d,vms_vector *p0,vms_vector *p1,fix rad,fix rad2,fix *frac)
+{
+	int i, best = -1;
+	fix best_f = F1_0+1;
+	double mx = f2fl(p1->x - p0->x), mz = f2fl(p1->z - p0->z);
+	double len2 = mx*mx + mz*mz;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+		fix r, hh;
+		double cx, cz, R, b, c, t;
+
+		if (o == d || o->type == OBJ_NONE || !dressing_other_body(o,&r,&hh))
+			continue;
+		if (abs(p0->y - o->pos.y) > hh + rad2)
+			continue;
+		if (Dtu_fix_push_body && o->type == OBJ_DRESSING && dressing_box_hit(d,o,p0,p1,rad,&t)) {
+			if (t < 0)
+				continue;
+			if (fl2f(t) < best_f) {
+				best_f = fl2f(t);
+				best = i;
+			}
+			continue;
+		}
+		R = f2fl(r + rad);
+		cx = f2fl(o->pos.x - p0->x);
+		cz = f2fl(o->pos.z - p0->z);
+		c = cx*cx + cz*cz - R*R;
+		if (c < 0) {
+			// the start point is inside of the body
+			if (Dtu_fix_push_body && mx*cx + mz*cz <= 0)
+				continue;
+			t = 0;
+		}
+		else {
+			if (len2 < 1e-9)
+				continue;
+			b = mx*cx + mz*cz;		// toward the body
+			if (b <= 0)
+				continue;
+			// |m t - c|^2 = R^2: t^2 len2 - 2 t b + |c|^2 - R^2 = 0
+			if (b*b - len2*c < 0)
+				continue;
+			t = (b - sqrt(b*b - len2*c)) / len2;
+			if (t < 0 || t > 1)
+				continue;
+		}
+		if (fl2f(t) < best_f) {
+			best_f = fl2f(t);
+			best = i;
+		}
+	}
+	*frac = best_f;
+	return best;
+}
+
+// Dtu_fix_push_wall: the part (0 to 1) of the move frame_vec of scenery d
+// that keeps its box out of the walls. The executable tests only the
+// center with half of body_radius[0] (rad + 1.0 for a wall), so a table
+// (body_radius 11.2, 10 from the center to an end) goes 3.4 into a wall.
+// The port moves the four corners and the four mid points of the edges of
+// the box of the model (box 1 of the rest pose, at the height of its
+// middle) with the move and stops at
+// the first wall that one of them hits, DTU_PUSH_WALL_GAP before it. A
+// point that is outside of the mine at the start (scenery that the level
+// puts into a wall) is not tested.
+#define DTU_PUSH_WALL_GAP	(F1_0/4)
+
+static fix dressing_wall_frac(object *d,vms_vector *frame_vec)
+{
+	polymodel *po = obj_model(d);
+	fix best = F1_0, len = vm_vec_mag(frame_vec);
+	vms_matrix m;
+	int i;
+
+	if (len <= 0)
+		return F1_0;
+	if (!po || !po->box1_min || !po->box1_max) {
+		// no box: a sphere of the size of the object
+		fvi_query fq;
+		fvi_info hit;
+		vms_vector p1;
+
+		vm_vec_add(&p1,&d->pos,frame_vec);
+		fq.p0 = &d->pos; fq.p1 = &p1; fq.startseg = d->segnum; fq.rad = d->size;
+		fq.thisobjnum = d-Objects; fq.ignore_obj_list = NULL; fq.flags = 0;
+		if (find_vector_intersection(&fq,&hit) != HIT_NONE)
+			return 0;
+		return F1_0;
+	}
+	vm_copy_transpose_matrix(&m,&d->orient);
+	for (i=0;i<8;i++) {
+		static const signed char px[8] = {-1,1,1,-1, 0,1,0,-1}, pz[8] = {-1,-1,1,1, -1,0,1,0};
+		vms_vector local, ofs, p0, p1;
+		fvi_query fq;
+		fvi_info hit;
+		int seg, fate;
+
+		local.x = px[i] < 0 ? po->box1_min[0].x : px[i] > 0 ? po->box1_max[0].x : (po->box1_min[0].x + po->box1_max[0].x)/2;
+		local.z = pz[i] < 0 ? po->box1_min[0].z : pz[i] > 0 ? po->box1_max[0].z : (po->box1_min[0].z + po->box1_max[0].z)/2;
+		local.y = (po->box1_min[0].y + po->box1_max[0].y)/2;
+		vm_vec_rotate(&ofs,&local,&m);
+		vm_vec_add(&p0,&d->pos,&ofs);
+		seg = find_point_seg(&p0,d->segnum);
+		if (seg < 0)
+			continue;
+		vm_vec_add(&p1,&p0,frame_vec);
+		fq.p0 = &p0; fq.p1 = &p1; fq.startseg = seg; fq.rad = 0;
+		fq.thisobjnum = d-Objects; fq.ignore_obj_list = NULL; fq.flags = 0;
+		fate = find_vector_intersection(&fq,&hit);
+		if (fate == HIT_WALL) {
+			fix f = fixdiv(vm_vec_dist(&hit.hit_pnt,&p0) - DTU_PUSH_WALL_GAP,len);
+
+			if (f < 0)
+				f = 0;
+			if (f < best)
+				best = f;
+		}
+		else if (fate != HIT_NONE)
+			best = 0;
+	}
+	return best;
 }
 
 // 0x9FE68: the move of scenery with movement type 1. The velocity is
 // halved and x and z are divided by 4, then gravity and the move. The
 // sound 2706 plays while the speed is above 0x70. The move ends at a stop.
+//
+// The slow down is in each frame, as in the executable. The push gives 8
+// times the velocity of the mover, so the scenery moves the step of the
+// mover in the frame after the push and one eighth of it in the next. The
+// mover that walks into scenery stays where it is in the frame of a hit
+// and walks one step in the next, so mover and scenery go on at one half
+// of the walk speed, at each frame rate: all distances of that cycle are
+// in proportion to the step. (An earlier version of the port slowed the
+// scenery down once in each reference frame; above 21 frames per second the
+// scenery then kept the speed of the mover for some frames and ran ahead,
+// and the push grew with the frame rate.)
 static void dressing_move_frame(void)
 {
-	static fix acc = 0;
-	int i, ticks = 1;
+	int i;
 
-	if (Dtu_fix_push_frame) {
-		acc += FrameTime;
-		ticks = acc / DTU_REF_FRAMETIME;
-		acc -= ticks * DTU_REF_FRAMETIME;
-	}
 	for (i=0;i<=Highest_object_index;i++) {
 		object *d = &Objects[i];
 		physics_info *pi = &d->mtype.phys_info;
 		vms_vector p1, frame_vec;
-		fvi_query fq;
-		fvi_info hit;
-		fix speed;
-		int k, fate, n_ticks;
+		fix speed, frac, br, bhh;
+		int hit_obj;
 
 		if (!Dressing_fall[i])
 			continue;
@@ -6085,22 +6433,9 @@ static void dressing_move_frame(void)
 			Dressing_fall[i] = 0;
 			continue;
 		}
-		// ASCENT: Dtu_fix_push_frame. The push gives 8 times the velocity
-		// of the mover, and the slow down before the move of the frame
-		// divides it by 8, so that the scenery moves with the mover in
-		// that frame. Then the velocity goes down by 8 times in each
-		// reference frame. A frame of a push has that one slow down at each
-		// frame rate (without it, a frame that has no reference tick moved
-		// the scenery with 8 times the velocity of the mover).
-		n_ticks = ticks;
-		if (Dtu_fix_push_frame && Dressing_pushed[i])
-			n_ticks = 1;
-		Dressing_pushed[i] = 0;
-		for (k=0;k<n_ticks;k++) {
-			pi->velocity.x = (pi->velocity.x / 2) >> 2;
-			pi->velocity.z = (pi->velocity.z / 2) >> 2;
-			pi->velocity.y /= 2;
-		}
+		pi->velocity.x = (pi->velocity.x / 2) >> 2;
+		pi->velocity.z = (pi->velocity.z / 2) >> 2;
+		pi->velocity.y /= 2;
 		// gravity (0x6C662): down to the floor, 3.0 times the distance
 		{
 			fvi_query gq;
@@ -6119,29 +6454,140 @@ static void dressing_move_frame(void)
 			}
 		}
 		speed = vm_vec_mag_quick(&pi->velocity);
+		// ASCENT: Dtu_fix_push_rate. The push has ended: the slide to the
+		// lead of the reference frame, 1.843 * velocity * (reference frame
+		// time - frame time), with a velocity that goes down by e in each
+		// reference frame time.
+		if (speed <= 0x70 && Dtu_fix_push_rate && !Dressing_slid[i]) {
+			Dressing_slid[i] = 1;
+			vm_vec_zero(&Dressing_slide[i]);
+			if (FrameTime > 0 && FrameTime < DTU_REF_FRAMETIME) {
+				double dt = f2fl(FrameTime), tref = f2fl(DTU_REF_FRAMETIME);
+				double lead = DTU_PUSH_LEAD * (tref - dt);
+				double k = lead * (1 - exp(-dt / tref)) / dt;
+
+				Dressing_slide[i].x = fl2f(f2fl(Dressing_vpush[i].x) * k);
+				Dressing_slide[i].z = fl2f(f2fl(Dressing_vpush[i].z) * k);
+			}
+		}
+		if (Dtu_fix_push_rate && Dressing_slid[i]) {
+			vm_vec_add2(&pi->velocity,&Dressing_slide[i]);
+			speed = vm_vec_mag_quick(&pi->velocity);
+		}
 		if (speed <= 0x70) {
 			vm_vec_zero(&pi->velocity);
+			vm_vec_zero(&Dressing_slide[i]);
 			Dressing_fall[i] = 0;
-			dtu_obj_log("push: obj %d %s stops at %.1f %.1f %.1f",i,dtu_object_name(d),f2fl(d->pos.x),f2fl(d->pos.y),f2fl(d->pos.z));
+			dtu_obj_log("push: obj %d %s stops at %.2f %.2f %.2f",i,dtu_object_name(d),f2fl(d->pos.x),f2fl(d->pos.y),f2fl(d->pos.z));
 			continue;
 		}
 		vm_vec_copy_scale(&frame_vec,&pi->velocity,FrameTime);
+		// 0xA007F: the executable doubles x and z of the move, each one in
+		// 1 of 7 frames (rand() % 7 == 2)
+		if (!Dtu_fix_push_body) {
+			if (rand() % 7 == 2)
+				frame_vec.x *= 2;
+			if (rand() % 7 == 2)
+				frame_vec.z *= 2;
+		}
+		dressing_body(d,&br,&bhh);
+
+		// The bodies of the player, the creatures and other scenery
+		// (0x3EE70). Executable: the query of the move has the radius
+		// body_radius[0] / 2 (0x9FFD6), and a hit stops the move. The hit
+		// of scenery pushes it with the velocity of this one (0xA02A8, no
+		// test of "pushable"). Corrected (Dtu_fix_push_body): the whole
+		// radius, other scenery is a box, and other scenery is pushed only
+		// with the strength of the first push.
 		vm_vec_add(&p1,&d->pos,&frame_vec);
-		fq.p0 = &d->pos; fq.p1 = &p1; fq.startseg = d->segnum; fq.rad = d->size / 2;
-		fq.thisobjnum = i; fq.ignore_obj_list = NULL; fq.flags = 0;
-		fate = find_vector_intersection(&fq,&hit);
-		if (fate == HIT_NONE) {
-			int seg = find_point_seg(&p1,d->segnum);
+		hit_obj = dressing_hit_object(d,&d->pos,&p1,Dtu_fix_push_body ? br : br/2,bhh,&frac);
+		if (hit_obj >= 0) {
+			object *o = &Objects[hit_obj];
+
+			if (o->type == OBJ_DRESSING) {
+				// the velocity of this frame, 8 times (0x9E5F1)
+				vms_vector v = pi->velocity, t = pi->thrust;
+				int str = Dtu_fix_push_body ? Dressing_str[i] : 0x7FFF;
+
+				push_dressing(d,o,str);
+				pi->velocity = v; pi->thrust = t;
+			}
+			if (!Dtu_fix_push_body)
+				frac = 0;
+			else {
+				// stop at the body, a little before it
+				fix len = vm_vec_mag(&frame_vec);
+
+				if (len > 0)
+					frac -= fixdiv(DTU_PUSH_WALL_GAP,len);
+				if (frac < 0)
+					frac = 0;
+			}
+		}
+		else
+			frac = F1_0;
+
+		// The walls
+		if (frac > 0) {
+			if (Dtu_fix_push_wall) {
+				vms_vector v;
+				fix fw;
+
+				vm_vec_copy_scale(&v,&frame_vec,frac);
+				fw = dressing_wall_frac(d,&v);
+				if (fw < F1_0) {
+					frac = fixmul(frac,fw);
+					hit_obj = -2;
+				}
+			}
+			else {
+				// executable: the query of the center with the radius
+				// body_radius[0] / 2, the wall sides take rad + 1.0
+				fvi_query fq;
+				fvi_info hit;
+				int fate;
+
+				fq.p0 = &d->pos; fq.p1 = &p1; fq.startseg = d->segnum; fq.rad = br/2;
+				fq.thisobjnum = i; fq.ignore_obj_list = NULL; fq.flags = 0;
+				Fvi_dtu_body = 1;
+				Fvi_dtu_rad2 = bhh;
+				fate = find_vector_intersection(&fq,&hit);
+				Fvi_dtu_body = 0;
+				if (fate != HIT_NONE) {
+					frac = 0;
+					hit_obj = -2;
+					if (fate == HIT_WALL && hit.hit_wallnorm.y > F1_0/2)
+						pi->velocity.y = 0;
+				}
+			}
+		}
+
+		if (frac > 0) {
+			int seg;
+
+			vm_vec_scale_add(&p1,&d->pos,&frame_vec,frac);
+			seg = find_point_seg(&p1,d->segnum);
 			if (seg >= 0) {
 				d->pos = p1;
 				if (seg != d->segnum)
 					obj_relink(i,seg);
 			}
 		}
-		else {
+		if (Dtu_fix_push_rate && Dressing_slid[i]) {
+			// the slide is not a part of the velocity that the next frame
+			// slows down
+			fix f = fl2f(exp(-f2fl(FrameTime) / f2fl(DTU_REF_FRAMETIME)));
+
+			pi->velocity.x -= Dressing_slide[i].x;
+			pi->velocity.z -= Dressing_slide[i].z;
+			Dressing_slide[i].x = fixmul(Dressing_slide[i].x,f);
+			Dressing_slide[i].z = fixmul(Dressing_slide[i].z,f);
+		}
+		if (hit_obj != -1) {
+			// a stop at a wall or a body (0xA00DE: after 5 tries the
+			// velocity is 0)
 			pi->velocity.x = pi->velocity.z = 0;
-			if (fate == HIT_WALL && hit.hit_wallnorm.y > F1_0/2)
-				pi->velocity.y = 0;
+			vm_vec_zero(&Dressing_slide[i]);
 		}
 		if (FrameCount % 8 == 0)
 			sound_at(2706,d->segnum,&d->pos,F1_0/2);
@@ -6199,6 +6645,8 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 //------------------------------------------------------------------------
 // The player
 
+static void test_place_objects(void);
+
 // The option -testpos X,Y,Z[,HEADING]: puts the player at a position of the
 // level at the first frame, for tests and screenshots. The heading is in
 // degrees, 0 looks along +z, 90 along +x.
@@ -6211,6 +6659,7 @@ static void test_place_player(void)
 	int seg;
 
 	Test_pos_pending = 0;
+	test_place_objects();
 	if (!t || t+1 >= Num_args)
 		return;
 	if (sscanf(Args[t+1],"%f,%f,%f,%f",&x,&y,&z,&h) < 3)
@@ -6229,6 +6678,39 @@ static void test_place_player(void)
 	vm_vec_zero(&ConsoleObject->mtype.phys_info.velocity);
 	// the new segment is not a move into it: no warp or floor trigger
 	dtu_trig_player_placed();
+}
+
+// The option -testobjpos N,X,Y,Z[,HEADING][;N,X,Y,Z[,HEADING]...]: puts the
+// objects N at these positions at the first frame (the test of pushed
+// scenery at a wall).
+static void test_place_objects(void)
+{
+	int t = FindArg("-testobjpos");
+	const char *s;
+
+	if (!t || t+1 >= Num_args)
+		return;
+	for (s = Args[t+1]; s && *s; s = strchr(s,';') ? strchr(s,';')+1 : NULL) {
+		int n, seg;
+		float x, y, z, h = 0;
+		vms_vector pos;
+		vms_angvec a;
+
+		if (sscanf(s,"%d,%f,%f,%f,%f",&n,&x,&y,&z,&h) < 4 || n < 0 || n > Highest_object_index || Objects[n].type == OBJ_NONE)
+			continue;
+		pos.x = fl2f(x); pos.y = fl2f(y); pos.z = fl2f(z);
+		seg = find_point_seg(&pos,-1);
+		if (seg < 0) {
+			printf("-testobjpos: the point of object %d is in no segment\n",n);
+			continue;
+		}
+		Objects[n].pos = pos;
+		obj_relink(n,seg);
+		a.p = a.b = 0;
+		a.h = (fixang)(int)(h * 65536.0 / 360.0);
+		vm_angles_2_matrix(&Objects[n].orient,&a);
+		dtu_obj_log("testobjpos: obj %d %s at %.2f %.2f %.2f seg %d heading %.0f",n,dtu_object_name(&Objects[n]),x,y,z,seg,h);
+	}
 }
 
 // The triggers of a frame run before the objects (switch.c): -testpos must

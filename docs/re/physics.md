@@ -530,6 +530,9 @@ and pushed the table 13 units. Now the chair stops the player and moves 8 to 11
 units ahead of it. How far the executable moves the chair in this test was not
 measured (no run of DTUGAME.EXE).
 
+These numbers are from before the corrections of the push in objects.md, "Pushed
+scenery" (the measurements of the push are there now).
+
 ## 11. Creatures (pmon.c, 0x9F153)
 
 Read with the port of the creatures (`dtu_creature_physics_sim` in
