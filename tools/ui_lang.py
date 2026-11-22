@@ -113,6 +113,10 @@ def cells(pairs, inset):
 # C, P for R): "XPEATION-XHA" for CREATION-CHA(racter)
 hd("p2_title", 2, (262, 44, 140, 32), "XPEATION-XHA", "XPEAXION-ΠJ",
    "the same dark mock-Greek serif capitals painted on the parchment")
+# the Waterdeep screen: the name of the city on the parchment (raw.png
+# drawn with ui_lang_title.py, not with Codex)
+hd("p10_title", 10, (100, 30, 440, 66), "WATERDEEP", "AGUAS PROFUNDAS",
+   "the same dark red-brown serif capitals painted on the parchment", margin=12)
 # character creation 4: name, portrait, alignment
 hd("p5_name", 5, (52, 54, 136, 36), "NAME", "NOMBRE", ENGRAVED)
 hd("p5_portrait", 5, (232, 64, 134, 34), "PORTRAIT", "RETRATO", ENGRAVED)
@@ -708,8 +712,10 @@ def build(args, jobs):
         write_patch(os.path.join(out, "orig", "egg_%s.png" % name), idx, np.full(idx.shape, 255, np.uint8))
     for n, ov in overlays.items():
         os.makedirs(os.path.join(out, "ui"), exist_ok=True)
+        # the colors of ov are premultiplied by the mask (the feathered edge
+        # of a box): the file has straight alpha
         a = ov[..., 3:]
-        rgb = np.where(a > 0, ov[..., :3], 0)
+        rgb = np.where(a > 0, np.clip(ov[..., :3] / np.maximum(a, 1e-6), 0, 1), 0)
         img = np.concatenate([rgb, a], -1)
         Image.fromarray((img * 255 + 0.5).astype(np.uint8), "RGBA").save(
             os.path.join(out, "ui", "febgnd_%d.png" % n), optimize=True)

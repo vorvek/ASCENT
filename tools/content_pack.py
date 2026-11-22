@@ -57,7 +57,10 @@ TITLES = {
 }
 DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 # 2: lang_es has the pictures of the language
-PACK_VERSION = {'lang_es': '2'}
+# 3: the decided terms (Aguas Profundas, Bajomontaña, trasgo, ...), the
+#    gender of the creature names, the Spanish name on the Waterdeep picture
+#    (FEBGND 10)
+PACK_VERSION = {'lang_es': '3'}
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
