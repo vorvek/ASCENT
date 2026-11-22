@@ -557,7 +557,7 @@ static void racial_search(int seg, int side, object *obj, int dwarf)
 
 			if (!tp->on || tp->seg != seg || tp->side != side)
 				continue;
-			if (vm_vec_dist(&tp->pos, &obj->pos) > i2f(40))
+			if (vm_vec_dist_quick(&tp->pos, &obj->pos) > i2f(40))
 				continue;
 			secret_found(seg, side);
 			secret_triggers(obj, tp);
@@ -568,7 +568,7 @@ static void racial_search(int seg, int side, object *obj, int dwarf)
 		vms_vector cp;
 
 		compute_center_point_on_side(&cp, segp, side);
-		if (vm_vec_dist(&cp, &obj->pos) <= i2f(40))
+		if (vm_vec_dist_quick(&cp, &obj->pos) <= i2f(40))
 			secret_found(seg, side);
 	}
 }
@@ -621,7 +621,7 @@ static void search_frame(void)
 	if (seg < 0 || seg > Highest_segment_index)
 		return;
 	for (side = 0; side < 6; side++) {
-		if (vm_vec_dot(&Segments[seg].sides[side].normals[0], &p->orient.fvec) > F1_0/4)
+		if (vm_vec_dot(&Segments[seg].sides[side].normals[1], &p->orient.fvec) > F1_0/4)
 			continue;
 		if (Dtu_char.pa.find_traps != 0 || spell || dwarf) {
 			search_triggers(seg, side, spell);
