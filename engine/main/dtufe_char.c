@@ -690,6 +690,9 @@ static void number_text(char *buf, int value, int bonus)
 		sprintf(buf, "+%d", bonus);
 }
 
+// ASCENT: the space between a value and its information line
+#define COL_GAP		10
+
 static void s3_draw(fe_screen *s)			// 0x88C18, 0x8A275, 0x88E3B
 {
 	// p3<sex><race>: the figure of the character (0x14000E)
@@ -697,7 +700,7 @@ static void s3_draw(fe_screen *s)			// 0x88C18, 0x8A275, 0x88E3B
 	static short pos[12][2] = { {26,208}, {26,208}, {25,207}, {26,206}, {22,205}, {25,207},
 		{24,205}, {23,205}, {23,203}, {23,204}, {23,206}, {24,203} };
 	char name[12], buf[80];
-	int i, trans, label_w = 0, w, h, lo[6], hi[6];
+	int i, trans, label_w = 0, w, h, lo[6], hi[6], col;
 	grs_bitmap *bm;
 
 	sprintf(name, "p3%c%s", Sex ? 'f' : 'm', race_code[Race]);
@@ -716,6 +719,12 @@ static void s3_draw(fe_screen *s)			// 0x88C18, 0x8A275, 0x88E3B
 		if (w > label_w) label_w = w;
 	}
 	stat_limits(lo, hi);
+	// ASCENT: the information column starts COL_GAP after the widest value
+	// of two digits (0x88E3B: at 419), so that the longer lines of a
+	// translation stay on the parchment; a wider value (18/00) moves its
+	// line to the right (docs/re/frontend.md, "Screen 3: statistics")
+	fe_string_size(Fe_font_m, "88", &w, &h);
+	col = 304 + label_w + 3 + w + COL_GAP;
 	for (i = 0; i < 6; i++) {
 		int y = 121 + 31 * i, final, pct, x;
 
@@ -730,8 +739,12 @@ static void s3_draw(fe_screen *s)			// 0x88C18, 0x8A275, 0x88E3B
 		fe_string(Fe_font_m, 304 + label_w + 3, y + (31 - Fe_font_m->ft_h) / 2,
 			Row_bonus[i] ? FE_HUE_7 : FE_HUE_1, FE_HUE_BLACK, buf);
 
-		// the information column: (419, y) 204x31, small font
-		x = 419;
+		// the information column: (419, y) 204x31, small font. ASCENT:
+		// at col, after the value (above)
+		fe_string_size(Fe_font_m, buf, &w, &h);
+		x = 304 + label_w + 3 + w + COL_GAP;
+		if (x < col)
+			x = col;
 		y += (31 - Fe_font_s->ft_h) / 2;
 		if (final < lo[i] && !Cheat_stats) {
 			sprintf(buf, fe_text(620), lo[i]);

@@ -411,19 +411,36 @@ packs them. The name of the city on the Waterdeep picture (FEBGND 10, the
 job `p10_title`) is drawn by `tools/ui_lang_title.py` (the old letters
 filled with the parchment, the new words in a bold serif font with the
 color and the shading of the old letters), then `ui_lang.py build` makes
-the files as for the other jobs.
+the files as for the other jobs. The plates of the alignment TRUE NEUTRAL
+(the jobs `p5_nu` and `lb4nu`) say `NEUTRAL ABSOLUTO`: `tools/ui_lang_plate.py`
+redrew the words of the Codex images (`NEUTRAL AUTÉNTICO`) in the same way.
 
 ## The thief skills of a language
 
-The statistics screen and the thief points screen show the long official
-names of the skills in a language other than English (`Esconderse en las
-sombras`, `Encontrar/desactivar trampas`). The statistics screen
-(`dtudisp.c`, `skill_row`) draws the percentage right-aligned in the row
-and the name in the room left of it, in two lines when it is wider; the low
-resolution has no room for two lines and cuts the name. The thief points
-screen (`dtuthiefpts.c`) makes its rows wider, into the free parchment (at
-most 22 pixels on each side in the high resolution, 10 in the low). Both
-screens use the texts 678 to 682 and the port strings of the names (also in
-the low resolution, where English shows the short `Find Traps`); the port
-string `Find Traps` is the name of the spell (`dtuspell.c`). English does
-not change.
+The statistics screen and the thief points screen show short labels of the
+skills, the same in both resolutions. Spanish: `Esconderse`, `Sigilo`,
+`Abrir cerraduras`, `Enc. Trampas`, `Escalar paredes` (the texts 678 to 682
+for the statistics screen, the port strings `Hide In Shadows` ...
+`Climb Walls` of `dtuthiefpts.c` for the thief points screen). A sentence
+that names a skill (a message, a conversation, the description window)
+keeps the full official name (`Esconderse en las sombras`,
+`Encontrar/desactivar trampas`). In a language other than English the
+statistics screen (`dtudisp.c`, `skill_row`) draws the percentage
+right-aligned in the row, 2 pixels (low resolution) or 4 pixels (high)
+inside its right edge, and the name in the room left of it, cut at the room
+when it is wider; the texts 678 to 682 also in the low resolution, where
+English shows the short `Find Traps` (the port string `Find Traps` is the
+name of the spell, `dtuspell.c`). The thief points screen (`dtuthiefpts.c`)
+makes its rows wider, into the free parchment (at most 22 pixels on each
+side in the high resolution, 10 in the low), when a name is wider than the
+name box of a row. English does not change.
+
+The statistics screen has other short labels of a language: the alignment
+(the texts 636 to 641; Spanish `L. bueno`, `N. bueno`, `L. neutral`,
+`N. absoluto`, `C. bueno`, `C. neutral`, a field of 60 pixels in the low
+resolution) and the headers of the two spell lists (the texts 765 and 766;
+Spanish `Mago` and `Clérigo`). The texts 765 and 766 have the English text
+of 736 and 737 (`dup`), so the part has its own entries for them. Character
+creation names the alignments in full: the plates of FEBGND 5 and the
+pressed plates `lb4??_d1` (pictures of the language, `tools/ui_lang.py`)
+and the help lines (the texts 602 to 607).

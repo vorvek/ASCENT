@@ -122,8 +122,10 @@ hd("p5_name", 5, (52, 54, 136, 36), "NAME", "NOMBRE", ENGRAVED)
 hd("p5_portrait", 5, (232, 64, 134, 34), "PORTRAIT", "RETRATO", ENGRAVED)
 hd("p5_alignment", 5, (414, 86, 158, 34), "ALIGNMENT", "ALINEAMIENTO", ENGRAVED)
 ALIGN = [("lg", "LAWFUL GOOD", "LEGAL BUENO", 168, 191), ("ng", "NEUTRAL GOOD", "NEUTRAL BUENO", 205, 227),
-         ("ln", "LAWFUL NEUTRAL", "LEGAL NEUTRAL", 242, 263), ("nu", "TRUE NEUTRAL", "NEUTRAL AUTÉNTICO", 278, 300),
+         ("ln", "LAWFUL NEUTRAL", "LEGAL NEUTRAL", 242, 263), ("nu", "TRUE NEUTRAL", "NEUTRAL ABSOLUTO", 278, 300),
          ("cg", "CHAOTIC GOOD", "CAÓTICO BUENO", 315, 336), ("cn", "CHAOTIC NEUTRAL", "CAÓTICO NEUTRAL", 351, 373)]
+# The raw.png of p5_nu and lb4nu: the Codex images of "NEUTRAL AUTÉNTICO"
+# with the words redrawn by ui_lang_plate.py (the glossary: Neutral absoluto).
 for _c, _en, _es, _ya, _yb in ALIGN:
     hd("p5_" + _c, 5, (434, _ya, 128, _yb - _ya + 1), _en, _es, LABEL + ", as large and as bold as the original letters, dark on the lit brass plate", margin=6)
     # the selected label (s4_draw), lit

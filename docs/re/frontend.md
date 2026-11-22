@@ -275,6 +275,11 @@ tables 0x1401EE (STR to hit), 0x140382 (STR damage), 0x14019A (DEX armor
 class), 0x1402E2 / 0x140332 (CON hit points, not fighter / fighter),
 0x14023E (INT spells), 0x1403D2.. (WIS bonus spells), 0x14014A (CHA
 reaction), or TEX[620] / TEX[621] for a value outside the limits. The
+column starts at x 419. The port starts it 10 pixels after the widest value
+of two digits (about x 392), so that the Spanish lines stay on the
+parchment; a wider value (strength 18/00, the percentile 0 to 99 printed as
+`%02d`, so never 18/100) moves its line further right. A row with no number
+yet has no line (the screen skips it). The
 pictures `p3<m|f><race>.bbm` (table 0x14000E). Leaving forward needs six
 rows (TEX[718]) inside the limits (TEX[719]); leaving stores the record
 (0x8AAA7). A cheat key sequence (table 0x141BD3, not decoded) sets all six to
@@ -814,7 +819,7 @@ language"), made with `tools/ui_lang.py`:
 | FEBGND 5 | (52, 54, 136, 36) | NAME | NOMBRE |
 | FEBGND 5 | (232, 64, 134, 34) | PORTRAIT | RETRATO |
 | FEBGND 5 | (414, 86, 158, 34) | ALIGNMENT | ALINEAMIENTO |
-| FEBGND 5, `lb4??_d1` | (434, 168..351, 128, 22) | LAWFUL GOOD, NEUTRAL GOOD, LAWFUL NEUTRAL, TRUE NEUTRAL, CHAOTIC GOOD, CHAOTIC NEUTRAL | LEGAL BUENO, NEUTRAL BUENO, LEGAL NEUTRAL, NEUTRAL AUTÉNTICO, CAÓTICO BUENO, CAÓTICO NEUTRAL |
+| FEBGND 5, `lb4??_d1` | (434, 168..351, 128, 22) | LAWFUL GOOD, NEUTRAL GOOD, LAWFUL NEUTRAL, TRUE NEUTRAL, CHAOTIC GOOD, CHAOTIC NEUTRAL | LEGAL BUENO, NEUTRAL BUENO, LEGAL NEUTRAL, NEUTRAL ABSOLUTO, CAÓTICO BUENO, CAÓTICO NEUTRAL |
 | FEBGND 14, `lbm???d1` | the buttons (427,15), (532,15), (452,81), (452,174), (453,265) | BUY, SELL, WEAPON, ARMOR, MISC. | COMPRAR, VENDER, ARMAS, ARMADURAS, VARIOS |
 | FEBGND 25, `lbp???d1` | (54,258) 145x56, (217,259) 143x56 | ACCEPT, REJECT | ACEPTAR, RECHAZAR |
 | FEBGND 74 (sheet 70) | all images of the buttons below | S, USE, DROP, SPELLS, MAP, REST, STATS | C, USAR, SOLTAR, CONJUROS, MAPA, REPOSO, CARACT. |

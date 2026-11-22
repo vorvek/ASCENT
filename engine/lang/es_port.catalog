@@ -1109,11 +1109,11 @@ tr: No puedes hacer esta acción llevando %s.
 
 id: port.hide_in_shadows
 en: Hide In Shadows
-tr: Esconderse en las sombras
+tr: Esconderse
 
 id: port.move_silently
 en: Move Silently
-tr: Moverse sigilosamente
+tr: Sigilo
 
 id: port.open_locks
 en: Open Locks
@@ -1121,7 +1121,7 @@ tr: Abrir cerraduras
 
 id: port.find_remove_traps
 en: Find/Remove Traps
-tr: Encontrar/desactivar trampas
+tr: Enc. Trampas
 
 id: port.climb_walls
 en: Climb Walls
@@ -1573,6 +1573,10 @@ id: port.none
 en: None
 tr: Ninguna
 
+id: port.none_2
+en: none
+tr: nada
+
 id: port.lockpicks
 en: Lockpicks
 tr: Ganzúas
@@ -1635,7 +1639,7 @@ tr: Aumenta tu destreza en %d.
 
 id: port.sets_hide_in_shadows_to_d
 en: Sets Hide In Shadows to %d%%.
-tr: Esconderse %d%%.
+tr: Esconderse en las sombras: %d%%.
 
 id: port.open_locks_d_for_a_thief
 en: Open Locks +%d%% for a thief.
@@ -1645,23 +1649,23 @@ id: port.open_locks_d_for_other_classes
 en: Open Locks %d%% for other classes.
 tr: Abrir cerraduras %d%% para las otras clases.
 
-id: port.a_thief_cannot_hide_in_shadows_move_silently_or_climb_walls_in_it
+id: port.a_thief_cannot_hide_in_shadows_move_sile
 en: A thief cannot Hide In Shadows, Move Silently or Climb Walls in it.
-tr: Impide a un ladrón Esconderse, Moverse en silencio y Escalar paredes.
+tr: Impide a un ladrón Esconderse en las sombras, Moverse sigilosamente y Escalar paredes.
 
-id: port.find_remove_traps_and_open_locks_do_not_work
+id: port.find_remove_traps_and_open_locks_do_not_
 en: Find/Remove Traps and Open Locks do not work.
-tr: Desactivar trampas y Abrir cerraduras no funcionan.
+tr: Encontrar/desactivar trampas y Abrir cerraduras no funcionan.
 
-id: port.sets_find_remove_traps_and_climb_walls_to_d
+id: port.sets_find_remove_traps_and_climb_walls_t
 en: Sets Find/Remove Traps and Climb Walls to %d%%.
-tr: Desactivar trampas y Escalar paredes: %d%%.
+tr: Encontrar/desactivar trampas y Escalar paredes: %d%%.
 
-id: port.no_armor_class_bonus_with_a_shield_magic_armor_or_heavy_armor
+id: port.no_armor_class_bonus_with_a_shield_magic
 en: No armor class bonus with a shield, magic armor or heavy armor.
 tr: No mejora la CA con un escudo, una armadura mágica o una armadura pesada.
 
-id: port.of_two_rings_of_protection_only_the_better_one_counts
+id: port.of_two_rings_of_protection_only_the_bett
 en: Of two rings of protection only the better one counts.
 tr: De dos anillos de protección solo cuenta el mejor.
 
@@ -1669,11 +1673,11 @@ id: port.no_armor_class_bonus_with_magic_armor
 en: No armor class bonus with magic armor.
 tr: No mejora la CA con una armadura mágica.
 
-id: port.a_mage_gets_1_better_armor_class_after_armor_magical_vestment_and_shield
+id: port.a_mage_gets_1_better_armor_class_after_a
 en: A mage gets 1 better armor class after Armor, Magical Vestment and Shield.
 tr: Un mago tiene 1 punto mejor de CA tras Armadura, Vestimenta Mágica y Escudo.
 
-id: port.doubles_the_mage_spell_slots_of_levels_1_to_3
+id: port.doubles_the_mage_spell_slots_of_levels_1
 en: Doubles the mage spell slots of levels 1 to 3.
 tr: Duplica los espacios de conjuro de mago de niveles 1 a 3.
 
@@ -1705,7 +1709,7 @@ id: port.dexterity_becomes_at_least_d_for_s
 en: Dexterity becomes at least %d for %s.
 tr: La destreza es al menos %d durante %s.
 
-id: port.a_fighter_gets_a_random_percent_value_with_it
+id: port.a_fighter_gets_a_random_percent_value_wi
 en: A fighter gets a random percent value with it.
 tr: A un guerrero le da además un porcentaje al azar.
 
@@ -1729,19 +1733,19 @@ id: port.ends_all_spell_and_potion_effects_on_you
 en: Ends all spell and potion effects on you.
 tr: Anula todos tus efectos de conjuros y pociones.
 
-id: port.for_s_one_attack_roll_is_a_20_or_one_damage_roll_is_the_highest
+id: port.for_s_one_attack_roll_is_a_20_or_one_dam
 en: For %s, one attack roll is a 20 or one damage roll is the highest.
 tr: Durante %s, una tirada de ataque es un 20 o una tirada de daño es la máxima.
 
-id: port.adds_s_hit_points_above_the_maximum_and_bless_for_s
+id: port.adds_s_hit_points_above_the_maximum_and_
 en: Adds %s hit points above the maximum and Bless for %s.
 tr: Añade %s puntos de golpe por encima del máximo y Bendecir durante %s.
 
-id: port.a_second_one_while_above_the_maximum_can_kill_system_shock
+id: port.a_second_one_while_above_the_maximum_can
 en: A second one while above the maximum can kill (system shock).
 tr: Otra por encima del máximo puede matar (choque sistémico).
 
-id: port.cures_blindness_else_casts_s_one_use_for_each_mission
+id: port.cures_blindness_else_casts_s_one_use_for
 en: Cures blindness, else casts %s. One use for each mission.
 tr: Cura la ceguera; si no, lanza %s. Un uso por misión.
 
@@ -1749,7 +1753,7 @@ id: port.shows_a_text
 en: Shows a text.
 tr: Muestra un texto.
 
-id: port.harms_you_by_chance_spells_the_map_your_abilities_and_hit_points_it_is_not_used_up
+id: port.harms_you_by_chance_spells_the_map_your_
 en: Harms you by chance: spells, the map, your abilities and hit points. It is not used up.
 tr: Te daña al azar: conjuros, el mapa, tus características y puntos de golpe. No se gasta.
 
@@ -1761,7 +1765,7 @@ id: port.shows_the_whole_map
 en: Shows the whole map.
 tr: Muestra todo el mapa.
 
-id: port.fires_a_missile_at_each_creature_in_sight
+id: port.fires_a_missile_at_each_creature_in_sigh
 en: Fires a missile at each creature in sight.
 tr: Dispara un proyectil a cada criatura a la vista.
 
@@ -1769,7 +1773,7 @@ id: port.casts_s_around_you_then_s_on_you
 en: Casts %s around you, then %s on you.
 tr: Lanza %s a tu alrededor y luego sobre ti %s.
 
-id: port.the_view_visits_each_creature_of_the_level
+id: port.the_view_visits_each_creature_of_the_lev
 en: The view visits each creature of the level.
 tr: La vista recorre todas las criaturas del nivel.
 
@@ -1857,7 +1861,7 @@ id: port.armor_class_d_better_while_in_the_hand
 en: Armor class %d better while in the hand.
 tr: CA %d mejor en la mano.
 
-id: port.more_damage_and_to_hit_against_undead_and_regenerating_creatures
+id: port.more_damage_and_to_hit_against_undead_an
 en: More damage and to hit against undead and regenerating creatures.
 tr: Bonificador al ataque y al daño contra muertos vivientes y criaturas que se regeneran.
 
@@ -1865,7 +1869,7 @@ id: port.can_destroy_undead_creatures
 en: Can destroy undead creatures.
 tr: Puede destruir muertos vivientes.
 
-id: port.a_backstab_with_a_roll_of_19_or_20_does_more_damage
+id: port.a_backstab_with_a_roll_of_19_or_20_does_
 en: A backstab with a roll of 19 or 20 does more damage.
 tr: Una puñalada por la espalda con un 19 o un 20 hace más daño.
 
@@ -1873,7 +1877,7 @@ id: port.arrows_get_s_to_hit_and_damage
 en: Arrows get %s to hit and damage.
 tr: Las flechas tienen %s al ataque y al daño.
 
-id: port.bolts_and_thrown_weapons_get_s_to_hit_and_damage
+id: port.bolts_and_thrown_weapons_get_s_to_hit_an
 en: Bolts and thrown weapons get %s to hit and damage.
 tr: Los virotes y las armas arrojadizas tienen %s al ataque y al daño.
 
@@ -1949,23 +1953,23 @@ id: port.stops_magic_missile
 en: Stops Magic Missile.
 tr: Detiene Proyectil Mágico.
 
-id: port.armor_class_d_at_most_until_s_points_of_weapon_damage
+id: port.armor_class_d_at_most_until_s_points_of_
 en: Armor class %d at most, until %s points of weapon damage.
 tr: CA %d como máximo, hasta %s puntos de daño de armas.
 
-id: port.adds_s_hit_points_above_the_maximum_and_bless
+id: port.adds_s_hit_points_above_the_maximum_and__2
 en: Adds %s hit points above the maximum, and Bless.
 tr: Añade %s puntos de golpe por encima del máximo y Bendecir.
 
-id: port.ends_all_spell_effects_in_the_area_yours_too
+id: port.ends_all_spell_effects_in_the_area_yours
 en: Ends all spell effects in the area, yours too.
 tr: Disipa todos los efectos de conjuro del área, también los tuyos.
 
-id: port.an_extraplanar_creature_may_leave_the_level_or_die
+id: port.an_extraplanar_creature_may_leave_the_le
 en: An extraplanar creature may leave the level or die.
 tr: Una criatura extraplanar puede dejar el nivel o morir.
 
-id: port.gives_more_spell_slots_three_of_level_1_one_of_level_1_and_one_of_level_2_or_one_of_level_3
+id: port.gives_more_spell_slots_three_of_level_1_
 en: Gives more spell slots: three of level 1, one of level 1 and one of level 2, or one of level 3.
 tr: Da más espacios de conjuro: tres de nivel 1, uno de nivel 1 y uno de nivel 2, o uno de nivel 3.
 
@@ -1989,11 +1993,11 @@ id: port.adds_s_to_strength
 en: Adds %s to strength.
 tr: Añade %s a la fuerza.
 
-id: port.makes_a_light_where_it_lands_blinds_a_creature_that_it_hits
+id: port.makes_a_light_where_it_lands_blinds_a_cr
 en: Makes a light where it lands. Blinds a creature that it hits.
 tr: Crea una luz donde cae. Ciega a la criatura que alcanza.
 
-id: port.puts_to_sleep_blinds_or_stuns_by_the_level_of_the_target
+id: port.puts_to_sleep_blinds_or_stuns_by_the_lev
 en: Puts to sleep, blinds or stuns, by the level of the target.
 tr: Duerme, ciega o aturde, según el nivel del objetivo.
 
@@ -2009,11 +2013,11 @@ id: port.causes_s_the_target_may_drop_its_weapon
 en: Causes %s. The target may drop its weapon.
 tr: Efecto: %s. El objetivo puede soltar su arma.
 
-id: port.an_attack_roll_a_hit_deals_s_acid_damage_and_again_in_each_of_the_next_d_rounds
+id: port.an_attack_roll_a_hit_deals_s_acid_damage
 en: An attack roll; a hit deals %s acid damage, and again in each of the next %d rounds.
 tr: Una tirada de ataque; un impacto hace %s de daño por ácido, y otra vez en cada uno de los %d asaltos siguientes.
 
-id: port.an_attack_roll_a_hit_deals_s_acid_damage
+id: port.an_attack_roll_a_hit_deals_s_acid_damage_2
 en: An attack roll; a hit deals %s acid damage.
 tr: Una tirada de ataque; un impacto hace %s de daño por ácido.
 
@@ -2153,7 +2157,7 @@ id: port.with_more_caster_levels_up_to_d_missiles
 en: With more caster levels: up to %d missiles.
 tr: Con más niveles de lanzador: hasta %d proyectiles.
 
-id: port.each_melee_hit_the_target_saves_or_takes_1d4_more_damage_undead_get_fear
+id: port.each_melee_hit_the_target_saves_or_takes
 en: Each melee hit: the target saves or takes 1d4 more damage; undead get Fear.
 tr: Cada golpe: el objetivo salva o recibe 1d4 más de daño; los muertos vivientes, Miedo.
 

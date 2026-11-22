@@ -628,16 +628,15 @@ static void area_text_left(int x, int y, int w, int h, char *s, int color)
 }
 
 // ASCENT: a thief skill row of the statistics screen in a language other
-// than English, which has the long official names of the skills: the
-// percentage right-aligned in the row (w is the name area and the
-// percentage area), the name in the room left of it, in two lines broken
-// at the last space that fits when it is wider than the room. When two
-// lines do not fit the row (the low resolution) or no break fits, the
-// name is cut at the room.
+// than English: the percentage right-aligned in the row (w is the name
+// area and the percentage area), a little inside its right edge (the low
+// resolution has a black field), the name in the room left of it, cut at
+// the room when it is wider. The short labels of the language fit
+// (docs/formats/lang.md, "The thief skills of a language").
 static void skill_row(int x, int y, int w, int h, char *name, char *pct, int color)
 {
-	int pw, ph, aw, nw, room, fh, i = 0;
-	char line[80];
+	int pw, ph, aw, nw, room, fh, inset = Dtu_hires ? 4 : 2;
+	grs_canvas c, *save = grd_curcanv;
 
 	area_restore(x, y, w, h);
 	if (!GAME_FONT) return;
@@ -645,35 +644,19 @@ static void skill_row(int x, int y, int w, int h, char *name, char *pct, int col
 	gr_set_fontcolor(color, -1);
 	fh = GAME_FONT->ft_h;
 	gr_get_string_size(pct, &pw, &ph, &aw);
-	gr_string(x + w - pw, y + (h - fh) / 2, pct);
-	room = w - pw - (Dtu_hires ? 6 : 3);
+	gr_string(x + w - inset - pw, y + (h - fh) / 2, pct);
+	room = w - inset - pw - (Dtu_hires ? 6 : 3);
 	gr_get_string_size(name, &nw, &ph, &aw);
 	if (nw <= room) {
 		gr_string(x, y + (h - fh) / 2, name);
 		return;
 	}
-	if (2 * fh + 2 <= h && strlen(name) < sizeof(line))
-		for (i = (int) strlen(name) - 1; i > 0; i--) {
-			if (name[i] != ' ')
-				continue;
-			memcpy(line, name, i);
-			line[i] = 0;
-			gr_get_string_size(line, &nw, &ph, &aw);
-			if (nw <= room)
-				break;
-		}
-	if (i <= 0) {
-		grs_canvas c, *save = grd_curcanv;
-		gr_init_sub_canvas(&c, grd_curcanv, x, y, room, h);
-		gr_set_current_canvas(&c);
-		gr_set_curfont(GAME_FONT);
-		gr_set_fontcolor(color, -1);
-		gr_string(0, (h - fh) / 2, name);
-		gr_set_current_canvas(save);
-		return;
-	}
-	gr_string(x, y + (h - 2 * fh - 1) / 2, line);
-	gr_string(x, y + (h - 2 * fh - 1) / 2 + fh + 1, name + i + 1);
+	gr_init_sub_canvas(&c, grd_curcanv, x, y, room, h);
+	gr_set_current_canvas(&c);
+	gr_set_curfont(GAME_FONT);
+	gr_set_fontcolor(color, -1);
+	gr_string(0, (h - fh) / 2, name);
+	gr_set_current_canvas(save);
 }
 
 //------------------------------------------------------------------------
@@ -2062,9 +2045,9 @@ static void draw_stats(void)
 		y = Dtu_hires ? 62 + 20 * i : 30 + 11 * i;
 		sprintf(text, "%d%c", skill[i], '%');
 		if (Dtu_language != DTU_LANG_EN) {
-			// ASCENT: the long names of the language (skill_row), also
-			// text 681 in the low resolution: the port string "Find
-			// Traps" is the name of the spell (dtuspell.c)
+			// ASCENT: the short labels of the language (texts 678 to
+			// 682, skill_row) in both resolutions: the port string
+			// "Find Traps" is the name of the spell (dtuspell.c)
 			skill_row(Dtu_hires ? 218 : 108, y, Dtu_hires ? 170 : 99, h, gtext(678 + i, skill_def[i]), text, c);
 			continue;
 		}
@@ -2107,7 +2090,7 @@ static void draw_stats(void)
 				if (!has[k])
 					area_text(cnt_x[hi][k], ly, cw, lh, "n/a", dim);
 				else if (left == 0)
-					area_text(cnt_x[hi][k], ly, cw, lh, "none", rgb6(32, 32, 32));
+					area_text(cnt_x[hi][k], ly, cw, lh, LT("none"), rgb6(32, 32, 32));		// ASCENT: LT
 				else {
 					sprintf(text, "%d", left);
 					area_text(cnt_x[hi][k], ly, cw, lh, text, base);
