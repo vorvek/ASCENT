@@ -99,6 +99,24 @@ format `%s %s {sex:bendecido|bendecida} durante %d minutos.` gives
 `Tú estás bendecida durante 6 minutos.` for a female player, and the male
 form when a creature is the subject.
 
+Character creation (`dtufe_char.c`) joins the sex and the race of a choice
+with the formats `Male %s` and `Female %s` (the race word as the value):
+English shows `Female Human`. The race word (`Human`, `Half Elven`, ...) is
+resolved for the sex of that choice, not for the sex chosen so far, so the
+help line of the female button names the female form. Spanish translates
+the race words as `{sex:Humano|Humana}` and both formats as `%s`, which
+gives `Haz clic aquí para elegir Humana`. The help lines that hold the sex
+and the race are whole formats of the code (`Click here to select a %s`,
+`You have selected a %s`, `Quickly generate a %s character`,
+`Quickly generate a %s %s character`, `I am a %s %s`) with the English text
+of the executable (the texts 607, 608, 629, 632 and 633 of `DTUE.TEX` with
+the words in between), so that a translation can order the words.
+
+The race words of `DTUE.TEX` (`tex.649` to `tex.653`, `tex.917`, and
+`A Human` ... `tex.693` to `tex.698`) can hold the token too: they follow
+the sex of the player (the statistics screen, the script token `{race}`)
+or of the character being created.
+
 `lang_extract.py merge` and `check` report a token that is not well formed
 (an error), check the placeholders of each form, and check the room with the
 longer form.
