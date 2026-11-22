@@ -20,8 +20,13 @@ lang_es).
   lang_es   the Spanish text: es.catalog (the translation of the game files)
             and the subtitles *.es.srt of the folder --lang (default
             gamedata/lang, made by tools/lang_extract.py merge), installed
-            as <hd>/lang/... (docs/formats/lang.md). The catalog is checked
-            first: an error of `lang_extract.py check` stops the pack.
+            as <hd>/lang/... (docs/formats/lang.md), and the pictures of the
+            language <hd>/lang/es/ (orig/ and ui/, made by tools/ui_lang.py).
+            The catalog is checked first: an error of `lang_extract.py
+            check` stops the pack.
+
+The version of a pack is --version, else the number of PACK_VERSION (1 for
+a pack that is not there).
 
 A pack is a ZIP archive. The PNG and M1V files are stored, the text files
 are compressed. Each pack has:
@@ -48,9 +53,11 @@ TITLES = {
     'textures': 'Upscaled textures',
     'ui': 'Upscaled interface pictures',
     'movies': 'Upscaled movies',
-    'lang_es': 'Spanish text (translation and subtitles)',
+    'lang_es': 'Spanish text and pictures (translation, subtitles, interface pictures)',
 }
 DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
+# 2: lang_es has the pictures of the language
+PACK_VERSION = {'lang_es': '2'}
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
@@ -137,10 +144,11 @@ def write_pack(out_dir, name, version, target, entries, data=None):
             'title': TITLES[name]}
 
 
-def lang_files(lang_dir, code):
+def lang_files(lang_dir, code, hd):
     """The files of a language pack: <code>.catalog and <MOVIE>.<code>.srt of
-    lang_dir, installed as lang/<name> in the hd folder. The catalog must pass
-    the check of tools/lang_extract.py."""
+    lang_dir, installed as lang/<name> in the hd folder, and the pictures of
+    the language, <hd>/lang/<code>/. The catalog must pass the check of
+    tools/lang_extract.py."""
     import subprocess
     cat = os.path.join(lang_dir, '%s.catalog' % code)
     if not os.path.exists(cat):
@@ -154,7 +162,9 @@ def lang_files(lang_dir, code):
     for f in sorted(os.listdir(lang_dir)):
         if f.lower().endswith('.%s.srt' % code):
             out.append(('lang/' + f, os.path.join(lang_dir, f)))
-    return out
+    if not os.path.isdir(os.path.join(hd, 'lang', code)):
+        raise SystemExit('no %s: run tools/ui_lang.py build first' % os.path.join(hd, 'lang', code))
+    return out + files_of_tree(hd, 'lang/' + code)
 
 
 def patch13_data(patch):
@@ -186,7 +196,7 @@ def main(argv):
     patch = os.path.join(ROOT, 'gamedata', 'patch', 'ps', 'dtu1_3.zip')
     out = os.path.join(ROOT, 'gamedata', 'content')
     lang = os.path.join(ROOT, 'gamedata', 'lang')
-    version = '1'
+    version = None
     packs = []
     i = 1
     while i < len(argv):
@@ -222,17 +232,18 @@ def main(argv):
                     manifest[p[0]] = dict(zip(('name', 'version', 'target', 'file', 'size', 'sha256', 'files', 'title'), p))
 
     for name in packs:
+        version_of = version or PACK_VERSION.get(name, '1')
         if name == 'patch13':
             data = patch13_data(patch)
-            m = write_pack(out, name, version, 'data', [(n, None) for n in data], data)
+            m = write_pack(out, name, version_of, 'data', [(n, None) for n in data], data)
         elif name == 'textures':
-            m = write_pack(out, name, version, 'hd', files_of_tree(hd, 'textures'))
+            m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'textures'))
         elif name == 'ui':
-            m = write_pack(out, name, version, 'hd', files_of_tree(hd, 'ui'))
+            m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'ui'))
         elif name.startswith('lang_'):
-            m = write_pack(out, name, version, 'hd', lang_files(lang, name[5:]))
+            m = write_pack(out, name, version_of, 'hd', lang_files(lang, name[5:], hd))
         else:
-            m = write_pack(out, name, version, 'hd',
+            m = write_pack(out, name, version_of, 'hd',
                            [(f, os.path.join(hd, f)) for f in sorted(os.listdir(hd)) if f.lower().endswith('.m1v')])
         manifest[name] = m
 
