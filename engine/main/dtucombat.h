@@ -48,13 +48,19 @@ extern int Dtu_fix_missile_rate;
 // destroy is used up, the executable clears the "can be tried" bit of the
 // next undead before it stops (0xADF09), so that creature can never be
 // turned again ("You can no longer attempt to turn the ...") although no
-// attempt was made. Corrected: the bit stays. -origcombat clears it.
+// attempt was made. Corrected: the bit stays. Also: the T entry of the
+// table writes 0xFF over the d20 (0xAE1B8), so every later undead with a
+// number is turned; corrected: the d20 stays. -origcombat clears it.
 extern int Dtu_fix_turn_undead;
 
 // Turn undead (key T, the Spider Piece 0x12): level is the cleric level
 // from 1, or 0 for the levels and the cloak of the character. Returns the
 // number of creatures that were turned or destroyed.
 int dtu_combat_turn_undead(int level);
+
+// ASCENT: the class nibble and bit 0x10 of a creature for turn undead
+// (the checks of dtu_spell_priest_check), -1 for no creature.
+int dtu_combat_priest_turn_bits(object *obj);
 
 //------------------------------------------------------------------------
 // Calls from the game

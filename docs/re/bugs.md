@@ -91,7 +91,8 @@ after Turn Undead.
 |---|---|---|---|
 | T1 | 0xA6ACB -> 0x29A9C | The kill of a destroyed creature goes through the damage function with no attacker and weapon -1. That function reads the attacker without a test at 0x29E3D (`[attacker+0x88]`), 0x2A054 and 0x2A0C7 (`[attacker+5]`). With no attacker these are reads of linear 0x88 and 0x5 (the interrupt table). | The kill message and the experience depend on the byte at linear address 5 (compared with the player number), and a hold effect on the creature depends on bit 3 of the byte at 0x88. No fault on DOS. **V** (code), **G** (the values on a real machine) |
 | T2 | 0xADF09, 0xADF57 | Bit 0x10 ("can be tried") of the next undead is cleared before the test that the destroys are used up. | That creature can never be turned again, and the player gets "You can no longer attempt to turn the ..." for a creature that was never tried. **V** |
-| T3 | 0xADF65 | The local at `esp+0x2B8` is always -1, so the code that counts the creatures of the class (0xADF77 to 0xAE097) never runs: the first test returns. | Dead code; the destroy limit only counts destroys, a turn has no limit: every visible undead is turned. **V** |
+| T3 | 0xADF65 | The local at `esp+0x2B8` is always -1, so the code that counts the creatures of the class (0xADF77 to 0xAE097) never runs: the first test returns when the count is 0. | Dead code. Correction of an earlier reading: a turn also takes one of the 2 to 12, since 0xAE226 jumps into the end of the destroy case (0xAE17F) and its `dec` at 0xAE1A0. **V** |
+| T6 | 0xAE1B8, 0xAE1C8 | The T entry (-1) writes the table byte 0xFF over the d20 at `esp+0x2C4`; 0xAE1C8 reads the d20 as an unsigned byte. | After the first T of a use every later undead with a number in the table is turned (255 >= the number). **V** |
 | T4 | 0xAC431, 0xADC46 | The NPC list is filled at the level start and by a gate; an entry is never taken out. After a death the object number can belong to a new object (a missile, an explosion, gold, a new creature), and the class nibble and bit 0x10 stay. 0xADDDD reads `Robot_info[obj->id]` of that object without a type test. | A wrong object can be treated as undead with the class of the dead creature. A read past `Robot_info` for an id above the robot count. **V** (code), the effect was not observed |
 | T5 | 0x9810D | The brain bit decides which undead see the player. The BRN files of the disc are copies of one matrix that fits no level (docs/formats/brn.md). | Undead behind walls are tested, undead in view may be skipped. **V** |
 
@@ -114,6 +115,10 @@ calls it with level 2 (`dtuchar.c`). Differences:
 - T1: the kill is `dtu_damage_creature_direct(creature, NULL, ...)`: no
   experience and no read of a missing attacker.
 - T2: `Dtu_fix_turn_undead` (on; `-origcombat` clears it) keeps bit 0x10.
+- T6: `Dtu_fix_turn_undead` also keeps the d20 after a T.
+- A turn takes one of the 2 to 12 (T3 correction), as in 1.3.
+- An undead without a name match gets the class from the player levels
+  (0xAC4C1); the port reads the levels at the first use in the level.
 - T4: the state is kept per object number and signature, so a new object
   starts with a new state and only robots are tested.
 - T5: the brain bit is 1 (`Dtu_fix_brain`); the ray decides.

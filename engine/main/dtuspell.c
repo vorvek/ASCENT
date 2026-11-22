@@ -52,6 +52,7 @@ int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
 int Dtu_fix_spell_hours = 1;
+int Dtu_fix_cure_aid = 1;			// ASCENT: priest spells (dtuspell.h)
 
 // Rary's Mnemonic Enhancer: the extra mage slots of spell levels 1 to 3
 // (P+0x23 to P+0x25 of the executable). Rary_rest: the number of rests
@@ -64,6 +65,9 @@ static int Wizardry_n = 0;			// doublings of the Ring of Wizardry
 // (0x5742C), the player's or a creature's; 0x8F89E takes the cost of each
 // sleeper.
 static int Sleep_pool = 0;
+// ASCENT: Spell_info[22]+0x49 and Spell_info[52]+0x49, the counters of
+// Hold Person (0x56FF6, 0x8E8BB)
+static int Hold_count[2] = { 0, 0 };
 
 static int rand_mod(int n);
 static int creature_cleric_level(object *obj);
@@ -771,6 +775,10 @@ static void fx_end(object *obj,int b)
 		case 1:		// Bless: the hit points of Aid go
 			if (obj->type == OBJ_PLAYER && dtu_char_hit_points() > dtu_char_max_hit_points())
 				dtu_player_damage(i2f(dtu_char_hit_points() - dtu_char_max_hit_points()));
+			// ASCENT: 0x9013F: a creature is cut to its maximum too
+			// (Robot_info+0x78, whole points)
+			else if (obj->type == OBJ_ROBOT && obj->id < N_robot_types && obj->shields > i2f(Monster_info[obj->id].max_hit_points))
+				obj->shields = i2f(Monster_info[obj->id].max_hit_points);
 			break;
 		case 16: case 17:	// the two invisibilities end together
 			obj->dtu.m_88 &= ~(DTU_FX_IMP_INVIS|DTU_FX_INVISIBLE);
@@ -864,10 +872,16 @@ static int save_number(int cls,int level,int cat)
 	}
 }
 
+// ASCENT: the test aid of dtu_spell_priest_check(): -1 rolls, 0 fails
+// every save, 1 makes every save
+static int Priest_force_save = -1;
+
 int dtu_spell_save(object *obj,int cat)
 {
 	int need = 20, roll = rand() % 20 + 1, level;
 
+	if (Priest_force_save >= 0)
+		return Priest_force_save;
 	if ((cat < 0 || cat > 4) && obj->type != OBJ_DRESSING)
 		cat = 4;
 	if (obj->type == OBJ_PLAYER) {
@@ -912,6 +926,17 @@ static void sound_at(int sound,int segnum,vms_vector *pos,fix volume)
 	if (volume > F1_0/2)
 		volume = F1_0/2;
 	digi_link_sound_to_pos2(sound,segnum,0,pos,0,volume,i2f(256));
+}
+
+// ASCENT: the sound of Aid (0x8D435) and of the cures on the player
+// (0x8DEA8, 0x8DF97): 0x2E900 with the word P+0x1B33, the happy_sound of
+// the player type (+0xE0 of the reader 0x1F495), at the player, volume 1.0.
+static void priest_happy_sound(void)
+{
+	object *pl = ConsoleObject;
+
+	if (pl && pl->type == OBJ_PLAYER && N_player_types > 0)
+		sound_at(dtu_tbl_int(Player_type_info[0].record,"happy_sound",-1),pl->segnum,&pl->pos,F1_0);
 }
 
 static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip)
@@ -1124,7 +1149,16 @@ static void heal(object *target,int points,int spell)
 
 	if (target->type == OBJ_PLAYER) {
 		before = dtu_char_hit_points();
-		dtu_char_heal(points);
+		priest_happy_sound();		// ASCENT: 0x8DEA8, 0x8DF97: only for the player
+		// ASCENT: 0x8DEE2 adds the points and then cuts the hit points to the
+		// maximum, so a cure takes away the hit points of Aid above the
+		// maximum. Dtu_fix_cure_aid keeps them (AD&D: they go first).
+		if (!Dtu_fix_cure_aid && before + points > dtu_char_max_hit_points()) {
+			dtu_char_add_hit_points(points);
+			dtu_player_damage(i2f(dtu_char_hit_points() - dtu_char_max_hit_points()));
+		}
+		else
+			dtu_char_heal(points);
 		dtu_spell_log("spell: '%s' heals the player by %d: %d -> %d of %d",spell_name(spell),points,before,dtu_char_hit_points(),dtu_char_max_hit_points());
 	}
 	else if (target->type == OBJ_ROBOT && target->id < N_robot_types) {
@@ -1512,6 +1546,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			int n = rnd(8);
 			fix d = (L+1)*MINUTE;
 
+			priest_happy_sound();		// ASCENT: 0x8D435, also when the target is not the player
 			if (target->type == OBJ_PLAYER)
 				dtu_char_add_hit_points(n);
 			else
@@ -1545,7 +1580,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s %s blessed for %d minutes.",V_ARE,"Bless cast on %s by %s for %d minutes.",6);
 			break;
 		case 4:		// Burning Hands: fire 1d3 + 2 L
-		case 17:		// Flaming Sphere (no dice in the line)
+		case 17:		// Flaming Sphere (no dice in the line); 0x1A344 makes it the
+						// cleric spell Produce Fire (level 4, fire 1d4 + 1 per level)
 		case 37:		// Melf's Minute Meteors: 1d4
 			if (!self)
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
@@ -1585,7 +1621,11 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 30: case 31:		// Light: blind for 10 L or 10 (L+6) rounds
 			if (self || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
 				break;
-			if (!dtu_spell_save(target,DTU_SAVE_SPELL)) {
+			// ASCENT: 0x8DC4D: a save ends the case (0x90024), so a light
+			// sensitive creature takes the damage only with the blindness
+			if (dtu_spell_save(target,DTU_SAVE_SPELL))
+				return 0;
+			{
 				fix d = (spell == 30) ? 10*L*MINUTE : (spell == 31) ? 10*(L+6)*MINUTE : DTU_FX_NO_END;
 
 				if (fx_set(target,DTU_FX_BLIND,d)) {
@@ -1597,6 +1637,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			if (mf & MONSTER_F_LIGHT_SENSITIVE)
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
+			// ASCENT: 0x8DD89: a blinded player gets a white flash (each
+			// color +254, at most 30)
+			if (target == ConsoleObject)
+				PALETTE_FLASH_ADD(254,254,254);
 			break;
 		case 10:		// Cure Light Wounds: 1d8, not undead or extraplanar
 		case 11:		// Cure Serious Wounds: 3 to 17
@@ -1728,8 +1772,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s %s Flying.",V_HAVE,"Flying cast on %s by %s.",0);
 			break;
 		case 20:		// Free Action: ends Hold, 10 L rounds
-			if (!self)
-				break;
+			// ASCENT: 0x8E6F8: Free Action on already returns before the
+			// test of Hold
+			if (!self || (target->dtu.m_88 & DTU_FX_FREE_ACTION))
+				return 0;
 			if (target->dtu.m_88 & DTU_FX_HOLD)
 				fx_end(target,14);
 			if (fx_set(target,DTU_FX_FREE_ACTION,10*L*MINUTE))
@@ -1748,6 +1794,13 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				break;
 			if (!dtu_spell_save(target,DTU_SAVE_SPELL)) {
 				fix d = wisdom_cut(target,2*L*MINUTE);
+
+				// ASCENT: 0x8E8C5: the counter of the cast must be above 0
+				if (Hold_count[spell == 52] <= 0) {
+					dtu_spell_log("spell: Hold Person counter is 0: no effect");
+					return 0;
+				}
+				Hold_count[spell == 52]--;
 
 				// The text in seconds below one minute (0x8E9C5)
 				if (fx_set(target,DTU_FX_HOLD,d)) {
@@ -1836,6 +1889,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 					"Protection From Evil cast on %s by %s for %d minutes.",(spell == 39 ? 2 : 3)*L);
 			break;
 		case 40:		// Protection From Fire: a pool of 12 L hit points
+			// ASCENT: 0x8F1B2: no effect while the pool of bit 9 lasts (the
+			// port added a second pool)
+			if (target->dtu.m_88 & DTU_FX_PROT_FIRE)
+				return 0;
 			target->dtu.m_82 += 12*L;
 			target->dtu.m_88 |= DTU_FX_PROT_FIRE;
 			// the texts give the pool after the cast (+0x82)
@@ -1863,8 +1920,12 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			// the configuration 0x13BFEB (the deafness of the fire trap)
 			if (target == ConsoleObject && (target->dtu.m_88 & DTU_FX_DEAF))
 				digi_set_digi_volume((Config_digi_volume * 32768) / 8);
-			target->dtu.m_88 &= ~(DTU_FX_BLIND|DTU_FX_DEAF);
-			target->dtu.m_8c[3] = 0;
+			// ASCENT: 0x8F37C sets the timer of the blindness to 0 and leaves
+			// bit 2, so 0x9002C ends it in the next frame ("Blinded
+			// expired.", the end action); 0x8F396 clears the deafness at once
+			target->dtu.m_88 &= ~DTU_FX_DEAF;
+			if (target->dtu.m_88 & DTU_FX_BLIND)
+				target->dtu.m_8c[3] = 0;
 			break;
 		case 43:		// Resist Fire: L rounds
 			if (fx_set(target,DTU_FX_RESIST_FIRE,L*MINUTE))
@@ -2263,6 +2324,14 @@ static int missile_count(int spell,int L)
 		case 46:
 			Sleep_pool = (rand() % 7) * 2 + 4;
 			dtu_spell_log("spell: Sleep pool %d",Sleep_pool);
+			return 1;
+		case 22: case 52:
+			// ASCENT: 0x56FF6: the counter Spell_info+0x49 of Hold Person
+			// is 1d4 at each cast; the case (0x8E8BB) needs it above 0 and
+			// takes one for each hold, so the area of 0x1A344 (radius 40)
+			// holds at most 1d4 targets
+			Hold_count[spell == 52] = rnd(4);
+			dtu_spell_log("spell: Hold Person counter %d",Hold_count[spell == 52]);
 			return 1;
 		case 4:	return 6;
 		case 6:	return rnd(6);
@@ -3263,4 +3332,252 @@ void dtu_spell_test(int spell,int level,int objnum,int trials)
 	}
 	if (trials > 1)
 		dtu_spell_log("spelltest: '%s' level %d: mean damage %.2f over %d trials",spell_name(spell),level,(double)total / n_trials,n_trials);
+}
+
+// ASCENT: the checks of the priest spells and of turn undead (the
+// -chartest command priestcheck, docs/audit/spells-priest.md). Each check
+// sets the state it needs, calls the case of 0x8CFFF and compares the
+// result with the rule of the executable (or of the Dtu_fix_* setting).
+// The player and the first live creature of the level are put back after
+// each check.
+
+static int Priest_failed;
+
+static void priest_result(const char *name,int ok,const char *format,...)
+{
+	char buf[300];
+	va_list args;
+
+	va_start(args,format);
+	vsnprintf(buf,sizeof(buf),format,args);
+	va_end(args);
+	dtu_char_log("priestcheck: %s %s: %s",ok ? "PASS" : "FAIL",name,buf);
+	dtu_spell_log("priestcheck: %s %s: %s",ok ? "PASS" : "FAIL",name,buf);
+	if (!ok)
+		Priest_failed++;
+}
+
+static object *priest_creature(void)
+{
+	int i;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+
+		if (o->type == OBJ_ROBOT && o->id < N_robot_types && o->shields >= F1_0 &&
+			 !(o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) && DTU_ANIM_STATE(o) != DAS_DIE)
+			return o;
+	}
+	return NULL;
+}
+
+int dtu_spell_priest_check(void)
+{
+	object *pl = ConsoleObject, *c = priest_creature();
+	dtu_player_attr pa_keep;
+	fix pl_shields, c_shields = 0, before;
+	int c_flags = 0, fix_keep = Dtu_fix_cure_aid, hp, max, i, n;
+	static int levels_keep[2][9];
+
+	Priest_failed = 0;
+	if (!pl || pl->type != OBJ_PLAYER || !Dtu_char.created) {
+		dtu_char_log("priestcheck: FAIL setup: no player or no character");
+		return 1;
+	}
+	pa_keep = Dtu_char.pa;
+	pl_shields = Players[Player_num].shields;
+	memcpy(levels_keep,Dtu_spell_slots_left,sizeof(levels_keep));
+	if (c) {
+		c_shields = c->shields;
+		c_flags = Monster_info[c->id].flags;
+	}
+
+#define PRIEST_RESET() do { \
+		pl->dtu.m_88 = 0; pl->dtu.m_82 = 0; Priest_force_save = -1; Dtu_fix_cure_aid = fix_keep; \
+		Dtu_char.pa = pa_keep; Players[Player_num].shields = pl->shields = pl_shields; \
+		if (c) { c->dtu.m_88 = 0; c->shields = c_shields; Monster_info[c->id].flags = c_flags; } \
+	} while (0)
+
+	PRIEST_RESET();
+
+	// Protection From Fire (0x8F1B2): 12 L in the pool, no second pool
+	apply_spell(40,pl,pl,3);
+	n = pl->dtu.m_82;
+	apply_spell(40,pl,pl,3);
+	priest_result("pff_no_stack",n == 36 && pl->dtu.m_82 == 36,"pool %d after the first cast, %d after the second (36, 36)",n,pl->dtu.m_82);
+	PRIEST_RESET();
+
+	// Bless, Aid and Prayer share bit 1 (0x8D58E, 0x8D3F7, 0x8F078)
+	apply_spell(3,pl,pl,1);
+	before = pl->dtu.m_8c[2];
+	apply_spell(38,pl,pl,10);
+	n = (pl->dtu.m_8c[2] == before);
+	apply_spell(1,pl,pl,4);
+	priest_result("bless_stack",n && pl->dtu.m_8c[2] == GameTime + 5*MINUTE,
+		"Prayer keeps the Bless timer: %d; Aid of level 4 sets %.0f s (%.0f)",n,f2fl(pl->dtu.m_8c[2] - GameTime),5.0*60);
+	PRIEST_RESET();
+
+	// Protection From Evil (0x8F116): 3 L minutes, no second cast
+	apply_spell(53,pl,pl,2);
+	before = pl->dtu.m_e0[0];
+	apply_spell(53,pl,pl,9);
+	priest_result("pfe_no_stack",before == GameTime + 6*MINUTE && pl->dtu.m_e0[0] == before,
+		"timer %.0f s (360)",f2fl(pl->dtu.m_e0[0] - GameTime));
+	PRIEST_RESET();
+
+	// Cure Light Wounds after Aid (0x8DEE2): the hit points above the
+	// maximum stay with Dtu_fix_cure_aid, the executable cuts them
+	max = dtu_char_max_hit_points();
+	for (i=0;i<2;i++) {
+		Dtu_fix_cure_aid = (i == 0);
+		Players[Player_num].shields = pl->shields = i2f(max);
+		apply_spell(1,pl,pl,1);
+		hp = dtu_char_hit_points();
+		apply_spell(10,pl,pl,1);
+		if (i == 0)
+			priest_result("cure_keeps_aid",hp > max && dtu_char_hit_points() == hp,"%d after Aid, %d after the cure (maximum %d)",hp,dtu_char_hit_points(),max);
+		else
+			priest_result("cure_cuts_aid_orig",hp > max && dtu_char_hit_points() == max,"%d after Aid, %d after the cure (maximum %d)",hp,dtu_char_hit_points(),max);
+		PRIEST_RESET();
+	}
+
+	// Cure Blindness or Deafness (0x8F2FA): the blindness ends in the next
+	// frame through its timer, the deafness at once
+	pl->dtu.m_88 |= DTU_FX_BLIND|DTU_FX_DEAF;
+	pl->dtu.m_8c[3] = DTU_FX_NO_END;
+	apply_spell(42,pl,pl,1);
+	n = (pl->dtu.m_88 & DTU_FX_BLIND) && pl->dtu.m_8c[3] == 0 && !(pl->dtu.m_88 & DTU_FX_DEAF);
+	fx_expire(pl,0);
+	priest_result("cure_blind_timer",n && !(pl->dtu.m_88 & DTU_FX_BLIND),"blind with timer 0 after the cast: %d; blind after 0x9002C: %d",n,(pl->dtu.m_88 & DTU_FX_BLIND) != 0);
+	PRIEST_RESET();
+
+	// Free Action (0x8E6F2): ends Hold, but not while Free Action is on
+	pl->dtu.m_88 |= DTU_FX_FREE_ACTION|DTU_FX_HOLD;
+	pl->dtu.m_c0[0] = GameTime + 100*F1_0;
+	apply_spell(20,pl,pl,2);
+	n = (pl->dtu.m_88 & DTU_FX_HOLD) != 0;
+	pl->dtu.m_88 &= ~DTU_FX_FREE_ACTION;
+	apply_spell(20,pl,pl,2);
+	priest_result("free_action",n && !(pl->dtu.m_88 & DTU_FX_HOLD) && (pl->dtu.m_88 & DTU_FX_FREE_ACTION) && pl->dtu.m_8c[11] == GameTime + 20*MINUTE,
+		"Hold kept while Free Action is on: %d; ended by the second cast: %d",n,!(pl->dtu.m_88 & DTU_FX_HOLD));
+	PRIEST_RESET();
+
+	// Find Traps (spell 51, a cleric spell of level 2 after 0x1A344): bit
+	// 20 for 1800 s (0x8E4F6)
+	apply_spell(51,pl,pl,3);
+	priest_result("find_traps",(pl->dtu.m_88 & DTU_FX_FIND_TRAPS) && pl->dtu.m_c8[3] == GameTime + i2f(1800),
+		"bit 20 %d, timer %.0f s (1800)",(pl->dtu.m_88 & DTU_FX_FIND_TRAPS) != 0,f2fl(pl->dtu.m_c8[3] - GameTime));
+	PRIEST_RESET();
+
+	// The caster level (0x91EC1): a fighter/cleric casts a cleric spell
+	// at the cleric level, a mage spell at the fighter level
+	Dtu_char.pa.class1 = DTU_CLASS_FIGHTER;
+	Dtu_char.pa.class1_level = 4;
+	Dtu_char.pa.class2 = DTU_CLASS_CLERIC;
+	Dtu_char.pa.class2_level = 1;
+	priest_result("caster_level",dtu_spell_player_level(3) == 2 && dtu_spell_player_level(33) == 5,
+		"Bless %d (2), Magic Missile %d (5)",dtu_spell_player_level(3),dtu_spell_player_level(33));
+
+	// The slots and the wisdom bonus (0x3575B, 0x145DF8, 0x1403D2)
+	{
+		static const struct { int level, wis, s[4]; } t[] = {
+			{ 0, 12, {1,0,0,0} }, { 0, 19, {4,0,0,0} }, { 4, 17, {5,5,2,0} }, { 6, 18, {5,5,3,2} }, { 2, 18, {4,3,0,0} },
+		};
+
+		for (i=0;i<(int)(sizeof(t)/sizeof(t[0]));i++) {
+			int *m = Dtu_spell_slots_max[1];
+
+			Dtu_char.pa.class1 = DTU_CLASS_CLERIC;
+			Dtu_char.pa.class2 = -1;
+			Dtu_char.pa.class1_level = t[i].level;
+			Dtu_char.pa.wisdom = t[i].wis;
+			dtu_spell_compute_slots();
+			priest_result("slots",m[0] == t[i].s[0] && m[1] == t[i].s[1] && m[2] == t[i].s[2] && m[3] == t[i].s[3],
+				"cleric level %d, wisdom %d: %d %d %d %d (%d %d %d %d)",t[i].level + 1,t[i].wis,m[0],m[1],m[2],m[3],
+				t[i].s[0],t[i].s[1],t[i].s[2],t[i].s[3]);
+		}
+	}
+	PRIEST_RESET();
+	dtu_spell_compute_slots();
+	memcpy(Dtu_spell_slots_left,levels_keep,sizeof(levels_keep));
+
+	if (c) {
+		fix d;
+
+		// Light (Cleric) on a light sensitive creature (0x8DC1D): a save ends
+		// the case, so no damage; a failed save blinds and hurts
+		c->shields = i2f(1000);
+		Monster_info[c->id].flags = (c_flags | MONSTER_F_LIGHT_SENSITIVE) & ~MONSTER_F_BLIND;
+		Priest_force_save = 1;
+		d = apply_spell(31,c,pl,1);
+		priest_result("light_save",d == 0 && !(c->dtu.m_88 & DTU_FX_BLIND),"saved: damage %.1f, blind %d",f2fl(d),(c->dtu.m_88 & DTU_FX_BLIND) != 0);
+		Priest_force_save = 0;
+		d = apply_spell(31,c,pl,1);
+		priest_result("light_fail",d > 0 && (c->dtu.m_88 & DTU_FX_BLIND) && c->dtu.m_8c[3] == GameTime + 70*MINUTE,
+			"failed: damage %.1f, blind for %.0f s (4200)",f2fl(d),f2fl(c->dtu.m_8c[3] - GameTime));
+		PRIEST_RESET();
+
+		// The end of Bless cuts a creature to its maximum (0x9013F)
+		max = Monster_info[c->id].max_hit_points;
+		apply_spell(1,c,pl,1);
+		c->shields = i2f(max + 5);
+		fx_end(c,1);
+		priest_result("bless_end_creature",c->shields == i2f(max),"%.1f after the end (maximum %d)",f2fl(c->shields),max);
+		PRIEST_RESET();
+
+		// Cures do nothing on undead and extraplanar creatures (0x8DE4B)
+		Monster_info[c->id].flags = c_flags | MONSTER_F_UNDEAD;
+		c->shields = F1_0;
+		apply_spell(11,c,pl,1);
+		priest_result("cure_undead",c->shields == F1_0,"%.1f after Cure Serious Wounds (1.0)",f2fl(c->shields));
+		Monster_info[c->id].flags = c_flags & ~(MONSTER_F_UNDEAD|MONSTER_F_EXTRAPLANAR);
+		apply_spell(11,c,pl,1);
+		priest_result("cure_living",c->shields > F1_0 && c->shields <= i2f(18) && c->shields <= i2f(Monster_info[c->id].max_hit_points),
+			"%.1f after Cure Serious Wounds (4 to 18, at most the maximum %d)",f2fl(c->shields),Monster_info[c->id].max_hit_points);
+		PRIEST_RESET();
+
+		// Hold Person (0x8E85A): not on undead, only humanoids, and only
+		// while the counter of the cast (1d4, 0x56FF6) is above 0
+		Priest_force_save = 0;
+		Hold_count[1] = 1;
+		Monster_info[c->id].flags = (c_flags | MONSTER_F_HUMANOID | MONSTER_F_UNDEAD);
+		apply_spell(52,c,pl,3);
+		n = (c->dtu.m_88 & DTU_FX_HOLD) != 0;
+		Monster_info[c->id].flags = (c_flags | MONSTER_F_HUMANOID) & ~MONSTER_F_UNDEAD;
+		apply_spell(52,c,pl,3);
+		priest_result("hold_person",!n && (c->dtu.m_88 & DTU_FX_HOLD) && c->dtu.m_c0[0] == GameTime + 6*MINUTE && Hold_count[1] == 0,
+			"undead held: %d; humanoid held for %.0f s (360); counter %d (0)",n,f2fl(c->dtu.m_c0[0] - GameTime),Hold_count[1]);
+		c->dtu.m_88 = 0;
+		apply_spell(52,c,pl,3);
+		priest_result("hold_person_counter",!(c->dtu.m_88 & DTU_FX_HOLD),"held with the counter at 0: %d (0)",(c->dtu.m_88 & DTU_FX_HOLD) != 0);
+		for (i=0,n=0;i<20;i++)
+			n += (missile_count(52,3) == 1 && Hold_count[1] >= 1 && Hold_count[1] <= 4);
+		priest_result("hold_person_cast",n == 20,"20 casts set the counter to 1 to 4: %d",n);
+		Hold_count[1] = 0;
+		PRIEST_RESET();
+	}
+	else
+		dtu_char_log("priestcheck: no creature in the level: the creature checks were not run");
+
+	// Turn undead: the class of each creature (0xAC4C1, 0x145602)
+	n = 0;
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+		int b = dtu_combat_priest_turn_bits(o), lv = Dtu_char.pa.class1_level;
+
+		if (b < 0)
+			continue;
+		if (Dtu_char.pa.class2_level > lv)
+			lv = Dtu_char.pa.class2_level;
+		if ((b & 0x10) ? (b & 0x0F) >= 9 : (b & 0x0F) != ((lv >= 7 ? 8 : lv + 1) & 0x0F)) {
+			priest_result("turn_class",0,"obj %d %s: bits 0x%02x",i,target_name(o),b);
+			n++;
+		}
+	}
+	if (n == 0)
+		priest_result("turn_class",1,"all creatures of the level");
+
+#undef PRIEST_RESET
+	dtu_char_log("priestcheck: %d failed",Priest_failed);
+	return Priest_failed;
 }

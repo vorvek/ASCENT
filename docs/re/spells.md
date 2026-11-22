@@ -533,3 +533,55 @@ points, the effects and their times. TRIALS 1 or more puts the target and the
 character back after each trial and prints the mean damage; 0 keeps one cast, so
 the later rounds of acid run. The player cannot be the target of a spell that skips
 the caster (Hold Person, Sleep). Rary's Mnemonic Enhancer opens its choice box.
+## 12. Priest spells (third audit, Code)
+
+The audit table is [docs/audit/spells-priest.md](../audit/spells-priest.md).
+After the table fixup 0x1A344 the cleric spells are 0, 1, 3, 8, 10, 11, 17
+(Produce Fire), 18, 20, 31, 34, 35, 38, 40, 42 (Cure Blindness or Deafness,
+level 3), 43, 51 (Find Traps, level 2), 52 to 55 (copies of 22, 39, 12, 13).
+Rules read from the code, not given in sections 4 and 8:
+
+- Aid (0x8D3F7): 0x2E900 plays the word P+0x1B33 at the position of the
+  player object (0x30DF14), volume 1.0, also when another object is the target.
+  The reader 0x1F495 stores `happy_sound` of the player type at P+0x1A53+0xE0 =
+  P+0x1B33. The cures (0x8DEA8, 0x8DF97) play it only when the target is the
+  player.
+- Cure Light and Cure Serious Wounds (0x8DE65 to 0x8DEEF): shields += points,
+  then shields = the whole maximum if above. So a cure takes away the hit points
+  of Aid above the maximum. Port: `Dtu_fix_cure_aid` keeps them.
+- Light and Continual Light (0x8DC1D): blind, `blind` type and the caster
+  return; a made save returns (0x8DC54) before the blindness and before the
+  damage of a `light_sensitive_2` creature (Robot_info+0x98 bit 0x200, 0x8DD5C). A
+  blinded player: 0x13D50C, 0x1F3B00, 0x1F3AF8, 0x46C688, 0x46C68C = 0, and the
+  palette add values 0x1C7F90 to 0x1C7F98 += 254, at most 30 (a white flash).
+- Free Action (0x8E6F2): returns if bit 12 is set, then if the target is not
+  the caster; with Hold the Hold timer becomes 0 and +0x1DB = GameTime (the
+  end comes from 0x9002C in the next frame).
+- Hold Person (0x8E85A): bits 12 or 14 set, the caster, an undead creature and
+  a made save return; then only a humanoid creature or the player; then the
+  counter Spell_info+0x49 (a byte) must be above 0 and goes down by one. 0x56FF6
+  sets it to 1d4 at each cast, the lich touch (0x2A670) to 1. Player:
+  +0x176 = 1, 0x13B6A3 = 0x13B69F = 0, 0x40E50 (input flush), 0x14530D = 0.
+  Creature: byte 0x153EB5 + 63 objnum = 0.
+- Magical Stone (0x8EEFE): Spell_info[34]+0x3B (die count) = 2 against an
+  undead creature, else 1, then 0x911AA.
+- Protection From Fire (0x8F1B2): returns while bit 9 is set; the pool word
+  +0x82 += 12 L.
+- Cure Blindness or Deafness (0x8F2FA): needs bit 2 or 4. Blind: timer 0x98 = 0
+  (bit 2 stays until 0x9002C ends it with "Blinded expired."). Deaf: bit 4
+  cleared, and the player gets the volume (byte 0x13BFEB << 15) / 8 (0x2DF7E).
+- The end of Bless (0x900A1): the player is cut to the whole maximum (P+0xA1)
+  and P+0x53 written; a creature is cut to Robot_info+0x78.
+- Abjure (0x8D297): the creature velocity is set along the line to the player
+  scaled to 10.0 and then overwritten by the spin (0, 0.05, 0) with movement
+  type 3. The sound of a creature sent away has volume 1.0 (0x2E900 cuts to 0.5).
+
+Turn undead (0xADC46, see bugs.md section 2): a turn takes one of the 2 to 12
+(0xAE226 jumps to 0xAE17F, `dec` at 0xAE1A0); the T entry writes 0xFF over the
+d20 at esp+0x2C4 (0xAE1B8) and 0xAE1C8 reads it as an unsigned byte, so after a
+T every undead with a number is turned (`Dtu_fix_turn_undead` keeps the d20);
+the jump table 0xADC36 sends -4 to 0xAE0DC, -3 to 0xAE14C, -2 to 0xAE158, -1 to
+0xAE1AC. An undead without a name match gets the class max(class levels) + 1,
+8 from level 7 (0xAC4C1).
+
+Checks: `-chartest 30:priestcheck` and `tools/priestcheck.py` (23 checks).

@@ -2053,6 +2053,8 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_wizardry_ring` | dtuchar.c | the Ring of Wizardry doubles the slots of the levels 1 to 3 each time the equipment changes, halves them once at the end | one doubling while it is worn |
 | `Dtu_fix_potion_frame` | dtuchar.c | the intelligence potion rolls 1 in 63 in each frame | one roll for each reference frame (3/64 s) |
 | `Dtu_fix_luck_coin` | dtuchar.c | the Potion of Luck takes the lowest bit of the day clock (frame times) | rand() & 1 |
+| `Dtu_fix_cure_aid` | dtuspell.c | Cure Light and Cure Serious Wounds cut the hit points to the maximum after the addition (0x8DEE2), so they take away the hit points of Aid | a cure never lowers the hit points |
+| `Dtu_fix_turn_undead` | dtucombat.c | turn undead clears bit 0x10 of the next undead before the count test (0xADF09), and a T writes 0xFF over the d20 (0xAE1B8) | the bit and the d20 stay (bugs.md T2, T6) |
 
 With the option `-origobj` (dtuobj.c, 1 by default):
 
