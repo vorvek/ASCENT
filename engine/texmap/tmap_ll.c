@@ -41,7 +41,7 @@
 void asm_tmap_scanline_lin_lighted(void)
 {
 	const ubyte	*src = pixptr;
-	const ubyte	*fade = Tmap_dim ? Tmap_dim_fade : gr_fade_table;	// ASCENT: tmapfx.c
+	const ubyte	*fade = tmap_lit_fade(1);	// ASCENT: tmapfx.c (the dark view, the tint)
 	ubyte	*dest;
 	int	x, xright, count, n;
 	uint32_t	uv, duv;

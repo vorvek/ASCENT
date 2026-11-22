@@ -873,12 +873,18 @@ wisdom P+0xBB (Code 0x8DAA2, 0x8E338, 0x8E8FA, 0x8F57F).
 | electric | +0x47 | +0x46 | +0x48 |
 
 Cold (+0x40..0x42) is never rolled. `damage_bonus` is not added here. A part is
-rolled if its sides or count byte is not 0. Open problem: 0 sides with count > 0
-divides by zero (`rand() % 0`, plain `idiv` at 0x91C8E): Fireball and Lightning Bolt
-have `fire_damage_dice=0` / `elec_damage_dice=0` and Melf's Acid Arrow has no
-`acid_damage_dice` in all 92 tables, and their cases set the count to 1 or more.
-As read, these spells would fault on a hit. Check in the game (DOSBox) before
-porting; the intended damage is probably only the per level part (6 L, 4 L). A fire part sets target
+rolled if its sides or count byte is not 0. 0 sides with count > 0 divides by
+zero (`rand() % 0`, plain `idiv dword ptr [esp]` at 0x91C25, 0x91C8E, 0x91CEC,
+0x91D4E): Fireball and Lightning Bolt have `fire_damage_dice=0` /
+`elec_damage_dice=0` and Melf's Acid Arrow has no `acid_damage_dice` in all 92
+tables, and their cases set the count to 1 or more. The divide error goes to the
+handler of div0.asm (div0_init(1) at 0xB8323, handler 0xF6D94, saturate mode). Its
+int3 at 0xF6E17 returns, it decodes the SIB byte 0x24 as a ModRM byte and resumes
+after the `inc edx` with EDX 0: each such die adds 0, and the part for each level
+(6 L, 6 L, 4 L) is added after the loop. **V** in DOSBox-X: a copy of DTUGAME.EXE
+that runs the bytes of 0x91C25 with 0 sides right after div0_init and exits with
+0x2A + EDX gave 42 (EDX 0; EBX, ECX, ESI, EDI, EBP kept), and 43 with 1 side. The
+port adds 0 for each die (`spell_dice`, dtuobj.c). A fire part sets target
 +0x15E bit 0.
 Creature target: Robot_info+0x98 bit 1 (electricity_immune): electric 0; bit 3
 (fire_immune): fire 0; else bit 4: fire / 2. Effect bit 10 (Resist Fire / Flame
@@ -971,7 +977,7 @@ case for every player or creature in the radius.
 | 33 | Magic Missile | M1 | min(L/2+1, 5) homing missiles | not self, not Shield (bit 25): 0x911AA(target, caster, 33, 1): 1d4 + 1 (normal dice 4, count 1, `damage_level` 0? The line has `damage_bonus=1`, which 0x91BC3 does not add; guess: 1d4) | 0x8EED5 |
 | 34 | Magical Stone | C1 | 1d3 missiles | not self: count = 2 against `undead`, else 1; 0x911AA: count d4 | 0x8EEFE |
 | 35 | Magical Vestment | C3 | self | bit 31, timer 0xF8 = 5 L min. Effect: AC at most max(5 - (L-5)/3, 1) (0xB0606, 0x2ADAF) | 0x8EF49 |
-| 36 | Melf's Acid Arrow | M2 | missile, lifetime (L/3+1) min | not self: `#acid_damage_dice` = 2 (L/3) + 2, then 0x911AA with level L: acid count d(`acid_damage_dice`, not in the line, so 0 sides: the same division problem as Fireball) + 4 L (`acid_damage_level=4`) | 0x8EFE0 |
+| 36 | Melf's Acid Arrow | M2 | missile, lifetime (L/3+1) min | not self: `#acid_damage_dice` = 2 (L/3) + 2, then 0x911AA with level L: acid count d(`acid_damage_dice`, not in the line, so 0 sides: each die adds 0, as for Fireball) + 4 L (`acid_damage_level=4`) | 0x8EFE0 |
 | 37 | Melf's Minute Meteors | M3 | min(L,5) missiles | player/creature: 0x911AA: 1d4 (+0 per level); a dressing whose Dressing_info flags bit 2 (0x04) is clear: save 5 or 0xA6ACB(obj, caster, 10.0) | 0x8F021 |
 | 38 | Prayer | C3 | self area (flag set to 0x102 at the cast) | the caster, and others whose +0x1B0 bit 0x200 (`not hostile`, objects.md) is clear: Bless bit 1, timer 0x94 = L min | 0x8F078 |
 | 39 | Protection From Evil (mage) | M1 | self | bit 23, timer 0xE0 = 2L min. Effect: attacks of `extraplanar` creatures always miss, other creatures -2 to hit (0x2AD36); attacking an extraplanar creature ends it (0x2AD70) | 0x8F116 |
@@ -1815,7 +1821,7 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 |---|---|---|---|
 | `Dtu_fix_one_hit` | dtucombat.c | a first contact on frame 8 rolls once in each game frame while frame 8 lasts (frame rate) | one roll for each swing |
 | `Dtu_fix_haste_attack` | dtucombat.c | Haste adds half a swing time to the wait (Haste is slower) | Haste halves the swing time (guess of the intent) |
-| `Dtu_fix_zero_dice` | dtuspell.c | Fireball, Lightning Bolt, Acid Arrows divide by 0 sides (the executable faults); the port does no damage and logs it | a group with 0 sides throws no dice, the part for each level counts |
+| `Dtu_fix_chill_touch` | dtuspell.c | Chill Touch fires a missile and its case (0x8D633) acts only on the caster: the spell does nothing | the cast is on the caster (no missile): Chill Touch for L + 3 minutes |
 | `Dtu_fix_stoneskin_word` | dtuspell.c | Stone Skin clears all other effect bits | only its bit is set |
 | `Dtu_fix_rary_manual` | dtuspell.c | one cast (bit 22), three levels, no second cast, the bonus stays until Dispel Magic | the manual: each cast adds three levels, the first rest after the cast fills them, the next rest ends the bonus (the end at the entry of Waterdeep is not in the port) |
 | `Dtu_fix_wizardry_ring` | dtuchar.c | the Ring of Wizardry doubles the slots of the levels 1 to 3 each time the equipment changes, halves them once at the end | one doubling while it is worn |
@@ -1826,6 +1832,7 @@ With the option `-origobj` (dtuobj.c, 1 by default):
 
 | Setting | Rule of the executable (0) | Corrected rule (1) |
 |---|---|---|
+| `Dtu_fix_magic_tint` | the tint of Detect Magic stays on after a magic bitmap or rod object for the next polygons, and the linear texture mapper tints only the first scanline after a change, near black (spells.md, section 8) | the tint is for the object only, both mappers draw the blue ramp |
 | `Dtu_fix_cant_break` | the keyword `cant_break` is ignored: every scenery object breaks (portals, coffins) | `cant_break` keeps the object whole |
 | `Dtu_fix_push_body` | the move of pushed scenery stops when its center is inside of the body of the player (twice the radius of the move query of the player plus half of the radius of the scenery, 0x3EE70 and 0x4F7D5), and the player stops closer than that to a chair unless its last step was long: a chair moves only below about 30 frames per second, and then only now and then | a body that the scenery starts in does not stop a move away from it; the player is as large as its move query; other scenery is the box of its model; the push of other scenery needs the strength of the first push (objects.md, "Pushed scenery") |
 | `Dtu_fix_push_rate` | the scenery ends a push about 1.84 steps of the mover ahead of where the mover stopped, and a step is the velocity times the frame time, so the lead is 4 units at 20 frames per second and 0.4 at 200 | at the end of a push the scenery slides the difference to the lead of the reference frame (DTU_PUSH_LEAD 1.3 steps of the reference frame, measured) |

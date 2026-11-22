@@ -227,6 +227,7 @@ static const char *Scene_fs =
 	"uniform int u_fxrow;\n"
 	"uniform int u_fxdy;\n"
 	"uniform int u_dim;\n"
+	"uniform int u_tint;\n"
 	LIGHT_GLSL
 	// The improved infravision (plat_gpu_set_infravision): c is the lit
 	// color, b the color without light. A cold polygon is a dark blue of
@@ -273,6 +274,17 @@ static const char *Scene_fs =
 	"	vec3 o = vpal((i & 15) | 8), p = vpal(i);\n"
 	"	float k = clamp(lum(o) / max(lum(p), 1.0 / 64.0), 0.0, 1.0);\n"
 	"	return clamp(o + (lc - p) * k, 0.0, 1.0);\n"
+	"}\n"
+	// The tint of Detect Magic (texmap/tmapfx.c, u_tint 1 for a lit
+	// texture): a texel c gets (c & 15) | 0x20, the blue ramp at its
+	// brightness step, before the light. The RGB form takes the step of the
+	// nearest palette color and keeps the detail of the texel at the scale
+	// of the new color.
+	"vec3 tintrgb(vec3 t) {\n"
+	"	int i = nearidx(t);\n"
+	"	vec3 o = vpal((i & 15) | 0x20), p = vpal(i);\n"
+	"	float k = clamp(lum(o) / max(lum(p), 1.0 / 64.0), 0.0, 1.0);\n"
+	"	return clamp(o + (t - p) * k, 0.0, 1.0);\n"
 	"}\n"
 	"int fxcolor(int k) {\n"
 	"	if (k == 1) return 0xCF; if (k == 2) return 0xBF; if (k == 3) return 0xBE; if (k == 4) return 0x6F;\n"
@@ -347,6 +359,7 @@ static const char *Scene_fs =
 	"				return;\n"
 	"			}\n"
 	"			c = b = t.rgb;\n"
+	"			if (u_tint != 0) c = b = tintrgb(c);\n"
 	"			if (u_lit != 0)\n"
 	"				c = light(c, clamp(l * 32.0 - 0.5, 0.0, 31.0));\n"
 	"		} else if (u_mode == 1) {\n"
@@ -372,6 +385,7 @@ static const char *Scene_fs =
 	"		}\n"
 	"		if (u_lit != 0) {\n"
 	"			int row = int(clamp(l * 32.0, 0.0, 31.5));\n"
+	"			if (u_tint != 0 && c != 255 && fxcode(c) == 0) c = (c & 15) | 0x20;\n"
 	"			c = fade(c, row);\n"
 	"		}\n"
 	"	} else if (u_mode == 1) {\n"
@@ -792,7 +806,7 @@ static SDL_Window *Gpu_window;
 static GLuint Scene_prog, Comp_prog, Down_prog, Blur_prog, Final_prog;
 static struct {
 	GLint canvas, znear, mode, lit, transparent, color, rgb, tex, fade, dest, vpal, nearc, levels, rowk;
-	GLint infra, heat, fx, fxrow, fxdy, dim;
+	GLint infra, heat, fx, fxrow, fxdy, dim, tint;
 } Su;
 static struct {
 	GLint frame, pal, view, fade, plut, vpal, nearc, levels, rowk, dst, fsize, vrect, vsize, key, vrgb;
@@ -883,7 +897,7 @@ static int Name_pool_n;
 
 // The batch of polygons
 typedef struct {
-	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, dim;
+	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, dim, tint;
 } draw_state;
 
 typedef struct {
@@ -1074,6 +1088,7 @@ int gpu_init(SDL_Window *window)
 	Su.fxrow = qglGetUniformLocation(Scene_prog, "u_fxrow");
 	Su.fxdy = qglGetUniformLocation(Scene_prog, "u_fxdy");
 	Su.dim = qglGetUniformLocation(Scene_prog, "u_dim");
+	Su.tint = qglGetUniformLocation(Scene_prog, "u_tint");
 	Cu.frame = qglGetUniformLocation(Comp_prog, "u_frame");
 	Cu.pal = qglGetUniformLocation(Comp_prog, "u_pal");
 	Cu.view = qglGetUniformLocation(Comp_prog, "u_view");
@@ -1678,6 +1693,8 @@ static void apply_state(const draw_state *st)
 		qglUniform1i(Su.fxrow, st->fx_row);
 	if (!Cur_state_valid || st->dim != Cur_state.dim)
 		qglUniform1i(Su.dim, st->dim);
+	if (!Cur_state_valid || st->tint != Cur_state.tint)
+		qglUniform1i(Su.tint, st->tint);
 	if (st->mode == PLAT_GPU_TEXTURED && (!Cur_state_valid || st->texture != Cur_state.texture)) {
 		qglActiveTexture(GL_TEXTURE0);
 		qglBindTexture(GL_TEXTURE_2D, (GLuint) st->texture);
@@ -1821,6 +1838,7 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 		}
 		if (st.lit && m->dim > 0)
 			st.dim = m->dim > 15 ? 15 : m->dim;
+		st.tint = st.lit && m->tint == 0x40;
 	} else
 		st.color = m->color & 255;
 	if (m->mode == PLAT_GPU_DARKEN && st.color >= Fade_levels)

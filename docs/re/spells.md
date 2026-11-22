@@ -144,7 +144,7 @@ Port before = the port at d9d72f6. "same" = the port follows B3 of combat.md.
 | 13, 55 | Dispel Magic | M3, C3, 36 s | same | same |
 | 14 | Fear | M4, 0 s; save; L min | generic texts (Fear and Hold) | "Fear cast on %s by %s." |
 | 15 | Feather Fall | M1, 10 s; L min; no end text | generic texts, "Feather Fall expired." | original text, no end text |
-| 16 | Fireball | M3, 10 s; fire min(L,10) dice + 6L | same (`Dtu_fix_zero_dice`) | same |
+| 16 | Fireball | M3, 10 s; fire min(L,10) dice of 0 sides (each adds 0) + 6L | same | same |
 | 17 | Flaming Sphere | M2, 36 s | same | same |
 | 18 | Flame Walk | C3, 30 s; (L+1) min | generic text | original text |
 | 19 | Fly | M3, 0 s; 10 (1d6 + L) min | generic text | original text |
@@ -192,13 +192,13 @@ Port before = the port at d9d72f6. "same" = the port follows B3 of combat.md.
 
 ## 6. Kept differences
 
-Settings (combat.md C3), not changed: `Dtu_fix_zero_dice`, `Dtu_fix_stoneskin_word`,
-`Dtu_fix_rary_manual`, `Dtu_fix_wizardry_ring`.
+Settings (combat.md C3), not changed: `Dtu_fix_stoneskin_word`,
+`Dtu_fix_rary_manual`, `Dtu_fix_wizardry_ring`. New: `Dtu_fix_chill_touch` (section 8).
 
 Not in the port (combat.md C2): the view of the player in the gated creature of Fear
 and Scare, the blindness and deafness of Fireball within 6.0, the global counters
-Spell_info+0x49 of Haste, Hold Person, Slow and the hit dice pools of Hold Undead and
-Sleep, the `cast_on_top` vclips (0x8CCED), the light +0x1A6 of the blindness end, the
+Spell_info+0x49 of Haste, Hold Person, Slow and the hit dice pool of Hold Undead (the
+pool of Sleep is in the port, section 8), the `cast_on_top` vclips (0x8CCED), the light +0x1A6 of the blindness end, the
 volume of the player at the end of the deafness, the sound of Aid (0x2E900 with the
 word P+0x1B33).
 
@@ -228,3 +228,123 @@ BANE, `-char SG0.SG` (thief/mage of level 1), `-testslots 5 -fixedfps 30 -hidden
   Invisibility, no text for Feather Fall.
 - Shield with the skeleton in reach (no `-noattack`): the hit at 1.300 s stops the
   cast, one slot used, the cast does not start again.
+
+## 8. The 1.3 rules of the second audit (Code)
+
+**Caster level (0x91EC1).** One function for a spell of a book, a scroll and a
+wand (callers 0x56D4E, 0x57054, 0x8D1C4, 0x8D232, 0x90D01). c = the level of a
+cleric class (class byte 0), o = the level of the other class (class bytes 1 to 3,
+the second class over the first), 0 if none. cleric_use and mage_use: max(c, o) +
+1; cleric_use: c + 1; else o + 1. So a fighter or a thief casts a mage wand or
+scroll at the level of the class (a fighter/thief: the thief level); a character
+with a mage class always gets the mage level (the class order of the creation is
+fighter, thief, mage, cleric). The port used level 1 without a mage class. Checked:
+a fighter of level 4 with the Wand of Magic Missiles casts at level 4, 3 missiles
+(before: level 1, one missile).
+
+**cast_in_front (0x253C7).** The reader sets +0x37 |= 5 for `cast_in_front` and
+|= 1 for `self_cast_ok` (0x25535); no code tests bit 2. 0x56D36 (player) and
+0x92104 (creature) test bit 0: the spell acts on the caster, an AREA line around
+the caster (0x90CEF, which does not skip the caster; the cases of the lights
+skip the caster themselves). The lines 8, 9 Continual Light, 13 Dispel Magic, 30,
+31 Light have `cast_in_front` in 40 of the 46 tables (not in MINES1, PRISON1,
+SPIDER, TRAIN1, DEMO, MOIN1). So the mage's Dispel Magic ends all effects of the
+caster (also the bad ones: blindness, Slow, Fear); kept as in 1.3. Checked: Light
+blinds three creatures around the caster, Dispel Magic ends Bless and Protection
+From Evil of the caster.
+
+**Prayer (0x56D6A).** Before the test of the AREA bit the player's cast writes the
+word +0x36 of spell 38 as 0x102 (AREA bit clear, self bit set): Prayer blesses
+the caster only (0x8CFFF). The line is TARGET in every table, so the creature's
+cast (0x92104) also reaches only the caster. The port cast it as an area.
+
+**Sleep (0x8F766, the pool 0x5742C).** 0x56FF6 sets Spell_info[46]+0x49 to
+4 + 2 (rand() % 7) (4 to 16, even) at each cast. After the tests of 0x8F766 (not
+the caster, not asleep, not undead or no_sleep, T <= 3, the elf d10 <= 9, the
+half-elf d10 <= 3, a creature with Robot_info+0xD9 bit 3 d10 <= 9) the cost is
+max hit points >> 2 for a creature (Robot_info word +0x78), 2 T for the player.
+A cost above the pool: no effect, no text. Else the pool goes down by the cost.
+The port had no pool and no d10 of the creatures with bit 3 (the names rf, rm, av,
+dro: the human and drow fighters and casters). Checked: pool 4, the Giant Rat
+(max 4 hit points) costs 1, 3 left.
+
+**Chill Touch (`Dtu_fix_chill_touch`).** No table has `self_cast_ok` on line 5,
+so the cast fires a missile; the case 0x8D633 returns unless the target is the
+caster (and the effect bit 3 is clear), so in 1.3 the spell does nothing. The
+effect: bit 3 of +0x88, timer +0x9C, (L + 3) minutes. A melee hit of the holder
+(0x29E3D player, 0x2A49B creature) makes the target save (category 4); on a
+failure an undead target gets Fear for 1d4 + L minutes (L of 0x91EC1 for spell
+5), another target 1d4 more damage. Corrected: the cast is on the caster. Checked:
+"You have chill touch for 4 minutes." at level 1; a dagger hit on a skeleton that
+failed its save: Fear for 180 s.
+
+**Detect Magic (0x670D4, 0x7569F, the texture mappers).** The effect bit 6 of the
+viewer (0x670D4) or of the player (0x75726) gives a tint value 0x40 at 0x14C4CD
+with 0x14C4D0 = 15 for:
+
+- an object for which 0x670D4 returns 1: a spell item (type 17); armor with
+  `magic` (0x19FD34 bit 0, 0x23392); a misc item with the flag 0x10 of 0x1A344 (a
+  plot item, '+' in the name, or one of the name parts uring, yrkul, rystal,
+  carab, speed, nsight, anegem, ursed, lamesword, otion); scenery with `magic`
+  (0x19B340 bit 0); a weapon object whose type has W+0x3E bit 0x10 (`magic`, and
+  the spell missile templates, which 0x571B2 sets at each cast). A creature gives
+  2 (weapon type below 0 or magic): the model then tints the submodels with flag
+  0x20, which no model file has, so creatures show nothing. Draw sites: the
+  polygon model 0x67995 (cleared to 0 at 0x67A0A after the model), the rod
+  0x67347 and the bitmap 0x671E2 (both never clear it).
+- a wall side (0x75707 to 0x75827): side byte 1 bit 0x20 (no level has it), a
+  segment of special 2, 3 or 6 (special 2: 31 segments in 22 levels), or an
+  illusion wall that is on (wall type 3, no flag 0x20) and draws as an illusory
+  wall (WALL_IS_DOORWAY 3): the false walls. The side saves the tint and gives it
+  back after it.
+
+The pixel rule of the perspective mapper (0x105C60 setup, 0x105BC8 to 0x105C35):
+a lit texel c that is not 255 or an effect color gets fade[row][(c & 15) | 0x20],
+the blue ramp at the brightness step of the texel, still lit. The linear copy
+(0xEC6BC, 0xEC4D7) is broken: its setup clears 0x14C4E2 for each scanline and
+sets it again only when 0x14C4CD changed since the last scanline, and its rule
+uses row 0 and the test c & 0x1F <= 15, so only the first scanline after a change
+gets near black texels; with the tint on, all its other texels take row & 15.
+1.3 draws models (not the viewer) with the linear mapper (bugs.md D12), so in the
+DOS game Detect Magic shows mostly on nearby items (rods), walls and missiles.
+
+Port (`Dtu_fix_magic_tint`, `-origobj` clears it): the tint of 0x14C4CD is
+`Tmap_tint` (texmap/tmapfx.c) and `G3_gpu_tint`; both renderers draw the blue
+ramp for every lit texture of a tinted object or side. Corrected: the bitmap and
+the rod give the tint back after the object (1.3 leaves it on for the next
+polygons until a model clears it), and the linear mapper uses the rule of the
+perspective one. With 0 the port keeps the leak and the scanline rule of the
+linear mapper. Not done: the effect colors of a tinted model (the tint turns on
+0x14C4D8). Checked: the Wand of Magic Missiles on the floor of BANE turns blue in
+the GPU and the software renderer, the dagger in the hand does not.
+
+In player terms: while Detect Magic lasts, magic things in view are drawn in
+shades of blue: spell scrolls, magic weapons, magic armor, potions, keys and
+other quest items, magic scenery, and spell missiles in flight; and the false
+(illusory) walls that can be walked through, so they can be found. Creatures and
+normal items keep their colors. Duration: 2 minutes per level (mage), 10 minutes
+(cleric version).
+
+## 9. The spell lists (0xB65BB, 0xB75A8)
+
+- The insert 0xB65BB (pickup, purchase, gifts, the new character): a spell (type
+  17) with the cleric bit for a cleric or the mage bit for a mage goes to that
+  list (0xB69AD, 0xB660C to 0xB667F); result 1 ends the insert, result 2 (already
+  in the list) puts it into the item list as a scroll. The port put every spell
+  into the item list, so the spells of a new mage were scrolls.
+- 0xB75A8(L): every spell with the cleric bit whose level byte (+0x39) is L + 1
+  goes to the cleric list (not twice, at most 127). L must be 0 to 4.
+- The new character (0x8BDB4) and each new level (0xAF8F5, the end of 0xAF694):
+  a cleric gets 0xB75A8(0x145ED8[k]) for k = 0 to the cleric level (0 based). The
+  table is 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 6...: spell level 1 at the
+  cleric levels 1 and 2, 2 at 3 and 4, 3 at 5 and 6, 4 at 7 and 8, 5 at 9 and 10.
+  The port gave a new cleric spell 0 (Abjure, a level 4 spell) as an item and
+  nothing at a new level.
+- `Dtu_fix_spell_save_repair` (dtuchar.c, `-origchar` clears it): at the first
+  level start after a load, the learnable spells of the item list that a list has
+  not go to it (one item each), and a cleric gets the cleric spells of the levels.
+  A 1.3 save has nothing to change; it repairs saves of older versions of the
+  port.
+- In player terms: a cleric knows every cleric spell of each spell level that the
+  character can cast: level 1 spells from the start, level 2 at cleric level 3,
+  level 3 at 5, level 4 at 7. Spell slots per level are unchanged.

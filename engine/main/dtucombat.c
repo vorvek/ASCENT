@@ -1088,8 +1088,8 @@ static void combat_init(void)
 	if (FindArg("-origcombat")) {
 		Dtu_fix_one_hit = 0;
 		Dtu_fix_haste_attack = 0;
-		Dtu_fix_zero_dice = 0;
 		Dtu_fix_stoneskin_word = 0;
+		Dtu_fix_chill_touch = 0;
 		Dtu_fix_rary_manual = 0;
 		Dtu_fix_turn_undead = 0;
 	}

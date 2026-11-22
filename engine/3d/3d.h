@@ -423,6 +423,9 @@ extern int G3_gpu_fx_row;
 //tmapfx.c): 0 to 15 for the lit textures. The game sets it at the start
 //of each view.
 extern int G3_gpu_dim;
+//The tint of the current object for the GPU renderer (texmap/tmapfx.c,
+//Tmap_tint; 0x40: Detect Magic). The game sets both.
+extern int G3_gpu_tint;
 
 #endif
 

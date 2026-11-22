@@ -46,7 +46,7 @@
 
 void make_random_vector(vms_vector *vec);		// ai.c
 
-int Dtu_fix_zero_dice = 1;
+int Dtu_fix_chill_touch = 1;
 int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 
@@ -56,6 +56,11 @@ int Dtu_fix_rary_manual = 1;
 static int Rary_bonus[3];
 static int Rary_rest = 0;
 static int Wizardry_n = 0;			// doublings of the Ring of Wizardry
+// Spell_info[46]+0x49: the pool of Sleep. 0x56FF6 sets it to
+// 4 + 2 (rand() % 7) (4 to 16, even) at each cast of a Sleep missile
+// (0x5742C), the player's or a creature's; 0x8F89E takes the cost of each
+// sleeper.
+static int Sleep_pool = 0;
 
 static int rand_mod(int n);
 static int creature_cleric_level(object *obj);
@@ -140,6 +145,18 @@ static int spell_area(int spell)
 	return spell_ok(spell) && bm_tbl_get(Spell_info[spell].record,"type",v,sizeof(v)) && !stricmp(v,"AREA");
 }
 
+// Spell_info +0x37 bit 0: the cast on the caster (0x56D36 for the player,
+// 0x92104 for a creature). The reader sets it for self_cast_ok (0x25535,
+// |= 1) and for cast_in_front (0x253C7, |= 5; no code tests bit 2). So a
+// cast_in_front line (8, 9, 13, 30, 31 in 40 of the 46 tables) is cast on
+// the caster, an AREA line of it around the caster.
+static int spell_self(int spell)
+{
+	if (spell == 5 && Dtu_fix_chill_touch)		// ASCENT: Chill Touch on the caster (dtuspell.h)
+		return 1;
+	return spell_flag(spell,"self_cast_ok") || spell_flag(spell,"cast_in_front");
+}
+
 static int spell_level(int spell)
 {
 	return spell_int(spell,"level",1);
@@ -175,17 +192,34 @@ static int char_class_level(int cls)
 	return -1;
 }
 
-// 0x91EC1: the caster level of the player for a spell, from 1
+// 0x91EC1: the caster level of the player for a spell, from 1. The same
+// for a spell of a book, a scroll and a wand (0x56D4E, 0x57054, 0x8D1C4,
+// 0x90D01). c: the level of a cleric class (class byte 0), o: the level of
+// the other class (any class byte that is not 0: mage, fighter or thief;
+// the second class wins over the first), 0 if none. A spell with both
+// cleric_use (+0x00 bit 0) and mage_use (bit 1): max(c, o) + 1; cleric_use:
+// c + 1; else o + 1. So a fighter or a thief casts a mage wand or scroll at
+// the level of the class, and a fighter/thief at the thief level. With the
+// class order of the creation (fighter, thief, mage, cleric), o of a
+// character with a mage class is always the mage level.
 int dtu_spell_player_level(int spell)
 {
-	int m = char_class_level(DTU_CLASS_MAGE), c = char_class_level(DTU_CLASS_CLERIC);
-	int mb = spell_flag(spell,"mage_use"), cb = spell_flag(spell,"cleric_use");
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int c = 0, o = 0;
 
-	if (mb && cb)
-		return (m > c ? m : c) + 1;
-	if (cb)
-		return (c >= 0 ? c : 0) + 1;
-	return (m >= 0 ? m : 0) + 1;
+	if (!Dtu_char.created)
+		return 1;
+	if (pa->class1 == DTU_CLASS_CLERIC) c = pa->class1_level;
+	else o = pa->class1_level;
+	if ((signed char) pa->class2 != -1) {
+		if (pa->class2 == DTU_CLASS_CLERIC) c = pa->class2_level;
+		else o = pa->class2_level;
+	}
+	if (spell_flag(spell,"cleric_use") && spell_flag(spell,"mage_use"))
+		return (c > o ? c : o) + 1;
+	if (spell_flag(spell,"cleric_use"))
+		return c + 1;
+	return o + 1;
 }
 
 // 0xAE3BB: the level of a creature: max hit points / 8, 1 to 18
@@ -340,6 +374,67 @@ int dtu_spell_learn(int spell)
 		return 1;
 	Dtu_spell_book[b][Dtu_spell_book_n[b]++] = spell;
 	return 0;
+}
+
+// 0xB65BB, type 17 (0xB660C to 0xB667F): a spell with the cleric bit for a
+// cleric or the mage bit for a mage goes to a spell list (0xB69AD). -1: not
+// for the lists (the item list takes it); else the result of 0xB69AD: 0
+// added, 1 refused (the insert ends), 2 already in the list (the item list
+// takes it, a scroll).
+int dtu_spell_insert(int spell)
+{
+	if (!spell_ok(spell))
+		return -1;
+	if (!(spell_flag(spell,"cleric_use") && char_is(DTU_CLASS_CLERIC)) && !(spell_flag(spell,"mage_use") && char_is(DTU_CLASS_MAGE)))
+		return -1;
+	return dtu_spell_learn(spell);
+}
+
+// 0xB75A8(L): every spell with the cleric bit and the level L + 1 (the
+// byte +0x39, 1 to 7) goes to the cleric list, if it is not there and the
+// list has less than 127 entries. L above 4 or below 0 gives nothing.
+static int grant_cleric_level(int L)
+{
+	int s, i, n = 0;
+
+	if (L < 0 || L > 4)
+		return 0;
+	for (s=0;s<N_spell_types;s++) {
+		int lv = spell_int(s,"level",0);
+
+		if (!spell_ok(s) || !spell_flag(s,"cleric_use") || lv < 1 || lv > 7 || lv != L + 1)
+			continue;
+		if (Dtu_spell_book_n[1] >= DTU_SPELL_BOOK_MAX)
+			break;
+		for (i=0;i<Dtu_spell_book_n[1];i++)
+			if (Dtu_spell_book[1][i] == s)
+				break;
+		if (i < Dtu_spell_book_n[1])
+			continue;
+		Dtu_spell_book[1][Dtu_spell_book_n[1]++] = s;
+		dtu_spell_log("spell: '%s' (%d), cleric spell level %d, goes to the cleric list (0xB75A8)",spell_name(s),s,lv);
+		n++;
+	}
+	return n;
+}
+
+// The new character (0x8BDB4) and each new level (0xAF8F5): a cleric gets
+// all cleric spells of the spell levels 0x145ED8[0] to 0x145ED8[c] + 1, c
+// the cleric level (0 based): spell level 1 at the cleric levels 1 and 2,
+// 2 at 3 and 4, 3 at 5 and 6, 4 at 7 and 8, 5 at 9 and 10 (no table line
+// has a cleric spell above level 4); 0xB75A8 refuses the values 5 and 6 of
+// the higher levels.
+int dtu_spell_grant_cleric(void)
+{
+	static const ubyte table[32] = { 0,0,1,1,2,2,3,3,4,4,5,5,5,6,6,6, 6,6,6,6,6,6,6,6,6,6,6,6,6,6,6,6 };
+	int c = char_class_level(DTU_CLASS_CLERIC), k, n = 0;
+
+	if (c < 0)
+		return 0;
+	for (k=0;k<=c && k<32;k++)
+		n += grant_cleric_level(table[k]);
+	dtu_spell_log("spell: the cleric of level %d gets %d new cleric spells, %d in the list",c + 1,n,Dtu_spell_book_n[1]);
+	return n;
 }
 
 static int in_book(int spell)
@@ -820,22 +915,20 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 	if (target->type != OBJ_ROBOT && target->type != OBJ_PLAYER)
 		return 0;
 
-	// A group with dice and 0 sides: the executable divides by 0 (0x91C8E)
+	// A group with dice of 0 sides adds 0 for each die, as in 1.3 (the
+	// divide error handler, see spell_dice in dtuobj.c); the part for each
+	// level counts
 	for (g=0;g<4;g++) {
 		int sides = spell_int(spell,keys[g][0],0), n = (g == group) ? count : spell_int(spell,keys[g][1],0);
 
-		if (sides == 0 && n > 0) {
-			if (!Dtu_fix_zero_dice) {
-				dtu_spell_log("spell: '%s': %d dice with 0 sides (%s): the executable stops with a divide error here; no damage",
-					spell_name(spell),n,keys[g][0]);
-				return 0;
-			}
-			dtu_spell_log("spell: '%s': %d dice with 0 sides (%s): no dice, the part for each level only (Dtu_fix_zero_dice)",
+		if (sides == 0 && n > 0)
+			dtu_spell_log("spell: '%s': %d dice with 0 sides (%s) add 0, the part for each level counts",
 				spell_name(spell),n,keys[g][0]);
-		}
 	}
 
-	dmg = dtu_spell_damage_roll(spell,target,level) + extra;
+	// the case writes the number of dice of its group (0x8E592, 0x8EEAB,
+	// 0x8EFE0) before the roll
+	dmg = (group >= 0 ? dtu_spell_damage_roll_count(spell,target,level,group,count) : dtu_spell_damage_roll(spell,target,level)) + extra;
 	if (target->type == OBJ_PLAYER && (target->dtu.m_88 & DTU_FX_INVULNERABLE))
 		dmg = 0;		// 0x9178B
 	if (dmg > 0 && dtu_spell_save(target,DTU_SAVE_SPELL))
@@ -1525,7 +1618,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				dealt = spell_damage(spell,target,caster,L,GROUP_ACID,2*(L/3) + 2,0);
 			break;
 		case 38:		// Prayer: Bless for L rounds on the caster and on the others
-			// whose bit 0x200 of 0x1B0 is clear (as read)
+			// whose bit 0x200 of 0x1B0 is clear (as read). The casts of the
+			// player (0x56D6A) and of a creature reach only the caster.
 			if ((self || !(target->dtu.m_1b0 & DTU_PEACEFUL)) && fx_set(target,DTU_FX_BLESS,L*MINUTE))
 				say_effect(self,"%s %s Prayer for %d minutes.",V_HAVE,"Prayer cast on %s by %s for %d minutes.",L);
 			break;
@@ -1570,13 +1664,30 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (fx_set(target,DTU_FX_SHIELD,5*L*MINUTE))
 				say_effect(self,"%s %s Shielded for %d minutes.",V_ARE,"Shield cast on %s by %s for %d minutes.",5*L);
 			break;
-		case 46:		// Sleep: 5 L rounds, targets of level 3 or less
+		case 46: {		// Sleep (0x8F766): 5 L rounds, targets of level 3 or less
+			int cost;
+
 			if (self || (target->dtu.m_88 & DTU_FX_SLEEP) || (mf & (MONSTER_F_NO_SLEEP|MONSTER_F_UNDEAD)) || T > 3)
 				break;
 			if (target->type == OBJ_PLAYER) {
 				if (Dtu_char.pa.race == DTU_RACE_ELF && rnd(10) <= 9) break;
 				if ((Dtu_char.pa.flags & DTU_PF_HALF_ELF) && rnd(10) <= 3) break;
 			}
+			// 0x8F840: a creature with Robot_info+0xD9 bit 3 resists on
+			// d10 <= 9
+			else if (creature_rf_name(target) && rnd(10) <= 9)
+				break;
+			// 0x8F865: the pool Spell_info+0x49 (a signed byte, set by each
+			// cast in 0x5742C). A creature costs its max hit points / 4
+			// (Robot_info word +0x78 >> 2), the player 2 T. Less in the pool
+			// than the cost: no effect and no text.
+			cost = (target->type == OBJ_ROBOT && target->id < N_robot_types) ? Monster_info[target->id].max_hit_points >> 2 : 2*T;
+			if (Sleep_pool < cost) {
+				dtu_spell_log("spell: Sleep pool %d, obj %d %s costs %d: no effect",Sleep_pool,(int)(target-Objects),target_name(target),cost);
+				break;
+			}
+			Sleep_pool = (signed char) (Sleep_pool - cost);
+			dtu_spell_log("spell: Sleep pool %d left after obj %d %s (cost %d)",Sleep_pool,(int)(target-Objects),target_name(target),cost);
 			if (fx_set(target,DTU_FX_SLEEP,5*L*MINUTE)) {
 				if (target->type == OBJ_PLAYER) {
 					target->dtu.m_88 |= DTU_FX_BLIND;
@@ -1585,6 +1696,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s will be Sleeping for %d minutes.",V_NONE,"Sleep cast on %s by %s for %d minutes.",5*L);
 			}
 			break;
+		}
 		case 47:		// Slow: ends Haste, L+3 rounds
 			if (self || (target->dtu.m_88 & DTU_FX_SLOW) || dtu_spell_save(target,DTU_SAVE_SPELL))
 				break;
@@ -1925,10 +2037,15 @@ static int cast_checks(int spell)
 	return 0;
 }
 
-// The number of missiles of a spell (0x56FF6)
+// The number of missiles of a spell (0x56FF6). The same switch sets the
+// pool of Sleep (0x5742C).
 static int missile_count(int spell,int L)
 {
 	switch (spell) {
+		case 46:
+			Sleep_pool = (rand() % 7) * 2 + 4;
+			dtu_spell_log("spell: Sleep pool %d",Sleep_pool);
+			return 1;
 		case 4:	return 6;
 		case 6:	return rnd(6);
 		case 7:	return rnd(4) + L;
@@ -1986,9 +2103,12 @@ static void cast_now(int spell,int source)
 	sound_at(spell_int(spell,"cast_sound",10),player->segnum,&player->pos,F1_0/2);
 	dtu_spell_log("spell: the player casts '%s' (%d) at level %d, source %d, at %.3f",spell_name(spell),spell,L,source,f2fl(GameTime));
 
-	if (spell_flag(spell,"self_cast_ok")) {
-		// Always on the player himself (0x56A0D)
-		if (spell_area(spell) || spell == 38)
+	if (spell_self(spell)) {
+		// Always on the player himself (0x56D36): an AREA line around him
+		// (0x90CEF), else 0x8CFFF on him. 0x56D6A sets the word +0x36 of
+		// Prayer (38) to 0x102 before the test: the AREA bit is clear, so
+		// Prayer blesses the caster only.
+		if (spell_area(spell) && spell != 38)
 			dtu_spell_area(spell,&player->pos,player->segnum,player,L);
 		else
 			apply_spell(spell,player,player,L);
@@ -2105,7 +2225,7 @@ int dtu_spell_hint_target(void)
 
 	char msg[100];
 
-	if (spell < 0 || spell_not_in_port(spell) || spell_flag(spell,"self_cast_ok"))
+	if (spell < 0 || spell_not_in_port(spell) || spell_self(spell))
 		return -2;
 	// a spell of a book: the checks of dtu_spell_fire (a scroll and a wand
 	// have none)
@@ -2537,8 +2657,12 @@ static void creature_cast(object *obj)
 	s = Cspell_table[e].spell;
 	dtu_spell_log("cspell: obj %d %s casts '%s' (%d) at level %d, points %d %d",n,target_name(obj),spell_name(s),s,L,
 		Cspell[n].points[0],Cspell[n].points[1]);
-	if (spell_flag(s,"self_cast_ok") || s == 13 || s == 55) {
-		if (spell_area(s) || s == 38)
+	// 0x92104: +0x37 bit 0 (self_cast_ok, cast_in_front, or set by the
+	// choice of Dispel Magic): on the creature itself, an AREA line
+	// around it (0x90CEF), else 0x8CFFF. No case of Prayer here: as TARGET
+	// it blesses the creature only.
+	if (spell_self(s) || s == 13 || s == 55) {
+		if (spell_area(s))
 			dtu_spell_area(s,&obj->pos,obj->segnum,obj,L);
 		else
 			apply_spell(s,obj,obj,L);
@@ -2685,7 +2809,10 @@ static void spell_init(void)
 	if (done)
 		return;
 	done = 1;
-	if ((t = FindArg("-char")) != 0 && t+1 < Num_args)
+	// the load of the character (dtu_char_load_save) has read the books
+	// already: a second read would undo the changes of the level start
+	// (dtuchar.c, Dtu_fix_spell_save_repair)
+	if ((t = FindArg("-char")) != 0 && t+1 < Num_args && !Dtu_char.created)
 		load_books_from_save(Args[t+1]);
 }
 

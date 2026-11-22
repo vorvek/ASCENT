@@ -50,6 +50,7 @@ int Tmap_fx_row = 25;		// 0x14C4E1
 int Tmap_dim;					// 0x14C4CE for the polygon of draw_tmap
 ubyte Tmap_dim_fade[256*GR_FADE_LEVELS];
 static int Tmap_dim_view;	// 0x14C4CE for the view
+static int Tint_stale = 1;	// the tables of the tint must be made again (tmap_tint_polygon)
 
 int tmap_fx_color_code(int c)
 {
@@ -76,6 +77,7 @@ void tmap_dim_set_view(int dim)
 	if (dim > 15) dim = 15;
 	Tmap_dim_view = dim;
 	Tmap_dim = 0;
+	Tint_stale = 1;		// the fade table of the view can change (infravision)
 	if (!dim)
 		return;
 	for (r=0; r<GR_FADE_LEVELS; r++) {
@@ -99,6 +101,67 @@ void tmap_dim_set_view(int dim)
 void tmap_dim_polygon(int lighting)
 {
 	Tmap_dim = (Tmap_dim_view && lighting) ? Tmap_dim_view : 0;
+}
+
+// The tint of the current object (0x14C4CD, docs/re/spells.md "Detect
+// Magic"). Value 0x40 with 0x14C4D0 = 15: the general path of 0x105A81
+// (0x105BC8 to 0x105C35) gives a lit texel c (not 255, not an effect color,
+// not a texel of the dark view) the color fade[row][(c & 15) | 0x20]: the
+// blue ramp at the brightness step of the texel. The linear copy 0xEC4D7
+// differs (Tmap_tint_fix 0): its setup 0xEC6BC clears 0x14C4E2 and sets it
+// again only when 0x14C4CD differs from the value of the last scanline
+// (0x14C4E7), so only the first scanline after a change is tinted; there
+// it clears AH (0xEC62D) and tests c & 0x1F (0xEC654), so a texel with
+// (c & 0x1F) <= 15 gets fade[0][(c & 15) | 0x20] (near black) and the
+// others keep fade[row][c]; and with the tint (0x14C4D8 set) every other
+// texel takes the row & 15 (0xEC5EA).
+int Tmap_tint;
+int Tmap_tint_fix = 1;			// Dtu_fix_magic_tint (dtuobj.c)
+int Tmap_tint_on;				// draw_tmap: Tmap_tint is 0x40 for a lit polygon
+static ubyte Tint_fade[256*GR_FADE_LEVELS];			// the perspective rule
+static ubyte Tint_lin_first[256*GR_FADE_LEVELS];	// the linear rule, first scanline
+static ubyte Tint_lin_rest[256*GR_FADE_LEVELS];		// the linear rule, the next scanlines
+static int Tint_dim = -1;
+static int Tint_lin_cache;		// 0x14C4E7
+
+static void tint_build(void)
+{
+	const ubyte *base = Tmap_dim ? Tmap_dim_fade : gr_fade_table;
+	int r, c;
+
+	for (r=0; r<GR_FADE_LEVELS; r++)
+		for (c=0; c<256; c++) {
+			int i = r*256 + c, keep = (c == 255 || tmap_fx_color_code(c) || (Tmap_dim && (c & 15) <= Tmap_dim));
+			int b = (c & 15) | 0x20;
+
+			Tint_fade[i] = keep ? base[i] : gr_fade_table[r*256 + b];
+			Tint_lin_rest[i] = keep ? base[i] : gr_fade_table[(r & 15)*256 + c];
+			Tint_lin_first[i] = keep ? base[i] : ((c & 0x1F) <= 15 ? gr_fade_table[b] : gr_fade_table[(r & 15)*256 + c]);
+		}
+	Tint_stale = 0;
+	Tint_dim = Tmap_dim;
+}
+
+void tmap_tint_polygon(int lighting)
+{
+	Tmap_tint_on = (lighting && Tmap_tint == 0x40);
+	if (Tmap_tint && lighting && (Tint_stale || Tint_dim != Tmap_dim))
+		tint_build();
+}
+
+const ubyte *tmap_lit_fade(int linear)
+{
+	const ubyte *base = Tmap_dim ? Tmap_dim_fade : gr_fade_table;
+
+	if (linear && !Tmap_tint_fix) {
+		int first = (Tmap_tint != Tint_lin_cache);
+
+		Tint_lin_cache = Tmap_tint;
+		if (!Tmap_tint)
+			return base;
+		return (first && Tmap_tint == 0x40) ? Tint_lin_first : Tint_lin_rest;
+	}
+	return Tmap_tint_on ? Tint_fade : base;
 }
 
 // The color of the effect color c (0x105A81 and 0xEC4D7 from the test of
