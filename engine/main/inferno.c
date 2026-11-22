@@ -1236,6 +1236,7 @@ int main(int argc,char **argv)
 	dtu_opts_load();		// ASCENT: the Improvements settings (dtuopts.h)
 	dtu_opts_log();			// ASCENT: the settings in the session log
 	plat_gpu_bind_settings(&Dtu_gpu_renderer, &Dtu_shader);	// ASCENT: the screen shader reads the settings
+	plat_bind_vga_aspect(&Dtu_fix_lowres_aspect);	// ASCENT: the 320x200 frame at 4:3
 
 	if ((t = FindArg( "-checklevel" )) != 0 && t+1 < Num_args)
 		return dtu_check_level(Args[t+1]);

@@ -63,9 +63,10 @@ class Runner:
         self.args = args
         self.tmp = tempfile.mkdtemp(prefix="uitest_")
 
-    def run(self, name, lines, extra=(), level=None):
+    def run(self, name, lines, extra=(), level=None, env=None):
         """Runs the script lines; "shot NAME" writes NAME.ppm. Returns the
-        screenshots by name."""
+        screenshots by name. env: more environment variables (for example
+        ASCENT_WINDOW_SIZE, the size of the hidden window)."""
         d = os.path.join(self.tmp, name)
         os.makedirs(os.path.join(d, "user"), exist_ok=True)
         script = os.path.join(d, "script.txt")
@@ -87,7 +88,8 @@ class Runner:
         if level != "":     # "": the front end (no direct start)
             cmd += ["-level", level or LEVEL]
         cmd += ["-fescript", script] + list(extra)
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=d)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=d,
+                           env=dict(os.environ, **env) if env else None)
         self.stdout = r.stdout
         out = {}
         for s in shots:
@@ -263,6 +265,111 @@ def test_view_aspect(t):
         # g3_start_frame): its angle in x is the fixed one then
         for s in v[:3]:
             assert s["tany"] == v[0]["tany"], "%s: the angle in y changed in mode %s" % (extra, s["mode"])
+
+
+def present_states(t):
+    """The lines of the script command presentstate: (window w, h, frame w,
+    h, rect x, y, w, h)."""
+    out = []
+    for line in t.stdout.splitlines():
+        if line.startswith("Presentstate "):
+            f = dict(kv.split("=") for kv in line.split()[1:])
+            ww, wh = (int(v) for v in f["window"].split("x"))
+            fw, fh = (int(v) for v in f["frame"].split("x"))
+            xy, size = f["rect"].rsplit(",", 1)
+            rx, ry = (float(v) for v in xy.split(","))
+            rw, rh = (float(v) for v in size.split("x"))
+            out.append((ww, wh, fw, fh, rx, ry, rw, rh))
+    return out
+
+
+def picture_box(img):
+    """The bounding box (x, y, w, h) of the pixels that are not black."""
+    iw, ih, px = img
+    x0, y0, x1, y1 = iw, ih, -1, -1
+    for y in range(ih):
+        row = px[y * iw * 3:(y + 1) * iw * 3]
+        left = len(row) - len(row.lstrip(b"\0"))
+        if left == len(row):
+            continue
+        right = len(row) - len(row.rstrip(b"\0"))
+        y0 = min(y0, y)
+        y1 = y
+        x0 = min(x0, left // 3)
+        x1 = max(x1, iw - 1 - right // 3)
+    return x0, y0, x1 - x0 + 1, y1 - y0 + 1
+
+
+PRESENT = ["gamekeys", "wait 30", "presentstate", "shot main", "key esc", "wait 10", "presentstate",
+           "shot menu", "key esc", "wait 5"]
+
+
+def test_present_aspect(t):
+    """The 320x200 frame of the low resolution fills a 4:3 rectangle of the
+    window, as on the 4:3 monitor of DOS (Dtu_fix_lowres_aspect), with black
+    bars at the sides of a 16:9 or 16:10 window, in both renderers, in the
+    game and in a menu. The 640x480 frame of the high resolution is 4:3 too.
+    -squarepixels gives square pixels (16:10). The screenshot of
+    ASCENT_SHOT_SIZE is the window as it shows the frame."""
+    cases = [(["-lowres"], "1280x720", 4 / 3), (["-lowres"], "960x720", 4 / 3), (["-lowres"], "1280x800", 4 / 3),
+             (["-lowres", "-software"], "1280x720", 4 / 3), ([], "1280x720", 4 / 3),
+             (["-lowres", "-squarepixels"], "1280x720", 1.6), (["-lowres", "ASCENT_NO_GL"], "1280x720", 4 / 3)]
+    for extra, size, want in cases:
+        env = {"ASCENT_WINDOW_SIZE": size, "ASCENT_SHOT_SIZE": size}
+        nogl = "ASCENT_NO_GL" in extra
+        if nogl:
+            # the SDL_Renderer form of video.c; its screenshot is the frame
+            env["ASCENT_NO_GL"] = "1"
+        s, _ = t.run("present_aspect", PRESENT, extra=[a for a in extra if a != "ASCENT_NO_GL"], env=env)
+        ww, wh = (int(v) for v in size.split("x"))
+        p = present_states(t)
+        assert len(p) == 2, "%s %s: %d present states" % (extra, size, len(p))
+        for st, shot in zip(p, ("main", "menu")):
+            sw, sh, fw, fh, rx, ry, rw, rh = st
+            label = "%s %s %s" % (extra, size, shot)
+            assert (sw, sh) == (ww, wh), "%s: window %dx%d" % (label, sw, sh)
+            assert (fw, fh) == ((640, 480) if "-lowres" not in extra else (320, 200)), "%s: frame %dx%d" % (label, fw, fh)
+            assert abs(rw / rh - want) < 0.01, "%s: shape %.4f (rect %.0fx%.0f)" % (label, rw / rh, rw, rh)
+            # the largest rectangle of that shape, in the middle
+            assert abs(rw - ww) < 1 or abs(rh - wh) < 1, "%s: rect %.0fx%.0f" % (label, rw, rh)
+            # (the OpenGL form keeps the rectangle in whole pixels)
+            assert abs(rx * 2 + rw - ww) <= 3 and abs(ry * 2 + rh - wh) <= 3, "%s: not centered" % label
+            if not nogl:
+                bx, by, bw, bh = picture_box(s[shot])
+                assert abs(bw / bh - want) < 0.01, "%s: the picture is %dx%d" % (label, bw, bh)
+
+
+def test_window_mouse_16_9(t):
+    """A mouse event of the system in a 16:9 window lands on the right
+    pixel of the 320x200 frame shown at 4:3 (the bars are 160 pixels wide in
+    a 1280x720 window, a frame pixel is 3 by 3.6 window pixels), in both
+    renderers and with -squarepixels (1152x720 at x 64, 3.6 by 3.6). A click
+    on the item Graphics of the ESC menu opens the Graphics menu."""
+    points = [(16, 20), (160, 100), (300, 180)]
+    for extra, x0, kx, nogl in ((["-lowres"], 160, 3.0, 0), (["-lowres", "-software"], 160, 3.0, 0),
+                                (["-lowres"], 160, 3.0, 1), (["-lowres", "-squarepixels"], 64, 3.6, 0)):
+        lines = ["gamekeys", "wait 30", "key esc", "wait 10"]
+        for fx, fy in points:
+            lines += ["winmove %.1f %.1f" % (x0 + (fx + 0.5) * kx, (fy + 0.5) * 3.6), "wait 3", "mousestate"]
+        # the item Graphics of the ESC menu (frame 130, 129)
+        lines += ["winmove %.1f %.1f" % (x0 + 130.5 * kx, 129.5 * 3.6), "wait 3", "shot menu",
+                  "winclick %.1f %.1f" % (x0 + 130.5 * kx, 129.5 * 3.6), "wait 10", "shot gfx",
+                  "key esc", "wait 5", "key esc", "wait 5"]
+        env = {"ASCENT_WINDOW_SIZE": "1280x720"}
+        if nogl:
+            env["ASCENT_NO_GL"] = "1"      # the SDL_Renderer form of video.c
+        s, _ = t.run("window_mouse", lines, extra=extra, env=env)
+        extra = extra + (["ASCENT_NO_GL"] if nogl else [])     # for the messages
+        got = []
+        for line in t.stdout.splitlines():
+            if line.startswith("Mousestate "):
+                f = dict(kv.split("=") for kv in line.split()[1:])
+                got.append((int(f["x"]), int(f["y"])))
+        assert got == points, "%s: the mouse is at %s, not %s" % (extra, got, points)
+        # the menus are 320x200 frames: compare the middle of the frame
+        a, b = s["menu"], s["gfx"]
+        assert a[0] == b[0] and a[1] == b[1]
+        assert differ(a[2], b[2]) > 0.1, "%s: the click did not open the Graphics menu" % extra
 
 
 # The text of the message box of the main screen, high resolution

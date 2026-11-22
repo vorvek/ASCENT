@@ -542,6 +542,13 @@ setting Upscaled textures (`engine/main/dtuhdui.c`, the compose step of
 | 195 | 620x122 | Khelben, the talking head of the Blackstaff screen: 7 mouth pictures of 82x117 | face, RGBA |
 | 27 to 56 | 160x160 | Blackstaff screen, the pictures that the speech shows (`~pN`) | x4plus |
 
+The files keep the pixel grid of the original picture (57 is 1920x1200, 6
+times 320x200). gpu.c draws each file in the rectangle of the original
+picture in the frame, so the file takes the shape of the frame on the screen:
+with the 4:3 screen of the low resolution (`Dtu_fix_lowres_aspect`) a 320x200
+picture is 1.2 times taller than its file, as the original was on the DOS
+monitor. Do not make the 320x200 files at 4:3.
+
 Picture 10 (Waterdeep) was made with x4plus first: the model made the grass a flat
 green. The grass of the original is a fine grain of green, brown and red pixels.
 4x-UltraSharp keeps the grain and the detail of the rocks and roofs (8x8 block

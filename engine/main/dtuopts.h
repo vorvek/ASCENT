@@ -96,6 +96,16 @@ extern int Dtu_shader;
 #define DTU_SHADER_SUBTLE	1
 #define DTU_SHADER_VGA		2
 
+// ASCENT: the shape of the low resolution frame. The DOS game showed its
+// 320x200 frame on a 4:3 monitor, so each pixel was 1.2 times taller than
+// wide; the 3D view (aspect 1.2, 0x41193) is made for that. The interface
+// pictures are those of 640x480 at half size, so DOS showed them 1.2 times
+// taller than in high resolution. 1 (default): the window shows the 320x200
+// frame at 4:3, as DOS did (plat_bind_vga_aspect), in both renderers. 0:
+// square pixels (16:10), the form of the port before. "4:3 screen" in the Graphics menu, LowresAspect
+// in ascent.cfg; the option -squarepixels sets 0 for one run.
+extern int Dtu_fix_lowres_aspect;
+
 // Streaming safe music: the file <hd>/music/NAME.ogg plays in place of
 // the track NAME.TUN when it exists (dtumusic.c, tools/music_replace.py).
 // For a track that a video platform claims. Off by default (unlike the

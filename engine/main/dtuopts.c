@@ -37,6 +37,7 @@ int Dtu_safe_music = 0;
 int Dtu_anim_interp = 1;
 int Dtu_improved_infravision = 1;
 int Dtu_target_hint = 1;
+int Dtu_fix_lowres_aspect = 1;		// ASCENT: the 320x200 frame at 4:3 (dtuopts.h)
 
 #define DTU_OPTS_FILE	"ascent.cfg"
 #define DTU_DEFAULTS_FILE	"default.cfg"	// ASCENT: in the installation folder
@@ -49,6 +50,7 @@ static int File_gpu_renderer = -1, File_render_scale = -1;
 static int Arg_gpu_renderer = -1, Arg_render_scale = -1;
 static int File_language = -1, Arg_language = -1;
 static int File_rulebook = -1, Arg_rulebook = -1;
+static int File_lowres_aspect = -1, Arg_lowres_aspect = -1;
 
 typedef struct {
 	const char *name;
@@ -73,6 +75,7 @@ static dtu_opt Opts[] = {
 	{ "ImprovedInfravision", &Dtu_improved_infravision, 0, 1 },
 	{ "TargetHint",          &Dtu_target_hint,          0, 1 },
 	{ "RulebookItems",       &Dtu_rulebook_items,       0, 1 },		// dtuitemfix.h
+	{ "LowresAspect",        &Dtu_fix_lowres_aspect,    0, 1 },
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
@@ -163,6 +166,12 @@ void dtu_opts_load(void)
 	}
 	if (FindArg("-origitems"))
 		Dtu_fix_item_names = 0;
+	// ASCENT: -squarepixels shows the 320x200 frame with square pixels for
+	// one run (Dtu_fix_lowres_aspect)
+	if (FindArg("-squarepixels")) {
+		File_lowres_aspect = Dtu_fix_lowres_aspect;
+		Dtu_fix_lowres_aspect = Arg_lowres_aspect = 0;
+	}
 	if (FindArg("-notargethint"))		// a comparison with the original cursor
 		Dtu_target_hint = 0;
 	if (FindArg("-noimprovedinfra"))		// a comparison with the original infravision
@@ -187,6 +196,8 @@ void dtu_opts_save(void)
 			v = File_render_scale;
 		if (Opts[i].value == &Dtu_rulebook_items && File_rulebook >= 0 && v == Arg_rulebook)
 			v = File_rulebook;
+		if (Opts[i].value == &Dtu_fix_lowres_aspect && File_lowres_aspect >= 0 && v == Arg_lowres_aspect)
+			v = File_lowres_aspect;
 		fprintf(f, "%s=%d\n", Opts[i].name, v);
 	}
 	{

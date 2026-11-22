@@ -137,7 +137,10 @@ runs in place of the normal break **V**:
   stop before the movie (as 0xA48D0).
 - Picture: by default the 432x320 picture fills the window with its own
   aspect (square pixels, as on the 640x480 screen). `-movienative` shows it
-  as the original: 1:1 in the middle of a 640x480 frame.
+  as the original: 1:1 in the middle of a 640x480 frame. The setting "4:3
+  screen" (`Dtu_fix_lowres_aspect`, for the 320x200 frame of the low
+  resolution) does not change the movies: their pixels were square on the
+  DOS screen too.
 - Upscaled pictures: see dtumovie.h (`-hddir`, `-nohdmovies`) and
   `tools/movies_hd.py`. The sound and the timing stay those of the MVE file.
   All five movies use a gaussian resample (ffmpeg `flags=gauss`) and a

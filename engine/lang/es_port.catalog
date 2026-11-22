@@ -291,6 +291,10 @@ id: port.animation_interpolation
 en: Animation interpolation
 tr: Interpolación de animaciones
 
+id: port.4_3_screen
+en: 4:3 screen
+tr: Pantalla 4:3
+
 id: port.improved_occlusion
 en: Improved occlusion
 tr: Oclusión mejorada
