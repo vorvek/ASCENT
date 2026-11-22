@@ -905,6 +905,9 @@ static uint64_t Stats_frames, Stats_views, Stats_gpu_ns, Stats_gpu_samples;
 static uint64_t Stats_view_cpu_us, Stats_frame_us_sum, Stats_frame_samples;
 static uint64_t Stats_last_present_us, Stats_view_begin_us;
 static uint64_t Stats_frame_us_max;
+// the frames longer than 25 ms and 50 ms, and the present count of the
+// last of them
+static uint64_t Stats_slow25, Stats_slow50, Stats_slow_last;
 static uint64_t Stats_hd_uploads, Stats_hd_upload_us;
 // the polygons and triangles of the views, the CPU time of the longest
 // view, and the GPU time of the output (the scale to the window and the
@@ -1215,6 +1218,9 @@ static void stats_print(void)
 	if (Stats_frame_samples)
 		printf("GPU stats: frame time avg %.3f ms, max %.3f ms (present to present)\n",
 			Stats_frame_us_sum / 1000.0 / Stats_frame_samples, Stats_frame_us_max / 1000.0);
+	if (Stats_frame_samples)
+		printf("GPU stats: %d frames over 25 ms, %d over 50 ms, the last at present %d\n",
+			(int) Stats_slow25, (int) Stats_slow50, (int) Stats_slow_last);
 	if (Stats_views) {
 		printf("GPU stats: 3D view CPU time avg %.3f ms, max %.3f ms (begin to end of the view)\n",
 			Stats_view_cpu_us / 1000.0 / Stats_views, Stats_view_cpu_us_max / 1000.0);
@@ -2904,6 +2910,12 @@ void gpu_present(const uint8_t *pixels, int w, int h, int pitch, const uint8_t *
 			Stats_frame_samples++;
 			if (d > Stats_frame_us_max)
 				Stats_frame_us_max = d;
+			if (d > 25000) {
+				Stats_slow25++;
+				Stats_slow_last = Stats_frames;
+			}
+			if (d > 50000)
+				Stats_slow50++;
 		}
 		Stats_last_present_us = t;
 		Stats_frames++;
