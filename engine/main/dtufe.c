@@ -2448,13 +2448,10 @@ int fe_load_game(int in_game)
 	// files count from it)
 	if ((int) get_u32(b + SG_GAME_TIME) > 0)
 		GameTime = (fix) get_u32(b + SG_GAME_TIME);
-	// ASCENT: the difficulty of the save (offset 7362 into 0x13CDCA). A
-	// value out of range (an old save of the port wrote 0) gives the 2 of
-	// a new game (0x5851A).
-	{
-		int d = (int) get_u32(b + SG_DIFFICULTY);
-		Difficulty_level = (d >= 1 && d < NDL) ? d : 2;
-	}
+	// ASCENT: the game has no difficulty menu, so each game plays at the 2
+	// of a new game (0x5851A). The value of the save (offset 7362 into
+	// 0x13CDCA) is not used: old saves of the port have 0 or 1 there.
+	Difficulty_level = 2;
 	dtu_dlg_reset_view();		// ASCENT: no dark view of a conversation in the loaded game
 	dtu_scroll_reset();			// ASCENT: no scroll text screen in the loaded game
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
