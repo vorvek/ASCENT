@@ -146,6 +146,8 @@ void dtu_spell_dispel(object *obj);
 // 0x91EC1, a creature: 0xAE3BB). An area spell has its area around the
 // target (0x90CEF).
 fix dtu_spell_cast_on(int spell, object *target, object *caster);
+// 0x2A637: the counter of Hold Person (22, 52) is 1 before a touch spell.
+void dtu_spell_touch_counter(int spell);
 // 0x9305D: a cast of the object stops. hit 1: by a hit (the slot is used,
 // "Your spell was interrupted!"), 0: by the jump key ("Your spell was
 // aborted."). Returns 1 if a cast stopped.

@@ -20,6 +20,14 @@ an input file unless you name it as the output.
 
 ## Checks of the port against the data
 
+- `run_game_checks.py`: run all the checks below that need the game files and print one line for each and a total. Run it after each merge: `python -I tools/run_game_checks.py --jobs 4`. The defaults: `build/engine/main/ascent.exe` (and `test_dtutblfix.exe` beside it), `--game E:/UNDAMONTAN/DTU`, `--gamedata` the `gamedata/` of the main checkout (also from a worktree), `--library` the reference library of the decompilation. `--list` prints the commands, `--only` picks checks.
+- `check_items.py`: the item effects (potions, wands, rings, armor sets, the Sword of W'hin, misc items) with `-chartest`. See `docs/audit/gear.md`.
+- `check_desc.py`: the texts of the description window and their numbers against the game. See `docs/description_window.md`.
+- `questtest.py`: the quests of the campaign, with a save and a load. See `docs/re/quests.md`.
+- `priestcheck.py`: the priest spells and turn undead. See `docs/audit/spells-priest.md`.
+- `check_saveload.py`: a save and a load with a level change, and the spell slots.
+- `check_itemfix.py`: the item corrections of the port against the level tables.
+- `check_tblfix.py`: the table fixup of 1.3 (0x1A344) against the level tables and `tblfix.py`.
 - `lvlcheck.py`: compare the level loader of the port (`-checklevel`) with `lvl.py`.
 - `objcheck.py`: check the object records of the level files against the level tables (`docs/re/objects.md`).
 - `check_creature_setup.py`: compare the creature setup by name of the port (`-setuplog`) with the reference library of the decompilation.
