@@ -8,6 +8,7 @@
  * "guess" marks a part that is not verified.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1136,7 +1137,7 @@ void dtu_char_press_hot_key(int key)
 
 		if ((arrow && Dtu_char.slot[DTU_SLOT_BOW].n < 0) || (!arrow && bolt && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0)) {
 			// 0x1258C0 with "bow" and "arrow" or "crossbow" and "bolt"
-			HUD_init_message("You need a %s to fire %ss", arrow ? "bow" : "crossbow", arrow ? "arrow" : "bolt");
+			HUD_init_message("You need a %s to fire %ss", arrow ? LT("bow") : LT("crossbow"), arrow ? LT("arrow") : LT("bolt"));
 			refuse(key, "no launcher");
 			return;
 		}
@@ -1281,6 +1282,7 @@ int dtu_char_choice(char *text, int n, ...)
 		dtu_char_log("choice box '%s': %d (option -autochoice)", text, r);
 		return r;
 	}
+	text = dtu_tr(text);		// ASCENT: the text of the code in the language (dtulang.h)
 	switch (n) {
 		case 1: r = nm_messagebox(NULL, 1, c[0], "%s", text); break;
 		case 2: r = nm_messagebox(NULL, 2, c[0], c[1], "%s", text); break;
@@ -1914,13 +1916,13 @@ static void check_levels(void)
 
 	if (new1) {
 		char text[120];
-		sprintf(text, "Your character has attained new %s level", game_text(642 + (pa->class1 == 3 ? 5 : pa->class1), class_name[pa->class1]));
+		sprintf(text, LT("Your character has attained new %s level"), game_text(642 + (pa->class1 == 3 ? 5 : pa->class1), class_name[pa->class1]));
 		HUD_init_message("%s", text);
 		hp += level_hit_points(pa->class1, old1, pa->class1_level);
 	}
 	if (new2) {
 		char text[120];
-		sprintf(text, "Your character has attained new %s level", game_text(642 + (pa->class2 == 3 ? 5 : pa->class2), class_name[pa->class2]));
+		sprintf(text, LT("Your character has attained new %s level"), game_text(642 + (pa->class2 == 3 ? 5 : pa->class2), class_name[pa->class2]));
 		HUD_init_message("%s", text);
 		hp += level_hit_points(pa->class2, old2, pa->class2_level);
 	}

@@ -7,6 +7,7 @@
  * An address in a comment is an address of DTUGAME.EXE 1.3.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,8 +65,8 @@ static int Final[6], Final_percentile;		// the result (record at 0x3A63F8)
 
 #define BONUS_POINTS	7		// 0x89B95. The manual says 5.
 
-static char *Race_word[6] = { "Human", "Half Elven", "Elven", "Drow", "Dwarven", "Halfling" };	// 0x13F850
-static char *Sex_word[2] = { "Male", "Female" };
+static char *Race_word[6] = { LN("Human"), LN("Half Elven"), LN("Elven"), LN("Drow"), LN("Dwarven"), LN("Halfling") };	// 0x13F850
+static char *Sex_word[2] = { LN("Male"), LN("Female") };
 
 // 0x13FECE: the class masks that a race can have. Bit (mask - 1) is set
 // if the combination "mask" is allowed.
@@ -182,7 +183,7 @@ static char *help_im_a(int id)			// "I am a %s %s %s"
 	char cw[64];
 
 	class_words(cw);
-	sprintf(Help_buf, fe_text(629), Sex_word[Sex], Race_word[Race], cw);
+	sprintf(Help_buf, fe_text(629), LT(Sex_word[Sex]), LT(Race_word[Race]), cw);
 	return Help_buf;
 }
 
@@ -280,18 +281,18 @@ static char *s1_help(int id)
 	switch (id) {
 	case 0:		// 0x88423
 		if (Chosen)
-			sprintf(Help_buf, "%s %s %s %s", fe_text(632), Sex_word[Sex], Race_word[Race], fe_text(633));
+			sprintf(Help_buf, "%s %s %s %s", fe_text(632), LT(Sex_word[Sex]), LT(Race_word[Race]), fe_text(633));
 		else
 			sprintf(Help_buf, "%s %s", fe_text(632), fe_text(633));
 		return Help_buf;
-	case 2: return "Return to main menu";		// 0x13F7F3
+	case 2: return LN("Return to main menu");		// 0x13F7F3
 	case 3: return fe_text(Chosen ? 611 : 612);
 	case 4: return fe_text(Race > 0 ? 710 : 714);
 	case 6: return fe_text(Race < 5 ? 711 : 715);
 	case 5:
 	case 7:
 		sprintf(Help_buf, "%s a %s %s", fe_text((Chosen && Sex == (id == 7)) ? 608 : 607),
-			Sex_word[id == 7], Race_word[Race]);
+			LT(Sex_word[id == 7]), LT(Race_word[Race]));
 		return Help_buf;
 	}
 	return NULL;
@@ -380,10 +381,10 @@ static char *s2_help(int id)			// 0x881ED
 
 	if (id == 0) {
 		class_words(cw);
-		sprintf(Help_buf, "%s %s %s %s %s", fe_text(632), Sex_word[Sex], Race_word[Race], cw, fe_text(633));
+		sprintf(Help_buf, "%s %s %s %s %s", fe_text(632), LT(Sex_word[Sex]), LT(Race_word[Race]), cw, fe_text(633));
 		return Help_buf;
 	}
-	if (id == 2) return "Return to Race and Gender Screen";		// 0x13F80B
+	if (id == 2) return LN("Return to Race and Gender Screen");		// 0x13F80B
 	if (id == 3) return fe_text(Class_mask ? 613 : 614);
 	if (id >= 4 && id <= 7) {
 		int c = id - 4;
@@ -824,7 +825,7 @@ static int s3_may_leave(fe_screen *s)			// 0x88CE8
 
 static char *s3_help(int id)
 {
-	if (id == 14) return "Return to Character Class Screen";		// 0x13F79D
+	if (id == 14) return LN("Return to Character Class Screen");		// 0x13F79D
 	if (id == 15) {
 		char *msg = s3_check();
 		return msg ? msg : fe_text(631);
@@ -1166,7 +1167,7 @@ static void make_player(void)
 	Players[Player_num].callsign[CALLSIGN_LEN] = 0;
 
 	dtu_log("Front end: new character '%s': %s %s, class mask %d, STR %d/%02d DEX %d CON %d INT %d WIS %d CHA %d, %d hit points, archive %s\n",
-		Name, Sex_word[Sex], Race_word[Race], Class_mask, Final[ST_STR], Final_percentile, Final[ST_DEX], Final[ST_CON],
+		Name, LT(Sex_word[Sex]), LT(Race_word[Race]), Class_mask, Final[ST_STR], Final_percentile, Final[ST_DEX], Final[ST_CON],
 		Final[ST_INT], Final[ST_WIS], Final[ST_CHA], pa->max_hit_points, Dtu_player_archive);
 }
 

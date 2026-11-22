@@ -6,6 +6,7 @@
  * docs/re/combat.md, part B.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -128,7 +129,7 @@ static int spell_flag(int spell,char *flag)
 
 static char *spell_name(int spell)
 {
-	return spell_ok(spell) ? Spell_info[spell].name : "?";
+	return spell_ok(spell) ? dtu_tr_name(Spell_info[spell].name) : "?";		// ASCENT: the language (dtulang.h)
 }
 
 // Spell_info +0x36 bit 0: type=AREA
@@ -579,10 +580,10 @@ static const short Fx_timer[32] = {
 };
 
 static const char *Fx_name[32] = {
-	"Armor", "Bless", "Blindness", "Chill Touch", "Deafness", "Confusion", "Detect Magic", "Feather Fall",
-	"Fear", "Protection From Fire", "Resist Fire", "Flying", "Free Action", "Haste", "Hold Person", "Infravision",
-	"Improved Invisibility", "Invisibility", "Invulnerability", "Jump", "Find Traps", "Levitate", "Rary's Mnemonic Enhancer", "Protection From Evil",
-	"Regeneration", "Shield", "Sleep", "Slow", "Spider Climb", "Stoneskin", "Strength", "Magical Vestment"
+	LN("Armor"), LN("Bless"), LN("Blindness"), LN("Chill Touch"), LN("Deafness"), LN("Confusion"), LN("Detect Magic"), LN("Feather Fall"),
+	LN("Fear"), LN("Protection From Fire"), LN("Resist Fire"), LN("Flying"), LN("Free Action"), LN("Haste"), LN("Hold Person"), LN("Infravision"),
+	LN("Improved Invisibility"), LN("Invisibility"), LN("Invulnerability"), LN("Jump"), LN("Find Traps"), LN("Levitate"), LN("Rary's Mnemonic Enhancer"), LN("Protection From Evil"),
+	LN("Regeneration"), LN("Shield"), LN("Sleep"), LN("Slow"), LN("Spider Climb"), LN("Stoneskin"), LN("Strength"), LN("Magical Vestment")
 };
 
 // The texts "NAME expired." of 0x9002C (0x12E385 to 0x12E5E5). NULL: no
@@ -590,10 +591,10 @@ static const char *Fx_name[32] = {
 // invisibilities clear both bits before the test of bit 16 (0x906B9), so
 // the text is always "Invisibility expired.".
 static const char *Fx_expired[32] = {
-	"Armor", "Bless", "Blinded", "Chill Touch", NULL, "Confusion", "Detect Magic", NULL,
-	"Fear", "Protection From Fire", "Resist Fire", "Flying", "Free Action", "Haste", "Hold Person", "Infravision",
-	"Invisibility", "Invisibility", "Invulnerability", "Jump", "Find Traps", "Levitate", "Rary's Mnemonic Enhancer", "Protection From Evil",
-	NULL, "Shield", "Sleep", "Slow", "Spider Climb", "Stoneskin", "Strength", "Magical Vestment"
+	LN("Armor"), LN("Bless"), LN("Blinded"), LN("Chill Touch"), NULL, LN("Confusion"), LN("Detect Magic"), NULL,
+	LN("Fear"), LN("Protection From Fire"), LN("Resist Fire"), LN("Flying"), LN("Free Action"), LN("Haste"), LN("Hold Person"), LN("Infravision"),
+	LN("Invisibility"), LN("Invisibility"), LN("Invulnerability"), LN("Jump"), LN("Find Traps"), LN("Levitate"), LN("Rary's Mnemonic Enhancer"), LN("Protection From Evil"),
+	NULL, LN("Shield"), LN("Sleep"), LN("Slow"), LN("Spider Climb"), LN("Stoneskin"), LN("Strength"), LN("Magical Vestment")
 };
 
 static int fx_bit(int mask)
@@ -678,7 +679,7 @@ static void fx_end(object *obj,int b)
 		digi_play_sample(163,F1_0);
 	if (obj->type == OBJ_PLAYER) {
 		if (Fx_expired[b]) {
-			HUD_init_message("%s expired.",Fx_expired[b]);
+			HUD_init_message("%s expired.",dtu_tr(Fx_expired[b]));
 			dtu_spell_log("spell: message: %s expired.",Fx_expired[b]);
 		}
 		dtu_char_update();
@@ -928,13 +929,14 @@ static void msg_setup(object *target,object *caster)
 {
 	const char *t, *c;
 
-	t = (target == ConsoleObject) ? "You" : (target->type == OBJ_LIGHT) ? "a trap" : dtu_object_display_name(target);
-	c = (caster == ConsoleObject) ? "You" : (caster == NULL || caster->type == OBJ_LIGHT) ? "a trap" : dtu_object_display_name(caster);
+	// ASCENT: the words in the language of the text (dtulang.h)
+	t = (target == ConsoleObject) ? LT("You") : (target->type == OBJ_LIGHT) ? LT("a trap") : dtu_object_display_name(target);
+	c = (caster == ConsoleObject) ? LT("You") : (caster == NULL || caster->type == OBJ_LIGHT) ? LT("a trap") : dtu_object_display_name(caster);
 	snprintf(Msg_t,sizeof(Msg_t),"%s",t ? t : "");
 	snprintf(Msg_c,sizeof(Msg_c),"%s",c ? c : "");
-	Msg_were = (target == ConsoleObject) ? "were" : "was";
-	Msg_are = (caster == ConsoleObject) ? "are" : "is";
-	Msg_have = (caster == ConsoleObject) ? "have" : "has";
+	Msg_were = (target == ConsoleObject) ? LT("were") : LT("was");
+	Msg_are = (caster == ConsoleObject) ? LT("are") : LT("is");
+	Msg_have = (caster == ConsoleObject) ? LT("have") : LT("has");
 	Msg_show = message_rule(target,caster);
 }
 
@@ -944,7 +946,7 @@ static void say(const char *format, ...)
 	va_list args;
 
 	va_start(args,format);
-	vsnprintf(buf,sizeof(buf),format,args);
+	vsnprintf(buf,sizeof(buf),dtu_tr(format),args);		// ASCENT: the language (dtulang.h)
 	va_end(args);
 	dtu_spell_log("spell: message%s: %s",Msg_show ? "" : " (not shown)",buf);
 	if (Msg_show)
@@ -1861,20 +1863,20 @@ static int cast_allowed(int spell,char *msg,int size)
 
 	msg[0] = 0;
 	if (!char_is(DTU_CLASS_MAGE) && !char_is(DTU_CLASS_CLERIC)) {
-		snprintf(msg,size,"You are not a spell caster.");
+		snprintf(msg,size,"%s",LT("You are not a spell caster."));
 		return 0;
 	}
-	if (b == 0 && !char_is(DTU_CLASS_MAGE)) { snprintf(msg,size,"You are not a Mage."); return 0; }
-	if (b == 1 && !char_is(DTU_CLASS_CLERIC)) { snprintf(msg,size,"You are not a Cleric."); return 0; }
+	if (b == 0 && !char_is(DTU_CLASS_MAGE)) { snprintf(msg,size,"%s",LT("You are not a Mage.")); return 0; }
+	if (b == 1 && !char_is(DTU_CLASS_CLERIC)) { snprintf(msg,size,"%s",LT("You are not a Cleric.")); return 0; }
 	if (b < 0)
 		return 0;
 	cl = char_class_level(b == 0 ? DTU_CLASS_MAGE : DTU_CLASS_CLERIC);
 	if (lvl - 1 > cl) {
-		snprintf(msg,size,"Spell is of too high a level.");
+		snprintf(msg,size,"%s",LT("Spell is of too high a level."));
 		return 0;
 	}
 	if (lvl < 1 || lvl > 9 || Dtu_spell_slots_left[b][lvl-1] <= 0) {
-		snprintf(msg,size,"Out of spell points for this spell level.");
+		snprintf(msg,size,"%s",LT("Out of spell points for this spell level."));
 		return 0;
 	}
 	// A mage spell in armor that is not MAGIC_OK
@@ -1882,14 +1884,14 @@ static int cast_allowed(int spell,char *msg,int size)
 		int a = Dtu_char.slot[DTU_SLOT_ARMOR].n;
 		if (a >= 0 && a < Dtu_n_inventory && Dtu_inventory[a].type == OBJ_ARMOR && Dtu_inventory[a].id < N_armor_types &&
 			 !bm_tbl_has_flag(Armor_info[Dtu_inventory[a].id].record,"MAGIC_OK")) {
-			snprintf(msg,size,"You cannot cast a spell while wearing %s.",Dtu_inventory[a].name);
+			snprintf(msg,size,LT("You cannot cast a spell while wearing %s."),dtu_tr_name(Dtu_inventory[a].name));
 			return 0;
 		}
 	}
 	// Player object +0x1AE bit 0x80: set by Levitate (0x8EDB2) and by the
 	// climb of Climb Walls (0x9531D, 0x95413)
 	if ((ConsoleObject->dtu.m_88 & DTU_FX_LEVITATE) || (Dtu_player_state & DTU_PS_CLIMBING)) {
-		snprintf(msg,size,"You cannot cast a spell while climbing.");
+		snprintf(msg,size,"%s",LT("You cannot cast a spell while climbing."));
 		return 0;
 	}
 	return 1;
@@ -1903,7 +1905,7 @@ static int cast_checks(int spell)
 		return 1;
 	// 0x41B0D and 0x41C2D: sound 3000 (volume 1.0) with the refusals of
 	// 0x356E0 and of the armor; the climbing test (0x41C6E) has no sound
-	if (strcmp(msg,"You cannot cast a spell while climbing."))
+	if (strcmp(msg,LT("You cannot cast a spell while climbing.")))
 		digi_play_sample(3000,F1_0);
 	if (msg[0])
 		HUD_init_message("%s",msg);
@@ -2057,9 +2059,9 @@ int dtu_spell_fire(void)
 			t = spell_int(spell,"cast_time",0);
 			Cast_timer = GameTime + i2f(t);
 			Cast_spell = spell;
-			if (t > 60) snprintf(msg,sizeof(msg),"Casting time: %d minutes ...",t / 60);
-			else if (t > 1) snprintf(msg,sizeof(msg),"Casting time: %d seconds ...",t);
-			else snprintf(msg,sizeof(msg),"Casting time: 1 second ...");
+			if (t > 60) snprintf(msg,sizeof(msg),LT("Casting time: %d minutes ..."),t / 60);
+			else if (t > 1) snprintf(msg,sizeof(msg),LT("Casting time: %d seconds ..."),t);
+			else snprintf(msg,sizeof(msg),"%s",LT("Casting time: 1 second ..."));
 			HUD_init_message("%s",msg);
 			dtu_spell_log("spell: the cast of '%s' starts, cast_time=%d, the cast at %.3f: \"%s\"",spell_name(spell),t,
 				f2fl(Cast_timer),msg);
@@ -2186,11 +2188,11 @@ int dtu_spell_set_effect(object *obj,int mask,fix duration,int keep_later,int me
 	obj->dtu.m_88 |= mask;
 	if (message && obj->type == OBJ_PLAYER) {
 		if (duration >= DTU_FX_NO_END)
-			HUD_init_message("%s.",Fx_name[b]);
+			HUD_init_message("%s.",dtu_tr(Fx_name[b]));
 		else if (duration >= MINUTE)
-			HUD_init_message("%s for %d minutes.",Fx_name[b],timer_ms(duration) / 60);
+			HUD_init_message("%s for %d minutes.",dtu_tr(Fx_name[b]),timer_ms(duration) / 60);
 		else
-			HUD_init_message("%s for %d seconds.",Fx_name[b],timer_ms(duration));
+			HUD_init_message("%s for %d seconds.",dtu_tr(Fx_name[b]),timer_ms(duration));
 	}
 	dtu_spell_log("spell: effect %s set on obj %d %s for %.1f seconds%s",Fx_name[b],(int)(obj-Objects),target_name(obj),
 		duration >= DTU_FX_NO_END ? -1.0 : f2fl(duration),keep_later ? " (the later end stays)" : "");
@@ -2761,10 +2763,10 @@ void dtu_spell_screen_draw(int hires)
 	gr_set_curfont(GAME_FONT);
 	gr_set_fontcolor(gray,-1);
 	if (n == 0) {
-		gr_string(x,y,"No spells");
+		gr_string(x,y,LT("No spells"));
 		return;
 	}
-	sprintf(text,"Slots M %d/%d %d/%d %d/%d C %d/%d %d/%d %d/%d",
+	sprintf(text,LT("Slots M %d/%d %d/%d %d/%d C %d/%d %d/%d %d/%d"),
 		Dtu_spell_slots_left[0][0],Dtu_spell_slots_max[0][0],Dtu_spell_slots_left[0][1],Dtu_spell_slots_max[0][1],
 		Dtu_spell_slots_left[0][2],Dtu_spell_slots_max[0][2],Dtu_spell_slots_left[1][0],Dtu_spell_slots_max[1][0],
 		Dtu_spell_slots_left[1][1],Dtu_spell_slots_max[1][1],Dtu_spell_slots_left[1][2],Dtu_spell_slots_max[1][2]);

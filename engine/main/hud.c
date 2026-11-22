@@ -127,6 +127,7 @@ static char rcsid[] = "$Id: hud.c 2.2 1995/03/30 16:36:40 mike Exp $";
 
 
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -281,7 +282,10 @@ void HUD_init_message(char * format, ... )
 
 		va_start(args, format );
 		message = &HUD_messages[hud_last][0];
-		vsprintf(message,format,args);
+		// ASCENT: the text of the code in the language (dtulang.h). A longer
+		// message is cut (a translation can be longer than the English text;
+		// the original wrote past the buffer and stopped with an error).
+		vsnprintf(message,HUD_MESSAGE_LENGTH,dtu_tr(format),args);
 		va_end(args);
 //		mprintf((0, "Hud_message: [%s]\n", message));
 

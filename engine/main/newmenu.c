@@ -480,6 +480,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: newmenu.c 2.8 1995/05/26 16:16:28 john Exp $";
 #pragma on (unreferenced)
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1165,6 +1166,15 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 	if (nitems < 1 )
 		return -1;
 
+	// ASCENT: the text of the code in the language of the text (dtulang.h).
+	// The strings of the text file are translated already. The text of an
+	// input item is the buffer of the caller and stays.
+	title = dtu_tr(title);
+	subtitle = dtu_tr(subtitle);
+	for (i=0; i<nitems; i++ )
+		if (item[i].type != NM_TYPE_INPUT && item[i].type != NM_TYPE_INPUT_MENU)
+			item[i].text = dtu_tr(item[i].text);
+
 	// ASCENT: the newmenu_do of Descent to Undermountain (0x63F41) does not
 	// call set_screen_mode. It draws in the current screen mode, which is
 	// 640x480 in the high resolution form. Descent 1 changed to 320x200 here.
@@ -1849,7 +1859,7 @@ int nm_messagebox1( char *title, void (*subfunction)(int nitems,newmenu_item * i
 	}
 	format = va_arg( args, char * );
 	nm_text[0] = 0;		// ASCENT: was sprintf with an empty format (compiler warning)
-	vsprintf(nm_text,format,args);
+	vsprintf(nm_text,dtu_tr(format),args);		// ASCENT: the text of the code in the language (dtulang.h)
 	va_end(args);
 
 	Assert(strlen(nm_text) < MESSAGEBOX_TEXT_SIZE);
@@ -1876,7 +1886,7 @@ int nm_messagebox( char *title, int nchoices, ... )
 	}
 	format = va_arg( args, char * );
 	nm_text[0] = 0;		// ASCENT: was sprintf with an empty format (compiler warning)
-	vsprintf(nm_text,format,args);
+	vsprintf(nm_text,dtu_tr(format),args);		// ASCENT: the text of the code in the language (dtulang.h)
 	va_end(args);
 
 	Assert(strlen(nm_text) < MESSAGEBOX_TEXT_SIZE );

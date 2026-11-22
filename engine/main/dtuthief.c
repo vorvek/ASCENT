@@ -7,6 +7,7 @@
  * details. A comment that says "guess" marks a part that is not verified.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -507,7 +508,7 @@ void dtu_thief_move_silently(void)
 	armor = metal_armor();
 	if (thief || pa->move_silently) {
 		if (armor) {
-			HUD_init_message("You cannot perform this action while wearing %s.", armor->name);
+			HUD_init_message("You cannot perform this action while wearing %s.", dtu_tr_name(armor->name));
 			return;
 		}
 		ok = dtu_thief_roll(1, NULL);
@@ -710,7 +711,7 @@ void dtu_thief_climb_start(object *obj, int segnum, int side)
 		return;
 	}
 	if ((armor = metal_armor()) != NULL) {
-		HUD_init_message("You cannot perform this action while wearing %s.", armor->name);
+		HUD_init_message("You cannot perform this action while wearing %s.", dtu_tr_name(armor->name));
 		return;
 	}
 	if (dtu_thief_roll(4, NULL) && !hand_is_weapon()) {

@@ -290,6 +290,7 @@ n *
 static char rcsid[] = "$Id: kconfig.c 2.11 1995/08/23 16:08:04 john Exp $";
 #pragma on (unreferenced)
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2608,9 +2609,9 @@ static const short Dtu_act_text[DTU_N_ACTIONS] = {
 };
 
 static char *Dtu_hot_names[DTU_N_HOT_ACTIONS + 2] = {
-	"Hot key 1", "Hot key 2", "Hot key 3", "Hot key 4", "Hot key 5",
-	"Hot key 6", "Hot key 7", "Hot key 8", "Hot key 9", "Hot key 10",
-	"Prev. hot key", "Next hot key",
+	LN("Hot key 1"), LN("Hot key 2"), LN("Hot key 3"), LN("Hot key 4"), LN("Hot key 5"),
+	LN("Hot key 6"), LN("Hot key 7"), LN("Hot key 8"), LN("Hot key 9"), LN("Hot key 10"),
+	LN("Prev. hot key"), LN("Next hot key"),
 };
 
 //------------------------------------------------------------------------
@@ -2936,7 +2937,7 @@ static char *dtu_key_name(int k)
 char *dtu_action_name(int act)
 {
 	if (act >= DTU_ACT_HOT_KEY_1 && act < DTU_N_ACTIONS)
-		return Dtu_hot_names[act - DTU_ACT_HOT_KEY_1];
+		return dtu_tr(Dtu_hot_names[act - DTU_ACT_HOT_KEY_1]);
 	if (act >= 0 && act < DTU_N_ACTIONS && Text_string[Dtu_act_text[act]])
 		return Text_string[Dtu_act_text[act]];
 	return "";
@@ -3233,7 +3234,7 @@ static void kc_change(int i)
 		kc_draw_item(i, 1);
 		return;
 	}
-	n = kc_wait_input(i, it->type == BT_PAD ? "Press a button or move a stick" :
+	n = kc_wait_input(i, it->type == BT_PAD ? LT("Press a button or move a stick") :
 		it->type == BT_KEY ? TXT_PRESS_NEW_KEY :
 		it->type == BT_JOY_BUTTON ? TXT_PRESS_NEW_JBUTTON :
 		it->type == BT_MOUSE_BUTTON ? TXT_PRESS_NEW_MBUTTON :
@@ -3506,9 +3507,9 @@ void dtu_kconfig_menu(void)
 		m[5].type = NM_TYPE_MENU; m[5].text = TXT_CUST_ABOVE;
 		m[6].type = NM_TYPE_TEXT; m[6].text = "";
 		m[7].type = NM_TYPE_MENU; m[7].text = TXT_CUST_KEYBOARD;
-		m[8].type = NM_TYPE_MENU; m[8].text = "Customize Hot Keys";
-		m[9].type = NM_TYPE_MENU; m[9].text = "Customize Gamepad";
-		m[10].type = NM_TYPE_MENU; m[10].text = "Reset to defaults";
+		m[8].type = NM_TYPE_MENU; m[8].text = LN("Customize Hot Keys");
+		m[9].type = NM_TYPE_MENU; m[9].text = LN("Customize Gamepad");
+		m[10].type = NM_TYPE_MENU; m[10].text = LN("Reset to defaults");
 		c = newmenu_do1(NULL, TXT_CONTROLS, 11, m, dtu_controls_menuset, c);
 		for (i = 0; i < 5; i++)
 			if (m[i].value)
@@ -3521,7 +3522,7 @@ void dtu_kconfig_menu(void)
 			dtu_kconfig(0, TXT_KEYBOARD);
 			break;
 		case 8:
-			dtu_kconfig(3, "Hot Keys");
+			dtu_kconfig(3, LT("Hot Keys"));
 			break;
 		case 9:
 			dtu_pad_menu();
@@ -3555,17 +3556,17 @@ void dtu_pad_menu(void)
 	plat_pad_init();
 	do {
 		memset(m, 0, sizeof(m));
-		m[0].type = NM_TYPE_TEXT; m[0].text = plat_pad_present() ? "A gamepad is connected." : "No gamepad found.";
-		m[1].type = NM_TYPE_MENU; m[1].text = "Customize Buttons and Sticks";
-		m[2].type = NM_TYPE_SLIDER; m[2].text = "Dead zone"; m[2].value = Dtu_pad_dead_zone; m[2].min_value = 0; m[2].max_value = 8;
-		m[3].type = NM_TYPE_SLIDER; m[3].text = "Turn and look speed"; m[3].value = Dtu_pad_speed - 1; m[3].min_value = 0; m[3].max_value = 15;
-		m[4].type = NM_TYPE_CHECK; m[4].text = "Invert look"; m[4].value = Dtu_pad_invert_look;
+		m[0].type = NM_TYPE_TEXT; m[0].text = plat_pad_present() ? LN("A gamepad is connected.") : LN("No gamepad found.");
+		m[1].type = NM_TYPE_MENU; m[1].text = LN("Customize Buttons and Sticks");
+		m[2].type = NM_TYPE_SLIDER; m[2].text = LN("Dead zone"); m[2].value = Dtu_pad_dead_zone; m[2].min_value = 0; m[2].max_value = 8;
+		m[3].type = NM_TYPE_SLIDER; m[3].text = LN("Turn and look speed"); m[3].value = Dtu_pad_speed - 1; m[3].min_value = 0; m[3].max_value = 15;
+		m[4].type = NM_TYPE_CHECK; m[4].text = LN("Invert look"); m[4].value = Dtu_pad_invert_look;
 		m[5].type = NM_TYPE_TEXT; m[5].text = "";
-		m[6].type = NM_TYPE_MENU; m[6].text = "Reset gamepad to defaults";
+		m[6].type = NM_TYPE_MENU; m[6].text = LN("Reset gamepad to defaults");
 		c = newmenu_do1(NULL, "Gamepad", 7, m, dtu_pad_menuset, c < 1 ? 1 : c);
 		dtu_pad_menuset(7, m, NULL, c);
 		if (c == 1)
-			dtu_kconfig(4, "Gamepad");
+			dtu_kconfig(4, LT("Gamepad"));
 		else if (c == 6)
 			dtu_pad_defaults();
 	} while (c > -1);

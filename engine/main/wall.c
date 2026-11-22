@@ -108,6 +108,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 static char rcsid[] = "$Id: wall.c 2.1 1995/03/21 14:39:04 john Exp $";
 #pragma on (unreferenced)
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -994,7 +995,7 @@ int dtu_wall_use_door(segment *seg, int side, object *obj, int unlock)
 			return WHP_NO_KEY;
 		}
 		if (w->keys & DTU_KEYS_MAGIC) {
-			dtu_display_add_message("Strong magic prevents you from unlocking this door.");
+			dtu_display_add_message(LN("Strong magic prevents you from unlocking this door."));
 			return WHP_NO_KEY;
 		}
 	}

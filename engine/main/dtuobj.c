@@ -9,6 +9,7 @@
  *   (guess) not in the executable in this form
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -532,7 +533,7 @@ char *dtu_object_display_name(object *obj)
 	int i;
 
 	if (obj->type != OBJ_ROBOT)
-		return name;
+		return dtu_tr_name(name);		// ASCENT: the language (dtulang.h)
 	for (i = 0; i < (int) (sizeof(Creature_names) / sizeof(Creature_names[0])); i++)
 		if (!stricmp(Creature_names[i].name, name)) {
 			if (Creature_names[i].text < 0)
@@ -5925,7 +5926,7 @@ static void pick_up_item(object *player,object *item)
 		int flag_10 = pickup_flag_10(item->type,it);
 
 		item->flags |= OF_SHOULD_BE_DEAD;
-		HUD_init_message("You pick up %s.",it->name);
+		HUD_init_message("You pick up %s.",dtu_tr_name(it->name));
 		pickup_sound(flag_10);
 		dtu_obj_log("pickup: obj %d type %d id %d '%s' count %d, inventory entry %d, sound %s",(int)(item-Objects),
 			item->type,item->id,it->name,count,index,flag_10 ? "2216 2215" : "2215");
@@ -5934,7 +5935,7 @@ static void pick_up_item(object *player,object *item)
 		static fix last_message = 0;
 
 		if (GameTime - last_message > F1_0*2 || GameTime < last_message) {
-			HUD_init_message("You cannot carry %s.",it->name);
+			HUD_init_message("You cannot carry %s.",dtu_tr_name(it->name));
 			last_message = GameTime;
 		}
 	}

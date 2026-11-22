@@ -624,6 +624,13 @@ English. Brightness, Detail levels, Controls..., the joystick and mouse
 sensitivity and Calibrate Joystick are items of the same function only in the
 game.
 
+The port (P): the options menu of the front end has "Language..." after
+"Graphics...", and the options menu of the game (F2, `menu.c`) has it in the
+place of the blank line under Brightness. It opens a menu with English and
+Español; a choice changes the text at once and is kept in `ascent.cfg`
+(`Language=`). See docs/formats/lang.md. "Hear Khelben In English" is not in
+the port: there are only the English voices.
+
 ## 11. Credits (credits.c, 0x2C61B) (V)
 
 `iphof.txt`, music stream 2 (khelben.tun) looped at volume 100. The lines

@@ -61,6 +61,7 @@
 #include "screens.h"
 #include "dtuopts.h"
 #include "dtuhdui.h"		// ASCENT: the upscaled pictures
+#include "dtulang.h"		// ASCENT: the language of the text
 
 int Dtu_fe_original_input = 0;
 int Dtu_fe_return_waterdeep = 0;
@@ -828,7 +829,12 @@ char *fe_fetxt(int n)
 		p[size - 1] = 0;
 		Fetxt_str[n] = (char *) p;
 	}
-	return Fetxt_str[n];
+	{
+		// ASCENT: the translation of the entry (dtulang.h)
+		char id[16];
+		snprintf(id, sizeof(id), "fe.%d", n);
+		return dtu_tr_id(id, Fetxt_str[n]);
+	}
 }
 
 //------------------------------------------------------------------------
@@ -1358,6 +1364,7 @@ void fe_run_screen(fe_screen *s)
 			help = feature_help(&s->features[hot]);
 		if (!help && s->default_help >= 0)
 			help = fe_text(s->default_help);
+		help = dtu_tr(help);		// ASCENT: the text of the code in the language (dtulang.h)
 		if (help && s->help_x2 > s->help_x1)
 			fe_string_in(Fe_font_m, s->help_x1, s->help_y1, s->help_x2 - s->help_x1 + 1,
 				s->help_y2 - s->help_y1 + 1, i, FE_HUE_BLACK, help);
@@ -1440,7 +1447,7 @@ static int fe_dark_hue(void)
 static void choice_text(fe_menu_item *m, int value, char *t, int size)
 {
 	if (m->labels)
-		snprintf(t, size, "%s", m->labels[value - m->min_value]);
+		snprintf(t, size, "%s", dtu_tr(m->labels[value - m->min_value]));
 	else
 		snprintf(t, size, "x%d", value);
 }
@@ -1473,6 +1480,13 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 	fix rep_l = 0, rep_r = 0;
 	ubyte pal[768];
 	fe_seq *cursor = fe_seq_get(0);
+
+	// ASCENT: the text of the code in the language of the text (dtulang.h).
+	// The strings of the text file are translated already.
+	title = dtu_tr(title);
+	subtitle = dtu_tr(subtitle);
+	for (i = 0; i < n; i++)
+		items[i].text = dtu_tr(items[i].text);
 
 	if (title && title[0])
 		fe_string_size(Fe_font_l, title, &tw, &th);
@@ -1756,12 +1770,12 @@ static void opt_reverse(fe_menu_item *it)
 // configuration file when the menu closes.
 
 static struct { char *text; int *value; } Impr_switch[] = {
-	{ "Improved physics",       &Dtu_improved_physics },
-	{ "Improved jump controls", &Dtu_improved_jump },
-	{ "Improved pathfinding",   &Dtu_improved_pathfinding },
-	{ "Improved 3D body",       &Dtu_improved_body },
-	{ "Target hint",            &Dtu_target_hint },		// dtucombat.c
-	{ "Streaming safe music",   &Dtu_safe_music },		// dtumusic.c
+	{ LN("Improved physics"),       &Dtu_improved_physics },
+	{ LN("Improved jump controls"), &Dtu_improved_jump },
+	{ LN("Improved pathfinding"),   &Dtu_improved_pathfinding },
+	{ LN("Improved 3D body"),       &Dtu_improved_body },
+	{ LN("Target hint"),            &Dtu_target_hint },		// dtucombat.c
+	{ LN("Streaming safe music"),   &Dtu_safe_music },		// dtumusic.c
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
 
@@ -1784,7 +1798,7 @@ static void fe_improvements(void)
 		m[i].buf_len = i;			// the index in Impr_switch
 		m[i].changed = impr_changed;
 	}
-	fe_menu("Improvements", NULL, m, N_IMPR, 0, 1);
+	fe_menu(LN("Improvements"), NULL, m, N_IMPR, 0, 1);
 	dtu_opts_save();
 }
 
@@ -1808,7 +1822,7 @@ void dtufe_improvements_menu(void)
 		m[i].text = Impr_switch[i].text;
 		m[i].value = *Impr_switch[i].value;
 	}
-	newmenu_do1(NULL, "Improvements", N_IMPR, m, impr_menuset, 0);
+	newmenu_do1(NULL, LN("Improvements"), N_IMPR, m, impr_menuset, 0);
 	for (i = 0; i < N_IMPR; i++)
 		*Impr_switch[i].value = m[i].value;
 	dtu_opts_save();
@@ -1823,27 +1837,27 @@ void dtufe_improvements_menu(void)
 // file when the menu closes. With the software renderer the other items
 // are dark and do not change.
 
-static char *Gfx_onoff[] = { "Off", "On" };
-static char *Gfx_renderer[] = { "Software", "GPU" };
-static char *Gfx_shader[] = { "Off", "Subtle", "VGA" };
+static char *Gfx_onoff[] = { LN("Off"), LN("On") };
+static char *Gfx_renderer[] = { LN("Software"), LN("GPU") };
+static char *Gfx_shader[] = { LN("Off"), LN("Subtle"), LN("VGA") };
 
 static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[] = {
-	{ "Renderer",              &Dtu_gpu_renderer,       0, 1, Gfx_renderer },
-	{ "Animation interpolation", &Dtu_anim_interp,      0, 1, Gfx_onoff },	// both renderers
-	{ "Improved occlusion",    &Dtu_improved_occlusion, 0, 1, Gfx_onoff },
-	{ "Internal resolution",   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, NULL },
-	{ "Upscaled textures",     &Dtu_upscaled_textures,  0, 1, Gfx_onoff },
-	{ "Upscaled movies",       &Dtu_upscaled_movies,    0, 1, Gfx_onoff },
-	{ "Anisotropic filtering", &Dtu_anisotropic,        0, 1, Gfx_onoff },
-	{ "Shader",                &Dtu_shader,             DTU_SHADER_OFF, DTU_SHADER_VGA, Gfx_shader },
-	{ "Improved infravision",  &Dtu_improved_infravision, 0, 1, Gfx_onoff },
+	{ LN("Renderer"),              &Dtu_gpu_renderer,       0, 1, Gfx_renderer },
+	{ LN("Animation interpolation"), &Dtu_anim_interp,      0, 1, Gfx_onoff },	// both renderers
+	{ LN("Improved occlusion"),    &Dtu_improved_occlusion, 0, 1, Gfx_onoff },
+	{ LN("Internal resolution"),   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, NULL },
+	{ LN("Upscaled textures"),     &Dtu_upscaled_textures,  0, 1, Gfx_onoff },
+	{ LN("Upscaled movies"),       &Dtu_upscaled_movies,    0, 1, Gfx_onoff },
+	{ LN("Anisotropic filtering"), &Dtu_anisotropic,        0, 1, Gfx_onoff },
+	{ LN("Shader"),                &Dtu_shader,             DTU_SHADER_OFF, DTU_SHADER_VGA, Gfx_shader },
+	{ LN("Improved infravision"),  &Dtu_improved_infravision, 0, 1, Gfx_onoff },
 };
 #define N_GFX	((int) (sizeof(Gfx_item) / sizeof(Gfx_item[0])))
 #define GFX_FIRST_GPU	2		// the items from here on need the GPU renderer
 // The note with the software renderer. The lines are short: the box of
 // newmenu is no wider than 320 pixels.
-#define GFX_NOTE_1	"The software renderer"
-#define GFX_NOTE_2	"ignores these settings."
+#define GFX_NOTE_1	LN("The software renderer")
+#define GFX_NOTE_2	LN("ignores these settings.")
 #define N_GFX_LINES	(N_GFX + 3)			// the items, a blank line, the note
 
 static fe_menu_item *Gfx_fe;
@@ -1854,8 +1868,8 @@ static void gfx_fe_update(void)
 
 	for (i = GFX_FIRST_GPU; i < N_GFX; i++)
 		Gfx_fe[i].disabled = !Dtu_gpu_renderer;
-	Gfx_fe[N_GFX + 1].text = Dtu_gpu_renderer ? "" : GFX_NOTE_1;
-	Gfx_fe[N_GFX + 2].text = Dtu_gpu_renderer ? "" : GFX_NOTE_2;
+	Gfx_fe[N_GFX + 1].text = Dtu_gpu_renderer ? "" : LT(GFX_NOTE_1);
+	Gfx_fe[N_GFX + 2].text = Dtu_gpu_renderer ? "" : LT(GFX_NOTE_2);
 }
 
 static void gfx_fe_changed(fe_menu_item *it)
@@ -1887,7 +1901,7 @@ static void fe_graphics(void)
 	}
 	Gfx_fe = m;
 	gfx_fe_update();
-	fe_menu("Graphics", NULL, m, N_GFX_LINES, 0, 1);
+	fe_menu(LN("Graphics"), NULL, m, N_GFX_LINES, 0, 1);
 	Gfx_fe = NULL;
 	dtu_opts_save();
 }
@@ -1902,17 +1916,17 @@ static void gfx_set_text(newmenu_item *items, int i)
 	int v = *Gfx_item[i].value;
 
 	if (Gfx_item[i].labels)
-		snprintf(Gfx_text[i], sizeof(Gfx_text[i]), "%s\t%s", Gfx_item[i].text, Gfx_item[i].labels[v - Gfx_item[i].min]);
+		snprintf(Gfx_text[i], sizeof(Gfx_text[i]), "%s\t%s", LT(Gfx_item[i].text), LT(Gfx_item[i].labels[v - Gfx_item[i].min]));
 	else
-		snprintf(Gfx_text[i], sizeof(Gfx_text[i]), "%s\tx%d", Gfx_item[i].text, v);
+		snprintf(Gfx_text[i], sizeof(Gfx_text[i]), "%s\tx%d", LT(Gfx_item[i].text), v);
 	items[i].text = Gfx_text[i];
 	items[i].redraw = 1;
 }
 
 static void gfx_set_note(newmenu_item *items)
 {
-	items[N_GFX + 1].text = Dtu_gpu_renderer ? "" : GFX_NOTE_1;
-	items[N_GFX + 2].text = Dtu_gpu_renderer ? "" : GFX_NOTE_2;
+	items[N_GFX + 1].text = Dtu_gpu_renderer ? "" : LT(GFX_NOTE_1);
+	items[N_GFX + 2].text = Dtu_gpu_renderer ? "" : LT(GFX_NOTE_2);
 	items[N_GFX + 1].redraw = items[N_GFX + 2].redraw = 1;
 }
 
@@ -1974,7 +1988,7 @@ void dtufe_graphics_menu(void)
 	gfx_set_note(m);
 	// A click on an item ends newmenu with that item: change it and show
 	// the menu again.
-	while ((c = newmenu_do1(NULL, "Graphics", N_GFX_LINES, m, gfx_menuset, c)) >= 0 && c < N_GFX)
+	while ((c = newmenu_do1(NULL, LN("Graphics"), N_GFX_LINES, m, gfx_menuset, c)) >= 0 && c < N_GFX)
 		gfx_step(m, c, 1, 1);
 	dtu_opts_save();
 }
@@ -2010,10 +2024,48 @@ static void fe_controls(void)
 // ASCENT: the last items "Improvements..." and "Graphics..." open the
 // menus of the settings of dtuopts.h (fe_improvements, fe_graphics). They
 // are not in the executable.
+// ASCENT: the menu "Language" (dtulang.h): one item for each language, the
+// current one first chosen. The text changes at once; the menus are built
+// again when they are shown.
+static void fe_language(void)
+{
+	fe_menu_item m[DTU_LANG_COUNT];
+	int i, c;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < DTU_LANG_COUNT; i++) {
+		m[i].type = FE_MI_MENU;
+		m[i].text = (char *) dtu_lang_label(i);
+	}
+	c = fe_menu(LT("Language"), NULL, m, DTU_LANG_COUNT, Dtu_language, 1);
+	if (c >= 0 && c < DTU_LANG_COUNT && c != Dtu_language) {
+		dtu_lang_set(c);
+		dtu_opts_save();
+	}
+}
+
+// The in-game form (the options menu of F2, menu.c)
+void dtufe_language_menu(void)
+{
+	newmenu_item m[DTU_LANG_COUNT];
+	int i, c;
+
+	memset(m, 0, sizeof(m));
+	for (i = 0; i < DTU_LANG_COUNT; i++) {
+		m[i].type = NM_TYPE_MENU;
+		m[i].text = (char *) dtu_lang_label(i);
+	}
+	c = newmenu_do1(NULL, LT("Language"), DTU_LANG_COUNT, m, NULL, Dtu_language);
+	if (c >= 0 && c < DTU_LANG_COUNT && c != Dtu_language) {
+		dtu_lang_set(c);
+		dtu_opts_save();
+	}
+}
+
 static void fe_options(void)
 {
-	fe_menu_item m[10];
-	int n, impr, gfx, ctrl, choice = 0;
+	fe_menu_item m[11];
+	int n, impr, gfx, ctrl, lang, choice = 0;
 
 	do {
 		n = 0;
@@ -2027,9 +2079,11 @@ static void fe_options(void)
 		ctrl = n;
 		m[n].type = FE_MI_MENU; m[n++].text = fe_text(353);		// ASCENT: "Controls..."
 		impr = n;
-		m[n].type = FE_MI_MENU; m[n++].text = "Improvements...";
+		m[n].type = FE_MI_MENU; m[n++].text = LN("Improvements...");
 		gfx = n;
-		m[n].type = FE_MI_MENU; m[n++].text = "Graphics...";
+		m[n].type = FE_MI_MENU; m[n++].text = LN("Graphics...");
+		lang = n;
+		m[n].type = FE_MI_MENU; m[n++].text = LN("Language...");		// ASCENT: dtulang.h
 		if (m[0].value > 8) m[0].value = 8;
 		if (m[2].value > 8) m[2].value = 8;
 		choice = fe_menu(fe_text(208), NULL, m, n, choice, 1);
@@ -2039,7 +2093,9 @@ static void fe_options(void)
 			fe_graphics();
 		else if (choice == ctrl && !Fe_quit)
 			fe_controls();
-	} while ((choice == impr || choice == gfx || choice == ctrl) && !Fe_quit);
+		else if (choice == lang && !Fe_quit)
+			fe_language();
+	} while ((choice == impr || choice == gfx || choice == ctrl || choice == lang) && !Fe_quit);
 }
 
 //------------------------------------------------------------------------
@@ -2744,7 +2800,7 @@ static void escape_menu(void)
 	// back after them. nm_messagebox takes at most 5 choices, so the items
 	// are built here; the box is the same.
 	do {
-		static char *choices[6] = { "Return to dungeon", "Load Game", "Save Game", "Improvements", "Graphics", "Abort Game" };
+		static char *choices[6] = { LN("Return to dungeon"), LN("Load Game"), LN("Save Game"), LN("Improvements"), LN("Graphics"), LN("Abort Game") };
 		newmenu_item m[6];
 		int i;
 
@@ -2753,7 +2809,7 @@ static void escape_menu(void)
 			m[i].type = NM_TYPE_MENU;
 			m[i].text = choices[i];
 		}
-		c = newmenu_do(NULL, "ESC Menu\n", 6, m, NULL);
+		c = newmenu_do(NULL, LN("ESC Menu\n"), 6, m, NULL);
 		if (c == 3)
 			dtufe_improvements_menu();
 		else if (c == 4)

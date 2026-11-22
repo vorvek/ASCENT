@@ -28,6 +28,7 @@
  *   them (0xABE01): the port turns it at once.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -897,7 +898,14 @@ static void text(sc_run *r, char *out)
 		out[0] = 0;
 		return;
 	}
-	expand((const char *) r->s + starts[rand() % n], out);
+	{
+		// ASCENT: the translation of the string (dtulang.h): the id is
+		// gab.SCRIPT.OFFSET, the offset of the string in the record
+		int k = starts[rand() % n];
+		char id[32];
+		snprintf(id, sizeof(id), "gab.%d.%d", r->id & SB_SCRIPT, k);
+		expand(dtu_tr_id(id, (const char *) r->s + k), out);
+	}
 }
 
 //------------------------------------------------------------------------
