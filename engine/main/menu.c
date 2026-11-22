@@ -82,6 +82,7 @@ static char rcsid[] = "$Id: menu.c 2.5 1995/10/07 13:19:09 john Exp $";
 #include "dtufe.h"		// ASCENT: dtufe_improvements_menu() and dtufe_graphics_menu() for the options menu
 #include "dtulang.h"		// ASCENT: LN() marks the text of the code that newmenu translates
 #include "dtudisp.h"		// ASCENT: Dtu_display_active (the options menu of the target game)
+#include "dtuopts.h"		// ASCENT: dtu_opts_save keeps the sensitivity in ascent.cfg
 
 #ifdef EDITOR
 #include "editor\editor.h"
@@ -880,6 +881,7 @@ static void dtu_options_menu(void)
 	}
 
 	write_player_file();
+	dtu_opts_save();		// ASCENT: the sensitivity (0x590AE), as kconfig.dat
 }
 
 void do_options_menu()

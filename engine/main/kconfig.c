@@ -3602,6 +3602,13 @@ int dtu_kconfig_cfg_line(const char *name, const char *value)
 			Dtu_control_type = n;
 		return 1;
 	}
+	// ASCENT: Joystick/Mouse Sensitivity (byte 0x13BFEF of kconfig.dat)
+	if (!strcmp(name, "Sensitivity")) {
+		n = atoi(value);
+		if (n >= 0 && n <= 8)
+			Config_joystick_sensitivity = (ubyte) n;
+		return 1;
+	}
 	if (!strcmp(name, "PadConfig")) {
 		ubyte pad[2 * DTU_N_ACTIONS];
 		if (strlen(value) >= sizeof(pad) * 2 && hex_bytes(value, pad, sizeof(pad)))
@@ -3641,6 +3648,7 @@ void dtu_kconfig_cfg_write(FILE *f)
 
 	dtu_kc_init();
 	fprintf(f, "ControlType=%d\n", Dtu_control_type);
+	fprintf(f, "Sensitivity=%d\n", Config_joystick_sensitivity);
 	for (r = 0; r < 6; r++) {
 		fprintf(f, "KeyConfig%d=", r);
 		for (i = 0; i < DTU_KC_ROW; i++)

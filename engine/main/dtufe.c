@@ -2170,8 +2170,11 @@ static void fe_credits(void)
 	start = fe_time();
 	Fe_cursor_bm = NULL;
 	while (fe_frame_begin()) {
-		// one pixel for each 1/60 second. The executable moves one
-		// pixel in each frame of its 70 Hz display.
+		// one pixel for each 1/60 second. The executable (0x2C776) moves
+		// one pixel when 0x100 (1/256 s) has passed since the last step and
+		// polls without a wait: at most 256 pixels a second, and less on a
+		// machine where the two 416 wide blits and the text of a step take
+		// longer. 1.3 has no fixed speed; 60 is a decision of the port.
 		int scroll = (int) (((int64_t) (fe_time() - start) * 60) >> 16);
 		int y0 = 470 - scroll;
 
@@ -2186,7 +2189,9 @@ static void fe_credits(void)
 			fe_string_in(Fe_font_m, 112, y, 416, 0, FE_HUE_7, -1, lines[i]);
 		}
 		fe_frame_end();
-		if (Fe_key || Fe_press)
+		// ASCENT: only a key ends the credits (0x2C68B to 0x2C6B1, the key
+		// test 0xDA3E4); a mouse click does not
+		if (Fe_key)
 			break;
 		if (y0 + total < 0) {		// 10 seconds after the last line
 			if (!end_time)
@@ -2582,8 +2587,13 @@ static void fe_main_menu(void)
 	}
 	if (choice < 0 || action[choice] == 4) {
 		// "Are you sure you want to leave the game?"
-		if (fe_message_box(NULL, fe_text(195), 2, fe_text(32), fe_text(33)) == 0)
+		if (fe_message_box(NULL, fe_text(195), 2, fe_text(32), fe_text(33)) == 0) {
+			// ASCENT: 0x581E9: the palette fades out in 32 steps (0x7F54E)
+			// before Function_mode 0
+			if (!Script_n && !gr_palette_faded_out)
+				gr_palette_fade_out(Fe_pal, 32, 0);
 			Fe_quit = 1;
+		}
 		Main_menu_choice = 0;
 		Menu_backdrop = NULL;
 		return;
