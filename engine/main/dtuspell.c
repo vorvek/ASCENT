@@ -64,6 +64,9 @@ static int Wizardry_n = 0;			// doublings of the Ring of Wizardry
 // (0x5742C), the player's or a creature's; 0x8F89E takes the cost of each
 // sleeper.
 static int Sleep_pool = 0;
+// ASCENT: Spell_info[22]+0x49 and Spell_info[52]+0x49, the counters of
+// Hold Person (0x56FF6, 0x8E8BB)
+static int Hold_count[2] = { 0, 0 };
 
 static int rand_mod(int n);
 static int creature_cleric_level(object *obj);
@@ -1549,7 +1552,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s %s blessed for %d minutes.",V_ARE,"Bless cast on %s by %s for %d minutes.",6);
 			break;
 		case 4:		// Burning Hands: fire 1d3 + 2 L
-		case 17:		// Flaming Sphere (no dice in the line)
+		case 17:		// Flaming Sphere (no dice in the line); 0x1A344 makes it the
+						// cleric spell Produce Fire (level 4, fire 1d4 + 1 per level)
 		case 37:		// Melf's Minute Meteors: 1d4
 			if (!self)
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
@@ -1762,6 +1766,13 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				break;
 			if (!dtu_spell_save(target,DTU_SAVE_SPELL)) {
 				fix d = wisdom_cut(target,2*L*MINUTE);
+
+				// ASCENT: 0x8E8C5: the counter of the cast must be above 0
+				if (Hold_count[spell == 52] <= 0) {
+					dtu_spell_log("spell: Hold Person counter is 0: no effect");
+					return 0;
+				}
+				Hold_count[spell == 52]--;
 
 				// The text in seconds below one minute (0x8E9C5)
 				if (fx_set(target,DTU_FX_HOLD,d)) {
@@ -2279,6 +2290,14 @@ static int missile_count(int spell,int L)
 		case 46:
 			Sleep_pool = (rand() % 7) * 2 + 4;
 			dtu_spell_log("spell: Sleep pool %d",Sleep_pool);
+			return 1;
+		case 22: case 52:
+			// ASCENT: 0x56FF6: the counter Spell_info+0x49 of Hold Person
+			// is 1d4 at each cast; the case (0x8E8BB) needs it above 0 and
+			// takes one for each hold, so the area of 0x1A344 (radius 40)
+			// holds at most 1d4 targets
+			Hold_count[spell == 52] = rnd(4);
+			dtu_spell_log("spell: Hold Person counter %d",Hold_count[spell == 52]);
 			return 1;
 		case 4:	return 6;
 		case 6:	return rnd(6);
@@ -3332,6 +3351,13 @@ int dtu_spell_priest_check(void)
 		"Hold kept while Free Action is on: %d; ended by the second cast: %d",n,!(pl->dtu.m_88 & DTU_FX_HOLD));
 	PRIEST_RESET();
 
+	// Find Traps (spell 51, a cleric spell of level 2 after 0x1A344): bit
+	// 20 for 1800 s (0x8E4F6)
+	apply_spell(51,pl,pl,3);
+	priest_result("find_traps",(pl->dtu.m_88 & DTU_FX_FIND_TRAPS) && pl->dtu.m_c8[3] == GameTime + i2f(1800),
+		"bit 20 %d, timer %.0f s (1800)",(pl->dtu.m_88 & DTU_FX_FIND_TRAPS) != 0,f2fl(pl->dtu.m_c8[3] - GameTime));
+	PRIEST_RESET();
+
 	// The caster level (0x91EC1): a fighter/cleric casts a cleric spell
 	// at the cleric level, a mage spell at the fighter level
 	Dtu_char.pa.class1 = DTU_CLASS_FIGHTER;
@@ -3399,15 +3425,24 @@ int dtu_spell_priest_check(void)
 			"%.1f after Cure Serious Wounds (4 to 18, at most the maximum %d)",f2fl(c->shields),Monster_info[c->id].max_hit_points);
 		PRIEST_RESET();
 
-		// Hold Person (0x8E85A): not on undead, only humanoids
+		// Hold Person (0x8E85A): not on undead, only humanoids, and only
+		// while the counter of the cast (1d4, 0x56FF6) is above 0
 		Priest_force_save = 0;
+		Hold_count[1] = 1;
 		Monster_info[c->id].flags = (c_flags | MONSTER_F_HUMANOID | MONSTER_F_UNDEAD);
 		apply_spell(52,c,pl,3);
 		n = (c->dtu.m_88 & DTU_FX_HOLD) != 0;
 		Monster_info[c->id].flags = (c_flags | MONSTER_F_HUMANOID) & ~MONSTER_F_UNDEAD;
 		apply_spell(52,c,pl,3);
-		priest_result("hold_person",!n && (c->dtu.m_88 & DTU_FX_HOLD) && c->dtu.m_c0[0] == GameTime + 6*MINUTE,
-			"undead held: %d; humanoid held for %.0f s (360)",n,f2fl(c->dtu.m_c0[0] - GameTime));
+		priest_result("hold_person",!n && (c->dtu.m_88 & DTU_FX_HOLD) && c->dtu.m_c0[0] == GameTime + 6*MINUTE && Hold_count[1] == 0,
+			"undead held: %d; humanoid held for %.0f s (360); counter %d (0)",n,f2fl(c->dtu.m_c0[0] - GameTime),Hold_count[1]);
+		c->dtu.m_88 = 0;
+		apply_spell(52,c,pl,3);
+		priest_result("hold_person_counter",!(c->dtu.m_88 & DTU_FX_HOLD),"held with the counter at 0: %d (0)",(c->dtu.m_88 & DTU_FX_HOLD) != 0);
+		for (i=0,n=0;i<20;i++)
+			n += (missile_count(52,3) == 1 && Hold_count[1] >= 1 && Hold_count[1] <= 4);
+		priest_result("hold_person_cast",n == 20,"20 casts set the counter to 1 to 4: %d",n);
+		Hold_count[1] = 0;
 		PRIEST_RESET();
 	}
 	else
