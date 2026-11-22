@@ -1369,6 +1369,29 @@ static fix Dtu_jump_table[DTU_JUMP_STEPS+1] = {
 
 #define DTU_HIT_FLOOR	5			// the new result of find_vector_intersection() of the executable
 
+// ASCENT: Dtu_improved_physics, the capsule of the player (after
+// dtu_player_body() below)
+typedef struct dtu_capsule {
+	fix rad;		// the radius: move_rad + 1.0, the reach of the walls of the original
+	fix stand;		// the center above the feet: floor_height + floor_rad/2
+	fix head;		// the top of the head above the center: body_half_height[0]
+	fix depth;		// the depth of the round bottom: stand - rad - DTU_CAP_MARGIN, rad at most
+} dtu_capsule;
+typedef struct dtu_cap_support {
+	fix y;			// the height of the feet on the support
+	int edge;		// 1: an edge or a corner of a floor holds the body, not the face under the center
+	fix slope;		// the slope of the bottom at the edge (dy/dx)
+	fix gap;		// how much higher the support is than the floor under the axis (DTU_FLOOR_PROBE: no floor there)
+	vms_vector dir;	// the direction in x and z from the edge to the axis
+} dtu_cap_support;
+static int dtu_capsule_on(void);
+static void dtu_capsule_get(dtu_body *b,dtu_capsule *c);
+static int dtu_capsule_support(vms_vector *axis,int segnum,dtu_capsule *c,fix feet,fix hi_edge,dtu_cap_support *s);
+static fix dtu_capsule_floor_dist(object *obj);
+static void dtu_relink(object *obj,int seg);
+static dtu_cap_support Dtu_cap_sup;		// the support of the last dtu_capsule_floor_dist()
+static int Dtu_cap_grounded = 0;		// the capsule stood on the floor at the end of the last gravity step
+
 // Returns how many times a rule that the executable applies one time per
 // frame must be applied in this frame. *acc is the time that is left.
 static int dtu_ref_ticks(int corrected, fix *acc)
@@ -1411,6 +1434,10 @@ fix dtu_get_floor_dist(object *obj)
 	vms_vector p1;
 	int fate;
 	dtu_body b;
+
+	// ASCENT: Dtu_improved_physics, the round bottom of the capsule
+	if (dtu_capsule_on())
+		return result = dtu_capsule_floor_dist(obj);
 
 	dtu_player_body(&b);
 	p1 = obj->pos;
@@ -1481,6 +1508,41 @@ static void dtu_apply_gravity(object *obj,vms_vector *accel)
 	fix ad = abs(d);
 	int no_gravity = (obj->dtu.m_88 & DTU_OF_NO_GRAVITY) || (Dtu_player_state & DTU_PS_CLIMBING) ||
 		Dtu_ladder_exit > 0;		// ASCENT: Dtu_fix_ladder, the step from the top of a ladder
+
+	// ASCENT: Dtu_improved_physics. The capsule that stood on the floor in
+	// the last frame stays on it: a floor up to DTU_KNEE_HIGH above the
+	// feet (a step, the edge of a step under the round bottom) lifts it at
+	// once, a floor up to DTU_CAP_SNAP_DOWN below the feet (a step down, a
+	// slope) takes it down at once. So it does not bounce down stairs and
+	// slopes, and it is not pushed up in steps of 2.0.
+	if (dtu_capsule_on()) {
+		int was_grounded = Dtu_cap_grounded;
+
+		Dtu_cap_grounded = 0;
+		if (was_grounded && d != 0 && d != DTU_FLOOR_PROBE && d >= -DTU_KNEE_HIGH && d <= DTU_CAP_SNAP_DOWN &&
+				!(Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_CLIMBING|DTU_PS_FALLING)) &&
+				!(obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) && Dtu_ladder_exit <= 0 &&
+				(d < 0 || obj->mtype.phys_info.velocity.y <= 0)) {
+			vms_vector new_pos = obj->pos, head;
+			dtu_body b;
+			int seg;
+
+			dtu_player_body(&b);
+			new_pos.y -= d;
+			head = new_pos;
+			head.y += b.half_height;
+			if ((seg = find_point_seg(&new_pos,obj->segnum)) >= 0 && (d > 0 || find_point_seg(&head,seg) >= 0)) {
+				obj->pos = new_pos;
+				dtu_relink(obj,seg);
+				if (obj->mtype.phys_info.velocity.y < 0)
+					obj->mtype.phys_info.velocity.y = 0;
+				d = 0;
+			}
+		}
+		if (d == 0 && !(Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_CLIMBING)) && !(obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)))
+			Dtu_cap_grounded = 1;
+		ad = abs(d);
+	}
 
 	Dtu_floor_dist = d;
 	Dtu_gravity_drag = 0;
@@ -2312,6 +2374,479 @@ static void dtu_body_log(object *obj)
 	fflush(log);
 }
 
+//------------------------------------------------------------------------
+// ASCENT: Dtu_improved_physics. The capsule of the player.
+//
+// The body of the original (4.1) is a sphere at the center with a radius
+// for each kind of side (fvi.c): the walls stop the center at rad + 1.0
+// (4.6 for a human), the ceiling at rad2 * 1.5, and the floor is searched
+// with a much smaller sphere (floor_rad/2, 1.8). So the body stands on a
+// floor that is 1.8 wide while it is 9.2 wide for the walls. At the edge
+// of a ledge the player falls while the body is still in the reach of
+// the wall under the edge, and that start stuck the player (stuck save,
+// Dtu_fix_wall_overlap). The edge of a step stops the body before the
+// floor search finds the step (a dwarf at the step of 3.5 in BANE).
+//
+// The capsule: a vertical body with one radius R = rad + 1.0, from the
+// feet to the top of the head.
+// - The walls: the sphere of the original at the center (the query of the
+//   original, with its floor and ceiling radii, the objects and the list
+//   of the segments for the triggers), and a sphere at the head (center
+//   at head - R, walls only, fvi mode 3). The earliest hit counts.
+// - The floor: the round bottom. It stands on each solid side that faces
+//   up and is under the axis (the floor search of the original, a line
+//   down, finds the same), and on each edge and corner of a solid side
+//   that is within R of the axis in x and z. The bottom is a half ellipsoid:
+//   R wide and stand - R - 0.25 deep (2.65 for a human, 1.59 for a
+//   dwarf), so the sphere at the center is always more than R above an
+//   edge that holds the body. fvi stops a sphere at R from the plane of
+//   a side when its center is less than R from the edge of the side
+//   (check_sphere_to_face: the test is a slab, not round). A full round
+//   bottom (depth R) would put the center into the reach of the wall
+//   under the edge again.
+// There is no sphere at the feet for the walls: in the fvi test a sphere
+// there would stop at each step and edge (any riser within R of its
+// center), and it would lower the reach of a jump onto a ledge by
+// stand - R (2.9 for a human) against the original.
+//
+// Results: the player stands on a ledge until the axis is R past its
+// edge, sinks with the round bottom on the way (at most the depth), and
+// then falls clear of the wall under the edge. A step or the edge of a
+// floor up to DTU_KNEE_HIGH above the feet lifts the player as soon as
+// the bottom reaches it (dtu_capsule_step for the first contact), with no
+// separate step rule. A player who stands on an edge with no floor under
+// the axis and does not walk toward the edge slides off it
+// (dtu_capsule_slide). The objects (creatures, scenery) see the height
+// of the capsule, from the feet to the head (fvi.c), and the radius of
+// the move query of the original (rad): with R the player stops 1.0
+// farther from a creature, and the melee test of docs/re/combat.md C5
+// lost its hits at 60 frames per second.
+
+static int dtu_capsule_on(void)
+{
+	return Dtu_improved_physics && Dtu_player_walk;
+}
+
+static void dtu_capsule_get(dtu_body *b,dtu_capsule *c)
+{
+	c->rad = b->move_rad + F1_0;
+	c->stand = b->floor_height + b->floor_rad/2;
+	c->head = b->half_height;
+	c->depth = c->stand - c->rad - DTU_CAP_MARGIN;
+	if (c->depth > c->rad)
+		c->depth = c->rad;
+	if (c->depth < 0)
+		c->depth = 0;
+}
+
+#define DTU_CAP_MAX_SEGS	48
+
+typedef struct cap_search {
+	double px,pz;		// the axis
+	double r,a;			// the radius and the depth of the bottom
+	double lo;			// the lowest support (the feet - DTU_FLOOR_PROBE)
+	double hi_face;		// the highest support from a face under the axis (the center)
+	double hi_edge;		// the highest support from an edge (the feet + DTU_KNEE_HIGH)
+	double best;
+	int found,edge;
+	double slope,dx,dz;
+	double face_best;	// the highest face under the axis
+	int face_found;
+} cap_search;
+
+static void cap_take(cap_search *s,double y,int edge,double slope,double dx,double dz)
+{
+	if (y < s->lo || y > (edge ? s->hi_edge : s->hi_face))
+		return;
+	if (!edge && (!s->face_found || y > s->face_best)) {
+		s->face_found = 1;
+		s->face_best = y;
+	}
+	if (s->found && y <= s->best)
+		return;
+	s->found = 1;
+	s->best = y;
+	s->edge = edge;
+	s->slope = slope;
+	s->dx = dx;
+	s->dz = dz;
+}
+
+// The bottom over the edge a-b: the highest position of the feet at which
+// the bottom touches it. The height of the bottom above the feet at the
+// distance h from the axis is a - a*sqrt(1 - h^2/r^2), so the feet are at
+// y(t) - that, a concave function of the place t on the edge.
+static void cap_edge(cap_search *s,const double *a,const double *b)
+{
+	double dx = b[0]-a[0], dz = b[2]-a[2], ex = a[0]-s->px, ez = a[2]-s->pz;
+	double qa = dx*dx + dz*dz, qb = 2*(ex*dx + ez*dz), qc = ex*ex + ez*ez, r2 = s->r*s->r;
+	double t0 = 0, t1 = 1, t, h2, k, y, cx, cz, hl;
+	int i;
+
+	if (qa < 1e-9) {
+		if (qc > r2)
+			return;
+		t0 = t1 = b[1] > a[1] ? 1 : 0;
+	}
+	else {
+		double disc = qb*qb - 4*qa*(qc - r2), q;
+
+		if (disc < 0)
+			return;
+		q = sqrt(disc);
+		if ((-qb - q)/(2*qa) > t0)
+			t0 = (-qb - q)/(2*qa);
+		if ((-qb + q)/(2*qa) < t1)
+			t1 = (-qb + q)/(2*qa);
+		if (t0 > t1)
+			return;
+	}
+	for (i=0; i<40 && t1 - t0 > 1e-7; i++) {
+		double m1 = t0 + (t1 - t0)/3, m2 = t1 - (t1 - t0)/3, f1, f2;
+
+		h2 = qa*m1*m1 + qb*m1 + qc;
+		f1 = a[1] + m1*(b[1]-a[1]) + s->a*sqrt(h2 < r2 ? 1 - h2/r2 : 0);
+		h2 = qa*m2*m2 + qb*m2 + qc;
+		f2 = a[1] + m2*(b[1]-a[1]) + s->a*sqrt(h2 < r2 ? 1 - h2/r2 : 0);
+		if (f1 < f2)
+			t0 = m1;
+		else
+			t1 = m2;
+	}
+	t = (t0 + t1)/2;
+	h2 = qa*t*t + qb*t + qc;
+	if (h2 > r2)
+		h2 = r2;
+	k = sqrt(1 - h2/r2);
+	y = a[1] + t*(b[1]-a[1]) - s->a + s->a*k;
+	// the slope of the bottom there, and the direction to the axis
+	cx = s->px - (a[0] + t*dx);
+	cz = s->pz - (a[2] + t*dz);
+	hl = sqrt(cx*cx + cz*cz);
+	if (hl > 1e-6) {
+		cx /= hl;
+		cz /= hl;
+	}
+	else
+		cx = cz = 0;
+	cap_take(s,y,hl > 1e-3,k > 1e-6 ? s->a*sqrt(h2)/(r2*k) : 1e6,cx,cz);
+}
+
+static void cap_vert(double *d,int v)
+{
+	d[0] = f2fl(Vertices[v].x);
+	d[1] = f2fl(Vertices[v].y);
+	d[2] = f2fl(Vertices[v].z);
+}
+
+// A solid side of a segment: its faces that face up (the normal into the
+// segment has y > 0.1) under the axis, and its edges in reach. The floor
+// is side 3 in most segments, but a ramp or the floor of a turned segment
+// can be another side (the floor search of the original, a line, finds
+// them too: fvi.c mode 2 tests the other sides with the radius 0). The
+// top edge of a wall is the edge of a step.
+static void cap_side(cap_search *s,segment *seg,int sidenum,const double *center)
+{
+	static const int tri[3][2][3] = {
+		{ {0,1,2}, {0,2,3} },		// SIDE_IS_QUAD, SIDE_IS_TRI_02
+		{ {0,1,2}, {0,2,3} },
+		{ {0,1,3}, {1,2,3} },		// SIDE_IS_TRI_13
+	};
+	side *sp = &seg->sides[sidenum];
+	double v[4][3];
+	int i,f,k;
+
+	for (i=0; i<4; i++)
+		cap_vert(v[i],seg->verts[Side_to_verts[sidenum][i]]);
+	k = sp->type == SIDE_IS_TRI_13 ? 2 : 0;
+	for (f=0; f<2; f++) {
+		const double *p0 = v[tri[k][f][0]], *p1 = v[tri[k][f][1]], *p2 = v[tri[k][f][2]];
+		double ux = p1[0]-p0[0], uy = p1[1]-p0[1], uz = p1[2]-p0[2];
+		double wx = p2[0]-p0[0], wy = p2[1]-p0[1], wz = p2[2]-p0[2];
+		double nx = uy*wz - uz*wy, ny = uz*wx - ux*wz, nz = ux*wy - uy*wx;
+		double len = sqrt(nx*nx + ny*ny + nz*nz);
+
+		if (len < 1e-9)
+			continue;
+		nx /= len; ny /= len; nz /= len;
+		// the normal into the segment
+		if (nx*(center[0]-p0[0]) + ny*(center[1]-p0[1]) + nz*(center[2]-p0[2]) < 0) {
+			nx = -nx; ny = -ny; nz = -nz;
+		}
+		// the face under the axis: the height of its plane there
+		if (ny > 0.1) {
+			double d0 = (p1[0]-p0[0])*(s->pz-p0[2]) - (p1[2]-p0[2])*(s->px-p0[0]);
+			double d1 = (p2[0]-p1[0])*(s->pz-p1[2]) - (p2[2]-p1[2])*(s->px-p1[0]);
+			double d2 = (p0[0]-p2[0])*(s->pz-p2[2]) - (p0[2]-p2[2])*(s->px-p2[0]);
+
+			if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0))
+				cap_take(s,p0[1] - (nx*(s->px-p0[0]) + nz*(s->pz-p0[2]))/ny,0,0,0,0);
+		}
+		cap_edge(s,p0,p1);
+		cap_edge(s,p1,p2);
+		cap_edge(s,p2,p0);
+	}
+}
+
+// The highest support of the capsule with the axis at axis.x, axis.z,
+// below feet + DTU_KNEE_HIGH for an edge (hi_edge) and below the center
+// for a face under the axis, and not lower than the feet - DTU_FLOOR_PROBE.
+// The solid sides of the segments that are open to segnum within reach.
+// Returns 0 if there is none.
+static int dtu_capsule_support(vms_vector *axis,int segnum,dtu_capsule *c,fix feet,fix hi_edge,dtu_cap_support *out)
+{
+	short list[DTU_CAP_MAX_SEGS];
+	int n = 1,i,j,sd;
+	cap_search s;
+
+	s.px = f2fl(axis->x);
+	s.pz = f2fl(axis->z);
+	s.r = f2fl(c->rad);
+	s.a = f2fl(c->depth);
+	s.lo = f2fl(feet - DTU_FLOOR_PROBE);
+	s.hi_face = f2fl(feet + c->stand);
+	s.hi_edge = f2fl(hi_edge);
+	s.found = 0;
+	s.best = 0;
+	s.face_found = 0;
+	s.face_best = 0;
+
+	list[0] = segnum;
+	for (i=0; i<n; i++) {
+		segment *seg = &Segments[list[i]];
+		double center[3] = { 0, 0, 0 };
+
+		for (j=0; j<MAX_VERTICES_PER_SEGMENT; j++) {
+			double v[3];
+
+			cap_vert(v,seg->verts[j]);
+			center[0] += v[0]/MAX_VERTICES_PER_SEGMENT;
+			center[1] += v[1]/MAX_VERTICES_PER_SEGMENT;
+			center[2] += v[2]/MAX_VERTICES_PER_SEGMENT;
+		}
+		for (sd=0; sd<MAX_SIDES_PER_SEGMENT; sd++)
+			if (!(WALL_IS_DOORWAY(seg,sd) & WID_FLY_FLAG))
+				cap_side(&s,seg,sd,center);
+		for (sd=0; sd<MAX_SIDES_PER_SEGMENT; sd++) {
+			int ch = seg->children[sd];
+			double mnx=1e30,mxx=-1e30,mny=1e30,mxy=-1e30,mnz=1e30,mxz=-1e30;
+
+			if (ch < 0 || n >= DTU_CAP_MAX_SEGS || !(WALL_IS_DOORWAY(seg,sd) & WID_FLY_FLAG))
+				continue;
+			for (j=0; j<n && list[j] != ch; j++)
+				;
+			if (j < n)
+				continue;
+			for (j=0; j<4; j++) {
+				double v[3];
+
+				cap_vert(v,seg->verts[Side_to_verts[sd][j]]);
+				if (v[0] < mnx) mnx = v[0];
+				if (v[0] > mxx) mxx = v[0];
+				if (v[1] < mny) mny = v[1];
+				if (v[1] > mxy) mxy = v[1];
+				if (v[2] < mnz) mnz = v[2];
+				if (v[2] > mxz) mxz = v[2];
+			}
+			// the opening must be within reach of the column of the body
+			if (s.px < mnx - s.r || s.px > mxx + s.r || s.pz < mnz - s.r || s.pz > mxz + s.r)
+				continue;
+			if (mxy < s.lo - 1 || mny > s.hi_face + 1)
+				continue;
+			list[n++] = ch;
+		}
+	}
+	if (!s.found)
+		return 0;
+	out->y = fl2f(s.best);
+	out->edge = s.edge;
+	out->slope = s.slope > 1000 ? fl2f(1000) : fl2f(s.slope);
+	out->dir.x = fl2f(s.dx);
+	out->dir.y = 0;
+	out->dir.z = fl2f(s.dz);
+	out->gap = s.face_found && s.best - s.face_best < f2fl(DTU_FLOOR_PROBE) ? fl2f(s.best - s.face_best) : DTU_FLOOR_PROBE;
+	return 1;
+}
+
+// The distance of the feet above the support of the capsule (as
+// dtu_get_floor_dist(): negative in the floor, DTU_FLOOR_PROBE for no
+// floor, 0 below DTU_FLOOR_EPS).
+static fix dtu_capsule_floor_dist(object *obj)
+{
+	dtu_body b;
+	dtu_capsule c;
+	fix feet,d;
+
+	dtu_player_body(&b);
+	dtu_capsule_get(&b,&c);
+	feet = obj->pos.y - c.stand;
+	if (!dtu_capsule_support(&obj->pos,obj->segnum,&c,feet,feet + DTU_KNEE_HIGH,&Dtu_cap_sup)) {
+		Dtu_cap_sup.edge = 0;
+		return DTU_FLOOR_PROBE;
+	}
+	d = feet - Dtu_cap_sup.y;
+	if (abs(d) < DTU_FLOOR_EPS)
+		d = 0;
+	return d;
+}
+
+// The player goes into the segment seg after a lift or a step down. The
+// two segments go to the list of the move, for the triggers (object.c).
+static void dtu_relink(object *obj,int seg)
+{
+	if (seg == obj->segnum)
+		return;
+	if ((n_phys_segs == 0 || phys_seglist[n_phys_segs-1] != obj->segnum) && n_phys_segs < MAX_FVI_SEGS-1)
+		phys_seglist[n_phys_segs++] = obj->segnum;
+	if (n_phys_segs < MAX_FVI_SEGS-1)
+		phys_seglist[n_phys_segs++] = seg;
+	obj_relink(obj-Objects,seg);
+}
+
+// The move query of the capsule. The query of the original body (the
+// sphere at the center, fq) and the head sphere; the earliest hit counts.
+// A hit of the head sphere counts only when the move goes into the side
+// (a start in its reach does not hold the player).
+static int dtu_capsule_query(object *obj,dtu_body *body,dtu_capsule *c,fvi_query *fq,fvi_info *hit)
+{
+	fvi_query hq;
+	fvi_info hh;
+	vms_vector h0,h1,move;
+	fix dy = c->head - c->rad;
+	int fate,hfate,seg;
+
+	Fvi_dtu_capsule = 1;
+	Fvi_dtu_cap_down = c->stand;
+	Fvi_dtu_cap_up = c->head;
+	Fvi_dtu_body = 1;
+	Fvi_dtu_rad2 = body->move_rad2;
+	fate = find_vector_intersection(fq,hit);
+	Fvi_dtu_body = 0;
+	Fvi_dtu_capsule = 0;
+
+	if (fate == HIT_BAD_P0 || dy < DTU_CAP_HEAD_MIN)
+		return fate;
+
+	h0 = *fq->p0;
+	h0.y += dy;
+	h1 = *fq->p1;
+	h1.y += dy;
+	if ((seg = find_point_seg(&h0,fq->startseg)) < 0)
+		return fate;
+
+	hq.p0 = &h0;
+	hq.p1 = &h1;
+	hq.startseg = seg;
+	hq.rad = fq->rad;
+	hq.thisobjnum = fq->thisobjnum;
+	hq.ignore_obj_list = NULL;
+	hq.flags = 0;
+	Fvi_dtu_body = 3;
+	hfate = find_vector_intersection(&hq,&hh);
+	Fvi_dtu_body = 0;
+
+	if (hfate != HIT_WALL || hh.hit_side_seg < 0 || hh.hit_side < 0)
+		return fate;
+	vm_vec_sub(&move,fq->p1,fq->p0);
+	if (vm_vec_dot(&move,&hh.hit_wallnorm) >= 0)
+		return fate;
+	if (fate != HIT_NONE && vm_vec_dist(&hit->hit_pnt,fq->p0) <= vm_vec_dist(&hh.hit_pnt,&h0))
+		return fate;
+
+	hit->hit_type = HIT_WALL;
+	hit->hit_pnt = hh.hit_pnt;
+	hit->hit_pnt.y -= dy;
+	seg = find_point_seg(&hit->hit_pnt,fq->startseg);
+	hit->hit_seg = seg >= 0 ? seg : fq->startseg;
+	hit->hit_side = hh.hit_side;
+	hit->hit_side_seg = hh.hit_side_seg;
+	hit->hit_object = -1;
+	hit->hit_wallnorm = hh.hit_wallnorm;
+	return HIT_WALL;
+}
+
+// The first contact of the round bottom with a step or the edge of a
+// floor: the sphere of the center hits the side under the edge before
+// the bottom stands on the edge (the test of fvi is a slab). When the
+// support at the end of the query is above the feet by DTU_KNEE_HIGH or
+// less, the player is lifted onto it and the move is tried again. It
+// replaces the step rule of the body of the original (a lift onto the top
+// of the wall side that was hit). Returns 1 if the player was lifted.
+static int dtu_capsule_step(object *obj,dtu_body *body,dtu_capsule *c,fvi_info *hit,vms_vector *p1)
+{
+	dtu_cap_support s;
+	vms_vector axis,new_pos,head;
+	fix feet;
+	int seg;
+
+	if (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_CLIMBING|DTU_PS_FALLING))
+		return 0;
+	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))
+		return 0;
+	if (!Dtu_cap_grounded || Dtu_floor_dist != 0)
+		return 0;
+	if (hit->hit_side_seg < 0 || hit->hit_side < 0 || hit->hit_side == WTOP)
+		return 0;
+	if (vm_vec_dot(&obj->mtype.phys_info.velocity,&hit->hit_wallnorm) >= 0)
+		return 0;
+
+	feet = obj->pos.y - c->stand;
+	axis = *p1;
+	axis.y = obj->pos.y;
+	// The search starts in the segment of the player: the end of the query
+	// can be behind the wall, in a segment of another room.
+	if (!dtu_capsule_support(&axis,obj->segnum,c,feet,feet + DTU_KNEE_HIGH,&s))
+		return 0;
+	// A smaller lift does not take the sphere of the center over the edge
+	// of a side (that needs at least DTU_CAP_MARGIN), the floor snap of
+	// dtu_apply_gravity() does it.
+	if (s.y <= feet + DTU_FLOOR_EPS)
+		return 0;
+
+	new_pos = obj->pos;
+	new_pos.y = s.y + c->stand + F1_0/64;
+	head = new_pos;
+	head.y += body->half_height;
+	if ((seg = find_point_seg(&new_pos,obj->segnum)) < 0 || find_point_seg(&head,seg) < 0)
+		return 0;
+	{
+		char text[160];
+
+		snprintf(text,sizeof(text),"CAPSTEP side %d.%d lift %.4f pos %.4f %.4f %.4f\n",hit->hit_side_seg,hit->hit_side,
+			f2fl(new_pos.y - obj->pos.y),f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z));
+		dtu_move_log_line(text);
+	}
+	obj->pos = new_pos;
+	dtu_relink(obj,seg);
+	return 1;
+}
+
+// The bottom stands on an edge with no floor under the axis (none, or one
+// more than DTU_CAP_SLIDE_GAP lower), the axis is clearly past the edge
+// (the bottom is steeper than DTU_CAP_SLIDE_SLOPE there), and the keys do
+// not move the player toward the edge: the player slides off it at
+// DTU_CAP_SLIDE_SPEED and does not stand in the air beside a ledge. A
+// floor that slopes keeps the floor under the axis near the edge, so the
+// player does not slide there.
+static void dtu_capsule_slide(object *obj)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	vms_vector dir;
+	fix v;
+
+	if (!Dtu_cap_grounded || !Dtu_cap_sup.edge || Dtu_cap_sup.slope <= DTU_CAP_SLIDE_SLOPE || Dtu_cap_sup.gap <= DTU_CAP_SLIDE_GAP)
+		return;
+	if (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_CLIMBING|DTU_PS_FALLING))
+		return;
+	if (dtu_thrust_dir(obj,&dir) && fixmul(dir.x,Dtu_cap_sup.dir.x) + fixmul(dir.z,Dtu_cap_sup.dir.z) < 0)
+		return;
+	v = fixmul(pi->velocity.x,Dtu_cap_sup.dir.x) + fixmul(pi->velocity.z,Dtu_cap_sup.dir.z);
+	if (v < DTU_CAP_SLIDE_SPEED) {
+		pi->velocity.x += fixmul(Dtu_cap_sup.dir.x,DTU_CAP_SLIDE_SPEED - v);
+		pi->velocity.z += fixmul(Dtu_cap_sup.dir.z,DTU_CAP_SLIDE_SPEED - v);
+	}
+}
+
 // ASCENT: Dtu_fix_wall_overlap. The move query of the body has another
 // radius for each side (fvi.c, dtu_side_rad: the floor rad/2, the walls
 // rad + 1.0). A segment below the player is entered through its top side
@@ -2383,58 +2918,6 @@ static int dtu_push_out_of_wall(object *obj,dtu_body *body,fvi_info *hit,vms_vec
 	return 1;
 }
 
-// ASCENT: Dtu_improved_physics. The body of the original (0x748D9) is so
-// wide (the walls stop the center at body_radius[0] / 2 + 1.0, 4.6 for a
-// human) that the edge of a wall side that is a step (BANE: a step of 3.5
-// at z 70) stops a player whose center is less than that above the top of
-// the step: always a dwarf (center 6.3 above the floor), a human (7.5) at
-// some frame rates. The executable has no step test for the walls (4.6).
-// Here a wall side whose top is above the feet by DTU_KNEE_HIGH (5.5, the
-// limit of the kneeHigh test of the floor) or less lifts the player onto
-// it, when the player walks (no jump, climb, fall or flight) and there is
-// room for the body there. Returns 1 if the player was lifted.
-static int dtu_improved_step(object *obj,dtu_body *body,fvi_info *hit)
-{
-	segment *segp;
-	vms_vector new_pos,head;
-	fix top,feet,stand;
-	int i,seg;
-
-	if (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_CLIMBING|DTU_PS_FALLING))
-		return 0;
-	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))
-		return 0;
-	if (hit->hit_side_seg < 0 || hit->hit_side < 0 || hit->hit_side == WTOP || hit->hit_side == WBOTTOM)
-		return 0;
-	if (Dtu_floor_dist != 0)
-		return 0;
-	if (vm_vec_dot(&obj->mtype.phys_info.velocity,&hit->hit_wallnorm) >= 0)
-		return 0;
-
-	segp = &Segments[hit->hit_side_seg];
-	top = Vertices[segp->verts[Side_to_verts[hit->hit_side][0]]].y;
-	for (i=1; i<4; i++) {
-		fix y = Vertices[segp->verts[Side_to_verts[hit->hit_side][i]]].y;
-		if (y > top)
-			top = y;
-	}
-	stand = body->floor_height + body->floor_rad/2;
-	feet = obj->pos.y - stand;
-	if (top <= feet || top - feet > DTU_KNEE_HIGH)
-		return 0;
-
-	new_pos = obj->pos;
-	new_pos.y = top + stand + F1_0/16;
-	head = new_pos;
-	head.y += body->half_height;
-	if ((seg = find_point_seg(&new_pos,obj->segnum)) < 0 || find_point_seg(&head,seg) < 0)
-		return 0;
-	obj->pos = new_pos;
-	if (seg != obj->segnum)
-		obj_relink(obj-Objects,seg);
-	return 1;
-}
-
 // 0x14534B, 0x14534F: the object that stopped the player in the last
 // tries, and the number of its hits in a row.
 static int Dtu_block_obj = -1;
@@ -2452,11 +2935,15 @@ int dtu_player_physics_sim(object *obj)
 	fvi_query fq;
 	fvi_info hit;
 	dtu_body body;		// ASCENT: the body of the frame (0x748D9)
+	dtu_capsule cap;	// ASCENT: Dtu_improved_physics, the capsule
+	int capsule;
 
 	if (obj->dtu.m_88 & DTU_OF_HELD)
 		return 1;
 
 	dtu_player_body(&body);
+	dtu_capsule_get(&body,&cap);
+	capsule = dtu_capsule_on();
 
 	n_phys_segs = 0;
 	floor_type = dtu_floor_type(obj);
@@ -2557,8 +3044,11 @@ int dtu_player_physics_sim(object *obj)
 			d = vm_vec_dot(&pi->velocity,&h);
 			vm_vec_scale_add2(&pi->velocity,&h,-d);
 		}
-		else if (Dtu_improved_physics && !(Dtu_player_state & (DTU_PS_CLIMBING|DTU_PS_JUMPING|DTU_PS_FALLING)) && Dtu_floor_dist <= F1_0)
+		else if (Dtu_improved_physics && !(Dtu_player_state & (DTU_PS_CLIMBING|DTU_PS_JUMPING|DTU_PS_FALLING)) && Dtu_floor_dist <= F1_0) {
 			dtu_improved_walk(obj,sim_time);
+			if (capsule)
+				dtu_capsule_slide(obj);
+		}
 	}
 
 	vm_vec_zero(&pi->thrust);
@@ -2627,10 +3117,14 @@ int dtu_player_physics_sim(object *obj)
 		fq.ignore_obj_list = ignore_obj_list;
 		fq.flags = FQ_CHECK_OBJS | FQ_GET_SEGLIST;
 
-		Fvi_dtu_body = 1;
-		Fvi_dtu_rad2 = body.move_rad2;
-		fate = find_vector_intersection(&fq,&hit);
-		Fvi_dtu_body = 0;
+		if (capsule)
+			fate = dtu_capsule_query(obj,&body,&cap,&fq,&hit);
+		else {
+			Fvi_dtu_body = 1;
+			Fvi_dtu_rad2 = body.move_rad2;
+			fate = find_vector_intersection(&fq,&hit);
+			Fvi_dtu_body = 0;
+		}
 
 		// 0x3FA08: a hit of the bottom side of a segment is a hit of the floor.
 		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
@@ -2680,9 +3174,9 @@ int dtu_player_physics_sim(object *obj)
 			// position out of the reach of the wall.
 			continue;
 		}
-		else if (fate == HIT_WALL && Dtu_improved_physics && dtu_improved_step(obj,&body,&hit)) {
-			// ASCENT: Dtu_improved_physics, the step up a low wall. The move
-			// starts again from the new height.
+		else if (fate == HIT_WALL && capsule && dtu_capsule_step(obj,&body,&cap,&hit,&p1)) {
+			// ASCENT: Dtu_improved_physics, the bottom of the capsule on a
+			// step. The move starts again from the new height.
 			continue;
 		}
 		else if (fate == HIT_WALL) {					// 0x9E47C and 0x9E88D

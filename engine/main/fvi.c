@@ -904,6 +904,11 @@ static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector
 	}
 
 	// the height
+	if (Fvi_dtu_capsule && otherobj->type == OBJ_PLAYER) {
+		if (intp->y - Fvi_dtu_cap_down > center.y + half_height || intp->y + Fvi_dtu_cap_up < center.y - half_height)
+			return 0;
+		return dist;
+	}
 	my_half = rad;
 	if (otherobj->type == OBJ_PLAYER || otherobj->type == OBJ_ROBOT) {
 		fix r;
@@ -980,15 +985,27 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 // The port does this only when the caller sets Fvi_dtu_body:
 //   1: the three radii above (the move of the player)
 //   2: rad/2 for the floor, 0 for the other sides (the search for the floor)
-// The mode 2 is not in the executable. It keeps a wall that is near the
-// player out of the search for the floor.
+//   3: rad + 1.0 for the walls, 0 for the floor and the ceiling (the
+//      head sphere of the capsule of the player, physics.c)
+// The modes 2 and 3 are not in the executable. The mode 2 keeps a wall
+// that is near the player out of the search for the floor.
 int Fvi_dtu_body = 0;
 fix Fvi_dtu_rad2 = 0;
+
+// ASCENT: Dtu_improved_physics, the capsule of the player (physics.c).
+// While the player moves, the test of an object takes the height of the
+// capsule: from Fvi_dtu_cap_down below the center (the feet) to
+// Fvi_dtu_cap_up above it (the head), not 6.25 up and down. The radius
+// stays rad (the walls take rad + 1.0).
+int Fvi_dtu_capsule = 0;
+fix Fvi_dtu_cap_down = 0, Fvi_dtu_cap_up = 0;
 
 static fix dtu_side_rad(int side,fix rad)
 {
 	if (!Fvi_dtu_body || rad == 0)
 		return rad;
+	if (Fvi_dtu_body == 3)
+		return (side == WBOTTOM || side == WTOP) ? 0 : rad + F1_0;
 	if (side == WBOTTOM)
 		return rad/2;
 	if (Fvi_dtu_body == 2)
