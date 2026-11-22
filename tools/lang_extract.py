@@ -17,7 +17,8 @@ Commands:
 
   merge --dir DIR --lang CODE [--port-out FILE]
       Read DIR/en.catalog and the translated parts DIR/CODE.part<X>.catalog
-      and write DIR/CODE.catalog (the text of the game files), FILE (the
+      (A to F of the split, then any later part G, H, ... with the text
+      added to en.catalog after the split) and write DIR/CODE.catalog (the text of the game files), FILE (the
       text of the code, default engine/lang/CODE_port.catalog) and
       DIR/<MOVIE>.CODE.srt. Then check the result (as check).
 
@@ -835,6 +836,18 @@ def check_form(e, tr):
     return problems
 
 
+def extra_parts(d, lang):
+    """The parts after those of the split (G, H, ...): the text added to
+    en.catalog later, kept apart so that the parts of the split keep their
+    entries. Sorted; a later part wins for an id that two parts have."""
+    found = []
+    for f in os.listdir(d):
+        m = re.match(r'%s\.part([A-Z])\.catalog$' % re.escape(lang), f)
+        if m and m.group(1) not in PART_NAMES:
+            found.append(m.group(1))
+    return ''.join(sorted(found))
+
+
 def cmd_merge(args, write=True):
     d = args['dir'][0]
     lang = args['lang'][0]
@@ -843,7 +856,7 @@ def cmd_merge(args, write=True):
     problems = []
     tr = {}
     if write:
-        for p in PART_NAMES:
+        for p in PART_NAMES + extra_parts(d, lang):
             path = os.path.join(d, '%s.part%s.catalog' % (lang, p))
             if not os.path.exists(path):
                 problems.append(('missing', 'part %s' % p, 'no file %s' % os.path.basename(path)))
