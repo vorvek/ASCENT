@@ -16,6 +16,9 @@
  *                  data directory.
  *   -texorig       with -texcheck: also list what the header slot rule of
  *                  DTUGAME.EXE gives for weapon, spell and arms models
+ *   -lights DIR    list the textures of every table of DIR that have a
+ *                  light value (TmapInfo[].lighting). DIR must also be a
+ *                  data directory.
  *   -v             print the messages of the loaders (stderr)
  *
  * The data directories are searched in the order given.
@@ -777,11 +780,48 @@ static void sweep(char *dir)
 	printf("sweep: %d tables loaded, %d failed. %d of %d levels have the texture names of their table\n", ok, failed, n_levels_ok, n_levels);
 }
 
+// -lights: the textures with a light value, one line for each table and
+// texture: table, texture number, name, light value, eclip.
+static void lights_sweep(char *dir)
+{
+	DIR *d = opendir(dir);
+	struct dirent *e;
+	char names[400][16];
+	int n = 0, i, j, t;
+
+	if (!d) { printf("cannot read directory %s\n", dir); return; }
+	while ((e = readdir(d)) != NULL && n < 400) {
+		char *dot = strrchr(e->d_name, '.');
+		if (dot && (!stricmp(dot, ".BIN") || !stricmp(dot, ".HEN")) && dot - e->d_name <= 8) {
+			memcpy(names[n], e->d_name, dot - e->d_name);
+			names[n][dot - e->d_name] = 0;
+			n++;
+		}
+	}
+	closedir(d);
+	for (i=0; i<n; i++)
+		for (j=i+1; j<n; j++)
+			if (stricmp(names[i], names[j]) > 0) {
+				char tmp[16];
+				strcpy(tmp, names[i]); strcpy(names[i], names[j]); strcpy(names[j], tmp);
+			}
+	for (i=0; i<n; i++) {
+		if (i > 0 && !stricmp(names[i], names[i-1]))
+			continue;
+		if (!bm_load_level_tables(names[i], NULL))
+			continue;
+		for (t=0; t<NumTextures; t++)
+			if (TmapInfo[t].lighting)
+				printf("%-9s %4d %-13s %6.3f ec %d\n", names[i], t, TmapInfo[t].filename,
+					f2fl(TmapInfo[t].lighting), TmapInfo[t].eclip_num);
+	}
+}
+
 // The game code has its own main() (inferno.c). The test is linked with
 // --wrap=main, so the start code calls this function.
 int __wrap_main(int argc, char **argv)
 {
-	char *level = "ypinn", *player = "hmc", *sweep_dir = NULL, *texcheck_dir = NULL;
+	char *level = "ypinn", *player = "hmc", *sweep_dir = NULL, *texcheck_dir = NULL, *lights_dir = NULL;
 	int i, n_dirs = 0, verbose = 0;
 
 	for (i=1; i<argc; i++) {
@@ -791,6 +831,7 @@ int __wrap_main(int argc, char **argv)
 		else if (!strcmp(argv[i], "-sweep") && i+1 < argc) sweep_dir = argv[++i];
 		else if (!strcmp(argv[i], "-texcheck") && i+1 < argc) texcheck_dir = argv[++i];
 		else if (!strcmp(argv[i], "-texorig")) Tc_orig = 1;
+		else if (!strcmp(argv[i], "-lights") && i+1 < argc) lights_dir = argv[++i];
 		else if (!strcmp(argv[i], "-v")) verbose = 1;
 		else { dtu_add_data_dir(argv[i]); n_dirs++; }
 	}
@@ -826,6 +867,10 @@ int __wrap_main(int argc, char **argv)
 
 	if (texcheck_dir) {
 		texcheck_sweep(texcheck_dir);
+		return 0;
+	}
+	if (lights_dir) {
+		lights_sweep(lights_dir);
 		return 0;
 	}
 	if (sweep_dir) {

@@ -344,6 +344,15 @@ The values of `MAX_EFFECTS`, `MAX_WALL_ANIMS`, `VCLIP_MAXNUM`, `MAX_SPELL_TYPES`
 `MAX_PLAYER_TYPES` are in assert strings whose compare was not found. The port uses
 250 vclips, 140 eclips, 100 wall clips, 100 spells and 4 player types.
 
+## Light values of the textures
+
+`test_dtudata -lights DIR` lists the textures with a light value of each table. In
+the 45 tables that the port loads, only two kinds of texture have one: the `$ECLIP`
+textures of `$EFFECTS` with `lighting=` (flames, lava, lavaflo, magma, lava02,
+light1 to light3, the portals, water2), each with an eclip, and `empty.bbm` lines of
+`$TEXTURES` with `lighting=` 0.2 to 1.0, without an eclip. `empty` has no opaque
+texel: it is an invisible light for the level editor. See [../re/infravision.md](../re/infravision.md).
+
 ## Oddities of the tables
 
 The port prints a message for each and goes on. For `YPINN.BIN` with `HMC.BIN`:

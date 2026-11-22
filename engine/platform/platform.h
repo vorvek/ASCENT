@@ -308,7 +308,8 @@ void plat_gpu_fx_mark(uint8_t *rgba, int w, int h, const uint8_t *index, int iw,
 // The heat of a polygon for the improved infravision of the RGB form.
 #define PLAT_GPU_HEAT_COLD	0		// walls, undead, things: dark and cool
 #define PLAT_GPU_HEAT_WARM	1		// living creatures and characters: red
-#define PLAT_GPU_HEAT_HOT	2		// light sources and fire: bright red to yellow
+#define PLAT_GPU_HEAT_HOT	2		// light sources and fire: the bright texels orange to yellow
+#define PLAT_GPU_HEAT_GLOW	3		// lava: the whole surface, dark red to yellow
 
 // The flags of plat_gpu_begin_view
 #define PLAT_GPU_VIEW_DEPTH		1	// a depth buffer hides the pixels behind a nearer polygon (else painter's order)

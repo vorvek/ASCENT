@@ -233,7 +233,9 @@ static const char *Scene_fs =
 	// the lit brightness. A warm or a hot polygon shows in the dark too.
 	// Warm is a red ramp of the brightness of the texel; grey texels (metal:
 	// weapons, armor) get less of it. Hot goes from orange to yellow white
-	// on the bright texels (the flame, not the wall around a lamp).
+	// on the bright texels (the flame, not the wall around a lamp). Glow (lava)
+	// colors the whole surface from dark red to yellow by the brightest
+	// component of the texel: the red of lava is dark in luminance.
 	"float lum(vec3 v) { return dot(v, vec3(0.299, 0.587, 0.114)); }\n"
 	"vec3 infra(vec3 c, vec3 b) {\n"
 	"	vec3 cold = vec3(0.28, 0.42, 0.75) * (lum(c) * 0.55);\n"
@@ -245,6 +247,11 @@ static const char *Scene_fs =
 	"	if (u_heat == 2) {\n"
 	"		vec3 h = mix(vec3(0.95, 0.30, 0.02), vec3(1.0, 0.95, 0.70), clamp(lum(b) * 1.3 - 0.3, 0.0, 1.0));\n"
 	"		return mix(cold, h, smoothstep(0.35, 0.65, lum(b)));\n"
+	"	}\n"
+	"	if (u_heat == 3) {\n"
+	"		float v = max(b.r, max(b.g, b.b));\n"
+	"		vec3 h = mix(vec3(0.45, 0.06, 0.0), vec3(1.0, 0.50, 0.08), clamp(v * 1.6, 0.0, 1.0));\n"
+	"		return mix(h, vec3(1.0, 0.95, 0.70), clamp(v * 2.0 - 1.0, 0.0, 1.0));\n"
 	"	}\n"
 	"	return cold;\n"
 	"}\n"
