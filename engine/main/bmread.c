@@ -740,28 +740,24 @@ static char *tblfix_text( int kind, int id )
 	return Tbl_records[it->record].text;
 }
 
-// ASCENT: dtutblfix.c does not include mem.h, so text comes from the C
-// library malloc. "(free)" calls the C library free, not the mem.h macro.
-// The record keeps a copy from mem.h, because bm_reset_tables() and
-// bm_close() release the record text with mem_free().
 static void tblfix_set_text( int kind, int id, char * text )
 {
 	item_info *it = tblfix_item( kind, id );
+
 	char *copy;
 
+	// ASCENT: text comes from the C library (dtutblfix.c has no mem.h) and
+	// the records are freed with the mem library: keep a copy of the mem
+	// library.
 	if ( text == NULL )
 		return;
 	if ( it == NULL || it->record < 0 || it->record >= N_tbl_records ) {
-		(free)( text );
+		dtu_tblfix_free( text );
 		return;
 	}
-	copy = (char *) malloc( strlen(text)+1 );
-	if ( copy == NULL ) {
-		(free)( text );
-		return;
-	}
+	copy = malloc( strlen(text) + 1 );
 	strcpy( copy, text );
-	(free)( text );
+	dtu_tblfix_free( text );
 	if ( Tbl_records[it->record].text )
 		free( Tbl_records[it->record].text );
 	Tbl_records[it->record].text = copy;

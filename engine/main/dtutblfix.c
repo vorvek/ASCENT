@@ -1188,3 +1188,8 @@ int dtu_tblfix_apply(const dtu_tblfix_io *io)
 	logf_(&c, "Table fixup of 1.3 (0x1A344): %d of %d writes changed the tables%s", c.n, N_FIXUPS, "");
 	return c.n;
 }
+
+void dtu_tblfix_free(char *text)
+{
+	free(text);
+}
