@@ -253,42 +253,56 @@ run_script_id is deleted.
 - 0x14C4D8 is set for each polygon by draw_tmap (0xEA503 to 0xEA525): 1 when
   the bitmap has flag 0x20 (the merged walls of the texture merge cache, see
   [effectcolors.md](effectcolors.md)), when 0x14C4CD (the tint of an object)
-  is not 0, or when 0x14C4CF is not 0. The window sets only D, so the rule
-  changes only the lit merged walls (a wall with an overlay texture) and the
-  objects with a tint. Other walls, the models and the flat polygons keep
-  their colors. render_face (0x7558C) uses the merge cache (0x7A9AD) only for
-  a side with a second texture.
+  is not 0, or when 0x14C4CF is not 0. The window sets only D. No other
+  write of 0x14C4D8 or 0x14C4CF was found (all.asm, also writes of a word or a
+  dword over these bytes), and no code but the texture merge cache (0x7AB89)
+  sets flag 0x20 on a bitmap. By this reading only the lit merged walls (a
+  wall with an overlay texture) and the objects with a tint would change.
+- **Seen in the DOS game** (a screenshot of the user, version 1.3, a
+  conversation with a skeleton in a stone room): the whole 3D view changes,
+  the walls, the floor, the ceiling, the skeleton and the first person sword,
+  to a desaturated lavender grey of middle brightness with a dithered look;
+  the interface around keeps its colors; the change takes a moment. So
+  something makes the rule apply to every lit polygon while the window is
+  open. **G**: what it is was not found (open question 6).
 - `(x & 15) | 8` is a color 8 to 15 of palette row 0: PALETTE.256 gives
   (28,22,27), (24,18,24), (19,15,20), (15,12,16), (11,9,13), (7,6,9), (4,3,5),
-  (1,1,2) (6-bit values), the dark half of the grey ramp, a little blue. The
-  lit step s of the texel (five rows brighter) gives color `s | 8`: steps 0 to
-  7 become 8 to 15, steps 8 to 15 stay. With D at 15 every texel of such a
-  wall takes one of these eight colors: the merged walls turn dark blue grey
-  behind the window, with their brightness steps folded.
+  (1,1,2) (6-bit values), the dark half of the grey ramp, lavender. The lit
+  step s of the texel (five rows brighter) gives color `s | 8`: steps 0 to 7
+  become 8 to 15, steps 8 to 15 stay. With D at 15 every texel takes one of
+  these eight colors with its brightness steps folded, which looks dithered.
+  This matches the screenshot.
 - The ramp tests the unlit texel step `c & 15` (0 is the brightest of a
-  ramp), so the bright texels change first.
+  ramp), so the bright texels change first. The ramp takes 15 x 0x800 of game
+  time (about half a second) with reduced frames, and the game waits for it.
 
-The port (`engine/texmap/tmapfx.c`, `engine/main/dtudlg.c`): `dtu_dlg_view_dim`
-gives D from the game time (the steps above); the port does not wait for the
-end of the ramp. render.c gives it to the software mappers (a copy of the fade
-table with the rule, used for a lit bitmap with `BM_FLAG_DTU_MERGED`, which
-texmerge.c sets on each merged bitmap) and to the GPU renderer (`u_dim`). The
-8-bit form of the GPU renderer does the rule on the palette index. The RGB form
-takes the nearest palette color of the texel for the test, the light five
-rows brighter, the step of its nearest palette color for the new color, and
-keeps the detail of a filtered or upscaled texel at the scale of the new
-color. The tint of objects (0x14C4CD) is not in the port. A level start and a
-loaded game end the dark view at once. The half light of the window area
-(`darken` in dtudlg.c) is new in the port.
+The port (`engine/texmap/tmapfx.c`, `engine/main/dtudlg.c`), as the DOS game
+looks: `dtu_dlg_view_dim` gives D from the game time (the steps above); the
+port does not wait for the end of the ramp. render.c gives it to the software
+mappers (a copy of the fade table with the rule, used for every lit polygon
+of draw_tmap: walls, floors, ceilings and the models, also the first person
+arms and weapon) and to the GPU renderer (`u_dim` for each lit textured
+polygon). The 8-bit form of the GPU renderer does the rule on the palette
+index. The RGB form takes the nearest palette color of the texel for the
+test, the light five rows brighter, the step of its nearest palette color for
+the new color, and keeps the detail of a filtered or upscaled texel at the
+scale of the new color. Flat polygons (no texture) keep their colors, as the
+rule is in the texture mapper. A level start and a loaded game end the dark
+view at once.
+
+The half light of the window area (`darken` in dtudlg.c, fade table row 11)
+is new in the port; with it the view behind the text is darker than in the
+DOS game. The RGB form of the GPU renderer scales the colors by the average
+scale of that row: the light of the fade table through the nearest palette
+color gave the smooth upscaled sword texture swirls of purple and orange.
 
 Test (YPINN, Durnan, `-level YPINN -fixedfps 30 -testpos -60,-8.7,9,270
--testmove wait:10,use:1,wait:400 -dlgauto esc,esc,esc,esc -dlgdelay 10`): the
-shelf wall, the window frames and the beams (merged walls) turn dark blue
-grey while the window is open, in the software renderer, the 8-bit and the
-RGB forms (the mean color of the shelf wall: 8,6,12 software and 8-bit, 9,7,12
-RGB). The plain wood walls and the floor keep their colors. Less than half a
-second after the window closes the view is the same as before the
-conversation.
+-testmove wait:10,use:1,wait:400 -dlgauto esc,esc,esc,esc -dlgdelay 10`,
+frames 8, 45 and 100): during the conversation the whole view, the walls, the
+floor, Durnan and the first person sword, is lavender grey with folded steps
+in the software renderer and in both forms of the GPU renderer; the sword has
+no orange or purple swirls; less than half a second after the window closes
+the view is the same as before the conversation.
 
 Layout (0xB13C4, tables at 0x1465F4, 0x146624, 0x146654, values for low and
 high resolution). A screen mode other than 0, 1 and 7 is changed to mode 0
@@ -630,6 +644,9 @@ table of YPINN: 0x26 "Skull Key", 0x6B to 0x79 "Violet Gem Key", 0x12 to
    movies.md: the movie FLAM1.MVE.)
 4. Script 0x1FD and its seven callers.
 5. The MISC items of the rewards by name, and the doors that they open.
+6. What makes the light functions (0xEC4D7, 0x105A81) apply the dark view of the
+   conversation window to every lit polygon (0x14C4D8 is 1 only for flag 0x20,
+   a tint or 0x14C4CF by the code read), as the DOS game shows.
 
 ## 12. Tool check
 

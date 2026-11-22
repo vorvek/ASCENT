@@ -74,10 +74,9 @@ and red edges on the water.
   `Tmap_fx_row` as 0x72818 does (per view, not per time).
 - Not done: the tint of an object (0x14C4CD) and 0x14C4CF also turn the rule on for
   models; the port turns it on only for merged walls.
-- The same functions darken the merged walls behind the conversation window (the
-  byte 0x14C4CE, see [scripts.md](scripts.md), section 4). The port marks each
-  merged bitmap with `BM_FLAG_DTU_MERGED` (0x40) for it, because
-  `BM_FLAG_DTU_EFFECTS` is set only on the merged bitmaps with an effect color.
+- The same functions change the view behind the conversation window (the byte
+  0x14C4CE, see [scripts.md](scripts.md), section 4). In the DOS game it changes
+  every lit polygon; the port applies it to every lit polygon.
 - GPU renderer (`engine/platform/gpu.c`, `engine/3d/gpu3d.c`, `gputex.c`): a face
   with `BM_FLAG_DTU_EFFECTS` copies the image under it (`Dest_tex`, as a darkening
   does) and the shader replaces the effect texels. In the RGB form an effect texel
