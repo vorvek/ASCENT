@@ -239,6 +239,13 @@ void dtu_lang_item_tokens(char *s, int size, const char *name, const char *plura
 		if (len > (int) sizeof(out) - 1 - o)
 			len = (int) sizeof(out) - 1 - o;
 		memcpy(out + o, form, len);
+		// {item} is inside a sentence: the name starts with a small letter
+		// (the item names of the catalog all start with a common noun)
+		if (n == 6 && len > 0) {
+			unsigned char c = (unsigned char) out[o];
+			if ((c >= 'A' && c <= 'Z') || (c >= 0xC0 && c <= 0xDE && c != 0xD7))
+				out[o] = (char) (c + 32);
+		}
 		o += len;
 		p += n;
 	}

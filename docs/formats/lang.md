@@ -193,7 +193,7 @@ or `|` and may be empty; anything else stays as it is):
 |---|---|
 | `{item:MASC\|FEM}` | MASC for a masculine name or a name with no `gender`, FEM for a feminine name |
 | `{qty:ONE\|MANY}` | ONE when the quantity is 1, MANY for any other quantity (also "many") |
-| `{item}` | the name: the translation for a quantity of 1, else the `plural` |
+| `{item}` | the name: the translation for a quantity of 1, else the `plural`, with a small first letter (the name is inside a sentence) |
 
 The quantity is the stock of the line (the buy box, "many" for a stock of
 100 or more or no limit) or the number the player has (the sell box and
