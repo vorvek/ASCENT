@@ -35,21 +35,21 @@ id: port.you_dropped_your_weapon
 en: You dropped your weapon!
 tr: ¡Se te ha caído el arma!
 
-id: port.hill_giant_intelligence_expired
-en: Hill Giant Intelligence expired.
-tr: Se acabó la inteligencia de gigante de las colinas.
+id: port.potion_of_hill_giant_intelligence_expire
+en: Potion of Hill Giant Intelligence expired.
+tr: Se acabó el efecto de la poción de inteligencia de gigante de las colinas.
 
-id: port.hill_giant_strength_expired
-en: Hill Giant Strength expired.
-tr: Se acabó la fuerza de gigante de las colinas.
+id: port.potion_of_hill_giant_strength_expired
+en: Potion of Hill Giant Strength expired.
+tr: Se acabó el efecto de la poción de gigante de las colinas.
 
-id: port.dragon_s_blood_expired
-en: Dragon's Blood expired.
-tr: Se acabó la sangre de dragón.
+id: port.potion_of_dragon_s_blood_expired
+en: Potion of Dragon's Blood expired.
+tr: Se acabó el efecto de la poción de sangre de dragón.
 
-id: port.agility_expired
-en: Agility expired.
-tr: Se acabó la agilidad.
+id: port.potion_of_agility_expired
+en: Potion of Agility expired.
+tr: Se acabó el efecto de la poción de agilidad.
 
 id: port.your_luck_just_ran_out
 en: Your luck just ran out.
@@ -67,9 +67,21 @@ id: port.nothing_happens
 en: Nothing happens...
 tr: No pasa nada...
 
+id: port.you_have_increased_agility_for_d_minutes
+en: You have increased agility for %d minutes.
+tr: Tu agilidad aumenta durante %d minutos.
+
+id: port.you_have_increased_strength_for_d_minute
+en: You have increased strength for %d minutes.
+tr: Tu fuerza aumenta durante %d minutos.
+
 id: port.you_feel_much_better
 en: You feel much better.
 tr: Te sientes mucho mejor.
+
+id: port.you_have_fire_resistance_for_d_minutes
+en: You have Fire Resistance for %d minutes.
+tr: Tienes resistencia al fuego durante %d minutos.
 
 id: port.you_are_immune_to_paralysis_for_awhile
 en: You are immune to paralysis for awhile.
@@ -139,6 +151,22 @@ id: port.your_backstab_was_successful
 en: Your backstab was successful!
 tr: ¡Tu puñalada por la espalda ha tenido éxito!
 
+id: port.the_sword_of_win
+en: The sword of win!
+tr: ¡La espada de la victoria!
+
+id: port.ready_or_not_here_we_go
+en: Ready or not, here we go!
+tr: ¡Preparados o no, allá vamos!
+
+id: port.the_queen_of_the_demonweb_pits_awaits
+en: The Queen of the Demonweb Pits awaits!
+tr: ¡La Reina de los Fosos de la Red Demoníaca te espera!
+
+id: port.they_were_sick_anyway
+en: They were sick anyway....
+tr: Total, ya estaban enfermos....
+
 id: port.your_weapon_has_no_effect_on_s
 en: Your weapon has no effect on %s.
 tr: Tu arma no afecta a %s.
@@ -158,6 +186,18 @@ tr: Ya no puedes intentar expulsar a la criatura (%s).
 id: port.you_destroyed_the_s
 en: You destroyed the %s.
 tr: Has destruido a la criatura (%s).
+
+id: port.you_lost_your_eyesight
+en: You lost your eyesight!
+tr: ¡Has perdido la vista!
+
+id: port.you_lost_your_hearing
+en: You lost your hearing!
+tr: ¡Has perdido el oído!
+
+id: port.you_set_off_a_fire_trap
+en: You set off a fire trap!!!
+tr: ¡¡¡Has activado una trampa de fuego!!!
 
 id: port.lvl_d
 en: Lvl %d
@@ -210,6 +250,10 @@ tr: Indicador de objetivo
 id: port.streaming_safe_music
 en: Streaming safe music
 tr: Música apta para streaming
+
+id: port.rulebook_items
+en: Rulebook items
+tr: Objetos según el manual
 
 id: port.improvements
 en: Improvements
@@ -639,6 +683,14 @@ id: port.has
 en: has
 tr: tiene
 
+id: port.you_miss_s_with_s
+en: You miss %s with %s.
+tr: Fallas a %s con %s.
+
+id: port.s_misses_you_with_s
+en: %s misses you with %s.
+tr: %s te falla con %s.
+
 id: port.s_s_d_aid_hit_points_for_d_minutes
 en: %s %s %d aid hit points for %d minutes.
 tr: %s %s %d puntos de golpe de Ayuda durante %d minutos.
@@ -1051,6 +1103,46 @@ id: port.you_cannot_perform_this_action_while_wea
 en: You cannot perform this action while wearing %s.
 tr: No puedes hacer esta acción llevando %s.
 
+id: port.hide_in_shadows
+en: Hide In Shadows
+tr: Esconderse
+
+id: port.move_silently
+en: Move Silently
+tr: Moverse en silencio
+
+id: port.open_locks
+en: Open Locks
+tr: Abrir cerraduras
+
+id: port.find_remove_traps
+en: Find/Remove Traps
+tr: Desactivar trampas
+
+id: port.climb_walls
+en: Climb Walls
+tr: Trepar muros
+
+id: port.you_must_spend_all_points
+en: You must spend all points
+tr: Debes gastar todos los puntos
+
+id: port.you_have_some_thief_skill_points_availab
+en: You have some thief skill\npoints available.\nSpend them Now?
+tr: Tienes puntos de habilidad\nde ladrón disponibles.\n¿Quieres gastarlos ahora?
+
+id: port.passage_in_and_out_of_undermountain_cost
+en: Passage in and out of\nUndermountain costs one gold.\nYou will need 2 gold\npieces to venture into\nthe dungeon and return to\nWaterdeep
+tr: Entrar y salir de Undermountain\ncuesta una pieza de oro.\nNecesitarás 2 piezas de oro\npara aventurarte en la\nmazmorra y volver a\nWaterdeep
+
+id: port.if_you_enter_the_well_now_you_will_not_h
+en: If you enter the well\nnow you will not have\nenough gold for passage\nback to Waterdeep.\nProceed anyway?
+tr: Si entras en el pozo ahora\nno tendrás oro suficiente\npara volver a Waterdeep.\n¿Entrar de todos modos?
+
+id: port.it_costs_1_gold_piece_to_ascend_back_to_
+en: It costs 1 gold piece\nto ascend back to Waterdeep.\nYou do not have any gold.\nYou will need to search\nthe dungeon for gold
+tr: Volver a Waterdeep cuesta\n1 pieza de oro.\nNo tienes oro.\nTendrás que buscar oro\nen la mazmorra
+
 id: port.press_f3_to_return_to_cockpit_mode
 en: Press F3 to return to Cockpit mode
 tr: Pulsa F3 para volver al modo con interfaz
@@ -1319,74 +1411,6 @@ id: port.strong_magic_prevents_you_from_unlocking
 en: Strong magic prevents you from unlocking this door.
 tr: Una magia poderosa te impide abrir esta puerta.
 
-id: port.s_i_ss
-en: %s %i %ss!
-tr: ¡%s %i (%s)!
-
-id: port.you_lost_your_eyesight
-en: You lost your eyesight!
-tr: ¡Has perdido la vista!
-
-id: port.you_lost_your_hearing
-en: You lost your hearing!
-tr: ¡Has perdido el oído!
-
-id: port.you_set_off_a_fire_trap
-en: You set off a fire trap!!!
-tr: ¡¡¡Has activado una trampa de fuego!!!
-
-id: port.you_miss_s_with_s
-en: You miss %s with %s.
-tr: Fallas a %s con %s.
-
-id: port.s_misses_you_with_s
-en: %s misses you with %s.
-tr: %s te falla con %s.
-
-id: port.hide_in_shadows
-en: Hide In Shadows
-tr: Esconderse
-
-id: port.move_silently
-en: Move Silently
-tr: Moverse en silencio
-
-id: port.open_locks
-en: Open Locks
-tr: Abrir cerraduras
-
-id: port.find_remove_traps
-en: Find/Remove Traps
-tr: Desactivar trampas
-
-id: port.climb_walls
-en: Climb Walls
-tr: Trepar muros
-
-id: port.you_must_spend_all_points
-en: You must spend all points
-tr: Debes gastar todos los puntos
-
-id: port.you_have_some_thief_skill_points_availab
-en: You have some thief skill\npoints available.\nSpend them Now?
-tr: Tienes puntos de habilidad\nde ladrón disponibles.\n¿Quieres gastarlos ahora?
-
-id: port.passage_in_and_out_of_undermountain_cost
-en: Passage in and out of\nUndermountain costs one gold.\nYou will need 2 gold\npieces to venture into\nthe dungeon and return to\nWaterdeep
-tr: Entrar y salir de Undermountain\ncuesta una pieza de oro.\nNecesitarás 2 piezas de oro\npara aventurarte en la\nmazmorra y volver a\nWaterdeep
-
-id: port.if_you_enter_the_well_now_you_will_not_h
-en: If you enter the well\nnow you will not have\nenough gold for passage\nback to Waterdeep.\nProceed anyway?
-tr: Si entras en el pozo ahora\nno tendrás oro suficiente\npara volver a Waterdeep.\n¿Entrar de todos modos?
-
-id: port.it_costs_1_gold_piece_to_ascend_back_to_
-en: It costs 1 gold piece\nto ascend back to Waterdeep.\nYou do not have any gold.\nYou will need to search\nthe dungeon for gold
-tr: Volver a Waterdeep cuesta\n1 pieza de oro.\nNo tienes oro.\nTendrás que buscar oro\nen la mazmorra
-
-id: port.rulebook_items
-en: Rulebook items
-tr: Objetos según el manual
-
 id: tbl.fix.cloak_of_lathander
 en: Cloak of Lathander
 tr: Capa de Lathander
@@ -1428,3 +1452,52 @@ en: Thief Scroll
 tr: Pergamino de ladrón
 gender: m
 plural: Pergaminos de ladrón
+
+id: tbl.fix.produce_fire
+en: Produce Fire
+tr: Producir Fuego
+gender: m
+plural: Producir Fuego
+
+id: tbl.fix.cure_blindness_or_deafness
+en: Cure Blindness or Deafness
+tr: Curar Ceguera o Sordera
+gender: m
+plural: Curar Ceguera o Sordera
+
+id: tbl.fix.find_traps
+en: Find Traps
+tr: Encontrar Trampas
+gender: m
+plural: Encontrar Trampas
+
+id: tbl.fix.dwarven_scimitar
+en: Dwarven Scimitar
+tr: Cimitarra enana
+gender: f
+plural: Cimitarras enanas
+
+id: tbl.fix.drowslayer
+en: Drowslayer
+tr: Matadrows
+gender: f
+plural: Matadrows
+
+id: tbl.fix.longsword_3
+en: Longsword +3
+tr: Espada larga +3
+gender: f
+plural: Espadas largas +3
+
+id: tbl.fix.gauntlets_of_dexterity
+en: Gauntlets of Dexterity
+tr: Guanteletes de destreza
+gender: m
+plural: Guanteletes de destreza
+
+id: tbl.fix.cloak_of_lathandar
+en: Cloak of Lathandar
+tr: Capa de Lathandar
+gender: f
+plural: Capas de Lathandar
+
