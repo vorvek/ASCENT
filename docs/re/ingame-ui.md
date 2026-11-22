@@ -246,9 +246,10 @@ gold (guess for which label string is which). The item description bar
 Hot key areas: 10 icon areas at 0x3BB04C and 10 quantity areas at 0x3BA91C
 (text color (32,0,0)). Created in high resolution for the modes 0, 3, 4, 5,
 and in low resolution only for mode 6 (0x995BE). Update code at 0x329CB: a
-box with no item is cleared. A box with an item shows the icon (byte 2 of the
-item record) and the quantity. The box of the current item gets a border of
-thickness 1 in the color (63,63,0).
+box with no item is cleared. A box with an item or a spell shows the icon (byte
+2 of the entry) and the text of 0xB7487: the count, or "Lvl N" ("L-N" in low
+resolution) for a spell of a spell list (character.md, section 6). The box of
+the current item gets a border of thickness 1 in the color (63,63,0).
 
 The font of all areas is `GAME_FONT` (font 4: `FNTEMLS_.FNT` low,
 `FNTEMHS_.FNT` high).
@@ -315,8 +316,10 @@ Main screen, low resolution (0x1442DA): M (8,154) 19x17 images (30,39) and
 (114,39), (93,39); R (33,176) 19x16 images (156,39), (135,39).
 
 The other lists (same record layout, read them from the image): high
-inventory 0x1442EE (9 buttons: M, I, S, R, use, drop, the patch button, and
-two regions without image for the paper doll), high map 0x14432A, high
+inventory 0x1442EE (9 buttons: M, I, S, R, use, drop, SPELLS (0x14408C, the
+action 0x37180 changes the list between items, mage spells and cleric spells),
+and two regions without image for the figure of the paper doll, press action
+0x35ADF; see character.md, section 6), high map 0x14432A, high
 statistics 0x144316, low inventory 0x144262 (10), low map 0x1442C6, low
 statistics 0x1442B2, low hot keys 0x14428E (8). In each list the button of
 the current screen has the action "mode 0".
@@ -384,8 +387,9 @@ behavior.
   text). The positions come from tables that are not decoded.
 - Low resolution hot key screen (mode 6): picture 60.
 - There is no journal or spell book screen in the mode table. Spells are a
-  view of the inventory list ("BrowseItemType <= JRG_VIEWING_PRIEST" at
-  0x35ABD).
+  view of the inventory list ("BrowseItemType <= JRG_VIEWING_PRIEST", the
+  asserts at 0x35D2C; the variable 0x13ADB1, the button SPELLS). 0x35ABD is the
+  test of a point in a rectangle.
 
 ## State of the port (engine/main/dtudisp.c)
 
@@ -405,9 +409,11 @@ places of the paper doll, the cursor that holds an item, the buttons USE, DROP
 and R (rest), the statistics screen (portrait, alignment, race, classes and
 levels, the six abilities, the five thief skills), the portrait number.
 
-The map screen draws the automap (automap.md). Frame only: the spell tables of the statistics screen, the
-SPELLS button and the spell lists, the scroll bar of the inventory list
-(`HRISBTN.PCH` is not read).
+The map screen draws the automap (automap.md). The SPELLS button and the spell
+lists of the inventory screen, and spells in the hot key boxes, are in the port
+(character.md, sections 6 and 14). Frame only: the spell tables of the
+statistics screen, the scroll bar of the inventory list (`HRISBTN.PCH` is not
+read).
 
 Guesses in the port: the keys (I, Tab, V, R, F3 from the manual, the key
 code of the original was not read), F3 changes between mode 0 and mode 7,

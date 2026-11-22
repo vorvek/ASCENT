@@ -286,6 +286,73 @@ like this (**Code**):
   the held item if it is of the item list, or with an empty cursor the item in
   the hand if it is a misc item (0x2FAF0).
 
+### Spells in the hot keys (Code)
+
+A hot key box is a reference (section 2): list 0 is the item list, list 1 the
+mage spell list (P+0x8F3), list 2 the cleric spell list (P+0x10E3), and the
+index is the entry of that list (0x35863). The user's save `SG0.SG` (a thief and
+mage) has the boxes 3 to 8 at (1,0) to (1,5): Magic Missile, Light, Armor,
+Shield, Detect Magic and Sleep of the mage list.
+
+- Draw (0x329CB, each box): the entry of 0x35863; the icon is byte 2 of the
+  entry (for a spell: `icon=` of the spell line, set by 0xB69AD), the text is
+  0xB758D, which calls 0xB7487(entry, list). 0xB7487 writes into the buffer at
+  0x3D4F78: a spell of list 1 or 2: `"%s%d"` (0x1324C2) with "Lvl " (high
+  resolution) or "L-" (low resolution, pointer table 0x146880) and the word at
+  entry +6 (the spell level). An entry of the item list (types 5, 15, 16, and a
+  spell in the item list: a scroll): no text for a count of 0 or 1, "Many"
+  (high) or "+++" (low, table 0x146878) for -1, else `"%d"` with the count; misc
+  102 (the Scroll) has no text; other types "???". The text area is the
+  quantity area of the box (color (32,0,0)). The border (63,63,0) marks the box
+  whose reference (both bytes) is the reference of the hand P+0x1AD7.
+- The inventory screen shows one of three lists, `BrowseItemType` at 0x13ADB1
+  (asserts at 0x35D2C: 0 to `JRG_VIEWING_PRIEST`, 2). Each list has its first
+  entry: 0x13AD9F items, 0x13ADA5 mage spells, 0x13ADA9 cleric spells (0x36F2A).
+  The button SPELLS (high: record 0x14408C, rectangle (18,324) 76x32, images
+  (424,78) and (344,78) of sheet 69; low: record 0x143934, a circle at (22,165)
+  with radius 15 (hit test 0x99141), drawn at (6,150) 35x35, images (477,2) and
+  (440,2) of sheet 77) has the release action 0x37180: the list becomes the next
+  of 0x3713C: from the items to the mage spells for a mage (0x35A2B), else to the
+  cleric spells for a cleric (0x35A09); from the mage spells to the cleric
+  spells for a cleric, else to the items; from the cleric spells to the items.
+  Its release handler 0x98F38 then sets 0x13B0BB (0x37192) and swaps the button
+  images with two others (0x142EEB, 0x142EEF) while the next press leads back to
+  the items. The list cells draw each spell with its icon and "Lvl N"
+  (0x327D7 with 0xB7487 and the list number).
+- A click on a list cell with an empty cursor (0x3029E) copies the entry to
+  0x1BD46C and the reference (list 0x13ADB1, index) to 0x1BD694: the cursor
+  holds the spell. 0x13ADB0 (may drop) is 0 for a spell list, so DROP does
+  nothing; USE (0x36189) does nothing with a held spell.
+- A click on a hot key box with a held entry (0x3049D to 0x30506): the box takes
+  the reference if 0x3533C (usable) and 0x31752 (may stand in a box: all spells
+  and weapons) pass and no box holds the reference yet (0x35462). The cursor is
+  empty then; the log text is "Selected spell %s as weapon" (0x123CEC), but the
+  hand does not change. Else, with an entry in the box, the box acts as its key
+  (0x3056E: log "Selected hotkey item %d", 0x43A5A) and the cursor keeps the
+  spell.
+- 0x3533C for a spell entry: spells 39, 40 and 53 always; else the character is
+  a caster (0x359F4: cleric 0x35A09 or mage 0x35A2B), the count is 1 or more (or
+  -1), and the class bits of byte 3 fit a class of the character (0x352F7).
+- The figure of the paper doll (high: records 0x1440EA (244,24) 55x57 and
+  0x144148 (210,81) 122x278; low: 0x1441A6 (120,12) 31x29 and 0x144204 (101,41)
+  67x140) has the press action 0x35ADF. With a held weapon or spell that 0x3533C
+  passes (0x35CE5): if a box holds the reference the cursor keeps it. Else the
+  first empty box takes it, or with no empty box the box that was chosen last
+  (0x13AD15), box 0 if none; an arrow and a bolt have a second test
+  (0x35EDE with 0x35F9D, 0x35F0F with 0x35F64, else sound 3000); then 0x13AD15 = -100 and 0x43A5A(box): the
+  entry goes into the hand. A held entry with wear bits goes into its slot, a
+  misc item is used (0x37A6A).
+- A key 1 to 0, a click on a box with an empty cursor, and 0x4448D (the first
+  box that is not empty, "Autoarming anything") call 0x43A5A(box): P+0x1AD7 =
+  the reference of the box, 0x13AD15 = box. Pressed again on the box of
+  0x13AD15 it plays sound 3000 and does nothing; also while the flag 0x13B69F
+  is set (0x9305D clears it when a cast stops). For a spell 0x43A5A also sets P+0x47: for a spell with `uses=-1`
+  game time + `duration` + (caster level + 1) * `level_duration`, else
+  0x3FFFFFFF (no reader of P+0x47 was found). The model of the arms takes byte 5
+  of the entry: `K` (cast with the hands) for a spell of a book (0x43EF8).
+- The attack key then casts the spell of the hand: the checks and the cast time
+  of 0x41A4D, the cast of 0x56A0D, one slot of the spell level (`combat.md`, B1).
+
 The lockpick items of the tables of the disc (misc 10 to 13) have no wear
 keyword. **Guess**: the reader or the insert sets the bit for them, because
 0xB02D6 looks for these four numbers in the slot.
@@ -436,9 +503,9 @@ See `ingame-ui.md` for the frames. New facts (**Code**):
 
 - Right column of the screens: name, hit points, "AC: n" (0xB0A92), "n Exp" (the
   experience from 0x37253), "Gold: n" (text 674, P+0xDB).
-- Hot key boxes (0x329CB): icon and count of the entry. The box of the item in
-  the hand has a border in (63,63,0). The keys 1 to 0 arm the item of a box
-  (help text 760).
+- Hot key boxes (0x329CB): icon and the text of 0xB7487 (section 6, "Spells in
+  the hot keys"). The box of the item in the hand has a border in (63,63,0).
+  The keys 1 to 0 arm the item or the spell of a box (help text 760).
 - Inventory list: ten entries in two columns, first entry 0x13AD9F.
 - Statistics screen (areas created at 0x99B11, rectangles from the tables at
   0x144938 to 0x144B40, low / high resolution):
@@ -480,9 +547,26 @@ Differences and guesses of the port:
   with their 16 bytes, the key items, the two spell lists, the spell slots (P+0x23 to
   P+0x42) and the spell in the hand. The save starts from the loaded record and writes
   the fields that the port has; the bytes of an entry come from the loaded entry. The
-  port has no spells in the hot keys: a spell reference of the loaded record stays in
-  its box while the box is free. The slots of a class that the character does not have
-  stay as loaded (the executable gives a thief and mage one cleric slot).
+  slots of a class that the character does not have stay as loaded (the executable
+  gives a thief and mage one cleric slot).
+- Spells in the hot keys (section 6): a box of `Dtu_char.hot_key[]` holds list 0 and
+  an index of `Dtu_inventory[]`, or list 1 or 2 and an index of the spell list of
+  `dtuspell.c` (the order of the save game, which the save writes again). The load
+  and the save keep them, and a spell in the hand is saved as the reference of the
+  hand (list 1 or 2), as the executable keeps it. The bar draws the icon and
+  "Lvl N" / "L-N", the border marks the spell in the hand, the key or a click arms
+  the spell (`dtu_spell_take`, no message), and the attack key casts it. The
+  inventory screen has the button SPELLS and the spell lists; a held spell goes into
+  a box by a click on the box or onto the figure of the paper doll (the port takes
+  only a held spell there: a held item goes back to the list as before). The
+  entries of the item list and of the boxes show the text of 0xB7487 (no "1").
+- Not in the port: the second image pair of the SPELLS button (0x142EEB), the sound
+  3000 of 0x43A5A for the box of 0x13AD15 and during a cast, P+0x47 (no reader), the
+  arrow and bolt test of 0x35CE5 for a weapon. The port keeps the item of the hand in
+  `Dtu_char.current` while a spell is in the hand (`Dtu_spell_current`); an item
+  taken in the hand puts the spell away. The first list after a load is the item
+  list (guess). Cycle Weapon passes over the boxes with a spell (0x544F2 takes
+  weapons).
 - The ability scores, alignment, age and gold of the default character are a
   guess. The front end sets them in the original.
 - The class bits are tested when an item is worn or taken in the hand (messages

@@ -228,6 +228,7 @@ static short Hotkey_lo_qty_y[10] = { 32, 66, 100, 134, 169, 32, 66, 100, 134, 16
 #define ACT_REST		20
 #define ACT_USE		21
 #define ACT_DROP		22
+#define ACT_SPELLS	23		// 0x37180: the next list of the inventory screen
 
 typedef struct dtu_button {
 	short	x, y, w, h;			// hot rectangle and draw rectangle
@@ -251,6 +252,7 @@ static dtu_button Buttons_hi_inv[] = {			// 0x1442EE
 	{ 584, 312, 39, 33, 334, 42, 291, 42, ACT_REST },
 	{ 454, 354, 77, 33, 264, 78, 184, 78, ACT_USE },
 	{ 548, 354, 74, 33, 107, 78,  29, 78, ACT_DROP },
+	{  18, 324, 76, 32, 424, 78, 344, 78, ACT_SPELLS },	// 0x14408C
 	{ 0 } };
 static dtu_button Buttons_hi_map[] = {			// 0x14432A
 	{ 454, 312, 77, 33, 426, 115, 346, 115, AM(DTU_IM_MAIN) },
@@ -277,6 +279,9 @@ static dtu_button Buttons_lo_inv[] = {			// 0x144262 and 0x14428E
 	{ 296, 156, 15, 15, 423, 20, 423,  2, ACT_REST },
 	{ 273, 178, 39, 19, 521, 39, 480, 39, ACT_DROP },
 	{ 227, 178, 39, 17, 514, 21, 480, 39, ACT_USE },
+	// 0x143934: the hit test 0x99141 is a circle at (22,165) with radius
+	// 15; the port takes the draw rectangle
+	{   6, 150, 35, 35, 477,  2, 440,  2, ACT_SPELLS },
 	{ 0 } };
 static dtu_button Buttons_lo_map[] = {			// 0x1442C6
 	{ 227, 156, 39, 17,  50, 2,   9, 2, AM(DTU_IM_MAIN) },
@@ -320,6 +325,9 @@ static int Msg_first = 0;				// the line at the bottom of the box
 
 static ubyte Key_was_down[256];
 static int Inv_held = -1;					// see the inventory screen
+static int Inv_held_spell = -1;			// the spell that the cursor holds (a reference of list 1 or 2), or -1
+static int Inv_browse = 0;				// the list of the inventory screen, see there
+static int next_browse(int b);
 static int Mouse_was_down = 0;
 
 //------------------------------------------------------------------------
@@ -449,10 +457,45 @@ static int entry_icon(int index)
 	return Dtu_inventory[index].icon;
 }
 
-// The item in the hand (player record +0x1AD7 of the original)
+// The item in the hand (player record +0x1AD7 of the original). A spell in
+// the hand is the reference of the hand in the executable.
 static int current_item_icon(void)
 {
+	if (Dtu_spell_current >= 0)
+		return dtu_spell_icon(Dtu_spell_current);
 	return entry_icon(Dtu_char.current.n);
+}
+
+// 0xB7487: the text under the icon of an entry. A spell of a spell list:
+// "Lvl %d" (high resolution) or "L-%d" (low resolution) with the spell
+// level. An item (a weapon, armor, a misc item, a scroll): nothing for 0
+// or 1, "Many" or "+++" for -1 (no limit), else the count. Misc 102 (the
+// Scroll) has no text, another type "???".
+static void item_count_text(int index, char *text)
+{
+	dtu_inv_item *e;
+
+	text[0] = 0;
+	if (index < 0 || index >= Dtu_n_inventory)
+		return;
+	e = &Dtu_inventory[index];
+	if (e->type == OBJ_MISC && e->id == 102)
+		return;
+	if (e->type != OBJ_WEAPON && e->type != OBJ_ARMOR && e->type != OBJ_MISC && e->type != OBJ_SPELL) {
+		strcpy(text, "???");
+		return;
+	}
+	if (e->count == 0 || e->count == 1)
+		return;
+	if (e->count < 0)
+		strcpy(text, Dtu_hires ? "Many" : "+++");
+	else
+		sprintf(text, "%d", e->count);
+}
+
+static void spell_level_text(int spell, char *text)
+{
+	sprintf(text, Dtu_hires ? "Lvl %d" : "L-%d", dtu_spell_level(spell));
 }
 
 // A text of the string table of the game
@@ -689,6 +732,7 @@ void dtu_display_select_mode(int mode)
 	Button_pressed = -1;
 	Button_list = NULL;
 	Inv_held = -1;				// 0x361BF: the cursor lets go of the item
+	Inv_held_spell = -1;
 
 	if (mode_has_interface(mode)) {
 		entry = mode_picture(mode);
@@ -739,17 +783,22 @@ static void do_action(int action)
 		dtu_char_rest();
 		break;
 	case ACT_USE:			// 0x3614B: the held item, or the item in the hand
+		if (Inv_held_spell >= 0)
+			break;				// 0x36189: a held spell is not used
 		if (Inv_held >= 0) {
 			dtu_char_use(Inv_held);
 			Inv_held = -1;
 		} else
 			dtu_char_use_current();
 		break;
-	case ACT_DROP:			// 0x35FD6: the held item
+	case ACT_DROP:			// 0x35FD6: the held item (not a spell: 0x13ADB0 is 0)
 		if (Inv_held >= 0) {
 			dtu_char_drop(Inv_held);
 			Inv_held = -1;
 		}
+		break;
+	case ACT_SPELLS:		// 0x37180: the next list (items, mage spells, cleric spells)
+		Inv_browse = next_browse(Inv_browse);
 		break;
 	}
 }
@@ -911,21 +960,27 @@ static void draw_hot_keys(void)
 	if (!hot_keys_visible())
 		return;
 	for (i = 0; i < DTU_N_HOT_KEYS; i++) {
-		int x, y, qy, n = Dtu_char.hot_key[i].n;
+		int x, y, qy, n = dtu_char_hot_key_item(i), spell = dtu_char_hot_key_spell(i);
 
 		hot_key_pos(i, &x, &y, &qy);
-		// 0x329CB: a box with no item is cleared. A box with an item shows
-		// the icon and the quantity. The box of the item in the hand gets a
-		// border of thickness 1 in the color (63,63,0).
-		if (n < 0 || n >= Dtu_n_inventory) {
+		// 0x329CB: a box with no entry is cleared. A box with an entry
+		// (0x35863: list 0 items, 1 mage spells, 2 cleric spells) shows
+		// byte 2 of the entry as the icon and the text of 0xB7487. The box
+		// of the reference in the hand gets a border of thickness 1 in the
+		// color (63,63,0).
+		if (spell >= 0) {
+			area_icon(x, y, dtu_spell_icon(spell));
+			spell_level_text(spell, text);
+		} else if (n >= 0) {
+			area_icon(x, y, entry_icon(n));
+			item_count_text(n, text);
+		} else {
 			area_icon(x, y, 0);
 			area_text(x, qy, size, SC(6), "", rgb6(32, 0, 0));
 			continue;
 		}
-		area_icon(x, y, entry_icon(n));
-		sprintf(text, "%d", Dtu_inventory[n].count);
 		area_text(x, qy, size, SC(6), text, rgb6(32, 0, 0));
-		if (n == Dtu_char.current.n)
+		if (dtu_char_hot_key_in_hand(i))
 			area_border(x, y, size, size, rgb6(63, 63, 0), 1);
 	}
 }
@@ -969,6 +1024,38 @@ static int inventory_mode(void)
 	return Dtu_interface_mode == DTU_IM_INVENTORY || Dtu_interface_mode == DTU_IM_HOTKEYS;
 }
 
+// The list of the inventory screen ("BrowseItemType", 0x13ADB1): 0 the
+// items, 1 the mage spells, 2 the cleric spells (0x36F2A). Each list keeps
+// its first entry (0x13AD9F, 0x13ADA5, 0x13ADA9). Inv_first (above) is the
+// one of the items. Inv_browse (above) is 0x13ADB1.
+static int Spell_first[2];
+static int Spell_sel[2];					// ASCENT: the spell that the keys act on
+
+static int has_class(int c)
+{
+	return Dtu_char.created && (Dtu_char.pa.class1 == c || Dtu_char.pa.class2 == c);
+}
+
+// 0x3713C: the list after the current one. Mage spells for a mage, cleric
+// spells for a cleric (0x35A2B, 0x35A09), then the items.
+static int next_browse(int b)
+{
+	if (b == 1)
+		return has_class(DTU_CLASS_CLERIC) ? 2 : 0;
+	if (b == 2)
+		return 0;
+	if (has_class(DTU_CLASS_MAGE)) return 1;
+	if (has_class(DTU_CLASS_CLERIC)) return 2;
+	return 0;
+}
+
+static int browse_spell(int n)
+{
+	if (Inv_browse < 1 || Inv_browse > 2 || n < 0 || n >= Dtu_spell_book_n[Inv_browse - 1])
+		return -1;
+	return Dtu_spell_book[Inv_browse - 1][n];
+}
+
 static void inv_show_entry(int index)
 {
 	if (index < 0) return;
@@ -985,6 +1072,12 @@ void dtu_display_inventory_reset(void)
 	Inv_sel = 0;
 	Inv_held = -1;
 	Inv_known = Dtu_n_inventory;
+	// ASCENT: the item list and the first spells (guess: 0xBB867 was not
+	// seen to set 0x13ADB1)
+	Inv_browse = 0;
+	Inv_held_spell = -1;
+	Spell_first[0] = Spell_first[1] = 0;
+	Spell_sel[0] = Spell_sel[1] = 0;
 }
 
 static void inv_check(void)
@@ -997,6 +1090,17 @@ static void inv_check(void)
 	if (Inv_sel >= Dtu_n_inventory) Inv_sel = Dtu_n_inventory - 1;
 	if (Inv_sel < 0) Inv_sel = 0;
 	if (Inv_first >= Dtu_n_inventory) Inv_first = Dtu_n_inventory > 0 ? ((Dtu_n_inventory - 1) / 10) * 10 : 0;
+	{
+		int b;
+		for (b = 0; b < 2; b++) {
+			int n = Dtu_spell_book_n[b];
+			if (Spell_first[b] >= n) Spell_first[b] = n > 0 ? ((n - 1) / 10) * 10 : 0;
+			if (Spell_sel[b] >= n) Spell_sel[b] = n - 1;
+			if (Spell_sel[b] < 0) Spell_sel[b] = 0;
+		}
+	}
+	if (Inv_browse && !next_browse(0))
+		Inv_browse = 0;
 }
 
 static void draw_inventory(void)
@@ -1004,7 +1108,25 @@ static void draw_inventory(void)
 	int cell, slot, size = SC(16), x, y, qy;
 	char text[16];
 
-	if (Dtu_hires || Dtu_interface_mode == DTU_IM_INVENTORY)
+	if ((Dtu_hires || Dtu_interface_mode == DTU_IM_INVENTORY) && Inv_browse)
+		for (cell = 0; cell < 10; cell++) {
+			// A spell list: the icon and "Lvl %d" of each spell (0x327D7
+			// with 0xB7487 and the list number)
+			int n = Spell_first[Inv_browse - 1] + cell, spell = browse_spell(n);
+
+			inv_cell_pos(cell, &x, &y, &qy);
+			if (spell < 0) {
+				area_icon(x, y, 0);
+				area_text(x, qy, size, SC(6), "", rgb6(32, 0, 0));
+				continue;
+			}
+			area_icon(x, y, spell == Inv_held_spell ? 0 : dtu_spell_icon(spell));
+			spell_level_text(spell, text);
+			area_text(x, qy, size, SC(6), text, rgb6(32, 0, 0));
+			if (n == Spell_sel[Inv_browse - 1])
+				area_border(x - 1, y - 1, size + 2, size + 2, rgb6(48, 48, 48), 1);
+		}
+	else if (Dtu_hires || Dtu_interface_mode == DTU_IM_INVENTORY)
 		for (cell = 0; cell < 10; cell++) {
 			int n = Inv_first + cell;
 
@@ -1016,7 +1138,7 @@ static void draw_inventory(void)
 			}
 			// The entry that the cursor holds is drawn at the cursor.
 			area_icon(x, y, n == Inv_held ? 0 : entry_icon(n));
-			sprintf(text, "%d", Dtu_inventory[n].count);
+			item_count_text(n, text);
 			area_text(x, qy, size, SC(6), text, rgb6(32, 0, 0));
 			// ASCENT: the mark of the entry that the keys act on. The original
 			// has the mouse only.
@@ -1042,15 +1164,24 @@ static void inv_describe(int mx, int my)
 	if (hot_keys_visible())
 		for (i = 0; i < DTU_N_HOT_KEYS; i++) {
 			hot_key_pos(i, &x, &y, &qy);
-			if (mx >= x && my >= y && mx < x + size && my < y + size && Dtu_char.hot_key[i].n >= 0
-					&& Dtu_char.hot_key[i].n < Dtu_n_inventory)
-				strncpy(Desc_text, Dtu_inventory[Dtu_char.hot_key[i].n].name, sizeof(Desc_text) - 1);
+			if (mx >= x && my >= y && mx < x + size && my < y + size) {
+				if (dtu_char_hot_key_spell(i) >= 0)
+					strncpy(Desc_text, dtu_spell_name(dtu_char_hot_key_spell(i)), sizeof(Desc_text) - 1);
+				else if (dtu_char_hot_key_item(i) >= 0)
+					strncpy(Desc_text, Dtu_inventory[dtu_char_hot_key_item(i)].name, sizeof(Desc_text) - 1);
+			}
 		}
 	if (!inventory_mode())
 		return;
 	for (cell = 0; cell < 10; cell++) {
 		inv_cell_pos(cell, &x, &y, &qy);
-		if (mx >= x && my >= y && mx < x + size && my < y + size && Inv_first + cell < Dtu_n_inventory)
+		if (!(mx >= x && my >= y && mx < x + size && my < y + size))
+			continue;
+		if (Inv_browse) {
+			int spell = browse_spell(Spell_first[Inv_browse - 1] + cell);
+			if (spell >= 0)
+				strncpy(Desc_text, dtu_spell_name(spell), sizeof(Desc_text) - 1);
+		} else if (Inv_first + cell < Dtu_n_inventory)
 			strncpy(Desc_text, Dtu_inventory[Inv_first + cell].name, sizeof(Desc_text) - 1);
 	}
 	for (slot = 0; slot < DTU_N_SLOTS; slot++) {
@@ -1067,7 +1198,11 @@ static void inv_describe(int mx, int my)
 	// ASCENT: with the cursor on no item the bar shows the entry of the keys
 	if (!Desc_text[0] && Inv_held >= 0 && Inv_held < Dtu_n_inventory)
 		strncpy(Desc_text, Dtu_inventory[Inv_held].name, sizeof(Desc_text) - 1);
-	if (!Desc_text[0] && Inv_sel < Dtu_n_inventory)
+	if (!Desc_text[0] && Inv_held_spell >= 0)
+		strncpy(Desc_text, dtu_spell_name(Inv_held_spell), sizeof(Desc_text) - 1);
+	if (!Desc_text[0] && Inv_browse && browse_spell(Spell_sel[Inv_browse - 1]) >= 0)
+		strncpy(Desc_text, dtu_spell_name(browse_spell(Spell_sel[Inv_browse - 1])), sizeof(Desc_text) - 1);
+	if (!Desc_text[0] && !Inv_browse && Inv_sel < Dtu_n_inventory)
 		strncpy(Desc_text, Dtu_inventory[Inv_sel].name, sizeof(Desc_text) - 1);
 	Desc_text[sizeof(Desc_text) - 1] = 0;
 }
@@ -1087,6 +1222,14 @@ static int inv_click(int mx, int my)
 				if (Inv_held >= 0) {
 					dtu_char_set_hot_key(i, Inv_held);
 					Inv_held = -1;
+				} else if (Inv_held_spell >= 0) {
+					// 0x304D6: the box takes the held spell if the character
+					// can use it and no box holds it. Else the box works like
+					// its key (0x3056E) and the cursor keeps the spell.
+					if (dtu_char_set_hot_key_spell(i, Inv_held_spell))
+						Inv_held_spell = -1;
+					else
+						dtu_char_select_hot_key(i);
 				} else
 					dtu_char_select_hot_key(i);
 				return 1;
@@ -1098,6 +1241,9 @@ static int inv_click(int mx, int my)
 		x = Slot_pos[Dtu_hires][slot][0];
 		y = Slot_pos[Dtu_hires][slot][1];
 		if (mx >= x && my >= y && mx < x + size && my < y + size) {
+			// 0x3067C: a spell has no wear bits, no slot takes it
+			if (Inv_held_spell >= 0)
+				return 1;
 			if (Inv_held >= 0) {
 				// 0x3067C: the slot takes the held item if the wear bits fit
 				if (dtu_char_equip(Inv_held, slot))
@@ -1110,11 +1256,43 @@ static int inv_click(int mx, int my)
 			return 1;
 		}
 	}
+	// The figure of the paper doll (0x1440EA and 0x144148 high, 0x1441A6 and
+	// 0x144204 low, the press action 0x35ADF). ASCENT: the port takes a held
+	// spell there (0x35CE5); a held item goes back to the list, as before.
+	if (Inv_held_spell >= 0) {
+		static short doll[2][2][4] = { { { 120, 12, 31, 29 }, { 101, 41, 67, 140 } },
+			{ { 244, 24, 55, 57 }, { 210, 81, 122, 278 } } };
+		for (i = 0; i < 2; i++) {
+			short *r = doll[Dtu_hires][i];
+			if (mx >= r[0] && my >= r[1] && mx < r[0] + r[2] && my < r[1] + r[3]) {
+				// a spell that a box holds stays at the cursor (0x35D17)
+				if (dtu_char_arm_spell(Inv_held_spell) || !dtu_spell_usable(Inv_held_spell))
+					Inv_held_spell = -1;
+				return 1;
+			}
+		}
+	}
 	for (cell = 0; cell < 10; cell++) {
 		inv_cell_pos(cell, &x, &y, &qy);
 		if (mx >= x && my >= y && mx < x + size && my < y + size) {
 			int n = Inv_first + cell;
-			if (Inv_held >= 0)
+			if (Inv_browse) {
+				// 0x3029E with a spell list: the cursor takes the spell (a
+				// reference of list 1 or 2). A spell cannot be dropped
+				// (0x13ADB0 is 0).
+				int spell = browse_spell(Spell_first[Inv_browse - 1] + cell);
+				if (Inv_held >= 0 || Inv_held_spell >= 0) {
+					Inv_held = -1;
+					Inv_held_spell = -1;
+				} else if (spell >= 0) {
+					Inv_held_spell = spell;
+					Spell_sel[Inv_browse - 1] = Spell_first[Inv_browse - 1] + cell;
+				}
+				return 1;
+			}
+			if (Inv_held_spell >= 0)
+				Inv_held_spell = -1;		// the spell goes back to its list
+			else if (Inv_held >= 0)
 				Inv_held = -1;				// the item goes back to the list
 			else if (n < Dtu_n_inventory) {
 				Inv_held = n;
@@ -1335,9 +1513,10 @@ static void draw_cursor_main(int mx, int my)
 	int x, y, half = Cursor_size / 2;
 	ubyte *tint = NULL;
 
-	// 0x3074A: the cursor that holds an item is the icon of the item
-	if (Inv_held >= 0 && Inv_held < Dtu_n_inventory && entry_icon(Inv_held) > 0 && Icons_bm) {
-		int icon = entry_icon(Inv_held), size = SC(16);
+	// 0x3074A: the cursor that holds an item or a spell is its icon
+	if (((Inv_held >= 0 && Inv_held < Dtu_n_inventory && entry_icon(Inv_held) > 0) ||
+			(Inv_held_spell >= 0 && dtu_spell_icon(Inv_held_spell) > 0)) && Icons_bm) {
+		int icon = Inv_held >= 0 ? entry_icon(Inv_held) : dtu_spell_icon(Inv_held_spell), size = SC(16);
 		blit(Icons_bm, (icon & 7) * size, (icon / 8) * size, size, size, mx - size / 2, my - size / 2, 1);
 		return;
 	}
@@ -1580,7 +1759,15 @@ static void do_input(int mx, int my)
 	// ASCENT: keys for the inventory screen. The original has the mouse
 	// only. Comma and period choose an entry, Enter wears it or takes it
 	// off or takes it in the hand, U uses it, Backspace drops it.
-	if (inventory_mode()) {
+	if (inventory_mode() && Inv_browse) {
+		// ASCENT: a spell list: comma and period choose a spell, Enter arms
+		// it as the figure of the paper doll does (0x35CE5)
+		int b = Inv_browse - 1;
+		if (key_acts(KEY_COMMA) && Spell_sel[b] > 0) Spell_first[b] = (--Spell_sel[b] / 10) * 10;
+		if (key_acts(KEY_PERIOD) && Spell_sel[b] < Dtu_spell_book_n[b] - 1) Spell_first[b] = (++Spell_sel[b] / 10) * 10;
+		if (key_acts(KEY_ENTER) && browse_spell(Spell_sel[b]) >= 0) dtu_char_arm_spell(browse_spell(Spell_sel[b]));
+		key_acts(KEY_U); key_acts(KEY_BACKSP);
+	} else if (inventory_mode()) {
 		if (key_acts(KEY_COMMA) && Inv_sel > 0) inv_show_entry(--Inv_sel);
 		if (key_acts(KEY_PERIOD) && Inv_sel < Dtu_n_inventory - 1) inv_show_entry(++Inv_sel);
 		if (key_acts(KEY_ENTER) && Inv_sel < Dtu_n_inventory) {
@@ -1632,6 +1819,7 @@ static void do_input(int mx, int my)
 			return;
 		if (Inv_held >= 0)
 			Inv_held = -1;					// a click on no place: the item goes back to the list
+		Inv_held_spell = -1;
 		if (Dtu_interface_mode == DTU_IM_MAIN) {
 			dtu_rect *sb = Sbar_def[Dtu_hires];
 			if (in_rect(mx, my, sb[1].x, sb[1].y, sb[1].w, sb[1].h)) msg_scroll(1);

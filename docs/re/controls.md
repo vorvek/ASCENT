@@ -157,8 +157,8 @@ executable. Changes:
 - The mouse buttons act only in the immersive mode (the Attack button too: the left
   button clicks the interface in the other mode). **G** whether the executable lets a
   click on the interface attack.
-- Cycle Weapon takes the next hot key that holds an item (the weapon tests are not
-  ported). Infravision: see [infravision.md](infravision.md).
+- Cycle Weapon takes the next hot key that holds an item, not a spell (the weapon
+  tests are not ported). Infravision: see [infravision.md](infravision.md).
 - `-keyconfig "forward=Q;back=Y,DOWN"` sets keys for a test.
 - The copy of the screen around the key screen (0x5225D) is in `dtu_kconfig`
   (`kc_screen_save`, `kc_screen_restore`), for each page, also in the front end (its

@@ -789,12 +789,13 @@ void dtu_read_controls(void)
 			int i, h = -1;
 
 			for (i = 0; i < DTU_N_HOT_KEYS; i++)
-				if (Dtu_char.hot_key[i].n >= 0 && Dtu_char.hot_key[i].list == Dtu_char.current.list &&
-					Dtu_char.hot_key[i].n == Dtu_char.current.n)
+				if (dtu_char_hot_key_in_hand(i))
 					h = i;
+			// ASCENT: 0x544F2 takes weapons only: the boxes with a spell
+			// are passed over
 			for (i = 1; i <= DTU_N_HOT_KEYS; i++) {
 				int k = (h + i + DTU_N_HOT_KEYS) % DTU_N_HOT_KEYS;
-				if (Dtu_char.hot_key[k].n >= 0 && k != h) {
+				if (dtu_char_hot_key_item(k) >= 0 && k != h) {
 					dtu_char_select_hot_key(k);
 					break;
 				}

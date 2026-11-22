@@ -166,7 +166,8 @@ Other fields of the header that the reader uses: offset 49 is read into `GameTim
 
 A played save of 1.3 (`SG0.SG`, 7666 bytes, level 4) has 20 items, 7 mage spells and
 one key item (misc 107 in the key list at P+0x18D3); the hot keys 3 to 8 hold
-references to the mage spell list (list 1). These parts are in `docs/re/character.md`.
+references to the mage spell list (list 1, index 0 to 5). These parts are in
+`docs/re/character.md` (section 6: spells in the hot keys).
 
 Unlike Descent 1 there is no thumbnail image in the file.
 The level state is not in this file. It is stored in `SAVE\SGn.LS`,

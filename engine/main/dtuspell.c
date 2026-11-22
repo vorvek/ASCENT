@@ -351,14 +351,21 @@ static int in_book(int spell)
 	return 0;
 }
 
-int dtu_spell_select(int spell)
+int dtu_spell_take(int spell)
 {
 	if (!in_book(spell))
 		return 0;
 	Dtu_spell_current = spell;
 	Hand_ref = Dtu_char.current.n;
-	HUD_init_message("%s",spell_name(spell));
 	dtu_spell_log("spell: '%s' (%d) is in the hand",spell_name(spell),spell);
+	return 1;
+}
+
+int dtu_spell_select(int spell)
+{
+	if (!dtu_spell_take(spell))
+		return 0;
+	HUD_init_message("%s",spell_name(spell));
 	return 1;
 }
 
@@ -476,6 +483,63 @@ int dtu_spell_of_ref(int list, int index)
 	if (list < 1 || list > 2 || index < 0 || index >= Dtu_spell_book_n[list-1])
 		return -1;
 	return Dtu_spell_book[list-1][index];
+}
+
+// The icon of a spell (byte 2 of a list entry: icon= of the line, 0xB69AD)
+int dtu_spell_icon(int spell)
+{
+	return spell_ok(spell) && Spell_info[spell].icon > 0 ? Spell_info[spell].icon : 0;
+}
+
+// The spell level (word 6 of a list entry)
+int dtu_spell_level(int spell)
+{
+	return spell_level(spell);
+}
+
+char *dtu_spell_name(int spell)
+{
+	return spell_name(spell);
+}
+
+// 0x3533C for a spell entry. Spells 39, 40 and 53 always. Others: the
+// character is a caster (0x359F4) and has a class of the class bits of the
+// entry (0x352F7). The count test of 0x3533C passes for a list entry.
+int dtu_spell_usable(int spell)
+{
+	if (spell == 39 || spell == 40 || spell == 53)
+		return 1;
+	if (!char_is(DTU_CLASS_MAGE) && !char_is(DTU_CLASS_CLERIC))
+		return 0;
+	return (spell_flag(spell,"mage_use") && char_is(DTU_CLASS_MAGE)) ||
+		(spell_flag(spell,"cleric_use") && char_is(DTU_CLASS_CLERIC));
+}
+
+// The letter of the list entry of the spell in the hand (byte 5: K hands,
+// Q wand, N scroll, B arrow, 0xB69AD), or 0 with no spell in the hand.
+// 0x43EF8 takes it for the model of the arms.
+int dtu_spell_hand_letter(void)
+{
+	int b, k, spell = Dtu_spell_current;
+
+	if (spell < 0)
+		return 0;
+	for (b=0;b<2;b++)
+		for (k=0;k<Book_record_n[b];k++)
+			if (Book_record[b][k][0] == OBJ_SPELL && Book_record[b][k][1] == spell && Book_record[b][k][5] > ' ')
+				return Book_record[b][k][5];
+	if (spell_flag(spell,"cast_with_wand")) return 'Q';
+	if (spell_flag(spell,"cast_with_scroll")) return 'N';
+	if (spell_flag(spell,"cast_with_arrow")) return 'B';
+	return 'K';
+}
+
+// ASCENT: the spell in the hand is put away (an item is taken in the hand)
+void dtu_spell_put_away(void)
+{
+	if (Dtu_spell_current >= 0)
+		dtu_spell_log("spell: '%s' (%d) is put away",spell_name(Dtu_spell_current),Dtu_spell_current);
+	Dtu_spell_current = -1;
 }
 
 static void load_books_from_save(char *filename)

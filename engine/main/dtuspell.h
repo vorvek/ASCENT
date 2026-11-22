@@ -201,6 +201,22 @@ void dtu_spell_books_to_record(ubyte *record);
 int dtu_spell_book_ref(int spell, int *list, int *index);
 // The spell of a reference of the save game, or -1.
 int dtu_spell_of_ref(int list, int index);
+// The icon (byte 2 of a list entry), the spell level (word 6) and the name
+// of a spell, for the hot key boxes and the spell lists of the inventory
+// screen (0x329CB, 0xB7487).
+int dtu_spell_icon(int spell);
+int dtu_spell_level(int spell);
+char *dtu_spell_name(int spell);
+// 0x3533C for a spell entry: 1 if the character can use the spell.
+int dtu_spell_usable(int spell);
+// Makes the spell the spell in the hand with no message (0x43A5A for a
+// hot key box that holds a spell). Returns 1 if a book has the spell.
+int dtu_spell_take(int spell);
+// The spell in the hand is put away: an item is taken in the hand.
+// The letter of the list entry of the spell in the hand (K hands, Q wand,
+// N scroll, B arrow), 0 with no spell in the hand. The model of the arms.
+int dtu_spell_hand_letter(void);
+void dtu_spell_put_away(void);
 // All slots are full again (0x3551B: rest, level start, new level).
 void dtu_spell_restore_slots(void);
 // The slot maximum from the class levels and the wisdom (0x3575B).
