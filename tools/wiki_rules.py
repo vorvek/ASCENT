@@ -23,27 +23,36 @@ tools/check_itemfix.py): an item has its corrected name with the name of 1.3
 in its notes, and each value that the setting "Rulebook items" changes is
 marked in the notes of the item and listed on the Magic items page.
 
-usage: python -I tools/wiki_rules.py GAME_DIR OUT_DIR [--tables DIR]
+usage: python -I tools/wiki_rules.py GAME_DIR OUT_DIR [--tables DIR] [--no-icons]
 
-GAME_DIR  the installed game: YPINN.BIN and DTUGAME.EXE of version 1.3.
-OUT_DIR   the pages are written here (Home.md, _Sidebar.md, ...).
+GAME_DIR  the installed game: YPINN.BIN and DTUGAME.EXE of version 1.3;
+          FEBGND.JRG, FEBGND.DAT and PALETTE.256 for the icons.
+OUT_DIR   the pages are written here (Home.md, _Sidebar.md, ...), and the
+          icons of the items and spells to OUT_DIR/icons/icon-N.png.
 --tables  a directory of unpacked level tables (*.BIN, gamedata/unpacked):
           the item and spell lines of each table are compared with
           YPINN.BIN; the result goes to Sources.md and to the console.
+--no-icons  write the pages without the icon column and no icon files.
 
 This tool reads the game files only. The pages hold numbers and names of the
-game; do not commit them.
+game, and the icons are pictures of the game; do not commit them. The tool
+refuses to write the icons into a path of the ASCENT repository that git
+does not ignore.
 """
 import argparse
 import collections
 import glob
+import html
 import os
 import re
 import struct
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.dont_write_bytecode = True  # keep __pycache__ out of the repository
 import egg  # noqa: E402
+import jrg  # noqa: E402  (FEBGND.DAT, the icon sheet)
 import check_itemfix  # noqa: E402  (the tables of engine/main/dtuitemfix.c)
 import tblfix  # noqa: E402  (the table fixup of 1.3, engine/main/dtutblfix.c)
 
@@ -629,6 +638,82 @@ FIXES = [
 
 
 # ---------------------------------------------------------------------
+# Icons
+
+# The icon of an item or a spell is icon= of its line (0xB69AD for a spell,
+# byte 2 of the item record). The game draws it from the icon sheet of
+# FEBGND.DAT (0x3420C): entry 23 (16x16 cells) in low resolution, entry 24
+# (32x32 cells) in high resolution. Eight icons in a row: icon n is at
+# column n & 7, row n / 8 (0x36E3F). Icon 0 is "no icon". The game uses the
+# palette of PALETTE.256, not the one of the entry, and color 255 is
+# transparent (docs/re/ingame-ui.md). The wiki uses the high resolution
+# sheet at its own size: the cells are drawn for 32x32 and are not a
+# doubled copy of the low resolution cells.
+ICON_ENTRY = 24
+ICON_CELL = 32
+ICON_SCALE = 1
+ICON_TRANSPARENT = 255
+
+
+class IconSheet:
+    def __init__(self, game_dir):
+        arc = jrg.Archive(os.path.join(game_dir, "FEBGND.JRG"))
+        if len(arc.entries) <= ICON_ENTRY:
+            raise SystemExit("FEBGND.JRG: no entry %d" % ICON_ENTRY)
+        e = arc.entries[ICON_ENTRY]
+        if e["w"] != 8 * ICON_CELL or e["h"] % ICON_CELL:
+            raise SystemExit("FEBGND entry %d: %dx%d is not a sheet of %d pixel icons"
+                             % (ICON_ENTRY, e["w"], e["h"], ICON_CELL))
+        self.pix, _ = jrg.lzss_decode(arc.data, e["off"] + 768, e["off"] + e["size"])
+        if len(self.pix) != e["w"] * e["h"]:
+            raise SystemExit("FEBGND entry %d: the picture does not decode" % ICON_ENTRY)
+        self.w = e["w"]
+        self.count = 8 * (e["h"] // ICON_CELL)
+        self.palette = egg.load_palette(os.path.join(game_dir, "PALETTE.256"))
+
+    def write(self, n, path):
+        c, s = ICON_CELL, ICON_SCALE
+        x0, y0 = (n & 7) * c, (n // 8) * c
+        out = bytearray()
+        for y in range(c * s):
+            p = (y0 + y // s) * self.w + x0
+            out += bytes(v for v in self.pix[p:p + c] for _ in range(s))
+        egg.write_png(path, c * s, c * s, out, self.palette, transparent=(ICON_TRANSPARENT,))
+
+
+def check_icon_dir(icon_dir):
+    """Refuse to write the icons into the ASCENT repository unless git ignores
+    the place: the icons are pictures of the game. Another repository (a
+    clone of the GitHub wiki) is fine."""
+    def git(cwd, *args):
+        try:
+            r = subprocess.run(["git", "-C", cwd] + list(args), capture_output=True, text=True)
+        except OSError:
+            return None, ""
+        return r.returncode, r.stdout.strip()
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    rc, code_common = git(here, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if rc != 0:
+        return  # the tool is not in a git checkout
+    probe = os.path.abspath(icon_dir)
+    while not os.path.isdir(probe):
+        probe = os.path.dirname(probe)
+    rc, out_common = git(probe, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    if rc != 0 or os.path.normcase(os.path.normpath(out_common)) != os.path.normcase(os.path.normpath(code_common)):
+        return  # not in the ASCENT repository
+    sample = os.path.join(os.path.abspath(icon_dir), "icon-1.png")
+    rc, _ = git(probe, "check-ignore", "-q", sample)
+    if rc != 0:
+        raise SystemExit("%s: git does not ignore this place of the ASCENT repository; the icons are "
+                         "pictures of the game. Use an ignored OUT_DIR (gamedata/wiki) or --no-icons."
+                         % icon_dir)
+    rc, tracked = git(probe, "ls-files", "--", os.path.abspath(icon_dir))
+    if rc != 0 or tracked:
+        raise SystemExit("%s: the ASCENT repository tracks files here" % icon_dir)
+
+
+# ---------------------------------------------------------------------
 # Markdown
 
 def md_table(head, rows, align=None):
@@ -676,7 +761,7 @@ def pages_note():
 # Pages
 
 class Pages:
-    def __init__(self, tab, ct, check=None, mission=()):
+    def __init__(self, tab, ct, check=None, mission=(), icon_count=0):
         self.t = tab
         self.c = ct
         self.W = tab["$WEAPON"]
@@ -686,7 +771,32 @@ class Pages:
         self.check = check
         self.mission = set(mission)
         self.counts = {}
+        # icon_count: the number of cells of the icon sheet; 0 for no icons
+        self.icon_count = icon_count
+        self.icons = icon_count > 0
+        self.used_icons = set()
         self.item_fixes()
+
+    # -- icons ----------------------------------------------------------
+    def icon_cell(self, *recs):
+        """The icon of each line as an <img> tag (no "|", so it fits a table
+        cell; GitHub wikis resolve a relative src from the wiki root)."""
+        tags = []
+        for rec in recs:
+            try:
+                n = int(rec.get("icon", "0"))
+            except ValueError:
+                n = 0
+            if 0 < n < self.icon_count:
+                self.used_icons.add(n)
+                tags.append('<img src="icons/icon-%d.png" alt="%s">' % (n, html.escape(rec.name().strip())))
+        return " ".join(tags)
+
+    def icon_head(self, head):
+        return [" "] + head if self.icons else head
+
+    def icon_row(self, row, *recs):
+        return [self.icon_cell(*recs)] + row if self.icons else row
 
     # -- the corrections of ASCENT (engine/main/dtuitemfix.c) ------------
     def item_fixes(self):
@@ -1232,24 +1342,26 @@ class Pages:
             proj = (r.get("attack_type") or "").upper() == "PROJECTILE"
             row = self.weapon_row(i, r)
             if not proj:
-                melee.append(row)
+                melee.append((row, r))
             elif r.get("thrown") == "1":
-                thrown.append(row)
+                thrown.append((row, r))
             else:
                 kind = "arrow" if r.has("arrow") else "bolt" if r.has("bolt") else "other"
-                ammo.append([row[0], kind] + row[1:])
+                ammo.append(([row[0], kind] + row[1:], r))
         launch = []
         for i, r in enumerate(self.O):
             if r.has("bow") or r.has("crossbow"):
                 note = ""
                 if r.get("pc_spell1"):
                     note = SPEED_BOW_NOTE
-                launch.append([r.name(), "bow" if r.has("bow") else "crossbow", signed(r.num("to_hit_bonus", 0)),
-                               classes_of(r), r.num("value", 0), note])
+                launch.append(self.icon_row([r.name(), "bow" if r.has("bow") else "crossbow",
+                                             signed(r.num("to_hit_bonus", 0)), classes_of(r),
+                                             r.num("value", 0), note], r))
         head = ["Weapon", "Damage", "To hit", "Magic", "Speed", "F/T/M/C", "Value", "Notes"]
-        melee.sort(key=lambda x: x[0])
-        thrown.sort(key=lambda x: x[0])
-        ammo.sort(key=lambda x: (x[1], x[0]))
+        melee.sort(key=lambda x: x[0][0])
+        thrown.sort(key=lambda x: x[0][0])
+        ammo.sort(key=lambda x: (x[0][1], x[0][0]))
+        melee, thrown, ammo = ([self.icon_row(row, r) for row, r in rows] for rows in (melee, thrown, ammo))
         self.count("Weapons", len(melee) + len(thrown) + len(ammo) + len(launch))
         return "\n".join([
             "# Weapons",
@@ -1270,27 +1382,27 @@ class Pages:
             "",
             "## Melee weapons",
             "",
-            md_table(head, melee),
+            md_table(self.icon_head(head), melee),
             "",
             "## Thrown weapons",
             "",
             "Thrown where you look; the stack is used up one by one. A thrown weapon also gets the "
             "to-hit bonus of a worn crossbow.",
             "",
-            md_table(head, thrown),
+            md_table(self.icon_head(head), thrown),
             "",
             "## Arrows and bolts",
             "",
             "An arrow needs a bow and a bolt needs a crossbow. The Flame Arrow needs neither.",
             "",
-            md_table(["Weapon", "Kind"] + head[1:], ammo),
+            md_table(self.icon_head(["Weapon", "Kind"] + head[1:]), ammo),
             "",
             "## Bows and crossbows",
             "",
             "Worn in the bow or crossbow place of the paper doll. The bonus is added to the attack "
             "and the damage of the missile.",
             "",
-            md_table(["Launcher", "Kind", "To hit and damage", "F/T/M/C", "Value", "Notes"], launch),
+            md_table(self.icon_head(["Launcher", "Kind", "To hit and damage", "F/T/M/C", "Value", "Notes"]), launch),
             "",
             "Wands are on [[Wands]].",
             "",
@@ -1324,8 +1436,8 @@ class Pages:
                 note.append("The Cloak of Protection does not count.")
             if r.note():
                 note.append(r.note())
-            rows.append([r.name(), "shield" if r.has("shield") else "body", signed(-ac) if ac else "0",
-                         str(10 + ac), classes_of(r), r.num("value", 0), " ".join(note)])
+            rows.append(self.icon_row([r.name(), "shield" if r.has("shield") else "body", signed(-ac) if ac else "0",
+                                       str(10 + ac), classes_of(r), r.num("value", 0), " ".join(note)], r))
         for i in (8, 9):
             r = self.O[i]
             note = "Boot place." if i == 8 else "Gauntlet place. Find/Remove Traps and Open Locks become 0."
@@ -1335,8 +1447,8 @@ class Pages:
             ac = 0 if i == 8 else self.c["ac_misc"][i]
             if i == 8:
                 note = "Boot place. No armor class: the boot place counts only magic boots."
-            rows.append([r.name(), "boots" if i == 8 else "gauntlets", signed(-ac) if ac else "0", str(10 + ac), classes_of(r),
-                         r.num("value", 0), note])
+            rows.append(self.icon_row([r.name(), "boots" if i == 8 else "gauntlets", signed(-ac) if ac else "0",
+                                       str(10 + ac), classes_of(r), r.num("value", 0), note], r))
         self.count("Armor", len(rows))
         return "\n".join([
             "# Armor",
@@ -1351,7 +1463,7 @@ class Pages:
             "",
             "Rings, amulets, cloaks, boots, bracers, gloves and girdles are on [[Magic Items|Magic-Items]].",
             "",
-            md_table(["Armor", "Place", "AC bonus", "AC alone", "F/T/M/C", "Value", "Notes"], rows),
+            md_table(self.icon_head(["Armor", "Place", "AC bonus", "AC alone", "F/T/M/C", "Value", "Notes"]), rows),
             "",
             "There is no helmet: the paper doll has no place for one.",
             "",
@@ -1398,34 +1510,39 @@ class Pages:
                 if i == 33:
                     ac = 0
                 eff = " ".join(x for x in (eff or "AC only.", r.note()) if x)
-                rows.append([r.name(), signed(-ac) if ac else "0", classes_of(r), r.num("value", 0), eff])
+                rows.append(self.icon_row([r.name(), signed(-ac) if ac else "0", classes_of(r), r.num("value", 0), eff], r))
             if title == "Amulets":
-                rows.append([self.O[5].name(), "0", classes_of(self.O[5]), "-", "Quest item. No other effect."])
+                rows.append(self.icon_row([self.O[5].name(), "0", classes_of(self.O[5]), "-",
+                                           "Quest item. No other effect."], self.O[5]))
             if title == "Cloaks":
-                rows.append([self.O[6].name(), "0", classes_of(self.O[6]), self.O[6].num("value", 0), "A plain cloak. No effect."])
+                rows.append(self.icon_row([self.O[6].name(), "0", classes_of(self.O[6]), self.O[6].num("value", 0),
+                                           "A plain cloak. No effect."], self.O[6]))
             if title == "Girdles":
-                rows.append([self.O[7].name(), "0", classes_of(self.O[7]), self.O[7].num("value", 0), "A plain belt. No effect."])
+                rows.append(self.icon_row([self.O[7].name(), "0", classes_of(self.O[7]), self.O[7].num("value", 0),
+                                           "A plain belt. No effect."], self.O[7]))
             total += len(rows)
-            out += ["## " + title, "", md_table(["Item", "AC bonus", "F/T/M/C", "Value", "Effect"], rows), ""]
+            out += ["## " + title, "", md_table(self.icon_head(["Item", "AC bonus", "F/T/M/C", "Value", "Effect"]), rows), ""]
             if title == "Rings":
                 out += ["You can wear two rings.", ""]
         wrows = []
         for i in (13, 54, 69, 70, 71, 45):
             r = self.W[i]
-            wrows.append([r.name(), WEAPON_NOTES.get(i, "")])
+            wrows.append(self.icon_row([r.name(), WEAPON_NOTES.get(i, "")], r))
         r = self.O[100]
-        wrows.append([r.name(), "A bow with +2 to hit and damage. " + SPEED_BOW_NOTE])
+        wrows.append(self.icon_row([r.name(), "A bow with +2 to hit and damage. " + SPEED_BOW_NOTE], r))
         out += ["## Weapons with powers", "", "Damage and classes: [[Weapons]].", "",
-                md_table(["Weapon", "Power"], wrows), ""]
+                md_table(self.icon_head(["Weapon", "Power"]), wrows), ""]
         orows = [
-            [self.O[2].name(), "USE: cures your blindness; if you are not blind but hurt, Cure Serious "
-                               "Wounds (3 to 17 hit points). Not used up. You get one use at the start "
-                               "and one more for each new mission from Khelben; at other times: \"You "
-                               "cannot use the Gem Of Curing at this time.\""],
-            [self.O[101].name(), "USE: it asks you questions and gives answers, a script of the quest."],
-            [self.O[0].name(), "Does nothing: it gives no light and has no use."],
-            [self.O[10].name() + ", " + self.O[13].name() + ", " + self.O[11].name() + ", " + self.O[12].name(),
-             "In the lockpick place, for a thief: Open Locks +5, +10, +15, +20."],
+            self.icon_row([self.O[2].name(), "USE: cures your blindness; if you are not blind but hurt, Cure Serious "
+                                             "Wounds (3 to 17 hit points). Not used up. You get one use at the start "
+                                             "and one more for each new mission from Khelben; at other times: \"You "
+                                             "cannot use the Gem Of Curing at this time.\""], self.O[2]),
+            self.icon_row([self.O[101].name(), "USE: it asks you questions and gives answers, a script of the quest."],
+                          self.O[101]),
+            self.icon_row([self.O[0].name(), "Does nothing: it gives no light and has no use."], self.O[0]),
+            self.icon_row([self.O[10].name() + ", " + self.O[13].name() + ", " + self.O[11].name() + ", " + self.O[12].name(),
+                           "In the lockpick place, for a thief: Open Locks +5, +10, +15, +20."],
+                          self.O[10], self.O[13], self.O[11], self.O[12]),
         ]
         sp = ", ".join(self.S[s].name() for s in self.c["spider_spells"])
         # The inventory icon of each piece ($OBJECT icon= of the lines 18 to
@@ -1465,18 +1582,21 @@ class Pages:
              "No. It lies behind the wall that the statue opens, and later triggers of the level "
              "need it."),
         ]
-        srows = [[self.O[i].name(), "%s (icon %s)" % (pic, self.O[i].get("icon", "?")), use, st]
+        # With icons the picture is in the icon column; without, its number
+        # stays in the text
+        srows = [self.icon_row([self.O[i].name(), pic if self.icons else "%s (icon %s)" % (pic, self.O[i].get("icon", "?")),
+                                use, st], self.O[i])
                  for i, pic, use, st in spider]
         total += len(wrows) + len(orows) + len(srows)
         out += ["## Other items with a use", "",
-                md_table(["Item", "Effect"], orows), "",
+                md_table(self.icon_head(["Item", "Effect"]), orows), "",
                 "## Spider Pieces", "",
                 "The pieces of Lolth's spider are quest items for every class. Eight of them have the "
                 "name Spider Piece, but each has its own picture in the item list, and its own picture "
                 "on the floor too. The pictures are the parts of a black spider on sand. Three pairs "
                 "are mirror images: look at which side the legs or the cut edge of the body are on. "
                 "Each use takes one charge; with no charge left, \"Nothing happens...\".", "",
-                md_table(["Item", "Picture", "USE", "Taken by the statue"], srows), "",
+                md_table(self.icon_head(["Item", "Picture", "USE", "Taken by the statue"]), srows), "",
                 "The statue of the last level takes seven pieces and then opens a wall; the "
                 "Assembled Spider lies behind it.", ""]
         out += ["Potions, wands and scrolls have their own pages: [[Potions]], [[Wands]], [[Scrolls]].", "",
@@ -1510,7 +1630,7 @@ class Pages:
         for i in range(72, 89):
             r = self.O[i]
             eff, _ = POTIONS[i]
-            rows.append([r.name(), " ".join(x for x in (eff, r.note()) if x), r.num("value", 0)])
+            rows.append(self.icon_row([r.name(), " ".join(x for x in (eff, r.note()) if x), r.num("value", 0)], r))
         self.count("Potions", len(rows))
         return "\n".join([
             "# Potions",
@@ -1520,7 +1640,7 @@ class Pages:
             "end all potion effects. A potion that casts a spell (Flying, Jumping) casts it at your "
             "caster level ([[Wizard Spells|Wizard-Spells]]).",
             "",
-            md_table(["Potion", "Effect", "Value"], rows),
+            md_table(self.icon_head(["Potion", "Effect", "Value"]), rows),
             "",
             pages_note(),
             "",
@@ -1538,7 +1658,7 @@ class Pages:
             if s == 12:
                 note = "Cast on you."
             note = " ".join(x for x in (note, r.note()) if x)
-            rows.append([r.name(), self.S[s].name(), r.num("uses", 1), classes_of(r), value_of(r), note])
+            rows.append(self.icon_row([r.name(), self.S[s].name(), r.num("uses", 1), classes_of(r), value_of(r), note], r))
         self.count("Wands", len(rows))
         return "\n".join([
             "# Wands",
@@ -1552,7 +1672,7 @@ class Pages:
             "a cleric; a fighter of level 8 casts Magic Missile at level 8. For a cleric spell it uses "
             "your cleric level. If you have no such class, it casts at level 1.",
             "",
-            md_table(["Wand", "Spell", "Charges", "F/T/M/C", "Value", "Notes"], rows),
+            md_table(self.icon_head(["Wand", "Spell", "Charges", "F/T/M/C", "Value", "Notes"]), rows),
             "",
             "The spell rules, also the damage: [[Wizard Spells|Wizard-Spells]].",
             "",
@@ -1566,7 +1686,8 @@ class Pages:
     def scrolls(self):
         rows = []
         for i in (102, 106, 126, 127):
-            rows.append([self.O[i].name().strip(), " ".join(x for x in (SCROLLS[i], self.O[i].note()) if x)])
+            rows.append(self.icon_row([self.O[i].name().strip(), " ".join(x for x in (SCROLLS[i], self.O[i].note()) if x)],
+                                      self.O[i]))
         self.count("Scrolls", len(rows))
         return "\n".join([
             "# Scrolls",
@@ -1584,7 +1705,7 @@ class Pages:
             "",
             "## Other scrolls",
             "",
-            md_table(["Scroll", "Effect"], rows),
+            md_table(self.icon_head(["Scroll", "Effect"]), rows),
             "",
             "A quest item cannot be dropped.",
             "",
@@ -1677,10 +1798,10 @@ class Pages:
                 rng = self.spell_range(s)
                 if rng:
                     target += " (the missile flies %s)" % rng
-                rows.append([self.spell_name(s), cast_text(ct), target, rule["dur"], rule["save"],
-                             self.spell_effect(s)])
+                rows.append(self.icon_row([self.spell_name(s), cast_text(ct), target, rule["dur"], rule["save"],
+                                           self.spell_effect(s)], r))
             rows_total += len(rows)
-            out += [md_table(["Spell", "Cast", "Target", "Duration", "Save", "Effect"], rows), ""]
+            out += [md_table(self.icon_head(["Spell", "Cast", "Target", "Duration", "Save", "Effect"]), rows), ""]
         out += ["## Differs from the manual", ""]
         out += self.spell_manual_notes(cls)
         out += ["", pages_note(), ""]
@@ -1747,7 +1868,17 @@ class Pages:
                    ["Spell effects, durations, saves, item effects, potion effects",
                     "the code of `DTUGAME.EXE`: the spell cases of 0x8CFFF (jump table 0x8CF1F), the item "
                     "use 0x37A6A, the worn item bits 0xAFB55"],
-               ]), "",
+               ] + ([
+                   ["Icons of the items and spells",
+                    "`icon=` of the item or spell line after the table fixup; the picture is that cell of "
+                    "the high resolution icon sheet, entry %d of `FEBGND.DAT` (%dx%d cells, eight in a "
+                    "row: icon n at column n & 7, row n / 8; 0x3420C, 0x36E3F), in the colors of "
+                    "`PALETTE.256`, with color %d transparent" % (ICON_ENTRY, ICON_CELL, ICON_CELL, ICON_TRANSPARENT)],
+               ] if self.icons else [])), "",
+               ] + ([
+               "The icons of the item and spell tables come from the game files of Descent to "
+               "Undermountain. They are the property of their owner and are shown here only to "
+               "identify the items and spells.", ""] if self.icons else []) + [
                "## Units", "",
                "- Two game units are one foot: the fall message of the game divides the fall distance "
                "by two (`fell >> 17`).",
@@ -2145,7 +2276,14 @@ def main(argv=None):
     ap.add_argument("game_dir", help="the installed game (YPINN.BIN, DTUGAME.EXE 1.3)")
     ap.add_argument("out_dir", help="where the pages go")
     ap.add_argument("--tables", help="directory of unpacked level tables to compare with YPINN.BIN")
+    ap.add_argument("--no-icons", action="store_true", help="no icon column and no icon files")
     a = ap.parse_args(argv)
+
+    sheet = None
+    icon_dir = os.path.join(a.out_dir, "icons")
+    if not a.no_icons:
+        check_icon_dir(icon_dir)
+        sheet = IconSheet(a.game_dir)
 
     tab = Table(os.path.join(a.game_dir, "YPINN.BIN"))
     exe = Exe(os.path.join(a.game_dir, "DTUGAME.EXE"))
@@ -2166,7 +2304,7 @@ def main(argv=None):
     if os.path.exists(msn):
         with open(msn, "rb") as f:
             mission = re.findall(r"(\w+)\.lvl", f.read().decode("latin-1").lower())
-    p = Pages(tab, ct, check, mission)
+    p = Pages(tab, ct, check, mission, sheet.count if sheet else 0)
     pages = {
         "Home.md": p.home(), "_Sidebar.md": p.sidebar(), "Races.md": p.races(), "Classes.md": p.classes(),
         "Weapons.md": p.weapons(), "Armor.md": p.armor(), "Magic-Items.md": p.magic_items(),
@@ -2190,6 +2328,15 @@ def main(argv=None):
         with open(os.path.join(a.out_dir, name), "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
         print("%-18s %3d table rows" % (name, p.counts.get(name[:-3], 0)))
+    if sheet:
+        os.makedirs(icon_dir, exist_ok=True)
+        keep = set("icon-%d.png" % n for n in p.used_icons)
+        for old in glob.glob(os.path.join(icon_dir, "icon-*.png")):
+            if os.path.basename(old) not in keep:
+                os.remove(old)
+        for n in sorted(p.used_icons):
+            sheet.write(n, os.path.join(icon_dir, "icon-%d.png" % n))
+        print("%-18s %3d icons" % ("icons/", len(p.used_icons)))
     return 0
 
 
