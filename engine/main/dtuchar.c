@@ -84,13 +84,12 @@ static struct {
 	fix	luck_end;			// P+0x1A58 Luck
 	int	intel;				// the intelligence of the potion
 	int	dragon_extra;		// the percent value of Dragon's Blood for a warrior
-	int	gem_uses;			// P+0x1A57 Gem of Curing
+	int	gem_uses;			// P+0x1A57 Gem of Curing: the uses (byte, saved)
 	int	str_gain, pct_gain;	// P+0x1A55, P+0x1A56: the gain of the spell Strength
 	fix	intel_acc;			// Dtu_fix_potion_frame
 } Potion;
 static int Worn_bits = 0;		// 0x1458AC: the effect bits of the worn items
 static int Wizardry_count = 0;	// doublings of the Ring of Wizardry
-static int Rests = 0;			// the number of rests (the Gem of Curing, guess)
 
 static FILE *Char_log = NULL;
 static int Char_options_read = 0;
@@ -106,6 +105,7 @@ static int Known_n_inventory = 0;
 static ubyte Loaded_record[DTU_PLAYER_RECORD_SIZE];
 static int Have_loaded_record;
 extern char Dtu_player_archive[16];		// dtugame.c
+extern int Fe_khelben_mission;			// MsnNum 0x13E588 (dtufe_town.c)
 
 // The time when a rest place works again (0x1C5E40 of the station table,
 // here for each segment).
@@ -1533,11 +1533,13 @@ static int use_misc(dtu_inv_item *e)
 
 	switch (e->id) {
 		case 0x02:		// Gem of Curing: not used up
-			// The executable compares the uses with the counter 0x13E588
-			// (0x8445A), which was not decoded. The port allows one use for
-			// each rest. (guess)
-			if (Potion.gem_uses > Rests) {
+			// 0x3891B: the use counter P+0x1A57 must not be above the
+			// mission number MsnNum 0x13E588 (0x8445A): 0 for a new game
+			// (0x82BC7), the next mission at Khelben (0x83E5E). So one use
+			// at the start and one more for each mission. 0x389E0 adds 1.
+			if (Potion.gem_uses > Fe_khelben_mission) {
 				HUD_init_message("You cannot use the Gem Of Curing at this time.");
+				dtu_char_log("use: Gem of Curing refused, %d uses, mission %d", Potion.gem_uses, Fe_khelben_mission);
 				return 0;
 			}
 			if (p->dtu.m_88 & DTU_FX_BLIND) {
@@ -1919,7 +1921,6 @@ int dtu_char_rest(void)
 	Rest_time[seg] = GameTime + i2f(300);
 	HUD_init_message("You feel refreshed");
 	digi_play_sample(62, F1_0 / 2);		// 0x3E309: sound 62 at half volume
-	Rests++;
 	// 0x3E354: remove the fire of the rest place (0x3DC0F finds it,
 	// "killing fireball %d", lifeleft 0, 0x68F45). fuelcen_update_all()
 	// makes it again when the time of the place has passed.
@@ -2340,6 +2341,7 @@ static void clear_character(void)
 
 	memset(&Dtu_char, 0, sizeof(Dtu_char));
 	Have_loaded_record = 0;
+	Potion.gem_uses = 0;
 	Last_hot_key = -1;
 	Dtu_char.current.n = -1;
 	for (i = 0; i < DTU_N_HOT_KEYS; i++) { Dtu_char.hot_key[i].list = 0; Dtu_char.hot_key[i].n = -1; }
@@ -2492,6 +2494,7 @@ int dtu_char_load_save(char *filename)
 	Dtu_char.thac0 = p[DTU_P_THAC0];
 	Dtu_char.portrait = get_s32(p + DTU_P_PORTRAIT);
 	Dtu_char.pa.hit_points = get_s32(p + DTU_P_HIT_POINTS) >> 16;
+	Potion.gem_uses = p[DTU_P_GEM_USES];
 	Dtu_char.created = 1;
 	Dtu_gold = Dtu_char.pa.gold;
 
@@ -2635,6 +2638,7 @@ void dtu_char_pack(ubyte *record)
 	dtu_spell_books_to_record(record);
 
 	record[DTU_P_THAC0] = Dtu_char.thac0;
+	record[DTU_P_GEM_USES] = (ubyte) Potion.gem_uses;
 	pack_ref(record + DTU_P_CURRENT, Dtu_char.current);
 	// A spell in the hand is the reference of the hand (list 1 or 2)
 	if (Dtu_spell_current >= 0 && dtu_spell_book_ref(Dtu_spell_current, &list, &index)) {
@@ -2710,7 +2714,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // "frame:command=value" with commas between. Commands: damage=N,
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
-// armspell=SPELL, give=TYPE.ID, xp=N, rest, str=STRENGTH.PERCENT,
+// armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, str=STRENGTH.PERCENT,
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // dump.
@@ -2776,6 +2780,7 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
+	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
 	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL
 	else if (!strcmp(cmd, "armspell"))	dtu_char_arm_spell(a);

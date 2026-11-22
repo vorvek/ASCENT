@@ -681,7 +681,8 @@ Differences and guesses of the port:
 - Rest: no sound, the fire stays, the two calls that were not read are missing.
   The time of a rest place is kept for each segment.
 - Use: the cases of combat.md B6 (see combat.md C2 for the parts that are not
-  in the port). The Gem of Curing works once for each rest (guess).
+  in the port). The Gem of Curing works once at the start and once more for
+  each mission (0x3891B), as in the game; its counter is the byte P+0x1A57.
 - Keys of the inventory screen (comma, period, Enter, U, Backspace) are an
   addition. The original has the mouse.
 - The map is not in the port. Spells, missile weapons, saving throws, the
