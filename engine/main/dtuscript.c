@@ -17,9 +17,6 @@
  * stack, as the executable keeps it on its stack.
  *
  * Not in the port:
- * - E5 (walk a path): the object does not walk. It is moved to the last
- *   segment of the path at the end of the run and the script runs in mode
- *   2 (Dtu_script_walk_teleport).
  * - The turn of the object to the player in steps with frames between
  *   them (0xABE01): the port turns it at once.
  * - The executable runs script 0x1FD (the talk of WEAPON 13) to its end
@@ -80,9 +77,19 @@ int Dtu_script_log = 0;
 // without items back, so the change is lost.
 int Dtu_fix_script_abilities = 1;
 
-// Port decision: E5 (walk) moves the object to the last segment of the
-// path at the end of the run, because the port cannot give the AI a path.
-// 0: the object stays and the statement does nothing.
+// E5 (walk). In the executable the creature gets a path of the AI to the
+// last segment of the statement (0xAA74E) and its script runs in mode 2 at
+// the end of the path (0x174FC). A creature that does not fly and is not
+// hostile walks to the player and not to the points of its path there
+// (0x17CFC), so the end of the path is not reached while the player
+// stands near: a defect of 1.3.
+// Dtu_script_walk_teleport 1 (default, a port decision): the creature is
+// moved to the last segment at the end of the run and the script runs in
+// mode 2 at once, so that a script that goes on in its segment block (CB
+// E7) cannot stop. 0 (option -scriptwalk): the creature gets the path
+// (dtuobj.c) and the script runs in mode 2 at its end; in the tests of
+// 2026-11-22 the kobold of script 21 stood still on its path, so this is
+// not the default.
 int Dtu_script_walk_teleport = 1;
 
 // 1 (default): the corrected rule of the prison sequence 0xAA3F3. The
@@ -171,6 +178,8 @@ void dtu_script_init(void)
 	Gab_tried = 1;
 	if (FindArg("-scriptlog"))
 		Dtu_script_log = 1;
+	if (FindArg("-scriptwalk"))
+		Dtu_script_walk_teleport = 0;
 	if (FindArg("-origprison"))
 		Dtu_fix_prison_items = 0;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
@@ -591,7 +600,13 @@ void dtu_script_prison_guard(object *obj, int set_target);
 // below its morale (0x59DF2)
 int dtu_script_creature_brave(object *obj);
 // A run in mode 2 after a walk (Dtu_script_walk_teleport)
-static int Walk_obj = -1, Walk_sig = 0;
+static int Walk_obj = -1, Walk_sig = 0, Walk_seg = -1;
+static uint Walk_until = 0;
+
+// dtuobj.c: the path of statement E5
+void dtu_script_walk_segment(object *obj, int seg);
+void dtu_script_walk_start(object *obj);
+int dtu_script_walk_state(object *obj);
 
 static object *run_obj(sc_run *r)
 {
@@ -1988,7 +2003,12 @@ static int sc_exec(sc_run *r)
 			if (!at_end(r)) r->p++;
 			r->after_flag0 = 1;
 			r->walk_seg = last;
-			slog("walk to seg %d (the AI path is not in the port)", last);
+			slog("walk to seg %d", last);
+			// ASCENT: 0xAA74E and 0xAA810: the path of the AI (dtuobj.c)
+			if (!Dtu_script_walk_teleport && o && o->type == OBJ_ROBOT && last >= 0) {
+				dtu_script_walk_segment(o, last);
+				dtu_script_walk_start(o);
+			}
 			break;
 		}
 		case 0xEA: {								// 0xAA86C
@@ -2220,10 +2240,13 @@ static void finish_run(sc_run *r)
 	}
 	if (r->temp && o)
 		o->flags |= OF_SHOULD_BE_DEAD;						// 0xA74D0 deletes the temporary object
-	if (o && r->walk_seg >= 0 && Dtu_script_walk_teleport) {
-		move_to_segment(o, r->walk_seg, -1);
+	if (o && r->walk_seg >= 0) {
+		// ASCENT: the object walks (statement E5); dtu_script_frame()
+		// runs the script in mode 2 at the end of the path
 		Walk_obj = r->objnum;
 		Walk_sig = o->signature;
+		Walk_seg = r->walk_seg;
+		Walk_until = dtu_trap_clock() + 6000;
 	}
 	slog("end of script %d of obj %d", r->id, r->objnum);
 }
@@ -2534,9 +2557,27 @@ int dtu_script_frame(void)
 	}
 	if (Walk_obj >= 0 && N_run == 0) {
 		object *o = obj_num(Walk_obj);
-		Walk_obj = -1;
-		if (o && o->signature == Walk_sig && (o->dtu.m_1b0 & SB_FLAG(0)))
-			dtu_script_run(o, DTU_RUN_PATH);				// 0x174FC
+		int state = 0, arrived = 0;
+
+		if (!o || o->signature != Walk_sig || obj_dead(Walk_obj))
+			Walk_obj = -1;
+		else {
+			state = dtu_script_walk_state(o);
+			if (state == 2)
+				arrived = 1;
+			else if (Dtu_script_walk_teleport || state == 0 || dtu_trap_clock() >= Walk_until) {
+				// the default; or the creature has no path, left it or did
+				// not reach its end in 60 seconds
+				slog("walk: obj %d is moved to seg %d (state %d)", Walk_obj, Walk_seg, state);
+				move_to_segment(o, Walk_seg, -1);
+				arrived = 1;
+			}
+		}
+		if (arrived) {
+			Walk_obj = -1;
+			if (o->dtu.m_1b0 & SB_FLAG(0))
+				dtu_script_run(o, DTU_RUN_PATH);				// 0x174FC
+		}
 	}
 	if (N_run == 0)
 		return 0;

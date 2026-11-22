@@ -2995,6 +2995,20 @@ static void run_command(char *cmd, char *value)
 		*q = 0;
 		dtu_char_log("items in seg %d: %s", a, list);
 	}
+	else if (!strcmp(cmd, "objflag") && a > 0 && a <= Highest_object_index && b >= 0 && b < 8)	// test: objflag=N.K, script flag K of object N
+		Objects[a].dtu.m_1b0 |= 1 << (20 + b);
+	else if (!strcmp(cmd, "resume") && a > 0 && a <= Highest_object_index)		// test: resume=N.LABEL, the resume label of object N
+		Objects[a].dtu.m_1b0 = (Objects[a].dtu.m_1b0 & ~0x000ffc00) | ((b & 0x3ff) << 10);
+	else if (!strcmp(cmd, "talkscript")) {	// test: talkscript=ID, the use action on the first live creature with script ID
+		int i;
+
+		for (i = 1; i <= Highest_object_index; i++)
+			if (Objects[i].type == OBJ_ROBOT && (Objects[i].dtu.m_1b0 & 0x1ff) == a && Objects[i].shields >= F1_0) {
+				dtu_char_log("script: talk to obj %d (script %d)", i, a);
+				dtu_script_talk(&Objects[i]);
+				break;
+			}
+	}
 	else if (!strcmp(cmd, "prison"))		dtu_script_test_prison();		// test: the prison sequence 0xAA3F3
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);			// test: setlevel=N, statement 9F
 	else if (!strcmp(cmd, "gflag"))		dtu_script_set_gflag(a, value && strchr(value, '.') ? b : 1);		// test: gflag=N[.VALUE]

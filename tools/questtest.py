@@ -174,6 +174,22 @@ TESTS = [
        r"quest: level 7 seg 612 .* gold 0 hp 1 .*\n.*entries 0[\s\S]*quest: level 6 seg 297 [\s\S]*items in seg 297: .*16\.102"],
       frames=200, invuln=False, extra=["-statelog"], also=[r"Restoring SG6_7\.LVL"]),
 
+    # MULHOR1 and BONES: the Ankh (MISC 14) of the skeleton priest Straum
+    # (script 31, object 55). The Ankh is object 33 of MULHOR1 (segment
+    # 585); the player takes it by walking into it. Straum takes it at
+    # label 700 and Thoth grants a favor (reply 5, label 750: 8000 gold),
+    # then 600 experience at label 910. Flag 1 (the promise of label 600)
+    # makes Straum wary: a talk starts only when a roll of 1 to 20 is not
+    # above the charisma, so the test talks six times.
+    T("mulhor1_ankh", "MULHOR1", "20:goobj=33,21:face=33,100:quest",
+      [r"quest: items \[ .*16\.14 \]"], frames=110, extra=["-testmove", "wait:25,forward:60"]),
+    T("bones_straum_ankh", "BONES",
+      "10:give=16.14,12:kill=106,14:objflag=55.1,15:resume=55.700,20:talkscript=31,40:talkscript=31,60:talkscript=31,"
+      "80:talkscript=31,100:talkscript=31,120:talkscript=31,1780:quest,1781:obj=55",
+      [r"run script 31 of obj 55 .* at label 2BC", r"take class 16 id 14", r"gold 100 -> 8100", r"experience: \+600 ",
+       r"quest: level 3 .* gold 8100 ", r"obj 55: .* contains 16\.14 x1"],
+      frames=1800, dlg="1,1,1,5," + ONES),
+
     # Statement 9F (script 31 of BONES): the level.
     T("level_statement", "BONES", "20:setlevel=5,30:dump", [r"statement 9F sets level 5", r"level 5/"], frames=40),
 ]
