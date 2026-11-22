@@ -50,6 +50,7 @@
 #include "game.h"
 #include "gameseq.h"
 #include "newmenu.h"
+#include "menu.h"			// ASCENT: Player_default_difficulty
 #include "dtutrig.h"
 #include "gamefont.h"
 #include "dtufe.h"
@@ -2382,12 +2383,23 @@ int fe_load_game(int in_game)
 
 	b = sg_read(choice, path, sizeof(path), &size);
 	if (!b || size < SG_SIZE_BETWEEN || !dtu_char_load_save(path)) {
+		// ASCENT: 0xBBB44 to 0xBBB53: when the character cannot be read
+		// (the file has the right header) the text is TEX 804 "Error
+		// reading character data", and 0xBB763 leaves no character, the
+		// first visit of Khelben and the first list of Waterdeep
+		int msg = 802;							// "Incompatible save file version"
+		if (b && size >= SG_SIZE_BETWEEN && !memcmp(b, "DGSS", 4)) {
+			msg = 804;
+			Fe_have_character = 0;
+			fe_town_reset();
+			Fe_full_list = 0;
+		}
 		if (b)
 			free(b);
 		if (in_game)
-			nm_messagebox(NULL, 1, fe_text(34), fe_text(802));
+			nm_messagebox(NULL, 1, fe_text(34), fe_text(msg));
 		else
-			fe_message_box(NULL, fe_text(802), 1, fe_text(34), NULL);	// "Incompatible save file version"
+			fe_message_box(NULL, fe_text(msg), 1, fe_text(34), NULL);
 		return 0;
 	}
 	sg_forget();
@@ -2402,6 +2414,13 @@ int fe_load_game(int in_game)
 	// files count from it)
 	if ((int) get_u32(b + SG_GAME_TIME) > 0)
 		GameTime = (fix) get_u32(b + SG_GAME_TIME);
+	// ASCENT: the difficulty of the save (offset 7362 into 0x13CDCA). A
+	// value out of range (an old save of the port wrote 0) gives the 2 of
+	// a new game (0x5851A).
+	{
+		int d = (int) get_u32(b + SG_DIFFICULTY);
+		Difficulty_level = (d >= 1 && d < NDL) ? d : 2;
+	}
 	dtu_dlg_reset_view();		// ASCENT: no dark view of a conversation in the loaded game
 	dtu_scroll_reset();			// ASCENT: no scroll text screen in the loaded game
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
@@ -2469,8 +2488,7 @@ static int sg_write(int slot, char *desc, int between)
 		strcpy((char *) b + SG_RLPD + 20, "DTU");
 	}
 	b[SG_RLPD + 29] = (ubyte) level;
-	if (!get_u32(b + SG_DIFFICULTY))
-		put_u32(b + SG_DIFFICULTY, 2);			// the difficulty (0x13CDCA)
+	put_u32(b + SG_DIFFICULTY, Difficulty_level);	// the difficulty (0x13CDCA)
 	size = SG_SIZE_BETWEEN;
 	if (!between)
 		size += dtustate_write_save_lists(b + SG_SIZE_BETWEEN, SG_MAX_SIZE - SG_SIZE_BETWEEN);
@@ -2560,7 +2578,7 @@ static void fe_main_menu(void)
 	// 0x57F28: "Save Game" and "Return to Game" are there when the full
 	// list of Waterdeep is used (0x8C4B6: Khelben was visited) or a
 	// character was made or loaded (0x141BBB).
-	int playing = Fe_have_character || Fe_khelben_mission || Fe_khelben_blurb;
+	int playing = Fe_have_character || Fe_full_list;
 
 	fe_load_screen(FE_SCR_WATERDEEP);
 	memset(m, 0, sizeof(m));
@@ -2575,6 +2593,7 @@ static void fe_main_menu(void)
 	m[n].text = fe_text(325); action[n++] = 13;			// Options...
 	m[n].text = fe_text(328); action[n++] = 23;			// Credits
 	m[n].text = fe_text(2);   action[n++] = 4;				// Quit
+	dtu_log("Front end: main menu, %d items%s\n", n, playing ? ", Save Game, Return to Game" : "");	// ASCENT: for tools/uitest.py
 
 	// The first item that is selected is the last choice (0x13CCE9, 0 at
 	// the start: "Load Game...").
@@ -2601,6 +2620,7 @@ static void fe_main_menu(void)
 	switch (action[choice]) {
 	case 0:
 		Menu_backdrop = NULL;
+		Fe_full_list = 0;			// ASCENT: 0x5831C and 0x87E65: 0x8C426
 		if (fe_new_character()) {
 			Fe_have_character = 1;
 			fe_town_reset();
@@ -2764,6 +2784,10 @@ int dtufe_run(void)
 				level = dtu_find_level_num("YPINN");
 			Fe_mode = FE_GO_MENU;
 			Dtu_fe_return_waterdeep = 0;
+			// ASCENT: the difficulty menu of 1.3 (0x5851A, called at
+			// 0x58A18) has no items: it sets Player_default_difficulty
+			// (0x1F3AFC) and Difficulty_level (0x13CDCA) to 2
+			Player_default_difficulty = Difficulty_level = 2;
 			fe_leave();
 			Fe_in_game = 1;
 			Fe_loading_from = 1;		// 0xB8A09: 0x13E324 = 1
@@ -3075,9 +3099,8 @@ int dtufe_game_ended(void)
 
 	fe_enter();
 	if (Dtu_player_dead) {
-		fix until = fe_time() + 3 * F1_0;
-
 		fe_town_reset();				// 0x82BC4: Khelben starts again
+		Fe_full_list = 0;				// ASCENT: 0x42423: 0x8C426
 		Fe_have_character = 0;
 		gr_palette_clear();
 		fe_show_picture(161);
@@ -3085,12 +3108,22 @@ int dtufe_game_ended(void)
 		if (dtumusic_current() != DTUMUSIC_DEATH)		// dtuobj.c may have started it
 			dtumusic_play(DTUMUSIC_DEATH, 0, 100);
 		Fe_cursor_bm = NULL;
+		// ASCENT: 0x42517 to 0x4252E: the keys that are down are taken
+		// first, then any key goes on, with no shortest time; the mouse
+		// does nothing
+		fe_input_clear();
+		key_flush();
 		while (fe_frame_begin()) {
 			fe_frame_end();
-			if ((Fe_key || Fe_press) && fe_time() >= until - 2 * F1_0)
+			if (Fe_key)
 				break;
 		}
+		dtu_log("Front end: death picture left (frame %d)\n", Fe_frame_count);	// ASCENT: for tools/uitest.py
 		dtumusic_stop();
+		// ASCENT: 0x4253E and 0x4254F: the picture fades out in 32 steps
+		// before the screen is cleared for the Death Menu
+		if (!Script_n)
+			gr_palette_fade_out(Fe_pal, 32, 0);
 		Fe_mode = FE_GO_MENU;
 
 		// 0x42554 to 0x42593: the screen goes black, the executable loads
@@ -3122,10 +3155,17 @@ int dtufe_game_ended(void)
 		}
 	} else if (loaded)
 		Fe_mode = loaded;			// a load of the ESC menu
-	else if (Dtu_fe_return_waterdeep)
+	else if (Dtu_fe_return_waterdeep) {
+		Fe_full_list = 1;			// ASCENT: 0x42642: the inn, 0x8C431
 		Fe_mode = FE_GO_WATERDEEP;
-	else
+	} else {
+		// ASCENT: 0x42649 and 0x4264F: Abort Game or the end of the game:
+		// no character and the first list, so the main menu has no Save
+		// Game and no Return to Game
+		Fe_have_character = 0;
+		Fe_full_list = 0;
 		Fe_mode = FE_GO_MENU;
+	}
 	Dtu_fe_return_waterdeep = 0;
 	return !Fe_quit;
 }

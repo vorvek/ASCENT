@@ -83,8 +83,10 @@ class Runner:
             cmd += ["-datadir", dd]
         if self.args.hddir:
             cmd += ["-hddir", self.args.hddir]
-        cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user"),
-                "-level", level or LEVEL, "-fescript", script] + list(extra)
+        cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user")]
+        if level != "":     # "": the front end (no direct start)
+            cmd += ["-level", level or LEVEL]
+        cmd += ["-fescript", script] + list(extra)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=d)
         out = {}
         for s in shots:
@@ -339,6 +341,38 @@ def test_cheat_codes(t):
         assert "cheat " + c in text, "the code %s did not act" % c
     assert differ(region(s["before"], *MSGBOX), region(s["sword"], *MSGBOX)) > 0.001, "no message"
     assert differ(region(s["sword"], *MSGBOX), region(s["d1"], *MSGBOX)) < 0.001, "a Descent 1 code acted"
+
+
+# The front end (docs/audit/screens.md). A corner of the picture, away from
+# the menu box and the credits column (x 112 to 528).
+FE_CORNER = (0, 0, 100, 100)
+
+
+def test_fe_credits_key_only(t):
+    """The credits (0x2C61B) end on a key (0xDA3E4), not on a mouse click,
+    and the main menu comes back."""
+    s, _ = t.run("fe_credits", ["wait 60", "shot menu", "key down", "wait 2", "key down", "wait 2", "key down",
+                                "wait 2", "key enter", "wait 90", "shot credits", "click 320 240", "wait 30",
+                                "shot clicked", "key esc", "wait 60", "shot after"], level="")
+    assert differ(region(s["menu"], *FE_CORNER), region(s["credits"], *FE_CORNER)) > 0.2, "the credits did not start"
+    assert differ(region(s["credits"], *FE_CORNER), region(s["clicked"], *FE_CORNER)) < 0.02, "a click ended the credits"
+    assert differ(region(s["menu"], *FE_CORNER), region(s["after"], *FE_CORNER)) < 0.05, "a key did not end the credits"
+
+
+def test_fe_death_picture_key(t):
+    """The death picture (0x42517 to 0x4252E) ignores the mouse and goes on
+    at the first key, with no shortest time; then the Death Menu, and after
+    Abort Game the main menu has no Save Game (0x42423: no character, the
+    first list of Waterdeep)."""
+    _, d = t.run("fe_death", ["gamekeys", "wait 200", "click 320 240", "wait 20", "click 320 240", "wait 20",
+                              "key space", "wait 30", "key down", "wait 3", "key enter", "wait 10",
+                              "key enter", "wait 60", "shot menu"],
+                 extra=["-fixedfps", "30", "-chartest", "5:damage=999"])
+    text = session_log(d)
+    assert "Front end: death picture left" in text, "the death picture did not end on a key"
+    left = text.index("Front end: death picture left")
+    assert "Front end: main menu, 5 items\n" in text[left:], "the main menu after the death:\n" + \
+        "\n".join(l for l in text.splitlines() if "Front end" in l)
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

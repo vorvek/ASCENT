@@ -39,6 +39,7 @@
 int Fe_khelben_mission;			// MsnNum (0x13E588)
 int Fe_khelben_blurb;			// 0x13E58C
 static int Fe_khelben_visits;	// 0x13E396
+int Fe_full_list;					// ASCENT: 0x142035 == 0x141D48
 
 void fe_town_reset(void)			// 0x82BC4
 {
@@ -102,7 +103,9 @@ int fe_waterdeep(void)
 
 	// "Visit Khelben first": the short list is used while the mission
 	// number and the blurb number are 0.
-	if (Fe_khelben_mission || Fe_khelben_blurb) {
+	// 0x8C22A: 0x8C431 or 0x8C426 (Fe_full_list)
+	Fe_full_list = Fe_khelben_mission || Fe_khelben_blurb;
+	if (Fe_full_list) {
 		Wd.features = Wd_features;
 		Wd.n_features = 6;
 	} else {
@@ -400,6 +403,7 @@ static fe_screen Bs = { Bs_controls, 1, { { 20, -1, -1 }, { 44, 42, 43 } }, Bs_f
 
 void fe_blackstaff(void)
 {
+	Fe_full_list = 1;				// ASCENT: 0x82B9D: 0x8C431
 	fe_run_screen(&Bs);
 	fe_speech_stop();
 	dtumusic_stop();
