@@ -2138,13 +2138,24 @@ int dtu_spell_player_ac(int ac,int stage)
 	return ac;
 }
 
+// 0x2ADAF: one of Magical Vestment (at most max(5 - (L - 5) / 3, 1) with
+// the level of the creature), Shield (at most 3) or Armor (at most 6),
+// in this order; then Slow adds 4, at most 10.
 int dtu_spell_creature_ac(object *c,int ac)
 {
 	int w = c->dtu.m_88;
 
-	if ((w & DTU_FX_VESTMENT) && ac > 5) ac = 5;
-	if ((w & DTU_FX_SHIELD) && ac > 3) ac = 3;
-	if ((w & DTU_FX_ARMOR) && ac > 6) ac = 6;
+	if (w & DTU_FX_VESTMENT) {
+		int v = 5 - (creature_level(c) - 5) / 3;
+
+		if (v < 1) v = 1;
+		if (ac > v) ac = v;
+	}
+	else if (w & DTU_FX_SHIELD) {
+		if (ac > 3) ac = 3;
+	}
+	else if ((w & DTU_FX_ARMOR) && ac > 6)
+		ac = 6;
 	if (w & DTU_FX_SLOW) {
 		ac += 4;
 		if (ac > 10) ac = 10;
@@ -2152,16 +2163,9 @@ int dtu_spell_creature_ac(object *c,int ac)
 	return ac;
 }
 
-int dtu_spell_to_hit_bonus(object *attacker)
+int dtu_spell_unseen(object *obj)
 {
-	int b = 0;
-
-	if (attacker == NULL)
-		return 0;
-	if (attacker->dtu.m_88 & DTU_FX_STRENGTH) b += 1;
-	if (attacker->dtu.m_88 & DTU_FX_BLESS) b += 1;
-	if (attacker->dtu.m_88 & DTU_FX_SLOW) b -= 4;
-	return b;
+	return obj && caster_unseen(obj);
 }
 
 //------------------------------------------------------------------------

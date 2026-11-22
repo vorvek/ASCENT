@@ -288,6 +288,16 @@ void dtu_get_body_size(object *obj, fix *radius, fix *half_height);
 // use it.
 char *dtu_object_name(object *obj);
 
+// 0x2AA5B to 0x2AF4F of the to-hit roll 0x2A7F3: the effects of the
+// attacker and of the target (Levitate, hidden or invisible, Bless,
+// Protection From Evil, the armor class of a creature, Slow), the test
+// thac0 - ac <= roll, and Stone Skin, which takes a hit. roll is the d20
+// with the bonuses of the attacker. Returns 1 for a hit, 0 for a miss.
+int dtu_hit_test(object *target, object *attacker, int roll, int thac0, int *ac_out);
+// 0x2AF5E: Flame Tongue, Mace of Disruption and the fire dice of a weapon
+// (any attacker). *damage is the normal part. Returns the fire part.
+int dtu_weapon_extra_damage(object *attacker, object *target, int weapon, int *damage);
+
 // The name of an object in the messages to the player (0xA7F03): for a
 // creature the name of the list 0xA504A ("Kobold"), else dtu_object_name.
 char *dtu_object_display_name(object *obj);
@@ -299,8 +309,11 @@ char *dtu_object_display_name(object *obj);
 
 int dtu_player_thac0(void);				// the byte at 0x1D4D78
 int dtu_player_armor_class(void);		// the word at 0x1D33C9
-int dtu_player_to_hit_bonus(void);		// strength, weapon and skill bonus of the roll
-int dtu_player_damage_roll(void);		// the dice of the weapon in the hand plus the bonus
+// 0x2A7F3 for the player as the attacker: 2 a critical hit, 1 a hit, 0 a
+// miss, -1 a fumble. weapon: -1 for the empty hand.
+int dtu_player_attack_roll(object *target, int weapon);
+// 0x2AF5E for the player as the attacker: the damage of one roll.
+int dtu_player_weapon_damage(int weapon, object *target);
 int dtu_player_level(void);				// the word at 0x1D33CB plus 1
 fix dtu_player_hit_points(void);			// 0x1D336F
 fix dtu_player_max_hit_points(void);	// the word at 0x1D33BD as a fix
@@ -337,6 +350,8 @@ int dtu_objects_check(char *msg, int size);
 // no target), turned 0 makes it hostile (a failed turn, or "unable to
 // affect"). Both start the creature again and check its morale.
 void dtu_creature_turn(object *obj, int turned);
+// 0x10ADF: the morale function of a creature
+void dtu_creature_morale(object *obj);
 
 // 0xA6505: makes a creature active. With make_hostile it attacks the player.
 void dtu_creature_wake(object *obj, int make_hostile);

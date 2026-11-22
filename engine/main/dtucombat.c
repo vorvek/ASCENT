@@ -351,7 +351,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 
 	// 0x29A9C: the to-hit roll (0x2A7F3). A sleeping creature is hit and
 	// wakes (0x2A839).
-	ac = dtu_spell_creature_ac(creature,mi->armor_class) + dtu_spell_to_hit_bonus(player);
+	ac = dtu_spell_creature_ac(creature,mi->armor_class);
 	// 0x29D5B: 0xB337E sets the backstab flag 0x13A955 (dtuthief.c)
 	Dtu_backstab = dtu_thief_backstab_check(creature,weapon);
 	if (creature->dtu.m_88 & DTU_FX_SLEEP) {
@@ -360,7 +360,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 		dtu_obj_log("combat: obj %d %s sleeps: hit, it wakes",(int)(creature-Objects),dtu_object_name(creature));
 	}
 	else
-		roll = dtu_char_attack_roll(ac);
+		roll = dtu_char_attack_roll(creature,weapon);
 
 	if (roll > 0) {
 		// 0x29D80: the hit stops the cast of the creature (0x9305D); 0x29D85
@@ -372,20 +372,22 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 			HUD_init_message("Your weapon has no effect on %s.",dtu_object_display_name(creature));
 			dtu_obj_log("combat: obj %d %s is weapon resistant",(int)(creature-Objects),dtu_object_name(creature));
 		}
-		else if (creature->dtu.m_88 & DTU_FX_STONESKIN) {
-			// 0x29DF9: Stone Skin takes the hit
-			if (--creature->dtu.m_80 <= 0)
-				creature->dtu.m_88 &= ~DTU_FX_STONESKIN;
-			dtu_obj_log("combat: the stone skin of obj %d takes the hit",(int)(creature-Objects));
-		}
 		else {
-			damage = dtu_char_damage_roll();
+			// Stone Skin takes the hit in the roll (0x2AE44)
+			damage = dtu_char_weapon_damage(weapon,creature);
 			if (roll == 2)
-				damage += dtu_char_damage_roll();		// a critical hit: a second roll
-			// 0x29E3D: Chill Touch of the attacker
-			if ((player->dtu.m_88 & DTU_FX_CHILL_TOUCH) && !dtu_spell_save(creature,DTU_SAVE_SPELL)) {
-				if (creature_is_undead(creature))
-					dtu_spell_hit(14,creature,player,dtu_spell_player_level(5));	// Fear (guess: the effect of case 14)
+				damage += dtu_char_weapon_damage(weapon,creature);		// a critical hit: a second roll
+			// 0x29E3D: Chill Touch of the attacker (the swing is a melee hit), a
+			// failed save (category 4): an undead creature
+			// gets Fear (bit 8, the timer +0xAC) for 1d4 plus the caster
+			// level (0x91EC1 of spell 5) minutes and the morale function
+			// 0x10ADF runs; another creature takes 1d4 more
+			if ((player->dtu.m_88 & DTU_FX_CHILL_TOUCH) &&
+				 !dtu_spell_save(creature,DTU_SAVE_SPELL)) {
+				if (creature_is_undead(creature)) {
+					dtu_spell_set_effect(creature,DTU_FX_FEAR,i2f(60 * (rand() % 4 + 1 + dtu_spell_player_level(5))),0,0);
+					dtu_creature_morale(creature);
+				}
 				else
 					damage += rand() % 4 + 1;
 			}
@@ -1208,6 +1210,16 @@ void dtu_combat_cast_stopped(void)
 	View_state = View_goal = DAS_FLINCH;
 	View_frame = Dtu_anim_first[DAS_FLINCH];
 	View_anim_start = GameTime + FrameTime;
+}
+// 0x2A949: a fumble of the player that does not drop the weapon: the
+// request of the attack key ends and the arms go at once to state 10
+// (+0x176 and +0x170, P+0x57 = GameTime)
+void dtu_combat_fumble(void)
+{
+	Request = 0;
+	View_state = View_goal = DAS_FIDGET;
+	View_frame = Dtu_anim_first[DAS_FIDGET];
+	View_anim_start = GameTime;
 }
 int dtu_combat_view_frame(void) { return View_frame; }
 int dtu_combat_view_model(void) { return View_model; }

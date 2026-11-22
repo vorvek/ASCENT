@@ -58,7 +58,7 @@ void dtu_thief_attack(void);
 // 0xB337E: 1 if an attack of the player on the creature is a backstab.
 int dtu_thief_backstab_check(object *target, int weapon);
 
-// 1 if the creature does not see the player because of Hide In Shadows
+// 1 if the creature does not see the player: invisible or Hide In Shadows
 // (0x165C4 with 0x165F9).
 int dtu_thief_hidden_from(object *creature);
 // 1 if the creature does not notice the player because of Move Silently
