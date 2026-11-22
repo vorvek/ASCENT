@@ -50,6 +50,8 @@
 #include "dtutrig.h"
 #include "dtuspell.h"	// ASCENT: the spells of the creatures, the area of a missile
 #include "dtuthief.h"	// ASCENT: Hide In Shadows and Move Silently in the AI
+#include "dtuscript.h"	// ASCENT: quest flag 67 in the creature setup
+#include "textures.h"	// ASCENT: the lava textures of BANE
 #include "tmapfx.h"	// ASCENT: the tint of Detect Magic
 #include "dtuchar.h"
 #include "digi.h"
@@ -107,6 +109,21 @@ int Dtu_fix_brain = 1;
 // option -origobj clears it. See docs/re/ai.md, "The corpse".
 int Dtu_fix_corpse_floor = 1;
 
+// The peace of the members of the Shadow Thieves with quest flag 67
+// (dtuobj.h). The options -origobj and -origguildpeace clear it.
+int Dtu_fix_guild_peace = 1;
+
+// The shields of the hatchling of DROW5 (object 83) at the level fixes
+// (dtuobj.h). The options -origobj and -origdrow5 clear it.
+int Dtu_fix_drow5_shields = 1;
+
+// The weapon of the spellcaster of KOBOLDS also with a saved state, the hit
+// points of scenery at a restore, the texture of the spinning scenery of
+// BANE (dtuobj.h). -origobj clears them.
+int Dtu_fix_kobold_weapon = 1;
+int Dtu_fix_scenery_restore = 1;
+int Dtu_fix_bane_texture = 1;
+
 // The option -origobj (or -noimprovedpaths, a test option that changes
 // nothing else): Dtu_improved_pathfinding has no effect.
 static int Orig_obj = 0;
@@ -156,6 +173,7 @@ typedef struct monster_ext {
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
+	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), read by no code of the port (audit C16)
 } monster_ext;
 
 static monster_ext Monster_ext[MAX_ROBOT_TYPES];
@@ -333,6 +351,7 @@ static int Player_swing_done = 0;
 static FILE *Obj_log = NULL;
 static int Obj_log_frames = 0;		// option -objlogframes: a line for each change of the animation frame
 static int Obj_log_pos = 0;			// option -objlogpos N: the place of each active creature each N frames
+static int Setup_log = 0;				// option -setuplog (test): one session log line for each creature setup by name
 static int Test_kill = 0;				// option -testkill N[,W] (test): each N frames the nearest active creature dies
 static int Test_kill_wall = 0;		// W 1: only a creature that hit a wall in the last half second
 static int Test_pos_pending;
@@ -1045,7 +1064,14 @@ void dtu_objects_init(void)
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
-			Dtu_fix_magic_tint = 0;
+			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
+			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = 0;
+	if (FindArg("-origdrow5"))
+		Dtu_fix_drow5_shields = 0;
+	if (FindArg("-origguildpeace"))
+		Dtu_fix_guild_peace = 0;
+	if (FindArg("-setuplog"))
+		Setup_log = 1;
 	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
 	if (FindArg("-origobj") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
@@ -1086,6 +1112,8 @@ void dtu_objects_init(void)
 // place_creatures (0x6A6FB) and add_npc (0xAC431) set.
 static int ail_keep_bits = 0;		// 1 while a creature is made in the game
 static int Dtu_script_level = 0;	// the level byte of the player (0x1D338D): the number of the level in DTU.MSN, from 0
+static int Level_setup_pass = 0;	// 1 while dtu_objects_level_setup sets up the objects of a level
+static void add_npc(object *obj);
 
 static void init_creature_ai(object *obj)
 {
@@ -1113,6 +1141,19 @@ static void init_creature_ai(object *obj)
 	vm_vec_zero(&obj->mtype.phys_info.velocity);
 	vm_vec_zero(&obj->mtype.phys_info.thrust);
 	vm_vec_zero(&obj->mtype.phys_info.rotvel);
+
+	// At the level start add_npc runs later, after the creature setup by
+	// name (level_start_npcs, in the order of level_start 0xAD5BF).
+	if (Level_setup_pass && !ail_keep_bits)
+		return;
+	add_npc(obj);
+}
+
+// add_npc (0xAC431) for a creature: its hostility, awareness and target.
+static void add_npc(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	ai_static *aip = &obj->ctype.ai_info;
 
 	// add_npc (0xAC431, code):
 	// 1. A script id that does not belong to the level is cleared: the id
@@ -1143,8 +1184,10 @@ static void init_creature_ai(object *obj)
 		ail->target = 0;
 		ail->awareness = ail_keep_bits ? 0 : 4;
 	}
-	else
+	else {
 		ail->target = -1;
+		ail->awareness = 0;
+	}
 
 	aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
 }
@@ -1221,19 +1264,16 @@ static void setup_creature(object *obj)
 }
 
 //------------------------------------------------------------------------
-// 0xACCDB (called by level_start 0xAD5BF before add_npc): fixed changes of
-// single objects and table entries for 16 levels, by the level byte (the
-// index in DTU.MSN). The argument is 0x5A742(level): 1 if the level has a
-// saved state. The level start runs before the restore of the state
-// (0x5AA75), so a restore keeps what the state file holds. The executable
-// writes fixed object numbers with no test for most of them; the port tests
-// the type that the level files have there. docs/re/objects.md, "Level
-// fixes (0xACCDB)", has the list. Not in the port: object flag 0x40 (byte 0x0D:
-// MULHOR1 objects 1, 2, 34, 60, 73, 91, FLAME 2, 3, 35), the texture of the
-// spinning scenery of BANE (a table made at run time), the shields of DROW5
-// object 83 (the executable reads past the monster table), the table value
-// +0x7C of CLAN3, the AI values of the YPINN creatures (add_npc of the port
-// sets them) and the times +0x1A8, +0x1C0.
+// 0xACCDB (called by level_start 0xAD5BF before the creature setup by name
+// and add_npc): fixed changes of single objects and table entries for 16
+// levels, by the level byte (the index in DTU.MSN). The argument is
+// 0x5A742(level): 1 if the level has a saved state. The level start runs
+// before the restore of the state (0x5AA75), so a restore keeps what the
+// state file holds. The executable writes fixed object numbers with no test
+// for most of them; the port tests the type that the level files have
+// there. docs/re/objects.md, "Level fixes (0xACCDB)", has the list and what
+// is not in the port (object flag 0x40, +0x1AE bit 2, YPINN object 41,
+// +0x1A8, control type 0 of MYRKUL object 3).
 
 static int Level_setup_restore = 0;		// 1 while dtustate.c restores a level
 
@@ -1320,15 +1360,18 @@ static monster_info *fix_monster(int n, int *id)
 
 // The changes of the tables: at each setup, also after a restore, because
 // the port reads the extra values of the monster table again at each setup.
-static void level_fixes_tables(void)
+static void level_fixes_tables(int has_state)
 {
 	monster_info *mi;
 	object *o;
 	int id;
 
 	switch (Dtu_script_level) {
-		case 2:		// kobolds (0xACF23): the weapon of the type of object 19
-			if (fix_monster(19,&id))
+		case 2:		// kobolds (0xACF23): the weapon of the type of object 19,
+					// only with no state (then the creature setup gives the
+					// weapon -33 of the table the weapon 33 and 1d4)
+			// Dtu_fix_kobold_weapon: the weapon also with a state
+			if ((!has_state || Dtu_fix_kobold_weapon) && fix_monster(19,&id))
 				Monster_ext[id].weapon_type = 0x12;
 			break;
 		case 19:	// clan3 (0xAD157): the type of object 10
@@ -1336,6 +1379,7 @@ static void level_fixes_tables(void)
 				mi->flags |= monster_flags_from_table(0x7042);
 				Monster_ext[id].damage_dice = 1;
 				Monster_ext[id].n_damage_dice = 10;
+				Monster_ext[id].touch_spell = 0x16;
 			}
 			break;
 		case 27:	// drow5 (0xAD25A): the type of object 83
@@ -1384,16 +1428,73 @@ static void level_fixes_tables(void)
 	}
 }
 
+// 0xACD3B, ypinn: the eight guests of the inn that are not dead (low three
+// flags clear) lose the hostility, the awareness goes one step to zero and
+// the AI starts again. The flag of object 41 (+0x144 bit 0, a piece of
+// scenery) is not in the port.
+static void level_fixes_inn(void)
+{
+	static const int guests[8] = { 1, 2, 16, 17, 27, 28, 30, 32 };
+	int k;
+
+	for (k=0;k<8;k++) {
+		object *o = fix_obj(guests[k],OBJ_ROBOT,-1);
+		dtu_ai_local *ail;
+
+		if (!o || (o->flags & 7) || o->id >= N_robot_types)
+			continue;
+		ail = &Ail[guests[k]];
+		o->dtu.m_1b0 &= ~DTU_HOSTILE;
+		ail->awareness = (ail->awareness > 0 && ail->awareness < 128) ? ail->awareness - 1 : 0;
+		ail->target = -1;
+		ail->morale = (Monster_info[o->id].ai_values[0][Difficulty_level] + Monster_info[o->id].ai_values[1][Difficulty_level]) / 2;
+		o->ctype.ai_info.CURRENT_STATE = o->ctype.ai_info.GOAL_STATE = DAIS_NONE;
+		DTU_ANIM_STATE(o) = DAS_STAND;
+		DTU_ANIM_GOAL(o) = DAS_STAND;
+		DTU_ANIM_FRAME(o) = Dtu_anim_first[DAS_STAND];
+		ail->anim_start = GameTime;
+		ail->mode = DAIM_STILL;
+	}
+}
+
+// 0xAD744 after the level fixes: the texture numbers of lava02, lava,
+// lavaflo and magma (0x1B2B1 gives 0 for a name that the level does not
+// have). 0xACCDB of BANE reads them before this lookup.
+static int Lava_textures[4];
+
+static void lava_textures_lookup(void)
+{
+	static const char *names[4] = { "lava02", "lava", "lavaflo", "magma" };
+	int k, i;
+
+	for (k=0;k<4;k++) {
+		int n = strlen(names[k]);
+
+		Lava_textures[k] = 0;
+		for (i=0;i<NumTextures;i++)
+			if (!strnicmp(TmapInfo[i].filename,names[k],n) && (TmapInfo[i].filename[n] == 0 || TmapInfo[i].filename[n] == '.')) {
+				Lava_textures[k] = i;
+				break;
+			}
+	}
+}
+
 // The changes of the objects: only at the load of the level, before the
-// restore of a state.
+// restore of a state. They run after the setup of the objects (setup_object
+// at the load in the executable) and before the creature setup by name.
 static void level_fixes_objects(int has_state)
 {
 	object *o;
 
 	switch (Dtu_script_level) {
+		case 0:		// ypinn (0xACD3B): the eight guests that are not dead
+			level_fixes_inn();
+			break;
 		case 2:		// kobolds (0xACF0C), only with no state
 			if (has_state)
 				break;
+			if ((o = fix_obj(19,OBJ_ROBOT,-1)) != NULL)
+				Ail[19].spell_time = GameTime;		// +0x1C0 (+0x1A8 is not in the port)
 			if ((o = fix_obj(6,OBJ_ARMOR,-1)) != NULL) {
 				o->id = 0x27;
 				fix_log(6,"armor id 0x27");
@@ -1406,11 +1507,16 @@ static void level_fixes_objects(int has_state)
 				o->shields = i2f(40);
 				fix_log(55,"peaceful, 40 hit points");
 			}
-			// init_ai_object(n, 0x80, segment): the behavior guard
-			if ((o = fix_obj(11,OBJ_ROBOT,-1)) != NULL)
+			// init_ai_object(n, 0x80, segment): the behavior guard (the
+			// mode of init_creature_ai for a guard)
+			if ((o = fix_obj(11,OBJ_ROBOT,-1)) != NULL) {
 				o->ctype.ai_info.behavior = DAIB_GUARD;
-			if ((o = fix_obj(23,OBJ_ROBOT,-1)) != NULL)
+				Ail[11].mode = DAIM_STILL;
+			}
+			if ((o = fix_obj(23,OBJ_ROBOT,-1)) != NULL) {
 				o->ctype.ai_info.behavior = DAIB_GUARD;
+				Ail[23].mode = DAIM_STILL;
+			}
 			break;
 		case 5:		// thief0 (0xACFBE)
 			fix_peaceful(48);
@@ -1423,11 +1529,23 @@ static void level_fixes_objects(int has_state)
 			break;
 		case 9:		// bane (0xAD003): the weapon 13 is removed, two pieces
 					// of scenery spin
-			fix_delete(53,OBJ_WEAPON,13);
-			if ((o = fix_obj(26,OBJ_DRESSING,-1)) != NULL)
-				fix_spin(o,0xCCC);
-			if ((o = fix_obj(27,OBJ_DRESSING,-1)) != NULL)
-				fix_spin(o,0xCCC);
+			{
+				// One of the four lava textures that 0xAD744 looked up
+				// (the cache of the previous level start in the
+				// executable; Dtu_fix_bane_texture: of this level)
+				int choice = rand() % 4, k;
+
+				if (Dtu_fix_bane_texture)
+					lava_textures_lookup();
+				fix_delete(53,OBJ_WEAPON,13);
+				for (k=26;k<=27;k++)
+					if ((o = fix_obj(k,OBJ_DRESSING,-1)) != NULL) {
+						fix_spin(o,0xCCC);
+						if (o->render_type == RT_POLYOBJ)
+							o->rtype.pobj_info.tmap_override = Lava_textures[choice];
+						dtu_obj_log("level fix (0xACCDB), level 9: obj %d texture %d (lava texture %d)",k,Lava_textures[choice],choice);
+					}
+			}
 			break;
 		case 11:	// mine (0xAD0A1)
 			fix_peaceful(1);
@@ -1455,6 +1573,7 @@ static void level_fixes_objects(int has_state)
 			if ((o = fix_obj(109,OBJ_ROBOT,-1)) != NULL) {
 				fix_script(o,109,0xFF);
 				o->ctype.ai_info.behavior = DAIB_GUARD;
+				Ail[109].mode = DAIM_STILL;
 				o->ctype.ai_info.flags[6] = 1;
 				o->shields = i2f(120);
 				o->dtu.m_88 |= (int)0xE2013A09u;
@@ -1471,7 +1590,16 @@ static void level_fixes_objects(int has_state)
 				o->dtu.m_80 = 9 + rand() % 4;
 			}
 			break;
-		case 27:	// drow5 (0xAD2B1)
+		case 27:	// drow5 (0xAD2A1): the shields of object 83 (the hatchling)
+			if ((o = fix_obj(83,OBJ_ROBOT,-1)) != NULL && o->id < N_robot_types) {
+				// The executable reads the hit points of the type with the
+				// object number (Robot_info[83] + 0x78, past the table: a
+				// word that is 0 in each run). Dtu_fix_drow5_shields: the
+				// hit points of the type of the object (100, the fix above).
+				o->shields = Dtu_fix_drow5_shields ? i2f(Monster_info[o->id].max_hit_points) : 0;
+				dtu_obj_log("level fix (0xACCDB), level %d: obj 83 shields %.0f",Dtu_script_level,f2fl(o->shields));
+			}
+			// (0xAD2B1)
 			if ((o = fix_obj(13,OBJ_DRESSING,-1)) != NULL) {
 				fix_script(o,13,0x111);
 				fix_spin(o,0x147);
@@ -1510,6 +1638,9 @@ static void level_fixes_objects(int has_state)
 					o->shields = i2f(0x100);
 				o->dtu.m_88 = 0;
 				o->dtu.m_1b0 &= ~DTU_FLEEING;
+				Ail[36].spell_time = GameTime;		// +0x1C0 (+0x1A8 is not in the port)
+				Ail[36].awareness = 4;
+				Ail[36].target = 0;
 				fix_log(36,"Lolth: 256 hit points, no effects");
 			}
 			break;
@@ -1529,6 +1660,272 @@ static void level_fixes_scenery_shields(void)
 		o->shields = i2f(256);
 }
 
+//------------------------------------------------------------------------
+// The creature setup by name (0xAC7B2) and add_npc (0xAC431) in the
+// object loop of level_start (0xAD5BF, calls 0xAD7A1 and 0xAD7C4). The
+// setup writes into the shared entry of the creature type (Robot_info,
+// Monster_info, Monster_ext), so a later creature of the same type sees
+// what an earlier one changed: the weapon fallback runs only for the first
+// creature of a type. docs/re/ai.md, "Creature setup by name".
+
+// The names of the creature types that quest flag 67 (a member of the
+// Shadow Thieves) makes peaceful (0xACA21)
+static const char *Guild_names[15] = {
+	"sfmtd2", "sfmtf2", "shmfb1", "shmfb5", "shmfc3", "shmfg1", "shmfg5",
+	"shmtd2", "shmtd4", "shmtd6", "shmtf2", "shmtf4", "shmtf6", "shdleadf", "shdleadg"
+};
+
+// The name compare of 0xAC7B2: ASCII case folding, at most n characters
+static int setup_name(const char *name, const char *key, int n)
+{
+	int i;
+
+	for (i=0;i<n;i++) {
+		int a = (ubyte) name[i], b = (ubyte) key[i];
+
+		if (a >= 'A' && a <= 'Z') a += 'a' - 'A';
+		if (b >= 'A' && b <= 'Z') b += 'a' - 'A';
+		if (a != b)
+			return 0;
+		if (a == 0)
+			return 1;
+	}
+	return 1;
+}
+
+static int guild_name(const char *name)
+{
+	int i;
+
+	for (i=0;i<15;i++)
+		if (setup_name(name,Guild_names[i],32))
+			return 1;
+	return 0;
+}
+
+// The mage level (Robot_info+0xE2) and the cleric level (+0xE3) of a
+// type: the NPC table (0xA7E97), else spell_level= of the line (the
+// cleric level only with cleric_points=)
+static void type_caster_levels(int id, int *mage, int *cleric)
+{
+	int v[6], rec = Monster_info[id].record;
+
+	if (dtu_npc_row(Monster_info[id].name,v)) {
+		*mage = v[2];
+		*cleric = v[4];
+	} else {
+		*mage = tbl_int(rec,"spell_level",0);
+		*cleric = tbl_int(rec,"cleric_points",0) ? *mage : 0;
+	}
+	*mage &= 0xFF;
+	*cleric &= 0xFF;
+}
+
+static int type_caster_level(int id)
+{
+	int mage, cleric;
+
+	type_caster_levels(id,&mage,&cleric);
+	return mage > cleric ? mage : cleric;
+}
+
+// The values of a type that the setup writes, for the log
+static void type_setup_state(int id, char *s, int size)
+{
+	int mage, cleric;
+
+	type_caster_levels(id,&mage,&cleric);
+	snprintf(s,size,"weapon %d attack %d dice %dd%d score %d hp %d touch %d regen %d str %d door %d levels %d/%d",
+		Monster_ext[id].weapon_type,Robot_info[id].attack_type,Monster_ext[id].n_damage_dice,Monster_ext[id].damage_dice,
+		Robot_info[id].score_value,Monster_info[id].max_hit_points,Monster_ext[id].touch_spell,Monster_ext[id].regeneration,
+		Monster_info[id].str,Monster_ext[id].door_opening,mage,cleric);
+}
+
+// 0xAC7B2 for one creature. objects 0 (a restored level): only the
+// entry of the type, the state file has the object and its AI record.
+static void creature_setup_by_name(object *obj, int objects)
+{
+	int id = obj->id, script = obj->dtu.m_1b0 & DTU_SCRIPT_MASK;
+	monster_info *mi;
+	robot_info *ri;
+	monster_ext *me;
+	char *name;
+	char what[160], before[160];
+
+	if (id >= N_robot_types)
+		return;
+	type_setup_state(id,before,sizeof(before));
+	mi = &Monster_info[id];
+	ri = &Robot_info[id];
+	me = &Monster_ext[id];
+	name = mi->name;
+	what[0] = 0;
+
+	// 0xAC80E: a spell as the weapon (a negative weapon type), not for six
+	// names: weapon 0x21, projectile, d4 with the higher caster level as
+	// the number of dice
+	if (me->weapon_type < 0 && !setup_name(name,"hatchlng",32) && !setup_name(name,"fmephit",32)
+			&& !setup_name(name,"imephit",32) && !setup_name(name,"lmephit",32)
+			&& !setup_name(name,"flayer",32) && !setup_name(name,"flaynpc",32)) {
+		snprintf(what+strlen(what),sizeof(what)-strlen(what)," weapon %d -> 33, %dd4",me->weapon_type,type_caster_level(id));
+		me->weapon_type = 0x21;
+		me->damage_dice = 4;
+		me->n_damage_dice = type_caster_level(id);
+		ri->attack_type = 0;
+	}
+
+	if (setup_name(name,"spectatr",32)) {
+		ri->attack_type = 0;
+		me->weapon_type = 0;
+		me->damage_dice = 3;
+		me->n_damage_dice = 2;
+		strcat(what," spectatr");
+	} else if (setup_name(name,"hatchlng",32)) {
+		// 0x18: fire_immune and fire_resistant (no bit in the port; fire_immune is tested first)
+		mi->flags |= monster_flags_from_table(0x18);
+		ri->score_value = 7000;
+		strcat(what," hatchlng");
+	} else if (setup_name(name,"gargoyle",32)) {
+		me->weapon_type = 0x21;
+		me->damage_dice = 4;
+		me->n_damage_dice = 4;
+		strcat(what," gargoyle");
+	} else if (setup_name(name,"flayer",32) || setup_name(name,"flaynpc",32)) {
+		ri->attack_type = 0;
+		me->weapon_type = -22;
+		ri->score_value = setup_name(name,"flayer",32) ? 3000 : 6000;
+		me->regeneration = 0;
+		me->damage_dice = 4;
+		me->n_damage_dice = 2;
+		if (objects)
+			obj->dtu.m_88 &= ~0x01000000;		// the regeneration bit of the object
+		strcat(what," flayer");
+	} else if (setup_name(name,"lich",4)) {
+		mi->flags |= monster_flags_from_table(0x7042);
+		me->damage_dice = 1;
+		me->n_damage_dice = 10;
+		me->touch_spell = 22;
+		strcat(what," lich");
+	}
+
+	// 0xACA21: quest flag 67 (the player is in the guild of the Shadow
+	// Thieves). add_npc runs after it and can make the creature hostile again.
+	if (objects && dtu_script_gflag(67) && guild_name(name)) {
+		Ail[obj-Objects].awareness = 0;
+		obj->dtu.m_1b0 &= ~DTU_HOSTILE;
+		Ail[obj-Objects].target = -1;
+		strcat(what," flag67 peaceful");
+	}
+
+	// 0xACC3C: the inn (level 0), each creature
+	if (Dtu_script_level == 0) {
+		me->door_opening = 1;
+		mi->str = 19;
+		ri->score_value = 10000;
+		mi->max_hit_points = 200;
+		if (objects) {
+			obj->shields = i2f(200);
+			Ail[obj-Objects].mode = DAIM_STILL;
+		}
+		switch (script) {		// the jump table 0xACC7B
+			case 1: case 2: case 5: case 7:
+				ri->attack_type = 1;
+				me->weapon_type = 14;
+				break;
+			case 3: case 4: case 8:
+				ri->attack_type = 0;
+				me->weapon_type = (script == 3) ? 39 : 44;
+				// +0x1C0 (and +0x1A8, which the port does not have)
+				if (objects)
+					Ail[obj-Objects].spell_time = GameTime;
+				break;
+		}
+		snprintf(what+strlen(what),sizeof(what)-strlen(what)," inn script %d",script);
+	}
+
+	if (Obj_log || Setup_log) {
+		char line[600], after[160];
+
+		type_setup_state(id,after,sizeof(after));
+		snprintf(line,sizeof(line),"creature setup (0xAC7B2), level %d: obj %d %s type %d script %d%s:%s; before %s; after %s",
+			Dtu_script_level,(int)(obj-Objects),name,id,script,objects ? "" : " (type only)",what[0] ? what : " no change",
+			before,after);
+		dtu_obj_log("%s",line);
+		if (Setup_log)
+			dtulog_event("%s",line);
+	}
+}
+
+// 0xAC3C3: an object with the same signature and script id is in the list
+static int npc_listed(short *list, int n, object *obj)
+{
+	int i;
+
+	for (i=0;i<n;i++) {
+		object *o = &Objects[list[i]];
+
+		if (o->signature == obj->signature && !((o->dtu.m_1b0 ^ obj->dtu.m_1b0) & DTU_SCRIPT_MASK))
+			return 1;
+	}
+	return 0;
+}
+
+#define DTU_NPC_LIMIT	100		// 0xAC431: "I can't handle more than %d NPCs in a level"
+
+// The setup by name and add_npc of the level start (0xAD786 to 0xAD7D6).
+// setup 0: a restored level that has the entries of the types already.
+static void level_start_npcs(int setup)
+{
+	short list[DTU_NPC_LIMIT];
+	int i, n = 0;
+
+	for (i=1;i<=Highest_object_index;i++) {
+		object *obj = &Objects[i];
+
+		if (obj->type == OBJ_ROBOT && setup)
+			creature_setup_by_name(obj,!Level_setup_restore);
+		if (obj->type != OBJ_ROBOT && !(obj->dtu.m_1b0 & DTU_SCRIPT_MASK))
+			continue;
+		if (npc_listed(list,n,obj)) {
+			dtu_obj_log("add_npc (0xAC431): obj %d %s is in the list, not added",i,dtu_object_name(obj));
+			continue;
+		}
+		if (n >= DTU_NPC_LIMIT) {
+			// the loop ends: the other objects get no setup
+			dtu_obj_log("add_npc (0xAC431): more than %d NPCs, the setup ends at obj %d",DTU_NPC_LIMIT,i);
+			break;
+		}
+		list[n++] = i;
+		if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI)
+			continue;
+		add_npc(obj);
+		// Dtu_fix_guild_peace: the peace of quest flag 67 stays
+		if (Dtu_fix_guild_peace && !Level_setup_restore && dtu_script_gflag(67) && obj->id < N_robot_types
+				&& guild_name(Monster_info[obj->id].name) && is_hostile(obj)) {
+			Ail[i].awareness = 0;
+			obj->dtu.m_1b0 &= ~DTU_HOSTILE;
+			Ail[i].target = -1;
+			dtu_obj_log("add_npc (0xAC431): obj %d %s stays peaceful (quest flag 67, Dtu_fix_guild_peace)",i,dtu_object_name(obj));
+		}
+		if (Obj_log || Setup_log) {
+			char line[160];
+
+			snprintf(line,sizeof(line),"add_npc (0xAC431): obj %d %s script %d %s awareness %d target %d",
+				i,dtu_object_name(obj),obj->dtu.m_1b0 & DTU_SCRIPT_MASK,is_hostile(obj) ? "hostile" : "peaceful",
+				Ail[i].awareness,Ail[i].target);
+			dtu_obj_log("%s",line);
+			if (Setup_log)
+				dtulog_event("%s",line);
+		}
+	}
+}
+
+// The entries of the types after the setup of the level file: a restored
+// level gets them again (the executable runs the setup on the objects of
+// the level file and then reads the state, 0x5AA75).
+static monster_ext Setup_ext[MAX_ROBOT_TYPES];
+static int Setup_ext_level = -1, Setup_ext_count = 0;
+
 // dtustate.c: the setup of a restored level runs no object fixes (0xACCDB
 // runs before the restore in the executable).
 void dtu_objects_level_setup_restore(void)
@@ -1540,7 +1937,7 @@ void dtu_objects_level_setup_restore(void)
 
 void dtu_objects_level_setup(void)
 {
-	int i;
+	int i, has_state;
 	ubyte *data;
 	int size;
 	char name[32];
@@ -1583,6 +1980,7 @@ void dtu_objects_level_setup(void)
 		Monster_ext[i].spell_level = tbl_int(rec,"spell_level",0);
 		Monster_ext[i].door_opening = (tbl_int(rec,"door_opening",0) == 1) || (Monster_info[i].flags & MONSTER_F_HUMANOID);
 		Monster_ext[i].blood_vclip = tbl_int(rec,"monster_hit_vclip",9);
+		Monster_ext[i].touch_spell = -1;
 	}
 	memset(Missile,0,sizeof(Missile));
 	Player_death_stage = 0;
@@ -1591,13 +1989,19 @@ void dtu_objects_level_setup(void)
 
 	Dtu_script_level = Current_level_num - 1;
 
-	// 0xACCDB, before add_npc (setup_creature)
-	level_fixes_tables();
-	if (!Level_setup_restore) {
+	{
 		extern int Dtu_level_has_state[];
 		int l = Dtu_script_level;
 
-		level_fixes_objects(l >= 0 && l < 100 ? Dtu_level_has_state[l] : 0);
+		has_state = Level_setup_restore || (l >= 0 && l < 100 && Dtu_level_has_state[l]);
+	}
+	// 0xACCDB, before the creature setup and add_npc (level_start_npcs)
+	level_fixes_tables(has_state);
+	// A restored level: the entries of the types as the setup of the level
+	// file left them
+	if (Level_setup_restore && Setup_ext_level == Current_level_num && Setup_ext_count == N_robot_types) {
+		memcpy(Monster_ext,Setup_ext,sizeof(Monster_ext[0]) * N_robot_types);
+		dtu_obj_log("creature setup (0xAC7B2): the restored level keeps the types of the level file");
 	}
 
 	Player_armor_class = 10;
@@ -1624,6 +2028,7 @@ void dtu_objects_level_setup(void)
 			free(data);
 	}
 
+	Level_setup_pass = 1;
 	for (i=0;i<=Highest_object_index;i++) {
 		object *obj = &Objects[i];
 
@@ -1631,12 +2036,21 @@ void dtu_objects_level_setup(void)
 
 			case OBJ_ROBOT:
 				setup_creature(obj);
+				// the restore of a level: 0xAE3F2 for the saved creature
+				if (Level_setup_restore) {
+					if (obj->control_type == CT_AI)
+						Ail[i].spell_time = GameTime;
+					dtu_spell_creature_restore(obj);
+				}
 				break;
 
 			case OBJ_DRESSING:
 				// setup_object: shields 1.0. fix_object_segs 0x69FFB: the model
-				// or the bitmap of the table entry.
-				obj->shields = F1_0;
+				// or the bitmap of the table entry. A restore (0xAE3F2 at
+				// 0xBB1A7) also sets 1.0; Dtu_fix_scenery_restore keeps the
+				// saved hit points (DROW5 object 13, IBBALAR object 2: 256).
+				if (!Level_setup_restore || !Dtu_fix_scenery_restore)
+					obj->shields = F1_0;
 				if (obj->id >= N_dressing_types) {
 					obj->render_type = RT_NONE;
 					break;
@@ -1686,6 +2100,27 @@ void dtu_objects_level_setup(void)
 		}
 	}
 
+	Level_setup_pass = 0;
+
+	// 0xACCDB, the objects (the executable runs it after the setup of the
+	// objects at the load)
+	if (!Level_setup_restore) {
+		level_fixes_objects(has_state);
+		lava_textures_lookup();		// 0xAD744
+	}
+
+	// level_start 0xAD5BF: the creature setup by name and add_npc
+	dtu_script_test_flags();
+	if (!Level_setup_restore)
+		level_start_npcs(1);
+	else
+		level_start_npcs(Setup_ext_level != Current_level_num || Setup_ext_count != N_robot_types);
+	if (!Level_setup_restore) {
+		memcpy(Setup_ext,Monster_ext,sizeof(Monster_ext[0]) * N_robot_types);
+		Setup_ext_level = Current_level_num;
+		Setup_ext_count = N_robot_types;
+	}
+
 	if (!Level_setup_restore)
 		level_fixes_scenery_shields();
 
@@ -1704,8 +2139,8 @@ void dtu_objects_level_setup(void)
 				polymodel *po = obj_model(&Objects[i]);
 				int b = po && po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius;
 
-				dtu_obj_log("obj %d %s: dressing %d pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f body flags %d r %.2f hh %.2f",
-					i,dtu_object_name(&Objects[i]),Objects[i].id,dressing_pushable(&Objects[i]),
+				dtu_obj_log("obj %d %s: dressing %d shields %.1f pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f body flags %d r %.2f hh %.2f",
+					i,dtu_object_name(&Objects[i]),Objects[i].id,f2fl(Objects[i].shields),dressing_pushable(&Objects[i]),
 					f2fl(Objects[i].mtype.phys_info.mass),f2fl(Objects[i].mtype.phys_info.drag),f2fl(Objects[i].size),
 					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z),
 					po ? po->box_flags : -1,b ? f2fl(po->body_radius[0]) : 0.0,b ? f2fl(po->body_half_height[0]) : 0.0);
@@ -7614,7 +8049,9 @@ void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img)
 	if (ail->target != 0)
 		ail->target = -1;
 	ail->regen_time = img_s32(img+0x8C);
-	ail->spell_time = img_s32(img+0x1C0);
+	// 0xAE3F2 at the restore (0xBB1A7) sets +0x1A8 and +0x1C0 to the time
+	// of the restore, after the copy of the saved object
+	ail->spell_time = GameTime;
 	// The hostile and script bits as the game left them (setup_creature()
 	// made them again from the script of the level).
 	obj->dtu.m_1b0 = img_s32(img+0x1B0);

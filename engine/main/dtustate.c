@@ -1205,8 +1205,11 @@ static void ai_restore(void)
 	if (!Ai_block_ok)
 		return;
 	for (i = 0; i <= Highest_object_index && i < AI_N_LOCAL; i++)
-		if (Img_ok[i] && Img_sig[i] == Objects[i].signature && Objects[i].type == OBJ_ROBOT)
+		if (Img_ok[i] && Img_sig[i] == Objects[i].signature && Objects[i].type == OBJ_ROBOT) {
 			dtu_ai_from_image(i, Ai_block + AI_LOCAL_OFF + i * AI_LOCAL_SIZE, Img[i]);
+			dtu_obj_log("state restore: obj %d %s %s", i, dtu_object_name(&Objects[i]),
+				dtu_creature_is_hostile(&Objects[i]) ? "hostile" : "peaceful");
+		}
 	if (FindArg("-statelog"))
 		for (i = 0; i <= Highest_object_index; i++) {
 			object *o = &Objects[i];
@@ -1669,9 +1672,9 @@ void dtustate_loading_end(void)
 }
 
 //------------------------------------------------------------------------
-// The test option -statetest DOORSEG,DOORSIDE,OBJ[,WARPSEG,BACKSEG]. In the
-// game frame 30 the door of the side opens and object OBJ (a creature)
-// gets 1000 points of damage. If WARPSEG is given, frame 150 puts the
+// The test option -statetest DOORSEG,DOORSIDE,OBJ[,WARPSEG,BACKSEG[,DAMAGE]].
+// In the game frame 30 the door of the side opens and object OBJ (a
+// creature) gets DAMAGE points of damage (1000 by default). If WARPSEG is given, frame 150 puts the
 // player into segment WARPSEG (a warp segment of DTU.WRP) and the first
 // frame 60 frames after the next level start puts it into BACKSEG (the
 // warp back). Each level start and each event prints a line "STATETEST"
@@ -1679,7 +1682,7 @@ void dtustate_loading_end(void)
 // DOORSEG the doors and creatures of the level are listed.
 
 static int St_on, St_door_seg, St_door_side, St_obj, St_warp_seg = -1, St_back_seg = -1;
-static int St_frame, St_level_starts, St_back_done;
+static int St_frame, St_level_starts, St_back_done, St_damage = 1000;
 
 static void st_print(char *why)
 {
@@ -1694,7 +1697,8 @@ static void st_print(char *why)
 				Walls[w].type, Walls[w].state, Walls[w].flags, Segments[St_door_seg].sides[St_door_side].tmap_num2);
 	}
 	if (o)
-		printf("; object %d type %d id %d shields %.1f flags 0x%x control %d", St_obj, o->type, o->id, f2fl(o->shields), o->flags, o->control_type);
+		printf("; object %d type %d id %d shields %.1f flags 0x%x control %d hostile %d", St_obj, o->type, o->id, f2fl(o->shields), o->flags, o->control_type,
+			o->type == OBJ_ROBOT && dtu_creature_is_hostile(o));
 	if (p)
 		printf("; player seg %d pos %.2f %.2f %.2f", p->segnum, f2fl(p->pos.x), f2fl(p->pos.y), f2fl(p->pos.z));
 	printf("\n");
@@ -1733,7 +1737,7 @@ static void st_level_start(void)
 		checked = 1;
 		if (t && t + 1 < Num_args) {
 			St_on = 1;
-			sscanf(Args[t + 1], "%d,%d,%d,%d,%d", &St_door_seg, &St_door_side, &St_obj, &St_warp_seg, &St_back_seg);
+			sscanf(Args[t + 1], "%d,%d,%d,%d,%d,%d", &St_door_seg, &St_door_side, &St_obj, &St_warp_seg, &St_back_seg, &St_damage);
 		}
 	}
 	if (!St_on)
@@ -1755,7 +1759,7 @@ void dtustate_test_frame(void)
 		if (seg->sides[St_door_side].wall_num >= 0)
 			wall_open_door(seg, St_door_side);
 		if (St_obj >= 0 && St_obj <= Highest_object_index && Objects[St_obj].type == OBJ_ROBOT)
-			dtu_damage_creature_direct(&Objects[St_obj], ConsoleObject, i2f(1000));
+			dtu_damage_creature_direct(&Objects[St_obj], ConsoleObject, i2f(St_damage));
 		st_print("door opened, creature hit");
 	}
 	if (St_level_starts == 1 && St_frame == 149)

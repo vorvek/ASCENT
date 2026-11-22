@@ -726,8 +726,8 @@ Decisions of the port (P):
 - Abort Game of the ESC menu: the port clears the character (0x141BBB = 0);
   the first visit list of Waterdeep (0x8C426) is not used, the lists follow
   the Khelben state.
-- Test options: `-statetest DOORSEG,DOORSIDE,OBJ[,WARPSEG,BACKSEG]`
-  (dtustate.c) opens a door, kills a creature and moves the player into
+- Test options: `-statetest DOORSEG,DOORSIDE,OBJ[,WARPSEG,BACKSEG[,DAMAGE]]`
+  (dtustate.c) opens a door, hurts a creature (1000 points by default) and moves the player into
   warp segments, with a log line "STATETEST" at each level start;
   `-loadshots` writes each loading picture to `loading<n>.ppm`; the script
   command `gamekeys` lets the script of `-fescript` run in the frames of the

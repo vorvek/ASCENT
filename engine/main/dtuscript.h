@@ -41,6 +41,9 @@ void dtu_script_init(void);
 // At the start of a level, after the objects are set up. Ends a script
 // that still waits.
 void dtu_script_level_start(void);
+// The test option -scriptflags before the first creature setup of the
+// level start (dtuobj.c reads quest flag 67). It runs one time.
+void dtu_script_test_flags(void);
 
 // run_script(object, mode) (0xABBE5). Returns 1 if the script started.
 // The script may wait for the player (a reply, statement EC); it goes on

@@ -149,6 +149,29 @@ level. Test: `-level FLAME -statetest -1,0,-1,1,62 -triglog` warps to HUB4
 and back and prints "level rule of the restore (0x5A855), level 32" after
 "Restoring TEMP32.LVL."
 
+The object reader 0xBB1A7 runs 0xAE3F2 on each saved object before it reads
+the saved AI block (decompilation `level_restore.md`, `level_payload.c`;
+**V**): scenery gets 1.0 hit points; a creature gets the mass of its size
+(4.0 at least), behavior 0x81 for 0x84 with a melee type, both spell
+timers +0x1A8 and +0x1C0 = the time of the restore, the mage and cleric
+points of its type, +0x15E = 0. The restore never runs 0xACCDB or 0xAC7B2
+again and reads no type table: the types keep what the setup of the level
+file (with the saved-state argument) gave them. The trigger rule of KOBOLDS
+(trigger 1 off) runs also when the trigger was saved on: the message of
+segment 167 is for the first visit only, so the port keeps it.
+
+The port: `dtu_objects_level_setup_restore` copies the type entries of the
+setup of the level file back (`Setup_ext` in dtuobj.c) and runs no level
+fix and no creature setup; it sets the spell time of each creature
+(`dtu_ai_from_image` too) and the spell points of its type
+(`dtu_spell_creature_restore`). `Dtu_fix_scenery_restore` (on, `-origobj`
+clears it) keeps the saved hit points of scenery (bugs.md D19). Tests:
+`-level KOBOLDS -statetest 0,0,19,12,91,1` (weapon 18 at the first visit,
+33 and 1d4 with `-origobj` at the second, object 19 restored with 3 hit
+points), `-level DROW5 -statetest -1,0,-1,0,73` (dressing 13: 256 hit points
+after the restore, 1.0 with `-origobj`; the hatchling: score 7000, 5d10,
+weapon -16).
+
 Callers: `StartNewGame` 0x4DD5A (the Yawning Portal from Waterdeep, L 0),
 the warp 0x5A1B0 (after the new level and its warp lines are loaded), the
 load of a save game in a level 0xBBDE5.

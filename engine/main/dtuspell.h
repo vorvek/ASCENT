@@ -142,6 +142,9 @@ void dtu_spell_creature_frame(object *obj, fix dist, int active);
 #define DTU_CSC_SLOWED	0x2000		// slowed in its movement
 #define DTU_CSC_MORALE	0x4000		// a failed morale test
 void dtu_spell_creature_event(object *obj, int bits);
+// The spell state of a creature of a restored level (0xAE3F2): the points
+// of the type, the times of the restore
+void dtu_spell_creature_restore(object *obj);
 // The NPC table of the executable (0xA504A, 191 rows, read by 0xA7E97 at
 // the end of each $MONSTER line): THAC0, armor class, mage level and
 // points, cleric level and points by the name of the creature. Returns 1

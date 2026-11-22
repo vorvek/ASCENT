@@ -1489,20 +1489,90 @@ Warning for readers of the listing: Watcom loads an s16 field as a dword two byt
 - NPC table row: name (16 bytes), a pointer (4 bytes), then 6 bytes: THAC0, armor class, mage level, mage points, cleric level, cleric points. At the end of the `$MONSTER` reader, 0xA7E97 finds the row by name (0xA7E47) and writes the 6 bytes to +0x74, +0x76, +0xE2, +0xE4, +0xE3, +0xE5. So the `thaco`, `armor_class`, `spell_level`, `spell_points` and `cleric_points` keywords are replaced for every monster that is in the table. A name that is not in the table prints "RLH: NPC [%s] not found!" and keeps the table values of the line.
 - The NPC table is at 0xA504A: rows of 26 bytes (name 16 bytes, a pointer, 6 signed bytes), 191 rows; the search 0xA7E47 stops at a row whose THAC0 byte is negative and compares the names with 0xD89C1. Rows with spells (mage level/points, cleric level/points): beholder 32/0, xabash 4/64 and 1/10, dragon and hatchlng 4/4, halaster, lich1 to lich3, hmmnpc and Aleena 4/127, ibbalar 4/60, kob_spel 1/3, avatar and thashasa 4/127 and 4/127, the human and drow casters rmme1 to rmmk9b and hmmk1, hfmk1 (mage 1 to 4), rfft1 to rffk9, rmft1 to rmfk9, hffk1 to hmft7 (cleric 1 to 4), prstsprt cleric 3/100, Mage Spirit 3/100, priestes and drowfem cleric 4/127, Daspel 3/11. The port has the table as `engine/main/dtunpc.h` and applies THAC0 and armor class at the level start (`dtu_objects_level_setup`); the spell values are read by `dtuspell.c`. **Code, Data.**
 
-### Verified (code): the game changes entries after load
+### Creature setup by name (0xAC7B2), verified (code)
 
-The function 0xAC7B2 (called from 0xAD716, object setup by creature name) writes into the entry of the object type. Examples:
+Sources: the DTU 1.3 decompilation (DTU-Decomp,
+`recovered/creatures.md`, `recovered/src/creature_setup.c`), checked against
+the DOS code with `check_creature_setup.py` (4424 calls) and
+`check_creature_ai.py` (six setup-then-registration cases), and the level
+start 0xAD5BF. The earlier notes of this section had the six names of the
+first rule wrong: they are the names that the rule skips.
 
-- `fmephit`, `imephit`, `lmephit`, `flayer`, `flaynpc`, `hatchlng`: weapon_type 0x21, damage dice 4.
-- `spectatr`: attack_type 0, weapon_type 0, dice 3 and 2.
-- `hatchlng`: flags `|= 0x18` (fire immune and fire resistant), score 7000.
-- `flayer`: attack_type 0, weapon_type -22, score 3000, regeneration 0.
-- `lich`: flags `|= 0x7042`, dice 1 and 10, +0x7C = 0x16.
-- 0xACC3C: door_opening bit, str 19, score 10000, max_hit_points 200 (boss creature, name not traced).
+Order of the level start (0xAD5BF): the level fixes 0xACCDB (objects.md),
+the dressing sounds, the texture lookup 0xAD744, the open of the script
+file; then for each object 1 to the highest index: 0xAC7B2 for a creature
+(call at 0xAD7A1, the object in EAX), then for a creature or an object with
+a script id the test 0xAC3C3 (an entry with the same signature and script
+id) and `add_npc` 0xAC431 (0xAD7C4). A full list (100) ends the loop: the
+other objects get no setup. With no script file the loop does not run.
 
-The function 0xACCDB (called from 0xAD7A1) does the same for some single creatures (0xAD16B to 0xAD561: flags `|= 0x7042`, `|= 0x5CBA`, `|= 0x5C01`, max_hit_points 256, regeneration 1).
+0xAC7B2 writes into the shared entry of the type (one `Robot_info` record
+for each type of the level), the object and its `ai_local`. The names are
+compared with ASCII case folding (32 characters, 4 for `lich`):
 
-A port that reads only the table will miss these values.
+1. `weapon_type` below 0 (a spell as the weapon), not for `hatchlng`,
+   `fmephit`, `imephit`, `lmephit`, `flayer`, `flaynpc`: weapon 0x21,
+   attack type 0, dice 4, number of dice the higher of the mage level
+   (+0xE2) and the cleric level (+0xE3).
+2. One of: `spectatr`: attack type 0, weapon 0, 2d3. `hatchlng`: flags
+   `|= 0x18`, score 7000. `gargoyle`: weapon 0x21, 4d4. `flayer` or
+   `flaynpc`: attack type 0, weapon -22, 2d4, regeneration 0, score 3000 or
+   6000, object +0x88 bit 0x01000000 cleared. A name that starts with
+   `lich`: flags `|= 0x7042`, 10d1, touch spell (+0x7C) 22.
+3. Quest flag 67 (the player is in the guild of the Shadow Thieves, set by
+   the scripts 60 and 70, cleared by them when the player insults the
+   master) and one of 15 names (`sfmtd2`, `sfmtf2`, `shmfb1`, `shmfb5`,
+   `shmfc3`, `shmfg1`, `shmfg5`, `shmtd2`, `shmtd4`, `shmtd6`, `shmtf2`,
+   `shmtf4`, `shmtf6`, `shdleadf`, `shdleadg`): awareness 0, hostile bit
+   (0x400000) cleared, target -1.
+4. Level 0 (YPINN), each creature: door bit, str 19, score 10000,
+   `max_hit_points` 200 of the type; shields 200.0 and AI mode 0 of the
+   object. Script 1, 2, 5, 7: attack type 1, weapon 14. Script 3: attack
+   type 0, weapon 39; 4 and 8: weapon 44; both timers +0x1A8, +0x1C0 = game
+   time. Others (6): no change.
+
+The type entry is shared: the first creature of a type changes it and the
+later ones see the change. The fallback of rule 1 runs once for each type:
+in the 31 levels 44 placements would qualify by their table values, the
+DOS code enters it for 24 type entries with no level fixes and for 22 with
+them (the level fixes of KOBOLDS and FLAME give those types a weapon
+first). All writes but the inn switch give the same entry in any order,
+so the order has no effect for the player. The inn switch writes the
+weapon of the type for each creature: the last script of a type wins (the
+two Durnan objects, scripts 1 and 7, both give weapon 14).
+
+`add_npc` (0xAC431) then writes the hostility again for each creature that
+it adds: awareness 4, hostile bit, target 0, unless the script id is kept
+and the script has a "say" statement or bit 9 is set. It reads only the
+script id, the level number, the script and bit 9: no anger, no list state,
+no quest flag. So rule 3 has an effect only for a creature that is peaceful
+anyway or that is not added (a duplicate, a full list). With quest flag 67,
+98 of the 107 placements of the 15 names in THIEF0 to THIEF2, BEHOLDER and
+BEHOLDR2 are hostile again (scripts 55 and 63 of the ordinary members have
+no "say"; their label 1, `IF gflag 67 SET flag1 ELSE SET flag2`, never runs
+because a hostile creature shows its line 0x3EA and runs no script). A
+player who joined the guild and did nothing against it is attacked. A
+creature that the player attacked keeps its hostility through the state
+of the level (the restore reads it after the setup), not through `add_npc`.
+
+The port (dtuobj.c): `creature_setup_by_name` and `level_start_npcs` after
+the object setup and the object part of the level fixes, in the order of the
+executable; `add_npc` is the old hostility part of `init_creature_ai`. The
+type entries of the setup of the level file are kept for a restore
+(`Setup_ext`). The fire_resistant bit 0x10 of the hatchling has no
+MONSTER_F_ bit (fire_immune is tested first). The touch spell is stored and
+not used (audit combat C16). The option `-setuplog` writes one session log
+line for each setup (the type values before and after) and each `add_npc`;
+`tools/check_creature_setup.py` compares these lines for all levels with the
+C reference of the decompilation.
+
+`Dtu_fix_guild_peace` (on; `-origobj` and `-origguildpeace` clear it): the
+peace of rule 3 stays after `add_npc`. Test: `-level BEHOLDER -scriptflags
+67 -statetest 0,0,52,161,24,1 -objlog FILE`: the 15 names are peaceful at
+the start; object 52 hit for 1 point is hostile, and after the warp to HUB4
+and back the state restore gives "obj 52 sfmtd2 hostile", the others
+peaceful. With `-origguildpeace` they are all hostile but the ones with a
+kept "say" script.
 
 ### Verified (code): readers of the flag bits
 
@@ -1940,7 +2010,7 @@ Object flags with a fixed meaning. Verified (code).
 
 Level init per object (0xAD786 loop, then 0xAC431). Verified (code).
 
-1. For a robot (type 2) call 0xAC7B2 (per monster setup, not read).
+1. For a robot (type 2) call 0xAC7B2 (see "Creature setup by name").
 2. Skip the object if it is not a robot and its script id is 0.
 3. Skip it if 0xAC3C3 finds the same signature and id in the NPC list.
 4. 0xAC431 adds it to the NPC list. The limit is 100 ("I can't handle more
