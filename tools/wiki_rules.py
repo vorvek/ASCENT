@@ -2034,7 +2034,7 @@ WEAPON_NOTES = {
         "first class level. USE, for a Lawful Good character: Continual Light around you, Free Action "
         "and Protection From Evil, unless the quest has stopped it.",
     54: "In the hand: Chill Touch, Resist Fire, Feather Fall, Free Action, Jump, Detect Magic, Haste, "
-        "Improved Invisibility and Infravision (of use to a human only) with no end, and Find/Remove "
+        "Improved Invisibility and Infravision with no end, and Find/Remove "
         "Traps and Climb Walls 95%.",
     69: "Haste while it is in the hand: a swing of 0.5 s, and you move twice as fast. The original 1.3 "
         "game gives it no power; ASCENT corrects this.",

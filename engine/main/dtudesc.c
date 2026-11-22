@@ -260,7 +260,7 @@ static void power_lines(int type, int id)
 			case DTU_IP_WIZARDRY:		line(LT("Doubles the mage spell slots of levels 1 to 3.")); break;
 			case DTU_IP_USE_SPELL:		line(LT("Use: casts %s around you."), dtu_spell_name(p[i].value)); break;
 			case DTU_IP_TURN_UNDEAD:	line(LT("The Turn Undead key works with it.")); break;
-			case DTU_IP_INFRA_HUMAN:	line(LT("Infravision only for a human.")); break;
+			case DTU_IP_INFRA_HUMAN:	break;	// the effect list names Infravision: each other race has it, so no extra line
 		}
 }
 
@@ -537,8 +537,6 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 			// 0x29E3D (dtucombat.c): the effect acts in the melee hit of the player
 			if (f->fx == DTU_FX_CHILL_TOUCH)
 				line(LT("Each melee hit: the target saves or takes 1d4 more damage; undead get Fear."));
-			if (f->fx == DTU_FX_INFRAVISION && spell == 25)
-				line(LT("Only for a human."));		// case 25
 			break;
 		case DTU_SK_CAUSE:		line(LT("Causes %s."), b); break;
 		case DTU_SK_AC:
