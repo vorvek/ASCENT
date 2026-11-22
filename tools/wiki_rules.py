@@ -1427,9 +1427,10 @@ class Pages:
                 "- The manual lists Flame Arrow (level 3). There is no such spell. The Flame Arrow is a "
                 "magic missile weapon (1d6 + 4d6 fire, mage only, [[Weapons]]).",
                 "- Fireball: the 1.3 readme says that a Fireball that bursts close may blind or deafen. "
-                "In the game only the fire trap of the Yawning Portal does that: within 3 ft, a failed "
-                "save against spells blinds you for up to 30 minutes, and a failed save against "
-                "petrification deafens you until cured.",
+                "In the game only the fire trap of the Yawning Portal does that: within 3 ft, it blinds "
+                "you for 1 second to 30 minutes even if you make your save (the save only stops the "
+                "message and the flash), and a failed save against petrification deafens you until "
+                "cured.",
                 "- Magic Missile: the manual gives 2 missiles at level 3; the game at level 2.",
                 "- Melf's Minute Meteors: the manual says one per level; the game gives at most 5.",
                 "- Sleep: the manual says level 5 or more is safe; the game spares level 4 and up.",
