@@ -178,7 +178,20 @@ the game files: `test_2d` skips its data checks when `ASCENT_DATA_DIR` has
 no font files. CI runs them on Windows and Linux
 (`.github/workflows/build.yml`).
 
-Tests that need the game files:
+Tests that need the game files. `tools/run_game_checks.py` runs the game
+checks of the tools in one command and prints one line for each check and a
+total. Run it after each merge:
+
+    ninja -C build engine/main/ascent.exe engine/main/test_dtutblfix.exe
+    python -I tools/run_game_checks.py --jobs 4
+
+It runs `check_items.py`, `check_desc.py`, `questtest.py`, `priestcheck.py`,
+`check_saveload.py`, `check_itemfix.py`, `check_tblfix.py`,
+`check_creature_setup.py` (the setup by name, with quest flag 67, and
+`--abilities`) and `uitest.py`. The defaults are `build/engine/main/ascent.exe`,
+`E:/UNDAMONTAN/DTU` (`--game`), `gamedata/` of the main checkout
+(`--gamedata`) and the reference library of the decompilation (`--library`).
+A check whose files are missing is skipped.
 
 | Aid | Use |
 |---|---|
