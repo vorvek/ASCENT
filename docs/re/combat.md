@@ -821,8 +821,12 @@ the Jump case of 0x8CFFF. All effects are set by 0x8CFFF (0x8CFFF to 0x9002B).
   2 * (max(class1_level, class2_level of the player) + 1) (P+0xAD, P+0xAF are
   read as fix, Code 0x8D23F); a creature: 0xAE3BB(caster).
 - 0x3A65C4 = 0x8CEAE(target, caster): 1 if target or caster is the player; else
-  1 if the caster segment is in the visible list (0x38C060) and not 0x16636(),
-  and d20 <= wisdom - 2 (P+0xBB). When set, the message goes to the HUD (0x347A2).
+  1 if the caster segment is in the visible list (0x38C060) and not 0x16636(caster),
+  and d20 <= intelligence - 2 (the word P+0xBD, read at 0x8CEF7; correction: not the
+  wisdom). 0x16636(obj): 1 when obj+0x147 (set by the two Invisibility spells) is
+  set, the player is not blind, and the intelligence is below 13 or the higher class
+  level + 1 below 10. When set, the message goes to the HUD (0x347A2). The texts of
+  each case are in [spells.md](spells.md).
 - `switch (spell)` jump table at 0x8CF1F, 56 entries (0 to 0x37). Default:
   "Invalid spell id = %d".
 - Common end 0x8FFE5: if Spell_info `cast_on_top` (+0x7B) >= 0, 0x8CCED(spell,
@@ -1661,7 +1665,9 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   in the hand puts the spell away. The model of the arms of a spell of a book is the
   one of letter `K` (byte 5 of the entry, 0x43EF8).
 - Cast: the attack key with a spell in the hand: the checks of 0x356E0 and 0x41A4D with
-  the messages, the cast time of the line (integer seconds), then the cast and one slot.
+  the messages, the cast time of the line (integer seconds of game time, 0x41C9F; Armor
+  and the other lines with `cast_time=0` cast in the next frame and say "Casting time:
+  1 second ..."), then the cast and one slot.
   A scroll (a spell item in the hand) and a wand (a weapon with `pc_spell`) cast at once
   and use one item or charge.
 - `self_cast_ok` spells are cast on the player (Prayer and area spells as an area around
@@ -1705,7 +1711,7 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   creature 0x10ADF.
 - Port (dtuspell.c case 2, `dtu_spell_armor_hit`, the weapon hits of dtuobj.c and
   dtucombat.c): as read. The message is printed when the player is the target or the
-  caster (the perception roll of 0x8CEAE for two creatures is not in the port).
+  caster, and for two creatures by the rule of 0x8CEAE (spells.md).
   Whether 0x2A4FB also takes damage with no attacker and no weapon (traps) was not
   read: the port lowers the pool for weapon hits only. Checked in BANE (`-level
   bane.lvl -char SG0.SG`, the Elflama save at mage level 9 by `-chartest xp=300000`,
@@ -1746,7 +1752,8 @@ of an area spell at the wall hit (0x26C2F; the area at the end of the life is go
 Still partial: 14 and 44 (the view of the player does not move into a gated creature;
 the player is held for the time), 16 (no blindness and deafness within 6.0), the
 counters of Hold Person, Hold Undead and Sleep, the cast vclips of `cast_on_top`
-(0x8CCED), the 0x8CEAE message rule, the debris of 0x3CA7E.
+(0x8CCED), the debris of 0x3CA7E. The audit of all spells against the executable
+(cast time, texts, end texts) is [spells.md](spells.md).
 
 Items (B6, `dtuchar.c`): all potions 0x48 to 0x58, the Gem of Curing (the counter
 0x13E588 is not decoded: the port allows one use for each rest, guess), the Spider
