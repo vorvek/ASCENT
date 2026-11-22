@@ -2443,6 +2443,13 @@ int fe_load_game(int in_game)
 		}
 		if (b)
 			free(b);
+		// ASCENT: the test command load=SLOT logs the error: with -hidden
+		// the box would wait for a key that never comes.
+		if (Fe_test_load) {
+			dtu_log("Front end: cannot load slot %d: %s\n", choice, fe_text(msg));
+			dtu_char_log("test: cannot load slot %d: %s\n", choice, fe_text(msg));
+			return 0;
+		}
 		if (in_game)
 			nm_messagebox(NULL, 1, fe_text(34), fe_text(msg));
 		else
@@ -2714,6 +2721,21 @@ static grs_font *load_font(char *name)
 	return gr_init_font(path);
 }
 
+// ASCENT: at the exit, the three fonts of the front end and the file of
+// the last load
+static void fe_free(void)
+{
+	grs_font **f[3] = { &Fe_font_l, &Fe_font_m, &Fe_font_s };
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		if (*f[i] && *f[i] != GAME_FONT)
+			gr_close_font(*f[i]);
+		*f[i] = NULL;
+	}
+	sg_forget();
+}
+
 static void fe_enter(void)
 {
 	if (!Fe_ready) {
@@ -2724,6 +2746,7 @@ static void fe_enter(void)
 		Fe_font_l = load_font("FNTEMFL_.FNT");		// 0x13E388
 		Fe_font_m = load_font("FNTEMFM_.FNT");		// 0x13E380
 		Fe_font_s = load_font("FNTEMFS_.FNT");		// 0x13E384
+		atexit(fe_free);
 	}
 	// The bitmaps and the sounds of the front end are in the archive of
 	// the Yawning Portal (PORTAL.EGG, named by YPINN.BIN). The executable
