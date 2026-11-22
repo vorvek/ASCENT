@@ -1429,6 +1429,49 @@ static void inv_describe(int mx, int my)
 	}
 }
 
+// The figure of the paper doll: two buttons without image (high 0x1440EA
+// and 0x144148, low 0x1441A6 and 0x144204) with the press action 0x35ADF
+// and no release action. They are in the button list of the modes 3 and 6
+// in high resolution and of mode 3 in low resolution. 1 if the point is on
+// the figure.
+static int doll_hit(int mx, int my)
+{
+	static short doll[2][2][4] = { { { 120, 12, 31, 29 }, { 101, 41, 67, 140 } },
+		{ { 244, 24, 55, 57 }, { 210, 81, 122, 278 } } };
+	int i;
+
+	if (!inventory_mode() || (!Dtu_hires && Dtu_interface_mode != DTU_IM_INVENTORY))
+		return 0;
+	for (i = 0; i < 2; i++) {
+		short *r = doll[Dtu_hires][i];
+		if (in_rect(mx, my, r[0], r[1], r[2], r[3]))
+			return 1;
+	}
+	return 0;
+}
+
+static int Doll_pressed = 0;			// the "Clicked" flag (+0x30) of the figure buttons
+
+// 0x35ADF: nothing with an empty cursor (0x35AE6) or in the low resolution
+// hot key screen (0x35AF3). A held spell goes into a box and into the hand
+// (0x35CE5); a spell that a box holds stays at the cursor (0x35D17). A held
+// entry of the item list is worn, armed or used (dtu_char_put_on_doll).
+static void doll_press(void)
+{
+	if (!Dtu_hires && Dtu_interface_mode == DTU_IM_HOTKEYS)
+		return;
+	if (Inv_held_spell >= 0) {
+		// ASCENT: a spell that 0x3533C refuses goes back to its list. The
+		// executable passes its index of the spell list to 0x37A6A (0x35E9C),
+		// which reads it as an index of the item list.
+		if (dtu_char_arm_spell(Inv_held_spell) || !dtu_spell_usable(Inv_held_spell))
+			Inv_held_spell = -1;
+	} else if (Inv_held >= 0 && Inv_held < Dtu_n_inventory) {
+		if (dtu_char_put_on_doll(Inv_held))
+			Inv_held = -1;
+	}
+}
+
 // A click of the mouse on the inventory screen (0x2FB10, 0x30650 and the
 // next blocks). Returns 1 if the click was on an item place.
 static int inv_click(int mx, int my)
@@ -1477,22 +1520,6 @@ static int inv_click(int mx, int my)
 				dtu_char_unequip(slot);
 			}
 			return 1;
-		}
-	}
-	// The figure of the paper doll (0x1440EA and 0x144148 high, 0x1441A6 and
-	// 0x144204 low, the press action 0x35ADF). ASCENT: the port takes a held
-	// spell there (0x35CE5); a held item goes back to the list, as before.
-	if (Inv_held_spell >= 0) {
-		static short doll[2][2][4] = { { { 120, 12, 31, 29 }, { 101, 41, 67, 140 } },
-			{ { 244, 24, 55, 57 }, { 210, 81, 122, 278 } } };
-		for (i = 0; i < 2; i++) {
-			short *r = doll[Dtu_hires][i];
-			if (mx >= r[0] && my >= r[1] && mx < r[0] + r[2] && my < r[1] + r[3]) {
-				// a spell that a box holds stays at the cursor (0x35D17)
-				if (dtu_char_arm_spell(Inv_held_spell) || !dtu_spell_usable(Inv_held_spell))
-					Inv_held_spell = -1;
-				return 1;
-			}
 		}
 	}
 	for (cell = 0; cell < 10; cell++) {
@@ -2253,15 +2280,43 @@ static void do_input(int mx, int my)
 	else if (Button_pressed < 0 && Dtu_interface_mode == DTU_IM_MAIN && msg_sbar_input(mx, my, pressed))
 		return;
 
-	if (pressed) {
-		// 0x98E99: the pressed button shows its other image
+	// 0x3009B: 0x9865B(buttons, down) in each frame while the button is
+	// down, not only at the press. A button under the cursor that is not
+	// pressed yet takes the press (0x98741: the press handler 0x98E99 shows
+	// the other image and calls the press action); a pressed button that
+	// the cursor left gets the release handler with no action (0x987AD).
+	// So an item taken at the press can be dragged onto a button: the
+	// figure of the paper doll acts when the cursor reaches it, USE and
+	// DROP at the release over them. If a button is under the cursor the
+	// click goes no further (0x300AE).
+	if (down) {
+		int hit = -1;
+
 		for (i = 0; Button_list && Button_list[i].w; i++)
 			if (in_rect(mx, my, Button_list[i].x, Button_list[i].y, Button_list[i].w, Button_list[i].h)) {
-				Button_pressed = i;
-				if (Dtu_ui_key_repeat)
-					do_action(Button_list[i].action);
-				return;
+				hit = i;
+				break;
 			}
+		if (hit >= 0) {
+			Button_pressed = hit;
+			Doll_pressed = 0;
+			if (pressed && Dtu_ui_key_repeat)
+				do_action(Button_list[hit].action);
+			return;
+		}
+		Button_pressed = -1;
+		if (doll_hit(mx, my)) {
+			if (!Doll_pressed) {
+				Doll_pressed = 1;
+				doll_press();
+			}
+			return;
+		}
+		Doll_pressed = 0;
+	} else
+		Doll_pressed = 0;
+
+	if (pressed) {
 		// 0x305C9: in the map screen a click in the map gives it the
 		// controls, a click outside it takes them back
 		if (Dtu_interface_mode == DTU_IM_MAP) {

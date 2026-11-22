@@ -243,6 +243,35 @@ def test_inv_sbar(t):
     assert differ(region(s["base"], *INVLIST), region(s["up"], *INVLIST)) < 0.001, "the up arrow did not scroll back"
 
 
+# The figure of the paper doll and the armor slot, high resolution
+DOLL = (270, 200)
+ARMOR_SLOT = (383, 143, 32, 32)
+
+
+def drag(x, y, to_x, to_y):
+    return ["press %d %d" % (x, y), "wait 3", "move %d %d" % ((x + to_x) // 2, (y + to_y) // 2), "wait 2",
+            "move %d %d" % (to_x, to_y), "wait 3", "release", "wait 3"]
+
+
+def test_doll_drop(t):
+    """An item taken at the press and dragged onto the figure of the paper
+    doll is used, worn or armed (the press action 0x35ADF acts while the
+    button is down, 0x9865B), and an item dragged onto USE is used at the
+    release. The default fighter: entry 2 Leather Armor, entry 4 Potion of
+    Healing, entry 5 Potion of Extra-Healing (both given)."""
+    log = os.path.join(t.tmp, "doll_drop", "char.log")
+    lines = ["gamekeys", "wait 20", "key i", "wait 5", "move 600 400", "wait 3", "shot base"]
+    lines += drag(25, 141, *DOLL) + drag(25, 83, *DOLL) + ["move 600 400", "wait 3", "shot worn"]
+    lines += drag(67, 141, 490, 370)
+    s, _ = t.run("doll_drop", lines, extra=["-chartest", "5:give=16.79.3,5:give=16.75.2,5:damage=6", "-charlog", log])
+    with open(log) as f:
+        text = f.read()
+    assert "paper doll: entry 4 'Potion of Healing' is used" in text, "the potion on the figure was not used"
+    assert "equip: entry 2 'Leather Armor' in slot 3" in text, "the armor on the figure was not worn"
+    assert "use: entry 5 type 16 id 75" in text, "the potion on USE was not used"
+    assert differ(region(s["base"], *ARMOR_SLOT), region(s["worn"], *ARMOR_SLOT)) > 0.1, "the armor slot is empty"
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 

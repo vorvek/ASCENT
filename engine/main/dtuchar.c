@@ -1097,6 +1097,15 @@ static void refuse(int key, char *why)
 	dtu_char_log("hot key %d refused: %s (sound %d)", key, why, SOUND_REFUSE);
 }
 
+// A flag of the weapon of an entry of the item list (Weapon_item_info
+// +0x3E: "arrow" bit 4, "bolt" bit 8), 0 for an entry that is no weapon
+static int weapon_flag(int n, char *flag)
+{
+	if (n < 0 || n >= Dtu_n_inventory || Dtu_inventory[n].type != OBJ_WEAPON || Dtu_inventory[n].id >= N_weapon_types)
+		return 0;
+	return bm_tbl_has_flag(Weapon_item_info[Dtu_inventory[n].id].record, flag);
+}
+
 // 0x43A5A with a box from a key 1 to 0, a click on a box or Cycle Weapon,
 // with its tests in this order:
 // - nothing in the attack states 6 and 11 of the arms (0x43ADC);
@@ -1132,9 +1141,8 @@ void dtu_char_press_hot_key(int key)
 		refuse(key, "no entry");
 		return;
 	}
-	if (n >= 0 && Dtu_inventory[n].type == OBJ_WEAPON && Dtu_inventory[n].id < N_weapon_types) {
-		int r = Weapon_item_info[Dtu_inventory[n].id].record;
-		int arrow = bm_tbl_has_flag(r, "arrow"), bolt = bm_tbl_has_flag(r, "bolt");
+	if (n >= 0) {
+		int arrow = weapon_flag(n, "arrow"), bolt = weapon_flag(n, "bolt");
 
 		if ((arrow && Dtu_char.slot[DTU_SLOT_BOW].n < 0) || (!arrow && bolt && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0)) {
 			// 0x1258C0 with "bow" and "arrow" or "crossbow" and "bolt"
@@ -1181,6 +1189,107 @@ int dtu_char_arm_spell(int spell)
 	// 0x35E79: 0x13AD15 = -100, then 0x43A5A(box) with its tests
 	Last_hot_key = -100;
 	dtu_char_press_hot_key(key);
+	return 1;
+}
+
+// 0x3533C for an entry of the item list. A spell (a scroll in the list):
+// the tests of dtu_spell_usable() (39, 40 and 53 always, else 0x359F4 and
+// the class bits). The Scroll (misc 102) always. Else the count is 1 or
+// more, or -1, and the class bits of byte 3 of the entry fit a class of
+// the character (0x352F7; no class bit: no class fits).
+int dtu_char_item_usable(int index)
+{
+	dtu_inv_item *e;
+	dtu_item_data d;
+
+	if (index < 0 || index >= Dtu_n_inventory)
+		return 0;
+	e = &Dtu_inventory[index];
+	if (e->type == OBJ_SPELL)
+		return dtu_spell_usable(e->id) && (e->count >= 1 || e->count == -1);
+	if (e->type == OBJ_MISC && e->id == 102)
+		return 1;
+	if (e->count < 1 && e->count != -1)
+		return 0;
+	if (!entry_data(index, &d))
+		return 0;
+	return (d.class_mask & 0xff & class_use_bits()) != 0;
+}
+
+// 0x35CE5 with a held weapon or spell of the item list (list 0). Returns
+// 0 if the cursor keeps it.
+static int arm_item(int index)
+{
+	int key;
+
+	// 0x35D0A: 0x35462, a box holds the reference: the cursor keeps it
+	for (key = 0; key < DTU_N_HOT_KEYS; key++)
+		if (Dtu_char.hot_key[key].list == 0 && Dtu_char.hot_key[key].n == index)
+			return 0;
+	// 0x35D71: the first empty box, else the box that was chosen last
+	// (0x13AD15), else box 0
+	for (key = 0; key < DTU_N_HOT_KEYS; key++)
+		if (Dtu_char.hot_key[key].n < 0)
+			break;
+	if (key >= DTU_N_HOT_KEYS)
+		key = (Last_hot_key >= 0 && Last_hot_key < DTU_N_HOT_KEYS) ? Last_hot_key : 0;
+	// 0x35DF5: arrows without a bow (0x35EDE, 0x35F9D) or bolts without a
+	// crossbow (0x35F0F, 0x35F64): sound 3000 and the cursor lets go (no
+	// message here)
+	if ((weapon_flag(index, "arrow") && !ref_entry(Dtu_char.slot[DTU_SLOT_BOW])) ||
+			(weapon_flag(index, "bolt") && !ref_entry(Dtu_char.slot[DTU_SLOT_CROSSBOW]))) {
+		refuse(key, "paper doll: no launcher");
+		return 1;
+	}
+	Dtu_char.hot_key[key].list = 0;
+	Dtu_char.hot_key[key].n = (byte) index;
+	dtu_char_log("hot key %d: entry %d '%s' (paper doll)", key, index, Dtu_inventory[index].name);
+	// 0x35E79: 0x13AD15 = -100, then 0x43A5A(box) with its tests
+	Last_hot_key = -100;
+	dtu_char_press_hot_key(key);
+	return 1;
+}
+
+// 0x35ADF, the press action of the figure of the paper doll, with a held
+// entry of the item list. The wear bits of the held entry are those of
+// 0x317EA, or 0 if 0x3533C fails (0x30344 and 0x312C3 at the pick up).
+// The first bit in this order gives the slot: cloak, necklace, armor,
+// gauntlet, shield, ring (ring 1 if it is empty, else ring 2), belt, boot,
+// bow, crossbow, lockpicks. The slot takes the entry (an item in it goes
+// back to the list) and 0xAFB55 runs. The helmet bit has no slot. With no
+// slot: a weapon or a spell that 0x3533C passes goes into a hot key box
+// and into the hand (0x35CE5); anything else is used (0x35E9C: 0x37A6A).
+int dtu_char_put_on_doll(int index)
+{
+	static const int order[][2] = {
+		{ DTU_WEAR_CLOAK, DTU_SLOT_CLOAK }, { DTU_WEAR_NECKLACE, DTU_SLOT_NECKLACE },
+		{ DTU_WEAR_ARMOR, DTU_SLOT_ARMOR }, { DTU_WEAR_GAUNTLET, DTU_SLOT_GAUNTLET },
+		{ DTU_WEAR_SHIELD, DTU_SLOT_SHIELD }, { DTU_WEAR_RING, DTU_SLOT_RING1 },
+		{ DTU_WEAR_BELT, DTU_SLOT_BELT }, { DTU_WEAR_BOOT, DTU_SLOT_BOOT },
+		{ DTU_WEAR_BOW, DTU_SLOT_BOW }, { DTU_WEAR_CROSSBOW, DTU_SLOT_CROSSBOW },
+		{ DTU_WEAR_LOCKPICK, DTU_SLOT_LOCKPICK },
+	};
+	int usable, wear, i, type;
+
+	if (index < 0 || index >= Dtu_n_inventory)
+		return 1;
+	usable = dtu_char_item_usable(index);
+	wear = usable ? dtu_char_wear_mask(index) : 0;
+	for (i = 0; i < (int) (sizeof(order) / sizeof(order[0])); i++)
+		if (wear & order[i][0]) {
+			int slot = order[i][1];
+			// 0x35BF4: ring 1 if its reference is empty, else ring 2
+			if (slot == DTU_SLOT_RING1 && Dtu_char.slot[DTU_SLOT_RING1].n >= 0)
+				slot = DTU_SLOT_RING2;
+			dtu_char_log("paper doll: entry %d '%s' to slot %d", index, Dtu_inventory[index].name, slot);
+			dtu_char_equip(index, slot);
+			return 1;
+		}
+	type = Dtu_inventory[index].type;
+	if ((type == OBJ_WEAPON || type == OBJ_SPELL) && usable)
+		return arm_item(index);
+	dtu_char_log("paper doll: entry %d '%s' is used", index, Dtu_inventory[index].name);
+	dtu_char_use(index);
 	return 1;
 }
 

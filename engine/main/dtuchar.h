@@ -290,6 +290,11 @@ int dtu_char_set_hot_key_spell(int key, int spell);
 // The held spell put on the paper doll (0x35CE5): the first free box takes
 // it and it goes into the hand. Returns 1 if a box took it.
 int dtu_char_arm_spell(int spell);
+// 0x3533C for an entry of the item list: 1 if the character can use it.
+int dtu_char_item_usable(int index);
+// The held entry of the item list put on the figure of the paper doll
+// (0x35ADF): it is worn, armed or used. Returns 0 if the cursor keeps it.
+int dtu_char_put_on_doll(int index);
 // Uses one item of the entry (0x37A6A). Returns 1 if it was used up.
 int dtu_char_use(int index);
 // Uses the item in the hand (the USE button, 0x3614B).
