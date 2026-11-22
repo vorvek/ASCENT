@@ -35,19 +35,19 @@ tr: ¡Se te ha caído el arma!
 
 id: port.hill_giant_intelligence_expired
 en: Hill Giant Intelligence expired.
-tr: Se acabó la Inteligencia de gigante de las colinas.
+tr: Se acabó la inteligencia de gigante de las colinas.
 
 id: port.hill_giant_strength_expired
 en: Hill Giant Strength expired.
-tr: Se acabó la Fuerza de gigante de las colinas.
+tr: Se acabó la fuerza de gigante de las colinas.
 
 id: port.dragon_s_blood_expired
 en: Dragon's Blood expired.
-tr: Se acabó la Sangre de dragón.
+tr: Se acabó la sangre de dragón.
 
 id: port.agility_expired
 en: Agility expired.
-tr: Se acabó la Agilidad.
+tr: Se acabó la agilidad.
 
 id: port.your_luck_just_ran_out
 en: Your luck just ran out.
@@ -55,7 +55,7 @@ tr: Se te acaba de agotar la suerte.
 
 id: port.you_cannot_use_the_gem_of_curing_at_this
 en: You cannot use the Gem Of Curing at this time.
-tr: Ahora no puedes usar la Gema de curación.
+tr: Ahora no puedes usar la gema de curación.
 
 id: port.and_now_you_can_see
 en: ...And now you can see!
@@ -611,7 +611,7 @@ tr: %s %s Toque Gélido durante %d minutos.
 
 id: port.s_s_struck_unconscious_by_s
 en: %s %s struck unconscious by %s.
-tr: %s %s dejado inconsciente (origen: %s).
+tr: %s %s noqueado (origen: %s).
 
 id: port.s_s_blinded_by_s
 en: %s %s blinded by %s.
