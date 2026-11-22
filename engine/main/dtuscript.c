@@ -848,7 +848,14 @@ static char *token_word(int code)
 		case 0x09: return Dtu_char.name;
 		case 0x0A: return Text_string[(rand() % 2) ? cls_a[c] : cls_c[c]];
 		case 0x0B: return Text_string[(rand() % 2) ? cls_b[c] : cls_d[c]];
-		case 0x0C: return Text_string[race1[race]];
+		case 0x0C:
+			// ASCENT: TEX 957 "drow" is the word of the drow for {race} and
+			// for {races}. A translation has a singular and a plural: the
+			// singular is the text of the code "drow" (when the file has the
+			// English text of the catalog), TEX 957 the plural.
+			if (race1[race] == 957 && !strcmp(dtu_lang_text_en(957), "drow"))
+				return LT("drow");
+			return Text_string[race1[race]];
 		case 0x0D: return Text_string[race2[race]];
 		case 0x0E: case 0x0F: case 0x10: case 0x11:
 			return Text_string[918 + 2 * (code - 0x0E) + sex];
