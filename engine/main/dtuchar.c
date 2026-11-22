@@ -81,6 +81,8 @@ static int Spell_repair_pending;
 int Dtu_fix_wizardry_ring = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
+int Dtu_fix_cursed_scroll = 1;
+int Dtu_fix_creature_missile = 1;
 int Dtu_backstab = 0;
 int Dtu_auto_choice = -1;
 static int Dtu_last_attack_roll = 0;
@@ -216,7 +218,7 @@ static void read_options(void)
 	if (FindArg("-origchar"))
 		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = 0;
 	if (FindArg("-origcombat"))
-		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = 0;
+		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -477,8 +479,8 @@ static int worn_item_bits(void)
 	id = armor_id(Dtu_char.slot[DTU_SLOT_CLOAK]);
 	if (id == 44) bits |= 1 << 12;
 	if (id == 46) bits |= 1 << 13;
-	// rings (jump tables 0xAFAF5 and 0xAFB25). Ring 16 (Armoring) sets a
-	// flag that nothing reads.
+	// rings (jump tables 0xAFAF5 and 0xAFB25). Ring 16 (Armoring) sets no
+	// effect bit: see armoring_ac().
 	for (r = 0; r < 2; r++) {
 		switch (armor_id(Dtu_char.slot[r ? DTU_SLOT_RING2 : DTU_SLOT_RING1])) {
 			case 17: bits |= 1 << 1; break;		// Ring of Coolness: Resist Fire
@@ -541,6 +543,28 @@ static void worn_effects(void)
 	else if (Wizardry_count > 0)
 		Wizardry_count--;
 	dtu_spell_set_wizardry(Wizardry_count);
+}
+
+// ASCENT: 0xAFAD1 with the Ring of Armoring (armor 16) on a mage: the caps
+// of Armor, Magical Vestment and Shield of dtu_spell_player_ac(), each
+// followed by 1 better armor class (0xB05FC, 0xB064F, 0xB067C).
+static int armoring_ac(int ac)
+{
+	int w = (ConsoleObject && ConsoleObject->type == OBJ_PLAYER) ? ConsoleObject->dtu.m_88 : 0;
+
+	if ((w & DTU_FX_ARMOR) && ac > 6)
+		ac = 6 - 1;
+	if (w & DTU_FX_VESTMENT) {
+		int L = dtu_spell_player_level(35), v = 5 - (L - 5) / 3;
+
+		if (v < 1) v = 1;
+		if (v < ac) ac = v - 1;
+	}
+	if ((w & DTU_FX_SHIELD) && ac > 3)
+		ac = 3 - 1;
+	if (w & DTU_FX_SLOW)
+		ac += 4;
+	return ac;
 }
 
 // The values of the potions and of the spell Strength (0x396B2, 0x8FCFA)
@@ -771,9 +795,12 @@ void dtu_char_update(void)
 	if (e && (e->type == OBJ_WEAPON || e->type == OBJ_MISC))
 		sum += table_ac(e);
 	// 0xB038F: weapon 54 (Sword of W'hin) in the hand: Find/Remove Traps
-	// 250 (95 after the limit)
-	if (e && e->type == OBJ_WEAPON && e->id == 54)
+	// and Climb Walls 250 (95 after the limit). ASCENT: Climb Walls was
+	// missing (0xB03C2).
+	if (e && e->type == OBJ_WEAPON && e->id == 54) {
 		pa->find_traps = 250;
+		pa->climb_walls = 250;
+	}
 
 	// The potions (0x396B2) and the spell Strength (0x8FCFA) change the
 	// values of the record while they last
@@ -794,7 +821,12 @@ void dtu_char_update(void)
 	// 0xB05C5. The spell effects that change the armor class (0xB05D4 to
 	// 0xB0696 and 0xB0702) are in dtuspell.c.
 	ac = 10 + (signed char) sum;
-	ac = dtu_spell_player_ac(ac, 0);
+	// ASCENT: Ring 16 (Armoring) in a ring place sets a flag (0xB0014,
+	// 0xB01B6) that 0xAFAD1 reads: a mage gets 1 more after each cap.
+	if (has_class(DTU_CLASS_MAGE) && (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 16 || armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 16))
+		ac = armoring_ac(ac);
+	else
+		ac = dtu_spell_player_ac(ac, 0);
 	dex = pa->dexterity;
 	if (dex < 1) dex = 1;
 	if (dex > 19) dex = 19;
@@ -1464,9 +1496,11 @@ void dtu_char_potions_end(int force)
 {
 	int changed = 0;
 
+	// ASCENT: the texts of 0x396B2 begin with "Potion of" (0x1246C1 to
+	// 0x124735)
 	if (Potion.intel_end && (force || GameTime > Potion.intel_end)) {
 		Potion.intel_end = 0;
-		HUD_init_message("Hill Giant Intelligence expired.");
+		HUD_init_message("Potion of Hill Giant Intelligence expired.");
 		changed = 1;
 	}
 	else if (Potion.intel_end && !force) {
@@ -1490,21 +1524,22 @@ void dtu_char_potions_end(int force)
 	}
 	if (Potion.str_end && (force || GameTime > Potion.str_end)) {
 		Potion.str_end = 0;
-		HUD_init_message("Hill Giant Strength expired.");
+		HUD_init_message("Potion of Hill Giant Strength expired.");
 		changed = 1;
 	}
 	if (Potion.dragon_end && (force || GameTime > Potion.dragon_end)) {
 		Potion.dragon_end = 0;
-		HUD_init_message("Dragon's Blood expired.");
+		HUD_init_message("Potion of Dragon's Blood expired.");
 		changed = 1;
 	}
 	if (Potion.dex_end && (force || GameTime > Potion.dex_end)) {
 		Potion.dex_end = 0;
-		HUD_init_message("Agility expired.");
+		HUD_init_message("Potion of Agility expired.");
 		changed = 1;
 	}
 	if (Potion.luck_end && (force || GameTime > Potion.luck_end)) {
 		Potion.luck_end = 0;
+		dtu_script_set_gflag(0x4D, 0);		// ASCENT: 0x39913, global flag 77
 		HUD_init_message("Your luck just ran out.");
 		changed = 1;
 	}
@@ -1519,10 +1554,11 @@ static int any_potion(void)
 	return Potion.intel_end || Potion.str_end || Potion.dragon_end || Potion.dex_end || Potion.luck_end;
 }
 
+// ASCENT: no text of the effect. Each potion shows its own text of 0x37A6A.
 static void effect_on_player(int mask, fix duration)
 {
 	if (ConsoleObject)
-		dtu_spell_set_effect(ConsoleObject, mask, duration, 1, 1);
+		dtu_spell_set_effect(ConsoleObject, mask, duration, 1, 0);
 }
 
 static void spell_on_player(int spell)
@@ -1610,9 +1646,19 @@ static int use_misc(dtu_inv_item *e)
 			else
 				HUD_init_message("Nothing happens...");
 			return 0;
-		case 0x12:		// Spider Piece: turn undead as a cleric of level 2 (0xADC46)
+		case 0x12:		// Spider Piece: turn undead (0xADC46)
+			// ASCENT: 0x38196 makes class 1 a cleric of level (class 1
+			// level + 1) * 2 (0 is the first level) for the call, so the turn
+			// is at that level + 1; with a class 2 cleric or the cloak 45 the
+			// level of 0xADC91 and 0xADCB3. The port had level 2.
 			if (e->count > 0) {
-				dtu_combat_turn_undead(2);
+				int c1 = pa->class1, l1 = pa->class1_level;
+
+				pa->class1 = DTU_CLASS_CLERIC;
+				pa->class1_level = (l1 + 1) * 2;
+				dtu_combat_turn_undead(0);
+				pa->class1 = c1;
+				pa->class1_level = l1;
 				e->count--;
 			}
 			else
@@ -1640,6 +1686,7 @@ static int use_misc(dtu_inv_item *e)
 		case 0x48:		// Potion of Agility: dexterity 18 for 600 s
 			if (pa->dexterity < 18) {
 				Potion.dex_end = GameTime + i2f(600);
+				HUD_init_message("You have increased agility for %d minutes.", 10);		// ASCENT: 0x38A6C
 				spell_vclip(21);
 			}
 			break;
@@ -1652,8 +1699,10 @@ static int use_misc(dtu_inv_item *e)
 			break;
 		case 0x4A:		// Potion of Dragon's Blood: strength 18 for 1 to (level + 1) rounds
 			if (pa->strength < 18) {
-				Potion.dragon_end = GameTime + i2f((rand() % (pa->class1_level + 1) + 1) * 60);
+				n = rand() % (pa->class1_level + 1) + 1;
+				Potion.dragon_end = GameTime + i2f(n * 60);
 				Potion.dragon_extra = has_class(DTU_CLASS_FIGHTER) ? rand() % 100 : 0;
+				HUD_init_message("You have increased strength for %d minutes.", n);		// ASCENT: 0x38BE9
 				spell_vclip(50);
 			}
 			break;
@@ -1668,6 +1717,7 @@ static int use_misc(dtu_inv_item *e)
 		case 0x4C:		// Potion of Fire Resistance: Resist Fire for 600 s
 			effect_on_player(DTU_FX_RESIST_FIRE, i2f(600));
 			spell_vclip(43);
+			HUD_init_message("You have Fire Resistance for %d minutes.", 10);		// ASCENT: 0x38D75
 			break;
 		case 0x4D:		// Potion of Flying: the spell Fly
 			spell_on_player(19);
@@ -1688,11 +1738,13 @@ static int use_misc(dtu_inv_item *e)
 			if (pa->strength < 19) {
 				Potion.str_end = GameTime + rnd_time(4, 5, 600);
 				HUD_init_message("You have Hill Giant strength for awhile.");
+				spell_vclip(50);		// ASCENT: 0x38C09
 			}
 			break;
 		case 0x51:		// Poshun uv Hil Gient Inteljuns: intelligence 5 to 7
 			Potion.intel = rand() % 3 + 5;
 			Potion.intel_end = GameTime + rnd_time(4, 5, 600);
+			HUD_init_message("%s", game_text(977, "Yooz fielz mor smartr."));		// ASCENT: 0x39013, TEX 977
 			// a random vclip and a flash for each point of intelligence: the
 			// vclip of one spell here
 			spell_vclip(7);
@@ -1700,26 +1752,35 @@ static int use_misc(dtu_inv_item *e)
 		case 0x52:		// Potion of Infravision: 10 to 80 rounds
 			effect_on_player(DTU_FX_INFRAVISION, rnd_time(8, 1, 600));
 			spell_vclip(25);
+			HUD_init_message("%s", game_text(968, "You have infravision for some time."));		// ASCENT: 0x391A7, TEX 968
 			break;
 		case 0x53:		// the second "Potion of Agility": Invisibility for 30 to 60 rounds
 			effect_on_player(DTU_FX_INVISIBLE, rnd_time(4, 3, 600));
 			spell_vclip(26);
+			HUD_init_message("%s", game_text(969, "You are invisible for now."));		// ASCENT: 0x3923E, TEX 969
 			break;
 		case 0x54:		// Potion of Invulnerability: 5 to 20 rounds
 			effect_on_player(DTU_FX_INVULNERABLE, rnd_time(16, 5, 60));
 			spell_vclip(28);
+			HUD_init_message("%s", game_text(970, "You presently feel invincible."));		// ASCENT: 0x39335, TEX 970
 			break;
 		case 0x55:		// Potion of Jumping: the spell Jump
 			spell_on_player(27);
 			break;
 		case 0x56:		// Potion of Luck: one hour, one critical hit
 			Potion.luck_end = GameTime + i2f(3600);
+			// ASCENT: the vclips of the spells 1, 3 and 38 and global flag 77
+			// (0x393A3 to 0x393D6). Script 508 of a Spider Piece reads the flag.
 			spell_vclip(1);
+			spell_vclip(3);
+			spell_vclip(38);
+			dtu_script_set_gflag(0x4D, 1);
 			HUD_init_message("You feel lucky today.");
 			break;
 		case 0x57:		// Potion of Speed: Haste for 5 to 20 rounds
 			effect_on_player(DTU_FX_HASTE, rnd_time(16, 5, 60));
 			spell_vclip(21);
+			HUD_init_message("%s", game_text(972, "You feel faster."));		// ASCENT: 0x3944C, TEX 972
 			break;
 		case 0x58:		// Potion of Toughening
 			if (max < hp) {
@@ -1781,11 +1842,15 @@ static int use_misc(dtu_inv_item *e)
 				Dtu_char.pa.charisma = Dtu_char.base.charisma;
 				dtu_char_update();
 				hp = dtu_char_hit_points();
+				// ASCENT: 0x38159 divides rand() by the hit points as a fix:
+				// below half a point. Dtu_fix_cursed_scroll: rand() % hit points
+				// as whole points.
 				if (hp > 0)
-					dtu_damage_player(p, NULL, i2f(rand() % hp));
+					dtu_damage_player(p, NULL, Dtu_fix_cursed_scroll ? i2f(rand() % hp) : (fix) (rand() % i2f(hp)));
 				HUD_init_message("You no longer think that reading the scroll was such a good idea...");
 			}
-			break;
+			// ASCENT: 0x3817F jumps past the use up 0x39694: the scroll stays
+			return 0;
 		default:
 			return -1;
 	}
@@ -1805,13 +1870,18 @@ int dtu_char_use(int index)
 
 	dtu_char_log("use: entry %d type %d id %d '%s' count %d", index, e->type, e->id, e->name, e->count);
 	if (e->type == OBJ_WEAPON) {
-		// weapon 13, the item in the hand, with none of the effects
-		// 0xC004124: script events, and for a Lawful Good character
-		// Continual Light, Free Action and Protection From Evil
-		if (e->id != 13 || Dtu_char.current.n != index || (ConsoleObject->dtu.m_88 & 0xC004124))
+		// weapon 13, the item in the hand (0x37B58). ASCENT: 0x37B69 to
+		// 0x37BC7: global flag 0x86 = one of the effects 0xC004124, global
+		// flag 0x91 = 1, script 0x1FD; then without global flag 0xA0 and for
+		// a Lawful Good character Continual Light, Free Action and
+		// Protection From Evil. The port returned at the effects and set no
+		// flag.
+		if (e->id != 13 || Dtu_char.current.n != index)
 			return 0;
+		dtu_script_set_gflag(0x86, (ConsoleObject->dtu.m_88 & 0xC004124) != 0);
+		dtu_script_set_gflag(0x91, 1);
 		dtu_hook_script_event(0x1FD);
-		if (Dtu_char.pa.alignment == 0) {
+		if (!dtu_script_gflag(0xA0) && Dtu_char.pa.alignment == 0) {
 			dtu_spell_area(8, &ConsoleObject->pos, ConsoleObject->segnum, ConsoleObject, dtu_spell_player_level(8));
 			spell_on_player(20);
 			spell_on_player(53);
@@ -2237,6 +2307,7 @@ static int luck_now(void)
 		return 0;
 	Potion.luck_end = 0;
 	digi_play_sample(0x8A8, F1_0);
+	dtu_script_set_gflag(0x4D, 0);		// ASCENT: 0xAE58E, global flag 77
 	return 1;
 }
 
@@ -2349,6 +2420,25 @@ int dtu_char_weapon_damage(int weapon, object *target)
 	dtu_char_log("damage roll: %dd%d + %d: %d, fire %d", a.dice_n, a.dice_sides, a.damage_bonus, sum, fire);
 	sum += fire;
 	return sum > 0 ? sum : 0;
+}
+
+// ASCENT: the weapon branch of 0x2AF5E does not test the attacker: the
+// missile of a creature gets the bow or crossbow of the player (0x2B0AE)
+// and the Potion of Luck of the player (0x2B107). Only with
+// Dtu_fix_creature_missile 0.
+int dtu_char_creature_missile_damage(int weapon, int n, int sides, int sum)
+{
+	dtu_item_data d;
+
+	if (!dtu_item_get(OBJ_WEAPON, weapon, &d))
+		return sum;
+	if (!d.melee)
+		sum += launcher_bonus(weapon);
+	if (luck_now()) {
+		sum = n * sides;
+		dtu_char_log("damage roll: a creature missile uses the Potion of Luck of the player");
+	}
+	return sum;
 }
 
 int dtu_char_damage_roll(void)
@@ -2783,6 +2873,10 @@ static void dump_character(void)
 	dtu_char_log("  str %d/%d dex %d con %d int %d wis %d cha %d, attack: weapon %d, +%d to hit, %dd%d+%d, wait %.2f",
 		pa->strength, pa->strength_extra, pa->dexterity, pa->constitution, pa->intelligence, pa->wisdom, pa->charisma,
 		a.weapon_id, a.to_hit_bonus, a.dice_n, a.dice_sides, a.damage_bonus, f2fl(a.wait));
+	dtu_char_log("  effects 0x%08x, worn 0x%04x, skills %d %d %d %d %d, potions %d %d %d %d %d, flag 77 %d",
+		ConsoleObject ? ConsoleObject->dtu.m_88 : 0, Worn_bits, pa->hide_in_shadows, pa->move_silently, pa->open_locks,
+		pa->find_traps, pa->climb_walls, Potion.intel_end != 0, Potion.str_end != 0, Potion.dragon_end != 0,
+		Potion.dex_end != 0, Potion.luck_end != 0, dtu_script_gflag(0x4D));
 	for (i = 0; i < Dtu_n_inventory; i++)
 		dtu_char_log("  entry %d: type %d id %d '%s' count %d%s%s", i, Dtu_inventory[i].type, Dtu_inventory[i].id,
 			Dtu_inventory[i].name, Dtu_inventory[i].count, Dtu_char.current.n == i ? " (in the hand)" : "",
@@ -2906,6 +3000,7 @@ static void run_command(char *cmd, char *value)
 		if (seg > Highest_segment_index)
 			dtu_char_log("script: the level has no rest place");
 	}
+	else if (!strcmp(cmd, "fire"))		dtu_spell_fire();		// test: the spell, scroll or wand in the hand
 	else if (!strcmp(cmd, "mode"))		dtu_display_select_mode(a);
 	else if (!strcmp(cmd, "dump"))		dump_character();
 	else

@@ -2545,6 +2545,10 @@ static int damage_dice(object *attacker,object *target,int weapon)
 	if (n < 1) n = 1;
 	for (i=0;i<n;i++)
 		sum += rand() % sides + 1;
+	// ASCENT: Dtu_fix_creature_missile 0: the launcher and the Potion of
+	// Luck of the player (0x2B0AE, 0x2B107)
+	if (weapon >= 0 && !Dtu_fix_creature_missile)
+		sum = dtu_char_creature_missile_damage(weapon,n,sides,sum);
 	sum += bonus;
 	if (weapon >= 0)
 		fire = dtu_weapon_extra_damage(attacker,target,weapon,&sum);
