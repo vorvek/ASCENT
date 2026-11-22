@@ -85,14 +85,14 @@ class Runner:
             cmd += ["-hddir", self.args.hddir]
         cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user"),
                 "-level", level or LEVEL, "-fescript", script] + list(extra)
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=d)
         out = {}
         for s in shots:
             p = os.path.join(d, s + ".ppm")
             if not os.path.exists(p):
                 raise AssertionError("%s: no screenshot %s (exit %d)\n%s" % (name, s, r.returncode, r.stdout[-2000:]))
             out[s] = read_ppm(p)
-        return out, r.stdout
+        return out, d
 
 
 # The portrait area of the main screen (ingame-ui.md, "Layout variables")
@@ -151,6 +151,18 @@ def test_dlg_tab_focus(t):
     s, _ = t.run("dlg_tab", ["gamekeys", "wait 60", "shot open", "key tab", "wait 5", "shot tab",
                              "key esc", "wait 30"], extra=DURNAN)
     assert differ(region(s["open"], *TEXTFRAME), region(s["tab"], *TEXTFRAME)) > 0.003, "Tab did not move the focus"
+
+
+def test_shift_fkeys_and_grave(t):
+    """Shift+F1 to Shift+F8 add no stereo messages of Descent 1 (not in the
+    switch 0x42F9C), Shift+F3 does not change the screen, and ` writes a
+    screenshot (0x42FEC)."""
+    s, d = t.run("shift_f", ["gamekeys", "wait 20", "move 300 200", "wait 3", "shot base",
+                             "hold lshift 4", "key f1", "wait 3", "hold lshift 4", "key f3", "wait 3",
+                             "hold lshift 4", "key f8", "wait 3", "key `", "wait 5", "shot after"])
+    assert differ(region(s["base"], *MSGBOX), region(s["after"], *MSGBOX)) < 0.001, "a message was added"
+    assert differ(region(s["base"], *LEFT), region(s["after"], *LEFT)) < 0.02, "the screen changed"
+    assert any(f.lower().startswith("screen") for f in os.listdir(d)), "` wrote no screenshot"
 
 
 # The text of the message box of the main screen, high resolution

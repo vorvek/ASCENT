@@ -1962,6 +1962,17 @@ int dtu_display_owns_key(int key)
 	case KEY_EQUAL:					// 0x432A8, also with Shift
 	case KEY_SHIFTED + KEY_EQUAL:
 		return 1;
+	// The key switch of the executable (0x42F9C) has no Shift+F1 to Shift+F8
+	// and no Shift+Enter (the stereo and head tracking keys of Descent 1),
+	// and the number keys are the hot keys (0x430D1): they never select a
+	// weapon of Descent 1, also when the hot key page gives the hot keys
+	// other keys.
+	case KEY_SHIFTED + KEY_F1: case KEY_SHIFTED + KEY_F2: case KEY_SHIFTED + KEY_F3:
+	case KEY_SHIFTED + KEY_F4: case KEY_SHIFTED + KEY_F5: case KEY_SHIFTED + KEY_F6:
+	case KEY_SHIFTED + KEY_F7: case KEY_SHIFTED + KEY_F8: case KEY_SHIFTED + KEY_ENTER:
+	case KEY_1: case KEY_2: case KEY_3: case KEY_4: case KEY_5:
+	case KEY_6: case KEY_7: case KEY_8: case KEY_9: case KEY_0:
+		return 1;
 	case KEY_COMMA:
 	case KEY_PERIOD:
 	case KEY_ENTER:
@@ -2082,6 +2093,8 @@ static void do_input(int mx, int my)
 		int f3 = key_acts(KEY_F3), larger = key_acts(KEY_EQUAL), smaller = key_acts(KEY_MINUS);
 		if (keyd_pressed[KEY_LALT] || keyd_pressed[KEY_RALT] || keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL])
 			f3 = larger = smaller = 0;
+		if (keyd_pressed[KEY_LSHIFT] || keyd_pressed[KEY_RSHIFT])
+			f3 = 0;						// Shift+F3 (0x13D) is not in the switch
 		if (f3 && Dtu_interface_mode == DTU_IM_FULL_SCREEN)
 			smaller = 1, f3 = 0;
 		if (f3 || larger) {
