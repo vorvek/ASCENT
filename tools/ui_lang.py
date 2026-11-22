@@ -215,6 +215,7 @@ BANDS = {
     "lbmbuy": (19, 33), "lbmsel": (19, 33), "lbmwpn": (24, 40), "lbmarm": (24, 40), "lbmmsc": (24, 40),
     "p59_s": (160, 169), "p60_s": (160, 169), "p57_s": (179, 190), "p58_s": (181, 191), "p61_s": (181, 191),
     "p64_rest": (364, 377), "p64_stats": (364, 377), "p67_rest": (364, 377), "p67_stats": (364, 377), "p67_map": (322, 335),
+    "p59_use": (183, 189), "p59_drop": (183, 189), "p60_use": (183, 189), "p60_drop": (183, 189),
 }
 for _c, *_ in ALIGN:
     BANDS["lb4" + _c] = (12, 21)
@@ -232,6 +233,11 @@ NOTES = {
     "p60_s": "Draw a round C, a smooth open curve like the bowls of the S, not a square bracket; the same dim "
              "yellow-brown with the same dark shadow as the S.",
 }
+_LO_INV = ("The original letters and plate are dim, dark red and soft (blurred, worn, low contrast): make the "
+           "Spanish letters just as dim, dark red, soft and worn, on the same dark red plate; not sharper, brighter "
+           "or more orange than the original.")
+for _p in (59, 60):
+    NOTES["p%d_use" % _p] = NOTES["p%d_drop" % _p] = _LO_INV
 _LB4 = ("Keep the look of the selected label: heavy dark serif capitals as thick and as dark as the original "
         "letters, read against the lit plate with the same contrast as the original (not fainter, not stronger), "
         "and the dark shadow bands of the plate where they are, across the letters as in the original.")
