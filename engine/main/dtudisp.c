@@ -918,15 +918,69 @@ void dtu_display_init_cockpit(void)
 	mouse_set_pos(View.x + View.w / 2, View.y + View.h * (Dtu_hires ? 2 : 1) / 2);
 }
 
+//------------------------------------------------------------------------
+// ASCENT: the screens that free the mouse. A port feature with no original
+// equivalent (a user request).
+// The screens that need the cursor (the inventory with its spell lists,
+// the hot key screen, the statistics and spell screen) turn the immersive
+// mode off while they are open and on again when the last of them closes.
+// The map screen keeps the immersive mode: the player can move with the
+// map open. A press of the immersive mode key on such a screen is the
+// choice of the player: it stays when the screen closes. Each change of
+// the screen goes through dtu_display_select_mode, so this covers the
+// screen keys, the buttons, F3, a switch to another screen and the
+// conversation (0xB14D8 selects mode 0). The other states that need the
+// cursor free it themselves and restore the mode at the end: the reply
+// choice of the conversation (dtudlg.c, ptr_force), the menus of
+// newmenu.c (the Escape menu, the options, the death menu; nm_pointer_begin),
+// the thief points box (dtuthiefpts.c) and the town and its shops
+// (dtufe.c). The scroll text screen takes a key or any button and the
+// message box is part of the main screen: both keep the mode.
+
+static int Immersive_held = 0;		// the immersive mode was on when a cursor screen opened
+
+static int mode_needs_cursor(int mode)
+{
+	return mode == DTU_IM_INVENTORY || mode == DTU_IM_HOTKEYS || mode == DTU_IM_STATS;
+}
+
+void dtu_display_set_immersive(int on)
+{
+	Dtu_immersive = (on != 0);
+	mouse_set_relative(Dtu_immersive);
+	if (Dtu_immersive) {
+		// the mouse movement made with the cursor does not turn the view
+		int dx, dy;
+		mouse_get_delta(&dx, &dy);
+	}
+}
+
+static void immersive_follow_mode(int old_mode, int mode)
+{
+	if (!Dtu_display_active)
+		return;
+	if (mode_needs_cursor(mode)) {
+		if (!mode_needs_cursor(old_mode) && Dtu_immersive) {
+			Immersive_held = 1;
+			dtu_display_set_immersive(0);
+		}
+	} else if (Immersive_held) {
+		Immersive_held = 0;
+		if (!Dtu_immersive)
+			dtu_display_set_immersive(1);
+	}
+}
+
 // 0x407EB and 0x40403
 void dtu_display_select_mode(int mode)
 {
 	dtu_button *b;
-	int entry;
+	int entry, old_mode = Dtu_interface_mode;
 
 	if (mode < 0 || mode > DTU_IM_LETTERBOX || mode == 1 || mode == 2)
 		return;
 	Dtu_interface_mode = mode;
+	immersive_follow_mode(old_mode, mode);		// ASCENT: see above
 	Dtu_automap_active = 0;		// 0x40922: a new map screen follows the player
 	Button_pressed = -1;
 	Button_list = NULL;
@@ -2144,8 +2198,8 @@ static void do_input(int mx, int my)
 		// (0.364 s): one short press gives one toggle. This is the only
 		// handler of V: controls.c follows Dtu_immersive.
 		char *text;
-		Dtu_immersive = !Dtu_immersive;
-		mouse_set_relative(Dtu_immersive);
+		dtu_display_set_immersive(!Dtu_immersive);
+		Immersive_held = 0;		// ASCENT: the choice of the player stays (dtu_display_set_immersive)
 		// 0x54470 to 0x544D7: off, the mouse goes to the middle of the view
 		// (0xE89A8), as after a mode change (dtu_display_init_cockpit)
 		if (!Dtu_immersive)
