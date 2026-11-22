@@ -352,8 +352,15 @@ focus on the text, 0xB2B6F with no replies). The focus starts on the replies
 selected (0x3D4990 = -1). Up and Down (also keypad 8 and 2) move the
 selection (the first press selects reply 1; the selection stops at the first
 and the last reply), or scroll the text when the focus is on the text. Enter
-(also keypad Enter) returns the selection; with no selection it returns -1,
-which the wait loop takes as "no choice yet". Space and Tab move the focus
+(also keypad Enter) returns the selection. Each frame with the focus on the
+replies ends with 0xB29A1 or 0xB2ABC: a selection of -1 becomes reply 1, and
+a selection outside the replies shown in the area (first 0x3D498C, count
+0x3D4984) moves the area to it, adding the later replies and then the
+earlier ones (0xB29A1, the selection went up) or the earlier and then the
+later ones (0xB2ABC), each reply with its lines and one empty line while
+they fit. So -1 is left only for Enter in the first frame: the window closes
+with -1 (0xB23C6 clears the active flag that 0xB2FA2 tests) and 0xA7ADC ends
+the run as for Escape. Space and Tab move the focus
 between the replies and the text. Escape closes the window and returns -2.
 The key ` is the screenshot key (0x80DA1). With no replies (0xB2B6F),
 Enter or keypad Enter go on (not with the focus on the text), Up and Down do
