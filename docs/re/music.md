@@ -102,7 +102,10 @@ Runs when the stream service runs (each frame of the game loop). If the done fla
 2. If the loop count is above 0 or is -1: a count above 0 is reduced by 1, and the
    same entry starts again with the current volume (0xA40B3). **V**
 3. Else, if the flag at 0x145498 is not 0, the next entry of the queues starts
-   (0xA3E40). **V** The flag has a set function at 0xA3BA0. Who sets it was not traced.
+   (0xA3E40). **V** The flag has a set function at 0xA3BA0. No instruction calls it or
+   writes the flag, and its value in the data of the executable is 1, so the queue
+   always runs. **V** The same holds for the flag 0x1453C8 of the ambient sounds (set
+   function 0xA2075, value 1).
 
 So a loop is a new start of the same file from its first sample. The gap between the
 last sample and the first sample is the time to the next service call plus the time to
@@ -294,7 +297,9 @@ fly and, when the switch 0x145360 is set, creates a splash object (type 10).
 | Double buffer of the driver, filled from its callback | The compressed file is read into memory when the track starts. The callback of the platform mixer decodes it block by block into a ring buffer of 4096 frames (`acm_stream_read` of `engine/main/acm.c`). |
 | Loop: new start of the file by the service function | The callback starts the decoder again at the first sample when the track has ended. There is no gap. |
 | Fade timer of 10 Hz | `dtumusic_frame` makes the steps from the real time (`timer_get_fixed_seconds`), one for each 0.1 s. |
-| Flag 0x145498 | Not in the port. The queue always runs. |
+| Flag 0x145498 | Not in the port. The queue always runs (the flag is always 1). |
+| `str_sfx.c` (0xA1BF8 to 0xA2AB6) | The second part of `dtumusic.c`: WHAMMO.JRG and WHAMMO.DAT, a queue of its own, the loop, the fade (the same steps as the music) and the volume of the effects setting (0x13BFEB through the table 0x13ACB4). It plays on the second stream of the mixer (`PLAT_AUDIO_STREAM_AMBIENT`). |
+| Warp table commands 200 to 298 | The same bits as the music (docs/formats/wrp.md). Correction `Dtu_fix_wrp_sound` (on): a segment keeps its music line and its ambient line; the original keeps only the last line of a segment. |
 | Warp table commands 100 to 198 | `dtumusic_level_start` reads them from `DTU.WRP`, `dtumusic_frame` runs the command of a segment when the segment of the player changes. |
 | CD audio of `songs.c` | `engine/main/songs.c` reads `DTU.SNG` and plays nothing. |
 | 16-bit effects | `digi.c` plays `piggy_get_sound_16` data with `plat_audio_play16` at the rate of the sound. `-sound8` or `Dtu_sound_16bit = 0` selects the 8-bit copy. |
@@ -305,17 +310,19 @@ The death music (0x4249D) plays in `dtu_player_death_frame` (dtuobj.c) and on th
 screen of the front end (dtufe.c). The speech of `str_dlg.c` (WERDZ.DAT) plays for
 Khelben in the front end (dtufe.c).
 
-Not in the port: the call at 0x43DAF has no call site, and the streamed effects of
-`str_sfx.c` (WHAMMO.JRG, WHAMMO.DAT) are not played. So the ambient commands from 200
-of `DTU.WRP` (codes 223 and 255, 157 lines; code 206, the fade, 59 lines) do nothing:
-`dtumusic_level_start` keeps only the codes 100 to 198 and `dtumusic_command` returns
-for the other codes. See docs/audit/presentation.md (A1).
+Not in the port: the call at 0x43DAF has no call site.
 
-Options of the port: `-nomusic`, `-nosound`, `-sound8`, `-music N` (play entry N in a
+The ambient sounds (`str_sfx.c`) play since 2026-11-22. `dtumusic_stop` also stops the
+ambient sound and empties its queue (the callers are the places where the original stops
+all its streams, 0xA48D0). `-nomusic` does not turn the ambient sounds off, `-noambient`
+does. BONES, `-testtour -musiclog`: 23 ambient lines in 33 s; 223 fades the sound that
+plays (1.6 s) and starts the new one at its end, 255 loops, 206 fades out.
+
+Options of the port: `-nomusic`, `-noambient`, `-nosound`, `-sound8`, `-music N` (play entry N in a
 loop from the start of the level), `-musiclog`, `-soundlog`,
 `-musicscript T:CODE:VALUE[,...]` (music command at T seconds of game time),
 `-musicwav TRACK FILE SECONDS` (write the output of the stream code to a WAV file),
-`-origmusic` (no music at the start of a level, section 9), `-safemusic` and
+`-origmusic` (no music at the start of a level, section 9, and one command for each segment of DTU.WRP), `-safemusic` and
 `-nosafemusic` (the replacement music on or off for one run, section 10),
 `-origsound` (the footsteps of the original: `Dtu_fix_foot_pan` and
 `Dtu_fix_creature_steps` are 0).
