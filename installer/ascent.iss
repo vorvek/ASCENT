@@ -216,7 +216,7 @@ begin
     'ASCENT-DTU needs the disc of Descent to Undermountain.');
   L := AddLabel('Select the location of the game disc. A CD drive, a folder with a copy of the disc, ' +
     'or a disc image (an .iso file, or a .bin and .cue pair) work. Setup copies the game files into the ' +
-    'installation folder. The original files are not changed.', 0);
+    'installation folder.', 0);
   T := L.Top + L.Height + ScaleY(10);
   W := SourcePage.SurfaceWidth - 2 * ScaleX(96);
   AddLabel('Game disc:', T);
