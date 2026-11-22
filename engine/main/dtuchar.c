@@ -3034,6 +3034,9 @@ static void dump_character(void)
 		ConsoleObject ? ConsoleObject->dtu.m_88 : 0, Worn_bits, pa->hide_in_shadows, pa->move_silently, pa->open_locks,
 		pa->find_traps, pa->climb_walls, Potion.intel_end != 0, Potion.str_end != 0, Potion.dragon_end != 0,
 		Potion.dex_end != 0, Potion.luck_end != 0, dtu_script_gflag(0x4D));
+	// ASCENT: the level and the difficulty, for the tests of a save and a load
+	dtu_char_log("  dungeon level %d, difficulty %d, segment %d",
+		Current_level_num, Difficulty_level, ConsoleObject ? ConsoleObject->segnum : -1);
 	for (i = 0; i < Dtu_n_inventory; i++)
 		dtu_char_log("  entry %d: type %d id %d '%s' count %d%s%s", i, Dtu_inventory[i].type, Dtu_inventory[i].id,
 			Dtu_inventory[i].name, Dtu_inventory[i].count, Dtu_char.current.n == i ? " (in the hand)" : "",
