@@ -1893,6 +1893,10 @@ int dtu_display_owns_key(int key)
 			return 1;
 	switch (key) {
 	case KEY_F3:
+	case KEY_MINUS:					// 0x43193, also with Shift
+	case KEY_SHIFTED + KEY_MINUS:
+	case KEY_EQUAL:					// 0x432A8, also with Shift
+	case KEY_SHIFTED + KEY_EQUAL:
 		return 1;
 	case KEY_COMMA:
 	case KEY_PERIOD:
@@ -1979,13 +1983,30 @@ static void do_input(int mx, int my)
 		dtu_display_add_message(text ? text : (Dtu_immersive ? "Immersive mode is on." : "Immersive mode is off."));
 		Msg_next_color = -1;
 	}
-	// F3 "cycles the playing screen size" (manual). The sizes of the cycle
-	// were not read: main screen and full screen (guess).
-	if (key_acts(KEY_F3)) {
-		if (Dtu_interface_mode == DTU_IM_FULL_SCREEN)
+	// The key switch of the game (0x42F9C): F3 (0x43043) calls 0x40C3A in
+	// mode 7, else 0x40974. The key "=" (also with Shift, 0x432A8) calls
+	// 0x40974, the key "-" (also with Shift, 0x43193) calls 0x40C3A.
+	// 0x40974: mode 0 goes to mode 7, a screen (modes 3 to 6) goes to
+	// mode 0. 0x40C3A: mode 7 goes to mode 0. Both set the saved mode
+	// (0x13B61A) to 0. Their HUD message (0x4F31A, TEX 738 "Press F3 to
+	// return to Window mode") is not shown: the HUD draw function of the
+	// executable has no caller.
+	{
+		int f3 = key_acts(KEY_F3), larger = key_acts(KEY_EQUAL), smaller = key_acts(KEY_MINUS);
+		if (f3 && Dtu_interface_mode == DTU_IM_FULL_SCREEN)
+			smaller = 1, f3 = 0;
+		if (f3 || larger) {
+			if (Dtu_interface_mode == DTU_IM_MAIN) {
+				dtu_display_select_mode(DTU_IM_FULL_SCREEN);
+				Saved_mode = DTU_IM_MAIN;
+			} else if (mode_is_screen(Dtu_interface_mode)) {
+				dtu_display_select_mode(DTU_IM_MAIN);
+				Saved_mode = DTU_IM_MAIN;
+			}
+		} else if (smaller && Dtu_interface_mode == DTU_IM_FULL_SCREEN) {
 			dtu_display_select_mode(DTU_IM_MAIN);
-		else if (Dtu_interface_mode == DTU_IM_MAIN)
-			dtu_display_select_mode(DTU_IM_FULL_SCREEN);
+			Saved_mode = DTU_IM_MAIN;
+		}
 	}
 
 	// The keys 1 to 0 arm the item of a hot key box (help text 760 of the
