@@ -112,7 +112,8 @@ The places of the items are in section 11.
   script drops the warp or the talk.
 - **V** Scenery with a script is used with the use action (0xAC155 has no
   test of the type): the altar of Cyric (IBBALAR object 2, script 294) and
-  the Flamesword (FLAME object 3, script 322).
+  the Flamesword (FLAME object 3, script 322, only after the death of
+  Lolth: section 4).
 
 ## 4. The last level
 
@@ -137,7 +138,13 @@ object 4); the scripts of the objects 3 and 4 come from the level fixes
    0xA9A5B) and the fight. The first speech switches trigger 28 off
    (script 320 at 000AA, only in 1.3). The level rules 0x93ADE and 0x7DBF5
    run the script when the trigger could not.
-4. The end: with Lolth dead, the use action on the Flamesword runs script
+4. The end: the death of Lolth (object 36 of level 0x20) calls 0x6A374
+   in `remove_level_object` (0x6A579 to 0x6A59B). It clears object flag
+   0x40 and +0x1AE bit 2 of the Flamesword (the level fixes set them, so
+   the use ray passes the sword and the altar while Lolth lives), gives
+   each creature control type 0 and runs script 322 of the sword
+   (0xAC055(object 3, 0)). No use action is needed. After that the use
+   action on the sword runs the script too. Script
    322: "YOU HAVE DESTROYED LOLTH'S AVATAR", the player goes to segment
    482, and the animation statement BC sets the hit points of the sword to
    0. The end of the run kills an object with less than 1.0 hit points
@@ -149,8 +156,11 @@ object 4); the scripts of the objects 3 and 4 come from the level fixes
    so Khelben shows mission 33 after the end.
 
 The sword hangs 8.5 above the head of a player on segment 486; the object
-test of the query (0x3EE70) misses it with a level ray. The player looks up at
-the sword to use it (`tools/questtest.py`, test `flame_ending`).
+test of the query (0x3EE70) misses it with a level ray. After the death of
+Lolth the player can look up at the sword to use it (`tools/questtest.py`,
+test `flame_ending`). Tests `flame_sword_lolth_alive` (the use ray passes
+the sword, flag 0x40 on objects 2 and 3) and `flame_lolth_death` (the death
+alone runs script 322 and the end). The port: `flame_lolth_dead` (dtuobj.c).
 
 ## 5. Defects of 1.3 in the quests
 
@@ -161,7 +171,7 @@ the sword to use it (`tools/questtest.py`, test `flame_ending`).
 | A creature that is not hostile walks to the player, not along its path, so the walk statement E5 does not reach its end near the player | 0x17CFC | The object is moved to the end of the path and the script goes on (`Dtu_script_walk_teleport`) |
 | Statement EB reads a segment and does not use it | 0xAA8C7 | Kept: the spell is around the object |
 | Statement C5 cannot set global flag 17 (script 320) | 0xAB124, numbers up to 0x20 are ignored | Kept: mission flag 17 comes from DTU.WRP |
-| Six of the seven Ankhs of MULHOR1 get object flag 0x40 from the level fixes (**G**: they cannot be touched, so only object 33 can be taken) | 0xAD0C0 | Not ported (audit W12): the port lets the player take each of the seven |
+| Six of the seven Ankhs of MULHOR1 get object flag 0x40 from the level fixes: the object queries skip them, so only object 33 can be taken | 0xAD0C0, 0x3F38F | Intended (decoys), ported: `OF_DTU_NOHIT`. Tests `mulhor1_ankh`, `mulhor1_ankh_flagged` |
 
 ## 6. The Ankh of Straum (BONES, script 31)
 
@@ -176,9 +186,32 @@ beyond the grave, his power haunts me still!".
 Ankh that Straum carries). The Ankh is in MULHOR1 (level 13): seven MISC 14
 objects, 1, 2, 33, 34, 60, 73 and 91 (section 11). The level fixes set
 object flag 0x40 on the six objects 91, 73, 1, 2, 34 and 60 (0xAD0C0); object
-33 in segment 585 is the one that they leave. **G**: flag 0x40 takes an
-object out of the collisions (the flag of `pass_thru` creatures), so only
-object 33 can be taken in 1.3. So the player meets Straum in mission 2,
+33 in segment 585 is the one that they leave.
+
+**V** Flag 0x40 takes an object out of the object queries: the object loop
+of `fvi_sub` skips it (0x3F38F). A pick up is a hit of the player move, so
+the player walks through a flagged Ankh and does not take it. The use ray
+and shots pass it too. The Ankh is still drawn: no draw code reads the
+flag. So the player sees seven Ankhs and can take only object 33. Nothing
+chooses one at random: the level fixes are a fixed list of slots, no
+script names MISC 14 in a give statement (the "give from seg" statement
+0xA8F77 has no flag test, but no script uses it for MISC 14), and no
+trigger or trap of MULHOR1 moves or removes an object. Each level start
+sets the flags again, also after a restore.
+
+**V** The places (`tools/lvl.py`, `tools/sidefiles.py`): objects 1 (segment
+462), 2 (467), 60 (697), 73 (246) and 91 (239) each lie in a segment with
+one open side, a niche at the end of a passage; 1 and 2 (x -70 and 70) and
+73 and 91 (x -124 and 125) are mirror pairs. Object 34 (segment 499) is
+behind the door of the Bronze Key (trigger 30, MISC 51), object 33 (segment
+585) behind the door of the Ruby Key (triggers 32 and 33, MISC 57), and 60
+is behind a closed wall (segment 146 side 3, trap 24). Trigger 46 (segment
+223) opens a door for a player with MISC 14 and does not take it; trigger
+45 says "This door opens only to those who hold the holy Ankh, the key of
+life! Find the pyramid of life!" **G**: the six decoys are intended: the
+fix keeps the one Ankh behind the Ruby Key door. The port does the same.
+
+So the player meets Straum in mission 2,
 and can bring the Ankh from mission 7 on (HUB2 leads to MULHOR1); mission
 11 is the last one (label 800 after it).
 
@@ -196,8 +229,11 @@ set, a talk starts only when `rand() % 20 + 1` is not above the charisma;
 else Straum says a line of label 0x3E9. A player with low charisma must
 talk several times.
 
-The port: the seven objects are placed and each can be taken (test
-`mulhor1_ankh`: object 33). Test `bones_straum_ankh`: label 700 takes the
+The port: the seven objects are placed, and the level fixes give the six
+the flag `OF_DTU_NOHIT` (`fix_nohit`, dtuobj.c). Test `mulhor1_ankh`: the
+player takes object 33. Test `mulhor1_ankh_flagged`: the six have flag 0x40,
+the player walks into object 91 and does not take it (the build of the port
+without the flag takes it). Test `bones_straum_ankh`: label 700 takes the
 Ankh, reply 5 gives 8000 gold, 600 experience, Straum carries the Ankh and
 leaves.
 

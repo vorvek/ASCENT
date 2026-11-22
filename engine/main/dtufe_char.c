@@ -1209,6 +1209,9 @@ static void make_player(void)
 	dtu_display_inventory_reset();			// 0x8BC69
 
 	dtu_char_update();
+	// 0x8BFFE: the slots of the new character are full (0x3551B)
+	dtu_spell_compute_slots();
+	dtu_spell_fill_slots();
 
 	// The archive of the player model: race, sex, first class (the names
 	// HMC.EGG, EFT.EGG ... of the game data).

@@ -834,7 +834,9 @@ the objects.md convention (base 0x1B5676) unless it says "record offset".
     level 3: 1 (17, 18), 2 (19); level 4: 1 (18, 19). Asserts "PA.wisdom > 0",
     "PA.wisdom <= 19". Slots left are cut to the new maximum.
   - 0x3551B restores all slots left = maximum. Callers: the rest action 0x360D5
-    (via 0x36049), level start 0x4225A (0x42284), level up 0x8BEBC (0x8BFFE).
+    (via 0x36049), the game start after Waterdeep 0x42284 (only with the flag
+    0x141C38 and level 1 or below), the new character 0x8BEBC (0x8BFFE). Not a
+    level change, a load or a new class level: spells.md section 13.
 - Rest: button R (main screen) action 0x360D5: 0x3E137(segment of the player)
   tests whether the segment is a rest stop (the Descent fuel center code,
   fuelcen.c). No: "You can not rest here". Yes: "You feel refreshed" (HUD, or a

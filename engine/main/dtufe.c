@@ -44,6 +44,7 @@
 #include "dtumusic.h"
 #include "dtuobj.h"
 #include "dtuchar.h"
+#include "dtuspell.h"		// ASCENT: the slots at the game start (0x141C38)
 #include "dtusoak.h"
 #include "object.h"
 #include "player.h"
@@ -2443,6 +2444,13 @@ int fe_load_game(int in_game)
 		}
 		if (b)
 			free(b);
+		// ASCENT: the test command load=SLOT logs the error: with -hidden
+		// the box would wait for a key that never comes.
+		if (Fe_test_load) {
+			dtu_log("Front end: cannot load slot %d: %s\n", choice, fe_text(msg));
+			dtu_char_log("test: cannot load slot %d: %s\n", choice, fe_text(msg));
+			return 0;
+		}
 		if (in_game)
 			nm_messagebox(NULL, 1, fe_text(34), fe_text(msg));
 		else
@@ -2450,6 +2458,7 @@ int fe_load_game(int in_game)
 		return 0;
 	}
 	sg_forget();
+	dtu_spell_fill_at_start(0);		// 0xBBA8A: no fill at the start of the loaded game
 	Loaded_sg = b;
 	Loaded_sg_size = size;
 	between = get_u32(b + SG_BETWEEN) != 0;
@@ -2714,6 +2723,21 @@ static grs_font *load_font(char *name)
 	return gr_init_font(path);
 }
 
+// ASCENT: at the exit, the three fonts of the front end and the file of
+// the last load
+static void fe_free(void)
+{
+	grs_font **f[3] = { &Fe_font_l, &Fe_font_m, &Fe_font_s };
+	int i;
+
+	for (i = 0; i < 3; i++) {
+		if (*f[i] && *f[i] != GAME_FONT)
+			gr_close_font(*f[i]);
+		*f[i] = NULL;
+	}
+	sg_forget();
+}
+
 static void fe_enter(void)
 {
 	if (!Fe_ready) {
@@ -2724,6 +2748,7 @@ static void fe_enter(void)
 		Fe_font_l = load_font("FNTEMFL_.FNT");		// 0x13E388
 		Fe_font_m = load_font("FNTEMFM_.FNT");		// 0x13E380
 		Fe_font_s = load_font("FNTEMFS_.FNT");		// 0x13E384
+		atexit(fe_free);
 	}
 	// The bitmaps and the sounds of the front end are in the archive of
 	// the Yawning Portal (PORTAL.EGG, named by YPINN.BIN). The executable
@@ -2837,6 +2862,8 @@ int dtufe_run(void)
 			fe_leave();
 			Fe_in_game = 1;
 			Fe_loading_from = 1;		// 0xB8A09: 0x13E324 = 1
+			// 0x8C279: Waterdeep is left, the game start fills the slots
+			dtu_spell_fill_at_start(1);
 			return level ? level : 1;
 			}
 		case FE_GO_LEVEL:
@@ -2888,6 +2915,9 @@ void dtufe_direct_start(void)
 		Script_in_game = 1;
 	dtustate_new_game();
 	sg_forget();
+	// ASCENT: a direct start with -char goes on with the slots of the save,
+	// one without -char has a new character: full slots (0x8BFFE)
+	dtu_spell_fill_at_start(FindArg("-char") ? 0 : 2);
 }
 
 // 0x4225A: game() shows its ESC menu when the game loop ended with another

@@ -243,7 +243,7 @@ fix	Next_laser_fire_time;			//	Time at which player can next fire his selected l
 fix	Next_missile_fire_time;			//	Time at which player can next fire his selected missile.
 //--unused-- fix	Laser_delay_time = F1_0/6;		//	Delay between laser fires.
 
-#define DEFAULT_DIFFICULTY		1
+#define DEFAULT_DIFFICULTY		2	// ASCENT: the game has no difficulty menu and plays at 2 (0x5851A)
 
 int	Difficulty_level=DEFAULT_DIFFICULTY;	//	Difficulty level in 0..NDL-1, 0 = easiest, NDL-1 = hardest
 int	Detail_level=NUM_DETAIL_LEVELS-2;		//	Detail level in 0..NUM_DETAIL_LEVELS-1, 0 = boringest, NUM_DETAIL_LEVELS = coolest

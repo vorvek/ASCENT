@@ -7,7 +7,8 @@ docs/audit/items.md).
 Always: the two tables of dtuitemfix.c are read, and each corrected item
 name must have a translation in engine/lang/es_port.catalog (an entry
 tbl.fix.* with the same English text, a gender and a plural), so that the
-Spanish text shows the corrected name.
+Spanish text shows the corrected name. The names that the table fixup of
+1.3 gives (the T_NAME rows of engine/main/dtutblfix.c) need the same entry.
 
 --game GAME_DIR (the installed game of version 1.3, with YPINN.BIN): each
 row of the tables is compared with the item lines of YPINN.BIN. The line of
@@ -57,6 +58,14 @@ def read_tables(path=None):
                 names.append(dict(kind=m.group(1), id=int(m.group(2)), name13=m.group(3), name=m.group(4),
                                   why=m.group(5)))
     return names, rules
+
+
+def read_fixup_names(path=None):
+    """The names that the table fixup of 1.3 gives (the T_NAME rows of
+    dtutblfix.c): they need a translation as the corrected names do."""
+    path = path or os.path.join(ROOT, "engine", "main", "dtutblfix.c")
+    with open(path, encoding="latin-1") as f:
+        return [dict(name=m.group(1)) for m in re.finditer(r'\{\s*T_NAME,\s*[MAWS],\s*\d+,\s*-?\d+,\s*"[^"]*",\s*"([^"]*)"\s*\}', f.read())]
 
 
 def read_catalog(path):
@@ -160,6 +169,11 @@ def main(argv=None):
         problems.append("dtuitemfix.c: the tables were not read (%d names, %d rules)" % (len(names), len(rules)))
     check_catalog(names, problems)
     print("dtuitemfix.c: %d name rows, %d rules; es_port.catalog checked" % (len(names), len(rules)))
+    fixup = read_fixup_names()
+    if len(fixup) < 3:
+        problems.append("dtutblfix.c: the names were not read (%d)" % len(fixup))
+    check_catalog(fixup, problems)
+    print("dtutblfix.c: %d names of the table fixup; es_port.catalog checked" % len(fixup))
     if args.game:
         path = os.path.join(args.game, "YPINN.BIN")
         if os.path.exists(path):

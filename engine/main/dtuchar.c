@@ -3255,6 +3255,9 @@ static void dump_character(void)
 		ConsoleObject ? ConsoleObject->dtu.m_88 : 0, Worn_bits, pa->hide_in_shadows, pa->move_silently, pa->open_locks,
 		pa->find_traps, pa->climb_walls, Potion.intel_end != 0, Potion.str_end != 0, Potion.dragon_end != 0,
 		Potion.dex_end != 0, Potion.luck_end != 0, dtu_script_gflag(0x4D));
+	// ASCENT: the level and the difficulty, for the tests of a save and a load
+	dtu_char_log("  dungeon level %d, difficulty %d, segment %d",
+		Current_level_num, Difficulty_level, ConsoleObject ? ConsoleObject->segnum : -1);
 	for (i = 0; i < Dtu_n_inventory; i++)
 		dtu_char_log("  entry %d: type %d id %d '%s' count %d%s%s", i, Dtu_inventory[i].type, Dtu_inventory[i].id,
 			Dtu_inventory[i].name, Dtu_inventory[i].count, Dtu_char.current.n == i ? " (in the hand)" : "",
@@ -3579,6 +3582,12 @@ static void run_command(char *cmd, char *value)
 			dtu_char_log("script: the level has no rest place");
 	}
 	else if (!strcmp(cmd, "fire"))		dtu_spell_fire();		// test: the spell, scroll or wand in the hand
+	else if (!strcmp(cmd, "slots"))		// ASCENT: test: the spell slots left and the maximum (tools/check_saveload.py)
+		dtu_char_log("spell slots: mage left %d %d %d max %d %d %d, cleric left %d %d %d max %d %d %d",
+			Dtu_spell_slots_left[0][0], Dtu_spell_slots_left[0][1], Dtu_spell_slots_left[0][2],
+			Dtu_spell_slots_max[0][0], Dtu_spell_slots_max[0][1], Dtu_spell_slots_max[0][2],
+			Dtu_spell_slots_left[1][0], Dtu_spell_slots_left[1][1], Dtu_spell_slots_left[1][2],
+			Dtu_spell_slots_max[1][0], Dtu_spell_slots_max[1][1], Dtu_spell_slots_max[1][2]);
 	// ASCENT: the commands of the quest tests (tools/questtest.py)
 	else if (!strcmp(cmd, "killscript")) {	// test: killscript=ID, each creature with script ID dies
 		int i;
@@ -3780,6 +3789,7 @@ void dtu_char_level_start(void)
 	sync_inventory();
 	spell_save_repair();
 	dtu_char_update();
+	dtu_spell_level_start();		// ASCENT: the slots left stay (dtuspell.c)
 	dtu_char_log("level start: '%s', %d of %d hit points", Dtu_char.name, Dtu_char.pa.hit_points, Dtu_char.pa.max_hit_points);
 }
 

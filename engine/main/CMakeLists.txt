@@ -109,6 +109,14 @@ if(Python3_Interpreter_FOUND)
   add_test(NAME check_tblfix
     COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/check_tblfix.py "${ASCENT_DATA_DIR}/YPINN.BIN"
       --exe $<TARGET_FILE:test_dtutblfix>)
+  # A save and a load of the port with a level change (tools/check_saveload.py).
+  # It needs the files of the CD too (the level BONES).
+  set(ASCENT_CD_DATA_DIR "${CMAKE_SOURCE_DIR}/gamedata/cd/DTU" CACHE PATH "Directory of the files of the CD (for tests)")
+  if(EXISTS "${ASCENT_DATA_DIR}" AND EXISTS "${ASCENT_CD_DATA_DIR}")
+    add_test(NAME check_saveload
+      COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/check_saveload.py --exe $<TARGET_FILE:ascent>
+        --game "${ASCENT_DATA_DIR}" --datadir "${ASCENT_CD_DATA_DIR}")
+  endif()
 endif()
 
 # Check of the data layer against the game data (see test_dtudata.c). It is
