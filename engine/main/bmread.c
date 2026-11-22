@@ -1605,6 +1605,7 @@ static char *Monster_flag_names[] = {
 	"undead", "humanoid", "flying", "no_scare", "no_sleep", "fire_immune",
 	"electricity_immune", "weapon_resistant", "extraplanar", "blind",
 	"light_sensitive", "dark_lover", "light_lover", "pass_thru", "noattack",
+	"magic_resistant", "fire_resistant",	// ASCENT: so that the creature setup can set them (lich, 0xAC7B2)
 	NULL };
 
 // Flag words of $MONSTER that have no bit in monster_info.flags. They stay

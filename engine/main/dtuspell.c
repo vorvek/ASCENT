@@ -282,6 +282,13 @@ static int monster_has(object *obj,char *flag)
 	return obj && obj->type == OBJ_ROBOT && obj->id < N_robot_types && bm_tbl_has_flag(Monster_info[obj->id].record,flag);
 }
 
+// ASCENT: a MONSTER_F_ bit, which the creature setup by name (0xAC7B2) can
+// also set (magic_resistant of the lich)
+static int monster_flag(object *obj,int bit)
+{
+	return obj && obj->type == OBJ_ROBOT && obj->id < N_robot_types && (Monster_info[obj->id].flags & bit);
+}
+
 // A number of the $MONSTER line of a creature. (The key of the cleric
 // level, Robot_info+0xE3, is a guess.)
 static int monster_int(object *obj,char *key,int def)
@@ -898,7 +905,7 @@ int dtu_spell_save(object *obj,int cat)
 	else if (obj->type == OBJ_ROBOT) {
 		level = creature_level(obj);
 		need = save_number(creature_cleric_level(obj) > 0 ? DTU_CLASS_CLERIC : DTU_CLASS_FIGHTER,level,cat);
-		if (monster_has(obj,"magic_resistant"))
+		if (monster_flag(obj,MONSTER_F_MAGIC_RESISTANT))
 			need -= (level > 12 ? 12 : level) / 3;
 	}
 	else if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types) {
@@ -2753,7 +2760,7 @@ static int robot98_flags(object *obj)
 	if (mf & MONSTER_F_ELECTRICITY_IMMUNE) r |= 0x2;
 	if (mf & MONSTER_F_EXTRAPLANAR) r |= 0x4;
 	if (mf & MONSTER_F_FIRE_IMMUNE) r |= 0x8;
-	if (monster_has(obj,"fire_resistant")) r |= 0x10;
+	if (monster_flag(obj,MONSTER_F_FIRE_RESISTANT)) r |= 0x10;
 	if (mf & MONSTER_F_FLYING) r |= 0x20;
 	if (mf & MONSTER_F_HUMANOID) r |= 0x40;
 	if (mf & MONSTER_F_LIGHT_SENSITIVE) r |= 0x100;
@@ -2929,7 +2936,7 @@ static int cspell_weight(object *obj,int e,fix dist)
 		case 16: case 17:
 			if (!creature_safe(obj))
 				return -1;
-			if ((cw & (DTU_FX_PROT_FIRE|DTU_FX_RESIST_FIRE)) || (mf & MONSTER_F_FIRE_IMMUNE) || monster_has(obj,"fire_resistant") ||
+			if ((cw & (DTU_FX_PROT_FIRE|DTU_FX_RESIST_FIRE)) || (mf & MONSTER_F_FIRE_IMMUNE) || monster_flag(obj,MONSTER_F_FIRE_RESISTANT) ||
 				 D > spell_int(s,"radius",0))
 				return 25 + rand_mod(26);
 			return -1;

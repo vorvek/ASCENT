@@ -122,6 +122,9 @@ int Dtu_fix_drow5_shields = 1;
 // clears it.
 int Dtu_fix_partial_stack = 1;
 int Dtu_inventory_left = 0;
+// A dead creature that regenerates gets up again (dtuobj.h). The options
+// -origobj and -origrevive clear it.
+int Dtu_fix_revive = 1;
 
 // The weapon of the spellcaster of KOBOLDS also with a saved state, the hit
 // points of scenery at a restore, the texture of the spinning scenery of
@@ -179,7 +182,7 @@ typedef struct monster_ext {
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
-	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), read by no code of the port (audit C16)
+	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), cast by the damage function (0x2A637)
 } monster_ext;
 
 static monster_ext Monster_ext[MAX_ROBOT_TYPES];
@@ -212,6 +215,8 @@ typedef struct dtu_ai_local {
 	fix		anim_start;				// +0x24
 	int		morale;					// +0x28
 	fix		regen_time;				// object +0x8C
+	fix		regen_hp;				// Dtu_fix_revive: the hit points that a corpse has regenerated
+	ubyte		gold_done;				// Dtu_fix_revive: the corpse has left its gold
 	// values of the corrected rules
 	fix		idle_acc;
 	int		idle_ticks;
@@ -343,6 +348,7 @@ static int player_type_sound(char *key);
 static void blood(object *obj);
 static void setup_creature(object *obj);
 static void morale_check(object *obj);
+static int N_aware_events;		// the awareness events of the frame (0x13A6BC)
 static void player_dies(object *player,object *attacker);
 static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 static void log_corpse_height(object *obj,const char *what);
@@ -1111,7 +1117,9 @@ void dtu_objects_init(void)
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
-			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = 0;
+			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive = 0;
+	if (FindArg("-origrevive"))
+		Dtu_fix_revive = 0;
 	if (FindArg("-origdrow5"))
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))
@@ -1324,7 +1332,7 @@ static void setup_creature(object *obj)
 static int Level_setup_restore = 0;		// 1 while dtustate.c restores a level
 
 // The flag word +0x98 of the monster table as MONSTER_F_ bits (ai.md, "flag
-// words"). fire_resistant, infravision and magic_resistant have no bit.
+// words"). infravision has no bit.
 static int monster_flags_from_table(int w)
 {
 	int f = 0;
@@ -1333,6 +1341,8 @@ static int monster_flags_from_table(int w)
 	if (w & 0x0002) f |= MONSTER_F_ELECTRICITY_IMMUNE;
 	if (w & 0x0004) f |= MONSTER_F_EXTRAPLANAR;
 	if (w & 0x0008) f |= MONSTER_F_FIRE_IMMUNE;
+	if (w & 0x0010) f |= MONSTER_F_FIRE_RESISTANT;		// ASCENT
+	if (w & 0x0400) f |= MONSTER_F_MAGIC_RESISTANT;		// ASCENT: the lich (0x7042)
 	if (w & 0x0020) f |= MONSTER_F_FLYING;
 	if (w & 0x0040) f |= MONSTER_F_HUMANOID;
 	if (w & 0x0300) f |= MONSTER_F_LIGHT_SENSITIVE;
@@ -1827,7 +1837,7 @@ static void creature_setup_by_name(object *obj, int objects)
 		me->n_damage_dice = 2;
 		strcat(what," spectatr");
 	} else if (setup_name(name,"hatchlng",32)) {
-		// 0x18: fire_immune and fire_resistant (no bit in the port; fire_immune is tested first)
+		// 0x18: fire_immune and fire_resistant (fire_immune is tested first)
 		mi->flags |= monster_flags_from_table(0x18);
 		ri->score_value = 7000;
 		strcat(what," hatchlng");
@@ -1992,6 +2002,7 @@ void dtu_objects_level_setup(void)
 		return;
 
 	Dtu_clock = 0;
+	N_aware_events = 0;
 	Ref_tick_count = Ref_ticks_now = 0;
 	Ref_tick_acc = 0;
 	memset(Model_reach,0,sizeof(Model_reach));
@@ -2472,7 +2483,7 @@ static int fire_part(object *target,int fire)
 
 		if (mi->flags & MONSTER_F_FIRE_IMMUNE)
 			fire = 0;
-		else if (bm_tbl_has_flag(mi->record,"fire_resistant"))
+		else if (mi->flags & MONSTER_F_FIRE_RESISTANT)
 			fire /= 2;
 	}
 	if (target->dtu.m_88 & DTU_FX_RESIST_FIRE)
@@ -3074,7 +3085,8 @@ static void creature_is_corpse(object *obj)
 	// 0x6A639: a HUMANOID leaves gold in 4 of 10 cases (clock % 10 >= 6,
 	// here a random number): 1 to moola / 4 pieces, a misc object with
 	// the id 1 and the amount as its hit points.
-	if ((mi->flags & MONSTER_F_HUMANOID) && (mi->moola >> 2) > 0) {
+	// Dtu_fix_revive: one time only for a creature that gets up again
+	if ((mi->flags & MONSTER_F_HUMANOID) && (mi->moola >> 2) > 0 && !Ail[obj-Objects].gold_done) {
 		int r = Dtu_fix_ai_ticks ? (rand() % 10) : (int)((uint)Dtu_clock % 10);
 
 		if (r >= 6) {
@@ -3088,6 +3100,9 @@ static void creature_is_corpse(object *obj)
 		}
 	}
 
+	// 0x6A45A: the alert function 0x160AB(body, 4)
+	dtu_creature_alert(obj,4);
+
 	// MONSTER_F_EXTRAPLANAR: the body is not drawn (0x6A5A0)
 	if (mi->flags & MONSTER_F_EXTRAPLANAR)
 		obj->render_type = RT_NONE;
@@ -3096,6 +3111,9 @@ static void creature_is_corpse(object *obj)
 	obj->flags |= OF_DESTROYED;
 	obj->control_type = CT_NONE;
 	obj->movement_type = MT_NONE;
+	Ail[obj-Objects].gold_done = 1;
+	Ail[obj-Objects].regen_hp = 0;
+	Ail[obj-Objects].regen_time = GameTime;
 	dtu_obj_log("obj %d %s: is a corpse",(int)(obj-Objects),dtu_object_name(obj));
 	if (Obj_log)
 		log_corpse_height(obj,"corpse");
@@ -3131,7 +3149,17 @@ static void creature_dies(object *obj,object *attacker)
 	ail->mode = DAIM_STILL;
 	ail->activity = 2;
 	ail->path_len = 0;
-	obj->dtu.m_88 = 0;
+	// 0x2A1D0, 0x916D9: all effects end. This clears the regeneration bit
+	// too, so the code of do_ai_frame that lets a dead creature get up
+	// (0x1440C) never runs for a creature that was killed, and the kill gave
+	// no experience (the test above). Dtu_fix_revive: the bit stays unless
+	// fire or acid took it, and the corpse regenerates (corpse_regen_frame).
+	if (Dtu_fix_revive && Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000)) {
+		obj->dtu.m_88 = 0x01000000;
+		dtu_obj_log("obj %d %s: keeps its regeneration (Dtu_fix_revive)",(int)(obj-Objects),dtu_object_name(obj));
+	}
+	else
+		obj->dtu.m_88 = 0;
 	obj->shields = 0;
 	vm_vec_zero(&obj->mtype.phys_info.velocity);
 
@@ -3243,7 +3271,7 @@ int dtu_spell_damage_roll_count(int spell, object *target, int level, int group,
 			elec = 0;
 		if (mi->flags & MONSTER_F_FIRE_IMMUNE)
 			fire = 0;
-		else if (bm_tbl_has_flag(mi->record,"fire_resistant"))
+		else if (mi->flags & MONSTER_F_FIRE_RESISTANT)
 			fire /= 2;
 	}
 	if (target->dtu.m_88 & (1 << 10))			// Resist Fire
@@ -3527,6 +3555,19 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 	dtu_obj_log("damage: the player takes %d from %s%s%s, hp %d",f2i(damage),
 		attacker ? dtu_object_name(attacker) : "nothing",weapon >= 0 ? ", weapon " : "",
 		weapon >= 0 ? Weapon_item_info[weapon].name : "",f2i(hp));
+
+	// 0x2A637: the touch spell of the type of the attacker (+0x7C, set only
+	// by the creature setup 0xAC7B2: 22, Hold Person, for the lich). The
+	// damage function casts it on the player after each attack that did
+	// damage, before the death test (0x2A680). 0x8CFFF(spell, player,
+	// creature): the save and the duration are the ones of the spell. The
+	// executable sets the counter Spell_info+0x49 of 22 and 52 to 1 first, so
+	// that the cast is not refused. Spell damage does not come here (0x911AA).
+	if (weapon != DTU_DIRECT && attacker && attacker != player && attacker->type == OBJ_ROBOT &&
+		 attacker->id < N_robot_types && Monster_ext[attacker->id].touch_spell >= 0) {
+		dtu_obj_log("attack: the touch of %s casts spell %d on the player",dtu_object_name(attacker),Monster_ext[attacker->id].touch_spell);
+		dtu_spell_cast_on(Monster_ext[attacker->id].touch_spell,player,attacker);
+	}
 
 	if (hp < F1_0)
 		player_dies(player,attacker);
@@ -3973,6 +4014,9 @@ static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,
 	if (obj->render_type == RT_POLYOBJ) {
 		sound_at(wi->wall_hit_sound,segnum,point,F1_0/2);
 		vclip_at(segnum,point,obj->size*2,wi->wall_hit_vclip);
+		// 0x26F73, 0x2653C: the alert function 0x160AB(missile, 2) after the
+		// sound of the wall or of the scenery
+		dtu_creature_alert(obj,2);
 	}
 	dtu_obj_log("missile: obj %d hits a wall at %.1f %.1f %.1f",(int)(obj-Objects),f2fl(point->x),f2fl(point->y),f2fl(point->z));
 	missile_remove(obj);
@@ -4033,8 +4077,12 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		}
 	}
 	else if (other->type == OBJ_ROBOT) {
+		// 0x274B7: a missile of the player calls the alert function
+		// 0x160AB(creature, 3) before the activity
+		if (parent && parent == ConsoleObject)
+			dtu_creature_alert(other,3);
 		Ail[other-Objects].activity = 2;
-		dealt = (m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
+		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);
@@ -4256,7 +4304,19 @@ static void creature_cast(object *obj,int spell,vms_vector *dir,vms_vector *fire
 static void melee_hit(object *target,object *attacker);
 
 // 0x11B06 ai_fire. "AI: critter fires."
+static void ai_fire_body(object *obj,fix dist);
+
 static void ai_fire(object *obj,fix dist)
+{
+	if (!Dtu_creatures_attack || !is_hostile(obj) || Robot_info[obj->id].attack_type == 1)
+		return;
+	ai_fire_body(obj,dist);
+	// ASCENT: 0x11EB7, the end of ai_fire calls the alert function
+	// 0x160AB(creature, 1)
+	dtu_creature_alert(obj,1);
+}
+
+static void ai_fire_body(object *obj,fix dist)
 {
 	int objnum = obj-Objects;
 	robot_info *ri = &Robot_info[obj->id];
@@ -6375,7 +6435,9 @@ void dtu_do_ai_frame(object *obj)
 				aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
 			}
 			dtu_obj_log("obj %d %s: sees the player",objnum,dtu_object_name(obj));
-			// 0x13F09 and the alert 0x160AB: the conditions of the spells
+			// 0x13EFF: the alert 0x160AB(creature, 1); 0x13F09 and the
+			// alert: the conditions of the spells
+			dtu_creature_alert(obj,1);
 			dtu_spell_creature_event(obj,DTU_CSC_WAKE|DTU_CSC_ALERT);
 			// 0x13E25: the see sound, volume str * 0x1000
 			sound_at(ri->see_sound,obj->segnum,&obj->pos,mi->str * 0x1000);
@@ -6522,14 +6584,10 @@ void dtu_do_ai_frame(object *obj)
 	if (visible)
 		ail->time_player_seen = GameTime;
 
-	// The awareness of a creature goes up by the awareness events of the
-	// executable (0x16055, 0x16366: noise of the player), which are not in
-	// the port. In their place a hostile creature that sees the player has
-	// the awareness 1 at least. (guess)
-	if (visible && is_hostile(obj) && ail->awareness < 1) {
-		ail->awareness = 1;
-		ail->awareness_time = i2f(3);
-	}
+	// The awareness of a creature goes up by the awareness events
+	// (awareness_events_frame, 0x16366). An earlier guess of the port in
+	// their place (a hostile creature that sees the player has the
+	// awareness 1 at least) is gone.
 
 	// 0x14AF2: the door opener, for each creature with the door bit. It
 	// only sends the creature to a door. The door opens when the creature
@@ -6805,12 +6863,149 @@ void dtu_script_make_hostile(object *obj)
 	set_anim(obj,DAS_RUN);
 	ail->awareness = 4;
 	ail->target = 0;
+	dtu_creature_alert(obj,4);		// 0xA94A1
 	morale_check(obj);
 }
+
+static void creature_wake(object *obj, int make_hostile, int sound);
 
 // 0xA6505 (not read in full): makes a creature active, as the wake up of
 // do_ai_frame does (0x13D80).
 void dtu_creature_wake(object *obj, int make_hostile)
+{
+	creature_wake(obj,make_hostile,1);
+}
+
+// ASCENT: the group part of the alert function 0x160AB (ai.md, "Alert
+// function"). Levels 3 to 5 only: the executable calls it with 3 when the
+// player hits a creature in melee (0x27B3F, caller the player), when a
+// missile of the player hits a creature (0x274B7, caller the creature) and
+// when the player runs into a hostile creature (0x2707A, 0x9E70D, caller the
+// creature); with 4 when a body becomes a corpse (0x6A45A), when a script
+// makes a creature hostile (0xA94A1) and when a creature gets up again
+// (0x14602); with 5 at a rest place (0x3E2C1, caller the player) and for
+// the script statement 3/0xC5 (0xAB080). Each other creature (index 1 to
+// Highest_object_index - 1) that is not active, not peaceful and not
+// fleeing, whose segment sees the segment of the caller (the brain bit,
+// 0x9810D) and that has a free ray to the player (0x10815) turns to the
+// caller, becomes hostile and wakes (0xA6505). A deaf creature (effect bit
+// 4) must face the caller. The test 0x161BC (rand() % distance <= iq * 1.0)
+// always passes, since rand() is at most 0x7FFF. The see sound plays for
+// every other creature: the executable takes the parity of a player field
+// (0x1D339F) plus the object index; the port takes the parity of the index.
+// Each level first adds an awareness event (0x16055, below). The agitation
+// (0x167174) and the bits of +0x15E are not in the port.
+//
+// ASCENT: the awareness events (0x16055, 0x16304, 0x162A1, 0x16366, ai.md
+// "Awareness events"). 0x16055 keeps up to 64 events (segment, position,
+// type = the level of the alert) for the frame. Each frame 0x16366 (called
+// by the game frame, 0x438AC) clears New_awareness of all segments, and for
+// each event 0x162A1(segment, type, 1) stores the type in the segment when
+// it is higher and, while the depth is 5 or less, calls itself for each
+// child of the 6 sides with depth + 1 and type 5 made 4. So the event
+// reaches the segments up to 5 steps away, through any wall. Then each AI
+// object with the hostile bit whose awareness is below New_awareness of its
+// segment gets that awareness, the awareness time 3.0 and the morale check.
+// The recursion has no visited set (up to 6^5 calls for one event); the port
+// gives the same values with a search by distance.
+#define AWARE_MAX_EVENTS	64
+static struct { short segnum; short type; } Aware_events[AWARE_MAX_EVENTS];
+
+static void awareness_event(object *obj, int type)
+{
+	// 0x15FBC (types 2 to 4, the believed position of a hidden player) is
+	// in cloak_seen() (dtu_creature_alert)
+	if (N_aware_events < AWARE_MAX_EVENTS && obj->segnum >= 0 && obj->segnum <= Highest_segment_index) {
+		Aware_events[N_aware_events].segnum = obj->segnum;
+		Aware_events[N_aware_events].type = type;
+		N_aware_events++;
+	}
+}
+
+static void awareness_events_frame(void)
+{
+	static ubyte new_aware[MAX_SEGMENTS], depth[MAX_SEGMENTS];
+	static short queue[MAX_SEGMENTS];
+	int e, i;
+
+	if (N_aware_events == 0)
+		return;
+	memset(new_aware,0,sizeof(new_aware));
+	for (e=0;e<N_aware_events;e++) {
+		int type = Aware_events[e].type, near = (type == 5) ? 4 : type, head = 0, tail = 0;
+
+		memset(depth,0xff,sizeof(depth));
+		queue[tail++] = Aware_events[e].segnum;
+		depth[Aware_events[e].segnum] = 1;
+		while (head < tail) {
+			int s = queue[head++], side, t = (depth[s] == 1) ? type : near;
+
+			if (new_aware[s] < t)
+				new_aware[s] = (ubyte) t;
+			if (depth[s] > 5)
+				continue;
+			for (side=0;side<MAX_SIDES_PER_SEGMENT;side++) {
+				int c = Segments[s].children[side];
+
+				if (c >= 0 && c <= Highest_segment_index && depth[c] == 0xff) {
+					depth[c] = depth[s] + 1;
+					queue[tail++] = c;
+				}
+			}
+		}
+	}
+	N_aware_events = 0;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *obj = &Objects[i];
+
+		if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI || obj->id >= N_robot_types || !(obj->dtu.m_1b0 & DTU_HOSTILE))
+			continue;
+		if (obj->segnum < 0 || obj->segnum > Highest_segment_index || Ail[i].awareness >= new_aware[obj->segnum])
+			continue;
+		dtu_obj_log("awareness: obj %d %s %d -> %d",i,dtu_object_name(obj),Ail[i].awareness,new_aware[obj->segnum]);
+		Ail[i].awareness = new_aware[obj->segnum];
+		Ail[i].awareness_time = i2f(3);
+		morale_check(obj);
+	}
+}
+
+void dtu_creature_alert(object *caller, int level)
+{
+	int i;
+
+	if (!Dtu_objects_enabled || caller == NULL || ConsoleObject == NULL)
+		return;
+	awareness_event(caller,level);
+	if (level < 3)
+		return;
+	for (i=1;i<Highest_object_index;i++) {
+		object *obj = &Objects[i];
+		vms_vector v;
+
+		if (obj == caller || obj->type != OBJ_ROBOT || obj->control_type != CT_AI || obj->id >= N_robot_types)
+			continue;
+		if (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED) || DTU_ANIM_STATE(obj) == DAS_DIE)
+			continue;
+		if (Ail[i].activity == 2 || (obj->dtu.m_1b0 & (DTU_PEACEFUL|DTU_FLEEING)))
+			continue;
+		if (!brain_bit(obj->segnum,caller->segnum) || !creature_ray_to_player(obj))
+			continue;
+		vm_vec_sub(&v,&caller->pos,&obj->pos);
+		if ((obj->dtu.m_88 & DTU_FX_DEAF) && vm_vec_dot(&v,&obj->orient.fvec) <= 0)
+			continue;
+		v.y = 0;
+		if (vm_vec_mag_quick(&v) > F1_0/16) {
+			vm_vec_normalize_quick(&v);
+			vm_vector_2_matrix(&obj->orient,&v,NULL,NULL);
+		}
+		obj->dtu.m_1b0 |= DTU_HOSTILE;
+		dtu_obj_log("alert: level %d from obj %d %s wakes obj %d %s",level,(int)(caller-Objects),dtu_object_name(caller),i,dtu_object_name(obj));
+		creature_wake(obj,0,i & 1);
+	}
+}
+
+static void creature_wake(object *obj, int make_hostile, int sound)
 {
 	dtu_ai_local *ail;
 	ai_static *aip;
@@ -6832,7 +7027,8 @@ void dtu_creature_wake(object *obj, int make_hostile)
 	set_anim(obj,DAS_STAND);
 	ail->anim_start = ail->time_player_seen = GameTime;
 	ail->awareness_time = i2f(3);
-	sound_at(Robot_info[obj->id].see_sound,obj->segnum,&obj->pos,Monster_info[obj->id].str * 0x1000);
+	if (sound)
+		sound_at(Robot_info[obj->id].see_sound,obj->segnum,&obj->pos,Monster_info[obj->id].str * 0x1000);
 	if (is_hostile(obj)) {
 		ail->awareness = 4;
 		ail->mode = DAIM_CHASE_OB;
@@ -7829,6 +8025,9 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 					Ail[b-Objects].awareness = 3;
 					Ail[b-Objects].awareness_time = i2f(3);
 				}
+				// 0x2707A: the alert function 0x160AB(creature, 3)
+				if (is_hostile(b))
+					dtu_creature_alert(b,3);
 				break;
 			case OBJ_DRESSING:
 				// 0x9E5BE (pcons.c): the player pushes scenery when the
@@ -7960,6 +8159,90 @@ void dtu_test_place_player(void)
 	}
 }
 
+// ASCENT: Dtu_fix_revive. Step 10 of do_ai_frame (0x1440C to 0x14655) for
+// the corpse of a creature with "regeneration" that kept its status bit
+// 0x01000000: one hit point each "regeneration" seconds, and with all hit
+// points, the player farther away than the sum of both body radii, the
+// creature gets up: CURRENT_STATE REST, GOAL_STATE SRCH, animation REST
+// with the backward flag, activity 0, the effect Sleep cleared, hostile,
+// not fleeing, awareness 4, the morale check, the alert of level 4, and it
+// turns to the player. The executable runs this in do_ai_frame, which does
+// not return early for a dead creature with regeneration (0x13C96). There
+// the hit points go into the object (+0x6C); the port keeps them apart
+// until the creature is up, so that a corpse has no hit points.
+static void corpse_regen_frame(void)
+{
+	int i;
+
+	if (!Dtu_fix_revive)
+		return;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *obj = &Objects[i];
+		dtu_ai_local *ail = &Ail[i];
+		ai_static *aip = &obj->ctype.ai_info;
+		fix r1, h1, r2, h2;
+		vms_vector v;
+		int regen, max;
+
+		if (obj->type != OBJ_ROBOT || !(obj->flags & OF_DESTROYED) || (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD)))
+			continue;
+		if (obj->id >= N_robot_types || !(obj->dtu.m_88 & 0x01000000) || aip->CURRENT_STATE != DAIS_DEAD || DTU_ANIM_STATE(obj) != DAS_DIE)
+			continue;
+		regen = Monster_ext[obj->id].regeneration;
+		max = Monster_info[obj->id].max_hit_points;
+		if (regen <= 0 || max <= 0)
+			continue;
+
+		if (GameTime < ail->regen_time)
+			ail->regen_time = GameTime;
+		if (GameTime - ail->regen_time < i2f(regen))
+			continue;
+		ail->regen_time = GameTime;
+		if (ail->regen_hp < i2f(max)) {
+			ail->regen_hp += F1_0;
+			if (f2i(ail->regen_hp) % 10 == 0 || ail->regen_hp >= i2f(max))
+				dtu_obj_log("obj %d %s: the corpse regenerates, hp %d of %d",i,dtu_object_name(obj),f2i(ail->regen_hp),max);
+		}
+		if (ail->regen_hp < i2f(max) || ConsoleObject == NULL)
+			continue;
+
+		// 0x1449C: not while the player stands on the body
+		dtu_get_body_size(obj,&r1,&h1);
+		dtu_get_body_size(ConsoleObject,&r2,&h2);
+		if (vm_vec_dist_quick(&obj->pos,&ConsoleObject->pos) <= r1 + r2)
+			continue;
+
+		obj->flags &= ~OF_DESTROYED;
+		obj->control_type = CT_AI;
+		obj->movement_type = MT_PHYSICS;
+		obj->shields = i2f(max);
+		ail->regen_hp = 0;
+		ail->flags |= AILF_BACKWARD;
+		ail->anim_start = GameTime + FrameTime;
+		aip->CURRENT_STATE = DAIS_REST;
+		aip->GOAL_STATE = DAIS_SRCH;
+		DTU_ANIM_GOAL(obj) = DAS_REST;
+		set_anim(obj,DAS_REST);
+		ail->activity = 0;
+		obj->dtu.m_88 &= ~DTU_FX_SLEEP;
+		obj->dtu.m_1b0 = (obj->dtu.m_1b0 | DTU_HOSTILE) & ~DTU_FLEEING;
+		ail->awareness = 4;
+		dtu_obj_log("obj %d %s: gets up again with %d hit points (Dtu_fix_revive)",i,dtu_object_name(obj),max);
+		morale_check(obj);
+		dtu_creature_alert(obj,4);		// 0x14602: the alert of level 4
+		dtu_spell_creature_event(obj,DTU_CSC_ALERT);
+		// 0x1463C: it faces the player
+		vm_vec_sub(&v,&ConsoleObject->pos,&obj->pos);
+		v.y = 0;
+		if (vm_vec_mag_quick(&v) > F1_0/16) {
+			vm_vec_normalize_quick(&v);
+			vm_vector_2_matrix(&obj->orient,&v,NULL,NULL);
+		}
+		log_creature_state(obj,"revive");
+	}
+}
+
 void dtu_objects_frame(void)
 {
 	if (!Dtu_objects_enabled)
@@ -7983,6 +8266,8 @@ void dtu_objects_frame(void)
 	dtu_player_check_death(NULL);
 	missiles_frame();
 	dressing_move_frame();
+	corpse_regen_frame();
+	awareness_events_frame();		// 0x16366 of the game frame (0x438AC)
 
 	// The option -testkill N (test): each N frames the active creature that
 	// is nearest to the player dies, for the test of the corpses.

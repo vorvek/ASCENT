@@ -2113,9 +2113,10 @@ int dtu_char_rest(void)
 		}
 	}
 	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
+	dtu_creature_alert(player, 5);	// ASCENT: 0x3E2C1, the alert function 0x160AB
 	dtu_spell_rest_shuffle();		// 0x3E1F6 calls 0x92FF2
-	// The executable also calls 0x160AB(player, 5) (the alert function)
-	// and 0x4D95D(player) (not read). These are not in the port.
+	// The executable also calls 0x4D95D(player) (not read). This is not in
+	// the port.
 	return 1;
 }
 
@@ -2950,7 +2951,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
 // spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
 // str=STRENGTH.PERCENT,
-// attackedby=OBJNUM,
+// attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
 // priestcheck (the checks of the priest spells, dtu_spell_priest_check),
@@ -2991,6 +2992,10 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "attackedby")) {	// attackedby=OBJNUM: a melee attack of a creature on the player (test)
 		if (a >= 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
 			dtu_damage_player(ConsoleObject, &Objects[a], 0);
+	}
+	else if (!strcmp(cmd, "kill")) {		// ASCENT: kill=OBJNUM: the player kills a creature (test)
+		if (a >= 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
+			dtu_damage_creature_direct(&Objects[a], ConsoleObject, i2f(10000));
 	}
 	else if (!strcmp(cmd, "heal"))		dtu_char_heal(a);
 	else if (!strcmp(cmd, "use"))			dtu_char_use(index);

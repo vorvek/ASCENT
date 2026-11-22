@@ -367,6 +367,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 	if (weapon >= 0)
 		sound_on_object(weapon_int(weapon,"monster_hit_sound",-1),creature,F1_0/2);
 	sound_on_object(mi->hit_sound,creature,F1_0/2);
+	dtu_creature_alert(player,3);		// ASCENT: 0x27B3F, the alert function 0x160AB
 
 	// 0x29A9C: the to-hit roll (0x2A7F3). A sleeping creature is hit and
 	// wakes (0x2A839).

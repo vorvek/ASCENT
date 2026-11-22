@@ -429,6 +429,22 @@ sets it (dtucombat.c `player_hits_creature`); a missile that kills plays the
 weapon `monster_hit_sound` at 0.25 at the hit point (dtuobj.c). The die sound is
 not changed. See bugs.md, D10.
 
+### Damage function 0x29A9C for the player target: touch spell and alerts (verified, 2026-11-22)
+
+- 0x2A637 to 0x2A67B: when the damage of the attack is not 0 (after the
+  hit text and the screen flash), a creature type with `Robot_info+0x7C` >=
+  0 casts that spell on the player: `spell_apply_effect` 0x8CFFF(spell,
+  player, creature). For spell 22 and 52 the code first sets the byte
+  `Spell_info+0x49` (0x1B56BF + 127 * spell) to 1. Then the death test of
+  the player (0x2A680). Only the creature setup sets +0x7C (22, Hold Person,
+  for the lich and the CLAN3 type 10), so only the lich has a touch. The
+  port: `damage_player_w` (dtuobj.c); the save and the duration are those of
+  the spell (`dtu_spell_cast_on`).
+- The melee hit of the player (0x278B5) calls the alert function
+  0x160AB(player, 3) after the contact sounds (0x27B3F), and a missile of
+  the player calls 0x160AB(creature, 3) (0x274B7). See ai.md, "Alert
+  function". The port: `dtu_creature_alert`.
+
 ### Feedback of a miss and of a swing at nothing
 
 From the facts above (A3, A4, 0x278B5, 0x29A9C):

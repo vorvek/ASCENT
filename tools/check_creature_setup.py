@@ -18,6 +18,15 @@ Dtu_fix_guild_peace.
       [--hddir DIR] --library DLL --work DIR [--levels A,B] [--flag67] [--orig]
       [--software]
 
+With --abilities (no --library needed) the tool checks the creature
+abilities of docs/audit/monsters.md instead, with -chartest:
+  - the touch spell of the lich (0x2A637): attackedby=10 in CLAN3 casts
+    spell 22 (Hold Person) on the player;
+  - the revive (0x1440C, Dtu_fix_revive): kill=1 in MINE, the troll gets up
+    with all hit points; with -origrevive it stays dead;
+  - the group alert (0x160AB): goobj=13 in CLAN3, the player runs into the
+    ghast, which wakes the creatures that see its segment.
+
 The levels run hidden and muted, each with its own -userdir in --work.
 """
 import argparse
@@ -90,18 +99,68 @@ def run_level(args, level, work):
         return r.returncode, f.read().splitlines()
 
 
+def run_test(args, name, level, frames, script, extra=()):
+    """One run with -chartest; returns the lines of the object log."""
+    user = os.path.join(args.work, name)
+    os.makedirs(user, exist_ok=True)
+    objlog = os.path.join(user, "obj.txt")
+    if os.path.exists(objlog):
+        os.remove(objlog)
+    cmd = [os.path.abspath(args.exe)]
+    for d in args.datadir:
+        cmd += ["-datadir", d]
+    if args.hddir:
+        cmd += ["-hddir", args.hddir]
+    # the player gets its hit points back each 10 frames, so that it lives
+    heal = ",".join("%d:heal=100" % f for f in range(10, frames, 10))
+    cmd += ["-nomovies", "-mute", "-hidden", "-userdir", user, "-level", level, "-frames", str(frames),
+            "-objlog", objlog, "-chartest", heal + "," + script] + list(extra)
+    if args.software:
+        cmd += ["-software"]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=user)
+    assert r.returncode == 0, "%s: exit %d" % (name, r.returncode)
+    with open(objlog, encoding="latin1") as f:
+        return f.read().splitlines()
+
+
+def check_abilities(args):
+    lines = run_test(args, "touch", "CLAN3", 60, "5:attackedby=10,7:attackedby=10")
+    touch = [l for l in lines if "attack: the touch of Lich3 casts spell 22 on the player" in l]
+    held = [l for l in lines if "effect Hold Person on obj 0" in l]
+    assert touch and held, "touch spell: %d casts, %d holds" % (len(touch), len(held))
+    print("touch spell: %d casts of spell 22 by the lich, %d hold" % (len(touch), len(held)))
+
+    lines = run_test(args, "revive", "MINE", 4000, "5:kill=1")
+    up = [l for l in lines if "obj 1 Troll: gets up again with 54 hit points" in l]
+    assert up, "revive: the troll did not get up"
+    lines = run_test(args, "revive-orig", "MINE", 4000, "5:kill=1", ["-origrevive"])
+    assert not [l for l in lines if "gets up again" in l], "revive: the troll got up with -origrevive"
+    print("revive: the troll gets up (%s); with -origrevive it stays dead" % up[0].split()[0])
+
+    lines = run_test(args, "alert", "CLAN3", 30, "3:goobj=13")
+    woken = [l for l in lines if "alert: level 3 from obj 13 Ghast wakes" in l]
+    assert woken, "alert: nothing woken"
+    print("alert: the bump of the ghast wakes %d creatures" % len(woken))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--exe", required=True)
     p.add_argument("--datadir", action="append", required=True)
     p.add_argument("--hddir")
-    p.add_argument("--library", required=True)
+    p.add_argument("--library")
     p.add_argument("--work", required=True)
     p.add_argument("--levels")
     p.add_argument("--flag67", action="store_true")
     p.add_argument("--orig", action="store_true")
     p.add_argument("--software", action="store_true")
+    p.add_argument("--abilities", action="store_true")
     args = p.parse_args()
+
+    if args.abilities:
+        check_abilities(args)
+        return 0
+    assert args.library, "--library is needed for the creature setup check"
 
     lib = ctypes.CDLL(os.path.abspath(args.library))
     setup = lib.dtu_creature_setup_by_name
