@@ -367,10 +367,18 @@ SPELLS = {
              eff="1d4 damage per stone, 2d4 against undead."),
     35: dict(src="0x8EF49, 0xB0606", dur="5 minutes per level", save="None", target="You",
              eff="VESTMENT"),
-    36: dict(src="0x8EFE0, 0x56FF6", dur="Instant", save="Half", target="The creature the missile hits",
-             eff="4 acid damage per level. Acid stops regeneration.",
-             tech="#acid_damage_dice = 2 (L/3) + 2 dice of 0 sides (no acid_damage_dice key in any "
-                  "table) add 0; acid_damage_level 4. The missile lives (L/3 + 1) minutes."),
+    36: dict(src="0x8EFE0, 0x56FF6", dur="1 round + 1 per 3 levels", save="None", target="1 arrow",
+             eff="One acid arrow. It hits on an attack roll with the THAC0 of a fighter of your level "
+                 "against the armor class of the target (a natural 1 misses, a natural 20 hits). A hit "
+                 "does 2d4 acid damage at once and 2d4 more at the start of each of the next rounds: 1 "
+                 "round at levels 1-2, 2 rounds at levels 3-5, 3 at levels 6-8, and so on (a round is 1 "
+                 "minute). The acid stops when the target dies. Acid stops regeneration. The original "
+                 "1.3 game has no attack roll and does 4 acid damage per level in one hit, with a saving "
+                 "throw for half; ASCENT corrects this.",
+             tech="Dtu_fix_melf_acid (dtuspell.c melf_acid_hit, acid_frame). 1.3: #acid_damage_dice = "
+                  "2 (L/3) + 2 dice of 0 sides (no acid_damage_dice key in any table) add 0; "
+                  "acid_damage_level 4. The missile lives (L/3 + 1) minutes. The later rounds of acid "
+                  "are not in the level state and end at a save and load."),
     37: dict(src="0x8F021", dur="Instant", save="Half", target="1 meteor per level (at most 5)",
              eff="1d4 damage per meteor. Scenery that it hits can break."),
     38: dict(src="0x8F078, 0x56D6A", dur="1 minute per level", save="None", target="You",
@@ -515,6 +523,9 @@ FIXES = [
                                                "back from the item list to the spell lists."),
     ("Dtu_fix_stoneskin_word", "-origcombat", "Stone Skin keeps your other spell effects."),
     ("Dtu_fix_rary_manual", "-origcombat", "Rary's Mnemonic Enhancer follows the manual."),
+    ("Dtu_fix_melf_acid", "-origcombat", "Melf's Acid Arrows makes an attack roll and burns 2d4 a "
+                                         "round for 1 round + 1 per 3 levels, as in AD&D 2nd edition; "
+                                         "1.3 does 4 per level in one hit, save for half."),
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),
     ("Dtu_fix_potion_frame", "-origcombat", "The intelligence potion does not depend on the frame rate."),
     ("Dtu_fix_luck_coin", "-origcombat", "The Potion of Luck uses a coin flip, not the day clock."),
