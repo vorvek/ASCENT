@@ -2471,7 +2471,7 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 		ail->anim_start = GameTime + FrameTime;
 	}
 	if (attacker && attacker->type == OBJ_PLAYER) {
-		HUD_init_message("You hit %s for %d.",dtu_object_display_name(creature),f2i(damage));
+		HUD_init_message("You hit %s for %d damage.",dtu_object_display_name(creature),f2i(damage));		// 0x2A05F: TEX 831 with TEX 70
 		// A creature that is hit knows where the player is, and a creature
 		// that was not hostile is hostile now. (guess: the executable does
 		// this in the script code 0xA94AD and in the alert function)
@@ -2633,7 +2633,7 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		return 0;
 
 	if (attacker && attacker != player)
-		HUD_init_message("%s hits you for %d.",dtu_object_display_name(attacker),f2i(damage));
+		HUD_init_message("%s hit You for %d damage.",dtu_object_display_name(attacker),f2i(damage));		// 0x2A54E: TEX 831 with TEX 70
 	else
 		HUD_init_message("You took %d damage.",f2i(damage));
 
