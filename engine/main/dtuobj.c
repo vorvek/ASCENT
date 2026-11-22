@@ -7079,6 +7079,9 @@ void dtu_test_place_player(void)
 		a.h = (fixang) ((step % 4) * 0x4000);
 		vm_angles_2_matrix(&ConsoleObject->orient,&a);
 		vm_vec_zero(&ConsoleObject->mtype.phys_info.velocity);
+		// the jump from segment to segment is not a fall (the damage of a
+		// fall from the center of a high segment killed the player)
+		Dtu_player_state &= ~DTU_PS_FALLING;
 		dtu_trig_player_placed();
 		if (++step / 4 > Highest_segment_index)
 			printf("-testtour: %d segments visited\n", seg + 1);
