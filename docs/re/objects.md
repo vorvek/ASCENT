@@ -49,7 +49,7 @@ read order of `read_object` (0x47D90) and by use.
 | 0x0A | u8 | control_type | D1 |
 | 0x0B | u8 | movement_type | D1 |
 | 0x0C | u8 | render_type | D1 |
-| 0x0D | u8 | flags. 2 is "should be dead" (set on pickup). 0x40 is set for a creature whose table entry has `pass_thru` | Code 0x2846B, 0x6A102 |
+| 0x0D | u8 | flags. 2 is "should be dead" (set on pickup). 0x40: the object queries skip the object (0x3F38F), so no move, shot or use ray touches it, and it is still drawn; set for a creature whose table entry has `pass_thru` and by the level fixes (see "Level fixes (0xACCDB)") | Code 0x2846B, 0x6A102, 0x3F38F |
 | 0x0E | s16 | segnum | D1 |
 | 0x10 | s16 | file value (`attached_obj`, guess) | Code 0x47E09 |
 | 0x12 | s16 | set to -1 by the loader | Code 0x47E15 |
@@ -661,8 +661,39 @@ past the table: a word that is 0 in each run, recovered/level_fixes.md), so
 the hatchling starts with 0 hit points. `Dtu_fix_drow5_shields` (on;
 `-origobj` and `-origdrow5` clear it) gives it the 100 hit points of its type.
 
-Not in the port: object flag 0x40 and +0x1AE bit 2 (MULHOR1, FLAME; the
-meaning is not known), +0x144 bit 0 of YPINN object 41 (a piece of scenery),
+**Object flag 0x40** (verified, code). The object loop of `fvi_sub` skips an object with flag 2 or flag 0x40
+(0x3F380 to 0x3F392: `test dh,2`, `test dh,0x40`), before any shape test
+and for each query. The player move, the creature move, the shot flight
+and the use ray (0xB30FD) are queries, and a pick up is a hit of the player
+move (`collide_two_objects` 0x29455 with the hit object 0x30EF70). So the
+player walks through an object with the flag and cannot take or use it,
+creatures do not grab it and shots pass it. No draw code reads the flag:
+the object is drawn as before. For a creature the flag also stops the AI
+frame (0x13C8B, when `regeneration` is below 1) and the creature move
+(0x9F174). The list of the readers is in
+`DTU-Decomp/recovered/object_flag_40.md`.
+
+- MULHOR1: six of the seven Ankhs (MISC 14) get the flag. Object 33
+  (segment 585) is the only one that can be taken. No code chooses one at
+  random. docs/re/quests.md, section 6.
+- FLAME: the altar (object 2) and the Flamesword (object 3) get the flag.
+  The death of object 36 (Lolth) in level 0x20 calls 0x6A374 from
+  `remove_level_object` (0x6A579 to 0x6A59B): object 3 loses flag 0x40 and
+  +0x1AE bit 2, each creature gets control type 0, and 0xAC055(object 3, 0)
+  runs script 322, which ends the game.
+
+The port: `OF_DTU_NOHIT` (object.h). The object loop of
+`find_vector_intersection` and `dtu_body_query_test` (the use ray) skip an
+object with it that is not a creature. `fix_nohit` sets it in the level
+fixes, `flame_lolth_dead` (dtuobj.c, called at the corpse of object 36) is
+0x6A374. Tests `mulhor1_ankh`, `mulhor1_ankh_flagged`,
+`flame_sword_lolth_alive`, `flame_lolth_death`, `flame_ending`
+(tools/questtest.py).
+
+Not in the port: flag 0x40 of a creature (FLAME object 35, and 22 creature
+records of BONES, CLAN1, MINE and THIEF0 that have the flag in the level
+file; the AI and move tests above), +0x1AE bit 2 (MULHOR1, FLAME), +0x144
+bit 0 of YPINN object 41 (a piece of scenery),
 the texture of BANE objects 26 and 27 (the executable takes one of four
 texture numbers that the previous level start looked up: `lava02`, `lava`,
 `lavaflo`, `magma`, 0xAD744, so the value depends on the level before),
