@@ -1400,6 +1400,19 @@ static void fix_delete(int n, int type, int id)
 	}
 }
 
+// Object flag 0x40: the object queries skip the object (0x3F38F), so the
+// player cannot walk into it, take it or use it, and shots pass it. It is
+// still drawn. The flag on FLAME object 35 (a creature) is not in the port.
+static void fix_nohit(int n, int type)
+{
+	object *o = fix_obj(n,type,-1);
+
+	if (o) {
+		o->flags |= OF_DTU_NOHIT;
+		fix_log(n,"flag 0x40 (cannot be touched)");
+	}
+}
+
 static void fix_spin(object *o, fix rate)
 {
 	o->movement_type = MT_SPINNING;
@@ -1612,6 +1625,16 @@ static void level_fixes_objects(int has_state)
 		case 12:	// crypts (0xAD0AB)
 			fix_peaceful(74);
 			break;
+		case 13:	// mulhor1 (0xAD0C0): six of the seven Ankhs (misc 14)
+					// cannot be touched; object 33 (segment 585) is the one
+					// that the player can take
+			fix_nohit(91,OBJ_MISC);
+			fix_nohit(73,OBJ_MISC);
+			fix_nohit(1,OBJ_MISC);
+			fix_nohit(2,OBJ_MISC);
+			fix_nohit(34,OBJ_MISC);
+			fix_nohit(60,OBJ_MISC);
+			break;
 		case 16:	// myrkul (0xAD129): object 3 is held with no end
 			if ((o = fix_obj(3,OBJ_ROBOT,-1)) != NULL) {
 				o->dtu.m_88 |= DTU_FX_HOLD;
@@ -1680,10 +1703,14 @@ static void level_fixes_objects(int has_state)
 			}
 			break;
 		case 32:	// flame (0xAD3BB)
+			// the altar and the Flamesword cannot be touched until the
+			// death of Lolth (dtu_flame_lolth_dead)
+			fix_nohit(2,OBJ_DRESSING);
 			if ((o = fix_obj(3,OBJ_DRESSING,-1)) != NULL) {
 				fix_script(o,3,0x142);			// the Flamesword
 				o->control_type = CT_NONE;
 				fix_spin(o,0x147);
+				fix_nohit(3,OBJ_DRESSING);
 			}
 			if ((o = fix_obj(4,OBJ_MISC,-1)) != NULL)
 				fix_script(o,4,0x143);			// the statue puzzle
@@ -3062,6 +3089,25 @@ static int corpse_on_floor(object *obj)
 	return 1;
 }
 
+// ASCENT: 0x6A374, the death of Lolth in FLAME. Object 3 (the Flamesword)
+// loses the flag 0x40 of the level fixes and +0x1AE bit 2, each creature
+// gets control type 0 (it stops), and 0xAC055(object 3, 0) runs script 322
+// of the sword: "YOU HAVE DESTROYED LOLTH'S AVATAR", the move to segment
+// 482 and the end sequence. No use action is needed.
+static void flame_lolth_dead(void)
+{
+	int i;
+
+	if (Highest_object_index < 3)
+		return;
+	Objects[3].flags &= ~OF_DTU_NOHIT;
+	for (i=1;i<=Highest_object_index;i++)
+		if (Objects[i].type == OBJ_ROBOT)
+			Objects[i].control_type = CT_NONE;
+	dtu_obj_log("flame: Lolth is dead (0x6A374): obj 3 can be touched, the creatures stop");
+	dtu_hook_trigger_object(3,0);
+}
+
 static void creature_is_corpse(object *obj)
 {
 	polymodel *po = obj_model(obj);
@@ -3121,6 +3167,11 @@ static void creature_is_corpse(object *obj)
 	dtu_obj_log("obj %d %s: is a corpse",(int)(obj-Objects),dtu_object_name(obj));
 	if (Obj_log)
 		log_corpse_height(obj,"corpse");
+
+	// ASCENT: 0x6A579 to 0x6A59B: in level 0x20 (flame) the death of
+	// object 36 (the avatar of Lolth) calls 0x6A374
+	if (Dtu_script_level == 32 && obj-Objects == 36)
+		flame_lolth_dead();
 }
 
 // The death of a creature in the damage function (0x2A091 to 0x2A245).
