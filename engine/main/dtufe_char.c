@@ -68,6 +68,19 @@ static int Final[6], Final_percentile;		// the result (record at 0x3A63F8)
 static char *Race_word[6] = { LN("Human"), LN("Half Elven"), LN("Elven"), LN("Drow"), LN("Dwarven"), LN("Halfling") };	// 0x13F850
 static char *Sex_word[2] = { LN("Male"), LN("Female") };
 
+// ASCENT: the sex and the race of a choice, "Female Human". The executable
+// joins the two words in the English order. A translation can show the sex
+// in the race word: the race word with {sex:MALE|FEMALE} is resolved for the
+// sex of the choice, and the format "%s" leaves the sex word out
+// (docs/formats/lang.md).
+static char *Sex_race_format[2] = { LN("Male %s"), LN("Female %s") };
+
+static char *sex_race(char *out, int sex)
+{
+	sprintf(out, LT(Sex_race_format[sex]), dtu_tr_sex(Race_word[Race], sex));
+	return out;
+}
+
 // 0x13FECE: the class masks that a race can have. Bit (mask - 1) is set
 // if the combination "mask" is allowed.
 static int Race_combos[6] = { 139, 2495, 191, 191, 391, 135 };
@@ -178,12 +191,15 @@ static void h_random(fe_screen *s, int id);
 
 static char Help_buf[300];
 
-static char *help_im_a(int id)			// "I am a %s %s %s"
+// The executable formats the text 629 "I am a %s %s %s" with the sex, the
+// race and the classes. ASCENT: the same English text with the sex and the
+// race in one word (sex_race).
+static char *help_im_a(int id)
 {
-	char cw[64];
+	char cw[64], sr[64];
 
 	class_words(cw);
-	sprintf(Help_buf, fe_text(629), LT(Sex_word[Sex]), LT(Race_word[Race]), cw);
+	sprintf(Help_buf, LT("I am a %s %s"), sex_race(sr, Sex), cw);
 	return Help_buf;
 }
 
@@ -278,10 +294,14 @@ static int s1_may_leave(fe_screen *s)			// 0x88128
 
 static char *s1_help(int id)
 {
+	char sr[64];
+
 	switch (id) {
 	case 0:		// 0x88423
+		// The executable joins the texts 632 and 633 around the sex and the
+		// race. ASCENT: one format, so that a translation can order the words.
 		if (Chosen)
-			sprintf(Help_buf, "%s %s %s %s", fe_text(632), LT(Sex_word[Sex]), LT(Race_word[Race]), fe_text(633));
+			sprintf(Help_buf, LT("Quickly generate a %s character"), sex_race(sr, Sex));
 		else
 			sprintf(Help_buf, "%s %s", fe_text(632), fe_text(633));
 		return Help_buf;
@@ -291,8 +311,12 @@ static char *s1_help(int id)
 	case 6: return fe_text(Race < 5 ? 711 : 715);
 	case 5:
 	case 7:
-		sprintf(Help_buf, "%s a %s %s", fe_text((Chosen && Sex == (id == 7)) ? 608 : 607),
-			LT(Sex_word[id == 7]), LT(Race_word[Race]));
+		// The executable: the text 608 or 607, " a ", the sex of the button
+		// and the race. ASCENT: one format with the same English text.
+		if (Chosen && Sex == (id == 7))
+			sprintf(Help_buf, LT("You have selected a %s"), sex_race(sr, id == 7));
+		else
+			sprintf(Help_buf, LT("Click here to select a %s"), sex_race(sr, id == 7));
 		return Help_buf;
 	}
 	return NULL;
@@ -377,11 +401,12 @@ static int s2_may_leave(fe_screen *s)			// 0x88AF5
 
 static char *s2_help(int id)			// 0x881ED
 {
-	char cw[64];
+	char cw[64], sr[64];
 
 	if (id == 0) {
+		// the texts 632 and 633 around the sex, the race and the classes (s1_help)
 		class_words(cw);
-		sprintf(Help_buf, "%s %s %s %s %s", fe_text(632), LT(Sex_word[Sex]), LT(Race_word[Race]), cw, fe_text(633));
+		sprintf(Help_buf, LT("Quickly generate a %s %s character"), sex_race(sr, Sex), cw);
 		return Help_buf;
 	}
 	if (id == 2) return LN("Return to Race and Gender Screen");		// 0x13F80B
