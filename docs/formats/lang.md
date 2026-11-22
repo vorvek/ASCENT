@@ -79,8 +79,11 @@ The port catalog also holds the corrected item names of
 `plural` as for an item name of the tables. They are written by hand; `merge`
 keeps them, and it keeps a `port.*` entry of the file that no part translates
 while `en.catalog` has its English text. The game finds them as it finds a
-name of the tables, by the English text. `tools/check_itemfix.py` (a test of
-`ctest`) fails when a corrected name has no entry.
+name of the tables, by the English text. The names that the table fixup of
+1.3 gives (the `T_NAME` rows of `engine/main/dtutblfix.c`, for example
+`Produce Fire`, `Drowslayer`) are not in the tables of the game files, so
+they have `tbl.fix.*` entries too. `tools/check_itemfix.py` (a test of
+`ctest`) fails when a corrected name or a name of the fixup has no entry.
 
 ## The sex of the player: {sex:MALE|FEMALE}
 
