@@ -315,15 +315,15 @@ tr: Menú de muerte\n
 
 id: port.human
 en: Human
-tr: Humano
+tr: {sex:Humano|Humana}
 
 id: port.half_elven
 en: Half Elven
-tr: Semielfo
+tr: {sex:Semielfo|Semielfa}
 
 id: port.elven
 en: Elven
-tr: Elfo
+tr: {sex:Elfo|Elfa}
 
 id: port.drow
 en: Drow
@@ -331,11 +331,11 @@ tr: Drow
 
 id: port.dwarven
 en: Dwarven
-tr: Enano
+tr: {sex:Enano|Enana}
 
 id: port.halfling
 en: Halfling
-tr: Mediano
+tr: {sex:Mediano|Mediana}
 
 id: port.male
 en: Male
@@ -345,9 +345,37 @@ id: port.female
 en: Female
 tr: Femenino
 
+id: port.male_s
+en: Male %s
+tr: %s
+
+id: port.female_s
+en: Female %s
+tr: %s
+
+id: port.i_am_a_s_s
+en: I am a %s %s
+tr: Soy: %s, %s
+
+id: port.quickly_generate_a_s_character
+en: Quickly generate a %s character
+tr: Crear un personaje al instante: %s
+
 id: port.return_to_main_menu
 en: Return to main menu
 tr: Volver al menú principal
+
+id: port.you_have_selected_a_s
+en: You have selected a %s
+tr: Has elegido %s
+
+id: port.click_here_to_select_a_s
+en: Click here to select a %s
+tr: Haz clic aquí para elegir %s
+
+id: port.quickly_generate_a_s_s_character
+en: Quickly generate a %s %s character
+tr: Crear un personaje al instante: %s, %s
 
 id: port.return_to_race_and_gender_screen
 en: Return to Race and Gender Screen
