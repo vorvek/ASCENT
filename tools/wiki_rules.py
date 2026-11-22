@@ -554,6 +554,12 @@ FIXES = [
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),
     ("Dtu_fix_potion_frame", "-origcombat", "The intelligence potion does not depend on the frame rate."),
     ("Dtu_fix_luck_coin", "-origcombat", "The Potion of Luck uses a coin flip, not the day clock."),
+    ("Dtu_fix_cursed_scroll", "-origcombat", "The Cursed Scroll can take up to all but one of your hit "
+                                             "points; 1.3 does less than half a point."),
+    ("Dtu_fix_creature_missile", "-origcombat", "Creature missiles do not get the bonus of your bow and "
+                                                "do not use up your Potion of Luck."),
+    ("Dtu_fix_partial_stack", "-origobj", "When a stack does not fit, you take what fits and the rest "
+                                          "stays on the floor; 1.3 loses the rest."),
     ("Dtu_fix_guild_peace", "-origobj or -origguildpeace", "When the Shadow Thieves are at peace with you, "
                                                          "their members stay peaceful; 1.3 makes most of "
                                                          "them hostile again at the level start."),

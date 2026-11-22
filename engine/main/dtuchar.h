@@ -166,6 +166,7 @@ typedef struct dtu_item_ref {
 #define DTU_P_THIEF_PAID	0x1A53		// byte, the thief level + 1 that Mirt last paid points for (0xABB53)
 #define DTU_P_GEM_USES		0x1A57		// byte, the uses of the Gem of Curing (0x3891B)
 #define DTU_P_THAC0			0x1A5C		// byte
+#define DTU_P_POTIONS		0x1A93		// ASCENT: four ints, the seconds left of the potions of intelligence, Hill Giant Strength, Dragon's Blood and Agility in a save (0xBA87E, 0xBA911)
 #define DTU_P_THIEF_POINTS	0x1AB3		// word, the thief skill points to spend (0xB4ECF)
 #define DTU_P_BOW				0x1AB9
 #define DTU_P_CROSSBOW		0x1ABB
@@ -397,6 +398,20 @@ extern int Dtu_fix_luck_coin;
 // the hand give Haste (item bit 9), like the Ring of Quickness and the
 // Boots of Speed. -origcombat clears it.
 extern int Dtu_fix_speed_items;
+// ASCENT: the Cursed Scroll does rand() % (hit points as a fix) damage
+// (0x38159), so less than half a point. 1 (default): rand() % hit points
+// in whole points. 0 (-origcombat): the rule of the executable.
+extern int Dtu_fix_cursed_scroll;
+// ASCENT: the damage of a missile weapon of a creature adds the bonus of
+// the bow or crossbow of the player and can use up the Potion of Luck of
+// the player (0x2B0AE, 0x2B107 do not test the attacker). 1 (default):
+// only the missiles of the player. 0 (-origcombat): the rule of the
+// executable.
+extern int Dtu_fix_creature_missile;
+// The damage of a creature missile with Dtu_fix_creature_missile 0: the
+// dice sum of weapon (n dice of sides) with the launcher bonus and the
+// Potion of Luck of the player (0x2B0AE to 0x2B158).
+int dtu_char_creature_missile_damage(int weapon, int n, int sides, int sum);
 // 1 while the attack of the player is a backstab (0x13A955, dtuthief.c).
 extern int Dtu_backstab;
 // The option -autochoice N: the choice boxes answer N.

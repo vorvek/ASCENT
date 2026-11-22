@@ -1279,7 +1279,7 @@ Misc (type 16), by line number (`YPINN.BIN` names; the same in all tables):
 | Line | Name | Action |
 |---|---|---|
 | 0x02 | Gem of Curing | uses counter P+0x1A57 must be <= 0x8445A() ("You cannot use the Gem Of Curing at this time."); if blind: blindness cured "...And now you can see!"; else if hp < max: spell 11 (Cure Serious Wounds); counter + 1. Not used up |
-| 0x12 | Spider Piece | charges (+8) > 0: turn undead (0xADC46) as a cleric of level 2 (class2_level + 1); charges - 1. Else "Nothing happens..." |
+| 0x12 | Spider Piece | charges (+8) > 0: class 1 becomes a cleric of level (class1_level + 1) * 2 for the call of turn undead (0xADC46, 0x38196), so the turn is at that level + 1 (a class 2 cleric or armor 45 in the cloak place give the level of 0xADC91, 0xADCB3); charges - 1. Else "Nothing happens..." |
 | 0x13 | Spider Piece | charges: whole map known (0x185FEC[] = 1); charges - 1 |
 | 0x14 | Spider Piece | charges (0x385D3): 0x40974 and 0x34B26 (the hands of the interface); for each object 1 to Highest_object_index (0x3864E): if it is a creature (type 2) without flag 2, with Robot_info+0xD9 bit 3 (names rf, rm, av, dro, 0x1F448) and 0x9810D(its segment, player segment): the player faces it (0xD7110, 0xD74C3, 0x6B088), then rand() % 3: 0 save 0 or killed (0x29A9C(obj, 0, its hit points, -1)); 1 a spell of 0x2FA94 (4, 6, 7, 9, 13, 16, 22, 32, 33, 34, 36, 37, 44, 47) with its flags +0x38 |= 0xC0 for the shot, 0x56FF6(player, spell, 2, 1); 2 save 2 or movement type 3 (spin), spin_rate (0, 0.5, 0), lifeleft = 0xAE3BB level seconds. After each object index one game frame 0x435A6(1, 0). At the end 0xD74C3 with a NULL vector (0x3884D: the int 3 of the assert, then a read of address 0), charges - 1, 0x8CAD3(16, player). The port runs one object index for each game frame (dtucombat.c) and keeps the last orientation |
 | 0x16 | Spider Piece | charges: area spell 14 (Fear) and spells 1, 35, 19, 40, 43, 18, 50 on the player |
@@ -1306,7 +1306,7 @@ Misc (type 16), by line number (`YPINN.BIN` names; the same in all tables):
 | 0x58 | Potion of Toughening | if max hp < current hp (already toughened): "You don't feel so good." and a system shock roll: d100 > table 0x2FACC[constitution - 1] (25 30 35 40 45 50 55 60 65 70 75 80 85 88 90 95 97 99 99) kills the player. Else Bless bit on object 0 with timer GameTime + (rand % 6 + 7) * 600 s and shields += rand % 17 + 2, "You feel tougher." (the extra hp go when Bless ends) |
 | 0x65 | Orb of Insight | script event 0x1FE |
 | 0x66 | Scroll | 0x9DC42(word +8 of the entry): shows scroll text n (ingame-ui.md, "The scroll text screen") |
-| 0x6A | Cursed Scroll | screen shake; each with 50%: spells 7, 9, 44, 22, 16 on the player, map forgotten, and strength, dexterity, constitution, intelligence, wisdom, charisma each set to rand % value + 1; then damage rand % hp; "You no longer think that reading the scroll was such a good idea..." |
+| 0x6A | Cursed Scroll | screen shake; each with 50%: spells 7, 9, 44, 22, 16 on the player, map forgotten, and strength, dexterity, constitution, intelligence, wisdom, charisma each set to rand % value + 1; then damage rand() % (shields as a fix) (0x38159: less than half a point; `Dtu_fix_cursed_scroll`: whole points); "You no longer think that reading the scroll was such a good idea..."; not used up (0x3817F jumps past 0x39694) |
 | 0x7F | thief scroll | 0x9DC42(1) |
 
 The end of the function (0x39694) calls 0xB7084 (use up one, section 1) for the
@@ -1348,11 +1348,10 @@ only when 0x1458B4 & 0x1F is 0) sets each effect of 0x1458AC with
 | 13 | Invisibility (0xC8, 17) | cloak 46 (Elven Cloak) |
 | 14 | Protection From Evil (0xE0, 23) | no item sets it |
 
-Other values in 0xAFB55: weapon 54 in the hand sets Find/Remove Traps 250
+Other values in 0xAFB55: weapon 54 in the hand sets Find/Remove Traps and Climb Walls 250
 (95 after the limit); cloak 43 Hide In Shadows 95; effect bits 16 or 17
 (invisible) take 15 from Open Locks (0xB030B); the Find Traps effect (bit
-20) sets Find/Remove Traps 100 (0xB032A). Ring 16 ("Armoring", `pc_spell=2`)
-sets a flag on the stack that nothing reads: it does nothing. Ring 27 (the
+20) sets Find/Remove Traps 100 (0xB032A). Ring 16 ("Armoring", `pc_spell=2`) in a ring place sets the byte [esp+0x2C] (0xB0014, 0xB01B6), which 0xAFAD1 reads after each cap of Armor, Magical Vestment and Shield (0xB05FC, 0xB064F, 0xB067C): a mage (0x35A2B) gets 1 better armor class. Ring 27 (the
 tables call it "Ring of Warmth", `pc_spell=42`) doubles the mage slot maxima
 P+0x23 to P+0x25 each time 0xAFB55 runs while it is worn (0xB00A5, 0xB0247;
 flag 0x1465A4), and when it is taken off they are halved one time (0xB075F):
@@ -2055,6 +2054,8 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_luck_coin` | dtuchar.c | the Potion of Luck takes the lowest bit of the day clock (frame times) | rand() & 1 |
 | `Dtu_fix_cure_aid` | dtuspell.c | Cure Light and Cure Serious Wounds cut the hit points to the maximum after the addition (0x8DEE2), so they take away the hit points of Aid | a cure never lowers the hit points |
 | `Dtu_fix_turn_undead` | dtucombat.c | turn undead clears bit 0x10 of the next undead before the count test (0xADF09), and a T writes 0xFF over the d20 (0xAE1B8) | the bit and the d20 stay (bugs.md T2, T6) |
+| `Dtu_fix_cursed_scroll` | dtuchar.c | the Cursed Scroll does rand() % (hit points as a fix) damage, below half a point (0x38159) | rand() % hit points, whole points |
+| `Dtu_fix_creature_missile` | dtuchar.c, dtuobj.c | a creature missile adds the bow or crossbow bonus of the player and can use up the Potion of Luck of the player (0x2B0AE, 0x2B107) | only the missiles of the player |
 
 With the option `-origobj` (dtuobj.c, 1 by default):
 
