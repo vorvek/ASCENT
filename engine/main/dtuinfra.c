@@ -26,6 +26,7 @@
 #include "platform.h"
 #include "object.h"
 #include "bm.h"
+#include "textures.h"		// NumTextures
 #include "robot.h"
 #include "physics.h"		// Dtu_player_state, DTU_PS_INFRAVISION
 #include "lighting.h"		// dtu_object_light_value
@@ -136,12 +137,48 @@ int dtu_infra_object_heat(object *obj)
 	return dtu_object_light_value(obj) > 0 ? PLAT_GPU_HEAT_HOT : PLAT_GPU_HEAT_COLD;
 }
 
+// The textures with a light value in the 45 level tables (see
+// docs/re/infravision.md): the effect clip textures of the $EFFECTS section
+// (fire, torches, lava, lamps, portals, glowing water), each with an eclip,
+// and "empty.bbm" with light values 0.2 to 1.0 in $TEXTURES, without an
+// eclip. The empty bitmap is transparent: a light that the level editor
+// puts on a side to light the room, not a visible light. The heat of a face
+// goes to the texture that shows, so the light value alone does not make a
+// face hot.
+
+// A texture that shows light: a light value and an effect clip.
+static int light_texture(int t)
+{
+	return t >= 0 && t < NumTextures && t < MAX_TEXTURES && TmapInfo[t].lighting > 0
+		&& TmapInfo[t].eclip_num >= 0;
+}
+
+// A light that does not show (empty.bbm with a light value).
+static int hidden_light(int t)
+{
+	return t > 0 && t < NumTextures && t < MAX_TEXTURES && TmapInfo[t].lighting > 0
+		&& TmapInfo[t].eclip_num < 0;
+}
+
+static int texture_heat(int t)
+{
+	if (!light_texture(t))
+		return PLAT_GPU_HEAT_COLD;
+	// lava, lava flow and magma (volatile): the whole surface is hot
+	if (TmapInfo[t].flags & TMI_VOLATILE)
+		return PLAT_GPU_HEAT_GLOW;
+	return PLAT_GPU_HEAT_HOT;
+}
+
+// The merged texture of a face is one bitmap, so the heat is that of the
+// face. With an overlay the overlay decides: a torch on a wall is hot, a
+// door or a grate over a light base is cold (the levels put flame and empty
+// light textures as the base of door sides, to light the doorway). An
+// overlay that is a hidden light leaves the base visible: the base decides.
 int dtu_infra_face_heat(int tmap1, int tmap2)
 {
-	if (tmap1 >= 0 && tmap1 < MAX_TEXTURES && TmapInfo[tmap1].lighting > 0)
-		return PLAT_GPU_HEAT_HOT;
 	tmap2 &= 0x3FFF;
-	if (tmap2 > 0 && tmap2 < MAX_TEXTURES && TmapInfo[tmap2].lighting > 0)
-		return PLAT_GPU_HEAT_HOT;
-	return PLAT_GPU_HEAT_COLD;
+	if (tmap2 > 0 && !hidden_light(tmap2))
+		return texture_heat(tmap2);
+	return texture_heat(tmap1);
 }

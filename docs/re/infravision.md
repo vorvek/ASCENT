@@ -86,8 +86,12 @@ color, AH the light row. The table 0x463CB0 is the fade table (row * 256 + color
   needs the GPU renderer in the RGB form; else the original effect is used. Each
   polygon gets a heat (`G3_gpu_heat`, `PLAT_GPU_HEAT_*`):
   - hot: an object that casts light (fire, missiles, light objects, scenery with
-    `lightcast`) and a face whose texture has light (`TmapInfo[].lighting`). Only the
-    bright texels glow, from orange to yellow white.
+    `lightcast`) and a face that shows a light texture (below). Only the bright
+    texels glow, from orange to yellow white.
+  - glow: a face that shows a volatile light texture (lava, lava flow, magma). The
+    whole surface glows, from dark red to yellow white by the brightest component of
+    the texel. (With the rule of hot faces lava stayed blue: its red texels have a
+    luminance of 0.33 or less.)
   - warm: living creatures, the player and the characters. A red ramp of the texel
     brightness, visible in the dark. Grey texels (metal) get less of it.
   - cold: creatures with the table flag UNDEAD (17 of the 112 creature names of the tables, for
@@ -95,5 +99,52 @@ color, AH the light row. The table 0x463CB0 is the fade table (row * 256 + color
     first person model (the arms and the weapon), and the rest of the scene: a dark
     blue of the lit brightness.
   - No table has a flag for constructs (golems). No creature is cold for that reason.
+- Which faces are hot (`dtu_infra_face_heat`). An earlier version made a face hot
+  when its base texture or its overlay had `TmapInfo[].lighting > 0`. The merged
+  texture of a face is one bitmap, so the bright texels of the whole face glowed: the
+  brass rivets of the portcullis `gup1` (a wooden grate with a skull, BONES segments
+  250 and 251) glowed because the door side has the torch `flame3` as its base.
+- **V** The textures with a light value, in the 45 level tables that the port loads
+  (`test_dtudata -lights DIR`), are of two kinds:
+  - the textures of the `$ECLIP` lines of `$EFFECTS` with `lighting=`: flame2 to
+    flame19 (0.8 or 1.0), lava, lava02, lavaflo, magma (1.0, volatile), light1 to
+    light3, port01 to port04, portal, water2 (1.0). Each has an eclip.
+  - `empty.bbm` in `$TEXTURES` with `lighting=` 0.2, 0.4, 0.6, 0.8, 0.875 and 1.0,
+    without an eclip. The bitmap has no opaque texel (64 x 64, flag TRANS).
+    It is a light that the level designer puts on a side to light a room.
+  - No other texture has a light value. Water and water1 are volatile with
+    `lighting=0.0`.
+- **V** In the 34 levels with a table, 4,133 sides have a light texture. Most are a
+  light overlay (flame or empty) on a wall, or a lava, magma or portal base. A light
+  base under a plain overlay: the door clips `gup1`, `glasdr1`, `hdor*`, `dleft*`,
+  `dwide3`, `gdor2`, `up4`, `down8` over flame or empty bases (the level gives the
+  doorway its light), `down5` over lava (1 side), and `arch3`, `metal3`, `head3` over
+  flame, lava or magma (6 sides).
+- The rule now: a light texture has a light value and an eclip. With an overlay that
+  is not a hidden light (`empty`), the overlay decides: hot when it is a light
+  texture, else cold. Else the base decides. A volatile light texture gives glow in
+  place of hot. So a torch on a wall is hot, a portcullis or a door over a torch base
+  is cold, a floor with an `empty` light is cold, a portal with an `empty` light is
+  hot.
+- Not done: the heat is per face, not per texel. Where the overlay is a light, the
+  bright texels of the base wall can glow too (the walls under torches have a
+  luminance of 0.42 or less, so they get almost none). Where a plain overlay covers a
+  light base, the parts of the base that show through stay cold (7 sides of lava or
+  fire under `arch3`, `metal3`, `head3`, `down5`).
 - Test options: `-infravision` turns the view on at the first frame, `-noimprovedinfra`
   turns the improved mode off for one run.
+
+## The light textures of the original (0x57963 to 0x57A76)
+
+- **V** In `set_dynamic_light` (see [objects.md](objects.md), "Dynamic light") the
+  loop over the 6 sides of a segment of the render list reads the word at byte 6 of
+  the side (`tmap_num2`, the side starts at byte 4 of the 536-byte segment, sides of
+  80 bytes) and skips the side when it is 0 (0x57998). Then it reads the same word
+  with `sar 16` of the dword at byte 4, without the mask 0x3FFF of the rotation bits,
+  and tests the dword at `index * 26 + 0x1A0F52` (0x579BB). 26 is the size of
+  `tmap_info` (13 name bytes, flags, lighting, damage, eclip_num), so 0x1A0F52 is
+  the `lighting` field of `TmapInfo` at 0x1A0F44. A side with a light texture is a
+  side whose overlay has a light value. The base texture is not tested.
+- So the original light test counts `empty` overlays and not lava bases. It is a
+  test for the flicker of the light, not for what shows, and the port does not use it
+  for the heat.
