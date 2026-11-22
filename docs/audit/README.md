@@ -19,6 +19,7 @@ its commit, or open with an estimate of size).
 | Conversation input, HUD areas, Blackstaff timing (decompilation notes) | [decomp-gaps.md](decomp-gaps.md) | reply paging and first selection, Enter and Up/Down with no reply, Blackstaff pixel step and fade | Khelben's hidden face animation, cursor centering in the conversation |
 | Monsters (types, abilities, AI) | [monsters.md](monsters.md) | lich touch spell, troll revive (Dtu_fix_revive), group alert and awareness events, magic_resistant of the lich | a hidden player in the AI (believed position), Chill Touch between creatures |
 | Each screen, second pass | [screens.md](screens.md) | main menu after Abort Game, death picture keys and fade, load error text, difficulty 2, statistics spell tables, inventory usability marks, messages in the description bar | the world runs during the 3 s of the death, message word wrap, ending light and sounds |
+| The 184 defects of 1.3 (DTU-Decomp `docs/defects.md`) | [defects-1.3.md](defects-1.3.md) | state of each defect in the port; D-057, D-075 corrected; D-070, D-074, D-101 resolved as 1.3 behavior | copied defects that a player meets and that need a verification in the bytes |
 
 Test aids added by the audits: `tools/uitest.py` (interface tests, needs the
 game files), `-chartest str=`, `attackedby=` and `kill=`, `check_creature_setup.py --abilities`,
