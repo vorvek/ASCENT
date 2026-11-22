@@ -46,6 +46,8 @@ See [docs/debug_logs.md](docs/debug_logs.md).
 - `tools/`: Python tools that read the original game files.
 - `docs/formats/`: the file format documents.
 
+See [docs/README.md](docs/README.md) for the documents and [CONTRIBUTING.md](CONTRIBUTING.md) to contribute.
+
 ## License
 
 The code in `engine/` is the property of Parallax Software Corporation.
