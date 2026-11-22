@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include <SDL3/SDL.h>
 
@@ -142,21 +143,152 @@ int plat_gpu_fx_code(int c)
 	return 0;
 }
 
+// ASCENT: a 1-bit mask of iw x ih source pixels at w x h (larger), with
+// smooth edges instead of the blocks of the source pixels. The mask is
+// blurred (gaussian, sigma 1 source pixel, wrapped: the textures tile),
+// sampled bilinear and cut at 0.5; a source pixel that the blur would
+// lose (a dot or a line of 1 pixel, set or clear) is kept: as its square
+// when such a pixel of the same kind is beside it (a line stays a line), as
+// a disk of 1 source pixel across at its center when it is alone (a dot, the
+// pixels of a dither). tools/textures_hd.py makes the alpha of the
+// upscaled files the same way. Returns w*h bytes of 0 or 1 (malloc), or
+// NULL.
+#define SMOOTH_R 3
+static uint8_t *smooth_mask(const uint8_t *bits, int iw, int ih, int w, int h)
+{
+	float k[2 * SMOOTH_R + 1], ks = 0, *t, *b;
+	uint8_t *out, *weak;
+	int x, y, i;
+
+	t = (float *) malloc(sizeof(float) * iw * ih * 2);
+	out = (uint8_t *) malloc((size_t) w * h);
+	weak = (uint8_t *) malloc((size_t) iw * ih);
+	if (!t || !out || !weak) {
+		free(t);
+		free(out);
+		free(weak);
+		return NULL;
+	}
+	b = t + iw * ih;
+	for (i = -SMOOTH_R; i <= SMOOTH_R; i++)
+		ks += k[i + SMOOTH_R] = expf(-0.5f * (float) (i * i));
+	for (i = 0; i <= 2 * SMOOTH_R; i++)
+		k[i] /= ks;
+	for (y = 0; y < ih; y++)
+		for (x = 0; x < iw; x++) {
+			float s = 0;
+			for (i = -SMOOTH_R; i <= SMOOTH_R; i++)
+				s += k[i + SMOOTH_R] * (bits[y * iw + ((x + i) % iw + iw) % iw] != 0);
+			t[y * iw + x] = s;
+		}
+	for (y = 0; y < ih; y++)
+		for (x = 0; x < iw; x++) {
+			float s = 0;
+			for (i = -SMOOTH_R; i <= SMOOTH_R; i++)
+				s += k[i + SMOOTH_R] * t[(((y + i) % ih + ih) % ih) * iw + x];
+			b[y * iw + x] = s;
+		}
+	// weak: 1 for a pixel that the blur loses, 2 for one in a line
+	for (i = 0; i < iw * ih; i++)
+		weak[i] = (bits[i] != 0) != (b[i] >= 0.5f);
+	for (y = 0; y < ih; y++)
+		for (x = 0; x < iw; x++) {
+			int n = y * iw + x, m[4], j;
+			if (!weak[n])
+				continue;
+			m[0] = y * iw + (x + 1) % iw;
+			m[1] = y * iw + (x + iw - 1) % iw;
+			m[2] = ((y + 1) % ih) * iw + x;
+			m[3] = ((y + ih - 1) % ih) * iw + x;
+			for (j = 0; j < 4; j++)
+				if (weak[m[j]] && (bits[m[j]] != 0) == (bits[n] != 0))
+					weak[n] = 2;
+		}
+	for (y = 0; y < h; y++) {
+		float sy = (y + 0.5f) * ih / h - 0.5f, fy, dy;
+		int y0 = (int) floorf(sy), ny = y * ih / h;
+		fy = sy - y0;
+		dy = (y + 0.5f) * ih / h - (ny + 0.5f);
+		for (x = 0; x < w; x++) {
+			float sx = (x + 0.5f) * iw / w - 0.5f, fx, f, dx;
+			int x0 = (int) floorf(sx), nx = x * iw / w, n = ny * iw + nx;
+			int xa = (x0 % iw + iw) % iw, xb = (x0 + 1) % iw + (x0 + 1 < 0 ? iw : 0);
+			int ya = (y0 % ih + ih) % ih, yb = (y0 + 1) % ih + (y0 + 1 < 0 ? ih : 0);
+			fx = sx - x0;
+			f = (1 - fy) * ((1 - fx) * b[ya * iw + xa] + fx * b[ya * iw + xb])
+				+ fy * ((1 - fx) * b[yb * iw + xa] + fx * b[yb * iw + xb]);
+			out[y * w + x] = f >= 0.5f;
+			dx = (x + 0.5f) * iw / w - (nx + 0.5f);
+			if (weak[n] == 2 || (weak[n] && dx * dx + dy * dy <= 0.25f))
+				out[y * w + x] = bits[n] != 0;
+		}
+	}
+	free(t);
+	free(weak);
+	return out;
+}
+
 void plat_gpu_fx_mark(uint8_t *rgba, int w, int h, const uint8_t *index, int iw, int ih)
 {
-	int x, y, any = 0;
+	int x, y, any = 0, gap = 0;
+	uint8_t *bits = NULL, *m = NULL;
 
 	if (!rgba || !index || w <= 0 || h <= 0 || iw <= 0 || ih <= 0)
 		return;
+	// ASCENT: an upscaled texture gets the effect texels from a smooth mask
+	// (smooth_mask), so that the edge of the see-through water is not made
+	// of the blocks of the source pixels. A texel in the mask takes the
+	// code of the nearest source pixel with an effect color around it. At
+	// the original size the texels are the source pixels, as before.
+	if (w > iw && h > ih && (bits = (uint8_t *) malloc((size_t) iw * ih)) != NULL) {
+		for (y = 0; y < iw * ih; y++)
+			bits[y] = plat_gpu_fx_code(index[y]) != 0;
+		m = smooth_mask(bits, iw, ih, w, h);
+	}
 	for (y = 0; y < h; y++)
 		for (x = 0; x < w; x++) {
-			int k = plat_gpu_fx_code(index[(y * ih / h) * iw + x * iw / w]);
+			int n = (y * ih / h) * iw + x * iw / w;
+			int k = plat_gpu_fx_code(index[n]);
 			uint8_t *p = rgba + ((size_t) y * w + x) * 4;
+			if (m) {
+				int set = m[y * w + x], had = k;
+				if (set && !k) {
+					// the code of the nearest source pixel with one
+					float sx = (x + 0.5f) * iw / w, sy = (y + 0.5f) * ih / h, best = 1e9f;
+					int dx, dy, cx = x * iw / w, cy = y * ih / h;
+					for (dy = -1; dy <= 1; dy++)
+						for (dx = -1; dx <= 1; dx++) {
+							int xx = ((cx + dx) % iw + iw) % iw, yy = ((cy + dy) % ih + ih) % ih;
+							int kk = plat_gpu_fx_code(index[yy * iw + xx]);
+							float ex = cx + dx + 0.5f - sx, ey = cy + dy + 0.5f - sy;
+							if (kk && ex * ex + ey * ey < best) {
+								best = ex * ex + ey * ey;
+								k = kk;
+							}
+						}
+				} else if (!set)
+					k = 0;
+				if (had && !k && p[3]) {
+					// the palette color of the effect color is in this
+					// texel: fill it from the texels around it
+					p[3] = 254;
+					gap = 1;
+				}
+			}
 			if (k && p[3]) {
 				p[3] = (uint8_t) (255 - 8 * k);
 				any = 1;
 			}
 		}
+	free(bits);
+	free(m);
+	if (gap) {
+		fill_colors(rgba, w, h, 1);
+		for (y = 0; y < w * h; y++)
+			if (rgba[y * 4 + 3] == 254)
+				rgba[y * 4 + 3] = 255;
+		return;
+	}
 	if (any)
 		fill_colors(rgba, w, h, 1);
 }
@@ -172,9 +304,12 @@ uint8_t *gputex_load_png(const char *path, int *w, int *h)
 }
 
 // A layer at scale times the original size: the PNG file if it is valid,
-// else the original pixels repeated. The alpha is 0 where the original
-// pixel has alpha 0, unless file_alpha: then a file keeps its own alpha (the
-// mask upscaled with smooth edges). *from_file is 1 for the file.
+// else the original pixels repeated. A file has the mask upscaled with
+// smooth edges (a soft alpha since set version 4, 0 or 255 before). With
+// file_alpha the layer keeps that alpha (the top of merge_top blends with
+// it); else it is cut at 128 (0 or 255: the renderer tests the alpha, and
+// plat_gpu_fx_mark codes the effect texels in it). *from_file is 1 for the
+// file.
 static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file, int file_alpha)
 {
 	int w = l->w * scale, h = l->h * scale, x, y, fw = 0, fh = 0, n = 0;
@@ -194,15 +329,17 @@ static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file
 			for (y = 0; y < h; y++)
 				for (x = 0; x < w; x++) {
 					int o = (y / scale) * l->w + x / scale;
-					if (l->rgba[o * 4 + 3] == 0) {
-						if (!file_alpha)
-							img[(y * w + x) * 4 + 3] = 0;
-					}
+					uint8_t *p = img + (y * w + x) * 4;
+					// ASCENT: the alpha of the file, not the 4x4 blocks of
+					// the original pixels, so that the outline of a sprite
+					// or a grate is smooth
+					if (!file_alpha)
+						p[3] = p[3] >= 128 ? 255 : 0;
 					// an effect color keeps its palette color, as in the
 					// original bitmap (a texture that is not merged shows
 					// it; plat_gpu_fx_mark replaces it in a merged one)
-					else if (l->index && plat_gpu_fx_code(l->index[o]))
-						memcpy(img + (y * w + x) * 4, l->rgba + o * 4, 3);
+					if (l->rgba[o * 4 + 3] != 0 && l->index && plat_gpu_fx_code(l->index[o]))
+						memcpy(p, l->rgba + o * 4, 3);
 				}
 			return img;
 		}
@@ -218,34 +355,64 @@ static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file
 
 // The top layer over the base (merge_textures_new and
 // merge_textures_super_xparent of texmerge.c, at scale times the size).
-// The holes of a super transparent top (color 254) follow the original
-// pixels.
+// ASCENT: the top is blended with the alpha of its file, which has the
+// mask upscaled with smooth, soft edges (tools/textures_hd.py), so that the
+// outline of a door, a sign or a torch niche is not made of the 4x4 blocks
+// of the original pixels. The holes of a super transparent top (color 254)
+// come from a smooth mask of the original pixels (smooth_mask).
 static void merge_top(uint8_t *base, const uint8_t *top, const plat_gpu_hd_layer *tl, int size, int scale, int orient, int super)
 {
-	int x, y;
+	int x, y, i, hfull = 0;		// hfull: holes is size x size
+	uint8_t *holes = NULL;
 
+	if (super && tl->index) {
+		uint8_t *bits = (uint8_t *) malloc((size_t) tl->w * tl->h);
+		if (bits) {
+			for (i = 0; i < tl->w * tl->h; i++)
+				bits[i] = tl->index[i] == 254;
+			holes = scale > 1 ? smooth_mask(bits, tl->w, tl->h, size, size) : NULL;
+			hfull = holes != NULL;
+			if (!holes) {
+				holes = bits;		// the original pixels
+				bits = NULL;
+			}
+			free(bits);
+		}
+	}
 	for (y = 0; y < size; y++)
 		for (x = 0; x < size; x++) {
-			int tr, tc, oi;
+			int tr, tc, a;
+			uint8_t *b = base + (y * size + x) * 4;
+			const uint8_t *t;
 			switch (orient & 3) {
 			case 0: tr = y; tc = x; break;
 			case 1: tr = x; tc = size - 1 - y; break;
 			case 2: tr = size - 1 - y; tc = size - 1 - x; break;
 			default: tr = size - 1 - x; tc = y; break;
 			}
-			oi = (tr / scale) * tl->w + tc / scale;
-			// ASCENT: the alpha of the upscaled top (its file keeps the
-			// smooth edges of its mask), so that the outline of a door or
-			// a sign is not made of the 4x4 blocks of the original pixels
-			if (top[(tr * size + tc) * 4 + 3] == 0)
+			t = top + (tr * size + tc) * 4;
+			a = t[3];
+			if (a == 0)
 				continue;			// color 255: the base shows
-			if (super && tl->index && tl->index[oi] == 254) {
-				base[(y * size + x) * 4 + 3] = 0;		// a hole
+			if (holes && holes[hfull ? tr * size + tc : (tr / scale) * tl->w + tc / scale]) {
+				b[3] = 0;			// a hole
 				continue;
 			}
-			memcpy(base + (y * size + x) * 4, top + (tr * size + tc) * 4, 3);
-			base[(y * size + x) * 4 + 3] = 255;
+			if (a == 255 || b[3] == 0) {
+				// a base pixel with alpha 0 (a hole of the base) takes
+				// the top only where the top covers half of it, so that
+				// the alpha stays 0 or 255
+				if (a < 128)
+					continue;
+				memcpy(b, t, 3);
+				b[3] = 255;
+				continue;
+			}
+			for (i = 0; i < 3; i++)
+				b[i] = (uint8_t) ((b[i] * (255 - a) + t[i] * a + 127) / 255);
+			b[3] = 255;
 		}
+	free(holes);
 }
 
 // Halve the image (a box filter). The alpha is 0 if two or more of the four
