@@ -163,7 +163,7 @@ Tests that need the game files:
 | `tools/lvlcheck.py` | Compares the level loader (`-checklevel`) with `tools/lvl.py`. |
 | `tools/check_creature_setup.py` | Compares the creature setup by name (`-setuplog`) with the reference library of the decompilation. |
 | `tools/objcheck.py` | Checks the object records of the levels against the level tables. |
-| `tools/check_desc.py` | Checks the texts of the description window (`-chartest desc`) in both interfaces and both languages. |
+| `tools/check_desc.py` | Checks the texts of the description window (`-chartest desc`) in both interfaces and both languages, and compares their numbers with the game (each armor, potion and wand, fourteen spells). |
 
 Command line options for tests. An automated run (with `-hidden`, `-frames`,
 `-fescript` or `-playmovie`) has a hidden window, no sound and no message
