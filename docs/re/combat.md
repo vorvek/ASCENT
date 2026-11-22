@@ -601,7 +601,7 @@ real start of the record is probably 0x1B5674 (guess).
 | -0x02 | s16 | `damage_bonus` | 0 |
 | 0x00 | u8 | class: `cleric_use` 1, `mage_use` 2 | 0 |
 | 0x02 | s16 | `icon` | 0 |
-| 0x04 | s16 | `cast_time` | 0 |
+| 0x04 | s16 | `cast_time`; replaced after the read by the words of 0x13A8DB (fixup 0x1A344, spells.md section 1) | 0 |
 | 0x06 | s16 | `range` | 0 |
 | 0x08 | s16 | `radius` | 0 |
 | 0x0A | s16 | `level_range` | 0 |
@@ -729,7 +729,7 @@ the objects.md convention (base 0x1B5676) unless it says "record offset".
      "You cannot cast a spell while wearing %s.". Player object +0x1AE bit 0x80
      (set by Levitate, guess: also by climbing): "You cannot cast a spell while
      climbing.".
-  3. Start: 0x153EBC = GameTime + `cast_time` (+0x04, integer seconds). Message
+  3. Start: 0x153EBC = GameTime + cast time (+0x04, integer seconds, the value of 0x13A8DB, not of the line). Message
      "Casting time: %d minutes ..." (> 60), "Casting time: %d seconds ..." (> 1) or
      "Casting time: 1 second ...". Returns 0.
   4. Later frames: while 0x153EBC > GameTime returns 0. Then 0x153EBC =
@@ -1517,8 +1517,8 @@ message test is one d20 per cast.
   (activity < 2) - 2.
 - 0x9231F (jump table 0x92243): a condition per spell and a weight, clamped
   to 0 to 100; the spell is chosen when `rand() % 100 + 1 <= weight`. Then
-  ailp+0x2C = index, ailp+0x2D = 1, +0x1C0 = GameTime + `cast_time` (integer
-  seconds). `clear(r)` = 0x10815: an fvi ray with radius r from the eye (y + 5
+  ailp+0x2C = index, ailp+0x2D = 1, +0x1C0 = GameTime + cast time (+0x04, integer
+  seconds, the value of 0x13A8DB). `clear(r)` = 0x10815: an fvi ray with radius r from the eye (y + 5
   unless flying) to the player; `safe` = 0x91F66: no other hostile creature
   in the segment of the player. D = distance >> 16, L = 0xAE3BB.
 
@@ -1698,9 +1698,9 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   in the hand puts the spell away. The model of the arms of a spell of a book is the
   one of letter `K` (byte 5 of the entry, 0x43EF8).
 - Cast: the attack key with a spell in the hand: the checks of 0x356E0 and 0x41A4D with
-  the messages, the cast time of the line (integer seconds of game time, 0x41C9F; Armor
-  and the other lines with `cast_time=0` cast in the next frame and say "Casting time:
-  1 second ..."), then the cast and one slot.
+  the messages, the cast time (integer seconds of game time, 0x41C9F, from the table
+  0x13A8DB that the fixup 0x1A344 writes over `cast_time=`; Armor waits 60 s), then the
+  cast and one slot.
   A scroll (a spell item in the hand) and a wand (a weapon with `pc_spell`) cast at once
   and use one item or charge.
 - `self_cast_ok` spells are cast on the player (Prayer and area spells as an area around

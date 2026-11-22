@@ -301,6 +301,16 @@ Stored only, `$SPELL`: `level`, `range`, `level_range`, `cast_time`, `duration`,
 flag words `mage_use`, `cleric_use`, `cast_with_hands`, `cast_with_wand`,
 `cast_in_front`, `self_cast_ok`, `always`, `homing`, `stackable`.
 
+`cast_time` of `$SPELL` (verified in DTUGAME.EXE 1.3 and in the DOS game): the reader
+0x24BEC stores the number (`atoi`, no scale) in the word Spell_info+0x04 (0x1B567A +
+spell * 127). At the end of each table read (call at 0x1C8F9) the fixup 0x1A344 writes
+the 56 words at 0x13A8DB over that word for each spell line read, so the value in the
+table never reaches the game. The unit of the words is one second of game time
+(0x41C9F: GameTime + value << 16): the AD&D casting time, a number for segments, 60
+for a round, 600 for a turn. Armor has `cast_time=0` in the tables and 60 in the
+executable; in DOSBox-X the original says "Casting time: 60 seconds ..." and gives
+the armor 60 s later. The list is in `docs/re/spells.md` section 1.
+
 Verified in DTUGAME.EXE 1.3 for `$SPELL`: `cast_in_front` sets the bits 0 and 2 of
 the flag byte Spell_info+0x37 (0x253C7), the same bit 0 as `self_cast_ok` (0x25535),
 and the cast of the player tests bit 0 (0x56D36), so a `cast_in_front` line is cast

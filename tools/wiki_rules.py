@@ -207,6 +207,8 @@ EXE_TABLES = {
     "glove_dex": (0x146240, "i", 20, "Gloves of Dexterity, by dexterity"),
     "shock": (0x2FACC, "B", 19, "Potion of Toughening: system shock by constitution 1 to 19"),
     "spider_spells": (0x2FA94, "i", 14, "spells of the Spider Piece (misc 20)"),
+    "cast_time": (0x13A8DB, "h", 56, "cast time of each spell in game seconds; the table fixup 0x1A344 "
+                  "writes it over cast_time= of the $SPELL lines"),
     "turn": (0xA6487, "b", 126, "turn undead: 9 rows of 14 (0xADC46)"),
 }
 
@@ -536,6 +538,11 @@ def feet(units):
     u = float(units)
     f = u / 2
     return ("%d" % f) if f == int(f) else ("%.1f" % f)
+
+
+def cast_text(sec):
+    # The cast time of 0x13A8DB in game seconds; 600 is a turn
+    return ("%d min" % (sec // 60)) if sec > 60 else ("%d s" % sec)
 
 
 def classes_of(rec):
@@ -1383,8 +1390,10 @@ class Pages:
                ("Mage spells (the manual says wizard)." if cls == "m" else "Cleric spells (the manual says priest).")
                + " Each row has all the rules of one spell. \"Level\" in a row means your %s level."
                % ("mage" if cls == "m" else "cleric"), "",
-               "- Cast: the cast time in game seconds. A hit on you while you cast stops the spell, and "
-               "the slot is lost. A scroll or a wand casts at once.",
+               "- Cast: the cast time in game seconds (the AD&D casting time: one second for each "
+               "segment, 60 for a round, 600 for a turn). The executable sets it for each spell; the "
+               "cast_time values of the spell table are not used. A hit on you while you cast stops "
+               "the spell, and the slot is lost. A scroll or a wand casts at once.",
                "- Range: \"You\" means the spell acts on you. The other spells fire missiles that fly "
                "50 ft per second until they hit something, for 30 seconds (1500 ft) unless the row "
                "says less. The spell acts on what the missile hits.",
@@ -1404,9 +1413,9 @@ class Pages:
             for s in spells:
                 r = self.S[s]
                 rule = SPELLS[s]
-                ct = r.num("cast_time", 0)
+                ct = self.c["cast_time"][s]
                 target = rule["target"].replace("{r}", feet(r.num("radius", 0)))
-                rows.append([self.spell_name(s), ("%d s" % ct) if ct else "Instant", self.spell_range(s),
+                rows.append([self.spell_name(s), cast_text(ct), self.spell_range(s),
                              target, rule["dur"], rule["save"], self.spell_effect(s)])
             rows_total += len(rows)
             out += [md_table(["Spell", "Cast", "Range", "Target", "Duration", "Save", "Effect"], rows), ""]
@@ -1467,7 +1476,7 @@ class Pages:
                "## Kinds of numbers", "",
                md_table(["Kind", "Source"], [
                    ["Item and spell names, damage dice, to-hit and damage bonuses, values, class flags, "
-                    "spell levels, cast times, radii",
+                    "spell levels, radii",
                     "the item and spell lines (`$WEAPON`, `$ARMOR`, `$OBJECT`, `$SPELL`) of the table "
                     "`YPINN.BIN`"],
                    ["Race, class, ability, experience, THAC0, hit point, saving throw, slot, thief and "
@@ -1495,7 +1504,7 @@ class Pages:
             have = set(x[0][:-4].lower() for x in self.check)
             missing = [m for m in self.mission if m not in have]
             out += ["The item and spell lines of the level tables were compared with `YPINN.BIN`: "
-                    "names, dice, bonuses, values, classes, spell levels, cast times, ranges, radii, "
+                    "names, dice, bonuses, values, classes, spell levels, ranges, radii, "
                     "durations, types and the rule flags. %d tables are levels of the mission list "
                     "`DTU.MSN`; %s." % (len(mission), "all of them agree" if not bad else
                                         "%d differ" % len(bad))
@@ -1782,7 +1791,7 @@ RULE_KEYS = {
                 "fire_damage_dice", "#fire_damage_dice", "pc_spell", "uses", "fire_wait", "attack_type", "value"],
     "$ARMOR": ["name", "armor_class_decrement", "value"],
     "$OBJECT": ["name", "value", "to_hit_bonus"],
-    "$SPELL": ["name", "level", "cast_time", "range", "radius", "duration", "level_duration", "type",
+    "$SPELL": ["name", "level", "range", "radius", "duration", "level_duration", "type",
                "damage_dice", "#damage_dice", "fire_damage_dice", "#fire_damage_dice", "fire_damage_level",
                "acid_damage_level", "elec_damage_level"],
 }
