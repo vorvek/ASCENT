@@ -1627,11 +1627,15 @@ static int use_misc(dtu_inv_item *e)
 			else
 				HUD_init_message("Nothing happens...");
 			return 0;
-		case 0x14: case 0x17:
-			// The spell attack on the drow (0x385D3) and the view tour of
-			// the creatures (0x38268): not in the port
-			dtu_char_log("use: Spider Piece 0x%x is not in the port", e->id);
-			return -1;
+		case 0x14:		// Spider Piece: the attack on the people in sight (0x385D3)
+		case 0x17:		// Spider Piece: the view visits each creature (0x38268)
+			if (e->count > 0) {
+				dtu_spider_tour_start(e->id);		// dtucombat.c
+				e->count--;
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
 		case 0x48:		// Potion of Agility: dexterity 18 for 600 s
 			if (pa->dexterity < 18) {
 				Potion.dex_end = GameTime + i2f(600);

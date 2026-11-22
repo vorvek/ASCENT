@@ -902,6 +902,15 @@ static int creature_ray_to_player(object *obj)
 	return 0;
 }
 
+// 0x9810D(creature segment, player segment) for other code (the Spider
+// Piece 0x14): the brain bit; with Dtu_fix_brain a ray.
+int dtu_brain_sees_player(object *obj)
+{
+	if (!Dtu_fix_brain && Brain)
+		return brain_bit(obj->segnum,ConsoleObject->segnum);
+	return ray_is_free(&obj->pos,obj->segnum,&ConsoleObject->pos,obj-Objects);
+}
+
 // 0x109E7 player_is_visible_from_object: the brain bit and nothing else in
 // the executable. The corrected rule casts a ray.
 static int player_is_visible(object *obj)

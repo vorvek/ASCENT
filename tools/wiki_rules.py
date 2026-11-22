@@ -1238,12 +1238,12 @@ class Pages:
             ["Spider Piece", "USE with charges: you know the whole map."],
             ["Spider Piece", "USE with charges: each person in sight gets one of three, at random: "
                              "killed unless it saves, hit by a random spell (%s), or frozen for its "
-                             "level in seconds unless it saves. Not in ASCENT yet." % sp],
+                             "level in seconds unless it saves." % sp],
             ["Spider Piece", "Using it does nothing."],
             ["Spider Piece", "USE with charges: Fear around you, and Aid, Magical Vestment, Fly, "
                              "Protection From Fire, Resist Fire, Flame Walk and Strength on you."],
             ["Spider Piece", "USE with charges: the view visits each creature in turn for 1 to 3 "
-                             "seconds. Not in ASCENT yet."],
+                             "seconds."],
             ["Spider Piece", "USE with charges: a quest event."],
             ["Assembled Spider", "USE with charges: Spider Climb, Free Action, Haste and Infravision "
                                  "with no end."],
@@ -1752,7 +1752,6 @@ RULE_SOURCES = [
 NOT_IN_ASCENT = [
     "The text screen of the Scroll and the thief scroll (0x9DC42).",
     "The thief skill point screen (thiefpts.c, 0xB5B49).",
-    "The Spider Pieces 20, 23 and 24.",
 ]
 
 UNUSED_ITEM_VALUES = [

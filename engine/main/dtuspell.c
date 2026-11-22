@@ -2105,12 +2105,21 @@ static fix spell_missile_life(int spell,int L)
 	return (spell == 32) ? i2f(2) : (spell == 36) ? (L/3 + 1)*MINUTE : i2f(30);
 }
 
+static void player_missiles(int spell,int template_w,int L,int homing);
+
+// The Spider Piece 0x14 (0x387B0): 0x56FF6(player, spell, template 2,
+// hand 1) with the flags 0xC0 of the spell set for the shot (0x80 homing).
+void dtu_spell_piece_missile(int spell)
+{
+	if (!spell_ok(spell) || ConsoleObject == NULL)
+		return;
+	player_missiles(spell,2 < N_weapon_types ? 2 : 0,dtu_spell_player_level(spell),1);
+}
+
 static void cast_now(int spell,int source)
 {
 	object *player = ConsoleObject;
-	int L = dtu_spell_player_level(spell), i, n, template_w, target = -1;
-	fix speed = spell_fix(spell,"speed",i2f(100));
-	vms_vector dir, pos;
+	int L = dtu_spell_player_level(spell), template_w;
 
 	sound_at(spell_int(spell,"cast_sound",10),player->segnum,&player->pos,F1_0/2);
 	dtu_spell_log("spell: the player casts '%s' (%d) at level %d, source %d, at %.3f",spell_name(spell),spell,L,source,f2fl(GameTime));
@@ -2131,13 +2140,24 @@ static void cast_now(int spell,int source)
 	// The missile template (byte 4 of the entry): 2 hands, 3 wand, 4
 	// scroll, 5 arrow
 	template_w = spell_template(spell,source);
+	player_missiles(spell,template_w,L,spell_homes(spell));
+}
+
+// 0x56FF6(player, spell, template, 1): the missiles of a spell from the
+// player. homing: flag 0x80 of the spell.
+static void player_missiles(int spell,int template_w,int L,int homing)
+{
+	object *player = ConsoleObject;
+	int i, n, target = -1;
+	fix speed = spell_fix(spell,"speed",i2f(100));
+	vms_vector dir, pos;
 
 	// Casting a missile ends Invisibility (0x5705B)
 	if (player->dtu.m_88 & DTU_FX_INVISIBLE)
 		fx_end(player,17);
 
 	spell_aim(player,&dir,&pos);
-	if (spell_homes(spell))
+	if (homing)
 		target = find_homing_target(player,&dir);
 
 	n = missile_count(spell,L);

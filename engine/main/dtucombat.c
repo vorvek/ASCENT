@@ -1122,6 +1122,8 @@ int dtu_combat_player_attack(void)
 	return 1;
 }
 
+static void tour_frame(void);
+
 void dtu_combat_frame(void)
 {
 	static int last_level = -1;
@@ -1142,6 +1144,7 @@ void dtu_combat_frame(void)
 	}
 
 	dtu_spell_frame();
+	tour_frame();		// ASCENT: the frame loop of the Spider Pieces 0x14 and 0x17
 
 	if (Player_is_dead || Dtu_player_dead) {
 		Request = 0;
@@ -1646,4 +1649,136 @@ void dtu_fear_view_end(object *player)
 	obj_relink(player - Objects, seg);
 	obj_delete(v - Objects);
 	dtu_char_log("fear: the view ends, the player is in segment %d", seg);
+}
+
+//------------------------------------------------------------------------
+// The Spider Pieces 0x14 and 0x17 (0x385D3, 0x38268 of 0x37A6A). The
+// executable runs its own frame loop (0x435A6(1, 0): a whole game frame
+// with the drawing) inside the use code; the port steps the same loop by
+// one game frame at each call of dtu_combat_frame.
+
+static int Tour_piece = 0;			// 0x14, 0x17 or 0 (none)
+static int Tour_index;				// the object number of the loop
+static fix Tour_end;					// 0x17: the end of the view of Tour_index
+static ubyte Tour_render_type;
+
+// 0x17: the next creature from Tour_index on (type 2, flag 2 clear)
+static int tour_next_creature(void)
+{
+	for (; Tour_index <= Highest_object_index; Tour_index++) {
+		object *o = &Objects[Tour_index];
+
+		if (o->type == OBJ_ROBOT && !(o->flags & OF_SHOULD_BE_DEAD))
+			return 1;
+	}
+	return 0;
+}
+
+// 0x385D3 to 0x3881C for the object Tour_index: a creature of the people
+// (Robot_info+0xD9 bit 3, the names rf, rm, av, dro) that the segment of
+// the player sees (0x9810D): the player turns to it (0xD7110, 0xD74C3,
+// 0x6B088), then one of three at random: save 0 or killed (0x29A9C with no
+// attacker and its hit points); a homing missile of a spell of the list
+// 0x2FA94; save 2 or "frozen": movement type 3 (spin), spin (0, 0.5, 0),
+// lifeleft = its level (0xAE3BB) in seconds.
+static void tour_piece14_object(object *o)
+{
+	static const int spells[14] = { 4, 6, 7, 9, 13, 16, 22, 32, 33, 34, 36, 37, 44, 47 };	// 0x2FA94
+	object *p = ConsoleObject;
+	vms_vector d;
+	int r, level;
+
+	if (o->type != OBJ_ROBOT || (o->flags & OF_SHOULD_BE_DEAD) || o->id >= N_robot_types)
+		return;
+	{
+		// Robot_info+0xD9 bit 3, set by 0x1F448 for these names
+		char *n = Monster_info[o->id].name;
+
+		if (strnicmp(n, "rf", 2) && strnicmp(n, "rm", 2) && strnicmp(n, "av", 2) && strnicmp(n, "dro", 3))
+			return;
+	}
+	if (!dtu_brain_sees_player(o))
+		return;
+	vm_vec_sub(&d, &o->pos, &p->pos);
+	vm_vector_2_matrix(&p->orient, &d, NULL, NULL);
+	r = rand() % 3;
+	if (r == 0) {
+		if (!dtu_spell_save(o, 0)) {
+			dtu_char_log("use: Spider Piece 0x14 kills obj %d", (int) (o - Objects));
+			dtu_damage_creature_direct(o, NULL, o->shields);
+		}
+	}
+	else if (r == 1) {
+		int s = spells[rand() % 14];
+
+		dtu_char_log("use: Spider Piece 0x14 fires spell %d at obj %d", s, (int) (o - Objects));
+		dtu_spell_piece_missile(s);
+	}
+	else if (!dtu_spell_save(o, 2)) {
+		level = (o->id < N_robot_types) ? Monster_info[o->id].max_hit_points / 8 : 1;
+		if (level < 1) level = 1;
+		if (level > 18) level = 18;
+		o->movement_type = MT_SPINNING;
+		o->mtype.spin_rate.x = o->mtype.spin_rate.z = 0;
+		o->mtype.spin_rate.y = 0x8000;
+		o->lifeleft = i2f(level);
+		dtu_char_log("use: Spider Piece 0x14 freezes obj %d for %d s", (int) (o - Objects), level);
+	}
+}
+
+void dtu_spider_tour_start(int piece)
+{
+	object *p = ConsoleObject;
+
+	if (Tour_piece || p == NULL)
+		return;
+	// 0x40974 and 0x34B26: the hands of the interface are drawn again
+	// (the port draws them each frame)
+	Tour_piece = piece;
+	Tour_index = 1;
+	if (piece == 0x17) {
+		dtu_spell_cast_vclip(12, p);		// 0x3827D
+		Tour_render_type = p->render_type;
+		p->render_type = RT_NONE;			// 0x382E0
+		Tour_end = 0;
+	}
+	dtu_char_log("use: Spider Piece 0x%x starts its loop (highest object %d)", piece, Highest_object_index);
+}
+
+// One step of the loop at each game frame
+static void tour_frame(void)
+{
+	object *p = ConsoleObject;
+
+	if (!Tour_piece)
+		return;
+	if (Tour_piece == 0x14) {
+		if (Tour_index <= Highest_object_index) {
+			tour_piece14_object(&Objects[Tour_index]);
+			Tour_index++;			// then 0x435A6: this frame
+			return;
+		}
+		// 0x38840: 0xD74C3 with a NULL vector (the assert int 3 of
+		// vm_vector_2_matrix, then the bytes at address 0); the port keeps
+		// the last orientation. 0x38864: the cast vclip of spell 16.
+		dtu_spell_cast_vclip(16, p);
+		Tour_piece = 0;
+		dtu_char_log("use: Spider Piece 0x14 ends");
+		return;
+	}
+	// 0x17: each creature is the viewer for 1.0 + rand() % 2.0 seconds
+	if (Tour_end && GameTime < Tour_end)
+		return;
+	if (Tour_end)
+		Tour_index++;
+	if (tour_next_creature()) {
+		Viewer = &Objects[Tour_index];		// 0x38309
+		Tour_end = GameTime + F1_0 + rand() % 0x20000;
+		dtu_char_log("use: Spider Piece 0x17 views obj %d", Tour_index);
+		return;
+	}
+	Viewer = p;								// 0x3834C
+	p->render_type = Tour_render_type;	// 0x38356: render type 1
+	Tour_piece = 0;
+	dtu_char_log("use: Spider Piece 0x17 ends");
 }
