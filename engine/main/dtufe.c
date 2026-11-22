@@ -835,12 +835,32 @@ static ubyte *Fetxt_jrg;
 static int Fetxt_n;
 static char **Fetxt_str;
 
+// ASCENT: the texts are freed at the exit.
+static void fetxt_free(void)
+{
+	int i;
+
+	if (Fetxt_str) {
+		for (i = 0; i < Fetxt_n; i++)
+			if (Fetxt_str[i])
+				free(Fetxt_str[i]);
+		free(Fetxt_str);
+	}
+	if (Fetxt_jrg)
+		free(Fetxt_jrg);
+	Fetxt_n = 0;
+}
+
 char *fe_fetxt(int n)
 {
 	if (!Fetxt_jrg) {
 		int size;
 		Fetxt_jrg = dtu_load_file("FETXTE.JRG", &size);
 		if (Fetxt_jrg) {
+			static int registered = 0;
+			if (!registered)
+				atexit(fetxt_free);
+			registered = 1;
 			Fetxt_n = size / 8;
 			Fetxt_str = calloc(Fetxt_n, sizeof(char *));
 		}
