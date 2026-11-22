@@ -2072,6 +2072,7 @@ int dtu_char_drop(int index)
 	dtu_char_log("drop: entry %d '%s' count %d, object %d in segment %d", index, e->name, e->count, objnum, seg);
 	// 0xB72BA: no pick up for 5 seconds
 	Dtu_char.no_pickup_until = GameTime + i2f(5);
+	digi_play_sample(0x8A3, F1_0);		// ASCENT: 0xB72E2, the sound of the drop
 	inv_remove(index, e->count > 0 ? e->count : 1);
 	return objnum;
 }

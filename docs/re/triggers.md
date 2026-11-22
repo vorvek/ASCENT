@@ -349,6 +349,20 @@ changes (section 2):
 **D** 75 of the 628 lines are warps, 12 of them inside one level. The value of each
 warp line is 0 to 3.
 
+**V** The sparkles of a warp. 0x599C3 gives each segment with a warp line a station of
+type 3 (the table 0x1C5E28, at most 200) with the center of the segment. The station
+frame 0x3DCAF (each game frame) makes, for a station of type 3 whose segment is in the
+visible list and has no object, a vclip 10 (`generic.abm`, the sparkles, `vlighting`
+10.0) at that center with the size of the player (0x3DFD8 to 0x3E032). The vclip ends
+after its play time and the next frame makes a new one, so a visible warp sparkles and
+lights its place all the time. The port does this in `warp_sparkle_proc` (fuelcen.c)
+for the segments of the last render list. The same frame has code for the station types
+4 (a pulse of the side light, explosions and the sounds 0x8AC to 0x8AF) and 5 (the sound
+2707 at a random volume). No level file has a segment special 4 or 5. Five of the six
+callers of 0x3D5D3 (`fuelcen_activate`) pass the special of a segment; the sixth
+(0xBCC31) passes a value of its caller that was not traced. A level change clears the
+stations of type 4 and 5 (0x5A42C). **G**: the code of the types 4 and 5 does not run.
+
 ## 8. What the port does
 
 `engine/main/dtutrig.c` follows sections 2 to 7. Differences:

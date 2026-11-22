@@ -272,6 +272,7 @@ static char rcsid[] = "$Id: fuelcen.c 2.3 1995/03/21 14:38:40 john Exp $";
 #include "multibot.h"
 #include "render.h"	// ASCENT: Render_list for the fire of a rest place
 #include "dtuchar.h"	// ASCENT: dtu_char_rest_ready()
+#include "dtutrig.h"	// ASCENT: dtu_warp_lookup() for the sparkles of a warp
 
 // The max number of fuel stations per mine.
 
@@ -919,6 +920,39 @@ static void rest_fire_proc(FuelCenter *robotcen)
 	}
 }
 
+// ASCENT: the sparkles of a warp. 0x599C3 gives each segment with a warp
+// line of DTU.WRP (dest_level 0 or more) a station of type 3 at the
+// center of the segment (0x4AD9C). The station frame 0x3DCAF, code
+// 0x3DFD8 to 0x3E032: for a station of type 3 whose segment is in the
+// visible list and has no object, a vclip 10 (generic.abm, the sparkles)
+// with the size of the player at the center (0x3BD4C), with the object
+// flag 0x40 and bit 2 of 0x1AE (no collisions, which a fireball does not
+// have in the port). The vclip ends after its play time and the next
+// frame makes a new one. The port takes the warps of the visible segments
+// from dtutrig.c.
+#define WARP_SPARKLE_VCLIP	10
+
+static void warp_sparkle_proc(void)
+{
+	int i, seg, dest_level, dest_seg, value;
+	vms_vector center;
+	object *obj;
+
+	if (!ConsoleObject || ConsoleObject->size <= 0)
+		return;
+	for (i=0; i<N_render_segs && i<RENDER_LIST_SIZE; i++) {
+		seg = Render_list[i];
+		if (seg < 0 || seg > Highest_segment_index || Segments[seg].objects != -1)
+			continue;
+		if (!dtu_warp_lookup(seg, &dest_level, &dest_seg, &value) || dest_level < 0)
+			continue;
+		compute_segment_center(&center, &Segments[seg]);
+		obj = object_create_explosion(seg, &center, ConsoleObject->size, WARP_SPARKLE_VCLIP);
+		if (obj)
+			obj->flags |= REST_FIRE_FLAG;
+	}
+}
+
 //-------------------------------------------------------------
 // Called once per frame, replenishes fuel supply.
 void fuelcen_update_all()
@@ -927,6 +961,7 @@ void fuelcen_update_all()
 	fix AmountToreplenish;
 
 	AmountToreplenish = fixmul(FrameTime,Fuelcen_refill_speed);
+	warp_sparkle_proc();		// ASCENT: the sparkles of a warp (0x3DFD8)
 
 	for (i=0; i<Num_fuelcenters; i++ )	{
 		if (Station[i].Type == SEGMENT_IS_REPAIRCEN || Station[i].Type == 6)

@@ -336,6 +336,9 @@ static grs_bitmap Patch_bm;
 static int Patch_ok;
 static grs_bitmap *Portrait_bm;
 static int Portrait_loaded = -1;
+// ASCENT: the mouse pointer of the menus (dtu_display_draw_pointer)
+static grs_bitmap *Pointer_src[2];
+static ubyte Pointer_tried[2];
 static int Saved_mode = DTU_IM_MAIN;	// 0x13B61A
 
 static dtu_rect View;					// the view on the screen (h is the rendered height)
@@ -1010,8 +1013,36 @@ static void do_action(int action)
 //------------------------------------------------------------------------
 // Init
 
+void dtu_display_close(void)
+{
+	Dtu_display_active = 0;
+	if (Icons_bm) gr_free_bitmap(Icons_bm);
+	if (Cursor_src) gr_free_bitmap(Cursor_src);
+	if (Button_sheet) gr_free_bitmap(Button_sheet);
+	if (Interface_bm) gr_free_bitmap(Interface_bm);
+	if (Portrait_bm) gr_free_bitmap(Portrait_bm);
+	Icons_bm = Cursor_src = Button_sheet = Interface_bm = Portrait_bm = NULL;
+	Interface_entry = -1;
+	Portrait_loaded = -1;
+	if (Patch_bm.bm_data)
+		free(Patch_bm.bm_data);
+	memset(&Patch_bm, 0, sizeof(Patch_bm));
+	Patch_ok = 0;
+	for (int i = 0; i < 2; i++) {
+		if (Pointer_src[i]) gr_free_bitmap(Pointer_src[i]);
+		Pointer_src[i] = NULL;
+		Pointer_tried[i] = 0;
+	}
+}
+
 int dtu_display_init(void)
 {
+	static int closed_at_exit = 0;
+
+	if (!closed_at_exit) {		// ASCENT: the art is freed at the exit
+		atexit(dtu_display_close);
+		closed_at_exit = 1;
+	}
 	Dtu_display_active = 0;
 	if (!febgnd_open())
 		return 0;
@@ -1928,8 +1959,9 @@ void dtu_display_draw_cursor(void)
 // shows the image of the GPU renderer.
 void dtu_display_draw_pointer(grs_bitmap *dest, int mx, int my)
 {
-	static grs_bitmap *src[2];
-	static ubyte src_pal[2][768], tried[2];
+	grs_bitmap **src = Pointer_src;
+	ubyte *tried = Pointer_tried;
+	static ubyte src_pal[2][768];
 	static ubyte map_pal[768], map[2][256], map_ok[2];
 	int hi = dest->bm_w >= 640 ? 1 : 0;
 	int size = hi ? 31 : 15, half = size / 2, x, y;

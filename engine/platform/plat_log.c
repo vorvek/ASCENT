@@ -828,3 +828,28 @@ void plat_crash_install(int quiet)
 }
 
 #endif
+
+// ----------------------------------------------------------------------
+// The stack of a caller (the leak report of mem.c)
+
+int plat_stack_trace(void **frames, int max)
+{
+#ifdef _WIN32
+	if (max <= 0)
+		return 0;
+	return (int) RtlCaptureStackBackTrace(2, (DWORD) max, frames, NULL);
+#else
+	(void) frames;
+	(void) max;
+	return 0;
+#endif
+}
+
+void *plat_module_base(void)
+{
+#ifdef _WIN32
+	return (void *) GetModuleHandleA(NULL);
+#else
+	return NULL;
+#endif
+}

@@ -629,11 +629,14 @@ int gr_printf( int x, int y, char * format, ... )
 	return gr_string( x, y, buffer );
 }
 
+static void latin1_store_free(grs_font *font);		// ASCENT
+
 void gr_close_font( grs_font * font )
 {
 	if (font)
 	{
-		if ( font->ft_chars ) 
+		latin1_store_free(font);		// ASCENT: the added glyphs
+		if ( font->ft_chars )
 			free( font->ft_chars );
 		free( font );
 	}
@@ -941,6 +944,22 @@ static void glyph_compose(ubyte *px, int w, int h, int accent)
 	}
 }
 
+// ASCENT: the memory of the added glyphs of each font, which
+// gr_close_font frees.
+#define LATIN1_STORES 16
+static struct { grs_font *font; ubyte *store; } Latin1_stores[LATIN1_STORES];
+
+static void latin1_store_free(grs_font *font)
+{
+	int i;
+
+	for (i = 0; i < LATIN1_STORES; i++)
+		if (Latin1_stores[i].font == font) {
+			free(Latin1_stores[i].store);
+			Latin1_stores[i].font = NULL;
+		}
+}
+
 // Adds the letters of Latin1_letters to the font (see above).
 static void font_add_latin1(grs_font *font)
 {
@@ -1003,11 +1022,16 @@ static void font_add_latin1(grs_font *font)
 	for (i = 0; i < N_LATIN1_LETTERS; i++)
 		if (glyph_get(font, Latin1_letters[i].base, px, &w))
 			total += ((font->ft_flags & FT_COLOR) ? w : BITS_TO_BYTES(w)) * h;
-	// The memory of the new glyphs stays as long as the program runs (a
-	// font is closed at the end only).
+	// The memory of the new glyphs stays until gr_close_font.
 	store = p = (ubyte *) malloc(total > 0 ? total : 1);
 	if (!store)
 		return;
+	for (i = 0; i < LATIN1_STORES && Latin1_stores[i].font; i++)
+		;
+	if (i < LATIN1_STORES) {
+		Latin1_stores[i].font = font;
+		Latin1_stores[i].store = store;
+	}
 	for (i = 0; i < N_LATIN1_LETTERS; i++) {
 		int c = Latin1_letters[i].code;
 		if (!glyph_get(font, Latin1_letters[i].base, px, &w))

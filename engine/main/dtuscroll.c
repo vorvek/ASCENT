@@ -82,8 +82,33 @@ static grs_bitmap *Pic;					// 0x144D7D: the picture with the text
 static grs_bitmap *Small_pic[4][2];		// ASCENT: the pictures of ~p, loaded once
 static grs_bitmap *Icons[2];			// the icons of ~i (InGameIcons, FEBGND 23 and 24)
 
+// ASCENT: the pictures are freed at the exit.
+static void free_all(void)
+{
+	grs_bitmap **all[] = { &Clean[0], &Clean[1], &Pic, &Icons[0], &Icons[1] };
+	int i, j;
+
+	for (i = 0; i < (int) (sizeof(all) / sizeof(all[0])); i++)
+		if (*all[i]) {
+			gr_free_bitmap(*all[i]);
+			*all[i] = NULL;
+		}
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < 2; j++)
+			if (Small_pic[i][j]) {
+				gr_free_bitmap(Small_pic[i][j]);
+				Small_pic[i][j] = NULL;
+			}
+}
+
 static grs_bitmap *load_once(grs_bitmap **slot, int entry)
 {
+	static int registered = 0;
+
+	if (!registered) {
+		atexit(free_all);
+		registered = 1;
+	}
 	if (!*slot)
 		*slot = dtu_febgnd_load(entry, NULL);
 	return *slot;

@@ -116,6 +116,24 @@ build/engine/main/ascent.exe -datadir E:/UNDAMONTAN/DTU -datadir gamedata/cd/DTU
   -hidden -mute -nomovies -userdir <scratch> -level BANE -frames 200 -testcrash 50
 ```
 
+## Memory report
+
+The option `-memreport` lists on stderr, at the exit, each block of the mem library
+(`engine/mem/mem.c`, the `malloc` and `free` of the game code) that is not freed: the
+variable, the file and line of the `malloc`, and the return addresses of 6 callers as
+offsets in the module. Add the image base 0x140000000 for `addr2line`. Then it prints
+the memory in use and the largest use of the session. A block whose check bytes are
+overwritten gives `MEM_OVERWRITE` (at its `free`, or at the exit).
+
+```sh
+build/engine/main/ascent.exe -datadir E:/UNDAMONTAN/DTU -datadir gamedata/cd/DTU \
+  -hidden -mute -nomovies -userdir <scratch> -level KOBOLDS -frames 300 -memreport 2> mem.txt
+addr2line -f -s -e build/engine/main/ascent.exe 0x1400ABCDE
+```
+
+MinGW has no address sanitizer. The UBSan build of docs/audit/presentation.md traps
+array bounds errors that the compiler can see.
+
 ## Code
 
 - `engine/platform/plat_log.c`: the log file, the rotation, the system and video lines,

@@ -34,19 +34,8 @@ with the format `"%d,%d %d,%d %d"` (string at 0x12875E):
   player to `dest_level`, `dest_segment`. Log text: "found a warp (seg %d ) to level %d,".
 - If `dest_level` is -2 the second number is a command code, not a segment.
 
-Command codes seen, with meaning taken from the comments in the file (guess, not traced in code,
-except 106 and 151: the codes 100 to 198 are music commands, a set of bits that is verified in
-[../re/music.md](../re/music.md); `value` is the entry number of DISCO.JRG):
-
-| Code | Lines | Comment in file | value |
-|---|---|---|---|
-| 0 | 1 | "YPInn to Waterdeep" | 0 |
-| 1..19 | 24 | "Mission n check" | 0 |
-| 106 | 78 | "Fade out current song" (MUSIC) | -2 |
-| 151 | 235 | start music | music item number |
-| 206 | 59 | "Fade ambient" (AMB) | -2 |
-| 223 | 134 | start ambient sound | sound number |
-| 255 | 23 | start ambient sound | sound number |
+The table of the loader, the command codes and their bits are in
+[wrp.md](wrp.md).
 
 Verified: all 628 data lines match the five-number form. No other line forms exist.
 

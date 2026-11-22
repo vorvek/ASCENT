@@ -88,6 +88,14 @@ void dtu_init_dirs(void)
 		Dtu_debug = 1;
 	if (!Dtu_debug)
 		mem_report_leaks = 0;		// MEM_LEAKAGE (mem.c)
+	// ASCENT: -memreport lists each block that is not freed at the exit,
+	// with its variable, file, line and callers, and the memory use (mem.c).
+	if (FindArg("-memreport")) {
+		mem_report_leaks = 1;
+		show_mem_info = 1;
+		mem_stack_func = plat_stack_trace;
+		mem_stack_base = plat_module_base();
+	}
 
 	for (i=1; i<Num_args-1; i++)
 		if (!stricmp(Args[i], "-datadir")) {

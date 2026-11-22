@@ -202,6 +202,17 @@ void plat_audio_music_start(plat_audio_music_callback callback, void *user, int 
 void plat_audio_music_stop(void);
 void plat_audio_music_set_volume(int volume);
 
+// The mixer has PLAT_AUDIO_STREAMS streams of this kind. The music
+// functions above use the stream PLAT_AUDIO_STREAM_MUSIC. The functions
+// below do the same for the stream that `stream` names; each stream has
+// its own source and volume.
+#define PLAT_AUDIO_STREAMS          2
+#define PLAT_AUDIO_STREAM_MUSIC     0
+#define PLAT_AUDIO_STREAM_AMBIENT   1
+void plat_audio_stream_start(int stream, plat_audio_music_callback callback, void *user, int rate);
+void plat_audio_stream_stop(int stream);
+void plat_audio_stream_set_volume(int stream, int volume);
+
 // Play signed 16-bit mono PCM. The other arguments, the return value and
 // the rule for the data are those of plat_audio_play. A sample value of
 // 32767 gives the same output as the value 255 of an 8-bit sample, within
@@ -471,5 +482,11 @@ void plat_log_tick(void);
 // Windows, a minidump (the name of the log with .dmp). quiet 0: a message
 // box tells the player where the files are.
 void plat_crash_install(int quiet);
+// The return addresses of the callers of the caller of this function, at
+// most max. Returns the count (0 where the system gives none).
+int plat_stack_trace(void **frames, int max);
+// The load address of the executable (subtract it from an address of
+// plat_stack_trace and add the image base for addr2line), or NULL.
+void *plat_module_base(void);
 
 #endif

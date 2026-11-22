@@ -201,6 +201,17 @@ static int script_active(void)
 	return Script_pos < Script_n || Script_wait > 0 || Script_btn || Script_rbtn || Script_text[Script_text_pos];
 }
 
+// ASCENT: the lines of the script are freed at the exit.
+static void script_free(void)
+{
+	int i;
+
+	for (i = 0; i < Script_n; i++)
+		if (Script_line[i])
+			free(Script_line[i]);
+	Script_n = Script_pos = 0;
+}
+
 static void script_load(void)
 {
 	FILE *f;
@@ -212,6 +223,7 @@ static void script_load(void)
 	if (loaded || !t || t + 1 >= Num_args)
 		return;
 	loaded = 1;
+	atexit(script_free);
 	f = fopen(Args[t+1], "r");
 	if (!f) {
 		printf("Cannot open the script %s\n", Args[t+1]);
@@ -824,12 +836,32 @@ static ubyte *Fetxt_jrg;
 static int Fetxt_n;
 static char **Fetxt_str;
 
+// ASCENT: the texts are freed at the exit.
+static void fetxt_free(void)
+{
+	int i;
+
+	if (Fetxt_str) {
+		for (i = 0; i < Fetxt_n; i++)
+			if (Fetxt_str[i])
+				free(Fetxt_str[i]);
+		free(Fetxt_str);
+	}
+	if (Fetxt_jrg)
+		free(Fetxt_jrg);
+	Fetxt_n = 0;
+}
+
 char *fe_fetxt(int n)
 {
 	if (!Fetxt_jrg) {
 		int size;
 		Fetxt_jrg = dtu_load_file("FETXTE.JRG", &size);
 		if (Fetxt_jrg) {
+			static int registered = 0;
+			if (!registered)
+				atexit(fetxt_free);
+			registered = 1;
 			Fetxt_n = size / 8;
 			Fetxt_str = calloc(Fetxt_n, sizeof(char *));
 		}

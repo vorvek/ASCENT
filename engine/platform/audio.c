@@ -3,9 +3,9 @@
  *
  * It replaces the HMI Sound Operating System driver that the DOS game
  * used for digital sound. The mixer plays unsigned 8-bit or signed 16-bit
- * mono samples on PLAT_AUDIO_CHANNELS channels and one stream of 16-bit
- * stereo music. It resamples each source to the output rate with linear
- * interpolation.
+ * mono samples on PLAT_AUDIO_CHANNELS channels and PLAT_AUDIO_STREAMS
+ * streams of 16-bit stereo data (the music and the ambient sound). It
+ * resamples each source to the output rate with linear interpolation.
  *
  * Threads: the game thread calls the plat_audio functions. SDL calls
  * device_callback on its audio thread. Mixer_lock protects all the mixer
@@ -67,7 +67,7 @@ static int Ramp_frames;
 static float Ramp_slope;        // gain change for each frame
 static channel Channels[PLAT_AUDIO_CHANNELS];
 static int Next_generation;
-static music Music;
+static music Streams[PLAT_AUDIO_STREAMS];     // 0: the music, 1: the ambient sound
 static float Master_gain, Master_target;
 
 static SDL_AudioStream *Stream;
@@ -247,8 +247,9 @@ void plat_audio_mixer_render(int16_t *out, int frames)
 		for (i = 0; i < PLAT_AUDIO_CHANNELS; i++)
 			if (Channels[i].state != CH_FREE)
 				mix_channel(&Channels[i], acc, n);
-		if (Music.state != MUSIC_OFF)
-			mix_music(&Music, acc, n);
+		for (i = 0; i < PLAT_AUDIO_STREAMS; i++)
+			if (Streams[i].state != MUSIC_OFF)
+				mix_music(&Streams[i], acc, n);
 
 		for (i = 0; i < n * 2; i++) {
 			float v;
@@ -273,8 +274,9 @@ void plat_audio_mixer_init(int rate)
 		Mixer_lock = SDL_CreateMutex();
 	SDL_LockMutex(Mixer_lock);
 	memset(Channels, 0, sizeof(Channels));
-	memset(&Music, 0, sizeof(Music));
-	Music.target = 1.0f;
+	memset(Streams, 0, sizeof(Streams));
+	for (int i = 0; i < PLAT_AUDIO_STREAMS; i++)
+		Streams[i].target = 1.0f;
 	Mixer_rate = rate;
 	Ramp_frames = rate * RAMP_MS / 1000;
 	if (Ramp_frames < 1)
@@ -292,7 +294,7 @@ void plat_audio_mixer_close(void)
 	SDL_LockMutex(Mixer_lock);
 	Mixer_ready = 0;
 	memset(Channels, 0, sizeof(Channels));
-	memset(&Music, 0, sizeof(Music));
+	memset(Streams, 0, sizeof(Streams));
 	SDL_UnlockMutex(Mixer_lock);
 	SDL_DestroyMutex(Mixer_lock);
 	Mixer_lock = NULL;
@@ -529,50 +531,71 @@ void plat_audio_set_master_volume(int volume)
 	SDL_UnlockMutex(Mixer_lock);
 }
 
-void plat_audio_music_start(plat_audio_music_callback callback, void *user, int rate)
+void plat_audio_stream_start(int stream, plat_audio_music_callback callback, void *user, int rate)
 {
-	if (!Mixer_ready)
+	music *m;
+
+	if (!Mixer_ready || stream < 0 || stream >= PLAT_AUDIO_STREAMS)
 		return;
 	if (!callback || rate <= 0) {
-		plat_audio_music_stop();
+		plat_audio_stream_stop(stream);
 		return;
 	}
+	m = &Streams[stream];
 	SDL_LockMutex(Mixer_lock);
-	Music.state = MUSIC_ON;
-	Music.callback = callback;
-	Music.user = user;
-	Music.step = ((uint64_t)rate << 32) / (uint64_t)Mixer_rate;
-	if (Music.step == 0)
-		Music.step = 1;
+	m->state = MUSIC_ON;
+	m->callback = callback;
+	m->user = user;
+	m->step = ((uint64_t)rate << 32) / (uint64_t)Mixer_rate;
+	if (m->step == 0)
+		m->step = 1;
 	// The first output frame reads the first source frame, and the new
 	// source fades in from gain 0. A source that still plays is cut with
-	// no fade: call plat_audio_music_stop some milliseconds before this
+	// no fade: call plat_audio_stream_stop some milliseconds before this
 	// function if that matters.
-	Music.phase = FRAC_ONE * 2;
-	Music.prev[0] = Music.prev[1] = 0;
-	Music.cur[0] = Music.cur[1] = 0;
-	Music.buf_pos = Music.buf_len = 0;
-	Music.gain = 0;
+	m->phase = FRAC_ONE * 2;
+	m->prev[0] = m->prev[1] = 0;
+	m->cur[0] = m->cur[1] = 0;
+	m->buf_pos = m->buf_len = 0;
+	m->gain = 0;
 	SDL_UnlockMutex(Mixer_lock);
+}
+
+void plat_audio_stream_stop(int stream)
+{
+	music *m;
+
+	if (!Mixer_ready || stream < 0 || stream >= PLAT_AUDIO_STREAMS)
+		return;
+	m = &Streams[stream];
+	SDL_LockMutex(Mixer_lock);
+	if (m->state == MUSIC_ON)
+		m->state = MUSIC_FADING;
+	m->callback = NULL;
+	m->user = NULL;
+	SDL_UnlockMutex(Mixer_lock);
+}
+
+void plat_audio_stream_set_volume(int stream, int volume)
+{
+	if (!Mixer_ready || stream < 0 || stream >= PLAT_AUDIO_STREAMS)
+		return;
+	SDL_LockMutex(Mixer_lock);
+	Streams[stream].target = volume_to_gain(volume);
+	SDL_UnlockMutex(Mixer_lock);
+}
+
+void plat_audio_music_start(plat_audio_music_callback callback, void *user, int rate)
+{
+	plat_audio_stream_start(PLAT_AUDIO_STREAM_MUSIC, callback, user, rate);
 }
 
 void plat_audio_music_stop(void)
 {
-	if (!Mixer_ready)
-		return;
-	SDL_LockMutex(Mixer_lock);
-	if (Music.state == MUSIC_ON)
-		Music.state = MUSIC_FADING;
-	Music.callback = NULL;
-	Music.user = NULL;
-	SDL_UnlockMutex(Mixer_lock);
+	plat_audio_stream_stop(PLAT_AUDIO_STREAM_MUSIC);
 }
 
 void plat_audio_music_set_volume(int volume)
 {
-	if (!Mixer_ready)
-		return;
-	SDL_LockMutex(Mixer_lock);
-	Music.target = volume_to_gain(volume);
-	SDL_UnlockMutex(Mixer_lock);
+	plat_audio_stream_set_volume(PLAT_AUDIO_STREAM_MUSIC, volume);
 }

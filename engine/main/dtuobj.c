@@ -318,6 +318,14 @@ static int Ref_tick_count = 0, Ref_ticks_now = 0;
 static fix Ref_tick_acc = 0;
 
 static ubyte *Brain = NULL;			// 800 rows of 100 bytes, or NULL
+
+// ASCENT: the BRN file of the last level is freed at the exit.
+static void brain_free(void)
+{
+	if (Brain)
+		free(Brain);
+	Brain = NULL;
+}
 static int Player_armor_class = 10;
 static fix Player_max_hp = 0;
 
@@ -2060,8 +2068,13 @@ void dtu_objects_level_setup(void)
 			*p = 0;
 		strcat(name,".BRN");
 		data = dtu_load_file(name,&size);
-		if (data && size >= 80000)
+		if (data && size >= 80000) {
+			static int registered = 0;		// ASCENT: brain_free
 			Brain = data;
+			if (!registered)
+				atexit(brain_free);
+			registered = 1;
+		}
 		else if (data)
 			free(data);
 	}
