@@ -149,7 +149,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 int gr_internal_string_clipped(int x, int y, char *s );
 int gr_internal_string_clipped_m(int x, int y, char *s );
 
-char *find_kern_entry(grs_font *font,char first,char second)
+char *find_kern_entry(grs_font *font,int first,int second)
 {
 	ubyte *p=font->ft_kerndata;
 
@@ -170,6 +170,10 @@ void get_char_width(int c,int c2,int *width,int *spacing)
 {
 	int letter;
 
+	// ASCENT: the callers pass a char, which is signed: the letters of
+	// Latin-1 (0xA0 to 0xFF) are bytes above 127.
+	c &= 0xFF;
+	c2 &= 0xFF;
 	letter = c-FMINCHAR;
 
 	if (!INFONT(letter)) {				//not in font, draw as space
@@ -268,7 +272,7 @@ int gr_internal_string0(int x, int y, char *s )
 
 				get_char_width(text_ptr[0],text_ptr[1],&width,&spacing);
 
-				letter = *text_ptr-FMINCHAR;
+				letter = (ubyte) *text_ptr - FMINCHAR;	// ASCENT: unsigned, for the Latin-1 letters
 
 				if (!INFONT(letter)) {	//not in font, draw as space
 					VideoOffset += spacing;
@@ -363,7 +367,7 @@ int gr_internal_string0m(int x, int y, char *s )
 
 				get_char_width(text_ptr[0],text_ptr[1],&width,&spacing);
 
-				letter = *text_ptr-FMINCHAR;
+				letter = (ubyte) *text_ptr - FMINCHAR;	// ASCENT: unsigned, for the Latin-1 letters
 
 				if (!INFONT(letter)) {	//not in font, draw as space
 					VideoOffset += spacing;
@@ -459,7 +463,7 @@ int gr_internal_color_string(int x, int y, char *s )
 				break;
 			}
 
-			letter = *text_ptr-FMINCHAR;
+			letter = (ubyte) *text_ptr - FMINCHAR;	// ASCENT: unsigned, for the Latin-1 letters
 
 			get_char_width(text_ptr[0],text_ptr[1],&width,&spacing);
 
@@ -673,6 +677,349 @@ void decode_data_asm(ubyte *data, int num_pixels, ubyte * colormap, int * count 
 #define FONT_FILE_HEADER_SIZE	28
 #define FONT_MAX_CHARS			256
 
+//------------------------------------------------------------------------
+// ASCENT: the letters of the translations (docs/formats/lang.md). The text
+// of a translation is Latin-1. The fonts of the game have the characters
+// 32 to 126 (and some icons at 127 to 135), except FNTEMFS_, which has all
+// 256 characters of code page 437. At load time each font gets the
+// letters below: a copy of the code page 437 glyph when the font has all
+// 256 characters, else the base letter with an accent drawn from its
+// pixels. The font files do not change.
+
+#define ACC_ACUTE		1
+#define ACC_GRAVE		2
+#define ACC_CIRC		3
+#define ACC_DIAER		4
+#define ACC_TILDE		5
+#define ACC_CEDIL		6
+#define ACC_FLIP		7		// the base glyph upside down (inverted ! and ?)
+
+static const struct { ubyte code, base, accent, cp437; } Latin1_letters[] = {
+	{ 0xE1, 'a', ACC_ACUTE, 160 }, { 0xE9, 'e', ACC_ACUTE, 130 }, { 0xED, 'i', ACC_ACUTE, 161 },
+	{ 0xF3, 'o', ACC_ACUTE, 162 }, { 0xFA, 'u', ACC_ACUTE, 163 }, { 0xFC, 'u', ACC_DIAER, 129 },
+	{ 0xF1, 'n', ACC_TILDE, 164 }, { 0xC1, 'A', ACC_ACUTE, 0 },   { 0xC9, 'E', ACC_ACUTE, 144 },
+	{ 0xCD, 'I', ACC_ACUTE, 0 },   { 0xD3, 'O', ACC_ACUTE, 0 },   { 0xDA, 'U', ACC_ACUTE, 0 },
+	{ 0xDC, 'U', ACC_DIAER, 154 }, { 0xD1, 'N', ACC_TILDE, 165 }, { 0xBF, '?', ACC_FLIP, 168 },
+	{ 0xA1, '!', ACC_FLIP, 173 },
+	{ 0xE0, 'a', ACC_GRAVE, 133 }, { 0xE8, 'e', ACC_GRAVE, 138 }, { 0xEC, 'i', ACC_GRAVE, 141 },
+	{ 0xF2, 'o', ACC_GRAVE, 149 }, { 0xF9, 'u', ACC_GRAVE, 151 }, { 0xE2, 'a', ACC_CIRC, 131 },
+	{ 0xEA, 'e', ACC_CIRC, 136 },  { 0xEE, 'i', ACC_CIRC, 140 },  { 0xF4, 'o', ACC_CIRC, 147 },
+	{ 0xFB, 'u', ACC_CIRC, 150 },  { 0xE4, 'a', ACC_DIAER, 132 }, { 0xEB, 'e', ACC_DIAER, 137 },
+	{ 0xEF, 'i', ACC_DIAER, 139 }, { 0xF6, 'o', ACC_DIAER, 148 }, { 0xE7, 'c', ACC_CEDIL, 135 },
+	{ 0xC7, 'C', ACC_CEDIL, 128 },
+};
+#define N_LATIN1_LETTERS	((int) (sizeof(Latin1_letters) / sizeof(Latin1_letters[0])))
+
+#define GL_EMPTY	255		// an empty pixel of a glyph in the work form
+
+// A glyph in the work form: one byte for each pixel, GL_EMPTY or a color
+// (a mono font uses 1).
+static int glyph_get(grs_font *font, int c, ubyte *px, int *w)
+{
+	int letter = c - font->ft_minchar, x, y, h = font->ft_h;
+	ubyte *fp;
+
+	if (letter < 0 || letter > font->ft_maxchar - font->ft_minchar)
+		return 0;
+	if (font->ft_flags & FT_PROPORTIONAL) {
+		*w = font->ft_widths[letter];
+		fp = font->ft_chars[letter];
+	} else {
+		*w = font->ft_w;
+		fp = font->ft_data + letter * ((font->ft_flags & FT_COLOR) ? font->ft_w : BITS_TO_BYTES(font->ft_w)) * h;
+	}
+	if (*w <= 0 || *w > 64 || !fp)
+		return 0;
+	for (y = 0; y < h; y++)
+		for (x = 0; x < *w; x++) {
+			if (font->ft_flags & FT_COLOR)
+				px[y * *w + x] = fp[y * *w + x];
+			else
+				px[y * *w + x] = (fp[y * BITS_TO_BYTES(*w) + (x >> 3)] & (0x80 >> (x & 7))) ? 1 : GL_EMPTY;
+		}
+	return 1;
+}
+
+// Writes a glyph of the work form in the form of the font.
+static void glyph_put(grs_font *font, ubyte *dst, const ubyte *px, int w)
+{
+	int x, y, h = font->ft_h;
+
+	if (font->ft_flags & FT_COLOR) {
+		memcpy(dst, px, w * h);
+		return;
+	}
+	memset(dst, 0, BITS_TO_BYTES(w) * h);
+	for (y = 0; y < h; y++)
+		for (x = 0; x < w; x++)
+			if (px[y * w + x] != GL_EMPTY)
+				dst[y * BITS_TO_BYTES(w) + (x >> 3)] |= 0x80 >> (x & 7);
+}
+
+static int row_empty(const ubyte *px, int w, int y)
+{
+	int x;
+
+	for (x = 0; x < w; x++)
+		if (px[y * w + x] != GL_EMPTY)
+			return 0;
+	return 1;
+}
+
+// The base glyph with the accent, in place. h is the height of the font.
+static void glyph_compose(ubyte *px, int w, int h, int accent)
+{
+	ubyte tmp[64 * 64];
+	int top, bottom, x, y, minx = w, maxx = -1, color = 1, t, ah, gap, cx;
+	int counts[256];
+
+	memset(counts, 0, sizeof(counts));
+	for (y = 0; y < h; y++)
+		for (x = 0; x < w; x++)
+			if (px[y * w + x] != GL_EMPTY) {
+				counts[px[y * w + x]]++;
+				if (x < minx) minx = x;
+				if (x > maxx) maxx = x;
+			}
+	if (maxx < 0)
+		return;
+	for (x = 0; x < 255; x++)
+		if (counts[x] > counts[color])
+			color = x;
+	for (top = 0; top < h && row_empty(px, w, top); top++)
+		;
+	for (bottom = h - 1; bottom > top && row_empty(px, w, bottom); bottom--)
+		;
+
+	if (accent == ACC_FLIP) {
+		// turned by 180 degrees in the box of its pixels
+		memcpy(tmp, px, w * h);
+		for (y = top; y <= bottom; y++)
+			for (x = minx; x <= maxx; x++)
+				px[y * w + x] = tmp[(top + bottom - y) * w + (minx + maxx - x)];
+		return;
+	}
+
+	// The stroke: the shortest run of pixels in the rows of the glyph,
+	// 1 to 3 pixels
+	t = 64;
+	for (y = top; y <= bottom; y++) {
+		int run = 0;
+		for (x = 0; x <= w; x++) {
+			if (x < w && px[y * w + x] != GL_EMPTY)
+				run++;
+			else {
+				if (run > 0 && run < t)
+					t = run;
+				run = 0;
+			}
+		}
+	}
+	if (t > 3) t = 3;
+	if (t < 1) t = 1;
+	cx = (minx + maxx) / 2;
+
+	if (accent == ACC_CEDIL) {
+		// a hook below the letter, where the font has the rows
+		if (bottom + 2 < h) {
+			for (x = cx; x < cx + t && x < w; x++)
+				px[(bottom + 1) * w + x] = color;
+			for (x = cx - 1; x < cx + t && x < w; x++)
+				if (x >= 0)
+					px[(bottom + 2) * w + x] = color;
+		}
+		return;
+	}
+
+	// The dot of i: the rows from the top to the first empty row in the
+	// upper half
+	for (y = top + 1; y <= (top + bottom) / 2; y++)
+		if (row_empty(px, w, y)) {
+			int k;
+			for (k = top; k < y; k++)
+				memset(px + k * w, GL_EMPTY, w);
+			while (y < h && row_empty(px, w, y))
+				y++;
+			top = y;
+			break;
+		}
+
+	// The height of the accent and the empty row under it
+	ah = h <= 8 ? 1 : h <= 12 ? 2 : h <= 18 ? 3 : 4;
+	gap = 1;		// an empty row under the accent where there is room
+	if (top < ah + gap) {
+		// Not enough rows above the letter (a capital). The letter is made
+		// lower (its rows are taken evenly) so that a shorter accent and an
+		// empty row fit above it, if the letter keeps 5 rows. Else the
+		// accent goes into the rows that there are, without the empty row.
+		int n = bottom - top + 1, need, m, a2 = ah > 2 ? ah - 1 : ah;
+		need = a2 + 1 - top;
+		if (n - need >= 5) {
+			ah = a2;
+			gap = 1;
+		} else if (top >= ah) {
+			gap = 0;
+			need = 0;
+		} else if (top >= 1) {
+			ah = top;
+			gap = 0;
+			need = 0;
+		} else {
+			ah = 1;
+			gap = 0;
+			need = 1;
+		}
+		m = n - need;
+		if (m < 2)
+			return;
+		if (need > 0) {
+			memcpy(tmp, px, w * h);
+			for (y = top; y <= bottom; y++)
+				memset(px + y * w, GL_EMPTY, w);
+			for (y = 0; y < m; y++)
+				memcpy(px + (top + need + y) * w, tmp + (top + (y * n + n / 2) / m) * w, w);
+			top += need;
+		}
+	}
+
+	{
+		int y0 = top - gap - ah, r, k;
+
+#define PUT(xx, yy) do { int _x = (xx), _y = (yy); if (_x >= 0 && _x < w && _y >= 0 && _y < h) px[_y * w + _x] = color; } while (0)
+		switch (accent) {
+			case ACC_ACUTE:
+			case ACC_GRAVE:
+				for (r = 0; r < ah; r++) {
+					int d = accent == ACC_ACUTE ? ah - 1 - r : r;
+					for (k = 0; k < t + (ah == 1); k++)
+						PUT(cx - ah / 2 + d + k, y0 + r);
+				}
+				break;
+			case ACC_CIRC:
+				if (ah == 1) {
+					for (k = -1; k <= 1; k++)
+						PUT(cx + k, y0);
+				} else
+					for (r = 0; r < ah; r++)
+						for (k = 0; k < t; k++) {
+							PUT(cx - r - k, y0 + r);
+							PUT(cx + r + k, y0 + r);
+						}
+				break;
+			case ACC_DIAER: {
+				int space = (maxx - minx + 1) / 3, x1, dh = ah < t ? ah : t;
+				if (space < 1) space = 1;
+				x1 = cx - space / 2 - t;
+				for (r = 0; r < dh; r++)
+					for (k = 0; k < t; k++) {
+						PUT(x1 + k, y0 + ah - 1 - r);
+						PUT(x1 + t + space + k, y0 + ah - 1 - r);
+					}
+				break;
+			}
+			case ACC_TILDE: {
+				int tw = maxx - minx + 1, x0;
+				if (tw > 2 * ah + 4) tw = 2 * ah + 4;
+				if (tw < 3) tw = 3;
+				x0 = cx - (tw - 1) / 2;
+				if (ah == 1) {
+					for (k = 0; k < tw; k++)
+						PUT(x0 + k, y0);
+				} else {
+					// row 1: the first half rises, row 2: the second half
+					for (k = 1; k <= tw / 2; k++)
+						PUT(x0 + k, y0 + ah - 2);
+					PUT(x0 + tw - 1, y0 + ah - 2);
+					PUT(x0, y0 + ah - 1);
+					for (k = tw / 2; k < tw - 1; k++)
+						PUT(x0 + k, y0 + ah - 1);
+				}
+				break;
+			}
+		}
+#undef PUT
+	}
+}
+
+// Adds the letters of Latin1_letters to the font (see above).
+static void font_add_latin1(grs_font *font)
+{
+	static ubyte px[64 * 64];
+	int i, w, h = font->ft_h, nchars, old_n, total = 0;
+	ubyte *store, *p;
+	ubyte **chars;
+
+	if (h <= 0 || h > 64 || font->ft_minchar > 'a')
+		return;
+
+	// A font with all 256 characters of code page 437 (FNTEMFS_): copy
+	// the glyphs in place, and compose the letters that it does not have.
+	if (font->ft_maxchar == 255 && !(font->ft_flags & FT_PROPORTIONAL)) {
+		int size = ((font->ft_flags & FT_COLOR) ? font->ft_w : BITS_TO_BYTES(font->ft_w)) * h;
+		for (i = 0; i < N_LATIN1_LETTERS; i++) {
+			int c = Latin1_letters[i].code;
+			if (Latin1_letters[i].cp437 && glyph_get(font, Latin1_letters[i].cp437, px, &w))
+				;
+			else if (glyph_get(font, Latin1_letters[i].base, px, &w))
+				glyph_compose(px, w, h, Latin1_letters[i].accent);
+			else
+				continue;
+			glyph_put(font, font->ft_data + (c - font->ft_minchar) * size, px, w);
+		}
+		return;
+	}
+	if (font->ft_maxchar >= 0xA1)
+		return;		// a font of its own with these characters
+
+	// Else the font goes up to 255. The new characters that are not in
+	// the list are drawn as a space.
+	old_n = font->ft_maxchar - font->ft_minchar + 1;
+	nchars = 256 - font->ft_minchar;
+	chars = (ubyte **) malloc(nchars * sizeof(ubyte *));
+	if (!chars)
+		return;
+	if (!(font->ft_flags & FT_PROPORTIONAL)) {
+		// a fixed font becomes a proportional font with equal widths
+		int size = ((font->ft_flags & FT_COLOR) ? font->ft_w : BITS_TO_BYTES(font->ft_w)) * h;
+		font->ft_widths = (short *) (font + 1);		// the table of gr_init_font
+		for (i = 0; i < old_n; i++) {
+			chars[i] = font->ft_data + i * size;
+			font->ft_widths[i] = font->ft_w;
+		}
+	} else
+		for (i = 0; i < old_n; i++)
+			chars[i] = font->ft_chars[i];
+	for (i = old_n; i < nchars; i++) {
+		int sp = ' ' - font->ft_minchar;
+		chars[i] = sp >= 0 && sp < old_n ? chars[sp] : chars[0];
+		font->ft_widths[i] = sp >= 0 && sp < old_n ? font->ft_widths[sp] : 0;
+	}
+	if (font->ft_flags & FT_PROPORTIONAL)
+		free(font->ft_chars);
+	font->ft_chars = chars;
+	font->ft_flags |= FT_PROPORTIONAL;
+	font->ft_maxchar = 255;
+
+	for (i = 0; i < N_LATIN1_LETTERS; i++)
+		if (glyph_get(font, Latin1_letters[i].base, px, &w))
+			total += ((font->ft_flags & FT_COLOR) ? w : BITS_TO_BYTES(w)) * h;
+	// The memory of the new glyphs stays as long as the program runs (a
+	// font is closed at the end only).
+	store = p = (ubyte *) malloc(total > 0 ? total : 1);
+	if (!store)
+		return;
+	for (i = 0; i < N_LATIN1_LETTERS; i++) {
+		int c = Latin1_letters[i].code;
+		if (!glyph_get(font, Latin1_letters[i].base, px, &w))
+			continue;
+		glyph_compose(px, w, h, Latin1_letters[i].accent);
+		glyph_put(font, p, px, w);
+		font->ft_chars[c - font->ft_minchar] = p;
+		font->ft_widths[c - font->ft_minchar] = w;
+		p += ((font->ft_flags & FT_COLOR) ? w : BITS_TO_BYTES(w)) * h;
+	}
+}
+
 static int font_get_short( ubyte * p )
 {
 	return (short)(p[0] | (p[1] << 8));
@@ -797,6 +1144,8 @@ grs_font * gr_init_font( char * fontname )
 
 	cfclose(fontfile);
 
+	font_add_latin1(font);		// ASCENT: the letters of the translations
+
 	//set curcanv vars
 
 	FONT        = font;
@@ -859,7 +1208,7 @@ int gr_internal_string_clipped(int x, int y, char *s )
 
 				get_char_width(text_ptr[0],text_ptr[1],&width,&spacing);
 
-				letter = *text_ptr-FMINCHAR;
+				letter = (ubyte) *text_ptr - FMINCHAR;	// ASCENT: unsigned, for the Latin-1 letters
 
 				if (!INFONT(letter)) {	//not in font, draw as space
 					x += spacing;
@@ -946,7 +1295,7 @@ int gr_internal_string_clipped_m(int x, int y, char *s )
 
 				get_char_width(text_ptr[0],text_ptr[1],&width,&spacing);
 
-				letter = *text_ptr-FMINCHAR;
+				letter = (ubyte) *text_ptr - FMINCHAR;	// ASCENT: unsigned, for the Latin-1 letters
 
 				if (!INFONT(letter)) {	//not in font, draw as space
 					x += spacing;

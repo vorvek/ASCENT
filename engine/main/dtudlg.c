@@ -34,6 +34,7 @@
  *   is shown before each such choice (default 15).
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -612,8 +613,8 @@ void dtu_dlg_draw(void)
 		int w;
 		sub_canvas(&area_canv, L->x, rty, L->w, rh);
 		gr_set_fontcolor(c_sel, -1);
-		gr_get_string_size("Press Enter...", &w, &h, &aw);
-		gr_string((L->w - w) / 2, (rh - fh) / 2, "Press Enter...");
+		gr_get_string_size(LT("Press Enter..."), &w, &h, &aw);
+		gr_string((L->w - w) / 2, (rh - fh) / 2, LT("Press Enter..."));
 	} else {
 		// 0xB2D90: the number "%d)" in the number column and the reply in
 		// the text column at the same row; the next reply starts one empty

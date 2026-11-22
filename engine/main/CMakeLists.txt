@@ -13,7 +13,18 @@ set(MAIN_SOURCES
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
   dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuopts.c
-  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c)
+  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c)
+
+# ASCENT: the translations of the text of the code (dtulang.c,
+# docs/formats/lang.md) are part of the program: each
+# engine/lang/<code>_port.catalog becomes the C array Lang_port_<code>.
+set(LANG_PORT_C ${CMAKE_CURRENT_BINARY_DIR}/lang_port_es.c)
+add_custom_command(OUTPUT ${LANG_PORT_C}
+  COMMAND ${CMAKE_COMMAND} -DIN=${CMAKE_SOURCE_DIR}/engine/lang/es_port.catalog -DOUT=${LANG_PORT_C}
+    -DNAME=Lang_port_es -P ${CMAKE_SOURCE_DIR}/cmake/embed_text.cmake
+  DEPENDS ${CMAKE_SOURCE_DIR}/engine/lang/es_port.catalog ${CMAKE_SOURCE_DIR}/cmake/embed_text.cmake
+  VERBATIM)
+list(APPEND MAIN_SOURCES ${LANG_PORT_C})
 
 add_library(d_main OBJECT EXCLUDE_FROM_ALL ${MAIN_SOURCES})
 target_include_directories(d_main PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

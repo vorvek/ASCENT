@@ -79,6 +79,11 @@ void dtufe_improvements_menu(void);
 // close it. It writes the configuration file when it closes.
 void dtufe_graphics_menu(void);
 
+// The menu "Language" (dtulang.h) in the game, with newmenu. The options
+// menu of F2 (menu.c) opens it. A choice changes the language at once and
+// writes the configuration file.
+void dtufe_language_menu(void);
+
 // The key F5 in the game: returns 1 and opens the Graphics menu after the
 // frame when the front end runs the game, else returns 0.
 int dtufe_graphics_key(void);

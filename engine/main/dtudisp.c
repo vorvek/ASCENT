@@ -9,6 +9,7 @@
  * details. A comment that says "guess" marks a part that is not verified.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -509,7 +510,7 @@ static void item_count_text(int index, char *text)
 
 static void spell_level_text(int spell, char *text)
 {
-	sprintf(text, Dtu_hires ? "Lvl %d" : "L-%d", dtu_spell_level(spell));
+	sprintf(text, Dtu_hires ? LT("Lvl %d") : LT("L-%d"), dtu_spell_level(spell));
 }
 
 // A text of the string table of the game
@@ -563,6 +564,7 @@ void dtu_display_add_message(char *text)
 	char *p = text;
 
 	if (!Dtu_display_active || !GAME_FONT || !text) return;
+	p = text = dtu_tr(text);		// ASCENT: the text of the code in the language (dtulang.h)
 	// The color of a message is the first byte of the line in the original.
 	// The callers were not traced: gray is a guess.
 	color = rgb6(48, 48, 48);
@@ -1229,6 +1231,12 @@ static void inv_describe(int mx, int my)
 	if (!Desc_text[0] && !Inv_browse && Inv_sel < Dtu_n_inventory)
 		strncpy(Desc_text, Dtu_inventory[Inv_sel].name, sizeof(Desc_text) - 1);
 	Desc_text[sizeof(Desc_text) - 1] = 0;
+	{
+		// ASCENT: the name of an item or a spell in the language (dtulang.h)
+		char *t = dtu_tr_name(Desc_text);
+		if (t != Desc_text)
+			snprintf(Desc_text, sizeof(Desc_text), "%s", t);
+	}
 }
 
 // A click of the mouse on the inventory screen (0x2FB10, 0x30650 and the
@@ -1572,11 +1580,11 @@ static void draw_stats(void)
 		strcpy(text, gtext(649 + ((pa->race < 0 || pa->race > 4) ? 5 : pa->race), "Human"));
 	area_text_left(x, Dtu_hires ? 147 : 72, w, h, text, gray);
 	if (pa->class1 >= 0 && pa->class1 <= 3) {
-		sprintf(text, Dtu_hires ? "Lvl %d %s" : " %d %s", pa->class1_level + 1, gtext(class_text[pa->class1], class_def[pa->class1]));
+		sprintf(text, Dtu_hires ? LT("Lvl %d %s") : " %d %s", pa->class1_level + 1, gtext(class_text[pa->class1], class_def[pa->class1]));
 		area_text_left(x, Dtu_hires ? 163 : 81, w, h, text, gray);
 	}
 	if (pa->class2 >= 0 && pa->class2 <= 3) {
-		sprintf(text, Dtu_hires ? "Lvl %d %s" : " %d %s", pa->class2_level + 1, gtext(class_text[pa->class2], class_def[pa->class2]));
+		sprintf(text, Dtu_hires ? LT("Lvl %d %s") : " %d %s", pa->class2_level + 1, gtext(class_text[pa->class2], class_def[pa->class2]));
 		area_text_left(x, Dtu_hires ? 179 : 90, w, h, text, gray);
 	}
 
@@ -1600,7 +1608,7 @@ static void draw_stats(void)
 
 		y = Dtu_hires ? 62 + 20 * i : 30 + 11 * i;
 		area_text_left(Dtu_hires ? 218 : 108, y, Dtu_hires ? 120 : 75, h,
-			(i == 3 && !Dtu_hires) ? "Find Traps" : gtext(678 + i, skill_def[i]), thief ? white : gray);
+			(i == 3 && !Dtu_hires) ? LT("Find Traps") : gtext(678 + i, skill_def[i]), thief ? white : gray);
 		sprintf(text, "%d%c", skill[i], '%');
 		area_text_left(Dtu_hires ? 338 : 183, y, Dtu_hires ? 50 : 24, h, text, thief ? white : gray);
 	}
@@ -1622,7 +1630,7 @@ static void draw_info_areas(void)
 	sprintf(text, "%s %d", gtext(675, "AC:"), dtu_char_armor_class());
 	area_text(x, SC(119), w, h, text, rgb6(63, 63, 0));
 	// 0x3BC3B4, area type 6: the experience (the result of 0x37253)
-	sprintf(text, "%d Exp", dtu_char_next_level(NULL, NULL));
+	sprintf(text, LT("%d Exp"), dtu_char_next_level(NULL, NULL));
 	area_text(x, SC(130), w, h, text, rgb6(63, 63, 0));
 	// 0x32657: "%s %d" with string 674 ("Gold:") and the gold
 	sprintf(text, "%s %d", gtext(674, "Gold:"), Dtu_gold);
@@ -1976,7 +1984,7 @@ static void do_input(int mx, int my)
 		mouse_set_relative(Dtu_immersive);
 		text = Text_string[Dtu_immersive ? 817 : 818];
 		Msg_next_color = rgb6(30, 30, 46);
-		dtu_display_add_message(text ? text : (Dtu_immersive ? "Immersive mode is on." : "Immersive mode is off."));
+		dtu_display_add_message(text ? text : (Dtu_immersive ? LN("Immersive mode is on.") : LN("Immersive mode is off.")));
 		Msg_next_color = -1;
 	}
 	// F3 "cycles the playing screen size" (manual). The sizes of the cycle

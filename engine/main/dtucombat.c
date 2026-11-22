@@ -5,6 +5,7 @@
  * 0x561DA; object.c 0x67C5A). See dtucombat.h and docs/re/combat.md.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -673,9 +674,9 @@ static int missile_start(vms_vector *pos,vms_vector *dir)
 static char *missile_needs(int w)
 {
 	if (weapon_flag(w,"arrow") && Dtu_char.slot[DTU_SLOT_BOW].n < 0)
-		return "You need a bow to fire arrows.";
+		return LT("You need a bow to fire arrows.");
 	if (weapon_flag(w,"bolt") && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0)
-		return "You need a crossbow to fire bolts.";
+		return LT("You need a crossbow to fire bolts.");
 	return NULL;
 }
 

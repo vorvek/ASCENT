@@ -18,6 +18,7 @@
 #include "kconfig.h"		// the key table, written to the same file
 #include "dtufile.h"		// ASCENT: dtu_user_path, dtu_install_dir
 #include "dtulog.h"		// ASCENT: the session log
+#include "dtulang.h"		// ASCENT: the language (Language=en)
 
 int Dtu_improved_physics = 1;
 int Dtu_improved_jump = 1;
@@ -43,6 +44,7 @@ int Dtu_target_hint = 1;
 // not kept for the next start. A change in a menu is kept.
 static int File_gpu_renderer = -1, File_render_scale = -1;
 static int Arg_gpu_renderer = -1, Arg_render_scale = -1;
+static int File_language = -1, Arg_language = -1;
 
 typedef struct {
 	const char *name;
@@ -89,6 +91,13 @@ void dtu_opts_load(void)
 					*--e = 0;
 				if (dtu_kconfig_cfg_line(line, v))
 					continue;
+				// ASCENT: the language of the text (dtulang.h), a code
+				if (!strcmp(line, "Language")) {
+					int l = dtu_lang_from_code(v);
+					if (l >= 0)
+						Dtu_language = l;
+					continue;
+				}
 			}
 			for (i = 0; i < N_OPTS; i++)
 				if (!strcmp(line, Opts[i].name)) {
@@ -114,6 +123,10 @@ void dtu_opts_load(void)
 		}
 	}
 	dtu_kconfig_args();		// -keyconfig, for the tests
+	if ((t = FindArg("-language")) != 0 && t + 1 < Num_args && dtu_lang_from_code(Args[t + 1]) >= 0) {
+		File_language = Dtu_language;
+		Dtu_language = Arg_language = dtu_lang_from_code(Args[t + 1]);
+	}
 	if (FindArg("-noimprovements")) {
 		Dtu_improved_physics = Dtu_improved_jump = Dtu_improved_pathfinding = 0;
 		Dtu_improved_occlusion = Dtu_improved_body = 0;
@@ -144,6 +157,12 @@ void dtu_opts_save(void)
 			v = File_render_scale;
 		fprintf(f, "%s=%d\n", Opts[i].name, v);
 	}
+	{
+		int l = Dtu_language;
+		if (File_language >= 0 && l == Arg_language)
+			l = File_language;
+		fprintf(f, "Language=%s\n", dtu_lang_code(l));
+	}
 	dtu_kconfig_cfg_write(f);		// ASCENT: the key table (kconfig.c)
 	fclose(f);
 }
@@ -157,6 +176,8 @@ void dtu_opts_log(void)
 	n = snprintf(line, sizeof(line), "Settings (ascent.cfg and arguments):");
 	for (i = 0; i < N_OPTS && n < (int) sizeof(line) - 2; i++)
 		n += snprintf(line + n, sizeof(line) - n, " %s=%d", Opts[i].name, *Opts[i].value);
+	if (n < (int) sizeof(line) - 2)
+		snprintf(line + n, sizeof(line) - n, " Language=%s", dtu_lang_code(Dtu_language));
 	dtulog_event("%s", line);
 }
 

@@ -76,6 +76,7 @@ static char rcsid[] = "$Id: text.c 2.0 1995/02/27 11:33:09 john Exp $";
 
 #include "inferno.h"
 #include "text.h"
+#include "dtulang.h"		// ASCENT: the translations
 #include "args.h"
 #include "compbit.h"
 #include "dtufile.h"		// ASCENT: the game data files
@@ -226,7 +227,9 @@ void load_text()
 	}
 
 //	Assert(tptr==text+len || tptr==text+len-2);
-	
+
+	// ASCENT: the translation of the strings (dtulang.c)
+	dtu_lang_text_loaded();
 }
 
 

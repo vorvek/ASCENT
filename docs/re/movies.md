@@ -147,4 +147,9 @@ runs in place of the normal break **V**:
   rendered 3D pictures of the two logos, `LOGO22S` (Interplay) and `TLOGOS`
   (TSR). Without the blur the dither grain of the 256 colors stays.
 - `-nomovies` plays no movie. `-playmovie NAME [-movieframes N]
-  [-movieshot FILE.ppm] [-moviefast]` is the test option.
+  [-movieshot FILE.ppm] [-moviefast]` is the test option. The shot is the
+  picture that was shown last, with the subtitles.
+- Subtitles (not in the original): with a language other than English the
+  cues of `<lang dir>/<MOVIE>.<code>.srt` are drawn over the picture, in the
+  three forms (the movie picture, `-movienative`, the upscaled picture).
+  INTRO2 and CREDITV1 have speech. See docs/formats/lang.md.

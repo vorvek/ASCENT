@@ -6,6 +6,7 @@
  * The addresses in the comments are functions of DTUGAME.EXE 1.3.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -75,6 +76,7 @@ static int		Trap_chain_stop = 0;							// 0x142248
 static ubyte	*Say_data = NULL;
 static int		Say_size = 0;
 static char		Say_text[4096];								// 0x3A65C8
+static char		Say_level[16];			// ASCENT: the name of the level of the SAY file, for the ids of the translations
 
 static dtu_warp	Warps[MAX_SEGMENTS];
 static int			Warps_enabled = 0;						// 0x13CE28
@@ -349,7 +351,12 @@ char *dtu_trig_say_text(int say_index)
 		for (i=0; Say_text[i]; i++)
 			Say_text[i] = (char)(((ubyte)Say_text[i] >> 4) | ((ubyte)Say_text[i] << 4));
 
-	return Say_text;
+	{
+		// ASCENT: the translation of the message (dtulang.h): id say.LEVEL.N
+		char id[40];
+		snprintf(id, sizeof(id), "say.%s.%d", Say_level, say_index);
+		return dtu_tr_id(id, Say_text);
+	}
 }
 
 static void trig_say(dtu_trigger *t)
@@ -1622,6 +1629,7 @@ void dtu_trig_load_level(char *level_name, int level_index)
 		tlog("no file %s", name);
 
 	make_name(name, level_name, ".SAY");
+	make_name(Say_level, level_name, "");
 	Say_data = dtu_load_file(name, &Say_size);
 	if (!Say_data)
 		tlog("no file %s", name);

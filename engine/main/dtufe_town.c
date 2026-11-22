@@ -11,6 +11,7 @@
  * An address in a comment is an address of DTUGAME.EXE 1.3.
  */
 
+#include "dtulang.h"		// ASCENT: the language of the text
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -586,6 +587,7 @@ static void mk_insert(mk_list *l, int type, int id, int cond, int qty, int equip
 	snprintf(e->name, sizeof(e->name), "%s", it->name);
 	if (!e->name[0] && type == OBJ_WEAPON && it->record >= 0)
 		bm_tbl_get(it->record, "weapon_name", e->name, sizeof(e->name));
+	snprintf(e->name, sizeof(e->name), "%s", dtu_tr_name(e->name));		// ASCENT: the language (dtulang.h)
 	e->sell_price = mk_price(type, id, cond, 1);
 	e->buy_price = mk_price(type, id, cond, 0);
 	l->n++;
@@ -906,7 +908,7 @@ static void mk_scroll(fe_screen *s, int id)		// 0x84B6D, 0x84B8A
 
 static char *mk_help(int id)
 {
-	return id == 7 ? "Scroll up" : "Scroll down";		// 0x13EE94, 0x13EE98
+	return id == 7 ? LN("Scroll up") : LN("Scroll down");		// 0x13EE94, 0x13EE98
 }
 
 static void mk_popup_open(fe_screen *s, mk_entry *e, char *warning);
@@ -1015,7 +1017,7 @@ static void mk_qty_enter(fe_screen *s, int id)		// 0x86F9C, 0x86FCB
 	int v;
 
 	sprintf(buf, "%d", Mk_trans_qty);
-	if (fe_input_box("Enter Qty", buf, 5) < 0)
+	if (fe_input_box(LN("Enter Qty"), buf, 5) < 0)
 		return;
 	v = atoi(buf);
 	if (v < 1) v = 1;

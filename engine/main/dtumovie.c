@@ -22,6 +22,8 @@
 #include "dtuopts.h"
 #include "mvedec.h"
 #include "platform.h"
+#include "gr.h"
+#include "dtulang.h"		// ASCENT: the subtitles
 
 // pl_mpeg (MIT license) decodes the upscaled movies (engine/third_party/pl_mpeg).
 #define PL_MPEG_IMPLEMENTATION
@@ -207,6 +209,180 @@ static int write_ppm(const char *file, const uint8_t *pix, int w, int h, const u
 }
 
 //------------------------------------------------------------------------
+// ASCENT: subtitles (not in the executable). With a language other than
+// English the speech of a movie gets the cues of <lang dir>/<MOVIE>.<code>.srt
+// (dtulang.h). The text is drawn with the medium font of the front end
+// (FNTEMFM_), white with a black outline, centered near the bottom of the
+// 640x480 picture; an upscaled movie gets the same text scaled by its size.
+// The time of a cue is the time of the picture (the frame number times the
+// frame time), so a movie with -moviefast shows the same cues.
+
+static grs_font *Sub_font;
+static int Sub_font_tried;
+static const dtu_sub_cue *Sub_cues;
+static int Sub_n;
+
+static grs_font *sub_font(void)
+{
+	char path[600];
+
+	if (!Sub_font_tried) {
+		Sub_font_tried = 1;
+		if (dtu_find_file("FNTEMFM_.FNT", path, sizeof(path))) {
+			grs_font *save = grd_curcanv ? grd_curcanv->cv_font : NULL;
+			Sub_font = gr_init_font(path);
+			if (grd_curcanv)
+				grd_curcanv->cv_font = save;
+		}
+	}
+	return Sub_font;
+}
+
+// The width of a line in pixels of the font
+static int sub_width(grs_font *f, const char *s, int n)
+{
+	int w = 0, i;
+
+	for (i = 0; i < n; i++) {
+		int c = (ubyte) s[i] - f->ft_minchar;
+		if (c < 0 || c > f->ft_maxchar - f->ft_minchar)
+			w += f->ft_w / 2;
+		else
+			w += (f->ft_flags & FT_PROPORTIONAL) ? f->ft_widths[c] : f->ft_w;
+	}
+	return w;
+}
+
+// 1 if the pixel (x, y) of the glyph of character c is set
+static int sub_pixel(grs_font *f, int c, int x, int y)
+{
+	int letter = c - f->ft_minchar, w;
+	ubyte *p;
+
+	if (letter < 0 || letter > f->ft_maxchar - f->ft_minchar)
+		return 0;
+	w = (f->ft_flags & FT_PROPORTIONAL) ? f->ft_widths[letter] : f->ft_w;
+	p = (f->ft_flags & FT_PROPORTIONAL) ? f->ft_chars[letter] :
+		f->ft_data + letter * ((f->ft_flags & FT_COLOR) ? f->ft_w : (f->ft_w + 7) / 8) * f->ft_h;
+	if (!p || x >= w)
+		return 0;
+	if (f->ft_flags & FT_COLOR)
+		return p[y * w + x] != 255;
+	return (p[y * ((w + 7) / 8) + (x >> 3)] >> (7 - (x & 7))) & 1;
+}
+
+// The mask of the text of a cue in the picture of the movie (mw x mh, at
+// most 640x480): 0 nothing, 1 outline, 2 text. The lines are centered, the
+// last one 8 pixels above the bottom of the picture. Returns 0 if no cue
+// is shown.
+static ubyte Sub_mask[NATIVE_W * NATIVE_H];
+static int Sub_w, Sub_h, Sub_y0, Sub_y1;	// the size of the mask, the rows with text
+
+static int sub_build(int ms, int mw, int mh)
+{
+	grs_font *f;
+	const char *text = NULL, *line;
+	int i, lines = 1, y, lh;
+
+	for (i = 0; i < Sub_n; i++)
+		if (ms >= Sub_cues[i].start_ms && ms < Sub_cues[i].end_ms) {
+			text = Sub_cues[i].text;
+			break;
+		}
+	if (!text || !text[0] || mw > NATIVE_W || mh > NATIVE_H || (f = sub_font()) == NULL)
+		return 0;
+	for (line = text; *line; line++)
+		if (*line == '\n')
+			lines++;
+	lh = f->ft_h + 2;
+	Sub_w = mw;
+	Sub_h = mh;
+	memset(Sub_mask, 0, sizeof(Sub_mask));
+	y = mh - 8 - lines * lh;
+	if (y < 1)
+		y = 1;
+	Sub_y0 = y - 1;
+	Sub_y1 = y + lines * lh + 1;
+	for (line = text; *line; ) {
+		int n = (int) strcspn(line, "\n"), x = (mw - sub_width(f, line, n)) / 2, k;
+		for (k = 0; k < n; k++) {
+			int c = (ubyte) line[k], letter = c - f->ft_minchar, w, gx, gy;
+			w = (letter < 0 || letter > f->ft_maxchar - f->ft_minchar) ? f->ft_w / 2 :
+				(f->ft_flags & FT_PROPORTIONAL) ? f->ft_widths[letter] : f->ft_w;
+			for (gy = 0; gy < f->ft_h; gy++)
+				for (gx = 0; gx < w; gx++)
+					if (sub_pixel(f, c, gx, gy)) {
+						int px = x + gx, py = y + gy, dx, dy;
+						if (px < 1 || px >= mw - 1 || py < 1 || py >= mh - 1)
+							continue;
+						for (dy = -1; dy <= 1; dy++)
+							for (dx = -1; dx <= 1; dx++)
+								if (!Sub_mask[(py + dy) * mw + px + dx])
+									Sub_mask[(py + dy) * mw + px + dx] = 1;
+						Sub_mask[py * mw + px] = 2;
+					}
+			x += w;
+		}
+		line += n;
+		if (*line == '\n')
+			line++;
+		y += lh;
+	}
+	if (Sub_y0 < 0) Sub_y0 = 0;
+	if (Sub_y1 > mh) Sub_y1 = mh;
+	return 1;
+}
+
+// The palette index nearest to a color (6-bit values)
+static int sub_color(const uint8_t *pal6, int r, int g, int b)
+{
+	int i, best = 0, best_d = 0x7FFFFFFF;
+
+	for (i = 0; i < 256; i++) {
+		int dr = (pal6[i * 3] & 63) - r, dg = (pal6[i * 3 + 1] & 63) - g, db = (pal6[i * 3 + 2] & 63) - b;
+		int d = dr * dr + dg * dg + db * db;
+		if (d < best_d) {
+			best_d = d;
+			best = i;
+		}
+	}
+	return best;
+}
+
+// Draws the mask into an 8-bit picture with a row length of pitch; the
+// movie picture starts at (ox, oy) in it.
+static void sub_draw8(uint8_t *pix, int pitch, int ox, int oy, const uint8_t *pal6)
+{
+	int white = sub_color(pal6, 63, 63, 63), black = sub_color(pal6, 0, 0, 0), x, y;
+
+	for (y = Sub_y0; y < Sub_y1; y++)
+		for (x = 0; x < Sub_w; x++) {
+			int m = Sub_mask[y * Sub_w + x];
+			if (m)
+				pix[(oy + y) * pitch + ox + x] = m == 2 ? white : black;
+		}
+}
+
+// Draws the mask into the 32-bit picture of an upscaled movie (w x h shows
+// the whole movie picture).
+static void sub_draw32(uint32_t *pix, int w, int h)
+{
+	int x, y;
+
+	for (y = 0; y < h; y++) {
+		int sy = (int) ((long long) y * Sub_h / h), row;
+		if (sy < Sub_y0 || sy >= Sub_y1)
+			continue;
+		row = sy * Sub_w;
+		for (x = 0; x < w; x++) {
+			int m = Sub_mask[row + (int) ((long long) x * Sub_w / w)];
+			if (m)
+				pix[y * w + x] = m == 2 ? 0xFFFFFFFFu : 0xFF000000u;
+		}
+	}
+}
+
+//------------------------------------------------------------------------
 // The player
 
 static int Movie_frame_limit;		// -movieframes
@@ -230,20 +406,66 @@ static int skip_requested(void)
 	return skip;
 }
 
-static void present(mve_decoder *m, hd_movie *hd, int native)
+// ASCENT: the last picture that was shown, for -movieshot (with the
+// subtitles)
+static const uint8_t *Shown8;
+static const uint32_t *Shown32;
+static int Shown_w, Shown_h;
+
+static void present(mve_decoder *m, hd_movie *hd, int native, int ms)
 {
 	static uint8_t screen[NATIVE_W * NATIVE_H];
+	static uint8_t frame8[NATIVE_W * NATIVE_H];
+	static uint32_t *frame32;
+	static size_t frame32_size;
+	int sub = Sub_n > 0 && sub_build(ms, m->width, m->height);
 
 	if (hd->ok) {
-		plat_present_xrgb((const uint32_t *) hd->bgra, hd->w, hd->h, hd->w * 4);
+		const uint32_t *pix = (const uint32_t *) hd->bgra;
+		size_t need = (size_t) hd->w * hd->h;
+		if (sub) {
+			// the subtitles go into a copy: the decoder keeps its picture
+			if (frame32_size < need) {
+				free(frame32);
+				frame32 = malloc(need * 4);
+				frame32_size = frame32 ? need : 0;
+			}
+			if (frame32) {
+				memcpy(frame32, hd->bgra, need * 4);
+				sub_draw32(frame32, hd->w, hd->h);
+				pix = frame32;
+			}
+		}
+		plat_present_xrgb(pix, hd->w, hd->h, hd->w * 4);
+		Shown8 = NULL;
+		Shown32 = pix;
+		Shown_w = hd->w;
+		Shown_h = hd->h;
 	} else if (native && m->width <= NATIVE_W && m->height <= NATIVE_H) {
 		int x = ((NATIVE_W - m->width) / 2) & ~3, y = (NATIVE_H - m->height) / 2, j;
 		memset(screen, 0, sizeof(screen));
 		for (j = 0; j < m->height; j++)
 			memcpy(screen + (y + j) * NATIVE_W + x, mve_frame(m) + j * m->width, m->width);
+		if (sub)
+			sub_draw8(screen, NATIVE_W, x, y, m->pal);
 		plat_present(screen, NATIVE_W, NATIVE_H, NATIVE_W, m->pal);
-	} else
-		plat_present(mve_frame(m), m->width, m->height, m->width, m->pal);
+		Shown8 = screen;
+		Shown32 = NULL;
+		Shown_w = NATIVE_W;
+		Shown_h = NATIVE_H;
+	} else {
+		const uint8_t *pix = mve_frame(m);
+		if (sub) {
+			memcpy(frame8, pix, (size_t) m->width * m->height);
+			sub_draw8(frame8, m->width, 0, 0, m->pal);
+			pix = frame8;
+		}
+		plat_present(pix, m->width, m->height, m->width, m->pal);
+		Shown8 = pix;
+		Shown32 = NULL;
+		Shown_w = m->width;
+		Shown_h = m->height;
+	}
 }
 
 int dtumovie_play(const char *name)
@@ -284,6 +506,9 @@ int dtumovie_play(const char *name)
 
 	native = FindArg("-movienative") != 0;
 	hd_open(&hd, name);
+	Sub_n = dtu_lang_subtitles(name, &Sub_cues);		// ASCENT: dtulang.h
+	Shown8 = NULL;
+	Shown32 = NULL;
 
 	// 0xA48D0 in the callers: the music and the sounds stop.
 	dtumusic_stop();
@@ -334,7 +559,7 @@ int dtumovie_play(const char *name)
 			}
 			if (result == DTUMOVIE_SKIPPED)
 				break;
-			present(&m, &hd, native);
+			present(&m, &hd, native, (int) (((uint64_t) k * m.frame_us) / 1000));
 		}
 		if (!plat_pump() || skip_requested()) {
 			result = DTUMOVIE_SKIPPED;
@@ -353,7 +578,9 @@ int dtumovie_play(const char *name)
 	}
 
 	if (Movie_shot) {
-		if (write_ppm(Movie_shot, mve_frame(&m), hd.ok ? hd.w : m.width, hd.ok ? hd.h : m.height,
+		// ASCENT: the picture that was shown last, with the subtitles
+		if (Shown8 || Shown32 ? write_ppm(Movie_shot, Shown8, Shown_w, Shown_h, m.pal, (const uint8_t *) Shown32) :
+				write_ppm(Movie_shot, mve_frame(&m), hd.ok ? hd.w : m.width, hd.ok ? hd.h : m.height,
 				m.pal, hd.ok ? hd.bgra : NULL))
 			printf("Wrote %s (movie %s frame %d%s)\n", Movie_shot, name, m.shown, hd.ok ? ", upscaled" : "");
 		Movie_shot = NULL;

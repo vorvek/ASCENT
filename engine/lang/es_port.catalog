@@ -1,0 +1,152 @@
+# ASCENT text catalog: es, the text of the program (port strings)
+# Format: docs/formats/lang.md. tools/lang_extract.py merge writes this file
+# from the translated part A. This first version has the settings menus only.
+
+id: port.press_enter
+en: Press Enter...
+tr: Pulsa Intro...
+
+id: port.improved_physics
+en: Improved physics
+tr: Física mejorada
+
+id: port.improved_jump_controls
+en: Improved jump controls
+tr: Control de salto mejorado
+
+id: port.improved_pathfinding
+en: Improved pathfinding
+tr: Búsqueda de rutas mejorada
+
+id: port.improved_3d_body
+en: Improved 3D body
+tr: Cuerpo 3D mejorado
+
+id: port.target_hint
+en: Target hint
+tr: Indicador de objetivo
+
+id: port.streaming_safe_music
+en: Streaming safe music
+tr: Música apta para emisiones
+
+id: port.improvements
+en: Improvements
+tr: Mejoras
+
+id: port.off
+en: Off
+tr: No
+
+id: port.on
+en: On
+tr: Sí
+
+id: port.software
+en: Software
+tr: Software
+
+id: port.gpu
+en: GPU
+tr: GPU
+
+id: port.subtle
+en: Subtle
+tr: Suave
+
+id: port.vga
+en: VGA
+tr: VGA
+
+id: port.renderer
+en: Renderer
+tr: Motor gráfico
+
+id: port.animation_interpolation
+en: Animation interpolation
+tr: Interpolación de animaciones
+
+id: port.improved_occlusion
+en: Improved occlusion
+tr: Oclusión mejorada
+
+id: port.internal_resolution
+en: Internal resolution
+tr: Resolución interna
+
+id: port.upscaled_textures
+en: Upscaled textures
+tr: Texturas ampliadas
+
+id: port.upscaled_movies
+en: Upscaled movies
+tr: Vídeos ampliados
+
+id: port.anisotropic_filtering
+en: Anisotropic filtering
+tr: Filtrado anisótropo
+
+id: port.shader
+en: Shader
+tr: Sombreador
+
+id: port.improved_infravision
+en: Improved infravision
+tr: Infravisión mejorada
+
+id: port.the_software_renderer
+en: The software renderer
+tr: El motor por software
+
+id: port.ignores_these_settings
+en: ignores these settings.
+tr: no usa estos ajustes.
+
+id: port.graphics
+en: Graphics
+tr: Gráficos
+
+id: port.language
+en: Language
+tr: Idioma
+
+id: port.improvements_2
+en: Improvements...
+tr: Mejoras...
+
+id: port.graphics_2
+en: Graphics...
+tr: Gráficos...
+
+id: port.language_2
+en: Language...
+tr: Idioma (Language)...
+
+id: port.return_to_dungeon
+en: Return to dungeon
+tr: Volver a la mazmorra
+
+id: port.load_game
+en: Load Game
+tr: Cargar partida
+
+id: port.save_game
+en: Save Game
+tr: Guardar partida
+
+id: port.abort_game
+en: Abort Game
+tr: Abandonar partida
+
+id: port.esc_menu
+en: ESC Menu\n
+tr: Menú ESC\n
+
+id: port.death_menu
+en: Death Menu\n
+tr: Has muerto\n
+
+id: port.ship_auto_leveling
+en: Ship auto-leveling
+tr: Nivelación automática
+
