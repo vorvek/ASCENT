@@ -2055,8 +2055,12 @@ static void do_input(int mx, int my)
 	// (0x13B61A) to 0. Their HUD message (0x4F31A, TEX 738 "Press F3 to
 	// return to Window mode") is not shown: the HUD draw function of the
 	// executable has no caller.
+	// The switch tests the key code with its modifiers: Alt+F3 is the load
+	// (0x432C2), Ctrl and Alt with these keys do not change the screen.
 	{
 		int f3 = key_acts(KEY_F3), larger = key_acts(KEY_EQUAL), smaller = key_acts(KEY_MINUS);
+		if (keyd_pressed[KEY_LALT] || keyd_pressed[KEY_RALT] || keyd_pressed[KEY_LCTRL] || keyd_pressed[KEY_RCTRL])
+			f3 = larger = smaller = 0;
 		if (f3 && Dtu_interface_mode == DTU_IM_FULL_SCREEN)
 			smaller = 1, f3 = 0;
 		if (f3 || larger) {

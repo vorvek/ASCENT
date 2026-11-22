@@ -116,6 +116,21 @@ def test_equal_minus(t):
     assert differ(region(s["main"], *LEFT), region(s["back"], *LEFT)) < 0.02, "- did not return to the main screen"
 
 
+# The middle of the view, where the menus open
+MIDDLE = (200, 120, 160, 80)
+
+
+def test_alt_f2_f3(t):
+    """Alt+F2 opens the Save Game slot menu, Alt+F3 the restore slot menu
+    (0x432B8, 0x432C2), and Alt+F3 does not change the screen as F3 does."""
+    s, _ = t.run("alt_f2_f3", ["gamekeys", "wait 20", "move 300 200", "wait 3", "shot base",
+                               "hold lalt 4", "key f2", "wait 5", "shot save", "key esc", "wait 5", "shot back",
+                               "hold lalt 4", "key f3", "wait 5", "shot load", "key esc", "wait 5"])
+    assert differ(region(s["base"], *MIDDLE), region(s["save"], *MIDDLE)) > 0.2, "Alt+F2 opened no menu"
+    assert differ(region(s["base"], *LEFT), region(s["load"], *LEFT)) < 0.02, "Alt+F3 changed the screen"
+    assert differ(region(s["back"], *MIDDLE), region(s["load"], *MIDDLE)) > 0.2, "Alt+F3 opened no menu"
+
+
 # The text of the message box of the main screen, high resolution
 MSGBOX = (131, 306, 470, 77)
 MSG_V = ["gamekeys", "wait 20"] + ["key v", "wait 3"] * 10 + ["move 300 200", "wait 3", "shot base"]
