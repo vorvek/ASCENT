@@ -71,6 +71,7 @@ int Dtu_fix_trigger_table = 1;
 int Dtu_fix_trap_seconds = 1;
 int Dtu_fix_trap_close_door = 1;
 int Dtu_fix_trigger_repeat = 1;
+int Dtu_fix_disable_trap = 1;
 int Dtu_trig_log = 0;
 
 static short	Active_traps[DTU_MAX_ACTIVE_TRAPS];		// 0x3A7CD0
@@ -839,12 +840,18 @@ void dtu_trig_fire(int trigger_num, int type, object *obj)
 	if (t->disable_trap >= 0 && t->disable_trap < Dtu_num_traps) {
 		tp = &Dtu_traps[t->disable_trap];
 		tp->on = 0;
-		// 0x94231 clears the side flags 0x08 and 0x20 of the side of the
-		// trap with the number of this trigger (not of the trap that it
-		// switches off). No shipped trigger has a disable_trap. The port
-		// takes the side of the trap that is switched off.
-		if (side_ok(tp->seg, tp->side))
-			get_side(tp->seg, tp->side)->pad &= ~0x28;
+		// ASCENT: 0x94231 clears the side flags 0x08 and 0x20 of the side of
+		// the trap with the number of this trigger: the word at [esp+4] is
+		// the saved EAX of the entry 0x93B30, the trigger number (D-057).
+		// No shipped trigger has a disable_trap (all hold -1).
+		// Dtu_fix_disable_trap: the side of the trap that is switched off.
+		{
+			dtu_trap *ts = Dtu_fix_disable_trap ? tp :
+				(trigger_num >= 0 && trigger_num < Dtu_num_traps) ? &Dtu_traps[trigger_num] : NULL;
+
+			if (ts && side_ok(ts->seg, ts->side))
+				get_side(ts->seg, ts->side)->pad &= ~0x28;
+		}
 		if (tp->tex_disabled != -1)
 			set_side_tmap2(tp->seg, tp->side, tp->tex_disabled);
 		active_remove(t->disable_trap);
@@ -1862,7 +1869,7 @@ static void read_options(void)
 	if (FindArg("-triglog"))
 		Dtu_trig_log = 1;
 	if (FindArg("-origtrig"))		// the rules of the executable
-		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = 0;
+		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }
