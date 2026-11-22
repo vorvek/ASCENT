@@ -3,7 +3,7 @@
 #
 # The source list is explicit. The directory also holds DOS test programs
 # (testk.c, testm.c, t1.c, demo.c, cdrom.c and others), old versions
-# (key1.c, newkey.c, mousec.c) and the assembly files. They are not built.
+# (newkey.c, mousec.c) and the assembly files. They are not built.
 add_library(d_bios STATIC
   key.c
   mouse.c

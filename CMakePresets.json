@@ -2,6 +2,15 @@
   "version": 6,
   "configurePresets": [
     {
+      "name": "debug",
+      "displayName": "Debug build for development",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
       "name": "release",
       "displayName": "Release build for the installer",
       "generator": "Ninja",
@@ -14,9 +23,20 @@
   ],
   "buildPresets": [
     {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
       "name": "release",
       "configurePreset": "release",
       "targets": [ "ascent", "ascent-import", "ascent-content" ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": { "outputOnFailure": true }
     }
   ]
 }
