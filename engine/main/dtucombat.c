@@ -54,6 +54,7 @@
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
 int Dtu_fix_missile_rate = 1;
+int Dtu_fix_rat_hit = 1;
 
 extern char Dtu_player_archive[16];		// dtugame.c
 
@@ -568,7 +569,9 @@ static int swing_test(int frame,int weapon,swing_contact *sc)
 			continue;
 		if (vm_vec_dist_quick(&o->pos,&center) > i2f(40))
 			continue;
+		Fvi_dtu_player_attack = (obj == ConsoleObject);	// ASCENT: Dtu_fix_rat_hit
 		d = dtu_body_query_test(&ip,&center,&p1,0,radius,o);
+		Fvi_dtu_player_attack = 0;
 		if (d > 0 && d < best_d) {
 			best_d = d;
 			sc->object = i;
@@ -1176,6 +1179,7 @@ static void combat_init(void)
 		Dtu_fix_one_hit = 0;
 		Dtu_fix_haste_attack = 0;
 		Dtu_fix_missile_rate = 0;
+		Dtu_fix_rat_hit = 0;
 		Dtu_fix_stoneskin_word = 0;
 		Dtu_fix_rary_manual = 0;
 		Dtu_fix_melf_acid = 0;
@@ -1294,6 +1298,57 @@ void dtu_combat_frame(void)
 int dtu_combat_target_hint(void)
 {
 	return Dtu_target_hint && Target_hint && ConsoleObject && !Player_is_dead && !Dtu_player_dead;
+}
+
+// ASCENT: test (-chartest reach=N, tools/check_reach.py). The player looks
+// at the center of creature N. The log line gives whether a wall is
+// between the eye and the creature, the first object that the swing of the
+// item in the hand touches (as melee_hint), the object that a missile of
+// the player on the same line meets (dtu_missile_path_target with weapon
+// type 0), the target hint and whether the item in the hand can hurt the
+// creature (the rule of the hint).
+void dtu_combat_reach_test(int objnum)
+{
+	object *player = ConsoleObject, *o;
+	vms_vector to, end;
+	fvi_query fq;
+	fvi_info hit;
+	int fate, contact = -1, missile, s = DAS_ATTACK, n, rel, w;
+	swing_contact sc;
+
+	if (player == NULL || objnum < 0 || objnum > Highest_object_index)
+		return;
+	o = &Objects[objnum];
+	vm_vec_sub(&to,&o->pos,&player->pos);
+	if (vm_vec_normalize(&to) > 0x100)
+		vm_vector_2_matrix(&player->orient,&to,NULL,NULL);
+
+	end = o->pos;
+	fq.p0 = &player->pos;
+	fq.p1 = &end;
+	fq.startseg = player->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = player-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	fate = find_vector_intersection(&fq,&hit);
+
+	w = hand_weapon();
+	n = Dtu_anim_first[s+1] - Dtu_anim_first[s];
+	for (rel = 6; rel <= n - rel; rel++) {
+		if (!swing_test(Dtu_anim_first[s] + rel,w,&sc))
+			continue;
+		if (sc.object >= 0) {
+			contact = sc.object;
+			break;
+		}
+		if (swing_stops(&sc))
+			break;
+	}
+	missile = dtu_missile_path_target(&player->pos,player->segnum,&to,0,-1,player-Objects,i2f(100));
+	dtu_char_log("reach %d: %s id %d dist %.2f wall %d contact %d missile %d hint %d hurt %d up %.2f seg %d",objnum,dtu_object_name(o),o->id,
+		f2fl(vm_vec_dist(&o->pos,&player->pos)),fate == HIT_WALL,contact,missile,target_hint(),hint_creature(objnum,w),
+		f2fl(o->pos.y - player->pos.y),player->segnum);
 }
 
 int dtu_combat_view_state(void) { return View_state; }
