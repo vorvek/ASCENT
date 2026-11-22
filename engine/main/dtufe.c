@@ -368,6 +368,17 @@ static void script_frame(void)
 		} else if (!stricmp(cmd, "wheel")) {
 			plat_input_mouse_wheel(x);		// ASCENT: the menus read it
 			return;
+		} else if (!stricmp(cmd, "rel")) {
+			// ASCENT: a relative mouse movement (the look of the immersive mode)
+			plat_input_mouse_motion(x, y, Fe_mx, Fe_my);
+			return;
+		} else if (!stricmp(cmd, "viewstate")) {
+			dtu_display_print_view();		// ASCENT: for tools/uitest.py
+			return;
+		} else if (!stricmp(cmd, "mousestate")) {
+			// ASCENT: for tools/uitest.py
+			printf("Mousestate relative=%d immersive=%d\n", plat_mouse_get_relative(), Dtu_immersive);
+			fflush(stdout);
 		} else
 			printf("Script: unknown command '%s'\n", s);
 	}

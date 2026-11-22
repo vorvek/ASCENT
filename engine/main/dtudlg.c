@@ -135,8 +135,7 @@ static void ptr_force(void)
 	if (Ptr_forced || !Dtu_immersive || !Dtu_display_active || Dtu_fe_original_input)
 		return;
 	Ptr_forced = 1;
-	Dtu_immersive = 0;
-	mouse_set_relative(0);
+	dtu_display_set_immersive(0);
 	mouse_get_pos(&Ptr_x, &Ptr_y);
 }
 
@@ -144,10 +143,8 @@ static void ptr_restore(void)
 {
 	// A press of the immersive mode key in the conversation turned it on
 	// already.
-	if (Ptr_forced && !Dtu_immersive) {
-		Dtu_immersive = 1;
-		mouse_set_relative(1);
-	}
+	if (Ptr_forced && !Dtu_immersive)
+		dtu_display_set_immersive(1);		// ASCENT: no jump of the view
 	Ptr_forced = 0;
 }
 

@@ -88,6 +88,7 @@ class Runner:
             cmd += ["-level", level or LEVEL]
         cmd += ["-fescript", script] + list(extra)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=d)
+        self.stdout = r.stdout
         out = {}
         for s in shots:
             p = os.path.join(d, s + ".ppm")
@@ -190,6 +191,78 @@ def test_immersive_off_centers_mouse(t):
                                "key v", "wait 5", "key v", "wait 5", "shot after"])
     spot = (25, 245, 30, 30)
     assert differ(region(s["before"], *spot), region(s["after"], *spot)) > 0.05, "the cursor stayed in place"
+
+
+def mouse_states(t):
+    """The lines of the script command mousestate: (relative, immersive)."""
+    out = []
+    for line in t.stdout.splitlines():
+        if line.startswith("Mousestate "):
+            f = dict(kv.split("=") for kv in line.split()[1:])
+            out.append((int(f["relative"]), int(f["immersive"])))
+    return out
+
+
+def test_immersive_screens(t):
+    """The inventory and the statistics screen free the mouse from the
+    immersive mode and the mode returns when they close; the map keeps it;
+    the immersive key on a screen is the choice of the player (dtudisp.c,
+    the screens that free the mouse; a port feature)."""
+    st = ["mousestate"]
+    t.run("immersive_screens", ["gamekeys", "wait 20", "key v", "wait 5"] + st +
+          ["key i", "wait 5"] + st + ["key p", "wait 5"] + st + ["key tab", "wait 5"] + st +
+          ["key i", "wait 5"] + st + ["key i", "wait 5"] + st +
+          ["key p", "wait 5", "key v", "wait 5"] + st + ["key p", "wait 5"] + st +
+          ["key i", "wait 5", "key v", "wait 5", "key v", "wait 5"] + st + ["key i", "wait 5"] + st)
+    got = mouse_states(t)
+    want = [(1, 1), (0, 0), (0, 0), (1, 1), (0, 0), (1, 1), (1, 1), (1, 1), (0, 0), (0, 0)]
+    assert got == want, "mouse states %s, expected %s" % (got, want)
+
+
+def test_immersive_screen_no_jump(t):
+    """The mouse movement made while a screen frees the mouse does not turn
+    the view when the immersive mode returns."""
+    spot = (200, 100, 240, 120)
+    moves = ["rel 200 0", "wait 2"] * 5
+    s, _ = t.run("immersive_jump", ["gamekeys", "wait 20", "key v", "wait 10", "shot a", "key i", "wait 5"] +
+                 moves + ["key i", "wait 10", "shot b"], extra=["-fixedfps", "30"])
+    c, _ = t.run("immersive_turn", ["gamekeys", "wait 20", "key v", "wait 10", "shot a"] +
+                 moves + ["wait 10", "shot b"], extra=["-fixedfps", "30"])
+    assert differ(region(c["a"], *spot), region(c["b"], *spot)) > 0.2, "rel did not turn the view"
+    assert differ(region(s["a"], *spot), region(s["b"], *spot)) < 0.05, "the view turned"
+
+
+def view_states(t):
+    """The lines of the script command viewstate, as dicts."""
+    out = []
+    for line in t.stdout.splitlines():
+        if line.startswith("Viewstate "):
+            out.append(dict(kv.split("=") for kv in line.split()[1:]))
+    return out
+
+
+VIEW_SIZES = ["gamekeys", "wait 30", "viewstate", "key =", "wait 10", "viewstate", "key -", "wait 10",
+              "viewstate", "key i", "wait 10", "viewstate", "key i", "wait 5"]
+
+
+def test_view_aspect(t):
+    """Each screen size (main, = and F3 full screen, the inventory) shows
+    the same shapes: a square thing is square on a 4:3 screen, and the
+    angle of view in y is the same (0x41193, g3_start_frame 0xD93E8). Also
+    with the low resolution and the software renderer. -origui: the 2.4
+    aspect of the executable in high resolution (Dtu_fix_hires_aspect)."""
+    for extra, want in (([], 1.0), (["-software"], 1.0), (["-lowres"], 1.0), (["-origui"], 1.2)):
+        t.run("view_aspect", VIEW_SIZES, extra=extra)
+        v = view_states(t)
+        assert len(v) == 4, "%s: %d view states" % (extra, len(v))
+        modes = [s["mode"] for s in v]
+        assert modes == ["0", "7", "0", "3"], "%s: modes %s" % (extra, modes)
+        for s in v:
+            assert abs(float(s["shape"]) - want) < 0.01, "%s: shape %s in mode %s" % (extra, s["shape"], s["mode"])
+        # the small view of a screen can be taller than wide (s > 1 in
+        # g3_start_frame): its angle in x is the fixed one then
+        for s in v[:3]:
+            assert s["tany"] == v[0]["tany"], "%s: the angle in y changed in mode %s" % (extra, s["mode"])
 
 
 # The text of the message box of the main screen, high resolution

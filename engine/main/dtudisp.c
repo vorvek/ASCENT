@@ -41,6 +41,7 @@
 #include "physics.h"		// ASCENT: Dtu_player_state (infravision)
 #include "kconfig.h"		// ASCENT: the key table (dtu_action_key)
 #include "3d.h"			// ASCENT: g3_gpu_view_dest
+#include "globvars.h"		// ASCENT: the projection of the view (dtu_display_print_view)
 #include "dtuhdui.h"		// ASCENT: the upscaled interface pictures
 #include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
 #include "dtuscroll.h"		// ASCENT: no input and no cursor while the scroll text screen is open
@@ -233,6 +234,15 @@ static dtu_sbar Msg_sbar[2] = {
 // lines with the up arrow, although the newest line is at the bottom of
 // the box. -origui gives the original.
 int Dtu_fix_msg_scroll = 1;
+
+// ASCENT: the pixel aspect of the 3D view in high resolution. Before each
+// frame 0x41193 sets the aspect of the screen to 0x13333 (1.2, the pixel
+// of 320x200 on a 4:3 monitor) or, with 0x13A94B set, to 0x26666 (2.4).
+// A rendered line of the high resolution shows as two lines of the
+// 640x480 screen, whose pixels are square: the right aspect is 2.0. With
+// 2.4 a thing that is square in the scene is 1.2 times too wide, in each
+// screen size. 1 (default): 2.0. -origui gives the original.
+int Dtu_fix_hires_aspect = 1;
 
 // Hot key boxes of the low resolution hot key screen (0x144680, 0x1446A8)
 static short Hotkey_lo_x[10] = { 107, 107, 107, 107, 107, 161, 161, 161, 161, 161 };
@@ -981,15 +991,69 @@ void dtu_display_init_cockpit(void)
 	mouse_set_pos(View.x + View.w / 2, View.y + View.h * (Dtu_hires ? 2 : 1) / 2);
 }
 
+//------------------------------------------------------------------------
+// ASCENT: the screens that free the mouse. A port feature with no original
+// equivalent (a user request).
+// The screens that need the cursor (the inventory with its spell lists,
+// the hot key screen, the statistics and spell screen) turn the immersive
+// mode off while they are open and on again when the last of them closes.
+// The map screen keeps the immersive mode: the player can move with the
+// map open. A press of the immersive mode key on such a screen is the
+// choice of the player: it stays when the screen closes. Each change of
+// the screen goes through dtu_display_select_mode, so this covers the
+// screen keys, the buttons, F3, a switch to another screen and the
+// conversation (0xB14D8 selects mode 0). The other states that need the
+// cursor free it themselves and restore the mode at the end: the reply
+// choice of the conversation (dtudlg.c, ptr_force), the menus of
+// newmenu.c (the Escape menu, the options, the death menu; nm_pointer_begin),
+// the thief points box (dtuthiefpts.c) and the town and its shops
+// (dtufe.c). The scroll text screen takes a key or any button and the
+// message box is part of the main screen: both keep the mode.
+
+static int Immersive_held = 0;		// the immersive mode was on when a cursor screen opened
+
+static int mode_needs_cursor(int mode)
+{
+	return mode == DTU_IM_INVENTORY || mode == DTU_IM_HOTKEYS || mode == DTU_IM_STATS;
+}
+
+void dtu_display_set_immersive(int on)
+{
+	Dtu_immersive = (on != 0);
+	mouse_set_relative(Dtu_immersive);
+	if (Dtu_immersive) {
+		// the mouse movement made with the cursor does not turn the view
+		int dx, dy;
+		mouse_get_delta(&dx, &dy);
+	}
+}
+
+static void immersive_follow_mode(int old_mode, int mode)
+{
+	if (!Dtu_display_active)
+		return;
+	if (mode_needs_cursor(mode)) {
+		if (!mode_needs_cursor(old_mode) && Dtu_immersive) {
+			Immersive_held = 1;
+			dtu_display_set_immersive(0);
+		}
+	} else if (Immersive_held) {
+		Immersive_held = 0;
+		if (!Dtu_immersive)
+			dtu_display_set_immersive(1);
+	}
+}
+
 // 0x407EB and 0x40403
 void dtu_display_select_mode(int mode)
 {
 	dtu_button *b;
-	int entry;
+	int entry, old_mode = Dtu_interface_mode;
 
 	if (mode < 0 || mode > DTU_IM_LETTERBOX || mode == 1 || mode == 2)
 		return;
 	Dtu_interface_mode = mode;
+	immersive_follow_mode(old_mode, mode);		// ASCENT: see above
 	Dtu_automap_active = 0;		// 0x40922: a new map screen follows the player
 	Button_pressed = -1;
 	Button_list = NULL;
@@ -1131,7 +1195,7 @@ int dtu_display_init(void)
 	if (Icons_bm) Icons_bm->bm_flags |= BM_FLAG_TRANSPARENT;
 	Interface_entry = -1;
 	if (FindArg("-origui"))
-		Dtu_fix_msg_scroll = 0;
+		Dtu_fix_msg_scroll = Dtu_fix_hires_aspect = 0;
 	Msg_count = 0;
 	Msg_first = 0;
 	memset(Key_was_down, 0, sizeof(Key_was_down));
@@ -1151,18 +1215,51 @@ int dtu_display_init(void)
 void dtu_display_begin_render(void)
 {
 	Saved_aspect = grd_curscreen->sc_aspect;
-	// A rendered line covers two lines of the 640x480 screen.
+	// A rendered line covers two lines of the 640x480 screen. The aspect
+	// does not depend on the view size (0x41193), so each screen size
+	// (F3, minus, equal, the screens) shows the same shapes; the angle of
+	// view in y is the same and the one in x follows the width of the view
+	// (g3_start_frame, 0xD93E8).
 	if (Dtu_display_active && Dtu_hires)
-		grd_curscreen->sc_aspect = Saved_aspect * 2;
+		grd_curscreen->sc_aspect = Dtu_fix_hires_aspect ? Saved_aspect * 2 : 0x26666;
 }
+
+// ASCENT: the projection of the last render, for dtu_display_print_view
+static int Last_canvas_w, Last_canvas_h;
+static fix Last_aspect;
+static vms_vector Last_scale;
 
 void dtu_display_end_render(void)
 {
+	Last_canvas_w = Canvas_width;
+	Last_canvas_h = Canvas_height;
+	Last_aspect = grd_curscreen->sc_aspect;
+	Last_scale = Matrix_scale;
 	grd_curscreen->sc_aspect = Saved_aspect;
 }
 
 // ASCENT: the rectangle of the last draw_view, for dtu_display_view_again.
 static int View_dest[4], View_dest_set;
+
+// ASCENT: for tools/uitest.py (the script command viewstate). The view
+// rectangle in the units of a 4:3 screen of 640x480, the tangents of the
+// half angles of view, and the shape: the width over the height on that
+// screen of a thing that is square in the scene (1 is right).
+void dtu_display_print_view(void)
+{
+	double dw, dh, tx, ty, shape;
+
+	if (!View_dest_set || !Last_scale.x || !Last_scale.y)
+		return;
+	dw = View_dest[2] * (Dtu_hires ? 1.0 : 2.0);
+	dh = View_dest[3] * (Dtu_hires ? 1.0 : 2.4);
+	tx = (double) Last_scale.z / Last_scale.x;
+	ty = (double) Last_scale.z / Last_scale.y;
+	shape = (dw * Last_scale.x) / (dh * Last_scale.y);
+	printf("Viewstate mode=%d hires=%d canvas=%dx%d view=%.0fx%.0f aspect=%.4f tanx=%.4f tany=%.4f shape=%.4f\n",
+		Dtu_interface_mode, Dtu_hires, Last_canvas_w, Last_canvas_h, dw, dh, Last_aspect / 65536.0, tx, ty, shape);
+	fflush(stdout);
+}
 
 void dtu_display_view_again(void)
 {
@@ -2324,8 +2421,8 @@ static void do_input(int mx, int my)
 		// (0.364 s): one short press gives one toggle. This is the only
 		// handler of V: controls.c follows Dtu_immersive.
 		char *text;
-		Dtu_immersive = !Dtu_immersive;
-		mouse_set_relative(Dtu_immersive);
+		dtu_display_set_immersive(!Dtu_immersive);
+		Immersive_held = 0;		// ASCENT: the choice of the player stays (dtu_display_set_immersive)
 		// 0x54470 to 0x544D7: off, the mouse goes to the middle of the view
 		// (0xE89A8), as after a mode change (dtu_display_init_cockpit)
 		if (!Dtu_immersive)

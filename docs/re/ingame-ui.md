@@ -86,6 +86,42 @@ canvas has the full width and half the height, and each line is shown twice
 (0x40729: the window height is doubled only for the screen). Example: main
 screen, canvas 504x139, on screen 504x278.
 
+### Aspect of the 3D view
+
+Verified:
+
+- 0x41193 runs before the render of each frame. It sets the aspect of the
+  screen (`sc_aspect`, +0x26 of the screen at 0x45392C) to 0x13333 (1.2),
+  or to 0x26666 (2.4) with 0x13A94B set. 0x4148D restores the saved value
+  when 0x1468D0 is 1. The value does not depend on the interface mode.
+- 0xD93E8 is `g3_start_frame` of Descent 1: s = aspect * canvas height /
+  canvas width. With s up to 1 the x scale is s and the y scale 1, else the
+  x scale is 1 and the y scale 1/s.
+
+So each screen size shows the same shapes. The angle of view in y stays the
+same (tangent of the half angle 0.5625 with the zoom of the game) while the
+view is wider than tall in screen units, and the angle in x follows the
+width of the view. The small view of a screen (mode 3 to 6) is taller than
+wide in low resolution: there the angle in x is the fixed one.
+
+Defect: 2.4 is the pixel of 320x200 on a 4:3 monitor (1.2) times the two
+screen lines of a rendered line. The pixels of 640x480 are square, so the
+right value is 2.0. In high resolution a square thing is 1.2 times too wide,
+in each screen size. The port uses 2.0 (`Dtu_fix_hires_aspect`, `-origui`
+gives 2.4).
+
+Measured in the port (script command `viewstate`, `test_view_aspect`; the
+tangents of the half angles in x and y):
+
+| Mode | High resolution | Low resolution |
+|------|-----------------|----------------|
+| 0 main | 504x278, 1.020 / 0.5625 | 252x139, 0.850 / 0.5625 |
+| 7 full screen (F3, =) | 640x478, 0.753 / 0.5625 | 320x200, 0.750 / 0.5625 |
+| 3 inventory | 176x156, 0.635 / 0.5625 | 88x78, 0.5625 / 0.598 |
+
+With `-origui` the high resolution has 0.850 / 0.5625 in mode 0 and 0.628 /
+0.5625 in mode 7.
+
 ## Interface modes
 
 The variable at 0x13B616 (the Descent `Cockpit_mode`) has these values
