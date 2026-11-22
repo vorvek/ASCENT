@@ -434,6 +434,7 @@ extern monster_info Monster_info[];
 // model, as a vclip or as one bitmap.
 #define DRESSING_F_MAGIC			1
 #define DRESSING_F_CANT_BREAK		2
+#define DRESSING_F_LEVEL_FIX		4	// ASCENT: bit 0x04 of Dressing_info+0x04, set by the level fixes 0xACCDB (unbreakable)
 
 typedef struct dressing_info {
 	char			name[DTU_NAME_LENGTH];

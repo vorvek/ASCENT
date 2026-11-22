@@ -1429,7 +1429,7 @@ static int restore_files(char names[3][32])
 	// 0xBAFE0 sets each object up again from the tables (0xAE3F2). The
 	// port does it for all objects of the level with the function of the
 	// level start.
-	dtu_objects_level_setup();
+	dtu_objects_level_setup_restore();
 	// the AI state of the creatures of a file of the executable
 	ai_restore();
 	return 1;

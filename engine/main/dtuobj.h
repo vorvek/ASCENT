@@ -205,6 +205,9 @@ void dtu_objects_init(void);
 // tables (verify_object 0x477D9, setup_object 0xAE3F2, place_creatures
 // 0x6A6FB, fix_object_segs 0x69FFB).
 void dtu_objects_level_setup(void);
+// The same for the restore of a level state: no level fixes of the objects
+// (0xACCDB runs before the restore in the executable).
+void dtu_objects_level_setup_restore(void);
 
 // ASCENT: the AI state of creature objnum in a state file of the original:
 // al is its 47-byte ai_local record, img its 479-byte object image
