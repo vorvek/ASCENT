@@ -295,11 +295,10 @@ SPELLS = {
             target="You",
             eff="Each of your melee hits forces a saving throw. If the target fails, it takes +1d4 "
                 "damage; an undead target is frightened (Fear) for 1d4 minutes + 1 per level instead. "
-                "The Sword of W'hin gives the same effect. The original 1.3 game fires the spell as a "
-                "missile at others, so casting it does nothing; ASCENT corrects this.",
-            tech="The case acts only when the target is the caster (0x8D633); the line is not "
-                 "self-cast, so the missile never hits the caster. The cold dice of the line are "
-                 "never rolled."),
+                "The Sword of W'hin gives the same effect.",
+            tech="The case acts only when the target is the caster (0x8D633). The table line is not "
+                 "self-cast; the table fixup (0x1A65E) sets the cast on the caster. The cold dice of "
+                 "the line are never rolled."),
     6: dict(src="0x8D6D4", dur="See effect", save="Only a target above your level, or of level 6 or more",
             target="1d6 missiles; each hits everyone within {r} ft of where it lands",
             eff="Not on blind creatures. A target of your level or lower falls asleep for 2 to 8 "
@@ -309,10 +308,11 @@ SPELLS = {
             target="1d4 missiles + 1 per level; each affects the creature it hits",
             eff="A creature stops being hostile. A player loses control."),
     8: dict(src="0x8DC1D, 0x90CEF", dur="No end", save="Negates", target="Everyone within {r} ft of you",
-            eff="A light (brightness 60) appears where you stand and stays. Each creature or player in "
-                "the area, except you and the blind, is blinded with no end unless it saves. "
-                "A light-sensitive creature that fails would also take the damage of the spell, which "
-                "is 0."),
+            eff="A bright light appears where the missile lands and stays. Each creature or player in "
+                "the area, except you and the blind, is blind with no end unless it saves. "
+                "Cure Blindness or Deafness ends the blindness.",
+            tech="Light 60.0 (player_light of the table fixup). A light-sensitive creature that fails "
+                 "would also take the damage of the line, which is 0."),
     10: dict(src="0x8DE4B", dur="Instant", save="None", target="You",
              eff="+1d8 hit points, up to your maximum. No effect on undead or extraplanar creatures. "
                  "Extra hit points of Aid stay (the original 1.3 game takes them away)."),
@@ -356,25 +356,35 @@ SPELLS = {
              eff="Ends Hold. Hold Person and the stun of Color Spray do not work on you, and nothing "
                  "slows your movement."),
     21: dict(src="0x8E79C, 0x9DE13, 0x41EC3", dur="3 minutes + 1 per level", save="None", target="You",
-             eff="Ends Slow. You move twice as fast. The original 1.3 game makes each melee swing half "
-                 "again as long; ASCENT corrects this and halves the swing time."),
-    22: dict(src="0x8E85A", dur="2 minutes per level", save="Negates", target="The creature the missile hits",
+             eff="Ends Slow. You move twice as fast, a melee swing takes half the time (0.5 s for most "
+                 "weapons), and arrows, bolts and thrown weapons wait half as long between shots. The "
+                 "original 1.3 game makes the melee attacks slower (one each 1.5 swing times) and does "
+                 "not change the shots; ASCENT corrects this."),
+    22: dict(src="0x8E85A, 0x56FF6", dur="2 minutes per level", save="Negates", target="The creature the missile hits",
              eff="Only humanoid creatures and players; not undead, not with Free Action. The target "
-                 "cannot move. On a player the time is divided by half the Wisdom."),
+                 "cannot move. Each cast holds at most 1d4 targets; a target that saves does not count. "
+                 "On a player the time is divided by half the Wisdom.",
+             tech="The counter Spell_info+0x49 is 1d4 at each cast (0x56FF6); the case needs it above 0 "
+                  "and takes 1 for each hold (0x8E8C5)."),
     23: dict(src="0x8EA21", dur="1d4 minutes + 1 per level", save="Only a target above level 2",
              target="The creature the missile hits",
              eff="Only undead of your level or lower. The target cannot move."),
     24: dict(src="0x8EB53", dur="4 minutes + 1 per level", save="None", target="You",
              eff="Creatures do not see you, even while you attack. Open Locks -15% while invisible."),
-    25: dict(src="0x8EBE8", dur="2 hours + 1 per level", save="None", target="You",
+    25: dict(src="0x8EBE8", dur="2 hours + 1 per level, at most 4 hours 33 minutes", save="None", target="You",
              eff="Lets you turn on infravision (key N). It is of use only to a human: every other "
-                 "race has infravision already. (The game gives the effect to a human or a half-elf; "
-                 "a half-elf gains nothing from it.)"),
+                 "race has infravision already. From caster level 3 on the time is 4 hours 33 minutes, "
+                 "the longest spell time of ASCENT. In the original 1.3 game the spell ends at once "
+                 "from caster level 8 on; ASCENT corrects this.",
+             tech="(L + 2) x 3600 s in 16.16 fixed point wraps from L = 8 (Dtu_fix_spell_hours). The "
+                  "case also gives the effect to a half-elf (race byte 0), who has infravision by "
+                  "race."),
     26: dict(src="0x8ECB4", dur="Until you attack", save="None", target="You",
              eff="Creatures do not see you. Ends when you make a weapon attack or cast a spell missile. "
                  "No effect while you have Improved Invisibility. Open Locks -15% while invisible."),
     27: dict(src="0x8ED20, 0x9EA62", dur="1d3 minutes + 1 per level", save="None", target="You",
-             eff="You jump higher: jump strength 2.0 instead of 1.5."),
+             eff="You jump higher.",
+             tech="Jump strength 2.0 instead of 1.5 (0x9EA62)."),
     28: dict(src="0x8FFE5, 0x26C2F", dur="Instant", save="None", target="The door the missile hits",
              eff="The missile opens the door it hits, also a locked one, unless the lock is magic.",
              tech="The case of 0x8CFFF has no code; the door code is in the wall hit 0x26C2F "
@@ -383,9 +393,10 @@ SPELLS = {
     29: dict(src="0x8EDB2, 0x9DEAE", dur="10 minutes per level", save="None", target="You",
              eff="You float and move only up and down. You cannot cast spells while you levitate."),
     30: dict(src="0x8DC1D, 0x90CEF", dur="10 minutes per level", save="Negates", target="Everyone within {r} ft of you",
-             eff="A light (brightness 20) appears where you stand for the duration. Each creature or "
-                 "player in the area, except you and the blind, is blind for the duration unless it "
-                 "saves. A light-sensitive creature that fails also takes 1d6 damage."),
+             eff="A light appears where the missile lands for the duration. Each creature or player "
+                 "in the area, except you and the blind, is blind for the duration unless it saves. A "
+                 "light-sensitive creature that fails also takes 1d6 damage.",
+             tech="Light 20.0 (player_light of the table fixup)."),
     32: dict(src="0x8EE76, 0x91BC3", dur="Instant", save="Half", target="The creature the missile hits",
              eff="1d6 electric damage per level, at most 10d6. No damage to creatures immune to "
                  "electricity. Scenery that it hits can break.",
@@ -415,7 +426,7 @@ SPELLS = {
                   "2 (L/3) + 2. The missile lives (L/3 + 1) minutes. The later rounds of acid "
                   "are not in the level state and end at a save and load."),
     37: dict(src="0x8F021", dur="Instant", save="Half", target="1 meteor per level (at most 5)",
-             eff="1d4 damage per meteor. Scenery that it hits can break."),
+             eff="1d4 fire damage per meteor. Scenery that it hits can break."),
     38: dict(src="0x8F078, 0x56D6A", dur="1 minute per level", save="None", target="You",
              eff="Bless (+1 to hit) on you only."),
     39: dict(src="0x8F116, 0x2AD36", dur="2 minutes per level", save="None", target="You",
@@ -448,18 +459,21 @@ SPELLS = {
                  "elf resists 9 times in 10, a half-elf 3 times in 10, people 9 times in 10. A sleeping "
                  "player is also blind. A melee hit wakes the sleeper and always hits."),
     47: dict(src="0x8FAD8", dur="3 minutes + 1 per level", save="Negates", target="The creature the missile hits",
-             eff="Ends Haste. Armor class +4 (at most 10), -4 to hit, half move speed, and each swing "
-                 "takes twice as long."),
+             eff="Ends Haste. Armor class +4 (at most 10), -4 to hit, half move speed, each swing "
+                 "takes twice as long, and arrows, bolts and thrown weapons wait twice as long between "
+                 "shots."),
     48: dict(src="0x8FBEE, 0xB3038", dur="3 minutes + 1 per level", save="None", target="You",
              eff="Climb Walls counts as 100%."),
     49: dict(src="0x8FC7A, 0x2AE44", dur="1d4 hits + 1 per 2 levels", save="None", target="You",
              eff="Each melee hit on you does no damage until the hits are used up. The original 1.3 "
                  "game also ends all your other spell effects when you cast it; ASCENT corrects this."),
-    50: dict(src="0x8FCFA", dur="1 hour per level", save="None", target="You",
+    50: dict(src="0x8FCFA", dur="1 hour per level, at most 4 hours 33 minutes", save="None", target="You",
              eff="Strength +1d8 for a fighter (above 18 each point adds 10 percent, up to 18/00); "
-                 "+1d6 for a thief or cleric and +1d4 for a mage, at most 18. From caster level 10 on "
-                 "the spell ends at once (1.3 and ASCENT).",
-             tech="The time L x 3600 s overflows the 16.16 fixed point timer from L = 10 on."),
+                 "+1d6 for a thief or cleric and +1d4 for a mage, at most 18. From caster level 5 on "
+                 "the time is 4 hours 33 minutes, the longest spell time of ASCENT. In the original 1.3 "
+                 "game the spell ends at once from caster level 10 on; ASCENT corrects this.",
+             tech="The time L x 3600 s overflows the 16.16 fixed point timer from L = 10 on "
+                  "(Dtu_fix_spell_hours)."),
     51: dict(src="0x8E4F6", dur="30 minutes", save="None", target="You",
              eff="Find/Remove Traps counts as 100 percent, and the search for traps runs all the time.",
              tech="The table line is a second Burning Hands; the table fixup (0x1AE9A) names it Find "
@@ -508,7 +522,9 @@ def vestment_text():
 # Item numbers that the code knows (0xAFB55, 0x37A6A, 0x2AB9F, 0xADC46).
 # Effects of worn items: the item bits of 0xAFB55 (combat.md B6a).
 WORN = {
-    ("armor", 16): "Does nothing.",
+    ("armor", 16): "For a mage (also of two classes): the spells Armor, Shield and Magical Vestment on you "
+                   "give an armor class 1 better than their limit (Armor 5, Shield 2). No effect for "
+                   "other classes or without these spells.",
     ("armor", 17): "Resist Fire while worn: fire damage halved.",
     ("armor", 18): "Feather Fall while worn.",
     ("armor", 19): "Fly while worn.",
@@ -550,7 +566,19 @@ WORN = {
 # each off (engine/main dtuchar.c, dtucombat.c, dtuspell.c).
 FIXES = [
     ("Dtu_fix_multiclass_thac0", "-origchar", "Two classes take the better THAC0, not the worse."),
-    ("Dtu_fix_haste_attack", "-origcombat", "Haste halves the swing time; 1.3 makes it longer."),
+    ("Dtu_fix_level_hit_points", "-origchar", "The hit points of a new level are added to the hit points "
+     "in use; 1.3 adds them to the maximum only (the hit points in use grow by 1/65536 of them)."),
+    ("Dtu_fix_secret_door_names", "-origchar", "A door texture name that no table has makes no secret "
+     "door; in 1.3 it matches texture 0, so some plain doors become secret doors (one more in THIEF2)."),
+    ("Dtu_fix_one_hit", "-origcombat", "One hit roll for each swing; 1.3 rolls again in each frame of "
+     "the hit (about 4 rolls at 60 frames per second)."),
+    ("Dtu_fix_turn_undead", "-origcombat", "Turn undead keeps its d20 after a T result and does not "
+     "spoil the next undead when the count is used up."),
+    ("Dtu_fix_spell_hours", "-origcombat", "Strength and Infravision do not end at once at a high caster "
+     "level (10 and 8 in 1.3); their time stops at 4 hours 33 minutes."),
+    ("Dtu_fix_cure_aid", "-origcombat", "Cure Light Wounds and Cure Serious Wounds keep the extra hit "
+     "points of Aid; 1.3 cuts the hit points to the maximum."),
+    ("Dtu_fix_haste_attack", "-origcombat", "Haste halves the swing time; 1.3 makes the melee attacks slower."),
     ("Dtu_fix_missile_rate", "-origcombat", "Arrows, bolts and thrown weapons wait their Speed from one "
      "shot to the next (Haste halves it, Slow doubles it); in 1.3 each key press fires."),
     ("Dtu_fix_speed_items", "-origcombat", "The Short Bow of Speed in the bow slot and the Short Sword of "
@@ -583,9 +611,19 @@ FIXES = [
                                             "1.3 sets it to 1."),
     ("Dtu_fix_bane_texture", "-origobj", "Two spinning objects in Bane's level get their own texture; 1.3 "
                                          "takes it from the level played before."),
+    ("Dtu_fix_revive", "-origobj or -origrevive", "A killed troll (a regenerating creature) gets up again "
+     "unless fire or acid hurt it, and gives its experience only when it stays dead; in 1.3 it never "
+     "gets up."),
+    ("Dtu_fix_prison_items", "-origprison", "In the prison of the Shadow Thieves every item that you do "
+     "not wear goes to the thieves; 1.3 loses every second item and copies the next one."),
+    ("Dtu_fix_market_charisma", "none", "The market uses the Charisma of your character; 1.3 uses the "
+     "Charisma of the character made last in the same run of the program."),
+    ("Dtu_fix_market_sell_count", "none", "A sale adds the number sold to the stock of the market; 1.3 "
+     "adds the number that you had."),
     ("Dtu_fix_item_names", "-origitems", "Items with a wrong name show the right one: the Cloak of Lathander "
                                          "(1.3: Lathandar), the Ring of Armoring and three more."),
-    ("Dtu_rulebook_items (off by default)", "-rulebookitems, -norulebookitems",
+    ("Dtu_rulebook_items (off by default)", "-rulebookitems turns it on; -norulebookitems, -origitems "
+     "and -noimprovements turn it off",
      "The setting Rulebook items: some item values and class limits of the AD&D 2nd edition rulebooks."),
 ]
 
@@ -724,7 +762,8 @@ class Pages:
             "",
             "ASCENT plays by these rules. Where the original 1.3 game has a defect that ASCENT "
             "corrects, the page says so in one line. Start ASCENT with the options of the "
-            "[[Sources]] page (`-origcombat`, `-origchar`, `-origobj`) to play with the original behavior.",
+            "[[Sources]] page (`-origcombat`, `-origchar`, `-origobj`, `-origitems`) to play with the "
+            "original behavior.",
             "",
             "## Pages",
             "",
@@ -811,7 +850,8 @@ class Pages:
              "elf, drow, halfling"],
             ["Find/Remove Traps 50% without the thief class", "dwarf"],
             ["The spell, the potion and the Ring of Infravision are of use", "human only"],
-            ["Finds secret doors while searching (key F)", ", ".join(sec)],
+            ["Finds secret doors while searching (key F): one d6 roll for each secret door or wall "
+             "within 20 ft in front of you", ", ".join(sec)],
         ]
         self.count("Races", len(rows) + len(crow) + len(trow) + len(special))
         return "\n".join([
@@ -845,6 +885,10 @@ class Pages:
             md_table(["Ability", "Races"], special),
             "",
             "Saving throws have no racial bonus: only the class and the level count.",
+            "",
+            "The search for secret doors works for every race and class, also without the Find/Remove "
+            "Traps skill, but not while the Find Traps spell is on. Each secret door or wall gets one "
+            "roll only: a failed roll does not come again, also when you come back to the level.",
             "",
             "A half-elf has infravision, as in the AD&D rules. The spell and the Ring of Infravision "
             "also give their effect to a half-elf (the game tests for the human kind, and a half-elf "
@@ -945,7 +989,9 @@ class Pages:
             ["Cloak of Elvenkind", "Hide In Shadows 95"],
             ["Invisible (spell, potion, cloak)", "Open Locks -15"],
             ["Spider Climb, Levitate", "Climb Walls 100"],
-            ["Sword of W'hin in the hand", "Find/Remove Traps 95"],
+            ["Sword of W'hin in the hand", "Find/Remove Traps 95, Climb Walls 95"],
+            ["Find Traps (spell)", "Find/Remove Traps 100 for the rolls"],
+            ["A magic trap (one that makes a creature or a thing)", "Find/Remove Traps counts half"],
         ]
         self.count("Classes", len(xp_rows) + len(th_rows) + len(hp_rows) + len(save_rows) + len(abil)
                    + 1 + len(slot_rows) + len(wis_rows) + len(tdex_rows) + len(thief_items) + len(turn_rows) + 4)
@@ -1004,7 +1050,9 @@ class Pages:
             "",
             "At each new level you roll one hit die, from half the die to the full die, or you get a "
             "fixed number. The Constitution adjustment is added at every level, also to the fixed "
-            "number. With two classes the sum of the new levels is halved.",
+            "number. With two classes the sum of the new levels is halved. The new hit points raise "
+            "your maximum and your current hit points. The original 1.3 game raises the maximum "
+            "only, so you start the new level with almost the same hit points; ASCENT corrects this.",
             "",
             md_table(["Class", "Hit die (level 1)", "Levels with a die: hit points", "Fixed"], hp_rows),
             "",
@@ -1097,8 +1145,10 @@ class Pages:
             "## Turn undead",
             "",
             "Key T. A cleric turns at the cleric level; anyone who wears the Cloak of Lathander turns "
-            "as a cleric of level 7. One d20 counts for all undead in sight, and at most 2 to 12 are "
-            "turned or destroyed, the weakest kinds first. A number: the d20 must reach it. T: "
+            "as a cleric of level 7. One d20 counts for all undead in sight. Each use turns or "
+            "destroys at most 2 to 12 of them (each number from 2 to 12 is equally likely), the "
+            "weakest kinds first. Half a second must pass between two uses. A number: the d20 must "
+            "reach it. T: "
             "turned. D: destroyed. -: no effect (you can try again later). In the original 1.3 game "
             "a T makes every later undead of the same use turn, and the first undead after the 2 to "
             "12 can never be tried again; ASCENT corrects both.",
@@ -1112,8 +1162,16 @@ class Pages:
             "Key R at a rest place (the turning ankh): hit points to the maximum and all spell slots "
             "full. The place works again after 5 minutes.",
             "",
-            "Potion of Toughening, system shock roll by Constitution 1 to 19: %s percent."
-            % ", ".join(str(x) for x in shock),
+            "## System shock",
+            "",
+            "Only the Potion of Toughening asks for a system shock roll ([[Potions]]). The chance to "
+            "live, by Constitution 1 to 19: %s percent." % ", ".join(str(x) for x in shock),
+            "",
+            "## Difficulty",
+            "",
+            "The game has one difficulty. The difficulty menu of 1.3 has no choices and sets the "
+            "middle difficulty of the engine, which sets the morale of the creatures, the speed of "
+            "their missiles and the distance at which they notice you.",
             "",
             "## Differs from the manual",
             "",
@@ -1134,14 +1192,15 @@ class Pages:
         s = r.num("damage_dice", 6)
         b = r.num("damage_bonus", 0)
         h = r.num("to_hit_bonus", 0)
-        dice = "%dd%d" % (n, s)
-        if b:
-            dice += signed(b)
+        # 0 dice (Flame Tongue after the table fixup) roll nothing
+        if n and s:
+            dice = "%dd%d" % (n, s) + (signed(b) if b else "")
+        else:
+            dice = str(b)
         fs = r.num("fire_damage_dice", 0)
         fn = r.num("#fire_damage_dice", 0)
-        dtype = "normal"
         if fs and fn:
-            dtype = "normal + %dd%d fire" % (fn, fs)
+            dice += " + %dd%d fire" % (fn, fs)
         # fire_wait default 0.25 s (0x207E7 writes 0x4000 to +0x64); a melee
         # swing lasts max(fire_wait, 1.0) s (0x441E9)
         fw = float(r.num("fire_wait", 0.25))
@@ -1155,11 +1214,14 @@ class Pages:
             notes.append("Armor class %s while in the hand." % signed(ac))
         if r.get("weapon_name") and r.get("name") and r.get("weapon_name") != r.get("name"):
             notes.append("Also called %s." % r.get("weapon_name"))
-        if i in WEAPON_NOTES:
+        if i == 13:
+            # a table cell: no "|" in the link
+            notes.append("A talking sword with powers: [[Magic-Items]].")
+        elif i in WEAPON_NOTES:
             notes.append(WEAPON_NOTES[i])
         if r.note():
             notes.append(r.note())
-        return [r.name(), dice, signed(h) if h else "0", dtype,
+        return [r.name(), dice, signed(h) if h else "0",
                 "yes" if r.has("magic") else "no", speed, classes_of(r), value_of(r), " ".join(notes)]
 
     def weapons(self):
@@ -1181,10 +1243,10 @@ class Pages:
             if r.has("bow") or r.has("crossbow"):
                 note = ""
                 if r.get("pc_spell1"):
-                    note = "Haste while it is in the bow slot: the arrows fire twice as fast (1.3: no power)."
+                    note = SPEED_BOW_NOTE
                 launch.append([r.name(), "bow" if r.has("bow") else "crossbow", signed(r.num("to_hit_bonus", 0)),
                                classes_of(r), r.num("value", 0), note])
-        head = ["Weapon", "Damage", "To hit", "Damage type", "Magic", "Speed", "F/T/M/C", "Value", "Notes"]
+        head = ["Weapon", "Damage", "To hit", "Magic", "Speed", "F/T/M/C", "Value", "Notes"]
         melee.sort(key=lambda x: x[0])
         thrown.sort(key=lambda x: x[0])
         ammo.sort(key=lambda x: (x[1], x[0]))
@@ -1194,16 +1256,17 @@ class Pages:
             "",
             "- Damage: the dice plus the bonus. Melee and thrown weapons add the Strength damage. "
             "Arrows and bolts add the bonus of the bow or crossbow to the attack and the damage. A "
-            "critical hit (20) rolls the damage twice. A backstab multiplies it ([[Classes]]).",
+            "critical hit (20) rolls the damage twice. A backstab multiplies it ([[Classes]]). The "
+            "game has no slashing, piercing or bludgeoning damage and no weapon sizes. Some weapons "
+            "add fire dice, which fire resistance halves.",
             "- Speed: the time of a melee swing. Every swing lasts at least 1.0 s, so a faster weapon "
-            "swings at 1.0 s. For a thrown or missile weapon it is the time from one shot to the next "
-            "(in 1.3 each key press fires). Haste halves the time and Slow doubles it. The level and "
-            "the class do not change it: no character gets more attacks.",
-            "- Damage type: the game has no slashing, piercing or bludgeoning damage and no weapon "
-            "sizes. It has fire dice, which fire resistance halves.",
+            "swings at 1.0 s. For a thrown or missile weapon it is the wait from one shot to the "
+            "next (the original 1.3 game has no wait: each key press fires; ASCENT corrects this). "
+            "Haste halves the time, also below 1.0 s, and Slow doubles it. The level and the class "
+            "do not change it: no character gets more attacks.",
             "- Magic: a creature that resists weapons takes no damage from a weapon that is not magic.",
             "- F/T/M/C: the classes that may use it ([[Classes]]).",
-            "- Value: the base price in gold.",
+            "- Value: the base price in gold. -: the item has no price.",
             "",
             "## Melee weapons",
             "",
@@ -1237,13 +1300,9 @@ class Pages:
             "throwing daggers and short bows. The game also gives thieves the Broad Sword and arrows.",
             "- The manual gives mages daggers and darts. The game also allows the Throwing Dagger.",
             "- The manual says the dagger is fast. In the game no melee weapon swings faster than "
-            "1.0 s.",
-            "- The game gives the Warhammer and the Club their rulebook damage (1d4+1, 1d6) from "
-            "its code: the table files say 3d10 and 1d4+1.",
-            "- Drowslayer and Longsword +3 are copies of the Long Sword +2 that the game makes when it "
-            "loads a level. The Drowslayer has +2 to hit and double damage against drow, and "
-            "its use casts Continual Light, Free Action and Protection From Evil for a Lawful Good "
-            "character.",
+            "1.0 s without Haste.",
+            "- Drowslayer and Longsword +3 are new items of the 1.3 readme. Both fight as a Long "
+            "Sword with their bonus. The powers of the Drowslayer are on [[Magic Items|Magic-Items]].",
             "",
             pages_note(),
             "",
@@ -1270,8 +1329,13 @@ class Pages:
         for i in (8, 9):
             r = self.O[i]
             note = "Boot place." if i == 8 else "Gauntlet place. Find/Remove Traps and Open Locks become 0."
-            ac = self.c["ac_misc"][i]
-            rows.append([r.name(), "boots" if i == 8 else "gauntlets", signed(-ac), str(10 + ac), classes_of(r),
+            # 0xAFBC8: the boot place counts only an armor line (the magic
+            # boots, armor class 0), so the -1 of the misc table for the
+            # Boots never counts (docs/audit/gear.md)
+            ac = 0 if i == 8 else self.c["ac_misc"][i]
+            if i == 8:
+                note = "Boot place. No armor class: the boot place counts only magic boots."
+            rows.append([r.name(), "boots" if i == 8 else "gauntlets", signed(-ac) if ac else "0", str(10 + ac), classes_of(r),
                          r.num("value", 0), note])
         self.count("Armor", len(rows))
         return "\n".join([
@@ -1346,51 +1410,59 @@ class Pages:
             if title == "Rings":
                 out += ["You can wear two rings.", ""]
         wrows = []
-        for i in (54, 69, 70, 71, 45):
+        for i in (13, 54, 69, 70, 71, 45):
             r = self.W[i]
             wrows.append([r.name(), WEAPON_NOTES.get(i, "")])
         r = self.O[100]
-        wrows.append([r.name(), "A bow with +2 to hit and damage. Haste while it is in the bow slot (1.3: no power)."])
+        wrows.append([r.name(), "A bow with +2 to hit and damage. " + SPEED_BOW_NOTE])
         out += ["## Weapons with powers", "", "Damage and classes: [[Weapons]].", "",
                 md_table(["Weapon", "Power"], wrows), ""]
-        sp = ", ".join(self.S[s].name() for s in self.c["spider_spells"])
         orows = [
             [self.O[2].name(), "USE: cures your blindness; if you are not blind but hurt, Cure Serious "
                                "Wounds (3 to 17 hit points). Not used up. You get one use at the start "
-                               "and one more for each new mission from Khelben. ASCENT allows one use "
-                               "for each rest instead."],
+                               "and one more for each new mission from Khelben; at other times: \"You "
+                               "cannot use the Gem Of Curing at this time.\""],
             [self.O[101].name(), "USE: it asks you questions and gives answers, a script of the quest."],
             [self.O[0].name(), "Does nothing: it gives no light and has no use."],
             [self.O[10].name() + ", " + self.O[13].name() + ", " + self.O[11].name() + ", " + self.O[12].name(),
              "In the lockpick place, for a thief: Open Locks +5, +10, +15, +20."],
-            ["Spider Piece", "USE with charges: turns undead as a cleric of level 2."],
-            ["Spider Piece", "USE with charges: you know the whole map."],
-            ["Spider Piece", "USE with charges: each person in sight gets one of three, at random: "
-                             "killed unless it saves, hit by a random spell (%s), or frozen for its "
-                             "level in seconds unless it saves." % sp],
-            ["Spider Piece", "Using it does nothing."],
-            ["Spider Piece", "USE with charges: Fear around you, and Aid, Magical Vestment, Fly, "
-                             "Protection From Fire, Resist Fire, Flame Walk and Strength on you."],
-            ["Spider Piece", "USE with charges: the view visits each creature in turn for 1 to 3 "
-                             "seconds."],
-            ["Spider Piece", "USE with charges: a quest event."],
-            ["Assembled Spider", "USE with charges: Spider Climb, Free Action, Haste and Infravision "
-                                 "with no end."],
-            ["Spider Piece", "USE with charges: all your hit points, and Aid, Shield, Feather Fall, "
-                             "Improved Invisibility, Magical Vestment, Prayer, Protection From Evil, "
-                             "Resist Fire and Stone Skin; then Cure Blindness or Deafness if needed."],
+            [self.O[25].name(), "USE: Spider Climb, Free Action, Haste and Infravision with no end. Each "
+                                "use takes one charge."],
+        ]
+        sp = ", ".join(self.S[s].name() for s in self.c["spider_spells"])
+        spider = [
+            "Turn undead as a cleric of level 2 x your first class level + 1.",
+            "You know the whole map of the level.",
+            "Each person in sight (human, drow and the like) gets one of three at random: death unless "
+            "it saves, a random spell (%s), or it spins in place unless it saves (how the spin ends "
+            "is not known)." % sp,
+            "Fear around you, and Aid, Magical Vestment, Fly, Protection From Fire, Resist Fire, Flame "
+            "Walk and Strength on you.",
+            "The view visits each creature of the level in turn, for 1 to 3 seconds each.",
+            "All your hit points, and Aid, Shield, Feather Fall, Improved Invisibility, Magical Vestment, "
+            "Prayer, Protection From Evil, Resist Fire and Stone Skin on you; then Cure Blindness or "
+            "Deafness if you need it.",
+            "A quest script runs.",
+            "Nothing happens: one piece has no use.",
         ]
         total += len(wrows) + len(orows)
         out += ["## Other items with a use", "",
-                "The Spider Pieces are listed in the order of the game's item list.", "",
                 md_table(["Item", "Effect"], orows), "",
-                "Potions, wands and scrolls have their own pages: [[Potions]], [[Wands]], [[Scrolls]].", "",
+                "## Spider Pieces", "",
+                "The pieces of Lolth's spider are quest items for every class. They all have the name "
+                "Spider Piece, and the game shows nothing that tells them apart. Use a piece to learn "
+                "what it does. Each use takes one charge; with no charge left, \"Nothing happens...\". "
+                "The last level asks for seven of the pieces.", "",
+                "The possible results of USE, one for each piece:", ""]
+        out += ["- " + x for x in spider] + [""]
+        out += ["Potions, wands and scrolls have their own pages: [[Potions]], [[Wands]], [[Scrolls]].", "",
                 "## Notes", "",
+                "- Quest items cannot be dropped (\"You can't drop that.\"): the keys, the Spider Pieces, "
+                "the Spider Amulet, the Cursed Scroll and the other items of the quests.",
+                "- A stack that does not fit in your inventory: you take what fits, and the rest stays "
+                "on the floor. The original 1.3 game loses the rest; ASCENT corrects this.",
                 "- The 1.3 readme lists new items: Potion of Invisibility, Ring of Wizardry, Cloak of "
-                "Lathandar, Drowslayer and +3 Longsword. The game makes them from other table lines "
-                "when it loads a level (the second Potion of Agility, the Ring of Warmth, the second "
-                "Cloak of Elvenkind, and two copies of the Long Sword +2). ASCENT spells the name of "
-                "the god Lathander.",
+                "Lathandar, Drowslayer and +3 Longsword. ASCENT spells the name of the god Lathander.",
                 "- ASCENT corrects these item names (the option -origitems gives the names of 1.3): "
                 + "; ".join("\"%s\" is %s" % (n["name13"], n["name"]) for n in self.name_fixes) + ".",
                 "- The game does not identify items: every item shows its real name.", "",
@@ -1437,8 +1509,6 @@ class Pages:
             note = ""
             if s == 12:
                 note = "Cast on you."
-            if s in (16, 32):
-                note = "6 damage per caster level."
             note = " ".join(x for x in (note, r.note()) if x)
             rows.append([r.name(), self.S[s].name(), r.num("uses", 1), classes_of(r), value_of(r), note])
         self.count("Wands", len(rows))
@@ -1456,7 +1526,7 @@ class Pages:
             "",
             md_table(["Wand", "Spell", "Charges", "F/T/M/C", "Value", "Notes"], rows),
             "",
-            "The spell rules: [[Wizard Spells|Wizard-Spells]].",
+            "The spell rules, also the damage: [[Wizard Spells|Wizard-Spells]].",
             "",
             "The Short Sword of Quickness is not a wand: it gives Haste while it is in the hand ([[Weapons]]).",
             "",
@@ -1488,19 +1558,35 @@ class Pages:
             "",
             md_table(["Scroll", "Effect"], rows),
             "",
+            "A quest item cannot be dropped.",
+            "",
             pages_note(),
             "",
         ])
 
     # -- Spells ---------------------------------------------------------
     def spell_range(self, s):
+        """The flight of the missile when it is shorter than the usual
+        1500 ft, or None."""
         if self.spell_self(s):
-            return "You"
+            return None
         if s == 32:
             return "%d ft" % (MISSILE_FT_PER_S * 2)
         if s == 36:
             return "%d ft + %d ft per 3 levels" % (MISSILE_FT_PER_S * 60, MISSILE_FT_PER_S * 60)
-        return "%d ft" % (MISSILE_FT_PER_S * MISSILE_LIFE_S)
+        return None
+
+    def spell_radius(self, s):
+        # 0x90CEF: radius + L x level_radius, in units (2 units are a foot).
+        # The dwords read at Spell_info+6 and +0xA, shifted by 16, are the
+        # words radius (+8, default 20 of the reader 0x242F6) and
+        # level_radius (+0xC).
+        r = self.S[s]
+        text = "%s ft" % feet(r.num("radius", 20))
+        lr = r.num("level_radius", 0)
+        if lr:
+            text += " + %s ft per level" % feet(lr)
+        return text
 
     def spell_effect(self, s):
         e = SPELLS[s]["eff"]
@@ -1527,9 +1613,12 @@ class Pages:
                "segment, 60 for a round, 600 for a turn). The game sets it for each spell; the "
                "cast times of the spell table files are not used. A hit on you while you cast stops "
                "the spell, and the slot is lost. A scroll or a wand casts at once.",
-               "- Range: \"You\" means the spell acts on you. The other spells fire missiles that fly "
-               "50 ft per second until they hit something, for 30 seconds (1500 ft) unless the row "
-               "says less. The spell acts on what the missile hits.",
+               "- Target: \"You\" means the spell acts on you. The other spells fire a missile that "
+               "flies 50 ft per second until it hits something, for at most 30 seconds (1500 ft) "
+               "unless the row says less. The spell acts on what the missile hits.",
+               "- Area: an area spell acts on each creature and player within the distance of its "
+               "center (you, or the place where the missile lands) that the center can see. "
+               "\"Everything\" in a row: also items on the floor, scenery and spell missiles.",
                "- Save: the target's saving throw against spells ([[Classes]]). Half: half damage. "
                "Negates: no effect.",
                "- Damage to creatures is reduced by their immunities, and damage to you by Resist "
@@ -1556,11 +1645,14 @@ class Pages:
                               else "Everyone within {r} ft of where the missile lands")
                     if r.has("hit_objects"):
                         target = target.replace("everyone", "everything").replace("Everyone", "Everything")
-                target = target.replace("{r}", feet(r.num("radius", 0)))
-                rows.append([self.spell_name(s), cast_text(ct), self.spell_range(s),
-                             target, rule["dur"], rule["save"], self.spell_effect(s)])
+                target = target.replace("{r} ft", self.spell_radius(s))
+                rng = self.spell_range(s)
+                if rng:
+                    target += " (the missile flies %s)" % rng
+                rows.append([self.spell_name(s), cast_text(ct), target, rule["dur"], rule["save"],
+                             self.spell_effect(s)])
             rows_total += len(rows)
-            out += [md_table(["Spell", "Cast", "Range", "Target", "Duration", "Save", "Effect"], rows), ""]
+            out += [md_table(["Spell", "Cast", "Target", "Duration", "Save", "Effect"], rows), ""]
         out += ["## Differs from the manual", ""]
         out += self.spell_manual_notes(cls)
         out += ["", pages_note(), ""]
@@ -1654,7 +1746,7 @@ class Pages:
             other = [x for x in self.check if x[0][:-4].lower() not in self.mission]
             bad = [x for x in mission if x[2]]
             have = set(x[0][:-4].lower() for x in self.check)
-            missing = [m for m in self.mission if m not in have]
+            missing = sorted(m for m in self.mission if m not in have)
             out += ["The item and spell lines of the level tables were compared with `YPINN.BIN`: "
                     "names, dice, bonuses, values, classes, spell levels, ranges, radii, "
                     "durations, types and the rule flags. %d tables are levels of the mission list "
@@ -1683,15 +1775,31 @@ class Pages:
                 "L is the caster level: 0x91EC1 returns the level of the class of the spell. For a mage "
                 "spell it takes the first class that is not a cleric, so a fighter or a thief casts a "
                 "mage wand at the own class level. The damage function is 0x91BC3 (each die "
-                "`rand() % sides + 1`, then the per level part), the area function 0x90CEF, the save "
-                "function 0xAE596 (category 4 for spells).", "",
+                "`rand() % sides + 1`, then the per level part), the save function 0xAE596 (category 4 "
+                "for spells). The area function 0x90CEF takes each object within radius + L x "
+                "level_radius units (0x90D20 to 0x90D37: the high words of the dwords at "
+                "Spell_info+6 and +0xA are the words `radius`, +8, and `level_radius`, +0xC, of the "
+                "reader 0x242F6), with the quick distance. After the table fixup every area spell has "
+                "level_radius 0. ASCENT uses the same sum (dtu_spell_area) with the exact distance.", "",
                 md_table(["Spell", "Line", "Code", "Detail"], srows), ""]
         out += ["## Item code", "",
                 md_table(["Item", "Code"], [[self.O[i].name(), POTIONS[i][1]] for i in range(72, 89)]
                          + [["Gem of Curing", "case 2 of 0x37A6A (0x3890F)"],
                             ["Scroll, thief scroll", "cases 0x66 and 0x7F of 0x37A6A, text screen 0x9DC42"],
                             ["Cursed Scroll", "case 0x6A of 0x37A6A"],
-                            ["Spider Pieces", "cases 0x12 to 0x1A of 0x37A6A"],
+                            ["Spider Pieces", "cases 0x12 to 0x1A of 0x37A6A: misc 18 turn undead at "
+                             "level (class 1 level + 1) x 2 (0x38196), 19 the map, 20 the people in "
+                             "sight (0x385D3), 21 no case, 22 Fear and seven spells, 23 the view of "
+                             "each creature (0x38268), 24 script 0x1FC, 25 the Assembled Spider, 26 "
+                             "all hit points and nine spells. The statue of FLAME takes 18, 19, 24, "
+                             "26, 22, 23 and 20"],
+                            ["Ring of Armoring", "0xB0014, 0xB01B6, 0xAFAD1 (after the caps 0xB05FC, "
+                             "0xB064F, 0xB067C)"],
+                            ["Boots (misc 8)", "the boot place counts only an armor line (0xAFBC8)"],
+                            ["Drowslayer (weapon 13)", "use 0x37B58, drop 0xB7197, warp 0x59D2D, "
+                             "script 0x1FD"],
+                            ["Plot items cannot be dropped", "0xB611C"],
+                            ["Partial stacks", "0xB65BB (1.3 cuts the count to stack_limit)"],
                             ["Worn items", "the item bits of 0xAFB55"],
                             ["Weapon powers", "0x2AB9F, 0x2B1F2, 0xB337E, 0xAFB55, 0xB038F"]]), ""]
         out += ["## Other rules", "",
@@ -1701,7 +1809,10 @@ class Pages:
                 "the 1.3 code.", "",
                 md_table(["Rule", "Evidence"], SOURCES_FINDINGS), ""]
         out += ["## Corrections of ASCENT", "",
-                "ASCENT corrects these defects of 1.3. The option turns the correction off.", "",
+                "ASCENT corrects these defects of 1.3 that change the rules of these pages. Each "
+                "setting is on by default unless the row says otherwise; the option turns it off for "
+                "one run (\"none\": no option). The corrections of the physics, the creature "
+                "movement, the sound and the triggers are in the reverse engineering notes.", "",
                 md_table(["Setting", "Option", "Correction"], FIXES), ""]
         if NOT_IN_ASCENT:
             out += ["## Not in ASCENT yet", "",
@@ -1759,15 +1870,24 @@ WEAPON_INTERNAL = {
 WEAPON_NOTES = {
     8: "Homes in on the target.",
     45: "A backstab with a hit roll of 19 or 20 does +3 to 6 damage.",
+    13: "In the hand, a quest script runs when you use it, attack with it, try to drop it or go to "
+        "another level. It can refuse to be dropped: on d18 above your Intelligence or d7 above your "
+        "first class level. USE, for a Lawful Good character: Continual Light around you, Free Action "
+        "and Protection From Evil, unless the quest has stopped it.",
     54: "In the hand: Chill Touch, Resist Fire, Feather Fall, Free Action, Jump, Detect Magic, Haste, "
-        "Improved Invisibility and Infravision (of use to a human only) with no end, and Find/Remove Traps 95%.",
-    69: "Haste while it is in the hand (1.3: no power).",
+        "Improved Invisibility and Infravision (of use to a human only) with no end, and Find/Remove "
+        "Traps and Climb Walls 95%.",
+    69: "Haste while it is in the hand: a swing of 0.5 s, and you move twice as fast. The original 1.3 "
+        "game gives it no power; ASCENT corrects this.",
     70: "Against undead: double damage on d100 <= 5 x (level of the undead - 4); otherwise the undead "
         "is destroyed.",
     71: "+2 to hit and +2 fire damage against a regenerating target, +4 and +4 against undead.",
-    75: "Not magic, despite the +2, and no bonus to hit.",
+    75: "No bonus to hit, despite the +2.",
     74: "No bonus to hit, despite the +1.",
 }
+
+SPEED_BOW_NOTE = ("Haste while it is in the bow slot: half the wait between arrows, and you move twice as "
+                  "fast. The original 1.3 game gives it no power; ASCENT corrects this.")
 
 # 0x37A6A, combat.md B6
 POTIONS = {
@@ -1789,8 +1909,10 @@ POTIONS = {
     84: ("Invulnerability for 5 to 20 minutes: no spell damage, armor class -2, and creatures below "
          "level 4 or without a magic weapon cannot hurt you.", "case 0x54, 0x2A24A"),
     85: ("The spell Jump on you: 1d3 minutes + 1 per level.", "case 0x55"),
-    86: ("For one hour your next attack can become a critical hit, and then the luck ends. The "
-         "original 1.3 game ties the chance to the day clock; ASCENT corrects this with a coin flip.",
+    86: ("For one hour, each attack roll and each damage roll of your weapon flips a coin. On a win "
+         "the roll is the best one (a natural 20, a critical hit; or the highest damage), and the "
+         "luck ends. The original 1.3 game takes the coin from the day clock; ASCENT corrects this "
+         "with a random coin.",
          "case 0x56, 0x2A87B (P+0x1A58, day clock bit P+0x83)"),
     87: ("Haste for 5 to 20 minutes.", "case 0x57"),
     88: ("+2 to 18 hit points and Bless for 70 to 120 minutes; the extra hit points go when Bless "
@@ -1806,14 +1928,17 @@ SCROLLS = {
          "character gets one.",
     106: "USE: the screen shakes, then each of these with a 50% chance: Confusion, Continual Light, "
          "Scare, Hold Person and Fireball on you, the map forgotten, and each ability score set to a "
-         "random value from 1 to its value. Then damage from 0 to your hit points - 1. Quest item.",
+         "random value from 1 to its value. Then damage from 0 to your hit points - 1. Not used up. "
+         "Quest item. The original 1.3 game does less than half a point of damage; ASCENT corrects "
+         "this.",
     126: "Quest item. Using it does nothing.",
     127: "USE: shows a picture clue. Not used up. Quest item.",
 }
 
 SOURCES_FINDINGS = [
-    ["Fireball, Lightning Bolt and Melf's Acid Arrows do only the damage per level (6, 6, 4 per "
-     "level).",
+    ["The table text of Fireball, Lightning Bolt and Melf's Acid Arrows has 0-sided dice, which add "
+     "0. The table fixup gives them 6, 6 and 4 sides, so 1.3 never rolls the 0-sided dice; only "
+     "-rawtables of ASCENT shows the rule.",
      "The count of the 0-sided dice is set by the cases 0x8E592, 0x8EEAB, 0x8EFE0. 0x91BC3 divides by "
      "the sides with `idiv dword ptr [esp]` (0x91C25, 0x91C8E, 0x91CEC, 0x91D4E). The divide error "
      "handler of div0.asm (div0_init(1) at 0xB8323, handler 0xF6D94, saturate mode, no lists) "
@@ -1922,7 +2047,8 @@ UNUSED_ITEM_VALUES = [
     "Sword of W'hin: `ac_adjustment`, `adjust_strength`, `adjust_dexterity`. Its powers are code for "
     "the item number.",
     "Flame Arrow: `levels_per_use=5`.",
-    "Armoring: `pc_spell=2` (Armor). The code sets an item bit that nothing reads.",
+    "Ring of Armoring: `pc_spell=2` (Armor). Its power is code for the item number (0xB0014, "
+    "0xB01B6 set a flag that 0xAFAD1 reads for a mage).",
     "Ring of Wizardry: `pc_spell=42`. Its power is code for the item number.",
     "Glim-Gauntlet: `player_light=1`. Lantern: `player_light=3`, `lightcast=3`.",
     "Gloves, Glim-Gauntlet, Gauntlets of Ogre Power, Elven Cloak: the AC bonus is in the executable "
