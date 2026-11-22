@@ -1266,7 +1266,8 @@ int dtu_char_pickup_allowed(void)
 // docs/re/combat.md, section B6.
 
 // A choice box (0x655FE, nm_messagebox). Returns the index of the choice,
-// -1 for Escape. The option -autochoice N answers N without a box.
+// -1 for Escape. The option -autochoice N answers N without a box. A run
+// with no one to answer (-soak, -frames) takes the first choice.
 int dtu_char_choice(char *text, int n, ...)
 {
 	va_list args;
@@ -1281,6 +1282,10 @@ int dtu_char_choice(char *text, int n, ...)
 		r = (Dtu_auto_choice < n) ? Dtu_auto_choice : n - 1;
 		dtu_char_log("choice box '%s': %d (option -autochoice)", text, r);
 		return r;
+	}
+	if (FindArg("-soak") || FindArg("-frames")) {
+		dtu_char_log("choice box '%s': 0 (a run with no one to answer)", text);
+		return 0;
 	}
 	switch (n) {
 		case 1: r = nm_messagebox(NULL, 1, c[0], "%s", text); break;
@@ -1914,18 +1919,25 @@ static void check_levels(void)
 	if (!new1 && !new2)
 		return;
 
-	if (new1) {
-		char text[120];
-		sprintf(text, "Your character has attained new %s level", game_text(642 + (pa->class1 == 3 ? 5 : pa->class1), class_name[pa->class1]));
-		HUD_init_message("%s", text);
+	// 0xAF560: a box with the button "Ok" (TEX 34) for each class that
+	// gained a level, in the order cleric, mage, fighter, thief; text TEX
+	// 844 with the class name (TEX 642, 643, 644, 647)
+	{
+		int i, mask = (new1 ? 1 << pa->class1 : 0) | (new2 ? 1 << pa->class2 : 0);
+
+		for (i = 0; i < 4; i++)
+			if (mask & (1 << i)) {
+				char text[160];
+
+				sprintf(text, game_text(844, "Your character has attained\nnew %s levels!"),
+					game_text(642 + (i == 3 ? 5 : i), class_name[i]));
+				dtu_char_choice(text, 1, game_text(34, "Ok"));
+			}
+	}
+	if (new1)
 		hp += level_hit_points(pa->class1, old1, pa->class1_level);
-	}
-	if (new2) {
-		char text[120];
-		sprintf(text, "Your character has attained new %s level", game_text(642 + (pa->class2 == 3 ? 5 : pa->class2), class_name[pa->class2]));
-		HUD_init_message("%s", text);
+	if (new2)
 		hp += level_hit_points(pa->class2, old2, pa->class2_level);
-	}
 	// 0xAF86F: one half for a character with two classes
 	if (valid_class(pa->class2))
 		hp >>= 1;
