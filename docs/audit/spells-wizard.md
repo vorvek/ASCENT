@@ -93,7 +93,10 @@ the priest audit.
 | Rule | 1.3 | Port | Status |
 |---|---|---|---|
 | Slots | 0x3575B: the mage row of 0x145CD8 by mage level, no intelligence bonus | `dtu_spell_compute_slots` | same (table checked byte by byte) |
-| Rest | 0x3551B fills all slots | `dtu_spell_restore_slots` | same |
+| Rest | 0x3551B fills all slots (call 0x3608B) | `dtu_spell_restore_slots` | same |
+| Fill at the game start | game() 0x42284 calls 0x3551B only after Waterdeep: flag 0x141C38 set by 0x8C206, cleared by the load 0xBBA8A and by game() 0x4228B; level byte P+0x71 <= 1 | `dtu_spell_fill_at_start`, `dtu_spell_frame` | fixed: the port filled all slots at each level change and after each load (a free rest). Test `tools/check_saveload.py`. spells.md section 13 |
+| New character | 0x8BEBC calls 0x3551B (0x8BFFE) | `make_player` (dtufe_char.c) | fixed: the port did not fill; the level start did |
+| Level change, load | slots left stay; the load reads P+0x2C and P+0x3C; a warp ends the cast (0x16413) | `dtu_spell_level_start` | fixed (same change) |
 | Cast time | words of 0x13A8DB in seconds (the fixup writes them); a scroll or a wand casts at once | `Cast_time_13` | same (table checked) |
 | Level limit | 0x3598C, 0x359C0: "Spell is of too high a level.", then "Out of spell points ..." | `cast_allowed` | same |
 | Armor | 0x41A4D: a mage spell in armor without `MAGIC_OK` (item flags 0x19FD34 bit 1) is refused, sound 3000 | `cast_allowed` | same |

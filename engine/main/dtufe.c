@@ -44,6 +44,7 @@
 #include "dtumusic.h"
 #include "dtuobj.h"
 #include "dtuchar.h"
+#include "dtuspell.h"		// ASCENT: the slots at the game start (0x141C38)
 #include "dtusoak.h"
 #include "object.h"
 #include "player.h"
@@ -2457,6 +2458,7 @@ int fe_load_game(int in_game)
 		return 0;
 	}
 	sg_forget();
+	dtu_spell_fill_at_start(0);		// 0xBBA8A: no fill at the start of the loaded game
 	Loaded_sg = b;
 	Loaded_sg_size = size;
 	between = get_u32(b + SG_BETWEEN) != 0;
@@ -2858,6 +2860,8 @@ int dtufe_run(void)
 			fe_leave();
 			Fe_in_game = 1;
 			Fe_loading_from = 1;		// 0xB8A09: 0x13E324 = 1
+			// 0x8C279: Waterdeep is left, the game start fills the slots
+			dtu_spell_fill_at_start(1);
 			return level ? level : 1;
 			}
 		case FE_GO_LEVEL:
@@ -2909,6 +2913,9 @@ void dtufe_direct_start(void)
 		Script_in_game = 1;
 	dtustate_new_game();
 	sg_forget();
+	// ASCENT: a direct start with -char goes on with the slots of the save,
+	// one without -char has a new character: full slots (0x8BFFE)
+	dtu_spell_fill_at_start(FindArg("-char") ? 0 : 2);
 }
 
 // 0x4225A: game() shows its ESC menu when the game loop ended with another

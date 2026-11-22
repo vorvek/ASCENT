@@ -588,3 +588,69 @@ the jump table 0xADC36 sends -4 to 0xAE0DC, -3 to 0xAE14C, -2 to 0xAE158, -1 to
 8 from level 7 (0xAC4C1).
 
 Checks: `-chartest 30:priestcheck` and `tools/priestcheck.py` (23 checks).
+
+## 13. The spell slots at a level change, a load and the game start (Code)
+
+0x3551B fills the slots: it copies the mage maximum P+0x23 (9 bytes) to the
+slots left P+0x2C and the cleric maximum P+0x35 (7 bytes) to P+0x3C, then sets
+bit 0x80000 of 0x1BD5A4. The executable has three calls of it (`call 0x3551b`
+in the code, no pointer to it in the image):
+
+| Call | Function | When |
+|---|---|---|
+| 0x3608B | rest action 0x360D5 | the player rests at a rest place |
+| 0x8BFFE | 0x8BEBC, from `NuChar` 0x87D73 | a new character |
+| 0x42284 | game() 0x41F4A | the game start, under the rule below |
+
+game() runs once for each entry into the dungeon; the game loop changes levels
+without it. At 0x4221E to 0x42289 it calls 0x3551B only when all of these hold:
+the mission is the built-in one (0x297F2C = 0), the flag 0x141C38 is set, and
+the level byte of the player record (P+0x71, compared as a signed byte) is 1 or
+below. Then it clears the flag (0x4228B), whatever the result.
+
+The writers of 0x141C38:
+
+- 0x8C206 (Waterdeep, 0x8C25F to 0x8C285): at the end of the screen the flag is
+  1, except when 0x141C3C is set and Current_level_num 0x13B91C is 1 or below:
+  then it is 0. 0x141C3C becomes 0. Only 0x8C4D3 (Alt-F3 in Waterdeep, a load
+  0xBB780 that leaves Waterdeep for a level) sets 0x141C3C.
+- 0xBB780 (the load, 0xBBA8A): 0.
+- game() (0x4228B): 0.
+
+So the slots are full after the Yawning Portal (StartNewGame(1), level 1), and
+not after a load: a load of a level save from Waterdeep sets 0 for level 1 and 1
+for a deeper level, where P+0x71 from the save stops the fill. A level change
+and a load keep the slots left; a load takes them from the save (P+0x2C,
+P+0x3C). A new class level recomputes the maximum (0x3575B) and does not fill.
+
+The same block of game() places the player (0x4AD9C, 0x696FE, 0x6B9B0, 0x5A5DE
+facing 2, 0x43A5A). It does not touch the hit points or the thief state.
+
+The cast time 0x153EBC is slot 0 of `Ai_local_info` (+0x0C): 0x16413 sets it to
+0x3FFFFFFF after the AI blocks of the level state are written, so each warp
+ends a cast that runs; game() does the same at 0x41FB7.
+
+Port before: `dtu_spell_frame` filled all slots at each change of
+`Current_level_num`, so a warp and a load were a free rest. A DOS 1.3 save had 0
+mage slots left of level 1 (save offset 185), the same game after a load and a
+save of the port had 1. Port after: `dtu_spell_level_start` (from
+`dtu_char_level_start`) only recomputes the maximum, ends the cast and clears
+the missiles and acid of the port. `dtu_spell_fill_at_start` is the flag
+0x141C38: the Yawning Portal of Waterdeep sets 1, the load 0; the first level
+start fills when the level is 1 or below. A new character fills its slots
+(0x8BFFE). The direct start `-level` without `-char` is a new character and
+fills; with `-char` the slots come from the save.
+
+Kept: hit points go from level to level in the character record (a dead
+character starts with all of them, as before). The thief state of a level
+(failed picks, searched walls, found traps) is in the records of the level
+(dtuthief.c); a level change ends Hide In Shadows and a climb. The effects of
+the player cross a warp (0xBB563, dtutrig.c).
+
+Not traced: 0x16413 writes `Ai_local_info` before it clears 0x153EBC, so the
+level state and a save made during a cast hold the running cast time. Whether a
+later read gives it back was not traced. The port ends the cast at each level
+start.
+
+Check: `tools/check_saveload.py` (a cast, two level changes, a save and a load,
+then the exit of the inn, Waterdeep and the Yawning Portal).

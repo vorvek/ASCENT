@@ -401,6 +401,30 @@ void dtu_spell_restore_slots(void)
 		Dtu_spell_slots_left[1][0],Dtu_spell_slots_left[1][1],Dtu_spell_slots_left[1][2]);
 }
 
+// ASCENT: 0x3551B for the new character (0x8BFFE) and the game start
+// (0x42284). The rule of Dtu_fix_rary_manual counts only the rest.
+void dtu_spell_fill_slots(void)
+{
+	memcpy(Dtu_spell_slots_left,Dtu_spell_slots_max,sizeof(Dtu_spell_slots_left));
+	dtu_spell_log("spell: the slots are full (mage %d %d %d, cleric %d %d %d)",
+		Dtu_spell_slots_left[0][0],Dtu_spell_slots_left[0][1],Dtu_spell_slots_left[0][2],
+		Dtu_spell_slots_left[1][0],Dtu_spell_slots_left[1][1],Dtu_spell_slots_left[1][2]);
+}
+
+// 0x141C38 (dtuspell.h)
+static int Fill_at_start = 0;
+static int Level_started = 0;
+
+void dtu_spell_fill_at_start(int on)
+{
+	Fill_at_start = on;
+}
+
+void dtu_spell_level_start(void)
+{
+	Level_started = 1;
+}
+
 // 0xB69AD
 int dtu_spell_learn(int spell)
 {
@@ -3192,11 +3216,22 @@ void dtu_spell_frame(void)
 	if (ConsoleObject == NULL || !Dtu_objects_enabled)
 		return;
 
-	// The level start (0x4225A): the slots are full
-	if (last_level != Current_level_num) {
+	// The level start. ASCENT: the slots left stay (they come from the
+	// save after a load). Only the game start after Waterdeep fills them:
+	// game() 0x4221E to 0x42284 calls 0x3551B when the mission is the
+	// built-in one (0x297F2C = 0), the flag 0x141C38 is set and the level
+	// byte P+0x71 is 1 or below, then clears the flag (0x4228B). The game
+	// loop changes levels without game(). The cast that runs ends:
+	// 0x16413 sets 0x153EBC (Ai_local_info[0] +0x0C) to 0x3FFFFFFF after
+	// the level state write of each warp, and game() does it at 0x41FB7.
+	// The missiles and the acid of the port refer to objects of the level.
+	if (Level_started || last_level != Current_level_num) {
+		Level_started = 0;
 		last_level = Current_level_num;
 		dtu_spell_compute_slots();
-		memcpy(Dtu_spell_slots_left,Dtu_spell_slots_max,sizeof(Dtu_spell_slots_left));		// 0x4225A calls 0x3551B
+		if (Fill_at_start == 2 || (Fill_at_start && Current_level_num <= 1))
+			dtu_spell_fill_slots();
+		Fill_at_start = 0;
 		Cast_timer = DTU_FX_NO_END;
 		memset(Tracked,0,sizeof(Tracked));
 		acid_clear();
