@@ -109,10 +109,11 @@ TESTS = [
     # script 294).
     T("ibbalar_altar", "IBBALAR", "20:goseg=424,22:aim=2,25:activate", [r"run script 294 of obj 2"], frames=120),
 
-    # YPINN: the chairs with old script ids do not talk (Dtu_fix_furniture_talk).
-    T("ypinn_chair", "YPINN", "20:goobj=5,25:activate", [], [r"run script 7 of obj 5"], frames=80),
-    T("ypinn_chair_orig", "YPINN", "20:goobj=5,25:activate", [r"run script 7 of obj 5"], frames=80,
-      extra=["-origtalk"]),
+    # YPINN: the chairs with old script ids do not talk. The level start
+    # clears the script word of all scenery on a fresh level (0xA674A at
+    # 0xAD63B, D-074), as 1.3 does.
+    T("ypinn_chair", "YPINN", "10:obj=5,10:obj=26,20:goobj=5,25:activate",
+      [r"obj 5: type 18 .* script 0 ", r"obj 26: type 18 .* script 0 "], [r"run script 7 of obj 5"], frames=80),
 
     # THIEF1: the prison sequence of script 60 (statement DB with segment
     # 0xFFFF): the items that are not worn stay in THIEF1, the player is in
@@ -127,6 +128,11 @@ TESTS = [
     # the same call.
     T("script_warp_state", "HUB1", "20:give=16.107,30:goseg=61,50:wall=40.4,60:warp=3.376,100:quest,110:warp=1.61,150:wall=40.4,155:quest",
       [r"wall 40\.4: type 4[\s\S]*quest: level 3 [\s\S]*wall 40\.4: type 4[\s\S]*quest: level 1 "], frames=170,
+      extra=["-triglog", "-statelog"]),
+    # THIEF1: after the restore of its state, 0x5A855(0) switches trigger 34
+    # off (0x5A94E, the `on` byte 34 * 0x59 + 0x0E; D-070).
+    T("thief1_restore_rule", "THIEF1", "20:warp=7.612,60:warp=6.1,100:quest",
+      [r"level rule of the restore \(0x5A855\), level 6", r"quest: level 6 "], frames=120,
       extra=["-triglog", "-statelog"]),
     # The spell effects of the player (the bits +0x88 of the player object)
     # stay after a warp (0xBB563).
@@ -207,6 +213,26 @@ TESTS = [
        r"quest: level 3 .* gold 8100 ", r"obj 55: .* contains 16\.14 x1"],
       frames=1800, dlg="1,1,1,5," + ONES),
 
+    # Area spells hit the caster in the area: 0x90CEF has no test of the
+    # caster in its object loop (0x90D54 to 0x90DDA, from object 0), and
+    # 0x8CFFF has none either. A level 9 Fireball of the player on the
+    # ceiling of BONES segment 48 (15 units away) burns the player, one on
+    # a zombie 80 units away does not (radius 40). The cast starts at the
+    # start point, away from the rats, whose hits would stop it.
+    T("fireball_caster_in_area", "BONES",
+      "5:class=1,6:setlevel=9,7:give=17.16.1,8:armspell=16,9:heal=100,22:fire,140:goside=48.1,142:fire",
+      [r"the area spell 16 of obj \d+ hits a wall", r"'Fireball' level 9 on obj 0 you: damage \d+"], frames=190,
+      extra=["-testslots", "9", "-objlog", "fireball_near_obj.log"]),
+    T("fireball_caster_out_of_area", "BONES",
+      "5:class=1,6:setlevel=9,7:give=17.16.1,8:armspell=16,9:heal=100,20:goobj=11.80,22:aim=11,25:fire,118:aim=11,120:fire",
+      [r"area of 'Fireball'", r"'Fireball' level 9 on obj 11 Zombie: damage"], [r"'Fireball' level 9 on obj 0 you"],
+      frames=160, extra=["-testslots", "9", "-objlog", "fireball_far_obj.log"]),
+    # Statement EB (script 291 of IBBALAR, label 23): the area spells go off
+    # at the segments that the statement names (D-075, Dtu_fix_script_area_seg).
+    T("script_area_segment", "IBBALAR", "10:resume=82.23,15:talkscript=291",
+      [r"area spell 4 at the center of segment 231", r"area of 'Burning Hands'"], frames=120,
+      extra=["-objlog", "eb_obj.log"]),
+
     # Statement 9F (script 31 of BONES): the level.
     T("level_statement", "BONES", "20:setlevel=5,30:dump", [r"script: setlevel 5", r"level 5/5"], frames=40),
 ]
@@ -231,6 +257,12 @@ def run_game(args, level, script, frames, dlg, extra, user, logdir, tag):
     if os.path.exists(charlog):
         with open(charlog, "r", encoding="latin-1") as f:
             text += "\n" + f.read()
+    # -objlog NAME (a name in the log directory): the object and spell log
+    if "-objlog" in extra:
+        objlog = os.path.join(logdir, extra[list(extra).index("-objlog") + 1])
+        if os.path.exists(objlog):
+            with open(objlog, "r", encoding="latin-1") as f:
+                text += "\n" + f.read()
     with open(os.path.join(logdir, tag + "_out.log"), "w", encoding="latin-1") as f:
         f.write(" ".join(cmd) + "\n" + text)
     return code, text

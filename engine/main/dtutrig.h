@@ -163,6 +163,12 @@ extern int Dtu_fix_trap_close_door;
 // it, as in a segment with no line. 0: the rule of the executable.
 extern int Dtu_fix_trigger_repeat;
 
+// ASCENT: D-057, 0x94231: disable_trap clears the side flags 0x28 of the
+// trap whose number is the number of the firing trigger. 1 (default): the
+// side of the trap that is switched off. 0 (-origtrig): the rule of the
+// executable. No shipped trigger uses disable_trap.
+extern int Dtu_fix_disable_trap;
+
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;
 

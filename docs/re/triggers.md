@@ -156,7 +156,9 @@ All **V**. The order is the order of the code.
 13. `disable_trap`: `on = 0`, `tex_disabled` texture, removed from the active list.
     The code clears the side flags 0x28 of the side of the trap whose number is the
     number of the firing trigger (a defect: it should be the trap that is switched
-    off). **D** No file uses `disable_trap`.
+    off). The index is the word at [esp+4] of 0x94231: the saved EAX of the entry
+    (0x93B30), the trigger number (verified in the bytes, D-057). **D** No file uses
+    `disable_trap` (all hold -1).
 14. `first_trap != -1`: run the trap chain.
 
 The chain loops count a step only when a trigger names itself, and stop at 50. A
@@ -393,6 +395,7 @@ stations of type 4 and 5 (0x5A42C). **G**: the code of the types 4 and 5 does no
 | `Dtu_fix_trigger_table` | 1 | Follows the segment table and the `next_in_seg` chains of the TIG file. In 7 files some triggers are in no chain and cannot fire | Makes the table and the chains again from the `seg` field of each record |
 | `Dtu_fix_trigger_repeat` | 1 | The floor triggers of a segment with a warp command line fire in each frame while the player is in the segment | They fire one time for each entry of the segment |
 | `Dtu_fix_trap_close_door` | 1 | Trap flag 2 calls `wall_close_door` with a wall number | The door of the trap starts to close. Off: no action |
+| `Dtu_fix_disable_trap` | 1 | `disable_trap` clears the side flags 0x28 of the trap with the number of the firing trigger (0x94231) | The side of the trap that is switched off |
 | `Dtu_fix_trap_seconds` | 1 | A trap time of N seconds is 0.182 * N seconds | The time is N seconds |
 | `Dtu_trig_log` | 0 | | Prints each trigger and trap event |
 

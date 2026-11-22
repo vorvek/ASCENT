@@ -619,6 +619,19 @@ def test_fe_credits_key_only(t):
     assert differ(region(s["menu"], *FE_CORNER), region(s["after"], *FE_CORNER)) < 0.05, "a key did not end the credits"
 
 
+# The scroll of the main menu: FEBGND entry 17, 490 x 480, centered (x 75
+# to 565).
+def test_fe_main_menu_scroll(t):
+    """The main menu draws the picture "scroll2.pcx" (0x631D2: the table
+    0x13E328 gives FEBGND entry 17) over the Waterdeep picture."""
+    s, d = t.run("fe_scroll", ["wait 60", "shot menu"], level="")
+    text = session_log(d)
+    assert "Front end: main menu picture scroll2.pcx (FEBGND 17, 490 x 480)" in text, "no scroll in the main menu"
+    if t.args.shots:
+        os.makedirs(t.args.shots, exist_ok=True)
+        save_png(s["menu"], os.path.join(t.args.shots, "scroll_menu.png"))
+
+
 # The description bar of the high resolution inventory screen (area 0x3BC524)
 DESCBAR = (10, 376, 416, 14)
 

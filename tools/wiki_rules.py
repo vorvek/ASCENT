@@ -348,7 +348,8 @@ SPELLS = {
     15: dict(src="0x8E464, 0x9DEDD", dur="1 minute per level", save="None", target="You",
              eff="You fall slowly, at most 7.5 ft per second. No message when it ends."),
     16: dict(src="0x8E55C, 0x91BC3", dur="Instant", save="Half", target="Everything within {r} ft of where the missile lands",
-             eff="1d6 fire damage per level, at most 10d6. Scenery in the area can break.",
+             eff="1d6 fire damage per level, at most 10d6. It also burns you when you are in the area. "
+                 "Scenery in the area can break.",
              tech="The table fixup (0x1A972) writes fire_damage_dice=6, #1, level 0 and flags 0x803 "
                   "(AREA, objects too); the case sets #fire_damage_dice = min(L, 10). The table text "
                   "has 0 sides and 6 per level (6L, one target)."),

@@ -167,7 +167,6 @@ alone runs script 322 and the end). The port: `flame_lolth_dead` (dtuobj.c).
 | Defect | Evidence | The port |
 |---|---|---|
 | The prison sequence takes entry i of the item list, reads the entry that moved to its place and skips it | 0xAA47B (0xB6D24, 0xB6F01 moves the entries), 0xAA4AE reads `[ecx]` after it, 0xAA58C `inc esi` | `Dtu_fix_prison_items` (on): each item that is not worn goes to the thieves. `-origprison` |
-| Eleven chairs, tables and beds of YPINN have the script ids of guests and of Sabrae | YPINN.LVL objects 5, 8, 12 to 15, 19 to 22, 26; 0xAD7AC registers each object with a script id; 0xAC155 runs it | `Dtu_fix_furniture_talk` (on): the scenery of level 0 does not talk. `-origtalk` |
 | A creature that is not hostile walks to the player, not along its path, so the walk statement E5 does not reach its end near the player | 0x17CFC | The object is moved to the end of the path and the script goes on (`Dtu_script_walk_teleport`) |
 | Statement EB reads a segment and does not use it | 0xAA8C7 | Kept: the spell is around the object |
 | Statement C5 cannot set global flag 17 (script 320) | 0xAB124, numbers up to 0x20 are ignored | Kept: mission flag 17 comes from DTU.WRP |
@@ -582,7 +581,7 @@ log lines.
 - FLAME: the seven pieces and script 323; the Flamesword with Lolth alive
   (no end) and dead (the end, CREDITV1.MVE).
 - IBBALAR: the use action on the altar runs script 294.
-- YPINN: a chair does not talk, and talks with `-origtalk`.
+- YPINN: a chair does not talk (0xA674A clears the old script ids of the scenery).
 - THIEF1: the prison sequence.
 - A script warp keeps the level state; the spell effects stay after a
   warp; Drowslayer runs script 0x1FD before a warp; statement 9F.

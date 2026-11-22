@@ -2664,13 +2664,29 @@ static void ig_save_game(void)
 
 //------------------------------------------------------------------------
 // The main menu (0x58075, items 0x57F28, actions 0x582CC). It is drawn on
-// the Waterdeep picture with no box: the executable asks for the picture
-// "scroll2.pcx", which is not in its picture table (0x631D2).
+// the Waterdeep picture with no box. ASCENT: the executable asks for the
+// picture "scroll2.pcx": nm_draw_background1 (0x631D2) finds it in the
+// table 0x13E328 (0x7F37D: "scroll2.pcx", 17, then the end), loads FEBGND
+// entry 17 (490 x 480) with 0x80202 and draws it centered with color 255
+// transparent (gr_bitmapm 0xE0C9C). Its palette is not used. An older note
+// said that the name is not in the table, and the port drew no scroll.
+
+static grs_bitmap *Main_menu_scroll;
 
 static void main_menu_backdrop(void)
 {
 	int w, h;
 
+	if (!Main_menu_scroll) {
+		ubyte pal[768];
+
+		Main_menu_scroll = fe_febgnd(17, pal);
+		if (Main_menu_scroll)		// for tools/uitest.py
+			dtu_log("Front end: main menu picture scroll2.pcx (FEBGND 17, %d x %d)\n", Main_menu_scroll->bm_w, Main_menu_scroll->bm_h);
+	}
+	if (Main_menu_scroll)
+		fe_blit_part(Main_menu_scroll, 0, 0, Main_menu_scroll->bm_w, Main_menu_scroll->bm_h,
+			(FE_W - Main_menu_scroll->bm_w) / 2, 0, 255);
 	// 0x58158: the copyright text with the small font, 15 pixels above the bottom
 	fe_string_size(Fe_font_s, fe_text(964), &w, &h);
 	fe_string_in(Fe_font_s, 0, FE_H - h - 15, FE_W, 0, FE_HUE_2, FE_HUE_BLACK, fe_text(964));

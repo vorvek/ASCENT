@@ -166,8 +166,11 @@ Items (built by 0x57F28; action numbers for `do_option` 0x582CC, jump table
 
 - Title "" and subtitle TEX[963] "Descent to Undermountain\nMain Menu" at the
   middle of the Waterdeep picture (screen 0), no box. The executable passes
-  the picture name "scroll2.pcx", which is not in its picture table
-  (0x631D2). The copyright line TEX[964] is drawn with the small font, hue 2,
+  the picture name "scroll2.pcx". Its picture table at 0x13E328 has one
+  entry, "scroll2.pcx" and 17 (0x7F37D reads it), so 0x631D2 draws FEBGND
+  entry 17 (490 x 480) centered at x = 75, y = 0, with color 255
+  transparent; its palette is not used (DTU-Decomp `docs/frontend-menus.md`
+  2.3). The copyright line TEX[964] is drawn with the small font, hue 2,
   centered, 15 pixels above the bottom (0x58158).
 - The first current item is the last choice (0x13CCE9, 0 at the start, -1
   after a cancelled quit).
@@ -545,7 +548,8 @@ and the lists are freed.
 
 ## 6b. The ESC menu of the game (game() 0x4225A) (V)
 
-The Escape key of the game sets Function_mode 1 (Descent 1). After the game
+The Escape key of the game sets Function_mode 6 (0x43016; Descent 1 sets 1).
+Mode 6 ends in mode 1, so the main menu is the same. After the game
 loop, if Function_mode is not 2 (and no demo, no editor), game() keeps the
 mode, sets 2 and:
 
@@ -668,10 +672,15 @@ used.
 
 ## 12. Input
 
-The executable calls the action of a pressed feature again in each frame
-while the mouse button is down (0x81F7E), and its menus act on the state of
-the button, not on a new press (V for the feature loop; G for the effect on
-each control).
+The menus of the executable act on the state of the button, not on a new
+press (G for the effect on each control). An older version of this note said
+that the action of a pressed feature runs again in each frame while the
+button is down (0x81F7E). DTU-Decomp `docs/town.md` (the cursor state
+machine, 0x82146 to 0x82195) reads it otherwise: the press handler runs once,
+when the press animation of the cursor ends; with the button still down the
+release state starts the press animation again, so a held button repeats at
+the pace of the animation, not in each frame. The port option
+`Dtu_fe_original_input` follows the older reading (open point).
 
 ## 13. The port
 

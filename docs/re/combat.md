@@ -1021,13 +1021,17 @@ wisdom P+0xBB (Code 0x8DAA2, 0x8E338, 0x8E8FA, 0x8F57F).
 Cold (+0x40..0x42) is never rolled. `damage_bonus` is not added here. A part is
 rolled if its sides or count byte is not 0. 0 sides with count > 0 divides by
 zero (`rand() % 0`, plain `idiv dword ptr [esp]` at 0x91C25, 0x91C8E, 0x91CEC,
-0x91D4E): Fireball and Lightning Bolt have `fire_damage_dice=0` /
+0x91D4E). The table text of Fireball and Lightning Bolt has `fire_damage_dice=0` /
 `elec_damage_dice=0` and Melf's Acid Arrow has no `acid_damage_dice` in all 92
-tables, and their cases set the count to 1 or more. The divide error goes to the
+tables, but the table fixup 0x1A344 gives them 6, 6 and 4 sides and 0 per level
+(0x1A9C7 `mov byte ptr [0x1b5ea3], 6`, 0x1AAE9 `mov byte ptr [0x1b669c], 6`), so
+in 1.3 these three spells never divide by zero: Fireball and Lightning Bolt roll
+min(L, 10) d6 (D-101, DTU-Decomp `docs/resolved-2026-11-23.md`). The case of 0 sides
+needs a line with a count and no sides that the fixup does not write. The divide error goes to the
 handler of div0.asm (div0_init(1) at 0xB8323, handler 0xF6D94, saturate mode). Its
 int3 at 0xF6E17 returns, it decodes the SIB byte 0x24 as a ModRM byte and resumes
 after the `inc edx` with EDX 0: each such die adds 0, and the part for each level
-(6 L, 6 L, 4 L) is added after the loop. **V** in DOSBox-X: a copy of DTUGAME.EXE
+is added after the loop. **V** in DOSBox-X: a copy of DTUGAME.EXE
 that runs the bytes of 0x91C25 with 0 sides right after div0_init and exits with
 0x2A + EDX gave 42 (EDX 0; EBX, ECX, ESI, EDI, EBP kept), and 43 with 1 side. The
 port adds 0 for each die (`spell_dice`, dtuobj.c). A fire part sets target
@@ -1116,7 +1120,7 @@ case for every player or creature in the radius.
 | 13 | Dispel Magic (mage) | M3 | target | by object type: player: 0x9002C(obj, 1) (all effects end) and 0x396B2(1); creature: 0x9002C(obj, 1); a missile (type 5) of another spell whose Weapon_info has `PC_spell` and flag `magic`: save 4 or destroyed; misc item named "*otion" not plot: d20 >= clamp(23 - L, 2, 20) destroys it (sound 2702); dressing with `magic`: save 5 or 0xA6ACB(obj, caster, 10.0) (break); other object with +0x144 bit 0 (spell lights): save 4 or destroyed. No save for creatures and the player Verified details: the missile needs W+0x3C >= 0, not the dispel spell, and W+0x3E bit 0x10; save 4 of a missile or a light uses the default number 10 (fails on d20 <= 9); missile: sound word 0x1B6860, then 0x6A3CC; potion: word 0x19BAE2 + id 68 == 0 (not plot) and "otion" in the name 0x1B14EC + id 32, sound 2702; a light with +0x144 bit 0: sound, then 0xA6ACB (removed); the player also gets 0x396B2(1) (all potion timers end). | 0x8E0B5 |
 | 14 | Fear | M4 | target | not self, not `no_scare`/`undead`, save 4. bit 8, timer 0xAC = L min (player / (wisdom/2)). d100 <= 65 - 5T: drops the weapon (player 0xAE837, creature 0x3C4BD). Player: also Hold (bit 14) for the same time and the view is moved to another object (0x13407, 0x13D628) Verified: the player drop 0xAE837 acts only for an item list reference: weapon 13 is a script case (flags 0x8A, 0x90, 0xAC055(0, 0x1FD)); else 0x3C93B(player, 1, type, id) makes the item at the center of the segment of the player (0x13899), 0xB6D0C takes it out, "You dropped your weapon!"; no object: animation 10, "You were disarmed!". The creature drop 0x3C4BD is object_create_egg (what it contains). The view: 0x13407 gates a creature of Robot_info[0] at the player (fails with "Cannot gate in an NPC until you kill one." above 2 difficulty + 3 creatures), Viewer = that creature with the Fear timer, render types 0; at the end of Fear (0x903D4) the creature is deleted and the player is moved to its segment center with its orientation. | 0x8E2D8 |
 | 15 | Feather Fall | M1 | self/target | bit 7, timer 0xA8 = L min. Effect: no gravity flag in physics (0x6C77A), fall speed limited to -15.0 (0x9DEDD) | 0x8E464 |
-| 16 | Fireball | M3 | missile, impact area radius 10 | sets count `#fire_damage_dice` = min(L, 10), then 0x911AA: fire count d(`fire_damage_dice`=0, see section 2) + 6 * L (`fire_damage_level=6`); save 4 for half. Area extra: blind and deaf within 6.0 (section 2) | 0x8E55C |
+| 16 | Fireball | M3 | missile, impact area radius 40 (the fixup; the table text has 10) | sets count `#fire_damage_dice` = min(L, 10), then 0x911AA: fire count d6 (the fixup 0x1A9C7 gives 6 sides and 0 per level; the table text has 0 sides and `fire_damage_level=6`); save 4 for half. Area extra: blind and deaf within 6.0 (section 2) | 0x8E55C |
 | 17 | Flaming Sphere | M2 | missile | player/creature: 0x911AA(target, caster, 17, L) with the dice of the line (no change of the count). Scenery: the path of 37 (0x8F03A): bit 0x04 clear and save 5 failed: 0xA6ACB(obj, caster, 10.0). Fireball (16) takes the same scenery path | 0x8E5B1 |
 | 18 | Flame Walk | C3 | self/target | bit 10, timer 0xB0 = (L+1) min. Effect: fire damage / 2 (0x91DD0 and collide.c 0x2609D, 0x26399) | 0x8E5D1 |
 | 19 | Fly | M3 | self | bit 11, timer 0xB4 = 10 (1d6 + L) min. Effect: flying physics (0x6C77A), fly movement (0x9DDA4) | 0x8E665 |
@@ -1132,11 +1136,11 @@ case for every player or creature in the radius.
 | 29 | Levitate | M2 | self/target | bit 21, timer 0xD8 = 10 L min; +0x1AE bit 0x80 set, bit 0x20 cleared. Effect: no gravity, vertical speed 0 and / 4 (0x9DEAE); "cannot cast while climbing" while +0x1AE bit 0x80 | 0x8EDB2 |
 | 30 | Light (Mage) | M1 | area | as 8 but blind for 10 L min; area light object 20.0 for 10 L min | 0x8DC1D |
 | 31 | Light (Cleric) | C1 | area | as 8 but blind for 10 (L + 6) min; light object 10 (L+6) min | 0x8DC1D |
-| 32 | Lightning Bolt | M3 | missile, lifetime 2.0 | count `#elec_damage_dice` = min(L, 10), 0x911AA: electric count d(`elec_damage_dice`=0) + 6 L; `electricity_immune` creatures 0. A dressing whose Dressing_info flags (+0x04) bit 2 (0x04) is clear: save 6 or 0xA6ACB(obj, caster, 10.0) | 0x8EE76 |
+| 32 | Lightning Bolt | M3 | missile, lifetime 2.0 | count `#elec_damage_dice` = min(L, 10), 0x911AA: electric count d6 (the fixup gives 6 sides and 0 per level; the table text has 0 sides and 6 L); `electricity_immune` creatures 0. A dressing whose Dressing_info flags (+0x04) bit 2 (0x04) is clear: save 6 or 0xA6ACB(obj, caster, 10.0) | 0x8EE76 |
 | 33 | Magic Missile | M1 | min(L/2+1, 5) homing missiles | not self, not Shield (bit 25): 0x911AA(target, caster, 33, 1): 1d4 + 1 (normal dice 4, count 1, `damage_level` 0? The line has `damage_bonus=1`, which 0x91BC3 does not add; guess: 1d4) | 0x8EED5 |
 | 34 | Magical Stone | C1 | 1d3 missiles | not self: count = 2 against `undead`, else 1; 0x911AA: count d4 | 0x8EEFE |
 | 35 | Magical Vestment | C3 | self | bit 31, timer 0xF8 = 5 L min. Effect: AC at most max(5 - (L-5)/3, 1) (0xB0606, 0x2ADAF) | 0x8EF49 |
-| 36 | Melf's Acid Arrow | M2 | missile, lifetime (L/3+1) min | not self: `#acid_damage_dice` = 2 (L/3) + 2, then 0x911AA with level L: acid count d(`acid_damage_dice`, not in the line, so 0 sides: each die adds 0, as for Fireball) + 4 L (`acid_damage_level=4`) | 0x8EFE0 |
+| 36 | Melf's Acid Arrow | M2 | missile, lifetime (L/3+1) min | not self: `#acid_damage_dice` = 2 (L/3) + 2, then 0x911AA with level L: acid count d4 (the fixup gives 4 sides and 0 per level; the table text has no sides and `acid_damage_level=4`) | 0x8EFE0 |
 | 37 | Melf's Minute Meteors | M3 | min(L,5) missiles | player/creature: 0x911AA: 1d4 (+0 per level); a dressing whose Dressing_info flags bit 2 (0x04) is clear: save 5 or 0xA6ACB(obj, caster, 10.0) | 0x8F021 |
 | 38 | Prayer | C3 | self area (flag set to 0x102 at the cast) | the caster, and others whose +0x1B0 bit 0x200 (`not hostile`, objects.md) is clear: Bless bit 1, timer 0x94 = L min | 0x8F078 |
 | 39 | Protection From Evil (mage) | M1 | self | bit 23, timer 0xE0 = 2L min. Effect: attacks of `extraplanar` creatures always miss, other creatures -2 to hit (0x2AD36); attacking an extraplanar creature ends it (0x2AD70) | 0x8F116 |
