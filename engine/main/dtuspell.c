@@ -51,10 +51,6 @@ int Dtu_fix_chill_touch = 1;
 int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
-int Dtu_fix_spell_dice = 1;
-int Dtu_fix_magic_missile = 1;
-int Dtu_fix_flaming_sphere = 1;
-int Dtu_fix_knock = 1;
 int Dtu_fix_spell_hours = 1;
 
 // Rary's Mnemonic Enhancer: the extra mage slots of spell levels 1 to 3
@@ -184,8 +180,6 @@ static int spell_self(int spell)
 {
 	if (spell == 5 && Dtu_fix_chill_touch)		// ASCENT: Chill Touch on the caster (dtuspell.h)
 		return 1;
-	if (spell == 28 && Dtu_fix_knock)		// ASCENT: Knock fires a missile at a door (dtuspell.h)
-		return 0;
 	return spell_flag(spell,"self_cast_ok") || spell_flag(spell,"cast_in_front");
 }
 
@@ -1356,94 +1350,17 @@ static int acid_target_gone(object *t)
 	return 1;
 }
 
-// ASCENT: the fire rule of 0x91BC3 for damage that the port rolls itself
-// (Dtu_fix_spell_dice, Dtu_fix_flaming_sphere): fire_immune 0, fire_resistant
-// half, Resist Fire half, then the pool of Protection From Fire takes it;
-// fire ends regeneration. As dtu_spell_damage_roll_count in dtuobj.c.
-static int fire_taken(object *t,int fire)
-{
-	int mf = monster_flags(t);
-
-	if (mf & MONSTER_F_FIRE_IMMUNE)
-		fire = 0;
-	else if (monster_has(t,"fire_resistant"))
-		fire /= 2;
-	if (t->dtu.m_88 & DTU_FX_RESIST_FIRE)
-		fire /= 2;
-	if (t->dtu.m_88 & DTU_FX_PROT_FIRE) {
-		t->dtu.m_82 -= fire;
-		fire = (t->dtu.m_82 < 0) ? -t->dtu.m_82 : 0;
-	}
-	if (fire)
-		t->dtu.m_88 &= ~DTU_FX_REGENERATE;
-	return fire;
-}
-
-// ASCENT: Fireball and Lightning Bolt by the AD&D 2nd edition rule
-// (Dtu_fix_spell_dice): 1d6 for each caster level, at most 10d6, a save for
-// half. 1.3 writes min(L, 10) as the dice count (0x8E592, 0x8EEAB) but the
-// lines have dice of 0 sides and 6 for each level: 6 L.
-static fix d6_per_level(int spell,object *target,object *caster,int L,int group)
-{
-	int n = L < 10 ? L : 10, dmg = 0, i;
-
-	if (target->type != OBJ_ROBOT && target->type != OBJ_PLAYER)
-		return 0;
-	for (i=0;i<n;i++)
-		dmg += rnd(6);
-	dtu_spell_log("spell: '%s' (Dtu_fix_spell_dice): %dd6 = %d",spell_name(spell),n,dmg);
-	if (group == GROUP_FIRE)
-		dmg = fire_taken(target,dmg);
-	else if (group == GROUP_ELEC && (monster_flags(target) & MONSTER_F_ELECTRICITY_IMMUNE))
-		dmg = 0;
-	return spell_deal(spell,target,caster,L,dmg,1);
-}
-
-// ASCENT: one round of Flaming Sphere (Dtu_fix_flaming_sphere): a save
-// negates, else 2d4 fire
-static fix sphere_burn(int spell,object *target,object *caster,int level)
-{
-	int dmg;
-
-	if (dtu_spell_save(target,DTU_SAVE_SPELL)) {
-		dtu_spell_log("spell: '%s' (Dtu_fix_flaming_sphere): obj %d %s saves, no damage",spell_name(spell),
-			(int)(target-Objects),target_name(target));
-		return 0;
-	}
-	dmg = fire_taken(target,rnd(4) + rnd(4));
-	return spell_deal(spell,target,caster,level,dmg,0);
-}
-
 // One round of acid: 2d4, the acid rule of 0x91BC3 (the regeneration of
-// the target ends; no table has an acid immunity), no save. ASCENT: the
-// list also holds the later rounds of Flaming Sphere.
+// the target ends; no table has an acid immunity), no save
 static fix acid_damage(int spell,object *target,object *caster,int level)
 {
 	int dmg = rnd(4) + rnd(4);
 
-	if (spell == 17)
-		return sphere_burn(spell,target,caster,level);
 	target->dtu.m_88 &= ~DTU_FX_REGENERATE;
 	return spell_deal(spell,target,caster,level,dmg,0);
 }
 
 static void acid_add(int spell,object *target,object *caster,int L,int rounds);
-
-// ASCENT: Flaming Sphere by the AD&D 2nd edition rule
-// (Dtu_fix_flaming_sphere): the sphere burns the target it hits for 1 round
-// for each caster level, 2d4 fire each round, a save each round negates.
-// 1.3: the line has no damage dice, so the sphere does nothing to a creature.
-static fix sphere_hit(int spell,object *target,object *caster,int L)
-{
-	fix dealt;
-
-	dtu_spell_log("spell: '%s' (Dtu_fix_flaming_sphere): round 1 of %d on obj %d %s",spell_name(spell),L,
-		(int)(target-Objects),target_name(target));
-	dealt = sphere_burn(spell,target,caster,L);
-	if (L > 1 && !acid_target_gone(target))
-		acid_add(spell,target,caster,L,L);
-	return dealt;
-}
 
 // The hit of the arrow. The THAC0 of a fighter is the fighter row of the
 // table 0x146590 (dtuchar.c): 21 - L, at most 20, at least 3 (level 18).
@@ -1630,11 +1547,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 4:		// Burning Hands: fire 1d3 + 2 L
 		case 17:		// Flaming Sphere (no dice in the line)
 		case 37:		// Melf's Minute Meteors: 1d4
-			if (self)
-				break;
-			if (spell == 17 && Dtu_fix_flaming_sphere)		// ASCENT: 2d4 fire for L rounds (dtuspell.h)
-				dealt = sphere_hit(spell,target,caster,L);
-			else
+			if (!self)
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
 			break;
 		case 5:		// Chill Touch: on the caster only, L+3 rounds
@@ -1804,10 +1717,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s %s feather fall for %d minutes.",V_HAVE,"Feather fall cast on %s by %s for %d minutes.",L);
 			break;
 		case 16:		// Fireball: min(L, 10) fire dice + 6 L
-			if (Dtu_fix_spell_dice)		// ASCENT: Ld6, at most 10d6 (dtuspell.h)
-				dealt = d6_per_level(spell,target,caster,L,GROUP_FIRE);
-			else
-				dealt = spell_damage(spell,target,caster,L,GROUP_FIRE,L < 10 ? L : 10,0);
+			dealt = spell_damage(spell,target,caster,L,GROUP_FIRE,L < 10 ? L : 10,0);
 			break;
 		case 18:		// Flame Walk: L+1 rounds
 			if (fx_set(target,DTU_FX_RESIST_FIRE,(L+1)*MINUTE))
@@ -1892,21 +1802,12 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s can levitate for %d minutes.",V_NONE,"Levitate cast on %s by %s for %d minutes.",10*L);
 			break;
 		case 32:		// Lightning Bolt: min(L, 10) electric dice + 6 L
-			if (Dtu_fix_spell_dice)		// ASCENT: Ld6, at most 10d6 (dtuspell.h)
-				dealt = d6_per_level(spell,target,caster,L,GROUP_ELEC);
-			else
-				dealt = spell_damage(spell,target,caster,L,GROUP_ELEC,L < 10 ? L : 10,0);
+			dealt = spell_damage(spell,target,caster,L,GROUP_ELEC,L < 10 ? L : 10,0);
 			break;
 		case 33:		// Magic Missile: 1d4 with the level 1, Shield stops it
 			if (self || (target->dtu.m_88 & DTU_FX_SHIELD))
 				break;
-			// ASCENT: 1d4 + 1 and no save (dtuspell.h). 1.3 never reads
-			// damage_bonus=1 of the line (the reader 0x242F6 writes it 2 bytes
-			// before the record, and no code reads it there).
-			if (Dtu_fix_magic_missile && (target->type == OBJ_ROBOT || target->type == OBJ_PLAYER))
-				dealt = spell_deal(spell,target,caster,L,rnd(4) + 1,0);
-			else
-				dealt = spell_damage(spell,target,caster,1,GROUP_NONE,0,0);
+			dealt = spell_damage(spell,target,caster,1,GROUP_NONE,0,0);
 			break;
 		case 34:		// Magical Stone: 1d4, two dice against undead
 			if (!self)
@@ -2360,12 +2261,7 @@ static int missile_count(int spell,int L)
 		case 4:	return 6;
 		case 6:	return rnd(6);
 		case 7:	return rnd(4) + L;
-		case 33:
-			// ASCENT: one more at levels 3, 5, 7 and 9, as the manual and AD&D
-			// 2nd edition (Dtu_fix_magic_missile); 1.3: at 2, 4, 6 and 8
-			if (Dtu_fix_magic_missile)
-				return ((L + 1)/2 < 5) ? (L + 1)/2 : 5;
-			return (L/2 + 1 < 5) ? L/2 + 1 : 5;
+		case 33:	return (L/2 + 1 < 5) ? L/2 + 1 : 5;
 		case 34:	return rnd(3);
 		case 37:	return L < 5 ? L : 5;
 	}
@@ -3293,8 +3189,8 @@ void dtu_spell_screen_draw(int hires)
 // the player; a spell cast on the caster always acts on the player). The
 // -objlog file gets the hit points, the effects and their times before and
 // after. With TRIALS of 1 or more each trial puts the target (and the
-// character) back as it was and ends the rounds of acid and of Flaming
-// Sphere on it; with 0 one cast stays, so the later rounds run.
+// character) back as it was and ends the rounds of acid on it; with 0
+// one cast stays, so the later rounds run.
 
 void dtu_spell_test(int spell,int level,int objnum,int trials)
 {

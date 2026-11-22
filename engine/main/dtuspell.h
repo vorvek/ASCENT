@@ -86,9 +86,10 @@ extern int Dtu_fix_stoneskin_word;
 extern int Dtu_fix_rary_manual;
 
 // Melf's Acid Arrows (line 36, 0x8EFE0). The executable: no attack roll,
-// 4 L acid damage in one hit (the 2 (L/3) + 2 dice have 0 sides and add
-// 0), a save for half. The game has no text of the spell
-// and the manual tells little, so the port follows the AD&D 2nd edition
+// 2 (L/3) + 2 acid dice in one hit, a save for half. The table fixup
+// 0x1A344 sets the acid dice to 4 sides and no part for each level, so
+// the dice are d4 (the table text alone gives 0 sides and 4 L). The
+// game has no text of the spell and the manual tells little, so the port follows the AD&D 2nd edition
 // rule: one arrow, an attack roll with the THAC0 of a fighter of the
 // caster level against the armor class of the target (a natural 1
 // misses, a natural 20 hits), no other bonus. A hit does 2d4 acid damage,
@@ -97,31 +98,6 @@ extern int Dtu_fix_rary_manual;
 // The acid of the later rounds is not in the level state: it ends at a
 // save and load. 1 (default): the 2nd edition rule. 0: the executable.
 extern int Dtu_fix_melf_acid;
-
-// Fireball (16, 0x8E592) and Lightning Bolt (32, 0x8EEAB) write min(L, 10)
-// as the dice count, but the lines have dice of 0 sides and 6 for each
-// level: 6 L, with no limit. Corrected by the AD&D 2nd edition rule: 1d6
-// for each caster level, at most 10d6, a save for half.
-extern int Dtu_fix_spell_dice;
-
-// Magic Missile (33). The executable: 1d4 for each missile (damage_bonus=1
-// of the line is never read), a save for half (0x911AA), one more missile
-// at levels 2, 4, 6 and 8 (0x56FF6). Corrected by the manual and the AD&D
-// 2nd edition rule: 1d4 + 1, no save, one more at levels 3, 5, 7 and 9.
-extern int Dtu_fix_magic_missile;
-
-// Flaming Sphere (17). The line has no damage dice, so the sphere does no
-// damage to a creature or a player. Corrected by the AD&D 2nd edition rule:
-// the sphere burns the target it hits for 1 round for each caster level,
-// 2d4 fire each round, a save each round negates (the list of the acid of
-// Melf's Acid Arrows, one round is ACID_ROUND).
-extern int Dtu_fix_flaming_sphere;
-
-// Knock (28) has self_cast_ok, so the cast is on the caster and nothing
-// happens (the case is the common end 0x8FFE5). The wall hit of a Knock
-// missile opens the door (0x26C2F calls 0x7E859 with unlock 1). Corrected:
-// Knock fires a missile.
-extern int Dtu_fix_knock;
 
 // Strength (50) and Infravision (25) compute the duration in 32 bits: it
 // wraps from caster level 10 (Strength) and 8 (Infravision) and the effect
