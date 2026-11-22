@@ -3358,6 +3358,12 @@ static void run_command(char *cmd, char *value)
 			dtu_char_log("script: the level has no rest place");
 	}
 	else if (!strcmp(cmd, "fire"))		dtu_spell_fire();		// test: the spell, scroll or wand in the hand
+	else if (!strcmp(cmd, "slots"))		// ASCENT: test: the spell slots left and the maximum (tools/check_saveload.py)
+		dtu_char_log("spell slots: mage left %d %d %d max %d %d %d, cleric left %d %d %d max %d %d %d",
+			Dtu_spell_slots_left[0][0], Dtu_spell_slots_left[0][1], Dtu_spell_slots_left[0][2],
+			Dtu_spell_slots_max[0][0], Dtu_spell_slots_max[0][1], Dtu_spell_slots_max[0][2],
+			Dtu_spell_slots_left[1][0], Dtu_spell_slots_left[1][1], Dtu_spell_slots_left[1][2],
+			Dtu_spell_slots_max[1][0], Dtu_spell_slots_max[1][1], Dtu_spell_slots_max[1][2]);
 	// ASCENT: the commands of the quest tests (tools/questtest.py)
 	else if (!strcmp(cmd, "killscript")) {	// test: killscript=ID, each creature with script ID dies
 		int i;
@@ -3559,6 +3565,7 @@ void dtu_char_level_start(void)
 	sync_inventory();
 	spell_save_repair();
 	dtu_char_update();
+	dtu_spell_level_start();		// ASCENT: the slots left stay (dtuspell.c)
 	dtu_char_log("level start: '%s', %d of %d hit points", Dtu_char.name, Dtu_char.pa.hit_points, Dtu_char.pa.max_hit_points);
 }
 

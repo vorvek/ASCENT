@@ -267,8 +267,19 @@ int dtu_spell_take(int spell);
 // N scroll, B arrow), 0 with no spell in the hand. The model of the arms.
 int dtu_spell_hand_letter(void);
 void dtu_spell_put_away(void);
-// All slots are full again (0x3551B: rest, level start, new level).
+// All slots are full again: the rest (0x3608B calls 0x3551B).
 void dtu_spell_restore_slots(void);
+// ASCENT: the other two callers of 0x3551B. dtu_spell_fill_slots() fills
+// the slots of a new character (0x8BFFE). dtu_spell_fill_at_start() sets
+// the flag 0x141C38: 1 when the player leaves Waterdeep (0x8C279), 0 after
+// a load (0xBBA8A). The game start (game() 0x42227) fills the slots when
+// the flag is set and the start level is 1 or below; then the flag is 0.
+// A level change and a load keep the slots left. The port value 2 fills
+// at any start level (the direct start of a new character, -level).
+void dtu_spell_fill_slots(void);
+void dtu_spell_fill_at_start(int on);
+// ASCENT: the level start (StartNewLevelSub, through dtu_char_level_start)
+void dtu_spell_level_start(void);
 // The slot maximum from the class levels and the wisdom (0x3575B).
 void dtu_spell_compute_slots(void);
 
