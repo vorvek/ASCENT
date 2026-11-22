@@ -28,7 +28,7 @@ an input file unless you name it as the output.
 ## Reverse engineering
 
 - `dtudis.py`: strings, cross references, callers and disassembly of DTUGAME.EXE (needs capstone in `gamedata/re/pylib`).
-- `wiki_rules.py`: write the GitHub wiki pages of the game rules from the level tables and the tables of DTUGAME.EXE.
+- `wiki_rules.py`: write the GitHub wiki pages of the game rules from the level tables and the tables of DTUGAME.EXE. The item and spell tables get an icon column, and the icons go to `OUT_DIR/icons/icon-N.png` (the high resolution icon sheet of FEBGND.DAT, with the game palette). The icons are pictures of the game: the tool refuses to write them into a path of this repository that git does not ignore. Use `gamedata/wiki` as OUT_DIR, or `--no-icons` for pages without icons.
 
 ## Content and localization
 
