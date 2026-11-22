@@ -132,8 +132,11 @@ Verified by loading code and by comparing the palettes:
   tables at 0x145718 and 0x145734. The entries 69 and 77 are empty templates
   ("English interface buttons" with rows Main, Inv, Map, Stat). The button
   records hold the positions of both images in the sheet.
-- `HRISBTN.PCH`: one 76x32 button for the high resolution inventory screen
-  (position (18,324), the "SPELLS" button by its place in the manual picture).
+- `HRISBTN.PCH`: a PCX file (96x80) with two 76x32 images of the button SPELLS
+  of the high resolution inventory screen, both with the text "INV.": (2,2) the
+  pressed image (PatchBtnDn), (2,36) the image at rest (PatchBtnUp). 0x9881C loads
+  them; the button shows them while a spell list is shown and the next press leads
+  back to the items (character.md, section 6).
 - The bitmap `cursor` (16x16) of `PORTAL.EGG` is copied to a 16x16 bitmap at
   0x13AD8B in the display init. Its use was not traced.
 
@@ -412,8 +415,8 @@ levels, the six abilities, the five thief skills), the portrait number.
 The map screen draws the automap (automap.md). The SPELLS button and the spell
 lists of the inventory screen, and spells in the hot key boxes, are in the port
 (character.md, sections 6 and 14). Frame only: the spell tables of the
-statistics screen, the scroll bar of the inventory list (`HRISBTN.PCH` is not
-read).
+statistics screen, the scroll bar of the inventory list. `HRISBTN.PCH` gives the
+second images of the button SPELLS.
 
 Guesses in the port: the keys (I, Tab, V, R, F3 from the manual, the key
 code of the original was not read), F3 changes between mode 0 and mode 7,

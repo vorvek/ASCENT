@@ -315,9 +315,17 @@ Shield, Detect Magic and Sleep of the mage list.
   of 0x3713C: from the items to the mage spells for a mage (0x35A2B), else to the
   cleric spells for a cleric (0x35A09); from the mage spells to the cleric
   spells for a cleric, else to the items; from the cleric spells to the items.
-  Its release handler 0x98F38 then sets 0x13B0BB (0x37192) and swaps the button
-  images with two others (0x142EEB, 0x142EEF) while the next press leads back to
-  the items. The list cells draw each spell with its icon and "Lvl N"
+  Its release handler 0x98F38 runs the action, then 0x37192 sets 0x13B0BB to 1
+  when a spell list is shown and the next list of 0x3713C is the item list
+  (else 0). With 0x13B0BB set the button images (+0x56 at rest, +0x5A pressed)
+  become PatchBtnUp (0x142EEF) and PatchBtnDn (0x142EEB); with 0x13B0BB clear
+  0x9902F puts the images of the sheet back. 0x9881C (high resolution only,
+  called at 0x34401 with the flag 0x13A94B) loads `HRISBTN.PCH` (a PCX file,
+  96x80, 8 bits) and copies two 76x32 parts: PatchBtnDn from (2,2), PatchBtnUp
+  from (2,36), with the pixel values as they are (the new bitmaps are filled
+  with color 13 first, 0xD84D0). Both parts show "INV.": the button reads INV.
+  while a press leads back to the items. The low resolution button has the
+  plain release handler 0x9905A and keeps its images. The list cells draw each spell with its icon and "Lvl N"
   (0x327D7 with 0xB7487 and the list number).
 - A click on a list cell with an empty cursor (0x3029E) copies the entry to
   0x1BD46C and the reference (list 0x13ADB1, index) to 0x1BD694: the cursor
@@ -342,11 +350,29 @@ Shield, Detect Magic and Sleep of the mage list.
   (0x35EDE with 0x35F9D, 0x35F0F with 0x35F64, else sound 3000); then 0x13AD15 = -100 and 0x43A5A(box): the
   entry goes into the hand. A held entry with wear bits goes into its slot, a
   misc item is used (0x37A6A).
-- A key 1 to 0, a click on a box with an empty cursor, and 0x4448D (the first
-  box that is not empty, "Autoarming anything") call 0x43A5A(box): P+0x1AD7 =
-  the reference of the box, 0x13AD15 = box. Pressed again on the box of
-  0x13AD15 it plays sound 3000 and does nothing; also while the flag 0x13B69F
-  is set (0x9305D clears it when a cast stops). For a spell 0x43A5A also sets P+0x47: for a spell with `uses=-1`
+- A key 1 to 0 (0x430C9 to 0x4310A, the scan codes 2 to 11), a click on a box
+  that is not empty with an empty cursor (0x3056E), Cycle Weapon (0x545EB) and
+  0x4448D (the first box that is not empty, "Autoarming anything") call
+  0x43A5A(box): P+0x1AD7 = the reference of the box, 0x13AD15 = box. Its tests,
+  in this order:
+  1. 0x7F13D, 0x404318 and 0x13D478 (not traced): return with no sound.
+  2. The animation +0x170 of the player object is 6 or 11 (an attack): return.
+  3. 0x13B69F is not 0: the attack key was pressed and its attack or cast has
+     not started (0x44300 and 0x41A4D keep it while the cast time runs; 0x44481
+     and 0x9305D clear it): sound 3000 (0xBB8, `0x2D955(0xBB8, 0x10000)`, volume
+     1.0), unless 0x13D2C8 is 2 (not traced), and return.
+  4. The box is empty (index byte negative): the empty hand (0x43CBD: P+0x1AD7 =
+     (0, -1), 0x13AD15 = -1, the arms model with `_`). No sound.
+  5. 0x35863 finds no entry: sound 3000.
+  6. A weapon with the flag `arrow` (Weapon_item_info +0x3E bit 4) and no bow
+     (P+0x1ABA negative), or with `bolt` (bit 8) and no crossbow (P+0x1ABC):
+     "You need a %s to fire %ss" (0x1258C0 with "bow"/"arrow" or
+     "crossbow"/"bolt", 0x347A7) and sound 3000.
+  7. The box is 0x13AD15, the box that was chosen last: sound 3000.
+  With a held entry a key 1 to 0 does not call 0x43A5A directly: 0x31A55 puts
+  the entry into the box with the tests of a click (0x3533C, 0x35462) and empties
+  the cursor; only if that box is 0x13AD15, 0x13AD15 becomes -1 and 0x43A5A(box)
+  arms it. For a spell 0x43A5A also sets P+0x47: for a spell with `uses=-1`
   game time + `duration` + (caster level + 1) * `level_duration`, else
   0x3FFFFFFF (no reader of P+0x47 was found). The model of the arms takes byte 5
   of the entry: `K` (cast with the hands) for a spell of a book (0x43EF8).
@@ -560,9 +586,15 @@ Differences and guesses of the port:
   a box by a click on the box or onto the figure of the paper doll (the port takes
   only a held spell there: a held item goes back to the list as before). The
   entries of the item list and of the boxes show the text of 0xB7487 (no "1").
-- Not in the port: the second image pair of the SPELLS button (0x142EEB), the sound
-  3000 of 0x43A5A for the box of 0x13AD15 and during a cast, P+0x47 (no reader), the
-  arrow and bolt test of 0x35CE5 for a weapon. The port keeps the item of the hand in
+- The tests of 0x43A5A are `dtu_char_press_hot_key` (keys, clicks, Cycle Weapon, the
+  paper doll); the sound is `digi_play_sample(3000, F1_0)`. The port's attack request
+  (`Request` of dtucombat.c) stands for 0x13B69F. An empty box gives the empty hand.
+  0x4448D (a used up thrown stack) arms with no tests, as before. A key with a held
+  entry follows 0x31A55. The images of the SPELLS button: `HRISBTN.PCH` (high
+  resolution), drawn over the button while a spell list is shown whose next list is
+  the item list.
+- Not in the port: the tests 1 of 0x43A5A and the case 0x13D2C8 = 2, P+0x47 (no
+  reader), the arrow and bolt test of 0x35CE5 for a weapon. The port keeps the item of the hand in
   `Dtu_char.current` while a spell is in the hand (`Dtu_spell_current`); an item
   taken in the hand puts the spell away. The first list after a load is the item
   list (guess). Cycle Weapon passes over the boxes with a spell (0x544F2 takes

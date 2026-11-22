@@ -926,7 +926,7 @@ case for every player or creature in the radius.
 |---|---|---|---|---|---|
 | 0 | Abjure | C4 | target | Creature caster (not self): damage roll 0x911AA with level 1 (jump to 0x8EEF7; the "Cause Serious Wounds" message). Else only an `extraplanar` creature (Robot_info+0x98 bit 2, 0x142080 is the entry of the target): d20 >= clamp(11 - L + T, 1, 20) (T = 0x3A6544 = 0xAE3BB of the target, max hp / 8, 1..18), or "%s was not affected by abjure." and return without the common end. Made: the creature stops (velocity along the ray from the player scaled to 10.0 with y 0, then movement type 3 with the spin (0, 0.05, 0)); d100 >= 2T + 70: it dies (0x29A9C(obj, no attacker, its shields, weapon -1)), else its `hit_sound` (Robot_info+0x9A) and 0xA9F58: control, movement and render type 0, +0x1AE |= 4, flags |= 0xC0: the creature leaves the level, no death and no experience (verified) | 0x8D297 |
 | 1 | Aid | C2 | target | +1d8 hit points (fix, P+0x53 for the player); sets Bless (bit 1) with timer 0x94 = (L+1) min; message "%d aid hit points ... for %d minutes". The extra hit points go when Bless ends (hp cut to max) | 0x8D3F7 |
-| 2 | Armor | M1 | self | bit 0, pool +0x90 = (8 + L) hit points (fix). No timer: ends when the pool reaches 0 (each hit lowers it). Effect: AC at most 6 (0xB05D9 player, 0x2ADF9 creature) | 0x8D4E7 |
+| 2 | Armor | M1 | self | bit 0, pool +0x90 = (8 + L) hit points (fix). No timer: ends when the pool reaches 0 (each hit lowers it). Effect: AC at most 6 (0xB05D9 player, 0x2ADF9 creature). See "Armor" below the table | 0x8D4E7 |
 | 3 | Bless | C1 | target | bit 1, timer 0x94 = 360 s fixed (0x1680000, 6 min). Effect +1 to hit (0x2AD27) | 0x8D58E |
 | 4 | Burning Hands | M1 | 6 missiles (area line) | not self: 0x911AA(target, caster, 4, L): fire 1d3 + 2 per level (`fire_damage_dice=3`, count 1, `fire_damage_level=2`) | 0x8D614 |
 | 5 | Chill Touch | M1 | self | caster only (target == caster). bit 3, timer 0x9C = (L+3) min; object +0x16A = 0x13A873. Effect in melee (0x29E3D): the target saves (4) or: undead: Fear (bit 8) for (1d4 + L) min; else +1d4 damage. Line has `cold_damage_dice=4` (not used, cold is never rolled) | 0x8D62F |
@@ -1678,6 +1678,40 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   (`DTU_OF_`), the armor class through `dtu_char_update` (`dtu_spell_player_ac`).
 - Saving throws: 0xAE596 with the tables of B5. The key of the cleric level of a
   creature (`cleric_level`) is a guess.
+
+### Armor (spell 2), Code
+
+- Cast (0x8D4E7): nothing if bit 0 of +0x88 is set already. Else bit 0 and the pool
+  +0x90 = (8 + L) << 16, L the caster level (0x91EC1 for the player: the mage level
+  for Armor). For the player 0x1BD5A4 |= 0x10 (a dirty flag of the display areas).
+  No timer is set.
+- Message (0x8D524 to 0x8D584, with 0x347A2 into the message box, only when 0x8CEAE
+  gives 1: the player is the target or the caster, else a perception roll): the
+  caster on himself `"%s %s %d armor hit points."` (0x12D928) with the name of the
+  target ("You" for the player) and "have" (player) or "has"; else `"%d armor hit
+  points cast on %s by %s."` (0x12D943) with the target and the caster ("You" for
+  the player). The player casting on himself reads "You have 9 armor hit points."
+  at level 1. There is no "for N seconds" text.
+- Armor class: 0xB05D9 (player, before the dexterity adjustment) and 0x2ADF9
+  (creature) cut the armor class to 6.
+- Damage: the pool is lowered by the full damage (the hit points take it in full as
+  well; Armor does not absorb) at 0x29F3E (a weapon hits a creature), 0x2A4FB (a
+  weapon hits the player) and 0x913AF (spell damage on a creature, after the save).
+  A pool below 1.0 becomes 0. The branch of spell damage on the player (0x917xx) has
+  no such step.
+- End (0x9002C, each frame): bit 0 set and the pool 0 or less (or Dispel Magic):
+  bit 0 cleared, 0x1BD5A4 |= 0x10, the creature condition bit +0x15F |= 8; the
+  player gets "Armor expired." (0x12E385, 0x347A2) and 0xAFB55 (the armor class), a
+  creature 0x10ADF.
+- Port (dtuspell.c case 2, `dtu_spell_armor_hit`, the weapon hits of dtuobj.c and
+  dtucombat.c): as read. The message is printed when the player is the target or the
+  caster (the perception roll of 0x8CEAE for two creatures is not in the port).
+  Whether 0x2A4FB also takes damage with no attacker and no weapon (traps) was not
+  read: the port lowers the pool for weapon hits only. Checked in BANE (`-level
+  bane.lvl -char SG0.SG`, the Elflama save at mage level 9 by `-chartest xp=300000`,
+  `-testpos 25,-1,235,0`, key 5 and the attack key): "You have 17 armor hit points.",
+  armor class 5 to 2, three Ghoul hits of 6, 9 and 6 take the pool 17 to 11, 2 and 0,
+  "Armor expired." in the next frame, armor class 2 to 5.
 
 ### Spells in the port
 
