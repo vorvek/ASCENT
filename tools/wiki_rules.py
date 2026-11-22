@@ -306,7 +306,7 @@ SPELLS = {
                  "its weapon on d100 <= 65 - 5 x its level. A player is held and may drop the weapon; "
                  "on a player the time is divided by half the Wisdom. A frightened player also loses "
                  "the view: it follows a creature that runs off, and when Fear ends the player stands "
-                 "where that creature went. ASCENT does not have this view yet."),
+                 "where that creature went."),
     15: dict(src="0x8E464, 0x9DEDD", dur="1 minute per level", save="None", target="You",
              eff="You fall slowly, at most 7.5 ft per second. No message when it ends."),
     16: dict(src="0x8E55C, 0x91BC3", dur="Instant", save="Half", target="The creature the missile hits",
@@ -696,7 +696,7 @@ class Pages:
              "elf, drow, halfling"],
             ["Find/Remove Traps 50% without the thief class", "dwarf"],
             ["The spell and the Ring of Infravision work", "human and half-elf only"],
-            ["Finds secret doors while searching (key F). Not in ASCENT yet.", ", ".join(sec)],
+            ["Finds secret doors while searching (key F)", ", ".join(sec)],
         ]
         self.count("Races", len(rows) + len(crow) + len(trow) + len(special))
         return "\n".join([
@@ -1244,7 +1244,7 @@ class Pages:
                              "Protection From Fire, Resist Fire, Flame Walk and Strength on you."],
             ["Spider Piece", "USE with charges: the view visits each creature in turn for 1 to 3 "
                              "seconds. Not in ASCENT yet."],
-            ["Spider Piece", "USE with charges: a quest event. Not in ASCENT yet."],
+            ["Spider Piece", "USE with charges: a quest event."],
             ["Assembled Spider", "USE with charges: Spider Climb, Free Action, Haste and Infravision "
                                  "with no end."],
             ["Spider Piece", "USE with charges: all your hit points, and Aid, Shield, Feather Fall, "
@@ -1429,7 +1429,7 @@ class Pages:
                 "- Fireball: the 1.3 readme says that a Fireball that bursts close may blind or deafen. "
                 "In the game only the fire trap of the Yawning Portal does that: within 3 ft, a failed "
                 "save against spells blinds you for up to 30 minutes, and a failed save against "
-                "petrification deafens you until cured. ASCENT does not have this yet.",
+                "petrification deafens you until cured.",
                 "- Magic Missile: the manual gives 2 missiles at level 3; the game at level 2.",
                 "- Melf's Minute Meteors: the manual says one per level; the game gives at most 5.",
                 "- Sleep: the manual says level 5 or more is safe; the game spares level 4 and up.",
@@ -1751,10 +1751,6 @@ RULE_SOURCES = [
 NOT_IN_ASCENT = [
     "The text screen of the Scroll and the thief scroll (0x9DC42).",
     "The thief skill point screen (thiefpts.c, 0xB5B49).",
-    "The use limit of the Gem of Curing: ASCENT allows one use for each rest.",
-    "The racial search for secret doors (0xB3ECE).",
-    "The view of a frightened player (0x13407).",
-    "The blindness and deafness of the fire trap of the Yawning Portal (0x90CEF).",
     "The Spider Pieces 20, 23 and 24.",
 ]
 

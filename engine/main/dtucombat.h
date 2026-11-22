@@ -96,4 +96,19 @@ int dtu_combat_view_model(void);
 // attack states, 0x441E9): max(fire_wait, 1.0), two times that with Slow.
 fix dtu_combat_swing_time(void);
 
+// 0x90CEF for spell 16 (Fireball): the blindness and the deafness of a
+// player or creature at dist from the point (only the fire trap reaches it).
+void dtu_fireball_blind_deaf(object *o, fix dist);
+// 0xA6ACB: the fire trap, scenery object 0x29 of level 0 (the Yawning
+// Portal). dtu_break_dressing() calls it; it does nothing for others.
+void dtu_fire_trap(object *d);
+
+// Fear and Scare on the player (0x8E3C4, 0x8F5F4): a creature of type 0
+// is gated in at the player and becomes the viewer until the end of the
+// effect; the player is not drawn. duration is the time of the Fear.
+void dtu_fear_view_start(object *player, fix duration);
+// The end of Fear on the player (0x903D4): the creature goes, the player
+// stands at the center of its segment with its orientation.
+void dtu_fear_view_end(object *player);
+
 #endif

@@ -163,6 +163,7 @@ typedef struct dtu_item_ref {
 #define DTU_P_N_KEYS			0x00FF
 #define DTU_P_KEYS			0x18D3		// 22 key items
 #define DTU_P_NAME2			0x1AA3		// char[16], the name again
+#define DTU_P_GEM_USES		0x1A57		// byte, the uses of the Gem of Curing (0x3891B)
 #define DTU_P_THAC0			0x1A5C		// byte
 #define DTU_P_BOW				0x1AB9
 #define DTU_P_CROSSBOW		0x1ABB

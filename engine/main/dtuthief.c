@@ -48,6 +48,9 @@ static int Hide_ready = 0;
 // The byte 0x17 of the wall record (the pad of the Descent 1 structure):
 // the thief level + 1 of a failed pick
 static ubyte Lock_failed[MAX_WALLS];
+// The byte 0x16 of the wall record: the racial search (0xB3ECE) has asked
+// this wall. 0xAD5BF clears it for the walls of a new level.
+static ubyte Wall_searched[MAX_WALLS];
 // The thief state bytes of the trigger (+0x0F, +0x10) and trap (+0x03,
 // +0x04) records: 0 nothing known, level + 1 a failed find, 0xFF found,
 // 0xFE found and left alone; the second byte: level + 1 of a failed
@@ -102,6 +105,7 @@ static void level_check(void)
 		return;
 	Thief_level_num = Current_level_num;
 	memset(Lock_failed, 0, sizeof(Lock_failed));
+	memset(Wall_searched, 0, sizeof(Wall_searched));
 	memset(Trig_find, 0, sizeof(Trig_find));
 	memset(Trig_remove, 0, sizeof(Trig_remove));
 	memset(Trap_find, 0, sizeof(Trap_find));
@@ -457,6 +461,153 @@ static void search_traps(int seg, int side, int spell)
 	}
 }
 
+//------------------------------------------------------------------------
+// The racial search for secret walls (0xB3ECE)
+
+// 0x1466E8: the d6 of the search by race (human, dwarf, elf, dark elf,
+// halfling, half-elf)
+static const int Secret_d6[6] = { 3, 6, 5, 5, 3, 5 };
+
+// The race index of the tables: P+0xDF bit 0 (half-elf) counts as 5
+static int race_index(void)
+{
+	int race = (Dtu_char.pa.flags & DTU_PF_HALF_ELF) ? 5 : Dtu_char.pa.race;
+
+	return (race < 0 || race > 5) ? 0 : race;
+}
+
+// 0xB3E57: the secret wall of a side is found: side flag 0x10 on both
+// sides, sound 3104, text 949 "You found a secret door!"
+static void secret_found(int seg, int side)
+{
+	segment *segp = &Segments[seg];
+	int child = segp->children[side];
+
+	segp->sides[side].pad |= 0x10;
+	if (child > -1) {
+		int cside = find_connect_side(segp, &Segments[child]);		// 0x4ADEE
+
+		if (cside != -1)
+			Segments[child].sides[cside].pad |= 0x10;
+	}
+	digi_play_sample(3104, F1_0);		// 0x2D955
+	message(949, "You found a secret door!");
+	dtu_char_log("thief: secret wall found at seg %d side %d", seg, side);
+}
+
+// 0xB3D4E: the triggers whose first trap is the trap of a found secret
+// wall. A trigger on another side needs its own racial d6. A found
+// trigger gets side flag 4 and fires (0x93B29 with 0xFF). Text 948 if
+// none fired.
+static void secret_triggers(object *obj, dtu_trap *tp)
+{
+	int t, any = 0;
+
+	for (t = 0; t < Dtu_num_triggers; t++) {
+		dtu_trigger *tg = &Dtu_triggers[t];
+
+		if (!tg->on || tg->first_trap != tp->id)
+			continue;
+		if (tp->seg != tg->seg || tp->side != tg->side) {
+			int d = rand() % 6 + 1;
+
+			dtu_char_log("thief: racial search, trigger %d: d6 %d against %d", t, d, Secret_d6[race_index()]);
+			if (d > Secret_d6[race_index()])
+				continue;
+		}
+		if (tg->seg >= 0 && tg->seg <= Highest_segment_index && tg->side >= 0 && tg->side < 6)
+			Segments[tg->seg].sides[(int) tg->side].pad |= 4;
+		dtu_trig_fire(t, DTU_ACT_FORCE, obj);
+		any = 1;
+	}
+	if (!any)
+		message(948, "");
+}
+
+// 0xB3ECE(seg, side, obj, dwarf): called each frame of the search for the
+// sides of 0xB4040 while the Find Traps spell is off. dwarf is 1 for the
+// race dwarf of any class.
+static void racial_search(int seg, int side, object *obj, int dwarf)
+{
+	segment *segp = &Segments[seg];
+	int wall_num = segp->sides[side].wall_num, d, t;
+	wall *w;
+
+	// ASCENT: a side without a wall makes the executable read the bytes
+	// before the wall array (Walls[-1]); the port skips the side
+	if (wall_num < 0 || wall_num >= Num_walls)
+		return;
+	w = &Walls[wall_num];
+	// one search for each wall: byte 0x16 is set before the roll
+	if (Wall_searched[wall_num])
+		return;
+	Wall_searched[wall_num] = 1;
+	// 0xB3D1E: a dwarf does not search a side with side flag & 3
+	if (dwarf && (segp->sides[side].pad & 3))
+		return;
+	d = rand() % 6 + 1;
+	dtu_char_log("thief: racial search, wall %d (seg %d side %d type %d): d6 %d against %d", wall_num, seg, side, w->type, d,
+		Secret_d6[race_index()]);
+	if (d > Secret_d6[race_index()])
+		return;
+	if (w->type == WALL_CLOSED) {
+		// a closed wall with a trap on the side within 40.0 of the player
+		for (t = 0; t < Dtu_num_traps; t++) {
+			dtu_trap *tp = &Dtu_traps[t];
+
+			if (!tp->on || tp->seg != seg || tp->side != side)
+				continue;
+			if (vm_vec_dist_quick(&tp->pos, &obj->pos) > i2f(40))
+				continue;
+			secret_found(seg, side);
+			secret_triggers(obj, tp);
+		}
+	}
+	else if (w->type == WALL_DOOR && (w->flags & 0x40)) {
+		// a secret door: the center of the side within 40.0 (0x4AD3E)
+		vms_vector cp;
+
+		compute_center_point_on_side(&cp, segp, side);
+		if (vm_vec_dist_quick(&cp, &obj->pos) <= i2f(40))
+			secret_found(seg, side);
+	}
+}
+
+// ASCENT: test
+int dtu_thief_goto_secret(int n)
+{
+	object *p = ConsoleObject;
+	int seg, side, t;
+
+	for (seg = 0; seg <= Highest_segment_index; seg++)
+		for (side = 0; side < 6; side++) {
+			int wn = Segments[seg].sides[side].wall_num, secret = 0;
+			vms_vector cp, center, dir;
+
+			if (wn < 0 || wn >= Num_walls)
+				continue;
+			if (Walls[wn].type == WALL_DOOR && (Walls[wn].flags & 0x40))
+				secret = 1;
+			else if (Walls[wn].type == WALL_CLOSED)
+				for (t = 0; t < Dtu_num_traps; t++)
+					if (Dtu_traps[t].on && Dtu_traps[t].seg == seg && Dtu_traps[t].side == side)
+						secret = 1;
+			if (!secret || n-- > 0)
+				continue;
+			compute_center_point_on_side(&cp, &Segments[seg], side);
+			compute_segment_center(&center, &Segments[seg]);
+			vm_vec_sub(&dir, &cp, &center);
+			vm_vec_normalize(&dir);
+			p->pos = center;
+			vm_vector_2_matrix(&p->orient, &dir, NULL, NULL);
+			obj_relink(p - Objects, seg);
+			dtu_char_log("script: secret wall %d (type %d flags 0x%x) at seg %d side %d", wn, Walls[wn].type, Walls[wn].flags, seg, side);
+			return 1;
+		}
+	dtu_char_log("script: no such secret wall");
+	return 0;
+}
+
 // 0xB4040
 static void search_frame(void)
 {
@@ -470,14 +621,15 @@ static void search_frame(void)
 	if (seg < 0 || seg > Highest_segment_index)
 		return;
 	for (side = 0; side < 6; side++) {
-		if (vm_vec_dot(&Segments[seg].sides[side].normals[0], &p->orient.fvec) > F1_0/4)
+		if (vm_vec_dot(&Segments[seg].sides[side].normals[1], &p->orient.fvec) > F1_0/4)
 			continue;
 		if (Dtu_char.pa.find_traps != 0 || spell || dwarf) {
 			search_triggers(seg, side, spell);
 			search_traps(seg, side, spell);
 		}
 		// Without the spell: 0xB3ECE, the racial search for secret walls
-		// (a d6 against 0x1466E8[race]): not in the port
+		if (!spell)
+			racial_search(seg, side, p, race_index() == DTU_RACE_DWARF);
 	}
 }
 

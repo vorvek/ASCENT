@@ -43,6 +43,7 @@
 #include "digi.h"
 #include "automap.h"
 #include "fuelcen.h"	// ASCENT: the fire of a rest place
+#include "dtuscript.h"	// ASCENT: the script 0x1FC of the Spider Piece 0x18
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -93,13 +94,12 @@ static struct {
 	fix	luck_end;			// P+0x1A58 Luck
 	int	intel;				// the intelligence of the potion
 	int	dragon_extra;		// the percent value of Dragon's Blood for a warrior
-	int	gem_uses;			// P+0x1A57 Gem of Curing
+	int	gem_uses;			// P+0x1A57 Gem of Curing: the uses (byte, saved)
 	int	str_gain, pct_gain;	// P+0x1A55, P+0x1A56: the gain of the spell Strength
 	fix	intel_acc;			// Dtu_fix_potion_frame
 } Potion;
 static int Worn_bits = 0;		// 0x1458AC: the effect bits of the worn items
 static int Wizardry_count = 0;	// doublings of the Ring of Wizardry
-static int Rests = 0;			// the number of rests (the Gem of Curing, guess)
 
 static FILE *Char_log = NULL;
 static int Char_options_read = 0;
@@ -115,6 +115,7 @@ static int Known_n_inventory = 0;
 static ubyte Loaded_record[DTU_PLAYER_RECORD_SIZE];
 static int Have_loaded_record;
 extern char Dtu_player_archive[16];		// dtugame.c
+extern int Fe_khelben_mission;			// MsnNum 0x13E588 (dtufe_town.c)
 
 // The time when a rest place works again (0x1C5E40 of the station table,
 // here for each segment).
@@ -1542,11 +1543,13 @@ static int use_misc(dtu_inv_item *e)
 
 	switch (e->id) {
 		case 0x02:		// Gem of Curing: not used up
-			// The executable compares the uses with the counter 0x13E588
-			// (0x8445A), which was not decoded. The port allows one use for
-			// each rest. (guess)
-			if (Potion.gem_uses > Rests) {
+			// 0x3891B: the use counter P+0x1A57 must not be above the
+			// mission number MsnNum 0x13E588 (0x8445A): 0 for a new game
+			// (0x82BC7), the next mission at Khelben (0x83E5E). So one use
+			// at the start and one more for each mission. 0x389E0 adds 1.
+			if (Potion.gem_uses > Fe_khelben_mission) {
 				HUD_init_message("You cannot use the Gem Of Curing at this time.");
+				dtu_char_log("use: Gem of Curing refused, %d uses, mission %d", Potion.gem_uses, Fe_khelben_mission);
 				return 0;
 			}
 			if (p->dtu.m_88 & DTU_FX_BLIND) {
@@ -1614,9 +1617,19 @@ static int use_misc(dtu_inv_item *e)
 			else
 				HUD_init_message("Nothing happens...");
 			return 0;
-		case 0x14: case 0x17: case 0x18:
-			// The spell attack on the drow, the view tour of the
-			// creatures, a script event: not in the port
+		case 0x18:		// Spider Piece: script 0x1FC (0x38463), the cast vclip of spell 41
+			if (e->count > 0) {
+				dtu_script_run_id(0x1FC);		// 0xAC055(0, 0x1FC): one point more of an ability
+				e->count--;
+				spell_vclip(41);
+				dtu_char_log("use: Spider Piece 0x18, script 0x1FC, %d charges", e->count);
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
+		case 0x14: case 0x17:
+			// The spell attack on the drow (0x385D3) and the view tour of
+			// the creatures (0x38268): not in the port
 			dtu_char_log("use: Spider Piece 0x%x is not in the port", e->id);
 			return -1;
 		case 0x48:		// Potion of Agility: dexterity 18 for 600 s
@@ -1928,7 +1941,6 @@ int dtu_char_rest(void)
 	Rest_time[seg] = GameTime + i2f(300);
 	HUD_init_message("You feel refreshed");
 	digi_play_sample(62, F1_0 / 2);		// 0x3E309: sound 62 at half volume
-	Rests++;
 	// 0x3E354: remove the fire of the rest place (0x3DC0F finds it,
 	// "killing fireball %d", lifeleft 0, 0x68F45). fuelcen_update_all()
 	// makes it again when the time of the place has passed.
@@ -2353,6 +2365,7 @@ static void clear_character(void)
 
 	memset(&Dtu_char, 0, sizeof(Dtu_char));
 	Have_loaded_record = 0;
+	Potion.gem_uses = 0;
 	Last_hot_key = -1;
 	Dtu_char.current.n = -1;
 	for (i = 0; i < DTU_N_HOT_KEYS; i++) { Dtu_char.hot_key[i].list = 0; Dtu_char.hot_key[i].n = -1; }
@@ -2505,6 +2518,7 @@ int dtu_char_load_save(char *filename)
 	Dtu_char.thac0 = p[DTU_P_THAC0];
 	Dtu_char.portrait = get_s32(p + DTU_P_PORTRAIT);
 	Dtu_char.pa.hit_points = get_s32(p + DTU_P_HIT_POINTS) >> 16;
+	Potion.gem_uses = p[DTU_P_GEM_USES];
 	Dtu_char.created = 1;
 	Dtu_gold = Dtu_char.pa.gold;
 
@@ -2649,6 +2663,7 @@ void dtu_char_pack(ubyte *record)
 	dtu_spell_books_to_record(record);
 
 	record[DTU_P_THAC0] = Dtu_char.thac0;
+	record[DTU_P_GEM_USES] = (ubyte) Potion.gem_uses;
 	pack_ref(record + DTU_P_CURRENT, Dtu_char.current);
 	// A spell in the hand is the reference of the hand (list 1 or 2)
 	if (Dtu_spell_current >= 0 && dtu_spell_book_ref(Dtu_spell_current, &list, &index)) {
@@ -2724,7 +2739,10 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // "frame:command=value" with commas between. Commands: damage=N,
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
-// armspell=SPELL, give=TYPE.ID, xp=N, rest, str=STRENGTH.PERCENT,
+// armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
+// gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
+// activate,
+// str=STRENGTH.PERCENT,
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // dump.
@@ -2788,8 +2806,49 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
+	else if (!strcmp(cmd, "castby") && b >= 0 && b < MAX_OBJECTS)		// test: castby=SPELL.OBJ, on the player
+		dtu_spell_cast_on(a, ConsoleObject, &Objects[b]);
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
+	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
+	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
+	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
+	else if (!strcmp(cmd, "activate"))	dtu_player_use();		// test: the key A
+	else if (!strcmp(cmd, "goside") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: goside=SEG.SIDE
+		vms_vector c, s, d;
+
+		compute_segment_center(&c, &Segments[a]);
+		compute_center_point_on_side(&s, &Segments[a], b);
+		vm_vec_sub(&d, &s, &c);
+		vm_vec_normalize(&d);
+		ConsoleObject->pos = c;
+		vm_vector_2_matrix(&ConsoleObject->orient, &d, NULL, NULL);
+		obj_relink(ConsoleObject - Objects, a);
+	}
+	else if (!strcmp(cmd, "gosecret"))	dtu_thief_goto_secret(a);		// test: gosecret=N
+	else if (!strcmp(cmd, "move")) {		// test: move=N, N units forward (in the segment of the point)
+		vms_vector p;
+		int seg;
+
+		vm_vec_scale_add(&p, &ConsoleObject->pos, &ConsoleObject->orient.fvec, i2f(a));
+		seg = find_point_seg(&p, ConsoleObject->segnum);
+		if (seg >= 0) {
+			ConsoleObject->pos = p;
+			obj_relink(ConsoleObject - Objects, seg);
+		}
+	}
+	else if (!strcmp(cmd, "goobj") && a >= 0 && a < MAX_OBJECTS) {		// test: goobj=N, 4.0 in front of object N
+		object *o = &Objects[a];
+		vms_vector to;
+
+		vm_vec_sub(&to, &o->pos, &ConsoleObject->pos);
+		vm_vec_normalize(&to);
+		vm_vec_scale_add(&ConsoleObject->pos, &o->pos, &to, -i2f(4));
+		vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
+		obj_relink(ConsoleObject - Objects, find_point_seg(&ConsoleObject->pos, o->segnum) >= 0 ? find_point_seg(&ConsoleObject->pos, o->segnum) : o->segnum);
+	}
+	else if (!strcmp(cmd, "break") && a >= 0 && a < MAX_OBJECTS)		// test: break=N, the scenery N breaks
+		dtu_break_dressing(&Objects[a], ConsoleObject, 0);
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
 	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL
 	else if (!strcmp(cmd, "armspell"))	dtu_char_arm_spell(a);

@@ -918,11 +918,24 @@ segment visible from the source segment by the brain bit table 0x9810D (ai.md),
 player or creature (or any type if +0x37 bit 3), distance (0xD705C) <= radius:
 0x8CFFF(spell, obj, caster). The caster is included (the cases exclude self where
 they need to).
-Fireball (16) extra, for the player and creatures within 6.0: if not blind and the
-save 4 fails: blind for 1..1800 s (rand % 1800 + 1, timer 0x98, bit 2; player
-"You lost your eyesight!"); then if not deaf and the save 2 (petrification/polymorph) fails: deaf
+Fireball (16) extra, for the player and creatures within 6.0: if not blind: the
+save 4; a failed save gives the message (player: "You lost your eyesight!", a
+white flash of +254 on each color, 0x13D50C, 0x1F3B00, 0x1F3AF8, 0x46C688 and
+0x46C68C set to 0; the sound P+0x1B0B or Robot_info+0x9A at volume 0x5555). Saved
+or not (0x90E22 jumps to 0x90F73), blind for 1..1800 s (rand % 1800 + 1, timer
+0x98, bit 2). Then if not deaf and the save 2 (petrification/polymorph) fails: deaf
 (bit 4, no timer, the player's digital volume becomes rand % 0x1800 via 0x2DF7E,
-"You lost your hearing!").
+"You lost your hearing!", the same sound). Only the fire trap reaches this code
+(every other caller tests the area flag, which Fireball does not have).
+
+The fire trap (0xA6D5A to 0xA6F66 of 0xA6ACB): after scenery object 0x29 of level
+0 (YPINN) breaks: a light object (0x68AC8 type 13, control 14, life 3.0, light
+300.0, flags +0x0D |= 0xC0, +0x1AE |= 2; if none, object 1 is the source), sound
+2000 at the object (side 3, volume 1.0), "You set off a fire trap!!!", a flash of
++254 on each color, the burst of weapon 25 (0x93294), the player velocity =
+(uvec - fvec) * (rand() % 501 + 500), then velocity.y = rand() % 30 (a fix), then
+0x90CEF(16, object, light) two times. 0x8CFFF takes the level of a caster of type
+13 as 2 * max(class 1 level, class 2 level) of the player (0x8D239).
 A source of type weapon (missile) is deleted (0x6A3CC).
 Light spells 8, 9, 30, 31: create a light object (0x68AC8 type 13) at the source
 point with flags +0x0D |= 0xC0, +0x1AE |= 2, +0x144 |= 1 (dispellable); lifetime
@@ -955,7 +968,7 @@ case for every player or creature in the radius.
 | 11 | Cure Serious Wounds | C4 | self/target | as 10 with +(rand % 15 + 3) (3..17) | 0x8DF37 |
 | 12 | Detect Magic (mage) | M1 | self | bit 6, timer 0xA4 = 2L min. Read by the renderer (0x670DB, 0x75726; guess: magic items shown) | 0x8E019 |
 | 13 | Dispel Magic (mage) | M3 | target | by object type: player: 0x9002C(obj, 1) (all effects end) and 0x396B2(1); creature: 0x9002C(obj, 1); a missile (type 5) of another spell whose Weapon_info has `PC_spell` and flag `magic`: save 4 or destroyed; misc item named "*otion" not plot: d20 >= clamp(23 - L, 2, 20) destroys it (sound 2702); dressing with `magic`: save 5 or 0xA6ACB(obj, caster, 10.0) (break); other object with +0x144 bit 0 (spell lights): save 4 or destroyed. No save for creatures and the player Verified details: the missile needs W+0x3C >= 0, not the dispel spell, and W+0x3E bit 0x10; save 4 of a missile or a light uses the default number 10 (fails on d20 <= 9); missile: sound word 0x1B6860, then 0x6A3CC; potion: word 0x19BAE2 + id 68 == 0 (not plot) and "otion" in the name 0x1B14EC + id 32, sound 2702; a light with +0x144 bit 0: sound, then 0xA6ACB (removed); the player also gets 0x396B2(1) (all potion timers end). | 0x8E0B5 |
-| 14 | Fear | M4 | target | not self, not `no_scare`/`undead`, save 4. bit 8, timer 0xAC = L min (player / (wisdom/2)). d100 <= 65 - 5T: drops the weapon (player 0xAE837, creature 0x3C4BD). Player: also Hold (bit 14) for the same time and the view is moved to another object (0x13407, 0x13D628; not decoded) Verified: the player drop 0xAE837 acts only for an item list reference: weapon 13 is a script case (flags 0x8A, 0x90, 0xAC055(0, 0x1FD)); else 0x3C93B(player, 1, type, id) makes the item at the center of the segment of the player (0x13899), 0xB6D0C takes it out, "You dropped your weapon!"; no object: animation 10, "You were disarmed!". The creature drop 0x3C4BD is object_create_egg (what it contains). The view: 0x13407 gates a creature of Robot_info[0] at the player (fails with "Cannot gate in an NPC until you kill one." above 2 difficulty + 3 creatures), Viewer = that creature with the Fear timer, render types 0; at the end of Fear (0x903D4) the creature is deleted and the player is moved to its segment center with its orientation. | 0x8E2D8 |
+| 14 | Fear | M4 | target | not self, not `no_scare`/`undead`, save 4. bit 8, timer 0xAC = L min (player / (wisdom/2)). d100 <= 65 - 5T: drops the weapon (player 0xAE837, creature 0x3C4BD). Player: also Hold (bit 14) for the same time and the view is moved to another object (0x13407, 0x13D628) Verified: the player drop 0xAE837 acts only for an item list reference: weapon 13 is a script case (flags 0x8A, 0x90, 0xAC055(0, 0x1FD)); else 0x3C93B(player, 1, type, id) makes the item at the center of the segment of the player (0x13899), 0xB6D0C takes it out, "You dropped your weapon!"; no object: animation 10, "You were disarmed!". The creature drop 0x3C4BD is object_create_egg (what it contains). The view: 0x13407 gates a creature of Robot_info[0] at the player (fails with "Cannot gate in an NPC until you kill one." above 2 difficulty + 3 creatures), Viewer = that creature with the Fear timer, render types 0; at the end of Fear (0x903D4) the creature is deleted and the player is moved to its segment center with its orientation. | 0x8E2D8 |
 | 15 | Feather Fall | M1 | self/target | bit 7, timer 0xA8 = L min. Effect: no gravity flag in physics (0x6C77A), fall speed limited to -15.0 (0x9DEDD) | 0x8E464 |
 | 16 | Fireball | M3 | missile, impact area radius 10 | sets count `#fire_damage_dice` = min(L, 10), then 0x911AA: fire count d(`fire_damage_dice`=0, see section 2) + 6 * L (`fire_damage_level=6`); save 4 for half. Area extra: blind and deaf within 6.0 (section 2) | 0x8E55C |
 | 17 | Flaming Sphere | M2 | missile | player/creature: 0x911AA(target, caster, 17, L) with the dice of the line (no change of the count). Scenery: the path of 37 (0x8F03A): bit 0x04 clear and save 5 failed: 0xA6ACB(obj, caster, 10.0). Fireball (16) takes the same scenery path | 0x8E5B1 |
@@ -1143,7 +1156,7 @@ Misc (type 16), by line number (`YPINN.BIN` names; the same in all tables):
 | 0x14 | Spider Piece | charges: for each creature with Robot_info+0xD9 bit 3 that the player sees: one of three at random: save (category from edx, 0) or killed; a random spell of the list 4, 6, 7, 9, 13, 16, 22, 32, 33, 34, 36, 37, 44, 47 (table 0x2FA94) fired at it (0x56FF6, homing); save or frozen (+0x0B = 3, +0x84 = level seconds) |
 | 0x16 | Spider Piece | charges: area spell 14 (Fear) and spells 1, 35, 19, 40, 43, 18, 50 on the player |
 | 0x17 | Spider Piece | charges: the view moves to each creature in turn for 1 to 3 s (rand % 2.0 + 1.0, frames drawn with 0x435A6) |
-| 0x18 | Spider Piece | charges: script event 0x1FC, vclip of spell 41 |
+| 0x18 | Spider Piece | charges (0x38451): 0xAC055(0, 0x1FC) runs global script 508 on a temporary object (one point more: STR for a fighter, DEX for a thief, WIS for a cleric, INT for a mage, each below 18; CON and CHA on rand(1..2) == 1 or global flag 77 or 69); charges - 1; 0x8CAD3(41, player), the cast vclip of spell 41. The piece stays in the inventory with 0 charges. Else "Nothing happens..." |
 | 0x19 | Assembled Spider | charges: spells 48, 20, 21, 25 on the player, then their timers (Spider Climb, Free Action, Haste, Infravision) = 0x3FFFFFFF (permanent) |
 | 0x1A | Spider Piece | charges: hp = max, spells 1, 45, 15, 24, 35, 38, 39, 43, 49 on the player; then spell 42 (cure blind/deaf) if blind or deaf |
 | 0x48 | Potion of Agility | dexterity < 18: dexterity = 18 until GameTime + 600 s (P+0x1A9F); vclip of 21 |
@@ -1337,6 +1350,18 @@ The lockpick slot is not read here (it only adds to Open Locks in 0xAFB55).
   search for secret walls (TEX 948, 949; a d6 against 0x1466E8[race]: human 3,
   dwarf 6, elf 5, dark elf 5, halfling 3, half-elf 5). P+0xDF bit 0 counts as
   race 5.
+- 0xB3ECE(seg, side, player, dwarf), dwarf = race 1 of any class: the wall of
+  the side; if its byte +0x16 is set, return; else set it (so one roll for each
+  wall; 0xAD5BF clears +0x16 for all walls at a new level). 0xB3D1E: a dwarf on
+  a side with pad & 3 stops. Then rand() % 6 + 1 <= 0x1466E8[race]. Wall type 5
+  (closed): each trap that is on with seg and side of the side (+0x43, +0x45)
+  and its position (+0x15) within 40.0 of the player: 0xB3E57 (side pad |= 0x10
+  on both sides, sound 0xC20 = 3104, TEX 949 "You found a secret door!"), then
+  0xB3D4E: each trigger that is on with first_trap (+0x3B) = trap id (+0x00);
+  a trigger on another side needs its own racial d6; found: its side pad |= 4,
+  0x93B29(trigger, 0xFF, player). TEX 948 if none. Wall type 2 (door) with flag
+  0x40: the side center (0x4AD3E) within 40.0: 0xB3E57. A side without a wall
+  (wall number -1) reads Walls[-1] (the bytes before 0x39FEC8).
 - 0xB34E0, a harmful trap: on, and (dwarf flag: side pad & 3 == 0), and flags
   & 0x140 or weapon_type >= 0 or spawn >= 0 or stat_delta < 0 or robot_type >=
   0. 0xB353A: a trigger that is on and leads through first_trap, enable_trigger
@@ -1462,9 +1487,8 @@ GameTime limit), the light object lifetimes (+0x84).
 Frame dependent (Code):
 
 1. 0xB3ECE, called through 0xB4040 every frame while search mode (P+0xA0 bit
-   0x10) is on and the Find Traps spell is off: a new d6 racial roll each frame
-   for each special wall side within 40.0. At a higher frame rate special walls
-   are found sooner.
+   0x10) is on and the Find Traps spell is off. Not frame dependent: the wall
+   byte +0x16 is set before the d6, so each wall gets one roll for each level.
 2. 0xB4040 itself runs every frame, but its trap rolls are stored per level, so
    the result does not depend on the frame rate (except that toggling search
    mode resets the state bytes).
@@ -1757,7 +1781,7 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
 Complete as read: 1 Aid (the hit points are capped at the maximum), 2 Armor, 3 Bless, 4
 Burning Hands, 5 Chill Touch, 6 Color Spray, 7 Confusion, 10 Cure Light Wounds, 11 Cure
 Serious Wounds, 12 and 54 Detect Magic (the effect bit only, the renderer does not read
-it), 15 Feather Fall, 16 Fireball (without the blindness and deafness within 6.0), 18
+it), 15 Feather Fall, 16 Fireball, 18
 Flame Walk, 19 Fly, 20 Free Action, 21 Haste, 22 and 52 Hold Person (no counter of
 targets), 23 Hold Undead (no pool), 24 Improved Invisibility, 25 Infravision, 26
 Invisibility, 27 Jump, 28 Knock (no effect, as in the executable), 29 Levitate, 30 and 31
@@ -1782,8 +1806,12 @@ spells (B10, `dtu_spell_creature_frame`), the caster level of 0x8CFFF (the playe
 0x91EC1, a creature 0xAE3BB) for every hit, the missile life of 0x56FF6 and the area
 of an area spell at the wall hit (0x26C2F; the area at the end of the life is gone).
 
-Still partial: 14 and 44 (the view of the player does not move into a gated creature;
-the player is held for the time), 16 (no blindness and deafness within 6.0), the
+Fear (14) and Scare (44) on the player move the view into a gated creature of type 0
+(`dtu_fear_view_start`, `dtu_fear_view_end` in dtucombat.c; the port finds the free place
+at the center with the size test of `dtu_gate_in_creature`, not the model radii of
+0x13384, and leaves the player in place if the creature is gone at the end).
+
+Still partial: the
 counters of Hold Person, Hold Undead and Sleep, the cast vclips of `cast_on_top`
 (0x8CCED), the debris of 0x3CA7E. The audit of all spells against the executable
 (cast time, texts, end texts) is [spells.md](spells.md).
