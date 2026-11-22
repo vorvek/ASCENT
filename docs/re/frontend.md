@@ -345,7 +345,10 @@ keys M 4, City Gates (492,271)-(635,345) keys X Esc, Alt-F2 save
 and the gates.
 
 Blackstaff (0x82B31, record 0x13EAF3, FEBGND 0): Khelben's face FEBGND 195 (7
-frames of 82x117 at (290,124)), eyes FESEQ 31, torches (fetorch.c: table
+frames of 82x117 at (290,124)), eyes FESEQ 31 (the pre-load callback
+0x82BDB loads it and sets a timer of 8 s, but the blink code 0x82C28, six
+patterns at 0x13E711 drawn at (294,158), has no caller and no pointer to it
+in the image: version 1.3 never shows the eyes), torches (fetorch.c: table
 0x13E594 of 0x1C-byte records, FESEQ 23 to 28 at (73,135), (148,162),
 (212,168), (419,174), (485,165), (561,128); the frame callback 0x830D4 calls
 0x96263, which draws the next frame of each torch every 0x1000 (1/16 s), not
@@ -658,7 +661,7 @@ each control).
 | Title picture | done; the movies are not played (P) |
 | Main menu | done, items and conditions as section 4 |
 | Character generation | done, all four screens and the quick character; the character goes to `Dtu_char` (dtuchar.h) and the game starts in YPINN through Waterdeep |
-| Waterdeep, Blackstaff | done (Khelben text, face, speech, torches); the eyes (FESEQ 31) are not done |
+| Waterdeep, Blackstaff | done (Khelben text, face, speech, torches); no eyes, as in 1.3; the hidden animation of the face (0x83A93, FESEQ 29 and 30) is not done |
 | Market | done: lists, prices, buy, sell, quantity window, stock file, `TheStore.<S>` in the saves (section 6a) |
 | Save, load | done, with the level state files (docs/re/levelstate.md) and the market stock; saves in a level |
 | Options | Music, FX, Reverse Stereo; Hires Dungeon Graphics is left out (P). The port adds "Improvements..." (the settings of `dtuopts.h`); the ESC menu and the F2 options menu of the game also have it |

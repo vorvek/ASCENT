@@ -4,7 +4,8 @@
  * Blackstaff (frontend.c, fetorch.c) and the market (femarket.c). Descent 1
  * has nothing like them. See docs/re/frontend.md.
  *
- * Not done in the port: the eyes of the Blackstaff screen (FESEQ 31).
+ * Not done in the port: the hidden animation of Khelben's face (0x83A93).
+ * The eyes (FESEQ 31) are not shown: 1.3 never calls their code (0x82C28).
  * The market trades (buy, sell, stock, prices) as femarket.c does.
  *
  * An address in a comment is an address of DTUGAME.EXE 1.3.
