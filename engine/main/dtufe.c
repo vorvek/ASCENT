@@ -1263,6 +1263,7 @@ void fe_run_screen(fe_screen *s)
 		}
 		if (!fe_frame_begin())
 			break;
+		dtu_lang_sync();		// ASCENT: the text follows the sex of the player (dtulang.h)
 		if (s->frame)
 			s->frame(s);
 

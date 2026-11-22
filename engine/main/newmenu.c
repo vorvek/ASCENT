@@ -1861,6 +1861,7 @@ int nm_messagebox1( char *title, void (*subfunction)(int nitems,newmenu_item * i
 	nm_text[0] = 0;		// ASCENT: was sprintf with an empty format (compiler warning)
 	vsprintf(nm_text,dtu_tr(format),args);		// ASCENT: the text of the code in the language (dtulang.h)
 	va_end(args);
+	dtu_lang_sex_text(nm_text);		// ASCENT: the tokens {sex:} left after the values
 
 	Assert(strlen(nm_text) < MESSAGEBOX_TEXT_SIZE);
 
@@ -1888,6 +1889,7 @@ int nm_messagebox( char *title, int nchoices, ... )
 	nm_text[0] = 0;		// ASCENT: was sprintf with an empty format (compiler warning)
 	vsprintf(nm_text,dtu_tr(format),args);		// ASCENT: the text of the code in the language (dtulang.h)
 	va_end(args);
+	dtu_lang_sex_text(nm_text);		// ASCENT: the tokens {sex:} left after the values
 
 	Assert(strlen(nm_text) < MESSAGEBOX_TEXT_SIZE );
 

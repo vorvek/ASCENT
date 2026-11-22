@@ -878,6 +878,10 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 static char Msg_t[48], Msg_c[48];		// 0x3A6584 target, 0x3A6548 caster
 static const char *Msg_are, *Msg_have, *Msg_were;	// 0x3A6528, 0x3A6500, 0x3A6514
 static int Msg_show;						// 0x3A65C4
+// ASCENT: the sex of the subject of a message (dtulang.h, the token
+// {sex:MALE|FEMALE}): the player's when the player is the target or the
+// caster, else male. Msg_female is the one of the next say().
+static int Msg_t_female, Msg_c_female, Msg_female;
 
 #define V_NONE	0
 #define V_ARE	1		// "are" / "is" of the caster
@@ -938,6 +942,9 @@ static void msg_setup(object *target,object *caster)
 	Msg_are = (caster == ConsoleObject) ? LT("are") : LT("is");
 	Msg_have = (caster == ConsoleObject) ? LT("have") : LT("has");
 	Msg_show = message_rule(target,caster);
+	Msg_t_female = (target == ConsoleObject) && dtu_lang_female();
+	Msg_c_female = (caster == ConsoleObject) && dtu_lang_female();
+	Msg_female = Msg_t_female;
 }
 
 static void say(const char *format, ...)
@@ -946,8 +953,13 @@ static void say(const char *format, ...)
 	va_list args;
 
 	va_start(args,format);
-	vsnprintf(buf,sizeof(buf),dtu_tr(format),args);		// ASCENT: the language (dtulang.h)
+	// ASCENT: the language (dtulang.h). The tokens {sex:} of the format
+	// follow the subject of the message (the target, or the caster where
+	// the caster is the subject); HUD_init_message resolves those of the
+	// values for the player.
+	vsnprintf(buf,sizeof(buf),dtu_tr_sex(format,Msg_female),args);
 	va_end(args);
+	Msg_female = Msg_t_female;
 	dtu_spell_log("spell: message%s: %s",Msg_show ? "" : " (not shown)",buf);
 	if (Msg_show)
 		HUD_init_message("%s",buf);
@@ -1539,6 +1551,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			// replaces the one of the blindness in the buffer; the names are
 			// the ones of the caster
 			if (self) {
+				Msg_female = Msg_c_female;		// ASCENT: the caster is the subject
 				if (target->dtu.m_88 & DTU_FX_DEAF)
 					say("%s %s no longer deaf.",Msg_c,Msg_are);
 				else

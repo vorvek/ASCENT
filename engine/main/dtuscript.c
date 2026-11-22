@@ -905,6 +905,7 @@ static void text(sc_run *r, char *out)
 		char id[32];
 		snprintf(id, sizeof(id), "gab.%d.%d", r->id & SB_SCRIPT, k);
 		expand(dtu_tr_id(id, (const char *) r->s + k), out);
+		dtu_lang_sex_text(out);		// the tokens {sex:} (the lookup resolved those of the catalog)
 	}
 }
 

@@ -53,6 +53,29 @@ char *dtu_tr_name(const char *en);
 // translation is used only if the catalog has the same English text.
 char *dtu_tr_id(const char *id, const char *en);
 
+// The sex of the player in a translation: the token {sex:MALE|FEMALE}
+// (docs/formats/lang.md). Only that exact form is a token: "{sex:", the
+// male form, one "|", the female form, "}"; a form has no '{', '}' or '|'
+// and may be empty. A lookup returns the text with each token resolved for
+// the sex of the player (dtu_lang_female()).
+//
+// The sex of the player: the character being created (the front end sets
+// Dtu_lang_sex_ptr to it), else the character (Dtu_char.pa.female).
+extern const int *Dtu_lang_sex_ptr;
+int dtu_lang_female(void);
+// The tokens of s resolved in place (female 0 or 1). Each token is
+// resolved once: the result is not read again for tokens.
+void dtu_lang_sex_resolve(char *s, int female);
+// The tokens of a text that is shown (a formatted message): resolved in
+// place for the sex of the player. Does nothing in English.
+void dtu_lang_sex_text(char *s);
+// Text of the code with the tokens resolved for a given sex (a message
+// whose subject is not the player uses the male form).
+char *dtu_tr_sex(const char *en, int female);
+// The strings of the text file follow a change of the sex of the player
+// (called each frame of the game and of the front end).
+void dtu_lang_sync(void);
+
 // Markers for tools/lang_extract.py. LT(s) translates at run time. LN(s)
 // only marks a string that a menu, a message box or the message box of the
 // game translates when it shows it.
