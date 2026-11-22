@@ -2001,6 +2001,27 @@ static void do_input(int mx, int my)
 {
 	int down, pressed, released, i;
 
+	// While the conversation window is open the executable runs the reduced
+	// frame 0x4391D: it draws the displays (0x324DA) but calls neither the
+	// input of the displays (0x2FB10) nor the key table (controls_read_all),
+	// so no key and no click of the interface acts. The port keeps the key
+	// and button states current, so that nothing acts when it closes.
+	if (dtu_dlg_is_open()) {
+		static const int keys[] = { KEY_F3, KEY_EQUAL, KEY_MINUS, KEY_COMMA, KEY_PERIOD, KEY_ENTER, KEY_U, KEY_BACKSP };
+		for (i = 0; i < (int) (sizeof(Screen_actions) / sizeof(Screen_actions[0])); i++)
+			action_acts(Screen_actions[i]);
+		for (i = 0; i < DTU_N_HOT_ACTIONS; i++)
+			action_acts(DTU_ACT_HOT_KEY_1 + i);
+		action_acts(DTU_ACT_PREV_HOT_KEY);
+		action_acts(DTU_ACT_NEXT_HOT_KEY);
+		for (i = 0; i < (int) (sizeof(keys) / sizeof(keys[0])); i++)
+			key_acts(keys[i]);
+		Mouse_was_down = !Dtu_immersive && (mouse_get_btns() & 1);
+		Button_pressed = -1;
+		Sbar_active = Sbar_grab = 0;
+		return;
+	}
+
 	// ASCENT: the actions of the key table (kconfig.c): Inventory (0x408A2,
 	// default I), Automap (0x408F5, Tab), Rest (0x360DA, R; the port adds
 	// Z), Stats (0x4093A, the executable S, the port P), Immersive Mode

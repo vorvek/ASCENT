@@ -63,7 +63,7 @@ class Runner:
         self.args = args
         self.tmp = tempfile.mkdtemp(prefix="uitest_")
 
-    def run(self, name, lines, extra=()):
+    def run(self, name, lines, extra=(), level=None):
         """Runs the script lines; "shot NAME" writes NAME.ppm. Returns the
         screenshots by name."""
         d = os.path.join(self.tmp, name)
@@ -84,7 +84,7 @@ class Runner:
         if self.args.hddir:
             cmd += ["-hddir", self.args.hddir]
         cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user"),
-                "-level", LEVEL, "-fescript", script] + list(extra)
+                "-level", level or LEVEL, "-fescript", script] + list(extra)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         out = {}
         for s in shots:
@@ -129,6 +129,28 @@ def test_alt_f2_f3(t):
     assert differ(region(s["base"], *MIDDLE), region(s["save"], *MIDDLE)) > 0.2, "Alt+F2 opened no menu"
     assert differ(region(s["base"], *LEFT), region(s["load"], *LEFT)) < 0.02, "Alt+F3 changed the screen"
     assert differ(region(s["back"], *MIDDLE), region(s["load"], *MIDDLE)) > 0.2, "Alt+F3 opened no menu"
+
+
+# Durnan in YPINN: the conversation opens (docs/re/scripts.md)
+DURNAN = ["-fixedfps", "30", "-testpos", "-60,-8.7,9,270", "-testmove", "wait:10,use:1"]
+TEXTFRAME = (100, 15, 440, 30)
+
+
+def test_dlg_blocks_interface(t):
+    """While the conversation window is open the interface keys do nothing
+    (0x4391D calls no display input and no key table)."""
+    s, _ = t.run("dlg_keys", ["gamekeys", "wait 60", "shot open", "key i", "wait 5", "shot i",
+                              "key p", "wait 5", "shot p", "key esc", "wait 30"], extra=DURNAN)
+    assert differ(region(s["open"], *LEFT), region(s["i"], *LEFT)) < 0.02, "I opened the inventory"
+    assert differ(region(s["open"], *LEFT), region(s["p"], *LEFT)) < 0.02, "P opened the statistics"
+
+
+def test_dlg_tab_focus(t):
+    """Tab moves the focus of the conversation window to the text, also with
+    no reply (0xB2BB5), and the window stays open."""
+    s, _ = t.run("dlg_tab", ["gamekeys", "wait 60", "shot open", "key tab", "wait 5", "shot tab",
+                             "key esc", "wait 30"], extra=DURNAN)
+    assert differ(region(s["open"], *TEXTFRAME), region(s["tab"], *TEXTFRAME)) > 0.003, "Tab did not move the focus"
 
 
 # The text of the message box of the main screen, high resolution
