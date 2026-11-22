@@ -1156,7 +1156,7 @@ Misc (type 16), by line number (`YPINN.BIN` names; the same in all tables):
 | 0x14 | Spider Piece | charges: for each creature with Robot_info+0xD9 bit 3 that the player sees: one of three at random: save (category from edx, 0) or killed; a random spell of the list 4, 6, 7, 9, 13, 16, 22, 32, 33, 34, 36, 37, 44, 47 (table 0x2FA94) fired at it (0x56FF6, homing); save or frozen (+0x0B = 3, +0x84 = level seconds) |
 | 0x16 | Spider Piece | charges: area spell 14 (Fear) and spells 1, 35, 19, 40, 43, 18, 50 on the player |
 | 0x17 | Spider Piece | charges: the view moves to each creature in turn for 1 to 3 s (rand % 2.0 + 1.0, frames drawn with 0x435A6) |
-| 0x18 | Spider Piece | charges: script event 0x1FC, vclip of spell 41 |
+| 0x18 | Spider Piece | charges (0x38451): 0xAC055(0, 0x1FC) runs global script 508 on a temporary object (one point more: STR for a fighter, DEX for a thief, WIS for a cleric, INT for a mage, each below 18; CON and CHA on rand(1..2) == 1 or global flag 77 or 69); charges - 1; 0x8CAD3(41, player), the cast vclip of spell 41. The piece stays in the inventory with 0 charges. Else "Nothing happens..." |
 | 0x19 | Assembled Spider | charges: spells 48, 20, 21, 25 on the player, then their timers (Spider Climb, Free Action, Haste, Infravision) = 0x3FFFFFFF (permanent) |
 | 0x1A | Spider Piece | charges: hp = max, spells 1, 45, 15, 24, 35, 38, 39, 43, 49 on the player; then spell 42 (cure blind/deaf) if blind or deaf |
 | 0x48 | Potion of Agility | dexterity < 18: dexterity = 18 until GameTime + 600 s (P+0x1A9F); vclip of 21 |

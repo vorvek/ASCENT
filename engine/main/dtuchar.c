@@ -43,6 +43,7 @@
 #include "digi.h"
 #include "automap.h"
 #include "fuelcen.h"	// ASCENT: the fire of a rest place
+#include "dtuscript.h"	// ASCENT: the script 0x1FC of the Spider Piece 0x18
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1607,9 +1608,19 @@ static int use_misc(dtu_inv_item *e)
 			else
 				HUD_init_message("Nothing happens...");
 			return 0;
-		case 0x14: case 0x17: case 0x18:
-			// The spell attack on the drow, the view tour of the
-			// creatures, a script event: not in the port
+		case 0x18:		// Spider Piece: script 0x1FC (0x38463), the cast vclip of spell 41
+			if (e->count > 0) {
+				dtu_script_run_id(0x1FC);		// 0xAC055(0, 0x1FC): one point more of an ability
+				e->count--;
+				spell_vclip(41);
+				dtu_char_log("use: Spider Piece 0x18, script 0x1FC, %d charges", e->count);
+			}
+			else
+				HUD_init_message("Nothing happens...");
+			return 0;
+		case 0x14: case 0x17:
+			// The spell attack on the drow (0x385D3) and the view tour of
+			// the creatures (0x38268): not in the port
 			dtu_char_log("use: Spider Piece 0x%x is not in the port", e->id);
 			return -1;
 		case 0x48:		// Potion of Agility: dexterity 18 for 600 s

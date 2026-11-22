@@ -1234,7 +1234,7 @@ class Pages:
                              "Protection From Fire, Resist Fire, Flame Walk and Strength on you."],
             ["Spider Piece", "USE with charges: the view visits each creature in turn for 1 to 3 "
                              "seconds. Not in ASCENT yet."],
-            ["Spider Piece", "USE with charges: a quest event. Not in ASCENT yet."],
+            ["Spider Piece", "USE with charges: a quest event."],
             ["Assembled Spider", "USE with charges: Spider Climb, Free Action, Haste and Infravision "
                                  "with no end."],
             ["Spider Piece", "USE with charges: all your hit points, and Aid, Shield, Feather Fall, "
