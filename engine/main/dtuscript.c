@@ -64,6 +64,7 @@
 #include "dtudlg.h"
 #include "dtuscript.h"
 #include "dtumovie.h"
+#include "dtulog.h"		// ASCENT: the session log
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 
 #define DTU_WEAK __attribute__((weak))
@@ -2212,6 +2213,9 @@ static void do_warp(void)
 	}
 	free(data);
 	printf("Script: warping to %s, segment %d.\n", Level_names[level], seg);
+	// ASCENT: the session log names the command of the script
+	dtulog_event("Level change: script command teleport PC (DB) of %s to %s segment %d",
+		Level_names[Current_level_num - 1], Level_names[level], seg);
 	digi_stop_all();
 	StartNewLevelSub(level + 1, 1);
 	move_to_segment(ConsoleObject, seg, facing);

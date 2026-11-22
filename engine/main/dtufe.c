@@ -64,6 +64,7 @@
 #include "dtuopts.h"
 #include "dtuhdui.h"		// ASCENT: the upscaled pictures
 #include "dtulang.h"		// ASCENT: the language of the text
+#include "dtulog.h"		// ASCENT: the session log
 
 int Dtu_fe_original_input = 0;
 int Dtu_fe_return_waterdeep = 0;
@@ -2862,6 +2863,7 @@ static void escape_menu(void)
 		// ASCENT: the soak test (-soak) stays in the inn: the box would wait
 		// for a key in the hidden window and the test would hang.
 		if (!Dtu_soak && nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
+			dtulog_event("Level change: the question of the inn exit (Escape), the player goes to Waterdeep");
 			Dtu_fe_return_waterdeep = 1;
 			Fe_leave_game = 1;
 		}
@@ -3013,6 +3015,7 @@ int dtufe_game_frame(void)
 		// ASCENT: the soak test (-soak) stays in the inn: the box would wait
 		// for a key in the hidden window and the test would hang.
 		if (!Dtu_soak && nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(795)) == 0) {
+			dtulog_event("Level change: DTU.WRP command 0 (the portal of the inn), the player goes to Waterdeep");
 			Dtu_fe_return_waterdeep = 1;
 			Fe_leave_game = 1;
 		}

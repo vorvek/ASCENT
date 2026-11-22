@@ -724,6 +724,7 @@ static char copyright[] = "DESCENT   COPYRIGHT (C) 1994,1995 PARALLAX SOFTWARE C
 #include "dtufe.h"
 #include "dtuopts.h"		// ASCENT: the Improvements settings		// ASCENT: the front end of the target game
 #include "dtulog.h"		// ASCENT: the session log
+#include "dtutrig.h"		// ASCENT: the start point of -level
 #include "gamefont.h"
 #include "playsave.h"
 
@@ -1184,6 +1185,14 @@ static int dtu_run_level(char *level_name)
 		// no size gets the size of the ship of Descent 1.
 		if (ConsoleObject->size <= 0)
 			ConsoleObject->size = fl2f(4.5);
+
+		// ASCENT: the game comes into a level other than the Yawning
+		// Portal only by a warp or a save game. The direct start puts the
+		// player where a warp into the level puts it. The player object of
+		// some levels is on a warp out of the level (KOBOLDS). The option
+		// -startobject keeps the player object of the level file.
+		if (level_name && !FindArg("-startobject"))
+			dtu_trig_place_at_arrival();
 
 		while (Function_mode == FMODE_GAME) {
 			if (!plat_pump())
