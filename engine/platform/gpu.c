@@ -427,8 +427,8 @@ static const char *Comp_fs =
 	"uniform int u_key;\n"
 	"uniform int u_vrgb;\n"
 	"uniform int u_ndark;\n"
-	"uniform vec4 u_drect[4];\n"
-	"uniform int u_dlevel[4];\n"
+	"uniform vec4 u_drect[16];\n"
+	"uniform int u_dlevel[16];\n"
 	"uniform int u_filter;\n"
 	"uniform float u_sigma;\n"
 	"uniform vec2 u_vsigma;\n"
@@ -841,7 +841,7 @@ static int View_exists;					// an image was drawn
 static int Dest_x, Dest_y, Dest_w, Dest_h;
 
 // The darkened rectangles of the view
-#define MAX_DARK 4
+#define MAX_DARK 16		// the size of u_drect and u_dlevel of Comp_fs
 static int Dark_n;
 static float Dark_rect[MAX_DARK * 4];
 static int Dark_level[MAX_DARK];

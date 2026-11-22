@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 
 #include "gr.h"
+#include "3d.h"			// g3_gpu_view_darken
 #include "args.h"
 #include "platform.h"
 #include "dtuopts.h"
@@ -209,7 +210,20 @@ void dtu_hdui_menu_shadow(int x1, int y1, int x2, int y2, int level)
 	const ubyte *table = gr_fade_table + ((level & 0xff) << 8);
 	int ox, oy, k;
 
-	if (!Was_on || !grd_curcanv || !screen_pos(&grd_curcanv->cv_bitmap, &ox, &oy))
+	if (!grd_curcanv || !screen_pos(&grd_curcanv->cv_bitmap, &ox, &oy))
+		return;
+	// The fade table keeps color 255, the color of the frame that shows
+	// the image of the GPU renderer, so a shadow over the 3D view darkened
+	// nothing there. show_help (game.c) draws the box with x2 and y2 one
+	// pixel outside its canvas, so the outer column and row of the shadow
+	// fall on the 3D view (as in the software renderer and the original).
+	// The GPU image is darkened under the same rectangles; the
+	// rectangles over other frame pixels have no effect.
+	for (k = 5; k >= 0; k--) {
+		g3_gpu_view_darken(x2 - k + ox, y1 + k + oy, x2 - k + 1 + ox, y2 - 5 + 1 + oy, level);
+		g3_gpu_view_darken(x1 + k + ox, y2 - k + oy, x2 + 1 + ox, y2 - k + 1 + oy, level);
+	}
+	if (!Was_on)
 		return;
 	// the order of the gr_urect calls of nm_draw_background
 	for (k = 5; k >= 0; k--)
