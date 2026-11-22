@@ -31,6 +31,7 @@ an input file unless you name it as the output.
 - `lvlcheck.py`: compare the level loader of the port (`-checklevel`) with `lvl.py`.
 - `objcheck.py`: check the object records of the level files against the level tables (`docs/re/objects.md`).
 - `check_creature_setup.py`: compare the creature setup by name of the port (`-setuplog`) with the reference library of the decompilation.
+- `check_reach.py`: the swing and the target hint of the player reach each live creature of a level (default BONES), with the `-chartest` commands `goobjh` and `reach`. `--origcombat` gives the rules of 1.3, where no attack reaches a rat (`Dtu_fix_rat_hit`, `docs/re/combat.md`).
 - `uitest.py`: interface tests. Each test starts the game hidden at a level, drives it with `-fescript` and checks the screenshots. Needs the game files.
 
 ## Reverse engineering
