@@ -337,6 +337,9 @@ int dtu_char_hit_points(void);
 int dtu_char_max_hit_points(void);
 // Adds hit points, up to the maximum. Returns the number that was added.
 int dtu_char_heal(int points);
+// Adds hit points above the maximum (Aid, 0x8D46A). The frame cuts them to
+// the maximum when Bless is not on.
+void dtu_char_add_hit_points(int points);
 // Experience (0xAF3CF): a character with two classes gets one half for
 // each class. Checks for a new level. A creature gives score_value= of its
 // table line (add_points_to_score() of gauges.c calls this).

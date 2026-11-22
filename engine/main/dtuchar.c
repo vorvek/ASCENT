@@ -1237,6 +1237,12 @@ int dtu_char_heal(int points)
 	return n;
 }
 
+void dtu_char_add_hit_points(int points)
+{
+	if (points > 0)
+		set_hit_points(dtu_char_hit_points() + points);
+}
+
 int dtu_char_armor_class(void)
 {
 	return Dtu_char.created ? Dtu_char.pa.armor_class : 10;
