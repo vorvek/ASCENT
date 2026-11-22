@@ -66,10 +66,12 @@
 // Settings. 1 (default) is the corrected rule, 0 the rule of the
 // executable. -origcombat clears them.
 
-// Chill Touch (5) has no self_cast_ok in any table: the cast fires a
-// missile, and its case (0x8D633) sets the effect only when the target is
-// the caster, so the spell does nothing. Corrected: the cast is on the
-// caster (no missile), who gets the effect for L + 3 minutes.
+// Chill Touch (5): 1.3 casts it on the caster, who gets the effect for
+// L + 3 minutes (case 0x8D633). No table has self_cast_ok on line 5, but
+// the table fixup 0x1A344 sets the bit (0x1A65E, Spell_info +0x37 bit 0)
+// that the cast tests (0x56D36), and the port applies the fixup
+// (dtutblfix.h). This setting gives the same cast on the caster with
+// -rawtables. It is not an ASCENT correction: -origcombat keeps it.
 extern int Dtu_fix_chill_touch;
 
 // Stone Skin (0x8FC7A) writes the whole effect word: all other effects of

@@ -193,10 +193,13 @@ static int spell_level(int spell)
 }
 
 // 0 mage, 1 cleric, -1 none (the class bits of +0x00)
+// ASCENT: the cleric bit first, as the cast check 0x35683 tests it. After
+// the table fixup (dtutblfix.h) Protection From Fire (40, class 0x27) has
+// both bits: 1.3 casts it as a cleric spell.
 static int spell_book_of(int spell)
 {
-	if (spell_flag(spell,"mage_use")) return 0;
 	if (spell_flag(spell,"cleric_use")) return 1;
+	if (spell_flag(spell,"mage_use")) return 0;
 	return -1;
 }
 
@@ -2090,6 +2093,10 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 {
 	fix radius = i2f(spell_int(spell,"radius",0) + level * spell_int(spell,"level_radius",0));
 	int i, n = 0;
+	// ASCENT: Spell_info +0x37 bit 3 (the word hit_objects of the table
+	// fixup, dtutblfix.h): 0x90CEF also takes the objects that are not
+	// creatures or the player (0x90DA6).
+	int any = spell_flag(spell,"hit_objects");
 
 	if (!spell_ok(spell) || segnum < 0)
 		return 0;
@@ -2099,7 +2106,7 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 	for (i=0;i<=Highest_object_index;i++) {
 		object *o = &Objects[i];
 
-		if (o->type != OBJ_PLAYER && o->type != OBJ_ROBOT)
+		if (o->type == OBJ_NONE || (o->type != OBJ_PLAYER && o->type != OBJ_ROBOT && !any))
 			continue;
 		if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED|OF_EXPLODING))
 			continue;
@@ -2112,7 +2119,7 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 		if (!point_sees(pos,segnum,o))
 			continue;
 		apply_spell(spell,o,caster,level);
-		if (spell == 16)		// 0x90DDF: Fireball, the fire trap (dtucombat.c)
+		if (spell == 16 && (o->type == OBJ_PLAYER || o->type == OBJ_ROBOT))		// 0x90DDF: Fireball, the fire trap (dtucombat.c)
 			dtu_fireball_blind_deaf(o,vm_vec_dist(&o->pos,pos));
 		n++;
 	}
