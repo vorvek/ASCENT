@@ -192,10 +192,10 @@ ascent-import --source PATH --dest DIR [--patch PATH] [--check]
 | `textures` | `hd/textures` without `.cache` | 60,396 | 3,896 | 396,695,525 bytes |
 | `ui` | `hd/ui` | 39 | 39 | 119,884,683 bytes |
 | `movies` | `hd/*.m1v` | 5 | 5 | 485,625,672 bytes |
-| `lang_es` | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...` (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 3 | 3 | 401,931 bytes |
+| `lang_es` (version 2) | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...`, and the pictures of the language `hd/lang/es/` (`tools/ui_lang.py`) (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 44 | 43 | 2,841,250 bytes |
 
-The language packs hold the Spanish text of the game files and the subtitles
-(`docs/formats/lang.md`); they are made from the translations that
+The language packs hold the Spanish text of the game files, the subtitles and the
+interface pictures with Spanish words (`docs/formats/lang.md`); they are made from the translations that
 `tools/lang_extract.py merge` writes. The translation of the text of the program is
 part of the program.
 
@@ -277,7 +277,7 @@ The content tool is installed with the game ("ASCENT-DTU Content" in the Start m
   installed packs (version installed, version available, size, status), and the buttons
   Install, Remove, Check / repair, Refresh. It works without the server for the check
   and the removal of installed packs. The names in the list are the titles of the
-  manifest (`lang_es`: "Spanish text (translation and subtitles)"); the pack `patch13`
+  manifest (`lang_es`: "Spanish text and pictures (translation, subtitles, interface pictures)"); the pack `patch13`
   (target `data`) is not listed. The window is in English only.
 - Commands: `list`, `download PACK FILE`, `install PACK...`, `remove PACK...`,
   `verify PACK...`, `repair PACK...`, with `--root DIR` and `--url URL`.
@@ -310,7 +310,7 @@ checked; desktop shortcut; and, when the setup program has a server address, the
 downloadable content: "Upscaled textures and interface (for the GPU renderer; download,
 about 493 MB)", checked; "Upscaled movies (for the GPU renderer; download, about 463
 MB)", unchecked because of the size; "Spanish translation of the game text (download,
-about 393 KB)", task `langes`, pack `lang_es`, checked only in the Spanish setup
+about 2775 KB)", task `langes`, pack `lang_es`, checked only in the Spanish setup
 program), ready, the progress page of the patch download and the import (a failure
 stops Setup with the message of the tool), the content downloads (a failure is a
 warning: the game works without them), and the last page with "Play ASCENT-DTU".
