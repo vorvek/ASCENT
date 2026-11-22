@@ -1802,6 +1802,7 @@ int dtu_char_rest(void)
 	set_hit_points(Dtu_char.pa.max_hit_points);
 	Rest_time[seg] = GameTime + i2f(300);
 	HUD_init_message("You feel refreshed");
+	digi_play_sample(62, F1_0 / 2);		// 0x3E309: sound 62 at half volume
 	Rests++;
 	// 0x3E354: remove the fire of the rest place (0x3DC0F finds it,
 	// "killing fireball %d", lifeleft 0, 0x68F45). fuelcen_update_all()
@@ -1817,8 +1818,8 @@ int dtu_char_rest(void)
 	}
 	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
 	dtu_spell_rest_shuffle();		// 0x3E1F6 calls 0x92FF2
-	// The executable also calls 0x160AB(player, 5) and plays sound 62.
-	// These are not in the port.
+	// The executable also calls 0x160AB(player, 5) (the alert function)
+	// and 0x4D95D(player) (not read). These are not in the port.
 	return 1;
 }
 
