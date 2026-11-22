@@ -462,7 +462,11 @@ frame and the sizes), `-archive RSC` (the archive of the player, for example `dm
 
 Differences: a key is down for the whole frame or not at all (the executable uses the
 time that the key was down). The search for the floor tests only the floor sides
-(`Fvi_dtu_body` 2), so that a wall near the player is not taken as a floor.
+(`Fvi_dtu_body` 2), so that a wall near the player is not taken as a floor. The head
+sphere of the capsule (13.1) tests only the walls (`Fvi_dtu_body` 3).
+
+`-fixedfps N` holds from the first frame (game.c). Before, the first frame had the time
+of the load, so two runs of a test did not give the same moves.
 
 ## 10. Tests (port, corrected rules)
 
@@ -666,20 +670,9 @@ the move, so it holds the player on the edge longer).
   acceleration and top speed (49.33, 74.0) do not change.
 - The turn has no inertia: the turn rate is `rotthrust / mass * (1 - 5 drag) / (5 drag)`,
   the rate at the end of the ramp of the original.
-- A step up a low wall: the body of the original (4.1) stops the center 4.6 (human) or
-  4.5 (dwarf) from a wall side, also at the top edge of a step, and the executable has
-  no step test for walls. So a step of 3.5 that is a wall side (BANE, segment 17 side
-  0 at z 70) stops a dwarf or a halfling (center 6.34 above the floor, 2.84 above the
-  step) always and a human or an elf (7.54, 4.04 above it) at some frame rates. With the Improvement a wall
-  side whose top is 5.5 (the limit of the kneeHigh test, 4.6) or less above the feet
-  lifts the player onto it when the player walks on the floor (no jump, climb, fall,
-  flight or levitation) and the new center and the head test point (4.3) are in a
-  segment. Measured: BANE walk of 2.7 s, end z 143.2, 142.4, 143.2 (human) and 143.0,
-  142.4, 142.0 (dwarf) at 20, 60, 200 frames per second; with `-noimprovements` the
-  dwarf stops at z 65.5. At 60 frames per second for 4 s (`-archive`): human 141.5,
-  dwarf 141.5, halfling (`fmf`) 141.4; with `-noimprovements` human 134.0, dwarf 65.5,
-  halfling 65.0. The step does not depend on the race: the center height decides it
-  (`-bodylog`: human, elf and dark elf 7.54, dwarf and halfling 6.34).
+- The body is a capsule (13.1). It replaces the step rule of the earlier version of
+  the Improvement (a wall side whose top was 5.5 or less above the feet lifted the
+  player onto that top).
 
 `Dtu_improved_jump` (menu): the keys steer the jump (60.0 for each second squared, the
 speed in x and z at most the start speed of the jump, 14.0 at least). A jump is possible
@@ -722,3 +715,133 @@ executable at the frame time T (computed): 0.0154, 0.1841, 0.7695 with the inert
 The value "0.25 at 20 against 0.18 at 144 frames" of an earlier note came from the
 nearest logged frame, not from the angle at the time: at 20 frames per second a frame
 is 0.05 s.
+
+### 13.1 The capsule (`Dtu_improved_physics`)
+
+The body of the original (4.1, 4.2) has one radius for the walls and a much smaller one
+for the floor: the walls stop the center at `rad + 1.0` (4.59 human, 4.50 dwarf, 4.97
+halfling), the floor search has the radius `floor_rad / 2` (1.79). So the body stands on
+a floor 3.6 wide and is 9.2 wide for the walls. Two defects come from this:
+
+- A step of 3.5 that is a wall side (BANE, segment 17 side 0 at z 70) stops a dwarf or a
+  halfling (center 6.34 above the floor, 2.84 above the step) always, and a human or an
+  elf (7.54, 4.04 above it) at some frame rates: the sphere of the center touches the edge
+  of the step before the floor search finds the step. The executable has no step test
+  for walls (4.6).
+- At the edge of a ledge the floor search loses the floor while the center is still in
+  the reach of the wall under the edge. The player falls inside that reach and the move
+  query holds the player (the stuck save, `Dtu_fix_wall_overlap`).
+
+**V** (fvi.c, `check_sphere_to_face`) The sphere test of fvi is a slab, not round: a
+sphere hits a side when its center comes within the radius of the plane of the side and
+the point under the center on that plane is within the radius of the side. A sphere whose
+center is less than its radius above the top edge of a riser stops at the full radius
+from the riser, not at the round distance. So a sphere does not roll up an edge.
+
+The capsule (physics.c, `dtu_capsule_*`): a vertical body with the radius
+`R = rad + 1.0`, from the feet (the center minus the stand height, `floor_height +
+floor_rad / 2`) to the head (`body_half_height[0]` above the center).
+
+- Walls: the query of the original (the sphere at the center with its radii for the
+  walls, the floor and the ceiling, the objects, the list of the segments for the
+  triggers) and a sphere at the head, centered `head - R` above the center, for the walls
+  only (`Fvi_dtu_body` 3: walls `rad + 1.0`, floor and ceiling 0). The earliest hit counts.
+  A hit of the head sphere counts only when the move goes into the side. The head sphere
+  is used when its center is 0.25 or more above the center: human 1.16, dwarf 0.05 (not
+  used), halfling below the center (not used).
+- Floor: a round bottom, a half ellipsoid `R` wide and `stand - R - 0.25` deep (human
+  2.65, dwarf 1.59, halfling 1.12). It stands on each solid side that faces up (normal
+  into the segment with y above 0.1) and is under the axis (the height of its plane at
+  the axis), and on each edge and corner of a solid side within `R` of the axis in x and
+  z, of the segments that are open to the segment of the player and in reach. Not only
+  side 3: a ramp or the floor of a turned segment can be another side, and the floor
+  search of the original (a line, fvi mode 2 tests the other sides with the radius 0)
+  finds those too. A first version with side 3 only let the player fall into such a
+  floor (FLAME, segment 174). The highest support counts, an edge up to 5.5 above the feet (the
+  kneeHigh limit) and a face up to the center. With that depth the sphere of the center
+  is always more than `R` above an edge that holds the body, so the slab of the side
+  under the edge does not catch it. A round bottom with the depth `R` would put the
+  center into that reach again.
+- The capsule that stood on the floor in the last frame (no jump, climb, fall, flight,
+  levitation or ladder step) is put onto its support at once: up by 5.5 at most (the
+  head test point of 4.3 must be in a segment), down by 4.0 at most. So it does not
+  bounce down stairs and slopes and does not rise in steps of 2.0. Else the rules of 4.3.
+- The first contact with a step: the sphere of the center hits the side under the edge
+  before the bottom stands on the edge. On that wall hit, on the floor, the support at
+  the end of the query (the same search) is taken: if it is more than 0.1 and at most 5.5
+  above the feet, the player is lifted onto it and the move is tried again (the line
+  `CAPSTEP` of `-movelog`).
+- A player who stands on an edge with no floor under the axis (none, or one more than 1.0
+  lower), where the bottom is steeper than 0.25, and who does not walk toward the edge,
+  slides off it with 8.0 for each second. So the player does not stand in the air beside
+  a ledge.
+- No sphere at the feet for the walls: in the slab test it would stop at each riser
+  within `R` of its center (each step), and it would lower the reach of a jump onto a
+  ledge by `stand - R` (2.95 for a human) against the original.
+- Objects (creatures, scenery): the move query of the player takes the height of the
+  capsule (feet to head, not 6.25 up and down from the center) in the test of fvi.c. The
+  radius stays `rad`: with `R` the player stops 1.0 to 1.2 farther from a creature, and
+  the fight test of combat.md C5 lost its hits at 60 frames per second (0 contacts, 2 with
+  `rad`). With the capsule height a human collides with scenery whose top is up to 1.29
+  above the feet (a dwarf already did in the original: its center is 6.34 above the feet),
+  and a dwarf passes under objects 1.7 lower than before.
+- The creatures, the weapons and the reach of the creatures (0x746B3) do not change.
+
+With Improved physics off the body of the original is used, with no change.
+
+Measured (port, `-fixedfps`, the same runs give the same moves; "before" is the body of
+the original with the step rule, "after" the capsule; Improved physics on unless noted):
+
+| Test | 20 | 60 | 200 |
+|---|---|---|---|
+| BANE walk 2.7 s (run of 4 s), end z, human, before / after | 143.1 / 146.6 | 141.5 / 144.3 | 142.5 / 143.5 |
+| the same, dwarf (`-archive dmf`) | 143.1 / 146.6 | 142.1 / 144.3 | 20.5 / 143.5 |
+| the same, halfling (`-archive fmf`) | 143.1 / 146.6 | 141.5 / 144.3 | 140.8 / 143.5 |
+| the same, Improved physics off, human / dwarf / halfling, before = after | 64.9 / 65.4 / 64.9 | 134.4 / 65.5 / 65.0 | 143.2 / 65.5 / 65.0 |
+| FLAME ladder (segment 432, Activate, 4 s forward): end y, highest y, before / after | 72.46, 72.93 / 72.40, 73.04 | 72.39, 72.62 / 72.40, 72.67 | 72.43, 72.49 / 72.39, 72.78 |
+
+- BANE: the capsule climbs the step of 3.5 with one or two `CAPSTEP` lifts (the first
+  contact) and then on its round bottom, for each race and frame rate, and walks down
+  the ledge of 3.5 with the floor snap (no fall). The dwarf at 200 frames per second
+  "before" stayed in the floor at the start (center 2.9 too low, z 20.5).
+- FLAME: the climb, the step onto the floor at the top (64.9, center 72.4) and the walk
+  on (end z 244.6 to 245.1) as before.
+- Ledge walk-off (HUB1, `-testpos -66.5,-304,223.8,270`, 2 frames forward every 15):
+  before, one `WALLOVERLAP` at 20 and 60 frames per second and a fall to the floor of
+  segment 71 (y -334.99). After, no `WALLOVERLAP`: the player sinks with the bottom
+  over the edge, slides off and falls to the same floor. At 200 frames per second the
+  presses are too short to reach the edge (both).
+- The stuck save (HUB1, segment 179, a copy of the user folder, loaded with the front
+  end script, 30 and 60 frames per second): before, `WALLOVERLAP` moves the player 4.08
+  from the wall and the player falls to y -334.98. After, the round bottom stands on the
+  edge of the floor of segment 180 at once (axis 0.46 past the edge, center y -305.36),
+  no `WALLOVERLAP`. From there: 1.5 s forward walks along the edge to segment 174 (y
+  -309.90); 1.5 s back falls to the floor of segment 71 (y -335.01); a turn and 1.5 s
+  forward falls and walks on in segment 68.
+- The same before and after: 4 s with no input in YPINN, BANE, DROW1 (center 7.5 above
+  the floor, no change after the first second), the YPINN and DROW1 walks (same end
+  positions), the PRISON jumps (end z 375.46, 378.13, 378.42; end y within 0.06), the
+  push of scenery of section 10 (chair, table, player end z 54.4, 62.5, 46.6 at 30; 56.1,
+  63.6, 46.9 at 60; 59.3, 65.2, 50.0 at 144), the fight test of combat.md C5 (no contact
+  at 20, 2 contacts and the kill at 3.43 s at 60, 2 contacts and the kill at 2.19 s at
+  200 frames per second).
+- With Improved physics off all 38 runs of these tests give the same numbers before and
+  after.
+- Levitation and the Fly spell (BANE, `-chartest 20:fx=21.60` and `fx=11.60`, up, forward,
+  down): the same path before and after (in flight the end height differs by 1.6 over
+  the edge of a step, no snap in flight).
+- Walks from the center of 210 random segments toward a random side (YPINN, BANE, HUB1,
+  DROW1, FLAME, PRISON, BONES, 30 per level, 1.5 s walk or 1.2 s run, 30 frames per
+  second), before and after: 196 the same within 3.0. In the 14 others the capsule goes
+  as far or farther (up to 33 more) or ends on a higher floor: up steps and ramps where
+  the body of the original stopped (FLAME segment 173 and 148, BANE 74), out of a hold
+  in the air with `WALLOVERLAP` (FLAME 45), out of a corner (DROW1 287). In none did the
+  capsule stop where the original passed (doors and openings: the walls are tested
+  with the same sphere and radius).
+- Soak test (`-soak 3` and `-soak 4`, 2700 frames at 30 frames per second, the seven
+  levels above, `-hidden`): no `SOAK FAIL` (the player and the objects stay inside the
+  mine and in their segments) before or after. YPINN with the seed 3 stops at frame 302
+  in both builds (a hang of the soak test, not of the movement). The frames in which the
+  player has a velocity but does not move are holds of the game (a cast, scenery that
+  stops the player, the jumps of the test to a point in the air) that come in both
+  builds.

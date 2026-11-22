@@ -164,6 +164,12 @@ void dtu_player_body(dtu_body *b);
 #define DTU_FIX_JUMP_GRAVITY	0xd11111		// 209.07 = 8 * height / air time^2, air time 15/28 s
 #define DTU_FIX_JUMP_HSPEED		0xe0000		// 14.0 = 0.5 * 28, the speed forward of the original jump (one step 0.5, 28 steps per second)
 #define DTU_IMP_AIR_ACCEL		0x3c0000		// 60.0, the steering in the air
+#define DTU_CAP_MARGIN			0x4000			// 0.25, Dtu_improved_physics: the round bottom of the capsule is this much less deep than stand height - radius
+#define DTU_CAP_SNAP_DOWN		0x40000		// 4.0, the capsule stays on a floor that is this much or less below the feet (a step down)
+#define DTU_CAP_HEAD_MIN		0x4000			// 0.25, the capsule has a head sphere when its center is this much or more above the center of the body
+#define DTU_CAP_SLIDE_SPEED		0x80000		// 8.0, the speed off an edge with no floor under the axis
+#define DTU_CAP_SLIDE_SLOPE		0x4000			// 0.25, the bottom slides off an edge where its slope is more
+#define DTU_CAP_SLIDE_GAP		0x10000		// 1.0, and the floor under the axis is lower by more
 #define DTU_IMP_COYOTE_TIME		0x2666		// 0.15 s, a jump is still possible this long after the floor or the ladder is left
 
 // Dtu_player_state: the byte at 0x1AE of the object of the executable
