@@ -162,7 +162,7 @@ void dtu_opts_load(void)
 		Dtu_rulebook_items = Arg_rulebook = FindArg("-rulebookitems") && !FindArg("-norulebookitems") && !FindArg("-origitems");
 	}
 	if (FindArg("-origitems"))
-		Dtu_fix_item_names = Dtu_fix_item_stats = 0;
+		Dtu_fix_item_names = 0;
 	if (FindArg("-notargethint"))		// a comparison with the original cursor
 		Dtu_target_hint = 0;
 	if (FindArg("-noimprovedinfra"))		// a comparison with the original infravision
