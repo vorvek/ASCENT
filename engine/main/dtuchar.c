@@ -2726,7 +2726,8 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
-// gosecret=N, goobj=N, move=N, break=N, castby=SPELL.OBJ,
+// gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
+// activate,
 // str=STRENGTH.PERCENT,
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
@@ -2798,6 +2799,18 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
 	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
 	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
+	else if (!strcmp(cmd, "activate"))	dtu_player_use();		// test: the key A
+	else if (!strcmp(cmd, "goside") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: goside=SEG.SIDE
+		vms_vector c, s, d;
+
+		compute_segment_center(&c, &Segments[a]);
+		compute_center_point_on_side(&s, &Segments[a], b);
+		vm_vec_sub(&d, &s, &c);
+		vm_vec_normalize(&d);
+		ConsoleObject->pos = c;
+		vm_vector_2_matrix(&ConsoleObject->orient, &d, NULL, NULL);
+		obj_relink(ConsoleObject - Objects, a);
+	}
 	else if (!strcmp(cmd, "gosecret"))	dtu_thief_goto_secret(a);		// test: gosecret=N
 	else if (!strcmp(cmd, "move")) {		// test: move=N, N units forward (in the segment of the point)
 		vms_vector p;
