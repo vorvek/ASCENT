@@ -44,6 +44,9 @@ void dtu_lang_text_loaded(void);
 
 // The English string of the text file (Text_string[] holds the translation)
 char *dtu_lang_text_en(int n);
+// The string n of the text file with the tokens {sex:} resolved for a
+// given sex (Text_string[] follows the sex of the player)
+char *dtu_lang_text_sex(int n, int female);
 
 // Text of the code, by its English text. Returns the translation or en.
 char *dtu_tr(const char *en);

@@ -562,6 +562,25 @@ char *dtu_lang_text_en(int n)
 	return Text_en[n] ? Text_en[n] : Text_string[n];
 }
 
+char *dtu_lang_text_sex(int n, int female)
+{
+	char id[16];
+	lang_entry *e;
+	char *en;
+
+	if (n < 0 || n >= N_TEXT_STRINGS)
+		return "";
+	en = dtu_lang_text_en(n);
+	if (Dtu_language == DTU_LANG_EN || !en)
+		return Text_string[n] ? Text_string[n] : "";
+	load_language(Dtu_language);
+	snprintf(id, sizeof(id), "tex.%d", n);
+	e = tab_find(id);
+	if (!e || (e->en && strcmp(e->en, en)))
+		return en;
+	return pick(e, female);
+}
+
 void dtu_lang_set(int lang)
 {
 	if (lang < 0 || lang >= DTU_LANG_COUNT)

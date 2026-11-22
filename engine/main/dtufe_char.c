@@ -131,6 +131,14 @@ static int combo_allowed(int mask)
 	return mask > 0 && mask < 16 && (Race_combos[Race] & (1 << (mask - 1)));
 }
 
+// The class word (TEX 689 to 692). ASCENT: a translation can show the sex
+// in the word with {sex:MALE|FEMALE}: it is resolved for the sex of the
+// choice, as the race word (sex_race).
+static char *class_word(int c)
+{
+	return dtu_lang_text_sex(689 + c, Sex);
+}
+
 static void class_words(char *out)
 {
 	static int bit[4] = { CM_FIGHTER, CM_THIEF, CM_MAGE, CM_CLERIC };
@@ -140,7 +148,7 @@ static void class_words(char *out)
 	for (i = 0; i < 4; i++)
 		if (Class_mask & bit[i]) {
 			if (out[0]) strcat(out, "/");
-			strcat(out, fe_text(689 + i));
+			strcat(out, class_word(i));
 		}
 }
 
@@ -415,10 +423,10 @@ static char *s2_help(int id)			// 0x881ED
 		int c = id - 4;
 		if (Class_mask & Class_bit[c]) {
 			if (Class_mask == Class_bit[c])
-				sprintf(Help_buf, fe_text(634), fe_text(689 + c));
+				sprintf(Help_buf, fe_text(634), class_word(c));
 			else {
 				class_words(cw);
-				sprintf(Help_buf, fe_text(635), cw, fe_text(689 + c));
+				sprintf(Help_buf, fe_text(635), cw, class_word(c));
 			}
 			return Help_buf;
 		}
