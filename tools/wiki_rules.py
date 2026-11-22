@@ -1405,12 +1405,10 @@ class Pages:
             "",
             md_table(self.icon_head(["Launcher", "Kind", "To hit and damage", "F/T/M/C", "Value", "Notes"]), launch),
             "",
-            "Wands are on [[Wands]].",
-            "",
             "## Differs from the manual",
             "",
             "- The manual gives thieves daggers, short swords, long swords, scimitars, clubs, darts, "
-            "throwing daggers and short bows. The game also gives thieves the Broad Sword and arrows.",
+            "throwing daggers and short bows. The game also gives thieves the Broad Sword.",
             "- The manual gives mages daggers and darts. The game also allows the Throwing Dagger.",
             "- The manual says the dagger is fast. In the game no melee weapon swings faster than "
             "1.0 s without Haste.",
@@ -1676,8 +1674,6 @@ class Pages:
             md_table(self.icon_head(["Wand", "Spell", "Charges", "F/T/M/C", "Value", "Notes"]), rows),
             "",
             "The spell rules, also the damage: [[Wizard Spells|Wizard-Spells]].",
-            "",
-            "The Short Sword of Quickness is not a wand: it gives Haste while it is in the hand ([[Weapons]]).",
             "",
             pages_note(),
             "",
@@ -2083,16 +2079,14 @@ POTIONS = {
 
 # 0x37A6A cases 0x66, 0x6A, 0x7F; misc 126 has no case
 SCROLLS = {
-    102: "USE: shows Khelben's summary of your current mission. A Scroll found in a dungeon level "
-         "shows its own text instead: notes and histories of Undermountain. Not used up. Every new "
-         "character gets one.",
+    102: "USE: read its contents.",
     106: "USE: the screen shakes, then each of these with a 50% chance: Confusion, Continual Light, "
          "Scare, Hold Person and Fireball on you, the map forgotten, and each ability score set to a "
          "random value from 1 to its value. Then damage from 0 to your hit points - 1. Not used up. "
          "Quest item. The original 1.3 game does less than half a point of damage; ASCENT corrects "
          "this.",
     126: "Quest item. Using it does nothing.",
-    127: "USE: shows a picture clue. Not used up. Quest item.",
+    127: "USE: shows a clue. Quest item.",
 }
 
 SOURCES_FINDINGS = [
