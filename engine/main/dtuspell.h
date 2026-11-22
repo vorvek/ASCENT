@@ -86,9 +86,10 @@ extern int Dtu_fix_stoneskin_word;
 extern int Dtu_fix_rary_manual;
 
 // Melf's Acid Arrows (line 36, 0x8EFE0). The executable: no attack roll,
-// 4 L acid damage in one hit (the 2 (L/3) + 2 dice have 0 sides and add
-// 0), a save for half. The game has no text of the spell
-// and the manual tells little, so the port follows the AD&D 2nd edition
+// 2 (L/3) + 2 acid dice in one hit, a save for half. The table fixup
+// 0x1A344 sets the acid dice to 4 sides and no part for each level, so
+// the dice are d4 (the table text alone gives 0 sides and 4 L). The
+// game has no text of the spell and the manual tells little, so the port follows the AD&D 2nd edition
 // rule: one arrow, an attack roll with the THAC0 of a fighter of the
 // caster level against the armor class of the target (a natural 1
 // misses, a natural 20 hits), no other bonus. A hit does 2d4 acid damage,
@@ -97,6 +98,12 @@ extern int Dtu_fix_rary_manual;
 // The acid of the later rounds is not in the level state: it ends at a
 // save and load. 1 (default): the 2nd edition rule. 0: the executable.
 extern int Dtu_fix_melf_acid;
+
+// Strength (50) and Infravision (25) compute the duration in 32 bits: it
+// wraps from caster level 10 (Strength) and 8 (Infravision) and the effect
+// ends at once. Corrected: no wrap; a duration stops at 4 hours 33 minutes,
+// the longest timer of the port below DTU_FX_NO_END.
+extern int Dtu_fix_spell_hours;
 
 // The creature spells (0x9231F) take rand() % n with n = 0 or less for
 // some spells (Scare at caster level 4 and up, Hold Person at a distance
@@ -186,6 +193,10 @@ extern int Dtu_spell_slots_left[2][9];
 // effects of all objects (0x9002C), the cast that waits for its time,
 // the homing missiles of the player, the setup at the start of a level.
 void dtu_spell_frame(void);
+
+// ASCENT: the test aid -chartest spelltest=SPELL.LEVEL.OBJ.TRIALS (OBJ -1:
+// the player; TRIALS 0: one cast that stays). The results go to -objlog.
+void dtu_spell_test(int spell, int level, int objnum, int trials);
 
 // The attack key with a spell in the hand, or a scroll or a wand in the
 // hand (0x41A4D and 0x56A0D). Returns 1 when the request is done (cast,

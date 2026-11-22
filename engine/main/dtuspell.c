@@ -51,6 +51,7 @@ int Dtu_fix_chill_touch = 1;
 int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
+int Dtu_fix_spell_hours = 1;
 
 // Rary's Mnemonic Enhancer: the extra mage slots of spell levels 1 to 3
 // (P+0x23 to P+0x25 of the executable). Rary_rest: the number of rests
@@ -1359,11 +1360,13 @@ static fix acid_damage(int spell,object *target,object *caster,int level)
 	return spell_deal(spell,target,caster,level,dmg,0);
 }
 
+static void acid_add(int spell,object *target,object *caster,int L,int rounds);
+
 // The hit of the arrow. The THAC0 of a fighter is the fighter row of the
 // table 0x146590 (dtuchar.c): 21 - L, at most 20, at least 3 (level 18).
 static fix melf_acid_hit(int spell,object *target,object *caster,int L)
 {
-	int thac0 = 21 - L, d20 = rnd(20), ac = 0, hit, i, rounds = L/3;
+	int thac0 = 21 - L, d20 = rnd(20), ac = 0, hit, rounds = L/3;
 	fix dealt;
 
 	if (thac0 > 20) thac0 = 20;
@@ -1389,11 +1392,20 @@ static fix melf_acid_hit(int spell,object *target,object *caster,int L)
 	dealt = acid_damage(spell,target,caster,L);
 	if (rounds < 1 || acid_target_gone(target))
 		return dealt;
+	acid_add(spell,target,caster,L,rounds + 1);
+	return dealt;
+}
+
+// The later rounds: round 1 was done now, "rounds" is the last round
+static void acid_add(int spell,object *target,object *caster,int L,int rounds)
+{
+	int i;
+
 	for (i=0;i<MAX_ACID && Acid[i].used;i++)
 		;
 	if (i == MAX_ACID) {
 		dtu_spell_log("spell: '%s': no free acid entry, the acid ends after the first round",spell_name(spell));
-		return dealt;
+		return;
 	}
 	Acid[i].used = 1;
 	Acid[i].obj = target-Objects;
@@ -1403,10 +1415,9 @@ static fix melf_acid_hit(int spell,object *target,object *caster,int L)
 	Acid[i].spell = spell;
 	Acid[i].level = L;
 	Acid[i].round = 1;
-	Acid[i].rounds = rounds + 1;
+	Acid[i].rounds = rounds;
 	Acid[i].start = GameTime;
 	Acid[i].next = GameTime + ACID_ROUND;
-	return dealt;
 }
 
 // Each frame: the acid of the later rounds
@@ -1442,6 +1453,23 @@ static void acid_frame(void)
 			a->used = 0;
 		}
 	}
+}
+
+// ASCENT: a duration of hours (Dtu_fix_spell_hours). 1.3 computes Strength
+// (L * 225 << 20, 0x8FF5D) and Infravision in 32 bits: from caster level 10
+// (Strength) and 8 (Infravision) the value wraps below 0 and the effect ends
+// at once. A fix holds at most 9.1 hours, and the port reads a duration of
+// DTU_FX_NO_END or more as no end, so the duration stops just below that
+// (4 hours 33 minutes).
+static fix long_duration(int seconds)
+{
+	int max = (DTU_FX_NO_END - 1) / F1_0;
+
+	if (seconds > max) {
+		dtu_spell_log("spell: %d seconds is above the longest timer: %d seconds (Dtu_fix_spell_hours)",seconds,max);
+		seconds = max;
+	}
+	return i2f(seconds);
 }
 
 //------------------------------------------------------------------------
@@ -1751,7 +1779,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (monster_has(target,"infravision"))
 				break;
 			{
-				fix d = (6*L + 12)*10*MINUTE;
+				fix d = Dtu_fix_spell_hours ? long_duration((6*L + 12)*600) : (6*L + 12)*10*MINUTE;
 				if (fx_set(target,DTU_FX_INFRAVISION,d))
 					say_effect(self,"%s %s Infravision for %d hours.",V_HAVE,"Infravision cast on %s by %s for %d hours.",HOURS(d));
 			}
@@ -1911,7 +1939,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			{
 				// L * 225 << 20 in 32 bits (0x8FF5D): from the level 10 on the
 				// value wraps as in the executable
-				fix d = (fix)((unsigned)L * 3600u * (unsigned)F1_0);
+				fix d = Dtu_fix_spell_hours ? long_duration(L*3600) : (fix)((unsigned)L * 3600u * (unsigned)F1_0);
 
 				if (fx_set(target,DTU_FX_STRENGTH,d))
 					say_effect(self,"%s %s Strength for %d hours.",V_HAVE,"Strength cast on %s by %s for %d hours.",HOURS(d));
@@ -3157,4 +3185,82 @@ void dtu_spell_screen_draw(int hires)
 		sprintf(text,"%c %d %s",i < Dtu_spell_book_n[0] ? 'M' : 'C',spell_level(s),spell_name(s));
 		gr_string(x,y + dy*(1 + i - first),text);
 	}
+}
+
+//------------------------------------------------------------------------
+// ASCENT: the test aid -chartest FRAME:spelltest=SPELL.LEVEL.OBJ.TRIALS.
+// The player casts SPELL at caster LEVEL with no cast time, no slot and no
+// missile flight: each missile of the cast (0x56FF6) goes into the effect
+// of 0x8CFFF (or the area of 0x90CEF for an AREA line) on object OBJ (-1:
+// the player; a spell cast on the caster always acts on the player). The
+// -objlog file gets the hit points, the effects and their times before and
+// after. With TRIALS of 1 or more each trial puts the target (and the
+// character) back as it was and ends the rounds of acid on it; with 0
+// one cast stays, so the later rounds run.
+
+void dtu_spell_test(int spell,int level,int objnum,int trials)
+{
+	object *caster = ConsoleObject, *t, save_obj;
+	static dtu_character save_char;
+	int trial, n_trials = trials < 1 ? 1 : trials, total = 0;
+
+	if (!caster || !spell_ok(spell)) {
+		dtu_spell_log("spelltest: spell %d is not in the tables",spell);
+		return;
+	}
+	if (level < 1)
+		level = 1;
+	if (spell_self(spell) || objnum < 0)
+		t = caster;
+	else if (objnum <= Highest_object_index && (Objects[objnum].type == OBJ_ROBOT || Objects[objnum].type == OBJ_PLAYER))
+		t = &Objects[objnum];
+	else {
+		dtu_spell_log("spelltest: obj %d is not a creature",objnum);
+		return;
+	}
+	for (trial=1;trial<=n_trials;trial++) {
+		int hp0 = t->type == OBJ_PLAYER ? dtu_char_hit_points() : f2i(t->shields), hp1, fx0 = t->dtu.m_88, fx1, n, i, b;
+
+		save_obj = *t;
+		save_char = Dtu_char;
+		n = missile_count(spell,level);
+		dtu_spell_log("spelltest: '%s' (%d) level %d on obj %d %s (level %d), trial %d: %d missiles%s, hit points %d, effects 0x%08x",
+			spell_name(spell),spell,level,(int)(t-Objects),target_name(t),object_level(t,spell),trial,n,
+			spell_area(spell) ? " (area)" : "",hp0,fx0);
+		for (i=0;i<n;i++) {
+			if (spell_area(spell))
+				dtu_spell_area(spell,&t->pos,t->segnum,caster,level);
+			else
+				apply_spell(spell,t,caster,level);
+		}
+		hp1 = t->type == OBJ_PLAYER ? dtu_char_hit_points() : f2i(t->shields);
+		fx1 = t->dtu.m_88;
+		total += hp0 - hp1;
+		dtu_spell_log("spelltest: result: hit points %d to %d (damage %d), effects 0x%08x to 0x%08x",hp0,hp1,hp0 - hp1,fx0,fx1);
+		for (b=0;b<32;b++)
+			if ((fx1 & (1 << b)) && !(fx0 & (1 << b))) {
+				fix *tm = Fx_timer[b] ? timer_ref(t,Fx_timer[b]) : NULL;
+
+				if (tm && *tm == DTU_FX_NO_END)
+					dtu_spell_log("spelltest:   new effect %s, no end",Fx_name[b]);
+				else if (tm)
+					dtu_spell_log("spelltest:   new effect %s, %.1f seconds",Fx_name[b],f2fl(*tm - GameTime));
+				else
+					dtu_spell_log("spelltest:   new effect %s, no timer",Fx_name[b]);
+			}
+		for (i=0;i<MAX_ACID;i++)
+			if (Acid[i].used && Acid[i].obj == t-Objects)
+				dtu_spell_log("spelltest:   '%s' burns for rounds 2 to %d",spell_name(Acid[i].spell),Acid[i].rounds);
+		if (trials < 1)
+			break;
+		for (i=0;i<MAX_ACID;i++)
+			if (Acid[i].used && Acid[i].obj == t-Objects)
+				Acid[i].used = 0;
+		*t = save_obj;
+		Dtu_char = save_char;
+		if (t->type == OBJ_PLAYER)
+			dtu_char_update();
+	}
+	if (trials > 1)
+		dtu_spell_log("spelltest: '%s' level %d: mean damage %.2f over %d trials",spell_name(spell),level,(double)total / n_trials,n_trials);
 }

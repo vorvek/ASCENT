@@ -467,3 +467,69 @@ Check (`-hidden -mute -fixedfps 30 -noattack`, BANE, `-char SG0.SG` (thief/mage)
   round 1 of 1 (5); in another run a natural 1 misses.
 - `-origcombat`, the large skeleton: level 9 "8 dice with 0 sides add 0", the save
   succeeds, 18 damage in one hit; level 3 the save fails, 12 damage.
+
+## 11. Wizard spells of the third audit (Code)
+
+The wizard spell audit is `docs/audit/spells-wizard.md` (each spell with its case
+address and its rule after the table fixup).
+
+**The table fixup 0x1A344 is the 1.3 rule.** After each table read 0x1A344 writes
+fixed values into the spell records: names, class masks, levels, flags, range,
+radius and dice (D:\dev\DTU-Decomp `analysis/sweep/range1-gaps.md`, gap G1 and its
+appendix). Section 1 describes only its last step, the cast times. The port reads the
+table text; an override layer under `bm_tbl_get` ports the rest. The 1.3 rules of the
+wizard spells after the fixup:
+
+- **Fireball (0x8E55C) and Lightning Bolt (0x8EE76).** The fixup sets the fire dice of
+  spell 16 and the electric dice of spell 32 to 6 sides, 1 die, 0 per level. The cases
+  write min(L, 10) into the dice count (record +0x3E, 0x1B56B4; +0x47, 0x1B56BD), so
+  1.3 rolls Ld6, at most 10d6, a save for half: the AD&D rule. The table text alone
+  (0 sides, 6 per level) gives 6L. Fireball is AREA with radius 40 (flags 0x803).
+- **Magic Missile (0x8EED5).** The case passes level 1 in ECX (0x8EEEE) to 0x911AA. The
+  fixup sets dice 4 sides, 1 die, 1 per level: 1d4 + 1 for each missile, a save for
+  half. `damage_bonus=` of the line goes to a word 2 bytes before the record (the
+  reader 0x242F6) that no code reads; the fixup gives the +1 instead.
+- **Melf's Acid Arrows (0x8EFE0).** The fixup sets acid 4 sides, 2 dice, 0 per level;
+  the case writes 2 (L/3) + 2 into the count: (2 (L/3) + 2)d4 in one hit, a save for
+  half. Section 10 calls the 1.3 rule "4 L" from the table text; that is not the game.
+  `Dtu_fix_melf_acid` (the 2nd edition rule over rounds) stays; its `-origcombat` path
+  gives the 1.3 rule once the override layer is in.
+- **Melf's Minute Meteors (0x8F021).** Fire 4 sides, 1 die: 1d4 fire for each of
+  min(L, 5) meteors, a save for half.
+- **Knock.** Flags 2: no cast on the caster, so the spell fires a missile, and the wall
+  hit 0x26C2F calls the door function 0x7E859 with unlock 1. Checked with a test patch
+  that fires the missile: BANE, wall 84 (seg 488 side 4, a locked door), "Knock hits
+  seg 488 side 4". The table text (`self_cast_ok`) casts it on the caster: nothing.
+- **Chill Touch.** The fixup sets the cast on the caster (flags+1 |= 1). So 1.3 casts
+  it on the caster; `Dtu_fix_chill_touch` (section 8) gives the 1.3 result by default,
+  and its `-origcombat` path gives a missile that 1.3 never had.
+- **Area spells.** After the fixup Fear (radius 90), Haste (80) and Feather Fall (20)
+  are AREA around the caster (flags 0x103); Light (3), Continual Light (3), Dispel
+  Magic (60), Hold Person (40), Hold Undead (80), Scare (30), Sleep (60) and Slow (80)
+  fire a missile and act in an AREA where it lands (flags 3 or 0x803). The mage's
+  Dispel Magic is then no longer cast on the caster (section 8).
+- **Spells 17 and 51** become the cleric spells "Produce Fire" (level 4, fire 1d4 + L,
+  AREA radius 24) and "Find Traps" (level 2). They are not wizard spells.
+
+**Strength and Infravision (`Dtu_fix_spell_hours`, a defect).** 0x8FF5D computes
+L * 225 << 20 (L hours) and the Infravision case (L + 2) hours in 32 bits. From caster
+level 10 (Strength) and 8 (Infravision) the value wraps below 0 and the effect ends at
+once. The port also reads a duration of 0x3FFFFFFF (16383 s) or more as no end, so at
+levels 5 to 9 (Strength) and 3 to 7 (Infravision) the effect never ended. Corrected:
+no wrap, and the duration stops at 16383 seconds (4 hours 33 minutes), the longest
+timer below the no end value. `-origcombat` clears it. Checked: `-origcombat`
+Infravision L3 "no end", L8 -29536 s; corrected 16383 s for both.
+
+Kept differences from the manual and AD&D 2nd edition: Magic Missile has a save for
+half and one more missile at levels 2, 4, 6 and 8 (0x56FF6); Melf's Minute Meteors
+at most 5 meteors with no attack roll; Scare affects level 6 (the manual: level 6 or
+more is safe); Sleep spares level 4 and up.
+
+The test aid `-chartest FRAME:spelltest=SPELL.LEVEL.OBJ.TRIALS` (`dtu_spell_test`):
+the player casts SPELL at caster LEVEL on object OBJ (-1: the player; a spell cast on
+the caster acts on the player), with each missile of 0x56FF6 and the area of an AREA
+line, and no cast time, slot or flight. The `-objlog` lines `spelltest:` give the hit
+points, the effects and their times. TRIALS 1 or more puts the target and the
+character back after each trial and prints the mean damage; 0 keeps one cast, so
+the later rounds of acid run. The player cannot be the target of a spell that skips
+the caster (Hold Person, Sleep). Rary's Mnemonic Enhancer opens its choice box.

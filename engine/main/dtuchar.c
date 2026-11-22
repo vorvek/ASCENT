@@ -2785,7 +2785,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
-// activate,
+// spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
 // str=STRENGTH.PERCENT,
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
@@ -2853,6 +2853,11 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
 	else if (!strcmp(cmd, "castby") && b >= 0 && b < MAX_OBJECTS)		// test: castby=SPELL.OBJ, on the player
 		dtu_spell_cast_on(a, ConsoleObject, &Objects[b]);
+	else if (!strcmp(cmd, "spelltest")) {		// test: spelltest=SPELL.LEVEL.OBJ.TRIALS (dtuspell.h)
+		int obj = -1, trials = 1;
+		sscanf(value ? value : "", "%d.%d.%d.%d", &a, &b, &obj, &trials);
+		dtu_spell_test(a, b, obj, trials);
+	}
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
