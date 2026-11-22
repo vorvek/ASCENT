@@ -553,6 +553,18 @@ static void script_talk(object *obj)
 	free(r.s);
 }
 
+// ASCENT: 1 (default): the corrected rule for the scenery of the Yawning
+// Portal (level 0). YPINN.LVL has script ids in the field +0x1B0 of 11
+// chairs, tables and beds (objects 5, 8, 12 to 15, 19 to 22 and 26: ids 7,
+// 2, 4 and 3, the scripts of the guests and of Sabrae). The same values are
+// at the same object numbers of other level files (CRYPTS, CLAN1, ...),
+// where add_npc (0xAC431) clears them because the ids are not ids of those
+// levels: they are old data of the level editor. In level 0 the ids are
+// valid, so in 1.3 the use action on such a chair runs the conversation of
+// a guest with the chair as the speaker. With the fix the scenery of level
+// 0 does not talk. Option -origtalk.
+int Dtu_fix_furniture_talk = 1;
+
 // 0xAC155: the use action on an object. A ray of 30.0 along the view with
 // the object test. A creature with no script: "No response...". A dead
 // object: nothing. Else the script of the object runs (the talk).
@@ -583,8 +595,10 @@ int dtu_use_object(object *player)
 	fate = find_vector_intersection(&fq,&hit);
 	if (fate == HIT_WALL)
 		p1 = hit.hit_pnt;
-	else if (fate != HIT_NONE)
+	else if (fate != HIT_NONE) {
+		dtu_obj_log("talk: the use ray has fate %d",fate);
 		return 0;
+	}
 
 	for (i=1;i<=Highest_object_index;i++) {
 		object *o = &Objects[i];
@@ -594,19 +608,49 @@ int dtu_use_object(object *player)
 			continue;
 		if (vm_vec_dist_quick(&o->pos,&player->pos) > i2f(60))
 			continue;
-		d = dtu_object_hit_test(&ip,&player->pos,&p1,F1_0/4,o,player);
+		// ASCENT: scenery: the object test of the query of the executable
+		// (0x3EE70, dtu_body_query_test of fvi.c): the body cylinder of a
+		// model with the body box, else a sphere of the object size. The
+		// Flamesword of FLAME (object 3, size 16.0) hangs 8.5 above the head
+		// of a player in front of its altar (object 2): the player is in its
+		// sphere, so the use action finds the sword, not the altar. The
+		// test of fvi.c for a moving body (a cylinder for each object, a
+		// guess) found the altar first.
+		if (o->type == OBJ_DRESSING)
+			d = dtu_body_query_test(&ip,&player->pos,&p1,0,0,o);
+		else
+			d = dtu_object_hit_test(&ip,&player->pos,&p1,F1_0/4,o,player);
 		if (d > 0 && d < best_d) {
 			best_d = d;
 			best = i;
 		}
 	}
-	if (best < 0)
+	if (best < 0) {
+		dtu_obj_log("talk: no object on the use ray (fate %d)",fate);
 		return 0;
+	}
 	obj = &Objects[best];
 
-	if ((obj->dtu.m_1b0 & DTU_SCRIPT_MASK) == 0 || obj->type != OBJ_ROBOT) {
-		if (obj->type != OBJ_ROBOT)
+	// ASCENT: 0xAC1B5 has no test of the object type: each object with a
+	// script id that the use ray finds runs its script. The altar of Cyric
+	// (IBBALAR object 2, scenery, script 294) and the Flamesword (FLAME
+	// object 3, scenery, script 322 of the level fixes, the end of the game)
+	// are used this way. Dtu_fix_furniture_talk: see its definition.
+	if (obj->type != OBJ_ROBOT) {
+		if ((obj->dtu.m_1b0 & DTU_SCRIPT_MASK) == 0 || (obj->flags & OF_DESTROYED)) {
+			dtu_obj_log("talk: obj %d %s (type %d) has no script",best,dtu_object_name(obj),obj->type);
 			return 0;
+		}
+		if (Dtu_fix_furniture_talk && Current_level_num == 1) {
+			dtu_obj_log("talk: obj %d %s: the script id %d of scenery of the inn is not used",best,dtu_object_name(obj),
+				obj->dtu.m_1b0 & DTU_SCRIPT_MASK);
+			return 0;
+		}
+		dtu_obj_log("talk: obj %d %s (type %d) script %d",best,dtu_object_name(obj),obj->type,obj->dtu.m_1b0 & DTU_SCRIPT_MASK);
+		dtu_script_talk(obj);
+		return 1;
+	}
+	if ((obj->dtu.m_1b0 & DTU_SCRIPT_MASK) == 0) {
 		if (obj->shields >= F1_0 && !(obj->flags & OF_DESTROYED))
 			HUD_init_message(TXT_NO_RESPONSE);
 		dtu_obj_log("talk: obj %d %s has no script",best,dtu_object_name(obj));

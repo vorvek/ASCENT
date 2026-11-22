@@ -373,6 +373,9 @@ void dtu_char_add_hit_points(int points);
 // each class. Checks for a new level. A creature gives score_value= of its
 // table line (add_points_to_score() of gauges.c calls this).
 void dtu_char_award_xp(int points);
+// ASCENT: statement 9F of the scripts (0xAB71A, 0x8BA3A): the level (from
+// 1) with the experience and the hit points of that level.
+void dtu_char_set_level(int level);
 // 0 for 5 seconds after a drop (0x31A0E): the pick up code must not take
 // an item while this is 0.
 int dtu_char_pickup_allowed(void);

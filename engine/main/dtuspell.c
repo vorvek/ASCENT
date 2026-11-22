@@ -275,6 +275,13 @@ static int object_level(object *obj,int spell)
 	return 1;
 }
 
+// ASCENT: the caster level for statement EB of the scripts (0x90CEF with
+// the object of the script as the caster, dtuscript.c)
+int dtu_spell_object_level(object *obj,int spell)
+{
+	return object_level(obj,spell);
+}
+
 static int monster_flags(object *obj)
 {
 	return (obj && obj->type == OBJ_ROBOT && obj->id < N_robot_types) ? Monster_info[obj->id].flags : 0;

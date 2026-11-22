@@ -177,7 +177,7 @@ DTU_WEAK void dtu_hook_warp_command(int code, int value)
 	last_level = Level_index;
 }
 
-DTU_WEAK int dtu_hook_warp_allowed(int from_level, int to_level)
+DTU_WEAK int dtu_hook_warp_allowed(int from_level, int to_level, int dest_seg, int value)
 {
 	return 1;
 }
@@ -1217,41 +1217,24 @@ static int well_pay_passage(int from_level, int to_level)
 	return 1;
 }
 
-// Returns 0 for no warp, 1 for a warp and 2 for a command line.
-static int warp_check(int segnum, object *obj)
+// The part of the warp check 0x59C3C after the read of the line: the check
+// of WEAPON 13 (0x59D2D, the hook; "checked" is 1 when the hook has run
+// for this warp), the passage gold, the warp inside the level and the
+// change of level. segnum is the segment of the line, -1 for the line that
+// statement DB of a script writes (0xAA385). Returns 0 for no warp and 1
+// for a warp.
+static int warp_go(int segnum, object *obj, int dest_level, int dest_seg, int value, int checked)
 {
-	int dest_level, dest_seg, value;
 	char file[20], *dot;
 	ubyte *data;
 	int size;
-
-	if (!dtu_warp_lookup(segnum, &dest_level, &dest_seg, &value))
-		return 0;
-
-	// 0x59D0C: a command line and a warp inside the level fire the floor
-	// triggers of the segment first. A warp to another level goes to the
-	// check at 0x59D2D first (an item of the player, monsters near the
-	// player), which the port does not have.
-	// The executable runs this function again in each frame while the
-	// player is in a segment with a line (see dtu_trig_frame()), so the
-	// floor triggers of such a segment fire in each frame.
-	if (obj == ConsoleObject && (!Dtu_fix_trigger_repeat || obj->segnum != Floor_trigger_seg))
-		dtu_trig_touch(obj->segnum, WBOTTOM, DTU_ACT_PLAYER, obj);
-
-	if (dest_level == -2) {
-		// The music commands (codes 100 to 198) are run by dtumusic.c,
-		// which reads the warp file for them itself.
-		if (dest_seg < 100 || dest_seg > 198)
-			dtu_hook_warp_command(dest_seg, value);
-		return 2;
-	}
 
 	if (dest_level < 0 || dest_level >= Last_level) {
 		tlog("warp: no level %d", dest_level);
 		return 0;
 	}
 
-	if (!dtu_hook_warp_allowed(Level_index, dest_level))
+	if (!checked && dest_level != Level_index && !dtu_hook_warp_allowed(Level_index, dest_level, dest_seg, value))
 		return 0;
 
 	if (obj == ConsoleObject && !well_pay_passage(Level_index, dest_level))
@@ -1279,9 +1262,13 @@ static int warp_check(int segnum, object *obj)
 	tlog("Warping to %s, Segment %d.", Level_names[dest_level], dest_seg);
 	printf("Warping to %s, Segment %d.\n", Level_names[dest_level], dest_seg);
 	// ASCENT: the session log names the line of the warp file
-	dtulog_event("Level change: DTU.WRP line %d,%d %d,%d %d (%s segment %d to %s segment %d)",
-		Level_index, segnum, dest_level, dest_seg, value,
-		Level_names[Level_index], segnum, Level_names[dest_level], dest_seg);
+	if (segnum >= 0)
+		dtulog_event("Level change: DTU.WRP line %d,%d %d,%d %d (%s segment %d to %s segment %d)",
+			Level_index, segnum, dest_level, dest_seg, value,
+			Level_names[Level_index], segnum, Level_names[dest_level], dest_seg);
+	else
+		dtulog_event("Level change: script command teleport PC (DB) of %s to %s segment %d",
+			Level_names[Level_index], Level_names[dest_level], dest_seg);
 
 	// 0x5A059 to 0x5A070: the executable waits for the sounds and stops
 	// them. The load of a level replaces the sound data.
@@ -1290,9 +1277,96 @@ static int warp_check(int segnum, object *obj)
 	// ASCENT: 0x5A0F6 closes the doors and 0x5A756 saves the state of the
 	// level, 0x5AA75 restores the state of the new level (dtustate.c).
 	dtustate_warp_leave(Level_index);
-	StartNewLevelSub(dest_level+1, 1);
-	dtustate_warp_enter(dest_level);
+	{
+		// ASCENT: 0x59C47 copies the player object before the change of
+		// level, and 0xBB563 puts fields of the copy into Objects[0] after
+		// it: the flags, the hit points, +0x80, +0x82, the life time, the
+		// effect bits +0x88, the effect values and end times from +0x90 to
+		// +0xF8 and +0x1B0. Without it the spell effects of the player
+		// (Haste, Strength, Invisibility, ...) ended at each warp. The port
+		// copies the whole block +0x80 to +0xF8 (0xBB563 leaves out a few
+		// fields of it); the hit points are kept by the character record.
+		dtu_object_info keep = ConsoleObject->dtu;
+		fix keep_life = ConsoleObject->lifeleft;
+		object *pl;
+
+		// The level start takes the hit points from the character record,
+		// which the frame code of dtuchar.c writes: a change of this frame
+		// (the prison sequence of a script) must be in it.
+		if (Dtu_char.created) {
+			Dtu_char.pa.hit_points = dtu_char_hit_points();
+			Dtu_char.pa.gold = Dtu_gold;
+		}
+		StartNewLevelSub(dest_level+1, 1);
+		dtustate_warp_enter(dest_level);
+		pl = ConsoleObject;
+		pl->dtu.m_80 = keep.m_80;
+		pl->dtu.m_82 = keep.m_82;
+		pl->dtu.m_88 = keep.m_88;
+		memcpy(pl->dtu.m_8c, keep.m_8c, sizeof(keep.m_8c));
+		memcpy(pl->dtu.m_c0, keep.m_c0, sizeof(keep.m_c0));
+		memcpy(pl->dtu.m_c8, keep.m_c8, sizeof(keep.m_c8));
+		memcpy(pl->dtu.m_e0, keep.m_e0, sizeof(keep.m_e0));
+		memcpy(pl->dtu.m_e8, keep.m_e8, sizeof(keep.m_e8));
+		pl->dtu.m_1b0 = keep.m_1b0;
+		pl->lifeleft = keep_life;
+	}
 	warp_place_player(dest_seg, value);
+	return 1;
+}
+
+// Returns 0 for no warp, 1 for a warp and 2 for a command line.
+static int warp_check(int segnum, object *obj)
+{
+	int dest_level, dest_seg, value;
+
+	if (!dtu_warp_lookup(segnum, &dest_level, &dest_seg, &value))
+		return 0;
+
+	// 0x59D0C: a command line and a warp inside the level fire the floor
+	// triggers of the segment first. A warp to another level goes to the
+	// check at 0x59D2D first (WEAPON 13 in the hand, the hook of
+	// warp_go()); the executable fires the floor triggers after it.
+	// The executable runs this function again in each frame while the
+	// player is in a segment with a line (see dtu_trig_frame()), so the
+	// floor triggers of such a segment fire in each frame.
+	if (obj == ConsoleObject && (!Dtu_fix_trigger_repeat || obj->segnum != Floor_trigger_seg))
+		dtu_trig_touch(obj->segnum, WBOTTOM, DTU_ACT_PLAYER, obj);
+
+	if (dest_level == -2) {
+		// The music commands (codes 100 to 198) are run by dtumusic.c,
+		// which reads the warp file for them itself.
+		if (dest_seg < 100 || dest_seg > 198)
+			dtu_hook_warp_command(dest_seg, value);
+		return 2;
+	}
+	return warp_go(segnum, obj, dest_level, dest_seg, value, 0);
+}
+
+// ASCENT: the warp of a script. Statement DB (0xAA1FC) writes a warp line
+// into the segment of the player, calls the warp check 0x59C3C and puts
+// the old line back. So the warp of a script has the check of WEAPON 13,
+// the passage gold of the well and the save and restore of the level
+// states, as a warp line of DTU.WRP. Level 0xFFFF becomes -2 (0xAA33A): a
+// command line with the segment as the command. "checked" is 1 when the
+// check of WEAPON 13 is done. The floor triggers of the segment of the
+// player, which 0x59EB9 fires again here, are not fired a second time.
+// Returns 0 for no warp, 1 for a warp and 2 for a command.
+int dtu_trig_script_warp(int dest_level, int dest_seg, int value, int checked)
+{
+	if (!ConsoleObject)
+		return 0;
+	if (dest_level == 0xFFFF || dest_level == -2) {
+		if (dest_seg < 100 || dest_seg > 198)
+			dtu_hook_warp_command(dest_seg, value);
+		return 2;
+	}
+	if (!warp_go(-1, ConsoleObject, dest_level, dest_seg, value, checked))
+		return 0;
+	// as after a warp in dtu_trig_frame(): the lines of the destination
+	// segment act in the next frame
+	Last_player_seg = -1;
+	Floor_trigger_seg = -1;
 	return 1;
 }
 

@@ -288,6 +288,9 @@ int dtu_spell_player_save_number(int category);
 
 // The caster level of the player for a spell (0x91EC1).
 int dtu_spell_player_level(int spell);
+// ASCENT: the caster level of an object (the player: 0x91EC1, a creature:
+// 0xAE3BB, another object: 1), for statement EB of the scripts.
+int dtu_spell_object_level(object *obj, int spell);
 
 // The armor class of the player with the spell effects (0xB05C5): stage 0
 // before the dexterity adjustment, 1 after it. dtu_char_update() calls it.

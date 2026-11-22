@@ -65,6 +65,10 @@ int dtu_script_talk(object *obj);
 // 1 while a script waits (the world does not move).
 int dtu_script_waiting(void);
 
+// ASCENT: test commands of -chartest (tools/questtest.py)
+void dtu_script_test_warp(int level, int seg);
+void dtu_script_test_prison(void);
+
 // Called by GameLoop after the controls and the clock. Reads the keys of
 // the conversation window and goes on with a waiting script. Returns 1
 // while a script waits: the caller does not move the objects in this frame.

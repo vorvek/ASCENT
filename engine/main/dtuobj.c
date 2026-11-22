@@ -239,6 +239,7 @@ typedef struct dtu_ai_local {
 	fix		spell_time;				// object +0x1C0
 	ubyte		fired;					// corrected rule: the shot of this attack animation is done
 	ubyte		gated;					// made by a trap (matcen_creator -1 of the executable)
+	ubyte		script_walk;			// ASCENT: statement E5 of a script: 1 on the path, 2 at its end
 	ubyte		prev_fov;				// corrected rule: the player was in the field of view (visibility 2 of Descent 1)
 	// 0x123EF: the executable has one counter, position and direction for
 	// all creatures (0x13A79C, 0x13A790, 0x167184)
@@ -1124,6 +1125,8 @@ void dtu_objects_init(void)
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))
 		Dtu_fix_guild_peace = 0;
+	if (FindArg("-origtalk"))				// ASCENT: dtuhook.c
+		Dtu_fix_furniture_talk = 0;
 	if (FindArg("-setuplog"))
 		Setup_log = 1;
 	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
@@ -5574,6 +5577,12 @@ static int path_fix_applies(object *obj)
 
 	if (!Dtu_fix_path_follow)
 		return 0;
+	// ASCENT: a creature on a path of statement E5 of its script walks to
+	// the points of the path. With the rule of the executable it walks to
+	// the player and does not come to the end of the path, where its script
+	// goes on (the blocks CB E7 of the scripts 21 and 60).
+	if (ail->script_walk == 1)
+		return 1;
 	return is_hostile(obj) || ail->mode == DAIM_RUN_FROM || obj->ctype.ai_info.behavior == DAIB_PATROL;
 }
 
@@ -5665,6 +5674,7 @@ static void follow_path(object *obj,int visible,fix dist_to_player)
 	int pseg = ConsoleObject->segnum, beh = aip->behavior, k;
 	vms_vector goal;
 
+
 	if (ail->path_len == 0) {
 		if (afraid) {
 			create_n_segment_path(obj,5,-1);
@@ -5721,6 +5731,17 @@ static void follow_path(object *obj,int visible,fix dist_to_player)
 		ail->path_idx = 0;
 
 	if (!path_advance(obj,&goal)) {
+		// ASCENT: the end of a path of statement E5 of a script (0x174C3
+		// in the path index function 0x17411: the creature turns back on
+		// the path and, with script flag 0, the script runs in mode 2).
+		// The port stops the creature here; dtuscript.c runs the script.
+		if (ail->script_walk == 1) {
+			ail->script_walk = 2;
+			ail->mode = DAIM_STILL;
+			vm_vec_zero(&obj->mtype.phys_info.velocity);
+			dtu_obj_log("obj %d %s: at the end of the path of its script (seg %d)",(int)(obj-Objects),dtu_object_name(obj),obj->segnum);
+			return;
+		}
 		// 0x179C0: the end of the path
 		if (ail->mode == DAIM_HOME) {
 			ail->mode = DAIM_STILL;
@@ -6484,6 +6505,12 @@ void dtu_do_ai_frame(object *obj)
 			 ail->path[ail->path_len-1] == ConsoleObject->segnum && (ail->mode == DAIM_CHASE_OB || ail->mode == DAIM_FOL_PATH) &&
 			 ail->target != -1 && !Player_is_dead && !Dtu_player_dead)
 			ail->activity = 2;
+		// ASCENT: a creature on a path of statement E5 of its script stays
+		// active to the end of the path (a port decision: the wake test fails
+		// for a creature that walks away from the player, and the script
+		// waits for the end of the path).
+		if (ail->activity == 0 && ail->script_walk == 1)
+			ail->activity = 2;
 		if (ail->activity == 0) {
 			ail->anim_start = GameTime + FrameTime;
 			aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
@@ -6847,6 +6874,80 @@ void dtu_do_ai_frame(object *obj)
 ubyte *dtu_script_anger(object *obj)
 {
 	return &Ail[obj-Objects].awareness;
+}
+
+// ASCENT: the end of the prison sequence of the scripts (0xAA61E to
+// 0xAA661, dtuscript.c): behavior 0x80 and AI mode 0 for a creature of
+// THIEF2; the new guard also has the player as its target (+0x1A2 = 0).
+void dtu_script_prison_guard(object *obj,int set_target)
+{
+	if (obj->type != OBJ_ROBOT)
+		return;
+	obj->ctype.ai_info.behavior = DAIB_GUARD;
+	Ail[obj-Objects].mode = DAIM_STILL;
+	if (set_target)
+		Ail[obj-Objects].target = 0;
+}
+
+// ASCENT: statement E5 of the scripts (walk a path, dtuscript.c). 0xAA74E
+// for each segment of the statement: the segment is the station (+0x14C)
+// and the goal (ai_local +0x06) of the creature and create_path (0x16FD9)
+// makes the path to it, so the path of the last segment stays. 0xAA810
+// after the list: no target, AI mode 2 (follow the path), the bits 0x30 of
+// ai_local +0x05 and the morale (A + B) / 2.
+void dtu_script_walk_segment(object *obj,int seg)
+{
+	if (obj->type != OBJ_ROBOT || seg < 0 || seg > Highest_segment_index)
+		return;
+	obj->ctype.ai_info.hide_segment = seg;
+	Ail[obj-Objects].goal_segment = seg;
+	create_path(obj);
+}
+
+void dtu_script_walk_start(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	if (obj->type != OBJ_ROBOT)
+		return;
+	ail->target = -1;
+	ail->mode = DAIM_FOL_PATH;
+	ail->flags |= 0x30;
+	if (obj->id < N_robot_types)
+		ail->morale = (Monster_info[obj->id].ai_values[0][Difficulty_level] + Monster_info[obj->id].ai_values[1][Difficulty_level]) / 2;
+	ail->script_walk = 1;
+	dtu_obj_log("obj %d %s: walks a path of %d segments to seg %d for its script",(int)(obj-Objects),dtu_object_name(obj),
+		ail->path_len,ail->goal_segment);
+}
+
+// 0: the creature is not on a path of a script. 1: it walks. 2: it is at
+// the end of the path (the state goes back to 0).
+int dtu_script_walk_state(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	if (obj->type != OBJ_ROBOT)
+		return 0;
+	if (ail->script_walk == 2) {
+		ail->script_walk = 0;
+		return 2;
+	}
+	if (ail->script_walk == 1 && (ail->mode != DAIM_FOL_PATH || ail->path_len < 2)) {
+		// another rule of the AI took the creature off the path
+		ail->script_walk = 0;
+		return 0;
+	}
+	return ail->script_walk;
+}
+
+// ASCENT: the test of the warp check at 0x59DF2 (WEAPON 13 in the hand,
+// dtuscript.c): the flee value A of the creature (Robot_info +0x80 for the
+// difficulty) is below its morale (ai_local +0x28).
+int dtu_script_creature_brave(object *obj)
+{
+	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	return Monster_info[obj->id].ai_values[0][Difficulty_level] < Ail[obj-Objects].morale;
 }
 
 // ASCENT: 0xA9418, a script makes the object hostile: chase mode, goal

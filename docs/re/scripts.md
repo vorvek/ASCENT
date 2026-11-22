@@ -668,14 +668,27 @@ Settings (globals in dtuscript.c):
   values without items, so the next change of the equipment keeps the
   change. The executable changes only the values with items.
 - `Dtu_script_walk_teleport` (1, a port decision): `E5` moves the object to
-  the last segment of the path at the end of the run and then runs mode 2,
-  because the port has no access to the AI paths.
+  the last segment of the path at the end of the run and then runs mode 2.
+  0 (`-scriptwalk`): the creature gets the path of the AI (0xAA74E) and the
+  script runs in mode 2 at its end; the creature did not move in the test,
+  see ../audit/quests.md Q11.
+- `Dtu_fix_prison_items` (1): the prison sequence takes each item that is
+  not worn. The executable reads the wrong entry after it removes one
+  (`-origprison`).
+- `Dtu_fix_furniture_talk` (1, dtuhook.c): the scenery of level 0 does not
+  run the old script ids of its records (`-origtalk`).
 
-Not in the port: `EB` (no area spell function), the prison sequence of DB, the sounds of D4 to D7 at an object or
-side (they play at the player), the step turn of the speaker, the shading
-ramp, the scroll arrows of the window, the market stock of the
-rewards (weak hook `dtu_hook_market_add_stock`), global flag 0x81 of the WEAPON 13 talk,
-and condition 98 (the morale of dtuobj.c; the port uses 0 + 500).
+Since 2026-11-22 (../audit/quests.md): `EB` casts the area spell around the
+object, `9F` sets the level (0x8BA3A), D4 to D7 play and stop linked sounds,
+DB warps through the warp check (level states, the gold of the well, WEAPON
+13) and has the prison sequence, the end of a run kills scenery with no hit
+points (the Flamesword), the use action runs the script of scenery, and the
+talk with WEAPON 13 sets global flag 0x81.
+
+Not in the port: the walk of `E5` (see above), the step turn of the
+speaker, the scroll arrows of the window, the market stock of the rewards
+(weak hook `dtu_hook_market_add_stock`), and condition 98 (the morale; no
+script of GABE 1.3 uses it).
 
 Port additions to the window (not in the executable): the keys 1 to 9 and
 the keypad digits choose the reply with that number at once, and the mouse
@@ -703,8 +716,8 @@ table of YPINN: 0x26 "Skull Key", 0x6B to 0x79 "Violet Gem Key", 0x12 to
 1. The window draws: the scroll of long texts (which replies 0x3D498C and
    0x3D4984 show), the mouse.
 2. The meaning of `D8`, `D9` and the fourth value of D4 and D5.
-3. The prison sequence 0xAA3F3. (The end sequence of sound 0xFFFF is in
-   movies.md: the movie FLAM1.MVE.)
+3. (Closed: the prison sequence 0xAA3F3 is in ../re/quests.md section 3.
+   The end sequence of sound 0xFFFF is in movies.md: the movie FLAM1.MVE.)
 4. Script 0x1FD and its seven callers.
 5. The MISC items of the rewards by name, and the doors that they open in
    HUB2 to HUB4 (HUB1 and MISC 107 are in section 8).

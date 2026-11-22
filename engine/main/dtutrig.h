@@ -278,6 +278,9 @@ void dtu_hook_warp_command(int code, int value);
 // The conditions of a warp that the port does not have (gold for the
 // passage between the inn and the dungeon, the check at 0x59D2D). Return
 // 0 to stop the warp. Default: 1.
-int dtu_hook_warp_allowed(int from_level, int to_level);
+int dtu_hook_warp_allowed(int from_level, int to_level, int dest_seg, int value);
+
+// ASCENT: the warp of statement DB of a script (0xAA1FC, dtuscript.c)
+int dtu_trig_script_warp(int dest_level, int dest_seg, int value, int checked);
 
 #endif

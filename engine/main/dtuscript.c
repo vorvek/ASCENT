@@ -16,16 +16,12 @@
  * not move (game.c). A script that calls another (EE) keeps its state on a
  * stack, as the executable keeps it on its stack.
  *
- * Not in the port (the statements are read and logged):
- * - E5 (walk a path): the port has no access to the paths of the AI. The
- *   object is moved to the last segment of the path at the end of the run
- *   and the script runs in mode 2 (Dtu_script_walk_teleport).
- * - EB (spell at a segment): there is no area spell function in the port.
- * - The sounds of D4 to D7 at an object or a side: they are played at the
- *   player. (D3 sound 0xFFFF plays the movie FLAM1.MVE, dtumovie.c.)
- * - DB to segment 0xFFFF (the prison sequence 0xAA3F3).
+ * Not in the port:
  * - The turn of the object to the player in steps with frames between
  *   them (0xABE01): the port turns it at once.
+ * - The executable runs script 0x1FD (the talk of WEAPON 13) to its end
+ *   inside the warp check and the talk. The port goes on with the warp or
+ *   the talk in the frame in which that script ends (After_kind).
  */
 
 #include "dtulang.h"		// ASCENT: the language of the text
@@ -81,10 +77,30 @@ int Dtu_script_log = 0;
 // without items back, so the change is lost.
 int Dtu_fix_script_abilities = 1;
 
-// Port decision: E5 (walk) moves the object to the last segment of the
-// path at the end of the run, because the port cannot give the AI a path.
-// 0: the object stays and the statement does nothing.
+// E5 (walk). In the executable the creature gets a path of the AI to the
+// last segment of the statement (0xAA74E) and its script runs in mode 2 at
+// the end of the path (0x174FC). A creature that does not fly and is not
+// hostile walks to the player and not to the points of its path there
+// (0x17CFC), so the end of the path is not reached while the player
+// stands near: a defect of 1.3.
+// Dtu_script_walk_teleport 1 (default, a port decision): the creature is
+// moved to the last segment at the end of the run and the script runs in
+// mode 2 at once, so that a script that goes on in its segment block (CB
+// E7) cannot stop. 0 (option -scriptwalk): the creature gets the path
+// (dtuobj.c) and the script runs in mode 2 at its end; in the tests of
+// 2026-11-22 the kobold of script 21 stood still on its path, so this is
+// not the default.
 int Dtu_script_walk_teleport = 1;
+
+// 1 (default): the corrected rule of the prison sequence 0xAA3F3. The
+// executable takes entry i of the item list with 0xB6D24, which moves the
+// later entries down (0xB6F01), and then reads class, id and count at the
+// same place: the values of the next entry (or of the empty entry after
+// the last). Then it goes on with entry i + 1. So each second item that is
+// not worn is lost, a copy of the item after it goes to the thieves, and
+// that item stays with the player. With the fix each item that is not
+// worn goes to the thieves. Option -origprison.
+int Dtu_fix_prison_items = 1;
 
 // The anger byte (ai_local +0x00) and 0xA9418 are in dtuobj.c.
 ubyte *dtu_script_anger(object *obj);
@@ -194,6 +210,10 @@ void dtu_script_init(void)
 	}
 	if (FindArg("-scriptlog"))
 		Dtu_script_log = 1;
+	if (FindArg("-scriptwalk"))
+		Dtu_script_walk_teleport = 0;
+	if (FindArg("-origprison"))
+		Dtu_fix_prison_items = 0;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
 	// has the English text.
 	Gab_rlh = dtu_load_file("GABE.RLH", &Gab_rlh_size);
@@ -599,8 +619,26 @@ static uint Wait_until = 0;
 
 // A change of level of DB, done after the run
 static int Warp_level = -1, Warp_seg = -1, Warp_facing = 0;
+static int Warp_prison = 0;				// the warp of the prison sequence 0xAA3F3
+static int Warp_prison_now = 0;			// 1 while do_warp() runs that warp
+// ASCENT: what goes on after script 0x1FD (the talk of WEAPON 13) when it
+// had to wait: 1 the talk with an object (0xAC262), 2 a warp (0x59E9D)
+static int After_kind = 0, After_obj = -1, After_sig = 0;
+static int After_level = -1, After_seg = -1, After_value = 0, After_prison = 0;
+
+// dtuobj.c: behavior 0x80 and AI mode 0 of a creature (0xAA61E)
+void dtu_script_prison_guard(object *obj, int set_target);
+// dtuobj.c: 1 if the flee value A of the creature (Robot_info +0x80) is
+// below its morale (0x59DF2)
+int dtu_script_creature_brave(object *obj);
 // A run in mode 2 after a walk (Dtu_script_walk_teleport)
-static int Walk_obj = -1, Walk_sig = 0;
+static int Walk_obj = -1, Walk_sig = 0, Walk_seg = -1;
+static uint Walk_until = 0;
+
+// dtuobj.c: the path of statement E5
+void dtu_script_walk_segment(object *obj, int seg);
+void dtu_script_walk_start(object *obj);
+int dtu_script_walk_state(object *obj);
 
 static object *run_obj(sc_run *r)
 {
@@ -648,8 +686,24 @@ static void obj_kill(object *o)
 		dtu_damage_creature_direct(o, NULL, o->shields > 0 ? o->shields + F1_0 : F1_0);
 	else if (o->type == OBJ_PLAYER)
 		dtu_damage_player_direct(o, NULL, o->shields + F1_0);
+	else if (o->type == OBJ_DRESSING)
+		// ASCENT: 0xA6B62: scenery breaks. In FLAME object 3 (the
+		// Flamesword) ends the game here (0xA6AF8, 0xA6786).
+		dtu_break_dressing(o, NULL, 0);
 	else if (o != ConsoleObject)
 		o->flags |= OF_SHOULD_BE_DEAD;
+}
+
+// ASCENT: the end of a run (0xAC033, 0xAA2EE): an object with less than
+// 1.0 hit points is killed with 0xA6ACB. The executable has no test of the
+// type there: script 322 of FLAME sets the hit points of the Flamesword
+// (scenery, object 3) to 0 with the animation statement BC, and this kill
+// starts the end of the game. The port does it for creatures and scenery.
+static void kill_after_run(object *o)
+{
+	if (o && o->shields < F1_0 && (o->type == OBJ_ROBOT || o->type == OBJ_DRESSING) &&
+		 !(o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+		obj_kill(o);
 }
 
 // 0x5A5DE: the facing after a teleport
@@ -1529,20 +1583,32 @@ static void anim(sc_run *r, int state)
 	DTU_ANIM_FRAME(o) = Dtu_anim_first[state];
 }
 
-// D3 to D7: the port plays the sound at the player
-static void sound(int snd, int vol)
+// The volume of D3 to D5 (0xA9C59): 0x10000 / (11 - volume), volume 1 to 10
+static fix sound_volume(int vol)
 {
-	int volume;
-
 	if (vol < 1) vol = 1;
 	if (vol > 10) vol = 10;
-	volume = F1_0 / (10 - vol + 1);			// 0xA9C59: 0x10000 / (11 - volume)
-	if (snd == 0xFFFF) {
-		slog("sound 0xFFFF: the end sequence is not in the port");
-		return;
-	}
-	digi_play_sample(snd, volume);
+	return F1_0 / (10 - vol + 1);
 }
+
+// D3 (0xA97B3)
+static void sound(int snd, int vol)
+{
+	if (snd < 0 || snd >= MAX_SOUNDS)
+		return;
+	digi_play_sample(snd, sound_volume(vol));
+}
+
+// D4 (0xA9BE6): a sound at an object (0x2E627), "dist" is the distance in
+// whole units at which it is heard; with D9 it plays until D6 stops it
+static void sound_at_object(int snd, int vol, int objnum, int dist, int loop)
+{
+	if (snd < 0 || snd >= MAX_SOUNDS || !obj_num(objnum) || Objects[objnum].type == OBJ_NONE)
+		return;
+	digi_link_sound_to_object2(snd, objnum, loop, sound_volume(vol), i2f(dist));
+}
+
+static void prison_sequence(sc_run *r);
 
 // DB (0xAA1FC)
 static int teleport_player(sc_run *r)
@@ -1552,7 +1618,7 @@ static int teleport_player(sc_run *r)
 
 	slog("teleport PC to level %d seg %d facing %d", level, seg, facing);
 	if (seg == 0xFFFF) {
-		slog("the prison sequence 0xAA3F3 is not in the port");
+		prison_sequence(r);						// ASCENT: 0xAA3F3
 		return 0;
 	}
 	if (level == cur) {
@@ -1562,7 +1628,108 @@ static int teleport_player(sc_run *r)
 	Warp_level = level;
 	Warp_seg = seg;
 	Warp_facing = facing;
+	Warp_prison = 0;
 	return 0;
+}
+
+static int carries_nothing(object *o)
+{
+	return o->contains_type < 0 || o->contains_count <= 0;
+}
+
+// ASCENT: the prison sequence 0xAA3F3 (statement DB with segment 0xFFFF;
+// script 60 of THIEF1, the Shadow Thieves catch the player). The player
+// loses the gold and has 1 hit point, the hand is empty (0x43A5A(-3)), and
+// each item of the item list that is not worn (byte +0x0A of the entry is
+// 0) is taken: with one chance in two the object of the script carries it
+// if it carries nothing, else with one chance in two object 99 (the chest
+// of segment 635) if it is whole and carries nothing, else an item object
+// lies in one of eight segments in turn (table 0xA643F). Then the player
+// goes to level 7 (THIEF2), segment 612, facing west, and the rest of
+// 0xAA5BA runs there (prison_arrival). The key items (MISC 0x6B to 0x7C,
+// the list at P+0x18D4) are not in the item list and stay.
+static void prison_sequence(sc_run *r)
+{
+	static short segs[8] = { 297, 53, 65, 52, 331, 330, 329, 328 };		// 0xA643F
+	object *o = run_obj(r), *chest = obj_num(99);
+	int i, turn = 0, n_taken = 0;
+
+	slog("the prison sequence 0xAA3F3");
+	dtulog_event("Script: the prison sequence of the Shadow Thieves (0xAA3F3)");
+	Dtu_gold = 0;
+	Dtu_char.pa.gold = 0;
+	if (dtu_char_hit_points() > 1 && ConsoleObject)
+		dtu_damage_player_direct(ConsoleObject, NULL, i2f(dtu_char_hit_points() - 1));
+	if (dtu_char_hit_points() < 1)
+		dtu_char_add_hit_points(1 - dtu_char_hit_points());
+	dtu_char_set_current(-1);
+	for (i = 0; i < Dtu_n_inventory; i++) {
+		dtu_inv_item e = Dtu_inventory[i];
+		int count;
+
+		if (dtu_char_slot_of(i) >= 0)
+			continue;
+		dtu_inventory_remove(i, e.count > 0 ? e.count : 1);		// 0xB6D24: the entries after it move down
+		if (!Dtu_fix_prison_items) {
+			// the executable reads the entry that is now at this place
+			if (i >= Dtu_n_inventory)
+				continue;
+			e = Dtu_inventory[i];
+		} else
+			i--;
+		n_taken++;
+		count = e.count > 0 ? e.count : 1;
+		if (rand() % 2 == 0 && o && carries_nothing(o)) {
+			o->contains_type = e.type;
+			o->contains_id = e.id;
+			o->contains_count = count;
+			slog("prison: type %d id %d goes to obj %d", e.type, e.id, r->objnum);
+		} else if (rand() % 2 == 0 && !obj_dead(99) && chest && carries_nothing(chest)) {
+			chest->contains_type = e.type;
+			chest->contains_id = e.id;
+			chest->contains_count = count;
+			slog("prison: type %d id %d goes to obj 99", e.type, e.id);
+		} else if (segs[turn] <= Highest_segment_index) {
+			vms_vector c;
+
+			compute_segment_center(&c, &Segments[segs[turn]]);
+			if (dtu_create_item(e.type, e.id, count, segs[turn], &c) >= 0) {
+				slog("prison: type %d id %d lies in seg %d", e.type, e.id, segs[turn]);
+				turn = (turn + 1) % 8;
+			}
+		}
+	}
+	dtu_char_update();
+	slog("prison: %d items taken", n_taken);
+	Warp_level = 7;
+	Warp_seg = 0x264;
+	Warp_facing = 1;
+	Warp_prison = 1;
+}
+
+// The end of 0xAA3F3, in THIEF2 after the warp: a creature of critter row
+// 0xA5 comes into segment 631, facing west, with script 0x37, the player
+// as its target, behavior 0x80, AI mode 0 and not hostile. Object 20 gets
+// behavior 0x80, AI mode 0 and is not hostile.
+static void prison_arrival(void)
+{
+	object *g;
+	int rid = critter_robot(0xA5), n = -1;
+
+	if (rid >= 0 && 0x277 <= Highest_segment_index)
+		n = dtu_gate_in_creature(rid, 0x277);
+	slog("prison: guard critter 0xA5 (robot %d) is obj %d", rid, n);
+	if (n >= 0) {
+		g = &Objects[n];
+		set_facing(g, 1);
+		g->dtu.m_1b0 = 0x37;
+		dtu_script_prison_guard(g, 1);
+	}
+	g = obj_num(20);
+	if (g && g->type == OBJ_ROBOT) {
+		g->dtu.m_1b0 &= ~SB_FLAG(2);
+		dtu_script_prison_guard(g, 0);
+	}
 }
 
 // The critter table (0xA504A): index -> name. The table of the NPC rows
@@ -1752,30 +1919,37 @@ static int sc_exec(sc_run *r)
 			break;
 		}
 		case 0xD4: {
-			int snd = num(r), vol = num(r), on = num(r);
-			num(r);
-			if (peek(r) == 0xD9) r->p++;
+			int snd = num(r), vol = num(r), on = num(r), dist = num(r), loop = 0;
+			if (peek(r) == 0xD9) { r->p++; loop = 1; }
 			slog("sound %d volume %d at obj %d", snd, vol, on);
-			sound(snd, vol);
+			sound_at_object(snd, vol, on, dist, loop);
 			break;
 		}
 		case 0xD5: {
-			int snd = num(r), vol = num(r), seg = num(r);
-			rd(r);
-			num(r);
-			if (peek(r) == 0xD9) r->p++;
-			slog("sound %d volume %d at seg %d", snd, vol, seg);
-			sound(snd, vol);
+			int snd = num(r), vol = num(r), seg = num(r), side = rd(r) - 0xAD, dist = num(r), loop = 0;
+			if (peek(r) == 0xD9) { r->p++; loop = 1; }
+			slog("sound %d volume %d at seg %d side %d", snd, vol, seg, side);
+			// ASCENT: 0xA9CBE: at the center of the segment (0x4AD9C, 0x2E94B)
+			if (snd >= 0 && snd < MAX_SOUNDS && seg <= Highest_segment_index && side >= 0 && side < 6) {
+				vms_vector c;
+				compute_segment_center(&c, &Segments[seg]);
+				digi_link_sound_to_pos2(snd, seg, side, &c, loop, sound_volume(vol), i2f(dist));
+			}
 			break;
 		}
 		case 0xD6:
 			v = num(r);
-			slog("stop the sound of obj %d (not in the port)", v);
+			slog("stop the sound of obj %d", v);
+			if (obj_num(v))
+				digi_kill_sound_linked_to_object(v);		// ASCENT: 0xA9DD2, 0x2E816
 			break;
-		case 0xD7:
-			num(r); num(r); rd(r);
-			slog("stop the sound of a side (not in the port)");
+		case 0xD7: {
+			int snd = num(r), seg = num(r), side = rd(r) - 0xAD;
+			slog("stop sound %d of seg %d side %d", snd, seg, side);
+			if (seg <= Highest_segment_index && side >= 0 && side < 6)
+				digi_kill_sound_linked_to_segment(seg, side, snd);		// ASCENT: 0xA9DEC, 0x2EB77
 			break;
+		}
 		case 0xDA: {								// 0xA9F70
 			int seg = num(r), facing = rd(r) - 0xA9;
 			slog("teleport NPC to seg %d facing %d", seg, facing);
@@ -1794,10 +1968,9 @@ static int sc_exec(sc_run *r)
 					o->dtu.m_1b0 = (o->dtu.m_1b0 & ~SB_FLAG(0)) | (r->after_flag0 ? SB_FLAG(0) : 0);
 					if (Cur_mode == 0 && ((o->dtu.m_1b0 & SB_TALKS) >> SB_TALKS_SHIFT) < 15)
 						o->dtu.m_1b0 += 1u << SB_TALKS_SHIFT;
-					if (o->shields < F1_0 && o->type == OBJ_ROBOT)
-						obj_kill(o);
 				}
 				dtu_dlg_close();
+				kill_after_run(o);
 			}
 			break;
 		case 0xDC: {								// 0xA9FDF
@@ -1868,7 +2041,12 @@ static int sc_exec(sc_run *r)
 			if (!at_end(r)) r->p++;
 			r->after_flag0 = 1;
 			r->walk_seg = last;
-			slog("walk to seg %d (the AI path is not in the port)", last);
+			slog("walk to seg %d", last);
+			// ASCENT: 0xAA74E and 0xAA810: the path of the AI (dtuobj.c)
+			if (!Dtu_script_walk_teleport && o && o->type == OBJ_ROBOT && last >= 0) {
+				dtu_script_walk_segment(o, last);
+				dtu_script_walk_start(o);
+			}
 			break;
 		}
 		case 0xEA: {								// 0xAA86C
@@ -1881,7 +2059,14 @@ static int sc_exec(sc_run *r)
 		}
 		case 0xEB: {
 			int spell = num(r), seg = num(r);
-			slog("spell %d from obj %d (segment %d): the area spell is not in the port", spell, r->objnum, seg);
+			slog("area spell %d from obj %d (segment %d)", spell, r->objnum, seg);
+			// ASCENT: 0xAA8B3: 0x90CEF(spell, object, object), the area
+			// effect around the object of the script. The segment is only
+			// checked against the highest segment (a defect of the
+			// executable with no fix: the place of the effect that the
+			// scripts were tested with is the object).
+			if (spell <= 50 && seg <= Highest_segment_index && o)
+				dtu_spell_area(spell, &o->pos, o->segnum, o, dtu_spell_object_level(o, spell));
 			break;
 		}
 		case 0xEC:								// 0xAA8E4
@@ -2089,15 +2274,17 @@ static void finish_run(sc_run *r)
 	}
 	if (r->result) {
 		dtu_dlg_close();
-		if (o && o->shields < F1_0 && o->type == OBJ_ROBOT)
-			obj_kill(o);
+		kill_after_run(o);
 	}
 	if (r->temp && o)
 		o->flags |= OF_SHOULD_BE_DEAD;						// 0xA74D0 deletes the temporary object
-	if (o && r->walk_seg >= 0 && Dtu_script_walk_teleport) {
-		move_to_segment(o, r->walk_seg, -1);
+	if (o && r->walk_seg >= 0) {
+		// ASCENT: the object walks (statement E5); dtu_script_frame()
+		// runs the script in mode 2 at the end of the path
 		Walk_obj = r->objnum;
 		Walk_sig = o->signature;
+		Walk_seg = r->walk_seg;
+		Walk_until = dtu_trap_clock() + 6000;
 	}
 	slog("end of script %d of obj %d", r->id, r->objnum);
 }
@@ -2152,6 +2339,26 @@ void dtu_script_run_id(int id)
 	continue_runs();
 }
 
+// WEAPON 13 (Drowslayer) is the item in the hand (0x59D2D, 0xAC206)
+static int weapon13_in_hand(void)
+{
+	return Dtu_char.current.n >= 0 && Dtu_char.current.n < Dtu_n_inventory &&
+		Dtu_inventory[Dtu_char.current.n].type == OBJ_WEAPON && Dtu_inventory[Dtu_char.current.n].id == 13;
+}
+
+// The name flag 0x08 of Robot_info +0xD9, set by the table reader at
+// 0x1F448 when the name of the creature starts with "rf", "rm", "av" or
+// "dro" (docs/re/ai.md).
+static int drow_type(object *o)
+{
+	char *n;
+
+	if (!o || o->type != OBJ_ROBOT || o->id >= N_robot_types)
+		return 0;
+	n = Monster_info[o->id].name;
+	return !sc_strcmpi(n, "rf", 2) || !sc_strcmpi(n, "rm", 2) || !sc_strcmpi(n, "av", 2) || !sc_strcmpi(n, "dro", 3);
+}
+
 // 0xAC155 from the test of the script id on
 int dtu_script_talk(object *obj)
 {
@@ -2171,18 +2378,104 @@ int dtu_script_talk(object *obj)
 	if (N_run > 0)
 		return 1;
 	// 0xAC206: WEAPON 13 in the hand
-	if (Dtu_char.current.n >= 0 && Dtu_char.current.n < Dtu_n_inventory &&
-		 Dtu_inventory[Dtu_char.current.n].type == OBJ_WEAPON && Dtu_inventory[Dtu_char.current.n].id == 13) {
-		// Global flag 0x81 is set when the robot has bit 8 of Robot_info
-		// +0xD9; the port does not know that field and does not set it.
+	if (weapon13_in_hand()) {
+		// Global flag 0x81 (0xAC22E): the creature has the name flag of
+		// Robot_info +0xD9 (drow_type).
 		slog("talk with WEAPON 13 in the hand: script 0x1FD");
+		if (drow_type(obj))
+			dtu_script_set_gflag(0x81, 1);
 		dtu_script_set_gflag(0x8F, 1);
 		dtu_script_run_id(0x1FD);
-		if (N_run > 0 || dtu_script_gflag(0xA0))
+		if (N_run > 0) {
+			// ASCENT: the talk goes on when script 0x1FD has ended
+			After_kind = 1;
+			After_obj = obj - Objects;
+			After_sig = obj->signature;
+			return 1;
+		}
+		if (dtu_script_gflag(0xA0))
 			return 1;
 	}
 	dtu_script_run(obj, DTU_RUN_TALK);
 	return 1;
+}
+
+// ASCENT: the check of the warp check 0x59C3C at 0x59D2D (the strong
+// definition of the hook of dtutrig.c). With WEAPON 13 (Drowslayer) in the
+// hand, a warp to another level sets global flags for script 0x1FD: 0x8C
+// when the level has a creature with the name flag (drow_type) that is not
+// dead, 0x8B when such a creature has none of the effects 0x4004100, has
+// not flag 3 and its flee value A (Robot_info +0x80) is below its morale;
+// 0x93 to 0x98 for the levels 0, 0x14, 0x15, 0x16, 0x1B and 0x20; 0x8E.
+// Then script 0x1FD runs, and global flag 0xA0 after it drops the warp.
+// Returns 1 if the warp goes on now. When the script waits for a reply
+// the warp goes on in dtu_script_frame().
+int dtu_hook_warp_allowed(int from_level, int to_level, int dest_seg, int value)
+{
+	static const ubyte level_flag[6][2] = { {0, 0x93}, {0x14, 0x94}, {0x15, 0x95}, {0x16, 0x96}, {0x1B, 0x97}, {0x20, 0x98} };
+	int i;
+
+	if (!ConsoleObject || N_run > 0 || !weapon13_in_hand())
+		return 1;
+	for (i = 1; i <= Highest_object_index; i++) {
+		object *o = &Objects[i];
+
+		if (o->type != OBJ_ROBOT || !drow_type(o) || (o->flags & 7))
+			continue;
+		dtu_script_set_gflag(0x8C, 1);
+		if (!(o->dtu.m_88 & 0x4004100) && !(o->dtu.m_1b0 & SB_FLAG(3)) && dtu_script_creature_brave(o))
+			dtu_script_set_gflag(0x8B, 1);
+	}
+	for (i = 0; i < 6; i++)
+		if (level_flag[i][0] == from_level)
+			dtu_script_set_gflag(level_flag[i][1], 1);
+	dtu_script_set_gflag(0x8E, 1);
+	slog("warp with WEAPON 13 in the hand: script 0x1FD");
+	dtu_script_run_id(0x1FD);
+	if (N_run > 0) {
+		After_kind = 2;
+		After_level = to_level;
+		After_seg = dest_seg;
+		After_value = value;
+		After_prison = Warp_prison_now;
+		return 0;
+	}
+	if (dtu_script_gflag(0xA0)) {
+		slog("WEAPON 13: global flag 0xA0, the warp is dropped");
+		return 0;
+	}
+	return 1;
+}
+
+// ASCENT: test commands of -chartest (tools/questtest.py): the warp of
+// statement DB, and the prison sequence with the first creature that has
+// script 60 as the object of the script.
+void dtu_script_test_warp(int level, int seg)
+{
+	if (N_run > 0 || Warp_level >= 0)
+		return;
+	Warp_level = level;
+	Warp_seg = seg;
+	Warp_facing = 2;
+	Warp_prison = 0;
+}
+
+void dtu_script_test_prison(void)
+{
+	sc_run r;
+	int i;
+
+	if (N_run > 0 || Warp_level >= 0)
+		return;
+	memset(&r, 0, sizeof(r));
+	r.objnum = -1;
+	for (i = 1; i <= Highest_object_index; i++)
+		if (Objects[i].type == OBJ_ROBOT && (Objects[i].dtu.m_1b0 & SB_SCRIPT) == 60) {
+			r.objnum = i;
+			r.signature = Objects[i].signature;
+			break;
+		}
+	prison_sequence(&r);
 }
 
 int dtu_script_waiting(void)
@@ -2233,19 +2526,25 @@ void dtu_script_level_start(void)
 	Wait_timer = 0;
 	Warp_level = -1;
 	Walk_obj = -1;
+	After_kind = 0;
 	dtu_dlg_close();
 	dtu_dlg_reset_view();
 	dtu_scroll_reset();
 }
 
 // A warp of DB to another level (0x59C3C after the run)
-static void do_warp(void)
+static void do_warp(int checked)
 {
 	char file[20], *dot;
 	ubyte *data;
-	int size, level = Warp_level, seg = Warp_seg, facing = Warp_facing;
+	int size, level = Warp_level, seg = Warp_seg, facing = Warp_facing, prison = Warp_prison;
 
 	Warp_level = -1;
+	Warp_prison = 0;
+	if (level == 0xFFFF) {
+		dtu_trig_script_warp(level, seg, facing, checked);		// 0xAA33A: a command of DTU.WRP
+		return;
+	}
 	if (level < 0 || level >= Last_level) {
 		slog("teleport: no level %d", level);
 		return;
@@ -2261,12 +2560,12 @@ static void do_warp(void)
 	}
 	free(data);
 	printf("Script: warping to %s, segment %d.\n", Level_names[level], seg);
-	// ASCENT: the session log names the command of the script
-	dtulog_event("Level change: script command teleport PC (DB) of %s to %s segment %d",
-		Level_names[Current_level_num - 1], Level_names[level], seg);
-	digi_stop_all();
-	StartNewLevelSub(level + 1, 1);
-	move_to_segment(ConsoleObject, seg, facing);
+	// ASCENT: 0xAA3A5: the warp check 0x59C3C does the warp, with the
+	// check of WEAPON 13, the passage gold and the level states (dtutrig.c)
+	Warp_prison_now = prison;
+	if (dtu_trig_script_warp(level, seg, facing, checked) == 1 && prison)
+		prison_arrival();
+	Warp_prison_now = 0;
 }
 
 int dtu_script_frame(void)
@@ -2279,12 +2578,44 @@ int dtu_script_frame(void)
 		dtu_script_level_start();
 	}
 	if (Warp_level >= 0 && N_run == 0)
-		do_warp();
+		do_warp(0);
+	// ASCENT: script 0x1FD has ended: the talk or the warp that waited
+	if (After_kind && N_run == 0 && Warp_level < 0) {
+		int kind = After_kind;
+
+		After_kind = 0;
+		if (dtu_script_gflag(0xA0))
+			slog("WEAPON 13: global flag 0xA0, the %s is dropped", kind == 1 ? "talk" : "warp");
+		else if (kind == 1) {
+			object *o = obj_num(After_obj);
+			if (o && o->signature == After_sig && !obj_dead(After_obj))
+				dtu_script_run(o, DTU_RUN_TALK);
+		} else if (dtu_trig_script_warp(After_level, After_seg, After_value, 1) == 1 && After_prison)
+			prison_arrival();
+	}
 	if (Walk_obj >= 0 && N_run == 0) {
 		object *o = obj_num(Walk_obj);
-		Walk_obj = -1;
-		if (o && o->signature == Walk_sig && (o->dtu.m_1b0 & SB_FLAG(0)))
-			dtu_script_run(o, DTU_RUN_PATH);				// 0x174FC
+		int state = 0, arrived = 0;
+
+		if (!o || o->signature != Walk_sig || obj_dead(Walk_obj))
+			Walk_obj = -1;
+		else {
+			state = dtu_script_walk_state(o);
+			if (state == 2)
+				arrived = 1;
+			else if (Dtu_script_walk_teleport || state == 0 || dtu_trap_clock() >= Walk_until) {
+				// the default; or the creature has no path, left it or did
+				// not reach its end in 60 seconds
+				slog("walk: obj %d is moved to seg %d (state %d)", Walk_obj, Walk_seg, state);
+				move_to_segment(o, Walk_seg, -1);
+				arrived = 1;
+			}
+		}
+		if (arrived) {
+			Walk_obj = -1;
+			if (o->dtu.m_1b0 & SB_FLAG(0))
+				dtu_script_run(o, DTU_RUN_PATH);				// 0x174FC
+		}
 	}
 	if (N_run == 0)
 		return 0;
