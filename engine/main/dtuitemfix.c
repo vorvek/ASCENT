@@ -17,6 +17,7 @@
 
 int Dtu_fix_item_names = 1;
 int Dtu_rulebook_items = 0;
+int Dtu_fix_item_stats = 1;
 
 #define W	DTU_IK_WEAPON
 #define A	DTU_IK_ARMOR
@@ -145,19 +146,41 @@ const char *dtu_itemfix_name(int kind, int id, const char *name)
 	return name;
 }
 
-static const dtu_item_rule *find_rule(int kind, int id, const char *name, int flag, const char *key)
+// Defects of the 1.3 tables (Dtu_fix_item_stats, on by default, -origitems
+// gives 1.3). The Warhammer is a plain weapon of 2 gold that does 3d10, more
+// than each other weapon. The Warhammer +1 does 1d6+1 and the older tables
+// of the game (BASE.BIN, DEMO.BIN, MINES1.BIN) have 1d6: the correction is 1d6.
+// "Rulebook items" has priority where it has a row for the same key.
+static const dtu_item_rule Defects[] = {
+	{ W, 28, "Warhammer", 0, "#damage_dice", "3", "1", "the Warhammer +1 (1d6+1) and the older tables (1d6)" },
+	{ W, 28, "Warhammer", 0, "damage_dice", "10", "6", "the Warhammer +1 (1d6+1) and the older tables (1d6)" },
+};
+#define N_DEFECTS	((int) (sizeof(Defects) / sizeof(Defects[0])))
+
+static const dtu_item_rule *find_in(const dtu_item_rule *t, int n, int kind, int id, const char *name, int flag, const char *key)
 {
 	int i;
 
-	if (!Dtu_rulebook_items || !key)
-		return NULL;
-	for (i = 0; i < N_RULES; i++) {
-		const dtu_item_rule *r = &Rules[i];
+	for (i = 0; i < n; i++) {
+		const dtu_item_rule *r = &t[i];
 
 		if (r->kind == kind && r->id == id && r->flag == flag && word_is(r->key, key) && name_is(r->name13, name))
 			return r;
 	}
 	return NULL;
+}
+
+static const dtu_item_rule *find_rule(int kind, int id, const char *name, int flag, const char *key)
+{
+	const dtu_item_rule *r = NULL;
+
+	if (!key)
+		return NULL;
+	if (Dtu_rulebook_items)
+		r = find_in(Rules, N_RULES, kind, id, name, flag, key);
+	if (!r && Dtu_fix_item_stats)
+		r = find_in(Defects, N_DEFECTS, kind, id, name, flag, key);
+	return r;
 }
 
 const char *dtu_itemfix_value(int kind, int id, const char *name, const char *key)

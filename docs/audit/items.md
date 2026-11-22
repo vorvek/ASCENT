@@ -128,6 +128,7 @@ line numbers of the table section.
 | Setting | Default | Off or on by | Effect |
 |---|---|---|---|
 | `Dtu_fix_item_names` | on | `-origitems` | The seven names N1 to N7. |
+| `Dtu_fix_item_stats` | on | `-origitems` | Defects of the item tables: the Warhammer (R1) does 1d6 in place of 3d10. The evidence is the Warhammer +1 (1d6+1), the price of 2 gold and the 1d6 of the older tables. "Rulebook items" changes it to 1d4+1. |
 | `Dtu_rulebook_items` | off | "Rulebook items" of the Improvements menu, `RulebookItems=` of `ascent.cfg`, `-rulebookitems`, `-norulebookitems` (one run), `-origitems`, `-noimprovements` | The values R1 to R9: `bm_tbl_get` and `bm_tbl_has_flag` return the rulebook value of the item line. |
 
 The default of "Rulebook items" is off because it changes the balance: a

@@ -33,6 +33,8 @@
 
 // 1: the corrected item names are shown. -origitems: the names of 1.3.
 extern int Dtu_fix_item_names;
+// 1: the defects of the item tables of 1.3 are corrected (Warhammer 3d10 to 1d6). -origitems: 1.3.
+extern int Dtu_fix_item_stats;
 // 1: the item lines have the values of the rulebooks. See the top.
 extern int Dtu_rulebook_items;
 

@@ -71,7 +71,11 @@ int main(void)
 	Dtu_fix_item_names = 1;
 
 	// The rulebook values
+	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "damage_dice"), "6"), "defect: Warhammer d6");
+	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "#damage_dice"), "1"), "defect: Warhammer 1 die");
+	Dtu_fix_item_stats = 0;
 	check(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "damage_dice") == NULL, "off: no value");
+	Dtu_fix_item_stats = 1;
 	check(dtu_itemfix_flag(DTU_IK_ARMOR, 2, "Shield", "thief_use") == -1, "off: no word");
 	Dtu_rulebook_items = 1;
 	check(str_is(dtu_itemfix_value(DTU_IK_WEAPON, 28, "Warhammer", "#damage_dice"), "1"), "Warhammer: 1 die");
