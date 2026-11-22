@@ -6017,6 +6017,12 @@ int dtu_objects_check(char *msg, int size)
 // Turn undead (0xADC46, dtucombat.c): the result for one creature. The
 // executable sets the flags, calls 0xA6505 (the creature starts again,
 // also when it is active) and the morale function 0x10ADF.
+void dtu_creature_morale(object *obj)
+{
+	if (obj && obj->type == OBJ_ROBOT && obj->id < N_robot_types)
+		morale_check(obj);
+}
+
 void dtu_creature_turn(object *obj, int turned)
 {
 	dtu_ai_local *ail;

@@ -376,10 +376,17 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 			damage = dtu_char_weapon_damage(weapon,creature);
 			if (roll == 2)
 				damage += dtu_char_weapon_damage(weapon,creature);		// a critical hit: a second roll
-			// 0x29E3D: Chill Touch of the attacker
-			if ((player->dtu.m_88 & DTU_FX_CHILL_TOUCH) && !dtu_spell_save(creature,DTU_SAVE_SPELL)) {
-				if (creature_is_undead(creature))
-					dtu_spell_hit(14,creature,player,dtu_spell_player_level(5));	// Fear (guess: the effect of case 14)
+			// 0x29E3D: Chill Touch of the attacker (the swing is a melee hit), a
+			// failed save (category 4): an undead creature
+			// gets Fear (bit 8, the timer +0xAC) for 1d4 plus the caster
+			// level (0x91EC1 of spell 5) minutes and the morale function
+			// 0x10ADF runs; another creature takes 1d4 more
+			if ((player->dtu.m_88 & DTU_FX_CHILL_TOUCH) &&
+				 !dtu_spell_save(creature,DTU_SAVE_SPELL)) {
+				if (creature_is_undead(creature)) {
+					dtu_spell_set_effect(creature,DTU_FX_FEAR,i2f(60 * (rand() % 4 + 1 + dtu_spell_player_level(5))),0,0);
+					dtu_creature_morale(creature);
+				}
 				else
 					damage += rand() % 4 + 1;
 			}

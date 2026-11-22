@@ -350,6 +350,8 @@ int dtu_objects_check(char *msg, int size);
 // no target), turned 0 makes it hostile (a failed turn, or "unable to
 // affect"). Both start the creature again and check its morale.
 void dtu_creature_turn(object *obj, int turned);
+// 0x10ADF: the morale function of a creature
+void dtu_creature_morale(object *obj);
 
 // 0xA6505: makes a creature active. With make_hostile it attacks the player.
 void dtu_creature_wake(object *obj, int make_hostile);
