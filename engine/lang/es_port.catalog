@@ -1321,10 +1321,6 @@ id: port.s_i_ss
 en: %s %i %ss!
 tr: ¡%s %i (%s)!
 
-id: port.you_set_off_a_fire_trap
-en: You set off a fire trap!!!
-tr: ¡¡¡Has activado una trampa de fuego!!!
-
 id: port.you_lost_your_eyesight
 en: You lost your eyesight!
 tr: ¡Has perdido la vista!
@@ -1332,4 +1328,8 @@ tr: ¡Has perdido la vista!
 id: port.you_lost_your_hearing
 en: You lost your hearing!
 tr: ¡Has perdido el oído!
+
+id: port.you_set_off_a_fire_trap
+en: You set off a fire trap!!!
+tr: ¡¡¡Has activado una trampa de fuego!!!
 
