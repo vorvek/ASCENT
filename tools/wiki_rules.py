@@ -533,6 +533,10 @@ WORN = {
 FIXES = [
     ("Dtu_fix_multiclass_thac0", "-origchar", "Two classes take the better THAC0, not the worse."),
     ("Dtu_fix_haste_attack", "-origcombat", "Haste halves the swing time; 1.3 makes it longer."),
+    ("Dtu_fix_missile_rate", "-origcombat", "Arrows, bolts and thrown weapons wait their Speed from one "
+     "shot to the next (Haste halves it, Slow doubles it); in 1.3 each key press fires."),
+    ("Dtu_fix_speed_items", "-origcombat", "The Short Bow of Speed in the bow slot and the Short Sword of "
+     "Quickness in the hand give Haste, as their table lines say; in 1.3 they have no power."),
     ("Dtu_fix_chill_touch", "-origcombat", "Chill Touch acts on the caster; 1.3 fires it as a missile "
                                            "and it does nothing."),
     ("Dtu_fix_magic_tint", "-origobj", "The blue tint of Detect Magic is drawn on all magic things in "
@@ -1155,7 +1159,7 @@ class Pages:
             if r.has("bow") or r.has("crossbow"):
                 note = ""
                 if r.get("pc_spell1"):
-                    note = "Its name promises speed, but it has no other power."
+                    note = "Haste while it is in the bow slot: the arrows fire twice as fast (1.3: no power)."
                 launch.append([r.name(), "bow" if r.has("bow") else "crossbow", signed(r.num("to_hit_bonus", 0)),
                                classes_of(r), r.num("value", 0), note])
         head = ["Weapon", "Damage", "To hit", "Damage type", "Magic", "Speed", "F/T/M/C", "Value", "Notes"]
@@ -1170,8 +1174,9 @@ class Pages:
             "Arrows and bolts add the bonus of the bow or crossbow to the attack and the damage. A "
             "critical hit (20) rolls the damage twice. A backstab multiplies it ([[Classes]]).",
             "- Speed: the time of a melee swing. Every swing lasts at least 1.0 s, so a faster weapon "
-            "swings at 1.0 s; Slow doubles the time. A thrown or missile weapon fires once per that "
-            "time while you hold the key; a new key press can fire sooner.",
+            "swings at 1.0 s. For a thrown or missile weapon it is the time from one shot to the next "
+            "(in 1.3 each key press fires). Haste halves the time and Slow doubles it. The level and "
+            "the class do not change it: no character gets more attacks.",
             "- Damage type: the game has no slashing, piercing or bludgeoning damage and no weapon "
             "sizes. It has fire dice, which fire resistance halves.",
             "- Magic: a creature that resists weapons takes no damage from a weapon that is not magic.",
@@ -1318,7 +1323,7 @@ class Pages:
             r = self.W[i]
             wrows.append([r.name(), WEAPON_NOTES.get(i, "")])
         r = self.O[100]
-        wrows.append([r.name(), "A bow with +2 to hit and damage. Its name promises speed, but it has no other power."])
+        wrows.append([r.name(), "A bow with +2 to hit and damage. Haste while it is in the bow slot (1.3: no power)."])
         out += ["## Weapons with powers", "", "Damage and classes: [[Weapons]].", "",
                 md_table(["Weapon", "Power"], wrows), ""]
         sp = ", ".join(self.S[s].name() for s in self.c["spider_spells"])
@@ -1427,7 +1432,7 @@ class Pages:
             "",
             "The spell rules: [[Wizard Spells|Wizard-Spells]].",
             "",
-            "The Short Sword of Quickness is not a wand: it is a plain magic sword ([[Weapons]]).",
+            "The Short Sword of Quickness is not a wand: it gives Haste while it is in the hand ([[Weapons]]).",
             "",
             pages_note(),
             "",
@@ -1715,7 +1720,7 @@ WEAPON_NOTES = {
     45: "A backstab with a hit roll of 19 or 20 does +3 to 6 damage.",
     54: "In the hand: Chill Touch, Resist Fire, Feather Fall, Free Action, Jump, Detect Magic, Haste, "
         "Improved Invisibility and Infravision (of use to a human only) with no end, and Find/Remove Traps 95%.",
-    69: "Its name promises speed, but it has no other power.",
+    69: "Haste while it is in the hand (1.3: no power).",
     70: "Against undead: double damage on d100 <= 5 x (level of the undead - 4); otherwise the undead "
         "is destroyed.",
     71: "+2 to hit and +2 fire damage against a regenerating target, +4 and +4 against undead.",
@@ -1778,12 +1783,21 @@ SOURCES_FINDINGS = [
      "The lines have no `damage_dice`. The `$WEAPON` reader 0x209F3 calls 0x207E7 first, which sets "
      "sides 6 and count 1 (0x208D7, 0x208DB). 0x2AF5E rolls them (0x2B077) and adds `damage_bonus` "
      "(0x2B1E7)."],
-    ["The Short Sword of Quickness never casts Haste.",
+    ["The Short Sword of Quickness never casts Haste and has no Haste in 1.3.",
      "`PC_spell` (Weapon_info+0x3A) is read only in 0x56A0D (0x56B1C, 0x56CA4). Its one caller 0x44300 "
      "calls it only for a spell (type 0x11) or a weapon with `attack_type` 0 (0x44423 to 0x44445). The "
      "sword is a melee weapon (default `attack_type` 1)."],
-    ["The Short Bow of Speed has no Haste.",
-     "`pc_spell1` of an `$OBJECT` line is stored only (docs/formats/tbl.md)."],
+    ["The Short Bow of Speed has no Haste in 1.3.",
+     "The line has `pc_spell1=21`. The image has no keyword `pc_spell1` (`PC_spell` 0x1121AD, `PC_spell_2` "
+     "0x112742), and the code of the worn items 0xAFB55 does not read the bow slot. ASCENT gives the "
+     "Haste (docs/re/combat.md, section A8)."],
+    ["Arrows, bolts and thrown weapons have no wait between shots in 1.3.",
+     "The fire timer of 0x56A0D starts again when the function was not called in the last two frames "
+     "(0x56BB0), and each shot ends the request, which needs a new key press. `fire_wait` is read "
+     "only at 0x4421B (melee swing) and 0x56C01 (this timer)."],
+    ["No class or level gives more attacks.",
+     "The melee gate 0x41E36 reads the game time, the time of the last attack 0x13B74B, the swing "
+     "time of the model and the Haste bit (0x41EC3). 0x13B74B has no other reference."],
     ["Gem of Curing: one use at the start, one more for each mission.",
      "0x3891B: the use counter P+0x1D4D73 must be <= 0x8445A(), the mission number 0x13E588 (0 at a "
      "new game, 0x82BC7; the next mission at Khelben, 0x83E5E). 0x389E0 adds 1. No other code writes "
@@ -1850,7 +1864,7 @@ RULE_SOURCES = [
     ["Rest place: again after 300 s", "0x3E1F6"],
     ["Armor class order and limits", "0xAFB55, armor table 0x145C04"],
     ["Melee swing max(fire_wait, 1.0) s, Slow doubles it", "0x441E9"],
-    ["Missile fire rate fire_wait (default 0.25 s, 0x207E7)", "0x56A0D"],
+    ["Missile fire rate fire_wait (default 0.25 s, 0x207E7): the timer of 1.3 never limits it", "0x56A0D, 0x56BB0"],
     ["Weapon resistant creatures and the magic flag", "0x29D9D"],
     ["Thrown and other missiles take the crossbow bonus; arrows the bow bonus", "0x2AB0A"],
     ["Critical hit rolls twice; fumble drop", "0x29A9C, 0xAE837"],

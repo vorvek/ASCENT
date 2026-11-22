@@ -2147,9 +2147,15 @@ static int hand_spell(int *source)
 		*source = 1;
 		return e->id;
 	}
+	// ASCENT: only a weapon with attack_type 0 is a wand: 0x44300 calls
+	// 0x56A0D, the one reader of PC_spell, for a spell or for such a weapon
+	// (0x44423 to 0x44445). Before this the Short Sword of Quickness
+	// (melee, pc_spell=21) cast Haste at the first attack and was used up
+	// like a wand with one charge.
 	if (e && e->type == OBJ_WEAPON && e->id < N_weapon_types) {
 		char v[16];
-		if (bm_tbl_get(Weapon_item_info[e->id].record,"pc_spell",v,sizeof(v)) && atoi(v) >= 0 && spell_ok(atoi(v))) {
+		if (bm_tbl_get(Weapon_item_info[e->id].record,"attack_type",v,sizeof(v)) && !stricmp(v,"PROJECTILE") &&
+			 bm_tbl_get(Weapon_item_info[e->id].record,"pc_spell",v,sizeof(v)) && atoi(v) >= 0 && spell_ok(atoi(v))) {
 			*source = 2;
 			return atoi(v);
 		}

@@ -39,6 +39,7 @@
 #include "dtuspell.h"	// ASCENT: the spell effects of the armor class and the slots of a rest
 #include "dtuthief.h"
 #include "dtucombat.h"	// ASCENT: turn undead of the Spider Piece 0x12
+#include "dtuatk.h"		// ASCENT: the items with Haste (Dtu_fix_speed_items)
 #include "newmenu.h"
 #include "digi.h"
 #include "automap.h"
@@ -81,6 +82,7 @@ static int Spell_repair_pending;
 int Dtu_fix_wizardry_ring = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
+int Dtu_fix_speed_items = 1;
 int Dtu_backstab = 0;
 int Dtu_auto_choice = -1;
 static int Dtu_last_attack_roll = 0;
@@ -216,7 +218,7 @@ static void read_options(void)
 	if (FindArg("-origchar"))
 		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = 0;
 	if (FindArg("-origcombat"))
-		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = 0;
+		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -498,6 +500,26 @@ static int worn_item_bits(void)
 		bits |= 0x2b | 0x1380;
 		if (Dtu_char.pa.race == 0)
 			bits |= 0x40;
+	}
+	// ASCENT: Dtu_fix_speed_items. The line of the Short Bow of Speed has
+	// pc_spell1=21 (Haste). The executable has no such keyword and 0xAFB55
+	// does not read the bow slot. The line of the Short Sword of Quickness
+	// has pc_spell=21; the executable reads PC_spell only for a weapon with
+	// attack_type 0 (0x44300).
+	e = ref_entry(Dtu_char.slot[DTU_SLOT_BOW]);
+	if (e) {
+		item_info *it = item_entry(e->type, e->id);
+
+		if (it)
+			bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell1", -1), Dtu_fix_speed_items);
+	}
+	e = ref_entry(Dtu_char.current);
+	if (e && e->type == OBJ_WEAPON) {
+		dtu_item_data d;
+		item_info *it = item_entry(e->type, e->id);
+
+		if (it && dtu_item_get(e->type, e->id, &d) && d.melee)
+			bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell", -1), Dtu_fix_speed_items);
 	}
 	return bits;
 }

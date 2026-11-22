@@ -11,7 +11,7 @@ set(MAIN_SOURCES
   robot.c vclip.c effects.c weapon.c powerup.c mglobal.c hash.c
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
-  lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
+  lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuatk.c dtuspell.c dtuthief.c
   dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuscroll.c dtuthiefpts.c dtuopts.c
   dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c dtuitemfix.c)
 
@@ -73,6 +73,12 @@ add_executable(test_fvi_math test_fvi_math.c)
 target_include_directories(test_fvi_math PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_fvi_math PRIVATE d_common d_fix)
 add_test(NAME test_fvi_math COMMAND test_fvi_math)
+
+# ASCENT: the attack timing rules of the player (dtuatk.c, combat.md A8)
+add_executable(test_dtuatk test_dtuatk.c dtuatk.c)
+target_include_directories(test_dtuatk PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(test_dtuatk PRIVATE d_common d_fix)
+add_test(NAME test_dtuatk COMMAND test_dtuatk)
 
 add_executable(test_data_io test_data_io.c)
 target_include_directories(test_data_io PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
