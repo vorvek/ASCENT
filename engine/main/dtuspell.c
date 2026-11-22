@@ -616,6 +616,22 @@ static int fx_set(object *obj,int mask,fix duration)
 	return 1;
 }
 
+// 0x29F3E (a weapon hits a creature), 0x2A4FB (a weapon hits the player),
+// 0x913AF (spell damage on a creature): with Armor (bit 0) the damage is
+// taken from the pool +0x90 as well (the hit points take it in full); a
+// pool below 1.0 becomes 0, and the next 0x9002C ends the effect with
+// "Armor expired." and 0xAFB55 for the player.
+void dtu_spell_armor_hit(object *obj,fix damage)
+{
+	if (!obj || !(obj->dtu.m_88 & DTU_FX_ARMOR) || damage <= 0)
+		return;
+	obj->dtu.m_8c[1] -= damage;
+	if (obj->dtu.m_8c[1] < F1_0)
+		obj->dtu.m_8c[1] = 0;
+	dtu_spell_log("spell: the Armor pool of obj %d %s takes %.1f, left %.1f",(int)(obj-Objects),target_name(obj),
+		f2fl(damage),f2fl(obj->dtu.m_8c[1]));
+}
+
 // The end of an effect (the end actions of 0x9002C)
 static void fx_end(object *obj,int b)
 {
@@ -652,6 +668,7 @@ static void fx_end(object *obj,int b)
 	if (obj->type == OBJ_PLAYER) {
 		HUD_init_message("%s expired.",Fx_name[b]);
 		dtu_char_update();
+		dtu_spell_log("spell: the player has armor class %d",dtu_char_armor_class());
 	}
 	dtu_spell_log("spell: effect %s of obj %d %s ends at %.2f",Fx_name[b],(int)(obj-Objects),target_name(obj),f2fl(GameTime));
 }
@@ -812,8 +829,10 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 		dtu_spell_interrupt(target,1);		// 0x913A7, 0x917D5
 	if (target->type == OBJ_ROBOT)
 		dtu_spell_creature_event(target,DTU_CSC_SPELL_HIT);		// 0x91332
-	if (target->dtu.m_88 & DTU_FX_ARMOR)
-		target->dtu.m_8c[1] -= i2f(dmg);		// the Armor pool (0x913AF)
+	// the Armor pool of a creature (0x913AF; the branch of the player has no
+	// such step)
+	if (target->type == OBJ_ROBOT)
+		dtu_spell_armor_hit(target,i2f(dmg));
 
 	if (target->type == OBJ_ROBOT) {
 		sound_at(spell_int(spell,"monster_hit_sound",-1),target->segnum,&target->pos,F1_0/2);
@@ -1065,10 +1084,29 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			heal(target,rnd(8),spell);
 			fx_set(target,DTU_FX_BLESS,(L+1)*MINUTE);
 			break;
-		case 2:		// Armor: a pool of 8 + L hit points, armor class 6
-			if (!fx_set(target,DTU_FX_ARMOR,0))
+		case 2:		// Armor (0x8D4E7): bit 0 and a pool of 8 + L hit points
+			// (+0x90), armor class 6 at most. No timer: 0x9002C ends it when
+			// weapon damage has taken the pool (dtu_spell_armor_hit).
+			if (target->dtu.m_88 & DTU_FX_ARMOR)
 				break;
+			target->dtu.m_88 |= DTU_FX_ARMOR;
 			target->dtu.m_8c[1] = i2f(8 + L);
+			// The message (0x8D524) goes to the message box when the player
+			// is the target or the caster (0x8CEAE; its perception test for
+			// two creatures is not in the port): "%s %s %d armor hit
+			// points." (0x12D928) with "You have" or "<name> has" on the
+			// caster himself, else "%d armor hit points cast on %s by %s."
+			// (0x12D943) with "You" for the player.
+			if (target->type == OBJ_PLAYER || (caster && caster->type == OBJ_PLAYER)) {
+				char t[40], c[40];
+				strncpy(t,target->type == OBJ_PLAYER ? "You" : dtu_object_display_name(target),sizeof(t)-1); t[sizeof(t)-1] = 0;
+				strncpy(c,!caster || caster->type == OBJ_PLAYER ? "You" : dtu_object_display_name(caster),sizeof(c)-1); c[sizeof(c)-1] = 0;
+				if (self || caster == target)
+					HUD_init_message("%s %s %d armor hit points.",t,target->type == OBJ_PLAYER ? "have" : "has",8 + L);
+				else
+					HUD_init_message("%d armor hit points cast on %s by %s.",8 + L,t,c);
+			}
+			dtu_spell_log("spell: effect Armor on obj %d %s, pool %d hit points",(int)(target-Objects),target_name(target),8 + L);
 			break;
 		case 3:		// Bless: 6 rounds
 			fx_set(target,DTU_FX_BLESS,i2f(360));

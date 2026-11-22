@@ -393,8 +393,10 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 
 	Dtu_backstab = 0;
 	hp0 = creature->shields;
-	if (damage > 0)
+	if (damage > 0) {
+		dtu_spell_armor_hit(creature,i2f(damage));		// 0x29F3E: the Armor pool
 		dealt = dtu_damage_creature_direct(creature,player,i2f(damage));
+	}
 	alive = creature->shields >= F1_0 && !(creature->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED));
 
 	dtu_obj_log("combat: player %s obj %d %s: result %d against AC %d, damage %d, hp %d -> %d%s",
@@ -1175,6 +1177,7 @@ int dtu_combat_target_hint(void)
 }
 
 int dtu_combat_view_state(void) { return View_state; }
+int dtu_combat_attack_pending(void) { return Request; }
 int dtu_combat_view_frame(void) { return View_frame; }
 int dtu_combat_view_model(void) { return View_model; }
 

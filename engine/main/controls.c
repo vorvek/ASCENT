@@ -796,7 +796,7 @@ void dtu_read_controls(void)
 			for (i = 1; i <= DTU_N_HOT_KEYS; i++) {
 				int k = (h + i + DTU_N_HOT_KEYS) % DTU_N_HOT_KEYS;
 				if (dtu_char_hot_key_item(k) >= 0 && k != h) {
-					dtu_char_select_hot_key(k);
+					dtu_char_press_hot_key(k);
 					break;
 				}
 			}

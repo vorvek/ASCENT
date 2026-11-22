@@ -276,6 +276,15 @@ void dtu_char_select_hot_key(int key);			// the keys 1 to 0: the item or the spe
 int dtu_char_hot_key_spell(int key);
 int dtu_char_hot_key_item(int key);
 int dtu_char_hot_key_in_hand(int key);
+// 0x43A5A with its tests (the keys 1 to 0, a click on a box, Cycle Weapon):
+// nothing in an attack state; sound 3000 while the attack key waits for its
+// attack or cast, for a box with no entry, for arrows or bolts without the
+// launcher, and for the box that was chosen last; an empty box gives the
+// empty hand. dtu_char_select_hot_key() has no tests.
+void dtu_char_press_hot_key(int key);
+// The box that was chosen last (0x13AD15), or a negative number; and its reset.
+int dtu_char_last_hot_key(void);
+void dtu_char_forget_hot_key(void);
 // A click on a box with a held spell (0x304D6). Returns 1 if the box took it.
 int dtu_char_set_hot_key_spell(int key, int spell);
 // The held spell put on the paper doll (0x35CE5): the first free box takes

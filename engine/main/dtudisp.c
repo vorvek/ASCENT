@@ -44,6 +44,7 @@
 #include "segment.h"
 #include "automap.h"		// ASCENT: the map of the map screen
 #include "dtucombat.h"		// ASCENT: the target hint of the cursor
+#include "pcx.h"				// ASCENT: HRISBTN.PCH, the second images of SPELLS
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -308,6 +309,12 @@ static grs_bitmap *Icons_bm;			// InGameIcons (0x1BD584)
 static grs_bitmap *Cursor_src;		// 0x1BD51C
 static int Cursor_size;
 static grs_bitmap *Button_sheet;
+// 0x9881C (high resolution only, called by 0x343FC): HRISBTN.PCH, a 96x80
+// PCX file. PatchBtnDn (0x142EEB) is its part at (2,2), PatchBtnUp
+// (0x142EEF) its part at (2,36), each 76x32, the pixels as they are (no
+// palette match). The port keeps the whole picture.
+static grs_bitmap Patch_bm;
+static int Patch_ok;
 static grs_bitmap *Portrait_bm;
 static int Portrait_loaded = -1;
 static int Saved_mode = DTU_IM_MAIN;	// 0x13B61A
@@ -820,6 +827,15 @@ int dtu_display_init(void)
 	// 0x145718 (high) and 0x145734 (low) give entry 70 + language and
 	// 78 + language. ASCENT: the language is English (0).
 	Button_sheet = febgnd_load(Dtu_hires ? 70 : 78);
+	if (Dtu_hires && !Patch_ok) {
+		char path[512];
+		memset(&Patch_bm, 0, sizeof(Patch_bm));
+		Patch_ok = dtu_find_file("HRISBTN.PCH", path, sizeof(path))
+			&& pcx_read_bitmap(path, &Patch_bm, BM_LINEAR, NULL) == PCX_ERROR_NONE
+			&& Patch_bm.bm_w >= 78 && Patch_bm.bm_h >= 68;
+		if (!Patch_ok)
+			dtu_log("HRISBTN.PCH could not be read: the button SPELLS keeps its images");
+	}
 	if (!Icons_bm || !Cursor_src || !Button_sheet)
 		return 0;
 	if (Icons_bm) Icons_bm->bm_flags |= BM_FLAG_TRANSPARENT;
@@ -1218,20 +1234,21 @@ static int inv_click(int mx, int my)
 			hot_key_pos(i, &x, &y, &qy);
 			if (mx >= x && my >= y && mx < x + size && my < y + size) {
 				// 0x3058E: the held item goes into the box. With no held item
-				// the box works like its key.
+				// a box that is not empty works like its key (0x3056E: 0x43A5A
+				// with its tests).
 				if (Inv_held >= 0) {
 					dtu_char_set_hot_key(i, Inv_held);
 					Inv_held = -1;
 				} else if (Inv_held_spell >= 0) {
 					// 0x304D6: the box takes the held spell if the character
 					// can use it and no box holds it. Else the box works like
-					// its key (0x3056E) and the cursor keeps the spell.
+					// its key and the cursor keeps the spell.
 					if (dtu_char_set_hot_key_spell(i, Inv_held_spell))
 						Inv_held_spell = -1;
-					else
-						dtu_char_select_hot_key(i);
-				} else
-					dtu_char_select_hot_key(i);
+					else if (Dtu_char.hot_key[i].n >= 0)
+						dtu_char_press_hot_key(i);
+				} else if (Dtu_char.hot_key[i].n >= 0)
+					dtu_char_press_hot_key(i);
 				return 1;
 			}
 		}
@@ -1408,7 +1425,21 @@ static void draw_buttons(void)
 {
 	dtu_button *b;
 
-	if (Button_pressed < 0 || !Button_list) return;
+	if (!Button_list) return;
+	// 0x98F38, the release handler of SPELLS (high resolution): after the
+	// action 0x37192 sets 0x13B0BB when a spell list is shown and the next
+	// press leads back to the items. Then the images of the button (+0x56 at
+	// rest, +0x5A pressed) are PatchBtnUp and PatchBtnDn; else the images of
+	// the sheet come back (0x9902F).
+	if (Dtu_hires && Patch_ok && Inv_browse && !next_browse(Inv_browse))
+		for (b = Button_list; b->w; b++)
+			if (b->action == ACT_SPELLS) {
+				int pressed = Button_pressed >= 0 && &Button_list[Button_pressed] == b;
+				blit(&Patch_bm, 2, pressed ? 2 : 36, b->w, b->h, b->x, b->y, 0);
+				if (pressed)
+					return;
+			}
+	if (Button_pressed < 0) return;
 	b = &Button_list[Button_pressed];
 	blit(Button_sheet, b->x1, b->y1, b->w, b->h, b->x, b->y, 0);
 }
@@ -1668,6 +1699,31 @@ static int in_rect(int x, int y, int rx, int ry, int rw, int rh)
 	return x >= rx && y >= ry && x < rx + rw && y < ry + rh;
 }
 
+// The keys 1 to 0 (0x430C9 to 0x4310A, the scan codes 2 to 11). With a held
+// entry (0x31A46) the key puts it into the box with the tests of a click
+// (0x31A55); only if the box is the one that was chosen last, 0x13AD15
+// becomes -1 and the box is armed. With no held entry: 0x43A5A(box).
+static void hot_key_key(int i)
+{
+	int ok, last = dtu_char_last_hot_key() == i;
+
+	if (Inv_held >= 0) {
+		dtu_char_set_hot_key(i, Inv_held);
+		ok = dtu_char_hot_key_item(i) == Inv_held;
+		if (ok) Inv_held = -1;
+	} else if (Inv_held_spell >= 0) {
+		ok = dtu_char_set_hot_key_spell(i, Inv_held_spell);
+		if (ok) Inv_held_spell = -1;
+	} else {
+		dtu_char_press_hot_key(i);
+		return;
+	}
+	if (ok && last) {
+		dtu_char_forget_hot_key();
+		dtu_char_press_hot_key(i);
+	}
+}
+
 static void do_input(int mx, int my)
 {
 	int down, pressed, released, i;
@@ -1734,7 +1790,7 @@ static void do_input(int mx, int my)
 	// keys 1 to 9 choose a reply then (dtudlg.c)
 	for (i = 0; i < DTU_N_HOT_KEYS && i < DTU_N_HOT_ACTIONS; i++)
 		if (action_acts(DTU_ACT_HOT_KEY_1 + i) && !dtu_dlg_is_waiting())
-			dtu_char_select_hot_key(i);
+			hot_key_key(i);
 	// ASCENT: the previous and the next hot key that holds an item (the
 	// shoulder buttons of the gamepad by default)
 	{
@@ -1742,15 +1798,14 @@ static void do_input(int mx, int my)
 		if (prev != next) {
 			int h = -1, k, step = next ? 1 : DTU_N_HOT_KEYS - 1;
 			for (k = 0; k < DTU_N_HOT_KEYS; k++)
-				if (Dtu_char.hot_key[k].n >= 0 && Dtu_char.hot_key[k].list == Dtu_char.current.list &&
-					Dtu_char.hot_key[k].n == Dtu_char.current.n)
+				if (dtu_char_hot_key_in_hand(k))
 					h = k;
 			if (h < 0 && !next)
 				h = 0;
 			for (k = 1; k <= DTU_N_HOT_KEYS; k++) {
 				int j = (h + k * step + 10 * DTU_N_HOT_KEYS) % DTU_N_HOT_KEYS;
 				if (Dtu_char.hot_key[j].n >= 0 && j != h) {
-					dtu_char_select_hot_key(j);
+					dtu_char_press_hot_key(j);
 					break;
 				}
 			}

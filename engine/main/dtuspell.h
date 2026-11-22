@@ -102,6 +102,10 @@ extern int Dtu_fix_rary_manual;
 // of 0xB08A8 with DTU_FX_NO_END). keep_later: a timer that ends later
 // stays (0x37A6A). message: the HUD line of the effect. Returns 1.
 int dtu_spell_set_effect(object *obj, int mask, fix duration, int keep_later, int message);
+// 0x29F3E, 0x2A4FB, 0x913AF: damage of a weapon (or of a spell on a
+// creature) also lowers the Armor pool (+0x90); below 1.0 it is 0, and the
+// effect ends in the next frame with "Armor expired.".
+void dtu_spell_armor_hit(object *obj, fix damage);
 // Ends an effect without a message (0xB0A98 with 1: a worn item is taken
 // off). The end action of 0x9002C does not run.
 void dtu_spell_clear_effect(object *obj, int mask);

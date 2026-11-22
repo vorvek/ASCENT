@@ -2157,6 +2157,9 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 		return 0;
 
 	creature->shields -= damage;
+	// 0x29F3E: a weapon hit lowers the Armor pool too
+	if (weapon != DTU_DIRECT)
+		dtu_spell_armor_hit(creature,damage);
 
 	dtu_obj_log("damage: obj %d %s takes %d from %s, hp %d",(int)(creature-Objects),dtu_object_name(creature),
 		f2i(damage),attacker ? dtu_object_name(attacker) : "nothing",f2i(creature->shields));
@@ -2306,6 +2309,11 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		HUD_init_message("%s hits you for %d.",dtu_object_display_name(attacker),f2i(damage));
 	else
 		HUD_init_message("You took %d damage.",f2i(damage));
+
+	// 0x2A4FB: a weapon hit lowers the Armor pool too (guess: not the damage
+	// with no attacker and no weapon)
+	if (weapon != DTU_DIRECT && ((attacker && attacker != player) || weapon >= 0))
+		dtu_spell_armor_hit(player,damage);
 
 	// 0x2A3C0: red plus 4 for each point, green and blue minus one half
 	hp = dtu_player_damage(damage);
