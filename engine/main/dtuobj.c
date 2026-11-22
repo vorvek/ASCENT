@@ -335,6 +335,7 @@ static int player_type_sound(char *key);
 static void blood(object *obj);
 static void setup_creature(object *obj);
 static void morale_check(object *obj);
+static int N_aware_events;		// the awareness events of the frame (0x13A6BC)
 static void player_dies(object *player,object *attacker);
 static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 static void log_corpse_height(object *obj,const char *what);
@@ -1956,6 +1957,7 @@ void dtu_objects_level_setup(void)
 		return;
 
 	Dtu_clock = 0;
+	N_aware_events = 0;
 	Ref_tick_count = Ref_ticks_now = 0;
 	Ref_tick_acc = 0;
 	memset(Model_reach,0,sizeof(Model_reach));
@@ -3958,6 +3960,9 @@ static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,
 	if (obj->render_type == RT_POLYOBJ) {
 		sound_at(wi->wall_hit_sound,segnum,point,F1_0/2);
 		vclip_at(segnum,point,obj->size*2,wi->wall_hit_vclip);
+		// 0x26F73, 0x2653C: the alert function 0x160AB(missile, 2) after the
+		// sound of the wall or of the scenery
+		dtu_creature_alert(obj,2);
 	}
 	dtu_obj_log("missile: obj %d hits a wall at %.1f %.1f %.1f",(int)(obj-Objects),f2fl(point->x),f2fl(point->y),f2fl(point->z));
 	missile_remove(obj);
@@ -4245,7 +4250,19 @@ static void creature_cast(object *obj,int spell,vms_vector *dir,vms_vector *fire
 static void melee_hit(object *target,object *attacker);
 
 // 0x11B06 ai_fire. "AI: critter fires."
+static void ai_fire_body(object *obj,fix dist);
+
 static void ai_fire(object *obj,fix dist)
+{
+	if (!Dtu_creatures_attack || !is_hostile(obj) || Robot_info[obj->id].attack_type == 1)
+		return;
+	ai_fire_body(obj,dist);
+	// ASCENT: 0x11EB7, the end of ai_fire calls the alert function
+	// 0x160AB(creature, 1)
+	dtu_creature_alert(obj,1);
+}
+
+static void ai_fire_body(object *obj,fix dist)
 {
 	int objnum = obj-Objects;
 	robot_info *ri = &Robot_info[obj->id];
@@ -6364,7 +6381,9 @@ void dtu_do_ai_frame(object *obj)
 				aip->CURRENT_STATE = aip->GOAL_STATE = DAIS_NONE;
 			}
 			dtu_obj_log("obj %d %s: sees the player",objnum,dtu_object_name(obj));
-			// 0x13F09 and the alert 0x160AB: the conditions of the spells
+			// 0x13EFF: the alert 0x160AB(creature, 1); 0x13F09 and the
+			// alert: the conditions of the spells
+			dtu_creature_alert(obj,1);
 			dtu_spell_creature_event(obj,DTU_CSC_WAKE|DTU_CSC_ALERT);
 			// 0x13E25: the see sound, volume str * 0x1000
 			sound_at(ri->see_sound,obj->segnum,&obj->pos,mi->str * 0x1000);
@@ -6511,14 +6530,10 @@ void dtu_do_ai_frame(object *obj)
 	if (visible)
 		ail->time_player_seen = GameTime;
 
-	// The awareness of a creature goes up by the awareness events of the
-	// executable (0x16055, 0x16366: noise of the player), which are not in
-	// the port. In their place a hostile creature that sees the player has
-	// the awareness 1 at least. (guess)
-	if (visible && is_hostile(obj) && ail->awareness < 1) {
-		ail->awareness = 1;
-		ail->awareness_time = i2f(3);
-	}
+	// The awareness of a creature goes up by the awareness events
+	// (awareness_events_frame, 0x16366). An earlier guess of the port in
+	// their place (a hostile creature that sees the player has the
+	// awareness 1 at least) is gone.
 
 	// 0x14AF2: the door opener, for each creature with the door bit. It
 	// only sends the creature to a door. The door opens when the creature
@@ -6824,13 +6839,91 @@ void dtu_creature_wake(object *obj, int make_hostile)
 // always passes, since rand() is at most 0x7FFF. The see sound plays for
 // every other creature: the executable takes the parity of a player field
 // (0x1D339F) plus the object index; the port takes the parity of the index.
-// The awareness event and the agitation (0x16055) and the bits of +0x15E are
-// not in the port.
+// Each level first adds an awareness event (0x16055, below). The agitation
+// (0x167174) and the bits of +0x15E are not in the port.
+//
+// ASCENT: the awareness events (0x16055, 0x16304, 0x162A1, 0x16366, ai.md
+// "Awareness events"). 0x16055 keeps up to 64 events (segment, position,
+// type = the level of the alert) for the frame. Each frame 0x16366 (called
+// by the game frame, 0x438AC) clears New_awareness of all segments, and for
+// each event 0x162A1(segment, type, 1) stores the type in the segment when
+// it is higher and, while the depth is 5 or less, calls itself for each
+// child of the 6 sides with depth + 1 and type 5 made 4. So the event
+// reaches the segments up to 5 steps away, through any wall. Then each AI
+// object with the hostile bit whose awareness is below New_awareness of its
+// segment gets that awareness, the awareness time 3.0 and the morale check.
+// The recursion has no visited set (up to 6^5 calls for one event); the port
+// gives the same values with a search by distance.
+#define AWARE_MAX_EVENTS	64
+static struct { short segnum; short type; } Aware_events[AWARE_MAX_EVENTS];
+
+static void awareness_event(object *obj, int type)
+{
+	// 0x15FBC (types 2 to 4, the believed position of a hidden player) is
+	// in cloak_seen() (dtu_creature_alert)
+	if (N_aware_events < AWARE_MAX_EVENTS && obj->segnum >= 0 && obj->segnum <= Highest_segment_index) {
+		Aware_events[N_aware_events].segnum = obj->segnum;
+		Aware_events[N_aware_events].type = type;
+		N_aware_events++;
+	}
+}
+
+static void awareness_events_frame(void)
+{
+	static ubyte new_aware[MAX_SEGMENTS], depth[MAX_SEGMENTS];
+	static short queue[MAX_SEGMENTS];
+	int e, i;
+
+	if (N_aware_events == 0)
+		return;
+	memset(new_aware,0,sizeof(new_aware));
+	for (e=0;e<N_aware_events;e++) {
+		int type = Aware_events[e].type, near = (type == 5) ? 4 : type, head = 0, tail = 0;
+
+		memset(depth,0xff,sizeof(depth));
+		queue[tail++] = Aware_events[e].segnum;
+		depth[Aware_events[e].segnum] = 1;
+		while (head < tail) {
+			int s = queue[head++], side, t = (depth[s] == 1) ? type : near;
+
+			if (new_aware[s] < t)
+				new_aware[s] = (ubyte) t;
+			if (depth[s] > 5)
+				continue;
+			for (side=0;side<MAX_SIDES_PER_SEGMENT;side++) {
+				int c = Segments[s].children[side];
+
+				if (c >= 0 && c <= Highest_segment_index && depth[c] == 0xff) {
+					depth[c] = depth[s] + 1;
+					queue[tail++] = c;
+				}
+			}
+		}
+	}
+	N_aware_events = 0;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *obj = &Objects[i];
+
+		if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI || obj->id >= N_robot_types || !(obj->dtu.m_1b0 & DTU_HOSTILE))
+			continue;
+		if (obj->segnum < 0 || obj->segnum > Highest_segment_index || Ail[i].awareness >= new_aware[obj->segnum])
+			continue;
+		dtu_obj_log("awareness: obj %d %s %d -> %d",i,dtu_object_name(obj),Ail[i].awareness,new_aware[obj->segnum]);
+		Ail[i].awareness = new_aware[obj->segnum];
+		Ail[i].awareness_time = i2f(3);
+		morale_check(obj);
+	}
+}
+
 void dtu_creature_alert(object *caller, int level)
 {
 	int i;
 
-	if (caller == NULL || level < 3 || ConsoleObject == NULL)
+	if (!Dtu_objects_enabled || caller == NULL || ConsoleObject == NULL)
+		return;
+	awareness_event(caller,level);
+	if (level < 3)
 		return;
 	for (i=1;i<Highest_object_index;i++) {
 		object *obj = &Objects[i];
@@ -8116,6 +8209,7 @@ void dtu_objects_frame(void)
 	missiles_frame();
 	dressing_move_frame();
 	corpse_regen_frame();
+	awareness_events_frame();		// 0x16366 of the game frame (0x438AC)
 
 	// The option -testkill N (test): each N frames the active creature that
 	// is nearest to the player dies, for the test of the corpses.
