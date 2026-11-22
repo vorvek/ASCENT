@@ -388,6 +388,15 @@ extern int Dtu_fix_potion_frame;
 // (raw fix, the sum of the frame times) as a coin flip (0x2A889). 1
 // (default): rand(). 0 (-origcombat): the clock bit.
 extern int Dtu_fix_luck_coin;
+// The Short Bow of Speed ($OBJECT 100, pc_spell1=21) and the Short Sword
+// of Quickness ($WEAPON 69, pc_spell=21). The executable has no keyword
+// pc_spell1, the code of the worn items (0xAFB55) does not read the bow
+// slot, and PC_spell of a melee weapon is never read (0x44300 calls
+// 0x56A0D only for attack_type 0): the bow is a Short Bow +2 and the sword
+// a Short Sword +2. Corrected: the bow in the bow slot and the sword in
+// the hand give Haste (item bit 9), like the Ring of Quickness and the
+// Boots of Speed. -origcombat clears it.
+extern int Dtu_fix_speed_items;
 // 1 while the attack of the player is a backstab (0x13A955, dtuthief.c).
 extern int Dtu_backstab;
 // The option -autochoice N: the choice boxes answer N.
