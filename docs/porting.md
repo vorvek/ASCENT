@@ -48,5 +48,5 @@ ctest --test-dir build
 - Keep the Parallax license header at the top of each original file.
 - A new file starts with a short comment that says what it replaces.
 - The original files use CRLF line ends and tabs. Keep them.
-- `engine/lib/` is an old copy of the headers. It is not in the include path. Do not use it and do not edit it.
+- The source release had an old copy of the headers in `engine/lib/`. The port removed it (see `docs/maintenance.md`).
 - The header in the directory of a library is the correct header for that library.
