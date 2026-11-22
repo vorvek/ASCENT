@@ -264,6 +264,12 @@ and MADLANDS.LVL are not in the game data (the level does not load).
   594; the checks share one `ud2`, so the failed check is not known;
   turning off `pointer-overflow`, `object-size`, `null` and
   `nonnull-attribute` only moves the trap). Not diagnosed further.
+  Later check (main at 6e8dea2, the same flags, RelWithDebInfo, GPU renderer
+  with the upscaled set): no trap in 7 runs (BANE 100 frames; CRYPTS, DROW1,
+  HUB1, MYRKUL, FLAME, YPINN 600 frames with movement). The likely cause was
+  the merge table of gpu3d.c written past its end (`Mt`, fixed in a8e7583,
+  see docs/hd_textures.md): an index of up to 4095 into an array of 1024 is
+  a bounds trap.
 - With `-software`: 16 runs (bones, bane, crypts, drow4, drow5, clan2,
   ypinn, hub1, seeds 3 and 4): 7 reached 4000 frames, 6 ended with the
   death of the player, 3 stopped on the bounds check in
