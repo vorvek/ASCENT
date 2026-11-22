@@ -6160,26 +6160,31 @@ static int dressing_other_body(object *o,fix *r,fix *hh)
 // Dtu_fix_push_body: other scenery is the box of its model (box 1 of the
 // rest pose in the x-z plane of the object), not the circle of
 // body_radius[0] around the corners of the box: a chair at a table is
-// already inside of that circle. Returns 0 when the model has no box. Else
-// *t is the part (0 to 1) of the move from p0 to p1 of a circle of radius
-// rad up to the box, or -1 for no hit. A start inside of the box is a hit
-// at 0 unless the move goes away from the center.
-static int dressing_box_hit(object *o,vms_vector *p0,vms_vector *p1,fix rad,double *t)
+// already inside of that circle. Only an upright object has a box: a
+// barrel on its side has no box in x-z.
+static int dressing_has_box(object *o)
 {
 	polymodel *po = obj_model(o);
-	double a[2], m[2], lo[2], hi[2], tin = 0, tout = 1, r = f2fl(rad);
-	vms_vector rel, mv;
+
+	return po && po->box1_min && po->box1_max && o->orient.uvec.y >= F1_0*9/10;
+}
+
+// The move mv of the point a against the box of o about the position c,
+// grown by r. *t is the part (0 to 1) of the move up to the box, or -1 for
+// no hit. A start inside of the box is a hit at 0 unless the move goes
+// away from the center.
+static void dressing_box_sweep(object *o,vms_vector *c,vms_vector *a_w,vms_vector *mv,double r,double *t)
+{
+	polymodel *po = obj_model(o);
+	double a[2], m[2], lo[2], hi[2], tin = 0, tout = 1;
+	vms_vector rel;
 	int k;
 
-	// only an upright object: a barrel on its side has no box in x-z
-	if (!po || !po->box1_min || !po->box1_max || o->orient.uvec.y < F1_0*9/10)
-		return 0;
-	vm_vec_sub(&rel,p0,&o->pos);
-	vm_vec_sub(&mv,p1,p0);
+	vm_vec_sub(&rel,a_w,c);
 	a[0] = f2fl(vm_vec_dot(&rel,&o->orient.rvec));
 	a[1] = f2fl(vm_vec_dot(&rel,&o->orient.fvec));
-	m[0] = f2fl(vm_vec_dot(&mv,&o->orient.rvec));
-	m[1] = f2fl(vm_vec_dot(&mv,&o->orient.fvec));
+	m[0] = f2fl(vm_vec_dot(mv,&o->orient.rvec));
+	m[1] = f2fl(vm_vec_dot(mv,&o->orient.fvec));
 	lo[0] = f2fl(po->box1_min[0].x) - r; hi[0] = f2fl(po->box1_max[0].x) + r;
 	lo[1] = f2fl(po->box1_min[0].z) - r; hi[1] = f2fl(po->box1_max[0].z) + r;
 	*t = -1;
@@ -6188,12 +6193,12 @@ static int dressing_box_hit(object *o,vms_vector *p0,vms_vector *p1,fix rad,doub
 
 		if (m[0]*c0 + m[1]*c1 > 0)
 			*t = 0;
-		return 1;
+		return;
 	}
 	for (k=0;k<2;k++) {
 		if (fabs(m[k]) < 1e-9) {
 			if (a[k] <= lo[k] || a[k] >= hi[k])
-				return 1;
+				return;
 		}
 		else {
 			double t0 = (lo[k] - a[k]) / m[k], t1 = (hi[k] - a[k]) / m[k];
@@ -6202,10 +6207,67 @@ static int dressing_box_hit(object *o,vms_vector *p0,vms_vector *p1,fix rad,doub
 			if (t0 > tin) tin = t0;
 			if (t1 < tout) tout = t1;
 			if (tin > tout)
-				return 1;
+				return;
 		}
 	}
 	*t = tin;
+}
+
+// The corners and the mid points of the edges of the box of o about the
+// position c, in the plane of the middle of the box.
+static void dressing_box_points(object *o,vms_vector *c,vms_vector pts[8])
+{
+	static const signed char px[8] = {-1,1,1,-1, 0,1,0,-1}, pz[8] = {-1,-1,1,1, -1,0,1,0};
+	polymodel *po = obj_model(o);
+	vms_matrix m;
+	int i;
+
+	vm_copy_transpose_matrix(&m,&o->orient);
+	for (i=0;i<8;i++) {
+		vms_vector local, ofs;
+
+		local.x = px[i] < 0 ? po->box1_min[0].x : px[i] > 0 ? po->box1_max[0].x : (po->box1_min[0].x + po->box1_max[0].x)/2;
+		local.z = pz[i] < 0 ? po->box1_min[0].z : pz[i] > 0 ? po->box1_max[0].z : (po->box1_min[0].z + po->box1_max[0].z)/2;
+		local.y = (po->box1_min[0].y + po->box1_max[0].y)/2;
+		vm_vec_rotate(&ofs,&local,&m);
+		vm_vec_add(&pts[i],c,&ofs);
+	}
+}
+
+// The move of scenery d from p0 to p1 against the box of scenery o. Two
+// boxes: the points of the box of d against the box of o, and the points
+// of the box of o against the box of d (the move the other way). Else the
+// circle of radius rad. Returns 0 when o has no box.
+static int dressing_box_hit(object *d,object *o,vms_vector *p0,vms_vector *p1,fix rad,double *t)
+{
+	vms_vector mv;
+
+	if (!dressing_has_box(o))
+		return 0;
+	vm_vec_sub(&mv,p1,p0);
+	if (dressing_has_box(d)) {
+		vms_vector pts[8], back;
+		double best = -1, u;
+		int i;
+
+		back = mv;
+		vm_vec_negate(&back);
+		dressing_box_points(d,p0,pts);
+		for (i=0;i<8;i++) {
+			dressing_box_sweep(o,&o->pos,&pts[i],&mv,0,&u);
+			if (u >= 0 && (best < 0 || u < best))
+				best = u;
+		}
+		dressing_box_points(o,&o->pos,pts);
+		for (i=0;i<8;i++) {
+			dressing_box_sweep(d,p0,&pts[i],&back,0,&u);
+			if (u >= 0 && (best < 0 || u < best))
+				best = u;
+		}
+		*t = best;
+		return 1;
+	}
+	dressing_box_sweep(o,&o->pos,p0,&mv,f2fl(rad),t);
 	return 1;
 }
 
@@ -6231,7 +6293,7 @@ static int dressing_hit_object(object *d,vms_vector *p0,vms_vector *p1,fix rad,f
 			continue;
 		if (abs(p0->y - o->pos.y) > hh + rad2)
 			continue;
-		if (Dtu_fix_push_body && o->type == OBJ_DRESSING && dressing_box_hit(o,p0,p1,rad,&t)) {
+		if (Dtu_fix_push_body && o->type == OBJ_DRESSING && dressing_box_hit(d,o,p0,p1,rad,&t)) {
 			if (t < 0)
 				continue;
 			if (fl2f(t) < best_f) {
@@ -6275,9 +6337,10 @@ static int dressing_hit_object(object *d,vms_vector *p0,vms_vector *p1,fix rad,f
 // Dtu_fix_push_wall: the part (0 to 1) of the move frame_vec of scenery d
 // that keeps its box out of the walls. The executable tests only the
 // center with half of body_radius[0] (rad + 1.0 for a wall), so a table
-// (body_radius 11.2) goes 4.6 into a wall. The port moves the four corners
-// and the four mid points of the edges of the box of the model (box 1 of
-// the rest pose, at the height of its middle) with the move and stops at
+// (body_radius 11.2, 10 from the center to an end) goes 3.4 into a wall.
+// The port moves the four corners and the four mid points of the edges of
+// the box of the model (box 1 of the rest pose, at the height of its
+// middle) with the move and stops at
 // the first wall that one of them hits, DTU_PUSH_WALL_GAP before it. A
 // point that is outside of the mine at the start (scenery that the level
 // puts into a wall) is not tested.
@@ -6433,8 +6496,9 @@ static void dressing_move_frame(void)
 		// (0x3EE70). Executable: the query of the move has the radius
 		// body_radius[0] / 2 (0x9FFD6), and a hit stops the move. The hit
 		// of scenery pushes it with the velocity of this one (0xA02A8, no
-		// test of "pushable"). Corrected: the whole radius, and other
-		// scenery is pushed only with the strength of the first push.
+		// test of "pushable"). Corrected (Dtu_fix_push_body): the whole
+		// radius, other scenery is a box, and other scenery is pushed only
+		// with the strength of the first push.
 		vm_vec_add(&p1,&d->pos,&frame_vec);
 		hit_obj = dressing_hit_object(d,&d->pos,&p1,Dtu_fix_push_body ? br : br/2,bhh,&frac);
 		if (hit_obj >= 0) {

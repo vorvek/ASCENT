@@ -681,6 +681,9 @@ minus 1, so the last segment is never marked.
   (0x6CB68 with the thrust as the acceleration, no mass) with thrust 0 and
   the drag of the object (0 for the scenery of the level files), so the
   velocity goes down by 8 times in each frame.
+- The move of the scenery (0x9FE68) is not free: see objects.md, "Pushed
+  scenery", for its object test, which stops a chair inside of the body of
+  the player, and for the frame rate.
 - The move of scenery with movement type 1 is 0x9FE68, each frame: the
   velocity is halved, x and z are shifted right by 2, gravity 0x6C662, then
   fvi. Movement type goes back to 0 on fvi result 3, or on result 1 with the
@@ -720,7 +723,8 @@ minus 1, so the last segment is never marked.
   the spell cases decide (combat.md B3). **Code.**
 
 The port: `dtu_break_dressing()` and the push in `dtuobj.c` (settings
-`Dtu_fix_cant_break` and `Dtu_fix_push_frame`, see combat.md C3). The move
+`Dtu_fix_cant_break`, `Dtu_fix_push_body`, `Dtu_fix_push_rate` and
+`Dtu_fix_push_wall`, see combat.md C3 and objects.md, "Pushed scenery"). The move
 of the player (`dtu_player_physics_sim`, physics.c) stops at scenery and
 keeps the count of 0x14534F (the port counts each hit). Setup 1.0 of the
 port let the player go through the scenery after the hit and stopped the
