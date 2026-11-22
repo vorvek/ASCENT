@@ -1286,7 +1286,7 @@ static void setup_creature(object *obj)
 static int Level_setup_restore = 0;		// 1 while dtustate.c restores a level
 
 // The flag word +0x98 of the monster table as MONSTER_F_ bits (ai.md, "flag
-// words"). fire_resistant, infravision and magic_resistant have no bit.
+// words"). infravision has no bit.
 static int monster_flags_from_table(int w)
 {
 	int f = 0;
@@ -1295,6 +1295,8 @@ static int monster_flags_from_table(int w)
 	if (w & 0x0002) f |= MONSTER_F_ELECTRICITY_IMMUNE;
 	if (w & 0x0004) f |= MONSTER_F_EXTRAPLANAR;
 	if (w & 0x0008) f |= MONSTER_F_FIRE_IMMUNE;
+	if (w & 0x0010) f |= MONSTER_F_FIRE_RESISTANT;		// ASCENT
+	if (w & 0x0400) f |= MONSTER_F_MAGIC_RESISTANT;		// ASCENT: the lich (0x7042)
 	if (w & 0x0020) f |= MONSTER_F_FLYING;
 	if (w & 0x0040) f |= MONSTER_F_HUMANOID;
 	if (w & 0x0300) f |= MONSTER_F_LIGHT_SENSITIVE;
@@ -1789,7 +1791,7 @@ static void creature_setup_by_name(object *obj, int objects)
 		me->n_damage_dice = 2;
 		strcat(what," spectatr");
 	} else if (setup_name(name,"hatchlng",32)) {
-		// 0x18: fire_immune and fire_resistant (no bit in the port; fire_immune is tested first)
+		// 0x18: fire_immune and fire_resistant (fire_immune is tested first)
 		mi->flags |= monster_flags_from_table(0x18);
 		ri->score_value = 7000;
 		strcat(what," hatchlng");
@@ -2429,7 +2431,7 @@ static int fire_part(object *target,int fire)
 
 		if (mi->flags & MONSTER_F_FIRE_IMMUNE)
 			fire = 0;
-		else if (bm_tbl_has_flag(mi->record,"fire_resistant"))
+		else if (mi->flags & MONSTER_F_FIRE_RESISTANT)
 			fire /= 2;
 	}
 	if (target->dtu.m_88 & DTU_FX_RESIST_FIRE)
@@ -3213,7 +3215,7 @@ int dtu_spell_damage_roll_count(int spell, object *target, int level, int group,
 			elec = 0;
 		if (mi->flags & MONSTER_F_FIRE_IMMUNE)
 			fire = 0;
-		else if (bm_tbl_has_flag(mi->record,"fire_resistant"))
+		else if (mi->flags & MONSTER_F_FIRE_RESISTANT)
 			fire /= 2;
 	}
 	if (target->dtu.m_88 & (1 << 10))			// Resist Fire

@@ -411,6 +411,8 @@ extern player_type_info Player_type_info[MAX_PLAYER_TYPES];
 #define MONSTER_F_LIGHT_LOVER			0x1000
 #define MONSTER_F_PASS_THRU			0x2000
 #define MONSTER_F_NOATTACK				0x4000
+#define MONSTER_F_MAGIC_RESISTANT		0x8000		// ASCENT: +0x98 bit 0x0400 (saving throws 0xAE77F)
+#define MONSTER_F_FIRE_RESISTANT		0x10000		// ASCENT: +0x98 bit 0x0010 (fire damage 0x91DAF)
 
 typedef struct monster_info {
 	char			name[DTU_NAME_LENGTH];
