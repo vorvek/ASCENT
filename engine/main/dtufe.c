@@ -181,6 +181,13 @@ static ubyte *read_part(char *name, int offset, int size)
 //                   plat_pump calls for the events of a real gamepad.
 //   wheel N         (ASCENT) N steps of the mouse wheel (negative: toward
 //                   the user)
+//   winmove X Y     (ASCENT) a mouse motion at X, Y in window coordinates,
+//                   mapped to the frame by plat_pump as a system event
+//   winclick X Y    (ASCENT) the same and a left click (released in the
+//                   next frame)
+//   presentstate    (ASCENT) print the window rectangle of the frame
+//   viewstate, mousestate  (ASCENT) print the view projection, the mouse
+//                   mode and the mouse position
 // ASCENT: a key name can start with "ctrl-" (Ctrl and the key), and the
 // names tab, home, end, ins, del, lctrl, lshift, lalt, f11, f12 exist.
 // While the script has commands the clock of the front end is the frame
@@ -197,6 +204,8 @@ static char *Script_shot;
 static int Script_in_game;			// the command "gamekeys" was run
 static int Script_hold_key, Script_hold_frames;	// ASCENT: the command "hold"
 static int Script_moved;			// ASCENT: a command put the cursor at Fe_mx, Fe_my
+static float Script_win_x, Script_win_y;	// ASCENT: winmove and winclick (window coordinates)
+static int Script_win_up;			// ASCENT: release the button of a winclick
 
 static int script_active(void)
 {
@@ -283,6 +292,11 @@ static void script_frame(void)
 {
 	Fe_key = 0;
 	Script_moved = 0;
+	if (Script_win_up) {		// ASCENT: the frame after a winclick: release
+		plat_inject_window_mouse(Script_win_x, Script_win_y, 0, 0);
+		Script_win_up = 0;
+		return;
+	}
 	if (Script_btn == 1 || Script_rbtn) {		// the frame after a click: release
 		Script_btn = Script_rbtn = 0;
 		return;
@@ -375,9 +389,33 @@ static void script_frame(void)
 		} else if (!stricmp(cmd, "viewstate")) {
 			dtu_display_print_view();		// ASCENT: for tools/uitest.py
 			return;
+		} else if (!stricmp(cmd, "winmove") || !stricmp(cmd, "winclick")) {
+			// ASCENT: for tools/uitest.py: a mouse event in window
+			// coordinates, which the platform maps to the frame as an
+			// event of the system (the test of the mouse with the
+			// shape of the frame, plat_bind_vga_aspect)
+			Script_win_x = Script_win_y = 0;
+			sscanf(arg, "%f %f", &Script_win_x, &Script_win_y);
+			plat_inject_window_mouse(Script_win_x, Script_win_y, -1, 0);
+			if (!stricmp(cmd, "winclick")) {
+				plat_inject_window_mouse(Script_win_x, Script_win_y, 0, 1);
+				Script_win_up = 1;
+			}
+			return;
+		} else if (!stricmp(cmd, "presentstate")) {
+			// ASCENT: for tools/uitest.py: the rectangle of the window
+			// that shows the frame
+			float px, py, pw, ph;
+			int fw, fh, ww, wh;
+			plat_get_present_rect(&px, &py, &pw, &ph, &fw, &fh, &ww, &wh);
+			printf("Presentstate window=%dx%d frame=%dx%d rect=%.1f,%.1f,%.1fx%.1f\n", ww, wh, fw, fh, px, py, pw, ph);
+			fflush(stdout);
+			return;
 		} else if (!stricmp(cmd, "mousestate")) {
 			// ASCENT: for tools/uitest.py
-			printf("Mousestate relative=%d immersive=%d\n", plat_mouse_get_relative(), Dtu_immersive);
+			int mx = 0, my = 0;
+			mouse_get_pos(&mx, &my);
+			printf("Mousestate relative=%d immersive=%d x=%d y=%d\n", plat_mouse_get_relative(), Dtu_immersive, mx, my);
 			fflush(stdout);
 		} else
 			printf("Script: unknown command '%s'\n", s);
@@ -1920,6 +1958,7 @@ static char *Gfx_shader[] = { LN("Off"), LN("Subtle"), LN("VGA") };
 static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[] = {
 	{ LN("Renderer"),              &Dtu_gpu_renderer,       0, 1, Gfx_renderer },
 	{ LN("Animation interpolation"), &Dtu_anim_interp,      0, 1, Gfx_onoff },	// both renderers
+	{ LN("4:3 screen"),            &Dtu_fix_lowres_aspect,  0, 1, Gfx_onoff },	// both renderers (dtuopts.h)
 	{ LN("Improved occlusion"),    &Dtu_improved_occlusion, 0, 1, Gfx_onoff },
 	{ LN("Internal resolution"),   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, NULL },
 	{ LN("Upscaled textures"),     &Dtu_upscaled_textures,  0, 1, Gfx_onoff },
@@ -1929,7 +1968,7 @@ static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[
 	{ LN("Improved infravision"),  &Dtu_improved_infravision, 0, 1, Gfx_onoff },
 };
 #define N_GFX	((int) (sizeof(Gfx_item) / sizeof(Gfx_item[0])))
-#define GFX_FIRST_GPU	2		// the items from here on need the GPU renderer
+#define GFX_FIRST_GPU	3		// the items from here on need the GPU renderer
 // The note with the software renderer. The lines are short: the box of
 // newmenu is no wider than 320 pixels.
 #define GFX_NOTE_1	LN("The software renderer")

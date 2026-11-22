@@ -25,6 +25,44 @@ static int Quit_requested;
 static int Start_windowed;
 static int Win_w, Win_h;		// the size of the window form
 
+// ASCENT: the shape of the frame on the screen (plat_bind_vga_aspect)
+static const int *Vga_aspect;
+// ASCENT: the rectangle of the SDL_Renderer form that shows the frame, in
+// window coordinates (the OpenGL form: gpu_frame_rect)
+static float Sdl_rect_x, Sdl_rect_y, Sdl_rect_w, Sdl_rect_h;
+
+void plat_bind_vga_aspect(const int *on)
+{
+	Vga_aspect = on;
+}
+
+// The DOS VGA modes that filled a 4:3 monitor with pixels that are not
+// square. A 640x480 frame is 4:3 with square pixels; a frame of another
+// size (the 432x320 movies, shown 1:1 in a 640x480 mode) keeps its shape.
+float plat_frame_aspect(int fw, int fh)
+{
+	if (fw <= 0 || fh <= 0)
+		return 1.0f;
+	if ((!Vga_aspect || *Vga_aspect) &&
+			((fw == 320 && (fh == 200 || fh == 400)) || (fw == 640 && fh == 400)))
+		return 4.0f / 3.0f;
+	return (float) fw / fh;
+}
+
+void plat_fit_frame(int fw, int fh, int ow, int oh, float *x, float *y, float *w, float *h)
+{
+	float a = plat_frame_aspect(fw, fh);
+
+	*w = (float) ow;
+	*h = *w / a;
+	if (*h > oh) {
+		*h = (float) oh;
+		*w = *h * a;
+	}
+	*x = (ow - *w) / 2;
+	*y = (oh - *h) / 2;
+}
+
 void plat_set_start_windowed(int windowed)
 {
 	Start_windowed = (windowed != 0);
@@ -128,7 +166,8 @@ int plat_set_frame_size(int w, int h)
 	if (!Frame_texture)
 		return -1;
 	SDL_SetTextureScaleMode(Frame_texture, SDL_SCALEMODE_NEAREST);
-	SDL_SetRenderLogicalPresentation(Renderer, w, h, SDL_LOGICAL_PRESENTATION_LETTERBOX);
+	// ASCENT: no logical presentation: plat_present places the frame with
+	// the shape of plat_frame_aspect, and plat_pump maps the mouse.
 	Frame_w = w;
 	Frame_h = h;
 	return 0;
@@ -226,9 +265,11 @@ int plat_init(const char *title, int w, int h, int scale)
 		return -1;
 	Quit_requested = 0;
 	Win_w = w * scale;
-	Win_h = h * scale;
+	Win_h = (int) (Win_w / plat_frame_aspect(w, h) + 0.5f);	// ASCENT: 960x720 for 320x200 at 4:3
 
-	if (open_gl_window(title, Win_w, Win_h) == 0) {
+	// ASCENT_NO_GL=1: the SDL_Renderer form (a test aid for the systems
+	// without OpenGL 3.3)
+	if (!SDL_getenv("ASCENT_NO_GL") && open_gl_window(title, Win_w, Win_h) == 0) {
 		Use_gl = 1;
 		apply_window_icon();
 		// The game draws its own cursor.
@@ -239,6 +280,15 @@ int plat_init(const char *title, int w, int h, int scale)
 	// ASCENT: the session log (plat_log.c) tells why the GPU renderer is off
 	plat_log("OpenGL 3.3 window not available (%s): the SDL renderer is used", SDL_GetError());
 	Use_gl = 0;
+	if (Start_hidden) {
+		// ASCENT: ASCENT_WINDOW_SIZE as in open_gl_window
+		const char *e = SDL_getenv("ASCENT_WINDOW_SIZE");
+		int ew, eh;
+		if (e && SDL_sscanf(e, "%dx%d", &ew, &eh) == 2 && ew >= 64 && eh >= 64 && ew <= 8192 && eh <= 8192) {
+			Win_w = ew;
+			Win_h = eh;
+		}
+	}
 	if (!SDL_CreateWindowAndRenderer(title, Win_w, Win_h,
 			SDL_WINDOW_RESIZABLE | (Start_hidden ? SDL_WINDOW_HIDDEN : 0),
 			&Window, &Renderer))
@@ -302,13 +352,13 @@ static void shot_at_present(const uint8_t *pixels, int w, int h, int pitch, cons
 			const char *s = SDL_getenv("ASCENT_SHOT_SCALE");
 			int k = (s && SDL_atoi(s) >= 1 && SDL_atoi(s) <= 8) ? SDL_atoi(s) : 3, x, y;
 			rw = w * k;
-			rh = h * k;
+			rh = (int) (rw / plat_frame_aspect(w, h) + 0.5f);	// ASCENT: the shape on the screen
 			rgb = (uint8_t *) malloc((size_t) rw * rh * 3);
 			if (!rgb)
 				return;
 			for (y = 0; y < rh; y++)
 				for (x = 0; x < rw; x++) {
-					int c = pixels[(size_t) (y / k) * pitch + x / k], i;
+					int c = pixels[(size_t) (y * h / rh) * pitch + x / k], i;
 					for (i = 0; i < 3; i++) {
 						int v = pal6[c * 3 + i] & 63;
 						rgb[((size_t) y * rw + x) * 3 + i] = (uint8_t) ((v << 2) | (v >> 4));
@@ -363,17 +413,85 @@ void plat_present(const uint8_t *pixels, int w, int h, int pitch, const uint8_t 
 
 	SDL_SetRenderDrawColor(Renderer, 0, 0, 0, 255);
 	SDL_RenderClear(Renderer);
-	SDL_RenderTexture(Renderer, Frame_texture, NULL, NULL);
+	{
+		// ASCENT: the frame with its shape on the screen (plat_frame_aspect)
+		int ow = 0, oh = 0, ww = 0, wh = 0;
+		SDL_FRect dst;
+		SDL_GetCurrentRenderOutputSize(Renderer, &ow, &oh);
+		SDL_GetWindowSize(Window, &ww, &wh);
+		if (ow > 0 && oh > 0) {
+			plat_fit_frame(w, h, ow, oh, &dst.x, &dst.y, &dst.w, &dst.h);
+			SDL_RenderTexture(Renderer, Frame_texture, NULL, &dst);
+			if (ww > 0 && wh > 0) {
+				Sdl_rect_x = dst.x * ww / ow;
+				Sdl_rect_y = dst.y * wh / oh;
+				Sdl_rect_w = dst.w * ww / ow;
+				Sdl_rect_h = dst.h * wh / oh;
+			}
+		}
+	}
 	SDL_RenderPresent(Renderer);
 }
 
-// Window coordinates to frame pixels (the OpenGL form).
+void plat_get_present_rect(float *x, float *y, float *w, float *h, int *frame_w, int *frame_h, int *win_w, int *win_h)
+{
+	*x = *y = *w = *h = 0;
+	*frame_w = Frame_w;
+	*frame_h = Frame_h;
+	*win_w = *win_h = 0;
+	if (Window)
+		SDL_GetWindowSize(Window, win_w, win_h);
+	if (Use_gl)
+		gpu_frame_rect(x, y, w, h, frame_w, frame_h);
+	else {
+		*x = Sdl_rect_x;
+		*y = Sdl_rect_y;
+		*w = Sdl_rect_w;
+		*h = Sdl_rect_h;
+	}
+}
+
+void plat_inject_window_mouse(float x, float y, int button, int down)
+{
+	SDL_Event ev;
+	static const Uint8 buttons[3] = { SDL_BUTTON_LEFT, SDL_BUTTON_RIGHT, SDL_BUTTON_MIDDLE };
+
+	SDL_zero(ev);
+	if (button < 0) {
+		ev.type = SDL_EVENT_MOUSE_MOTION;
+		ev.motion.windowID = Window ? SDL_GetWindowID(Window) : 0;
+		ev.motion.x = x;
+		ev.motion.y = y;
+	} else if (button < 3) {
+		ev.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+		ev.button.windowID = Window ? SDL_GetWindowID(Window) : 0;
+		ev.button.button = buttons[button];
+		ev.button.down = down != 0;
+		ev.button.clicks = 1;
+		ev.button.x = x;
+		ev.button.y = y;
+	} else
+		return;
+	SDL_PushEvent(&ev);
+}
+
+// Window coordinates to frame pixels.
 static void window_to_frame(float *x, float *y)
 {
 	float rx, ry, rw, rh;
 	int fw, fh;
 
-	gpu_frame_rect(&rx, &ry, &rw, &rh, &fw, &fh);
+	// ASCENT: also the SDL_Renderer form (its rectangle of plat_present)
+	if (Use_gl)
+		gpu_frame_rect(&rx, &ry, &rw, &rh, &fw, &fh);
+	else {
+		rx = Sdl_rect_x;
+		ry = Sdl_rect_y;
+		rw = Sdl_rect_w;
+		rh = Sdl_rect_h;
+		fw = Frame_w;
+		fh = Frame_h;
+	}
 	if (rw <= 0 || rh <= 0 || fw <= 0 || fh <= 0) {
 		rx = ry = 0;
 		rw = (float) Win_w;
@@ -430,24 +548,11 @@ int plat_pump(void)
 		// Pass the input events to input.c. The mouse position
 		// becomes frame pixels. The relative motion stays in
 		// device units, so that it does not depend on the window size.
-		if (Use_gl) {
-			if (ev.type == SDL_EVENT_MOUSE_MOTION)
-				window_to_frame(&ev.motion.x, &ev.motion.y);
-			else if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN || ev.type == SDL_EVENT_MOUSE_BUTTON_UP)
-				window_to_frame(&ev.button.x, &ev.button.y);
-		} else {
-			float xrel = 0, yrel = 0;
-			if (ev.type == SDL_EVENT_MOUSE_MOTION) {
-				xrel = ev.motion.xrel;
-				yrel = ev.motion.yrel;
-			}
-			if (Renderer)
-				SDL_ConvertEventToRenderCoordinates(Renderer, &ev);
-			if (ev.type == SDL_EVENT_MOUSE_MOTION) {
-				ev.motion.xrel = xrel;
-				ev.motion.yrel = yrel;
-			}
-		}
+		// ASCENT: both forms map with the rectangle of the last present.
+		if (ev.type == SDL_EVENT_MOUSE_MOTION)
+			window_to_frame(&ev.motion.x, &ev.motion.y);
+		else if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN || ev.type == SDL_EVENT_MOUSE_BUTTON_UP)
+			window_to_frame(&ev.button.x, &ev.button.y);
 		plat_input_sdl_event(&ev);
 	}
 	return !Quit_requested;

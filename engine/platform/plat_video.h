@@ -23,6 +23,12 @@ void gpu_present(const uint8_t *pixels, int w, int h, int pitch, const uint8_t *
 // shows the frame of the last gpu_present.
 void gpu_frame_rect(float *x, float *y, float *w, float *h, int *frame_w, int *frame_h);
 
+// ASCENT: the shape of a frame of fw by fh pixels on the screen (the width
+// over the height; see plat_bind_vga_aspect), and the largest rectangle
+// with that shape in the middle of an output of ow by oh.
+float plat_frame_aspect(int fw, int fh);
+void plat_fit_frame(int fw, int fh, int ow, int oh, float *x, float *y, float *w, float *h);
+
 // gputex.c: the loader of the upscaled textures (worker threads).
 typedef struct gputex_result {
 	int texture;

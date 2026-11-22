@@ -29,6 +29,27 @@ void plat_present(const uint8_t *pixels, int w, int h, int pitch, const uint8_t 
 // The next plat_present shows the 8-bit frame again.
 void plat_present_xrgb(const uint32_t *pixels, int w, int h, int pitch);
 
+// ASCENT: the shape of the frame on the screen. A DOS VGA mode filled the
+// 4:3 monitor: a frame of 320x200, 320x400 or 640x400 pixels had pixels
+// taller than wide (1.2 for 320x200). With *on not 0 (or with NULL),
+// plat_present shows such a frame at 4:3, with black bars at the sides or
+// at the top and bottom of the window. With *on 0 each frame has square
+// pixels (320x200 at 16:10). Other frames (640x480, the 432x320 movies)
+// always have square pixels. The engine can change *on at any time. Call
+// it before plat_init, so that the first window has the right shape.
+void plat_bind_vga_aspect(const int *on);
+
+// ASCENT: the rectangle of the window (window coordinates) that shows the
+// last frame, the size of that frame, and the size of the window. For the
+// tests (the script command presentstate).
+void plat_get_present_rect(float *x, float *y, float *w, float *h, int *frame_w, int *frame_h, int *win_w, int *win_h);
+
+// ASCENT: a test aid. Queues a mouse event at (x, y) in window coordinates,
+// as the system sends it: the next plat_pump maps it to frame pixels.
+// button < 0: a motion; else a press (down 1) or a release of button 0, 1
+// or 2.
+void plat_inject_window_mouse(float x, float y, int button, int down);
+
 // Process the window events. Returns 0 after the user closes the window.
 int plat_pump(void);
 

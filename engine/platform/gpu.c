@@ -2911,7 +2911,7 @@ static void output(GLuint target_fbo, int key, int fw, int fh, int x, int y, int
 void gpu_present(const uint8_t *pixels, int w, int h, int pitch, const uint8_t *pal6)
 {
 	int pw = 0, ph = 0, ww = 0, wh = 0, key;
-	float s, dw, dh, dx, dy;
+	float dw, dh, dx, dy;
 
 	if (!Gpu_ready || w <= 0 || h <= 0)
 		return;
@@ -2929,14 +2929,9 @@ void gpu_present(const uint8_t *pixels, int w, int h, int pitch, const uint8_t *
 	if (pw <= 0 || ph <= 0)
 		return;
 
-	// letterbox: the largest size with the aspect of the frame
-	s = (float) pw / w;
-	if ((float) ph / h < s)
-		s = (float) ph / h;
-	dw = w * s;
-	dh = h * s;
-	dx = (pw - dw) / 2;
-	dy = (ph - dh) / 2;
+	// letterbox: the largest size with the shape of the frame on the
+	// screen (ASCENT: 4:3 for 320x200, plat_frame_aspect)
+	plat_fit_frame(w, h, pw, ph, &dx, &dy, &dw, &dh);
 
 	if (Stats_on) {
 		int q = Stats_out_next;
@@ -3018,7 +3013,10 @@ uint8_t *plat_gpu_screenshot(const uint8_t *pixels, int w, int h, int pitch, con
 	ui_prepare(pixels, w, h, pitch);
 	if (Ui_active)
 		ui_update_plut(pal6);
-	if (!key && !Ui_active)
+	// ASCENT: with ASCENT_SHOT_SIZE also a frame without either: the
+	// screenshot is the window as gpu_present shows it
+	e = SDL_getenv("ASCENT_SHOT_SIZE");
+	if (!key && !Ui_active && !e)
 		return NULL;
 
 	scale = key ? (View_w + Dest_w / 2) / Dest_w : Ui_scale;
@@ -3032,7 +3030,7 @@ uint8_t *plat_gpu_screenshot(const uint8_t *pixels, int w, int h, int pitch, con
 	if (e && atoi(e) >= 1 && atoi(e) <= 8)
 		scale = atoi(e);
 	sw = w * scale;
-	sh = h * scale;
+	sh = (int) (sw / plat_frame_aspect(w, h) + 0.5f);	// ASCENT: the shape on the screen
 	ox = oy = 0;
 	ow = sw;
 	oh = sh;
@@ -3041,15 +3039,14 @@ uint8_t *plat_gpu_screenshot(const uint8_t *pixels, int w, int h, int pitch, con
 	// the scale filter at sizes that are not a multiple of the frame)
 	e = SDL_getenv("ASCENT_SHOT_SIZE");
 	if (e && sscanf(e, "%dx%d", &x, &y) == 2 && x >= 64 && y >= 64 && x <= 8192 && y <= 8192) {
-		float s = (float) x / w;
-		if ((float) y / h < s)
-			s = (float) y / h;
+		float fx, fy, fw, fh;
+		plat_fit_frame(w, h, x, y, &fx, &fy, &fw, &fh);
 		sw = x;
 		sh = y;
-		ow = (int) (w * s);
-		oh = (int) (h * s);
-		ox = (int) ((sw - w * s) / 2);
-		oy = (int) ((sh - h * s) / 2);
+		ow = (int) fw;
+		oh = (int) fh;
+		ox = (int) fx;
+		oy = (int) fy;
 	}
 	if (!Shot_fbo || sw != Shot_w || sh != Shot_h) {
 		if (Shot_fbo) qglDeleteFramebuffers(1, &Shot_fbo);
