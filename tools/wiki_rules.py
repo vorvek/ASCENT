@@ -269,11 +269,11 @@ SPELLS = {
             target="6 missiles; each hits everyone within {r} ft of where it lands",
             eff="1d3 fire damage + 2 per level to each creature or player in the area, except you."),
     5: dict(src="0x8D62F, 0x29E3D", dur="3 minutes + 1 per level", save="Negates (each hit)",
-            target="The creature the missile hits",
-            eff="Has no effect when you cast it: the effect works only on the caster, but the spell "
-                "fires a missile at others. The effect itself (the Sword of W'hin gives it): each of "
-                "your melee hits does +1d4 damage unless the target saves; an undead target is "
-                "frightened (Fear) for 1d4 minutes + 1 per level instead.",
+            target="You",
+            eff="Each of your melee hits forces a saving throw. If the target fails, it takes +1d4 "
+                "damage; an undead target is frightened (Fear) for 1d4 minutes + 1 per level instead. "
+                "The Sword of W'hin gives the same effect. The original 1.3 game fires the spell as a "
+                "missile at others, so casting it does nothing; ASCENT corrects this.",
             tech="The case acts only when the target is the caster (0x8D633); the line is not "
                  "self-cast, so the missile never hits the caster. The cold dice of the line are "
                  "never rolled."),
@@ -436,8 +436,13 @@ SPELLS[9] = dict(SPELLS[8])
 SPELLS[31] = dict(SPELLS[30], dur="60 minutes + 10 per level")
 SPELLS[52] = dict(SPELLS[22])
 
-# The row of Detect Magic waits for the decode of its screen effect.
-DETECT_MAGIC = "Effect description pending."
+# Detect Magic: the tint of 0x670D4 (objects) and 0x7569F (walls), the blue
+# palette ramp at the brightness of each texel (docs/re/spells.md).
+DETECT_MAGIC = ("Magic things in view are drawn in shades of blue: spell scrolls, magic weapons and "
+                "armor, potions, keys and quest items, magic scenery, spell missiles in flight, and "
+                "false walls that you can walk through. Creatures and your own items do not change. "
+                "The original 1.3 game shows the tint mostly on near items and walls, because of a "
+                "drawing defect; ASCENT corrects this.")
 
 
 def vestment_text():
@@ -502,8 +507,12 @@ WORN = {
 FIXES = [
     ("Dtu_fix_multiclass_thac0", "-origchar", "Two classes take the better THAC0, not the worse."),
     ("Dtu_fix_haste_attack", "-origcombat", "Haste halves the swing time; 1.3 makes it longer."),
-    ("Dtu_fix_zero_dice", "-origcombat", "Dice with 0 sides are left out. 1.3 adds 0 for each such die "
-                                         "(see the rules found in the code), so the damage is the same."),
+    ("Dtu_fix_chill_touch", "-origcombat", "Chill Touch acts on the caster; 1.3 fires it as a missile "
+                                           "and it does nothing."),
+    ("Dtu_fix_magic_tint", "-origobj", "The blue tint of Detect Magic is drawn on all magic things in "
+                                       "view; 1.3 draws it mostly on near ones."),
+    ("Dtu_fix_spell_save_repair", "-origchar", "Saves of older ASCENT versions get their spells moved "
+                                               "back from the item list to the spell lists."),
     ("Dtu_fix_stoneskin_word", "-origcombat", "Stone Skin keeps your other spell effects."),
     ("Dtu_fix_rary_manual", "-origcombat", "Rary's Mnemonic Enhancer follows the manual."),
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),
@@ -862,9 +871,10 @@ class Pages:
             "- Mage: Dagger, Potion of Healing, and six spells: min(INT, 18) / 3 of Armor, Burning "
             "Hands, Chill Touch, Color Spray, Detect Magic, Feather Fall, Jump, Light, Magic Missile, "
             "Protection From Evil, Shield, Sleep and Spider Climb at random, the rest Sleep.",
-            "- Cleric: Mace, Leather Armor, Potion of Healing, and the spell Abjure. A cleric gets no "
-            "spells at a new level: cleric spells, like mage spells, come from spell items that you "
-            "pick up.",
+            "- Cleric: Mace, Leather Armor, Potion of Healing, and every cleric spell of level 1. A "
+            "cleric knows all the cleric spells of each spell level that it can cast: level 1 from "
+            "the start, level 2 at cleric level 3, level 3 at level 5 and level 4 at level 7. The "
+            "new spells come at each new level. The spell slots for each level do not change.",
             "- The empty hand does 1d2 plus the Strength bonuses.",
             "",
             "## Experience",
@@ -1346,7 +1356,7 @@ class Pages:
 
     # -- Spells ---------------------------------------------------------
     def spell_range(self, s):
-        if self.spell_self(s):
+        if self.spell_self(s) or s == 5:		# Chill Touch: self under Dtu_fix_chill_touch
             return "You"
         if s == 32:
             return "%d ft" % (MISSILE_FT_PER_S * 2)
@@ -1412,7 +1422,8 @@ class Pages:
     def spell_manual_notes(self, cls):
         if cls == "m":
             return [
-                "- Chill Touch and Knock have no effect when you cast them.",
+                "- Knock has no effect when you cast it. Chill Touch also has none in 1.3; ASCENT "
+                "corrects this.",
                 "- The manual lists Flame Arrow (level 3). There is no such spell. The Flame Arrow is a "
                 "magic missile weapon (1d6 + 4d6 fire, mage only, [[Weapons]]).",
                 "- Fireball: the 1.3 readme says that a Fireball that bursts close may blind or deafen. "
@@ -1745,7 +1756,6 @@ NOT_IN_ASCENT = [
     "The view of a frightened player (0x13407).",
     "The blindness and deafness of the fire trap of the Yawning Portal (0x90CEF).",
     "The Spider Pieces 20, 23 and 24.",
-    "The screen effect of Detect Magic (being decoded).",
 ]
 
 UNUSED_ITEM_VALUES = [
