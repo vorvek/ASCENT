@@ -10,6 +10,7 @@
  */
 
 #include "dtulang.h"		// ASCENT: the language of the text
+#include "dtuitemfix.h"	// ASCENT: the corrected item names
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -391,6 +392,24 @@ char *dtu_object_name(object *obj)
 	return unknown;
 }
 
+// ASCENT: the English name of an item as the player sees it: name (the
+// name of the table line) or its correction (dtuitemfix.h,
+// Dtu_fix_item_names). In a language that has no translation of the
+// corrected name the name of the table stays, so that its translation is
+// shown. The result goes to dtu_tr_name.
+char *dtu_item_shown_name(int type, int id, char *name)
+{
+	int kind = type == OBJ_WEAPON ? DTU_IK_WEAPON : type == OBJ_ARMOR ? DTU_IK_ARMOR : type == OBJ_MISC ? DTU_IK_MISC : -1;
+	char *fixed;
+
+	if (kind < 0 || name == NULL)
+		return name;
+	fixed = (char *) dtu_itemfix_name(kind, id, name);
+	if (fixed != name && Dtu_language != DTU_LANG_EN && dtu_tr_name(fixed) == fixed)
+		return name;
+	return fixed;
+}
+
 // The names of the creatures in the messages (0xA504A, 26 bytes for each
 // entry: the table name in 16 bytes, at 0x10 a pointer to the string
 // pointer, at 0x14 a signed byte; a negative byte ends the list). 184
@@ -602,7 +621,7 @@ char *dtu_object_display_name(object *obj)
 	int i;
 
 	if (obj->type != OBJ_ROBOT)
-		return dtu_tr_name(name);		// ASCENT: the language (dtulang.h)
+		return dtu_tr_name(dtu_item_shown_name(obj->type, obj->id, name));		// ASCENT: the language (dtulang.h), the corrected item names
 	for (i = 0; i < (int) (sizeof(Creature_names) / sizeof(Creature_names[0])); i++)
 		if (!stricmp(Creature_names[i].name, name)) {
 			if (Creature_names[i].text < 0)
@@ -1035,7 +1054,9 @@ int dtu_inventory_append(int type, int id, int count)
 	inv->inv_icon = it->inv_icon;
 	inv->obj_bitmap = it->obj_bitmap;
 	inv->level = Current_level_num;
-	strncpy(inv->name,it->name,sizeof(inv->name)-1);
+	// ASCENT: the name that the player sees (the name of an entry is only
+	// shown; the rules read the name of the table line)
+	strncpy(inv->name,dtu_item_shown_name(type,id,it->name),sizeof(inv->name)-1);
 	return Dtu_n_inventory++;
 }
 
@@ -7184,7 +7205,7 @@ static void pick_up_item(object *player,object *item)
 		int flag_10 = pickup_flag_10(item->type,it);
 
 		item->flags |= OF_SHOULD_BE_DEAD;
-		HUD_init_message("You pick up %s.",dtu_tr_name(it->name));
+		HUD_init_message("You pick up %s.",dtu_tr_name(dtu_item_shown_name(item->type,item->id,it->name)));		// ASCENT: the corrected item names
 		pickup_sound(flag_10);
 		dtu_obj_log("pickup: obj %d type %d id %d '%s' count %d, inventory entry %d, sound %s",(int)(item-Objects),
 			item->type,item->id,it->name,count,index,flag_10 ? "2216 2215" : "2215");
@@ -7193,7 +7214,7 @@ static void pick_up_item(object *player,object *item)
 		static fix last_message = 0;
 
 		if (GameTime - last_message > F1_0*2 || GameTime < last_message) {
-			HUD_init_message("You cannot carry %s.",dtu_tr_name(it->name));
+			HUD_init_message("You cannot carry %s.",dtu_tr_name(dtu_item_shown_name(item->type,item->id,it->name)));
 			last_message = GameTime;
 		}
 	}

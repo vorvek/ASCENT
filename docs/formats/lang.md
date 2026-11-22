@@ -73,6 +73,15 @@ Files:
 | `gamedata/lang/<MOVIE>.<code>.srt` | the subtitles of a language | no |
 | `engine/lang/<code>_port.catalog` | the translation of the text of the code | yes (our text) |
 
+The port catalog also holds the corrected item names of
+`engine/main/dtuitemfix.c` (docs/audit/items.md): entries with the id
+`tbl.fix.NAME`, the corrected English name in `en`, and `tr`, `gender` and
+`plural` as for an item name of the tables. They are written by hand; `merge`
+keeps them, and it keeps a `port.*` entry of the file that no part translates
+while `en.catalog` has its English text. The game finds them as it finds a
+name of the tables, by the English text. `tools/check_itemfix.py` (a test of
+`ctest`) fails when a corrected name has no entry.
+
 ## The sex of the player: {sex:MALE|FEMALE}
 
 A translation (any id: `tex`, `fe`, `gab`, `say`, `tbl`, `port`, `sub`) can

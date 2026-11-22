@@ -96,6 +96,7 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 
 #include <ctype.h>
 #include "dtufile.h"		// ASCENT: the game data files
+#include "dtuitemfix.h"	// ASCENT: the rulebook values of the item lines
 
 // ASCENT: from here on this file is changed in most places. Descent 1
 // parsed BITMAPS.TBL only in the editor build, loaded IFF bitmaps and POF
@@ -2107,12 +2108,47 @@ static char *record_find_key( int record, char * key )
 	return NULL;
 }
 
+// ASCENT: the item line of a record for the rulebook values
+// (dtuitemfix.h, the setting "Rulebook items"): the table and the number of
+// the item, and its name. Only the lines that have a rule are tested.
+static int record_item_rule( int record, int flag, char * key, const char ** value )
+{
+	int i;
+
+	if ( !Dtu_rulebook_items || record < 0 )
+		return -1;
+	for (i=0; i<dtu_itemfix_n_rules(); i++ ) {
+		const dtu_item_rule *r = dtu_itemfix_rule(i);
+		item_info *it = NULL;
+
+		switch ( r->kind ) {
+			case DTU_IK_WEAPON:	if ( r->id < N_weapon_types ) it = &Weapon_item_info[r->id]; break;
+			case DTU_IK_ARMOR:	if ( r->id < N_armor_types ) it = &Armor_info[r->id]; break;
+			case DTU_IK_MISC:		if ( r->id < N_misc_types ) it = &Misc_info[r->id]; break;
+		}
+		if ( it == NULL || it->record != record )
+			continue;
+		if ( flag )
+			return dtu_itemfix_flag( r->kind, r->id, it->name, key );
+		*value = dtu_itemfix_value( r->kind, r->id, it->name, key );
+		return *value != NULL;
+	}
+	return -1;
+}
+
 int bm_tbl_get( int record, char * key, char * value, int value_size )
 {
 	char *p, *q;
 	int n = 0;
+	const char *rule;
 
 	if ( value_size > 0 ) value[0] = 0;
+	// ASCENT: the rulebook value of the key (dtuitemfix.h)
+	if ( record_item_rule( record, 0, key, &rule ) == 1 && value_size > 0 ) {
+		strncpy( value, rule, value_size-1 );
+		value[value_size-1] = 0;
+		return 1;
+	}
 	p = record_find_key( record, key );
 	if ( p == NULL )
 		return 0;
@@ -2172,5 +2208,10 @@ int bm_tbl_flag_pos( int record, char * flag )
 
 int bm_tbl_has_flag( int record, char * flag )
 {
+	// ASCENT: the rulebook state of the word (dtuitemfix.h)
+	int rule = record_item_rule( record, 1, flag, NULL );
+
+	if ( rule >= 0 )
+		return rule;
 	return bm_tbl_flag_pos( record, flag ) >= 0;
 }

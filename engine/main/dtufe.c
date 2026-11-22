@@ -63,6 +63,7 @@
 #include "dtuscroll.h"		// ASCENT: dtu_scroll_reset
 #include "screens.h"
 #include "dtuopts.h"
+#include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items
 #include "dtuhdui.h"		// ASCENT: the upscaled pictures
 #include "dtulang.h"		// ASCENT: the language of the text
 #include "dtulog.h"		// ASCENT: the session log
@@ -1805,6 +1806,7 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Improved 3D body"),       &Dtu_improved_body },
 	{ LN("Target hint"),            &Dtu_target_hint },		// dtucombat.c
 	{ LN("Streaming safe music"),   &Dtu_safe_music },		// dtumusic.c
+	{ LN("Rulebook items"),         &Dtu_rulebook_items },	// dtuitemfix.h: off by default
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
 
