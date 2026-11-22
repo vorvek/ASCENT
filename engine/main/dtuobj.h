@@ -212,6 +212,10 @@ void dtu_draw_dressing_vclip(object *obj);
 // handled the pair.
 int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point);
 
+// An object of type 5 that lies as an item (not a shot): the item render
+// type and no life time (0x28502).
+int dtu_weapon_is_item(object *obj);
+
 // Damage (0x29A9C). "attacker" can be NULL. With an attacker these two
 // functions throw the to-hit roll and the dice of the weapon of the
 // attacker (the weapon in the hand for the player) and do not use
@@ -252,8 +256,13 @@ int dtu_spell_damage_roll(int spell, object *target, int level);
 void dtu_get_body_cylinder(object *obj, vms_vector *center, fix *radius, fix *half_height);
 void dtu_get_body_size(object *obj, fix *radius, fix *half_height);
 
-// The name of an object for messages ("a chair", "durnan").
+// The name of an object from its table ("chair", "kob_swrd"). The logs
+// use it.
 char *dtu_object_name(object *obj);
+
+// The name of an object in the messages to the player (0xA7F03): for a
+// creature the name of the list 0xA504A ("Kobold"), else dtu_object_name.
+char *dtu_object_display_name(object *obj);
 
 //------------------------------------------------------------------------
 // The values of the player character that the fight needs. dtuobj.c has a

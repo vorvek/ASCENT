@@ -70,6 +70,9 @@ void dtu_display_view_again(void);
 // in place of the copy of the view to the screen.
 void dtu_display_frame(void);
 
+// The inventory screen starts at entry 0 (a load or a new character).
+void dtu_display_inventory_reset(void);
+
 // Returns 1 if the interface handles this key (value of key_inkey()), so
 // the game must ignore it.
 int dtu_display_owns_key(int key);

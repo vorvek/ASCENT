@@ -236,6 +236,8 @@ int plat_init(const char *title, int w, int h, int scale)
 		return plat_set_frame_size(w, h);
 	}
 
+	// ASCENT: the session log (plat_log.c) tells why the GPU renderer is off
+	plat_log("OpenGL 3.3 window not available (%s): the SDL renderer is used", SDL_GetError());
 	Use_gl = 0;
 	if (!SDL_CreateWindowAndRenderer(title, Win_w, Win_h,
 			SDL_WINDOW_RESIZABLE | (Start_hidden ? SDL_WINDOW_HIDDEN : 0),
@@ -405,6 +407,7 @@ int plat_pump(void)
 	SDL_Event ev;
 	static int enter_swallowed;
 
+	plat_log_tick();		// ASCENT: the OpenGL error check of the session log
 	while (SDL_PollEvent(&ev)) {
 		if (ev.type == SDL_EVENT_QUIT) {
 			Quit_requested = 1;

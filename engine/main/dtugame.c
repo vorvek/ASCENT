@@ -33,6 +33,7 @@
 #include "dtufile.h"
 #include "dtuobj.h"		// ASCENT: dtu_damage_player() for -testdeath
 #include "dtugame.h"
+#include "dtulog.h"		// ASCENT: the session log (-testcrash)
 #include "platform.h"		// ASCENT: plat_gpu_screenshot()
 
 #define DTU_WEAK __attribute__((weak))
@@ -236,6 +237,9 @@ int dtu_frame_done(void)
 	}
 
 	frame_count++;
+
+	// ASCENT: the test option -testcrash of the session log (dtulog.c)
+	dtulog_frame(frame_count);
 
 	// ASCENT: the soak test (-soak SEED, dtusoak.c)
 	dtu_soak_frame();

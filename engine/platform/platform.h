@@ -427,4 +427,41 @@ int plat_pref_dir(const char *app, char *out, int size);
 // Show an error message in a window of the system (no game window needed).
 void plat_message_box(const char *title, const char *text);
 
+// ---------------------------------------------------------------------
+// The session log and the crash handler (plat_log.c). Each run of the game
+// writes one log file, which a player can send when something goes wrong.
+// Each line is written to the file at once (a crash does not lose it).
+// The functions can be called from any thread, and before plat_init.
+
+// Open the log: dir/ascent-YYYY-MM-DD_HH-MM-SS.log (the start time). The
+// function makes dir and deletes the oldest logs (and their crash dumps)
+// so that keep logs remain. It notes in the new log when the newest older
+// log has no end line (the session before did not end cleanly). Returns 1
+// if the log is open.
+int plat_log_open(const char *dir, int keep);
+// The file name of the log, or NULL.
+const char *plat_log_path(void);
+// One message: a line with the time since the start. A message with line
+// ends gives more lines.
+void plat_log(const char *format, ...);
+// plat_log, and the message also goes to stderr.
+void plat_log_error(const char *format, ...);
+// The last line ("Session end: how") and close the log. A log without it
+// is the log of a session that did not end cleanly.
+void plat_log_close(const char *how);
+// The system: the operating system, the CPU, the memory, the SDL version.
+void plat_log_system(void);
+// The video driver, the displays, the window and the OpenGL renderer.
+// Call it after plat_init.
+void plat_log_video(void);
+// Report the OpenGL errors (glGetError) that are pending, with where.
+void plat_log_gl_errors(const char *where);
+// plat_pump calls it: a check of the OpenGL errors every few seconds.
+void plat_log_tick(void);
+// Install the crash handler: an exception, abort() or a fatal signal
+// writes the place, the registers and the stack to the log and, on
+// Windows, a minidump (the name of the log with .dmp). quiet 0: a message
+// box tells the player where the files are.
+void plat_crash_install(int quiet);
+
 #endif

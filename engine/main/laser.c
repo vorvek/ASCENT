@@ -58,6 +58,8 @@ static char rcsid[] = "$Id: laser.c 2.6 1995/04/05 13:18:31 mike Exp $";
 #include "powerup.h"
 #include "multi.h"
 #include "physics.h"
+#include "dtugame.h"
+#include "dtuobj.h"
 
 int Laser_rapid_fire = 0;
 
@@ -142,7 +144,15 @@ void Laser_render(object *obj)
 //	AND...Your proximity bombs can blow you up if they're 2.0 seconds or more old.
 int laser_are_related( int o1, int o2 )
 {
-	if ( (o1<0) || (o2<0) )	
+	if ( (o1<0) || (o2<0) )
+		return 0;
+
+	// ASCENT: a weapon item on the floor (type 5 with the item render type
+	// and no life time, as the pick up of dtuobj.c tests) is not a shot.
+	// Its control data is zero, so parent 0 with signature 0 made it a
+	// "child" of object 0, the player of a level file, and find_vector_
+	// intersection() never let the player touch it.
+	if (Dtu_objects_enabled && (dtu_weapon_is_item(&Objects[o1]) || dtu_weapon_is_item(&Objects[o2])))
 		return 0;
 
 	// See if o2 is the parent of o1

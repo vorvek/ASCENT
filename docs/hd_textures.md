@@ -393,6 +393,73 @@ minutes 23 s (about 10 per second). The other archives share most of these, so
 the full run should take about 10 to 15 minutes (estimate; the full run was not
 made).
 
+## The first opening of a door, the first use of a switch
+
+The report: the first time a door opens or a switch is used, some frames show
+a texture that is wrong but similar; the next uses look right. Two faults of
+the GPU renderer caused it. The software renderer and the GPU renderer without
+the upscaled set show the 8-bit texture at each frame, so neither has it.
+
+- The GPU texture of a bitmap is made the first time a view draws it, and its
+  upscaled form is loaded in the background (gputex.c, 2 threads). A door
+  animation shows a new merged texture (`texmerge.c`: the wall under the door
+  frame) about every 2 frames, and a switch shows a new one when it is used.
+  So the first opening showed each frame of the animation in the 8-bit form
+  for one frame, then the upscaled form: a blurred door that went sharp
+  frame after frame. The next door of the same kind found all its textures.
+  Descent 1 pages in the frames of all wall animations at the level start
+  (`paging_touch_walls`, paging.c). The port now does the same for the GPU
+  textures (render.c `gpu_preload_level`): after the first view of a level,
+  and again when the RGB textures are made again, it makes the textures of
+  the frames of the door animations of the walls (as `wall_set_tmap_num` sets
+  them), of the textures that the triggers and the traps put on their sides
+  (`tex_on`, `tex_off`, `tex_enabled`, `tex_disabled`, converted as
+  `set_side_tmap2` does), and of each frame of the animated textures (the
+  effects) of the sides, each merged with the other texture of its side, and
+  asks for their upscaled forms. It runs after the first view so that the
+  upscaled loads of that view come first. `ASCENT_GPU_NOPRELOAD=1` turns it
+  off (a test aid).
+- The merged wall textures have a table of 1024 entries in gpu3d.c (`Mt`).
+  Its first place came from `tc_hash`, which gives a place in the table of
+  the bitmaps (`Tc`, 4096 entries): three of four merges were written after
+  the end of `Mt`, into the entries of `Tc` that follow it in memory. A merged
+  wall could then show the texture of another merge, and a bitmap could get
+  the texture number of a merge (found with a debugger: `Tc[1408]` held the
+  pointers of merge 3138, and a texture number made of a pointer made the
+  game hang in `tex_info_get`). The place is now masked to the size of `Mt`.
+
+The time of the preload: BANE 89 pairs of textures (71 of the doors, 0 of the
+triggers) and 437 bitmaps; CRYPTS 185 pairs (160 of the doors, 6 of the
+triggers) and 679 bitmaps; 130 to 230 ms at the first frame of the level, and
+up to 0.7 s in other runs while the machine was busy. The upscaled loads were done 5
+to 8 frames later. Most of the time was the name of each texture: one
+glGenTextures call cost about 0.45 ms, so gpu.c now takes the names 256 at a
+time. A texture made between the draws of a view cost several times more
+than in one batch, so the preload makes all the textures at one time.
+`ASCENT_GPU_HDLOG=1` prints the counts and the time ("preload of level"), the
+frame when the upscaled loads are done, and each sweep of the merge table.
+
+Tests (`-hidden -fixedfps 30`, `ASCENT_SHOT_PRESENT` for each frame):
+
+- BANE `-testpos -160.4,19.1,100,0 -testmove
+  wait:20,use:1,wait:60,left:12,wait:20,use:1,wait:60`: the door of wall 66
+  (`dup5` on `wood91`, clip 25), then the door of wall 65, of the same kind.
+  Before, the first door showed the 8-bit form at presents 97, 100, 102, 105,
+  107, 110 and 112, each replaced one present later (mean difference of the
+  view to the upscaled form 3 to 6 of 255); the second door had none. After,
+  each frame of the first door is the upscaled form when it first shows (mean
+  difference 0.0 to 1.1 to the upscaled frame of the run before, from the
+  torches), as the second door.
+- CRYPTS `-testpos -21,-12.2,423.5,269 -testmove wait:20,use:1,wait:40`: the
+  switch of trigger 2 (segment 544 side 4, `swtch03b` to `swtch03a` on
+  `eroc39`). With `ASCENT_GPU_NOPRELOAD=1` the first present after the use
+  shows the 8-bit form; with the preload it shows the upscaled form.
+- Not covered: a texture that a level shows for the first time in another way
+  (a static wall seen for the first time after a turn) still shows the 8-bit
+  form for a frame; the merge table keeps 1024 entries and its sweep (60
+  frames, at 3/4 full) or the budget sweep (768 MB) can delete a preloaded
+  texture before its door is used in a large level.
+
 ## Making a set of version 2 again
 
 One run does it: `python -I tools/textures_hd.py` (all archives, no `--force`).

@@ -122,4 +122,7 @@ void dtu_opts_load(void);
 // Write the settings to the configuration file.
 void dtu_opts_save(void);
 
+// Write the settings to the session log (dtulog.h).
+void dtu_opts_log(void);
+
 #endif

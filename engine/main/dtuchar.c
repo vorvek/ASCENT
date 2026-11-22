@@ -1984,6 +1984,7 @@ void dtu_char_create_default(void)
 		if (Start_items[DTU_CLASS_FIGHTER][i][0])
 			give_item(Start_items[DTU_CLASS_FIGHTER][i][0], Start_items[DTU_CLASS_FIGHTER][i][1]);
 	sync_inventory();
+	dtu_display_inventory_reset();
 	dtu_char_update();
 	dtu_char_log("new character '%s': fighter, %d hit points, armor class %d, THAC0 %d, %d items", Dtu_char.name,
 		pa->max_hit_points, pa->armor_class, Dtu_char.thac0, Dtu_n_inventory);
@@ -2061,6 +2062,7 @@ int dtu_char_load_save(char *filename)
 	load_ref(&Dtu_char.slot[DTU_SLOT_BOW], p + DTU_P_BOW, map, n);
 	load_ref(&Dtu_char.slot[DTU_SLOT_CROSSBOW], p + DTU_P_CROSSBOW, map, n);
 	free(buf);
+	dtu_display_inventory_reset();		// 0xBB867
 
 	dtu_char_update();
 	dtu_char_log("character '%s' from %s: class %d/%d level %d/%d, %d of %d hit points, armor class %d, THAC0 %d, %d items",
