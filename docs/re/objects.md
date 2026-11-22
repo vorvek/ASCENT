@@ -422,7 +422,7 @@ item are the values of table entry `[id]`. The values of the file are not used.
 1. `init_robots` (0x16408) and resets of script state.
 2. Fixes for single levels: 0xACCDB is a switch on the level number (the byte at
    0x1D338D + Player_num * 6967). It changes fixed object numbers and table entries
-   (for example 0xAD1B4 for level 25). Not covered here.
+   (for example 0xAD1B4 for level 25). See "Level fixes (0xACCDB)" below.
 3. Each dressing type with `explode_sound` -1 gets sound 2704.
 4. Open the script data file (the "GAB data file").
 5. For each object 1 to the highest index:
@@ -457,6 +457,59 @@ differences (Code, 0x1038B to 0x1065C):
 
 In the level files the behavior is 0x81 in 1015 creature records and 0x84 in 95
 (Data).
+
+### Level fixes (0xACCDB), verified (code)
+
+level_start calls 0xACCDB(0x5A742(level)) at 0xAD716, before the loop of
+`creature_fixes` and `add_npc`. The argument is 1 when the level has a saved
+state (0x296304). The function is a switch on the level byte (the index in
+DTU.MSN). It writes fixed object numbers (`Objects` 0x2B0614, 479 bytes
+each) and table entries (`Robot_info` 0x38E344, 242 bytes; `Dressing_info`
+0x19B33C, 32 bytes). The level loader runs it at each load, before the
+restore of a state (0x5AA75), so the values of a state file win.
+
+The object types in the right column are those of the level files of the
+disc (`tools/lvl.py`); the executable tests the type only where the table
+says "if".
+
+| Level | Address | Change | Object in the level file |
+|---|---|---|---|
+| 0 ypinn | 0xACDB2 | objects 1, 2, 16, 17, 27, 28, 30, 32 (list 0xA645F), if not dead: hostile bit off, awareness - 1, +0x1A2 = -1, morale, animation values | the 8 NPCs of the inn |
+| 2 kobolds | 0xACF0C | only with no state: times +0x1A8, +0x1C0 of object 19; `weapon_type` of its type = 0x12; object 6 id = 0x27; object 69 removed if weapon 0x37 | 19 creature id 0, 6 armor id 41, 69 weapon id 55 |
+| 3 bones | 0xACF6F | object 55 peaceful (bit 9), 40 hit points; `init_ai_object(11 and 23, 0x80, segment)` | 55 creature (script 31), 11 and 23 creatures |
+| 5 thief0 | 0xACFBE | object 48 peaceful | creature (script 53) |
+| 7 thief2 | 0xACFD3 | object 93 peaceful; object 1 script 0x47 (71) and peaceful | 93 creature (script 70), 1 creature id 17 with no script |
+| 9 bane | 0xAD003 | object 53 removed if weapon 13; objects 26, 27 if scenery: movement 3 (spin 0xCCC about y), `tmap_override` from a run time table | 53 weapon 13, 26 and 27 scenery |
+| 11 mine | 0xAD0A1 | object 1 peaceful | creature |
+| 12 crypts | 0xAD0AB | object 74 peaceful | creature (script 121) |
+| 13 mulhor1 | 0xAD0C0 | objects 91, 73, 1, 2, 34, 60 if misc: object flag 0x40 | misc id 14 |
+| 16 myrkul | 0xAD129 | object 3: control type 0, Hold (+0x89 bit 0x40) with the timer +0xC0 0x3FFFFFFF, peaceful | creature (script 160) |
+| 19 clan3 | 0xAD157 | the type of object 10: flags `|= 0x7042`, damage 1 x 10, +0x7C = 0x16 | creature (script 190) |
+| 21 drow2 | 0xAD198 | object 43 peaceful bit off; object 42 script 0xD5 (213) | 43 creature (script 212), 42 scenery with no script |
+| 25 beholder | 0xAD1B4 | object 109 script 0xFF (255), `init_ai_object(109, 0x80, hide segment)`, AI flag 6 = 1, 120 hit points, effect bits `|= 0xE2013A09` with timers 0x3FFFFFFF, armor pool 23, +0x82 += 180, +0x80 = 9 + rand() % 4 | creature id 5 with no script |
+| 27 drow5 | 0xAD25A | the type of object 83: armor class -3, score 9000, damage 10 x 5, 100 hit points; object 83 hit points from 0x393230 (past the end of the monster table: a defect); object 13 if scenery: script 0x111 (273), spin 0x147, 256 hit points, `pushable` 14; object 84 removed if creature | 13 scenery, 83 creature, 84 dead creature |
+| 29 ibbalar | 0xAD320 | object 90, if alive and it contains nothing: contains weapon 0x3A; object 82 peaceful; object 2 if scenery: script 0x126, spin 1, 256 hit points, its type cannot break | 90 creature, 82 creature, 2 scenery (script 294 in the file) |
+| 32 flame | 0xAD3BB | object 2 (altar) and 3 (Flamesword) if scenery: cannot break, `pushable` 0x7FFF, +0x1AE bit 2, object flag 0x40; object 3 script 0x142 (322), spin 0x147; object 4 if misc: script 0x143 (323); object 17 (Halaster) if creature: 256 hit points, table values; object 35 flag 0x40; object 36 (Lolth) if creature: 256 hit points (no state only), melee, table values, no effects, not fleeing | 2, 3 scenery, 4 misc id 25 with no script, 17, 35, 36 creatures |
+
+Script 323 of object 4 in FLAME is the statue puzzle: trigger 27 (segment 279
+side 5) runs it, it checks the eight spider pieces of the triggers 10 to 16
+and opens the wall of segment 278. Script 322 of the Flamesword (trigger 28,
+segment 486) ends the game after the death of Lolth. Without these two
+script numbers the last level cannot be finished.
+
+The port: `level_fixes_tables` and `level_fixes_objects` in dtuobj.c, called
+by `dtu_objects_level_setup` before the creatures are set up (the object part
+not in the setup of a restore, `dtu_objects_level_setup_restore`). Not in the
+port: object flag 0x40, the run time texture of BANE, the hit points of
+DROW5 object 83, +0x7C of CLAN3, the YPINN values (the `add_npc` of the port
+makes these creatures peaceful at each setup), the times of KOBOLDS object
+19 and control type 0 of MYRKUL object 3 (the hold keeps it in place).
+
+Test: `-level FLAME -testpos 0,-7.92,452.5,0 -testmove wait:20,use:5,wait:100
+-scriptlog -objlog FILE`: the object log has "level fix (0xACCDB), level 32:
+obj 4 script 323", and the use of the wall runs "script 323 of obj 4
+(Assembled Spider) in mode 3", which lists the pieces that are not in place.
+Before the fix the trigger found no script ("trigger: obj 4 has no script").
 
 ## Hit points
 
@@ -867,9 +920,9 @@ Read in the code with the work on `engine/main/dtuobj.c`.
   the executable is an index of `ObjBitmaps`). The picture is the same.
 - A creature that is in no segment is moved by `fix_object_segs` of Descent 1, not by
   `place_creatures`.
-- `level_start` (the fixes for single levels, `creature_fixes`, the NPC table and the
-  scripts) is not in the port. A creature with a script number or with bit 9 of 0x1B0 is
-  not hostile.
+- `creature_fixes` of `level_start` is not in the port. The fixes for single levels
+  (0xACCDB) are, with the exceptions in "Level fixes (0xACCDB)". A creature with a
+  script number or with bit 9 of 0x1B0 is not hostile.
 - Collision bodies: the port tests a moving object against the cylinder of 0x748D9 in
   the x-z plane and then compares the heights (`dtu_check_vector_to_object` in `fvi.c`).
   The test of the executable inside 0x3EFD9 (0x3EE70) is in physics.md section 3; the

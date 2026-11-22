@@ -95,9 +95,18 @@ Not checked in the running original. The port setting `Dtu_fix_trigger_repeat`
 **V** Fixed level rules at the end of 0x939AD. Level 7 (thief2): after trigger 46 the
 code clears the lock of the wall of segment 608 side 4 and opens the door of segment
 607 side 5. After trigger 43 the same for segment 610 side 4 and segment 609 side 5.
-Level 32 (flame): after trigger 33, 32 or 26 it calls 0xAC055 for object 36 when a
-4 bit counter of that object (0x2B4B20, bits 24..27) is below 1, 2 or 3. The meaning
-is not known and the port does not have it.
+Level 32 (flame): after trigger 33, 32 or 26 it calls 0xAC055(object 36, 0), that is
+`run_script(object 36, 0)` (the player talks to Lolth), when the 4-bit variable of the
+script of object 36 (0x2B4B20, bits 24..27, statement E0) is below 1, 2 or 3. Script
+320 sets the variable to 1, 2 and 3 itself, so this runs only when the run of mode 3
+of the trigger did not start (a conversation window was open, for example). The port
+has both rules (`trig_level_rules` in dtutrig.c).
+
+**V** `wall_open_door` (0x7DBF5) has a rule for level 32: when the door of segment 478
+side 4 opens and the variable of object 36 is below 3, the automatic close (wall flag
+0x10) of both sides is cleared, the code runs game frames for 5 seconds (0x4391D) and
+then calls 0xAC055(object 36, 0). The port: `dtu_trig_door_opened` (dtutrig.c), called
+at the end of `wall_open_door` (wall.c); it counts the 5 seconds in `dtu_trig_frame`.
 
 ## 3. The steps of one trigger (0x93B29)
 
@@ -299,7 +308,7 @@ trigger that can need an item), through the thief skill, or through the spell.
 waiting (2) and closing (3), a closing door opens again with
 `time = play_time - time`, linked walls, the open sound of the animation. It reads
 the animation number of the wall with no test. It has a rule for level 32 (segment
-478 side 4). Not read: the frame functions that move the door (0x7E199 calls
+478 side 4, section 2). Not read: the frame functions that move the door (0x7E199 calls
 `wall_close_door`). The port uses the Descent 1 functions (animation frames by time,
 5 seconds waiting for a door with the automatic flag). **D** Each door wall in the
 files has an animation number from 1 to 81, and 1617 of 1644 have the automatic flag.
@@ -358,8 +367,8 @@ warp line is 0 to 3.
   fade ends.
 - The warp command codes 100 to 198 (music) are not run here. `dtumusic.c` reads the
   warp file for them itself. The other codes go to the hook `dtu_hook_warp_command`.
-- The level rule of flame, the thief skills, the monster script command, the
-  climbing and the use of objects are not in the port.
+- The thief skills, the monster script command, the climbing and the use of objects
+  are not in the port.
 - The messages do not use the two spaces after the end of a sentence.
 - Systems that do not exist yet are hook functions (see `dtutrig.h`).
 

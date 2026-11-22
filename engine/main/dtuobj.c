@@ -1196,6 +1196,324 @@ static void setup_creature(object *obj)
 	}
 }
 
+//------------------------------------------------------------------------
+// 0xACCDB (called by level_start 0xAD5BF before add_npc): fixed changes of
+// single objects and table entries for 16 levels, by the level byte (the
+// index in DTU.MSN). The argument is 0x5A742(level): 1 if the level has a
+// saved state. The level start runs before the restore of the state
+// (0x5AA75), so a restore keeps what the state file holds. The executable
+// writes fixed object numbers with no test for most of them; the port tests
+// the type that the level files have there. docs/re/objects.md, "Level
+// fixes (0xACCDB)", has the list. Not in the port: object flag 0x40 (byte 0x0D:
+// MULHOR1 objects 1, 2, 34, 60, 73, 91, FLAME 2, 3, 35), the texture of the
+// spinning scenery of BANE (a table made at run time), the shields of DROW5
+// object 83 (the executable reads past the monster table), the table value
+// +0x7C of CLAN3, the AI values of the YPINN creatures (add_npc of the port
+// sets them) and the times +0x1A8, +0x1C0.
+
+static int Level_setup_restore = 0;		// 1 while dtustate.c restores a level
+
+// The flag word +0x98 of the monster table as MONSTER_F_ bits (ai.md, "flag
+// words"). fire_resistant, infravision and magic_resistant have no bit.
+static int monster_flags_from_table(int w)
+{
+	int f = 0;
+
+	if (w & 0x0001) f |= MONSTER_F_BLIND;
+	if (w & 0x0002) f |= MONSTER_F_ELECTRICITY_IMMUNE;
+	if (w & 0x0004) f |= MONSTER_F_EXTRAPLANAR;
+	if (w & 0x0008) f |= MONSTER_F_FIRE_IMMUNE;
+	if (w & 0x0020) f |= MONSTER_F_FLYING;
+	if (w & 0x0040) f |= MONSTER_F_HUMANOID;
+	if (w & 0x0300) f |= MONSTER_F_LIGHT_SENSITIVE;
+	if (w & 0x0800) f |= MONSTER_F_NO_SCARE;
+	if (w & 0x1000) f |= MONSTER_F_NO_SLEEP;
+	if (w & 0x2000) f |= MONSTER_F_UNDEAD;
+	if (w & 0x4000) f |= MONSTER_F_WEAPON_RESISTANT;
+	return f;
+}
+
+// The object n if it has the type (and the id when id >= 0)
+static object *fix_obj(int n, int type, int id)
+{
+	object *o;
+
+	if (n < 0 || n > Highest_object_index)
+		return NULL;
+	o = &Objects[n];
+	if (o->type != type || (id >= 0 && o->id != id))
+		return NULL;
+	return o;
+}
+
+static void fix_log(int n, char *what)
+{
+	dtu_obj_log("level fix (0xACCDB), level %d: obj %d %s",Dtu_script_level,n,what);
+}
+
+static void fix_peaceful(int n)
+{
+	object *o = fix_obj(n,OBJ_ROBOT,-1);
+
+	if (o) {
+		o->dtu.m_1b0 |= DTU_PEACEFUL;
+		fix_log(n,"peaceful");
+	}
+}
+
+static void fix_script(object *o, int n, int script)
+{
+	o->dtu.m_1b0 = (o->dtu.m_1b0 & ~DTU_SCRIPT_MASK) | script;
+	dtu_obj_log("level fix (0xACCDB), level %d: obj %d script %d",Dtu_script_level,n,script);
+}
+
+static void fix_delete(int n, int type, int id)
+{
+	object *o = fix_obj(n,type,id);
+
+	if (o) {
+		o->flags |= OF_SHOULD_BE_DEAD;		// 0x6A3CC
+		fix_log(n,"removed");
+	}
+}
+
+static void fix_spin(object *o, fix rate)
+{
+	o->movement_type = MT_SPINNING;
+	vm_vec_zero(&o->mtype.spin_rate);
+	o->mtype.spin_rate.y = rate;
+}
+
+static monster_info *fix_monster(int n, int *id)
+{
+	object *o = fix_obj(n,OBJ_ROBOT,-1);
+
+	if (!o || o->id >= N_robot_types)
+		return NULL;
+	*id = o->id;
+	return &Monster_info[o->id];
+}
+
+// The changes of the tables: at each setup, also after a restore, because
+// the port reads the extra values of the monster table again at each setup.
+static void level_fixes_tables(void)
+{
+	monster_info *mi;
+	object *o;
+	int id;
+
+	switch (Dtu_script_level) {
+		case 2:		// kobolds (0xACF23): the weapon of the type of object 19
+			if (fix_monster(19,&id))
+				Monster_ext[id].weapon_type = 0x12;
+			break;
+		case 19:	// clan3 (0xAD157): the type of object 10
+			if ((mi = fix_monster(10,&id)) != NULL) {
+				mi->flags |= monster_flags_from_table(0x7042);
+				Monster_ext[id].damage_dice = 1;
+				Monster_ext[id].n_damage_dice = 10;
+			}
+			break;
+		case 27:	// drow5 (0xAD25A): the type of object 83
+			if ((mi = fix_monster(83,&id)) != NULL) {
+				mi->armor_class = -3;
+				mi->max_hit_points = 100;
+				Robot_info[id].score_value = 9000;
+				Monster_ext[id].damage_dice = 10;
+				Monster_ext[id].n_damage_dice = 5;
+			}
+			if ((o = fix_obj(13,OBJ_DRESSING,-1)) != NULL && o->id < N_dressing_types)
+				Dressing_info[o->id].pushable = 0xE;
+			break;
+		case 29:	// ibbalar (0xAD3AF): the scenery type of object 2 cannot break
+			if ((o = fix_obj(2,OBJ_DRESSING,-1)) != NULL && o->id < N_dressing_types)
+				Dressing_info[o->id].flags |= DRESSING_F_LEVEL_FIX;
+			break;
+		case 32:	// flame (0xAD3BB)
+			if ((o = fix_obj(2,OBJ_DRESSING,-1)) != NULL && o->id < N_dressing_types) {
+				Dressing_info[o->id].flags |= DRESSING_F_LEVEL_FIX;
+				Dressing_info[o->id].pushable = 0x7FFF;
+			}
+			if ((o = fix_obj(3,OBJ_DRESSING,-1)) != NULL && o->id < N_dressing_types) {
+				Dressing_info[o->id].flags |= DRESSING_F_LEVEL_FIX;
+				Dressing_info[o->id].pushable = 0x7FFF;
+			}
+			// object 17 (Halaster) and object 36 (the avatar of Lolth)
+			if ((mi = fix_monster(17,&id)) != NULL) {
+				mi->max_hit_points = 0x100;
+				mi->flags |= monster_flags_from_table(0x5CBA);
+				Robot_info[id].score_value = 10000;
+				Monster_ext[id].weapon_type = 0x21;
+				Monster_ext[id].damage_dice = 10;
+				Monster_ext[id].n_damage_dice = 10;
+				Monster_ext[id].regeneration = 1;
+			}
+			if ((mi = fix_monster(36,&id)) != NULL) {
+				mi->max_hit_points = 0x100;
+				mi->flags |= monster_flags_from_table(0x5C01);
+				Robot_info[id].attack_type = 1;
+				Monster_ext[id].weapon_type = 0x21;
+				Monster_ext[id].damage_dice = 10;
+				Monster_ext[id].n_damage_dice = 5;
+			}
+			break;
+	}
+}
+
+// The changes of the objects: only at the load of the level, before the
+// restore of a state.
+static void level_fixes_objects(int has_state)
+{
+	object *o;
+
+	switch (Dtu_script_level) {
+		case 2:		// kobolds (0xACF0C), only with no state
+			if (has_state)
+				break;
+			if ((o = fix_obj(6,OBJ_ARMOR,-1)) != NULL) {
+				o->id = 0x27;
+				fix_log(6,"armor id 0x27");
+			}
+			fix_delete(69,OBJ_WEAPON,0x37);
+			break;
+		case 3:		// bones (0xACF6F)
+			if ((o = fix_obj(55,OBJ_ROBOT,-1)) != NULL) {
+				o->dtu.m_1b0 |= DTU_PEACEFUL;
+				o->shields = i2f(40);
+				fix_log(55,"peaceful, 40 hit points");
+			}
+			// init_ai_object(n, 0x80, segment): the behavior guard
+			if ((o = fix_obj(11,OBJ_ROBOT,-1)) != NULL)
+				o->ctype.ai_info.behavior = DAIB_GUARD;
+			if ((o = fix_obj(23,OBJ_ROBOT,-1)) != NULL)
+				o->ctype.ai_info.behavior = DAIB_GUARD;
+			break;
+		case 5:		// thief0 (0xACFBE)
+			fix_peaceful(48);
+			break;
+		case 7:		// thief2 (0xACFD3)
+			fix_peaceful(93);
+			if ((o = fix_obj(1,OBJ_ROBOT,-1)) != NULL)
+				fix_script(o,1,0x47);
+			fix_peaceful(1);
+			break;
+		case 9:		// bane (0xAD003): the weapon 13 is removed, two pieces
+					// of scenery spin
+			fix_delete(53,OBJ_WEAPON,13);
+			if ((o = fix_obj(26,OBJ_DRESSING,-1)) != NULL)
+				fix_spin(o,0xCCC);
+			if ((o = fix_obj(27,OBJ_DRESSING,-1)) != NULL)
+				fix_spin(o,0xCCC);
+			break;
+		case 11:	// mine (0xAD0A1)
+			fix_peaceful(1);
+			break;
+		case 12:	// crypts (0xAD0AB)
+			fix_peaceful(74);
+			break;
+		case 16:	// myrkul (0xAD129): object 3 is held with no end
+			if ((o = fix_obj(3,OBJ_ROBOT,-1)) != NULL) {
+				o->dtu.m_88 |= DTU_FX_HOLD;
+				o->dtu.m_c0[0] = DTU_FX_NO_END;
+				o->dtu.m_1b0 |= DTU_PEACEFUL;
+				fix_log(3,"held, peaceful");
+			}
+			break;
+		case 21:	// drow2 (0xAD198)
+			if ((o = fix_obj(43,OBJ_ROBOT,-1)) != NULL) {
+				o->dtu.m_1b0 &= ~DTU_PEACEFUL;
+				fix_log(43,"not peaceful");
+			}
+			if ((o = fix_obj(42,OBJ_DRESSING,-1)) != NULL)
+				fix_script(o,42,0xD5);
+			break;
+		case 25:	// beholder (0xAD1B4)
+			if ((o = fix_obj(109,OBJ_ROBOT,-1)) != NULL) {
+				fix_script(o,109,0xFF);
+				o->ctype.ai_info.behavior = DAIB_GUARD;
+				o->ctype.ai_info.flags[6] = 1;
+				o->shields = i2f(120);
+				o->dtu.m_88 |= (int)0xE2013A09u;
+				o->dtu.m_8c[1] = i2f(23);			// +0x90
+				o->dtu.m_8c[4] = DTU_FX_NO_END;	// +0x9C
+				o->dtu.m_8c[10] = DTU_FX_NO_END;	// +0xB4
+				o->dtu.m_8c[11] = DTU_FX_NO_END;	// +0xB8
+				o->dtu.m_8c[12] = DTU_FX_NO_END;	// +0xBC
+				o->dtu.m_c8[0] = DTU_FX_NO_END;	// +0xC8
+				o->dtu.m_e0[1] = DTU_FX_NO_END;	// +0xE4
+				o->dtu.m_e8[3] = DTU_FX_NO_END;	// +0xF4
+				o->dtu.m_e8[4] = DTU_FX_NO_END;	// +0xF8
+				o->dtu.m_82 += 0xB4;
+				o->dtu.m_80 = 9 + rand() % 4;
+			}
+			break;
+		case 27:	// drow5 (0xAD2B1)
+			if ((o = fix_obj(13,OBJ_DRESSING,-1)) != NULL) {
+				fix_script(o,13,0x111);
+				fix_spin(o,0x147);
+			}
+			fix_delete(84,OBJ_ROBOT,-1);
+			break;
+		case 29:	// ibbalar (0xAD320)
+			if ((o = fix_obj(90,OBJ_ROBOT,-1)) != NULL && o->shields >= F1_0
+					&& !(o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) && o->contains_type <= 0) {
+				o->contains_type = OBJ_WEAPON;
+				o->contains_id = 0x3A;
+				o->contains_count = 1;
+				fix_log(90,"contains weapon 0x3A");
+			}
+			fix_peaceful(82);
+			if ((o = fix_obj(2,OBJ_DRESSING,-1)) != NULL) {
+				fix_script(o,2,0x126);
+				fix_spin(o,1);
+			}
+			break;
+		case 32:	// flame (0xAD3BB)
+			if ((o = fix_obj(3,OBJ_DRESSING,-1)) != NULL) {
+				fix_script(o,3,0x142);			// the Flamesword
+				o->control_type = CT_NONE;
+				fix_spin(o,0x147);
+			}
+			if ((o = fix_obj(4,OBJ_MISC,-1)) != NULL)
+				fix_script(o,4,0x143);			// the statue puzzle
+			if ((o = fix_obj(17,OBJ_ROBOT,-1)) != NULL) {
+				o->shields = i2f(0x100);
+				o->dtu.m_88 |= 0x01000000;		// +0x8B bit 0
+				o->ctype.ai_info.behavior = DAIB_WANDER;
+			}
+			if ((o = fix_obj(36,OBJ_ROBOT,-1)) != NULL) {
+				if (!has_state)
+					o->shields = i2f(0x100);
+				o->dtu.m_88 = 0;
+				o->dtu.m_1b0 &= ~DTU_FLEEING;
+				fix_log(36,"Lolth: 256 hit points, no effects");
+			}
+			break;
+	}
+}
+
+// The hit points of scenery: the setup of the port gives each piece of
+// scenery 1.0 (as setup_object does before level_start), so the fixes of
+// the scenery hit points come after it.
+static void level_fixes_scenery_shields(void)
+{
+	object *o;
+
+	if (Dtu_script_level == 27 && (o = fix_obj(13,OBJ_DRESSING,-1)) != NULL)
+		o->shields = i2f(256);
+	if (Dtu_script_level == 29 && (o = fix_obj(2,OBJ_DRESSING,-1)) != NULL)
+		o->shields = i2f(256);
+}
+
+// dtustate.c: the setup of a restored level runs no object fixes (0xACCDB
+// runs before the restore in the executable).
+void dtu_objects_level_setup_restore(void)
+{
+	Level_setup_restore = 1;
+	dtu_objects_level_setup();
+	Level_setup_restore = 0;
+}
+
 void dtu_objects_level_setup(void)
 {
 	int i;
@@ -1248,6 +1566,15 @@ void dtu_objects_level_setup(void)
 		Player_max_hp = dtu_player_hit_points();
 
 	Dtu_script_level = Current_level_num - 1;
+
+	// 0xACCDB, before add_npc (setup_creature)
+	level_fixes_tables();
+	if (!Level_setup_restore) {
+		extern int Dtu_level_has_state[];
+		int l = Dtu_script_level;
+
+		level_fixes_objects(l >= 0 && l < 100 ? Dtu_level_has_state[l] : 0);
+	}
 
 	Player_armor_class = 10;
 	if (N_player_types > 0)
@@ -1334,6 +1661,9 @@ void dtu_objects_level_setup(void)
 				break;
 		}
 	}
+
+	if (!Level_setup_restore)
+		level_fixes_scenery_shields();
 
 	if (Obj_log) {
 		int n[MAX_OBJECT_TYPES];
@@ -4941,6 +5271,8 @@ int dtu_dressing_unbreakable(object *d)
 {
 	if (d->type != OBJ_DRESSING || d->id >= N_dressing_types)
 		return 1;
+	if (Dressing_info[d->id].flags & DRESSING_F_LEVEL_FIX)
+		return 1;
 	return Dtu_fix_cant_break && (Dressing_info[d->id].flags & DRESSING_F_CANT_BREAK);
 }
 
@@ -6988,6 +7320,9 @@ void dtu_test_place_player(void)
 		a.h = (fixang) ((step % 4) * 0x4000);
 		vm_angles_2_matrix(&ConsoleObject->orient,&a);
 		vm_vec_zero(&ConsoleObject->mtype.phys_info.velocity);
+		// the jump from segment to segment is not a fall (the damage of a
+		// fall from the center of a high segment killed the player)
+		Dtu_player_state &= ~DTU_PS_FALLING;
 		dtu_trig_player_placed();
 		if (++step / 4 > Highest_segment_index)
 			printf("-testtour: %d segments visited\n", seg + 1);

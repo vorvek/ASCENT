@@ -851,14 +851,67 @@ void dtu_trig_fire(int trigger_num, int type, object *obj)
 		dtu_trap_run(t->first_trap, obj);
 }
 
+// 0x7DBF5, the end of wall_open_door: in level 32 (flame) the door of
+// segment 478 side 4 stays open (wall flag 0x10, the automatic close, off
+// on both sides) while the 4-bit variable of object 36 (Lolth) is below 3,
+// and 5 seconds later object 36 talks (0xAC055(object, 0)). The executable
+// waits in a loop of game frames (0x4391D); the port counts the time in
+// dtu_trig_frame().
+static fix Flame_talk_time = -1;
+
+void dtu_trig_door_opened(int segnum, int side)
+{
+	int c, wall_num;
+
+	if (Level_index != 32 || segnum != 478 || side != 4)
+		return;
+	if (36 > Highest_object_index || Objects[36].type == OBJ_NONE
+			|| ((Objects[36].dtu.m_1b0 >> 24) & 15) >= 3)
+		return;
+	wall_num = Segments[segnum].sides[side].wall_num;
+	if (wall_num >= 0 && wall_num < Num_walls)
+		Walls[wall_num].flags &= ~WALL_DOOR_AUTO;
+	c = Segments[segnum].children[side];
+	if (seg_ok(c)) {
+		int cs = find_connect_side(&Segments[segnum], &Segments[c]);
+
+		if (cs >= 0 && (wall_num = Segments[c].sides[cs].wall_num) >= 0 && wall_num < Num_walls)
+			Walls[wall_num].flags &= ~WALL_DOOR_AUTO;
+	}
+	Flame_talk_time = GameTime + i2f(5);
+	tlog("level rule of flame: the door of seg 478 stays open, object 36 talks in 5 seconds");
+}
+
+static void flame_talk_frame(void)
+{
+	if (Flame_talk_time < 0 || GameTime < Flame_talk_time)
+		return;
+	Flame_talk_time = -1;
+	if (Level_index == 32)
+		dtu_hook_trigger_object(36, 0);
+}
+
 // The end of 0x939AD has fixed rules for two levels. Level 7 (thief2):
 // the triggers 46 and 43 take the lock from a door and open it. Level 32
-// (flame): the triggers 33, 32 and 26 call 0xAC055 for object 36 when a
-// counter of that object is below 1, 2 and 3 (not known, not in the port).
+// (flame): after the triggers 33, 32 and 26 (0x93ADE), object 36 (the
+// avatar of Lolth) talks (0xAC055(object, 0): run_script(object, 0)) while
+// the 4-bit variable of its script (bits 24 to 27 of +0x1B0) is below 1,
+// 2 and 3. The script FLAME 320 sets the variable to 1, 2 and 3 itself, so
+// this runs only when the trigger run (mode 3) did not start.
 static void trig_level_rules(int last_trigger)
 {
 	int door_seg, lock_seg, wall_num;
 
+	if (Level_index == 32) {
+		int stage = last_trigger == 33 ? 1 : last_trigger == 32 ? 2 : last_trigger == 26 ? 3 : 0;
+
+		if (stage && 36 <= Highest_object_index && Objects[36].type != OBJ_NONE
+				&& (int) ((Objects[36].dtu.m_1b0 >> 24) & 15) < stage) {
+			tlog("level rule of flame: trigger %d, object 36 talks", last_trigger);
+			dtu_hook_trigger_object(36, 0);
+		}
+		return;
+	}
 	if (Level_index != 7)
 		return;
 	if (last_trigger == 46) {
@@ -877,6 +930,62 @@ static void trig_level_rules(int last_trigger)
 		Walls[wall_num].flags &= ~WALL_DOOR_LOCKED;
 	tlog("level rule of thief2: trigger %d opens the door of seg %d side 5", last_trigger, door_seg);
 	trap_open_door(door_seg, WFRONT);
+}
+
+// 0x5A855(0): after the restore of a level state (0x5AA75), fixed changes
+// of the triggers of five levels. level_index is the index in DTU.MSN.
+// - 2 (kobolds): trigger 1 (the one-time message of seg 167) is off.
+// - 6 (thief1): the executable clears byte 6 of trigger 34, a byte of the
+//   y coordinate of its position (sound position only, no effect seen). The
+//   port does not change the position.
+// - 7 (thief2): the triggers 43 and 46 are on, and trigger 46 gets the
+//   flags, masks, textures, count, traps and message of trigger 43 (0x5A95A).
+// - 21 (drow2): trigger 20 runs the script of object 42 (object_num).
+// - 32 (flame): the triggers 26, 32 and 33 (Lolth, object 36) are on again.
+void dtu_trig_state_rules(int level_index)
+{
+	dtu_trigger *a, *b;
+
+	switch (level_index) {
+		case 2:
+			if (Dtu_num_triggers > 1)
+				Dtu_triggers[1].on = 0;
+			break;
+		case 7:
+			if (Dtu_num_triggers <= 46)
+				break;
+			a = &Dtu_triggers[43];
+			b = &Dtu_triggers[46];
+			a->on = b->on = 1;
+			b->flags = a->flags;
+			b->activation_mask = a->activation_mask;
+			b->player_mask_a = a->player_mask_a;
+			b->player_mask_b = a->player_mask_b;
+			b->sound = a->sound;
+			b->tex_on = a->tex_on;
+			b->tex_off = a->tex_off;
+			b->fire_count = a->fire_count;
+			b->skip_count = a->skip_count;
+			b->first_trap = a->first_trap;
+			b->enable_trigger = a->enable_trigger;
+			b->enable_trap = a->enable_trap;
+			b->disable_trigger = a->disable_trigger;
+			b->disable_trap = a->disable_trap;
+			b->object_num = a->object_num;
+			b->say_index = a->say_index;
+			break;
+		case 21:
+			if (Dtu_num_triggers > 20)
+				Dtu_triggers[20].object_num = 42;
+			break;
+		case 32:
+			if (Dtu_num_triggers > 33)
+				Dtu_triggers[33].on = Dtu_triggers[32].on = Dtu_triggers[26].on = 1;
+			break;
+		default:
+			return;
+	}
+	tlog("level rule of the restore (0x5A855), level %d", level_index);
 }
 
 // 0x939AD
@@ -1143,6 +1252,7 @@ void dtu_trig_frame(void)
 	int i;
 
 	dtu_test_place_player();	// ASCENT: the test option -testpos
+	flame_talk_frame();
 
 	// 0x9547A: the traps that wait for a delay or that repeat
 	for (i=0; i<Num_active_traps; i++)
@@ -1590,6 +1700,7 @@ void dtu_trig_load_level(char *level_name, int level_index)
 
 	read_options();
 
+	Flame_talk_time = -1;
 	// 0x955F5, 0x95459
 	Dtu_num_triggers = 0;
 	Dtu_num_traps = 0;
