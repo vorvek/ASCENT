@@ -117,6 +117,10 @@ int Dtu_fix_guild_peace = 1;
 // (dtuobj.h). The options -origobj and -origdrow5 clear it.
 int Dtu_fix_drow5_shields = 1;
 
+// A dead creature that regenerates gets up again (dtuobj.h). The options
+// -origobj and -origrevive clear it.
+int Dtu_fix_revive = 1;
+
 // The weapon of the spellcaster of KOBOLDS also with a saved state, the hit
 // points of scenery at a restore, the texture of the spinning scenery of
 // BANE (dtuobj.h). -origobj clears them.
@@ -206,6 +210,8 @@ typedef struct dtu_ai_local {
 	fix		anim_start;				// +0x24
 	int		morale;					// +0x28
 	fix		regen_time;				// object +0x8C
+	fix		regen_hp;				// Dtu_fix_revive: the hit points that a corpse has regenerated
+	ubyte		gold_done;				// Dtu_fix_revive: the corpse has left its gold
 	// values of the corrected rules
 	fix		idle_acc;
 	int		idle_ticks;
@@ -1065,7 +1071,9 @@ void dtu_objects_init(void)
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
-			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = 0;
+			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_revive = 0;
+	if (FindArg("-origrevive"))
+		Dtu_fix_revive = 0;
 	if (FindArg("-origdrow5"))
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))
@@ -3019,7 +3027,8 @@ static void creature_is_corpse(object *obj)
 	// 0x6A639: a HUMANOID leaves gold in 4 of 10 cases (clock % 10 >= 6,
 	// here a random number): 1 to moola / 4 pieces, a misc object with
 	// the id 1 and the amount as its hit points.
-	if ((mi->flags & MONSTER_F_HUMANOID) && (mi->moola >> 2) > 0) {
+	// Dtu_fix_revive: one time only for a creature that gets up again
+	if ((mi->flags & MONSTER_F_HUMANOID) && (mi->moola >> 2) > 0 && !Ail[obj-Objects].gold_done) {
 		int r = Dtu_fix_ai_ticks ? (rand() % 10) : (int)((uint)Dtu_clock % 10);
 
 		if (r >= 6) {
@@ -3041,6 +3050,9 @@ static void creature_is_corpse(object *obj)
 	obj->flags |= OF_DESTROYED;
 	obj->control_type = CT_NONE;
 	obj->movement_type = MT_NONE;
+	Ail[obj-Objects].gold_done = 1;
+	Ail[obj-Objects].regen_hp = 0;
+	Ail[obj-Objects].regen_time = GameTime;
 	dtu_obj_log("obj %d %s: is a corpse",(int)(obj-Objects),dtu_object_name(obj));
 	if (Obj_log)
 		log_corpse_height(obj,"corpse");
@@ -3076,7 +3088,17 @@ static void creature_dies(object *obj,object *attacker)
 	ail->mode = DAIM_STILL;
 	ail->activity = 2;
 	ail->path_len = 0;
-	obj->dtu.m_88 = 0;
+	// 0x2A1D0, 0x916D9: all effects end. This clears the regeneration bit
+	// too, so the code of do_ai_frame that lets a dead creature get up
+	// (0x1440C) never runs for a creature that was killed, and the kill gave
+	// no experience (the test above). Dtu_fix_revive: the bit stays unless
+	// fire or acid took it, and the corpse regenerates (corpse_regen_frame).
+	if (Dtu_fix_revive && Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000)) {
+		obj->dtu.m_88 = 0x01000000;
+		dtu_obj_log("obj %d %s: keeps its regeneration (Dtu_fix_revive)",(int)(obj-Objects),dtu_object_name(obj));
+	}
+	else
+		obj->dtu.m_88 = 0;
 	obj->shields = 0;
 	vm_vec_zero(&obj->mtype.phys_info.velocity);
 
@@ -7914,6 +7936,89 @@ void dtu_test_place_player(void)
 	}
 }
 
+// ASCENT: Dtu_fix_revive. Step 10 of do_ai_frame (0x1440C to 0x14655) for
+// the corpse of a creature with "regeneration" that kept its status bit
+// 0x01000000: one hit point each "regeneration" seconds, and with all hit
+// points, the player farther away than the sum of both body radii, the
+// creature gets up: CURRENT_STATE REST, GOAL_STATE SRCH, animation REST
+// with the backward flag, activity 0, the effect Sleep cleared, hostile,
+// not fleeing, awareness 4, the morale check, the alert of level 4, and it
+// turns to the player. The executable runs this in do_ai_frame, which does
+// not return early for a dead creature with regeneration (0x13C96). There
+// the hit points go into the object (+0x6C); the port keeps them apart
+// until the creature is up, so that a corpse has no hit points.
+static void corpse_regen_frame(void)
+{
+	int i;
+
+	if (!Dtu_fix_revive)
+		return;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *obj = &Objects[i];
+		dtu_ai_local *ail = &Ail[i];
+		ai_static *aip = &obj->ctype.ai_info;
+		fix r1, h1, r2, h2;
+		vms_vector v;
+		int regen, max;
+
+		if (obj->type != OBJ_ROBOT || !(obj->flags & OF_DESTROYED) || (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD)))
+			continue;
+		if (obj->id >= N_robot_types || !(obj->dtu.m_88 & 0x01000000) || aip->CURRENT_STATE != DAIS_DEAD || DTU_ANIM_STATE(obj) != DAS_DIE)
+			continue;
+		regen = Monster_ext[obj->id].regeneration;
+		max = Monster_info[obj->id].max_hit_points;
+		if (regen <= 0 || max <= 0)
+			continue;
+
+		if (GameTime < ail->regen_time)
+			ail->regen_time = GameTime;
+		if (GameTime - ail->regen_time < i2f(regen))
+			continue;
+		ail->regen_time = GameTime;
+		if (ail->regen_hp < i2f(max)) {
+			ail->regen_hp += F1_0;
+			if (f2i(ail->regen_hp) % 10 == 0 || ail->regen_hp >= i2f(max))
+				dtu_obj_log("obj %d %s: the corpse regenerates, hp %d of %d",i,dtu_object_name(obj),f2i(ail->regen_hp),max);
+		}
+		if (ail->regen_hp < i2f(max) || ConsoleObject == NULL)
+			continue;
+
+		// 0x1449C: not while the player stands on the body
+		dtu_get_body_size(obj,&r1,&h1);
+		dtu_get_body_size(ConsoleObject,&r2,&h2);
+		if (vm_vec_dist_quick(&obj->pos,&ConsoleObject->pos) <= r1 + r2)
+			continue;
+
+		obj->flags &= ~OF_DESTROYED;
+		obj->control_type = CT_AI;
+		obj->movement_type = MT_PHYSICS;
+		obj->shields = i2f(max);
+		ail->regen_hp = 0;
+		ail->flags |= AILF_BACKWARD;
+		ail->anim_start = GameTime + FrameTime;
+		aip->CURRENT_STATE = DAIS_REST;
+		aip->GOAL_STATE = DAIS_SRCH;
+		DTU_ANIM_GOAL(obj) = DAS_REST;
+		set_anim(obj,DAS_REST);
+		ail->activity = 0;
+		obj->dtu.m_88 &= ~DTU_FX_SLEEP;
+		obj->dtu.m_1b0 = (obj->dtu.m_1b0 | DTU_HOSTILE) & ~DTU_FLEEING;
+		ail->awareness = 4;
+		dtu_obj_log("obj %d %s: gets up again with %d hit points (Dtu_fix_revive)",i,dtu_object_name(obj),max);
+		morale_check(obj);
+		dtu_spell_creature_event(obj,DTU_CSC_ALERT);		// 0x1460C: the alert of level 4
+		// 0x1463C: it faces the player
+		vm_vec_sub(&v,&ConsoleObject->pos,&obj->pos);
+		v.y = 0;
+		if (vm_vec_mag_quick(&v) > F1_0/16) {
+			vm_vec_normalize_quick(&v);
+			vm_vector_2_matrix(&obj->orient,&v,NULL,NULL);
+		}
+		log_creature_state(obj,"revive");
+	}
+}
+
 void dtu_objects_frame(void)
 {
 	if (!Dtu_objects_enabled)
@@ -7937,6 +8042,7 @@ void dtu_objects_frame(void)
 	dtu_player_check_death(NULL);
 	missiles_frame();
 	dressing_move_frame();
+	corpse_regen_frame();
 
 	// The option -testkill N (test): each N frames the active creature that
 	// is nearest to the player dies, for the test of the corpses.

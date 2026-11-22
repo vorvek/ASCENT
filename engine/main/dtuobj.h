@@ -162,6 +162,19 @@ extern int Dtu_fix_magic_tint;
 // and -origguildpeace clear it. See docs/re/ai.md, "Creature setup by name".
 extern int Dtu_fix_guild_peace;
 
+// The revive of a creature with "regeneration" (the trolls). Original: the
+// damage function clears all effects of a creature that dies (0x2A1D0,
+// 0x916D9), also the regeneration bit 0x01000000 that the revive code of
+// do_ai_frame needs (0x1440C). So a killed troll never gets up, and a kill
+// with the bit set gives no experience (0x2A0C5, 0x9162B). Corrected (1,
+// default): the bit stays unless fire or acid damage took it (0x91E3D), the
+// corpse regenerates one hit point each "regeneration" seconds and gets up
+// with all hit points, as the code of the executable does (and as the troll
+// of AD&D 2nd edition does). A troll that took fire or acid damage stays
+// dead and gives its experience. The options -origobj and -origrevive clear
+// it. See docs/re/ai.md, "Regeneration and revive".
+extern int Dtu_fix_revive;
+
 // The hatchling of DROW5 (object 83) at the level fixes (0xAD2A1).
 // Original: its shields come from the hit points of the type with the
 // object number as the index (past the monster table, a word that is 0),

@@ -2765,7 +2765,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
 // activate,
 // str=STRENGTH.PERCENT,
-// attackedby=OBJNUM,
+// attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
 // dump.
@@ -2801,6 +2801,10 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "attackedby")) {	// attackedby=OBJNUM: a melee attack of a creature on the player (test)
 		if (a >= 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
 			dtu_damage_player(ConsoleObject, &Objects[a], 0);
+	}
+	else if (!strcmp(cmd, "kill")) {		// ASCENT: kill=OBJNUM: the player kills a creature (test)
+		if (a >= 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
+			dtu_damage_creature_direct(&Objects[a], ConsoleObject, i2f(10000));
 	}
 	else if (!strcmp(cmd, "heal"))		dtu_char_heal(a);
 	else if (!strcmp(cmd, "use"))			dtu_char_use(index);
