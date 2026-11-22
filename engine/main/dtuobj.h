@@ -148,7 +148,13 @@ extern int Dtu_fix_attack_sound;
 // structure (insert function 0xB65BB, not ported). This is a plain list
 // for the play screen: one entry for each stack of items.
 
-#define DTU_MAX_INVENTORY		64
+// ASCENT: the executable has two lists: 127 items and 22 key items (misc
+// numbers 107 to 124, see docs/re/character.md). The port keeps both in
+// this list and has the same limits, so a save game of the original fits.
+#define DTU_MAX_ITEM_ENTRIES	127
+#define DTU_MAX_KEY_ENTRIES	22
+#define DTU_MAX_INVENTORY		(DTU_MAX_ITEM_ENTRIES + DTU_MAX_KEY_ENTRIES)
+#define DTU_IS_KEY_ITEM(type,id)	((type) == OBJ_MISC && (id) >= 107 && (id) <= 124)
 
 typedef struct dtu_inv_item {
 	ubyte		type;				// OBJ_WEAPON, OBJ_ARMOR, OBJ_MISC or OBJ_SPELL. 0: the entry is free
@@ -159,6 +165,11 @@ typedef struct dtu_inv_item {
 	short		obj_bitmap;		// picture= of the table line: slot of ObjBitmapPtrs, or -1
 	short		level;			// number of the level where the item was found
 	char		name[40];		// name= of the table line
+	// ASCENT: the 16-byte record of the save game that the entry came from
+	// (dtu_char_load_save). dtu_char_pack writes it back with the values
+	// of the entry, so the bytes that the port does not use stay.
+	ubyte		has_record;
+	ubyte		record[16];
 } dtu_inv_item;
 
 extern dtu_inv_item Dtu_inventory[DTU_MAX_INVENTORY];
@@ -168,6 +179,9 @@ extern int Dtu_gold;					// the gold of the player (misc id 1)
 // Adds "count" items. Returns the index of the entry, or -1 if the list is
 // full. A stackable type goes to the entry that has it already.
 int dtu_inventory_add(int type, int id, int count);
+// ASCENT: a new entry at the end of the list, with no stacking (the load of
+// a save game keeps the entries of the file). Returns the index or -1.
+int dtu_inventory_append(int type, int id, int count);
 // Takes "count" items from entry "index". The entry goes away at count 0.
 void dtu_inventory_remove(int index, int count);
 void dtu_inventory_clear(void);
@@ -184,6 +198,13 @@ void dtu_objects_init(void);
 // tables (verify_object 0x477D9, setup_object 0xAE3F2, place_creatures
 // 0x6A6FB, fix_object_segs 0x69FFB).
 void dtu_objects_level_setup(void);
+
+// ASCENT: the AI state of creature objnum in a state file of the original:
+// al is its 47-byte ai_local record, img its 479-byte object image
+// (docs/re/levelstate.md). dtu_ai_from_image runs after
+// dtu_objects_level_setup().
+void dtu_ai_to_image(int objnum, ubyte *al, ubyte *img);
+void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img);
 
 // The control of a creature for one frame (do_ai_frame 0x13BF4).
 void dtu_do_ai_frame(object *obj);

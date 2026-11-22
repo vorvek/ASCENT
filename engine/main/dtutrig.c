@@ -1224,8 +1224,15 @@ void dtu_player_use(void)
 //------------------------------------------------------------------------
 // Load (0x9550D, loaders 0x95B08 and 0x95797)
 
+// ASCENT: the records as they were read (the level file or a state
+// file). The packers start from them, so the bytes that the port does not
+// use go back into a state file unchanged.
+static ubyte Trig_raw[DTU_MAX_TRIGGERS][DTU_TIG_RECORD];
+static ubyte Trap_raw[DTU_MAX_TRAPS][DTU_TAP_RECORD];
+
 static void trig_parse(dtu_trigger *t, ubyte *p)
 {
+	memcpy(Trig_raw[t - Dtu_triggers], p, DTU_TIG_RECORD);
 	t->unk00 = get_s16(p);
 	get_vec(&t->pos, p+0x02);
 	t->on = p[0x0e];
@@ -1264,6 +1271,7 @@ static void trig_parse(dtu_trigger *t, ubyte *p)
 
 static void trap_parse(dtu_trap *tp, ubyte *p)
 {
+	memcpy(Trap_raw[tp - Dtu_traps], p, DTU_TAP_RECORD);
 	tp->id = get_s16(p);
 	tp->on = p[0x02];
 	tp->charges_init = get_s16(p+0x05);
@@ -1287,6 +1295,206 @@ static void trap_parse(dtu_trap *tp, ubyte *p)
 	tp->interval = get_u16(p+0x47);
 	tp->delay = get_u16(p+0x49);
 	tp->timestamp = get_u32(p+0x4b);
+}
+
+static void put_s16(ubyte *p, int v)
+{
+	p[0] = (ubyte)v; p[1] = (ubyte)(v >> 8);
+}
+
+static void put_u32(ubyte *p, uint v)
+{
+	p[0] = (ubyte)v; p[1] = (ubyte)(v >> 8); p[2] = (ubyte)(v >> 16); p[3] = (ubyte)(v >> 24);
+}
+
+static void put_vec(ubyte *p, vms_vector *v)
+{
+	put_u32(p, (uint)v->x);
+	put_u32(p+4, (uint)v->y);
+	put_u32(p+8, (uint)v->z);
+}
+
+static int trig_table_check(int repair);
+
+// ASCENT: the time units of a trap. The executable keeps the times of a
+// trap as seconds * 18.2 (0x9596F) and stores them so in the state files.
+// With Dtu_fix_trap_seconds the port counts seconds * 100; the state files
+// keep the unit of the executable.
+static ushort trap_time_from_state(ushort v)
+{
+	int t;
+
+	if (!Dtu_fix_trap_seconds)
+		return v;
+	t = (int)v * 1000 / 182;
+	return (ushort)(t > 65500 ? 65500 : t);
+}
+
+static ushort trap_time_to_state(ushort v)
+{
+	if (!Dtu_fix_trap_seconds)
+		return v;
+	return (ushort)((int)v * 182 / 1000);
+}
+
+int dtu_trig_read_tig(ubyte *data, int size, int from_state)
+{
+	int i, n;
+
+	if (size < 6)
+		return 0;
+	n = get_s16(data+4);
+	if (get_u32(data) != 2 || n < (from_state ? 0 : 1) || n > DTU_MAX_TRIGGERS || size < DTU_TIG_HEADER + DTU_TIG_RECORD*n)
+		return 0;
+	for (i=0; i<DTU_TRIG_SEG_TABLE; i++)
+		Dtu_trigger_seg_table[i] = get_s16(data + 6 + 2*i);
+	for (i=0; i<n; i++)
+		trig_parse(&Dtu_triggers[i], data + DTU_TIG_HEADER + DTU_TIG_RECORD*i);
+	Dtu_num_triggers = n;
+	if (from_state && trig_table_check(Dtu_fix_trigger_table))
+		tlog("state: the segment table of the triggers is %s", Dtu_fix_trigger_table ? "made again" : "left as in the file");
+	return 1;
+}
+
+int dtu_trig_read_tap(ubyte *data, int size, int from_state)
+{
+	int i, n;
+
+	if (size < 6)
+		return 0;
+	n = get_s16(data+4);
+	if (get_u32(data) != 2 || n < 0 || n > DTU_MAX_TRAPS || size < 6 + DTU_TAP_RECORD*n)
+		return 0;
+	for (i=0; i<n; i++) {
+		dtu_trap *tp = &Dtu_traps[i];
+
+		trap_parse(tp, data + 6 + DTU_TAP_RECORD*i);
+		if (from_state) {
+			// 0x9550D with 0x13CE31 set: the times of a state file are
+			// clock units already, and +0x41 is the delay.
+			tp->interval = trap_time_from_state(tp->interval);
+			tp->delay = trap_time_from_state(tp->delay);
+			tp->delay_init = trap_time_from_state(tp->delay_init);
+			continue;
+		}
+		// 0x9596F: seconds to clock units. The executable
+		// multiplies by 18.2 and cuts the fraction, and its clock
+		// counts 1/100 second.
+		if (Dtu_fix_trap_seconds) {
+			tp->interval = tp->interval > 655 ? 65500 : tp->interval * 100;
+			tp->delay = tp->delay > 655 ? 65500 : tp->delay * 100;
+		}
+		else {
+			tp->interval = (ushort)(int)(tp->interval * 18.2);
+			tp->delay = (ushort)(int)(tp->delay * 18.2);
+		}
+		tp->delay_init = tp->delay;
+	}
+	Dtu_num_traps = n;
+	return 1;
+}
+
+// 0x95E0A: u32 2, s16 count, the segment table, the records.
+ubyte *dtu_trig_write_tig(int *size)
+{
+	int i, n = Dtu_num_triggers;
+	ubyte *b;
+
+	*size = DTU_TIG_HEADER + DTU_TIG_RECORD*n;
+	b = calloc(1, *size);
+	if (!b)
+		return NULL;
+	put_u32(b, 2);
+	put_s16(b+4, n);
+	for (i=0; i<DTU_TRIG_SEG_TABLE; i++)
+		put_s16(b + 6 + 2*i, Dtu_trigger_seg_table[i]);
+	for (i=0; i<n; i++) {
+		dtu_trigger *t = &Dtu_triggers[i];
+		ubyte *p = b + DTU_TIG_HEADER + DTU_TIG_RECORD*i;
+
+		memcpy(p, Trig_raw[i], DTU_TIG_RECORD);
+		put_s16(p, t->unk00);
+		put_vec(p+0x02, &t->pos);
+		p[0x0e] = t->on;
+		put_u32(p+0x0f, t->unk0f);
+		put_s16(p+0x13, t->flags);
+		put_s16(p+0x15, t->activation_mask);
+		put_s16(p+0x17, t->unk17);
+		put_s16(p+0x19, t->need_item_class);
+		put_s16(p+0x1b, t->need_item_id);
+		put_s16(p+0x1d, t->unk1d);
+		put_s16(p+0x1f, t->lack_item_class);
+		put_s16(p+0x21, t->lack_item_id);
+		p[0x23] = t->take_item;
+		put_s16(p+0x24, t->player_mask_a);
+		put_s16(p+0x26, t->player_mask_b);
+		put_s16(p+0x28, t->sound);
+		put_s16(p+0x2a, t->tex_on);
+		put_s16(p+0x2c, t->tex_off);
+		put_s16(p+0x2e, t->fire_count);
+		put_u32(p+0x30, t->unk30);
+		p[0x34] = t->skip_count;
+		put_s16(p+0x35, t->cond35);
+		put_s16(p+0x37, t->cond37);
+		put_s16(p+0x39, t->cond39);
+		put_s16(p+0x3b, t->first_trap);
+		put_s16(p+0x3d, t->enable_trigger);
+		put_s16(p+0x3f, t->enable_trap);
+		put_s16(p+0x41, t->disable_trigger);
+		put_s16(p+0x43, t->disable_trap);
+		p[0x45] = t->object_num;
+		put_s16(p+0x46, t->seg);
+		p[0x48] = (ubyte)t->side;
+		put_s16(p+0x49, t->next_in_seg);
+		put_s16(p+0x4b, t->say_index);
+	}
+	return b;
+}
+
+// 0x95FB8: u32 2, s16 count, the records. Each trap gets its field +0x41
+// back from +0x49 before the write.
+ubyte *dtu_trig_write_tap(int *size)
+{
+	int i, n = Dtu_num_traps;
+	ubyte *b;
+
+	*size = 6 + DTU_TAP_RECORD*n;
+	b = calloc(1, *size);
+	if (!b)
+		return NULL;
+	put_u32(b, 2);
+	put_s16(b+4, n);
+	for (i=0; i<n; i++) {
+		dtu_trap *tp = &Dtu_traps[i];
+		ubyte *p = b + 6 + DTU_TAP_RECORD*i;
+
+		tp->delay_init = tp->delay;
+		memcpy(p, Trap_raw[i], DTU_TAP_RECORD);
+		put_s16(p, tp->id);
+		p[0x02] = tp->on;
+		put_s16(p+0x05, tp->charges_init);
+		put_s16(p+0x07, tp->charges);
+		put_s16(p+0x0b, tp->sound);
+		put_s16(p+0x0d, tp->next_trap);
+		put_u32(p+0x0f, tp->flags);
+		put_s16(p+0x13, tp->weapon_type);
+		put_vec(p+0x15, &tp->pos);
+		put_vec(p+0x21, &tp->dir);
+		put_s16(p+0x2d, tp->spawn_object);
+		put_s16(p+0x31, tp->stat_delta);
+		put_s16(p+0x33, tp->robot_type);
+		put_s16(p+0x35, tp->robot_arg);
+		put_s16(p+0x37, tp->tex_disabled);
+		put_s16(p+0x39, tp->tex_enabled);
+		put_s16(p+0x3f, tp->light_delta);
+		put_s16(p+0x41, trap_time_to_state(tp->delay_init));
+		put_s16(p+0x43, tp->seg);
+		put_s16(p+0x45, tp->side);
+		put_s16(p+0x47, trap_time_to_state(tp->interval));
+		put_s16(p+0x49, trap_time_to_state(tp->delay));
+		put_u32(p+0x4b, tp->timestamp);
+	}
+	return b;
 }
 
 // Counts the triggers that the table of the file does not reach, or
@@ -1392,16 +1600,9 @@ void dtu_trig_load_level(char *level_name, int level_index)
 	make_name(name, level_name, ".TIG");
 	data = dtu_load_file(name, &size);
 	if (data) {
-		n = (size >= 6) ? get_s16(data+4) : 0;
-		if (get_u32(data) != 2 || n < 1 || n > DTU_MAX_TRIGGERS || size < 1806 + 89*n)
-			tlog("%s: no triggers (version %u, count %d, size %d)", name, size >= 4 ? get_u32(data) : 0, n, size);
-		else {
-			for (i=0; i<DTU_TRIG_SEG_TABLE; i++)
-				Dtu_trigger_seg_table[i] = get_s16(data + 6 + 2*i);
-			for (i=0; i<n; i++)
-				trig_parse(&Dtu_triggers[i], data + 1806 + 89*i);
-			Dtu_num_triggers = n;
-		}
+		if (!dtu_trig_read_tig(data, size, 0))
+			tlog("%s: no triggers (version %u, count %d, size %d)", name, size >= 4 ? get_u32(data) : 0,
+				size >= 6 ? get_s16(data+4) : 0, size);
 		free(data);
 	}
 	else
@@ -1410,29 +1611,8 @@ void dtu_trig_load_level(char *level_name, int level_index)
 	make_name(name, level_name, ".TAP");
 	data = dtu_load_file(name, &size);
 	if (data) {
-		n = (size >= 6) ? get_s16(data+4) : -1;
-		if (get_u32(data) != 2 || n < 0 || n > DTU_MAX_TRAPS || size < 6 + 95*n)
-			tlog("%s: no traps (count %d, size %d)", name, n, size);
-		else {
-			for (i=0; i<n; i++) {
-				dtu_trap *tp = &Dtu_traps[i];
-
-				trap_parse(tp, data + 6 + 95*i);
-				// 0x9596F: seconds to clock units. The executable
-				// multiplies by 18.2 and cuts the fraction, and its clock
-				// counts 1/100 second.
-				if (Dtu_fix_trap_seconds) {
-					tp->interval = tp->interval > 655 ? 65500 : tp->interval * 100;
-					tp->delay = tp->delay > 655 ? 65500 : tp->delay * 100;
-				}
-				else {
-					tp->interval = (ushort)(int)(tp->interval * 18.2);
-					tp->delay = (ushort)(int)(tp->delay * 18.2);
-				}
-				tp->delay_init = tp->delay;
-			}
-			Dtu_num_traps = n;
-		}
+		if (!dtu_trig_read_tap(data, size, 0))
+			tlog("%s: no traps (count %d, size %d)", name, size >= 6 ? get_s16(data+4) : -1, size);
 		free(data);
 	}
 	else

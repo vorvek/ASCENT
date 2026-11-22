@@ -139,6 +139,11 @@ char	Robot_names[MAX_ROBOT_TYPES][ROBOT_NAME_LENGTH];
 char	Bm_level_name[16] = "";
 char	Bm_player_name[16] = "";
 char	Bm_egg_name[16] = "";
+// ASCENT: the number of the first model of the level archive. The models
+// of the player archive come before it in the port; DTUGAME.EXE numbers
+// the models of the level archive from 0 (dtustate.c: the model numbers of
+// a state file).
+int	Bm_level_first_model = 0;
 int	Bm_tbl_warnings = 0;
 
 //---------------- Internal variables ---------------------------
@@ -756,6 +761,7 @@ int bm_load_level_tables( char * level_name, char * player_name )
 		player_text = NULL;
 	}
 
+	Bm_level_first_model = N_polygon_models;
 	if ( piggy_load_egg( egg_name ) < 0 ) {
 		free( text );
 		if ( player_text ) free( player_text );

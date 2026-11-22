@@ -287,6 +287,7 @@ int bm_load_level_tables( char * level_name, char * player_name );
 extern char Bm_level_name[16];
 extern char Bm_player_name[16];
 extern char Bm_egg_name[16];
+extern int Bm_level_first_model;		// ASCENT: the first model of the level archive
 
 // Number of table lines that the parser did not understand in the last
 // bm_load_level_tables(). Each one gives a line on the message window.

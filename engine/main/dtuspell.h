@@ -186,6 +186,16 @@ int dtu_spell_select(int spell);
 // Adds a spell to the book of its class (0xB69AD). Returns 0 if added, 2
 // if it is there already, 1 if no book takes it.
 int dtu_spell_learn(int spell);
+// ASCENT: the spell books and the spell slots in a player record of a
+// save game (6967 bytes, docs/re/character.md). The writer keeps the
+// bytes of the entries that the last read had.
+void dtu_spell_books_from_record(const ubyte *record);
+void dtu_spell_books_to_record(ubyte *record);
+// The list (1 mage, 2 cleric) and the index of a spell for a reference of
+// the save game. Returns 0 if no book has it.
+int dtu_spell_book_ref(int spell, int *list, int *index);
+// The spell of a reference of the save game, or -1.
+int dtu_spell_of_ref(int list, int index);
 // All slots are full again (0x3551B: rest, level start, new level).
 void dtu_spell_restore_slots(void);
 // The slot maximum from the class levels and the wisdom (0x3575B).

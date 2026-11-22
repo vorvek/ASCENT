@@ -660,7 +660,6 @@ static int item_is_stackable(item_info *it)
 int dtu_inventory_add(int type, int id, int count)
 {
 	item_info *it = item_table_entry(type,id);
-	dtu_inv_item *inv;
 	int i;
 
 	if (it == NULL || count <= 0)
@@ -677,7 +676,29 @@ int dtu_inventory_add(int type, int id, int count)
 				return i;
 			}
 
+	return dtu_inventory_append(type,id,count);
+}
+
+// The limits of the two lists of the executable (0xB65BB: 127 items, 22
+// key items).
+static int inventory_full(int type, int id)
+{
+	int i, n = 0, key = DTU_IS_KEY_ITEM(type,id);
+
 	if (Dtu_n_inventory >= DTU_MAX_INVENTORY)
+		return 1;
+	for (i=0;i<Dtu_n_inventory;i++)
+		if (DTU_IS_KEY_ITEM(Dtu_inventory[i].type,Dtu_inventory[i].id) == key)
+			n++;
+	return n >= (key ? DTU_MAX_KEY_ENTRIES : DTU_MAX_ITEM_ENTRIES);
+}
+
+int dtu_inventory_append(int type, int id, int count)
+{
+	item_info *it = item_table_entry(type,id);
+	dtu_inv_item *inv;
+
+	if (it == NULL || inventory_full(type,id))
 		return -1;
 
 	inv = &Dtu_inventory[Dtu_n_inventory];
@@ -5793,5 +5814,97 @@ void dtu_objects_frame(void)
 					Ail[i].log_hits[0],Ail[i].log_hits[1],Ail[i].log_hits[2],Ail[i].log_hits[3],Ail[i].log_hit_seg,Ail[i].log_hit_side,Ail[i].log_hit_obj);
 				memset(Ail[i].log_hits,0,sizeof(Ail[i].log_hits));
 		}
+	}
+}
+
+//------------------------------------------------------------------------
+// ASCENT: the AI state of a creature in a state file of the original
+// (SAVE\TEMP<L>.LVL, docs/re/levelstate.md): the 47-byte ai_local record
+// (0x153EB0) and the fields of the 479-byte object image that the AI
+// uses (docs/re/ai.md).
+
+static int img_s16(const ubyte *p) { return (short)(p[0] | (p[1] << 8)); }
+static int img_s32(const ubyte *p) { return (int)((uint)p[0] | ((uint)p[1] << 8) | ((uint)p[2] << 16) | ((uint)p[3] << 24)); }
+static void img_put16(ubyte *p, int v) { p[0] = (ubyte)v; p[1] = (ubyte)(v >> 8); }
+static void img_put32(ubyte *p, int v) { p[0] = (ubyte)v; p[1] = (ubyte)(v >> 8); p[2] = (ubyte)(v >> 16); p[3] = (ubyte)(v >> 24); }
+
+void dtu_ai_to_image(int objnum, ubyte *al, ubyte *img)
+{
+	dtu_ai_local *ail = &Ail[objnum];
+
+	al[0x00] = ail->awareness;
+	al[0x01] = ail->retry_count;
+	al[0x03] = ail->mode;
+	al[0x04] = ail->previous_visibility;
+	al[0x05] = ail->flags;
+	img_put16(al+0x06,ail->goal_segment);
+	img_put32(al+0x10,ail->awareness_time);
+	img_put32(al+0x14,ail->time_player_seen);
+	img_put32(al+0x18,ail->time_attack_sound);
+	img_put32(al+0x1C,ail->next_misc_sound);
+	img_put32(al+0x20,ail->time_since_processed);
+	img_put32(al+0x24,ail->anim_start);
+	img_put32(al+0x28,ail->morale);
+
+	img[0x1CC] = ail->activity;
+	img[0x1AF] = ail->swing_done;
+	img[0x1AE] = (img[0x1AE] & ~0x20) | (ail->falling ? 0x20 : 0);
+	img_put16(img+0x138,ail->blocker);
+	img_put16(img+0x13A,ail->blocked_count);
+	img_put32(img+0x1A2,ail->target);
+	img_put32(img+0x8C,ail->regen_time);
+	img_put32(img+0x1C0,ail->spell_time);
+}
+
+void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img)
+{
+	object *obj = &Objects[objnum];
+	dtu_ai_local *ail = &Ail[objnum];
+	ai_static *aip = &obj->ctype.ai_info;
+	int s = img_s16(img+0x170), f = img_s32(img+0x172), g = img_s32(img+0x176);
+
+	// A creature that setup_creature() found dead stays so.
+	if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI)
+		return;
+	ail->awareness = al[0x00] > 5 ? 5 : al[0x00];
+	ail->retry_count = al[0x01];
+	ail->previous_visibility = al[0x04];
+	ail->flags = al[0x05];
+	ail->goal_segment = img_s16(al+0x06);
+	ail->awareness_time = img_s32(al+0x10);
+	ail->time_player_seen = img_s32(al+0x14);
+	ail->time_attack_sound = img_s32(al+0x18);
+	ail->next_misc_sound = img_s32(al+0x1C);
+	ail->time_since_processed = img_s32(al+0x20);
+	ail->anim_start = img_s32(al+0x24);
+	ail->morale = img_s32(al+0x28);
+	// The port keeps the path in its own list, not in Point_segs: a
+	// creature that walked a path plans a new one.
+	if (al[0x03] == DAIM_STILL || al[0x03] == DAIM_WANDER || al[0x03] == DAIM_CHASE_OB || al[0x03] == DAIM_RUN_FROM)
+		ail->mode = al[0x03];
+	ail->path_len = ail->path_idx = 0;
+
+	ail->activity = img[0x1CC] == 2 ? 2 : 0;
+	ail->swing_done = img[0x1AF];
+	ail->falling = (img[0x1AE] & 0x20) != 0;
+	ail->target = img_s32(img+0x1A2);
+	if (ail->target != 0)
+		ail->target = -1;
+	ail->regen_time = img_s32(img+0x8C);
+	ail->spell_time = img_s32(img+0x1C0);
+	// The hostile and script bits as the game left them (setup_creature()
+	// made them again from the script of the level).
+	obj->dtu.m_1b0 = img_s32(img+0x1B0);
+
+	// The AI state and the animation, if the values fit the model
+	if (img[0x142] <= DAIS_RECO && img[0x143] <= DAIS_RECO) {
+		aip->CURRENT_STATE = img[0x142];
+		aip->GOAL_STATE = img[0x143];
+	}
+	if (s >= 0 && s < DTU_N_ANIM_STATES && s != DAS_DIE && f >= Dtu_anim_first[s] && f < Dtu_anim_first[s+1]
+		&& g >= 0 && g < DTU_N_ANIM_STATES && g != DAS_DIE) {
+		DTU_ANIM_STATE(obj) = s;
+		DTU_ANIM_FRAME(obj) = f;
+		DTU_ANIM_GOAL(obj) = g;
 	}
 }

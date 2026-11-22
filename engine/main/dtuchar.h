@@ -160,12 +160,16 @@ typedef struct dtu_item_ref {
 #define DTU_P_ATTR			0x0097
 #define DTU_P_N_ITEMS		0x00F3
 #define DTU_P_ITEMS			0x0103
+#define DTU_P_N_KEYS			0x00FF
+#define DTU_P_KEYS			0x18D3		// 22 key items
+#define DTU_P_NAME2			0x1AA3		// char[16], the name again
 #define DTU_P_THAC0			0x1A5C		// byte
 #define DTU_P_BOW				0x1AB9
 #define DTU_P_CROSSBOW		0x1ABB
 #define DTU_P_HOT_KEYS		0x1AC1
 #define DTU_P_CURRENT		0x1AD7
 #define DTU_P_SLOTS			0x1AD9
+#define DTU_P_MODEL			0x1AED		// char[13], the model file of the player
 #define DTU_P_PORTRAIT		0x1B03		// int
 
 //------------------------------------------------------------------------
@@ -238,7 +242,8 @@ void dtu_char_create_default(void);
 // if successful. Option -char FILE.
 int dtu_char_load_save(char *filename);
 // Writes the character into a player record buffer (6967 bytes) with the
-// layout of the executable. Only the decoded fields are written.
+// layout of the executable. The decoded fields come from the character;
+// the other bytes come from the record of the last loaded save game.
 void dtu_char_pack(ubyte *record);
 
 // Sets the values that depend on the equipment: armor class, strength,

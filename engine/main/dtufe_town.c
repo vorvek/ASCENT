@@ -26,6 +26,7 @@
 #include "dtumusic.h"
 #include "dtufe.h"
 #include "dtufe_int.h"
+#include "dtustate.h"		// ASCENT: dtu_user_find
 #include "dtuscript.h"		// the mission of Khelben
 #include "object.h"			// the market: item classes, inventory, gold
 #include "bm.h"
@@ -429,16 +430,19 @@ static int Mk_reward_stock[9][12][4] = {
 	{ {1,15,10,-1}, {1,15,52,-1}, {1,16,95,-1}, {1,5,69,-1}, {6,5,59,-1}, {4,16,75,-1}, {4,16,77,-1}, {4,16,88,-1}, {1,5,58,-1} } };
 
 // ASCENT: the files of the market are in the directory of the user
-// (dtu_user_path). Two buffers: one expression can name two files.
+// (dtu_user_path), with any case of the letters (dtu_user_find: the DOS
+// game writes GELDOR.DAT and THESTORE.1). Two buffers: one expression can
+// name two files.
 static const char *mk_user_file(const char *name)
 {
 	static char path[2][600];
 	static int i;
 
 	i ^= 1;
-	return dtu_user_path(path[i], sizeof(path[i]), name);
+	dtu_user_find(name, path[i], sizeof(path[i]));
+	return path[i];
 }
-#define MK_STORE_FILE	mk_user_file("geldor.dat")		// 0x12CE53, in the current directory
+#define MK_STORE_FILE	mk_user_file("GELDOR.DAT")		// "geldor.dat" 0x12CE53, in the current directory
 
 // The game flag 107 of the player (bit array at P+0x1A33, 0xADAFE) doubles
 // the prices (0x86F5A). The port does not have these flags yet; a file
@@ -1182,7 +1186,7 @@ void fe_market_store(int s, int write)
 
 	if (s < 0) s = 0;
 	if (s > 999) s = 999;
-	sprintf(name, "TheStore.%d", s);			// 0x12D0FB
+	sprintf(name, "THESTORE.%d", s);			// "TheStore.%d" 0x12D0FB
 	if (!write)
 		remove(MK_STORE_FILE);					// 0x87BFB
 	in = fopen(write ? MK_STORE_FILE : mk_user_file(name), "rb");

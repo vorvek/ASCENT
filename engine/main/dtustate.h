@@ -5,11 +5,23 @@
  * 0x5AA75, 0x5ABC6, 0x5AC6F, 0xBAD08, 0xBB1A7, 0xBC1EC and 0xBC51D of
  * DTUGAME.EXE 1.3. See docs/re/levelstate.md.
  *
- * The files are in the directory SAVE under the current directory. The
- * port never writes into the directories of the game data.
+ * The files are in the directory SAVE of the directory of the user. The
+ * port never writes into the directories of the game data. The files have
+ * the format of the executable, so the saves of the original and of the
+ * port go both ways (docs/re/levelstate.md, docs/formats/misc.md).
  */
 #ifndef _DTUSTATE_H
 #define _DTUSTATE_H
+
+#include <stdio.h>
+
+// ASCENT: a file of the directory of the user (rel "SG0.SG" or
+// "SAVE/SG1_0.LVL"), found with no regard to the case of the letters.
+// dtu_user_find writes the path and returns 1 if the file exists; else the
+// path is the name as given (in the directories that exist).
+int dtu_user_find(const char *rel, char *out, int size);
+FILE *dtu_user_fopen(const char *rel, const char *mode);
+void dtu_user_remove(const char *rel);
 
 // A new game (0x5AC6F("CSUF.ls") and 0x5ABC6): deletes the state of the
 // running game and writes an empty level table.
@@ -34,6 +46,13 @@ int dtustate_save_slot(int s);
 // 0xBC51D: the state of save slot S becomes the state of the running
 // game. Returns 1 if the slot has a level table.
 int dtustate_load_slot(int s);
+
+// ASCENT: the three lists of a save game in a level (SG file offset 7374:
+// the Descent 1 triggers, the matcens, the fuel centers). The load of a
+// save gives them (NULL: none); the level start applies them. The writer
+// returns the number of bytes it wrote into b (0 if size is too small).
+void dtustate_set_save_lists(const unsigned char *data, int size);
+int dtustate_write_save_lists(unsigned char *b, int size);
 
 // Calls of the game code (warp, start of a game).
 void dtustate_warp_leave(int level_index);		// before the load of the new level

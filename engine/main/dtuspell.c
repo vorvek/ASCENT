@@ -364,12 +364,124 @@ int dtu_spell_select(int spell)
 
 // The two spell lists of a save game of the original (P+0x8F3 and
 // P+0x10E3, counts at P+0xF7 and P+0xFB, 16 bytes for each entry with the
-// spell number in byte 1).
+// spell number in byte 1), and the spell slots: P+0x23 mage maximum and
+// P+0x2C mage slots left (spell levels 1 to 9), P+0x35 cleric maximum and
+// P+0x3C cleric slots left (levels 1 to 7), one byte each.
+#define P_BOOK_COUNT(b)		(0xF7 + 4*(b))
+#define P_BOOK_LIST(b)		((b) ? 0x10E3 : 0x8F3)
+#define P_SLOTS_MAX(b)		((b) ? 0x35 : 0x23)
+#define P_SLOTS_LEFT(b)		((b) ? 0x3C : 0x2C)
+
+// The entries of the last loaded record: the save keeps their bytes.
+static ubyte Book_record[2][DTU_SPELL_BOOK_MAX][16];
+static int Book_record_n[2];
+
+void dtu_spell_books_from_record(const ubyte *p)
+{
+	int b, i;
+
+	for (b=0;b<2;b++) {
+		const ubyte *list = p + P_BOOK_LIST(b);
+		int n = p[P_BOOK_COUNT(b)] | (p[P_BOOK_COUNT(b)+1] << 8), levels = b ? 7 : 9;
+
+		if (n < 0 || n > DTU_SPELL_BOOK_MAX) n = 0;
+		Dtu_spell_book_n[b] = 0;
+		Book_record_n[b] = n;
+		for (i=0;i<n;i++) {
+			memcpy(Book_record[b][i],list + 16*i,16);
+			if (list[16*i] == OBJ_SPELL && spell_ok(list[16*i+1]))
+				Dtu_spell_book[b][Dtu_spell_book_n[b]++] = list[16*i+1];
+		}
+		for (i=0;i<9;i++)
+			Dtu_spell_slots_left[b][i] = i < levels ? p[P_SLOTS_LEFT(b) + i] : 0;
+	}
+	Dtu_spell_current = -1;
+	dtu_spell_log("spell: %d mage spells and %d cleric spells from the save game",Dtu_spell_book_n[0],Dtu_spell_book_n[1]);
+}
+
+void dtu_spell_books_to_record(ubyte *p)
+{
+	int b, i, k;
+
+	for (b=0;b<2;b++) {
+		ubyte *list = p + P_BOOK_LIST(b);
+		int levels = b ? 7 : 9;
+
+		p[P_BOOK_COUNT(b)] = (ubyte)Dtu_spell_book_n[b];
+		p[P_BOOK_COUNT(b)+1] = (ubyte)(Dtu_spell_book_n[b] >> 8);
+		p[P_BOOK_COUNT(b)+2] = p[P_BOOK_COUNT(b)+3] = 0;
+		for (i=0;i<DTU_SPELL_BOOK_MAX;i++) {
+			ubyte *e = list + 16*i;
+			int spell = i < Dtu_spell_book_n[b] ? Dtu_spell_book[b][i] : -1;
+
+			memset(e,0,16);
+			e[5] = '_';						// an empty entry of the executable
+			e[6] = 1;
+			if (spell < 0)
+				continue;
+			for (k=0;k<Book_record_n[b];k++)
+				if (Book_record[b][k][0] == OBJ_SPELL && Book_record[b][k][1] == spell)
+					break;
+			if (k < Book_record_n[b])
+				memcpy(e,Book_record[b][k],16);
+			else {
+				// 0xB69AD: the entry of a spell in a list (combat.md: letter K,
+				// word 6 the spell level, byte 0x0B the sub use count)
+				dtu_item_data d;
+
+				if (dtu_item_get(OBJ_SPELL,spell,&d)) {
+					e[2] = (ubyte)d.icon;
+					e[3] = (ubyte)d.class_mask;
+				}
+				e[0] = OBJ_SPELL;
+				e[1] = (ubyte)spell;
+				e[5] = 'K';
+				e[6] = (ubyte)spell_level(spell);
+				e[8] = 1;
+				e[11] = 1;
+				e[14] = 1;					// modifier 1.0
+			}
+		}
+		// The slots of a class that the character does not have stay as
+		// the record had them (the executable fills them with the table
+		// values of level 0: SG0.SG of a thief and mage has one cleric slot).
+		if (!char_is(b ? DTU_CLASS_CLERIC : DTU_CLASS_MAGE))
+			continue;
+		for (i=0;i<levels;i++) {
+			p[P_SLOTS_MAX(b) + i] = (ubyte)Dtu_spell_slots_max[b][i];
+			p[P_SLOTS_LEFT(b) + i] = (ubyte)Dtu_spell_slots_left[b][i];
+		}
+	}
+}
+
+// The book and the index of a spell, for the reference of a save game
+// (list 1 mage, 2 cleric). Returns 0 if no book has the spell.
+int dtu_spell_book_ref(int spell, int *list, int *index)
+{
+	int b, i;
+
+	for (b=0;b<2;b++)
+		for (i=0;i<Dtu_spell_book_n[b];i++)
+			if (Dtu_spell_book[b][i] == spell) {
+				*list = b + 1;
+				*index = i;
+				return 1;
+			}
+	return 0;
+}
+
+// The spell of a reference of a save game, or -1.
+int dtu_spell_of_ref(int list, int index)
+{
+	if (list < 1 || list > 2 || index < 0 || index >= Dtu_spell_book_n[list-1])
+		return -1;
+	return Dtu_spell_book[list-1][index];
+}
+
 static void load_books_from_save(char *filename)
 {
 	FILE *f = fopen(filename,"rb");
 	ubyte buf[DTU_SG_PLAYER_OFFSET + DTU_PLAYER_RECORD_SIZE];
-	int b;
 
 	if (f == NULL)
 		return;
@@ -378,18 +490,7 @@ static void load_books_from_save(char *filename)
 		return;
 	}
 	fclose(f);
-	for (b=0;b<2;b++) {
-		ubyte *p = buf + DTU_SG_PLAYER_OFFSET;
-		int n = p[0xF7 + 4*b] | (p[0xF8 + 4*b] << 8), i;
-		ubyte *list = p + (b ? 0x10E3 : 0x8F3);
-
-		if (n < 0 || n > DTU_SPELL_BOOK_MAX) n = 0;
-		Dtu_spell_book_n[b] = 0;
-		for (i=0;i<n;i++)
-			if (list[16*i] == OBJ_SPELL && spell_ok(list[16*i+1]))
-				Dtu_spell_book[b][Dtu_spell_book_n[b]++] = list[16*i+1];
-	}
-	dtu_spell_log("spell: %d mage spells and %d cleric spells from %s",Dtu_spell_book_n[0],Dtu_spell_book_n[1],filename);
+	dtu_spell_books_from_record(buf + DTU_SG_PLAYER_OFFSET);
 }
 
 //------------------------------------------------------------------------
