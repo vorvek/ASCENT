@@ -147,8 +147,8 @@ int plat_gpu_fx_code(int c)
 // smooth edges instead of the blocks of the source pixels. The mask is
 // blurred (gaussian, sigma 1 source pixel, wrapped: the textures tile),
 // sampled bilinear and cut at 0.5; a source pixel that the blur would
-// lose (a dot or a line of 1 pixel, set or clear) keeps a disk of 1 source
-// pixel across at its center. tools/textures_hd.py makes the alpha of the
+// lose (a dot or a line of 1 pixel, set or clear) keeps its square, so
+// that a line stays a line. tools/textures_hd.py makes the alpha of the
 // upscaled files the same way. Returns w*h bytes of 0 or 1 (malloc), or
 // NULL.
 #define SMOOTH_R 3
@@ -185,26 +185,22 @@ static uint8_t *smooth_mask(const uint8_t *bits, int iw, int ih, int w, int h)
 			b[y * iw + x] = s;
 		}
 	for (y = 0; y < h; y++) {
-		float sy = (y + 0.5f) * ih / h - 0.5f, fy, dy;
+		float sy = (y + 0.5f) * ih / h - 0.5f, fy;
 		int y0 = (int) floorf(sy), ny = y * ih / h;
 		fy = sy - y0;
-		dy = (y + 0.5f) * ih / h - (ny + 0.5f);
 		for (x = 0; x < w; x++) {
-			float sx = (x + 0.5f) * iw / w - 0.5f, fx, dx, f;
+			float sx = (x + 0.5f) * iw / w - 0.5f, fx, f;
 			int x0 = (int) floorf(sx), nx = x * iw / w, n = ny * iw + nx;
 			int xa = (x0 % iw + iw) % iw, xb = (x0 + 1) % iw + (x0 + 1 < 0 ? iw : 0);
 			int ya = (y0 % ih + ih) % ih, yb = (y0 + 1) % ih + (y0 + 1 < 0 ? ih : 0);
 			fx = sx - x0;
-			dx = (x + 0.5f) * iw / w - (nx + 0.5f);
 			f = (1 - fy) * ((1 - fx) * b[ya * iw + xa] + fx * b[ya * iw + xb])
 				+ fy * ((1 - fx) * b[yb * iw + xa] + fx * b[yb * iw + xb]);
 			out[y * w + x] = f >= 0.5f;
-			if (dx * dx + dy * dy <= 0.25f) {
-				if (bits[n] && b[n] < 0.5f)
-					out[y * w + x] = 1;
-				else if (!bits[n] && b[n] >= 0.5f)
-					out[y * w + x] = 0;
-			}
+			if (bits[n] && b[n] < 0.5f)
+				out[y * w + x] = 1;
+			else if (!bits[n] && b[n] >= 0.5f)
+				out[y * w + x] = 0;
 		}
 	}
 	free(t);
