@@ -347,6 +347,7 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "platform.h"		// ASCENT: plat_gpu_bind_settings
 #include "args.h"			// ASCENT: -lightlog
 #include "tmapfx.h"		// ASCENT: Tmap_fx_row
+#include "dtudlg.h"		// ASCENT: the dark view of the conversation window
 #include "effects.h"		// ASCENT: the preload of the upscaled textures
 #include "dtutrig.h"
 #include "gamemine.h"
@@ -2307,6 +2308,15 @@ void render_frame(fix eye_offset)
 	// behind the walls. The GPU clears the image.
 	// Infravision (dtuinfra.c) sets the fade table or the heat colors
 	// before the view starts: the GPU reads both at g3_gpu_begin_view.
+	// The dark view of the conversation window (tmapfx.c, dtudlg.c): the
+	// table is made from the fade table before infravision changes it, as
+	// the original tests the dark view first.
+	{
+		int dim = dtu_dlg_view_dim();
+
+		tmap_dim_set_view(dim);
+		G3_gpu_dim = dim;
+	}
 	infra = dtu_infra_begin_view(gpu_set_options() && Dtu_gpu_renderer && plat_gpu_available());
 	gpu_view = g3_gpu_begin_view(Dtu_gpu_renderer, Dtu_render_scale,
 		(Dtu_display_active && Dtu_hires) ? 2 : 1, Dtu_improved_occlusion,

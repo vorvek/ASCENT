@@ -41,7 +41,7 @@
 void asm_tmap_scanline_lin_lighted(void)
 {
 	const ubyte	*src = pixptr;
-	const ubyte	*fade = gr_fade_table;
+	const ubyte	*fade = Tmap_dim ? Tmap_dim_fade : gr_fade_table;	// ASCENT: tmapfx.c
 	ubyte	*dest;
 	int	x, xright, count, n;
 	uint32_t	uv, duv;
@@ -100,7 +100,7 @@ void asm_tmap_scanline_lin_lighted(void)
 			c = src[TMAP_UV_INDEX(uv)];
 			uv += duv;
 			if (c != 255 || !Transparency_on) {
-				if (c != 255 && tmap_fx_color_code(c)) {
+				if (c != 255 && tmap_fx_effect(c)) {
 					int behind = *++s.behind;
 					*dest = (ubyte) tmap_fx_color(c, behind, tmap_fx_next_below(&s), 1);
 				} else

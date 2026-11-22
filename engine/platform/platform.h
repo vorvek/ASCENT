@@ -288,6 +288,9 @@ typedef struct plat_gpu_material {
 	int effects;		// TEXTURED: the texels of the effect colors (see plat_gpu_fx_mark) take
 						// their color from the image under the polygon (texmap/tmapfx.c)
 	int fx_row;			// TEXTURED with effects: the fade table row of effect color 0xCF
+	int dim;				// TEXTURED, lit: the dark view of the conversation window (0 to 15,
+						// texmap/tmapfx.c): a texel of brightness step <= dim becomes
+						// (fade[max(row - 5, 0)][c] & 15) | 8
 } plat_gpu_material;
 
 // The effect colors of the GPU renderer (texmap/tmapfx.c,

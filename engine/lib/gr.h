@@ -198,6 +198,9 @@ typedef struct _grs_font {
 // ASCENT: DTUGAME.EXE flag 0x20: a merged wall texture (texmerge.c). The
 // port sets it only when the merged bitmap has an effect color (tmapfx.c).
 #define BM_FLAG_DTU_EFFECTS			0x20
+// ASCENT: each merged wall texture (texmerge.c), the flag 0x20 of
+// DTUGAME.EXE. The dark view of the conversation window uses it (tmapfx.c).
+#define BM_FLAG_DTU_MERGED			0x40
 
 typedef struct _grs_bitmap {
 	short       bm_x,bm_y;      // Offset from parent's origin

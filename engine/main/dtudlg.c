@@ -10,8 +10,12 @@
  * layout of the table at 0x1465F4 for the interface mode. The port draws
  * the same areas on the screen after the interface. Port decisions:
  * - The area of the window is darkened (the color table of the lighting at
- *   half light). The executable ramps a shading value 0x14C4CE that the
- *   renderer uses; how the view looks with it was not seen.
+ *   half light). New in the port.
+ * - The dark view: the executable ramps the value 0x14C4CE from 1 to 15
+ *   when the window opens and back to 0 when it closes, one step for each
+ *   0x800 of game time, and the texture mappers draw the merged walls in
+ *   dark grey with it (tmapfx.c). The executable waits for the end of the
+ *   ramp before it shows the window and goes on; the port does not wait.
  * - The keys are those of the executable except Tab, which the interface
  *   uses: Up and Down (also the keypad), Enter (also the keypad), Space,
  *   Escape. The scroll arrows FEBGND 186 to 189 are not done.
@@ -65,6 +69,12 @@ static int Dlg_sel = -1;				// 0x3D4990: the selected reply, -1 none
 static int Dlg_focus_replies = 1;		// 0x1466C4
 static int Dlg_scroll = 0;				// first line of the text area
 static int Dlg_wait_frames = 0;
+
+// The dark view (0x14C4CE, 0x458BA): the value Dim_from at the game time
+// Dim_time, going up (Dim_up) or down one step each 0x800
+static int Dim_from = 0;
+static int Dim_up = 0;
+static fix Dim_time = 0;
 
 // The mouse (see the top of the file)
 static int Reply_y0[DLG_MAX_REPLIES], Reply_y1[DLG_MAX_REPLIES];	// the rows of each reply at the last draw
@@ -137,11 +147,58 @@ static void ptr_restore(void)
 	Ptr_forced = 0;
 }
 
+int dtu_dlg_view_dim(void)
+{
+	fix t = GameTime - Dim_time;
+	int steps, d;
+
+	if (t < 0) {		// the game time went back (a loaded game)
+		dtu_dlg_reset_view();
+		if (Dlg_open) {
+			Dim_from = 15;
+			Dim_up = 1;
+		}
+		return Dim_from;
+	}
+	steps = t / 0x800;
+	if (steps > 16)
+		steps = 16;
+	// 0x458BA(1): D + 1 at once, then one step each 0x800, up to 15
+	// 0x458BA(0): D = 15, then 14 at once and one step each 0x800 down to 0
+	d = Dim_up ? Dim_from + 1 + steps : Dim_from - 1 - steps;
+	if (d > 15) d = 15;
+	if (d < 0) d = 0;
+	return d;
+}
+
+void dtu_dlg_reset_view(void)
+{
+	Dim_from = 0;
+	Dim_up = 0;
+	Dim_time = GameTime;
+}
+
+// The ramp of 0x458BA starts from the value of now (the port does not wait
+// for its end: the window shows at once)
+static void dim_ramp(int up)
+{
+	int d = dtu_dlg_view_dim();
+
+	if (!up && d == 0 && !Dim_up)
+		return;
+	Dim_from = up ? (d > 14 ? 14 : d) : 15;
+	if (!up && d < 15)
+		Dim_from = d + 1;
+	Dim_up = up;
+	Dim_time = GameTime;
+}
+
 void dtu_dlg_open(void)
 {
 	auto_init();
 	if (Dlg_open)
 		return;
+	dim_ramp(1);
 	// 0xB14D8: a mode other than 0, 1 and 7 changes to mode 0
 	if (Dtu_display_active && Dtu_interface_mode != DTU_IM_MAIN && Dtu_interface_mode != 1 &&
 		 Dtu_interface_mode != DTU_IM_FULL_SCREEN)
@@ -158,6 +215,8 @@ void dtu_dlg_open(void)
 void dtu_dlg_close(void)
 {
 	ptr_restore();
+	if (Dlg_open)
+		dim_ramp(0);
 	Dlg_open = 0;
 	Dlg_waiting = 0;
 	Dlg_text_len = 0;

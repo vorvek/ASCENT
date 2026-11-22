@@ -13,6 +13,13 @@ void dtu_dlg_open(void);
 void dtu_dlg_close(void);			// 0xA74D0
 int dtu_dlg_is_open(void);
 
+// The dark view behind the window: the value 0x14C4CE (0 to 15) of the
+// next view. Opening ramps it up one step for each 0x800 of game time
+// (0x458BA(1)), closing ramps it down (0x458BA(0)). See tmapfx.c.
+int dtu_dlg_view_dim(void);
+// Ends the dark view at once (a new level or a loaded game).
+void dtu_dlg_reset_view(void);
+
 // ASCENT: 1 while the window waits for a choice (the keys 1 to 9 choose a
 // reply then, so the play screen leaves its hot keys alone).
 int dtu_dlg_is_waiting(void);
