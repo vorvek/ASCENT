@@ -553,18 +553,6 @@ static void script_talk(object *obj)
 	free(r.s);
 }
 
-// ASCENT: 1 (default): the corrected rule for the scenery of the Yawning
-// Portal (level 0). YPINN.LVL has script ids in the field +0x1B0 of 11
-// chairs, tables and beds (objects 5, 8, 12 to 15, 19 to 22 and 26: ids 7,
-// 2, 4 and 3, the scripts of the guests and of Sabrae). The same values are
-// at the same object numbers of other level files (CRYPTS, CLAN1, ...),
-// where add_npc (0xAC431) clears them because the ids are not ids of those
-// levels: they are old data of the level editor. In level 0 the ids are
-// valid, so in 1.3 the use action on such a chair runs the conversation of
-// a guest with the chair as the speaker. With the fix the scenery of level
-// 0 does not talk. Option -origtalk.
-int Dtu_fix_furniture_talk = 1;
-
 // 0xAC155: the use action on an object. A ray of 30.0 along the view with
 // the object test. A creature with no script: "No response...". A dead
 // object: nothing. Else the script of the object runs (the talk).
@@ -635,15 +623,13 @@ int dtu_use_object(object *player)
 	// script id that the use ray finds runs its script. The altar of Cyric
 	// (IBBALAR object 2, scenery, script 294) and the Flamesword (FLAME
 	// object 3, scenery, script 322 of the level fixes, the end of the game)
-	// are used this way. Dtu_fix_furniture_talk: see its definition.
+	// are used this way. Their ids come from the level fixes: the level
+	// start clears the script word of all scenery first (0xA674A, see
+	// dtu_objects_level_setup), so the old ids of the chairs of YPINN do
+	// not run (D-074).
 	if (obj->type != OBJ_ROBOT) {
 		if ((obj->dtu.m_1b0 & DTU_SCRIPT_MASK) == 0 || (obj->flags & OF_DESTROYED)) {
 			dtu_obj_log("talk: obj %d %s (type %d) has no script",best,dtu_object_name(obj),obj->type);
-			return 0;
-		}
-		if (Dtu_fix_furniture_talk && Current_level_num == 1) {
-			dtu_obj_log("talk: obj %d %s: the script id %d of scenery of the inn is not used",best,dtu_object_name(obj),
-				obj->dtu.m_1b0 & DTU_SCRIPT_MASK);
 			return 0;
 		}
 		dtu_obj_log("talk: obj %d %s (type %d) script %d",best,dtu_object_name(obj),obj->type,obj->dtu.m_1b0 & DTU_SCRIPT_MASK);

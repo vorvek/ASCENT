@@ -644,6 +644,14 @@ both walls). Checked with copies of the two saves (`-fescript`,
 See [ai.md](ai.md), "Scripts and NPCs": the loader 0xAD5BF, the NPC list, the
 level rule of the ids and the peaceful test (a script with a `CD` byte).
 
+On a level with no saved state (0x5A742 gives 0) the loader calls 0xA674A
+at 0xAD63B, before the level fixes 0xACCDB: the script word +0x1B0 of each
+object from 1 that is not a creature (type 2) becomes 0. So scenery and
+items get a script id only from the level fixes (the altar of IBBALAR, the
+Flamesword of FLAME, DROW5 object 13, FLAME object 4). The old ids in the
+records of eleven chairs, tables and beds of YPINN never run. A saved state
+holds the cleared words. Verified in the bytes of 0xA674A and 0xAD635.
+
 ## 10. The port
 
 `engine/main/dtuscript.c` is the interpreter, the mission flags and the
@@ -675,8 +683,6 @@ Settings (globals in dtuscript.c):
 - `Dtu_fix_prison_items` (1): the prison sequence takes each item that is
   not worn. The executable reads the wrong entry after it removes one
   (`-origprison`).
-- `Dtu_fix_furniture_talk` (1, dtuhook.c): the scenery of level 0 does not
-  run the old script ids of its records (`-origtalk`).
 
 Since 2026-11-22 (../audit/quests.md): `EB` casts the area spell around the
 object, `9F` sets the level (0x8BA3A), D4 to D7 play and stop linked sounds,

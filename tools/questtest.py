@@ -109,10 +109,11 @@ TESTS = [
     # script 294).
     T("ibbalar_altar", "IBBALAR", "20:goseg=424,22:aim=2,25:activate", [r"run script 294 of obj 2"], frames=120),
 
-    # YPINN: the chairs with old script ids do not talk (Dtu_fix_furniture_talk).
-    T("ypinn_chair", "YPINN", "20:goobj=5,25:activate", [], [r"run script 7 of obj 5"], frames=80),
-    T("ypinn_chair_orig", "YPINN", "20:goobj=5,25:activate", [r"run script 7 of obj 5"], frames=80,
-      extra=["-origtalk"]),
+    # YPINN: the chairs with old script ids do not talk. The level start
+    # clears the script word of all scenery on a fresh level (0xA674A at
+    # 0xAD63B, D-074), as 1.3 does.
+    T("ypinn_chair", "YPINN", "10:obj=5,10:obj=26,20:goobj=5,25:activate",
+      [r"obj 5: type 18 .* script 0 ", r"obj 26: type 18 .* script 0 "], [r"run script 7 of obj 5"], frames=80),
 
     # THIEF1: the prison sequence of script 60 (statement DB with segment
     # 0xFFFF): the items that are not worn stay in THIEF1, the player is in

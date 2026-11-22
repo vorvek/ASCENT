@@ -1141,8 +1141,6 @@ void dtu_objects_init(void)
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))
 		Dtu_fix_guild_peace = 0;
-	if (FindArg("-origtalk"))				// ASCENT: dtuhook.c
-		Dtu_fix_furniture_talk = 0;
 	if (FindArg("-setuplog"))
 		Setup_log = 1;
 	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
@@ -2213,6 +2211,16 @@ void dtu_objects_level_setup(void)
 	// 0xACCDB, the objects (the executable runs it after the setup of the
 	// objects at the load)
 	if (!Level_setup_restore) {
+		// ASCENT: 0xA674A, called at 0xAD63B when the level has no saved
+		// state (0x5A742 gives 0), before the level fixes: the script word
+		// +0x1B0 of each object from 1 that is not a creature becomes 0. So
+		// the stale script ids of the level files (the chairs, tables and
+		// beds of YPINN, D-074) never run; the scenery scripts come from the
+		// level fixes only. A saved state keeps the cleared words.
+		if (!has_state)
+			for (i=1;i<=Highest_object_index;i++)
+				if (Objects[i].type != OBJ_ROBOT)
+					Objects[i].dtu.m_1b0 = 0;
 		level_fixes_objects(has_state);
 		lava_textures_lookup();		// 0xAD744
 		dtu_thief_level_textures();	// 0xAD744: the rest of 0xA6F89
