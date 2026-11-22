@@ -1854,7 +1854,7 @@ def main(argv=None):
                             r"|Dtu_fix|pc_spell|YPINN|DTUGAME|\.c\b|_use\b")
     os.makedirs(a.out_dir, exist_ok=True)
     for name, text in pages.items():
-        if "—" in text:
+        if "\u2014" in text:
             raise SystemExit("%s: em dash in the text" % name)
         if name != "Sources.md":
             m = code_words.search(text)
