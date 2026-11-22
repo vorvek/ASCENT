@@ -17,6 +17,7 @@ ASCENT-DTU aims to make the game playable in modern Windows, alongside bugfixes 
 * Animation interpolation.
 * Target hint: the cursor turns a little red when your attack would reach an enemy.
 * Full screen shaders.
+* A Spanish translation! (More languages coming soon).
 
 ## Game files
 
