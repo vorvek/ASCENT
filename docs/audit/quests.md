@@ -124,8 +124,13 @@ No trigger or trap field that the files use is missing in the port.
 The soak test (`-soak`) plays random input in one level and cannot follow
 a quest. The quest order is tested by `tools/questtest.py` (quests.md
 section 13): it sets the flags and items, enters the level, reaches the
-goal and reads the flag. No level failed. The soak itself was not run
-again in this audit.
+goal and reads the flag. No level failed.
+
+The soak after the changes of this audit: the 31 levels with a level file
+(`-level NAME -soak 7 -fixedfps 30`, 1000 frames, 600 frames for some of
+the levels from MULHOR1 on): 0 crashes, 0 `SOAK FAIL`, exit code 0 in each
+run; 26 runs reached the frame limit, 5 ended with the death of the player
+(YPINN, HUB1, DROW1, DROW2, MYRKUL).
 
 ## Save and load
 
