@@ -3637,6 +3637,8 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 	if (weapon != DTU_DIRECT && attacker && attacker != player && attacker->type == OBJ_ROBOT &&
 		 attacker->id < N_robot_types && Monster_ext[attacker->id].touch_spell >= 0) {
 		dtu_obj_log("attack: the touch of %s casts spell %d on the player",dtu_object_name(attacker),Monster_ext[attacker->id].touch_spell);
+		// ASCENT: the counter of Hold Person is 1 (0x2A670)
+		dtu_spell_touch_counter(Monster_ext[attacker->id].touch_spell);
 		dtu_spell_cast_on(Monster_ext[attacker->id].touch_spell,player,attacker);
 	}
 

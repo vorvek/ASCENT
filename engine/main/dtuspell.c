@@ -2889,6 +2889,14 @@ void dtu_spell_dispel(object *obj)
 		fx_expire(obj,1);
 }
 
+// ASCENT: 0x2A670: the touch spell sets the counter Spell_info+0x49 of Hold
+// Person (22, 52) to 1 before the cast 0x8CFFF.
+void dtu_spell_touch_counter(int spell)
+{
+	if (spell == 22 || spell == 52)
+		Hold_count[spell == 52] = 1;
+}
+
 fix dtu_spell_cast_on(int spell,object *target,object *caster)
 {
 	int L = object_level(caster,spell);
