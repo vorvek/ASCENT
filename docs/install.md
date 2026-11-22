@@ -192,7 +192,7 @@ ascent-import --source PATH --dest DIR [--patch PATH] [--check]
 | `textures` | `hd/textures` without `.cache` | 60,396 | 3,896 | 396,695,525 bytes |
 | `ui` | `hd/ui` | 39 | 39 | 119,884,683 bytes |
 | `movies` | `hd/*.m1v` | 5 | 5 | 485,625,672 bytes |
-| `lang_es` (version 2) | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...`, and the pictures of the language `hd/lang/es/` (`tools/ui_lang.py`) (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 44 | 43 | 2,841,250 bytes |
+| `lang_es` (version 3) | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...`, and the pictures of the language `hd/lang/es/` (`tools/ui_lang.py`) (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 46 | 45 | 3,504,020 bytes |
 
 The language packs hold the Spanish text of the game files, the subtitles and the
 interface pictures with Spanish words (`docs/formats/lang.md`); they are made from the translations that

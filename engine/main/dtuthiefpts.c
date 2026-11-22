@@ -63,6 +63,10 @@ static const int Button_size[2] = { 26, 37 };
 #define ROW_MARGIN		3
 #define ROW_SPACE		5
 #define NAME_SPACE		5
+// ASCENT: the most the content area may grow on each side for the long
+// names of a language (the free parchment between the margin and the
+// rollers), [low, high]
+static const int Widen[2] = { 10, 22 };
 
 // 0x146844: the names of the skills
 static const char *Skill_name[N_SKILLS] = {
@@ -179,7 +183,9 @@ static void box_text(int x, int y, int w, int h, int color, const char *s)
 	gr_set_curfont(Font);
 	gr_set_fontcolor(color, -1);
 	gr_get_string_size((char *) s, &tw, &th, &aw);
-	gr_string(0x8000, (h - th) / 2, (char *) s);
+	// ASCENT: a text wider than the box (a long name of a language in the
+	// low resolution) starts at the left edge, cut at the right one
+	gr_string(tw > w ? 0 : 0x8000, (h - th) / 2, (char *) s);
 	gr_set_current_canvas(save);
 }
 
@@ -303,6 +309,27 @@ static int layout(void)
 		return 1;
 	gr_set_current_canvas(NULL);
 	gr_set_curfont(Font);
+	// ASCENT: a language other than English has the long official names of
+	// the skills: the content area gets wider, into the free parchment
+	// beside it (at most Widen[Hi] pixels on each side), when a name is
+	// wider than the name box of a row (draw_row)
+	if (Dtu_language != DTU_LANG_EN) {
+		int nw, need = 0;
+		gr_get_string_size("555%%", &w5, &h5, &aw);
+		for (i = 0; i < N_SKILLS; i++) {
+			gr_get_string_size((char *) LT(Skill_name[i]), &nw, &h5, &aw);
+			if (nw > need)
+				need = nw;
+		}
+		need -= Cw - 2 * ROW_MARGIN - w5 - NAME_SPACE;
+		if (need > 0) {
+			need = (need + 1) / 2;
+			if (need > Widen[Hi])
+				need = Widen[Hi];
+			Cx -= need;
+			Cw += 2 * need;
+		}
+	}
 	// the bottom row: minus, the points ("999" wide), plus
 	gr_get_string_size("999", &w999, &h999, &aw);
 	Bsize = Button_size[Hi];

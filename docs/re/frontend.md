@@ -799,7 +799,8 @@ into the pictures: FEBGND 2 (the title of character creation 1, in a mock
 Greek alphabet: XPEATION-XHA), 5 (NAME, PORTRAIT, ALIGNMENT and the six
 alignment labels), 14 (BUY, SELL, WEAPON, ARMOR, MISC.), 25 (ACCEPT,
 REJECT), the play screens 57 to 61, 63, 64, 65, 67 (the buttons, the
-same images as the sheet), 10 (WATERDEEP: a name, it stays). The play
+same images as the sheet), 10 (WATERDEEP, the name of the city on the
+parchment, also behind the main menu). The play
 screens have the M I S R table also under the 3D view (not visible), and 66
 and 68 are unused test pictures.
 
@@ -809,6 +810,7 @@ language"), made with `tools/ui_lang.py`:
 | Picture | Rectangle (x, y, w, h) | English | Spanish |
 |---|---|---|---|
 | FEBGND 2 | (262, 44, 140, 32) | XPEATION-XHA | XPEAXION-ΠJ (the same mock alphabet: CREACION-PJ) |
+| FEBGND 10 | (100, 30, 440, 66) | WATERDEEP | AGUAS PROFUNDAS (one line, smaller letters; `tools/ui_lang_title.py`) |
 | FEBGND 5 | (52, 54, 136, 36) | NAME | NOMBRE |
 | FEBGND 5 | (232, 64, 134, 34) | PORTRAIT | RETRATO |
 | FEBGND 5 | (414, 86, 158, 34) | ALIGNMENT | ALINEAMIENTO |

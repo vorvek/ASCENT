@@ -209,7 +209,7 @@ tr: Niv. %d %s
 
 id: port.find_traps
 en: Find Traps
-tr: Encontrar trampas
+tr: Encontrar Trampas
 
 id: port.d_exp
 en: %d Exp
@@ -389,7 +389,7 @@ tr: {sex:Elfo|Elfa}
 
 id: port.drow
 en: Drow
-tr: Drow
+tr: {sex:Drow (hombre)|Drow (mujer)}
 
 id: port.dwarven
 en: Dwarven
@@ -1109,11 +1109,11 @@ tr: No puedes hacer esta acción llevando %s.
 
 id: port.hide_in_shadows
 en: Hide In Shadows
-tr: Esconderse
+tr: Esconderse en las sombras
 
 id: port.move_silently
 en: Move Silently
-tr: Moverse en silencio
+tr: Moverse sigilosamente
 
 id: port.open_locks
 en: Open Locks
@@ -1121,7 +1121,7 @@ tr: Abrir cerraduras
 
 id: port.find_remove_traps
 en: Find/Remove Traps
-tr: Desactivar trampas
+tr: Encontrar/desactivar trampas
 
 id: port.climb_walls
 en: Climb Walls
@@ -1137,15 +1137,15 @@ tr: Tienes puntos de habilidad\nde ladrón disponibles.\n¿Quieres gastarlos aho
 
 id: port.passage_in_and_out_of_undermountain_cost
 en: Passage in and out of\nUndermountain costs one gold.\nYou will need 2 gold\npieces to venture into\nthe dungeon and return to\nWaterdeep
-tr: Entrar y salir de Undermountain\ncuesta una pieza de oro.\nNecesitarás 2 piezas de oro\npara aventurarte en la\nmazmorra y volver a\nWaterdeep
+tr: Entrar y salir de Bajomontaña\ncuesta una pieza de oro.\nNecesitarás 2 piezas de oro\npara aventurarte en la\nmazmorra y volver a\nAguas Profundas
 
 id: port.if_you_enter_the_well_now_you_will_not_h
 en: If you enter the well\nnow you will not have\nenough gold for passage\nback to Waterdeep.\nProceed anyway?
-tr: Si entras en el pozo ahora\nno tendrás oro suficiente\npara volver a Waterdeep.\n¿Entrar de todos modos?
+tr: Si entras en el pozo ahora\nno tendrás oro suficiente\npara volver a Aguas Profundas.\n¿Entrar de todos modos?
 
 id: port.it_costs_1_gold_piece_to_ascend_back_to_
 en: It costs 1 gold piece\nto ascend back to Waterdeep.\nYou do not have any gold.\nYou will need to search\nthe dungeon for gold
-tr: Volver a Waterdeep cuesta\n1 pieza de oro.\nNo tienes oro.\nTendrás que buscar oro\nen la mazmorra
+tr: Volver a Aguas Profundas cuesta\n1 pieza de oro.\nNo tienes oro.\nTendrás que buscar oro\nen la mazmorra
 
 id: port.press_f3_to_return_to_cockpit_mode
 en: Press F3 to return to Cockpit mode
