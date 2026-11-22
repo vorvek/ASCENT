@@ -82,4 +82,7 @@ char *dtu_tblfix_set_spell_flags(const char *text, int flags);
 int dtu_tblfix_class(const char *text);				// the class mask +0x00
 char *dtu_tblfix_set_class(const char *text, int mask);
 
+// Frees a text that this file allocated (C library, not the mem library).
+void dtu_tblfix_free(char *text);
+
 #endif

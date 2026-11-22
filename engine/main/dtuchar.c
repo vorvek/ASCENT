@@ -3241,6 +3241,8 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "kill")) {		// ASCENT: kill=OBJNUM: the player kills a creature (test)
 		if (a >= 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
 			dtu_damage_creature_direct(&Objects[a], ConsoleObject, i2f(10000));
+		else if (a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_DRESSING)	// scenery breaks (tools/questtest.py)
+			dtu_break_dressing(&Objects[a], NULL, 0);
 	}
 	else if (!strcmp(cmd, "heal"))		dtu_char_heal(a);
 	else if (!strcmp(cmd, "use"))			dtu_char_use(index);
@@ -3354,12 +3356,6 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "fire"))		dtu_spell_fire();		// test: the spell, scroll or wand in the hand
 	// ASCENT: the commands of the quest tests (tools/questtest.py)
-	else if (!strcmp(cmd, "kill") && a > 0 && a <= Highest_object_index) {		// test: kill=N, object N dies
-		if (Objects[a].type == OBJ_ROBOT)
-			dtu_damage_creature_direct(&Objects[a], NULL, Objects[a].shields > 0 ? Objects[a].shields + F1_0 : F1_0);
-		else if (Objects[a].type == OBJ_DRESSING)
-			dtu_break_dressing(&Objects[a], NULL, 0);
-	}
 	else if (!strcmp(cmd, "killscript")) {	// test: killscript=ID, each creature with script ID dies
 		int i;
 

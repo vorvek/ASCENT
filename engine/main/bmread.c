@@ -744,13 +744,23 @@ static void tblfix_set_text( int kind, int id, char * text )
 {
 	item_info *it = tblfix_item( kind, id );
 
+	char *copy;
+
+	// ASCENT: text comes from the C library (dtutblfix.c has no mem.h) and
+	// the records are freed with the mem library: keep a copy of the mem
+	// library.
+	if ( text == NULL )
+		return;
 	if ( it == NULL || it->record < 0 || it->record >= N_tbl_records ) {
-		free( text );
+		dtu_tblfix_free( text );
 		return;
 	}
+	copy = malloc( strlen(text) + 1 );
+	strcpy( copy, text );
+	dtu_tblfix_free( text );
 	if ( Tbl_records[it->record].text )
 		free( Tbl_records[it->record].text );
-	Tbl_records[it->record].text = text;
+	Tbl_records[it->record].text = copy;
 }
 
 static char *tblfix_name( int kind, int id )

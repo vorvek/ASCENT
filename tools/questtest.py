@@ -191,7 +191,7 @@ TESTS = [
       frames=1800, dlg="1,1,1,5," + ONES),
 
     # Statement 9F (script 31 of BONES): the level.
-    T("level_statement", "BONES", "20:setlevel=5,30:dump", [r"statement 9F sets level 5", r"level 5/"], frames=40),
+    T("level_statement", "BONES", "20:setlevel=5,30:dump", [r"script: setlevel 5", r"level 5/5"], frames=40),
 ]
 
 
