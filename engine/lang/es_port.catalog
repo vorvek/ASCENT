@@ -535,7 +535,7 @@ tr: Vestidura Mágica
 
 id: port.blinded
 en: Blinded
-tr: Cegado
+tr: {sex:Cegado|Cegada}
 
 id: port.s_expired
 en: %s expired.
@@ -599,7 +599,7 @@ tr: Armadura de %d puntos de golpe: objetivo %s, lanzador %s.
 
 id: port.s_s_blessed_for_d_minutes
 en: %s %s blessed for %d minutes.
-tr: %s %s bendecido durante %d minutos.
+tr: %s %s {sex:bendecido|bendecida} durante %d minutos.
 
 id: port.bless_cast_on_s_by_s_for_d_minutes
 en: Bless cast on %s by %s for %d minutes.
@@ -611,15 +611,15 @@ tr: %s %s Toque Gélido durante %d minutos.
 
 id: port.s_s_struck_unconscious_by_s
 en: %s %s struck unconscious by %s.
-tr: %s %s noqueado (origen: %s).
+tr: %s %s {sex:noqueado|noqueada} (origen: %s).
 
 id: port.s_s_blinded_by_s
 en: %s %s blinded by %s.
-tr: %s %s cegado (origen: %s).
+tr: %s %s {sex:cegado|cegada} (origen: %s).
 
 id: port.s_s_stunned_by_s
 en: %s %s stunned by %s.
-tr: %s %s aturdido (origen: %s).
+tr: %s %s {sex:aturdido|aturdida} (origen: %s).
 
 id: port.confusion_cast_on_s_by_s_for_d_minutes
 en: Confusion cast on %s by %s for %d minutes.
@@ -627,11 +627,11 @@ tr: Confusión: objetivo %s, lanzador %s, %d minutos.
 
 id: port.s_s_blinded_by_s_indefinitely
 en: %s %s blinded by %s indefinitely.
-tr: %s %s cegado (origen: %s) sin límite de tiempo.
+tr: %s %s {sex:cegado|cegada} (origen: %s) sin límite de tiempo.
 
 id: port.s_s_blinded_by_s_for_d_minutes
 en: %s %s blinded by %s for %d minutes.
-tr: %s %s cegado (origen: %s) durante %d minutos.
+tr: %s %s {sex:cegado|cegada} (origen: %s) durante %d minutos.
 
 id: port.cure_light_wounds_cast_on_s_by_s
 en: Cure light wounds cast on %s by %s.
@@ -651,7 +651,7 @@ tr: Miedo: objetivo %s, lanzador %s.
 
 id: port.s_s_scared
 en: %s %s Scared.
-tr: %s %s asustado.
+tr: %s %s {sex:asustado|asustada}.
 
 id: port.scare_cast_on_s_by_s
 en: Scare cast on %s by %s.
@@ -727,7 +727,7 @@ tr: Celeridad: objetivo %s, lanzador %s, %d minutos.
 
 id: port.s_s_held_for_d_seconds
 en: %s %s held for %d seconds.
-tr: %s %s inmovilizado durante %d segundos.
+tr: %s %s {sex:inmovilizado|inmovilizada} durante %d segundos.
 
 id: port.hold_person_cast_on_s_by_s_for_d_seconds
 en: Hold Person cast on %s by %s for %d seconds.
@@ -735,7 +735,7 @@ tr: Inmovilizar Persona: objetivo %s, lanzador %s, %d segundos.
 
 id: port.s_s_held_for_d_minutes
 en: %s %s held for %d minutes.
-tr: %s %s inmovilizado durante %d minutos.
+tr: %s %s {sex:inmovilizado|inmovilizada} durante %d minutos.
 
 id: port.hold_person_cast_on_s_by_s_for_d_minutes
 en: Hold Person cast on %s by %s for %d minutes.
@@ -839,7 +839,7 @@ tr: Resistir el Fuego: objetivo %s, lanzador %s, %d minutos.
 
 id: port.s_s_shielded_for_d_minutes
 en: %s %s Shielded for %d minutes.
-tr: %s %s protegido por Escudo durante %d minutos.
+tr: %s %s {sex:protegido|protegida} por Escudo durante %d minutos.
 
 id: port.shield_cast_on_s_by_s_for_d_minutes
 en: Shield cast on %s by %s for %d minutes.
@@ -847,7 +847,7 @@ tr: Escudo: objetivo %s, lanzador %s, %d minutos.
 
 id: port.s_will_be_sleeping_for_d_minutes
 en: %s will be Sleeping for %d minutes.
-tr: %s: dormido durante %d minutos.
+tr: %s: {sex:dormido|dormida} durante %d minutos.
 
 id: port.sleep_cast_on_s_by_s_for_d_minutes
 en: Sleep cast on %s by %s for %d minutes.
@@ -855,7 +855,7 @@ tr: Dormir: objetivo %s, lanzador %s, %d minutos.
 
 id: port.s_s_slowed_for_d_minutes
 en: %s %s Slowed for %d minutes.
-tr: %s %s ralentizado durante %d minutos.
+tr: %s %s {sex:ralentizado|ralentizada} durante %d minutos.
 
 id: port.slow_cast_on_s_by_s_for_d_minutes
 en: Slow cast on %s by %s for %d minutes.
@@ -903,11 +903,11 @@ tr: No sabes lanzar conjuros.
 
 id: port.you_are_not_a_mage
 en: You are not a Mage.
-tr: No eres Mago.
+tr: No eres {sex:Mago|Maga}.
 
 id: port.you_are_not_a_cleric
 en: You are not a Cleric.
-tr: No eres Clérigo.
+tr: No eres {sex:Clérigo|Clériga}.
 
 id: port.spell_is_of_too_high_a_level
 en: Spell is of too high a level.

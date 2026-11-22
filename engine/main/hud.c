@@ -287,6 +287,7 @@ void HUD_init_message(char * format, ... )
 		// the original wrote past the buffer and stopped with an error).
 		vsnprintf(message,HUD_MESSAGE_LENGTH,dtu_tr(format),args);
 		va_end(args);
+		dtu_lang_sex_text(message);		// ASCENT: the tokens {sex:} left after the values
 //		mprintf((0, "Hud_message: [%s]\n", message));
 
 		if (HUD_nmessages > 0)	{

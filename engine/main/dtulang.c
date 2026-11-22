@@ -13,6 +13,7 @@
 #include "dtufile.h"
 #include "dtuopts.h"
 #include "dtulog.h"
+#include "dtuchar.h"
 #include "dtulang.h"
 
 int Dtu_language = DTU_LANG_EN;
@@ -52,7 +53,8 @@ int dtu_lang_from_code(const char *code)
 typedef struct {
 	char *key;
 	char *en;		// the English text of the catalog (game bytes), or NULL
-	char *tr;		// the translation (Latin-1)
+	char *tr;		// the translation (Latin-1), the tokens {sex:} for a male player
+	char *tr_f;		// the same for a female player, or NULL (no token)
 } lang_entry;
 
 static lang_entry *Tab;
@@ -77,6 +79,7 @@ static void tab_clear(void)
 			free(Tab[i].key);
 			free(Tab[i].en);
 			free(Tab[i].tr);
+			free(Tab[i].tr_f);
 		}
 	free(Tab);
 	Tab = NULL;
@@ -95,7 +98,7 @@ static lang_entry *tab_find(const char *key)
 	return NULL;
 }
 
-static void tab_put(const char *key, const char *en, const char *tr)
+static void tab_put(const char *key, const char *en, const char *tr, const char *tr_f)
 {
 	lang_entry *e;
 	unsigned i;
@@ -121,6 +124,7 @@ static void tab_put(const char *key, const char *en, const char *tr)
 	if ((e = tab_find(key)) != NULL) {
 		free(e->en);
 		free(e->tr);
+		free(e->tr_f);
 	} else {
 		for (i = hash_str(key) & (Tab_size - 1); Tab[i].key; i = (i + 1) & (Tab_size - 1))
 			;
@@ -130,6 +134,63 @@ static void tab_put(const char *key, const char *en, const char *tr)
 	}
 	e->en = en ? strdup(en) : NULL;
 	e->tr = strdup(tr);
+	e->tr_f = tr_f ? strdup(tr_f) : NULL;
+}
+
+//------------------------------------------------------------------------
+// The sex of the player: the token {sex:MALE|FEMALE}
+
+const int *Dtu_lang_sex_ptr;
+
+int dtu_lang_female(void)
+{
+	if (Dtu_lang_sex_ptr)
+		return *Dtu_lang_sex_ptr ? 1 : 0;
+	return Dtu_char.pa.female ? 1 : 0;
+}
+
+// The length of the token at s (0: not a token) and the form for the sex
+static int sex_token(const char *s, int female, const char **form, int *len)
+{
+	const char *m, *bar, *end;
+
+	if (strncmp(s, "{sex:", 5))
+		return 0;
+	m = s + 5;
+	bar = m + strcspn(m, "|{}");
+	if (*bar != '|')
+		return 0;
+	end = bar + 1 + strcspn(bar + 1, "|{}");
+	if (*end != '}')
+		return 0;
+	*form = female ? bar + 1 : m;
+	*len = female ? (int) (end - bar - 1) : (int) (bar - m);
+	return (int) (end + 1 - s);
+}
+
+void dtu_lang_sex_resolve(char *s, int female)
+{
+	char *out;
+	const char *form;
+	int len, n;
+
+	if (!s || !(s = strstr(s, "{sex:")))
+		return;
+	for (out = s; *s; ) {
+		if (*s == '{' && (n = sex_token(s, female, &form, &len)) != 0) {
+			memmove(out, form, len);		// out <= form: the text gets shorter
+			out += len;
+			s += n;
+		} else
+			*out++ = *s++;
+	}
+	*out = 0;
+}
+
+void dtu_lang_sex_text(char *s)
+{
+	if (Dtu_language != DTU_LANG_EN)
+		dtu_lang_sex_resolve(s, dtu_lang_female());
 }
 
 //------------------------------------------------------------------------
@@ -216,12 +277,19 @@ static int Load_entries;
 // One entry: put it into the table
 static void add_entry(const char *id, const char *en_raw, const char *tr_raw)
 {
-	static char en[8192], tr[8192], key[8200];
-	int tokens = !strncmp(id, "gab.", 4);
+	static char en[8192], tr[8192], tr_f[8192], key[8200];
+	int tokens = !strncmp(id, "gab.", 4), sex;
 
 	if (!id[0] || !tr_raw || (!tr_raw[0] && en_raw && en_raw[0]))
 		return;		// an empty translation: no translation
 	unescape(tr_raw, tr, sizeof(tr), tokens);
+	// The token {sex:MALE|FEMALE}: both forms are kept
+	sex = strstr(tr, "{sex:") != NULL;
+	if (sex) {
+		strcpy(tr_f, tr);
+		dtu_lang_sex_resolve(tr_f, 1);
+		dtu_lang_sex_resolve(tr, 0);
+	}
 	if (en_raw)
 		unescape(en_raw, en, sizeof(en), tokens);
 	if (!strncmp(id, "port.", 5) || !strncmp(id, "tbl.", 4)) {
@@ -230,9 +298,9 @@ static void add_entry(const char *id, const char *en_raw, const char *tr_raw)
 			return;
 		key[0] = !strncmp(id, "tbl.", 4) ? 2 : 1;
 		snprintf(key + 1, sizeof(key) - 1, "%s", en);
-		tab_put(key, NULL, tr);
+		tab_put(key, NULL, tr, sex ? tr_f : NULL);
 	} else
-		tab_put(id, en_raw ? en : NULL, tr);
+		tab_put(id, en_raw ? en : NULL, tr, sex ? tr_f : NULL);
 	Load_entries++;
 }
 
@@ -386,6 +454,22 @@ static void load_language(int lang)
 //------------------------------------------------------------------------
 // Lookups
 
+static void apply_text(void);
+static int Text_female = -1;		// the sex of the strings of the text file
+static int Text_ready;
+
+void dtu_lang_sync(void)
+{
+	if (Text_ready && Dtu_language != DTU_LANG_EN && dtu_lang_female() != Text_female)
+		apply_text();
+}
+
+// The translation for a sex
+static char *pick(lang_entry *e, int female)
+{
+	return female && e->tr_f ? e->tr_f : e->tr;
+}
+
 char *dtu_tr(const char *en)
 {
 	char key[1024];
@@ -397,7 +481,22 @@ char *dtu_tr(const char *en)
 	key[0] = 1;
 	snprintf(key + 1, sizeof(key) - 1, "%s", en);
 	e = tab_find(key);
-	return e ? e->tr : (char *) en;
+	dtu_lang_sync();
+	return e ? pick(e, dtu_lang_female()) : (char *) en;
+}
+
+char *dtu_tr_sex(const char *en, int female)
+{
+	char key[1024];
+	lang_entry *e;
+
+	if (!en || !en[0] || Dtu_language == DTU_LANG_EN)
+		return (char *) en;
+	load_language(Dtu_language);
+	key[0] = 1;
+	snprintf(key + 1, sizeof(key) - 1, "%s", en);
+	e = tab_find(key);
+	return e ? pick(e, female) : (char *) en;
 }
 
 char *dtu_tr_name(const char *en)
@@ -411,7 +510,7 @@ char *dtu_tr_name(const char *en)
 	key[0] = 2;
 	snprintf(key + 1, sizeof(key) - 1, "%s", en);
 	e = tab_find(key);
-	return e ? e->tr : (char *) en;
+	return e ? pick(e, dtu_lang_female()) : (char *) en;
 }
 
 char *dtu_tr_id(const char *id, const char *en)
@@ -424,7 +523,7 @@ char *dtu_tr_id(const char *id, const char *en)
 	e = tab_find(id);
 	if (!e || (en && e->en && strcmp(e->en, en)))
 		return (char *) en;
-	return e->tr;
+	return pick(e, dtu_lang_female());
 }
 
 //------------------------------------------------------------------------
@@ -437,6 +536,7 @@ static void apply_text(void)
 	char id[16];
 	int i;
 
+	Text_female = dtu_lang_female();
 	for (i = 0; i < N_TEXT_STRINGS; i++) {
 		if (!Text_en[i])
 			continue;
@@ -451,6 +551,7 @@ void dtu_lang_text_loaded(void)
 
 	for (i = 0; i < N_TEXT_STRINGS; i++)
 		Text_en[i] = Text_string[i];
+	Text_ready = 1;
 	apply_text();
 }
 
@@ -547,6 +648,7 @@ int dtu_lang_subtitles(const char *movie, const dtu_sub_cue **cues)
 			char buf[160];
 			int len = (int) strlen(Cues[n].text);
 			unescape(line, buf, sizeof(buf), 0);
+			dtu_lang_sex_text(buf);
 			snprintf(Cues[n].text + len, sizeof(Cues[n].text) - len, "%s%s", len ? "\n" : "", buf);
 		}
 	}

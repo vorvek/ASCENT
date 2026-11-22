@@ -691,6 +691,13 @@ void dtu_display_add_message(char *text)
 
 	if (!Dtu_display_active || !GAME_FONT || !text) return;
 	p = text = dtu_tr(text);		// ASCENT: the text of the code in the language (dtulang.h)
+	if (strstr(text, "{sex:")) {
+		// ASCENT: the tokens {sex:} (dtulang.h) of a text that a caller made
+		static char resolved[1024];
+		snprintf(resolved, sizeof(resolved), "%s", text);
+		dtu_lang_sex_text(resolved);
+		p = text = resolved;
+	}
 	// The color of a message is the first byte of the line in the original.
 	// The callers were not traced: gray is a guess.
 	color = rgb6(48, 48, 48);
@@ -2261,6 +2268,7 @@ void dtu_display_frame(void)
 	int mx = 0, my = 0;
 
 	dtu_char_frame();
+	dtu_lang_sync();		// ASCENT: the text follows the sex of the player (dtulang.h)
 	if (!Dtu_display_active) return;
 
 	mouse_get_pos(&mx, &my);

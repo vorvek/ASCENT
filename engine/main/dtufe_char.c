@@ -1184,6 +1184,7 @@ int fe_new_character(void)
 	Delta = 0;
 	Race = Sex = Chosen = Class_mask = Stats_valid = Alignment = Portrait = 0;
 	Book_open = Cheat_stats = Slots_stale = Generated = 0;
+	Dtu_lang_sex_ptr = &Sex;		// ASCENT: the text follows the sex being chosen (dtulang.h)
 	Name[0] = 0;
 	Percentile = 1;
 	s3_reset_slots();
@@ -1210,6 +1211,7 @@ int fe_new_character(void)
 	for (i = 0; i < 4; i++)
 		free_bm(&Class_bm[i]);
 
+	Dtu_lang_sex_ptr = NULL;
 	if (!Continue || Fe_quit || Screen_index < 4)
 		return 0;
 	make_player();
