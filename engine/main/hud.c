@@ -327,6 +327,23 @@ void HUD_init_message(char * format, ... )
 }
 
 
+// ASCENT: a message of the Descent 1 code (gauges.h). In the target game
+// the HUD message ring of the executable (0x4F31A) is filled but its draw
+// function (0x4F0A6) has no caller: these texts are never shown. Only the
+// texts that DTUGAME.EXE gives to 0x347A2 reach the message box.
+void HUD_d1_message(char * format, ... )
+{
+	char buf[HUD_MESSAGE_LENGTH];
+	va_list args;
+
+	if (Dtu_display_active)
+		return;
+	va_start(args, format);
+	vsnprintf(buf, sizeof(buf), dtu_tr(format), args);
+	va_end(args);
+	HUD_init_message("%s", buf);
+}
+
 void player_dead_message(void)
 {
 	if (!Arcade_mode && Player_exploded) { //(ConsoleObject->flags & OF_EXPLODING)) {

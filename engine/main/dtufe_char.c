@@ -258,7 +258,9 @@ static void s1_turn(fe_screen *s, int dir)			// 0x8885B. dir 0: back, 1: forward
 	int seq = Turn_seq[Race][dir];
 
 	if (seq < 0) {
-		fe_help_message(fe_text(dir ? 715 : 714));
+		// ASCENT: 0x88423: the forward shield has TEX 714 "End Of book",
+		// the back shield TEX 715 "No more pages"
+		fe_help_message(fe_text(dir ? 714 : 715));
 		fe_refuse();
 		return;
 	}
@@ -316,16 +318,19 @@ static char *s1_help(int id)
 		return Help_buf;
 	case 2: return LN("Return to main menu");		// 0x13F7F3
 	case 3: return fe_text(Chosen ? 611 : 612);
-	case 4: return fe_text(Race > 0 ? 710 : 714);
-	case 6: return fe_text(Race < 5 ? 711 : 715);
+	case 4: return fe_text(Race > 0 ? 710 : 715);		// ASCENT: 0x88423
+	case 6: return fe_text(Race < 5 ? 711 : 714);
 	case 5:
 	case 7:
 		// The executable: the text 608 or 607, " a ", the sex of the button
 		// and the race. ASCENT: one format with the same English text.
 		if (Chosen && Sex == (id == 7))
 			sprintf(Help_buf, LT("You have selected a %s"), sex_race(sr, id == 7));
-		else
-			sprintf(Help_buf, LT("Click here to select a %s"), sex_race(sr, id == 7));
+		else {
+			// ASCENT: 0x13F7DA "%s a %s %s\n%s": the second line is TEX 610
+			int n = sprintf(Help_buf, LT("Click here to select a %s"), sex_race(sr, id == 7));
+			snprintf(Help_buf + n, sizeof(Help_buf) - n, "\n%s", fe_text(610));
+		}
 		return Help_buf;
 	}
 	return NULL;

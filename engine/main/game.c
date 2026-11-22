@@ -350,6 +350,7 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "dtucombat.h"	// ASCENT: the attack of the player
 #include "dtufe.h"		// ASCENT: the front end ends the game
 #include "dtumusic.h"	// ASCENT: the streamed music
+#include "dtucheat.h"	// ASCENT: the cheat codes of the target game
 #include "dtufoot.h"		// ASCENT: the footstep sounds
 #include "dtudisp.h"		// ASCENT: the interface of the target game
 #include "dtuscript.h"	// ASCENT: the scripts and the conversation window
@@ -3193,6 +3194,11 @@ void ReadControls()
 			if (!GAME_FONT && key != KEY_ESC)
 				continue;
 
+			// ASCENT: the cheat codes of the target game (dtucheat.c, 0x4324E
+			// and 0x428B1). They see each key, also the keys of the interface.
+			if (Dtu_display_active)
+				dtu_cheat_key(key);
+
 			// ASCENT: the keys of the interface of the target game (I, Tab,
 			// V, R, F3). dtu_display_frame() reads their state.
 			if (dtu_display_owns_key(key))
@@ -3204,7 +3210,10 @@ void ReadControls()
 				continue;
 			}
 
-			john_cheat_func_1(key);
+			// ASCENT: the Descent 1 cheat codes do not run in the game of the
+			// target game; dtu_cheat_key() has its codes
+			if (!Dtu_display_active)
+				john_cheat_func_1(key);
 
 			#ifdef NETWORK
 			if ( (Game_mode&GM_MULTI) && (multi_sending_message || multi_defining_message ))	{
@@ -3213,7 +3222,7 @@ void ReadControls()
 			}
 			#endif
 
-			if (!(Game_mode&GM_MULTI) && key == cheat_enable_keys[cheat_enable_index]) {
+			if (!Dtu_display_active && !(Game_mode&GM_MULTI) && key == cheat_enable_keys[cheat_enable_index]) {
 				if (++cheat_enable_index == CHEAT_ENABLE_LENGTH) {
 					HUD_init_message(TXT_CHEATS_ENABLED);
 					digi_play_sample( SOUND_CHEATER, F1_0);
@@ -3225,10 +3234,11 @@ void ReadControls()
 				cheat_enable_index = 0;
 
 
-			john_cheat_func_2(key);
+			if (!Dtu_display_active)
+				john_cheat_func_2(key);
 
 #ifdef FINAL_CHEATS
-		if (Cheats_enabled) {
+		if (Cheats_enabled && !Dtu_display_active) {		// ASCENT: not in the target game
 			if (!(Game_mode&GM_MULTI) && key == cheat_wowie[cheat_wowie_index]) {
 				if (++cheat_wowie_index == CHEAT_WOWIE_LENGTH) {
 					int i;
@@ -3436,7 +3446,8 @@ void ReadControls()
 		}
 #endif
 
-			john_cheat_func_3(key);
+			if (!Dtu_display_active)
+				john_cheat_func_3(key);
 
 			#ifndef RELEASE
 			#ifdef NETWORK
@@ -3468,7 +3479,8 @@ void ReadControls()
 				break;		//don't process any other keys
 			}
 
-			john_cheat_func_4(key);
+			if (!Dtu_display_active)
+				john_cheat_func_4(key);
 
 			if (Player_is_dead) {
 

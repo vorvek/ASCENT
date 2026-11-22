@@ -356,7 +356,7 @@ void hostage_rescue( int hostage_number )
 
  #ifndef HOSTAGE_FACES
 
-	HUD_init_message(TXT_HOSTAGE_RESCUED);
+	HUD_d1_message(TXT_HOSTAGE_RESCUED);
 
  #else
 

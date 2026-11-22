@@ -83,8 +83,10 @@ class Runner:
             cmd += ["-datadir", dd]
         if self.args.hddir:
             cmd += ["-hddir", self.args.hddir]
-        cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user"),
-                "-level", level or LEVEL, "-fescript", script] + list(extra)
+        cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user")]
+        if level != "":     # "": the front end (no direct start)
+            cmd += ["-level", level or LEVEL]
+        cmd += ["-fescript", script] + list(extra)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=d)
         out = {}
         for s in shots:
@@ -307,6 +309,99 @@ def test_thief_points(t):
     assert differ(region(s["open"], *THIEFVALUE), region(s["plus"], *THIEFVALUE)) > 0.02, "= added no point"
     assert differ(region(s["plus"], *THIEFROWS), region(s["esc"], *THIEFROWS)) < 0.01, "Escape closed the screen"
     assert differ(region(s["plus"], *THIEFMSG), region(s["esc"], *THIEFMSG)) > 0.02, "no message"
+
+
+def type_keys(word):
+    out = []
+    for c in word:
+        out += ["key " + c, "wait 2"]
+    return out
+
+
+def session_log(d):
+    for root, _, files in os.walk(d):
+        for f in files:
+            if f.startswith("ascent-") and f.endswith(".log"):
+                with open(os.path.join(root, f), errors="replace") as fh:
+                    return fh.read()
+    return ""
+
+
+def test_cheat_codes(t):
+    """The cheat codes of 1.3 act (0x4324E, 0x428B9 to 0x42BED): zazb,
+    glassy, and eightisgreat with its message 0x125783 (its two I keys open
+    and close the inventory). The cheat enable code of Descent 1 does
+    nothing."""
+    lines = ["gamekeys", "wait 20", "move 300 200"] + type_keys("zazb") + type_keys("glassy")
+    lines += ["wait 5", "shot before"] + type_keys("eightisgreat") + ["wait 5", "shot sword"]
+    lines += type_keys("gabbagabbahey") + ["wait 5", "shot d1"]
+    s, d = t.run("cheats", lines)
+    text = session_log(d)
+    for c in ("zazb", "glassy", "eightisgreat"):
+        assert "cheat " + c in text, "the code %s did not act" % c
+    assert differ(region(s["before"], *MSGBOX), region(s["sword"], *MSGBOX)) > 0.001, "no message"
+    assert differ(region(s["sword"], *MSGBOX), region(s["d1"], *MSGBOX)) < 0.001, "a Descent 1 code acted"
+
+
+# The front end (docs/audit/screens.md). A corner of the picture, away from
+# the menu box and the credits column (x 112 to 528).
+FE_CORNER = (0, 0, 100, 100)
+
+
+def test_fe_credits_key_only(t):
+    """The credits (0x2C61B) end on a key (0xDA3E4), not on a mouse click,
+    and the main menu comes back."""
+    s, _ = t.run("fe_credits", ["wait 60", "shot menu", "key down", "wait 2", "key down", "wait 2", "key down",
+                                "wait 2", "key enter", "wait 90", "shot credits", "click 320 240", "wait 30",
+                                "shot clicked", "key esc", "wait 60", "shot after"], level="")
+    assert differ(region(s["menu"], *FE_CORNER), region(s["credits"], *FE_CORNER)) > 0.2, "the credits did not start"
+    assert differ(region(s["credits"], *FE_CORNER), region(s["clicked"], *FE_CORNER)) < 0.02, "a click ended the credits"
+    assert differ(region(s["menu"], *FE_CORNER), region(s["after"], *FE_CORNER)) < 0.05, "a key did not end the credits"
+
+
+# The description bar of the high resolution inventory screen (area 0x3BC524)
+DESCBAR = (10, 376, 416, 14)
+
+
+def test_inv_message_in_desc_bar(t):
+    """In the inventory screen a new message also goes to the description
+    bar (0x34A83 to 0x34AD2): the V key adds "Immersive mode is on"."""
+    s, _ = t.run("inv_msg", ["gamekeys", "wait 20", "key i", "wait 5", "move 600 460", "wait 3", "shot base",
+                             "key v", "wait 5", "shot msg"])
+    assert differ(region(s["base"], *DESCBAR), region(s["msg"], *DESCBAR)) > 0.01, "the bar shows no message"
+
+
+# The mage count column of the spell tables of the statistics screen
+# (0x144CF8, 48 wide, rows 305 to 385)
+MAGECOUNT = (142, 305, 48, 80)
+
+
+def test_stats_spell_table(t):
+    """The statistics screen has the spell tables (0x331AC): a fighter has
+    "n/a" in the mage column, a mage of --char the slots."""
+    if not t.args.char:
+        print("skip test_stats_spell_table: no --char")
+        return
+    lines = ["gamekeys", "wait 20", "key p", "wait 5", "move 600 460", "wait 3", "shot stats"]
+    f, _ = t.run("stats_fighter", lines)
+    m, _ = t.run("stats_mage", lines, extra=["-char", t.args.char])
+    assert differ(region(f["stats"], *MAGECOUNT), region(m["stats"], *MAGECOUNT)) > 0.01, "the mage column is the same"
+
+
+def test_fe_death_picture_key(t):
+    """The death picture (0x42517 to 0x4252E) ignores the mouse and goes on
+    at the first key, with no shortest time; then the Death Menu, and after
+    Abort Game the main menu has no Save Game (0x42423: no character, the
+    first list of Waterdeep)."""
+    _, d = t.run("fe_death", ["gamekeys", "wait 200", "click 320 240", "wait 20", "click 320 240", "wait 20",
+                              "key space", "wait 30", "key down", "wait 3", "key enter", "wait 10",
+                              "key enter", "wait 60", "shot menu"],
+                 extra=["-fixedfps", "30", "-chartest", "5:damage=999"])
+    text = session_log(d)
+    assert "Front end: death picture left" in text, "the death picture did not end on a key"
+    left = text.index("Front end: death picture left")
+    assert "Front end: main menu, 5 items\n" in text[left:], "the main menu after the death:\n" + \
+        "\n".join(l for l in text.splitlines() if "Front end" in l)
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

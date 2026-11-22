@@ -196,6 +196,9 @@ int fe_new_character(void);			// the four screens. 1: a character was made
 
 // dtufe_town.c
 extern int Fe_khelben_mission, Fe_khelben_blurb;
+// ASCENT: the full list of Waterdeep is in use (0x142035 == 0x141D48,
+// 0x8C4B6): set by 0x8C431, cleared by 0x8C426
+extern int Fe_full_list;
 #define FE_GO_MENU			1
 #define FE_GO_LEVEL			2		// Function_mode 2: the game
 #define FE_GO_WATERDEEP		4

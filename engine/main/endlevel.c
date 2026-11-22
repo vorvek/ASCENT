@@ -517,7 +517,7 @@ void start_endlevel_sequence()
 
 	start_endlevel_flythrough(0,ConsoleObject,cur_fly_speed);		//initialize
 
-	HUD_init_message( TXT_EXIT_SEQUENCE );
+	HUD_d1_message( TXT_EXIT_SEQUENCE );
 
 	outside_mine = ext_expl_playing = 0;
 

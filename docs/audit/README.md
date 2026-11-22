@@ -6,8 +6,8 @@ its commit, or open with an estimate of size).
 
 | Area | Document | Fixed | Most important open items |
 |---|---|---|---|
-| Front end and town | [frontend.md](frontend.md) | credits background, Blackstaff torches, doubled market prices, load menu layout, Waterdeep music in the main menu | Khelben's hidden face animation, credits speed, quit fade |
-| In-game interface | [ingame-ui.md](ingame-ui.md) | keys under a conversation, F3 and minus/equal screen size, Alt+F2/F3, message box scroll bar, leftover Descent 1 keys, F2 options items, conversation focus keys, immersive mouse, screenshot key | the sensitivity slider has no effect, Descent 1 HUD messages, Descent 1 cheat codes |
+| Front end and town | [frontend.md](frontend.md) | credits background, Blackstaff torches, doubled market prices, load menu layout, Waterdeep music in the main menu, quit fade, credits key | none: the hidden face animation is not reachable in 1.3, the credits speed is a decision of the port |
+| In-game interface | [ingame-ui.md](ingame-ui.md) | keys under a conversation, F3 and minus/equal screen size, Alt+F2/F3, message box scroll bar, leftover Descent 1 keys, F2 options items, conversation focus keys, immersive mouse, screenshot key, sensitivity slider, Descent 1 HUD messages, cheat codes of 1.3 | message colors (U18), the V key gate (U16) |
 | Combat, spells and items | [combat.md](combat.md) | invisibility, player protections against creature attacks, 18/xx strength, Flame Tongue and Mace of Disruption, arrow and bolt bonuses, hit messages, level-up box, Chill Touch on undead, sounds, creature setup by name (0xAC7B2) | Chill Touch between creatures, backstab with a thrown weapon, the creature strength bonus defect (C17 a) |
 | Wizard spells | [spells-wizard.md](spells-wizard.md) | Strength and Infravision times, the `spelltest` test aid | most differences come from the 1.3 table fixup 0x1A344 (Fireball, Lightning Bolt, Magic Missile, Knock, area spells): the override layer, not `dtuspell.c` |
 | Character rules | [character.md](character.md) | secret doors and the water, lava and wood side bits (0xA6F89), thief search state in the level records, the trap and trigger tests of the search, set level (0x8BA3A), level hit points, `-chartest rules` | the marker object of Find Traps, the alert call of the rest |
@@ -18,6 +18,7 @@ its commit, or open with an estimate of size).
 | Priest spells and turn undead | [spells-priest.md](spells-priest.md) | Protection From Fire stacking, light damage after a save, Hold Person counter, cure after Aid (`Dtu_fix_cure_aid`), turn undead count and d20 | `cast_on_top` vclips, Hold Person on the player, area of any object type for Dispel Magic |
 | Conversation input, HUD areas, Blackstaff timing (decompilation notes) | [decomp-gaps.md](decomp-gaps.md) | reply paging and first selection, Enter and Up/Down with no reply, Blackstaff pixel step and fade | Khelben's hidden face animation, cursor centering in the conversation |
 | Monsters (types, abilities, AI) | [monsters.md](monsters.md) | lich touch spell, troll revive (Dtu_fix_revive), group alert and awareness events, magic_resistant of the lich | a hidden player in the AI (believed position), Chill Touch between creatures |
+| Each screen, second pass | [screens.md](screens.md) | main menu after Abort Game, death picture keys and fade, load error text, difficulty 2, statistics spell tables, inventory usability marks, messages in the description bar | the world runs during the 3 s of the death, message word wrap, ending light and sounds |
 
 Test aids added by the audits: `tools/uitest.py` (interface tests, needs the
 game files), `-chartest str=`, `attackedby=` and `kill=`, `check_creature_setup.py --abilities`,

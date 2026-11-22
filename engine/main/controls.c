@@ -574,6 +574,7 @@ void dtu_read_controls(void)
 	fix fwd = 0, side = 0, heading = 0, vert = 0;
 	int t = dtu_test_keys();
 	int turn = 0, run, look = 0, glance = 0, key;
+	int sens = Config_joystick_sensitivity > 8 ? 8 : Config_joystick_sensitivity;	// ASCENT: 0x13BFEF
 
 	// ASCENT: while the map of the map screen has the controls, the player
 	// gets none (0x40E50)
@@ -668,6 +669,13 @@ void dtu_read_controls(void)
 		int a_look, a_turn, a_slide, a_up;
 		int src = dtu_control_axes(&a_look, &a_turn, &a_slide, &a_up);
 
+		// ASCENT: Joystick/Mouse Sensitivity of F2 (byte 0x13BFEF, 0 to
+		// 8, 8 by default at 0x71580): the executable scales the look and
+		// turn axes of the mouse and the joystick by it / 8 (0x52BCE to
+		// 0x53667).
+		a_look = a_look * sens / 8;
+		a_turn = a_turn * sens / 8;
+
 		if (src == 1 && mouse_look) {
 			heading += fixmuldiv(ft,a_turn,16);
 			look += a_look * 32;
@@ -683,15 +691,16 @@ void dtu_read_controls(void)
 
 	// ASCENT: the gamepad turns with no ramp (as the mouse) and looks. The
 	// whole stick turns at the rate of a turn key, times the speed setting.
-	heading += fixmul(fixmul(ft,dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT)),Dtu_turn_scale);
-	look += fixmul(ft,dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP));
+	// ASCENT: the gamepad is a joystick for the sensitivity.
+	heading += fixmul(fixmul(ft,dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT)),Dtu_turn_scale) * sens / 8;
+	look += fixmul(ft,dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP)) * sens / 8;
 
-	// The look keys: the pitch changes by the key time, as an angle
-	// (0x52BF9: time * sensitivity / 8, the sensitivity at 0x13BFEF is 8).
-	if (dtu_action_down(DTU_ACT_LOOK_UP) || (t & TM_LOOKUP))		look -= ft;
-	if (dtu_action_down(DTU_ACT_LOOK_DOWN) || (t & TM_LOOKDOWN))	look += ft;
-	if (dtu_action_down(DTU_ACT_QUICK_UP))		{ look -= ft; glance = 1; }
-	if (dtu_action_down(DTU_ACT_QUICK_DOWN))		{ look += ft; glance = 1; }
+	// The look keys: the pitch changes by the key time * sensitivity / 8,
+	// as an angle (0x539E1 and 0x53A8C, the key items 0x1F to 0x21).
+	if (dtu_action_down(DTU_ACT_LOOK_UP) || (t & TM_LOOKUP))		look -= ft * sens / 8;
+	if (dtu_action_down(DTU_ACT_LOOK_DOWN) || (t & TM_LOOKDOWN))	look += ft * sens / 8;
+	if (dtu_action_down(DTU_ACT_QUICK_UP))		{ look -= ft * sens / 8; glance = 1; }
+	if (dtu_action_down(DTU_ACT_QUICK_DOWN))		{ look += ft * sens / 8; glance = 1; }
 
 	if (look) {
 		int p = Dtu_look_pitch + look;
