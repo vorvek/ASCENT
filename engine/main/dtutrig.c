@@ -41,6 +41,7 @@
 #include "dtuobj.h"
 #include "dtutrig.h"
 #include "dtustate.h"
+#include "dtulog.h"		// ASCENT: the session log
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1068,13 +1069,44 @@ int dtu_warp_lookup(int segnum, int *dest_level, int *dest_seg, int *value)
 	return 1;
 }
 
+// The next data line of the warp file: v gets level, segment, dest_level,
+// dest_segment and value. Returns 0 at the end of the file.
+static int warp_next_line(char **pp, char *end, int v[5])
+{
+	char *p = *pp;
+
+	while (p < end) {
+		char line[128];
+		int len = 0, i;
+
+		while (p < end && *p != '\n' && *p != '\r') {
+			if (len < (int)sizeof(line)-1)
+				line[len++] = *p;
+			p++;
+		}
+		while (p < end && (*p == '\n' || *p == '\r'))
+			p++;
+		line[len] = 0;
+		for (i=0; i<len; i++)
+			if (line[i] == ';')
+				line[i] = 0;
+
+		if (sscanf(line, "%d,%d %d,%d %d", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5) {
+			*pp = p;
+			return 1;
+		}
+	}
+	*pp = p;
+	return 0;
+}
+
 // 0x599C3: the lines of the warp file for one level. A line is
 // "level,segment dest_level,dest_segment value".
 static void warp_load(int level_index)
 {
 	ubyte *data;
 	char *p, *end, name[32];
-	int size, i, n = 0;
+	int size, i, n = 0, v[5];
 
 	for (i=0; i<MAX_SEGMENTS; i++)
 		Warps[i].dest_level = -1;
@@ -1090,29 +1122,14 @@ static void warp_load(int level_index)
 
 	p = (char *)data;
 	end = p + size;
-	while (p < end) {
-		char line[128];
-		int len = 0, level, seg, dlevel, dseg, value;
+	while (warp_next_line(&p, end, v)) {
+		int seg = v[1];
 
-		while (p < end && *p != '\n' && *p != '\r') {
-			if (len < (int)sizeof(line)-1)
-				line[len++] = *p;
-			p++;
-		}
-		while (p < end && (*p == '\n' || *p == '\r'))
-			p++;
-		line[len] = 0;
-		for (i=0; i<len; i++)
-			if (line[i] == ';')
-				line[i] = 0;
-
-		if (sscanf(line, "%d,%d %d,%d %d", &level, &seg, &dlevel, &dseg, &value) != 5)
+		if (v[0] != level_index || seg < 0 || seg >= MAX_SEGMENTS)
 			continue;
-		if (level != level_index || seg < 0 || seg >= MAX_SEGMENTS)
-			continue;
-		Warps[seg].dest_level = dlevel;
-		Warps[seg].dest_seg = dseg;
-		Warps[seg].value = value;
+		Warps[seg].dest_level = v[2];
+		Warps[seg].dest_seg = v[3];
+		Warps[seg].value = v[4];
 		n++;
 	}
 	free(data);
@@ -1219,6 +1236,10 @@ static int warp_check(int segnum, object *obj)
 
 	tlog("Warping to %s, Segment %d.", Level_names[dest_level], dest_seg);
 	printf("Warping to %s, Segment %d.\n", Level_names[dest_level], dest_seg);
+	// ASCENT: the session log names the line of the warp file
+	dtulog_event("Level change: DTU.WRP line %d,%d %d,%d %d (%s segment %d to %s segment %d)",
+		Level_index, segnum, dest_level, dest_seg, value,
+		Level_names[Level_index], segnum, Level_names[dest_level], dest_seg);
 
 	// 0x5A059 to 0x5A070: the executable waits for the sounds and stops
 	// them. The load of a level replaces the sound data.
@@ -1241,6 +1262,49 @@ void dtu_trig_player_placed(void)
 {
 	if (ConsoleObject && seg_ok(ConsoleObject->segnum))
 		Last_player_seg = Floor_trigger_seg = ConsoleObject->segnum;
+}
+
+// ASCENT: new, for the direct start (-level NAME). The game starts a new
+// character in the Yawning Portal (level 0) at the player object of the
+// level file (0x5895E). It comes into each other level only by a warp
+// (0x59C3C, which puts the player at the center of the destination
+// segment, 0x5A268) or by a save game. The player object of some levels
+// is in the segment of a warp out of the level (KOBOLDS: segment 12, the
+// warp to HUB1), so a start there leaves the level in the first frame.
+// This function puts the player where the first warp line of DTU.WRP
+// into the level (file order) from another level puts it. Returns 0 if
+// the file has no such line.
+int dtu_trig_place_at_arrival(void)
+{
+	ubyte *data;
+	char *p, *end;
+	int size, v[5], found = 0, start_seg;
+
+	if (!ConsoleObject || Level_index <= 0)
+		return 0;
+	data = dtu_load_file("DTU.WRP", &size);
+	if (!data)
+		return 0;
+	p = (char *)data;
+	end = p + size;
+	while (warp_next_line(&p, end, v))
+		if (v[2] == Level_index && v[0] >= 0 && v[0] != Level_index && v[0] < Last_level && seg_ok(v[3])) {
+			found = 1;
+			break;
+		}
+	free(data);
+	if (!found)
+		return 0;
+
+	start_seg = ConsoleObject->segnum;
+	warp_place_player(v[3], v[4]);
+	// as after a warp in dtu_trig_frame(): the lines of the destination
+	// segment act in the next frame
+	Last_player_seg = -1;
+	Floor_trigger_seg = -1;
+	dtulog_event("Level start: segment %d as the DTU.WRP line %d,%d %d,%d %d from %s (the player object is in segment %d)",
+		v[3], v[0], v[1], v[2], v[3], v[4], Level_names[v[0]], start_seg);
+	return 1;
 }
 
 //------------------------------------------------------------------------

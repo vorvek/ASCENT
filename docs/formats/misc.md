@@ -50,6 +50,13 @@ except 106 and 151: the codes 100 to 198 are music commands, a set of bits that 
 
 Verified: all 628 data lines match the five-number form. No other line forms exist.
 
+Verified: the warp lines into KOBOLDS (level 2) and out of it are `1,91 2,1 2`
+(Hub1 to Kobold) and `2,12 1,102 0` (Kobold to Hub1). The player object of
+KOBOLDS.LVL is in segment 12, the segment of the warp out. The first line into
+HUB1 is `0,118 1,136 2` (from YPINN); the HUB1 player object is in segment 136.
+The port starts `-level NAME` at the destination of the first line into the
+level (see `docs/audit/world.md`, W20).
+
 ## DTU.SNG: CD track table
 
 Plain text, CRLF. `;` starts a comment (also after the numbers). Each data

@@ -34,6 +34,10 @@ too.
 - The events of the game: game start, each level load (name, time, segments, objects),
   the character at each level start (name, race, classes and levels, hit points,
   experience, gold), level finished, death.
+- The cause of each level change: `Level change: DTU.WRP line ...` (the warp line, its
+  source and destination segments), `Level change: script command teleport PC ...`, or
+  the exit of the inn to Waterdeep. A direct start (`-level NAME`) logs its start
+  segment (`Level start: segment ...`, see `docs/audit/world.md`, W20).
 - The messages of the data loaders (`dtu_log()`: tables, archives, music, movies, front
   end loads and saves of save games, level states). At most 3000 in one session.
 - `Error()`, `Warning()` and `Int3()` (at most 500 warnings), the messages of SDL, the
