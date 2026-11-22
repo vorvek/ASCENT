@@ -1404,6 +1404,10 @@ static void set_flag(sc_run *r, int set)
 			} else
 				set_anger(o, 0);
 		}
+		// ASCENT: 0xAB06C, setting flag 3 (fleeing) calls the alert
+		// function 0x160AB with level 5
+		if (k == 3 && set)
+			dtu_creature_alert(o, 5);
 		return;
 	}
 	k = num(r);

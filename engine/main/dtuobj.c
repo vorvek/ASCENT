@@ -3042,6 +3042,9 @@ static void creature_is_corpse(object *obj)
 		}
 	}
 
+	// 0x6A45A: the alert function 0x160AB(body, 4)
+	dtu_creature_alert(obj,4);
+
 	// MONSTER_F_EXTRAPLANAR: the body is not drawn (0x6A5A0)
 	if (mi->flags & MONSTER_F_EXTRAPLANAR)
 		obj->render_type = RT_NONE;
@@ -4013,8 +4016,12 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		}
 	}
 	else if (other->type == OBJ_ROBOT) {
+		// 0x274B7: a missile of the player calls the alert function
+		// 0x160AB(creature, 3) before the activity
+		if (parent && parent == ConsoleObject)
+			dtu_creature_alert(other,3);
 		Ail[other-Objects].activity = 2;
-		dealt = (m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
+		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);
@@ -6785,12 +6792,71 @@ void dtu_script_make_hostile(object *obj)
 	set_anim(obj,DAS_RUN);
 	ail->awareness = 4;
 	ail->target = 0;
+	dtu_creature_alert(obj,4);		// 0xA94A1
 	morale_check(obj);
 }
+
+static void creature_wake(object *obj, int make_hostile, int sound);
 
 // 0xA6505 (not read in full): makes a creature active, as the wake up of
 // do_ai_frame does (0x13D80).
 void dtu_creature_wake(object *obj, int make_hostile)
+{
+	creature_wake(obj,make_hostile,1);
+}
+
+// ASCENT: the group part of the alert function 0x160AB (ai.md, "Alert
+// function"). Levels 3 to 5 only: the executable calls it with 3 when the
+// player hits a creature in melee (0x27B3F, caller the player), when a
+// missile of the player hits a creature (0x274B7, caller the creature) and
+// when the player runs into a hostile creature (0x2707A, 0x9E70D, caller the
+// creature); with 4 when a body becomes a corpse (0x6A45A), when a script
+// makes a creature hostile (0xA94A1) and when a creature gets up again
+// (0x14602); with 5 at a rest place (0x3E2C1, caller the player) and for
+// the script statement 3/0xC5 (0xAB080). Each other creature (index 1 to
+// Highest_object_index - 1) that is not active, not peaceful and not
+// fleeing, whose segment sees the segment of the caller (the brain bit,
+// 0x9810D) and that has a free ray to the player (0x10815) turns to the
+// caller, becomes hostile and wakes (0xA6505). A deaf creature (effect bit
+// 4) must face the caller. The test 0x161BC (rand() % distance <= iq * 1.0)
+// always passes, since rand() is at most 0x7FFF. The see sound plays for
+// every other creature: the executable takes the parity of a player field
+// (0x1D339F) plus the object index; the port takes the parity of the index.
+// The awareness event and the agitation (0x16055) and the bits of +0x15E are
+// not in the port.
+void dtu_creature_alert(object *caller, int level)
+{
+	int i;
+
+	if (caller == NULL || level < 3 || ConsoleObject == NULL)
+		return;
+	for (i=1;i<Highest_object_index;i++) {
+		object *obj = &Objects[i];
+		vms_vector v;
+
+		if (obj == caller || obj->type != OBJ_ROBOT || obj->control_type != CT_AI || obj->id >= N_robot_types)
+			continue;
+		if (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED) || DTU_ANIM_STATE(obj) == DAS_DIE)
+			continue;
+		if (Ail[i].activity == 2 || (obj->dtu.m_1b0 & (DTU_PEACEFUL|DTU_FLEEING)))
+			continue;
+		if (!brain_bit(obj->segnum,caller->segnum) || !creature_ray_to_player(obj))
+			continue;
+		vm_vec_sub(&v,&caller->pos,&obj->pos);
+		if ((obj->dtu.m_88 & DTU_FX_DEAF) && vm_vec_dot(&v,&obj->orient.fvec) <= 0)
+			continue;
+		v.y = 0;
+		if (vm_vec_mag_quick(&v) > F1_0/16) {
+			vm_vec_normalize_quick(&v);
+			vm_vector_2_matrix(&obj->orient,&v,NULL,NULL);
+		}
+		obj->dtu.m_1b0 |= DTU_HOSTILE;
+		dtu_obj_log("alert: level %d from obj %d %s wakes obj %d %s",level,(int)(caller-Objects),dtu_object_name(caller),i,dtu_object_name(obj));
+		creature_wake(obj,0,i & 1);
+	}
+}
+
+static void creature_wake(object *obj, int make_hostile, int sound)
 {
 	dtu_ai_local *ail;
 	ai_static *aip;
@@ -6812,7 +6878,8 @@ void dtu_creature_wake(object *obj, int make_hostile)
 	set_anim(obj,DAS_STAND);
 	ail->anim_start = ail->time_player_seen = GameTime;
 	ail->awareness_time = i2f(3);
-	sound_at(Robot_info[obj->id].see_sound,obj->segnum,&obj->pos,Monster_info[obj->id].str * 0x1000);
+	if (sound)
+		sound_at(Robot_info[obj->id].see_sound,obj->segnum,&obj->pos,Monster_info[obj->id].str * 0x1000);
 	if (is_hostile(obj)) {
 		ail->awareness = 4;
 		ail->mode = DAIM_CHASE_OB;
@@ -7805,6 +7872,9 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 					Ail[b-Objects].awareness = 3;
 					Ail[b-Objects].awareness_time = i2f(3);
 				}
+				// 0x2707A: the alert function 0x160AB(creature, 3)
+				if (is_hostile(b))
+					dtu_creature_alert(b,3);
 				break;
 			case OBJ_DRESSING:
 				// 0x9E5BE (pcons.c): the player pushes scenery when the
@@ -8007,7 +8077,8 @@ static void corpse_regen_frame(void)
 		ail->awareness = 4;
 		dtu_obj_log("obj %d %s: gets up again with %d hit points (Dtu_fix_revive)",i,dtu_object_name(obj),max);
 		morale_check(obj);
-		dtu_spell_creature_event(obj,DTU_CSC_ALERT);		// 0x1460C: the alert of level 4
+		dtu_creature_alert(obj,4);		// 0x14602: the alert of level 4
+		dtu_spell_creature_event(obj,DTU_CSC_ALERT);
 		// 0x1463C: it faces the player
 		vm_vec_sub(&v,&ConsoleObject->pos,&obj->pos);
 		v.y = 0;

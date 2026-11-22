@@ -1971,9 +1971,10 @@ int dtu_char_rest(void)
 		}
 	}
 	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
+	dtu_creature_alert(player, 5);	// ASCENT: 0x3E2C1, the alert function 0x160AB
 	dtu_spell_rest_shuffle();		// 0x3E1F6 calls 0x92FF2
-	// The executable also calls 0x160AB(player, 5) (the alert function)
-	// and 0x4D95D(player) (not read). These are not in the port.
+	// The executable also calls 0x4D95D(player) (not read). This is not in
+	// the port.
 	return 1;
 }
 

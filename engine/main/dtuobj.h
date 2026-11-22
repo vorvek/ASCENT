@@ -431,6 +431,10 @@ void dtu_creature_morale(object *obj);
 // 0xA6505: makes a creature active. With make_hostile it attacks the player.
 void dtu_creature_wake(object *obj, int make_hostile);
 
+// 0x160AB: the alert function, levels 3 to 5 wake the creatures that see
+// the segment of the caller (docs/re/ai.md, "Alert function").
+void dtu_creature_alert(object *caller, int level);
+
 // gate_in_robot (0x1374D): a new creature of the type at the center of the
 // segment. Returns the object number or -1.
 int dtu_gate_in_creature(int type, int segnum);
