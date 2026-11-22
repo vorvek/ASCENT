@@ -610,6 +610,10 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 	line(LT("Range: %s"), f.self ? LT("Self") : feet(a, f.range));
 	if (f.area)
 		line(LT("Area: %s"), (sprintf(b, f.self ? LT("%s around you") : LT("%s where it lands"), feet(a, f.radius)), b));
+	// ASCENT: the object loop of 0x90CEF has no test of the caster (0x90D54
+	// to 0x90DDA): an area that lands near the caster takes the caster too
+	if (f.area && !f.self && f.kind != DTU_SK_DISPEL)
+		line(LT("Also hits you when you are in the area."));
 	else
 		line(LT("Area: %s"), f.self ? LT("Only you") : LT("One target"));
 	if (f.missiles_hi > 1)

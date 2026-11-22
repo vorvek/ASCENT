@@ -2065,6 +2065,10 @@ id: port.s_where_it_lands
 en: %s where it lands
 tr: %s donde cae
 
+id: port.also_hits_you_when_you_are_in_the_area
+en: Also hits you when you are in the area.
+tr: También te alcanza si estás en el área.
+
 id: port.only_you
 en: Only you
 tr: Solo tú
