@@ -64,6 +64,10 @@ int dtufe_escape_key(void);
 // Game of the ESC menu, else 0.
 int dtufe_save_key(void);
 int dtufe_load_key(void);
+// ASCENT: test commands of -chartest: a save and a load with no menu
+void dtufe_test_save(int slot);
+void dtufe_test_load(int slot);
+int dtufe_test_load_pending(void);
 
 // The loading pictures (0x7C1E5, 0x7C2BB). dtufe_loading_picture shows
 // FEBGND entry "entry" over the screen of the game and returns 1 if it is

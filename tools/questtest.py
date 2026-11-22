@@ -28,8 +28,8 @@ import tempfile
 ONES = ",".join(["1"] * 60)        # -dlgauto: the first reply, 60 times
 
 
-def T(name, level, script, expect, reject=(), frames=400, dlg=ONES, extra=(), invuln=True):
-    return dict(name=name, level=level, script=script, expect=list(expect), reject=list(reject),
+def T(name, level, script, expect, reject=(), frames=400, dlg=ONES, extra=(), invuln=True, also=()):
+    return dict(name=name, level=level, script=script, expect=list(expect) + list(also), reject=list(reject),
                 frames=frames, dlg=dlg, extra=list(extra) + (["-invulnerability"] if invuln else []))
 
 
@@ -129,6 +129,50 @@ TESTS = [
     # The talk of WEAPON 13 before a warp (0x59D2D): script 0x1FD runs.
     T("drowslayer_warp", "DROW1", "10:give=5.13,15:current=5.13,30:warp=20.1,31:quest,60:warp=21.1,100:quest",
       [r"warp with WEAPON 13 in the hand: script 0x1FD"], frames=120),
+
+    # Save and load in the middle of a quest (the test commands save and
+    # load are the keys Alt+F2 and Alt+F3 with no menu). The state after
+    # the save is changed before the load, so the load must bring the saved
+    # state back.
+    # HUB1: the wall that the Violet Gem Key opened, flags and the mission.
+    T("save_hub1_key", "HUB1",
+      "10:give=16.107,12:gflag=67,13:mflag=3,14:mission=5,20:goseg=61,40:wall=40.4,41:quest,50:save=3,"
+      "70:gflag=68,71:mflag=4,72:goseg=1,73:mission=9,80:quest,90:load=3,150:wall=40.4,151:quest",
+      [r"quest: level 1 seg 1 mission 9 .* gflags \[ 67 68 \][\s\S]*"
+       r"wall 40\.4: type 4[\s\S]*quest: level 1 seg 61 mission 5 .* gflags \[ 67 \]\n.*quest: mflags \[ 3 \]"],
+      frames=160, extra=["-statelog"], also=[r"Restoring SG4_1\.LVL"]),
+    # FLAME: three pieces are in the statue at the save. After the load the
+    # other four are placed and script 323 opens the wall.
+    T("save_flame_statue", "FLAME",
+      "10:give=16.18,10:give=16.19,10:give=16.20,10:give=16.22,10:give=16.23,10:give=16.24,10:give=16.26,"
+      "20:goside=229.4,22:activate,40:goside=245.4,42:activate,60:goside=275.4,62:activate,70:quest,75:save=2,"
+      "80:give=16.18,81:goseg=2,85:load=2,140:quest,"
+      "160:goside=287.4,162:activate,180:goside=266.4,182:activate,200:goside=258.4,202:activate,"
+      "220:goside=284.4,222:activate,240:wall=278.0,250:gflag=128,260:goside=279.5,262:activate,640:wall=278.0",
+      [r"quest: items \[ 16\.102 5\.20 15\.1 16\.2 16\.79 16\.20 16\.22 16\.23 16\.26 \][\s\S]*"
+       r"quest: items \[ 16\.102 5\.20 15\.1 16\.2 16\.79 16\.20 16\.22 16\.23 16\.26 \][\s\S]*"
+       r"wall 278\.0: type 5[\s\S]*wall 278\.0: type 4"],
+      frames=660, extra=["-triglog", "-statelog"], also=[r"Restoring SG3_32\.LVL"]),
+    # KOBOLDS: the chief (script 23) is dead at the save; after the load
+    # command 1 of DTU.WRP still finds no creature with script 23.
+    T("save_kobolds_chief", "KOBOLDS",
+      "20:killscript=23,30:obj=19,40:save=1,50:goseg=6,60:quest,70:load=1,120:quest,130:goseg=6,150:quest",
+      [r"quest: mflags \[ 1 \][\s\S]*quest: mflags \[ \][\s\S]*quest: mflags \[ 1 \]"],
+      frames=160, extra=["-statelog"], also=[r"Restoring SG2_2\.LVL"]),
+    # YPINN: the script state of Durnan (object 1: talk counter, resume
+    # label, flags, variable) is in the level state.
+    T("save_durnan_talk", "YPINN",
+      "20:talk=1,200:obj=1,210:save=4,220:talk=1,400:obj=1,410:load=4,470:obj=1",
+      [r"obj 1: .* talks 1 [\s\S]*obj 1: .* talks 2 [\s\S]*obj 1: .* talks 1 "],
+      frames=480, dlg=",".join(["esc"] * 40), extra=["-statelog"], also=[r"Restoring SG5_0\.LVL"]),
+    # THIEF1 and THIEF2: the prison sequence, a save in THIEF2, a load, and
+    # the way back: the chest of THIEF1 (object 99) or the floor still has
+    # what the thieves took (the level state of THIEF1 is in the slot).
+    T("save_prison", "THIEF1",
+      "10:gold=500,20:prison,60:quest,65:save=5,70:gold=77,75:give=16.2,80:load=5,140:quest,150:warp=6.297,190:quest,191:items=297",
+      [r"prison: type 16 id 102 lies in seg 297[\s\S]*quest: level 7 seg 612 .* gold 0 hp 1 [\s\S]*"
+       r"quest: level 7 seg 612 .* gold 0 hp 1 .*\n.*entries 0[\s\S]*quest: level 6 seg 297 [\s\S]*items in seg 297: .*16\.102"],
+      frames=200, invuln=False, extra=["-statelog"], also=[r"Restoring SG6_7\.LVL"]),
 
     # Statement 9F (script 31 of BONES): the level.
     T("level_statement", "BONES", "20:setlevel=5,30:dump", [r"statement 9F sets level 5", r"level 5/"], frames=40),

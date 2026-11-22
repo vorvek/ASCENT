@@ -2288,10 +2288,23 @@ static void loaded_character(void)
 // ASCENT: the slot menus of a game that runs (the ESC menu, the death
 // menu) use the menus of the game (newmenu, as the executable does in the
 // game); the front end draws them with its fonts.
+static int Fe_test_slot = -1;			// ASCENT: the slot of a test save or load (dtufe_test_save)
+static int Fe_test_load = 0;			// ASCENT: a test load is running
+
 static int slot_menu_nm(int save, char desc[10][24])
 {
 	newmenu_item m[11], *slot = save ? m : m + 1;
 	int i, n_valid = 0, choice;
+
+	// ASCENT: the test commands save and load of -chartest take the slot
+	// with no menu
+	if (Fe_test_slot >= 0 && Fe_test_slot < 10) {
+		choice = Fe_test_slot;
+		Fe_test_slot = -1;
+		if (save)
+			snprintf(desc[choice], 24, "QUEST TEST");
+		return choice;
+	}
 
 	memset(m, 0, sizeof(m));
 	for (i = 0; i < 10; i++) {
@@ -2360,7 +2373,7 @@ int fe_load_game(int in_game)
 		choice = slot_menu_nm(0, desc);
 		if (choice < 0 || Fe_quit)
 			return 0;
-		if (nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(801)) != 0)	// "Restore Game?"
+		if (!Fe_test_load && nm_messagebox(NULL, 2, fe_text(32), fe_text(33), fe_text(801)) != 0)	// "Restore Game?"
 			return 0;
 	} else {
 		if (!n_valid) {
@@ -2854,6 +2867,28 @@ int dtufe_load_key(void)
 	return 1;
 }
 
+// ASCENT: the test commands save=SLOT and load=SLOT of -chartest
+// (tools/questtest.py): as the keys Alt+F2 and Alt+F3 with the slot (0 to
+// 9) and no menu. After a test load the front end starts the level of the
+// save also in a run with -frames.
+void dtufe_test_save(int slot)
+{
+	Fe_test_slot = slot;
+	Fe_save_key = 1;
+}
+
+int dtufe_test_load_pending(void)
+{
+	return Fe_test_load && Fe_game_loaded;
+}
+
+void dtufe_test_load(int slot)
+{
+	Fe_test_slot = slot;
+	Fe_test_load = 1;
+	Fe_load_key = 1;
+}
+
 // 0x42352 to 0x423F5
 static void escape_menu(void)
 {
@@ -3060,8 +3095,9 @@ int dtufe_game_ended(void)
 		return 0;
 	// ASCENT: the test option -frames with no front end script: the
 	// program ends with the game (the death screen would wait for a key).
-	if (FindArg("-frames") && !Script_n)
+	if (FindArg("-frames") && !Script_n && !(Fe_test_load && loaded))
 		return 0;
+	Fe_test_load = 0;
 
 	fe_enter();
 	if (Dtu_player_dead) {

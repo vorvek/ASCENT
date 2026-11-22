@@ -1202,7 +1202,8 @@ static int dtu_run_level(char *level_name)
 
 		// ASCENT: after a death in a direct start, the death screen and the
 		// front end take over.
-		if (level_name && Dtu_player_dead)
+		// ASCENT: the same after the test command load of -chartest.
+		if (level_name && (Dtu_player_dead || dtufe_test_load_pending()))
 			level_name = NULL;
 	} while (!level_name && dtufe_game_ended());
 

@@ -2828,6 +2828,10 @@ static void dump_character(void)
 			dtu_char_slot_of(i) >= 0 ? " (worn)" : "");
 }
 
+// dtufe.c: a save and a load with no menu (tests)
+void dtufe_test_save(int slot);
+void dtufe_test_load(int slot);
+
 static void run_command(char *cmd, char *value)
 {
 	int a = 0, b = 0, index;
@@ -2979,6 +2983,18 @@ static void run_command(char *cmd, char *value)
 			vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
 	}
 	else if (!strcmp(cmd, "warp"))		dtu_script_test_warp(a, b);		// test: warp=LEVEL.SEG, the warp of statement DB
+	else if (!strcmp(cmd, "save"))		dtufe_test_save(a);				// test: save=SLOT, as Alt+F2 with no menu
+	else if (!strcmp(cmd, "load"))		dtufe_test_load(a);				// test: load=SLOT, as Alt+F3 with no menu
+	else if (!strcmp(cmd, "items") && a >= 0 && a <= Highest_segment_index) {	// test: items=SEG, the item objects of the segment
+		char list[400], *q = list;
+		int i;
+
+		for (i = Segments[a].objects; i != -1 && q < list + 380; i = Objects[i].next)
+			if (Objects[i].type == OBJ_WEAPON || Objects[i].type == OBJ_ARMOR || Objects[i].type == OBJ_MISC || Objects[i].type == OBJ_SPELL)
+				q += sprintf(q, "%d.%d ", Objects[i].type, Objects[i].id);
+		*q = 0;
+		dtu_char_log("items in seg %d: %s", a, list);
+	}
 	else if (!strcmp(cmd, "prison"))		dtu_script_test_prison();		// test: the prison sequence 0xAA3F3
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);			// test: setlevel=N, statement 9F
 	else if (!strcmp(cmd, "gflag"))		dtu_script_set_gflag(a, value && strchr(value, '.') ? b : 1);		// test: gflag=N[.VALUE]
