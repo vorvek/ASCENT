@@ -26,8 +26,8 @@ int tmap_fx_effect(int c);
 // The value 0x14C4CE of the dark view of the conversation window for the
 // next view (0 to 15). It builds Tmap_dim_fade from gr_fade_table.
 void tmap_dim_set_view(int dim);
-// Tmap_dim for a polygon of draw_tmap: the bitmap flags and Lighting_on.
-void tmap_dim_polygon(int bm_flags, int lighting);
+// Tmap_dim for a polygon of draw_tmap: Lighting_on.
+void tmap_dim_polygon(int lighting);
 // The color of effect color c from the screen pixels behind and below.
 // linear: the rules of the linear mapper.
 int tmap_fx_color(int c, int behind, int below, int linear);

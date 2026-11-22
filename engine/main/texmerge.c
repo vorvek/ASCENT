@@ -277,13 +277,10 @@ grs_bitmap * texmerge_get_cached_bitmap( int tmap_bottom, int tmap_top )
 	// ASCENT: DTUGAME.EXE sets flag 0x20 on each merged bitmap (0x7AB89),
 	// and the texture mappers give its effect colors the colors of the
 	// screen (tmapfx.c). Here the flag is set only when the bitmap has one.
-	// BM_FLAG_DTU_MERGED is the flag of the original on each merged bitmap:
-	// the dark view of the conversation window (tmapfx.c, Tmap_dim).
 	{
 		ubyte *p = Cache[least_recently_used].bitmap->bm_data;
 		int i;
 
-		Cache[least_recently_used].bitmap->bm_flags |= BM_FLAG_DTU_MERGED;
 		for (i=0; i<64*64; i++)
 			if (tmap_fx_color_code(p[i])) {
 				Cache[least_recently_used].bitmap->bm_flags |= BM_FLAG_DTU_EFFECTS;
