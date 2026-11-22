@@ -122,6 +122,44 @@ tangents of the half angles in x and y):
 With `-origui` the high resolution has 0.850 / 0.5625 in mode 0 and 0.628 /
 0.5625 in mode 7.
 
+The shape column of `viewstate` assumes a 4:3 screen. That is right for the
+DOS game: each VGA mode filled the 4:3 monitor, so a pixel of 320x200 was
+1.2 times taller than wide, and the aspect 1.2 of 0x41193 is made for that.
+The port showed the 320x200 frame with square pixels (16:10) before, so in
+low resolution the 3D scene was 1.2 times too wide on its screen (measured
+with the script command `presentstate`: 1152x720 in a 1280x720 window).
+
+The interface pictures of the low resolution are not made for that pixel.
+They are the pictures of the high resolution at half size in x and in y.
+Measured in the frames: the dark disc of the map porthole is 317x317 pixels
+of the 640x480 frame (picture 64) and 156x159 pixels of the 320x200 frame
+(picture 58); the portrait is about 103x93 and 51x46. So on the DOS monitor
+the low resolution pictures were 1.2 times taller than the same pictures in
+high resolution (the porthole was an upright ellipse), while the 3D view had
+the right shape. The port now shows that, as the DOS monitor did; with
+square pixels the pictures have the shape of the high resolution and the 3D
+view is 1.2 times too wide.
+
+The port now shows a frame of 320x200 (also 320x400 and 640x400, the other
+VGA modes that filled the monitor) at 4:3, in the middle of the window with
+black bars (`plat_frame_aspect`, `plat_fit_frame` in video.c; gpu.c and the
+SDL_Renderer form use them). Measured: 960x720 at x 160 in a 1280x720
+window, 1066x800 at x 106 in a 1280x800 window, 960x720 filling a 960x720
+window, with the GPU and the software renderer. The 640x480 frame is 4:3
+with square pixels, as before. The movies keep square pixels: DOS showed
+their 432x320 picture 1:1 in the 640x480 mode (docs/re/movies.md). The
+mouse maps through the same rectangle (`test_window_mouse_16_9`). The
+upscaled interface pictures are drawn in the rectangle of their original
+picture in the frame, and the 3D view (with the upscaled textures) is drawn
+in the view rectangle of the frame, so both follow the shape of the frame
+(screenshots: the upscaled porthole has the shape of the original one: 467
+by 572 and 486 by 581 window pixels).
+The window of the first start is 960x720 (it was 960x600).
+
+`Dtu_fix_lowres_aspect` (dtuopts.c) is on by default: "4:3 screen" in the
+Graphics menu, `LowresAspect` in ascent.cfg. `-squarepixels` gives square
+pixels for one run.
+
 ## Interface modes
 
 The variable at 0x13B616 (the Descent `Cockpit_mode`) has these values
