@@ -1474,3 +1474,105 @@ void dtu_combat_draw_view(void)
 
 	draw_polygon_model_frame(&pos,&orient,View_model,View_frame < po->n_frames ? View_frame : -1,show_hidden,light,glow,NULL);
 }
+
+//------------------------------------------------------------------------
+// The fire trap of the Yawning Portal and the blindness and deafness of
+// Fireball (spells.c 0x90CEF, scenery break 0xA6ACB)
+
+// 0x90DDF to 0x91058, in 0x90CEF after the spell hit 0x8CFFF: only for
+// spell 16 (Fireball) and a player or creature within 6.0 of the point.
+// Every caller of 0x90CEF tests the area flag of the spell, which Fireball
+// does not have, except the fire trap (0xA6F51, 0xA6F61).
+void dtu_fireball_blind_deaf(object *o, fix dist)
+{
+	int player = (o->type == OBJ_PLAYER);
+	int sound = -1;
+
+	if ((o->type != OBJ_PLAYER && o->type != OBJ_ROBOT) || dist > i2f(6))
+		return;
+	if (!player && o->id < N_robot_types)
+		sound = Monster_info[o->id].hit_sound;		// Robot_info+0x9A
+	else if (player && N_player_types > 0) {
+		char value[32];
+
+		// P+0x1B0B, the hard_sound of the player type (combat.md)
+		if (bm_tbl_get(Player_type_info[0].record, "hard_sound", value, sizeof(value)))
+			sound = atoi(value);
+	}
+	if (!(o->dtu.m_88 & DTU_FX_BLIND)) {
+		// 0xAE596(obj, 4): a save skips the message, the flash and the
+		// sound, but not the blindness (0x90E22 jumps to 0x90F73)
+		if (!dtu_spell_save(o, 4)) {
+			if (player) {
+				// 0x90E32 also sets 0x13D50C, 0x1F3B00, 0x1F3AF8, 0x46C688
+				// and 0x46C68C to 0 (not in the port)
+				PALETTE_FLASH_ADD(254, 254, 254);
+				HUD_init_message("%s", LN("You lost your eyesight!"));
+			}
+			if (sound >= 0)
+				digi_link_sound_to_pos(sound, o->segnum, 0, &o->pos, 0, 0x5555);
+			dtu_char_log("fire trap: obj %d is blind", (int) (o - Objects));
+		}
+		// 0x90F73: blind for 1 to 1800 seconds
+		o->dtu.m_8c[3] = GameTime + i2f(rand() % 1800 + 1);
+		o->dtu.m_88 |= DTU_FX_BLIND;
+	}
+	if (!(o->dtu.m_88 & DTU_FX_DEAF) && !dtu_spell_save(o, 2)) {
+		if (player) {
+			// 0x2DF7E: the volume of the sounds, rand() % 0x1800 of 0x8000
+			digi_set_digi_volume(rand() % 0x1800);
+			HUD_init_message("%s", LN("You lost your hearing!"));
+		}
+		if (sound >= 0)
+			digi_link_sound_to_pos(sound, o->segnum, 0, &o->pos, 0, 0x5555);
+		o->dtu.m_88 |= DTU_FX_DEAF;
+		dtu_char_log("fire trap: obj %d is deaf", (int) (o - Objects));
+	}
+}
+
+// 0xA6D5A to 0xA6F66 of 0xA6ACB: in level 0 (the Yawning Portal) the
+// scenery object 0x29 is a fire trap. When it breaks: a light object, the
+// sound 2000, a white flash, the burst of weapon 25 (0x93294), a push of
+// the player backwards, then Fireball (spell 16) two times through 0x90CEF.
+void dtu_fire_trap(object *d)
+{
+	object *p = ConsoleObject, *caster = &Objects[1];		// 0x2B07F3: object 1 if no light
+	vms_vector pos = d->pos, v;
+	int seg = d->segnum, objnum, level, i;
+
+	if (Current_level_num - 1 != 0 || d - Objects != 0x29)
+		return;
+	dtu_char_log("fire trap: obj %d", (int) (d - Objects));
+	// 0x68AC8: type 13 (light), control 14 (light); life 3.0, light 300.0
+	objnum = obj_create(OBJ_LIGHT, 0, seg, &pos, NULL, 0, CT_LIGHT, MT_NONE, RT_NONE);
+	if (objnum > 0) {
+		caster = &Objects[objnum];
+		caster->lifeleft = i2f(3);
+		caster->ctype.light_info.intensity = i2f(300);
+	}
+	digi_link_sound_to_pos(2000, seg, 3, &pos, 0, F1_0);		// 0x2E900
+	HUD_init_message("%s", LN("You set off a fire trap!!!"));
+	PALETTE_FLASH_ADD(254, 254, 254);
+	dtu_create_burst(25, seg, &pos);		// 0x93294(25, seg, 3)
+	if (p) {
+		// the velocity of the player: (up - forward) * 500 to 1000, then
+		// y = rand() % 30 (as a fix)
+		vm_vec_sub(&v, &p->orient.uvec, &p->orient.fvec);
+		vm_vec_copy_scale(&p->mtype.phys_info.velocity, &v, i2f(rand() % 501 + 500));
+		p->mtype.phys_info.velocity.y = rand() % 30;
+	}
+	// The spell hit 0x8CFFF takes the level of a caster of type 13 (a
+	// trap) as 2 * the higher class level of the player (0x8D239). The
+	// radius of 0x90CEF uses 0xAE3BB, but Fireball has no level_radius.
+	level = Dtu_char.pa.class1_level + 1;
+	if (Dtu_char.pa.class2_level + 1 > level)
+		level = Dtu_char.pa.class2_level + 1;
+	level *= 2;
+	if (caster->type != OBJ_LIGHT)		// object 1: 0xAE3BB, max hit points / 8, 1 to 18
+		level = (caster->id < N_robot_types) ? Monster_info[caster->id].max_hit_points / 8 : 1;
+	if (level < 1) level = 1;
+	if (caster->type != OBJ_LIGHT && level > 18) level = 18;
+	dtu_char_log("fire trap: light object %d, caster %d type %d, level %d", objnum, (int) (caster - Objects), caster->type, level);
+	for (i = 0; i < 2; i++)
+		dtu_spell_area(16, &pos, seg, caster, level);
+}

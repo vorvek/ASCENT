@@ -1418,7 +1418,7 @@ class Pages:
                 "- Fireball: the 1.3 readme says that a Fireball that bursts close may blind or deafen. "
                 "In the game only the fire trap of the Yawning Portal does that: within 3 ft, a failed "
                 "save against spells blinds you for up to 30 minutes, and a failed save against "
-                "petrification deafens you until cured. ASCENT does not have this yet.",
+                "petrification deafens you until cured.",
                 "- Magic Missile: the manual gives 2 missiles at level 3; the game at level 2.",
                 "- Melf's Minute Meteors: the manual says one per level; the game gives at most 5.",
                 "- Sleep: the manual says level 5 or more is safe; the game spares level 4 and up.",
@@ -1741,7 +1741,6 @@ NOT_IN_ASCENT = [
     "The text screen of the Scroll and the thief scroll (0x9DC42).",
     "The thief skill point screen (thiefpts.c, 0xB5B49).",
     "The view of a frightened player (0x13407).",
-    "The blindness and deafness of the fire trap of the Yawning Portal (0x90CEF).",
     "The Spider Pieces 20, 23 and 24.",
     "The screen effect of Detect Magic (being decoded).",
 ]

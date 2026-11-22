@@ -5328,8 +5328,10 @@ void dtu_break_dressing(object *d,object *by,int explode)
 				Dressing_fall[i] = 1;
 	}
 	d->flags |= OF_SHOULD_BE_DEAD;
-	if (!explode)
+	if (!explode) {
 		dtu_creature_drop_contents(d);
+		dtu_fire_trap(d);		// 0xA6D5A: level 0 object 0x29 (dtucombat.c)
+	}
 }
 
 static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_player,fix circle_distance,int evade_only);

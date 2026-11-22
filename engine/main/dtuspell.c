@@ -36,6 +36,7 @@
 #include "gamefont.h"
 #include "gameseq.h"
 #include "digi.h"
+#include "kconfig.h"		// ASCENT: Config_digi_volume (0x13BFEB)
 #include "fireball.h"
 #include "render.h"
 #include "dtugame.h"
@@ -1559,6 +1560,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			else
 				say("Cure Blindness or Deafness cast on %s by %s.",Msg_t,Msg_c);
+			// 0x8F3AD: a deaf player gets the volume of the sounds back from
+			// the configuration 0x13BFEB (the deafness of the fire trap)
+			if (target == ConsoleObject && (target->dtu.m_88 & DTU_FX_DEAF))
+				digi_set_digi_volume((Config_digi_volume * 32768) / 8);
 			target->dtu.m_88 &= ~(DTU_FX_BLIND|DTU_FX_DEAF);
 			target->dtu.m_8c[3] = 0;
 			break;
@@ -1704,6 +1709,8 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 		if (!point_sees(pos,segnum,o))
 			continue;
 		apply_spell(spell,o,caster,level);
+		if (spell == 16)		// 0x90DDF: Fireball, the fire trap (dtucombat.c)
+			dtu_fireball_blind_deaf(o,vm_vec_dist(&o->pos,pos));
 		n++;
 	}
 	return n;

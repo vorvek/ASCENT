@@ -918,11 +918,24 @@ segment visible from the source segment by the brain bit table 0x9810D (ai.md),
 player or creature (or any type if +0x37 bit 3), distance (0xD705C) <= radius:
 0x8CFFF(spell, obj, caster). The caster is included (the cases exclude self where
 they need to).
-Fireball (16) extra, for the player and creatures within 6.0: if not blind and the
-save 4 fails: blind for 1..1800 s (rand % 1800 + 1, timer 0x98, bit 2; player
-"You lost your eyesight!"); then if not deaf and the save 2 (petrification/polymorph) fails: deaf
+Fireball (16) extra, for the player and creatures within 6.0: if not blind: the
+save 4; a failed save gives the message (player: "You lost your eyesight!", a
+white flash of +254 on each color, 0x13D50C, 0x1F3B00, 0x1F3AF8, 0x46C688 and
+0x46C68C set to 0; the sound P+0x1B0B or Robot_info+0x9A at volume 0x5555). Saved
+or not (0x90E22 jumps to 0x90F73), blind for 1..1800 s (rand % 1800 + 1, timer
+0x98, bit 2). Then if not deaf and the save 2 (petrification/polymorph) fails: deaf
 (bit 4, no timer, the player's digital volume becomes rand % 0x1800 via 0x2DF7E,
-"You lost your hearing!").
+"You lost your hearing!", the same sound). Only the fire trap reaches this code
+(every other caller tests the area flag, which Fireball does not have).
+
+The fire trap (0xA6D5A to 0xA6F66 of 0xA6ACB): after scenery object 0x29 of level
+0 (YPINN) breaks: a light object (0x68AC8 type 13, control 14, life 3.0, light
+300.0, flags +0x0D |= 0xC0, +0x1AE |= 2; if none, object 1 is the source), sound
+2000 at the object (side 3, volume 1.0), "You set off a fire trap!!!", a flash of
++254 on each color, the burst of weapon 25 (0x93294), the player velocity =
+(uvec - fvec) * (rand() % 501 + 500), then velocity.y = rand() % 30 (a fix), then
+0x90CEF(16, object, light) two times. 0x8CFFF takes the level of a caster of type
+13 as 2 * max(class 1 level, class 2 level) of the player (0x8D239).
 A source of type weapon (missile) is deleted (0x6A3CC).
 Light spells 8, 9, 30, 31: create a light object (0x68AC8 type 13) at the source
 point with flags +0x0D |= 0xC0, +0x1AE |= 2, +0x144 |= 1 (dispellable); lifetime
@@ -1768,7 +1781,7 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
 Complete as read: 1 Aid (the hit points are capped at the maximum), 2 Armor, 3 Bless, 4
 Burning Hands, 5 Chill Touch, 6 Color Spray, 7 Confusion, 10 Cure Light Wounds, 11 Cure
 Serious Wounds, 12 and 54 Detect Magic (the effect bit only, the renderer does not read
-it), 15 Feather Fall, 16 Fireball (without the blindness and deafness within 6.0), 18
+it), 15 Feather Fall, 16 Fireball, 18
 Flame Walk, 19 Fly, 20 Free Action, 21 Haste, 22 and 52 Hold Person (no counter of
 targets), 23 Hold Undead (no pool), 24 Improved Invisibility, 25 Infravision, 26
 Invisibility, 27 Jump, 28 Knock (no effect, as in the executable), 29 Levitate, 30 and 31
@@ -1794,7 +1807,7 @@ spells (B10, `dtu_spell_creature_frame`), the caster level of 0x8CFFF (the playe
 of an area spell at the wall hit (0x26C2F; the area at the end of the life is gone).
 
 Still partial: 14 and 44 (the view of the player does not move into a gated creature;
-the player is held for the time), 16 (no blindness and deafness within 6.0), the
+the player is held for the time), the
 counters of Hold Person, Hold Undead and Sleep, the cast vclips of `cast_on_top`
 (0x8CCED), the debris of 0x3CA7E. The audit of all spells against the executable
 (cast time, texts, end texts) is [spells.md](spells.md).
