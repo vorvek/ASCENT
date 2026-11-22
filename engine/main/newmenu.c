@@ -1462,6 +1462,14 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 			int hit = -1, mx, my;
 
 			nm_pointer_poll( &p );
+			// While a name is typed in an input menu item (a save slot),
+			// the mouse does nothing: a move to another row ended the
+			// edit. The buttons and the wheel are read and dropped, so
+			// they do not act after the edit.
+			if ( choice > -1 && item[choice].type == NM_TYPE_INPUT_MENU && item[choice].group == 1 )	{
+				p.moved = p.click = p.rclick = p.held = p.wheel = 0;
+				Nm_ptr_wheel = 0;
+			}
 			mx = p.x - x;
 			my = p.y - y;
 			if ( mx >= 5 && mx < w - 5 )
