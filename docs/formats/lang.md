@@ -224,13 +224,13 @@ Spanish:
 ```
 tex.701  {item:muchos|muchas}
 tex.703  Tu personaje lleva {item:uno|una}\nequipad{item:o|a}. Si {item:lo|la} vendes,\nperderás sus ventajas.
-tex.704  Hay %s {item} {qty:disponible|disponibles} a %u de oro{qty:| la pieza}. Con tu oro y el sitio de tu bolsa de contención puedes comprar %d.\n¿Cuánt{item:os|as} quieres?
-tex.705  Tienes %d {item} en tu bolsa de contención.\nPuedes vender{item:lo|la}{qty:|s} por %d de oro{qty:| la pieza}.\n¿Cuánt{item:os|as} quieres vender?
+tex.704  Hay %s {item} {qty:disponible|disponibles} a %u de oro{qty:| por pieza}. Con tu oro y el sitio de tu bolsa de contención puedes comprar %d.\n¿Cuánt{item:os|as} quieres?
+tex.705  Tienes %d {item} en tu bolsa de contención.\nPuedes vender{item:lo|la}{qty:|s} {qty:por|a} %d de oro{qty:| por pieza}.\n¿Cuánt{item:os|as} quieres vender?
 ```
 
-which gives `Hay muchas Dagas disponibles a 2 de oro la pieza.`, `Hay 3
-Martillos de guerra disponibles ...`, `¿Cuántos quieres?` and `Tienes 1
-Espada ancha en tu bolsa de contención. Puedes venderla por 7 de oro.`
+which gives `Hay muchas dagas disponibles a 2 de oro por pieza.`, `Hay 3
+martillos de guerra disponibles ...`, `¿Cuántos quieres?` and `Tienes 1
+espada ancha en tu bolsa de contención. Puedes venderla por 7 de oro.`
 
 ## Ids
 
