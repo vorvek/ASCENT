@@ -35,9 +35,12 @@ extern int Dtu_improved_jump;
 extern int Dtu_improved_pathfinding;
 
 // The 3D view is rendered at this multiple of the original view size,
-// from 1 to 6. The interface is not scaled by it. Default 3.
+// from 1 to 6. The interface is not scaled by it. Default 3. ASCENT: 0 is
+// "x1/2": half the shown size in each direction (320x240 for the full
+// screen view of the 640x480 interface), as the 320x200 game drew it.
+// The GPU renderer only; the software renderer draws at x1.
 extern int Dtu_render_scale;
-#define DTU_RENDER_SCALE_MIN	1
+#define DTU_RENDER_SCALE_MIN	0
 #define DTU_RENDER_SCALE_MAX	6
 
 // Depth test for each pixel on the GPU: a part of a creature behind a

@@ -929,14 +929,21 @@ int g3_gpu_begin_view(int enable,int scale,int line_mul,int depth_test,int clear
 	for (y=0;y<cb->bm_h;y++)
 		memset(cb->bm_data + (size_t) y * cb->bm_rowsize,255,cb->bm_w);
 
-	if (scale < 1) scale = 1;
+	if (scale < 0) scale = 1;
 	if (line_mul < 1) line_mul = 1;
-	//scale 1 is the original resolution: the size of the canvas
-	if (scale == 1)
-		line_mul = 1;
 	flags = (depth_test ? PLAT_GPU_VIEW_DEPTH : 0) | (Opt.rgb ? PLAT_GPU_VIEW_RGB : 0)
 		| (Opt.rgb && Opt.anisotropic ? PLAT_GPU_VIEW_ANISO : 0);
-	plat_gpu_begin_view(cb->bm_w,cb->bm_h,cb->bm_w*scale,cb->bm_h*line_mul*scale,flags,clear_color);
+	//ASCENT: scale 0 is half the shown size in each direction (the view of
+	//the 640x480 interface at the pixel size of the 320x200 one)
+	if (scale == 0) {
+		int w = (cb->bm_w + 1) / 2, h = (cb->bm_h * line_mul + 1) / 2;
+		plat_gpu_begin_view(cb->bm_w,cb->bm_h,w > 0 ? w : 1,h > 0 ? h : 1,flags,clear_color);
+	} else {
+		//scale 1 is the original resolution: the size of the canvas
+		if (scale == 1)
+			line_mul = 1;
+		plat_gpu_begin_view(cb->bm_w,cb->bm_h,cb->bm_w*scale,cb->bm_h*line_mul*scale,flags,clear_color);
+	}
 
 	Hooks.canvas = cb->bm_data;
 	G3_gpu = &Hooks;

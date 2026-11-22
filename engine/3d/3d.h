@@ -394,7 +394,8 @@ int g3_gpu_texture_generation(void);
 //renderer. The GPU image is canvas width * scale by canvas height *
 //line_mul * scale pixels (line_mul is 2 when each line of the canvas is
 //shown two times), except for scale 1: then the image is the size of the
-//canvas, the original resolution (each line shown line_mul times).
+//canvas, the original resolution (each line shown line_mul times), and
+//scale 0: half of canvas width by canvas height * line_mul (ASCENT).
 //depth_test 1: per pixel depth test. clear_color: the palette index of
 //the background. Returns 1 if the GPU draws the view:
 //then the 3d drawers on this canvas go to the GPU until g3_gpu_end_view(),

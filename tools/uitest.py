@@ -294,6 +294,53 @@ def test_view_screen_scale(t):
             assert abs(sx / sy - 1) < 0.01, "%s mode %s: the scales %.1f and %.1f differ" % (extra, s["mode"], sx, sy)
 
 
+def pair_equal(img, box, axis, offset):
+    """The fraction of the pixel pairs (p, p + 1) along axis (0: x, 1: y)
+    with p - box start = offset mod 2 that are equal, in box (x, y, w, h)."""
+    iw, ih, px = img
+    x0, y0, w, h = box
+    same = n = 0
+    for y in range(y0, y0 + h - 1):
+        for x in range(x0, x0 + w - 1):
+            if (x - x0 if axis == 0 else y - y0) % 2 != offset:
+                continue
+            a = (y * iw + x) * 3
+            b = a + 3 if axis == 0 else a + iw * 3
+            n += 1
+            same += max(abs(px[a + c] - px[b + c]) for c in range(3)) <= 8
+    return same / max(1, n)
+
+
+def test_render_scale_half(t):
+    """The internal resolution x1/2 (Dtu_render_scale 0, -renderscale half)
+    renders the full screen view of the 640x480 interface at 320x239: with
+    the nearest scale filter each view pixel is a block of 2 by 2 frame
+    pixels. At x1 the view is 640x239 (each line shown twice): blocks of 1
+    by 2. The interface is not scaled. -renderscale 0.5 is the same step."""
+    lines = ["gamekeys", "wait 30", "key =", "wait 10", "shot full", "key -", "wait 5"]
+    env = {"ASCENT_SCALE_FILTER": "nearest", "ASCENT_SHOT_SCALE": "1"}
+    box = (40, 40, 560, 380)        # inside the full screen view (0, 0) 640x478
+    got = {}
+    for arg in ("half", "0.5", "1"):
+        s, d = t.run("render_scale_half", lines, extra=["-renderscale", arg], env=env)
+        img = s["full"]
+        assert img[:2] == (640, 480), "%s: the shot is %dx%d" % (arg, img[0], img[1])
+        got[arg] = [pair_equal(img, box, axis, o) for axis in (0, 1) for o in (0, 1)]
+        print("    -renderscale %s: equal pairs x %.3f / %.3f, y %.3f / %.3f" % ((arg,) + tuple(got[arg])))
+        if arg != "1":
+            from_shot = os.path.join(d, "full.ppm")
+            print("    screenshot %s" % from_shot)
+    for arg in ("half", "0.5"):
+        x0, x1, y0, y1 = got[arg]
+        # one phase of each axis is inside a block (all equal), the other
+        # is the edge between two blocks
+        assert max(x0, x1) > 0.99 and min(x0, x1) < 0.9, "%s: no blocks of 2 in x" % arg
+        assert max(y0, y1) > 0.99 and min(y0, y1) < 0.9, "%s: no blocks of 2 in y" % arg
+    x0, x1, y0, y1 = got["1"]
+    assert max(x0, x1) < 0.9, "x1: blocks in x"
+    assert max(y0, y1) > 0.99, "x1: the lines are not doubled"
+
+
 def present_states(t):
     """The lines of the script command presentstate: (window w, h, frame w,
     h, rect x, y, w, h)."""

@@ -157,6 +157,19 @@ view follows the shown pixel (`Dtu_fix_view_aspect` in `dtudisp.c`: 1.0
 with square pixels, 1.2 at 4:3, 2.0 in high resolution; `-origui` gives
 the 1.2 and 2.4 of 1.3).
 
+`Dtu_render_scale` (`dtuopts.c`) is "Internal resolution" in the Graphics
+menu and `RenderScale` in `ascent.cfg`: the GPU renders the 3D view at x1
+to x6 of the view canvas (default x3). The value 0 is the step "x1/2": half
+the shown size in each direction, so the full screen view of the 640x480
+interface is 320x239 (`g3_gpu_begin_view`). It gives the pixel size of the
+320x200 game while the interface keeps its resolution; the low resolution
+interface (`-lowres`) stays a command-line option. `-renderscale half`,
+`0.5` or `1/2` selects it for one run. The view is scaled up with the scale
+filter of the frame (gpu.c `compose`; `ASCENT_SCALE_FILTER=nearest` gives
+plain blocks, `test_render_scale_half`). The software renderer always
+draws at x1, and the menu says that it ignores this setting. The values 1
+to 6 keep their meaning, so an older `ascent.cfg` stays valid.
+
 ## Test aids
 
 ctest runs 16 programs (`test_*.c` in the library directories). None needs

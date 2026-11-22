@@ -141,7 +141,10 @@ void dtu_opts_load(void)
 		Dtu_gpu_renderer = Arg_gpu_renderer = 0;
 	}
 	if ((t = FindArg("-renderscale")) != 0 && t + 1 < Num_args) {
-		int v = atoi(Args[t + 1]);
+		const char *a = Args[t + 1];
+		// ASCENT: 0.5, 1/2 or half: the step x1/2 (0)
+		int v = !strcmp(a, "0.5") || !strcmp(a, "1/2") || !strcmp(a, "half") ? 0
+			: strspn(a, "0123456789") == strlen(a) && a[0] ? atoi(a) : -1;
 		if (v >= DTU_RENDER_SCALE_MIN && v <= DTU_RENDER_SCALE_MAX) {
 			File_render_scale = Dtu_render_scale;
 			Dtu_render_scale = Arg_render_scale = v;
