@@ -44,6 +44,8 @@ ends it. The keys:
 | `dup` | The id of the first entry with the same English text (same source kind). |
 | `en` | The English text. |
 | `tr` | The translation. An empty `tr` (with a non-empty `en`) is no translation. |
+| `gender` | Only for a name of the tables (`tbl.*`): the grammatical gender of the translation, `m` or `f` (below). Optional. |
+| `plural` | Only for a name of the tables (`tbl.*`): the plural of the translation (below). Optional. |
 
 Values are one line. Escapes: `\n` line break, `\t` tab, `\\` backslash,
 `\xNN` one byte of the game text (for example the icons of the fonts at 128 to
@@ -53,7 +55,8 @@ player), `{class}` (10), `{classes}` (11), `{race}` (12), `{races}` (13),
 `{boy}` (14), `{man}` (15), `{sir}` (16), `{gentleman}` (17)
 (docs/re/scripts.md, section 3.1).
 
-The program reads `id`, `en` and `tr` and ignores the other keys. The text of
+The program reads `id`, `en`, `tr`, `gender` and `plural` and ignores the
+other keys. The text of
 a translation is changed to Latin-1 (ISO 8859-1); a character outside it
 shows as `?`, except the typographic quotes and dashes, which become `'`, `"`
 and `-`.
@@ -143,6 +146,91 @@ file is `drow`, and `{races}` with `tex.957`. Spanish: `drow` and `drows`.
 `lang_extract.py merge` and `check` report a token that is not well formed
 (an error), check the placeholders of each form, and check the room with the
 longer form.
+
+## Gender and plural of the item names
+
+A language with grammatical gender and plural forms gives each translated
+item name (`tbl.weapon.*`, `tbl.armor.*`, `tbl.misc.*`) two more fields:
+
+```
+id: tbl.weapon.dagger
+en: Dagger
+tr: Daga
+gender: f
+plural: Dagas
+```
+
+`gender` is `m` or `f`: the gender of the head noun of the name
+(`Poción de curación` is `f`, plural `Pociones de curación`). `plural` is
+the whole name in the plural, with the same `\xNN` escapes as `tr`. A name
+that is plural already has its own text as the plural (`Botas`). A
+language without gender leaves both fields out (English has neither, and
+its output does not change). A name without `gender` counts as the first
+form (masculine); a name without `plural` uses `tr`.
+
+Where the program uses them (`engine/main/dtufe_town.c`, the market): the
+list shows the plural name when the quantity is not 1 (also for "many"),
+and the texts of the market resolve the item tokens below for the item of
+the line. The fields are read by `dtu_name_gender()` and
+`dtu_tr_name_plural()` (`dtulang.h`).
+
+`lang_extract.py merge` copies both fields from the parts into
+`<code>.catalog` (and to the entries with the same English text, `dup`).
+`merge` and `check` report an error for a `gender` other than `m` or `f`,
+for the fields on an id that is not `tbl.*`, and for a plural with a
+placeholder, a brace, a `|`, other `\xNN` escapes than `tr` or characters
+the fonts cannot show. When any entry of the language has the fields, each
+translated `tbl.weapon.*`, `tbl.armor.*` and `tbl.misc.*` name without
+both gets a warning (a warning is not an error).
+
+## The item shown: {item:MASC|FEM}, {qty:ONE|MANY}, {item}
+
+The texts of the market can name the item of the line and agree with it.
+Three tokens, with the same form rules as `{sex:}` (a form has no `{`, `}`
+or `|` and may be empty; anything else stays as it is):
+
+| Token | Gives |
+|---|---|
+| `{item:MASC\|FEM}` | MASC for a masculine name or a name with no `gender`, FEM for a feminine name |
+| `{qty:ONE\|MANY}` | ONE when the quantity is 1, MANY for any other quantity (also "many") |
+| `{item}` | the name: the translation for a quantity of 1, else the `plural` |
+
+The quantity is the stock of the line (the buy box, "many" for a stock of
+100 or more or no limit) or the number the player has (the sell box and
+the equipped warning). The program fills the `printf` values first and
+then resolves the tokens (`dtu_lang_item_text`), so a token can come in
+with a value: `tex.701` ("many") is `{item:muchos|muchas}` and goes into the
+`%s` of `tex.704`. Only these texts resolve the tokens: `tex.701` (the list
+and the buy box), `tex.703` (the warning of an equipped item), `tex.704`
+(the buy box) and `tex.705` (the sell box). `lang_extract.py` reports a
+token in any other text as an error, and a token that is not well formed.
+
+The quantity window (FEBGND 25) draws `tex.704` and `tex.705` centered in a
+box 339 pixels wide, 6 lines of the medium font (the English `tex.704` has 6
+lines). The name in `{item}` has no fixed length, so in a language other
+than English the market breaks a line that is wider than the box at its
+last space that fits (`mk_reflow`); the line breaks of the text stay.
+English text is not changed. `lang_extract.py` checks these two texts by
+breaking them at the longest English line (35 characters) with the longest
+item name or plural of the catalog in place of `{item}`: no more than 6
+lines.
+
+The list of the market draws the word "many" and the name after a column
+as wide as the word: with the token the column is as wide as the wider
+form.
+
+Spanish:
+
+```
+tex.701  {item:muchos|muchas}
+tex.703  Tu personaje lleva {item:uno|una}\nequipad{item:o|a}. Si {item:lo|la} vendes,\nperderás sus ventajas.
+tex.704  Hay %s {item} {qty:disponible|disponibles} a %u de oro{qty:| la pieza}. Con tu oro y el sitio de tu bolsa de contención puedes comprar %d.\n¿Cuánt{item:os|as} quieres?
+tex.705  Tienes %d {item} en tu bolsa de contención.\nPuedes vender{item:lo|la}{qty:|s} por %d de oro{qty:| la pieza}.\n¿Cuánt{item:os|as} quieres vender?
+```
+
+which gives `Hay muchas Dagas disponibles a 2 de oro la pieza.`, `Hay 3
+Martillos de guerra disponibles ...`, `¿Cuántos quieres?` and `Tienes 1
+Espada ancha en tu bolsa de contención. Puedes venderla por 7 de oro.`
 
 ## Ids
 

@@ -402,6 +402,7 @@ void fe_blackstaff(void)
 #define MK_ROW_H			32
 #define MK_DESC_X			37			// the quantity and the name (0x85C77)
 #define MK_PRICE_X		282		// the price (0x85C7A)
+#define MK_HEADER_W		339		// the width of the text of the quantity window (0x84EEA)
 #define MK_MAX				160		// entries of one list
 #define MK_PLAYER_ITEMS	127		// MAX_PLR_STUFF
 
@@ -416,6 +417,7 @@ typedef struct mk_entry {
 	int	icon;						// item record +2: icon= of the table line
 	int	equipped;				// +0x26
 	char	name[40];				// +0x21: name= (weapon_name= for a weapon with no name=)
+	char	name_en[40];			// ASCENT: the English name (the gender and the plural of the language)
 } mk_entry;
 
 // The lists are circular in the executable: a scroll moves the first line
@@ -617,6 +619,7 @@ static void mk_insert(mk_list *l, int type, int id, int cond, int qty, int equip
 	snprintf(e->name, sizeof(e->name), "%s", it->name);
 	if (!e->name[0] && type == OBJ_WEAPON && it->record >= 0)
 		bm_tbl_get(it->record, "weapon_name", e->name, sizeof(e->name));
+	snprintf(e->name_en, sizeof(e->name_en), "%s", e->name);
 	snprintf(e->name, sizeof(e->name), "%s", dtu_tr_name(e->name));		// ASCENT: the language (dtulang.h)
 	e->sell_price = mk_price(type, id, cond, 1);
 	e->buy_price = mk_price(type, id, cond, 0);
@@ -843,26 +846,83 @@ static void mk_draw_icon(int n, int x, int y)
 	}
 }
 
+// ASCENT: the width of the word "many" (tex.701). A translation can have
+// the token {item:MASC|FEM} there: the wider form.
+static int mk_many_width(void)
+{
+	char buf[64];
+	int g, w, h, best = 0;
+
+	for (g = DTU_GENDER_M; g <= DTU_GENDER_F; g++) {
+		snprintf(buf, sizeof(buf), "%s", fe_text(701));
+		dtu_lang_item_tokens(buf, sizeof(buf), "", "", g, -1);
+		fe_string_size(Fe_font_m, buf, &w, &h);
+		if (w > best)
+			best = w;
+	}
+	return best;
+}
+
+// ASCENT: a line of a text for the item (the tokens {item}, {item:},
+// {qty:} of the language) that is wider than w is broken at a space. The
+// lines of the text stay. English text is not changed (its lines fit).
+static void mk_reflow(char *s, grs_font *font, int width)
+{
+	char line[256];
+	char *start = s, *p, *brk = NULL;
+	int n, tw, th;
+
+	if (Dtu_language == DTU_LANG_EN || !font)
+		return;
+	for (p = s; ; p++) {
+		if (*p && *p != ' ' && *p != '\n')
+			continue;
+		// the line from start to p
+		n = (int) (p - start);
+		if (n > (int) sizeof(line) - 1)
+			n = (int) sizeof(line) - 1;
+		memcpy(line, start, n);
+		line[n] = 0;
+		fe_string_size(font, line, &tw, &th);
+		if (tw > width && brk) {
+			*brk = '\n';		// too wide: break at the last space that fits
+			start = brk + 1;
+			brk = NULL;
+			p = start - 1;		// measure the new line from its start
+			continue;
+		}
+		if (!*p)
+			break;
+		if (*p == '\n') {
+			start = p + 1;
+			brk = NULL;
+		} else
+			brk = p;
+	}
+}
+
 // 0x85E06: one line of the catalog
 static void mk_draw_row(int row)
 {
 	mk_entry *e = mk_shown(row);
-	int x = MK_ROW_X, y = MK_ROW_Y + row * MK_ROW_STEP, w, h, ty;
-	char buf[32];
+	int x = MK_ROW_X, y = MK_ROW_Y + row * MK_ROW_STEP, w, ty;
+	char buf[64];
 
 	if (!e)
 		return;
 	mk_draw_icon(e->icon, x, y);
 	sprintf(buf, "%d", Mk_sell ? e->sell_price : e->buy_price);
 	mk_text_in(Fe_font_l, x + MK_PRICE_X, y, MK_ROW_W - MK_PRICE_X, MK_ROW_H, FE_HUE_7, buf);
-	if (e->qty >= 100 || e->qty < 0)
+	if (e->qty >= 100 || e->qty < 0) {
 		snprintf(buf, sizeof(buf), "%s", fe_text(701));		// "many"
-	else
+		dtu_lang_item_text(buf, sizeof(buf), e->name_en, -1);	// ASCENT: the gender of the name
+	} else
 		sprintf(buf, "%d", e->qty);
 	ty = y + (MK_ROW_H - Fe_font_m->ft_h) / 2;
 	fe_string(Fe_font_m, x + MK_DESC_X, ty, FE_HUE_2, -1, buf);
-	fe_string_size(Fe_font_m, fe_text(701), &w, &h);
-	fe_string(Fe_font_m, x + MK_DESC_X + w + 5, ty, FE_HUE_3, -1, e->name);
+	w = mk_many_width();
+	// ASCENT: the plural of the language for a quantity other than 1
+	fe_string(Fe_font_m, x + MK_DESC_X + w + 5, ty, FE_HUE_3, -1, e->qty == 1 ? e->name : dtu_tr_name_plural(e->name_en));
 }
 
 // The selected buttons of the two radio groups (ferbtn.c, 0x13EC48 and
@@ -903,7 +963,7 @@ static void mk_draw(fe_screen *s)
 		// 0x84EEA: the title (medium font, color 3) at (35, 32) 339 wide,
 		// the text under it (color 7), the quantity at (175, 144) 62x37
 		mk_text_in(Fe_font_m, px + 35, py + 32, 339, 0, FE_HUE_3, Mk_title);
-		mk_text_in(Fe_font_m, px + 35, py + 33 + Fe_font_m->ft_h, 339, 0, FE_HUE_7, Mk_header);
+		mk_text_in(Fe_font_m, px + 35, py + 33 + Fe_font_m->ft_h, MK_HEADER_W, 0, FE_HUE_7, Mk_header);
 		sprintf(buf, "%d", Mk_trans_qty);
 		mk_text_in(Fe_font_m, px + 175, py + 144, 62, 37, FE_HUE_7, buf);		// 0x86A63
 	}
@@ -953,7 +1013,7 @@ static void mk_popup_close(fe_screen *s);
 // 0x84D41: the player buys a line
 static void mk_buy(fe_screen *s, mk_entry *e)
 {
-	char qty[16];
+	char qty[64];		// ASCENT: "many" can hold the token {item:MASC|FEM}
 	int room, can;
 
 	Mk_trans_price = e->buy_price;
@@ -981,16 +1041,24 @@ static void mk_buy(fe_screen *s, mk_entry *e)
 	if (room < Mk_trans_max)
 		Mk_trans_max = room;
 	snprintf(Mk_header, sizeof(Mk_header), fe_text(704), qty, (unsigned) Mk_trans_price, Mk_trans_max);
+	dtu_lang_item_text(Mk_header, sizeof(Mk_header), e->name_en, e->qty >= 100 ? -1 : e->qty);	// ASCENT: the item tokens
+	mk_reflow(Mk_header, Fe_font_m, MK_HEADER_W);
 	mk_popup_open(s, e, NULL);
 }
 
 // 0x84CA6: the player sells a line
 static void mk_sell(fe_screen *s, mk_entry *e)
 {
+	static char warning[256];
+
 	Mk_trans_price = e->sell_price;
 	Mk_trans_max = e->qty;
 	snprintf(Mk_header, sizeof(Mk_header), fe_text(705), e->qty, Mk_trans_price);
-	mk_popup_open(s, e, mk_equipped(e->type, e->id, e->cond) ? fe_text(703) : NULL);
+	dtu_lang_item_text(Mk_header, sizeof(Mk_header), e->name_en, e->qty);	// ASCENT: the item tokens
+	mk_reflow(Mk_header, Fe_font_m, MK_HEADER_W);
+	snprintf(warning, sizeof(warning), "%s", fe_text(703));
+	dtu_lang_item_text(warning, sizeof(warning), e->name_en, e->qty);
+	mk_popup_open(s, e, mk_equipped(e->type, e->id, e->cond) ? warning : NULL);
 }
 
 // 0x84BE4: a click into the catalog
