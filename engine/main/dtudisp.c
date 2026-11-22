@@ -1948,6 +1948,9 @@ int dtu_display_owns_key(int key)
 	int i;
 
 	if (!Dtu_display_active) return 0;
+	// The map reads its keys (minus, equal, Escape) while it has the
+	// controls (0x1893F)
+	if (dtu_automap_owns_key(key)) return 0;
 	// ASCENT: the keys of the play screen actions and the hot keys
 	for (i = 0; i < (int) (sizeof(Screen_actions) / sizeof(Screen_actions[0])); i++)
 		if (dtu_action_has_key(Screen_actions[i], key))
@@ -2095,6 +2098,10 @@ static void do_input(int mx, int my)
 			f3 = larger = smaller = 0;
 		if (keyd_pressed[KEY_LSHIFT] || keyd_pressed[KEY_RSHIFT])
 			f3 = 0;						// Shift+F3 (0x13D) is not in the switch
+		// the map takes the plain keys minus and equal while it has the
+		// controls (0x18944)
+		if (Dtu_automap_active && !keyd_pressed[KEY_LSHIFT] && !keyd_pressed[KEY_RSHIFT])
+			larger = smaller = 0;
 		if (f3 && Dtu_interface_mode == DTU_IM_FULL_SCREEN)
 			smaller = 1, f3 = 0;
 		if (f3 || larger) {

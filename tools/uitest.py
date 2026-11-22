@@ -165,6 +165,21 @@ def test_shift_fkeys_and_grave(t):
     assert any(f.lower().startswith("screen") for f in os.listdir(d)), "` wrote no screenshot"
 
 
+def test_map_minus_equal(t):
+    """While the map has the controls (a click in the map, 0x305C9) minus
+    and equal change its segment limit (0x18944) and do not change the
+    screen as they do in the key switch."""
+    s, _ = t.run("map_keys", ["gamekeys", "wait 20", "key tab", "wait 5", "click 200 200", "wait 5",
+                              "move 420 440", "wait 3", "shot map",
+                              "key -", "wait 2", "key -", "wait 2", "key -", "wait 2", "key -", "wait 5", "shot less",
+                              "key =", "wait 2", "key =", "wait 2", "key =", "wait 2", "key =", "wait 5", "shot more"])
+    info = (450, 180, 170, 100)
+    mapr = (60, 40, 300, 300)
+    assert differ(region(s["map"], *info), region(s["less"], *info)) < 0.02, "minus changed the screen"
+    assert differ(region(s["map"], *info), region(s["more"], *info)) < 0.02, "equal changed the screen"
+    assert differ(region(s["map"], *mapr), region(s["less"], *mapr)) > 0.001, "minus did not change the map"
+
+
 # The text of the message box of the main screen, high resolution
 MSGBOX = (131, 306, 470, 77)
 MSG_V = ["gamekeys", "wait 20"] + ["key v", "wait 3"] * 10 + ["move 300 200", "wait 3", "shot base"]
