@@ -799,6 +799,7 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_path_follow` | a walking creature on a path walks to the player (0x17CA8) | it walks to the next point of the path. A hostile creature in CHASE_OB that does not see the player takes a path to the player |
 | `Dtu_fix_fire_once` | one missile in each frame that the fire frame lasts (0x13A2A) | one missile for each attack animation |
 | `Dtu_fix_attack_sound` | the attack sound of compute_vis_and_vec needs visibility 2, which never comes | the sound plays by the rules of that code |
+| `Dtu_fix_corpse_floor` | the corpse goes to the floor by the torso box (0x6A48B), a flyer has no gravity in DIE | the dying body falls, the corpse lies with its lowest drawn point on the floor, also in a loaded level. See "The corpse" |
 
 `Dtu_idle_anim_near` (default 0, option `-idleanim`) leaves out the reset of
 step 20. `Dtu_creatures_attack` (default 1, option `-noattack`) is the attack
@@ -895,29 +896,60 @@ Changes:
   gorcaaxe 16.88 / 14.45, gorcasci and Orcascim 22.36 / 16.46, armOgre and
   Ogre2 28.52 / 20.25, Gargoyle 7.59 / 6.59, blackbat 7.39 / 6.39. Ranged
   creatures do not stop.
-- Death: see the corpse below.
+- Death: now `Dtu_fix_corpse_floor`, not this setting. See the corpse below.
 
 The corpse (0x6A48B, Code): 0x6C30E gives d, the distance from the bottom of
 the torso box of the frame (torso_half_height of the frame) to the floor. A
 negative d lifts the body by -d, else the body goes down by d plus
 torso_radius[0] (the first stack value that 0x748D9 fills). On the last frame
-of DIE 0x748D9 gives a half height of 0.1. The port used body_half_height of
-the last frame. Neither takes the offset of the box: the model origin is the
-center of the standing body, and the box of the dead body is far below it
-(Ghoul: box1_min.y -6.16, body_half_height 4.35, body_center.y -1.81). So the
-body was 1.2 to 4.4 in the floor (measured: -1.17 to -4.37 for 19 creatures),
-and the software renderer draws it over the floor of its segment. A creature
-that flies (blackbat, Gargoyle) has no gravity in DIE and stayed in the air
-(measured: 19.4 to 35.4 above the floor). Improved: the bottom of the box of
-the frame is used in DIE, a flying creature falls when it dies, and the corpse
-is put with box1_min.y on the highest floor under the box center and four
-points of the box (at 0.6 of the half size), not more than 3.0 above the
-floor under the origin (a body on a step).
+of DIE 0x748D9 gives a half height of 0.1. A creature that flies (blackbat,
+Gargoyle) has no gravity in DIE, and 0x6C30E finds no floor below a body high
+in the air, so its corpse stays where it died (port measured, rules of the
+executable: 19.4 to 35.4 above the floor).
+
+The drawn body is not the box of the file. The drawing takes body_center of
+the frame away from the position (models.md, draw_polygon_object step 7), and
+in DIE the body box of the file keeps the feet of the first frame of DIE
+(verified with `tools/model.py` on `ghu_y.pof` of BAT.EGG, joint angles of
+each frame applied):
+
+| Ghoul frame | drawn points y | box1 y of the file |
+|---|---|---|
+| 84 (first of DIE) | -6.16 to 6.26 | -6.16 to 6.26 |
+| 90 | -1.97 to 3.03 | -6.16 to 3.03 |
+| 95 (last of DIE) | -0.55 to 2.53 | -6.16 to 2.53 |
+
+For the blackbat (`bat_l.pof`) frame 95 is -1.15 to 2.30, the box -2.30 to
+2.30. body_center.y of the last frame: Ghoul -1.81, blackbat 0.00. So the
+lowest drawn point of the dead Ghoul is 1.26 above its position, not 6.16
+below it.
+
+By the code above the executable puts the dead Ghoul (torso_radius[0] 2.86)
+at the floor plus 0.1 minus 2.86, so it is drawn from 1.5 below the floor to
+1.6 above it (computed, not seen in the executable). An earlier rule of the
+port (Dtu_improved_pathfinding) put box1_min.y of the last frame on the
+floor: the dead Ghoul was drawn 7.42 above the floor, the blackbat 1.15. With
+the setting off the port used body_half_height (4.35): the Ghoul 5.6 above
+the floor.
+
+`Dtu_fix_corpse_floor` (on, `-origobj` clears it): the dying body falls (also
+a flyer), with the depth of the lowest drawn point of its frame as the half
+height of the gravity, and at the end of DIE the lowest drawn point lies on
+the highest floor under the center of the drawn body and four points of it
+(at 0.6 of the half size), not more than 3.0 above the floor under the
+position (a body on a step). The box of the drawn points comes from
+`polyobj_frame_points_box()` (polyobj.c). The position stays at least 0.25
+above the floor (in the segment); a body whose lowest point is higher than
+that is drawn lower by the rest (`corpse_draw_drop()`). Only y changes, and a
+position outside the segments is refused, so the body goes into no wall. A
+corpse of a loaded level (an SG file of the executable or of the port) is put
+on the floor the same way at the setup of the level.
 
 Test options: `-testkill N[,1]` kills the active creature nearest to the
 player each N frames (with 1: only one that hit a wall in the last 0.5 s) and
 logs the corpse height above the floor. The `-objlogpos` lines have the
-animation, sight, blocker and the wall, top, floor and object hits.
+animation, sight, blocker and the wall, top, floor and object hits. A dying body has a `dying:` line with the height of its lowest drawn
+point, and a corpse of a loaded level a `loaded dead:` line.
 
 Measured (`-noattack`, 30 s at 60 frames per second, time to the attack
 position, off and on):
@@ -944,7 +976,15 @@ position, off and on):
   5 and 4 on.
 - 19 deaths at walls (`-testkill 30,1`): -1.32 to -3.07 off, and 24 deaths
   0.00 to 0.09 on, with two bodies on a step 0.44 and 0.86. Flying: 19.4 to
-  35.4 off, 0.01 to 0.04 on.
+  35.4 off, 0.01 to 0.04 on. These heights are of the box of the file, see the
+  corpse above.
+- `Dtu_fix_corpse_floor`, drawn heights (`-testkill 120 -objlogpos 3`, BAT,
+  30 frames per second): 3 Ghouls and 5 blackbats 0.00 at the end of DIE
+  (before the fix: Ghoul 7.42, blackbat 1.15). A blackbat killed 7.2 above
+  the floor is at 0.3 after 0.2 s. The Ghoul body during DIE stays within
+  2.2 of the floor. The save of the report (BAT, 3 Ghouls and 7 blackbats
+  dead): 5.91 and 1.15 before the setup of the level, 0.00 after; with
+  `-origobj` the Ghoul stays 7.42 above the floor.
 
 Open: the stops in BANE are closed doors (no path for a creature without the
 door bit, as in the executable). The armOgre of CRYPTS (height 23) does not

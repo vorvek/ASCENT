@@ -842,7 +842,8 @@ Read in the code with the work on `engine/main/dtuobj.c`.
   regeneration status bit (0x01000000) GOAL_STATE becomes SRCH and the function ends.
   Else: status flags 0, `lifeleft` 0, the object number goes to the list at 0x2AEF54
   (count 0x13D334, limit 800), object flags 6 are set, control type and movement type 0.
-  What takes the corpse away later was not read.
+  What takes the corpse away later was not read. The height of the corpse: ai.md,
+  "The corpse" (the port: `Dtu_fix_corpse_floor`).
 - `collide_two_objects` (0x29455) builds the key (type A * 256 + type B - 0x101), looks
   for it in the list of 64 words at 0x292D7 with `repne scasw` and jumps through the table
   at 0x29355 with the count that is left. Player and creature: 0x26FC1 in both orders.

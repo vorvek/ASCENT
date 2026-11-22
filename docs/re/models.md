@@ -240,7 +240,9 @@ Steps (code):
 7. If `box_flags` & 1: `position -= transpose(orient) * body_center[frame + 1]` (0x729C1
    to 0x72A0A: copy transposed matrix 0xD778A, rotate 0xD76E7, subtract 0xD6EF1). So the
    position of an object is the center of the body box of its current frame, and the
-   origin of the model moves against it from frame to frame.
+   origin of the model moves against it from frame to frame. The body box of a frame is
+   not always the box of its drawn points: in DIE it keeps the lowest y of the first DIE
+   frame (ai.md, "The corpse").
 8. `g3_start_instance_matrix(position, orient)` (0xEA833). `g3_set_interp_points`
    (0xF07A4, buffer at 0x37EC10).
 9. `angles = frame == -1 ? NULL : po->anim_angles + frame * n_models * 6`.
