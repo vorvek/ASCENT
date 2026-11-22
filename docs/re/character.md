@@ -669,7 +669,9 @@ Differences and guesses of the port:
 - The ability scores, alignment, age and gold of the default character are a
   guess. The front end sets them in the original.
 - The class bits are tested when an item is worn or taken in the hand (messages
-  825 and 828). The place of these messages in the executable was not found.
+  825 and 828). In the executable these two messages are pickup refusals: 0x28220
+  (misc, after 0x31A0E or the add 0xB65BB fails) and 0x284D7 (armor). They are not
+  class tests.
   The executable tests the class bits at the pick up (0x3533C clears the wear
   bits, section 6) with no message; a click on a slot of the port still uses the
   test of `dtu_char_equip`.

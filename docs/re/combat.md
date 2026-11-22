@@ -873,12 +873,18 @@ wisdom P+0xBB (Code 0x8DAA2, 0x8E338, 0x8E8FA, 0x8F57F).
 | electric | +0x47 | +0x46 | +0x48 |
 
 Cold (+0x40..0x42) is never rolled. `damage_bonus` is not added here. A part is
-rolled if its sides or count byte is not 0. Open problem: 0 sides with count > 0
-divides by zero (`rand() % 0`, plain `idiv` at 0x91C8E): Fireball and Lightning Bolt
-have `fire_damage_dice=0` / `elec_damage_dice=0` and Melf's Acid Arrow has no
-`acid_damage_dice` in all 92 tables, and their cases set the count to 1 or more.
-As read, these spells would fault on a hit. Check in the game (DOSBox) before
-porting; the intended damage is probably only the per level part (6 L, 4 L). A fire part sets target
+rolled if its sides or count byte is not 0. 0 sides with count > 0 divides by
+zero (`rand() % 0`, `idiv dword ptr [esp]` at 0x91C25, 0x91C8E, 0x91CEC,
+0x91D4E): Fireball and Lightning Bolt have `fire_damage_dice=0` /
+`elec_damage_dice=0` and Melf's Acid Arrow has no `acid_damage_dice` in all 92
+tables, and their cases set the count to 1 or more. The divide error goes to the
+handler of div0.asm: div0_init(1) at 0xB8323 (DM_SATURATE, no callback or
+saturate list), handler 0xF6D94. Its int3 at 0xF6E17 only stops a debugger. The
+saturate path decodes `F7 3C 24` wrongly (it takes the SIB byte for a ModRM byte
+and reads one more byte), sets EDX = 0 and resumes after the next instruction,
+the `inc edx`. So each 0-sided die adds 0, and the damage is the per level part
+(6 L, 6 L, 4 L). Verified by emulating 0xF6E18 (unicorn) for the four addresses.
+A fire part sets target
 +0x15E bit 0.
 Creature target: Robot_info+0x98 bit 1 (electricity_immune): electric 0; bit 3
 (fire_immune): fire 0; else bit 4: fire / 2. Effect bit 10 (Resist Fire / Flame
@@ -1236,10 +1242,20 @@ hit). So Luck gives one critical hit. A natural 1 is a fumble; then
 
 The scrolls: misc 0x66 (Scroll) calls 0x9DC42(word +8 of the entry), misc
 0x7F (thief scroll) 0x9DC42(1); both jump to 0x396A0, after the use up
-0x39694: a scroll is not used up. 0x9DC42 is a text screen (0x9CB62,
-0x9D43B), not decoded. The Gem of Curing compares its use counter P+0x1A57
-with 0x13E588 (returned by 0x8445A, written by 0x82BC7 and 0x83E5E, not
-decoded).
+0x39694: a scroll is not used up. 0x9DC42 is the scroll text screen of
+dispscrl.c (0x9CB62 colors, 0x9D43B the scroll picture, 0x9CEA3 the text).
+0x9CEA3(n): n = 0 takes the Khelben blurb of the current mission, FETXT entry
+0x1451E5[mission] (271 is "Quest One: Corner the Kobolds"); n = 1 to 0x7F takes
+FETXT entry 0x144FE5[n] (0x144DE5[n] when 0x13A94B is set; it is 0 in the image).
+The Scroll of a new character has count 0, so it shows the current mission. The
+Scrolls in the levels have counts 2 to 27 (objects.md): 0x144FE5[2] = 141 "A
+Brief History of Undermountain", [3] = 142, a note of Colvin Rowander. The thief
+scroll shows entry 270, the picture markup `~pc3` (a clue picture, "ClueBg").
+
+The Gem of Curing compares its use counter, byte P+0x1A57 (0x1D4D73 absolute,
+read at 0x3891B, + 1 at 0x389E0, no other writer), with 0x8445A(), the mission
+number 0x13E588 (0 at 0x82BC7, the new mission at 0x83E5E, scripts.md section 8).
+So it can be used once at the start and once more for each new mission.
 
 Spell missiles (0x56FF6, Laser_create_new 0x55511 at 0x557AF): the life
 +0x84 = Weapon_info[template]+0xA8, which 0x56FF6 writes: 30.0, Lightning
@@ -1253,8 +1269,11 @@ which also deletes the missile. A missile whose life ends has no area.
 
 thiefpts.c (0xB4419 to 0xB5B49, main 0xB5BB9) is only the screen where a thief
 spends skill points at level up (strings "SkillIndex < NUM_SKILLS",
-"Difference >= 0", "%d%%"). The point budget per level was not read (it is in
-0xB5BB9). The skill use code is in the file before it (0xB3038 to 0xB43B9; no
+"Difference >= 0", "%d%%"). The points come from Mirt (scripts.md: 0xABB53
+gives 20 per thief level since the last visit, 20 more at the first, into
+P+0x1AB3). 0xB4ECF sets the limit 0x146840 = points / 2 (at least 1); 0xB44B4
+adds 1 to a skill per point while the skill is below 95 (0x5F) and the skill has
+grown by less than the limit in this visit. The skill use code is in the file before it (0xB3038 to 0xB43B9; no
 source name string) and in the movement code.
 
 Text numbers are lines of DTUE.TEX (a pointer A is TEX[(A - 0x395DAC) / 4],
@@ -1458,16 +1477,11 @@ message test is one d20 per cast.
 
 ## B9. Open points
 
-- The divide by zero of the Fireball, Lightning Bolt and Melf's Acid Arrow rolls
-  (section 2): test in the original game.
 - The spell tables of the statistics screen (whether a click there takes a spell)
   were not traced. The hot key path is in character.md, section 6.
 - 0xAC2F5 (NPC table loop with 0xAC297) is read as "an NPC watches" (guess).
-- The thief skill points per level (0xB5BB9) were not read.
 - Knock (28) has no case code; the wall hit 0x26C2F calls the door function
   0x7E859(seg, side, 1, parent) for it (B6a).
-- The text screen of the scrolls 0x9DC42 and the counter 0x13E588 of the Gem
-  of Curing were not decoded.
 
 ## B10. The spells of the creatures (Code)
 
