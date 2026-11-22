@@ -63,7 +63,7 @@ Files:
 | File | Content | In the repository |
 |---|---|---|
 | `gamedata/lang/en.catalog` | all English text with `src`, `ctx`, `max`, `dup` | no (game text) |
-| `gamedata/lang/en.part<X>.catalog` | the parts for the translators (`parts.md`) | no |
+| `gamedata/lang/en.part<X>.catalog` | the parts for the translators (`parts.md`): A to F made by `split`, then G, H, ... with the text added to `en.catalog` later (the merge reads them after F) | no |
 | `gamedata/lang/<code>.part<X>.catalog` | a translated part | no |
 | `gamedata/lang/<code>.catalog` | the merged translation of the game files: `id`, `en`, `tr` | no |
 | `gamedata/lang/<MOVIE>.en.srt` | the English transcript of the speech of a movie (SRT) | no |
@@ -116,6 +116,29 @@ The race words of `DTUE.TEX` (`tex.649` to `tex.653`, `tex.917`, and
 `A Human` ... `tex.693` to `tex.698`) can hold the token too: they follow
 the sex of the player (the statistics screen, the script token `{race}`)
 or of the character being created.
+
+The class words can hold the token as well: `tex.642` to `tex.647`
+(`Cleric`, `Mage`, `Fighter`, `Paladin`, `Ranger`, `Thief`: the statistics
+screen, the box of a new level with `tex.844`, the script token `{class}`),
+`tex.689` to `tex.692` (`fighter`, `thief`, `mage`, `cleric`: character
+creation, joined with `/` for a character with two classes; `cleric` is also
+a word of `{class}`) and `tex.910` to `tex.912` (`wizard`, `warrior`,
+`rogue`: `{class}`). Character creation resolves the class words for the sex
+chosen (`dtu_lang_text_sex`), as the race words. Spanish: `{sex:Guerrero|Guerrera}`,
+`{sex:mago|maga}`, which gives `Soy: Humana, guerrera/maga`. The plural
+words of `{classes}` (`tex.906` to `tex.909`, `tex.913` to `tex.916`) name
+a group and have one form.
+
+The script tokens and their words (`token_word` of `dtuscript.c`, the
+executable at 0xA7582): `{class}` is `tex.642`, `643`, `644`, `647` or
+`tex.692`, `910`, `911`, `912` (one of the two at random, by the first
+class: cleric, mage, fighter, thief), `{classes}` is `tex.906` to `909` or
+`tex.913` to `916`, `{race}` is `tex.649`, `650`, `651`, `957`, `653` or
+`tex.917` (half-elf), `{races}` is `tex.954` to `tex.959`. The drow have
+the text 957 `drow` for both tokens. A translation has a singular and a
+plural, so the port fills `{race}` of a drow with the text of the code
+`drow` (`port.drow_2`, found by its English text) when the text 957 of the
+file is `drow`, and `{races}` with `tex.957`. Spanish: `drow` and `drows`.
 
 `lang_extract.py merge` and `check` report a token that is not well formed
 (an error), check the placeholders of each form, and check the room with the
