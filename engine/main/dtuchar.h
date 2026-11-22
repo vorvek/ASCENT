@@ -229,6 +229,17 @@ int dtu_item_get(int type, int id, dtu_item_data *d);
 // higher (worse) value of the two classes (0xAF651). 1 (default): the
 // lower (better) value, as in the rules of the game.
 extern int Dtu_fix_multiclass_thac0;
+// The hit points of a new level. 0: as 0xAF8C7, the integer is added to
+// the fixed point hit points (they grow by n / 65536; the maximum grows by
+// n). 1 (default): the hit points grow by n, as the rules say.
+extern int Dtu_fix_level_hit_points;
+
+// 0x8BA3A: the character becomes a character of level "level" (from 1):
+// the level of each class (one less for two classes), the experience of
+// that level, the hit points (die + constitution) * (level value + 1),
+// the mean for two classes, THAC0. Script statement 9F and the new
+// character use it.
+void dtu_char_set_level(int level);
 
 //------------------------------------------------------------------------
 // Calls from the game

@@ -38,6 +38,7 @@
 #include "dtuchar.h"
 #include "dtuspell.h"	// ASCENT: the spell effects of the armor class and the slots of a rest
 #include "dtuthief.h"
+#include "dtufile.h"		// ASCENT: dtu_log()
 #include "dtucombat.h"	// ASCENT: turn undead of the Spider Piece 0x12
 #include "dtuatk.h"		// ASCENT: the items with Haste (Dtu_fix_speed_items)
 #include "newmenu.h"
@@ -80,6 +81,13 @@ int Dtu_fix_multiclass_thac0 = 1;
 int Dtu_fix_spell_save_repair = 1;
 static int Spell_repair_pending;
 int Dtu_fix_wizardry_ring = 1;
+// ASCENT: 0xAF8C7 and 0xAF8CD add the new hit points of a level as an
+// integer to the hit points of the player object and of P+0x53, which are
+// fixed point (16.16). So in 1.3 the hit points in use grow by n / 65536
+// at a new level, and only the maximum (P+0xA1) and the integer copy
+// (P+0xA3) grow by n. 1 (default): the hit points grow by n. -origchar
+// clears it.
+int Dtu_fix_level_hit_points = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
 int Dtu_fix_speed_items = 1;
@@ -219,7 +227,7 @@ static void read_options(void)
 	if ((t = FindArg("-chartest")) != 0 && t + 1 < Num_args)
 		Char_script = Args[t + 1];
 	if (FindArg("-origchar"))
-		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = 0;
+		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
@@ -2238,7 +2246,15 @@ static void check_levels(void)
 	pa->max_hit_points += hp;
 	Dtu_char.base.max_hit_points += hp;
 	Dtu_char.base.hit_points += hp;
-	set_hit_points(dtu_char_hit_points() + hp);
+	if (Dtu_fix_level_hit_points)
+		set_hit_points(dtu_char_hit_points() + hp);
+	else {
+		// 0xAF8C7, 0xAF8CD: the integer is added to the fixed point values
+		Players[Player_num].shields += hp;
+		if (ConsoleObject && ConsoleObject->type == OBJ_PLAYER)
+			ConsoleObject->shields += hp;
+		Dtu_char.pa.hit_points += hp;
+	}
 	// 0xAF8F5 (the end of 0xAF694): a cleric gets every cleric spell of the
 	// spell levels of the cleric level (0xB75A8)
 	if (has_class(DTU_CLASS_CLERIC))
@@ -2262,6 +2278,46 @@ void dtu_char_award_xp(int points)
 		Dtu_char.experience[1] += points;
 	dtu_char_log("experience: +%d for each class, now %d", points, Dtu_char.experience[0]);
 	check_levels();
+}
+
+// 0x8BA3A(attributes, level). The level of both classes is level - 1 (one
+// less again for two classes, at least 0), the experience is the start of
+// that level (table 0x146048), the hit points are (hit die 0x13FDF3 +
+// constitution 0x8C01B) * (level value + 1) for each class, the mean of
+// the two (rounded toward 0), and THAC0 (0xAF605). The executable writes
+// the maximum and the integer hit points of the record (P+0xA1, P+0xA3)
+// and not the hit points in use (P+0x53). A thief gets 60 + 30 * level
+// value skill points (P+0x1AB3); the test is the class mask of the front
+// end (0x3A6465), which the port reads as the classes of the character.
+void dtu_char_set_level(int level)
+{
+	static int die[4] = { 8, 4, 10, 6 };		// 0x13FDF3: cleric, mage, fighter, thief
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int lv = level > 18 ? 18 : level, two = valid_class(pa->class2), hp, con = pa->constitution;
+
+	if (!Dtu_char.created || !valid_class(pa->class1))
+		return;
+	lv--;
+	if (two)
+		lv--;
+	if (lv < 0)
+		lv = 0;
+	if (con < 1) con = 1;
+	if (con > 19) con = 19;
+	pa->class1_level = pa->class2_level = (short) lv;
+	Dtu_char.base.class1_level = Dtu_char.base.class2_level = (short) lv;
+	Dtu_char.experience[0] = Xp_table[pa->class1][lv + 1];
+	Dtu_char.experience[1] = two ? Xp_table[pa->class2][lv + 1] : 0;
+	if (has_class(DTU_CLASS_THIEF))
+		Dtu_char.thief_points = 60 + 30 * lv;
+	hp = (die[pa->class1] + Con_bonus[pa->class1 == DTU_CLASS_FIGHTER][con]) * (lv + 1);
+	if (two)
+		hp = (hp + (die[pa->class2] + Con_bonus[pa->class2 == DTU_CLASS_FIGHTER][con]) * (lv + 1)) / 2;
+	pa->max_hit_points = pa->hit_points = (short) hp;
+	Dtu_char.base.max_hit_points = Dtu_char.base.hit_points = (short) hp;
+	update_thac0();
+	dtu_char_log("level: set to %d: class levels %d/%d, experience %d/%d, %d hit points (in use %d)", level, lv + 1,
+		two ? lv + 1 : 0, Dtu_char.experience[0], Dtu_char.experience[1], hp, dtu_char_hit_points());
 }
 
 //------------------------------------------------------------------------
@@ -2955,7 +3011,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
 // priestcheck (the checks of the priest spells, dtu_spell_priest_check),
-// dump.
+// dump, rules (the race and class test, rules_test()).
 
 static void dump_character(void)
 {
@@ -2978,6 +3034,188 @@ static void dump_character(void)
 		dtu_char_log("  entry %d: type %d id %d '%s' count %d%s%s", i, Dtu_inventory[i].type, Dtu_inventory[i].id,
 			Dtu_inventory[i].name, Dtu_inventory[i].count, Dtu_char.current.n == i ? " (in the hand)" : "",
 			dtu_char_slot_of(i) >= 0 ? " (worn)" : "");
+}
+
+// The test "rules": every race and class combination of the character
+// generation (0x13FECE) at the levels 1, 5 and 10, checked against the
+// tables of DTUGAME.EXE 1.3 (typed again here from the executable, so a
+// change of the tables of the port shows): the hit points (level 1 exact,
+// later levels in the range of the dice of 0xAF694), THAC0 (0x146590, with
+// Dtu_fix_multiclass_thac0), the five saving throws (0xAE596, tables at
+// 0x1456D2) and the five thief skills (0x8BDE5). docs/audit/character.md.
+
+int fe_make_test_character(int race, int mask, const int stats[6], int percentile);		// dtufe_char.c
+
+static int Rules_checks, Rules_failures;
+
+static void rules_check(int ok, char *what, int got, int lo, int hi, char *who)
+{
+	Rules_checks++;
+	if (ok)
+		return;
+	Rules_failures++;
+	dtu_char_log("rules: FAIL %s: %s %d, expected %d to %d", who, what, got, lo, hi);
+}
+
+static void rules_test(void)
+{
+	// the masks of the front end: 1 fighter, 2 thief, 4 mage, 8 cleric
+	static const int combos[6] = { 139, 2495, 191, 191, 391, 135 };				// 0x13FECE
+	static const char *race_name[6] = { "human", "half-elf", "elf", "drow", "dwarf", "halfling" };
+	static const int fe_class[4] = { DTU_CLASS_FIGHTER, DTU_CLASS_THIEF, DTU_CLASS_MAGE, DTU_CLASS_CLERIC };
+	// STR DEX CON INT WIS CHA, inside the limits of every race (0x8B71C)
+	static const int stats[6] = { 15, 17, 16, 15, 15, 12 };
+	// expected, from the executable: hit die 0x146518, constitution 16
+	// (0x1402E2 / 0x140332: +2), a die up to level value 9 / 10 / 9 / 10,
+	// then 2 / 1 / 3 / 2 (0x146528, 0x146538)
+	static const int die[4] = { 8, 4, 10, 6 }, dice_to[4] = { 9, 10, 9, 10 }, fixed[4] = { 2, 1, 3, 2 };
+	static const int con16 = 2;
+	static const signed char thac0[4][18] = {										// 0x146590
+		{ 20, 20, 20, 18, 18, 18, 16, 16, 16, 14, 14, 14, 12, 12, 12, 10, 10, 10 },
+		{ 20, 20, 20, 19, 19, 19, 18, 18, 18, 17, 17, 17, 16, 16, 16, 15, 15, 15 },
+		{ 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3 },
+		{ 20, 20, 19, 19, 18, 18, 17, 17, 16, 16, 15, 15, 14, 14, 13, 13, 12, 12 } };
+	static const signed char saves[4][6][5] = {										// 0x1456D2
+		{ {10,14,13,16,15}, {9,13,12,15,14}, {7,11,10,13,12}, {6,10,9,12,11} },
+		{ {14,11,13,15,12}, {13,9,11,13,10}, {11,7,9,11,8} },
+		{ {14,16,15,17,17}, {13,15,14,16,16}, {11,13,12,13,14}, {10,12,11,12,13}, {8,10,9,9,11}, {7,9,8,8,10} },
+		{ {13,14,12,16,15}, {12,12,11,15,13}, {11,10,10,14,11} } };
+	static const int save_div[4] = { 3, 5, 2, 4 };									// 0x1456E2
+	// thief skills (0x8BDE5), race index 0 human, 1 dwarf, 2 elf, 3 drow,
+	// 4 halfling, 5 half-elf; dexterity 17: +5, +5, +10, +0 (0x146078 ...)
+	static const int race_hs[6] = { 0, 0, 10, 10, 15, 5 }, race_ms[6] = { 0, 0, 5, 5, 10, 0 };
+	static const int race_ol[6] = { 0, 10, -5, -5, 5, 0 }, race_ft[6] = { 0, 15, 0, 0, 5, 0 };
+	static const int race_cw[6] = { 0, -10, 0, 0, -15, 0 };
+	static const int race_index[6] = { 0, 5, 2, 3, 1, 4 };		// front end race to the race index of the tables
+	static const int levels[3] = { 1, 5, 10 };
+	int race, mask, n_combos = 0;
+
+	Rules_checks = Rules_failures = 0;
+	for (race = 0; race < 6; race++)
+		for (mask = 1; mask < 16; mask++) {
+			int cls[2] = { -1, -1 }, n = 0, c, li, hp1, hp_lo, hp_hi;
+			char who[64];
+			dtu_player_attr *pa = &Dtu_char.pa;
+
+			if (!(combos[race] & (1 << (mask - 1))))
+				continue;
+			for (c = 0; c < 4; c++)
+				if ((mask & (1 << c)) && n < 2)
+					cls[n++] = fe_class[c];
+			if (!fe_make_test_character(race, mask, stats, 50)) {
+				rules_check(0, "made", 0, 1, 1, (char *) race_name[race]);
+				continue;
+			}
+			n_combos++;
+			// level 1: the full die and the constitution, the mean of two
+			hp1 = die[cls[0]] + con16;
+			if (n == 2)
+				hp1 = (hp1 + die[cls[1]] + con16) / 2;
+			hp_lo = hp_hi = hp1;
+			for (li = 0; li < 3; li++) {
+				int target = levels[li], k, need = 0, lv[2] = { 0, 0 }, t, cat;
+				int old[2] = { pa->class1_level, pa->class2_level };
+
+				sprintf(who, "%s mask %d level %d", race_name[race], mask, target);
+				// the experience that brings each class to the level at least
+				for (k = 0; k < n; k++) {
+					int x = Xp_table[cls[k]][target] - Dtu_char.experience[k];
+
+					if (x > need) need = x;
+				}
+				if (need > 0)
+					dtu_char_award_xp(need * n);
+				// the levels that the experience gives (0xAF43A)
+				for (k = 0; k < n; k++) {
+					int v = 0;
+
+					while (v < 17 && Dtu_char.experience[k] >= Xp_table[cls[k]][v + 2])
+						v++;
+					lv[k] = v;
+				}
+				rules_check(pa->class1_level == lv[0], "class 1 level value", pa->class1_level, lv[0], lv[0], who);
+				if (n == 2)
+					rules_check(pa->class2_level == lv[1], "class 2 level value", pa->class2_level, lv[1], lv[1], who);
+				// hit points: the range of the dice of the new levels
+				{
+					int lo = 0, hi = 0;
+
+					for (k = 0; k < n; k++) {
+						int v;
+
+						for (v = old[k] + 1; v <= lv[k]; v++)
+							if (v <= dice_to[cls[k]]) {
+								lo += die[cls[k]] / 2 + con16;
+								hi += die[cls[k]] + con16;
+							} else {
+								lo += fixed[cls[k]] + con16;
+								hi += fixed[cls[k]] + con16;
+							}
+					}
+					if (n == 2) {
+						lo >>= 1;
+						hi >>= 1;
+					}
+					hp_lo += lo;
+					hp_hi += hi;
+					// the dice of this test are known only as a range: from
+					// here on the range starts at the value of the port
+					rules_check(pa->max_hit_points >= hp_lo && pa->max_hit_points <= hp_hi, "maximum hit points", pa->max_hit_points, hp_lo, hp_hi, who);
+					hp_lo = hp_hi = pa->max_hit_points;
+				}
+				// THAC0
+				t = thac0[cls[0]][lv[0] + 1];
+				if (n == 2) {
+					int t2 = thac0[cls[1]][lv[1] + 1];
+
+					if (Dtu_fix_multiclass_thac0 ? t2 < t : t2 > t)
+						t = t2;
+				}
+				rules_check(Dtu_char.thac0 == t, "THAC0", Dtu_char.thac0, t, t, who);
+				// saving throws: the higher level, at most 12, the better of
+				// the two classes
+				for (cat = 0; cat < 5; cat++) {
+					int level = (lv[0] > (n == 2 ? lv[1] : -1) ? lv[0] : lv[1]) + 1, s;
+
+					if (level > 12) level = 12;
+					s = saves[cls[0]][(level - 1) / save_div[cls[0]]][cat];
+					if (n == 2) {
+						int s2 = saves[cls[1]][(level - 1) / save_div[cls[1]]][cat];
+
+						if (s2 < s) s = s2;
+					}
+					rules_check(dtu_spell_player_save_number(cat) == s, "saving throw", dtu_spell_player_save_number(cat), s, s, who);
+				}
+				// thief skills (they change only on the screen of Mirt)
+				{
+					int r = race_index[race], hs = 0, ms = 0, ol = 0, ft = 0, cw = 0;
+
+					if (mask & 2) {
+						hs = 5 + race_hs[r] + 5;
+						ms = 10 + race_ms[r] + 5;
+						ol = 10 + race_ol[r] + 10;
+						ft = 5 + race_ft[r] + 0;
+						cw = 60 + race_cw[r];
+					} else if (race == 4)
+						ft = 50;
+					rules_check(pa->hide_in_shadows == hs, "hide in shadows", pa->hide_in_shadows, hs, hs, who);
+					rules_check(pa->move_silently == ms, "move silently", pa->move_silently, ms, ms, who);
+					rules_check(pa->open_locks == ol, "open locks", pa->open_locks, ol, ol, who);
+					rules_check(pa->find_traps == ft, "find traps", pa->find_traps, ft, ft, who);
+					rules_check(pa->climb_walls == cw, "climb walls", pa->climb_walls, cw, cw, who);
+					if (li == 0)
+						rules_check(Dtu_char.thief_points == ((mask & 2) ? 60 : 0), "thief points", Dtu_char.thief_points,
+							(mask & 2) ? 60 : 0, (mask & 2) ? 60 : 0, who);
+				}
+				dtu_char_log("rules: %s: levels %d/%d, hit points %d, THAC0 %d, saves %d %d %d %d %d, thief %d %d %d %d %d", who,
+					pa->class1_level + 1, n == 2 ? pa->class2_level + 1 : 0, pa->max_hit_points, Dtu_char.thac0,
+					dtu_spell_player_save_number(0), dtu_spell_player_save_number(1), dtu_spell_player_save_number(2),
+					dtu_spell_player_save_number(3), dtu_spell_player_save_number(4), pa->hide_in_shadows, pa->move_silently,
+					pa->open_locks, pa->find_traps, pa->climb_walls);
+			}
+		}
+	dtu_char_log("rules: %d combinations, %d checks, %d failures", n_combos, Rules_checks, Rules_failures);
+	dtu_log("Character rules test: %d combinations, %d checks, %d failures\n", n_combos, Rules_checks, Rules_failures);
 }
 
 static void run_command(char *cmd, char *value)
@@ -3110,6 +3348,8 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "fire"))		dtu_spell_fire();		// test: the spell, scroll or wand in the hand
 	else if (!strcmp(cmd, "mode"))		dtu_display_select_mode(a);
 	else if (!strcmp(cmd, "dump"))		dump_character();
+	else if (!strcmp(cmd, "rules"))		rules_test();		// ASCENT: test, docs/audit/character.md
+	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);		// test: 0x8BA3A (script statement 9F)
 	else
 		dtu_char_log("script: unknown command");
 	if (strcmp(cmd, "dump"))

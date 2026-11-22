@@ -335,6 +335,7 @@ static char rcsid[] = "$Id: gameseq.c 2.10 1995/12/19 15:48:25 john Exp $";
 #include "dtutrig.h"		// ASCENT: dtu_trig_load_level()
 #include "dtumusic.h"	// ASCENT: the streamed music
 #include "dtuchar.h"		// ASCENT: the character of the target game
+#include "dtuthief.h"	// ASCENT: dtu_thief_level_loaded()
 #include "dtustate.h"	// ASCENT: the level state files
 #include "dtulog.h"		// ASCENT: the session log
 #include "platform.h"	// ASCENT: plat_time_us
@@ -1005,6 +1006,8 @@ void LoadLevel(int level_num)
 	// ASCENT: new. The triggers, traps, messages and warps of the level
 	// (0x9550D of DTUGAME.EXE loads them with the level).
 	dtu_trig_load_level(level_name, level_num-1);
+	// ASCENT: new. The thief bytes of the walls start at 0 (0xAD67B).
+	dtu_thief_level_loaded();
 
 	#ifdef NETWORK
 	my_segments_checksum = netmisc_calc_checksum(Segments, sizeof(segment)*(Highest_segment_index+1));

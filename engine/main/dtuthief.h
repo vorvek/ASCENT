@@ -35,6 +35,20 @@ void dtu_thief_open_locks(void);			// 0xB31BD
 void dtu_thief_search_toggle(void);			// 0xB3400
 void dtu_thief_move_silently(void);			// 0xB4196
 
+// After the load of a level file (gameseq.c): the thief bytes of the wall
+// records start at 0 (0xAD67B). A level state restores them later.
+void dtu_thief_level_loaded(void);
+// 0xA6F89 at the level start (0xAD744): the water, lava and wood bits of
+// the side flags and the secret door flag 0x40 of the doors, from the
+// textures.
+void dtu_thief_level_textures(void);
+// 1 (default): a texture name of 0xA6F89 that the tables do not have
+// matches no side. 23 of the 29 door names are in no table of 1.3
+// ("dleft11#0" and so on; the tables have "dleft1#0"), so 0x1B2B1 gives
+// texture 0 for them, and each door side with no overlay (tmap_num2 0)
+// or with texture 0 becomes a secret door in 1.3. 0 (-origchar): as 1.3.
+extern int Dtu_fix_secret_door_names;
+
 // One time in each frame (dtu_char_frame): the search for traps (0xB4040
 // from game.c 0x438F3), Hide In Shadows (0xB333F from pcons.c 0x9DFDE).
 void dtu_thief_frame(void);

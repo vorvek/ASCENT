@@ -1154,6 +1154,11 @@ static void make_player(void)
 	} else if (Race == 4)
 		pa->find_traps = 50;			// a dwarf who is not a thief
 
+	// 0x8BACD (in 0x8BA3A with level 1): a thief gets 60 + 30 * level value
+	// skill points. Mirt sets the points again at the first visit
+	// (0xABB53), before the screen where they are spent.
+	if (Class_mask & CM_THIEF)
+		Dtu_char.thief_points = 60;
 	Dtu_char.base = *pa;
 	Dtu_char.thac0 = 20;
 	// The record of the executable has the frame number of FESEQ 21 or 22.
@@ -1254,6 +1259,33 @@ int fe_new_character(void)
 	Dtu_lang_sex_ptr = NULL;
 	if (!Continue || Fe_quit || Screen_index < 4)
 		return 0;
+	make_player();
+	return 1;
+}
+
+// ASCENT: test (-chartest rules, dtuchar.c). A new character with no
+// screens: the race of this file (0 human, 1 half-elf, 2 elf, 3 drow,
+// 4 dwarf, 5 halfling), the class mask (1 fighter, 2 thief, 4 mage, 8
+// cleric), the six final values (STR DEX CON INT WIS CHA) and the percent
+// value of strength. Returns 0 if the race does not allow the mask.
+int fe_make_test_character(int race, int mask, const int stats[6], int percentile)
+{
+	int i;
+
+	if (race < 0 || race > 5)
+		return 0;
+	Race = race;
+	if (!combo_allowed(mask))
+		return 0;
+	Sex = 0;
+	Class_mask = mask;
+	for (i = 0; i < 6; i++)
+		Final[i] = stats[i];
+	Final_percentile = percentile;
+	Cheat_stats = 0;
+	Portrait = 0;
+	Alignment = (mask & CM_THIEF) ? 4 : 0;
+	strcpy(Name, "Test");
 	make_player();
 	return 1;
 }

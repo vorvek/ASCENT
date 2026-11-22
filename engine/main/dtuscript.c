@@ -1636,7 +1636,10 @@ static int sc_exec(sc_run *r)
 			dtu_player_attr *pa = &Dtu_char.pa;
 			int lv = (pa->class1_level > pa->class2_level ? pa->class1_level : pa->class2_level) + 1;
 			v = arith(r, lv);
-			slog("level %d -> %d (0x8BA3A is not in the port)", lv, v);
+			slog("level %d -> %d", lv, v);
+			// 0xAB779: one more for a character with two classes, then
+			// 0x8BA3A(P+0x97, level)
+			dtu_char_set_level(pa->class2 >= 0 ? v + 1 : v);
 			break;
 		}
 		case 0xA0:

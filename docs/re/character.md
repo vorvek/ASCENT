@@ -690,9 +690,104 @@ Differences and guesses of the port:
 - The map is not in the port. Spells, missile weapons, saving throws, the
   potion timers and the thief skills are (combat.md part C).
 
-Setting: `Dtu_fix_multiclass_thac0` (default 1). 0 gives the rule of the
-executable: a character with two classes gets the worse THAC0 of the two. The
-option `-origchar` clears it.
+Settings (default 1, the option `-origchar` clears them):
+
+- `Dtu_fix_multiclass_thac0`. 0 gives the rule of the executable: a
+  character with two classes gets the worse THAC0 of the two.
+- `Dtu_fix_level_hit_points`. 0 gives the rule of the executable: the hit
+  points in use grow by n / 65536 at a new level (section 15).
+- `Dtu_fix_secret_door_names` (dtuthief.c). 0 gives the rule of the
+  executable: a door with texture 0 or no overlay is a secret door
+  (section 15).
 
 Test options: `-charlog FILE`, `-char FILE.SG`, `-chartest LIST` (see the
-comment at `run_command()` in `dtuchar.c`).
+comment at `run_command()` in `dtuchar.c`). `-chartest rules` checks every
+race and class combination at levels 1, 5 and 10 (docs/audit/character.md).
+
+## 15. Character rules (audit of 2026-11-22)
+
+**Code** for all facts of this section. The audit table is
+`docs/audit/character.md`. The recovered C of the decompilation project is
+`D:\dev\DTU-Decomp\recovered\character.md`.
+
+### Levels
+
+- 0xAF43A raises the level value while `level + 1 < 18` and the
+  experience (unsigned) is at least `table[class][level + 2]`. A level
+  value above 17 is set to 17 first. So the highest level is 18 (level
+  value 17) for every race and class. No race limit exists.
+- 0xAF605 reads THAC0 at index level value + 1. At level value 17 the index
+  is 18, one past the 18 bytes of a row: 1.3 reads the first byte of the
+  next row (cleric 20, mage 72, fighter 20, thief 20). The port stops at
+  index 17.
+- 0xAF694 adds, for each new level, the dice (number at 0x146538, die at
+  0x146518) + the fixed value (0x146528) + the constitution value of the
+  base copy (0x187BBA, at most 19; fighter table for the fighter class).
+  The sum of both classes is halved (`sar`). Then 0xAF88B adds it to the
+  maximum (0x187B9A, P+0xA1) and to the integer hit points (0x187B9C,
+  P+0xA3) as words, and 0xAF8C7 and 0xAF8CD add the same integer to the
+  fixed point hit points of the player object and of P+0x53. Those grow by
+  n / 65536: a defect.
+- 0x8BA3A(attributes, level), used by MakePlayer (level 1) and by script
+  statement 9F (0xAB71A, the higher class level + 1 through the arithmetic
+  of the statement, plus 1 for two classes): level = min(level, 18) - 1,
+  minus 1 more for two classes, at least 0, for both classes; experience =
+  `table[class][level + 1]` (0 for a missing class 2); thief points
+  P+0x1AB3 = 60 + 30 * level when the class mask of the front end
+  (0x3A6465) has the thief; hit points = (0x13FDF3[class] + 0x8C01B(con,
+  class is fighter)) * (level + 1), the mean of two classes; the maximum and
+  the integer hit points of the record are set, P+0x53 is not; then THAC0.
+  The script statement is used once in GABE (a reward: "LEVEL += 1" with a
+  chance of 1 in 4 while LEVEL < 18).
+
+### Thief points
+
+- A new thief has 60 points (0x8BACD, `SG0.SG` has 60). Mirt (0xABB53)
+  sets the points to `(thief level - paid) * 20 + (paid == 0 ? 20 : 0)`
+  before the screen 0xB5B49 is shown, so the 60 are never spent: the first
+  visit gives 40.
+
+### Find/Remove Traps
+
+- 0xB4040: the search of 0xB365F and 0xB396C runs when P+0xCF is not 0 or
+  the Find Traps effect is on. The dwarf flag (effective race 1, not a
+  thief, no spell) only makes 0xB34E0 and 0xB353A refuse a side with side
+  flag & 3.
+- 0xB353A: a trigger is harmful when it is on and its experience (+0x30,
+  dword) is below 0, or else by the first of: the first trap (+0x3B, that
+  trap only), the enabled trigger (+0x3D, recursive), the enabled trap
+  (+0x3F).
+- A found trigger sets side flag 4 of the searched side (0xB378E), a found
+  trap side flag 8 (0xB3ABB); a removal clears them (0xB38EC, 0xB3C7D). The
+  automap shows them. The sounds 3001 and 2130 are only in the path of the
+  spell. The distances use the quick distance 0xD705C.
+- The state bytes are in the records: trigger +0x0F, +0x10; trap +0x03,
+  +0x04; wall +0x16 (racial search), +0x17 (Open Locks). The fresh branch of
+  level_start (0xAD64A to 0xAD6FC) clears the side flags, the two wall bytes
+  of the 300 walls, the trigger fire count and bytes, and the trap bytes. A
+  restore reads them from the state files.
+
+### Level textures: 0xA6F89
+
+- Called at 0xAD744 for every level start. 0x1B2B1 compares a name with
+  `TmapInfo[i].filename` (0x1A0F44, 26 bytes each, at most 2500) and gives
+  the index, or 0.
+- Tables: water 0x3CE0E4 (water, water1, water2, wfal01, wfal02, wfal04),
+  lava 0x3CE0D4 (lava02, lava, lavaflo, magma), wood 0x3CE07C (wood1 to
+  wood9, wood11 to wood16, wood21, wood22, wood91 to wood95), doors
+  0x3D4254 (wald1#0 to wald4#0, gdown111#0, dleft11#0, dleft31#0,
+  dorsk11#0, down111#0, drght11#0, dup1t11#0, gdown11#0, shelfup1#0,
+  stadnup1#0, stadn2p1#0, stadn3p1#0, trapdor1#0, up1pdor1#0, wald1or1#0 to
+  wald4or1#0, dleft111#0, dleft311#0, door2511#0, dor1l511#0, dorsk111#0,
+  drght111#0, dup1t111#0).
+- Each side: side flag &= ~3; water in tmap_num or the raw tmap_num2: |= 1;
+  lava, when wall_is_doorway is not 3 and not 7 (child -1 counts as 2, -2
+  as 8, no wall as 5): |= 3; wood: |= 2; a door (wall type 2) with a door
+  texture: wall flag |= 0x40.
+- **Data**: 23 of the 29 door names are in no table ("dleft1#0" exists,
+  "dleft11#0" does not). For them 0x1B2B1 gives 0, so a door with texture 0
+  or tmap_num2 0 becomes a secret door in 1.3. In the port this adds one
+  secret door in THIEF2 (BONES 6, DROW2 4, no others in BANE, FLAME,
+  IBBALAR, YPINN, KOBOLDS).
+- All 32 water, lava and wood names exist. In the port the side flags & 3
+  were 0 before this change.
