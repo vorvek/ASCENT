@@ -1270,8 +1270,11 @@ void dtu_objects_level_setup(void)
 					f2fl(Objects[i].mtype.phys_info.mass),f2fl(Objects[i].mtype.phys_info.drag),f2fl(Objects[i].size),
 					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
 			else if (Objects[i].type == OBJ_MISC || Objects[i].type == OBJ_ARMOR || Objects[i].type == OBJ_SPELL || Objects[i].type == OBJ_WEAPON)
-				dtu_obj_log("obj %d %s: item type %d id %d seg %d pos %.2f %.2f %.2f",i,dtu_object_name(&Objects[i]),Objects[i].type,Objects[i].id,
-					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));
+				dtu_obj_log("obj %d %s: item type %d id %d seg %d pos %.2f %.2f %.2f render %d size %.2f life %.1f count %d flags 0x%x parent %d/%d",
+					i,dtu_object_name(&Objects[i]),Objects[i].type,Objects[i].id,
+					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z),
+					Objects[i].render_type,f2fl(Objects[i].size),f2fl(Objects[i].lifeleft),(signed char) Objects[i].dtu.m_1d5,
+					Objects[i].flags,Objects[i].ctype.laser_info.parent_num,Objects[i].ctype.laser_info.parent_signature);
 		for (i=0;i<=Highest_object_index;i++)
 			if (Objects[i].type == OBJ_ROBOT)
 				dtu_obj_log("obj %d %s: hp %d hostile %d behavior 0x%x attack %d weapon %d spell_level %d door %d seg %d contains %d/%d/%d script %d model %d size %.2f pos %.2f %.2f %.2f",
@@ -5837,6 +5840,11 @@ static void pickup_sound(int flag_10)
 	digi_play_sample(0x8A7,F1_0/2);
 }
 
+int dtu_weapon_is_item(object *obj)
+{
+	return obj->type == OBJ_WEAPON && obj->render_type == RT_ITEM && obj->lifeleft == IMMORTAL_TIME;
+}
+
 // The four pickup functions of collide.c (0x2805B misc, 0x283DC armor,
 // 0x28273 spell, 0x284E0 weapon).
 static void pick_up_item(object *player,object *item)
@@ -5867,7 +5875,7 @@ static void pick_up_item(object *player,object *item)
 		return;
 
 	// A weapon is an item only if it does not move (0x28502).
-	if (item->type == OBJ_WEAPON && (item->render_type != RT_ITEM || item->lifeleft != IMMORTAL_TIME))
+	if (item->type == OBJ_WEAPON && !dtu_weapon_is_item(item))
 		return;
 
 	if (count == 0) {

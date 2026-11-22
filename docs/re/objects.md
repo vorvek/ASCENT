@@ -618,6 +618,34 @@ it (0xE3 mask), `cast_with_wand` 4, `cast_with_scroll` 8, `cast_with_arrow` 0x10
 Port: `pickup_sound()` and `pickup_flag_10()` in `dtuobj.c`. Setup 1.0 of the port
 played no sound for a pick up.
 
+### Weapon items and the parent test of the port
+
+A weapon item on the floor is an object of type 5 (`OBJ_WEAPON`), the type of a
+shot. The object test of `find_vector_intersection` skips an object that
+`laser_are_related` calls a child of the mover: a weapon whose parent number is
+the mover and whose parent signature is the signature of the mover. A weapon
+item of a level file has control type 0, so its parent number and signature are
+0 (`-objlog` prints them as `parent 0/0`). The level loader gives object 0 the
+signature 0, and object 0 is the player of the level file (Data: `kobolds.lvl`).
+So the port never let the player touch a weapon item on the floor, with and
+without Improved physics, and a wand or a sword could not be picked up. Whether
+the executable has the same test with the same fields was not read (G: it picks
+weapons up, help text 761).
+
+Port (P): `laser_are_related` returns 0 when one of the two objects is a weapon
+item (`dtu_weapon_is_item`: render type 8 and `lifeleft` 0x3FFFFFFF, the test of
+0x2857C). Test: the save game of the user with the `Wand of Magic Missiles`
+(obj 69, weapon 55, 46 charges) in front of the player in `kobolds.lvl`, load
+with `-fescript`, `-testmove idle:30,forward:90`: before, no pick up; after,
+"pickup: obj 69 type 5 id 55 'Wand of Magic Missiles' count 46, inventory entry
+11", with and without `-noimprovements`. A save in the level and a load keep the
+wand in the list (12 entries) and the level state has one weapon object less.
+
+The name in the message is the weapon name of 0xB8C0F (table 0x1B45AC). The
+reader of `$WEAPON` writes `weapon_name=` and `name=` to that table (0x20AD7 to
+0x20B56, the last one wins, V). The port read only `name=`, so the message of a
+wand was "You pick up ." The port reads both now.
+
 ### The byte at 0x1D5
 
 The loader fills it from the low byte of 0xAC of the file (0xAC is the timer of the

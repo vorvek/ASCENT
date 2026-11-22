@@ -1155,6 +1155,7 @@ static void make_player(void)
 	if (Class_mask & CM_CLERIC)
 		if (!has_item(OBJ_SPELL, 0))
 			dtu_inventory_add(OBJ_SPELL, 0, 1);		// 0xB75A8(0)
+	dtu_display_inventory_reset();			// 0x8BC69
 
 	dtu_char_update();
 

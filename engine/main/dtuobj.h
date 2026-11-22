@@ -212,6 +212,10 @@ void dtu_draw_dressing_vclip(object *obj);
 // handled the pair.
 int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point);
 
+// An object of type 5 that lies as an item (not a shot): the item render
+// type and no life time (0x28502).
+int dtu_weapon_is_item(object *obj);
+
 // Damage (0x29A9C). "attacker" can be NULL. With an attacker these two
 // functions throw the to-hit roll and the dice of the weapon of the
 // attacker (the weapon in the hand for the player) and do not use

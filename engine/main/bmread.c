@@ -2006,7 +2006,9 @@ static void bm_read_dtu_weapon()
 			// slot of the object bitmaps as the picture of each item has.
 			if ( val[0] != '%' && it->obj_bitmap >= 0 )
 				wi->picture = ObjBitmaps[ObjBitmapPtrs[it->obj_bitmap]];
-		} else if (!stricmp( key, "name" )) {
+		} else if (!stricmp( key, "name" ) || !stricmp( key, "weapon_name" )) {
+			// 0x20AD7: weapon_name= and name= both write the name table
+			// 0x1B45AC, the last one wins
 			tok_get_name( val, it->name, DTU_NAME_LENGTH );
 		} else if (!stricmp( key, "speed" )) {
 			k = tok_get_fix_list( i, list, NDL );
