@@ -143,7 +143,7 @@ static int Con_bonus[2][20] = {
 
 // 0x13A956 and 0x13A9A2: attack and damage bonus for strength 0 to 19.
 // 0x13A9F2 and 0x13AA06: for a fighter with strength 18, by the percent
-// value (0, 1 to 50, 51 to 75, 76 to 90, above 90).
+// value (1 to 50, 51 to 75, 76 to 90, 91 to 99, and 0 for 18/00).
 static int Str_hit[20] = { 0, -5, -3, -3, -2, -2, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 3 };
 static int Str_damage[20] = { 3, -4, -2, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 7 };
 static int Str_extra_hit[5] = { 0, 1, 1, 1, 2 };
@@ -1957,6 +1957,13 @@ void dtu_char_award_xp(int points)
 //------------------------------------------------------------------------
 // Combat values
 
+// 0x2A7B9 and 0x2B4BB: the column of the percent value of strength 18.
+// The percent 0 is 18/00, the best column.
+static int str18_index(int extra)
+{
+	return extra > 90 ? 3 : extra > 75 ? 2 : extra > 50 ? 1 : extra > 0 ? 0 : 4;
+}
+
 // 0x2A789: the attack bonus of the strength
 static int str_hit_bonus(int str, int extra)
 {
@@ -1966,7 +1973,7 @@ static int str_hit_bonus(int str, int extra)
 	if (str > 19) str = 19;
 	b = Str_hit[str];
 	if (str == 18 && has_class(DTU_CLASS_FIGHTER))
-		b += Str_extra_hit[extra > 90 ? 4 : extra > 75 ? 3 : extra > 50 ? 2 : extra > 0 ? 1 : 0];
+		b += Str_extra_hit[str18_index(extra)];
 	return b;
 }
 
@@ -1978,7 +1985,7 @@ static int str_damage_bonus(int str, int extra)
 	if (str > 19) str = 19;
 	b = Str_damage[str];
 	if (str == 18 && has_class(DTU_CLASS_FIGHTER))
-		b += Str_extra_damage[extra > 90 ? 4 : extra > 75 ? 3 : extra > 50 ? 2 : extra > 0 ? 1 : 0];
+		b += Str_extra_damage[str18_index(extra)];
 	return b;
 }
 
@@ -2495,7 +2502,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // "frame:command=value" with commas between. Commands: damage=N,
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
-// armspell=SPELL, give=TYPE.ID, xp=N, rest,
+// armspell=SPELL, give=TYPE.ID, xp=N, rest, str=STRENGTH.PERCENT,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // dump.
 
@@ -2545,6 +2552,12 @@ static void run_command(char *cmd, char *value)
 			&Dtu_char.base.find_traps, &Dtu_char.base.climb_walls };
 		if (a >= 0 && a < 5) *sk[a] = b;
 		dtu_char_update();
+	}
+	else if (!strcmp(cmd, "str")) {		// str=STRENGTH.PERCENT: the base strength (test)
+		Dtu_char.base.strength = a;
+		Dtu_char.base.strength_extra = b;
+		dtu_char_update();
+		dump_character();
 	}
 	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
