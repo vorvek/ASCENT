@@ -60,6 +60,7 @@ comments.
 | `dtudlg.c` | The conversation window. | `re/scripts.md` section 4 |
 | `dtudisp.c` | The in-game interface: play screen, buttons, cursor, message box, the screens that open during play. Replaces the cockpit and HUD. | `re/ingame-ui.md` |
 | `dtuscroll.c` | The text screen of the Scroll. | `re/ingame-ui.md` |
+| `dtudesc.c` | The description window of items and spells (right click). New in the port. | `description_window.md` |
 | `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
 | `dtufe.c` | The front end: frame, input, `-fescript`, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
 | `dtufe_char.c` | Character generation. | `re/frontend.md` |
@@ -162,6 +163,7 @@ Tests that need the game files:
 | `tools/lvlcheck.py` | Compares the level loader (`-checklevel`) with `tools/lvl.py`. |
 | `tools/check_creature_setup.py` | Compares the creature setup by name (`-setuplog`) with the reference library of the decompilation. |
 | `tools/objcheck.py` | Checks the object records of the levels against the level tables. |
+| `tools/check_desc.py` | Checks the texts of the description window (`-chartest desc`) in both interfaces and both languages. |
 
 Command line options for tests. An automated run (with `-hidden`, `-frames`,
 `-fescript` or `-playmovie`) has a hidden window, no sound and no message
@@ -185,6 +187,7 @@ boxes.
 | `-testcrash N [KIND]` | Make a crash at frame N to test the crash report. |
 | `-statetest DOOR,SIDE,OBJ[,WARP,BACK[,DAMAGE]]` | Open a door, damage a creature, warp away and back, and print the level state. |
 | `-chartest LIST` | Character commands at frames: `str=`, `attackedby=`, `equip=`, `use=`, `xp=`, `castby=` and more (see `run_command` in `dtuchar.c`). |
+| `-testmarket` | The front end starts in the market. |
 | `-autochoice N` | Choice boxes answer N. |
 | `-dlgauto LIST` | Conversations take their replies from the list. |
 | `-testspell N`, `-testslots N` | Put spell N in the book and hand; give N slots for each spell level. |
@@ -194,6 +197,19 @@ boxes.
 
 `engine/main/cc.sh` compiles single files of `engine/main` with the flags
 of a build directory.
+
+## The description window
+
+`dtudesc.c` shows what an item or a spell does, on the picture of the scroll
+text screen. A right click on the inventory screen, the spell lists or the
+market opens it; `/` opens it for the entry of the keys. The hooks are small:
+`dtudisp.c` (the right click and the key, no input while it is open),
+`game.c` (its frame and its draw after the scroll text screen) and
+`dtufe_town.c` (the market). The text reads the rule values of `dtuchar.c`
+(`dtu_char_misc_use`, `dtu_char_item_powers` and the other `dtu_char_item_*`
+functions) and of `dtuspell.c` (`dtu_spell_get_facts`). The item and spell
+code reads the same values, so a change of a rule changes the text too. The
+layout rules are in [description_window.md](description_window.md).
 
 ## Content packs and localization
 
