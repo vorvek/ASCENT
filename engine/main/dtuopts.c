@@ -4,7 +4,8 @@
  * The configuration file is ascent.cfg in the current directory (a run with
  * -datadir) or in the directory of the user (dtu_user_path). It is a
  * text file with one "name=value" line for each setting. The port never
- * writes to the game directories.
+ * writes to the game directories. An installed game first reads default.cfg
+ * in the installation folder (same format, written by the setup program).
  */
 #include <stdio.h>
 #include <string.h>
@@ -37,6 +38,7 @@ int Dtu_improved_infravision = 1;
 int Dtu_target_hint = 1;
 
 #define DTU_OPTS_FILE	"ascent.cfg"
+#define DTU_DEFAULTS_FILE	"default.cfg"	// ASCENT: in the installation folder
 
 // The values from the file of the settings that an argument changed, and
 // the values of the arguments. The save writes the value of the file while
@@ -71,12 +73,12 @@ static dtu_opt Opts[] = {
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
-void dtu_opts_load(void)
+// Reads one settings file: "name=value" lines.
+static void read_opts_file(const char *path)
 {
-	char path[600];
-	FILE *f = fopen(dtu_user_path(path, sizeof(path), DTU_OPTS_FILE), "r");	// ASCENT: the directory of the user
+	FILE *f = fopen(path, "r");
 	char line[200];
-	int i, t;
+	int i;
 
 	if (f) {
 		while (fgets(line, sizeof(line), f)) {
@@ -109,6 +111,21 @@ void dtu_opts_load(void)
 		}
 		fclose(f);
 	}
+}
+
+void dtu_opts_load(void)
+{
+	char path[600];
+	int t;
+
+	// ASCENT: the defaults of the installation (default.cfg next to the
+	// executable, written by the setup program, for example Language=es),
+	// then the file of the user, which wins.
+	if (dtu_install_dir()) {
+		snprintf(path, sizeof(path), "%s/%s", dtu_install_dir(), DTU_DEFAULTS_FILE);
+		read_opts_file(path);
+	}
+	read_opts_file(dtu_user_path(path, sizeof(path), DTU_OPTS_FILE));	// ASCENT: the directory of the user
 
 	// The arguments win over the file.
 	if (FindArg("-software")) {

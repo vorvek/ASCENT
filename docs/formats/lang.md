@@ -128,7 +128,10 @@ is in the program; the file can change it too (its later entries win).
 The setting: `Language=en` or `Language=es` in `ascent.cfg`; the item
 "Language..." of the options menu of the front end and of the options menu of
 the game (F2) changes it at once. The option `-language CODE` sets it for one
-run, `-nosubtitles` turns the subtitles off.
+run, `-nosubtitles` turns the subtitles off. An installed game first reads
+`default.cfg` next to the executable (same format; the Spanish setup program
+writes `Language=es` there when it installs `lang_es`), then `ascent.cfg`,
+whose `Language=` wins (docs/install.md).
 
 ## Subtitles
 
