@@ -975,6 +975,18 @@ static void inv_show_entry(int index)
 	Inv_first = (index / 10) * 10;
 }
 
+// 0xBB867 (load) and 0x8BC69 (new character): the list starts at entry 0.
+// ASCENT: the port finds a new entry by the count (inv_check), so the count
+// of a loaded list is known here and does not move the list to its last
+// page (that hid the first ten entries after a load).
+void dtu_display_inventory_reset(void)
+{
+	Inv_first = 0;
+	Inv_sel = 0;
+	Inv_held = -1;
+	Inv_known = Dtu_n_inventory;
+}
+
 static void inv_check(void)
 {
 	// 0xB6926: a new entry shows its page

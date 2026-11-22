@@ -157,6 +157,14 @@ Insert (0xB65BB, **Code**). The result code is stored at 0x146874.
 5. If no entry takes the items: a new entry at the end. The list holds 127
    entries (code 5 when full). The first shown entry of the inventory screen
    (0x13AD9F) becomes the page of the new entry: `((count - 1) / 10) * 10`.
+   A load (0xBB867) and a new character (0x8BC69) set 0x13AD9F to 0, so the
+   inventory screen shows the first page (V). The port finds a new entry by the
+   count of the list (`inv_check` in `dtudisp.c`); before
+   `dtu_display_inventory_reset()` a loaded list of 11 or more entries counted
+   as new and the screen opened at its last page, so the potions and the other
+   first entries were not on the screen after a load (the user's save of
+   Mohair: only `Scroll` on page 2; the list had `Potion of Healing` 3 at
+   entry 4).
 6. A new weapon is passed to 0x31C41. The function was not read. **Data**: in the
    save game of a new character the weapons stand in the first hot key boxes in
    the order of the list, and the first weapon is the item in the hand. The help
