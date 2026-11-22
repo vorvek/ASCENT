@@ -1035,6 +1035,52 @@ bit 9 clear, 51 have 0x400200, 3 have bit 9 only and 229 have neither bit. The p
 record has -1. Of the other objects 219 have a value, always below 0x400 (one dressing
 record has bit 9).
 
+## Rats (Code)
+
+Checked in the raw bytes of DTUGAME.EXE 1.3 (objdump of the image) and in the
+tables of all levels (`tools/egg.py bin`).
+
+- The only monster with `pass_thru` in the tables is "Rat" (`RAT_S.POF`,
+  `regeneration=0`, `max_hit_points=4`). Most tables also give it `rat=1`; the
+  tables of TRAIN1, PRISON1 and MINES1 do not. "GiantRat" has no
+  `pass_thru`.
+- The table parser (0x1DDE6) sets bit 4 of +0xD9 for the word `rat`
+  (string at 0x1218EE) and keeps the entry index in 0x13A820.
+- fix_object_segs (0x69FFB, at 0x6A102) sets object flag 0x40 of each creature
+  whose table byte (`pass_thru`) is not 0. It runs at each level load and
+  restore (callers 0x41F4A, 0x489EE, 0x49F36, 0xA97B3). The rat records of the
+  level files also have the flag (BONES 12, CLAN1 3, MINE 4, THIEF0 3).
+- fvi_sub skips each object with flag 0x40 (0x3F38F). So the move of the
+  player, the swing (0x6CFF8 calls `find_vector_intersection`), the shots and
+  the use ray never touch a rat: the player walks through it and no weapon or
+  missile hits it.
+- The AI frame (0x13C8B) and the move (0x9F174) of a flagged creature run only
+  for the type in 0x13A820, so rats with `rat=` live and move; rats without it
+  stand still.
+- The move query of a rat sees the player. A start point in the body of the
+  player is a hit (0x3EE70), so a rat that the player walks over touches the
+  player on its next move. collide_robot_and_player (0x26FE0): with the `rat`
+  bit and a boot item worn (byte P+0x1AEC not negative), vclip 9 at the rat
+  with its size (0x3BD4C), then 0x25ADF.
+- 0x25ADF: the rat becomes hostile (+0x1B0 bit 22), inactive (+0x1CC = 0) and
+  tries 100 random segments (`rand() % Highest_segment_index`). It takes the
+  first one whose side 3 has `pad & 3` not 1 or 3 and texture number 0 or less,
+  and whose center is in the segment (0x4BE0B). There it goes to the center
+  (0x4AD9C, 0x13899), gets physics flag 2, `init_ai_object(n, 0x81, seg)`,
+  animation state 1, activity 0 and object flags 0, so flag 0x40 is clear until
+  the next load. With no segment it plays its die sound (0x2E900) and is
+  removed (0x6A3CC). There is no experience and no corpse.
+- level start (0x59C3C, 0x5A50C to 0x5A5CD) puts each rat at the center of its
+  segment and counts the rats.
+
+So in 1.3 a rat can be killed only by stepping on it with boots (and it comes
+back somewhere else), or by an effect that does not use a query. The port:
+`dtu_rat_type`, `rat_squash` and the contact test in
+`dtu_creature_physics_sim` (dtuobj.c). The port tests the type for
+`pass_thru`, not the object flag, so a squashed rat stays pass_thru. The
+correction `Dtu_fix_rat_hit` (combat.md, C3) lets the swing, the missiles and
+the target hint of the player reach a rat. `tools/check_reach.py` checks it.
+
 ## Covered and not covered
 
 Covered: the tables and their entry sizes, the fields that give model, size, hit

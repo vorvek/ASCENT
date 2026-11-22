@@ -850,6 +850,7 @@ int check_vector_to_sphere_1(vms_vector *intp,vms_vector *p0,vms_vector *p1,vms_
 // the test is a guess. The sizes are those of the executable (0x748D9).
 #include "dtugame.h"
 #include "dtuobj.h"
+#include "dtucombat.h"	// ASCENT: Dtu_fix_rat_hit
 #include "bm.h"
 #include "polyobj.h"
 #include <math.h>
@@ -858,6 +859,24 @@ int check_vector_to_sphere_1(vms_vector *intp,vms_vector *p0,vms_vector *p1,vms_
 // body of an object hits it. The move of a body does not set it, so that two
 // bodies that overlap can move apart.
 int Fvi_dtu_inside_hits = 0;
+
+// ASCENT: set by the caller for the test of an attack of the player: the
+// swing (dtucombat.c) and the flight of a missile of the player (dtuobj.c).
+int Fvi_dtu_player_attack = 0;
+
+// "pass_thru" of the table line of a creature: the executable sets the flag
+// 0x40 of such a creature (0x6A102), and each query skips objects with that
+// flag (0x3F38F). Only the "Rat" of each table has it, so no weapon, shot
+// or use ray reaches a rat. Dtu_fix_rat_hit (dtucombat.h): an attack of
+// the player reaches it.
+static int dtu_pass_thru(object *obj)
+{
+	if (obj->type == OBJ_DRESSING)
+		return obj->id < N_dressing_types && Dressing_info[obj->id].pass_thru;
+	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types || !(Monster_info[obj->id].flags & MONSTER_F_PASS_THRU))
+		return 0;
+	return !(Fvi_dtu_player_attack && Dtu_fix_rat_hit);
+}
 
 static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,object *obj,object *otherobj)
 {
@@ -873,9 +892,7 @@ static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector
 	if (obj->render_type != RT_POLYOBJ && obj->type != OBJ_PLAYER)
 		return 0;
 	// "pass_thru" of the table line
-	if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types && Dressing_info[obj->id].pass_thru)
-		return 0;
-	if (obj->type == OBJ_ROBOT && obj->id < N_robot_types && (Monster_info[obj->id].flags & MONSTER_F_PASS_THRU))
+	if (dtu_pass_thru(obj))
 		return 0;
 
 	dtu_get_body_cylinder(obj,&center,&radius,&half_height);
@@ -996,9 +1013,7 @@ fix dtu_body_query_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad_h
 		return 0;
 	// "pass_thru": the executable sets the flag 0x40 of such a creature,
 	// and the query skips objects with that flag
-	if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types && Dressing_info[obj->id].pass_thru)
-		return 0;
-	if (obj->type == OBJ_ROBOT && obj->id < N_robot_types && (Monster_info[obj->id].flags & MONSTER_F_PASS_THRU))
+	if (dtu_pass_thru(obj))
 		return 0;
 
 	if (obj->render_type == RT_POLYOBJ && n >= 0 && n < N_polygon_models && Polygon_models[n].dtu_block)

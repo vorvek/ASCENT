@@ -372,6 +372,13 @@ void dtu_get_body_size(object *obj, fix *radius, fix *half_height);
 // use it.
 char *dtu_object_name(object *obj);
 
+// ASCENT: 1 for the monster type with the word "rat" of the table (bit 4
+// of +0xD9, set by the table parser 0x1DDE6, which also keeps the type in
+// 0x13A820). The "Rat" of each table also has pass_thru. Such a creature
+// runs its AI frame with the flag 0x40 (0x13C8B, 0x9F174), does 1 damage
+// (0x2B58D) and is squashed when it touches a player with boots (0x26FE0).
+int dtu_rat_type(int id);
+
 // 0x2AA5B to 0x2AF4F of the to-hit roll 0x2A7F3: the effects of the
 // attacker and of the target (Levitate, hidden or invisible, Bless,
 // Protection From Evil, the armor class of a creature, Slow), the test

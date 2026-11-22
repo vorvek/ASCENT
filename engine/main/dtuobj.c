@@ -2616,12 +2616,31 @@ int dtu_weapon_extra_damage(object *attacker,object *target,int weapon,int *dama
 // without the fire)
 static int rat_damage(object *attacker,int normal,int damage)
 {
-	char value[16];
-
-	if (normal > 0 && attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types &&
-		 Monster_info[attacker->id].record >= 0 && bm_tbl_get(Monster_info[attacker->id].record,"rat",value,sizeof(value)))
+	if (normal > 0 && attacker && attacker->type == OBJ_ROBOT && dtu_rat_type(attacker->id))
 		return 1;
 	return damage;
+}
+
+// ASCENT: the monster type with the word "rat" (bit 4 of +0xD9 of the
+// monster table, dtuobj.h)
+int dtu_rat_type(int id)
+{
+	// the answer for each type, with the table record it was read from
+	static int rec[MAX_ROBOT_TYPES], rat[MAX_ROBOT_TYPES], init = 0;
+	char value[16];
+	int r;
+
+	if (id < 0 || id >= N_robot_types || id >= MAX_ROBOT_TYPES || (r = Monster_info[id].record) < 0)
+		return 0;
+	if (!init) {
+		memset(rec,-1,sizeof(rec));
+		init = 1;
+	}
+	if (rec[id] != r) {
+		rec[id] = r;
+		rat[id] = bm_tbl_get(r,"rat",value,sizeof(value)) ? 1 : 0;
+	}
+	return rat[id];
 }
 
 // 0x2AF5E. Returns the damage as an integer. A weapon of 0 or more gives
@@ -4207,7 +4226,9 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 			continue;
 		if (vm_vec_dist_quick(&o->pos,&obj->pos) > step + o->size + i2f(30))
 			continue;
+		Fvi_dtu_player_attack = ConsoleObject && parent == ConsoleObject-Objects;	// ASCENT: Dtu_fix_rat_hit
 		d = dtu_object_hit_test(&ip,&obj->pos,end,obj->size,o,obj);
+		Fvi_dtu_player_attack = 0;
 		if (d > 0 && d < best_d) {
 			best_d = d;
 			best = j;
@@ -4683,6 +4704,29 @@ void dtu_creature_physics_sim(object *obj)
 		return;
 	if (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED))
 		return;
+
+	// ASCENT: the move query of a rat (0x9F153) starts in the body of the
+	// player when the player walks over the rat: the object test of the
+	// query (0x3EE70) takes a start point in a body as a hit, so the rat
+	// touches the player (0x9FB4C, collide_robot_and_player 0x26FC1). The
+	// player walks through the rat, its own queries skip it (0x3F38F). The
+	// move of the port does not take a start point in a body as a hit, so
+	// this is the same test with the body of the player (dtu_player_body).
+	if (ConsoleObject && ConsoleObject->type == OBJ_PLAYER && dtu_rat_type(obj->id) && DTU_ANIM_STATE(obj) != DAS_DIE) {
+		dtu_body b;
+		vms_vector d;
+		fix across, r, hh;
+
+		dtu_player_body(&b);
+		dtu_get_body_size(obj,&r,&hh);
+		vm_vec_sub(&d,&obj->pos,&ConsoleObject->pos);
+		across = fix_sqrt(fixmul(d.x,d.x) + fixmul(d.z,d.z));
+		if (across < b.move_rad + r && d.y < b.move_rad2 + hh && d.y > -(b.floor_height + hh)) {
+			collide_two_objects(obj,ConsoleObject,&obj->pos);
+			if (obj->flags & OF_SHOULD_BE_DEAD || DTU_ANIM_STATE(obj) == DAS_DIE)
+				return;
+		}
+	}
 
 	// 0x9F286: the velocity becomes one half on each frame, and the AI
 	// adds direction * speed on each frame (0x11EC9). So the velocity goes
@@ -8170,6 +8214,54 @@ static void dressing_move_frame(void)
 	}
 }
 
+// ASCENT: collide_robot_and_player 0x26FE0 to 0x27054: a creature of the
+// rat type touches the player, and the player wears boots (the item
+// index of the boot slot, byte P+0x1AEC, is not negative). Only the move
+// of the rat finds the contact: each query skips a pass_thru creature
+// (flag 0x40, 0x3F38F), so the player walks through rats. vclip 9 at the
+// rat with its size (0x3BD4C), then 0x25ADF: the rat is hostile, inactive
+// and goes to the center of a random segment whose bottom side has
+// pad & 3 not 1 or 3 and the texture number 0 or less,
+// with the behavior wander (0x1038B), animation state 1 and object flags
+// 0. After 100 tries with no segment the rat plays its die sound
+// (0x2E900) and is removed (0x6A3CC). No experience, no corpse.
+static void rat_squash(object *rat)
+{
+	int n = rat-Objects, tries, seg = -1;
+	vms_vector pos;
+
+	vclip_at(rat->segnum,&rat->pos,rat->size,9);
+	rat->dtu.m_1b0 |= DTU_HOSTILE;
+	for (tries=0;tries<100 && seg < 0;tries++) {
+		int s = Highest_segment_index > 0 ? rand() % Highest_segment_index : 0;
+		int floor = Segments[s].sides[WBOTTOM].pad & 3;
+
+		if (floor == 1 || floor == 3 || Segments[s].sides[WBOTTOM].tmap_num > 0)
+			continue;
+		compute_segment_center(&pos,&Segments[s]);
+		if (find_point_seg(&pos,s) < 0)
+			continue;
+		seg = s;
+	}
+	if (seg < 0) {
+		dtu_obj_log("rat: obj %d is squashed and removed",n);
+		if (Monster_info[rat->id].die_sound > 0)
+			sound_at(Monster_info[rat->id].die_sound,rat->segnum,&rat->pos,F1_0);
+		rat->flags |= OF_SHOULD_BE_DEAD;
+		return;
+	}
+	dtu_obj_log("rat: obj %d is squashed and goes to segment %d",n,seg);
+	rat->pos = pos;
+	obj_relink(n,seg);
+	rat->ctype.ai_info.behavior = DAIB_WANDER;
+	ail_keep_bits = 1;
+	init_creature_ai(rat);
+	ail_keep_bits = 0;
+	DTU_ANIM_STATE(rat) = DTU_ANIM_GOAL(rat) = DAS_STAND;
+	DTU_ANIM_FRAME(rat) = Dtu_anim_first[DAS_STAND];
+	rat->flags &= ~OF_DTU_NOHIT;
+}
+
 int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 {
 	object *t;
@@ -8194,6 +8286,12 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 				pick_up_item(a,b);
 				break;
 			case OBJ_ROBOT:
+				// ASCENT: 0x26FE0: a rat that touches the player with boots
+				// is squashed
+				if (dtu_rat_type(b->id) && Dtu_char.slot[DTU_SLOT_BOOT].n >= 0 && Dtu_char.slot[DTU_SLOT_BOOT].n < Dtu_n_inventory) {
+					rat_squash(b);
+					break;
+				}
 				// collide_robot_and_player (0x26FC1): a hostile creature
 				// that the player touches is alerted. The bump (0x2627C) is
 				// not in the port: the bodies stop in the movement code.

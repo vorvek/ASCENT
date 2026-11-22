@@ -1166,7 +1166,11 @@ animation state DIE at its first frame, mode STILL, status flags 0, hit points
 `collide_robot_and_player` is 0x26FC1 (the table of `collide_two_objects` at
 0x29355 is indexed by the place of the key (type A * 256 + type B - 0x101) in
 the list at 0x292D7, counted from the end). It does not hit: it calls the alert
-function with level 3 for a hostile creature and the bump 0x2627C.
+function with level 3 for a hostile creature and the bump 0x2627C. Before that,
+0x26FE0 to 0x27054: a creature with the `rat=` bit (monster table +0xD9 bit 4)
+and a player with boots (the item index of the boot slot, byte P+0x1AEC, is 0
+or more; 0x27014 tests it against the entry count P+0xF3 and runs `int 3` if it
+is not below it) is squashed (objects.md, "Rats").
 
 ### Dead code: do_ai_robot_hit_attack (0x1153A)
 

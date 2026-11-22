@@ -3584,15 +3584,55 @@ static void run_command(char *cmd, char *value)
 		ConsoleObject->pos = c;
 		obj_relink(ConsoleObject - Objects, a);
 	}
-	else if (!strcmp(cmd, "goobj") && a >= 0 && a < MAX_OBJECTS) {		// test: goobj=N, 4.0 in front of object N
+	else if (!strcmp(cmd, "goobj") && a >= 0 && a < MAX_OBJECTS) {		// test: goobj=N[.D], D (default 4.0) in front of object N
 		object *o = &Objects[a];
 		vms_vector to;
 
 		vm_vec_sub(&to, &o->pos, &ConsoleObject->pos);
 		vm_vec_normalize(&to);
-		vm_vec_scale_add(&ConsoleObject->pos, &o->pos, &to, -i2f(4));
+		vm_vec_scale_add(&ConsoleObject->pos, &o->pos, &to, -i2f(b > 0 ? b : 4));
 		vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
 		obj_relink(ConsoleObject - Objects, find_point_seg(&ConsoleObject->pos, o->segnum) >= 0 ? find_point_seg(&ConsoleObject->pos, o->segnum) : o->segnum);
+	}
+	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a);		// test: reach=N, the attacks that reach creature N (tools/check_reach.py)
+	else if (!strcmp(cmd, "goobjh") && a >= 0 && a <= Highest_object_index) {		// test: goobjh=N.D, D (default 4.0) in front of object N at the height of the player
+		object *o = &Objects[a];
+		vms_vector to, p;
+		int seg;
+
+		vm_vec_sub(&to, &o->pos, &ConsoleObject->pos);
+		to.y = 0;
+		if (vm_vec_normalize(&to) <= 0x100) {		// on the object: the view direction
+			to = ConsoleObject->orient.fvec;
+			to.y = 0;
+			if (vm_vec_normalize(&to) <= 0x100)
+				to.x = F1_0, to.z = 0;
+		}
+		{
+			vm_vec_scale_add(&p, &o->pos, &to, -i2f(b > 0 ? b : 4));
+			p.y = ConsoleObject->pos.y;
+			seg = find_point_seg(&p, ConsoleObject->segnum);
+			if (seg < 0)
+				seg = find_point_seg(&p, o->segnum);
+			if (seg >= 0) {
+				ConsoleObject->pos = p;
+				vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
+				obj_relink(ConsoleObject - Objects, seg);
+			}
+		}
+	}
+	else if (!strcmp(cmd, "onobj") && a >= 0 && a <= Highest_object_index) {		// test: onobj=N, the player stands on object N (same x and z)
+		object *o = &Objects[a];
+		vms_vector p = ConsoleObject->pos;
+		int seg;
+
+		p.x = o->pos.x;
+		p.z = o->pos.z;
+		seg = find_point_seg(&p, o->segnum);
+		if (seg >= 0) {
+			ConsoleObject->pos = p;
+			obj_relink(ConsoleObject - Objects, seg);
+		}
 	}
 	else if (!strcmp(cmd, "break") && a >= 0 && a < MAX_OBJECTS)		// test: break=N, the scenery N breaks
 		dtu_break_dressing(&Objects[a], ConsoleObject, 0);
@@ -3716,6 +3756,25 @@ static void run_command(char *cmd, char *value)
 			a, o->type, o->id, o->segnum, f2i(o->shields), o->flags, o->dtu.m_1b0 & 0x1ff, (o->dtu.m_1b0 >> 10) & 0x3ff,
 			(o->dtu.m_1b0 >> 20) & 0xf, (o->dtu.m_1b0 >> 24) & 0xf, (o->dtu.m_1b0 >> 28) & 0xf,
 			o->contains_type, o->contains_id, o->contains_count);
+	}
+	else if (!strcmp(cmd, "near")) {		// test: near or near=RANGE[.1], the creatures (.1: all objects) in RANGE (default 30) by distance, with the angle to the view
+		int i, range = a > 0 ? a : 30;
+
+		for (i = 0; i <= Highest_object_index && ConsoleObject; i++) {
+			object *o = &Objects[i];
+			vms_vector d;
+			fix dist;
+
+			if (o->type != OBJ_ROBOT)
+				continue;
+			dist = vm_vec_normalized_dir(&d, &o->pos, &ConsoleObject->pos);
+			if (dist > i2f(range))
+				continue;
+			dtu_char_log("near %d: %s type %d id %d seg %d dist %.2f dot %.2f hp %d flags 0x%x size %.2f pass_thru %d",
+				i, dtu_object_name(o), o->type, o->id, o->segnum, f2fl(dist), f2fl(vm_vec_dot(&d, &ConsoleObject->orient.fvec)),
+				f2i(o->shields), o->flags, f2fl(o->size), o->type == OBJ_ROBOT && o->id < N_robot_types && (Monster_info[o->id].flags & MONSTER_F_PASS_THRU) ? 1 : 0);
+		}
+		dtu_char_log("near: target hint %d", dtu_combat_target_hint());
 	}
 	else if (!strcmp(cmd, "wall") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: wall=SEG.SIDE, the wall of the side
 		int wn = Segments[a].sides[b].wall_num;

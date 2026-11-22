@@ -44,6 +44,16 @@ extern int Dtu_fix_haste_attack;
 // (two times with Slow, half with Haste), a press before that is consumed.
 extern int Dtu_fix_missile_rate;
 
+// Rats. Each table has the creature "Rat" with pass_thru. The executable
+// sets the flag 0x40 of such a creature at each load (0x6A102), and each
+// object query skips that flag (fvi_sub 0x3F38F): the swing, the shots,
+// the use ray and the move of the player. So no weapon, missile or spell
+// missile of the player can hit a rat that it can see. Only a rat that
+// runs into a player with boots dies (0x26FE0, it goes to another
+// segment). Corrected: the swing and the missiles of the player (and the
+// target hint) reach a rat. The player still walks through rats.
+extern int Dtu_fix_rat_hit;
+
 // Turn undead (0xADC46). When the number of creatures that a turn can
 // destroy is used up, the executable clears the "can be tried" bit of the
 // next undead before it stops (0xADF09), so that creature can never be
@@ -92,6 +102,10 @@ void dtu_combat_draw_view(void);
 // a missile or of a spell missile), at the time of the last
 // dtu_combat_frame(). The cursor of the play screen (dtudisp.c) shows it.
 int dtu_combat_target_hint(void);
+
+// ASCENT: test (-chartest reach=N): the player looks at creature N, and the
+// character log gets what the swing, a missile and the target hint reach.
+void dtu_combat_reach_test(int objnum);
 
 // The state of the arms, for tests and for the display.
 int dtu_combat_view_state(void);
