@@ -41,6 +41,7 @@
 #include "physics.h"		// ASCENT: Dtu_player_state (infravision)
 #include "kconfig.h"		// ASCENT: the key table (dtu_action_key)
 #include "3d.h"			// ASCENT: g3_gpu_view_dest
+#include "globvars.h"		// ASCENT: the projection of the view (dtu_display_print_view)
 #include "dtuhdui.h"		// ASCENT: the upscaled interface pictures
 #include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
 #include "dtuscroll.h"		// ASCENT: no input and no cursor while the scroll text screen is open
@@ -233,6 +234,15 @@ static dtu_sbar Msg_sbar[2] = {
 // lines with the up arrow, although the newest line is at the bottom of
 // the box. -origui gives the original.
 int Dtu_fix_msg_scroll = 1;
+
+// ASCENT: the pixel aspect of the 3D view in high resolution. Before each
+// frame 0x41193 sets the aspect of the screen to 0x13333 (1.2, the pixel
+// of 320x200 on a 4:3 monitor) or, with 0x13A94B set, to 0x26666 (2.4).
+// A rendered line of the high resolution shows as two lines of the
+// 640x480 screen, whose pixels are square: the right aspect is 2.0. With
+// 2.4 a thing that is square in the scene is 1.2 times too wide, in each
+// screen size. 1 (default): 2.0. -origui gives the original.
+int Dtu_fix_hires_aspect = 1;
 
 // Hot key boxes of the low resolution hot key screen (0x144680, 0x1446A8)
 static short Hotkey_lo_x[10] = { 107, 107, 107, 107, 107, 161, 161, 161, 161, 161 };
@@ -1094,7 +1104,7 @@ int dtu_display_init(void)
 	if (Icons_bm) Icons_bm->bm_flags |= BM_FLAG_TRANSPARENT;
 	Interface_entry = -1;
 	if (FindArg("-origui"))
-		Dtu_fix_msg_scroll = 0;
+		Dtu_fix_msg_scroll = Dtu_fix_hires_aspect = 0;
 	Msg_count = 0;
 	Msg_first = 0;
 	memset(Key_was_down, 0, sizeof(Key_was_down));
@@ -1114,18 +1124,51 @@ int dtu_display_init(void)
 void dtu_display_begin_render(void)
 {
 	Saved_aspect = grd_curscreen->sc_aspect;
-	// A rendered line covers two lines of the 640x480 screen.
+	// A rendered line covers two lines of the 640x480 screen. The aspect
+	// does not depend on the view size (0x41193), so each screen size
+	// (F3, minus, equal, the screens) shows the same shapes; the angle of
+	// view in y is the same and the one in x follows the width of the view
+	// (g3_start_frame, 0xD93E8).
 	if (Dtu_display_active && Dtu_hires)
-		grd_curscreen->sc_aspect = Saved_aspect * 2;
+		grd_curscreen->sc_aspect = Dtu_fix_hires_aspect ? Saved_aspect * 2 : 0x26666;
 }
+
+// ASCENT: the projection of the last render, for dtu_display_print_view
+static int Last_canvas_w, Last_canvas_h;
+static fix Last_aspect;
+static vms_vector Last_scale;
 
 void dtu_display_end_render(void)
 {
+	Last_canvas_w = Canvas_width;
+	Last_canvas_h = Canvas_height;
+	Last_aspect = grd_curscreen->sc_aspect;
+	Last_scale = Matrix_scale;
 	grd_curscreen->sc_aspect = Saved_aspect;
 }
 
 // ASCENT: the rectangle of the last draw_view, for dtu_display_view_again.
 static int View_dest[4], View_dest_set;
+
+// ASCENT: for tools/uitest.py (the script command viewstate). The view
+// rectangle in the units of a 4:3 screen of 640x480, the tangents of the
+// half angles of view, and the shape: the width over the height on that
+// screen of a thing that is square in the scene (1 is right).
+void dtu_display_print_view(void)
+{
+	double dw, dh, tx, ty, shape;
+
+	if (!View_dest_set || !Last_scale.x || !Last_scale.y)
+		return;
+	dw = View_dest[2] * (Dtu_hires ? 1.0 : 2.0);
+	dh = View_dest[3] * (Dtu_hires ? 1.0 : 2.4);
+	tx = (double) Last_scale.z / Last_scale.x;
+	ty = (double) Last_scale.z / Last_scale.y;
+	shape = (dw * Last_scale.x) / (dh * Last_scale.y);
+	printf("Viewstate mode=%d hires=%d canvas=%dx%d view=%.0fx%.0f aspect=%.4f tanx=%.4f tany=%.4f shape=%.4f\n",
+		Dtu_interface_mode, Dtu_hires, Last_canvas_w, Last_canvas_h, dw, dh, Last_aspect / 65536.0, tx, ty, shape);
+	fflush(stdout);
+}
 
 void dtu_display_view_again(void)
 {

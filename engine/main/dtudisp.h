@@ -41,6 +41,10 @@ extern int Dtu_immersive;
 // that need the cursor call it (dtudisp.c, "the screens that free the mouse").
 void dtu_display_set_immersive(int on);
 
+// ASCENT: prints the projection of the last view (the script command
+// viewstate of -fescript).
+void dtu_display_print_view(void);
+
 // 0 (default): a key or a mouse button acts once for each press. 1: it acts
 // again in each frame while it is down, as the original does.
 extern int Dtu_ui_key_repeat;

@@ -230,6 +230,39 @@ def test_immersive_screen_no_jump(t):
     assert differ(region(s["a"], *spot), region(s["b"], *spot)) < 0.05, "the view turned"
 
 
+def view_states(t):
+    """The lines of the script command viewstate, as dicts."""
+    out = []
+    for line in t.stdout.splitlines():
+        if line.startswith("Viewstate "):
+            out.append(dict(kv.split("=") for kv in line.split()[1:]))
+    return out
+
+
+VIEW_SIZES = ["gamekeys", "wait 30", "viewstate", "key =", "wait 10", "viewstate", "key -", "wait 10",
+              "viewstate", "key i", "wait 10", "viewstate", "key i", "wait 5"]
+
+
+def test_view_aspect(t):
+    """Each screen size (main, = and F3 full screen, the inventory) shows
+    the same shapes: a square thing is square on a 4:3 screen, and the
+    angle of view in y is the same (0x41193, g3_start_frame 0xD93E8). Also
+    with the low resolution and the software renderer. -origui: the 2.4
+    aspect of the executable in high resolution (Dtu_fix_hires_aspect)."""
+    for extra, want in (([], 1.0), (["-software"], 1.0), (["-lowres"], 1.0), (["-origui"], 1.2)):
+        t.run("view_aspect", VIEW_SIZES, extra=extra)
+        v = view_states(t)
+        assert len(v) == 4, "%s: %d view states" % (extra, len(v))
+        modes = [s["mode"] for s in v]
+        assert modes == ["0", "7", "0", "3"], "%s: modes %s" % (extra, modes)
+        for s in v:
+            assert abs(float(s["shape"]) - want) < 0.01, "%s: shape %s in mode %s" % (extra, s["shape"], s["mode"])
+        # the small view of a screen can be taller than wide (s > 1 in
+        # g3_start_frame): its angle in x is the fixed one then
+        for s in v[:3]:
+            assert s["tany"] == v[0]["tany"], "%s: the angle in y changed in mode %s" % (extra, s["mode"])
+
+
 # The text of the message box of the main screen, high resolution
 MSGBOX = (131, 306, 470, 77)
 MSG_V = ["gamekeys", "wait 20"] + ["key v", "wait 3"] * 10 + ["move 300 200", "wait 3", "shot base"]
