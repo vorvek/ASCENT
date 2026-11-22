@@ -173,7 +173,7 @@ typedef struct monster_ext {
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
-	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), read by no code of the port (audit C16)
+	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), cast by the damage function (0x2A637)
 } monster_ext;
 
 static monster_ext Monster_ext[MAX_ROBOT_TYPES];
@@ -3472,6 +3472,19 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 	dtu_obj_log("damage: the player takes %d from %s%s%s, hp %d",f2i(damage),
 		attacker ? dtu_object_name(attacker) : "nothing",weapon >= 0 ? ", weapon " : "",
 		weapon >= 0 ? Weapon_item_info[weapon].name : "",f2i(hp));
+
+	// 0x2A637: the touch spell of the type of the attacker (+0x7C, set only
+	// by the creature setup 0xAC7B2: 22, Hold Person, for the lich). The
+	// damage function casts it on the player after each attack that did
+	// damage, before the death test (0x2A680). 0x8CFFF(spell, player,
+	// creature): the save and the duration are the ones of the spell. The
+	// executable sets the counter Spell_info+0x49 of 22 and 52 to 1 first, so
+	// that the cast is not refused. Spell damage does not come here (0x911AA).
+	if (weapon != DTU_DIRECT && attacker && attacker != player && attacker->type == OBJ_ROBOT &&
+		 attacker->id < N_robot_types && Monster_ext[attacker->id].touch_spell >= 0) {
+		dtu_obj_log("attack: the touch of %s casts spell %d on the player",dtu_object_name(attacker),Monster_ext[attacker->id].touch_spell);
+		dtu_spell_cast_on(Monster_ext[attacker->id].touch_spell,player,attacker);
+	}
 
 	if (hp < F1_0)
 		player_dies(player,attacker);
