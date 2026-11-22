@@ -106,6 +106,11 @@ is found) or an extracted patch folder, and checks each file.
   folder of the level states, `GELDOR.DAT` and `THESTORE.<n>`. The names of these
   files are found with any case of the letters (`dtu_user_find`, dtustate.c). If the data folder has
   no `DTU.MSN`, a message box says so. `Error()` shows a message box too.
+- The settings: first `default.cfg` next to the executable (the defaults of the
+  installation, same `name=value` format as `ascent.cfg`, written only by the setup
+  program), then `ascent.cfg` of the user, then the arguments (`-language`, ...). A
+  setting in `ascent.cfg` wins over `default.cfg`, so the default never changes a
+  choice of the player. A `-datadir` run does not read `default.cfg` (dtuopts.c).
 - `-userdir DIR` changes the folder of the user.
 - The session logs go to `logs` in the folder of the user (docs/debug_logs.md).
 - `dtu_user_path()` gives the path of a file of the player. dtuopts.c, dtufe.c (save
@@ -187,7 +192,7 @@ ascent-import --source PATH --dest DIR [--patch PATH] [--check]
 | `textures` | `hd/textures` without `.cache` | 60,396 | 3,896 | 396,695,525 bytes |
 | `ui` | `hd/ui` | 39 | 39 | 119,884,683 bytes |
 | `movies` | `hd/*.m1v` | 5 | 5 | 485,625,672 bytes |
-| `lang_es` | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...` (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 2 or more | | not built yet |
+| `lang_es` | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...` (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 3 | 3 | 401,931 bytes |
 
 The language packs hold the Spanish text of the game files and the subtitles
 (`docs/formats/lang.md`); they are made from the translations that
@@ -271,7 +276,9 @@ The content tool is installed with the game ("ASCENT-DTU Content" in the Start m
 - Without a command it opens a window: the list of the packs of the server and of the
   installed packs (version installed, version available, size, status), and the buttons
   Install, Remove, Check / repair, Refresh. It works without the server for the check
-  and the removal of installed packs.
+  and the removal of installed packs. The names in the list are the titles of the
+  manifest (`lang_es`: "Spanish text (translation and subtitles)"); the pack `patch13`
+  (target `data`) is not listed. The window is in English only.
 - Commands: `list`, `download PACK FILE`, `install PACK...`, `remove PACK...`,
   `verify PACK...`, `repair PACK...`, with `--root DIR` and `--url URL`.
 - A download is checked against the size and the SHA-256 of the manifest. After an
@@ -283,20 +290,44 @@ The content tool is installed with the game ("ASCENT-DTU Content" in the Start m
 ## The setup program
 
 `installer/build.sh [CONTENT_DIR]` builds `build-rel/setup/ascent-dtu-setup-<version>.exe`
-(the download sizes come from `CONTENT_DIR/manifest.txt`).
+(the download sizes come from `CONTENT_DIR/manifest.txt`: MB for the textures and the
+movies, KB for `lang_es`).
 
-The pages: installation folder (default `%LOCALAPPDATA%\Programs\ASCENT`, no
+The setup program is in English, Spanish, German, French and Italian. It starts with
+the language dialog (`ShowLanguageDialog=yes`; the language of Windows is preselected).
+The standard texts come from the `.isl` files of Inno Setup (`Default.isl`,
+`Languages\Spanish.isl`, `German.isl`, `French.isl`, `Italian.isl`); the texts of the
+script are in `[CustomMessages]` of `ascent.iss`, one block for each language with the
+same names. A new language needs a `[Languages]` line and a full block. The language
+changes only the setup program and the uninstaller; the "ASCENT-DTU Content" shortcut
+has a translated name.
+
+The pages: language, installation folder (default `%LOCALAPPDATA%\Programs\ASCENT`, no
 administrator rights), game disc (one field with Folder and Image buttons: "Select
 the location of the game disc", a CD drive, a copy of the disc, or an `.iso` file or a
 `.bin` and `.cue` pair; Setup does not search the drives; Next runs `ascent-import --check` and shows its error), tasks (Start menu entry,
-checked; desktop shortcut; "Upscaled textures and interface (download, about 493 MB)",
-checked; "Upscaled movies (download, about 463 MB)", unchecked because of the size),
-ready, the progress page of the patch download and the import (a failure stops Setup
-with the message of the tool), the content downloads (a failure is a warning: the game
-works without them), and the last page with "Play ASCENT-DTU".
+checked; desktop shortcut; and, when the setup program has a server address, the
+downloadable content: "Upscaled textures and interface (for the GPU renderer; download,
+about 493 MB)", checked; "Upscaled movies (for the GPU renderer; download, about 463
+MB)", unchecked because of the size; "Spanish translation of the game text (download,
+about 393 KB)", task `langes`, pack `lang_es`, checked only in the Spanish setup
+program), ready, the progress page of the patch download and the import (a failure
+stops Setup with the message of the tool), the content downloads (a failure is a
+warning: the game works without them), and the last page with "Play ASCENT-DTU".
 
-Command line: `/SOURCE=`, `/PATCH=`, `/CONTENTURL=`, and `/DIR=`,
-`/TASKS=`, `/VERYSILENT`, `/SUPPRESSMSGBOXES`, `/LOG=`.
+The default language of the game: when the setup program is in Spanish and `lang_es`
+is installed, Setup writes `default.cfg` with the line `Language=es` into the
+installation folder. The game reads it before `ascent.cfg` (Runtime, above): a new
+player starts in Spanish, and a player whose `ascent.cfg` has a `Language=` line keeps
+that language. When the player changes a setting, the game writes `ascent.cfg` with all
+the settings, `Language=` included; from then on the language is the player's own. In the other languages Setup does not
+write `default.cfg` (the language can be chosen in the options menu of the game). The
+uninstaller removes `default.cfg`.
+
+Command line: `/SOURCE=`, `/PATCH=`, `/CONTENTURL=`, and `/LANG=` (`english`,
+`spanish`, `german`, `french`, `italian`), `/DIR=`, `/TASKS=` (`startmenu`,
+`desktopicon`, `hdtextures`, `hdmovies`, `langes`), `/VERYSILENT`,
+`/SUPPRESSMSGBOXES`, `/LOG=`.
 
 The uninstaller (Windows "Installed apps") removes the program, `data`, `hd` and
 `content`. It asks before it removes `%APPDATA%\ASCENT-DTU` (saves and settings); the
