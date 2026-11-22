@@ -1426,35 +1426,59 @@ class Pages:
             [self.O[0].name(), "Does nothing: it gives no light and has no use."],
             [self.O[10].name() + ", " + self.O[13].name() + ", " + self.O[11].name() + ", " + self.O[12].name(),
              "In the lockpick place, for a thief: Open Locks +5, +10, +15, +20."],
-            [self.O[25].name(), "USE: Spider Climb, Free Action, Haste and Infravision with no end. Each "
-                                "use takes one charge."],
         ]
         sp = ", ".join(self.S[s].name() for s in self.c["spider_spells"])
+        # The inventory icon of each piece ($OBJECT icon= of the lines 18 to
+        # 26, FEBGND entries 23 and 24), described in words; USE from the
+        # cases 0x12 to 0x1A of 0x37A6A (docs/audit/gear.md); the statue of
+        # FLAME takes 18, 19, 24, 26, 22, 23, 20 (docs/re/quests.md).
+        statue = "Yes, the statue of the last level takes it."
         spider = [
-            "Turn undead as a cleric of level 2 x your first class level + 1.",
-            "You know the whole map of the level.",
-            "Each person in sight (human, drow and the like) gets one of three at random: death unless "
-            "it saves, a random spell (%s), or it spins in place unless it saves (how the spin ends "
-            "is not known)." % sp,
-            "Fear around you, and Aid, Magical Vestment, Fly, Protection From Fire, Resist Fire, Flame "
-            "Walk and Strength on you.",
-            "The view visits each creature of the level in turn, for 1 to 3 seconds each.",
-            "All your hit points, and Aid, Shield, Feather Fall, Improved Invisibility, Magical Vestment, "
-            "Prayer, Protection From Evil, Resist Fire and Stone Skin on you; then Cure Blindness or "
-            "Deafness if you need it.",
-            "A quest script runs.",
-            "Nothing happens: one piece has no use.",
+            (18, "Two black legs, bent at the lower right, reaching up to the left.",
+             "Turn undead as a cleric of level 2 x your first class level + 1.", statue),
+            (19, "Two black legs, bent at the lower left, reaching up to the right. The mirror "
+                 "image of the piece above.",
+             "You know the whole map of the level.", statue),
+            (20, "A red-brown hourglass: the waist of the spider.",
+             "Each person in sight (human, drow and the like) gets one of three at random: death "
+             "unless it saves, a random spell (%s), or it spins in place unless it saves (how the "
+             "spin ends is not known)." % sp, statue),
+            (21, "An empty square of sand, with no drawing on it.",
+             "Nothing happens: this piece has no use.",
+             "No. It lies in the last level, and the statue does not take it."),
+            (22, "Two black legs that start at the upper right and hang down to the lower left.",
+             "Fear around you, and Aid, Magical Vestment, Fly, Protection From Fire, Resist Fire, "
+             "Flame Walk and Strength on you.", statue),
+            (23, "Two black legs that start at the upper left and curve down to the lower right, "
+                 "like a sickle. Almost the mirror image of the piece above.",
+             "The view visits each creature of the level in turn, for 1 to 3 seconds each.", statue),
+            (24, "The left half of the black body, with a pale hourglass mark. The cut edge is at "
+                 "the right.",
+             "A quest script runs.", statue),
+            (26, "The right half of the black body, with a pale hourglass mark. The cut edge is at "
+                 "the left: the mirror image of the piece above.",
+             "All your hit points, and Aid, Shield, Feather Fall, Improved Invisibility, Magical "
+             "Vestment, Prayer, Protection From Evil, Resist Fire and Stone Skin on you; then Cure "
+             "Blindness or Deafness if you need it.", statue),
+            (25, "The whole black spider with eight legs.",
+             "Spider Climb, Free Action, Haste and Infravision with no end.",
+             "No. It lies behind the wall that the statue opens, and later triggers of the level "
+             "need it."),
         ]
-        total += len(wrows) + len(orows)
+        srows = [[self.O[i].name(), "%s (icon %s)" % (pic, self.O[i].get("icon", "?")), use, st]
+                 for i, pic, use, st in spider]
+        total += len(wrows) + len(orows) + len(srows)
         out += ["## Other items with a use", "",
                 md_table(["Item", "Effect"], orows), "",
                 "## Spider Pieces", "",
-                "The pieces of Lolth's spider are quest items for every class. They all have the name "
-                "Spider Piece, and the game shows nothing that tells them apart. Use a piece to learn "
-                "what it does. Each use takes one charge; with no charge left, \"Nothing happens...\". "
-                "The last level asks for seven of the pieces.", "",
-                "The possible results of USE, one for each piece:", ""]
-        out += ["- " + x for x in spider] + [""]
+                "The pieces of Lolth's spider are quest items for every class. Eight of them have the "
+                "name Spider Piece, but each has its own picture in the item list, and its own picture "
+                "on the floor too. The pictures are the parts of a black spider on sand. Three pairs "
+                "are mirror images: look at which side the legs or the cut edge of the body are on. "
+                "Each use takes one charge; with no charge left, \"Nothing happens...\".", "",
+                md_table(["Item", "Picture", "USE", "Taken by the statue"], srows), "",
+                "The statue of the last level takes seven pieces and then opens a wall; the "
+                "Assembled Spider lies behind it.", ""]
         out += ["Potions, wands and scrolls have their own pages: [[Potions]], [[Wands]], [[Scrolls]].", "",
                 "## Notes", "",
                 "- Quest items cannot be dropped (\"You can't drop that.\"): the keys, the Spider Pieces, "
@@ -1465,7 +1489,11 @@ class Pages:
                 "Lathandar, Drowslayer and +3 Longsword. ASCENT spells the name of the god Lathander.",
                 "- ASCENT corrects these item names (the option -origitems gives the names of 1.3): "
                 + "; ".join("\"%s\" is %s" % (n["name13"], n["name"]) for n in self.name_fixes) + ".",
-                "- The game does not identify items: every item shows its real name.", "",
+                "- The game does not identify items: every item shows its real name.",
+                "- Some items share a picture in the item list, and only the name tells them apart: "
+                "the %s and the %s; the %s, the %s and the %s; the %s and the %s."
+                % (self.O[101].name(), self.O[16].name(), self.O[2].name(), self.O[103].name(),
+                   self.O[105].name(), self.O[125].name(), self.O[107].name()), "",
                 "## Rulebook items", "",
                 "The setting \"Rulebook items\" of the Improvements menu gives these items the values of "
                 "the AD&D 2nd edition rulebooks. It is off by default, because it changes the balance of "
