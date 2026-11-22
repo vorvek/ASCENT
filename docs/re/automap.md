@@ -51,8 +51,9 @@ as in Descent 1: it is drawn in the circle of the map screen (interface mode 4, 
   bytes of the control values and the key, mouse and joystick buffers: the player does not
   move.
 - **V** Both paths: view matrix = player orientation x the angles, the distance kept in
-  100.0 to 2000.0 (0x13A804, 200.0 at the start; the save game keeps it and the view
-  matrix, 0x19B9F and 0x19C10).
+  100.0 to 2000.0 (0x13A804, 200.0 at the start). The load and save functions of the distance
+  and the view matrix (0x19B9F, 0x19C10) have no call, jump or pointer in the
+  image (a byte search), so the save game of 1.3 does not keep them.
 - **V** The mouse (0x305C9, in the click code of the interface): in mode 4 a new
   press of the left button inside the rectangle of the canvas sets 0x13A7F8 = 1, a press
   outside it sets 0. **G**: the other two writes of 0 (0x2FE2E, 0x2FF8E) are other
@@ -138,4 +139,5 @@ GPU renderer. Port decisions:
 - `Dtu_fix_automap_reveal` (1, `-origui` gives 0): the D key does not show the whole level.
   D is a movement key of the port.
 - A new mode selection clears the flag 0x13A7F8 (the executable clears it in 0x408F5).
-- Not done: Print Screen in the map, the distance in the save game, the other players.
+- Not done: Print Screen in the map, the other players. (The distance is not in the
+  save game of 1.3 either.)
