@@ -309,6 +309,38 @@ def test_thief_points(t):
     assert differ(region(s["plus"], *THIEFMSG), region(s["esc"], *THIEFMSG)) > 0.02, "no message"
 
 
+def type_keys(word):
+    out = []
+    for c in word:
+        out += ["key " + c, "wait 2"]
+    return out
+
+
+def session_log(d):
+    for root, _, files in os.walk(d):
+        for f in files:
+            if f.startswith("ascent-") and f.endswith(".log"):
+                with open(os.path.join(root, f), errors="replace") as fh:
+                    return fh.read()
+    return ""
+
+
+def test_cheat_codes(t):
+    """The cheat codes of 1.3 act (0x4324E, 0x428B9 to 0x42BED): zazb,
+    glassy, and eightisgreat with its message 0x125783 (its two I keys open
+    and close the inventory). The cheat enable code of Descent 1 does
+    nothing."""
+    lines = ["gamekeys", "wait 20", "move 300 200"] + type_keys("zazb") + type_keys("glassy")
+    lines += ["wait 5", "shot before"] + type_keys("eightisgreat") + ["wait 5", "shot sword"]
+    lines += type_keys("gabbagabbahey") + ["wait 5", "shot d1"]
+    s, d = t.run("cheats", lines)
+    text = session_log(d)
+    for c in ("zazb", "glassy", "eightisgreat"):
+        assert "cheat " + c in text, "the code %s did not act" % c
+    assert differ(region(s["before"], *MSGBOX), region(s["sword"], *MSGBOX)) > 0.001, "no message"
+    assert differ(region(s["sword"], *MSGBOX), region(s["d1"], *MSGBOX)) < 0.001, "a Descent 1 code acted"
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 
