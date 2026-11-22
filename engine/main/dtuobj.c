@@ -2107,6 +2107,7 @@ void dtu_objects_level_setup(void)
 	if (!Level_setup_restore) {
 		level_fixes_objects(has_state);
 		lava_textures_lookup();		// 0xAD744
+		dtu_thief_level_textures();	// 0xAD744: the rest of 0xA6F89
 	}
 
 	// level_start 0xAD5BF: the creature setup by name and add_npc

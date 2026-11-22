@@ -120,6 +120,10 @@ typedef struct dtu_trap {
 int dtu_trig_read_tig(ubyte *data, int size, int from_state);
 int dtu_trig_read_tap(ubyte *data, int size, int from_state);
 ubyte *dtu_trig_write_tig(int *size);
+// ASCENT: the record of trap t as the TAP file has it (the port keeps the
+// bytes that it does not decode). The thief skills keep their state in the
+// bytes +0x03 and +0x04 (dtuthief.c). NULL for a bad number.
+ubyte *dtu_trig_trap_raw(int t);
 ubyte *dtu_trig_write_tap(int *size);
 
 extern dtu_trigger	Dtu_triggers[DTU_MAX_TRIGGERS];

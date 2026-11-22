@@ -1621,6 +1621,11 @@ int dtu_trig_read_tap(ubyte *data, int size, int from_state)
 }
 
 // 0x95E0A: u32 2, s16 count, the segment table, the records.
+ubyte *dtu_trig_trap_raw(int t)
+{
+	return (t >= 0 && t < Dtu_num_traps) ? Trap_raw[t] : NULL;
+}
+
 ubyte *dtu_trig_write_tig(int *size)
 {
 	int i, n = Dtu_num_triggers;

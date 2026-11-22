@@ -37,6 +37,8 @@
 #include "dtuspell.h"
 #include "dtutrig.h"
 #include "dtuthief.h"
+#include "args.h"
+#include "dtufile.h"		// ASCENT: dtu_log()
 
 int Dtu_thief_bits = 0;
 
@@ -45,18 +47,37 @@ int Dtu_thief_bits = 0;
 static fix Lock_time = 0, Search_time = 0, Silent_time = 0;
 // 0x14534A: Hide In Shadows may roll at the next stop
 static int Hide_ready = 0;
-// The byte 0x17 of the wall record (the pad of the Descent 1 structure):
-// the thief level + 1 of a failed pick
-static ubyte Lock_failed[MAX_WALLS];
-// The byte 0x16 of the wall record: the racial search (0xB3ECE) has asked
-// this wall. 0xAD5BF clears it for the walls of a new level.
-static ubyte Wall_searched[MAX_WALLS];
-// The thief state bytes of the trigger (+0x0F, +0x10) and trap (+0x03,
-// +0x04) records: 0 nothing known, level + 1 a failed find, 0xFF found,
-// 0xFE found and left alone; the second byte: level + 1 of a failed
-// removal
-static ubyte Trig_find[DTU_MAX_TRIGGERS], Trig_remove[DTU_MAX_TRIGGERS];
-static ubyte Trap_find[DTU_MAX_TRAPS], Trap_remove[DTU_MAX_TRAPS];
+// ASCENT: the thief state lives in the records of the level, as in the
+// executable, so the level state and the save games keep it:
+// - the wall record (the pad of the Descent 1 structure, `wall.pad`):
+//   byte 0x16 (low byte) is 1 when the racial search (0xB3ECE) has asked
+//   the wall, byte 0x17 (high byte) is the thief level + 1 of a failed
+//   pick. The fresh branch of level_start (0xAD67B) clears both bytes;
+//   the port does it in dtu_thief_level_loaded().
+// - the trigger record bytes +0x0F and +0x10 (`unk0f`) and the trap record
+//   bytes +0x03 and +0x04 (the raw record of dtutrig.c): 0 nothing known,
+//   level + 1 a failed find, 0xFF found, 0xFE found and left alone; the
+//   second byte: level + 1 of a failed removal. The readers of the level
+//   files clear them (0xAD6A8, 0xAD6D4 for a fresh level).
+static int wall_searched(int wn) { return Walls[wn].pad & 0xFF; }
+static void set_wall_searched(int wn) { Walls[wn].pad = (short) ((Walls[wn].pad & 0xFF00) | 1); }
+static int lock_failed(int wn) { return (Walls[wn].pad >> 8) & 0xFF; }
+static void set_lock_failed(int wn, int v) { Walls[wn].pad = (short) ((Walls[wn].pad & 0xFF) | ((v & 0xFF) << 8)); }
+static int trig_byte(int t, int n) { return (Dtu_triggers[t].unk0f >> (8 * n)) & 0xFF; }
+static void set_trig_byte(int t, int n, int v)
+{
+	Dtu_triggers[t].unk0f = (Dtu_triggers[t].unk0f & ~(0xFFu << (8 * n))) | ((uint) (v & 0xFF) << (8 * n));
+}
+static int trap_byte(int t, int n) { ubyte *r = dtu_trig_trap_raw(t); return r ? r[3 + n] : 0; }
+static void set_trap_byte(int t, int n, int v) { ubyte *r = dtu_trig_trap_raw(t); if (r) r[3 + n] = (ubyte) v; }
+#define Trig_find(t)				trig_byte(t, 0)
+#define Trig_remove(t)				trig_byte(t, 1)
+#define Set_trig_find(t, v)		set_trig_byte(t, 0, v)
+#define Set_trig_remove(t, v)		set_trig_byte(t, 1, v)
+#define Trap_find(t)				trap_byte(t, 0)
+#define Trap_remove(t)				trap_byte(t, 1)
+#define Set_trap_find(t, v)		set_trap_byte(t, 0, v)
+#define Set_trap_remove(t, v)		set_trap_byte(t, 1, v)
 static int Thief_level_num = -1;
 static int trigger_harmful(int t);
 // The climb: the point of the last roll (0x145353)
@@ -104,13 +125,7 @@ static void level_check(void)
 	if (Thief_level_num == Current_level_num)
 		return;
 	Thief_level_num = Current_level_num;
-	memset(Lock_failed, 0, sizeof(Lock_failed));
-	memset(Wall_searched, 0, sizeof(Wall_searched));
-	memset(Trig_find, 0, sizeof(Trig_find));
-	memset(Trig_remove, 0, sizeof(Trig_remove));
-	memset(Trap_find, 0, sizeof(Trap_find));
-	memset(Trap_remove, 0, sizeof(Trap_remove));
-	Dtu_thief_bits &= ~(DTU_TS_HIDDEN|DTU_TS_HIDE_FAILED|DTU_TS_CLIMB_SKILL);
+	Dtu_thief_bits &=~(DTU_TS_HIDDEN|DTU_TS_HIDE_FAILED|DTU_TS_CLIMB_SKILL);
 	// the log: the triggers that a thief can find
 	{
 		int t, n = 0;
@@ -235,18 +250,18 @@ void dtu_thief_open_locks(void)
 		message(932, "Strong magic prevents you from picking this lock.");
 		return;
 	}
-	if (Lock_failed[wn] == level + 1) {
+	if (lock_failed(wn) == ((level + 1) & 0xFF)) {
 		message(933, "You are not yet ready to pick this lock.");
 		return;
 	}
 	dtu_char_log("thief: pick the lock of wall %d (seg %d side %d)", wn, hit.hit_seg, hit.hit_side);
 	if (!dtu_thief_roll(2, NULL)) {
-		Lock_failed[wn] = level + 1;
+		set_lock_failed(wn, level + 1);
 		message(934, "This lock is currently too difficult for you to pick.");
 		return;
 	}
 	w->flags &= ~WALL_DOOR_LOCKED;
-	Lock_failed[wn] = 0;
+	set_lock_failed(wn, 0);
 	wall_open_door(seg, hit.hit_side);
 	message(935, "You have successfully picked this lock!");
 }
@@ -264,10 +279,10 @@ void dtu_thief_search_toggle(void)
 	if (!half_second(&Search_time))
 		return;
 	// the triggers and traps that the thief left alone are asked again
-	for (i = 0; i < DTU_MAX_TRIGGERS; i++)
-		if (Trig_find[i] == 0xFE) Trig_find[i] = 0xFF;
-	for (i = 0; i < DTU_MAX_TRAPS; i++)
-		if (Trap_find[i] == 0xFE) Trap_find[i] = 0xFF;
+	for (i = 0; i < Dtu_num_triggers; i++)
+		if (Trig_find(i) == 0xFE) Set_trig_find(i, 0xFF);
+	for (i = 0; i < Dtu_num_traps; i++)
+		if (Trap_find(i) == 0xFE) Set_trap_find(i, 0xFF);
 	Dtu_thief_bits ^= DTU_TS_SEARCHING;
 	if (Dtu_thief_bits & DTU_TS_SEARCHING)
 		message(939, "Searching...");
@@ -275,35 +290,57 @@ void dtu_thief_search_toggle(void)
 		message(938, "No longer searching.");
 }
 
-// 0xB34E0: a trap that hurts: on, and a door or wall flag (0x140), a
-// weapon, an object, damage, or a creature
-static int trap_harmful(int t, int dwarf_side_pad)
+// The search of a dwarf who is no thief and has no Find Traps spell
+// (0xB40D4) skips a side with side flag & 3 (0xB3504, 0xB356B).
+static int dwarf_skips(int dwarf, int seg, int side)
+{
+	return dwarf && seg >= 0 && seg <= Highest_segment_index && side >= 0 && side < 6 && (Segments[seg].sides[side].pad & 3);
+}
+
+// 0xB34E0: a trap that hurts: on, the dwarf test of the searched side,
+// and a door or wall flag (0x140), a weapon, an object, damage, or a
+// creature
+static int trap_harmful(int t, int dwarf, int seg, int side)
 {
 	dtu_trap *tp;
 
-	(void) dwarf_side_pad;
 	if (t < 0 || t >= Dtu_num_traps)
 		return 0;
 	tp = &Dtu_traps[t];
-	if (!tp->on)
+	if (!tp->on || dwarf_skips(dwarf, seg, side))
 		return 0;
 	return (tp->flags & 0x140) || tp->weapon_type >= 0 || tp->spawn_object >= 0 || tp->stat_delta < 0 || tp->robot_type >= 0;
 }
 
-// 0xB353A: a trigger that leads to a harmful trap
+// 0xB353A: a harmful trigger: on, the dwarf test of the searched side,
+// and experience below 0 (+0x30), or else the first of: the first trap
+// (+0x3B, that trap only, not its chain), the trigger it enables (+0x3D),
+// the trap it enables (+0x3F).
+// ASCENT: the executable follows +0x3D with no limit; the port stops
+// after DTU_TRIG_CHAIN_LIMIT steps (a loop of triggers would hang 1.3).
+static int trigger_harmful_depth(int t, int dwarf, int seg, int side, int depth)
+{
+	dtu_trigger *tg;
+
+	if (t < 0 || t >= Dtu_num_triggers || depth > DTU_TRIG_CHAIN_LIMIT)
+		return 0;
+	tg = &Dtu_triggers[t];
+	if (!tg->on || dwarf_skips(dwarf, seg, side))
+		return 0;
+	if ((int) tg->unk30 < 0)
+		return 1;
+	if (tg->first_trap >= 0)
+		return trap_harmful(tg->first_trap, dwarf, seg, side);
+	if (tg->enable_trigger >= 0)
+		return trigger_harmful_depth(tg->enable_trigger, dwarf, seg, side, depth + 1);
+	if (tg->enable_trap >= 0)
+		return trap_harmful(tg->enable_trap, dwarf, seg, side);
+	return 0;
+}
+
 static int trigger_harmful(int t)
 {
-	dtu_trigger *tg = &Dtu_triggers[t];
-	int k, n = 0;
-
-	if (!tg->on)
-		return 0;
-	for (k = tg->first_trap; k >= 0 && k < Dtu_num_traps && n < DTU_TRIG_CHAIN_LIMIT; k = Dtu_traps[k].next_trap, n++)
-		if (trap_harmful(k, 0))
-			return 1;
-	if (tg->enable_trap >= 0 && trap_harmful(tg->enable_trap, 0))
-		return 1;
-	return 0;
+	return trigger_harmful_depth(t, 0, -1, -1, 0);
 }
 
 static void set_side_tmap2(int seg, int side, int tmap)
@@ -319,6 +356,8 @@ static void open_trap_door(dtu_trap *tp)
 		wall_open_door(&Segments[tp->seg], tp->side);
 }
 
+// 0xB37B6, 0xB3AE7: the sounds of a find, only in the path of the Find
+// Traps spell (the search without the spell goes to the box at once)
 static void found_sound(int magical)
 {
 	object *p = ConsoleObject;
@@ -328,49 +367,63 @@ static void found_sound(int magical)
 		digi_link_sound_to_pos(2130, p->segnum, 0, &p->pos, 0, F1_0);
 }
 
-static void search_triggers(int seg, int side, int spell)
+static void side_flag(int seg, int side, int set, int bit)
+{
+	if (seg < 0 || seg > Highest_segment_index || side < 0 || side > 5)
+		return;
+	if (set)
+		Segments[seg].sides[side].pad |= bit;
+	else
+		Segments[seg].sides[side].pad &= ~bit;
+}
+
+// 0xB365F
+static void search_triggers(int seg, int side, int spell, int dwarf)
 {
 	object *p = ConsoleObject;
-	int t, n = 0, level = thief_level();
+	int t, n = 0, level = (thief_level() + 1) & 0xFF;
 
 	if (seg < 0 || seg >= DTU_TRIG_SEG_TABLE)
 		return;
-	for (t = Dtu_trigger_seg_table[seg]; t >= 0 && t < Dtu_num_triggers && n < DTU_TRIG_CHAIN_LIMIT; t = Dtu_triggers[t].next_in_seg, n++) {
+	for (t = Dtu_trigger_seg_table[seg]; t >= 0 && t < Dtu_num_triggers && n < 50; t = Dtu_triggers[t].next_in_seg, n++) {
 		dtu_trigger *tg = &Dtu_triggers[t];
 		int roll;
 
-		if (tg->side != side || !trigger_harmful(t))
+		if (tg->side != side || !trigger_harmful_depth(t, dwarf, seg, side, 0))
 			continue;
-		if (vm_vec_dist(&tg->pos, &p->pos) > i2f(40))
+		// ASCENT: 0xB370D measures with the quick distance (0xD705C)
+		if (vm_vec_dist_quick(&tg->pos, &p->pos) > i2f(40))
 			continue;
-		if (Trig_find[t] == level + 1)
+		if (Trig_find(t) == level)
 			continue;
-		if (Trig_find[t] < 0x80) {
+		if (Trig_find(t) < 0x80) {
 			dtu_char_log("thief: search trigger %d (seg %d side %d)", t, seg, side);
 			if (!dtu_thief_roll(3, NULL)) {
-				Trig_find[t] = level + 1;
+				Set_trig_find(t, level);
 				continue;
 			}
-			Trig_find[t] = 0xFF;
 		}
-		if (Trig_find[t] == 0xFE || Trig_remove[t] == level + 1)
+		if (Trig_find(t) == 0xFE || Trig_remove(t) == level)
 			continue;
-		found_sound(0);
+		// 0xB378E: the automap shows a found trigger (side flag 4)
+		side_flag(seg, side, 1, 4);
+		Set_trig_find(t, 0xFF);
 		if (spell) {
 			// 0xB3605: a marker for 5 seconds (not in the port), no removal
+			found_sound(0);
 			HUD_init_message("You found a trigger!");
 			dtu_char_log("thief: the spell finds trigger %d", t);
-			Trig_find[t] = 0xFE;
-			Trig_remove[t] = level + 1;
+			Set_trig_find(t, 0xFE);
+			Set_trig_remove(t, level);
 			return;
 		}
 		dtu_char_log("thief: found trigger %d", t);
 		if (dtu_char_choice(text(940, "You found a trigger!\nWould you like to disable it?"), 2, text(32, "Yes"), text(33, "No")) != 0) {
-			Trig_find[t] = 0xFE;
+			Set_trig_find(t, 0xFE);
 			continue;
 		}
 		if (!dtu_thief_roll(3, &roll)) {
-			Trig_remove[t] = level + 1;
+			Set_trig_remove(t, level);
 			if (roll >= 96) {
 				message(942, "Ooops!!!");
 				dtu_trig_fire(t, DTU_ACT_FORCE, p);
@@ -381,52 +434,60 @@ static void search_triggers(int seg, int side, int spell)
 		}
 		if (tg->first_trap >= 0 && tg->first_trap < Dtu_num_traps)
 			open_trap_door(&Dtu_traps[tg->first_trap]);
+		side_flag(seg, tg->side, 0, 4);
 		tg->on = 0;
 		set_side_tmap2(tg->seg, tg->side, tg->tex_off);
 		message(943, "You disabled the trigger.");
 	}
 }
 
-static void search_traps(int seg, int side, int spell)
+// 0xB396C
+static void search_traps(int seg, int side, int spell, int dwarf)
 {
 	object *p = ConsoleObject;
 	dtu_player_attr *pa = &Dtu_char.pa;
-	int t, level = thief_level();
+	int t, level = (thief_level() + 1) & 0xFF;
 
 	for (t = 0; t < Dtu_num_traps; t++) {
 		dtu_trap *tp = &Dtu_traps[t];
 		int magical, saved = pa->find_traps, roll, ok;
 
-		if (tp->seg != seg || tp->side != side || !trap_harmful(t, 0))
+		if (tp->seg != seg || tp->side != side || !trap_harmful(t, dwarf, seg, side))
 			continue;
-		if (vm_vec_dist(&tp->pos, &p->pos) > i2f(40))
+		// ASCENT: 0xB3A07 measures with the quick distance (0xD705C)
+		if (vm_vec_dist_quick(&tp->pos, &p->pos) > i2f(40))
 			continue;
-		if (Trap_find[t] == level + 1)
+		if (Trap_find(t) == level)
 			continue;
 		magical = tp->spawn_object >= 0 || tp->robot_type >= 0;
-		// a magical trap halves the skill for the rolls (0xB39F2)
+		// a magical trap halves the skill for the rolls (0xB3A4A). The
+		// executable doubles it again after the rolls (0xB3CF9), so an
+		// odd skill is 1 lower until the next 0xAFB55; the port keeps the
+		// value.
 		if (magical)
 			pa->find_traps >>= 1;
-		if (Trap_find[t] < 0x80) {
+		if (Trap_find(t) < 0x80) {
 			dtu_char_log("thief: search trap %d (seg %d side %d)%s", t, seg, side, magical ? ", magical" : "");
 			ok = dtu_thief_roll(3, NULL);
 			if (!ok) {
-				Trap_find[t] = level + 1;
+				Set_trap_find(t, level);
 				pa->find_traps = saved;
 				continue;
 			}
-			Trap_find[t] = 0xFF;
 		}
-		if (Trap_find[t] == 0xFE || Trap_remove[t] == level + 1) {
+		if (Trap_find(t) == 0xFE || Trap_remove(t) == level) {
 			pa->find_traps = saved;
 			continue;
 		}
-		found_sound(magical);
+		// 0xB3ABB: the automap shows a found trap (side flag 8)
+		side_flag(seg, tp->side, 1, 8);
+		Set_trap_find(t, 0xFF);
 		if (spell) {
+			found_sound(magical);
 			HUD_init_message(magical ? "You found a magical trap!" : "You found a trap!");
 			dtu_char_log("thief: the spell finds trap %d", t);
-			Trap_find[t] = 0xFE;
-			Trap_remove[t] = level + 1;
+			Set_trap_find(t, 0xFE);
+			Set_trap_remove(t, level);
 			// 0xB396C returns here without the restore of the skill (a
 			// defect of 1.3); the next dtu_char_update() restores it
 			pa->find_traps = saved;
@@ -435,14 +496,14 @@ static void search_traps(int seg, int side, int spell)
 		dtu_char_log("thief: found trap %d", t);
 		if (dtu_char_choice(magical ? text(944, "You found a magical trap!\nWould you like to disable it?") :
 				text(945, "You found a trap!\nWould you like to disable it?"), 2, text(32, "Yes"), text(33, "No")) != 0) {
-			Trap_find[t] = 0xFE;
+			Set_trap_find(t, 0xFE);
 			pa->find_traps = saved;
 			continue;
 		}
 		ok = dtu_thief_roll(3, &roll);
 		pa->find_traps = saved;
 		if (!ok) {
-			Trap_remove[t] = level + 1;
+			Set_trap_remove(t, level);
 			if (roll >= 96) {
 				int k;
 				message(942, "Ooops!!!");
@@ -455,6 +516,7 @@ static void search_traps(int seg, int side, int spell)
 			continue;
 		}
 		open_trap_door(tp);
+		side_flag(seg, tp->side, 0, 8);
 		tp->on = 0;
 		set_side_tmap2(tp->seg, tp->side, tp->tex_disabled);
 		message(947, "You disabled the trap.");
@@ -539,9 +601,9 @@ static void racial_search(int seg, int side, object *obj, int dwarf)
 		return;
 	w = &Walls[wall_num];
 	// one search for each wall: byte 0x16 is set before the roll
-	if (Wall_searched[wall_num])
+	if (wall_searched(wall_num))
 		return;
-	Wall_searched[wall_num] = 1;
+	set_wall_searched(wall_num);
 	// 0xB3D1E: a dwarf does not search a side with side flag & 3
 	if (dwarf && (segp->sides[side].pad & 3))
 		return;
@@ -570,6 +632,132 @@ static void racial_search(int seg, int side, object *obj, int dwarf)
 		compute_center_point_on_side(&cp, segp, side);
 		if (vm_vec_dist_quick(&cp, &obj->pos) <= i2f(40))
 			secret_found(seg, side);
+	}
+}
+
+// The fresh branch of level_start (0xAD67B to 0xAD69D) clears the bytes
+// 0x16 and 0x17 of each wall record. The port calls this after the load
+// of the level file and before the restore of a level state, which reads
+// the bytes back (dtustate.c).
+void dtu_thief_level_loaded(void)
+{
+	int i;
+
+	for (i = 0; i < Num_walls && i < MAX_WALLS; i++)
+		Walls[i].pad = 0;
+}
+
+// 0xA6F89 (refresh_level_texture_ids), called by level_start 0xAD5BF at
+// 0xAD744 after the level fixes, for a fresh and for a restored level (a
+// restore then reads the side flags and the wall flags back). 0x1B2B1
+// finds a texture by its name in TmapInfo and gives 0 for a name that is
+// not there. Each side: side flag & 3 is cleared; water gives 1, lava 3
+// (not for an illusory side, wall_is_doorway 3 or 7), wood 2; a door
+// (wall type 2) with one of the 29 door textures becomes a secret door
+// (wall flag 0x40), which the racial search (0xB3ECE), the door use
+// (0x7E859, wall.c) and the automap (0x19335) read. tmap_num and the raw
+// tmap_num2 (with the rotation bits) are compared, as in the executable.
+int Dtu_fix_secret_door_names = 1;
+
+static int texture_by_name(const char *name)		// 0x1B2B1
+{
+	int i;
+
+	for (i = 0; i < NumTextures; i++)
+		if (!stricmp(TmapInfo[i].filename, name))
+			return i;
+	return 0;
+}
+
+static int side_has(segment *segp, int side, const int *tex, int n)
+{
+	int k, t1 = segp->sides[side].tmap_num, t2 = segp->sides[side].tmap_num2;
+
+	for (k = 0; k < n; k++)
+		if (t1 == tex[k] || t2 == tex[k])
+			return 1;
+	return 0;
+}
+
+void dtu_thief_level_textures(void)
+{
+	static const char *water_names[6] = { "water", "water1", "water2", "wfal01", "wfal02", "wfal04" };		// 0x3CE0E4
+	static const char *lava_names[4] = { "lava02", "lava", "lavaflo", "magma" };		// 0x3CE0D4
+	static const char *wood_names[22] = { "wood1", "wood2", "wood3", "wood4", "wood5", "wood6", "wood7", "wood8", "wood9",
+		"wood11", "wood12", "wood13", "wood14", "wood15", "wood16", "wood21", "wood22", "wood91", "wood92", "wood93",
+		"wood94", "wood95" };		// 0x3CE07C
+	static const char *door_names[29] = { "wald1#0", "wald2#0", "wald3#0", "wald4#0", "gdown111#0", "dleft11#0",
+		"dleft31#0", "dorsk11#0", "down111#0", "drght11#0", "dup1t11#0", "gdown11#0", "shelfup1#0", "stadnup1#0",
+		"stadn2p1#0", "stadn3p1#0", "trapdor1#0", "up1pdor1#0", "wald1or1#0", "wald2or1#0", "wald3or1#0", "wald4or1#0",
+		"dleft111#0", "dleft311#0", "door2511#0", "dor1l511#0", "dorsk111#0", "drght111#0", "dup1t111#0" };		// 0x3D4254
+	int water[6], lava[4], wood[22], door[29], k, seg, side, missing = 0;
+	int n_water = 0, n_lava = 0, n_wood = 0, n_secret = 0;
+
+	for (k = 0; k < 6; k++) { water[k] = texture_by_name(water_names[k]); missing += !water[k]; }
+	for (k = 0; k < 4; k++) { lava[k] = texture_by_name(lava_names[k]); missing += !lava[k]; }
+	for (k = 0; k < 22; k++) { wood[k] = texture_by_name(wood_names[k]); missing += !wood[k]; }
+	for (k = 0; k < 29; k++) { door[k] = texture_by_name(door_names[k]); missing += !door[k]; }
+	// Dtu_fix_secret_door_names: a name that is not found matches no side
+	// (in 1.3 it is texture 0, and tmap_num2 0 is "no overlay"). This runs
+	// before dtuchar.c reads its options.
+	if (FindArg("-origchar"))
+		Dtu_fix_secret_door_names = 0;
+	if (Dtu_fix_secret_door_names) {
+		for (k = 0; k < 6; k++) if (!water[k]) water[k] = -1;
+		for (k = 0; k < 4; k++) if (!lava[k]) lava[k] = -1;
+		for (k = 0; k < 22; k++) if (!wood[k]) wood[k] = -1;
+		for (k = 0; k < 29; k++) if (!door[k]) door[k] = -1;
+	}
+	for (seg = 0; seg <= Highest_segment_index; seg++) {
+		segment *segp = &Segments[seg];
+
+		for (side = 0; side < 6; side++) {
+			segp->sides[side].pad &= ~3;
+			if (side_has(segp, side, water, 6)) {
+				segp->sides[side].pad |= 1;
+				n_water++;
+			}
+			{
+				int wid = WALL_IS_DOORWAY(segp, side);
+
+				if (wid != WID_TRANSILLUSORY_WALL && wid != WID_ILLUSORY_WALL && side_has(segp, side, lava, 4)) {
+					segp->sides[side].pad |= 3;
+					n_lava++;
+				}
+			}
+			if (side_has(segp, side, wood, 22)) {
+				segp->sides[side].pad |= 2;
+				n_wood++;
+			}
+			// ASCENT: a side with no wall makes the executable read the
+			// bytes before the wall array (Walls[-1]); the port skips it
+			{
+				int wn = segp->sides[side].wall_num;
+
+				if (wn >= 0 && wn < Num_walls && Walls[wn].type == WALL_DOOR && side_has(segp, side, door, 29)) {
+					if (!(Walls[wn].flags & 0x40))
+						n_secret++;
+					Walls[wn].flags |= 0x40;
+				}
+			}
+		}
+	}
+	dtu_log("Level textures (0xA6F89): %d of 61 names not found, sides: %d water, %d lava, %d wood; %d secret doors\n", missing,
+		n_water, n_lava, n_wood, n_secret);
+	{
+		char list[400] = "";
+
+		for (k = 0; k < 61; k++) {
+			const char *name = k < 6 ? water_names[k] : k < 10 ? lava_names[k - 6] : k < 32 ? wood_names[k - 10] : door_names[k - 32];
+			int t = k < 6 ? water[k] : k < 10 ? lava[k - 6] : k < 32 ? wood[k - 10] : door[k - 32];
+
+			if (t <= 0 && strlen(list) + strlen(name) + 2 < sizeof(list)) {
+				strcat(list, " ");
+				strcat(list, name);
+			}
+		}
+		if (list[0])
+			dtu_log("Level textures: not found (%s):%s\n", Dtu_fix_secret_door_names ? "no match" : "texture 0", list);
 	}
 }
 
@@ -614,7 +802,8 @@ static void search_frame(void)
 	object *p = ConsoleObject;
 	fvi_info hit;
 	int spell = (p->dtu.m_88 & DTU_FX_FIND_TRAPS) != 0, side, seg;
-	int dwarf = (Dtu_char.pa.race == DTU_RACE_DWARF && !has_class(DTU_CLASS_THIEF) && !spell);
+	// 0xB40D4: the effective race (a half-elf counts as race 5)
+	int dwarf = (race_index() == DTU_RACE_DWARF && !has_class(DTU_CLASS_THIEF) && !spell);
 
 	front_ray(p, 40, &hit);
 	seg = hit.hit_seg >= 0 ? hit.hit_seg : p->segnum;
@@ -623,9 +812,11 @@ static void search_frame(void)
 	for (side = 0; side < 6; side++) {
 		if (vm_vec_dot(&Segments[seg].sides[side].normals[1], &p->orient.fvec) > F1_0/4)
 			continue;
-		if (Dtu_char.pa.find_traps != 0 || spell || dwarf) {
-			search_triggers(seg, side, spell);
-			search_traps(seg, side, spell);
+		// 0xB40AF: the skill or the spell; the dwarf flag only limits the
+		// sides (0xB34E0)
+		if (Dtu_char.pa.find_traps != 0 || spell) {
+			search_triggers(seg, side, spell, dwarf);
+			search_traps(seg, side, spell, dwarf);
 		}
 		// Without the spell: 0xB3ECE, the racial search for secret walls
 		if (!spell)
