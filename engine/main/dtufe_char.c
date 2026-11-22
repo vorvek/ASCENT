@@ -754,7 +754,7 @@ static void s3_draw(fe_screen *s)			// 0x88C18, 0x8A275, 0x88E3B
 			fe_string(Fe_font_s, x, y, FE_HUE_4, -1, buf);
 		} else {
 			int v = clamp_stat(final), k;
-			char num[2][24], *label[2];
+			char num[2][64], *label[2];
 			int n = 1;
 
 			label[1] = NULL;
@@ -768,16 +768,22 @@ static void s3_draw(fe_screen *s)			// 0x88C18, 0x8A275, 0x88E3B
 			case ST_CON: sprintf(num[0], "%+d", Con_hp[is_fighter()][v]); label[0] = fe_text(625); break;
 			case ST_INT: sprintf(num[0], "%d", Int_spells[v]); label[0] = fe_text(626); break;
 			case ST_WIS:
-				// The executable prints four numbers with "st, ", "nd, ",
-				// "rd, " and "th ". The port leaves out the levels with
-				// no bonus spell, so that the line stays in its column.
+				// The executable prints the four counts with "st, ", "nd, ",
+				// "rd, " and "th " after them ("2st, 2nd, 1rd, 1th"): the
+				// suffix of the spell level is joined to the count of
+				// spells. ASCENT: the spell level first, then the count
+				// ("L1 +2, L2 +2, L3 +1, L4 +1"). The port leaves out the
+				// levels with no bonus spell, so that the line stays in
+				// its column.
 				{
-					static char *suffix[4] = { "st", "nd", "rd", "th" };
 					int lv;
 					num[0][0] = 0;
 					for (lv = 0; lv < 4; lv++)
-						if (Wis_bonus[lv][v])
-							sprintf(num[0] + strlen(num[0]), "%s%d%s", num[0][0] ? "," : "", Wis_bonus[lv][v], suffix[lv]);
+						if (Wis_bonus[lv][v]) {
+							if (num[0][0])
+								strcat(num[0], ", ");
+							sprintf(num[0] + strlen(num[0]), LT("L%d +%d"), lv + 1, Wis_bonus[lv][v]);
+						}
 					if (!num[0][0])
 						strcpy(num[0], "0");
 				}
