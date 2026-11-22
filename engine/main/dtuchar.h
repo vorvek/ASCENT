@@ -268,7 +268,19 @@ void dtu_char_unequip(int slot);
 void dtu_char_set_current(int index);
 // Hot keys. key is 0 to 9.
 void dtu_char_set_hot_key(int key, int index);
-void dtu_char_select_hot_key(int key);			// the keys 1 to 0: the item becomes the item in the hand
+void dtu_char_select_hot_key(int key);			// the keys 1 to 0: the item or the spell goes into the hand
+// A box holds an entry of the item list (list 0) or a spell (list 1 mage,
+// 2 cleric, the index in the spell list of dtuspell.c). The spell of a box
+// or -1, the entry of the item list of a box or -1, and 1 if the box holds
+// the item or the spell in the hand (the border of 0x329CB).
+int dtu_char_hot_key_spell(int key);
+int dtu_char_hot_key_item(int key);
+int dtu_char_hot_key_in_hand(int key);
+// A click on a box with a held spell (0x304D6). Returns 1 if the box took it.
+int dtu_char_set_hot_key_spell(int key, int spell);
+// The held spell put on the paper doll (0x35CE5): the first free box takes
+// it and it goes into the hand. Returns 1 if a box took it.
+int dtu_char_arm_spell(int spell);
 // Uses one item of the entry (0x37A6A). Returns 1 if it was used up.
 int dtu_char_use(int index);
 // Uses the item in the hand (the USE button, 0x3614B).

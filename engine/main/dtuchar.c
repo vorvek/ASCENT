@@ -808,8 +808,11 @@ static void all_refs(void (*f)(dtu_item_ref *ref, int a), int a)
 	for (i = 0; i < DTU_N_SLOTS; i++) f(&Dtu_char.slot[i], a);
 }
 
+// A hot key box can hold a spell (list 1 or 2): the spell lists do not
+// change with the item list.
 static void ref_removed(dtu_item_ref *ref, int index)
 {
+	if (ref->list != 0) return;
 	if (ref->n == index) ref->n = -1;
 	else if (ref->n > index) ref->n--;
 }
@@ -817,7 +820,7 @@ static void ref_removed(dtu_item_ref *ref, int index)
 static void ref_check(dtu_item_ref *ref, int unused)
 {
 	(void) unused;
-	ref->list = 0;
+	if (ref->list != 0) return;
 	if (ref->n >= Dtu_n_inventory) ref->n = -1;
 }
 
@@ -858,10 +861,11 @@ static void new_entry(int index)
 	if (e->type != OBJ_WEAPON)
 		return;
 	for (i = 0; i < DTU_N_HOT_KEYS; i++)
-		if (Dtu_char.hot_key[i].n == index)
+		if (Dtu_char.hot_key[i].list == 0 && Dtu_char.hot_key[i].n == index)
 			return;
 	for (i = 0; i < DTU_N_HOT_KEYS; i++)
 		if (Dtu_char.hot_key[i].n < 0) {
+			Dtu_char.hot_key[i].list = 0;
 			Dtu_char.hot_key[i].n = index;
 			break;
 		}
@@ -969,6 +973,7 @@ void dtu_char_set_current(int index)
 
 	if (index < 0) {
 		Dtu_char.current.n = -1;
+		dtu_spell_put_away();
 		dtu_char_update();
 		return;
 	}
@@ -978,6 +983,9 @@ void dtu_char_set_current(int index)
 		HUD_init_message("%s", game_text(825, "You cannot use this object."));		// guess, see dtu_char_equip()
 		return;
 	}
+	// The executable keeps one reference (P+0x1AD7): an item in the hand
+	// takes the place of a spell in the hand.
+	dtu_spell_put_away();
 	Dtu_char.current.list = 0;
 	Dtu_char.current.n = index;
 	dtu_char_update();
@@ -991,6 +999,7 @@ void dtu_char_set_hot_key(int key, int index)
 	if (key < 0 || key >= DTU_N_HOT_KEYS)
 		return;
 	if (index < 0) {
+		Dtu_char.hot_key[key].list = 0;
 		Dtu_char.hot_key[key].n = -1;
 		return;
 	}
@@ -1000,11 +1009,102 @@ void dtu_char_set_hot_key(int key, int index)
 	Dtu_char.hot_key[key].n = index;
 }
 
+// The spell of a hot key box (list 1 mage, 2 cleric), or -1
+int dtu_char_hot_key_spell(int key)
+{
+	if (key < 0 || key >= DTU_N_HOT_KEYS)
+		return -1;
+	return dtu_spell_of_ref(Dtu_char.hot_key[key].list, Dtu_char.hot_key[key].n);
+}
+
+// The entry of the item list of a hot key box, or -1
+int dtu_char_hot_key_item(int key)
+{
+	if (key < 0 || key >= DTU_N_HOT_KEYS || !ref_entry(Dtu_char.hot_key[key]))
+		return -1;
+	return Dtu_char.hot_key[key].n;
+}
+
+// 1 if the box holds the reference of the hand (P+0x1AD7): the border of
+// 0x329CB. The port keeps a spell in the hand in dtuspell.c.
+int dtu_char_hot_key_in_hand(int key)
+{
+	int spell = dtu_char_hot_key_spell(key);
+
+	if (spell >= 0)
+		return spell == Dtu_spell_current;
+	return Dtu_spell_current < 0 && dtu_char_hot_key_item(key) >= 0 && Dtu_char.hot_key[key].n == Dtu_char.current.n;
+}
+
+// 0x35462: 1 if a hot key box holds the spell
+static int spell_in_hot_key(int spell)
+{
+	int i;
+
+	for (i = 0; i < DTU_N_HOT_KEYS; i++)
+		if (dtu_char_hot_key_spell(i) == spell)
+			return 1;
+	return 0;
+}
+
+// 0x304D6 (a click on a hot key box with a held spell): the box takes the
+// spell if the character can use it (0x3533C; 0x31752 takes all spells)
+// and no box holds it yet (0x35462). Returns 1 if the box took it.
+int dtu_char_set_hot_key_spell(int key, int spell)
+{
+	int list, index;
+
+	if (key < 0 || key >= DTU_N_HOT_KEYS || !dtu_spell_book_ref(spell, &list, &index))
+		return 0;
+	if (!dtu_spell_usable(spell) || spell_in_hot_key(spell))
+		return 0;
+	Dtu_char.hot_key[key].list = (ubyte) list;
+	Dtu_char.hot_key[key].n = (byte) index;
+	// "Selected spell %s as weapon" (0x123CEC) is a log text: the spell in
+	// the hand does not change.
+	dtu_char_log("hot key %d: spell %d '%s'", key, spell, dtu_spell_name(spell));
+	return 1;
+}
+
+static int Last_hot_key = -1;			// 0x13AD15: the box that was chosen last
+
+// 0x43A5A with a box: the item or the spell of the box goes into the hand.
+// A spell needs no test here: the attack key makes the tests of 0x41A4D.
 void dtu_char_select_hot_key(int key)
 {
+	int spell = dtu_char_hot_key_spell(key);
+
+	if (spell >= 0) {
+		if (dtu_spell_take(spell))
+			Last_hot_key = key;
+		return;
+	}
 	if (key < 0 || key >= DTU_N_HOT_KEYS || !ref_entry(Dtu_char.hot_key[key]))
 		return;
 	dtu_char_set_current(Dtu_char.hot_key[key].n);
+	Last_hot_key = key;
+}
+
+// 0x35CE5 (the held spell is put on the figure of the paper doll, 0x35ADF):
+// a spell that the character can use and that is in no box goes into the
+// first free box, or into the box that was chosen last (box 0 if none),
+// and into the hand. Returns 1 if a box took it.
+int dtu_char_arm_spell(int spell)
+{
+	int list, index, key;
+
+	if (!dtu_spell_book_ref(spell, &list, &index) || !dtu_spell_usable(spell) || spell_in_hot_key(spell))
+		return 0;
+	for (key = 0; key < DTU_N_HOT_KEYS; key++)
+		if (Dtu_char.hot_key[key].n < 0)
+			break;
+	if (key >= DTU_N_HOT_KEYS)
+		key = (Last_hot_key >= 0 && Last_hot_key < DTU_N_HOT_KEYS) ? Last_hot_key : 0;
+	Dtu_char.hot_key[key].list = (ubyte) list;
+	Dtu_char.hot_key[key].n = (byte) index;
+	dtu_char_log("hot key %d: spell %d '%s' (paper doll)", key, spell, dtu_spell_name(spell));
+	dtu_char_select_hot_key(key);
+	return 1;
 }
 
 int dtu_char_has(int type, int id)
@@ -1925,8 +2025,9 @@ static void clear_character(void)
 
 	memset(&Dtu_char, 0, sizeof(Dtu_char));
 	Have_loaded_record = 0;
+	Last_hot_key = -1;
 	Dtu_char.current.n = -1;
-	for (i = 0; i < DTU_N_HOT_KEYS; i++) Dtu_char.hot_key[i].n = -1;
+	for (i = 0; i < DTU_N_HOT_KEYS; i++) { Dtu_char.hot_key[i].list = 0; Dtu_char.hot_key[i].n = -1; }
 	for (i = 0; i < DTU_N_SLOTS; i++) Dtu_char.slot[i].n = -1;
 	Dtu_char.thac0 = 20;
 	dtu_inventory_clear();
@@ -2090,8 +2191,17 @@ int dtu_char_load_save(char *filename)
 	// The spell books and the spell slots (dtuspell.c)
 	dtu_spell_books_from_record(p);
 	load_ref(&Dtu_char.current, p + DTU_P_CURRENT, map, n);
-	for (i = 0; i < DTU_N_HOT_KEYS; i++)
-		load_ref(&Dtu_char.hot_key[i], p + DTU_P_HOT_KEYS + 2 * i, map, n);
+	for (i = 0; i < DTU_N_HOT_KEYS; i++) {
+		ubyte *h = p + DTU_P_HOT_KEYS + 2 * i;
+
+		load_ref(&Dtu_char.hot_key[i], h, map, n);
+		// A box with a spell: list 1 (mage) or 2 (cleric) and the index in
+		// that list (0x35863)
+		if (dtu_spell_of_ref(h[0], (byte) h[1]) >= 0) {
+			Dtu_char.hot_key[i].list = h[0];
+			Dtu_char.hot_key[i].n = (byte) h[1];
+		}
+	}
 	for (i = 0; i < 10; i++)
 		load_ref(&Dtu_char.slot[i], p + DTU_P_SLOTS + 2 * i, map, n);
 	load_ref(&Dtu_char.slot[DTU_SLOT_BOW], p + DTU_P_BOW, map, n);
@@ -2179,13 +2289,11 @@ static void pack_empty_list(ubyte *list, int n)
 void dtu_char_pack(ubyte *record)
 {
 	int i, n_items = 0, n_keys = 0, list, index;
-	ubyte old_hot[2 * DTU_N_HOT_KEYS];
 
 	if (Have_loaded_record)
 		memcpy(record, Loaded_record, DTU_PLAYER_RECORD_SIZE);
 	else
 		memset(record, 0, DTU_PLAYER_RECORD_SIZE);
-	memcpy(old_hot, record + DTU_P_HOT_KEYS, sizeof(old_hot));
 	memset(record + DTU_P_NAME, 0, 16);
 	strncpy((char *) record + DTU_P_NAME, Dtu_char.name, 15);
 	memset(record + DTU_P_NAME2, 0, 16);
@@ -2213,19 +2321,21 @@ void dtu_char_pack(ubyte *record)
 
 	record[DTU_P_THAC0] = Dtu_char.thac0;
 	pack_ref(record + DTU_P_CURRENT, Dtu_char.current);
-	if (Dtu_char.current.n < 0 && Dtu_spell_current >= 0 && dtu_spell_book_ref(Dtu_spell_current, &list, &index)) {
+	// A spell in the hand is the reference of the hand (list 1 or 2)
+	if (Dtu_spell_current >= 0 && dtu_spell_book_ref(Dtu_spell_current, &list, &index)) {
 		record[DTU_P_CURRENT] = (ubyte) list;
 		record[DTU_P_CURRENT + 1] = (ubyte) index;
 	}
 	for (i = 0; i < DTU_N_HOT_KEYS; i++) {
 		ubyte *h = record + DTU_P_HOT_KEYS + 2 * i;
+		int spell = dtu_char_hot_key_spell(i);
 
 		pack_ref(h, Dtu_char.hot_key[i]);
-		// The port has no spells in the hot keys: a spell of the loaded
-		// record stays in its box while the box is free.
-		if (h[1] == 0xFF && dtu_spell_of_ref(old_hot[2 * i], (byte) old_hot[2 * i + 1]) >= 0) {
-			h[0] = old_hot[2 * i];
-			h[1] = old_hot[2 * i + 1];
+		// A box with a spell: the list and the index that
+		// dtu_spell_books_to_record() gave the spell
+		if (spell >= 0 && dtu_spell_book_ref(spell, &list, &index)) {
+			h[0] = (ubyte) list;
+			h[1] = (ubyte) index;
 		}
 	}
 	for (i = 0; i < 10; i++)
@@ -2284,7 +2394,8 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // The test script of the option -chartest. The text is a list of
 // "frame:command=value" with commas between. Commands: damage=N,
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
-// current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, give=TYPE.ID, xp=N, rest,
+// current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
+// armspell=SPELL, give=TYPE.ID, xp=N, rest,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // dump.
 
@@ -2340,6 +2451,8 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
+	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL
+	else if (!strcmp(cmd, "armspell"))	dtu_char_arm_spell(a);
 	else if (!strcmp(cmd, "sethot")) {
 		int c = 0;
 		sscanf(value ? value : "", "%d.%d.%d", &a, &b, &c);

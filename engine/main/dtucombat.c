@@ -166,11 +166,15 @@ static int is_thrown(int w)
 
 // The letter of the model of the player (0x43EB2 to 0x43F96): byte 5 of
 // the inventory record, which is weapon_char= of the weapon. '_' is the
-// empty hand, 'G' a weapon with no letter.
+// empty hand, 'G' a weapon with no letter. A spell in the hand: byte 5 of
+// its spell list entry ('K' for the hands).
 static int hand_letter(void)
 {
 	int w = hand_weapon();
 	char v[8];
+
+	if (dtu_spell_hand_letter())
+		return tolower(dtu_spell_hand_letter());
 
 	if (w < 0)
 		return '_';
@@ -228,13 +232,13 @@ static void change_player_model(int letter)
 }
 
 // 0x4448D "Autoarming anything": the first hot key box that is not empty
-// arms its item.
+// arms its item or its spell.
 static void autoarm(void)
 {
 	int i;
 
 	for (i=0;i<DTU_N_HOT_KEYS;i++)
-		if (Dtu_char.hot_key[i].n >= 0 && Dtu_char.hot_key[i].n < Dtu_n_inventory) {
+		if (dtu_char_hot_key_item(i) >= 0 || dtu_char_hot_key_spell(i) >= 0) {
 			dtu_char_select_hot_key(i);
 			return;
 		}
