@@ -111,8 +111,9 @@ int fe_waterdeep(void)
 	}
 	Wd_result = FE_GO_MENU;
 	fe_run_screen(&Wd);
-	if (Wd_result != FE_GO_MENU || Fe_quit)
-		dtumusic_stop();		// 0xA48D0
+	// 0x8C25A: all streams stop after the screen, also on the way to the
+	// main menu (the City Gates), which plays no music.
+	dtumusic_stop();		// 0xA48D0
 	return Wd_result;
 }
 

@@ -336,7 +336,8 @@ percentile, thief flag, five thief skills (0x8BDE5), 0x66, flags, alignment,
 ## 6. Waterdeep, Blackstaff, market (fewdeep.c, femarket.c) (V)
 
 Waterdeep (0x8C206, record 0x14202D, screen 0, help bar (136,375)-(501,400)):
-music stream 0 (overview.tun); hot spots Blackstaff (275,120)-(334,189) keys
+music stream 0 (overview.tun), and after the screen 0x8C25A stops all
+streams (0xA48D0), also before the main menu, which starts no music; hot spots Blackstaff (275,120)-(334,189) keys
 B K, Yawning Portal (10,180)-(90,260) keys Y P, Market (215,190)-(304,264)
 keys M 4, City Gates (492,271)-(635,345) keys X Esc, Alt-F2 save
 (0xBA99F(1)), Alt-F3 load (0xBB780(0)). Before the first visit to Khelben
