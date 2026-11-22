@@ -1420,12 +1420,14 @@ int dtustate_save_level(int level_index)
 	return ok;
 }
 
-static int restore_files(char names[3][32])
+static int restore_files(char names[3][32], int level_index)
 {
 	if (!read_lvl(names[0]))
 		return 0;
 	read_tig(names[1]);
 	read_tap(names[2]);
+	// 0x5AA75 calls 0x5A855(0) after the read of the triggers and traps
+	dtu_trig_state_rules(level_index);
 	// 0xBAFE0 sets each object up again from the tables (0xAE3F2). The
 	// port does it for all objects of the level with the function of the
 	// level start.
@@ -1452,7 +1454,7 @@ int dtustate_restore_level(int level_index)
 	} else
 		return 0;
 	SLOG("Restoring %s.\n", names[0]);
-	if (!restore_files(names)) {
+	if (!restore_files(names, level_index)) {
 		SLOG("State: cannot read %s\n", names[0]);
 		return 0;
 	}

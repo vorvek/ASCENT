@@ -169,6 +169,14 @@ extern int Dtu_trig_log;
 // level. level_index is the index in the mission file (0 = ypinn).
 void dtu_trig_load_level(char *level_name, int level_index);
 
+// 0x7DBF5: wall_open_door() calls it after a door starts to open (the
+// level rule of flame).
+void dtu_trig_door_opened(int segnum, int side);
+
+// 0x5A855(0): the fixed trigger changes of five levels after the restore
+// of a level state. level_index is the index in the mission file.
+void dtu_trig_state_rules(int level_index);
+
 // 0x939AD: fires the triggers on a side. obj is the object that acts.
 void dtu_trig_check(int segnum, int side, int type, object *obj);
 

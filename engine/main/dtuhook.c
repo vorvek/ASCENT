@@ -624,12 +624,12 @@ int dtu_use_object(object *player)
 // The hooks of dtutrig.c
 
 // 0xABBE5(object, 3): a trigger runs the script of an object. The object
-// wakes up (0xA6505 does not change the hostile bit).
+// wakes up (0xA6505 does not change the hostile bit). arg 0: the level rule
+// of FLAME (0x93B1D) runs the script in mode 0 (talk).
 void dtu_hook_trigger_object(int objnum, int arg)
 {
 	object *obj;
 
-	(void)arg;
 	if (!Dtu_objects_enabled || objnum <= 0 || objnum > Highest_object_index)
 		return;
 	obj = &Objects[objnum];
@@ -637,9 +637,9 @@ void dtu_hook_trigger_object(int objnum, int arg)
 		dtu_obj_log("trigger: obj %d has no script",objnum);
 		return;
 	}
-	dtu_obj_log("trigger: script %d of obj %d %s (mode 3)",
-		obj->dtu.m_1b0 & DTU_SCRIPT_MASK,objnum,dtu_object_name(obj));
-	dtu_script_run(obj,DTU_RUN_TRIGGER);		// ASCENT: dtuscript.c
+	dtu_obj_log("trigger: script %d of obj %d %s (mode %d)",
+		obj->dtu.m_1b0 & DTU_SCRIPT_MASK,objnum,dtu_object_name(obj),arg == 0 ? 0 : 3);
+	dtu_script_run(obj,arg == 0 ? DTU_RUN_TALK : DTU_RUN_TRIGGER);		// ASCENT: dtuscript.c
 }
 
 // 0x946AE. A weapon with a min_speed (Weapon_info +0xC6) above 0 bursts

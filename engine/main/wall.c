@@ -141,6 +141,7 @@ void kill_stuck_objects(int wallnum);
 #include "newdemo.h"
 #include "multi.h"
 #include "gameseq.h"
+#include "dtutrig.h"		// ASCENT: the level rule of flame
 
 //	Special door on boss level which is locked if not in multiplayer...sorry for this awful solution --MK.
 #define	BOSS_LOCKED_DOOR_LEVEL	7
@@ -533,6 +534,9 @@ void wall_open_door(segment *seg, int side)
 			digi_link_sound_to_pos( WallAnims[w->clip_num].open_sound, seg-Segments, side, &cp, 0, F1_0 );
 
 	}
+
+	// ASCENT: the level rule of flame at the end of 0x7D77E (dtutrig.c)
+	dtu_trig_door_opened(seg-Segments, side);
 }
 
 //-----------------------------------------------------------------

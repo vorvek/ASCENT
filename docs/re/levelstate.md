@@ -123,7 +123,31 @@ and the save game in a level (0xBA9FE).
 0x5A855(0) applies the trigger changes of single levels (levels with the
 byte at player +0x71 equal to 2, 6, 7, 21 or 32). With the argument 1
 (called by the level loader 0x494EB) it first resets the runtime fields
-of all triggers and traps. The port does not have these level rules.
+of all triggers and traps.
+
+**V** The rules (0x5A901 to 0x5AA5D, trigger records of 89 bytes at
+0x142214):
+
+| Level | Rule |
+|---|---|
+| 2 kobolds | trigger 1 off (the one-time message of segment 167) |
+| 6 thief1 | byte 6 of trigger 34 = 0. That byte is part of the y coordinate of the position of the trigger (the sound position), not the `on` byte at 0x0E: a defect with no seen effect |
+| 7 thief2 | triggers 43 and 46 on; trigger 46 gets the flags, the masks, the sound, the textures, the count, the skip count, the trap and trigger numbers, `object_num` and the message of trigger 43 (so it runs trap 17 in place of 18) |
+| 21 drow2 | `object_num` of trigger 20 = 42 (the script that 0xACCDB gives to object 42, objects.md) |
+| 32 flame | triggers 26, 32 and 33 on again (the one-time triggers of Lolth, object 36) |
+
+The reset of argument 1 clears `fire_count` and the bytes 0x0F, 0x10 of each
+trigger and the bytes 3, 4 of each trap, and sets side flag 0x20 of the side
+of each trap that is on and has a `spawn_object` or a `robot_type`. No reader
+of side flag 0x20 was found (all readers of the side flag byte 0x2206A9 test
+the bits 0 to 4).
+
+The port: `dtu_trig_state_rules` (dtutrig.c) after the read of the TIG and TAP
+state files in `restore_files` (dtustate.c), all rules but the byte of
+thief1. The reset of argument 1 is the load of the TIG and TAP files of the
+level. Test: `-level FLAME -statetest -1,0,-1,1,62 -triglog` warps to HUB4
+and back and prints "level rule of the restore (0x5A855), level 32" after
+"Restoring TEMP32.LVL."
 
 Callers: `StartNewGame` 0x4DD5A (the Yawning Portal from Waterdeep, L 0),
 the warp 0x5A1B0 (after the new level and its warp lines are loaded), the
@@ -265,7 +289,7 @@ back (V for the code, G for the effect: not run).
   open (Descent 1 `do_door_open`). To give the result of the executable,
   the warp closes every door wall that is not closed (state, flag 2 and
   the first frame of the animation), then clears flag 2 of all walls.
-- The level rules of 0x5A855 are not in the port.
+- The level rules of 0x5A855 are in `dtu_trig_state_rules` (section 5).
 - P: after a restore that keeps the position of the player (the Yawning
   Portal from Waterdeep, the load of a save game), the port tells the
   trigger code that the player stands in that segment
