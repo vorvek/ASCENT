@@ -699,8 +699,9 @@ Decisions of the port (P):
 - The market: `GELDOR.DAT` and `THESTORE.<S>` are in the directory of the user.
   The inventory of the port has the limits of the executable (127 items and 22
   key items, `DTU_MAX_INVENTORY`), and a buy stops there. Game flag 107 (the
-  double price) is the weak hook `dtu_hook_game_flag` (0 until the flags
-  exist). The mouse is not held in the quantity window.
+  double price) is the global flag of `dtu_script_gflag` (dtuscript.c), as
+  0x86F5F reads it (test: SG1.SG with flag 107 set shows each price
+  doubled). The mouse is not held in the quantity window.
 - The loading picture: the executable sets 640x480 and shows the picture;
   the port draws it scaled into the screen of the game, keeps it while the
   level loads and fades it out (0x7C2BB) after the level state is restored.

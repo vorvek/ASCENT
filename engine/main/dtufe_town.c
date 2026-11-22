@@ -34,7 +34,6 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 
-#define DTU_WEAK __attribute__((weak))
 
 int Fe_khelben_mission;			// MsnNum (0x13E588)
 int Fe_khelben_blurb;			// 0x13E58C
@@ -495,14 +494,8 @@ static const char *mk_user_file(const char *name)
 }
 #define MK_STORE_FILE	mk_user_file("GELDOR.DAT")		// "geldor.dat" 0x12CE53, in the current directory
 
-// The game flag 107 of the player (bit array at P+0x1A33, 0xADAFE) doubles
-// the prices (0x86F5A). The port does not have these flags yet; a file
-// that has them can define this function.
-DTU_WEAK int dtu_hook_game_flag(int n)
-{
-	(void) n;
-	return 0;
-}
+// The global flag 107 of the player (bit array at P+0x1A33, 0xADAFE)
+// doubles the prices (0x86F5A): dtu_script_gflag of dtuscript.c.
 
 static item_info *mk_item(int type, int id)
 {
@@ -582,7 +575,7 @@ static int mk_price(int type, int id, int cond, int sell)
 	price = value * (sell ? Mk_sell_percent[cha] : Mk_buy_percent[cha]) / 100;
 	if (price < 1)
 		price = 1;
-	if (dtu_hook_game_flag(107))
+	if (dtu_script_gflag(107))		// 0x86F5F
 		price *= 2;
 	return price;
 }
