@@ -671,22 +671,23 @@ Decisions of the port (P):
 - The script of the option `-fescript FILE` drives the front end for tests
   (comment in dtufe.c). While it runs the clock is the frame count (30
   frames are one second).
-- Save games: the port reads a slot in the current directory first, then in
-  the directories of the game data, and writes it in the current directory.
-  It writes the header, the Khelben state, the mission flags (dtuscript.c),
-  the player record (`dtu_char_pack`), the attribute block and the RLPD
-  block. A save in a level (the ESC menu) has "between levels" 0 and the
-  three counts at 7374 as 0 (7386 bytes, as SG0.SG). The level state goes
-  to `SAVE\` under the current directory (docs/re/levelstate.md), the stock
-  of the market to `TheStore.<S>` in the current directory. The level files
-  of the original (`SAVE\SGn_m.LVL`) are not read: their content is a memory
-  image of the executable.
+- Save games: the port reads a slot in the directory of the user first (any
+  case of the letters), then in the directories of the game data, and writes it
+  in the directory of the user. The file has the format of the executable
+  (docs/formats/misc.md): the bytes of the loaded file stay, the port writes the
+  header, the Khelben state, the mission flags (dtuscript.c), the player record
+  (`dtu_char_pack`), the attribute block, the RLPD block and, for a save in a
+  level, the three lists at 7374. A load sets `GameTime` from offset 49 and
+  applies the three lists at the level start (three counts of 0, as in the saves
+  of earlier builds of the port, keep the lists of the level). The level state
+  goes to `SAVE\` (docs/re/levelstate.md), the stock of the market to
+  `THESTORE.<S>`.
 - The loads of the ESC menu and of the death menu end the game; the front
   end then starts the level of the save (the executable starts it inside
   game()).
-- The market: `geldor.dat` and `TheStore.<S>` are in the current directory.
-  The port has no bag limit of 127 entries: the inventory of the port has 64
-  entries (`DTU_MAX_INVENTORY`), and a buy stops there. Game flag 107 (the
+- The market: `GELDOR.DAT` and `THESTORE.<S>` are in the directory of the user.
+  The inventory of the port has the limits of the executable (127 items and 22
+  key items, `DTU_MAX_INVENTORY`), and a buy stops there. Game flag 107 (the
   double price) is the weak hook `dtu_hook_game_flag` (0 until the flags
   exist). The mouse is not held in the quantity window.
 - The loading picture: the executable sets 640x480 and shows the picture;

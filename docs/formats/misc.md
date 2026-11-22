@@ -143,7 +143,30 @@ Magic `DGSS`, written by the state code derived from Descent 1 `state.c`
 | 7208 | 10 | per mission record: name, 9 bytes ("DTU"), u8 (1) | values verified |
 | 7218 | 144 | all 0 | not decoded |
 | 7362 | 12 | u32 difficulty (0x13CDCA, 2), u32 0, u32 0 | values verified |
-| 7374 | 12 | only when "between levels" is 0: three u32 counts, each followed by its records (54, 16 and 40 bytes each). All three are 0 in this file | values verified, the records are not decoded |
+| 7374 | 12 + records | only when "between levels" is 0: three lists, each a u32 count and its records: `Num_triggers` (0x390DCC) and the Descent 1 triggers (0x390DD0, 54 bytes), `Num_robot_centers` (0x1C7D6C) and the matcens (0x1C5CE8, 16 bytes), `Num_fuelcenters` (0x13B1BC) and the fuel centers (0x1C5E28, 40 bytes). All three are 0 in this file | verified: reader 0xBBD1A to 0xBBDB8; the records have the Descent 1 layout (see below) |
+
+The records of the three lists (verified in the two saves of a played 1.3 game, 7666
+bytes each, saved in BONES: counts 0, 0, 7):
+
+- trigger, 54 bytes: u8 type, s16 flags, fix value, fix time, u8 link_num, s16
+  num_links, s16 seg[10], s16 side[10] (Descent 1 `trigger`).
+- matcen, 16 bytes: int robot_flags, fix hit_points, fix interval, s16 segnum, s16
+  fuelcen_num.
+- fuel center, 40 bytes: int Type, int segnum, u8 Flag, Enabled, Lives, dum1, fix
+  Capacity, MaxCapacity, Timer, Disable_time, vector Center. The saves have one record
+  of type 2 (the `special` 2 segment of the level file), one of type 3 and five of type
+  5. The level file has only `special` 2; the code that makes the types 3 and 5 was not
+  found.
+
+Before the lists the reader sets the s16 at segment +0x210 to -1 for each segment, and
+after them the four timers 0x215D74 to 0x215D80 to the game time.
+
+Other fields of the header that the reader uses: offset 49 is read into `GameTime`
+(0x13CD30), and 7362 into 0x13CDCA (difficulty), 0x13B7A3 and 0x13B697 (4 bytes each).
+
+A played save of 1.3 (`SG0.SG`, 7666 bytes, level 4) has 20 items, 7 mage spells and
+one key item (misc 107 in the key list at P+0x18D3); the hot keys 3 to 8 hold
+references to the mage spell list (list 1). These parts are in `docs/re/character.md`.
 
 Unlike Descent 1 there is no thumbnail image in the file.
 The level state is not in this file. It is stored in `SAVE\SGn.LS`,
@@ -153,7 +176,7 @@ The 256 global flags of the scripts are in the player record at P+0x1A33 (file o
 
 Unexplained ranges: the fields of the player record that `character.md` does not list, 7218..7361 and the records after 7374.
 
-A file with "between levels" 1 ends at 7374. The port writes such a file for the saves of the main menu and of Waterdeep (`engine/main/dtufe.c`) and reads both kinds (docs/re/frontend.md).
+A file with "between levels" 1 ends at 7374. The port writes such a file for the saves of the main menu and of Waterdeep (`engine/main/dtufe.c`) and reads both kinds (docs/re/frontend.md). The port writes the format of the executable: it starts from the bytes of the file that was loaded (so the fields that it does not decode stay) and writes the fields that it has, the three lists included. Verified: a load of the 1.3 save and a save in the port at once give a file that differs from the original only in the description, the game time and the spell slots that the level start fills again.
 
 Correction: an earlier version of this table put the player record at 53. The writer stores 6967 bytes, but the record starts at 141.
 
@@ -175,8 +198,14 @@ records 1 to 99 are (0, 0, 1). The only level files are `SG1_0.*`. Character
 generation (0x87D73) deletes `CSUF.LS` and the `temp*` files and writes a new
 `CSUF.LS` with 100 records (0, 0, -1) (0x5AC6F, 0x5ABC6). The code that uses
 the files is in `docs/re/levelstate.md`. The port writes and reads the `.LS`
-tables in this format (`engine/main/dtustate.c`); its `.lvl`, `.tig` and
-`.tap` level files have the names of the original but their own content.
+tables and the `.LVL`, `.TIG` and `.TAP` level files in the format of the
+executable (`engine/main/dtustate.c`, docs/re/levelstate.md section 3).
+
+Slots: the save menu slot n is `SGn.SG`, the level files `SAVE\SG<n+1>.LS`,
+`SAVE\SG<n+1>_<L>.*` and the stock `THESTORE.<n+1>`. Verified in a played 1.3
+install: `SG0.SG`, `SAVE\SG1.*` and `THESTORE.1` have the same time stamp, and so
+have `SG1.SG`, `SAVE\SG2.*` and `THESTORE.2`. The DOS game writes the names in upper
+case.
 
 ## *.FNT: fonts
 

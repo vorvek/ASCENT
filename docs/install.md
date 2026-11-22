@@ -102,8 +102,9 @@ is found) or an extracted patch folder, and checks each file.
   the player stay in the current folder, as before.
 - Without `-datadir` (installed game): the data folder is `data` next to the executable
   (`SDL_GetBasePath`), and the files of the player go to the folder of the user
-  (`SDL_GetPrefPath`, `%APPDATA%\ASCENT-DTU`): `ascent.cfg`, `SG<n>.sg`, the `SAVE`
-  folder of the level states, `geldor.dat` and `TheStore.<n>`. If the data folder has
+  (`SDL_GetPrefPath`, `%APPDATA%\ASCENT-DTU`): `ascent.cfg`, `SG<n>.SG`, the `SAVE`
+  folder of the level states, `GELDOR.DAT` and `THESTORE.<n>`. The names of these
+  files are found with any case of the letters (`dtu_user_find`, dtustate.c). If the data folder has
   no `DTU.MSN`, a message box says so. `Error()` shows a message box too.
 - `-userdir DIR` changes the folder of the user.
 - `dtu_user_path()` gives the path of a file of the player. dtuopts.c, dtufe.c (save
@@ -112,6 +113,24 @@ is found) or an extracted patch folder, and checks each file.
   `-hddir`), not the `hd` folders of the current folder and its parents.
 - `-debug` (and every build without `ASCENT_RELEASE`) prints the developer messages:
   `MEM_LEAKAGE` (`mem_report_leaks`), "Loading picture", the MUSIC summary.
+
+## Save games of the DOS game 1.3
+
+The save games of the port have the format of DTUGAME.EXE 1.3 (docs/formats/misc.md,
+docs/re/levelstate.md), so they go both ways. To go on with a game of the DOS version:
+
+1. Copy from the DOS game folder (for example `C:\DTU`) into `%APPDATA%\ASCENT-DTU`:
+   the files `SG0.SG` to `SG9.SG` and `THESTORE.1` to `THESTORE.10`.
+2. Copy the folder `SAVE` (the files `SGn.LS`, `SGn_m.LVL`, `SGn_m.TIG`,
+   `SGn_m.TAP`) to `%APPDATA%\ASCENT-DTU\SAVE`. Do not copy `CSUF.LS` and the
+   `TEMP*` files: they belong to a game that runs.
+3. Start the port and choose "Load Game...".
+
+Slot n of the menu is `SGn.SG` with the level files `SAVE\SG<n+1>*.*` and the market
+stock `THESTORE.<n+1>`: `SG0.SG` goes with `SAVE\SG1.LS` and `SAVE\SG1_0.LVL`, and so
+on. Copy the files of a slot together. Upper and lower case names both work. A save
+of the port copies back to the DOS game the same way. The saves of earlier builds of
+the port still load.
 
 Screenshots of `save_screen_shot` (game.c) still go to the current folder. The
 shortcuts start the game in the installation folder, which is writable for a per-user
