@@ -137,6 +137,13 @@ extern int Dtu_fix_fire_once;
 // plays by the rules of that code.
 extern int Dtu_fix_attack_sound;
 
+// The corpse of a creature (0x6A48B). Original: the body goes to the floor
+// by its torso box, which leaves a body drawn in the air or in the floor,
+// and a creature that flies stays in the air when it dies. Corrected: the
+// dying body falls and the corpse lies with its lowest drawn point on the
+// floor, also a corpse of a loaded level.
+extern int Dtu_fix_corpse_floor;
+
 // Seconds from the death of the player to the death screen (3.0 in the
 // executable, 0x423F5), and from there to the new start of the level in
 // the port (the executable shows the death menu there).

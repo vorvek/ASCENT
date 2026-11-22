@@ -244,7 +244,10 @@ back (V for the code, G for the effect: not run).
   itself) and writes 1.
 - A dead creature with the flags 0x40 and 2 (0xC6) stays in the list of the
   executable and does nothing (0xBAFE0, 0x6A3CC). The port deletes it at the
-  read; the file of the port has a free entry there.
+  read; the file of the port has a free entry there. A corpse (shields below 1.0,
+  object flag 4 in the port) is put on the floor at the setup of the level
+  (`Dtu_fix_corpse_floor`, docs/re/ai.md, "The corpse"); the file keeps the
+  position that the port writes.
 - The AI block (section 3, step 8). The ai_local record of a creature
   (47 bytes, docs/re/ai.md) is read into the AI state of the port after
   `dtu_objects_level_setup()` and written from it: awareness, retry count,

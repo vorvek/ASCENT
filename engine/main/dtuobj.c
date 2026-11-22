@@ -94,13 +94,23 @@ int Dtu_fix_attack_sound = 1;
 // matrix that fits no level (docs/formats/brn.md), so the default is 1.
 int Dtu_fix_brain = 1;
 
+// The corpse of a creature. Original (0x6A48B): at the end of DIE the
+// position goes to the floor by the torso box of the frame, and a creature
+// that flies has no gravity in DIE, so its corpse stays where it died, in
+// the air. Corrected (1, default): the dying body falls, and the corpse
+// lies with the lowest drawn point of its last frame on the floor (the
+// joint angles of the frame and the body center that the drawing takes
+// away, not the box of the file), also a corpse of a loaded level. The
+// option -origobj clears it. See docs/re/ai.md, "The corpse".
+int Dtu_fix_corpse_floor = 1;
+
 // The option -origobj (or -noimprovedpaths, a test option that changes
 // nothing else): Dtu_improved_pathfinding has no effect.
 static int Orig_obj = 0;
 
-// Dtu_improved_pathfinding (dtuopts.h): paths for the body of a person, a
-// body that stops at the reach of its weapon, and a corpse that lies on the
-// floor. See docs/re/ai.md, "Improved pathfinding".
+// Dtu_improved_pathfinding (dtuopts.h): paths for the body of a person and
+// a body that stops at the reach of its weapon. See docs/re/ai.md,
+// "Improved pathfinding". (The corpse on the floor is Dtu_fix_corpse_floor.)
 static int improved_paths(void)
 {
 	return Dtu_improved_pathfinding && !Orig_obj;
@@ -109,6 +119,15 @@ static int improved_paths(void)
 // The reach of the weapon of each model, see model_weapon_reach(). 0: not
 // computed, -1: no weapon box. Cleared at the setup of a level.
 static fix Model_reach[MAX_POLYGON_MODELS];
+
+// The box of the drawn points of one frame of each model, see
+// corpse_depth(). ok 0: not computed, 1: computed, 2: no points. Cleared
+// at the setup of a level.
+static struct {
+	short frame;
+	ubyte ok;
+	vms_vector mn, mx;
+} Model_points[MAX_POLYGON_MODELS];
 
 //------------------------------------------------------------------------
 // Tables
@@ -266,6 +285,10 @@ static void setup_creature(object *obj);
 static void morale_check(object *obj);
 static void player_dies(object *player,object *attacker);
 static fix creature_floor_dist(object *obj,fix radius,fix half_height);
+static void log_corpse_height(object *obj,const char *what);
+static int corpse_on_floor(object *obj);
+static fix corpse_draw_drop(object *obj);
+static fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 static item_info *item_table_entry(int type,int id);
 static int dressing_pushable(object *d);
 static fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
@@ -970,7 +993,8 @@ void dtu_objects_init(void)
 		Dtu_objects_enabled = 0;
 	if (FindArg("-origobj"))
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
-			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break = Dtu_fix_push_frame = 0;
+			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break = Dtu_fix_push_frame =
+			Dtu_fix_corpse_floor = 0;
 	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
 	if (FindArg("-origobj") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
@@ -1134,6 +1158,14 @@ static void setup_creature(object *obj)
 		obj->flags |= OF_DESTROYED;
 		obj->control_type = CT_NONE;
 		obj->movement_type = MT_NONE;
+		// Dtu_fix_corpse_floor: a corpse of a saved level (of the
+		// executable or of an older port) lies on the floor.
+		if (Obj_log) {
+			dtu_obj_log("loaded dead: obj %d %s",(int)(obj-Objects),dtu_object_name(obj));
+			log_corpse_height(obj,"corpse");
+		}
+		if (Dtu_fix_corpse_floor && corpse_on_floor(obj) && Obj_log)
+			log_corpse_height(obj,"corpse");
 	}
 }
 
@@ -1151,6 +1183,7 @@ void dtu_objects_level_setup(void)
 	Ref_tick_count = Ref_ticks_now = 0;
 	Ref_tick_acc = 0;
 	memset(Model_reach,0,sizeof(Model_reach));
+	memset(Model_points,0,sizeof(Model_points));
 
 	// 0xA7E97 at the end of each $MONSTER line: the NPC table replaces
 	// thaco and armor_class (and the spell levels and points, which
@@ -1331,6 +1364,7 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 	polymodel *po = obj_model(obj);
 	int frame = DTU_ANIM_FRAME(obj);
 	int show_hidden = 1;
+	vms_vector draw_pos;
 
 	if (po == NULL)
 		return;
@@ -1351,6 +1385,11 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 	if (obj->type != OBJ_ROBOT && obj->type != OBJ_PLAYER)
 		frame = -1;
 
+	// Dtu_fix_corpse_floor: a body that lies lower than its position can
+	// go (in the floor) is drawn lower.
+	draw_pos = obj->pos;
+	draw_pos.y += corpse_draw_drop(obj);
+
 	// ASCENT: animation interpolation (Dtu_anim_interp). The frame of the
 	// game rules stays; only the picture is between the frames. An active
 	// creature counts its frames by the game time (0x11018), so the time of
@@ -1369,11 +1408,11 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 			frac = polyobj_anim_track_update(&track[objnum],obj->signature,s,frame,first,last,est,
 				(obj->type == OBJ_ROBOT && (Ail[objnum].flags & AILF_BACKWARD)) ? -1 : 1,GameTime,&next);
 		}
-		draw_polygon_model_frame_lerp(&obj->pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,next,frac,show_hidden,light,glow,alt_textures);
+		draw_polygon_model_frame_lerp(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,next,frac,show_hidden,light,glow,alt_textures);
 		return;
 	}
 
-	draw_polygon_model_frame(&obj->pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
+	draw_polygon_model_frame(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
 }
 
 // Render type 8 (0x67E2D): one bitmap of the object bitmaps as a rod that
@@ -1742,20 +1781,19 @@ static fix creature_floor_dist(object *obj,fix radius,fix half_height);
 // The test log of a corpse: the lowest point of the body of the last frame
 // of DIE and the floor under the center, from a ray that starts above the
 // body (a body that is in the floor has its center below the floor).
-static void log_corpse_height(object *obj)
+static void log_corpse_height(object *obj,const char *what)
 {
-	polymodel *po = obj_model(obj);
-	int l = Dtu_anim_first[DAS_DIE+1] - 1, fate, seg, k;
+	int fate, seg, k;
 	fvi_query fq;
 	fvi_info hit;
-	vms_vector p0, p1;
+	vms_vector p0, p1, mn, mx;
 	fix bottom;
 
-	if (po == NULL || po->box1_min == NULL || po->n_frames <= 0)
+	// the lowest drawn point (Dtu_fix_corpse_floor: with the drop of the
+	// drawing, see corpse_draw_drop())
+	if (corpse_depth(obj,DTU_ANIM_FRAME(obj),&mn,&mx) < 0)
 		return;
-	if (l >= po->n_frames)
-		l = po->n_frames - 1;
-	bottom = obj->pos.y + po->box1_min[l+1].y;
+	bottom = obj->pos.y + corpse_draw_drop(obj) + mn.y;
 
 	p0 = obj->pos;
 	seg = obj->segnum;
@@ -1781,12 +1819,12 @@ static void log_corpse_height(object *obj)
 	fq.flags = 0;
 	fate = find_vector_intersection(&fq,&hit);
 	if (fate != HIT_WALL) {
-		dtu_obj_log("corpse: obj %d %s seg %d pos %.2f %.2f %.2f bottom %.2f no floor (fate %d)",(int)(obj-Objects),dtu_object_name(obj),
+		dtu_obj_log("%s: obj %d %s frame %d seg %d pos %.2f %.2f %.2f bottom %.2f no floor (fate %d)",what,(int)(obj-Objects),dtu_object_name(obj),DTU_ANIM_FRAME(obj),
 			obj->segnum,f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),f2fl(bottom),fate);
 		return;
 	}
-	dtu_obj_log("corpse: obj %d %s seg %d pos %.2f %.2f %.2f bottom %.2f floor %.2f (seg %d side %d ny %.2f) height %.2f",
-		(int)(obj-Objects),dtu_object_name(obj),obj->segnum,f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),f2fl(bottom),
+	dtu_obj_log("%s: obj %d %s frame %d seg %d pos %.2f %.2f %.2f bottom %.2f floor %.2f (seg %d side %d ny %.2f) height %.2f",
+		what,(int)(obj-Objects),dtu_object_name(obj),DTU_ANIM_FRAME(obj),obj->segnum,f2fl(obj->pos.x),f2fl(obj->pos.y),f2fl(obj->pos.z),f2fl(bottom),
 		f2fl(hit.hit_pnt.y),hit.hit_side_seg,hit.hit_side,f2fl(hit.hit_wallnorm.y),f2fl(bottom - hit.hit_pnt.y));
 }
 
@@ -1820,7 +1858,7 @@ static int floor_under_point(object *obj,vms_vector *p,fix *floor_y)
 		return 0;
 
 	p1 = top;
-	p1.y -= i2f(80);
+	p1.y -= i2f(200);
 	fq.p0 = &top;
 	fq.p1 = &p1;
 	fq.startseg = seg;
@@ -1835,32 +1873,74 @@ static int floor_under_point(object *obj,vms_vector *p,fix *floor_y)
 	return 1;
 }
 
-// ASCENT: Dtu_improved_pathfinding. The model of a creature has its origin
-// at the center of the standing body, and the box of the last frame of DIE
-// (the body on the ground) is far below that center: box1_min.y is -6.16
-// for the Ghoul, and body_half_height is only 4.35 because the box is not
-// centered on the origin (body_center.y -1.81). So the body is put with the
-// lowest point of that box on the floor. The floor is the highest floor
-// under the center of the box and under four points of the box (at 0.6 of
-// its half size), but not more than 3.0 above the floor under the origin,
-// so that a body on stairs lies on a step and is not drawn through one.
-// Returns 0 if no floor is found.
+// ASCENT: Dtu_fix_corpse_floor. The position of a creature is the center
+// of the body box of its frame: the drawing takes body_center of the frame
+// away (0x729C1). The box of the file is not the drawn body in DIE: for the
+// Ghoul the last frame has box1_min.y -6.16 (the feet of the first frame
+// of DIE), but the drawn points of that frame are -0.55 to 2.53 from the
+// model origin, and body_center.y is -1.81. So the box put the corpse 7.4
+// above the floor. The port takes the box of the drawn points of the frame
+// (polyobj_frame_points_box()), cached for one frame of each model
+// (Model_points).
+#define DTU_CORPSE_LIFT	(F1_0/4)	// the lowest position above the floor
+
+// The distance from the position down to the floor under a lying body:
+// the depth of its lowest drawn point, but at least DTU_CORPSE_LIFT, so
+// that the position stays in the segment above the floor. A body whose
+// lowest point is higher than that is drawn lower, see corpse_draw_drop().
+// mn and mx: the box of the drawn points, relative to the position.
+// Returns -1 if the model has no points.
+static fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx)
+{
+	int n = obj->rtype.pobj_info.model_num;
+	polymodel *po = obj_model(obj);
+
+	if (po == NULL || n < 0 || n >= MAX_POLYGON_MODELS)
+		return -1;
+	if (frame < -1 || frame >= po->n_frames)
+		frame = po->n_frames - 1;
+	if (Model_points[n].ok == 0 || Model_points[n].frame != frame) {
+		Model_points[n].frame = frame;
+		Model_points[n].ok = polyobj_frame_points_box(n,frame,&Model_points[n].mn,&Model_points[n].mx) ? 1 : 2;
+	}
+	if (Model_points[n].ok != 1)
+		return -1;
+	*mn = Model_points[n].mn;
+	*mx = Model_points[n].mx;
+	return (-mn->y > DTU_CORPSE_LIFT) ? -mn->y : DTU_CORPSE_LIFT;
+}
+
+// Dtu_fix_corpse_floor: the drawing of a dying or dead creature goes down
+// by the part of its depth that the position cannot go (0 or negative).
+static fix corpse_draw_drop(object *obj)
+{
+	vms_vector mn, mx;
+	fix depth;
+
+	if (!Dtu_fix_corpse_floor || obj->type != OBJ_ROBOT || DTU_ANIM_STATE(obj) != DAS_DIE)
+		return 0;
+	if ((depth = corpse_depth(obj,DTU_ANIM_FRAME(obj),&mn,&mx)) < 0)
+		return 0;
+	return -(depth + mn.y);
+}
+
+// ASCENT: Dtu_fix_corpse_floor. The corpse lies with its lowest drawn point
+// on the floor. The floor is the highest floor under the center of the
+// drawn body and under four points of it (at 0.6 of its half size), but
+// not more than 3.0 above the floor under the position, so that a body on
+// stairs lies on a step and is not drawn through one. Only y changes, and
+// the new position must be in a segment, so the body goes into no wall.
+// Returns 0 if no floor is found (the body stays).
 static int corpse_on_floor(object *obj)
 {
 	static const signed char sx[5] = { 0, -1, 1, -1, 1 }, sz[5] = { 0, -1, -1, 1, 1 };
-	polymodel *po = obj_model(obj);
-	int l = Dtu_anim_first[DAS_DIE+1] - 1, i, seg;
+	int i, seg;
 	vms_vector mn, mx, q, ofs, p;
 	vms_matrix m;
-	fix base, best, f;
+	fix base, best, f, depth;
 
-	if (po == NULL || po->box1_min == NULL || po->box1_max == NULL || po->n_frames <= 0)
+	if ((depth = corpse_depth(obj,DTU_ANIM_FRAME(obj),&mn,&mx)) < 0)
 		return 0;
-	// a model with fewer frames (fMephit): its last frame
-	if (l >= po->n_frames)
-		l = po->n_frames - 1;
-	mn = po->box1_min[l+1];
-	mx = po->box1_max[l+1];
 	if (!floor_under_point(obj,&obj->pos,&base))
 		return 0;
 	best = base;
@@ -1879,7 +1959,7 @@ static int corpse_on_floor(object *obj)
 	}
 
 	p = obj->pos;
-	p.y = best - mn.y;
+	p.y = best + depth;
 	if ((seg = find_point_seg(&p,obj->segnum)) < 0)
 		return 0;
 	obj->pos = p;
@@ -1899,10 +1979,11 @@ static void creature_is_corpse(object *obj)
 	// distance from the bottom of the torso box of the frame to the floor,
 	// a negative d is in the floor) and moves the body up by -d, or down by
 	// d plus torso_radius[0] of the model (the first value on the stack
-	// that 0x748D9 fills). The port uses the half height of the box of the
-	// body of the last frame (guess for the height). Both leave the body
-	// in the floor, see corpse_on_floor().
-	if (improved_paths() && corpse_on_floor(obj))
+	// that 0x748D9 fills). 0x6C30E finds no floor below a body high in the
+	// air (a dead flyer), and the body stays there. The port uses the half
+	// height of the box of the body of the last frame (guess for the
+	// height). Dtu_fix_corpse_floor: corpse_on_floor().
+	if (Dtu_fix_corpse_floor && corpse_on_floor(obj))
 		;
 	else if (po && po->body_half_height && frame >= 0 && frame < po->n_frames) {
 		fix d = creature_floor_dist(obj,0,po->body_half_height[frame+1]);
@@ -1938,7 +2019,7 @@ static void creature_is_corpse(object *obj)
 	obj->movement_type = MT_NONE;
 	dtu_obj_log("obj %d %s: is a corpse",(int)(obj-Objects),dtu_object_name(obj));
 	if (Obj_log)
-		log_corpse_height(obj);
+		log_corpse_height(obj,"corpse");
 }
 
 // The death of a creature in the damage function (0x2A091 to 0x2A245).
@@ -3273,10 +3354,10 @@ static void creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_h
 	}
 	else {
 		ail->push_acc = 0;
-		// Dtu_improved_pathfinding: a creature that flies falls when it
-		// dies. The executable has no gravity for it, so its body stays
-		// where it died, in the air.
-		if (d != 0 && (!is_flying(obj) || (improved_paths() && DTU_ANIM_STATE(obj) == DAS_DIE)))
+		// Dtu_fix_corpse_floor: a creature that flies falls when it dies.
+		// The executable has no gravity for it, so its body stays where it
+		// died, in the air.
+		if (d != 0 && (!is_flying(obj) || (Dtu_fix_corpse_floor && DTU_ANIM_STATE(obj) == DAS_DIE)))
 			accel->y -= fixmul(d,DTU_GRAVITY_K);
 	}
 }
@@ -3381,11 +3462,14 @@ void dtu_creature_physics_sim(object *obj)
 		int frame = DTU_ANIM_FRAME(obj);
 
 		if (po && po->body_half_height && frame >= 0 && frame < po->n_frames) {
+			vms_vector mn, mx;
+			fix depth;
+
 			half_height = po->body_half_height[frame+1];
-			// Dtu_improved_pathfinding: the distance from the origin down to
-			// the bottom of the box of the frame (see corpse_on_floor())
-			if (improved_paths() && po->box1_min && po->box1_min[frame+1].y < 0)
-				half_height = -po->box1_min[frame+1].y;
+			// Dtu_fix_corpse_floor: the depth of the lowest drawn point of
+			// the frame (see corpse_depth())
+			if (Dtu_fix_corpse_floor && (depth = corpse_depth(obj,frame,&mn,&mx)) >= 0)
+				half_height = depth;
 		}
 	}
 
@@ -3395,7 +3479,7 @@ void dtu_creature_physics_sim(object *obj)
 
 	// A dying creature that does not fly falls: one eighth of the velocity
 	// in x and z on each frame (0x9F4E2).
-	if ((!is_flying(obj) || improved_paths()) && obj->ctype.ai_info.CURRENT_STATE == DAIS_DEAD)
+	if ((!is_flying(obj) || Dtu_fix_corpse_floor) && obj->ctype.ai_info.CURRENT_STATE == DAIS_DEAD)
 		ail->falling = 1;
 	if (ail->falling) {
 		pi->velocity.x /= 8;
@@ -6247,6 +6331,9 @@ void dtu_objects_frame(void)
 		for (i=0;i<=Highest_object_index;i++) {
 			object *o = &Objects[i];
 
+			// a dying body: the height of its lowest drawn point
+			if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) == DAS_DIE && !(o->flags & OF_DESTROYED))
+				log_corpse_height(o,"dying");
 			if (o->type == OBJ_ROBOT && o->control_type == CT_AI && Ail[i].activity == 2)
 				dtu_obj_log("pos: obj %d %s: seg %d pos %.1f %.1f %.1f dist %.1f mode %s path %d/%d player seg %d anim %s vis %d retry %d blocked %d/%d(%s) hits %d %d %d %d last %d:%d obj %d",i,dtu_object_name(o),o->segnum,
 					f2fl(o->pos.x),f2fl(o->pos.y),f2fl(o->pos.z),f2fl(vm_vec_dist(&o->pos,&ConsoleObject->pos)),
