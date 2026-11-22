@@ -832,6 +832,12 @@ static tex_info *Tex_info;
 static int Tex_info_n;
 static int64_t Tex_bytes;
 
+// The names of the RGBA textures, made 256 at a time: on the test machine
+// one glGenTextures call cost about 0.45 ms, so the preload of render.c
+// (hundreds of textures at a level start) waited 0.3 s for the names alone.
+static GLuint Name_pool[256];
+static int Name_pool_n;
+
 // The batch of polygons
 typedef struct {
 	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row;
@@ -1199,6 +1205,8 @@ void gpu_shutdown(void)
 	if (Near_tex) qglDeleteTextures(1, &Near_tex);
 	if (Plut_tex) qglDeleteTextures(1, &Plut_tex);
 	if (Fade_tex) qglDeleteTextures(1, &Fade_tex);
+	if (Name_pool_n) qglDeleteTextures(Name_pool_n, Name_pool);
+	Name_pool_n = 0;
 	if (Stats_on) {
 		qglDeleteQueries(4, Stats_query);
 		qglDeleteQueries(4, Stats_out_query);
@@ -1303,6 +1311,15 @@ static void upload_rgba(GLuint t, int w, int h, const uint8_t *rgba, int flags)
 	}
 }
 
+static GLuint gen_texture_name(void)
+{
+	if (Name_pool_n == 0) {
+		qglGenTextures(256, Name_pool);
+		Name_pool_n = 256;
+	}
+	return Name_pool[--Name_pool_n];
+}
+
 int plat_gpu_texture_create_rgba(int w, int h, const uint8_t *rgba, int flags)
 {
 	GLuint t;
@@ -1315,7 +1332,7 @@ int plat_gpu_texture_create_rgba(int w, int h, const uint8_t *rgba, int flags)
 		return 0;
 	memcpy(copy, rgba, (size_t) w * h * 4);
 	gputex_bleed(copy, w, h);
-	qglGenTextures(1, &t);
+	t = gen_texture_name();
 	qglBindTexture(GL_TEXTURE_2D, t);
 	qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
