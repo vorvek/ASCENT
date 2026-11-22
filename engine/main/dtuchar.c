@@ -44,6 +44,8 @@
 #include "automap.h"
 #include "fuelcen.h"	// ASCENT: the fire of a rest place
 #include "dtuscript.h"	// ASCENT: the script 0x1FC of the Spider Piece 0x18
+#include "wall.h"			// ASCENT: the test command wall of -chartest
+#include "gameseq.h"		// ASCENT: Current_level_num for the test command quest
 #include "dtuscroll.h"	// ASCENT: the text screen of the Scroll
 
 #define DTU_WEAK __attribute__((weak))
@@ -2121,6 +2123,43 @@ void dtu_char_award_xp(int points)
 	check_levels();
 }
 
+// ASCENT: 0x8BA3A as statement 9F of the scripts calls it (0xAB71A): the
+// character gets the level "level" (from 1, 18 at most; a character with
+// two classes gets it in both). The experience becomes the value of the
+// table for the level, and the maximum hit points become (hit die of the
+// class + bonus of the constitution) x level, the mean of both classes for
+// two classes; the hit points go to the maximum. The thief points
+// (0x8BAD6, only with a flag of the front end) are not changed here.
+void dtu_char_set_level(int level)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int two = valid_class(pa->class2), con = Dtu_char.base.constitution, n, hp;
+
+	if (!Dtu_char.created || !valid_class(pa->class1))
+		return;
+	if (level > 18) level = 18;
+	n = level - 1;
+	if (n < 0) n = 0;
+	if (con > 19) con = 19;
+	if (con < 0) con = 0;
+	pa->class1_level = pa->class2_level = n;
+	Dtu_char.base.class1_level = Dtu_char.base.class2_level = n;
+	Dtu_char.experience[0] = Xp_table[pa->class1][n + 1];
+	Dtu_char.experience[1] = two ? Xp_table[pa->class2][n + 1] : 0;
+	hp = (Hit_die[pa->class1] + Con_bonus[pa->class1 == DTU_CLASS_FIGHTER][con]) * (n + 1);
+	if (two)
+		hp = (hp + (Hit_die[pa->class2] + Con_bonus[pa->class2 == DTU_CLASS_FIGHTER][con]) * (n + 1)) / 2;
+	dtu_char_log("level: statement 9F sets level %d, experience %d, %d hit points", n + 1, Dtu_char.experience[0], hp);
+	pa->max_hit_points = hp;
+	Dtu_char.base.max_hit_points = hp;
+	Dtu_char.base.hit_points = hp;
+	set_hit_points(hp);
+	if (has_class(DTU_CLASS_CLERIC))
+		dtu_spell_grant_cleric();
+	update_thac0();
+	dtu_char_update();
+}
+
 //------------------------------------------------------------------------
 // Combat values
 
@@ -2905,6 +2944,86 @@ static void run_command(char *cmd, char *value)
 			}
 		if (seg > Highest_segment_index)
 			dtu_char_log("script: the level has no rest place");
+	}
+	// ASCENT: the commands of the quest tests (tools/questtest.py)
+	else if (!strcmp(cmd, "kill") && a > 0 && a <= Highest_object_index) {		// test: kill=N, object N dies
+		if (Objects[a].type == OBJ_ROBOT)
+			dtu_damage_creature_direct(&Objects[a], NULL, Objects[a].shields > 0 ? Objects[a].shields + F1_0 : F1_0);
+		else if (Objects[a].type == OBJ_DRESSING)
+			dtu_break_dressing(&Objects[a], NULL, 0);
+	}
+	else if (!strcmp(cmd, "killscript")) {	// test: killscript=ID, each creature with script ID dies
+		int i;
+
+		for (i = 1; i <= Highest_object_index; i++)
+			if (Objects[i].type == OBJ_ROBOT && (Objects[i].dtu.m_1b0 & 0x1ff) == a && Objects[i].shields >= 0) {
+				dtu_char_log("script: obj %d has script %d and dies", i, a);
+				dtu_damage_creature_direct(&Objects[i], NULL, Objects[i].shields + F1_0);
+			}
+	}
+	else if (!strcmp(cmd, "face") && a >= 0 && a <= Highest_object_index) {		// test: face=N, turn to object N (level view)
+		vms_vector to;
+
+		vm_vec_sub(&to, &Objects[a].pos, &ConsoleObject->pos);
+		to.y = 0;
+		if (vm_vec_normalize(&to) > 0x100)
+			vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
+		dtu_char_log("script: distance to obj %d: %.1f, height %.1f", a, f2fl(vm_vec_dist(&Objects[a].pos, &ConsoleObject->pos)),
+			f2fl(Objects[a].pos.y - ConsoleObject->pos.y));
+	}
+	else if (!strcmp(cmd, "aim") && a >= 0 && a <= Highest_object_index) {		// test: aim=N, look at the center of object N
+		vms_vector to;
+
+		vm_vec_sub(&to, &Objects[a].pos, &ConsoleObject->pos);
+		if (vm_vec_normalize(&to) > 0x100)
+			vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
+	}
+	else if (!strcmp(cmd, "warp"))		dtu_script_test_warp(a, b);		// test: warp=LEVEL.SEG, the warp of statement DB
+	else if (!strcmp(cmd, "prison"))		dtu_script_test_prison();		// test: the prison sequence 0xAA3F3
+	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);			// test: setlevel=N, statement 9F
+	else if (!strcmp(cmd, "gflag"))		dtu_script_set_gflag(a, value && strchr(value, '.') ? b : 1);		// test: gflag=N[.VALUE]
+	else if (!strcmp(cmd, "mflag"))		dtu_mission_set_flag(a, value && strchr(value, '.') ? b : 1);		// test: mflag=K[.VALUE]
+	else if (!strcmp(cmd, "talk") && a > 0 && a <= Highest_object_index)		// test: talk=N, the use action on object N
+		dtu_script_talk(&Objects[a]);
+	else if (!strcmp(cmd, "trigger") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6)		// test: trigger=SEG.SIDE, as the player touches the side
+		dtu_trig_check(a, b, DTU_ACT_PLAYER, ConsoleObject);
+	else if (!strcmp(cmd, "quest")) {	// test: quest, the quest state in one line
+		char flags[1100], *p = flags;
+		int i;
+
+		for (i = 1; i <= 255; i++)
+			if (dtu_script_gflag(i))
+				p += sprintf(p, "%d ", i);
+		*p = 0;
+		dtu_char_log("quest: level %d seg %d mission %d gold %d hp %d fx 0x%x gflags [ %s]", Current_level_num - 1,
+			ConsoleObject->segnum, Fe_khelben_mission, Dtu_gold, dtu_char_hit_points(), ConsoleObject->dtu.m_88, flags);
+		p = flags;
+		for (i = 1; i <= DTU_N_MISSION_FLAGS; i++)
+			if (dtu_mission_flag(i))
+				p += sprintf(p, "%d ", i);
+		*p = 0;
+		dtu_char_log("quest: mflags [ %s] entries %d", flags, Dtu_n_inventory);
+		p = flags;
+		for (i = 0; i < Dtu_n_inventory && p < flags + 1000; i++)
+			p += sprintf(p, "%d.%d ", Dtu_inventory[i].type, Dtu_inventory[i].id);
+		*p = 0;
+		dtu_char_log("quest: items [ %s]", flags);
+	}
+	else if (!strcmp(cmd, "obj") && a >= 0 && a <= Highest_object_index) {		// test: obj=N, the state of object N in one line
+		object *o = &Objects[a];
+
+		dtu_char_log("obj %d: type %d id %d seg %d hp %d flags 0x%x script %d resume %d sflags 0x%x var %d talks %d contains %d.%d x%d",
+			a, o->type, o->id, o->segnum, f2i(o->shields), o->flags, o->dtu.m_1b0 & 0x1ff, (o->dtu.m_1b0 >> 10) & 0x3ff,
+			(o->dtu.m_1b0 >> 20) & 0xf, (o->dtu.m_1b0 >> 24) & 0xf, (o->dtu.m_1b0 >> 28) & 0xf,
+			o->contains_type, o->contains_id, o->contains_count);
+	}
+	else if (!strcmp(cmd, "wall") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: wall=SEG.SIDE, the wall of the side
+		int wn = Segments[a].sides[b].wall_num;
+
+		if (wn < 0)
+			dtu_char_log("wall %d.%d: none", a, b);
+		else
+			dtu_char_log("wall %d.%d: type %d flags 0x%x state %d", a, b, Walls[wn].type, Walls[wn].flags, Walls[wn].state);
 	}
 	else if (!strcmp(cmd, "mode"))		dtu_display_select_mode(a);
 	else if (!strcmp(cmd, "dump"))		dump_character();

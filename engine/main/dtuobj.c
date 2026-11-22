@@ -1070,6 +1070,8 @@ void dtu_objects_init(void)
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))
 		Dtu_fix_guild_peace = 0;
+	if (FindArg("-origtalk"))				// ASCENT: dtuhook.c
+		Dtu_fix_furniture_talk = 0;
 	if (FindArg("-setuplog"))
 		Setup_log = 1;
 	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
@@ -6733,6 +6735,29 @@ void dtu_do_ai_frame(object *obj)
 ubyte *dtu_script_anger(object *obj)
 {
 	return &Ail[obj-Objects].awareness;
+}
+
+// ASCENT: the end of the prison sequence of the scripts (0xAA61E to
+// 0xAA661, dtuscript.c): behavior 0x80 and AI mode 0 for a creature of
+// THIEF2; the new guard also has the player as its target (+0x1A2 = 0).
+void dtu_script_prison_guard(object *obj,int set_target)
+{
+	if (obj->type != OBJ_ROBOT)
+		return;
+	obj->ctype.ai_info.behavior = DAIB_GUARD;
+	Ail[obj-Objects].mode = DAIM_STILL;
+	if (set_target)
+		Ail[obj-Objects].target = 0;
+}
+
+// ASCENT: the test of the warp check at 0x59DF2 (WEAPON 13 in the hand,
+// dtuscript.c): the flee value A of the creature (Robot_info +0x80 for the
+// difficulty) is below its morale (ai_local +0x28).
+int dtu_script_creature_brave(object *obj)
+{
+	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	return Monster_info[obj->id].ai_values[0][Difficulty_level] < Ail[obj-Objects].morale;
 }
 
 // ASCENT: 0xA9418, a script makes the object hostile: chase mode, goal

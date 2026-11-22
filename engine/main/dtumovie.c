@@ -24,6 +24,7 @@
 #include "platform.h"
 #include "gr.h"
 #include "dtulang.h"		// ASCENT: the subtitles
+#include "dtulog.h"		// ASCENT: the session log
 
 // pl_mpeg (MIT license) decodes the upscaled movies (engine/third_party/pl_mpeg).
 #define PL_MPEG_IMPLEMENTATION
@@ -643,6 +644,8 @@ int dtumovie_end_credits(void)
 {
 	// 0xA6A2F: the credits movie, then Function_mode 6 (back to the front
 	// end). The front end hook ends the game after this frame.
+	dtulog_event("End of the game: the credits movie CREDITV1.MVE (0xA6A2F)");		// ASCENT: the session log
+	printf("end of the game: CREDITV1.MVE\n");
 	stop_time();
 	dtumovie_play("CREDITV1.MVE");
 	start_time();

@@ -478,6 +478,10 @@ int dtu_dressing_unbreakable(object *d);
 // 0xA6ACB (explode 0) or 0x911AA with 0x3CA7E (explode 1): the scenery
 // breaks. by is the object that breaks it, or NULL.
 void dtu_break_dressing(object *d, object *by, int explode);
+
+// ASCENT: 1: the scenery of level 0 does not run a script by the use
+// action (dtuhook.c, option -origtalk).
+extern int Dtu_fix_furniture_talk;
 // The spell that a missile carries, or -1.
 int dtu_missile_spell(object *obj);
 // The life of a missile (Weapon_info+0xA8 that 0x56FF6 writes).
