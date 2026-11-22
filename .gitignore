@@ -36,3 +36,6 @@
 # Python
 __pycache__/
 *.pyc
+
+# session logs of development runs (docs/debug_logs.md)
+logs/
