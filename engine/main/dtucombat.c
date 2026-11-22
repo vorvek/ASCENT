@@ -364,7 +364,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 		dtu_spell_creature_event(creature,DTU_CSC_MELEE_HIT);
 		// 0x29D9D: weapon_resistant
 		if ((mi->flags & MONSTER_F_WEAPON_RESISTANT) && !(weapon >= 0 && weapon_flag(weapon,"magic"))) {
-			HUD_init_message("Your weapon has no effect on %s.",dtu_object_name(creature));
+			HUD_init_message("Your weapon has no effect on %s.",dtu_object_display_name(creature));
 			dtu_obj_log("combat: obj %d %s is weapon resistant",(int)(creature-Objects),dtu_object_name(creature));
 		}
 		else if (creature->dtu.m_88 & DTU_FX_STONESKIN) {
@@ -857,7 +857,7 @@ static void turn_message(int tex,char *def,object *obj)
 {
 	char *f = (tex >= 0 && tex < N_TEXT_STRINGS && Text_string[tex] && Text_string[tex][0]) ? Text_string[tex] : def;
 
-	HUD_init_message(f,dtu_object_name(obj));
+	HUD_init_message(f,dtu_object_display_name(obj));
 }
 
 // level: the cleric level from 1, or 0 for the class and the cloak of the
@@ -929,7 +929,7 @@ int dtu_combat_turn_undead(int level)
 		bits = turn_bits(obj);
 		cls = bits & 0x0F;
 		if (!(bits & 0x10)) {
-			HUD_init_message("You can no longer attempt to turn the %s.",dtu_object_name(obj));
+			HUD_init_message("You can no longer attempt to turn the %s.",dtu_object_display_name(obj));
 			continue;
 		}
 		// 0xADF57: the destroys are used up. The executable clears bit 0x10

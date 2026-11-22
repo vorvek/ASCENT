@@ -2007,7 +2007,7 @@ static int start_run(object *obj, int id, int mode, int temp)
 
 	// 0xABF24: silenced (bit 0x40 of the byte +0x89)
 	if (obj->dtu.m_88 & 0x4000) {
-		HUD_init_message("%s tries to speak, but nothing happens.", dtu_object_name(obj));
+		HUD_init_message("%s tries to speak, but nothing happens.", dtu_object_display_name(obj));
 		return 0;
 	}
 	// 0xABF58: Mirt and a thief in YPINN

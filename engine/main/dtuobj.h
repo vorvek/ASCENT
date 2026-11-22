@@ -252,8 +252,13 @@ int dtu_spell_damage_roll(int spell, object *target, int level);
 void dtu_get_body_cylinder(object *obj, vms_vector *center, fix *radius, fix *half_height);
 void dtu_get_body_size(object *obj, fix *radius, fix *half_height);
 
-// The name of an object for messages ("a chair", "durnan").
+// The name of an object from its table ("chair", "kob_swrd"). The logs
+// use it.
 char *dtu_object_name(object *obj);
+
+// The name of an object in the messages to the player (0xA7F03): for a
+// creature the name of the list 0xA504A ("Kobold"), else dtu_object_name.
+char *dtu_object_display_name(object *obj);
 
 //------------------------------------------------------------------------
 // The values of the player character that the fight needs. dtuobj.c has a

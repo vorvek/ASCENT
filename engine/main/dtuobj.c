@@ -59,6 +59,7 @@
 #include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
+#include "text.h"		// ASCENT: Text_string, the names of the creatures
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 
 #define DTU_WEAK __attribute__((weak))
@@ -317,6 +318,229 @@ char *dtu_object_name(object *obj)
 		case OBJ_PLAYER:		return "player";
 	}
 	return unknown;
+}
+
+// The names of the creatures in the messages (0xA504A, 26 bytes for each
+// entry: the table name in 16 bytes, at 0x10 a pointer to the string
+// pointer, at 0x14 a signed byte; a negative byte ends the list). 184
+// entries point into Text_string[] (0x395DAC), the strings 845 to 905 of
+// DTUE.TEX; 7 named characters point to strings of the executable.
+// 0xA7E47 compares the table name without case (0xD89C1); with no entry
+// the executable prints a debug line (0x131537) and shows the table name.
+static const struct {
+	const char *name;
+	int text;			// Text_string index, or -1
+	const char *fixed;	// the string when text is -1
+} Creature_names[] = {
+	{ "banegard", 845, NULL },
+	{ "beetle", 846, NULL },
+	{ "beholder", 847, NULL },
+	{ "xabash", 848, NULL },
+	{ "spectatr", 849, NULL },
+	{ "dragon", 850, NULL },
+	{ "hatchlng", 851, NULL },
+	{ "gargoyle", 852, NULL },
+	{ "ghast", 853, NULL },
+	{ "ghoul", 854, NULL },
+	{ "blackbat", 855, NULL },
+	{ "giantbat", 856, NULL },
+	{ "gobahaxe", 857, NULL },
+	{ "gobascim", 857, NULL },
+	{ "gobatdag", 857, NULL },
+	{ "gbchaxe", 857, NULL },
+	{ "gbcscim", 857, NULL },
+	{ "gbcsswrd", 857, NULL },
+	{ "gbctdagr", 857, NULL },
+	{ "gbcthaxe", 857, NULL },
+	{ "gbloser", 857, NULL },
+	{ "goblin", 857, NULL },
+	{ "gobhaxe", 857, NULL },
+	{ "gobscim", 857, NULL },
+	{ "gobsswrd", 857, NULL },
+	{ "gobtdagr", 857, NULL },
+	{ "gobthaxe", 857, NULL },
+	{ "gbscscim", 857, NULL },
+	{ "gbscsswd", 857, NULL },
+	{ "gbsctdgr", 857, NULL },
+	{ "gbscthxe", 857, NULL },
+	{ "gskelsci", 858, NULL },
+	{ "gskelswd", 858, NULL },
+	{ "gskelpus", 858, NULL },
+	{ "halaster", 859, NULL },
+	{ "ibbalar", 860, NULL },
+	{ "kobaswrd", 861, NULL },
+	{ "kob_bow", 861, NULL },
+	{ "kob_spel", 861, NULL },
+	{ "kob_swrd", 861, NULL },
+	{ "lich1", 862, NULL },
+	{ "lich2", 862, NULL },
+	{ "lich3", 862, NULL },
+	{ "fmephit", 863, NULL },
+	{ "imephit", 864, NULL },
+	{ "lmephit", 865, NULL },
+	{ "flayer", 866, NULL },
+	{ "mummy", 867, NULL },
+	{ "ogre", 868, NULL },
+	{ "ogre2", 868, NULL },
+	{ "armogre", 868, NULL },
+	{ "orcaaxe", 869, NULL },
+	{ "orcascim", 869, NULL },
+	{ "orcataxe", 869, NULL },
+	{ "orc_axe", 869, NULL },
+	{ "orc_scim", 869, NULL },
+	{ "orc_taxe", 869, NULL },
+	{ "gorcaaxe", 869, NULL },
+	{ "gorcasci", 869, NULL },
+	{ "gorcatax", 869, NULL },
+	{ "gorc_axe", 869, NULL },
+	{ "gorcscim", 869, NULL },
+	{ "gorc_tax", 869, NULL },
+	{ "rat", 870, NULL },
+	{ "giantrat", 871, NULL },
+	{ "scarab", 872, NULL },
+	{ "sfiend", 873, NULL },
+	{ "ske_axe", 874, NULL },
+	{ "ske_bow", 874, NULL },
+	{ "ske_sci", 874, NULL },
+	{ "ske_swd", 874, NULL },
+	{ "ske_taxe", 874, NULL },
+	{ "sspider", 875, NULL },
+	{ "gspider", 876, NULL },
+	{ "qspider", 877, NULL },
+	{ "avatar", 878, NULL },
+	{ "illtroll", 879, NULL },
+	{ "troll", 879, NULL },
+	{ "armtroll", 879, NULL },
+	{ "zombie", 880, NULL },
+	{ "rffb1", 881, NULL },
+	{ "rffg1", 881, NULL },
+	{ "rffi1", 881, NULL },
+	{ "rffq1", 881, NULL },
+	{ "rfft1", 882, NULL },
+	{ "rfft4", 882, NULL },
+	{ "rfft6", 882, NULL },
+	{ "rfft9", 882, NULL },
+	{ "rffk1", 882, NULL },
+	{ "rffk5", 882, NULL },
+	{ "rffk8", 882, NULL },
+	{ "rffk8b", 882, NULL },
+	{ "rffk9", 882, NULL },
+	{ "rftj1", 883, NULL },
+	{ "rfte1", 883, NULL },
+	{ "rftg1", 883, NULL },
+	{ "rfti1", 883, NULL },
+	{ "rftk1", 883, NULL },
+	{ "rftq1", 883, NULL },
+	{ "rmfb1", 881, NULL },
+	{ "rmfb3", 881, NULL },
+	{ "rmfb5", 881, NULL },
+	{ "rmfb9", 881, NULL },
+	{ "rmfg1", 881, NULL },
+	{ "rmfg3", 881, NULL },
+	{ "rmfg5", 881, NULL },
+	{ "rmfg8", 881, NULL },
+	{ "rmfg9", 881, NULL },
+	{ "rmfi1", 881, NULL },
+	{ "rmfi5", 881, NULL },
+	{ "rmfq1", 881, NULL },
+	{ "rmft1", 884, NULL },
+	{ "rmfk1", 884, NULL },
+	{ "rmfk4", 884, NULL },
+	{ "rmfk5", 884, NULL },
+	{ "rmfk9", 884, NULL },
+	{ "rmme1", 885, NULL },
+	{ "rmmf1", 885, NULL },
+	{ "rmmf3", 885, NULL },
+	{ "rmmq1", 885, NULL },
+	{ "rmmk1", 885, NULL },
+	{ "rmmk3", 885, NULL },
+	{ "rmmk5", 885, NULL },
+	{ "rmmk7", 885, NULL },
+	{ "rmmk9", 885, NULL },
+	{ "rmmk9b", 885, NULL },
+	{ "hffb1", 886, NULL },
+	{ "hffc1", 886, NULL },
+	{ "hffg1", 886, NULL },
+	{ "hffg4", 886, NULL },
+	{ "hffk1", 887, NULL },
+	{ "hfft1", 888, NULL },
+	{ "hfft4", 888, NULL },
+	{ "hfft9", 888, NULL },
+	{ "hmct1", 888, NULL },
+	{ "hmfc1", 886, NULL },
+	{ "hmfb1", 886, NULL },
+	{ "hmfv1", 886, NULL },
+	{ "hmfg1", 886, NULL },
+	{ "hmfh1", 886, NULL },
+	{ "hmfk1", 888, NULL },
+	{ "hmfm1", 886, NULL },
+	{ "hmfr1", 886, NULL },
+	{ "hmft4", 888, NULL },
+	{ "hmft7", 888, NULL },
+	{ "hmfy1", 886, NULL },
+	{ "hmmk1", 889, NULL },
+	{ "hfmk1", 889, NULL },
+	{ "hmmnpc", 889, NULL },
+	{ "dmfb1", 890, NULL },
+	{ "dmfc1", 890, NULL },
+	{ "dmfe1", 890, NULL },
+	{ "dmff1", 890, NULL },
+	{ "dmfg1", 890, NULL },
+	{ "dmfs1", 890, NULL },
+	{ "dmfw1", 890, NULL },
+	{ "dmfx1", 890, NULL },
+	{ "dmfnpc", 890, NULL },
+	{ "sfmtd2", 891, NULL },
+	{ "sfmtf2", 891, NULL },
+	{ "shmfb1", 892, NULL },
+	{ "shmfb5", 892, NULL },
+	{ "shmfc3", 892, NULL },
+	{ "shmfg1", 892, NULL },
+	{ "shmfg5", 892, NULL },
+	{ "shmtd2", 893, NULL },
+	{ "shmtd4", 893, NULL },
+	{ "shmtd6", 893, NULL },
+	{ "shmtf2", 893, NULL },
+	{ "shmtf4", 893, NULL },
+	{ "shmtf6", 893, NULL },
+	{ "shdleadf", 894, NULL },
+	{ "shdleadg", 894, NULL },
+	{ "prstsprt", 895, NULL },
+	{ "Mage Spirit", 896, NULL },
+	{ "thashasa", 897, NULL },
+	{ "flaynpc", 898, NULL },
+	{ "priestes", 899, NULL },
+	{ "durnan", 900, NULL },
+	{ "Aleena", 901, NULL },
+	{ "fmtnpc", -1, "Nalbas Oddpepper" },
+	{ "tolem", 903, NULL },
+	{ "hffnpc", 886, NULL },
+	{ "drowfem", 904, NULL },
+	{ "mirt", 905, NULL },
+	{ "Jeryth", -1, "Meryth Phaulkon" },
+	{ "Taria", -1, "Taria" },
+	{ "Dwarro", -1, "Dwarro" },
+	{ "Daland", -1, "Daland" },
+	{ "Zintoth", -1, "Zintoth" },
+	{ "Daspel", -1, "Daspel" },
+};
+
+char *dtu_object_display_name(object *obj)
+{
+	char *name = dtu_object_name(obj);
+	int i;
+
+	if (obj->type != OBJ_ROBOT)
+		return name;
+	for (i = 0; i < (int) (sizeof(Creature_names) / sizeof(Creature_names[0])); i++)
+		if (!stricmp(Creature_names[i].name, name)) {
+			if (Creature_names[i].text < 0)
+				return (char *) Creature_names[i].fixed;
+			if (Text_string[Creature_names[i].text])
+				return Text_string[Creature_names[i].text];
+			break;
+		}
+	return name;
 }
 
 static char *anim_name(int s)
@@ -1700,7 +1924,7 @@ static void creature_dies(object *obj,object *attacker)
 	monster_info *mi = &Monster_info[obj->id];
 
 	if (attacker && attacker->type == OBJ_PLAYER) {
-		HUD_init_message("You killed %s.",dtu_object_name(obj));
+		HUD_init_message("You killed %s.",dtu_object_display_name(obj));
 		// 0x4EA50 with the score value. Not for a creature that
 		// regenerates (status bit 0x01000000).
 		if (!(obj->dtu.m_88 & 0x01000000))
@@ -1918,7 +2142,7 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 		ail->anim_start = GameTime + FrameTime;
 	}
 	if (attacker && attacker->type == OBJ_PLAYER) {
-		HUD_init_message("You hit %s for %d.",dtu_object_name(creature),f2i(damage));
+		HUD_init_message("You hit %s for %d.",dtu_object_display_name(creature),f2i(damage));
 		// A creature that is hit knows where the player is, and a creature
 		// that was not hostile is hostile now. (guess: the executable does
 		// this in the script code 0xA94AD and in the alert function)
@@ -2053,7 +2277,7 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		return 0;
 
 	if (attacker && attacker != player)
-		HUD_init_message("%s hits you for %d.",dtu_object_name(attacker),f2i(damage));
+		HUD_init_message("%s hits you for %d.",dtu_object_display_name(attacker),f2i(damage));
 	else
 		HUD_init_message("You took %d damage.",f2i(damage));
 

@@ -654,7 +654,7 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 		sound_at(spell_int(spell,"monster_hit_sound",-1),target->segnum,&target->pos,F1_0/2);
 		vclip_at(target->segnum,&target->pos,i2f(3),spell_int(spell,"monster_hit_vclip",-1));
 		if (caster && caster->type == OBJ_PLAYER)
-			HUD_init_message("You cast %s on %s for %d damage.",spell_name(spell),dtu_object_name(target),dmg);
+			HUD_init_message("You cast %s on %s for %d damage.",spell_name(spell),dtu_object_display_name(target),dmg);
 		if (dmg > 0)
 			dealt = dtu_damage_creature_direct(target,caster,i2f(dmg));
 	}
@@ -664,7 +664,7 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 		if (caster == NULL || caster == target)
 			HUD_init_message("You took %d damage.",dmg);
 		else
-			HUD_init_message("%s cast %s on you for %d damage.",dtu_object_name(caster),spell_name(spell),dmg);
+			HUD_init_message("%s cast %s on you for %d damage.",dtu_object_display_name(caster),spell_name(spell),dmg);
 	}
 	dtu_spell_log("spell: '%s' level %d on obj %d %s: damage %d, done %d, hp now %d",spell_name(spell),level,
 		(int)(target-Objects),target_name(target),dmg,f2i(dealt),
@@ -1015,7 +1015,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 					dtu_spell_log("spell: Abjure on obj %d %s: extraplanar %d, d20 %d against %d: not affected",
 						(int)(target-Objects),target_name(target),(mf & MONSTER_F_EXTRAPLANAR) != 0,roll,need);
 					if (caster && caster->type == OBJ_PLAYER)
-						HUD_init_message("%s was not affected by abjure.",dtu_object_name(target));
+						HUD_init_message("%s was not affected by abjure.",dtu_object_display_name(target));
 					return 0;		// 0x8D56D: no common end
 				}
 				// The creature stops and turns slowly (movement type 3)
