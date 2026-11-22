@@ -186,6 +186,7 @@ addressing).
   `fire_wait` of the tables is 0.5 to 1.5: every weapon below 1.0 swings at
   1.0 s. Long Sword 1.0, Bastard Sword 1.3, Warhammer 1.5 (BANE.BIN).
 - Missile weapons have no gate in 0x41A4D. Their rate: section 5.
+- All timing rules with Haste, Slow and the items of speed: section A8.
 
 ### What else stops an attack
 
@@ -587,6 +588,133 @@ Nothing in pweapon.c is about the player's melee weapon.
 8. The texture pulse of `draw_polygon_model` counts draw calls (models.md).
 9. Not frame based: the swing length and the melee gate (time), the view bob
    (time), the missile `fire_wait` accumulator (time).
+
+## A8. Attack timing (verified)
+
+All inputs of the time between two attacks of the player. The port has these
+rules in `engine/main/dtuatk.c`; `test_dtuatk` (ctest) checks them.
+
+### What the executable reads
+
+`fire_wait` (Weapon_info+0x64, 0x1E9D6C) has three readers in the whole
+image: the `$WEAPON` reader (0x21648; default 0.25 from 0x207E7; 0x21660 to
+0x21682 raise a value below 0xCCD, 0.05, to 0.05), the weapon change (0x4421B)
+and the fire timer (0x56C01). The time of the last melee attack (0x13B74B)
+has three references, all in the gate (0x41E8D, 0x41EB9, 0x41ED7). No code
+reads the level or the class of the character, the weapon specialization or a
+number of attacks for the attack rate: a fighter of level 12 attacks as fast
+as one of level 1. There is no second weapon and no off-hand attack: the
+states 7, 11 and 12 are never chosen (A1).
+
+### Melee weapon and empty hand
+
+1. Weapon change 0x43A5A (0x441E9 to 0x44258), only for item type 5 with
+   `attack_type` 1: `t = fire_wait`; `t = 1.0` if `t < 0x10001` (0x44221); `t
+   = 2 t` with Slow (effect bit 27). `t` goes to `state_times[6]`, `[7]`,
+   `[11]`, `[12]` of the player model of the weapon letter.
+2. The swing (state 6) lasts `t` (0x4450C). The gate 0x41E36 accepts an
+   attack when `|GameTime - last| > t` and the key is still down, then `last =
+   GameTime`.
+3. Haste (effect bit 13, 0x41EC3 to 0x41ED7): `last += t / 2` (`sar eax,1`,
+   `add [0x13B74B],eax`). The next attack is accepted 1.5 `t` after this one:
+   Haste makes the attacks slower. The swing time does not change. A defect.
+4. The model keeps `t`: Slow that ends does not shorten it. It changes with
+   the next weapon change, and 0x43A5A returns early during the states 6 and
+   11.
+5. The Slow spell on the player (0x8FB6A to 0x8FBA3) doubles `state_times[6]`
+   of the current model at the cast, whatever the item in the hand is. Nothing
+   halves it at the end (0x9002C has no access to +0xFC).
+
+`fire_wait` of the melee lines of BANE.BIN: 0.5 (Dagger +2, Dagger of
+Impaling, Short Sword of Quickness) to 1.5 (Warhammer, Dwarven Sword, Dwarven
+Scimitar). With step 1 every value below 1.0 is 1.0: Dagger 0.6, Short Sword
+0.8, Scimitar 0.9, Long Sword +1 0.9 and +2 0.8 swing as fast as the Long
+Sword 1.0. Only the slower weapons differ: Broad Sword 1.1, Mace 1.2, Bastard
+Sword and Hand Axe 1.3, Warhammer 1.5. The lower limit is needed by the
+animation code: 0x44589 computes the frame of a state only when the integer
+part of its time is not 0.
+
+### Missile and thrown weapons
+
+1. 0x43A5A does not write the state times (`attack_type` 0): the attack state
+   lasts `state_times[6]` of the model, 1.0 in the `$PLAYER` line
+   (`state_times=.5 2 .5 .5 1 1 ...`; the defaults at 0x13DA08 are the same).
+   The missile leaves at the fire frame (`fire_frames=56 72 116 132`: frame 12
+   of 16 of state 6, 0.72 s after its start).
+2. The fire timer (A5, 0x56BB0 to 0x56C07): `next[h] += fire_wait` for each
+   shot, but `next[h] = GameTime` when 0x56A0D was not called in the last two
+   frames. The request ends with the shot and a request needs a new key
+   press, so the timer starts again for each press. `fire_wait` (Arrow 2.0,
+   Arrows +1 1.5, Arrows +2 1.0, Bolt 3.0, Bolt +1 2.0, Bolt +2 5.0, Dart 0.5,
+   Throwing Dagger 0.8, Throwing Hammer 1.2, Throwing Axe 1.5) never limits
+   the shots. A defect: each press in state 6 after the fire frame fires. In
+   the port with `-origcombat` two arrows leave 0.05 s apart.
+3. Haste and Slow: no code for the missile rate. The bow or the crossbow of
+   the slot is not read for the rate (references to the slots P+0x1D4DD6 and
+   P+0x1D4DD8: the inventory screen 0x30FD0 to 0x35FC2, the gate 0x41DA4 and
+   0x41DF9, the model 0x43C16 and 0x43C49, 0x5459A and 0x545C9).
+
+### Items and spells that name speed
+
+| Item or spell | Table line | Effect in 1.3 |
+|---|---|---|
+| Haste (spell 21), Potion of Speed (`$OBJECT` 87) | | effect bit 13: move speed times 2 (0x9DE13), melee attacks 1.5 times slower (0x41EC3) |
+| Ring of Quickness (`$ARMOR` 25), Boots of Speed (37) | `pc_spell=21` | item bit 9 (0xAFB55, by item number): Haste while worn |
+| Sword of W'hin (`$WEAPON` 54) | | item bit 9 in the hand |
+| Assembled Spider | | Haste by USE (B6) |
+| Slow (spell 47) | | effect bit 27: swing time times 2 (0x44240, 0x8FBA3), move speed / 2 |
+| Short Bow of Speed (`$OBJECT` 100) | `pc_spell1=21`, `to_hit_bonus=2` | none. The image has no keyword `pc_spell1` (the keywords are `PC_spell` and `PC_spell_2`, 0x1121AD and 0x112742) and 0xAFB55 does not read the bow slot. The bow is a Short Bow +2 |
+| Short Sword of Quickness (`$WEAPON` 69) | `pc_spell=21`, `fire_wait=0.5` | none. `PC_spell` (+0x3A) is read only in 0x56A0D, and 0x44300 calls it only for a spell or a weapon with `attack_type` 0 (0x44423). `fire_wait` 0.5 becomes 1.0. The sword is a Short Sword +2 |
+
+These are all the lines with `pc_spell=21` or `pc_spell1=` in the 46 level
+tables (checked with a script over `gamedata/unpacked/*.BIN`).
+
+### Creatures
+
+No attack timer (ai.md, section 1 point 6): the attack animation paces the
+attacks, `state_times=` of the `$MONSTER` line. Slow and Haste on a creature
+set the effect bit only: 0x8FB6A doubles the state time only for the player
+object.
+
+### The port
+
+| Rule | 1.3 (`-origcombat`) | Port (default) | Setting |
+|---|---|---|---|
+| Melee swing and gate | `max(fire_wait, 1.0)`, Slow times 2 | the same | |
+| Haste, melee | gate 1.5 `t`, swing `t` | gate and swing `t / 2`, the swing is animated below 1.0 | `Dtu_fix_haste_attack` |
+| Missile, thrown: attack state | time of the model (1.0), Slow times 2 | the same | |
+| Missile, thrown: rate | none | `fire_wait` from shot to shot, Slow times 2, Haste / 2. A press is accepted when its fire frame comes at or after the end of the wait, else it is consumed | `Dtu_fix_missile_rate` |
+| Short Bow of Speed in the bow slot | none | Haste (item bit 9): arrows 1.0 s apart instead of 2.0 | `Dtu_fix_speed_items` |
+| Short Sword of Quickness in the hand | none | Haste (item bit 9): swing 0.5 s | `Dtu_fix_speed_items` |
+| Level and class | not read | not read | |
+
+Kept from 1.3 as intended code: the lower limit 1.0 of the swing time, so a
+fast weapon is not faster than a Long Sword. AD&D 2nd edition gives a fighter
+3/2 attacks at level 7 and 2 at level 13, and a short bow 2 shots in a round;
+1.3 has no rounds for the player and the port adds none.
+
+Not ported: the state time that stays doubled after Slow ends (step 4 and 5
+above). The port computes the time from the effect bits in each frame outside
+of an attack state.
+
+Corrected errors of the port (found with this section):
+
+- With Haste the halved swing time (0.5 for most weapons) was below the 1.0
+  that the animation needs: the swing stayed on its first frame and never
+  ended, so a player with Haste, the Ring of Quickness or the Boots of Speed
+  could not hit at all.
+- The Short Sword of Quickness was taken for a wand (a weapon with
+  `pc_spell`): the first attack cast Haste at level 1 and used the sword up.
+- The attack state of a missile weapon lasted `max(fire_wait, 1.0)` (2.0 for
+  an arrow, 3.0 for a bolt) instead of the time of the model.
+
+Measured in BANE (`-noattack`, a key press every 0.2 s, `-objlog`; time
+between two swing starts or two shots): Long Sword 1.2, Dagger 1.2, Warhammer
+1.6, Long Sword with Haste 0.6, with Slow 2.2, with Haste and `-origcombat`
+1.6, fighter with 900000 experience 1.2; Short Bow with Arrow 2.2, Short Bow
+of Speed 1.2, Short Bow with Haste 1.2, with Slow 4.2, Crossbow with Bolt 3.2,
+Dart 1.0 (the attack state), Short Bow of Speed with `-origcombat` two arrows
+0.05 apart in each attack state.
 
 # Part B. Spells, usable items, saving throws, thief skills
 
@@ -1669,7 +1797,9 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
 - The swing time is `max(fire_wait, 1.0)`, two times with Slow (0x441E9). The gate needs
   more than one swing time since the last start and the key still down. The attack is
   always state 6. The animation frame is computed from the time as in 0x4450C, a state
-  time below 1.0 does not animate.
+  time below 1.0 does not animate (but the halved swing of Haste does). The timing
+  rules, the rate of the missile weapons and the items of speed: section A8,
+  `dtuatk.c`.
 - The hit test runs on frames 6 to 8 of the state: the weapon sphere of the frame
   (`weapon_center`, `weapon_radius`, 8 times for the dagger and short sword numbers),
   from the body position moved forward by the square root of 2, against the walls and
@@ -1913,7 +2043,9 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | Setting | File | Rule of the executable (0) | Corrected rule (1) |
 |---|---|---|---|
 | `Dtu_fix_one_hit` | dtucombat.c | a first contact on frame 8 rolls once in each game frame while frame 8 lasts (frame rate) | one roll for each swing |
-| `Dtu_fix_haste_attack` | dtucombat.c | Haste adds half a swing time to the wait (Haste is slower) | Haste halves the swing time (guess of the intent) |
+| `Dtu_fix_haste_attack` | dtucombat.c | Haste adds half a swing time to the wait (Haste is slower) | Haste halves the swing time (guess of the intent) and, with `Dtu_fix_missile_rate`, the wait of a missile weapon |
+| `Dtu_fix_missile_rate` | dtucombat.c | no wait between the shots of a missile or thrown weapon: each key press fires (0x56BB0) | `fire_wait` from shot to shot, two times with Slow (A8) |
+| `Dtu_fix_speed_items` | dtuchar.c | the Short Bow of Speed and the Short Sword of Quickness have no power (`pc_spell1` is no keyword, `PC_spell` of a melee weapon is not read) | Haste while the bow is in the bow slot or the sword in the hand (A8) |
 | `Dtu_fix_chill_touch` | dtuspell.c | Chill Touch fires a missile and its case (0x8D633) acts only on the caster: the spell does nothing | the cast is on the caster (no missile): Chill Touch for L + 3 minutes |
 | `Dtu_fix_stoneskin_word` | dtuspell.c | Stone Skin clears all other effect bits | only its bit is set |
 | `Dtu_fix_rary_manual` | dtuspell.c | one cast (bit 22), three levels, no second cast, the bonus stays until Dispel Magic | the manual: each cast adds three levels, the first rest after the cast fills them, the next rest ends the bonus (the end at the entry of Waterdeep is not in the port) |
