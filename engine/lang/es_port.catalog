@@ -1,5 +1,7 @@
 # ASCENT text catalog: es, the text of the program (port strings)
 # Format: docs/formats/lang.md. tools/lang_extract.py merge writes this file.
+# The entries tbl.fix.* (the corrected item names of engine/main/dtuitemfix.c) are
+# written by hand: merge keeps them.
 
 id: port.immersive_mode
 en: Immersive Mode
@@ -1381,3 +1383,48 @@ id: port.it_costs_1_gold_piece_to_ascend_back_to_
 en: It costs 1 gold piece\nto ascend back to Waterdeep.\nYou do not have any gold.\nYou will need to search\nthe dungeon for gold
 tr: Volver a Waterdeep cuesta\n1 pieza de oro.\nNo tienes oro.\nTendrás que buscar oro\nen la mazmorra
 
+id: port.rulebook_items
+en: Rulebook items
+tr: Objetos según el manual
+
+id: tbl.fix.cloak_of_lathander
+en: Cloak of Lathander
+tr: Capa de Lathander
+gender: f
+plural: Capas de Lathander
+
+id: tbl.fix.ring_of_wizardry
+en: Ring of Wizardry
+tr: Anillo de hechicería
+gender: m
+plural: Anillos de hechicería
+
+id: tbl.fix.potion_of_invisibility
+en: Potion of Invisibility
+tr: Poción de invisibilidad
+gender: f
+plural: Pociones de invisibilidad
+
+id: tbl.fix.ring_of_armoring
+en: Ring of Armoring
+tr: Anillo de armadura
+gender: m
+plural: Anillos de armadura
+
+id: tbl.fix.black_gem_key
+en: Black Gem Key
+tr: Llave de gema negra
+gender: f
+plural: Llaves de gema negra
+
+id: tbl.fix.club_1
+en: Club +1
+tr: Garrote +1
+gender: m
+plural: Garrotes +1
+
+id: tbl.fix.thief_scroll
+en: Thief Scroll
+tr: Pergamino de ladrón
+gender: m
+plural: Pergaminos de ladrón

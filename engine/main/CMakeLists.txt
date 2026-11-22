@@ -13,7 +13,7 @@ set(MAIN_SOURCES
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
   dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuscroll.c dtuthiefpts.c dtuopts.c
-  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c)
+  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c dtuitemfix.c)
 
 # ASCENT: the translations of the text of the code (dtulang.c,
 # docs/formats/lang.md) are part of the program: each
@@ -79,6 +79,20 @@ target_include_directories(test_data_io PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(test_data_io PRIVATE
   d_common d_3d d_2d d_cfile d_misc d_mem d_vecmat d_fix)
 add_test(NAME test_data_io COMMAND test_data_io)
+
+# ASCENT: the item corrections (dtuitemfix.c). test_dtuitemfix checks the
+# tables and the lookups without the game data. tools/check_itemfix.py
+# checks the Spanish names of the corrected items and, when ASCENT_DATA_DIR
+# has YPINN.BIN, compares the tables with the item lines of the game.
+add_executable(test_dtuitemfix test_dtuitemfix.c dtuitemfix.c)
+target_include_directories(test_dtuitemfix PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME test_dtuitemfix COMMAND test_dtuitemfix)
+set(ASCENT_DATA_DIR "E:/UNDAMONTAN/DTU" CACHE PATH "Directory of the original game files (for tests)")
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME check_itemfix
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/check_itemfix.py --game "${ASCENT_DATA_DIR}")
+endif()
 
 # Check of the data layer against the game data (see test_dtudata.c). It is
 # not in the default build and it is not a registered test: it needs the

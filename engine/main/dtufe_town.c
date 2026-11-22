@@ -638,7 +638,8 @@ static void mk_insert(mk_list *l, int type, int id, int cond, int qty, int equip
 	snprintf(e->name, sizeof(e->name), "%s", it->name);
 	if (!e->name[0] && type == OBJ_WEAPON && it->record >= 0)
 		bm_tbl_get(it->record, "weapon_name", e->name, sizeof(e->name));
-	snprintf(e->name_en, sizeof(e->name_en), "%s", e->name);
+	snprintf(e->name_en, sizeof(e->name_en), "%s", dtu_item_shown_name(type, id, e->name));	// ASCENT: the corrected item names (dtuitemfix.h)
+	snprintf(e->name, sizeof(e->name), "%s", e->name_en);
 	snprintf(e->name, sizeof(e->name), "%s", dtu_tr_name(e->name));		// ASCENT: the language (dtulang.h)
 	e->sell_price = mk_price(type, id, cond, 1);
 	e->buy_price = mk_price(type, id, cond, 0);

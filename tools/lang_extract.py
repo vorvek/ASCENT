@@ -781,6 +781,9 @@ ITEM_TOKEN_IDS = ('tex.701', 'tex.703', 'tex.704', 'tex.705')
 REFLOW_IDS = {'tex.704': 6, 'tex.705': 6}
 # The names of the market, the inventory, the pick-up messages and the HUD
 ITEM_NAME_KINDS = ('tbl.weapon.', 'tbl.armor.', 'tbl.misc.')
+# The corrected item names (engine/main/dtuitemfix.c): entries of the port
+# catalog, written by hand, with the fields of an item name
+FIX_NAMES = 'tbl.fix.'
 
 
 def sex_forms(tr):
@@ -984,8 +987,24 @@ def cmd_merge(args, write=True):
                 names[i] = {k: e[k] for k in NAME_FIELDS if k in e}
         if os.path.exists(port_out):
             for i, e in read_catalog(port_out).items():
-                if 'tr' in e:
+                if 'tr' in e and not i.startswith(FIX_NAMES):
                     tr[i] = e['tr']
+    # The entries that are kept by hand in the port catalog: the corrected
+    # item names (tbl.fix.*, engine/main/dtuitemfix.c), and a text of the
+    # code that no part translates yet
+    fixes = []
+    if os.path.exists(port_out):
+        for i, e in read_catalog(port_out).items():
+            if 'tr' not in e:
+                continue
+            if i.startswith(FIX_NAMES):
+                fixes.append(e)
+                t = {k: e[k] for k in NAME_FIELDS if k in e}
+                check_name(e, e['tr'], t, problems)
+                if len(t) < len(NAME_FIELDS) or not e.get('en'):
+                    problems.append(('error', i, 'a corrected item name needs en, tr, gender and plural'))
+            elif write and i.startswith('port.') and i in en and i not in tr and e.get('en') == en[i]['en']:
+                tr[i] = e['tr']
     # the equal texts
     for i, e in en.items():
         if i not in tr and 'dup' in e and e['dup'] in tr:
@@ -1005,13 +1024,16 @@ def cmd_merge(args, write=True):
     if write:
         game = [dict(id=i, en=e['en'], tr=tr[i], **names.get(i, {})) for i, e in en.items() if i in tr and not i.startswith(('port.', 'sub.'))]
         port = [dict(id=i, en=e['en'], tr=tr[i]) for i, e in en.items() if i in tr and i.startswith('port.')]
+        port += fixes
         write_catalog(os.path.join(d, '%s.catalog' % lang), game,
                       ['ASCENT text catalog: %s (the text of the game files)' % lang,
                        'Made by tools/lang_extract.py merge. Holds text of the game: never commit it.',
                        'Format: docs/formats/lang.md'], fields=('id', 'en', 'tr') + NAME_FIELDS)
         write_catalog(port_out, port,
                       ['ASCENT text catalog: %s, the text of the program (port strings)' % lang,
-                       'Format: docs/formats/lang.md. tools/lang_extract.py merge writes this file.'], fields=('id', 'en', 'tr'))
+                       'Format: docs/formats/lang.md. tools/lang_extract.py merge writes this file.',
+                       'The entries tbl.fix.* (the corrected item names of engine/main/dtuitemfix.c) are',
+                       'written by hand: merge keeps them.'], fields=('id', 'en', 'tr') + NAME_FIELDS)
         # subtitles: the times of <MOVIE>.en.srt, the text of the catalog
         movies = sorted(set(i.split('.')[1] for i in en if i.startswith('sub.')))
         for movie in movies:

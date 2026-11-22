@@ -103,6 +103,13 @@ extern int Dtu_shader;
 // -safemusic and -nosafemusic change it for one run.
 extern int Dtu_safe_music;
 
+// Rulebook items: the values and the class limits of some item lines take
+// the value of the AD&D 2nd edition rulebooks (the table of dtuitemfix.c,
+// docs/audit/items.md). Off by default (unlike the other settings): it
+// changes the balance of the game. The options -rulebookitems and
+// -norulebookitems change it for one run. The variable Dtu_rulebook_items
+// is declared in dtuitemfix.h.
+
 // The directory of the upscaled files (movies <hd>/NAME.m1v, textures
 // <hd>/textures/...), without a separator at the end, or NULL if there is
 // none. The first that exists: the argument of -hddir, "hd" in the current

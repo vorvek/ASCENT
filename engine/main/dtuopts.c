@@ -20,6 +20,7 @@
 #include "dtufile.h"		// ASCENT: dtu_user_path, dtu_install_dir
 #include "dtulog.h"		// ASCENT: the session log
 #include "dtulang.h"		// ASCENT: the language (Language=en)
+#include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items, Dtu_fix_item_names
 
 int Dtu_improved_physics = 1;
 int Dtu_improved_jump = 1;
@@ -47,6 +48,7 @@ int Dtu_target_hint = 1;
 static int File_gpu_renderer = -1, File_render_scale = -1;
 static int Arg_gpu_renderer = -1, Arg_render_scale = -1;
 static int File_language = -1, Arg_language = -1;
+static int File_rulebook = -1, Arg_rulebook = -1;
 
 typedef struct {
 	const char *name;
@@ -70,6 +72,7 @@ static dtu_opt Opts[] = {
 	{ "AnimInterpolation",   &Dtu_anim_interp,          0, 1 },
 	{ "ImprovedInfravision", &Dtu_improved_infravision, 0, 1 },
 	{ "TargetHint",          &Dtu_target_hint,          0, 1 },
+	{ "RulebookItems",       &Dtu_rulebook_items,       0, 1 },		// dtuitemfix.h
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
@@ -149,7 +152,17 @@ void dtu_opts_load(void)
 		Dtu_improved_occlusion = Dtu_improved_body = 0;
 		Dtu_improved_infravision = 0;
 		Dtu_target_hint = 0;
+		Dtu_rulebook_items = 0;
 	}
+	// ASCENT: the item tables (dtuitemfix.h). -rulebookitems and
+	// -norulebookitems set "Rulebook items" for one run. -origitems gives
+	// the item names and the item values of 1.3.
+	if (FindArg("-rulebookitems") || FindArg("-norulebookitems") || FindArg("-origitems")) {
+		File_rulebook = Dtu_rulebook_items;
+		Dtu_rulebook_items = Arg_rulebook = FindArg("-rulebookitems") && !FindArg("-norulebookitems") && !FindArg("-origitems");
+	}
+	if (FindArg("-origitems"))
+		Dtu_fix_item_names = 0;
 	if (FindArg("-notargethint"))		// a comparison with the original cursor
 		Dtu_target_hint = 0;
 	if (FindArg("-noimprovedinfra"))		// a comparison with the original infravision
@@ -172,6 +185,8 @@ void dtu_opts_save(void)
 			v = File_gpu_renderer;
 		if (Opts[i].value == &Dtu_render_scale && File_render_scale >= 0 && v == Arg_render_scale)
 			v = File_render_scale;
+		if (Opts[i].value == &Dtu_rulebook_items && File_rulebook >= 0 && v == Arg_rulebook)
+			v = File_rulebook;
 		fprintf(f, "%s=%d\n", Opts[i].name, v);
 	}
 	{
