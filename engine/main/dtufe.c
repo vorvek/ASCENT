@@ -2678,6 +2678,7 @@ static int Fe_portal_frame = -10;		// FrameCount of the last call of command 0
 
 static int Fe_graphics_menu;			// ASCENT: the key F5 was pressed in this frame
 static int Fe_escape_menu;				// the Escape key was pressed in this frame
+static int Fe_save_key, Fe_load_key;	// ASCENT: Alt+F2, Alt+F3 were pressed in this frame
 static int Fe_inn_flag;					// 0x13B254: command 0 of DTU.WRP was run in this game
 static int Fe_game_loaded;				// the ESC menu loaded a save game: the FE_GO_ mode
 
@@ -2721,6 +2722,29 @@ int dtufe_graphics_key(void)
 	if (!Fe_in_game)
 		return 0;
 	Fe_graphics_menu = 1;
+	return 1;
+}
+
+// ASCENT: the keys Alt+F2 (0x432B8: 0xBA99F, the save with the slot
+// menu) and Alt+F3 (0x432C2: 0xBB780(1), the load with the slot menu) of
+// the key switch of the executable (0x42F9C). They do what Save Game and
+// Load Game of the ESC menu do, after the frame. The argument of 0xBA99F
+// is the value of eax that the cheat code tests before the switch leave
+// (not set for the call); the port saves as the ESC menu (0xBA99F(0), a
+// save in the level). Return 0 when the front end does not run the game.
+int dtufe_save_key(void)
+{
+	if (!Fe_in_game)
+		return 0;
+	Fe_save_key = 1;
+	return 1;
+}
+
+int dtufe_load_key(void)
+{
+	if (!Fe_in_game)
+		return 0;
+	Fe_load_key = 1;
 	return 1;
 }
 
@@ -2891,6 +2915,16 @@ int dtufe_game_frame(void)
 		escape_menu();
 	}
 	Fe_escape_menu = 0;
+	if (Fe_save_key && !Fe_leave_game && !Fe_inn_flag)
+		ig_save_game();
+	if (Fe_load_key && !Fe_leave_game && !Fe_inn_flag) {
+		int mode = fe_load_game(1);			// as Load Game of the ESC menu
+		if (mode == FE_GO_LEVEL || (mode == FE_GO_WATERDEEP && Dtu_fix_escape_load_waterdeep)) {
+			Fe_game_loaded = mode;
+			Fe_leave_game = 1;
+		}
+	}
+	Fe_save_key = Fe_load_key = 0;
 	if (Fe_graphics_menu && !Fe_leave_game)
 		dtufe_graphics_menu();
 	Fe_graphics_menu = 0;
