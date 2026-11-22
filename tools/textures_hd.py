@@ -72,7 +72,7 @@ CACHE_VERSION = 2    # part of the cache key of every bitmap; the key of a
 # The key of a bitmap with transparency has ALPHA_VERSION, the key of a
 # frame of an animation has ANIM_VERSION, so a change of one of them redoes
 # only those bitmaps.
-ALPHA_VERSION = 2    # 2: the mask is blurred, upscaled and cut with a
+ALPHA_VERSION = 3    # 3: the mask is blurred, upscaled and cut with a
                      # 1 pixel ramp (smooth_alpha)
 ANIM_VERSION = 1     # 1: one reference frame for the pixels that change
                      # little or not at all (anim_merge)
@@ -491,9 +491,11 @@ def smooth_alpha(opaque, tiling):
     distance to the 0.5 line is estimated as (f - 0.5) / |grad f|. A plain
     upscale of the 1-bit mask keeps the stair steps of the source pixels;
     the blur makes them a smooth line. A source pixel that the blur would
-    lose (a line or a dot of 1 pixel, opaque or transparent) keeps its
-    square, so that a line of 1 pixel stays a line (a disk for each pixel
-    made a dotted line of the transparent top row of arch4)."""
+    lose (a line or a dot of 1 pixel, opaque or transparent) is kept: a pixel
+    with such a pixel of the same kind beside it (a line) keeps its square, so
+    that a line stays a line (a disk at each pixel made a dotted line of the
+    transparent top row of arch4); a single pixel (a dot, the pixels of a
+    dither) keeps a disk of one source pixel across at its center."""
     import numpy as np
     import torch
     S = SCALE
@@ -508,10 +510,19 @@ def smooth_alpha(opaque, tiling):
     g = np.hypot(gy, gx)[c:c + h * S, c:c + w * S]
     d = np.clip((f - 0.5) / np.maximum(g, 1e-3), -S, S)
     bs = b[p:p + h, p:p + w]
-    weak_in = (opaque & (bs < 0.5)).repeat(S, 0).repeat(S, 1)
-    weak_out = (~opaque & (bs >= 0.5)).repeat(S, 0).repeat(S, 1)
-    d = np.where(weak_in, np.maximum(d, 1.0), d)
-    d = np.where(weak_out, np.minimum(d, -1.0), d)
+    t = (np.arange(S) + 0.5) / S - 0.5
+    disk = np.tile(0.5 * S - S * np.hypot(t[:, None], t[None, :]), (h, w))
+    for weak, sign in ((opaque & (bs < 0.5), 1.0), (~opaque & (bs >= 0.5), -1.0)):
+        if not weak.any():
+            continue
+        wp = np.pad(weak, 1, mode="wrap" if tiling else "constant")
+        line = weak & (wp[:-2, 1:-1] | wp[2:, 1:-1] | wp[1:-1, :-2] | wp[1:-1, 2:])
+        keep = np.where(line.repeat(S, 0).repeat(S, 1), 1.0, disk)
+        sel = weak.repeat(S, 0).repeat(S, 1)
+        if sign > 0:
+            d = np.where(sel, np.maximum(d, keep), d)
+        else:
+            d = np.where(sel, np.minimum(d, -keep), d)
     return np.clip(0.5 + d, 0.0, 1.0)
 
 

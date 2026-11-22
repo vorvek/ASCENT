@@ -147,22 +147,26 @@ int plat_gpu_fx_code(int c)
 // smooth edges instead of the blocks of the source pixels. The mask is
 // blurred (gaussian, sigma 1 source pixel, wrapped: the textures tile),
 // sampled bilinear and cut at 0.5; a source pixel that the blur would
-// lose (a dot or a line of 1 pixel, set or clear) keeps its square, so
-// that a line stays a line. tools/textures_hd.py makes the alpha of the
+// lose (a dot or a line of 1 pixel, set or clear) is kept: as its square
+// when such a pixel of the same kind is beside it (a line stays a line), as
+// a disk of 1 source pixel across at its center when it is alone (a dot, the
+// pixels of a dither). tools/textures_hd.py makes the alpha of the
 // upscaled files the same way. Returns w*h bytes of 0 or 1 (malloc), or
 // NULL.
 #define SMOOTH_R 3
 static uint8_t *smooth_mask(const uint8_t *bits, int iw, int ih, int w, int h)
 {
 	float k[2 * SMOOTH_R + 1], ks = 0, *t, *b;
-	uint8_t *out;
+	uint8_t *out, *weak;
 	int x, y, i;
 
 	t = (float *) malloc(sizeof(float) * iw * ih * 2);
 	out = (uint8_t *) malloc((size_t) w * h);
-	if (!t || !out) {
+	weak = (uint8_t *) malloc((size_t) iw * ih);
+	if (!t || !out || !weak) {
 		free(t);
 		free(out);
+		free(weak);
 		return NULL;
 	}
 	b = t + iw * ih;
@@ -184,12 +188,29 @@ static uint8_t *smooth_mask(const uint8_t *bits, int iw, int ih, int w, int h)
 				s += k[i + SMOOTH_R] * t[(((y + i) % ih + ih) % ih) * iw + x];
 			b[y * iw + x] = s;
 		}
+	// weak: 1 for a pixel that the blur loses, 2 for one in a line
+	for (i = 0; i < iw * ih; i++)
+		weak[i] = (bits[i] != 0) != (b[i] >= 0.5f);
+	for (y = 0; y < ih; y++)
+		for (x = 0; x < iw; x++) {
+			int n = y * iw + x, m[4], j;
+			if (!weak[n])
+				continue;
+			m[0] = y * iw + (x + 1) % iw;
+			m[1] = y * iw + (x + iw - 1) % iw;
+			m[2] = ((y + 1) % ih) * iw + x;
+			m[3] = ((y + ih - 1) % ih) * iw + x;
+			for (j = 0; j < 4; j++)
+				if (weak[m[j]] && (bits[m[j]] != 0) == (bits[n] != 0))
+					weak[n] = 2;
+		}
 	for (y = 0; y < h; y++) {
-		float sy = (y + 0.5f) * ih / h - 0.5f, fy;
+		float sy = (y + 0.5f) * ih / h - 0.5f, fy, dy;
 		int y0 = (int) floorf(sy), ny = y * ih / h;
 		fy = sy - y0;
+		dy = (y + 0.5f) * ih / h - (ny + 0.5f);
 		for (x = 0; x < w; x++) {
-			float sx = (x + 0.5f) * iw / w - 0.5f, fx, f;
+			float sx = (x + 0.5f) * iw / w - 0.5f, fx, f, dx;
 			int x0 = (int) floorf(sx), nx = x * iw / w, n = ny * iw + nx;
 			int xa = (x0 % iw + iw) % iw, xb = (x0 + 1) % iw + (x0 + 1 < 0 ? iw : 0);
 			int ya = (y0 % ih + ih) % ih, yb = (y0 + 1) % ih + (y0 + 1 < 0 ? ih : 0);
@@ -197,13 +218,13 @@ static uint8_t *smooth_mask(const uint8_t *bits, int iw, int ih, int w, int h)
 			f = (1 - fy) * ((1 - fx) * b[ya * iw + xa] + fx * b[ya * iw + xb])
 				+ fy * ((1 - fx) * b[yb * iw + xa] + fx * b[yb * iw + xb]);
 			out[y * w + x] = f >= 0.5f;
-			if (bits[n] && b[n] < 0.5f)
-				out[y * w + x] = 1;
-			else if (!bits[n] && b[n] >= 0.5f)
-				out[y * w + x] = 0;
+			dx = (x + 0.5f) * iw / w - (nx + 0.5f);
+			if (weak[n] == 2 || (weak[n] && dx * dx + dy * dy <= 0.25f))
+				out[y * w + x] = bits[n] != 0;
 		}
 	}
 	free(t);
+	free(weak);
 	return out;
 }
 

@@ -278,8 +278,12 @@ The tool (`smooth_alpha`): the mask is blurred with a gaussian of sigma 1 source
 pixel before the bicubic upscale, so a staircase becomes a straight or a curved
 line, and the cut at 0.5 has a ramp of one output pixel (the distance to the 0.5
 line is estimated as (f - 0.5) / |grad f|). A source pixel that the blur would lose
-(an opaque or a transparent dot or line of 1 pixel) keeps a disk of one source
-pixel across at its center. The opaque area stays the same: 0.1973 against 0.1980
+(an opaque or a transparent dot or line of 1 pixel) is kept: as its square when
+such a pixel of the same kind is beside it (a line stays a line), as a disk of one
+source pixel across at its center when it is alone (a dot, the pixels of a
+dither). A disk for every such pixel made a dotted line of the transparent top row
+of `arch4` and crosses of the small holes of `resfire#17`; a square for every one
+kept the dithered edges of the waterfall `wfal04` as blocks. The opaque area stays the same: 0.1973 against 0.1980
 of the original for `flame4#0`, 0.5937 against 0.5945 for `sewge1`, 0.7462 against
 0.7468 for `well1`. Sigma 0.7 left small waves on the arch of `flame4` and the
 ring of `well1`; 1.0 does not.
@@ -292,7 +296,7 @@ The engine (gputex.c):
   alpha stays 0 or 255 (the effect codes use the values between).
 - The holes of a super transparent overlay (color 254, the dark center of `well1`
   and of the round openings) come from a smooth mask (`smooth_mask`: the same
-  blur of sigma 1, sampled bilinear and cut at 0.5, dots kept as disks) instead of
+  blur of sigma 1, sampled bilinear and cut at 0.5, thin features kept as above) instead of
   the 4 x 4 blocks of the original pixels.
 - The effect texels of a merged wall (`plat_gpu_fx_mark`, the see-through parts
   of water and waterfalls) come from the same smooth mask of the effect colors; a
@@ -314,8 +318,20 @@ against new engine and the files made again): the arch of `flame8` (KOBOLDS
 `-testpos -110,37.5,347.5,270`) and of `flame4` (YPINN `-testpos -140,0,200,0`,
 90 frames) has a smooth outline with no dark or bright fringe; the round opening
 with water behind it (KOBOLDS `-testpos 0,-15,327,0`) has a smooth hole edge, and
-the effect texels of the waterfall `wfal04` at the left are round dots and smooth
-areas instead of squares.
+the single effect texels of the waterfall `wfal04` at the left are round dots;
+its effect and transparent pixels are mostly a dither of lines of 1 pixel, which
+stay squares, so this waterfall changes little.
+
+`--check kobolds` of the set of version 3 and of KOBOLDS made again (the halo and
+the color of the check count a pixel from alpha 128 on): soft alpha in 2470 files
+(0 before); color difference median 0.07 before and 0.09 after; halo median 0.69
+and 0.69, sprites with a halo above 5 of 255: 247 before, 250 after; the static
+pixels of the 762 frame pairs of the animations of `anim_merge`: median 2.66
+before, 0.40 after. The seam check compares a file with a new upscale of the single frame, so
+it shows the frames of `anim_merge` as seams (`up7#0` 5.84); the step across the
+wrap edge of the files themselves is the same as before (`water2` max 1.10
+against 1.14, `magma` 0.66, `flame8` 0.97, `up7` 8.45 against 8.63: `up7` does not
+tile in the original either).
 
 ## Animations (version 4)
 
@@ -388,8 +404,8 @@ files), and every frame of the 81
 animations above (15156 files); about 2800 distinct bitmaps (1574 wall bitmaps
 with the detail method, 1031 tiling and 201 other bitmaps with x4plus). The other
 bitmaps come from the cache. Measured: KOBOLDS alone, with the cache of version
-3, upscaled 2469 bitmaps (most of them shared with PORTAL) and linked 664 in 4
-minutes 23 s (about 10 per second). The other archives share most of these, so
+3, upscaled 2434 bitmaps (most of them shared with PORTAL) and linked 700 in 5
+minutes 29 s (about 7.5 per second). The other archives share most of these, so
 the full run should take about 10 to 15 minutes (estimate; the full run was not
 made).
 
