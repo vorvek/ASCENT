@@ -355,9 +355,11 @@ and the last reply), or scroll the text when the focus is on the text. Enter
 (also keypad Enter) returns the selection; with no selection it returns -1,
 which the wait loop takes as "no choice yet". Space and Tab move the focus
 between the replies and the text. Escape closes the window and returns -2.
-The key ` is the screenshot key (0x80DA1). With no replies, Enter, keypad
-Enter or Space go on, and Escape also goes on (0xA7ADC ignores a negative
-choice when there is no reply). The mouse pointer is kept inside the window
+The key ` is the screenshot key (0x80DA1). With no replies (0xB2B6F),
+Enter or keypad Enter go on, Space and Tab move the focus to the text
+(0xB2BB5) as with replies, and Escape also goes on (0xA7ADC ignores a
+negative choice when there is no reply). With the focus on the text
+(0xB2BED) Enter does nothing. The mouse pointer is kept inside the window
 (0xB249C). There are no number keys.
 
 While the window waits, 0xB2FA2 calls the reduced frame 0x4391D in a loop:

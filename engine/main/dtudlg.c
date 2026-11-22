@@ -413,9 +413,14 @@ int dtu_dlg_poll(void)
 				return chosen(Dlg_sel);
 			break;
 		case KEY_SPACEBAR:
-			if (Dlg_n_replies == 0)
-				return chosen(0);
-			Dlg_focus_replies = !Dlg_focus_replies;			// 0xB2A47, 0xB2CEB
+		case KEY_TAB:
+			// 0xB2A47, 0xB2BB5 (no reply), 0xB2CEB: Space and Tab move the
+			// focus between the replies and the text, also with no reply
+			// (then only Enter goes on)
+			Dlg_focus_replies = !Dlg_focus_replies;
+			break;
+		case KEY_LAPOSTRO:
+			save_screen_shot(0);						// 0xB297E: 0x80DA1
 			break;
 		case KEY_UP:
 		case KEY_PAD8:
