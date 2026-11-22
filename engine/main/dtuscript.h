@@ -100,8 +100,4 @@ void dtu_mission_read_save(const char *path);
 // 0x879A7(n): the stock file n of the market is added (a reward of Khelben).
 void dtu_hook_market_add_stock(int n);
 
-// 0xABB53: the thief skill points screen (thiefpts.c) with "points" to
-// spend. Returns 1 if the player used the screen.
-int dtu_hook_thief_points(int points);
-
 #endif

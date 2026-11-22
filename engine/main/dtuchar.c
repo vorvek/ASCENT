@@ -2536,6 +2536,8 @@ int dtu_char_load_save(char *filename)
 	Dtu_char.portrait = get_s32(p + DTU_P_PORTRAIT);
 	Dtu_char.pa.hit_points = get_s32(p + DTU_P_HIT_POINTS) >> 16;
 	Potion.gem_uses = p[DTU_P_GEM_USES];
+	Dtu_char.thief_paid = p[DTU_P_THIEF_PAID];
+	Dtu_char.thief_points = p[DTU_P_THIEF_POINTS] | (p[DTU_P_THIEF_POINTS + 1] << 8);
 	Dtu_char.created = 1;
 	Dtu_gold = Dtu_char.pa.gold;
 
@@ -2681,6 +2683,9 @@ void dtu_char_pack(ubyte *record)
 
 	record[DTU_P_THAC0] = Dtu_char.thac0;
 	record[DTU_P_GEM_USES] = (ubyte) Potion.gem_uses;
+	record[DTU_P_THIEF_PAID] = (ubyte) Dtu_char.thief_paid;
+	record[DTU_P_THIEF_POINTS] = (ubyte) Dtu_char.thief_points;
+	record[DTU_P_THIEF_POINTS + 1] = (ubyte) (Dtu_char.thief_points >> 8);
 	pack_ref(record + DTU_P_CURRENT, Dtu_char.current);
 	// A spell in the hand is the reference of the hand (list 1 or 2)
 	if (Dtu_spell_current >= 0 && dtu_spell_book_ref(Dtu_spell_current, &list, &index)) {
@@ -2829,6 +2834,7 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
 	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
+	else if (!strcmp(cmd, "class"))		Dtu_char.pa.class1 = Dtu_char.base.class1 = a;	// test: class=N, the first class
 	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
 	else if (!strcmp(cmd, "activate"))	dtu_player_use();		// test: the key A
 	else if (!strcmp(cmd, "goside") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: goside=SEG.SIDE

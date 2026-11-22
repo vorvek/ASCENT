@@ -288,6 +288,27 @@ def test_scroll_text(t):
     assert differ(region(s["base"], *LEFT), region(s["closed"], *LEFT)) < 0.02, "I opened the inventory"
 
 
+# The thief skill point screen, high resolution: the rows, the value of the
+# first row and the message line (85 + 100, 40 + 130; 40 + 399 - 100 + 5)
+THIEFROWS = (185, 170, 270, 100)
+THIEFVALUE = (188, 173, 50, 14)
+THIEFMSG = (185, 344, 270, 14)
+
+
+def test_thief_points(t):
+    """Talking to Mirt as a thief of level 1 gives 40 points (0xABB53); Yes
+    opens the screen (0xB5B49), = adds a point to the selected skill
+    (0xB44B4), and Escape with points left keeps the screen and shows
+    "You must spend all points" (0xB5F56)."""
+    s, _ = t.run("thief_points", ["gamekeys", "wait 15", "move 600 400", "wait 3", "shot base", "wait 25",
+                                  "shot open", "key =", "wait 3", "shot plus", "key esc", "wait 3", "shot esc"],
+                 extra=["-fixedfps", "30", "-autochoice", "0", "-chartest", "5:class=3,20:goobj=2,25:activate"])
+    assert differ(region(s["base"], *THIEFROWS), region(s["open"], *THIEFROWS)) > 0.3, "the screen did not open"
+    assert differ(region(s["open"], *THIEFVALUE), region(s["plus"], *THIEFVALUE)) > 0.02, "= added no point"
+    assert differ(region(s["plus"], *THIEFROWS), region(s["esc"], *THIEFROWS)) < 0.01, "Escape closed the screen"
+    assert differ(region(s["plus"], *THIEFMSG), region(s["esc"], *THIEFMSG)) > 0.02, "no message"
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 

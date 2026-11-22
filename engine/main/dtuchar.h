@@ -163,8 +163,10 @@ typedef struct dtu_item_ref {
 #define DTU_P_N_KEYS			0x00FF
 #define DTU_P_KEYS			0x18D3		// 22 key items
 #define DTU_P_NAME2			0x1AA3		// char[16], the name again
+#define DTU_P_THIEF_PAID	0x1A53		// byte, the thief level + 1 that Mirt last paid points for (0xABB53)
 #define DTU_P_GEM_USES		0x1A57		// byte, the uses of the Gem of Curing (0x3891B)
 #define DTU_P_THAC0			0x1A5C		// byte
+#define DTU_P_THIEF_POINTS	0x1AB3		// word, the thief skill points to spend (0xB4ECF)
 #define DTU_P_BOW				0x1AB9
 #define DTU_P_CROSSBOW		0x1ABB
 #define DTU_P_HOT_KEYS		0x1AC1
@@ -189,6 +191,8 @@ typedef struct dtu_character {
 	dtu_item_ref	hot_key[DTU_N_HOT_KEYS];	// P+0x1AC1
 	dtu_item_ref	slot[DTU_N_SLOTS];	// DTU_SLOT_
 	fix				no_pickup_until;	// P+0x1ABD: no pick up before this game time (5 seconds after a drop)
+	int				thief_paid;			// P+0x1A53: the thief level + 1 of the last points of Mirt, 0 none
+	int				thief_points;		// P+0x1AB3: the thief skill points to spend (dtuthiefpts.c)
 } dtu_character;
 
 extern dtu_character Dtu_char;

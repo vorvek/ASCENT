@@ -403,8 +403,11 @@ Steps:
 10. Mode 0, a thief, level 0 (YPINN), and the display name of the object is
     TEX[905] "Mirt": the thief skill points (0xABB53, `thiefpts.c`): if the
     thief level + 1 is above the byte P+0x1A53, the points (word P+0x1AB3) =
-    (level + 1 - P+0x1A53) * 20, plus 20 if P+0x1A53 is 0; the screen 0xB5B49
-    opens; if it returns 1, P+0x1A53 = level + 1. Then the script runs.
+    (level + 1 - P+0x1A53) * 20, plus 20 if P+0x1A53 is 0 (set, not added);
+    the screen 0xB5B49 opens (combat.md, B7); if it returns 1, P+0x1A53 =
+    level + 1. Then the script runs. The thief level is the level of the
+    second class if it is the thief (P+0xB1), else of the first (P+0xAF).
+    In the port: `thief_points` of `dtuscript.c` and `dtuthiefpts.c`.
 11. Flag 0 = 1, 0x145535 = 0, run the interpreter.
 12. If the interpreter returns 0 (DB to another level), stop. Else flag 0 =
     0x145535; in mode 0 the talk counter + 1 (max 15); close the window; if
@@ -663,8 +666,7 @@ Settings (globals in dtuscript.c):
 Not in the port: `EB` (no area spell function), the prison sequence of DB, the sounds of D4 to D7 at an object or
 side (they play at the player), the step turn of the speaker, the shading
 ramp, the scroll arrows of the window, the market stock of the
-rewards (weak hook `dtu_hook_market_add_stock`), the thief points screen
-(weak hook `dtu_hook_thief_points`), global flag 0x81 of the WEAPON 13 talk,
+rewards (weak hook `dtu_hook_market_add_stock`), global flag 0x81 of the WEAPON 13 talk,
 and condition 98 (the morale of dtuobj.c; the port uses 0 + 500).
 
 Port additions to the window (not in the executable): the keys 1 to 9 and

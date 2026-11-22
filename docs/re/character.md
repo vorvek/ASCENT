@@ -56,9 +56,11 @@ an assert or a table keyword where one exists.
 | 0x8F3 | 127 x 16 | the mage spell list | |
 | 0x10E3 | 127 x 16 | the cleric spell list | |
 | 0x18D3 | 22 x 16 | the key item list (misc numbers 107 to 124) | |
+| 0x1A53 | byte | the thief level + 1 that Mirt last gave skill points for, 0 before the first visit (0xABB53) | 0 |
 | 0x1A5C | byte | THAC0 | 20 |
 | 0x1A93 to 0x1A9F | 4 int | end times of potion effects (0x1A97 strength, 0x1A9F dexterity; guess for the other two) | 0 |
 | 0x1AA3 | char[16] | the name again | "Elmac" |
+| 0x1AB3 | word | the thief skill points to spend (set by 0xABB53, spent by 0xB5BB9) | 60 |
 | 0x1AB9 | ref | the bow slot | none |
 | 0x1ABB | ref | the crossbow slot | none |
 | 0x1ABD | fix | time: no pick up before it (set to clock + 5.0 by a drop) | 0 |

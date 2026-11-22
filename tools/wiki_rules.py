@@ -976,7 +976,9 @@ class Pages:
             "Skill points: Mirt, at the Yawning Portal, gives a thief 20 skill points for each thief "
             "level gained since the last visit, and 20 more at the first visit. Each point raises one "
             "skill by 1%, up to 95%. One skill can take at most half of the points of a visit. "
-            "ASCENT does not have the skill point screen yet.",
+            "The screen closes with Escape only when the points are spent or no skill can take more; "
+            "points that no skill can take are lost. If you answer No, Mirt offers the same points "
+            "at the next talk.",
             "",
             md_table(["Item or effect", "Change"], thief_items),
             "",
@@ -1772,7 +1774,6 @@ RULE_SOURCES = [
 ]
 
 NOT_IN_ASCENT = [
-    "The thief skill point screen (thiefpts.c, 0xB5B49).",
 ]
 
 UNUSED_ITEM_VALUES = [

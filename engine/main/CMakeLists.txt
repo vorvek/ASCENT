@@ -12,7 +12,7 @@ set(MAIN_SOURCES
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuspell.c dtuthief.c
-  dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuscroll.c dtuopts.c
+  dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuscroll.c dtuthiefpts.c dtuopts.c
   dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c)
 
 # ASCENT: the translations of the text of the code (dtulang.c,
