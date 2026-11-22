@@ -290,11 +290,14 @@ SPELLS = {
     8: dict(src="0x8DC1D, 0x90CEF", dur="No end", save="Negates", target="Everyone within {r} ft of you",
             eff="A light (brightness 60) appears where you stand and stays. Each creature or player in "
                 "the area, except you and the blind, is blinded with no end unless it saves. "
-                "Light-sensitive creatures would also take the damage of the spell, which is 0."),
+                "A light-sensitive creature that fails would also take the damage of the spell, which "
+                "is 0."),
     10: dict(src="0x8DE4B", dur="Instant", save="None", target="You",
-             eff="+1d8 hit points, up to your maximum. No effect on undead or extraplanar creatures."),
+             eff="+1d8 hit points, up to your maximum. No effect on undead or extraplanar creatures. "
+                 "Extra hit points of Aid stay (the original 1.3 game takes them away)."),
     11: dict(src="0x8DF37", dur="Instant", save="None", target="You",
-             eff="+3 to 17 hit points, up to your maximum. No effect on undead or extraplanar creatures."),
+             eff="+3 to 17 hit points, up to your maximum. No effect on undead or extraplanar creatures. "
+                 "Extra hit points of Aid stay (the original 1.3 game takes them away)."),
     12: dict(src="0x8E019", dur="2 minutes per level", save="None", target="You",
              eff="DETECT_MAGIC",
              tech="Sets effect bit 6. The renderer reads it (0x670DB, 0x75726)."),
@@ -354,7 +357,7 @@ SPELLS = {
     30: dict(src="0x8DC1D, 0x90CEF", dur="10 minutes per level", save="Negates", target="Everyone within {r} ft of you",
              eff="A light (brightness 20) appears where you stand for the duration. Each creature or "
                  "player in the area, except you and the blind, is blind for the duration unless it "
-                 "saves. Light-sensitive creatures take 1d6 damage."),
+                 "saves. A light-sensitive creature that fails also takes 1d6 damage."),
     32: dict(src="0x8EE76, 0x91BC3", dur="Instant", save="Half", target="The creature the missile hits",
              eff="6 electric damage per level. No damage to creatures immune to electricity. Scenery "
                  "that it hits can break.",
@@ -389,8 +392,8 @@ SPELLS = {
              eff="Attacks of extraplanar creatures miss you; other creatures get -2 to hit you. Your "
                  "attack on an extraplanar creature ends the spell."),
     40: dict(src="0x8F1B2", dur="Until used up", save="None", target="You",
-             eff="Absorbs 12 points of fire damage per level before you take any. Cast it again to "
-                 "add more."),
+             eff="Absorbs 12 points of fire damage per level before you take any. A second cast "
+                 "does nothing while points are left."),
     41: dict(src="0x8F21D", dur="See effect", save="None", target="You",
              eff="Choose three more level 1 slots, one level 1 and one level 2 slot, or one level 3 "
                  "slot. The next rest fills them. The original 1.3 game allows one cast only and keeps "
@@ -1010,8 +1013,10 @@ class Pages:
             "",
             "Key T. A cleric turns at the cleric level; anyone who wears the Cloak of Lathandar turns "
             "as a cleric of level 7. One d20 counts for all undead in sight, and at most 2 to 12 are "
-            "destroyed. A number: the d20 must reach it. T: turned. D: destroyed. -: no effect (you "
-            "can try again later).",
+            "turned or destroyed, the weakest kinds first. A number: the d20 must reach it. T: "
+            "turned. D: destroyed. -: no effect (you can try again later). In the original 1.3 game "
+            "a T makes every later undead of the same use turn, and the first undead after the 2 to "
+            "12 can never be tried again; ASCENT corrects both.",
             "",
             md_table(["Undead"] + [str(i) for i in range(1, 15)], turn_rows),
             "",
@@ -1027,8 +1032,6 @@ class Pages:
             "",
             "## Differs from the manual",
             "",
-            "- The manual says a priest gets every spell of a new spell level. In the game clerics "
-            "find their spells as items, like mages.",
             "- The manual shows the fixed hit points one level earlier (fighter and cleric from level "
             "10).",
             "- The manual gives racial save bonuses. The game has none.",
@@ -1484,8 +1487,6 @@ class Pages:
             "- Magical Vestment: the manual gives the armor class of chain mail (5); the game gives 6 "
             "at levels 1 and 2, 5 up to level 7, and better at higher levels.",
             "- The manual lists Silence, 15' Radius (level 2). There is no such spell.",
-            "- The manual says a priest gets every spell of a new spell level. Clerics find their "
-            "spells as items.",
             "- The 1.3 readme names a new spell Produce Fire. There is no such spell.",
         ]
 
