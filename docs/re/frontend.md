@@ -659,7 +659,7 @@ each control).
 
 | Part | State |
 |---|---|
-| Title picture | done; the movies are not played (P) |
+| Title picture | done, after the movies LOGO22S, INTRO2 and TLOGOS (dtumovie.c; a key in a movie skips the rest, as 0x142254 does) |
 | Main menu | done, items and conditions as section 4 |
 | Character generation | done, all four screens and the quick character; the character goes to `Dtu_char` (dtuchar.h) and the game starts in YPINN through Waterdeep |
 | Waterdeep, Blackstaff | done (Khelben text, face, speech, torches); no eyes, as in 1.3; the hidden animation of the face (0x83A93, FESEQ 29 and 30) is not done |
@@ -671,7 +671,7 @@ each control).
 | Death | done: picture, music, Death Menu with Load Game and Abort Game |
 | ESC menu in the game | done (section 6b) |
 | Loading pictures | done (section 7a); the picture is scaled to the screen of the game (P) |
-| Movies (MVE) | not done |
+| Movies (MVE) | done (dtumovie.c, docs/formats/mve.md) |
 
 Decisions of the port (P):
 
