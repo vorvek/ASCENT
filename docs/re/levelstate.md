@@ -319,3 +319,10 @@ level files of YPINN, HUB1, KOBOLDS and BONES; `-fescript`, `-statelog`):
 
 Option `-statelog`: prints the model numbers that differ from the level and
 the objects that lie outside their segment after a restore.
+
+A map change that a trigger makes lives only in this state. Example: the new
+opening of HUB1 that Khelben speaks of at missions 3 and 4 is trap 3 of
+HUB1.TAP (walls 36 and 37 to type 4), fired by the floor of segment 61 when
+the player carries MISC 107. The save of a played 1.3 game at mission 4 has
+the open walls in `SG1_1.LVL` and the used trap in `SG1_1.TAP`; the port
+restores them. Details in [scripts.md](scripts.md), section 8.

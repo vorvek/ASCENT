@@ -570,8 +570,61 @@ classes) and a stock file of the market (0x879A7(n): the file of the table
 Missions 9, 23, 28 and 33 have no reward. **G**: the MISC items 0x6B to 0x79
 are the keys that Durnan speaks of ("he'll give you the proper key to move
 into the next section of the dungeon"), so each mission opens the next part
-of the hubs (HUB1 to HUB4) through the doors that need these keys; the doors
-were not traced.
+of the hubs (HUB1 to HUB4) through the doors that need these keys. HUB1 is
+traced below; the doors of HUB2 to HUB4 were not traced.
+
+### The new opening of HUB1 (missions 3 and 4)
+
+**V** The text of missions 3 and 4 (FETXT 331 and 341: "If you return to the
+tomb, I believe that you will find a new opening has appeared") comes with
+the reward MISC 0x6B (107, "Violet Gem Key"). No mission flag, global flag or
+level start rule opens the passage. The key is the condition:
+
+- The has item function 0xB6BB3 looks for MISC 0x6B to 0x7C in the key item
+  list (0xB6CC3: the id byte at P+0x18D4 + 16 * i, count P+0xFF), every
+  other item in the item list.
+- HUB1.TIG trigger 10: the floor (side 3) of segment 61, the segment in
+  front of the Skull Key door of the Cassalanter tomb (trigger 8, door
+  segment 58 side 4, MISC 0x26). Mask 0xFF, needs MISC 107, does not take
+  it, trap 3. The fire function reads the item at trigger +0x19
+  (0x93E0E). The floor fires with activation type 8 when the player enters
+  the segment.
+- HUB1.TAP trap 3: segment 40 side 4, flags 0x20, one charge: the walls of
+  both sides of the opening (wall 36, segment 40 side 4, and wall 37,
+  segment 162 side 5, both type 5 "closed" in the level file) become type 4
+  "open". Behind it the corridor runs south (segments 162, 118, 115) to the
+  iron gate, wall 10 (segment 115 side 4, a locked door). HUB1.TIG trigger 9
+  opens that gate with MISC 107 and takes the key (trap 2). Message 10 of
+  HUB1.SAY: "Beyond the gate is a dark passage leading up."
+
+So a player who gets the key walks through segment 61 on the way to the
+tomb and the wall opens. The change stays in the level state of HUB1
+([levelstate.md](levelstate.md)): the wall types in `SGn_1.LVL` and trap 3
+with 0 charges in `SGn_1.TAP`. Data check, the two saves of a played 1.3
+game (both in BONES, the player carries MISC 0x12):
+
+| Save | Mission | Key 107 | `SGn_1.LVL` walls 36, 37 | `SGn_1.TAP` trap 3 | `SGn_1.TIG` trigger 10 fire_count |
+|---|---|---|---|---|---|
+| `SG0.SG` "TERCERA MISION" | 4 | yes | 4, 4 (open) | charges 0, flags 0x620 | 5 |
+| `SG1.SG` "En mision" | 2 | no | 5, 5 (closed) | charges 1, flags 0x20 | 3 |
+
+At mission 2 the passage is closed in the original too; the next visit to
+Khelben gives mission 4 (has MISC 0x12) and the key, and the next walk
+through segment 61 opens it.
+
+The port: the same rule with no special code (`dtu_char_has` reads the key
+list, `dtu_trig_frame` fires the floor trigger, `trap_set_wall_type` sets
+both walls). Checked with copies of the two saves (`-fescript`,
+`-statetest 40,4,-1,...`, `-triglog`):
+
+- `SG0.SG`: the warp from BONES to HUB1 restores `SG1_1.LVL` with wall 36
+  type 4; the view from segment 42 shows the corridor and the iron gate.
+- `SG1.SG` loaded in Waterdeep: Khelben gives mission 4 and MISC 107; in
+  HUB1 the walls are type 5, the move into segment 61 fires trigger 10 and
+  trap 3, and the walls are type 4. A save in the port then writes
+  `SG2_1.LVL` with walls 36 and 37 of type 4 and `SG2_1.TAP` with trap 3 at
+  0 charges and flags 0x620 (as the original), and the load of that save
+  starts HUB1 with wall 36 of type 4.
 
 ## 9. Level start
 
@@ -641,7 +694,8 @@ table of YPINN: 0x26 "Skull Key", 0x6B to 0x79 "Violet Gem Key", 0x12 to
 3. The prison sequence 0xAA3F3. (The end sequence of sound 0xFFFF is in
    movies.md: the movie FLAM1.MVE.)
 4. Script 0x1FD and its seven callers.
-5. The MISC items of the rewards by name, and the doors that they open.
+5. The MISC items of the rewards by name, and the doors that they open in
+   HUB2 to HUB4 (HUB1 and MISC 107 are in section 8).
 6. What makes the light functions (0xEC4D7, 0x105A81) apply the dark view of the
    conversation window to every lit polygon (0x14C4D8 is 1 only for flag 0x20,
    a tint or 0x14C4CF by the code read), as the DOS game shows.
