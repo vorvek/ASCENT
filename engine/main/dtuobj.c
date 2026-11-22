@@ -304,6 +304,7 @@ static void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
 static void sound_on_object(int sound,object *obj,fix volume);
 static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip);
 static int weapon_int(int w,char *key,int def);
+static int weapon_is_melee(int w);
 static int player_type_sound(char *key);
 static void blood(object *obj);
 static void setup_creature(object *obj);
@@ -1486,31 +1487,111 @@ static int str_bonus(int str)
 	return Str_to_hit[str];
 }
 
+/// 0x2AA5B to 0x2AF4F of 0x2A7F3: the effects of the attacker and of the
+// target, the armor class of the target, the test, and Stone Skin. roll is
+// the d20 with the bonuses of the attacker. Returns 1 for a hit, 0 for a
+// miss; *ac_out is the armor class of the test.
+int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
+{
+	int tw = target->dtu.m_88, aw = attacker ? attacker->dtu.m_88 : 0, ac;
+	int robot_attacker = attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types;
+	int robot_target = target->type == OBJ_ROBOT && target->id < N_robot_types;
+
+	// 0x2AA5B: an attacker that levitates: 1 plus 4 for each unit of its
+	// speed, at most 5
+	if (aw & DTU_FX_LEVITATE) {
+		int m = (vm_vec_mag(&attacker->mtype.phys_info.velocity) >> 14) + 1;
+		roll -= (m < 5) ? m : 5;
+	}
+	if (target->type == OBJ_PLAYER) {
+		ac = dtu_player_armor_class();
+		// 0x2ACE8: the player is hidden from the attacker (0x165C4)
+		if (robot_attacker && dtu_thief_hidden_from(attacker))
+			roll -= 4;
+	}
+	else {
+		// 0x2ACFC: an invisible creature that the player does not see (0x16636)
+		if (dtu_spell_unseen(target))
+			roll -= 4;
+		ac = robot_target ? Monster_info[target->id].armor_class : 10;
+	}
+	// 0x2AD27: Bless of the attacker
+	if (aw & DTU_FX_BLESS)
+		roll++;
+	// 0x2AD36: Protection From Evil of the target: an extraplanar creature
+	// always misses, another creature has -2
+	if ((tw & DTU_FX_PROT_EVIL) && robot_attacker)
+		roll = (Monster_info[attacker->id].flags & MONSTER_F_EXTRAPLANAR) ? 0 : roll - 2;
+	// 0x2AD70: the attack on an extraplanar creature ends Protection From
+	// Evil of the attacker (its timer +0xE0 is 0)
+	if ((aw & DTU_FX_PROT_EVIL) && robot_target && (Monster_info[target->id].flags & MONSTER_F_EXTRAPLANAR))
+		attacker->dtu.m_e0[0] = 0;
+	// 0x2ADA3: the effects that change the armor class of a creature
+	if (robot_target)
+		ac = dtu_spell_creature_ac(target,ac);
+	// 0x2AE22: Slow of the attacker
+	if (aw & DTU_FX_SLOW)
+		roll -= 4;
+	*ac_out = ac;
+	if (thac0 - ac > roll)
+		return 0;
+	// 0x2AE44: Stone Skin takes the hit
+	if (tw & DTU_FX_STONESKIN) {
+		target->dtu.m_80--;
+		if (target->type == OBJ_PLAYER) {
+			HUD_init_message("You are protected by StoneSkin Spell.");
+			PALETTE_FLASH_ADD(0,0,16);
+		}
+		else
+			HUD_init_message("%s protected by StoneSkin Spell.",dtu_object_display_name(target));
+		dtu_obj_log("attack: the stone skin of obj %d %s takes the hit, %d left",(int)(target-Objects),
+			dtu_object_name(target),target->dtu.m_80);
+		return 0;
+	}
+	return 1;
+}
+
 // 0x2A7F3. The to-hit roll. Returns 2 for a critical hit, 1 for a hit, 0
 // for a miss, -1 for a fumble.
 static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 {
-	int roll = rand() % 20 + 1;
-	int thac0, ac;
+	int roll, thac0, ac;
 
+	// 0x2A839: a sleeping target is hit, and its sleep ends (the timer
+	// +0xE8 is 0)
+	if (target->dtu.m_88 & DTU_FX_SLEEP) {
+		target->dtu.m_e8[0] = 0;
+		*roll_out = 0;
+		return 1;
+	}
+	// The roll of the player (0x2AAB5): the character code
+	if (attacker && attacker->type == OBJ_PLAYER) {
+		*roll_out = 0;
+		return dtu_player_attack_roll(target,weapon);
+	}
+
+	roll = rand() % 20 + 1;
 	*roll_out = roll;
 	if (roll == 20)
 		return 2;
-	if (roll == 1)
+	if (roll == 1) {
+		// 0x2A9EB: a creature that fumbles flinches when a d20 is above its
+		// str (Robot_info +0xDE)
+		if (attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types &&
+			 rand() % 20 + 1 > Monster_info[attacker->id].str && attacker->ctype.ai_info.CURRENT_STATE != DAIS_DEAD) {
+			attacker->ctype.ai_info.CURRENT_STATE = DAIS_FLIN;
+			Ail[attacker-Objects].anim_start = GameTime + FrameTime;
+			dtu_obj_log("attack: obj %d %s fumbles and flinches",(int)(attacker-Objects),dtu_object_name(attacker));
+		}
 		return -1;
+	}
 
-	if (attacker == NULL || (attacker->type != OBJ_PLAYER && attacker->type != OBJ_ROBOT)) {
+	if (attacker == NULL || attacker->type != OBJ_ROBOT || attacker->id >= N_robot_types) {
 		// The missile of a trap is its own parent (0x934A8). What the
 		// executable reads as the THAC0 of a weapon object is not known. 20
 		// is the value of an attacker of the lowest level. (guess)
 		thac0 = 20;
 		roll += weapon_int(weapon,"to_hit_bonus",0);
-	}
-	else if (attacker->type == OBJ_PLAYER) {
-		// The byte at 0x1D4D78 of the player structure and the bonuses of
-		// the strength, the weapon and the skill: the character code.
-		thac0 = dtu_player_thac0();
-		roll += dtu_player_to_hit_bonus();
 	}
 	else {
 		thac0 = Monster_info[attacker->id].thaco;
@@ -1521,15 +1602,13 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 		else
 			roll += Monster_ext[attacker->id].to_hit_bonus;
 		roll += str_bonus(Monster_info[attacker->id].str);
+		// 0x2ACBA: Strength of the creature
+		if (attacker->dtu.m_88 & DTU_FX_STRENGTH)
+			roll++;
 	}
 
-	if (target->type == OBJ_PLAYER)
-		ac = dtu_player_armor_class();
-	else
-		ac = Monster_info[target->id].armor_class;
-
 	*roll_out = roll;
-	return (thac0 - ac > roll) ? 0 : 1;
+	return dtu_hit_test(target,attacker,roll,thac0,&ac);
 }
 
 // The weapon of a melee attack of an object: the weapon_type of the
@@ -1541,34 +1620,133 @@ static int attack_weapon(object *attacker)
 	return -1;
 }
 
-// 0x2AF5E. Returns the damage as an integer. A weapon of 0 or more gives
-// the dice of the weapon table (+0x0D sides, +0x0E number, +0x38 bonus) and
-// the fire dice (+0x0F, +0x10). Else the dice of the creature.
-static int damage_dice(object *attacker,int weapon)
+// The fire part of 0x2AF5E and of 0x91BC3: 0 for a monster with
+// fire_immune, one half with fire_resistant, one half with the effect
+// Resist Fire (bit 10), and the effect Protection From Fire (bit 9) takes
+// it from its counter (+0x82).
+static int fire_part(object *target,int fire)
 {
-	int n, sides, bonus, i, sum = 0;
+	if (target->type == OBJ_ROBOT && target->id < N_robot_types) {
+		monster_info *mi = &Monster_info[target->id];
 
+		if (mi->flags & MONSTER_F_FIRE_IMMUNE)
+			fire = 0;
+		else if (bm_tbl_has_flag(mi->record,"fire_resistant"))
+			fire /= 2;
+	}
+	if (target->dtu.m_88 & DTU_FX_RESIST_FIRE)
+		fire /= 2;
+	if (target->dtu.m_88 & DTU_FX_PROT_FIRE) {
+		target->dtu.m_82 -= fire;
+		fire = (target->dtu.m_82 < 0) ? -target->dtu.m_82 : 0;
+		if (target->dtu.m_82 < 0)
+			target->dtu.m_82 = 0;
+	}
+	return fire;
+}
+
+// 0xAE3BB: the level of a creature, max hit points / 8, 1 to 18
+static int creature_level(object *obj)
+{
+	int l = (obj->type == OBJ_ROBOT && obj->id < N_robot_types) ? Monster_info[obj->id].max_hit_points / 8 : 1;
+
+	return l < 1 ? 1 : l > 18 ? 18 : l;
+}
+
+// 0x2B1F2 to 0x2B456 of 0x2AF5E, for every attacker: the weapons Flame
+// Tongue (71) and Mace of Disruption (70), then the fire dice of the
+// weapon (+0x0F sides, +0x10 number) with the resistances of the target.
+// *damage is the normal part (the dice and the bonus); the function can
+// change it. Returns the fire part.
+int dtu_weapon_extra_damage(object *attacker,object *target,int weapon,int *damage)
+{
+	int fire = 0, fn, fs, i, undead;
+
+	if (weapon < 0 || weapon >= N_weapon_types || Weapon_item_info[weapon].record < 0 || target == NULL)
+		return 0;
+	undead = target->type == OBJ_ROBOT && target->id < N_robot_types && (Monster_info[target->id].flags & MONSTER_F_UNDEAD);
+	if (weapon == 71) {
+		// 0x2B1FA: Flame Tongue: 2 fire against a regenerating target, 4
+		// against an undead one; the fire condition of the creature spells
+		if (target->dtu.m_88 & DTU_FX_REGENERATE)
+			fire += 2;
+		if (undead)
+			fire += 4;
+		if (target->type == OBJ_ROBOT)
+			dtu_spell_creature_event(target,DTU_CSC_FIRE);
+	}
+	else if (weapon == 70 && undead && attacker) {
+		// 0x2B244: Mace of Disruption against an undead creature: double
+		// damage when a d100 is at most 5 * (level - 4); else the creature
+		// is destroyed: its hit points are the damage, it has no effects
+		// left, and it flies along the up and forward vectors of the
+		// attacker with the strength of the player times 4.0
+		int L = creature_level(target);
+
+		if (5 * (L - 4) >= rand() % 100 + 1)
+			*damage *= 2;
+		else {
+			vms_vector v;
+
+			vm_vec_add(&v,&attacker->orient.uvec,&attacker->orient.fvec);
+			vm_vec_copy_scale(&target->mtype.phys_info.velocity,&v,(int)Dtu_char.pa.strength << 18);
+			*damage = f2i(target->shields);
+			target->shields = 0;
+			target->dtu.m_88 = 0;
+			dtu_obj_log("attack: the Mace of Disruption destroys obj %d %s",(int)(target-Objects),dtu_object_name(target));
+		}
+	}
+	// 0x2B327: the fire dice; the resistances only apply to a weapon with
+	// fire dice
+	fs = weapon_int(weapon,"fire_damage_dice",0);
+	fn = weapon_int(weapon,"#fire_damage_dice",0);
+	if (fs > 0 && fn > 0) {
+		for (i=0;i<fn;i++)
+			fire += rand() % fs + 1;
+		if (target->type == OBJ_ROBOT)
+			dtu_spell_creature_event(target,DTU_CSC_FIRE);
+		fire = fire_part(target,fire);
+	}
+	// 0x2B5D4: fire damage ends the regeneration (bit 24) of the target
+	if (fire > 0)
+		target->dtu.m_88 &= ~DTU_FX_REGENERATE;
+	return fire;
+}
+
+// 0x2B58D: the creature type with rat= does 1 damage (normal: the part
+// without the fire)
+static int rat_damage(object *attacker,int normal,int damage)
+{
+	char value[16];
+
+	if (normal > 0 && attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types &&
+		 Monster_info[attacker->id].record >= 0 && bm_tbl_get(Monster_info[attacker->id].record,"rat",value,sizeof(value)))
+		return 1;
+	return damage;
+}
+
+// 0x2AF5E. Returns the damage as an integer. A weapon of 0 or more gives
+// the dice of the weapon table (+0x0D sides, +0x0E number, +0x38 bonus),
+// the weapon cases and the fire dice. Else the dice of the creature. The
+// player: the character code (dtu_char_weapon_damage).
+static int damage_dice(object *attacker,object *target,int weapon)
+{
+	int n, sides, bonus, i, sum = 0, fire = 0;
+
+	if (attacker && attacker->type == OBJ_PLAYER)
+		return dtu_player_weapon_damage(weapon,target);
 	if (weapon >= 0 && weapon < N_weapon_types && Weapon_item_info[weapon].record >= 0) {
-		int fn = weapon_int(weapon,"#fire_damage_dice",0), fs = weapon_int(weapon,"fire_damage_dice",0);
-
 		n = weapon_int(weapon,"#damage_dice",1);
 		sides = weapon_int(weapon,"damage_dice",6);
 		bonus = weapon_int(weapon,"damage_bonus",0);
-		// The fire part. The executable gives none of it to a creature
-		// with fire_immune (not in the port).
-		if (fn > 0 && fs > 0)
-			for (i=0;i<fn;i++)
-				sum += rand() % fs + 1;
-	}
-	else if (attacker && attacker->type == OBJ_PLAYER) {
-		// The dice of the hand of the player are in the player structure
-		// (0x1D33C1 to 0x1D33C7): the character code.
-		return dtu_player_damage_roll();
 	}
 	else if (attacker && attacker->type == OBJ_ROBOT) {
 		n = Monster_ext[attacker->id].n_damage_dice;
 		sides = Monster_ext[attacker->id].damage_dice;
 		bonus = Monster_ext[attacker->id].damage_bonus;
+		// 0x2B053: Strength of the creature
+		if (attacker->dtu.m_88 & DTU_FX_STRENGTH)
+			bonus++;
 	}
 	else
 		return 0;
@@ -1577,7 +1755,10 @@ static int damage_dice(object *attacker,int weapon)
 	if (n < 1) n = 1;
 	for (i=0;i<n;i++)
 		sum += rand() % sides + 1;
-	return sum + bonus;
+	sum += bonus;
+	if (weapon >= 0)
+		fire = dtu_weapon_extra_damage(attacker,target,weapon,&sum);
+	return rat_damage(attacker,sum,sum + fire);
 }
 
 //------------------------------------------------------------------------
@@ -1596,17 +1777,14 @@ DTU_WEAK int dtu_player_armor_class(void)
 	return dtu_char_armor_class();
 }
 
-DTU_WEAK int dtu_player_to_hit_bonus(void)
+DTU_WEAK int dtu_player_attack_roll(object *target, int weapon)
 {
-	dtu_attack a;
-
-	dtu_char_get_attack(&a);
-	return a.to_hit_bonus;
+	return dtu_char_attack_roll(target, weapon);
 }
 
-DTU_WEAK int dtu_player_damage_roll(void)
+DTU_WEAK int dtu_player_weapon_damage(int weapon, object *target)
 {
-	return dtu_char_damage_roll();
+	return dtu_char_weapon_damage(weapon, target);
 }
 
 DTU_WEAK int dtu_player_level(void)
@@ -1743,6 +1921,18 @@ static int weapon_int(int w,char *key,int def)
 	if (w < 0 || w >= N_weapon_types)
 		return def;
 	return tbl_int(Weapon_item_info[w].record,key,def);
+}
+
+// Weapon_info +0x12 attack_type 1 (melee); 0 is projectile
+static int weapon_is_melee(int w)
+{
+	char value[32];
+
+	if (w < 0 || w >= N_weapon_types || Weapon_item_info[w].record < 0)
+		return 0;
+	if (bm_tbl_get(Weapon_item_info[w].record,"attack_type",value,sizeof(value)))
+		return stricmp(value,"projectile") != 0;
+	return 1;
 }
 
 // 0x25C76: the blood of a creature that is hit, the vclip
@@ -2259,9 +2449,9 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 			dtu_obj_log("attack: obj %d %s is weapon resistant",(int)(creature-Objects),dtu_object_name(creature));
 			return 0;
 		}
-		damage = i2f(damage_dice(attacker,weapon));
+		damage = i2f(damage_dice(attacker,creature,weapon));
 		if (hit == 2)
-			damage += i2f(damage_dice(attacker,weapon));
+			damage += i2f(damage_dice(attacker,creature,weapon));
 	}
 
 	if (damage <= 0)
@@ -2399,8 +2589,29 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		return 0;
 
 	if (weapon != DTU_DIRECT && ((attacker && attacker != player) || weapon >= 0)) {
-		int roll, hit = to_hit_roll(player,attacker,weapon,&roll);
+		int roll, hit, invulnerable = 0;
 
+		// 0x2A270: Invulnerability keeps off the attacks of a creature of a
+		// level below 4 and the weapons that are not magic
+		if ((player->dtu.m_88 & DTU_FX_INVULNERABLE) && attacker && attacker != player &&
+			 (creature_level(attacker) < 4 || (weapon >= 0 && weapon < N_weapon_types && !bm_tbl_has_flag(Weapon_item_info[weapon].record,"magic"))))
+			invulnerable = 1;
+		// 0x2A29A: Stone Skin takes the attack of an attacker
+		if ((player->dtu.m_88 & DTU_FX_STONESKIN) && attacker && attacker != player) {
+			PALETTE_FLASH_ADD(245,126,10);
+			HUD_init_message("You are protected by StoneSkin Spell.");
+			player->dtu.m_80--;
+			dtu_obj_log("attack: the stone skin of the player takes the attack of %s, %d left",dtu_object_name(attacker),player->dtu.m_80);
+			return 0;
+		}
+		if (invulnerable) {
+			PALETTE_FLASH_ADD(0,0,16);
+			HUD_init_message("You are protected by Invulnerability.");
+			dtu_obj_log("attack: the invulnerability of the player keeps off %s",dtu_object_name(attacker));
+			return 0;
+		}
+
+		hit = to_hit_roll(player,attacker,weapon,&roll);
 		if (hit <= 0) {
 			dtu_obj_log("attack: %s misses the player (roll %d, result %d)",
 				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);
@@ -2408,9 +2619,14 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		}
 		// 0x2A45F: a hit stops the cast of the player (0x9305D)
 		dtu_spell_interrupt(player,1);
-		damage = i2f(damage_dice(attacker,weapon));
+		damage = i2f(damage_dice(attacker,player,weapon));
 		if (hit == 2)
-			damage += i2f(damage_dice(attacker,weapon));
+			damage += i2f(damage_dice(attacker,player,weapon));
+		// 0x2A49B: Chill Touch of the attacker with a natural or a melee
+		// weapon: 1d4 more unless the player saves (category 4)
+		if (damage > 0 && attacker && (attacker->dtu.m_88 & DTU_FX_CHILL_TOUCH) &&
+			 (weapon < 0 || weapon_is_melee(weapon)) && !dtu_spell_save(player,DTU_SAVE_SPELL))
+			damage += i2f(rand() % 4 + 1);
 	}
 
 	if (damage <= 0)

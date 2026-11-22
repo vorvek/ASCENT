@@ -27,6 +27,7 @@
 #include "gameseg.h"
 #include "fvi.h"
 #include "bm.h"
+#include "robot.h"
 #include "text.h"
 #include "gauges.h"
 #include "dtugame.h"
@@ -1989,10 +1990,23 @@ static int str_damage_bonus(int str, int extra)
 	return b;
 }
 
-void dtu_char_get_attack(dtu_attack *a)
+// The launcher of a missile weapon (0x2AB0A, 0x2B0C1): the bow for a
+// weapon with the flag arrow, else the crossbow. Its to_hit_bonus is added
+// to the roll and to the damage.
+static int launcher_bonus(int weapon)
+{
+	dtu_inv_item *l = ref_entry(Dtu_char.slot[bm_tbl_has_flag(Weapon_item_info[weapon].record, "arrow") ? DTU_SLOT_BOW : DTU_SLOT_CROSSBOW]);
+	dtu_item_data ld;
+
+	if (l && dtu_item_get(l->type, l->id, &ld))
+		return ld.to_hit_bonus;
+	return 0;
+}
+
+// The values of an attack with a weapon (-1: the empty hand)
+static void weapon_attack(int weapon, dtu_attack *a)
 {
 	dtu_player_attr *pa = &Dtu_char.pa;
-	dtu_inv_item *e = ref_entry(Dtu_char.current);
 	dtu_item_data d;
 
 	memset(a, 0, sizeof(*a));
@@ -2005,9 +2019,9 @@ void dtu_char_get_attack(dtu_attack *a)
 		a->dice_sides = 2;
 		return;
 	}
-	if (e && e->type == OBJ_WEAPON && dtu_item_get(e->type, e->id, &d) && d.dice_sides > 0) {
+	if (weapon >= 0 && dtu_item_get(OBJ_WEAPON, weapon, &d) && d.dice_sides > 0) {
 		// 0x2AAE7 and 0x2B06A: the weapon
-		a->weapon_id = e->id;
+		a->weapon_id = weapon;
 		a->melee = d.melee;
 		a->to_hit_bonus = d.to_hit_bonus;
 		a->dice_n = d.dice_n;
@@ -2021,13 +2035,8 @@ void dtu_char_get_attack(dtu_attack *a)
 		else {
 			// 0x2AB00 and 0x2B0B7: a missile gets the to_hit_bonus of the
 			// bow or the crossbow, for the attack and for the damage.
-			dtu_inv_item *l = ref_entry(Dtu_char.slot[bm_tbl_has_flag(Weapon_item_info[e->id].record, "BOLT") ? DTU_SLOT_CROSSBOW : DTU_SLOT_BOW]);
-			dtu_item_data ld;
-
-			if (l && dtu_item_get(l->type, l->id, &ld)) {
-				a->to_hit_bonus += ld.to_hit_bonus;
-				a->damage_bonus += ld.to_hit_bonus;
-			}
+			a->to_hit_bonus += launcher_bonus(weapon);
+			a->damage_bonus += launcher_bonus(weapon);
 		}
 	}
 	else {
@@ -2039,78 +2048,153 @@ void dtu_char_get_attack(dtu_attack *a)
 	}
 }
 
+// The weapon of the item in the hand, or -1
+static int hand_weapon_id(void)
+{
+	dtu_inv_item *e = ref_entry(Dtu_char.current);
+
+	return (e && e->type == OBJ_WEAPON) ? e->id : -1;
+}
+
+void dtu_char_get_attack(dtu_attack *a)
+{
+	weapon_attack(hand_weapon_id(), a);
+}
+
+// 0x2A87B and 0x2B107: the Potion of Luck works when the day clock (raw
+// fix) is odd. Then the luck ends (0xAE564: sound 0x8A8). The bit depends
+// on the frame times (at a fixed frame rate with an even frame time it is
+// never odd); corrected: a coin flip.
+static int luck_now(void)
+{
+	if (!Potion.luck_end || !(Dtu_fix_luck_coin ? (rand() & 1) : (GameTime & 1)))
+		return 0;
+	Potion.luck_end = 0;
+	digi_play_sample(0x8A8, F1_0);
+	return 1;
+}
+
+int dtu_char_attack_roll(object *target, int weapon)
+{
+	dtu_attack a;
+	int roll = rand() % 20 + 1, result, ac = 0;
+
+	weapon_attack(weapon, &a);
+	// 0x2A87B: the Potion of Luck makes the roll a natural 20
+	if (luck_now()) {
+		roll = 20;
+		dtu_char_log("attack roll: the Potion of Luck gives a natural 20");
+	}
+	Dtu_last_attack_roll = roll;
+	if (roll == 20) {
+		// 0x2A8B3: a critical hit, sound 3001
+		HUD_init_message("You made a critical hit!");
+		digi_play_sample(3001, F1_0);
+		result = 2;
+	}
+	else if (roll == 1) {
+		int r2 = rand() % 20 + 1;
+
+		// 0x2A8EC: a critical fumble, sound 3001
+		HUD_init_message("You made a critical fumble!");
+		digi_play_sample(3001, F1_0);
+		if (r2 > Dtu_char.pa.dexterity) {
+			// 0x2A93F: a second d20 above the dexterity: the weapon falls
+			dtu_char_log("attack roll: fumble, d20 %d above dexterity %d: the weapon falls", r2, Dtu_char.pa.dexterity);
+			dtu_char_drop_weapon();
+		}
+		else {
+			// 0x2A949: one of three texts; the arms go to state 10 and the
+			// attack request ends
+			static const char *what[3] = { "You lost your balance!", "Your weapon was entangled!", "The wind was knocked out of you!" };
+			int n = rand() % 3;
+
+			dtu_combat_fumble();
+			HUD_init_message("%s", what[n]);
+			dtu_char_log("attack roll: fumble, d20 %d not above dexterity %d: %s", r2, Dtu_char.pa.dexterity, what[n]);
+		}
+		result = -1;
+	}
+	else {
+		int r = roll + a.to_hit_bonus;
+
+		// 0x2AB66: a backstab adds 4 (melee and thrown weapons)
+		if (Dtu_backstab && a.melee)
+			r += 4;
+		// 0x2AB9F: Flame Tongue (71) adds 2 against a regenerating target and
+		// 4 against an undead creature
+		if (a.weapon_id == 71 && target) {
+			if (target->dtu.m_88 & DTU_FX_REGENERATE)
+				r += 2;
+			if (target->type == OBJ_ROBOT && target->id < N_robot_types && (Monster_info[target->id].flags & MONSTER_F_UNDEAD))
+				r += 4;
+		}
+		result = target ? dtu_hit_test(target, ConsoleObject, r, a.thac0, &ac) : (a.thac0 - 10 > r ? 0 : 1);
+		dtu_char_log("attack roll: d20 %d, roll %d against THAC0 %d and armor class %d: %d%s", roll, r, a.thac0, ac, result,
+			Dtu_backstab ? " (backstab)" : "");
+		return result;
+	}
+	dtu_char_log("attack roll: d20 %d: %d", roll, result);
+	return result;
+}
+
+int dtu_char_weapon_damage(int weapon, object *target)
+{
+	dtu_attack a;
+	int i, sum = 0, fire = 0;
+
+	weapon_attack(weapon, &a);
+	for (i = 0; i < a.dice_n; i++)
+		if (a.dice_sides > 0)
+			sum += rand() % a.dice_sides + 1;
+	if (a.weapon_id >= 0) {
+		// 0x2B0AE: the bow or the crossbow of a missile
+		if (!a.melee)
+			sum += launcher_bonus(weapon);
+		// 0x2B107: the Potion of Luck: the highest number of the dice
+		if (luck_now()) {
+			sum = a.dice_n * a.dice_sides;
+			dtu_char_log("damage roll: the Potion of Luck gives the highest roll");
+		}
+		// 0x2B15B: a backstab multiplies by (thief level + 7) / 4 (level
+		// from 1); weapon 45 with a hit roll of 19 or 20 adds 3 to 6
+		if (Dtu_backstab) {
+			int lvl = (Dtu_char.pa.class1 == DTU_CLASS_THIEF) ? Dtu_char.pa.class1_level : Dtu_char.pa.class2_level;
+			int mult = (lvl + 1 + 7) >> 2;
+
+			sum *= mult;
+			if (a.weapon_id == 45 && Dtu_last_attack_roll >= 19) {
+				sum += rand() % 4 + 3;
+				HUD_init_message("Your backstab was very successful!");
+			}
+			else
+				HUD_init_message("Your backstab was successful!");
+			dtu_char_log("damage roll: backstab, times %d", mult);
+		}
+		// 0x2B1D6: the damage bonus of the weapon (the strength bonus of a
+		// melee weapon is added last, 0x2B456)
+		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : launcher_bonus(weapon));
+		fire = dtu_weapon_extra_damage(ConsoleObject, target, weapon, &sum);
+		if (a.melee)
+			sum += str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra);
+	}
+	else
+		sum += a.damage_bonus;		// 0x2AFB4: the empty hand
+	dtu_char_log("damage roll: %dd%d + %d: %d, fire %d", a.dice_n, a.dice_sides, a.damage_bonus, sum, fire);
+	sum += fire;
+	return sum > 0 ? sum : 0;
+}
+
+int dtu_char_damage_roll(void)
+{
+	return dtu_char_weapon_damage(hand_weapon_id(), NULL);
+}
+
 static int d20_result(int roll, int bonus, int thac0, int ac)
 {
 	if (roll == 20) return 2;
 	if (roll == 1) return -1;
 	return (thac0 - ac > roll + bonus) ? 0 : 1;			// 0x2AE32
-}
-
-int dtu_char_attack_roll(int target_armor_class)
-{
-	dtu_attack a;
-	int roll = rand() % 20 + 1, result;
-
-	dtu_char_get_attack(&a);
-	// 0x2AB66: a backstab adds 4
-	if (Dtu_backstab)
-		a.to_hit_bonus += 4;
-	// 0x2A87B: the Potion of Luck makes one roll a natural 20 when the
-	// day clock (raw fix) is odd. Then the luck ends (0xAE564: sound 0x8A8).
-	// The bit depends on the frame times (at a fixed frame rate with an
-	// even frame time it is never odd); corrected: a coin flip.
-	if (Potion.luck_end && (Dtu_fix_luck_coin ? (rand() & 1) : (GameTime & 1))) {
-		roll = 20;
-		Potion.luck_end = 0;
-		digi_play_sample(0x8A8, F1_0);
-		dtu_char_log("attack roll: the Potion of Luck gives a natural 20");
-	}
-	result = d20_result(roll, a.to_hit_bonus, a.thac0, target_armor_class);
-	Dtu_last_attack_roll = roll;
-	if (result == 2) HUD_init_message("You made a critical hit!");
-	if (result == -1) {
-		int r2 = rand() % 20 + 1;
-
-		HUD_init_message("You made a critical fumble!");
-		// 0x2A8B1: a second d20 above the dexterity: the weapon falls
-		if (r2 > Dtu_char.pa.dexterity) {
-			dtu_char_log("attack roll: fumble, d20 %d above dexterity %d: the weapon falls", r2, Dtu_char.pa.dexterity);
-			dtu_char_drop_weapon();
-		}
-	}
-	dtu_char_log("attack roll: d20 %d + %d against THAC0 %d and armor class %d: %d%s", roll, a.to_hit_bonus, a.thac0, target_armor_class, result,
-		Dtu_backstab ? " (backstab)" : "");
-	return result;
-}
-
-int dtu_char_damage_roll(void)
-{
-	dtu_attack a;
-	int i, sum = 0;
-
-	dtu_char_get_attack(&a);
-	for (i = 0; i < a.dice_n; i++)
-		if (a.dice_sides > 0)
-			sum += rand() % a.dice_sides + 1;
-	// 0x2AF5E: a backstab multiplies the dice by (thief level + 7) / 4
-	// (level from 1); weapon 45 with a hit roll of 19 or 20 adds 1d4 + 3
-	if (Dtu_backstab) {
-		int lvl = (Dtu_char.pa.class1 == DTU_CLASS_THIEF) ? Dtu_char.pa.class1_level : Dtu_char.pa.class2_level;
-		int mult = (lvl + 1 + 7) >> 2;
-
-		sum *= mult;
-		if (a.weapon_id == 45 && Dtu_last_attack_roll >= 19) {
-			sum += rand() % 4 + 3;
-			HUD_init_message("Your backstab was very successful!");
-		}
-		else
-			HUD_init_message("Your backstab was successful!");
-		dtu_char_log("damage roll: backstab, times %d", mult);
-	}
-	sum += a.damage_bonus;
-	if (sum < 0) sum = 0;
-	dtu_char_log("damage roll: %dd%d + %d: %d", a.dice_n, a.dice_sides, a.damage_bonus, sum);
-	return sum;
 }
 
 int dtu_char_defense_roll(int attacker_thac0, int to_hit_bonus)
@@ -2503,6 +2587,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
 // current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, str=STRENGTH.PERCENT,
+// attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // dump.
 
@@ -2534,6 +2619,10 @@ static void run_command(char *cmd, char *value)
 	index = find_entry(a, b);
 	dtu_char_log("script: %s %s", cmd, value ? value : "");
 	if (!strcmp(cmd, "damage"))			dtu_damage_player(ConsoleObject, NULL, i2f(a));
+	else if (!strcmp(cmd, "attackedby")) {	// attackedby=OBJNUM: a melee attack of a creature on the player (test)
+		if (a >= 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
+			dtu_damage_player(ConsoleObject, &Objects[a], 0);
+	}
 	else if (!strcmp(cmd, "heal"))		dtu_char_heal(a);
 	else if (!strcmp(cmd, "use"))			dtu_char_use(index);
 	else if (!strcmp(cmd, "usecur"))		dtu_char_use_current();

@@ -325,10 +325,14 @@ typedef struct dtu_attack {
 
 void dtu_char_get_attack(dtu_attack *a);
 
-// The attack roll of the player against an armor class (0x2A7F3):
-// -1 critical fumble (a 1), 0 miss, 1 hit, 2 critical hit (a 20).
-int dtu_char_attack_roll(int target_armor_class);
-// The damage roll of the player after a hit (0x2AF5E). At least 0.
+// The attack roll of the player with a weapon (-1: the empty hand) on a
+// target (0x2A7F3): -1 critical fumble (a 1), 0 miss, 1 hit, 2 critical
+// hit (a 20).
+int dtu_char_attack_roll(object *target, int weapon);
+// The damage roll of the player with a weapon on a target after a hit
+// (0x2AF5E). At least 0.
+int dtu_char_weapon_damage(int weapon, object *target);
+// The damage roll of the weapon in the hand with no target.
 int dtu_char_damage_roll(void);
 // The attack roll of a creature against the player (0x2A7F3): the same
 // results. to_hit_bonus is the sum of the bonus values of the creature.

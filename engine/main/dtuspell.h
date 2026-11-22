@@ -244,11 +244,11 @@ int dtu_spell_player_level(int spell);
 // The armor class of the player with the spell effects (0xB05C5): stage 0
 // before the dexterity adjustment, 1 after it. dtu_char_update() calls it.
 int dtu_spell_player_ac(int ac, int stage);
-// The bonus of the effects of an attacker to the hit roll (0x2A849):
-// Strength +1, Bless +1, Slow -4.
-int dtu_spell_to_hit_bonus(object *attacker);
-// The armor class of a creature with its spell effects (0x2ADAF to 0x2ADF9).
+// The armor class of a creature with its spell effects (0x2ADAF to 0x2AE1D).
 int dtu_spell_creature_ac(object *creature, int ac);
+// 0x16636: 1 if the object is an invisible creature that the player does
+// not see.
+int dtu_spell_unseen(object *obj);
 
 // The spell screen of the statistics screen (dtudisp.c): the books with
 // the slots, and the keys comma, period and Enter that choose the spell in

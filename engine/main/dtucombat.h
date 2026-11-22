@@ -86,6 +86,9 @@ int dtu_combat_view_state(void);
 int dtu_combat_attack_pending(void);
 // 0x9305D: a cast of the player was interrupted or aborted.
 void dtu_combat_cast_stopped(void);
+// 0x2A949: a critical fumble that does not drop the weapon: the attack
+// request ends and the arms go to state 10.
+void dtu_combat_fumble(void);
 int dtu_combat_view_frame(void);
 int dtu_combat_view_model(void);
 
