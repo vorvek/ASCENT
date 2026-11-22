@@ -98,6 +98,20 @@ extern int Dtu_fix_rary_manual;
 // save and load. 1 (default): the 2nd edition rule. 0: the executable.
 extern int Dtu_fix_melf_acid;
 
+// ASCENT: Cure Light Wounds and Cure Serious Wounds (0x8DE4B, 0x8DF37) add
+// the points and then cut the hit points to the maximum, so a cure on a
+// character with the extra hit points of Aid takes them away. A healing
+// spell that lowers the hit points is a defect; in AD&D the extra hit
+// points of Aid go first. 1 (default): a cure does not lower the hit
+// points. 0: the executable. -origcombat clears it.
+extern int Dtu_fix_cure_aid;
+
+// ASCENT: the checks of the priest spells and of turn undead (the
+// -chartest command priestcheck). Writes "priestcheck: PASS ..." or
+// "priestcheck: FAIL ..." lines into the -charlog file and returns the
+// number of failures.
+int dtu_spell_priest_check(void);
+
 // The creature spells (0x9231F) take rand() % n with n = 0 or less for
 // some spells (Scare at caster level 4 and up, Hold Person at a distance
 // that is a multiple of 50). The executable has the saturating divide

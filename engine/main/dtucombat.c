@@ -846,7 +846,17 @@ static int turn_bits(object *obj)
 		Turn_state[n].signature = obj->signature;
 		// 0xAC4C1: without a name match the class is from the levels of
 		// the player and bit 0x10 stays clear ("couldn't find undead")
-		Turn_state[n].bits = 8;
+		// ASCENT: 0xAC4C1: the higher of the two class levels (0 based,
+		// signed) plus 1, 8 from level 7 on. It only sets the place in
+		// the order of 0xADB7D. The executable takes the levels at the
+		// level start, the port at the first use in the level.
+		{
+			int lv = Dtu_char.pa.class1_level;
+
+			if (Dtu_char.pa.class2_level > lv)
+				lv = Dtu_char.pa.class2_level;
+			Turn_state[n].bits = (lv >= 7 ? 8 : lv + 1) & 0x0F;
+		}
 		for (i=0; i<9; i++)
 			if (turn_prefix(Turn_names[i],Robot_names[obj->id])) {
 				Turn_state[n].bits = i | 0x10;
@@ -854,6 +864,13 @@ static int turn_bits(object *obj)
 			}
 	}
 	return Turn_state[n].bits;
+}
+
+// ASCENT: for the checks of dtu_spell_priest_check(): the byte +3 of the
+// NPC list entry (class and bit 0x10) of a creature
+int dtu_combat_priest_turn_bits(object *obj)
+{
+	return (obj && obj->type == OBJ_ROBOT && obj->id < N_robot_types) ? turn_bits(obj) : -1;
 }
 
 // 0xA66C9: the creature is alive
@@ -928,7 +945,7 @@ int dtu_combat_turn_undead(int level)
 	}
 
 	roll = rand() % 20 + 1;		// 0xADCFF
-	destroys = rand() % 11 + 2;	// 0xADD18: at most this many are destroyed
+	destroys = rand() % 11 + 2;	// 0xADD18: at most this many are turned or destroyed
 	if (N_player_types > 0)
 		sound_at(tbl_int(Player_type_info[0].record,"banish_sound",-1),pl->segnum,&pl->pos,F1_0/6);	// 0x2AAA
 	if (level > 14)
@@ -961,7 +978,7 @@ int dtu_combat_turn_undead(int level)
 			HUD_init_message("You can no longer attempt to turn the %s.",dtu_object_display_name(obj));
 			continue;
 		}
-		// 0xADF57: the destroys are used up. The executable clears bit 0x10
+		// 0xADF57: the count (turned and destroyed) is used up. The executable clears bit 0x10
 		// of this creature first (0xADF09), so it can never be tried
 		// again although nothing was tried. Dtu_fix_turn_undead keeps it.
 		if (destroys <= 0) {
@@ -997,6 +1014,16 @@ int dtu_combat_turn_undead(int level)
 			// 0xAE1AC, 0xAE1DD: turned
 			dtu_creature_turn(obj,1);
 			turn_message(929,"You successfully turned the %s.",obj);
+			// 0xAE226 jumps into the end of the destroy case (0xAE17F), so
+			// a turn also takes one of the count at 0xAE1A0: the 2 to 12
+			// are the undead that one use can turn or destroy.
+			destroys--;
+			// 0xAE1B8: the T entry writes the table value (0xFF) over the
+			// d20 at esp+0x2C4, and 0xAE1C8 reads the d20 without a sign.
+			// So after the first T every later undead with a number is
+			// turned (255 >= number). Dtu_fix_turn_undead keeps the d20.
+			if (t == -1 && !Dtu_fix_turn_undead)
+				roll = 255;
 			done++;
 		}
 		else {
@@ -1094,6 +1121,7 @@ static void combat_init(void)
 		Dtu_fix_rary_manual = 0;
 		Dtu_fix_melf_acid = 0;
 		Dtu_fix_turn_undead = 0;
+		Dtu_fix_cure_aid = 0;
 	}
 }
 

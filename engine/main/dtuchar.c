@@ -2768,6 +2768,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // attackedby=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
+// priestcheck (the checks of the priest spells, dtu_spell_priest_check),
 // dump.
 
 static void dump_character(void)
@@ -2827,6 +2828,7 @@ static void run_command(char *cmd, char *value)
 		dtu_char_update();
 		dump_character();
 	}
+	else if (!strcmp(cmd, "priestcheck"))	dtu_spell_priest_check();		// ASCENT: test, docs/audit/spells-priest.md
 	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
 	else if (!strcmp(cmd, "castby") && b >= 0 && b < MAX_OBJECTS)		// test: castby=SPELL.OBJ, on the player
