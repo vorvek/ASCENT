@@ -416,6 +416,11 @@ extern int Dtu_fix_speed_items;
 // (0x38159), so less than half a point. 1 (default): rand() % hit points
 // in whole points. 0 (-origcombat): the rule of the executable.
 extern int Dtu_fix_cursed_scroll;
+// ASCENT: the Potion of Hill Giant Strength and the Potion of
+// Invulnerability are fighter items after the table fixup of 1.3, but any
+// class can drink them (0x37A6A has no class test). 1 (default): only a
+// character that can use the item drinks it. 0 (-origcombat): 1.3.
+extern int Dtu_fix_potion_class;
 // ASCENT: the damage of a missile weapon of a creature adds the bonus of
 // the bow or crossbow of the player and can use up the Potion of Luck of
 // the player (0x2B0AE, 0x2B107 do not test the attacker). 1 (default):

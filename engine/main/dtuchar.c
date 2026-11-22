@@ -95,6 +95,7 @@ int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
 int Dtu_fix_speed_items = 1;
 int Dtu_fix_cursed_scroll = 1;
+int Dtu_fix_potion_class = 1;
 int Dtu_fix_creature_missile = 1;
 int Dtu_backstab = 0;
 int Dtu_auto_choice = -1;
@@ -232,7 +233,7 @@ static void read_options(void)
 	if (FindArg("-origchar"))
 		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names = 0;
 	if (FindArg("-origcombat"))
-		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = 0;
+		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -2194,6 +2195,16 @@ int dtu_char_use(int index)
 	}
 	if (e->type != OBJ_MISC)
 		return 0;
+
+	// ASCENT: Dtu_fix_potion_class. The table fixup of 1.3 (0x1A344) makes
+	// the Potion of Hill Giant Strength (80) and the Potion of
+	// Invulnerability (84) items of the fighter, as the rulebook has them,
+	// and the inventory marks them for the other classes, but the use code
+	// (0x37A6A) has no class test.
+	if (Dtu_fix_potion_class && (e->id == 80 || e->id == 84) && !dtu_char_item_usable(index)) {
+		HUD_init_message("%s", game_text(825, "You cannot use this object."));
+		return 0;
+	}
 
 	r = use_misc(e);
 	if (r < 0) {
