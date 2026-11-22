@@ -161,6 +161,10 @@ fix fuelcen_give_fuel(segment *segp, fix MaxAmountCanTake );
 // Call once per frame.
 void fuelcen_update_all();
 
+// ASCENT: the number of the fire of the rest place in the segment (a
+// fireball with the object flag 0x40, 0x3DC0F), -1 if it has none.
+int fuelcen_rest_fire(int segnum);
+
 // Called when hit by laser.
 void fuelcen_damage(segment *segp, fix AmountOfDamage );
 

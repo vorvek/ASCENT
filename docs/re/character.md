@@ -426,6 +426,29 @@ place or its time is in the future: message "You can not rest here". Else:
 - the fire of the place is removed (0x3DC0F, log text "killing fireball %d"),
 - 0x160AB(player, 5) and 0x92FF2 (not read. Guess: the spells come back).
 
+The fire of a rest place (V, code 0x3E037 to 0x3E118 in the station frame
+0x3DCAF, called each game frame from 0x43864): this is the rotating silver
+ankh. For each station of type 2 or 6 whose time (+0x18) is not in the
+future, and whose segment is in the visible list (0x38C060 through 0x389A06),
+0x3DC0F looks for a fireball (type 1) with the object flag 0x40 in the
+segment. If there is none, the frame makes one with 0x3BD4C, the Descent 1
+`object_create_explosion(segnum, station center (+0x1C), 3.0, vclip 91)`, and
+sets type 1, bit 2 at 0x1AE and the object flag 0x40. The log text is
+"Creating Charged Rest Stop Fireball %d at %d." (" - FAILED" when the segment
+has no objects after it, which ends the loop). The vclip ends after its play
+time and the next frame makes a new one. The whole station frame is skipped
+while the byte 0x1C7FD4 (from 0x9CC99, not read) is set.
+
+A rest (0x3E354) calls 0x3DC0F until it finds no fire: each fire gets
+lifeleft 0 and 0x68F45 deletes it ("killing fireball %d"). So the ankh is
+gone for the 300 seconds of the rest time.
+
+The level state reader kills every fireball (levelstate.md, section 3), so
+the fire is never in a loaded level: the station frame makes it again. The
+port does the same in `fuelcen_update_all()` (fuelcen.c); it takes the
+segments of the last rendered frame for the visible list and does not test
+0x1C7FD4.
+
 ## 10. Experience and levels
 
 **Code.** 0x4EA50 (the Descent `add_points_to_score`) calls 0xAF3CF with the

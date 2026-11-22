@@ -85,7 +85,8 @@ objects and links each to its segment (0xBAFE0). An object with type 0xFF
 or type 1, or with no valid segment, is killed ("STATE: killing object
 %d -- illegal segment"). 0xBAFE0 sets the object up again from the tables
 (0xAE3F2), finds its segment, and deletes a creature that has the flag 2
-("STATE: found dead robot"). Then the reader reads the walls, the doors,
+("STATE: found dead robot"). The fire of a rest place is a fireball, so it is
+killed here; the station frame makes it again (character.md, section 9). Then the reader reads the walls, the doors,
 the sides, the side flags (0x4AC07), the AI state (0x16408, 0x164C7) and
 the automap bytes, and sets four timers (0x215D74 to 0x215D80) to the game
 time.

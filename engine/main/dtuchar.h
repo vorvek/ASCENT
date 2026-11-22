@@ -305,6 +305,9 @@ void dtu_char_take(int type, int id, int count);
 int dtu_char_has(int type, int id);
 // Rest (0x360D5). Returns 1 if the character rested.
 int dtu_char_rest(void);
+// 1 if the rest place in the segment works now (its time, 0x1C5E40 of the
+// station table, is not in the future).
+int dtu_char_rest_ready(int segnum);
 
 //------------------------------------------------------------------------
 // The interface for the combat code.

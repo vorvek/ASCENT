@@ -40,6 +40,7 @@
 #include "newmenu.h"
 #include "digi.h"
 #include "automap.h"
+#include "fuelcen.h"	// ASCENT: the fire of a rest place
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -1801,11 +1802,30 @@ int dtu_char_rest(void)
 	Rest_time[seg] = GameTime + i2f(300);
 	HUD_init_message("You feel refreshed");
 	Rests++;
+	// 0x3E354: remove the fire of the rest place (0x3DC0F finds it,
+	// "killing fireball %d", lifeleft 0, 0x68F45). fuelcen_update_all()
+	// makes it again when the time of the place has passed.
+	{
+		int objnum;
+
+		while ((objnum = fuelcen_rest_fire(seg)) >= 0) {
+			dtu_char_log("rest: killing fireball %d", objnum);
+			Objects[objnum].lifeleft = 0;
+			obj_delete(objnum);
+		}
+	}
 	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
 	dtu_spell_rest_shuffle();		// 0x3E1F6 calls 0x92FF2
-	// The executable also calls 0x160AB(player, 5), plays sound 62 and
-	// removes the fire of the rest place. These are not in the port.
+	// The executable also calls 0x160AB(player, 5) and plays sound 62.
+	// These are not in the port.
 	return 1;
+}
+
+int dtu_char_rest_ready(int segnum)
+{
+	if (segnum < 0 || segnum >= MAX_SEGMENTS)
+		return 0;
+	return Rest_time[segnum] <= GameTime;
 }
 
 //------------------------------------------------------------------------
