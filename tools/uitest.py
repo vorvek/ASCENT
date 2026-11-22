@@ -359,6 +359,35 @@ def test_fe_credits_key_only(t):
     assert differ(region(s["menu"], *FE_CORNER), region(s["after"], *FE_CORNER)) < 0.05, "a key did not end the credits"
 
 
+# The description bar of the high resolution inventory screen (area 0x3BC524)
+DESCBAR = (10, 376, 416, 14)
+
+
+def test_inv_message_in_desc_bar(t):
+    """In the inventory screen a new message also goes to the description
+    bar (0x34A83 to 0x34AD2): the V key adds "Immersive mode is on"."""
+    s, _ = t.run("inv_msg", ["gamekeys", "wait 20", "key i", "wait 5", "move 600 460", "wait 3", "shot base",
+                             "key v", "wait 5", "shot msg"])
+    assert differ(region(s["base"], *DESCBAR), region(s["msg"], *DESCBAR)) > 0.01, "the bar shows no message"
+
+
+# The mage count column of the spell tables of the statistics screen
+# (0x144CF8, 48 wide, rows 305 to 385)
+MAGECOUNT = (142, 305, 48, 80)
+
+
+def test_stats_spell_table(t):
+    """The statistics screen has the spell tables (0x331AC): a fighter has
+    "n/a" in the mage column, a mage of --char the slots."""
+    if not t.args.char:
+        print("skip test_stats_spell_table: no --char")
+        return
+    lines = ["gamekeys", "wait 20", "key p", "wait 5", "move 600 460", "wait 3", "shot stats"]
+    f, _ = t.run("stats_fighter", lines)
+    m, _ = t.run("stats_mage", lines, extra=["-char", t.args.char])
+    assert differ(region(f["stats"], *MAGECOUNT), region(m["stats"], *MAGECOUNT)) > 0.01, "the mage column is the same"
+
+
 def test_fe_death_picture_key(t):
     """The death picture (0x42517 to 0x4252E) ignores the mouse and goes on
     at the first key, with no shortest time; then the Death Menu, and after

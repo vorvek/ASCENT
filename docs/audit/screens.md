@@ -10,7 +10,9 @@ Status: **same**, **fixed** (this pass, with the commit), **open**, **port**
 (a decision of the port), **no 1.3** (the element does not exist in 1.3).
 
 UI tests: `tools/uitest.py` (needs the game files). New in this pass:
-`test_fe_credits_key_only`, `test_fe_death_picture_key`.
+`test_fe_credits_key_only`, `test_fe_death_picture_key`,
+`test_inv_message_in_desc_bar`, `test_stats_spell_table`. `test_inv_sbar` needs
+a save with more than ten items (SG0.SG of the install has six).
 
 ## Front end
 
