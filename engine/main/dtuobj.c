@@ -5206,6 +5206,10 @@ static int wake_test(object *obj)
 
 	if (ail->target == -1 || (obj->dtu.m_88 & 4) || Player_is_dead || Dtu_player_dead)
 		return 0;
+	// 0x13D1A: no test while the player is hidden from the creature
+	// (0x165C4: invisible or hidden in shadows)
+	if (dtu_thief_hidden_from(obj))
+		return 0;
 	if (!brain_bit(obj->segnum,ConsoleObject->segnum))
 		return 0;
 

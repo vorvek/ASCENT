@@ -572,15 +572,20 @@ void dtu_thief_frame(void)
 		search_frame();
 }
 
-// 0x165C4 with 0x165F9: Hide In Shadows counts as invisibility. A blind
-// creature and a creature with iq 130 and level 10 or more see the player.
+// 0x165C4 with 0x165F9: the player is hidden when invisible (effect bits
+// 16 and 17, 0x165E6) or hidden in shadows. A blind creature (the flag
+// blind or the effect Blindness, 0x1660B) and a creature with iq 130 and
+// level 10 or more see the player.
 int dtu_thief_hidden_from(object *c)
 {
 	int level;
+	object *p = ConsoleObject;
 
-	if (!(Dtu_thief_bits & DTU_TS_HIDDEN) || !c || c->type != OBJ_ROBOT || c->id >= N_robot_types)
+	if (!c || c->type != OBJ_ROBOT || c->id >= N_robot_types)
 		return 0;
-	if (Monster_info[c->id].flags & MONSTER_F_BLIND)
+	if (!(Dtu_thief_bits & DTU_TS_HIDDEN) && !(p && (p->dtu.m_88 & (DTU_FX_IMP_INVIS|DTU_FX_INVISIBLE))))
+		return 0;
+	if ((Monster_info[c->id].flags & MONSTER_F_BLIND) || (c->dtu.m_88 & DTU_FX_BLIND))
 		return 0;
 	level = Monster_info[c->id].max_hit_points / 8;
 	if (Monster_info[c->id].iq >= 130 && level >= 10)
