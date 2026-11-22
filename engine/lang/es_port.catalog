@@ -1,10 +1,177 @@
 # ASCENT text catalog: es, the text of the program (port strings)
-# Format: docs/formats/lang.md. tools/lang_extract.py merge writes this file
-# from the translated part A. This first version has the settings menus only.
+# Format: docs/formats/lang.md. tools/lang_extract.py merge writes this file.
+
+id: port.immersive_mode
+en: Immersive Mode
+tr: Modo inmersivo
+
+id: port.you_need_a_s_to_fire_ss
+en: You need a %s to fire %ss
+tr: Necesitas %s para disparar %ss
+
+id: port.bow
+en: bow
+tr: un arco
+
+id: port.crossbow
+en: crossbow
+tr: una ballesta
+
+id: port.arrow
+en: arrow
+tr: flecha
+
+id: port.bolt
+en: bolt
+tr: virote
+
+id: port.you_were_disarmed
+en: You were disarmed!
+tr: ¡Te han desarmado!
+
+id: port.you_dropped_your_weapon
+en: You dropped your weapon!
+tr: ¡Se te ha caído el arma!
+
+id: port.hill_giant_intelligence_expired
+en: Hill Giant Intelligence expired.
+tr: Se acabó la Inteligencia de gigante de las colinas.
+
+id: port.hill_giant_strength_expired
+en: Hill Giant Strength expired.
+tr: Se acabó la Fuerza de gigante de las colinas.
+
+id: port.dragon_s_blood_expired
+en: Dragon's Blood expired.
+tr: Se acabó la Sangre de dragón.
+
+id: port.agility_expired
+en: Agility expired.
+tr: Se acabó la Agilidad.
+
+id: port.your_luck_just_ran_out
+en: Your luck just ran out.
+tr: Se te acaba de agotar la suerte.
+
+id: port.you_cannot_use_the_gem_of_curing_at_this
+en: You cannot use the Gem Of Curing at this time.
+tr: Ahora no puedes usar la Gema de curación.
+
+id: port.and_now_you_can_see
+en: ...And now you can see!
+tr: ...¡Y ahora puedes ver!
+
+id: port.nothing_happens
+en: Nothing happens...
+tr: No pasa nada...
+
+id: port.you_feel_much_better
+en: You feel much better.
+tr: Te sientes mucho mejor.
+
+id: port.you_are_immune_to_paralysis_for_awhile
+en: You are immune to paralysis for awhile.
+tr: Eres inmune a la parálisis durante un rato.
+
+id: port.you_feel_better
+en: You feel better.
+tr: Te sientes mejor.
+
+id: port.you_have_hill_giant_strength_for_awhile
+en: You have Hill Giant strength for awhile.
+tr: Tienes la fuerza de un gigante de las colinas durante un rato.
+
+id: port.you_feel_lucky_today
+en: You feel lucky today.
+tr: Hoy te sientes con suerte.
+
+id: port.you_don_t_feel_so_good
+en: You don't feel so good.
+tr: No te encuentras muy bien.
+
+id: port.you_feel_tougher
+en: You feel tougher.
+tr: Te sientes más resistente.
+
+id: port.you_no_longer_think_that_reading_the_scr
+en: You no longer think that reading the scroll was such a good idea...
+tr: Ya no crees que leer el pergamino fuera tan buena idea...
+
+id: port.you_can_not_rest_here
+en: You can not rest here
+tr: No puedes descansar aquí
+
+id: port.you_feel_refreshed
+en: You feel refreshed
+tr: Recuperas las fuerzas
+
+id: port.your_character_has_attained_new_s_level
+en: Your character has attained new %s level
+tr: Tu personaje ha alcanzado un nuevo nivel de %s
+
+id: port.you_made_a_critical_hit
+en: You made a critical hit!
+tr: ¡Has asestado un golpe crítico!
+
+id: port.you_made_a_critical_fumble
+en: You made a critical fumble!
+tr: ¡Has cometido una pifia!
+
+id: port.your_backstab_was_very_successful
+en: Your backstab was very successful!
+tr: ¡Tu puñalada por la espalda ha sido un gran éxito!
+
+id: port.your_backstab_was_successful
+en: Your backstab was successful!
+tr: ¡Tu puñalada por la espalda ha tenido éxito!
+
+id: port.your_weapon_has_no_effect_on_s
+en: Your weapon has no effect on %s.
+tr: Tu arma no afecta a %s.
+
+id: port.you_need_a_bow_to_fire_arrows
+en: You need a bow to fire arrows.
+tr: Necesitas un arco para disparar flechas.
+
+id: port.you_need_a_crossbow_to_fire_bolts
+en: You need a crossbow to fire bolts.
+tr: Necesitas una ballesta para disparar virotes.
+
+id: port.you_can_no_longer_attempt_to_turn_the_s
+en: You can no longer attempt to turn the %s.
+tr: Ya no puedes intentar expulsar a la criatura (%s).
+
+id: port.you_destroyed_the_s
+en: You destroyed the %s.
+tr: Has destruido a la criatura (%s).
+
+id: port.lvl_d
+en: Lvl %d
+tr: Niv. %d
+
+id: port.lvl_d_s
+en: Lvl %d %s
+tr: Niv. %d %s
+
+id: port.find_traps
+en: Find Traps
+tr: Encontrar trampas
+
+id: port.d_exp
+en: %d Exp
+tr: %d Exp
+
+id: port.immersive_mode_is_on
+en: Immersive mode is on.
+tr: Modo inmersivo activado.
+
+id: port.immersive_mode_is_off
+en: Immersive mode is off.
+tr: Modo inmersivo desactivado.
 
 id: port.press_enter
 en: Press Enter...
-tr: Pulsa Intro...
+tr: Pulsa Enter...
 
 id: port.improved_physics
 en: Improved physics
@@ -28,7 +195,7 @@ tr: Indicador de objetivo
 
 id: port.streaming_safe_music
 en: Streaming safe music
-tr: Música apta para emisiones
+tr: Música apta para streaming
 
 id: port.improvements
 en: Improvements
@@ -52,7 +219,7 @@ tr: GPU
 
 id: port.subtle
 en: Subtle
-tr: Suave
+tr: Sutil
 
 id: port.vga
 en: VGA
@@ -60,7 +227,7 @@ tr: VGA
 
 id: port.renderer
 en: Renderer
-tr: Motor gráfico
+tr: Renderizador
 
 id: port.animation_interpolation
 en: Animation interpolation
@@ -76,11 +243,11 @@ tr: Resolución interna
 
 id: port.upscaled_textures
 en: Upscaled textures
-tr: Texturas ampliadas
+tr: Texturas reescaladas
 
 id: port.upscaled_movies
 en: Upscaled movies
-tr: Vídeos ampliados
+tr: Vídeos reescalados
 
 id: port.anisotropic_filtering
 en: Anisotropic filtering
@@ -88,7 +255,7 @@ tr: Filtrado anisótropo
 
 id: port.shader
 en: Shader
-tr: Sombreador
+tr: Shader
 
 id: port.improved_infravision
 en: Improved infravision
@@ -96,11 +263,11 @@ tr: Infravisión mejorada
 
 id: port.the_software_renderer
 en: The software renderer
-tr: El motor por software
+tr: El renderizador por software
 
 id: port.ignores_these_settings
 en: ignores these settings.
-tr: no usa estos ajustes.
+tr: ignora estos ajustes.
 
 id: port.graphics
 en: Graphics
@@ -120,7 +287,7 @@ tr: Gráficos...
 
 id: port.language_2
 en: Language...
-tr: Idioma (Language)...
+tr: Idioma...
 
 id: port.return_to_dungeon
 en: Return to dungeon
@@ -144,9 +311,961 @@ tr: Menú ESC\n
 
 id: port.death_menu
 en: Death Menu\n
-tr: Has muerto\n
+tr: Menú de muerte\n
+
+id: port.human
+en: Human
+tr: Humano
+
+id: port.half_elven
+en: Half Elven
+tr: Semielfo
+
+id: port.elven
+en: Elven
+tr: Elfo
+
+id: port.drow
+en: Drow
+tr: Drow
+
+id: port.dwarven
+en: Dwarven
+tr: Enano
+
+id: port.halfling
+en: Halfling
+tr: Mediano
+
+id: port.male
+en: Male
+tr: Masculino
+
+id: port.female
+en: Female
+tr: Femenino
+
+id: port.return_to_main_menu
+en: Return to main menu
+tr: Volver al menú principal
+
+id: port.return_to_race_and_gender_screen
+en: Return to Race and Gender Screen
+tr: Volver a la pantalla de raza y sexo
+
+id: port.return_to_character_class_screen
+en: Return to Character Class Screen
+tr: Volver a la pantalla de clase
+
+id: port.thieves_can_not_have_a_lawful_good_align
+en: Thieves can not have a\nLawful Good alignment
+tr: Los ladrones no pueden\nser Legal bueno
+
+id: port.scroll_up
+en: Scroll up
+tr: Subir
+
+id: port.scroll_down
+en: Scroll down
+tr: Bajar
+
+id: port.enter_qty
+en: Enter Qty
+tr: Cantidad
+
+id: port.you_killed_s
+en: You killed %s.
+tr: Has matado a %s.
+
+id: port.you_hit_s_for_d
+en: You hit %s for %d.
+tr: Golpeas a %s: %d de daño.
+
+id: port.s_hits_you_for_d
+en: %s hits you for %d.
+tr: %s te golpea: %d de daño.
+
+id: port.you_took_d_damage
+en: You took %d damage.
+tr: Recibes %d de daño.
+
+id: port.you_pick_up_d_gold
+en: You pick up %d gold.
+tr: Recoges %d de oro.
+
+id: port.you_pick_up_s
+en: You pick up %s.
+tr: Recoges: %s.
+
+id: port.you_cannot_carry_s
+en: You cannot carry %s.
+tr: No puedes llevar: %s.
+
+id: port.s_tries_to_speak_but_nothing_happens
+en: %s tries to speak, but nothing happens.
+tr: %s intenta hablar, pero no pasa nada.
+
+id: port.rary_s_mnemonic_enhancer_expired
+en: Rary's Mnemonic Enhancer expired.
+tr: Se acabó el Potenciador Mnemónico de Rary.
+
+id: port.armor
+en: Armor
+tr: Armadura
+
+id: port.bless
+en: Bless
+tr: Bendecir
+
+id: port.blindness
+en: Blindness
+tr: Ceguera
+
+id: port.chill_touch
+en: Chill Touch
+tr: Toque Gélido
+
+id: port.deafness
+en: Deafness
+tr: Sordera
+
+id: port.confusion
+en: Confusion
+tr: Confusión
+
+id: port.detect_magic
+en: Detect Magic
+tr: Detectar Magia
+
+id: port.feather_fall
+en: Feather Fall
+tr: Caída de Pluma
+
+id: port.fear
+en: Fear
+tr: Miedo
+
+id: port.protection_from_fire
+en: Protection From Fire
+tr: Protección contra el Fuego
+
+id: port.resist_fire
+en: Resist Fire
+tr: Resistir el Fuego
+
+id: port.flying
+en: Flying
+tr: Vuelo
+
+id: port.free_action
+en: Free Action
+tr: Acción Libre
+
+id: port.haste
+en: Haste
+tr: Celeridad
+
+id: port.hold_person
+en: Hold Person
+tr: Inmovilizar Persona
+
+id: port.infravision
+en: Infravision
+tr: Infravisión
+
+id: port.improved_invisibility
+en: Improved Invisibility
+tr: Invisibilidad Mejorada
+
+id: port.invisibility
+en: Invisibility
+tr: Invisibilidad
+
+id: port.invulnerability
+en: Invulnerability
+tr: Invulnerabilidad
+
+id: port.jump
+en: Jump
+tr: Saltar
+
+id: port.levitate
+en: Levitate
+tr: Levitar
+
+id: port.rary_s_mnemonic_enhancer
+en: Rary's Mnemonic Enhancer
+tr: Potenciador Mnemónico de Rary
+
+id: port.protection_from_evil
+en: Protection From Evil
+tr: Protección contra el Mal
+
+id: port.regeneration
+en: Regeneration
+tr: Regeneración
+
+id: port.shield
+en: Shield
+tr: Escudo
+
+id: port.sleep
+en: Sleep
+tr: Dormir
+
+id: port.slow
+en: Slow
+tr: Lentitud
+
+id: port.spider_climb
+en: Spider Climb
+tr: Trepar como una Araña
+
+id: port.stoneskin
+en: Stoneskin
+tr: Piel de Piedra
+
+id: port.strength
+en: Strength
+tr: Fuerza
+
+id: port.magical_vestment
+en: Magical Vestment
+tr: Vestidura Mágica
+
+id: port.blinded
+en: Blinded
+tr: Cegado
+
+id: port.s_expired
+en: %s expired.
+tr: Se acabó %s.
+
+id: port.you_cast_s_on_s_for_d_damage
+en: You cast %s on %s for %d damage.
+tr: Lanzas %s sobre %s: %d de daño.
+
+id: port.s_cast_s_on_you_for_d_damage
+en: %s cast %s on you for %d damage.
+tr: %s te lanza %s: %d de daño.
+
+id: port.you
+en: You
+tr: Tú
+
+id: port.a_trap
+en: a trap
+tr: una trampa
+
+id: port.were
+en: were
+tr: has sido
+
+id: port.was
+en: was
+tr: ha sido
+
+id: port.are
+en: are
+tr: estás
+
+id: port.is
+en: is
+tr: está
+
+id: port.have
+en: have
+tr: tienes
+
+id: port.has
+en: has
+tr: tiene
+
+id: port.s_s_d_aid_hit_points_for_d_minutes
+en: %s %s %d aid hit points for %d minutes.
+tr: %s %s %d puntos de golpe de Ayuda durante %d minutos.
+
+id: port.d_aid_hit_points_cast_on_s_by_s_for_d_mi
+en: %d aid hit points cast on %s by %s for %d minutes.
+tr: Ayuda de %d puntos de golpe: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_d_armor_hit_points
+en: %s %s %d armor hit points.
+tr: %s %s %d puntos de golpe de Armadura.
+
+id: port.d_armor_hit_points_cast_on_s_by_s
+en: %d armor hit points cast on %s by %s.
+tr: Armadura de %d puntos de golpe: objetivo %s, lanzador %s.
+
+id: port.s_s_blessed_for_d_minutes
+en: %s %s blessed for %d minutes.
+tr: %s %s bendecido durante %d minutos.
+
+id: port.bless_cast_on_s_by_s_for_d_minutes
+en: Bless cast on %s by %s for %d minutes.
+tr: Bendecir: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_chill_touch_for_d_minutes
+en: %s %s chill touch for %d minutes.
+tr: %s %s Toque Gélido durante %d minutos.
+
+id: port.s_s_struck_unconscious_by_s
+en: %s %s struck unconscious by %s.
+tr: %s %s dejado inconsciente (origen: %s).
+
+id: port.s_s_blinded_by_s
+en: %s %s blinded by %s.
+tr: %s %s cegado (origen: %s).
+
+id: port.s_s_stunned_by_s
+en: %s %s stunned by %s.
+tr: %s %s aturdido (origen: %s).
+
+id: port.confusion_cast_on_s_by_s_for_d_minutes
+en: Confusion cast on %s by %s for %d minutes.
+tr: Confusión: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_blinded_by_s_indefinitely
+en: %s %s blinded by %s indefinitely.
+tr: %s %s cegado (origen: %s) sin límite de tiempo.
+
+id: port.s_s_blinded_by_s_for_d_minutes
+en: %s %s blinded by %s for %d minutes.
+tr: %s %s cegado (origen: %s) durante %d minutos.
+
+id: port.cure_light_wounds_cast_on_s_by_s
+en: Cure light wounds cast on %s by %s.
+tr: Curar Heridas Leves: objetivo %s, lanzador %s.
+
+id: port.cure_serious_wounds_cast_on_s_by_s
+en: Cure serious wounds cast on %s by %s.
+tr: Curar Heridas Graves: objetivo %s, lanzador %s.
+
+id: port.s_can_detect_magic_for_d_minutes
+en: %s can detect magic for %d minutes.
+tr: %s: Detectar Magia durante %d minutos.
+
+id: port.fear_cast_on_s_by_s
+en: Fear cast on %s by %s.
+tr: Miedo: objetivo %s, lanzador %s.
+
+id: port.s_s_scared
+en: %s %s Scared.
+tr: %s %s asustado.
+
+id: port.scare_cast_on_s_by_s
+en: Scare cast on %s by %s.
+tr: Asustar: objetivo %s, lanzador %s.
+
+id: port.s_was_not_affected_by_abjure
+en: %s was not affected by abjure.
+tr: %s: Abjurar no tiene efecto.
+
+id: port.s_s_rary_s_mnemonic_enhancer_for_1_day
+en: %s %s Rary's Mnemonic Enhancer for 1 day.
+tr: %s %s el Potenciador Mnemónico de Rary durante 1 día.
+
+id: port.rary_s_mnemonic_enhancer_cast_on_s_by_s_
+en: Rary's Mnemonic Enhancer cast on %s by %s for 1 day.
+tr: Potenciador Mnemónico de Rary: objetivo %s, lanzador %s, 1 día.
+
+id: port.which_additional_spell_levels_would_you_
+en: Which additional spell levels\nwould you like to cast?
+tr: ¿Qué niveles de conjuro extra\nquieres lanzar?
+
+id: port.three_1st
+en: Three 1st
+tr: Tres de 1.º
+
+id: port.one_1st_and_one_2nd
+en: One 1st and one 2nd
+tr: Uno de 1.º y uno de 2.º
+
+id: port.one_3rd
+en: One 3rd
+tr: Uno de 3.º
+
+id: port.s_s_feather_fall_for_d_minutes
+en: %s %s feather fall for %d minutes.
+tr: %s %s Caída de Pluma durante %d minutos.
+
+id: port.feather_fall_cast_on_s_by_s_for_d_minute
+en: Feather fall cast on %s by %s for %d minutes.
+tr: Caída de Pluma: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_fire_tolerance_for_d_minutes
+en: %s %s fire tolerance for %d minutes.
+tr: %s %s tolerancia al fuego durante %d minutos.
+
+id: port.flame_walk_cast_on_s_by_s_for_d_minutes
+en: Flame Walk cast on %s by %s for %d minutes.
+tr: Caminar sobre las Llamas: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_flying
+en: %s %s Flying.
+tr: %s %s Vuelo.
+
+id: port.flying_cast_on_s_by_s
+en: Flying cast on %s by %s.
+tr: Vuelo: objetivo %s, lanzador %s.
+
+id: port.s_s_free_action_for_d_minutes
+en: %s %s Free Action for %d minutes.
+tr: %s %s Acción Libre durante %d minutos.
+
+id: port.free_action_cast_on_s_by_s_for_d_minutes
+en: Free Action cast on %s by %s for %d minutes.
+tr: Acción Libre: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_haste_for_d_minutes
+en: %s %s Haste for %d minutes.
+tr: %s %s Celeridad durante %d minutos.
+
+id: port.haste_cast_on_s_by_s_for_d_minutes
+en: Haste cast on %s by %s for %d minutes.
+tr: Celeridad: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_held_for_d_seconds
+en: %s %s held for %d seconds.
+tr: %s %s inmovilizado durante %d segundos.
+
+id: port.hold_person_cast_on_s_by_s_for_d_seconds
+en: Hold Person cast on %s by %s for %d seconds.
+tr: Inmovilizar Persona: objetivo %s, lanzador %s, %d segundos.
+
+id: port.s_s_held_for_d_minutes
+en: %s %s held for %d minutes.
+tr: %s %s inmovilizado durante %d minutos.
+
+id: port.hold_person_cast_on_s_by_s_for_d_minutes
+en: Hold Person cast on %s by %s for %d minutes.
+tr: Inmovilizar Persona: objetivo %s, lanzador %s, %d minutos.
+
+id: port.hold_undead_cast_on_s_by_s_for_d_minutes
+en: Hold Undead cast on %s by %s for %d minutes.
+tr: Inmovilizar Muertos Vivientes: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_invisible_for_d_minutes
+en: %s %s invisible for %d minutes.
+tr: %s %s invisible durante %d minutos.
+
+id: port.improved_invisibility_cast_on_s_by_s_for
+en: Improved Invisibility cast on %s by %s for %d minutes.
+tr: Invisibilidad Mejorada: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_infravision_for_d_hours
+en: %s %s Infravision for %d hours.
+tr: %s %s Infravisión durante %d horas.
+
+id: port.infravision_cast_on_s_by_s_for_d_hours
+en: Infravision cast on %s by %s for %d hours.
+tr: Infravisión: objetivo %s, lanzador %s, %d horas.
+
+id: port.s_s_invisible
+en: %s %s invisible.
+tr: %s %s invisible.
+
+id: port.invisibility_cast_on_s_by_s
+en: Invisibility cast on %s by %s.
+tr: Invisibilidad: objetivo %s, lanzador %s.
+
+id: port.s_may_leap_for_some_time
+en: %s may leap for some time.
+tr: %s: salto mejorado durante un tiempo.
+
+id: port.jump_cast_on_s_by_s
+en: Jump cast on %s by %s.
+tr: Saltar: objetivo %s, lanzador %s.
+
+id: port.s_can_levitate_for_d_minutes
+en: %s can levitate for %d minutes.
+tr: %s: Levitar durante %d minutos.
+
+id: port.levitate_cast_on_s_by_s_for_d_minutes
+en: Levitate cast on %s by %s for %d minutes.
+tr: Levitar: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_magical_vestment_for_d_minutes
+en: %s %s Magical Vestment for %d minutes.
+tr: %s %s Vestidura Mágica durante %d minutos.
+
+id: port.magical_vestment_cast_on_s_by_s_for_d_mi
+en: Magical Vestment cast on %s by %s for %d minutes.
+tr: Vestidura Mágica: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_prayer_for_d_minutes
+en: %s %s Prayer for %d minutes.
+tr: %s %s Plegaria durante %d minutos.
+
+id: port.prayer_cast_on_s_by_s_for_d_minutes
+en: Prayer cast on %s by %s for %d minutes.
+tr: Plegaria: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_protection_from_evil_for_d_minutes
+en: %s %s Protection From Evil for %d minutes.
+tr: %s %s Protección contra el Mal durante %d minutos.
+
+id: port.protection_from_evil_cast_on_s_by_s_for_
+en: Protection From Evil cast on %s by %s for %d minutes.
+tr: Protección contra el Mal: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_d_hit_points_of_fire_immunity
+en: %s %s %d hit points of Fire Immunity.
+tr: %s %s %d puntos de golpe de inmunidad al fuego.
+
+id: port.d_hit_points_of_protection_from_fire_cas
+en: %d hit points of Protection From Fire cast on %s by %s.
+tr: Protección contra el Fuego de %d puntos de golpe: objetivo %s, lanzador %s.
+
+id: port.s_s_no_longer_deaf
+en: %s %s no longer deaf.
+tr: %s %s libre de la sordera.
+
+id: port.s_s_no_longer_blind
+en: %s %s no longer blind.
+tr: %s %s libre de la ceguera.
+
+id: port.cure_blindness_or_deafness_cast_on_s_by_
+en: Cure Blindness or Deafness cast on %s by %s.
+tr: Curar Ceguera o Sordera: objetivo %s, lanzador %s.
+
+id: port.s_s_fire_resistance_for_d_minutes
+en: %s %s Fire Resistance for %d minutes.
+tr: %s %s resistencia al fuego durante %d minutos.
+
+id: port.resist_fire_cast_on_s_by_s_for_d_minutes
+en: Resist Fire cast on %s by %s for %d minutes.
+tr: Resistir el Fuego: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_shielded_for_d_minutes
+en: %s %s Shielded for %d minutes.
+tr: %s %s protegido por Escudo durante %d minutos.
+
+id: port.shield_cast_on_s_by_s_for_d_minutes
+en: Shield cast on %s by %s for %d minutes.
+tr: Escudo: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_will_be_sleeping_for_d_minutes
+en: %s will be Sleeping for %d minutes.
+tr: %s: dormido durante %d minutos.
+
+id: port.sleep_cast_on_s_by_s_for_d_minutes
+en: Sleep cast on %s by %s for %d minutes.
+tr: Dormir: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_slowed_for_d_minutes
+en: %s %s Slowed for %d minutes.
+tr: %s %s ralentizado durante %d minutos.
+
+id: port.slow_cast_on_s_by_s_for_d_minutes
+en: Slow cast on %s by %s for %d minutes.
+tr: Lentitud: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_may_spider_climb_for_d_minutes
+en: %s may Spider Climb for %d minutes.
+tr: %s: Trepar como una Araña durante %d minutos.
+
+id: port.spider_climb_cast_on_s_by_s_for_d_minute
+en: Spider Climb cast on %s by %s for %d minutes.
+tr: Trepar como una Araña: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_s_stone_skin_for_d_attacks
+en: %s %s Stone Skin for %d attacks.
+tr: %s %s Piel de Piedra durante %d ataques.
+
+id: port.stone_skin_cast_on_s_by_s_for_d_attacks
+en: Stone Skin cast on %s by %s for %d attacks.
+tr: Piel de Piedra: objetivo %s, lanzador %s, %d ataques.
+
+id: port.s_s_strength_for_d_hours
+en: %s %s Strength for %d hours.
+tr: %s %s Fuerza durante %d horas.
+
+id: port.strength_cast_on_s_by_s_for_d_hours
+en: Strength cast on %s by %s for %d hours.
+tr: Fuerza: objetivo %s, lanzador %s, %d horas.
+
+id: port.s_can_find_traps_for_d_minutes
+en: %s can Find Traps for %d minutes.
+tr: %s: Encontrar trampas durante %d minutos.
+
+id: port.find_traps_cast_on_s_by_s_for_d_minutes
+en: Find Traps cast on %s by %s for %d minutes.
+tr: Encontrar trampas: objetivo %s, lanzador %s, %d minutos.
+
+id: port.s_is_not_in_this_version
+en: %s is not in this version.
+tr: %s no está en esta versión.
+
+id: port.you_are_not_a_spell_caster
+en: You are not a spell caster.
+tr: No sabes lanzar conjuros.
+
+id: port.you_are_not_a_mage
+en: You are not a Mage.
+tr: No eres Mago.
+
+id: port.you_are_not_a_cleric
+en: You are not a Cleric.
+tr: No eres Clérigo.
+
+id: port.spell_is_of_too_high_a_level
+en: Spell is of too high a level.
+tr: El conjuro es de un nivel demasiado alto.
+
+id: port.out_of_spell_points_for_this_spell_level
+en: Out of spell points for this spell level.
+tr: No te quedan puntos de conjuro de este nivel.
+
+id: port.you_cannot_cast_a_spell_while_wearing_s
+en: You cannot cast a spell while wearing %s.
+tr: No puedes lanzar conjuros llevando %s.
+
+id: port.you_cannot_cast_a_spell_while_climbing
+en: You cannot cast a spell while climbing.
+tr: No puedes lanzar conjuros mientras trepas.
+
+id: port.casting_time_d_minutes
+en: Casting time: %d minutes ...
+tr: Tiempo de lanzamiento: %d minutos ...
+
+id: port.casting_time_d_seconds
+en: Casting time: %d seconds ...
+tr: Tiempo de lanzamiento: %d segundos ...
+
+id: port.casting_time_1_second
+en: Casting time: 1 second ...
+tr: Tiempo de lanzamiento: 1 segundo ...
+
+id: port.s_for_d_minutes
+en: %s for %d minutes.
+tr: %s durante %d minutos.
+
+id: port.s_for_d_seconds
+en: %s for %d seconds.
+tr: %s durante %d segundos.
+
+id: port.your_spell_was_interrupted
+en: Your spell was interrupted!
+tr: ¡Tu conjuro se ha interrumpido!
+
+id: port.your_spell_was_aborted
+en: Your spell was aborted.
+tr: Tu conjuro se ha cancelado.
+
+id: port.no_spells
+en: No spells
+tr: Sin conjuros
+
+id: port.slots_m_d_d_d_d_d_d_c_d_d_d_d_d_d
+en: Slots M %d/%d %d/%d %d/%d C %d/%d %d/%d %d/%d
+tr: Espacios M %d/%d %d/%d %d/%d C %d/%d %d/%d %d/%d
+
+id: port.you_found_a_trigger
+en: You found a trigger!
+tr: ¡Has hallado un disparador!
+
+id: port.you_found_a_trigger_would_you_like_to_di
+en: You found a trigger!\nWould you like to disable it?
+tr: ¡Has hallado un disparador!\n¿Quieres desactivarlo?
+
+id: port.yes
+en: Yes
+tr: Sí
+
+id: port.no
+en: No
+tr: No
+
+id: port.you_found_a_magical_trap
+en: You found a magical trap!
+tr: ¡Has hallado una trampa mágica!
+
+id: port.you_found_a_magical_trap_would_you_like_
+en: You found a magical trap!\nWould you like to disable it?
+tr: ¡Has hallado una trampa mágica!\n¿Quieres desactivarla?
+
+id: port.you_found_a_trap_would_you_like_to_disab
+en: You found a trap!\nWould you like to disable it?
+tr: ¡Has hallado una trampa!\n¿Quieres desactivarla?
+
+id: port.you_cannot_perform_this_action_while_wea
+en: You cannot perform this action while wearing %s.
+tr: No puedes hacer esta acción llevando %s.
+
+id: port.press_f3_to_return_to_cockpit_mode
+en: Press F3 to return to Cockpit mode
+tr: Pulsa F3 para volver al modo con interfaz
+
+id: port.super_s
+en: SUPER %s
+tr: SÚPER %s
+
+id: port.extra_life
+en: Extra life!
+tr: ¡Vida extra!
+
+id: port.exit_path_illuminated
+en: Exit path illuminated!
+tr: ¡Camino de salida iluminado!
+
+id: port.stereo_parameters_reset
+en: Stereo parameters reset
+tr: Parámetros estéreo restablecidos
+
+id: port.high_res
+en: High Res
+tr: Alta res.
+
+id: port.low_v_res
+en: Low V.Res
+tr: Baja res. V
+
+id: port.low_h_res
+en: Low H.Res
+tr: Baja res. H
+
+id: port.low_res
+en: Low Res
+tr: Baja res.
+
+id: port.right_eye_left_eye
+en: Right Eye -- Left Eye
+tr: Ojo derecho -- Ojo izquierdo
+
+id: port.left_eye_right_eye
+en: Left Eye -- Right Eye
+tr: Ojo izquierdo -- Ojo derecho
+
+id: port.head_tracking_sensitivy_d
+en: Head tracking sensitivy = %d
+tr: Sensibilidad del seguimiento = %d
+
+id: port.stereoscopic_balance_1f
+en: Stereoscopic balance = %.1f
+tr: Balance estereoscópico = %.1f
+
+id: port.stereo_separation_1f
+en: Stereo separation = %.1f
+tr: Separación estéreo = %.1f
+
+id: port.debug_spew_on
+en: Debug Spew: ON
+tr: Debug Spew: ON
+
+id: port.debug_spew_off
+en: Debug Spew: OFF
+tr: Debug Spew: OFF
+
+id: port.continue
+en: Continue
+tr: Continuar
+
+id: port.don_t_save
+en: Don't Save
+tr: No guardar
+
+id: port.save
+en: Save
+tr: Guardar
+
+id: port.error
+en: ERROR
+tr: ERROR
+
+id: port.ok
+en: Ok
+tr: Aceptar
+
+id: port.connectivity_errors_detected_in_mine_see
+en: Connectivity errors detected in\nmine.  See monochrome screen for\ndetails, and contact Matt or Mike.
+tr: Connectivity errors detected in\nmine.  See monochrome screen for\ndetails, and contact Matt or Mike.
+
+id: port.cancel_save
+en: Cancel Save
+tr: Cancelar
+
+id: port.insert_cd
+en: Insert CD
+tr: Inserta el CD
+
+id: port.retry
+en: Retry
+tr: Reintentar
+
+id: port.exit
+en: Exit
+tr: Salir
+
+id: port.please_put_the_descent_cd_in_your_cd_rom
+en: Please put the\nDescent CD\nin your CD-ROM drive!\n
+tr: ¡Pon el\nCD de Descent\nen tu unidad de CD-ROM!\n
+
+id: port.evaluation_copy
+en: EVALUATION COPY
+tr: COPIA DE EVALUACIÓN
+
+id: port.this_special_evaluation_copy_of_descent_
+en: This special evaluation copy\nof DESCENT has been issued to:\n\n%s\n\n\n    NOT FOR DISTRIBUTION
+tr: Esta copia especial de evaluación\nde DESCENT se ha entregado a:\n\n%s\n\n\n    PROHIBIDA SU DISTRIBUCIÓN
+
+id: port.hot_key_1
+en: Hot key 1
+tr: Tecla rápida 1
+
+id: port.hot_key_2
+en: Hot key 2
+tr: Tecla rápida 2
+
+id: port.hot_key_3
+en: Hot key 3
+tr: Tecla rápida 3
+
+id: port.hot_key_4
+en: Hot key 4
+tr: Tecla rápida 4
+
+id: port.hot_key_5
+en: Hot key 5
+tr: Tecla rápida 5
+
+id: port.hot_key_6
+en: Hot key 6
+tr: Tecla rápida 6
+
+id: port.hot_key_7
+en: Hot key 7
+tr: Tecla rápida 7
+
+id: port.hot_key_8
+en: Hot key 8
+tr: Tecla rápida 8
+
+id: port.hot_key_9
+en: Hot key 9
+tr: Tecla rápida 9
+
+id: port.hot_key_10
+en: Hot key 10
+tr: Tecla rápida 10
+
+id: port.prev_hot_key
+en: Prev. hot key
+tr: Tecla rápida anterior
+
+id: port.next_hot_key
+en: Next hot key
+tr: Tecla rápida siguiente
+
+id: port.press_a_button_or_move_a_stick
+en: Press a button or move a stick
+tr: Pulsa un botón o mueve una palanca
+
+id: port.customize_hot_keys
+en: Customize Hot Keys
+tr: Personalizar teclas rápidas
+
+id: port.customize_gamepad
+en: Customize Gamepad
+tr: Personalizar mando
+
+id: port.reset_to_defaults
+en: Reset to defaults
+tr: Valores predeterminados
+
+id: port.hot_keys
+en: Hot Keys
+tr: Teclas rápidas
+
+id: port.reset_all_keys_to_the_defaults
+en: Reset all keys\nto the defaults?
+tr: ¿Restaurar todas las teclas\na sus valores predeterminados?
+
+id: port.a_gamepad_is_connected
+en: A gamepad is connected.
+tr: Hay un mando conectado.
+
+id: port.no_gamepad_found
+en: No gamepad found.
+tr: No se ha encontrado ningún mando.
+
+id: port.customize_buttons_and_sticks
+en: Customize Buttons and Sticks
+tr: Personalizar botones y palancas
+
+id: port.dead_zone
+en: Dead zone
+tr: Zona muerta
+
+id: port.turn_and_look_speed
+en: Turn and look speed
+tr: Velocidad de giro y de mirada
+
+id: port.invert_look
+en: Invert look
+tr: Invertir mirada
+
+id: port.reset_gamepad_to_defaults
+en: Reset gamepad to defaults
+tr: Restaurar los valores del mando
+
+id: port.gamepad
+en: Gamepad
+tr: Mando
+
+id: port.error_in_mission_file
+en: Error in Mission file
+tr: Error en el archivo de misión
 
 id: port.ship_auto_leveling
 en: Ship auto-leveling
 tr: Nivelación automática
+
+id: port.can_t_playback_net_game_with_this_versio
+en: can't playback net game\nwith this version of code\n
+tr: no se puede reproducir una partida\nen red con esta versión\n
+
+id: port.you_fell_d_feet
+en: You fell %d feet!
+tr: ¡Has caído %d pies!
+
+id: port.levitate_cancelled
+en: Levitate cancelled.
+tr: Se cancela Levitar.
+
+id: port.choose_another
+en: Choose another
+tr: Elige otro
+
+id: port.invalid_player_file
+en: Invalid player file
+tr: Archivo de jugador no válido
+
+id: port.no_saved_games_were_found
+en: No saved games were found!
+tr: ¡No se han encontrado partidas guardadas!
+
+id: port.can_t_save_in_a_multiplayer_game
+en: Can't save in a multiplayer game!
+tr: ¡No puedes guardar en una partida multijugador!
+
+id: port.can_t_restore_in_a_multiplayer_game
+en: Can't restore in a multiplayer game!
+tr: ¡No puedes cargar en una partida multijugador!
+
+id: port.restore_game
+en: Restore Game?
+tr: ¿Cargar la partida?
+
+id: port.error_unable_to_load_mission_s
+en: Error!\nUnable to load mission\n'%s'\n
+tr: ¡Error!\nNo se puede cargar la\nmisión '%s'\n
+
+id: port.strong_magic_prevents_you_from_unlocking
+en: Strong magic prevents you from unlocking this door.
+tr: Una magia poderosa te impide abrir esta puerta.
+
+id: port.s_i_ss
+en: %s %i %ss!
+tr: ¡%s %i (%s)!
 
