@@ -275,7 +275,10 @@ like this (**Code**):
 - A click on an entry of the list or on a filled slot with an empty cursor: the
   cursor takes the item (flag 0x13ADAF, copy of the entry at 0x1BD46C, reference
   at 0x1BD694). The cursor picture becomes the icon. The slot becomes empty.
-  0x317EA puts the wear bits of the item into 0x1BD578.
+  0x317EA puts the wear bits of the item into 0x1BD578. If 0x3533C refuses the
+  entry (the class bits, see below), the wear bits become 0 (0x30344 for the
+  list, 0x312C3 after the slot): no slot and not the figure take it then. No
+  message is printed there.
 - A click on a slot with a held item: the slot takes the reference if the wear
   bits have the bit of the slot. Then 0x4D708 runs 0xAFB55.
 - A click on a hot key box with a held item puts the item there (log text
@@ -285,6 +288,26 @@ like this (**Code**):
 - The button DROP (0x35FD6) drops the held item. The button USE (0x3614B) uses
   the held item if it is of the item list, or with an empty cursor the item in
   the hand if it is a misc item (0x2FAF0).
+- Press and drag. 0x2FB10 sets edi to 1 only in the frame where the button goes
+  down (0x2FDCD, 0x13AD7E keeps the last state). The list cells (0x3023F), the
+  slots (0x30640) and the hot key boxes (0x304AA) act only then: a press. The
+  buttons act in each frame while the button is down: 0x3009B calls
+  0x9865B(list, 1, x, y), which gives the press handler (+0x46, 0x98E99, the
+  press action +0x3E) to each button under the cursor whose flag +0x30 is clear
+  (0x98741), and the release handler without action to a pressed button that
+  the cursor left (0x987AD). With the button up (0x312FA) a pressed button
+  under the cursor gets the release handler with the action (0x98782). So an
+  item taken at the press and dragged with the button down acts on the figure of
+  the paper doll when the cursor reaches it, and on USE or DROP at the release
+  over them. A drag onto a slot or a hot key box does nothing: a click is
+  needed there.
+- A press in the view (0x2FE1F, the rectangle 0x1C7F64) in each frame while the
+  button is down, with a held item: if 0x13ADB0 is 1 (the entry may be dropped:
+  an entry of the item list, not `plot_item` (entry byte 10) and not 0xB611C,
+  a word of the table entry of the type) and 0xB715A passes (fewer than 700
+  objects), 0xB717B drops it (0x2FE5B) and the cursor is empty; else
+  0x319FF(*0x3969EC) (not read). The DROP button tests the same 0x13ADB0. Not
+  in the port: the port drops by DROP only and does not test 0x13ADB0.
 
 ### Spells in the hot keys (Code)
 
@@ -343,13 +366,26 @@ Shield, Detect Magic and Sleep of the mage list.
   -1), and the class bits of byte 3 fit a class of the character (0x352F7).
 - The figure of the paper doll (high: records 0x1440EA (244,24) 55x57 and
   0x144148 (210,81) 122x278; low: 0x1441A6 (120,12) 31x29 and 0x144204 (101,41)
-  67x140) has the press action 0x35ADF. With a held weapon or spell that 0x3533C
+  67x140) has the press action 0x35ADF and no release action. It does nothing
+  with an empty cursor (0x35AE6) or in mode 6 of the low resolution (0x35AF3).
+  The first wear bit of 0x1BD578 in this order gives the slot: cloak 2,
+  necklace 4, armor 8, gauntlet 0x10, shield 0x20, ring 0x40 (ring 1 if the
+  index byte of ring 1 is negative, else ring 2, 0x35BF4), belt 0x80, boot
+  0x100, bow 0x200, crossbow 0x400, lockpicks 0x800 (0x35B09 to 0x35CE0). The
+  slot takes the reference (the item that was in it stays in the list), the
+  cursor is empty, 0x4D708 (an empty function) and 0xAFB55 run. The helmet bit
+  1 has no case. Else, with a held weapon or spell that 0x3533C
   passes (0x35CE5): if a box holds the reference the cursor keeps it. Else the
   first empty box takes it, or with no empty box the box that was chosen last
   (0x13AD15), box 0 if none; an arrow and a bolt have a second test
-  (0x35EDE with 0x35F9D, 0x35F0F with 0x35F64, else sound 3000); then 0x13AD15 = -100 and 0x43A5A(box): the
-  entry goes into the hand. A held entry with wear bits goes into its slot, a
-  misc item is used (0x37A6A).
+  (0x35EDE with 0x35F9D, 0x35F0F with 0x35F64): an arrow without a bow or a
+  bolt without a crossbow gives sound 3000 with no message and the cursor is
+  empty; then 0x13AD15 = -100 and 0x43A5A(box): the entry goes into the hand.
+  Anything else (a misc item, an armor without a slot bit, an entry that
+  0x3533C refuses) is used: 0x37A6A with the index byte of the reference
+  (0x35E9C), and the cursor is empty. So a potion or the Scroll put on the
+  figure is used as with USE. For a held spell that 0x3533C refuses the index
+  is one of the spell list, which 0x37A6A reads as an index of the item list.
 - A key 1 to 0 (0x430C9 to 0x4310A, the scan codes 2 to 11), a click on a box
   that is not empty with an empty cursor (0x3056E), Cycle Weapon (0x545EB) and
   0x4448D (the first box that is not empty, "Autoarming anything") call
@@ -606,9 +642,17 @@ Differences and guesses of the port:
   "Lvl N" / "L-N", the border marks the spell in the hand, the key or a click arms
   the spell (`dtu_spell_take`, no message), and the attack key casts it. The
   inventory screen has the button SPELLS and the spell lists; a held spell goes into
-  a box by a click on the box or onto the figure of the paper doll (the port takes
-  only a held spell there: a held item goes back to the list as before). The
+  a box by a click on the box or onto the figure of the paper doll. The
   entries of the item list and of the boxes show the text of 0xB7487 (no "1").
+- The figure of the paper doll (0x35ADF) is `dtu_char_put_on_doll` with
+  `dtu_char_item_usable` (0x3533C for an entry of the item list): a held item is
+  worn, armed or used as above, also by a drag (the figure acts while the button
+  is down). The buttons follow 0x9865B: while the button is down the button under
+  the cursor is pressed, so a drag onto USE or DROP acts at the release. The
+  port's `dtu_char_equip` takes the entry out of another slot that holds it (the
+  executable writes the reference only, so a ring of ring 1 taken from the list
+  and put on the figure stands in both ring slots). A held spell that 0x3533C
+  refuses goes back to its list.
 - The tests of 0x43A5A are `dtu_char_press_hot_key` (keys, clicks, Cycle Weapon, the
   paper doll); the sound is `digi_play_sample(3000, F1_0)`. The port's attack request
   (`Request` of dtucombat.c) stands for 0x13B69F. An empty box gives the empty hand.
@@ -617,7 +661,7 @@ Differences and guesses of the port:
   resolution), drawn over the button while a spell list is shown whose next list is
   the item list.
 - Not in the port: the tests 1 of 0x43A5A and the case 0x13D2C8 = 2, P+0x47 (no
-  reader), the arrow and bolt test of 0x35CE5 for a weapon. The port keeps the item of the hand in
+  reader). The port keeps the item of the hand in
   `Dtu_char.current` while a spell is in the hand (`Dtu_spell_current`); an item
   taken in the hand puts the spell away. The first list after a load is the item
   list (guess). Cycle Weapon passes over the boxes with a spell (0x544F2 takes
@@ -625,7 +669,10 @@ Differences and guesses of the port:
 - The ability scores, alignment, age and gold of the default character are a
   guess. The front end sets them in the original.
 - The class bits are tested when an item is worn or taken in the hand (messages
-  825 and 828). The place of this test in the executable was not found.
+  825 and 828). The place of these messages in the executable was not found.
+  The executable tests the class bits at the pick up (0x3533C clears the wear
+  bits, section 6) with no message; a click on a slot of the port still uses the
+  test of `dtu_char_equip`.
 - The place of a dropped item (15 units in front of the player, on the floor) is
   a guess. The pick up code of `dtuobj.c` does not ask
   `dtu_char_pickup_allowed()` yet.
