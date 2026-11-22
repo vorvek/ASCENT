@@ -1226,13 +1226,40 @@ static void test_fonts(void)
 	CHECK( font != NULL );
 	CHECK( font->ft_w == tf.w && font->ft_h == tf.h && font->ft_flags == tf.flags );
 	CHECK( font->ft_w == 17 && font->ft_h == 11 && font->ft_flags == FT_PROPORTIONAL );
-	CHECK( font->ft_minchar == 32 && font->ft_maxchar == 135 && font->ft_baseline == tf.baseline );
+	// ASCENT: the font goes up to 255 with the Latin-1 letters of the
+	// translations (font.c, docs/formats/lang.md)
+	CHECK( tf.maxchar == 135 );
+	CHECK( font->ft_minchar == 32 && font->ft_maxchar == 255 && font->ft_baseline == tf.baseline );
 	CHECK( font->ft_widths != NULL && font->ft_chars != NULL );
 	CHECK( grd_curcanv->cv_font == font );
 	ok = 1;
 	for (i=tf.minchar; i<=tf.maxchar; i++ )
 		if (font->ft_widths[i-tf.minchar] != test_font_width( &tf, i )) ok = 0;
 	CHECK( ok );
+	{
+		// a with acute (0xE1): the width of a, the pixels of a and more
+		// pixels above them; the inverted question mark (0xBF) has as many
+		// pixels as the question mark
+		int bw = (test_font_width(&tf,'a')+7)/8, extra = 0, same = 1, n1 = 0, n2 = 0;
+		ubyte *a = font->ft_chars['a'-32], *aa = font->ft_chars[0xE1-32];
+		CHECK( font->ft_widths[0xE1-32] == font->ft_widths['a'-32] );
+		for (y=0; y<tf.h; y++ )
+			for (x=0; x<bw; x++ ) {
+				if ((a[y*bw+x] & aa[y*bw+x]) != a[y*bw+x]) same = 0;
+				extra += aa[y*bw+x] != a[y*bw+x];
+			}
+		CHECK( same && extra > 0 );
+		bw = (test_font_width(&tf,'?')+7)/8;
+		for (i=0; i<bw*tf.h; i++ ) {
+			for (x=0; x<8; x++ ) {
+				n1 += (font->ft_chars['?'-32][i] >> x) & 1;
+				n2 += (font->ft_chars[0xBF-32][i] >> x) & 1;
+			}
+		}
+		CHECK( n1 == n2 && n1 > 0 );
+		// a character above 135 that is not a letter is a space
+		CHECK( font->ft_widths[0xB0-32] == font->ft_widths[' '-32] );
+	}
 	CHECK( font->ft_chars[0] - font->ft_data == 0 );
 	CHECK( font->ft_chars['B'-32] - font->ft_chars['A'-32] == ((test_font_width(&tf,'A')+7)/8) * tf.h );
 

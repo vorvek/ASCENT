@@ -255,6 +255,12 @@ it (`test_dtudata` writes a picture).
 | FNTEMHS_ | 1070 | 10x8 | proportional | 32..132 |
 | FNTEMLS_ | 844 | 7x6 | proportional | 32..132 |
 
+The glyphs at 127 to 135 of the proportional fonts are icons (checked in
+FNTEMFM_, FNTECLMS, FNTEMLS_), not letters of code page 437. FNTEMFS_ has the
+256 characters of code page 437 (160 is a with acute, 164 n with tilde, 168 the
+inverted question mark). The port adds the Latin-1 letters of the translations
+at load time: see [lang.md](lang.md).
+
 ## KCFG.ENG, KCFG.FRE, KCFG.GER, KCFG.ITA, KCFG.SPA, KCFG.NON, KCFG.MAR
 
 Text files of the CD (1285 to 1327 bytes), CR LF lines. A line that starts with `;` is
