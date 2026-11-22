@@ -218,13 +218,77 @@ A term (0xA8516) can start with `E9` (NOT: the value is 1 if the result is 0).
 `CD 00 CE` (an empty text and no reply) is used after narration to wait for
 the player.
 
-Open (0xA74AA): 0x458BA(1) ramps the byte 0x14C4CE from 0 to 15, one step for
-each 0x800 of game time, with reduced frames; the pixel shading function
-0xEC4D7 uses it (**G**: the view turns dark and grey behind the window). Then
+Open (0xA74AA): 0x458BA(1) ramps the byte 0x14C4CE (the dark view, see below)
+from 1 to 15. Then
 0xB1D77(10) (at most 10 replies, `MaxDialogResponses` 0x1465A8; 8 when the value is not
 above 0), 0xB13C4 (the layout), 0x92FF2. Close
 (0xA74D0): 0x458BA(0) ramps it back, 0xB1A8C, and the temporary object of
 run_script_id is deleted.
+
+### The dark view behind the window
+
+**V** (code read in 0x458BA, 0x45A60, 0xEA503, 0xEC4D7, 0x105A81, 0x105C60):
+
+- No palette function is called by the window code (0xA74AA, 0xA74D0, 0xB13C4,
+  0xB14D8, 0xB19A2, 0xB1A8C, 0xB1D77). The palette functions 0xD9DB4
+  (gr_palette_step_up), 0xD9EA4, 0xD9EE0, 0xD9F70, 0xDA03C and 0xDA1E8 have no
+  caller in the window or script code. The change of the view is a rule of the
+  texture mappers.
+- 0x458BA(1): D = 0, then while D < 15: D + 1, and reduced frames (0x4391D)
+  until the game time (0x13CD30) has moved 0x800 (1/32 second). So D is 1 at
+  once and 15 after 14 x 0x800; the call returns 0x800 later. 0x458BA(0): D =
+  15, then while D > 0: D - 1 and the same wait. D is the byte 0x14C4CE. The
+  window code goes on (and shows the window) only after the ramp.
+- 0x45A60 calls 0x458BA(1) with the byte 0x14C4CF at 1 (another use, not the
+  window). The window leaves 0x14C4CF at 0.
+- The light functions of the mappers, 0xEC4D7 (linear) and its copy 0x105A81
+  (perspective, the globals copied by 0x105C60: 0x14C4CE to 0x1512BF, 0x14C4CF
+  to 0x1512C0), get the texel color c in AL and the fade row r in AH. When
+  0x14C4D8 is 0 they return `fade[r][c]`. Else, for c not 0xFF and D not 0, when
+  `(c & 15) <= D` (signed compare), before the effect colors and infravision:
+  - r = r - 5, at least 0;
+  - 0x14C4CF = 0: the color is `(fade[r][c] & 15) | 8`;
+  - 0x14C4CF = 1: v = `fade[r][c] & 15`, the color is `v | 0xF0` when v is 1
+    to 13, else v.
+- 0x14C4D8 is set for each polygon by draw_tmap (0xEA503 to 0xEA525): 1 when
+  the bitmap has flag 0x20 (the merged walls of the texture merge cache, see
+  [effectcolors.md](effectcolors.md)), when 0x14C4CD (the tint of an object)
+  is not 0, or when 0x14C4CF is not 0. The window sets only D, so the rule
+  changes only the lit merged walls (a wall with an overlay texture) and the
+  objects with a tint. Other walls, the models and the flat polygons keep
+  their colors. render_face (0x7558C) uses the merge cache (0x7A9AD) only for
+  a side with a second texture.
+- `(x & 15) | 8` is a color 8 to 15 of palette row 0: PALETTE.256 gives
+  (28,22,27), (24,18,24), (19,15,20), (15,12,16), (11,9,13), (7,6,9), (4,3,5),
+  (1,1,2) (6-bit values), the dark half of the grey ramp, a little blue. The
+  lit step s of the texel (five rows brighter) gives color `s | 8`: steps 0 to
+  7 become 8 to 15, steps 8 to 15 stay. With D at 15 every texel of such a
+  wall takes one of these eight colors: the merged walls turn dark blue grey
+  behind the window, with their brightness steps folded.
+- The ramp tests the unlit texel step `c & 15` (0 is the brightest of a
+  ramp), so the bright texels change first.
+
+The port (`engine/texmap/tmapfx.c`, `engine/main/dtudlg.c`): `dtu_dlg_view_dim`
+gives D from the game time (the steps above); the port does not wait for the
+end of the ramp. render.c gives it to the software mappers (a copy of the fade
+table with the rule, used for a lit bitmap with `BM_FLAG_DTU_MERGED`, which
+texmerge.c sets on each merged bitmap) and to the GPU renderer (`u_dim`). The
+8-bit form of the GPU renderer does the rule on the palette index. The RGB form
+takes the nearest palette color of the texel for the test, the light five
+rows brighter, the step of its nearest palette color for the new color, and
+keeps the detail of a filtered or upscaled texel at the scale of the new
+color. The tint of objects (0x14C4CD) is not in the port. A level start and a
+loaded game end the dark view at once. The half light of the window area
+(`darken` in dtudlg.c) is new in the port.
+
+Test (YPINN, Durnan, `-level YPINN -fixedfps 30 -testpos -60,-8.7,9,270
+-testmove wait:10,use:1,wait:400 -dlgauto esc,esc,esc,esc -dlgdelay 10`): the
+shelf wall, the window frames and the beams (merged walls) turn dark blue
+grey while the window is open, in the software renderer, the 8-bit and the
+RGB forms (the mean color of the shelf wall: 8,6,12 software and 8-bit, 9,7,12
+RGB). The plain wood walls and the floor keep their colors. Less than half a
+second after the window closes the view is the same as before the
+conversation.
 
 Layout (0xB13C4, tables at 0x1465F4, 0x146624, 0x146654, values for low and
 high resolution). A screen mode other than 0, 1 and 7 is changed to mode 0
