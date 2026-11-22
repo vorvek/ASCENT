@@ -705,8 +705,10 @@ the objects.md convention (base 0x1B5676) unless it says "record offset".
   items / 1 mage / 2 cleric, index). Spells are shown as a view of the inventory
   list (ingame-ui.md: "BrowseItemType <= JRG_VIEWING_PRIEST" 0x35ABD) and can sit
   in the hot keys P+0x1AC1. The S button of the main screen opens the statistics
-  screen (mode 5, ingame-ui.md), which has the spell tables. The UI code that puts
-  a spell into P+0x1AD7 was not traced.
+  screen (mode 5, ingame-ui.md), which has the spell tables. A spell goes into
+  P+0x1AD7 through a hot key box (0x43A5A): the button SPELLS of the inventory
+  screen shows a spell list, the cursor takes a spell, and a click on a box or on
+  the figure of the paper doll puts it into a box (character.md, section 6).
 - Fire key / button: game.c 0x44300 calls 0x41A4D (may fire?) and then 0x56A0D
   (fire) for a spell (type 17) or a weapon.
 - 0x41A4D for a spell from a spell list (game.c):
@@ -1447,8 +1449,8 @@ message test is one d20 per cast.
 
 - The divide by zero of the Fireball, Lightning Bolt and Melf's Acid Arrow rolls
   (section 2): test in the original game.
-- The UI that puts a spell into the current item P+0x1AD7 (statistics screen,
-  inventory browser 0x35ABD, hot keys) was not traced.
+- The spell tables of the statistics screen (whether a click there takes a spell)
+  were not traced. The hot key path is in character.md, section 6.
 - 0xAC2F5 (NPC table loop with 0xAC297) is read as "an NPC watches" (guess).
 - The thief skill points per level (0xB5BB9) were not read.
 - Knock (28) has no case code; the wall hit 0x26C2F calls the door function
@@ -1649,11 +1651,15 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   go in with `dtu_spell_learn` (0xB69AD). Slots: the maximum from the tables 0x145CD8 and
   0x145DF8 with the wisdom bonus, full at each level start and at a rest
   (`dtu_char_rest` calls `dtu_spell_restore_slots`).
-- Selection: the statistics screen (the S button) shows the books and the slots in the
-  empty panel at the lower left (the place is a guess, the original layout of the spell
-  tables was not decoded). Comma and period choose, Enter takes the spell in the hand
-  (the original uses the mouse on the list view of the inventory). Taking an item in the
-  hand puts the spell away.
+- Selection: as the executable, the hot key boxes hold spells (the key, a click on the
+  box), and the button SPELLS of the inventory screen shows the spell lists; the cursor
+  takes a spell into a box or onto the figure of the paper doll (character.md, section
+  6). In a spell list comma and period choose a spell and Enter arms it (port keys).
+  The statistics screen also shows the books and the slots in the empty panel at the
+  lower left (a port addition; the original layout of the spell tables was not
+  decoded): comma and period choose, Enter takes the spell in the hand. Taking an item
+  in the hand puts the spell away. The model of the arms of a spell of a book is the
+  one of letter `K` (byte 5 of the entry, 0x43EF8).
 - Cast: the attack key with a spell in the hand: the checks of 0x356E0 and 0x41A4D with
   the messages, the cast time of the line (integer seconds), then the cast and one slot.
   A scroll (a spell item in the hand) and a wand (a weapon with `pc_spell`) cast at once
