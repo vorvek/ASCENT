@@ -519,8 +519,18 @@ original); the scroll bar acts only for a press that began on it (not with
 `Dtu_ui_key_repeat` 1); the mouse wheel over the list or the scroll bar moves
 the list one row (two entries) for each step (an addition).
 
-Guesses in the port: the keys (I, Tab, V, R, F3 from the manual, the key
-code of the original was not read), F3 changes between mode 0 and mode 7,
+Verified keys of the key switch 0x42F9C (see also controls.md): F3 calls
+0x40C3A in mode 7 (back to mode 0), else 0x40974 (mode 0 to mode 7, a
+screen to mode 0); "=" and Shift+"=" call 0x40974, "-" and Shift+"-" call
+0x40C3A; both set the saved mode to 0. Alt+F2 saves (0xBA99F), Alt+F3 loads
+(0xBB780(1)), ` and Print Screen take a screenshot (0x80DA1), F1 help
+(0x4495B), F2 options (0x58C18), F4 joystick calibration, Pause; Shift+F1
+to Shift+F8 are not in the switch. While the map has the controls it reads
+one key per frame first (minus, equal, Escape). Immersive mode off puts the
+mouse in the middle of the view (0x54470). While the conversation window is
+open the reduced frame 0x4391D reads no interface input.
+
+Guesses in the port: the keys I, Tab, V, R (the key table, controls.md),
 the start in non-immersive mode, the color of the message text, the place of
 the slider of the scroll bar, the mouse position at the view center after a
 mode change, the colors of the texts of the statistics screen, the keys of the
