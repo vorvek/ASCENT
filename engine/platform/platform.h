@@ -397,8 +397,10 @@ uint8_t *plat_gpu_screenshot(const uint8_t *pixels, int w, int h, int pitch, con
 // The 8-bit pixels of picture id (w by h, rows from the top, copied) as
 // the game loaded it, and its upscaled file: a PNG of an integer multiple
 // of the size, loaded at the first draw. A picture that is given again
-// keeps its file and its texture.
-void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char *path);
+// keeps its file and its texture. overlay (or NULL): a PNG of the size of
+// the file, drawn over it with its alpha (the picture of the language,
+// docs/formats/lang.md); a new overlay makes the texture again.
+void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char *path, const char *overlay);
 // Picture id was drawn into the frame: frame pixel (x, y) of the rectangle
 // (dx, dy, dw, dh) has the picture pixel (sx + (x - dx) * sw / dw,
 // sy + (y - dy) * sh / dh). The draw stays valid at the next frames while

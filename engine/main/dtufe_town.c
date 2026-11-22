@@ -867,7 +867,9 @@ static void mk_draw_row(int row)
 
 // The selected buttons of the two radio groups (ferbtn.c, 0x13EC48 and
 // 0x13ECA8): the "down" picture of the selected one. The last "_" of
-// the names is the letter of the language (0xAEDC3), "e" for English.
+// the names is the letter of the language (0xAEDC3), "e" for English
+// (fe_egg_bitmap puts the letter of the language there).
+static int Mk_radio_lang = -1;
 static fe_control Mk_radio[5] = {
 	{ 0, 0, NULL, 452, 81, "lbmwpnde" }, { 0, 0, NULL, 452, 174, "lbmarmde" }, { 0, 0, NULL, 453, 265, "lbmmscde" },
 	{ 0, 0, NULL, 427, 15, "lbmbuyde" }, { 0, 0, NULL, 532, 15, "lbmselde" } };
@@ -877,6 +879,10 @@ static void mk_draw(fe_screen *s)
 	char buf[32];
 	int i;
 
+	for (i = 0; i < 5; i++)
+		if (Mk_radio_lang != Dtu_language)
+			Mk_radio[i].bm_down = NULL;		// ASCENT: the pictures of another language
+	Mk_radio_lang = Dtu_language;
 	for (i = 0; i < 5; i++)
 		if (!Mk_radio[i].bm_down)
 			Mk_radio[i].bm_down = fe_egg_bitmap(Mk_radio[i].down, NULL);

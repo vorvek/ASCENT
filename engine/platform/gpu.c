@@ -2021,6 +2021,7 @@ typedef struct ui_pic {
 	int id, w, h;
 	uint8_t *pix;
 	char *path;
+	char *overlay;				// ASCENT: the picture of the language over it (RGBA), or NULL
 	GLuint tex;
 	int tw, th;
 	int state;					// 0: the file is not loaded, 1: loaded, -1: not valid
@@ -2061,7 +2062,29 @@ static ui_pic *ui_find(int id)
 	return NULL;
 }
 
-void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char *path)
+// ASCENT: the overlay of p changes to overlay (NULL: none); the texture
+// is made again at the next draw.
+static void ui_set_overlay(ui_pic *p, const char *overlay)
+{
+	char *c = NULL;
+
+	if (!p->overlay == !overlay && (!overlay || !strcmp(p->overlay, overlay)))
+		return;
+	if (overlay) {
+		c = (char *) malloc(strlen(overlay) + 1);
+		if (!c)
+			return;
+		strcpy(c, overlay);
+	}
+	free(p->overlay);
+	p->overlay = c;
+	if (p->state == 1)
+		qglDeleteTextures(1, &p->tex);
+	p->tex = 0;
+	p->state = 0;
+}
+
+void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char *path, const char *overlay)
 {
 	ui_pic *p = ui_find(id);
 	size_t n = (size_t) w * h;
@@ -2069,6 +2092,7 @@ void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char
 	if (w <= 0 || h <= 0 || !pixels || !path)
 		return;
 	if (p) {
+		ui_set_overlay(p, overlay);
 		if (p->w == w && p->h == h && !memcmp(p->pix, pixels, n))
 			return;
 		if (p->w * p->h != w * h) {
@@ -2095,6 +2119,7 @@ void plat_gpu_ui_picture(int id, int w, int h, const uint8_t *pixels, const char
 		p->path = pc;
 		p->id = id;
 		Ui_npic++;
+		ui_set_overlay(p, overlay);
 	}
 	p->w = w;
 	p->h = h;
@@ -2122,6 +2147,22 @@ static void ui_load(ui_pic *p)
 		fprintf(stderr, "GPU: %s is %dx%d, not a multiple of %dx%d\n", p->path, tw, th, p->w, p->h);
 		free(rgba);
 		return;
+	}
+	// ASCENT: the picture of the language, drawn over the file with its alpha
+	if (p->overlay) {
+		int ow = 0, oh = 0;
+		uint8_t *ov = gputex_load_png(p->overlay, &ow, &oh);
+		if (!ov)
+			fprintf(stderr, "GPU: cannot load %s\n", p->overlay);
+		else if (ow != tw || oh != th)
+			fprintf(stderr, "GPU: %s is %dx%d, not %dx%d\n", p->overlay, ow, oh, tw, th);
+		else
+			for (i = 0; i < tw * th; i++) {
+				int a = ov[i * 4 + 3], c;
+				for (c = 0; c < 3; c++)
+					rgba[i * 4 + c] = (uint8_t) ((rgba[i * 4 + c] * (255 - a) + ov[i * 4 + c] * a + 127) / 255);
+			}
+		free(ov);
 	}
 	// Keep at most UI_MAX_LOADED files: free the one used last the longest
 	// time ago that no draw of the list uses.

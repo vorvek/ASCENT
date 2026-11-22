@@ -40,6 +40,7 @@
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtudisp.h"
+#include "dtulangart.h"		// ASCENT: the pictures of the language
 #include "dtumusic.h"
 #include "dtuobj.h"
 #include "dtuchar.h"
@@ -678,6 +679,17 @@ grs_bitmap *fe_egg_bitmap(char *name, int *trans)
 	for (i = 0; i < 11 && name[i]; i++)
 		lname[i] = tolower(name[i]);
 	lname[i] = 0;
+	// ASCENT: 0xAEDC3 puts the letter of the language ("efgi123" at
+	// 0x145750) in place of the last character of the name of a language
+	// bitmap; the names of the port have the English "e". The bitmaps of
+	// the Spanish letter on the disc are empty templates: the port uses
+	// one only if the language has its picture (dtulangart.h).
+	if (i > 1 && lname[i - 1] == 'e' && dtu_lang_art_index()) {
+		char c = "efgi123"[dtu_lang_art_index()];
+		lname[i - 1] = c;
+		if (!dtu_lang_art_has_egg(lname))
+			lname[i - 1] = 'e';
+	}
 
 	for (i = 0; i < N_egg_cache; i++)
 		if (!strcmp(Egg_cache[i].name, lname)) {
@@ -701,6 +713,7 @@ grs_bitmap *fe_egg_bitmap(char *name, int *trans)
 			} else
 				for (y = 0; y < src->bm_h; y++)
 					memcpy(bm->bm_data + y * bm->bm_rowsize, src->bm_data + y * src->bm_rowsize, src->bm_w);
+			dtu_lang_art_egg(bm, lname);		// ASCENT: the picture of the language
 		}
 	}
 	if (!bm)

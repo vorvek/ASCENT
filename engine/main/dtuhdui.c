@@ -30,6 +30,7 @@
 #include "platform.h"
 #include "dtuopts.h"
 #include "dtuhdui.h"
+#include "dtulangart.h"		// the upscaled picture of the language
 
 extern ubyte gr_current_pal[256*3];		// palette.c: the palette of the last load
 
@@ -106,7 +107,7 @@ static int enabled(void)
 
 void dtu_hdui_loaded(grs_bitmap *bm, int n)
 {
-	char path[700];
+	char path[700], over[700];
 	int i;
 
 	if (!bm || !bm->bm_data || bm->bm_rowsize != bm->bm_w || !has_file(n) || !file_path(n, path, sizeof(path)))
@@ -122,7 +123,7 @@ void dtu_hdui_loaded(grs_bitmap *bm, int n)
 	Loaded[i].w = bm->bm_w;
 	Loaded[i].h = bm->bm_h;
 	Loaded[i].n = n;
-	plat_gpu_ui_picture(n, bm->bm_w, bm->bm_h, bm->bm_data, path);
+	plat_gpu_ui_picture(n, bm->bm_w, bm->bm_h, bm->bm_data, path, dtu_lang_art_ui(over, sizeof(over), n));
 }
 
 static int picture_of(grs_bitmap *bm)
