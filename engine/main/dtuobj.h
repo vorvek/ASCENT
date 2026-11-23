@@ -142,6 +142,25 @@ extern int Dtu_creatures_attack;
 // place of the straight line.
 extern int Dtu_fix_path_follow;
 
+// A peaceful creature on a path that is not the path of its script.
+// Original (0x17CFC): it walks to the player with the speed of its
+// animation state. That speed is 0 in STAND, but a script that ends with a
+// walk or sidle state (ANIM 3 of Aleena's scroll sale, script 4 of YPINN)
+// leaves the creature active on its random door path, and it walks into the
+// player after the talk. Corrected: it turns to the player and does not
+// walk. Option -orignpcwalk (and -origobj).
+extern int Dtu_fix_npc_walk;
+
+// The body of the player for a peaceful creature. Original: the move of a
+// creature tests the player with one fourth of its radius (0x9F605) against
+// the torso of the player, so a creature that walks to the player stops
+// with its center about 1.0 from the center of the player, inside the body.
+// Corrected: a peaceful creature does not move nearer to the player than
+// its body radius plus that of the player. Option -orignpcbody (and
+// -origobj). A hostile creature stops at the distance of its weapon with
+// Dtu_improved_pathfinding (dtuobj_move.c, stop_at_player).
+extern int Dtu_fix_npc_body;
+
 // The shot of a ranged creature. Original (0x13A2A): a shot in each game
 // frame in which the animation is on the fire frame, so the number of
 // missiles of one attack is the number of game frames that the fire frame
