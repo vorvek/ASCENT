@@ -301,8 +301,17 @@ the tables and are translated where they are shown.
 arguments of `LT`, `LN`, `HUD_init_message` (the first), `say`, `say_effect`,
 `dtu_char_choice`, `nm_messagebox`, `fe_help_message`,
 `dtu_display_add_message` in the files of `MAIN_SOURCES`
-(`engine/main/CMakeLists.txt`). A new string of the code needs one of these
-forms to be translated.
+(`engine/main/CMakeLists.txt`), when the string has two letters in a row;
+a string of `LT` needs one letter outside the placeholders (`L-%d`, the
+level under a spell icon in the low resolution). A new string of the code
+needs one of these forms to be translated.
+
+The texts under the icons of the inventory (`dtudisp.c`): the count of an
+item, `Many` for a stack with no limit in the high resolution (`+++` in the
+low resolution, no letters), `Lvl %d` and `L-%d` for the level of a spell.
+The field is as wide as the icon (32 pixels high, 16 low; the game font
+`FNTEMHS_` or `FNTEMLS_`). Spanish: `Mucho` (32 pixels with the blank
+columns of the glyphs; `Muchos` is 39), `Niv. %d` (31), `N-%d` (15).
 
 ## Where the program reads a catalog
 
@@ -356,7 +365,16 @@ and the inverted ! and ?: in `FNTEMFS_` a copy of the code page 437 glyph (the
 letters it has), else the base letter with an accent drawn in the color of the
 glyph (an i loses its dot first; a letter with no free row above it is made
 lower by the height of the accent; the inverted marks are the glyphs upside
-down). The other new characters (161 to 255) are drawn as a space. The font
+down). A lower letter first loses the rows that are equal to the row under
+them, then the rows equal to another row, so it keeps its shape. In
+`FNTEMLS_` (the game font of the low resolution: capitals of 5 rows in a
+font of 6 rows, checked) U, O and I lose two equal rows and get the accent
+with an empty row under it, so `Ú` is a small u with an accent, not an O;
+A, E and N lose one row and get an accent of one row on the letter, the
+acute or grave accent over an empty pixel of the top row when there is
+one. The test `test_2d` (`engine/2d`, ctest) writes `test_2d_glyphs.ppm` (every font, the
+letters of the translations, three times the size) for a look by eye.
+The other new characters (161 to 255) are drawn as a space. The font
 files do not change. The text functions read the bytes of a string as unsigned
 values (the Latin-1 letters are above 127).
 

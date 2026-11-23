@@ -203,6 +203,14 @@ id: port.lvl_d
 en: Lvl %d
 tr: Niv. %d
 
+id: port.l_d
+en: L-%d
+tr: N-%d
+
+id: port.many
+en: Many
+tr: Mucho
+
 id: port.l_d_d
 en: L%d +%d
 tr: N%d +%d
