@@ -128,6 +128,8 @@ fix dtu_combat_swing_time(void);
 // 0x90CEF for spell 16 (Fireball): the blindness and the deafness of a
 // player or creature at dist from the point (only the fire trap reaches it).
 void dtu_fireball_blind_deaf(object *o, fix dist);
+#define DTU_FIREBALL_BLIND_DIST		6		// ASCENT: units from the point (0x90DDF)
+#define DTU_FIREBALL_BLIND_SECONDS	1800	// the blindness lasts 1 to this (0x90F73)
 // 0xA6ACB: the fire trap, scenery object 0x29 of level 0 (the Yawning
 // Portal). dtu_break_dressing() calls it; it does nothing for others.
 void dtu_fire_trap(object *d);

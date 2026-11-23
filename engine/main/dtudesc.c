@@ -530,6 +530,10 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 				sprintf(a, "1d%d", f->undead_die);
 				line(LT("%s more damage against undead."), a);
 			}
+			// ASCENT: dtu_fireball_blind_deaf: no save against the blindness
+			if (f->blind_dist)
+				line(LT("Blinds each creature within %s of the point for up to %s, and deafens it unless it saves."),
+					feet(a, f->blind_dist), time_text(b, f->blind_seconds, f->blind_seconds));
 			break;
 		case DTU_SK_HEAL:		line(LT("Heals %s hit points."), a); break;
 		case DTU_SK_GIVE:

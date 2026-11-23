@@ -377,6 +377,8 @@ typedef struct dtu_spell_facts {
 	int	ac;						// the armor class at most (DTU_SK_AC, DTU_SK_ARMOR)
 	int	dice_n[4], dice_sides[4], dice_add[4];	// damage: normal, fire, acid, electric
 	int	undead_die;				// sides of one more die against undead, 0 none
+	int	blind_dist;				// Fireball: blinds and deafens within this many units of the point, 0 none
+	int	blind_seconds;			// the longest blindness of blind_dist
 } dtu_spell_facts;
 
 // The facts of a spell at caster level L (-1: the level of the player).

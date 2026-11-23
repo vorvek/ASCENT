@@ -126,7 +126,15 @@ such a value:
   amount (`spell_amount`), the damage dice (`spell_damage_args`), the
   missile count and the armor class caps (`effects_ac`), which the cases of
   the effect function call; and `Spell_rule`, the kind, the saving throw
-  and the effect bit of each case.
+  and the effect bit of each spell. `apply_spell` reads the line of its
+  spell: it sets and tests the effect bit of the line, rolls the save of a
+  case only when the line has one, and a damage spell saves for half when
+  its line says so. The amount also gives the targets of Hold Person, the
+  highest level of a target of Hold Undead, Scare and Sleep and the later
+  rounds of Melf's Acid Arrows; the duration gives the three times of
+  Color Spray (`color_time`); `DTU_FIREBALL_BLIND_DIST` and
+  `DTU_FIREBALL_BLIND_SECONDS` (`dtucombat.h`) give the blindness and the
+  deafness near the point of Fireball.
 - `dtu_missile_weapon_range` (`dtuobj.c`), and `dtu_atk_state_time`,
   `dtu_atk_melee_wait` and `dtu_atk_missile_wait` (`dtuatk.c`) with the
   `fire_wait` of `Weapon_info[]`, as `dtucombat.c` calls them.
@@ -136,8 +144,10 @@ such a value:
 These parts are typed by hand and can go out of step with the game. A
 change of the rule needs a change here:
 
-- `Spell_rule` (`dtuspell.c`): the kind, the saving throw and the effect bit
-  of each spell, a second table beside the cases of `apply_spell`.
+- The kind of `Spell_rule` chooses the sentence of the window; the cases of
+  `apply_spell` do not read it. The extra conditions of a case (the level
+  tests of Color Spray and Hold Undead, the save of Scare only for some
+  targets, the immunities) are in the case, and the sentence names them.
 - Each sentence of `spell_effect`, `use_line` and `power_lines`
   (`dtudesc.c`), and the lines of the weapons 45, 70 and 71 (0x2AB9F,
   0x2B15B, 0x2B1F2).
@@ -188,8 +198,11 @@ the gender of the item ("Con magia.", "Al llevar: %s.", "Efecto: %s.").
   numbers of the texts with the game: the run wears each of the 53 armors
   (the armor class of the character), drinks each of the 17 potions (the
   hit points, the effect and its time, the ability, the spell), fires each
-  of the 8 wands (the spell of the cast) and casts 14 spells at caster level
-  5 (the damage on a creature, the healing, the time of the effect). The
+  of the 8 wands (the spell of the cast) and casts each of the 56 spells at
+  caster level 5 (the damage on a creature, the healing, the time of the
+  effect). For every spell each effect that the game gives must be named by
+  the text, each effect that the text gives (`Gives ...`) must happen, and
+  its time must be in the duration of the text. The
   results come from the `-charlog` and `-objlog` lines that the game code
   writes where it applies the value.
 - `tools/uitest.py --only desc_window [--shots DIR]`: right clicks on a

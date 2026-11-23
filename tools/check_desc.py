@@ -20,7 +20,7 @@ and one line with the text, "|" between the lines of the window).
 
 A fifth run (--only game) compares numbers of the texts with the game: the
 run wears each armor, drinks each potion, fires each wand and casts
-fourteen spells, and the armor class, the hit points, the effect times and
+each of the 56 spells, and the armor class, the hit points, the effects, their times and
 the spells of the game logs must be the ones of the texts.
 """
 import argparse
@@ -86,6 +86,16 @@ WANDS = range(55, 63)
 DAMAGE_SPELLS = [4, 16, 17, 32, 33, 37]
 HEAL_SPELLS = [10, 11]
 TIME_SPELLS = [3, 21, 29, 45, 20, 24]
+# every other spell: cast on the target creature (a spell cast on the caster
+# acts on the player), and its effects are checked against the text
+ALL_SPELLS = range(56)
+OTHER_SPELLS = [sp for sp in ALL_SPELLS if sp not in DAMAGE_SPELLS + HEAL_SPELLS + TIME_SPELLS]
+SPELL_TRIALS = 20
+# words of a text that name an effect of the game logs (the effect names of
+# Fx_name, dtuspell.c), besides the names of "Gives"/"Causes" and the name
+# of the spell itself
+EFFECT_WORDS = {"Blindness": ("blind",), "Deafness": ("deafen",), "Hold Person": ("hold", "stun"),
+                "Sleep": ("sleep",), "Fear": ("fear",), "Bless": ("bless",)}
 SPELL_LEVEL = 5
 GAME_RUNS = [("game-rulebook", ["-rulebookitems"]), ("game-orig", ["-origitems"])]
 TARGET = 17  # object 17 of YPINN: Aleena, 200 hit points, no immunity
@@ -192,6 +202,12 @@ def check_game(args, tmp, run_name, extra):
         s.frame += 3
         s.add("fire", ("wand", w))
         s.frame += 8
+    # last: the spell tests can leave state behind (the potion tests come first)
+    s.add("class=2")
+    s.add("spelltest=13.%d.-1.0" % SPELL_LEVEL)  # Dispel Magic stays: the effects of the potions end
+    for sp in OTHER_SPELLS:
+        s.add("heal=500")
+        s.add("spelltest=%d.%d.%d.%d" % (sp, SPELL_LEVEL, TARGET, SPELL_TRIALS), ("spell", sp))
     char_log = os.path.join(d, "char.log")
     obj_log = os.path.join(d, "obj.log")
     cmd = [os.path.abspath(args.exe)]
@@ -295,6 +311,63 @@ def check_game(args, tmp, run_name, extra):
             bad.append("game: spell %d: no duration line or no new effect in the game" % sp)
         elif not t[0] <= float(got.group(1)) <= t[1]:
             bad.append("game: spell %d '%s': the text gives '%s', the game %s seconds" % (sp, lines[0], m.group(1), got.group(1)))
+
+    # every spell: each effect that the game gives must be named by the text,
+    # each effect that the text gives must happen, and its time must be in
+    # the duration of the text (a creature can have less: wisdom)
+    for sp in ALL_SPELLS:
+        lines = texts.get(("spell", str(sp)), [])
+        if len(lines) < 3:
+            bad.append("game: spell %d has no text" % sp)
+            continue
+        n += 1
+        name = lines[0]
+        low = " ".join(lines[1:]).lower()
+        named, gives = set(), set()
+        for line in lines:
+            m = re.match(r"(Gives|Causes) ([A-Z][^:]*?)(?:\.| on creatures)", line)
+            if m:
+                named |= set(m.group(2).split(", "))
+                if m.group(1) == "Gives":
+                    gives |= set(m.group(2).split(", "))
+        got = {}
+        on_player = False
+        for f in s.marks[("spell", sp)]:
+            for line in ol.get(f, []):
+                m = re.search(r"spelltest: '.+' \(\d+\) level \d+ on obj (\d+) ", line)
+                if m:
+                    on_player = m.group(1) == "0"
+                m = re.search(r"spelltest:   new effect (.+?), (?:no end|no timer|([0-9.]+) seconds)", line)
+                if m:
+                    got.setdefault(m.group(1), []).append(float(m.group(2)) if m.group(2) else None)
+
+        def allowed(fx):
+            key = lambda x: re.sub(r"[^a-z]", "", x.lower())
+            return (fx in named or key(name).startswith(key(fx)[:5]) or
+                    any(w in low for w in EFFECT_WORDS.get(fx, ())))
+        for fx in sorted(got):
+            if not allowed(fx):
+                bad.append("game: spell %d '%s': the game gives %s, the text does not name it" % (sp, name, fx))
+        for fx in sorted(gives):
+            if fx not in got:
+                bad.append("game: spell %d '%s': the text gives %s, the game did not" % (sp, name, fx))
+        m = find(lines, r"^Duration: (.+)$")
+        t = time_range(m.group(1)) if m else None
+        cap = find(lines, r"^Blinds each creature within .+ for up to (.+), and deafens")
+        for fx, secs in sorted(got.items()):
+            if cap and fx == "Blindness":
+                tt = time_range(cap.group(1))
+            elif cap and fx == "Deafness":
+                continue  # no timer
+            else:
+                tt = t
+            if not tt:
+                continue
+            for x in secs:
+                if x is None or x > tt[1] or (on_player and x < tt[0]):
+                    bad.append("game: spell %d '%s': %s for %s seconds, the text gives '%s'" %
+                               (sp, name, fx, x, m.group(1) if m else "?"))
+                    break
 
     # each potion
     for p in POTIONS:

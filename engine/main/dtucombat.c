@@ -1641,7 +1641,7 @@ void dtu_fireball_blind_deaf(object *o, fix dist)
 	int player = (o->type == OBJ_PLAYER);
 	int sound = -1;
 
-	if ((o->type != OBJ_PLAYER && o->type != OBJ_ROBOT) || dist > i2f(6))
+	if ((o->type != OBJ_PLAYER && o->type != OBJ_ROBOT) || dist > i2f(DTU_FIREBALL_BLIND_DIST))
 		return;
 	if (!player && o->id < N_robot_types)
 		sound = Monster_info[o->id].hit_sound;		// Robot_info+0x9A
@@ -1667,7 +1667,7 @@ void dtu_fireball_blind_deaf(object *o, fix dist)
 			dtu_char_log("fire trap: obj %d is blind", (int) (o - Objects));
 		}
 		// 0x90F73: blind for 1 to 1800 seconds
-		o->dtu.m_8c[3] = GameTime + i2f(rand() % 1800 + 1);
+		o->dtu.m_8c[3] = GameTime + i2f(rand() % DTU_FIREBALL_BLIND_SECONDS + 1);
 		o->dtu.m_88 |= DTU_FX_BLIND;
 	}
 	if (!(o->dtu.m_88 & DTU_FX_DEAF) && !dtu_spell_save(o, 2)) {
