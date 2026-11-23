@@ -51,6 +51,10 @@ void texmerge_close();
 void texmerge_flush();
 // ASCENT: the two bitmaps and the rotation of a bitmap of the cache.
 int texmerge_get_sources( grs_bitmap *bm, grs_bitmap **bottom, grs_bitmap **top, int *orient );
+// ASCENT: Dtu_fix_wall_effects: the effect colors of a wall texture without
+// an overlay (texmerge.c). -origfx clears it.
+extern int Dtu_fix_wall_effects;
+void texmerge_mark_wall_effects(void);
 
 
 #endif

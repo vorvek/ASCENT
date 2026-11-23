@@ -120,6 +120,7 @@ static char rcsid[] = "$Id: texmerge.c 2.0 1995/02/27 11:31:08 john Exp $";
 #pragma on (unreferenced)
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "gr.h"
 #include "error.h"
@@ -129,6 +130,8 @@ static char rcsid[] = "$Id: texmerge.c 2.0 1995/02/27 11:31:08 john Exp $";
 #include "rle.h"
 #include "piggy.h"
 #include "tmapfx.h"		// ASCENT: the effect colors
+#include "effects.h"		// ASCENT: texmerge_mark_wall_effects
+#include "args.h"
 
 #define MAX_NUM_CACHE_BITMAPS 50
 
@@ -270,7 +273,7 @@ grs_bitmap * texmerge_get_cached_bitmap( int tmap_bottom, int tmap_top )
 		Cache[least_recently_used].bitmap->avg_color = bitmap_top->avg_color;
 	} else	{
 		merge_textures_new( orient, bitmap_bottom, bitmap_top, Cache[least_recently_used].bitmap->bm_data );
-		Cache[least_recently_used].bitmap->bm_flags = bitmap_bottom->bm_flags & (~BM_FLAG_RLE);
+		Cache[least_recently_used].bitmap->bm_flags = bitmap_bottom->bm_flags & ~(BM_FLAG_RLE | BM_FLAG_DTU_EFFECTS);
 		Cache[least_recently_used].bitmap->avg_color = bitmap_bottom->avg_color;
 	}
 
@@ -448,4 +451,76 @@ void merge_textures_super_xparent( int type, grs_bitmap * bottom_bmp, grs_bitmap
 				}
 			break;
 	}
+}
+
+// ASCENT: Dtu_fix_wall_effects. DTUGAME.EXE turns the rule of the effect
+// colors on only for a merged bitmap (flag 0x20, 0x7AB89) and for a tinted
+// object (draw_tmap 0xEA503). A wall texture without an overlay draws its
+// effect texels in their palette color, a bright red (63 0 0): the edges of
+// the waterfall wfal04 as the texture of an illusion wall (THIEF0 segments
+// 142 and 145), and wfal02, water2, web1, miror01, rg_e, port04 alone on a
+// side. With the correction such a bitmap gets the flag as a merged one
+// does. 0xCF alone does not count: its palette color is 7 0 0, near the
+// color that the rule gives, and the lava walls (lava, lavaflo, magma,
+// port03) have only 1 to 4 such texels. -origfx gives the rule of 1.3.
+int Dtu_fix_wall_effects = 1;
+
+// 1 if the bitmap has an effect color other than 0xCF
+static int bitmap_has_red_effect(grs_bitmap *bm)
+{
+	const ubyte *p = bm->bm_data, *s, *end;
+	int32_t size;
+	int i;
+
+	if (!p || bm->bm_w <= 0 || bm->bm_h <= 0)
+		return 0;
+	if (!(bm->bm_flags & BM_FLAG_RLE)) {
+		for (i=0; i<bm->bm_h*bm->bm_rowsize; i++)
+			if (p[i] != 0xCF && tmap_fx_color_code(p[i]))
+				return 1;
+		return 0;
+	}
+	// the RLE form of gr_rle_decode: a 32-bit size, a byte for each row,
+	// then the rows; a byte 0xE0 + n is a run of n of the next byte, 0xE0
+	// ends a row
+	memcpy(&size, p, 4);
+	if (size < 4 + bm->bm_h || size > 4 + bm->bm_h + bm->bm_h * (bm->bm_w * 2 + 2))
+		return 0;
+	s = p + 4 + bm->bm_h;
+	end = p + size;
+	while (s < end) {
+		ubyte c = *s++;
+		if ((c & 0xE0) == 0xE0) {
+			if ((c & 0x1F) == 0 || s >= end)
+				continue;
+			c = *s++;
+		}
+		if (c != 0xCF && tmap_fx_color_code(c))
+			return 1;
+	}
+	return 0;
+}
+
+static void mark_wall_bitmap(grs_bitmap *bm)
+{
+	if (Dtu_fix_wall_effects && bitmap_has_red_effect(bm))
+		bm->bm_flags |= BM_FLAG_DTU_EFFECTS;
+	else
+		bm->bm_flags &= ~BM_FLAG_DTU_EFFECTS;
+}
+
+// The wall bitmaps of the tables of a level: the textures and the frames
+// of the effect clips that change a wall texture.
+void texmerge_mark_wall_effects(void)
+{
+	int i, j;
+
+	if (FindArg("-origfx"))
+		Dtu_fix_wall_effects = 0;
+	for (i=0; i<NumTextures; i++)
+		mark_wall_bitmap(&GameBitmaps[Textures[i].index]);
+	for (i=0; i<MAX_EFFECTS; i++)
+		if (Effects[i].changing_wall_texture != -1)
+			for (j=0; j<Effects[i].vc.num_frames && j<VCLIP_MAX_FRAMES; j++)
+				mark_wall_bitmap(&GameBitmaps[Effects[i].vc.frames[j].index]);
 }

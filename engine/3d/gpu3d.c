@@ -423,6 +423,13 @@ static void request_hd(grs_bitmap *bm,int tex)
 			free_layer(&job.base);
 			return;
 		}
+		//a wall texture without an overlay with effect colors
+		//(Dtu_fix_wall_effects, main/texmerge.c)
+		if (bm->bm_flags & BM_FLAG_DTU_EFFECTS) {
+			job.fx_index = job.base.index;
+			job.fx_w = bm->bm_w;
+			job.fx_h = bm->bm_h;
+		}
 	} else if (src.kind == 2 && src.bottom && src.top) {
 		memset(&sb,0,sizeof(sb));
 		memset(&st,0,sizeof(st));
@@ -632,6 +639,10 @@ static int bitmap_texture(grs_bitmap *bm)
 	rgba = pix ? expand_rgba(pix,bm->bm_w,bm->bm_h) : NULL;
 	if (!rgba)
 		return 0;
+	//the effect colors of a wall texture without an overlay
+	//(Dtu_fix_wall_effects, main/texmerge.c)
+	if (bm->bm_flags & BM_FLAG_DTU_EFFECTS)
+		plat_gpu_fx_mark(rgba,bm->bm_w,bm->bm_h,pix,bm->bm_w,bm->bm_h);
 	e->tex_rgb = plat_gpu_texture_create_rgba(bm->bm_w,bm->bm_h,rgba,0);
 	e->rgb_gen = Rgb_gen;
 	if (e->tex_rgb)

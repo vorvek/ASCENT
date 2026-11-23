@@ -403,7 +403,7 @@ typedef struct plat_gpu_hd_job {
 	int super;				// color 254 of the top layer is a hole
 	int scale;				// the scale of the files
 	int max_size;			// the largest width or height on the GPU (an image is halved until it fits)
-	const uint8_t *fx_index;	// the 8-bit pixels of the merged bitmap for plat_gpu_fx_mark, or NULL
+	const uint8_t *fx_index;	// the 8-bit pixels of a bitmap with BM_FLAG_DTU_EFFECTS for plat_gpu_fx_mark, or NULL
 	int fx_w, fx_h;
 } plat_gpu_hd_job;
 void plat_gpu_texture_load_hd(int texture, const plat_gpu_hd_job *job);

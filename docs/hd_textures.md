@@ -62,8 +62,9 @@ Effect colors (0x4E, 0x4F, 0x6D, 0x6E, 0x6F, 0xBE, 0xBF, 0xCF, see
 from the screen. Their palette color is a bright red (dark red for 0xCF). The tool
 fills them with the colors around them before the upscale (step 1 of the method),
 keeps them opaque, and gives these bitmaps a new cache key. The game marks the
-texels from the original pixels and gives the texels of a wall that is not merged
-their palette color, as the original. 5044 archive files (340 distinct bitmaps,
+texels from the original pixels. A wall texture without an overlay gets the same
+rule with `Dtu_fix_wall_effects` (`re/effectcolors.md`); with `-origfx` its texels
+keep their palette color, as in 1.3. 5044 archive files (340 distinct bitmaps,
 45 wall texture names) have effect colors.
 
 A set made before this change has a red rim around the effect texels (the red
