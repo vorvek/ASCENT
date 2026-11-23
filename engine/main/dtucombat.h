@@ -127,6 +127,14 @@ int dtu_combat_player_attack(void);
 // weapon (0x56A0D). It also calls dtu_spell_frame().
 void dtu_combat_frame(void);
 
+// ASCENT: the load of a saved game (dtufe.c) sets the game time of the
+// save. The next dtu_combat_frame starts the arms again at the stand state
+// and clears the times of the attack, as at a level start. Without this a
+// load in the same level kept the swing and the times of before: with an
+// earlier game time the swing did not end for seconds, the arms moved on
+// their own and the hot keys did not change the weapon.
+void dtu_combat_reset_view(void);
+
 // render.c, after the mine is drawn and before the end of the 3d frame:
 // the arms and the weapon of the player (render_object 0x67C5A for the
 // viewer, draw_polygon_model 0x727A5).

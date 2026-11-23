@@ -30,7 +30,11 @@ roll logs one "(roll)", and each melee miss of a creature on the player
 logs one miss sound of that creature (or "skipped" while the last one
 plays). An "air" sound that the contact of the swing stopped does not
 count. A bow shot logs none, and with -origsound or -nomisssound nothing
-plays and the swings go on. The exit status is 0 if all cases pass.
+plays and the swings go on.
+
+A load in the same level during a swing (the save has an earlier game
+time): the next attack after the load swings at once and a new item in the
+hand changes the arms (dtu_combat_reset_view). The exit status is 0 if all cases pass.
 """
 import argparse
 import os
@@ -287,6 +291,51 @@ def miss_cases(args, tmp, extra):
     return bad
 
 
+LOG_LINE = re.compile(r"\s*(-?[\d.]+)\s+(\d+) (.*)$")
+MODEL = re.compile(r"combat: player model .*, letter (\S)")
+
+
+def load_case(args, tmp, extra):
+    """A load in the same level during a swing: the save has an earlier game
+    time. After the load the arms start again: the next attack swings at
+    once and a new item in the hand changes the arms. (Before the fix the
+    swing of before the load did not end until the game time came back to
+    it: no swing and no change of the weapon for seconds.) Returns the
+    failures."""
+    d = os.path.join(tmp, "load")
+    log = os.path.join(d, "obj.log")
+    script = ",".join(["5:class=2", "6:give=%s" % LONG_SWORD, "7:current=%s" % LONG_SWORD, "8:give=%s" % DAGGER,
+                       "40:save=0", "250:load=0", "275:current=%s" % DAGGER])
+    tm = "wait:30" + ",attack:1,wait:9" * 40
+    run(args, d, [], tm, 340, extra + ["-objlog", log], script=script)
+    starts, letters, before = [], [], None
+    for ln in lines(log):
+        m = LOG_LINE.match(ln)
+        if not m:
+            continue
+        frame, text = int(m.group(2)), m.group(3)
+        if "combat: swing starts" in text and frame < 250:
+            before = frame
+        elif "combat: swing starts" in text and 250 <= frame <= 300:
+            starts.append(frame)
+        mm = MODEL.search(text)
+        if mm and frame < 250:
+            letters.append(("before", mm.group(1)))
+        elif mm and 275 <= frame <= 300:
+            letters.append(("after", mm.group(1)))
+    bad = []
+    if before is None or before < 220:
+        bad.append("load: no swing in progress at the load (last start frame %s)" % before)
+    if not starts:
+        bad.append("load: no swing starts in the first second after the load")
+    first = [l for w, l in letters if w == "before"]
+    after = [l for w, l in letters if w == "after"]
+    if not first or not after or after[-1] == first[-1]:
+        bad.append("load: the arms do not change to the dagger after the load (models %s)" % letters)
+    print("%-36s swings after the load at frames %s, arms %s" % ("load in a swing", starts, letters))
+    return bad
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--exe", required=True)
@@ -301,6 +350,8 @@ def main():
     bad = []
     if not args.origcombat:
         bad += miss_cases(args, tmp, extra)
+    if not args.miss_only:
+        bad += load_case(args, tmp, extra)
     for i, case in enumerate([] if args.miss_only else ORIG_CASES if args.origcombat else CASES):
         b, mean, sw = attack_case(args, tmp, i, case, extra)
         bad += b

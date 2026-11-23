@@ -41,6 +41,7 @@
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtudisp.h"
+#include "dtucombat.h"		// ASCENT: dtu_combat_reset_view
 #include "dtulangart.h"		// ASCENT: the pictures of the language
 #include "dtumusic.h"
 #include "dtuobj.h"
@@ -2260,6 +2261,7 @@ int fe_load_game(int in_game)
 	dtu_dlg_reset_view();		// ASCENT: no dark view of a conversation in the loaded game
 	dtu_scroll_reset();			// ASCENT: no scroll text screen in the loaded game
 	dtu_desc_reset();			// ASCENT: no description window (dtudesc.c)
+	dtu_combat_reset_view();	// ASCENT: the arms and the attack times start again
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
 	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
 	dtu_mission_read_save(path);			// ASCENT: the mission and global flags (dtuscript.c)

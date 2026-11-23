@@ -91,6 +91,7 @@ static int Missile_passed = 0;			// ASCENT: the request has passed the wait of D
 static fix Swing_started = 0;			// for the log: the game time of the start of the swing
 static int Swing_touch = 0;				// ASCENT: the swing touched something (the miss sound, dtumiss.c)
 static int Swing_air = 0;				// ASCENT: the miss sound of the swing was tried: 1, it plays: 2
+static int Reset_pending = 0;			// ASCENT: a load (dtu_combat_reset_view)
 static int Lift_model = -1;			// ASCENT: the model of Swing_lift (Dtu_improved_body)
 static fix Swing_lift = 0;				// ASCENT: the lift of the arms in a swing (Dtu_improved_body)
 
@@ -1530,6 +1531,11 @@ int dtu_combat_player_attack(void)
 
 static void tour_frame(void);
 
+void dtu_combat_reset_view(void)
+{
+	Reset_pending = 1;
+}
+
 void dtu_combat_frame(void)
 {
 	static int last_level = -1;
@@ -1539,13 +1545,26 @@ void dtu_combat_frame(void)
 	if (!Dtu_objects_enabled || ConsoleObject == NULL || ConsoleObject->type != OBJ_PLAYER)
 		return;
 
-	if (last_level != Current_level_num || View_model < 0) {
+	// ASCENT: also after a load (dtu_combat_reset_view) and if the game
+	// time went back (a load by another path): the times of the swing and
+	// of the attack count from the game time
+	if (last_level != Current_level_num || View_model < 0 || Reset_pending ||
+			GameTime < View_anim_start || GameTime < Swing_started) {
+		if (Reset_pending || last_level == Current_level_num)
+			dtu_obj_log("combat: the arms start again at %.3f (a load)",f2fl(GameTime));
 		last_level = Current_level_num;
+		Reset_pending = 0;
 		View_state = View_goal = DAS_STAND;
 		View_frame = Dtu_anim_first[DAS_STAND];
 		View_anim_start = GameTime;
+		Swing_started = GameTime;
 		Last_attack = GameTime - i2f(100);
 		Missile_last = GameTime - i2f(100);
+		Fire_next = 0;
+		Fire_last = -0x7fffffff;
+		Turn_last = 0;
+		Smack = 0;
+		Swing_touch = Swing_air = 0;
 		Request = 0;
 		change_player_model(hand_letter());
 	}
