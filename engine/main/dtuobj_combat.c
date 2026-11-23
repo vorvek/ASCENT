@@ -1226,7 +1226,7 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 			dtu_xp_roll_say(attacker,player);		// ASCENT: the verbose combat log (dtuxp.h)
 			// ASCENT: the miss sound of a melee attack (dtumiss.c)
 			if (attacker && attacker->type == OBJ_ROBOT && (weapon < 0 || weapon_is_melee(weapon)))
-				dtu_miss_sound_creature(attacker);
+				dtu_miss_sound_creature(attacker,weapon >= 0 && weapon < N_weapon_types ? weapon : -1);
 			return 0;
 		}
 		// 0x2A45F: a hit stops the cast of the player (0x9305D)

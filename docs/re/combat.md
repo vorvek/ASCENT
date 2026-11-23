@@ -506,26 +506,32 @@ peak, low pitch); the hit sounds start at once. Their use as a swing sound is a
 guess (**G**).
 
 The port setting "Miss sound" (`Dtu_miss_sound`, `dtumiss.c`, on by default)
-plays a short whoosh of `<hd>/sound/miss*.wav` (content pack `sounds`, not game
-data):
+plays that swing sound, the `flash_sound` of the weapon, through the sample path
+of the game (`digi_play_sample_handle` of `digi.c`). The clubs have 2435, which
+has no sound: the port plays 2436 (`cmbt11b`, the next sound of that group) in
+its place. An empty hand, a weapon with no `flash_sound` and a creature with no
+weapon line play 2400.
 
-- A swing of the player that touches nothing: one sound when the frames of the hit
-  test are over (relative frame above n / 2, 0.53 s into a swing of 1.0 s, 0.27 s
-  with Haste), or at the end of the swing if those frames were skipped. A swing
-  that touches a creature, scenery or a wall has none.
+- A swing of the player that touches nothing: one sound that starts on the first
+  frame of the hit test with no contact (relative frame 6 of n = 16, reached at
+  5.5 / 16 of the swing time: 0.34 s into a swing of 1.0 s, 0.17 s with Haste),
+  or when the frames of the hit test are over or at the end of the swing if
+  those frames were skipped. If the swing then touches a creature, scenery or a
+  wall, the sound stops at once (`digi_stop_handle`, a short fade of the mixer);
+  a swing that touches something on its first test frame has none. The timing
+  depends only on the frames of the swing, not on the sound.
 - A missed attack roll of the player: the miss sound plays in place of the two
   contact sounds (weapon `monster_hit_sound`, creature `hit_sound`), which then
   play only for a hit. In 1.3 a missed roll sounds as a hit.
 - A missed melee roll of a creature on the player (0x2A24A, `damage_player_w`):
-  the sound at the place of the creature at volume 0.25, distance 200.
+  the swing sound of the weapon of the creature at its place, at volume 0.25,
+  distance 200. A new one does not start while the last one of a creature plays.
 - Not for a missile or a thrown weapon, and not with a hit. The player sound is
-  at volume 0.5, as the contact sounds. A sound is chosen at random with no
-  immediate repeat; a new one does not start while the last one plays.
+  at volume 0.5, as the contact sounds. A new sound of the player stops the last
+  one (the sounds are longer than a swing of Haste).
 
-`-origsound`, `-nomisssound` and the setting off give the 1.3 sounds. The files
-(5 cuts of about 0.25 s, 16-bit mono, 22050 Hz, the format of the game sounds,
-`tools/content_pack.py`, docs/install.md) are cut to the level of the sword hit
-sound 2412. `tools/check_attack_rate.py` checks the rule with test files.
+`-origsound`, `-nomisssound` and the setting off give the 1.3 sounds.
+`tools/check_attack_rate.py` checks the rule, the sound number and the start time.
 
 ## A5. Missile and thrown weapons
 
