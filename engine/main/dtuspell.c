@@ -2884,9 +2884,24 @@ int dtu_spell_hint_target(void)
 //------------------------------------------------------------------------
 // The armor class and the to-hit bonus of the effects (0xAFB55, 0x2A849)
 
+// ASCENT: the Shield spell (45) and the Amulet of Shield. 1.3 caps the
+// armor class at 3 against every attack (0xB067C for the player, 0x2ADAF
+// for a creature). The decision of the user (docs/audit/spells-wizard.md):
+// 4 against melee weapons and 2 against missiles, as the spell text of
+// AD&D. 1 (default): 4 and 2. 0 (-origcombat): 3.
+int Dtu_fix_shield_ac = 1;
+
+int dtu_spell_shield_ac(int missile)
+{
+	if (!Dtu_fix_shield_ac)
+		return 3;
+	return missile ? 2 : 4;
+}
+
 // ASCENT: the caps of the effects before the dexterity adjustment
-// (0xB05D4 to 0xB0696): dtu_spell_player_ac and dtu_spell_get_facts
-static int effects_ac(int ac,int w,int vestment_level)
+// (0xB05D4 to 0xB0696): dtu_spell_player_ac and dtu_spell_get_facts.
+// missile: the armor class against a missile (Shield).
+static int effects_ac(int ac,int w,int vestment_level,int missile)
 {
 	if ((w & DTU_FX_ARMOR) && ac > 6) ac = 6;
 	if (w & DTU_FX_VESTMENT) {
@@ -2895,19 +2910,24 @@ static int effects_ac(int ac,int w,int vestment_level)
 		if (v > 5) v = 5;
 		if (ac > v) ac = v;
 	}
-	if ((w & DTU_FX_SHIELD) && ac > 3) ac = 3;
+	if ((w & DTU_FX_SHIELD) && ac > dtu_spell_shield_ac(missile)) ac = dtu_spell_shield_ac(missile);
 	if (w & DTU_FX_SLOW) ac += 4;
 	return ac;
 }
 
 // ASCENT: the armor class that the effects of a mask give to a player
-// with armor class 10 (the description window, dtudesc.c)
-int dtu_spell_fx_ac(int fx)
+// with armor class 10 (the description window, dtudesc.c), against melee
+int dtu_spell_fx_ac_vs(int fx,int missile)
 {
-	return effects_ac(10,fx & (DTU_FX_ARMOR|DTU_FX_VESTMENT|DTU_FX_SHIELD),dtu_spell_player_level(35));
+	return effects_ac(10,fx & (DTU_FX_ARMOR|DTU_FX_VESTMENT|DTU_FX_SHIELD),dtu_spell_player_level(35),missile);
 }
 
-int dtu_spell_player_ac(int ac,int stage)
+int dtu_spell_fx_ac(int fx)
+{
+	return dtu_spell_fx_ac_vs(fx,0);
+}
+
+int dtu_spell_player_ac_vs(int ac,int stage,int missile)
 {
 	object *p = ConsoleObject;
 	int w;
@@ -2916,16 +2936,22 @@ int dtu_spell_player_ac(int ac,int stage)
 		return ac;
 	w = p->dtu.m_88;
 	if (stage == 0)
-		ac = effects_ac(ac,w,dtu_spell_player_level(35));
+		ac = effects_ac(ac,w,dtu_spell_player_level(35),missile);
 	else if (w & DTU_FX_INVULNERABLE)
 		ac -= 2;
 	return ac;
 }
 
+int dtu_spell_player_ac(int ac,int stage)
+{
+	return dtu_spell_player_ac_vs(ac,stage,0);
+}
+
 // 0x2ADAF: one of Magical Vestment (at most max(5 - (L - 5) / 3, 1) with
 // the level of the creature), Shield (at most 3) or Armor (at most 6),
-// in this order; then Slow adds 4, at most 10.
-int dtu_spell_creature_ac(object *c,int ac)
+// in this order; then Slow adds 4, at most 10. ASCENT: Shield gives 4
+// against melee and 2 against missiles with Dtu_fix_shield_ac.
+int dtu_spell_creature_ac_vs(object *c,int ac,int missile)
 {
 	int w = c->dtu.m_88;
 
@@ -2936,7 +2962,7 @@ int dtu_spell_creature_ac(object *c,int ac)
 		if (ac > v) ac = v;
 	}
 	else if (w & DTU_FX_SHIELD) {
-		if (ac > 3) ac = 3;
+		if (ac > dtu_spell_shield_ac(missile)) ac = dtu_spell_shield_ac(missile);
 	}
 	else if ((w & DTU_FX_ARMOR) && ac > 6)
 		ac = 6;
@@ -2945,6 +2971,11 @@ int dtu_spell_creature_ac(object *c,int ac)
 		if (ac > 10) ac = 10;
 	}
 	return ac;
+}
+
+int dtu_spell_creature_ac(object *c,int ac)
+{
+	return dtu_spell_creature_ac_vs(c,ac,0);
 }
 
 int dtu_spell_unseen(object *obj)
@@ -3994,9 +4025,11 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 	f->time_hi = facts_seconds(spell_time(spell,L,HIGH));
 	f->amount_lo = spell_amount(spell,L,LOW);
 	f->amount_hi = spell_amount(spell,L,HIGH);
-	f->ac = 99;
-	if (f->kind == DTU_SK_AC || f->kind == DTU_SK_ARMOR)
-		f->ac = effects_ac(10,f->fx,L);
+	f->ac = f->ac_missile = 99;
+	if (f->kind == DTU_SK_AC || f->kind == DTU_SK_ARMOR) {
+		f->ac = effects_ac(10,f->fx,L,0);
+		f->ac_missile = effects_ac(10,f->fx,L,1);
+	}
 	if (spell == 36 && Dtu_fix_melf_acid) {
 		// melf_acid_hit: an attack roll, ACID_DICE d ACID_SIDES now and in
 		// each of the next L/3 rounds, no save

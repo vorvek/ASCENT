@@ -235,7 +235,7 @@ static void read_options(void)
 			Dtu_fix_thac0_row = Dtu_fix_new_thac0 = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
-			Dtu_fix_creature_strength = 0;
+			Dtu_fix_creature_strength = Dtu_fix_shield_ac = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -684,8 +684,10 @@ static void worn_effects(void)
 // ASCENT: 0xAFAD1 with the Ring of Armoring (armor 16) on a mage: the caps
 // of Armor, Magical Vestment and Shield of dtu_spell_player_ac(), each
 // followed by 1 better armor class (0xB05FC, 0xB064F, 0xB067C).
-static int armoring_ac(int ac)
+// ASCENT: missile: the value against missiles (Shield, Dtu_fix_shield_ac).
+static int armoring_ac(int ac, int missile)
 {
+	int shield = dtu_spell_shield_ac(missile);
 	int w = (ConsoleObject && ConsoleObject->type == OBJ_PLAYER) ? ConsoleObject->dtu.m_88 : 0;
 
 	if ((w & DTU_FX_ARMOR) && ac > 6)
@@ -696,8 +698,8 @@ static int armoring_ac(int ac)
 		if (v < 1) v = 1;
 		if (v < ac) ac = v - 1;
 	}
-	if ((w & DTU_FX_SHIELD) && ac > 3)
-		ac = 3 - 1;
+	if ((w & DTU_FX_SHIELD) && ac > shield)
+		ac = shield - 1;
 	if (w & DTU_FX_SLOW)
 		ac += 4;
 	return ac;
@@ -779,7 +781,7 @@ void dtu_char_update(void)
 	dtu_inv_item *e;
 	int sum = 0, ring_best = 0;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
-	int ac, dex;
+	int ac, dex, missile;
 
 	if (!Dtu_char.created)
 		return;
@@ -954,23 +956,30 @@ void dtu_char_update(void)
 
 	// 0xB05C5. The spell effects that change the armor class (0xB05D4 to
 	// 0xB0696 and 0xB0702) are in dtuspell.c.
-	ac = 10 + (signed char) sum;
-	// ASCENT: Ring 16 (Armoring) in a ring place sets a flag (0xB0014,
-	// 0xB01B6) that 0xAFAD1 reads: a mage gets 1 more after each cap.
-	if (has_class(DTU_CLASS_MAGE) && (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 16 || armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 16))
-		ac = armoring_ac(ac);
-	else
-		ac = dtu_spell_player_ac(ac, 0);
 	dex = pa->dexterity;
 	if (dex < 1) dex = 1;
 	if (dex > 19) dex = 19;
 	pa->dexterity = dex;
 	pa->dex_ac_adjust = Dex_ac[dex];
-	ac += pa->dex_ac_adjust;
-	ac = dtu_spell_player_ac(ac, 1);
-	if (ac < -10) ac = -10;
-	if (ac > 10) ac = 10;
-	pa->armor_class = ac;
+	// ASCENT: two values, against melee (the record, the screens) and
+	// against missiles; they differ only with Shield (Dtu_fix_shield_ac)
+	for (missile = 0; missile < 2; missile++) {
+		ac = 10 + (signed char) sum;
+		// ASCENT: Ring 16 (Armoring) in a ring place sets a flag (0xB0014,
+		// 0xB01B6) that 0xAFAD1 reads: a mage gets 1 more after each cap.
+		if (has_class(DTU_CLASS_MAGE) && (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 16 || armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 16))
+			ac = armoring_ac(ac, missile);
+		else
+			ac = dtu_spell_player_ac_vs(ac, 0, missile);
+		ac += pa->dex_ac_adjust;
+		ac = dtu_spell_player_ac(ac, 1);
+		if (ac < -10) ac = -10;
+		if (ac > 10) ac = 10;
+		if (missile)
+			Dtu_char.ac_missile = ac;
+		else
+			pa->armor_class = ac;
+	}
 
 	// ASCENT: 0xAFB55 does not call 0xAF605 (its callers are 0x8BA3A and
 	// 0xAF489), so in 1.3 the THAC0 20 that the creation writes (0x8BFF5,
@@ -1643,6 +1652,16 @@ void dtu_char_add_hit_points(int points)
 int dtu_char_armor_class(void)
 {
 	return Dtu_char.created ? Dtu_char.pa.armor_class : 10;
+}
+
+int dtu_char_armor_class_vs(int missile)
+{
+	if (!Dtu_char.created)
+		return 10;
+	// the two values differ only with Shield
+	if (!missile || !ConsoleObject || !(ConsoleObject->dtu.m_88 & DTU_FX_SHIELD))
+		return Dtu_char.pa.armor_class;
+	return Dtu_char.ac_missile;
 }
 
 int dtu_char_thac0(void)
@@ -2801,7 +2820,9 @@ int dtu_char_attack_roll(object *target, int weapon)
 			if (target->type == OBJ_ROBOT && target->id < N_robot_types && (Monster_info[target->id].flags & MONSTER_F_UNDEAD))
 				r += 4;
 		}
-		result = target ? dtu_hit_test(target, ConsoleObject, r, a.thac0, &ac) : (a.thac0 - 10 > r ? 0 : 1);
+		// ASCENT: a weapon missile (arrow, bolt, thrown weapon) meets the
+		// armor class against missiles (Dtu_fix_shield_ac)
+		result = target ? dtu_hit_test_vs(target, ConsoleObject, r, a.thac0, &ac, dtu_hit_by_missile()) : (a.thac0 - 10 > r ? 0 : 1);
 		dtu_char_log("attack roll: d20 %d, roll %d against THAC0 %d and armor class %d: %d%s", roll, r, a.thac0, ac, result,
 			Dtu_backstab ? " (backstab)" : "");
 		return result;
@@ -3690,6 +3711,11 @@ static void run_command(char *cmd, char *value)
 		dtu_break_dressing(&Objects[a], ConsoleObject, 0);
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
 	else if (!strcmp(cmd, "noise"))		dtu_creature_alert(ConsoleObject, a);		// ASCENT: test: noise=LEVEL, the alert 0x160AB at the player
+	else if (!strcmp(cmd, "hittest") && a >= 0 && a <= Highest_object_index) {	// ASCENT: test: hittest=OBJ.MISSILE, the hit test 0x2A7F3 on object OBJ, melee (0) or a missile (1)
+		int ac = 0;
+		dtu_hit_test_vs(&Objects[a], NULL, 0, 20, &ac, b);
+		dtu_char_log("hittest: obj %d, %s: armor class %d", a, b ? "missile" : "melee", ac);
+	}
 	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL
 	else if (!strcmp(cmd, "armspell"))	dtu_char_arm_spell(a);
 	else if (!strcmp(cmd, "sethot")) {

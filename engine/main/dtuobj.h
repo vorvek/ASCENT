@@ -407,6 +407,11 @@ int dtu_rat_type(int id);
 // thac0 - ac <= roll, and Stone Skin, which takes a hit. roll is the d20
 // with the bonuses of the attacker. Returns 1 for a hit, 0 for a miss.
 int dtu_hit_test(object *target, object *attacker, int roll, int thac0, int *ac_out);
+// ASCENT: the same against a melee attack (missile 0) or a missile (1): the
+// armor class of Shield (Dtu_fix_shield_ac). dtu_hit_by_missile() is 1 while
+// the hit of a weapon missile is applied.
+int dtu_hit_test_vs(object *target, object *attacker, int roll, int thac0, int *ac_out, int missile);
+int dtu_hit_by_missile(void);
 // 0x2AF5E: Flame Tongue, Mace of Disruption and the fire dice of a weapon
 // (any attacker). *damage is the normal part. Returns the fire part.
 int dtu_weapon_extra_damage(object *attacker, object *target, int weapon, int *damage);

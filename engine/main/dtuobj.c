@@ -2444,6 +2444,15 @@ static int str_bonus(int str)
 // miss; *ac_out is the armor class of the test.
 int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 {
+	return dtu_hit_test_vs(target,attacker,roll,thac0,ac_out,0);
+}
+
+// ASCENT: 1 while the hit of a weapon missile is applied (missile_hit_object),
+// for the armor class against missiles (Dtu_fix_shield_ac)
+static int Hit_by_missile = 0;
+
+int dtu_hit_test_vs(object *target,object *attacker,int roll,int thac0,int *ac_out,int missile)
+{
 	int tw = target->dtu.m_88, aw = attacker ? attacker->dtu.m_88 : 0, ac;
 	int robot_attacker = attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types;
 	int robot_target = target->type == OBJ_ROBOT && target->id < N_robot_types;
@@ -2455,7 +2464,8 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 		roll -= (m < 5) ? m : 5;
 	}
 	if (target->type == OBJ_PLAYER) {
-		ac = dtu_player_armor_class();
+		// ASCENT: the value for the attack type (Shield, Dtu_fix_shield_ac)
+		ac = missile ? dtu_char_armor_class_vs(1) : dtu_player_armor_class();
 		// 0x2ACE8: the player is hidden from the attacker (0x165C4)
 		if (robot_attacker && dtu_thief_hidden_from(attacker))
 			roll -= 4;
@@ -2479,7 +2489,9 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 		attacker->dtu.m_e0[0] = 0;
 	// 0x2ADA3: the effects that change the armor class of a creature
 	if (robot_target)
-		ac = dtu_spell_creature_ac(target,ac);
+		ac = dtu_spell_creature_ac_vs(target,ac,missile);
+	dtu_obj_log("attack: armor class %d of obj %d %s against %s",ac,(int)(target-Objects),dtu_object_name(target),
+		missile ? "a missile" : "melee");
 	// 0x2AE22: Slow of the attacker
 	if (aw & DTU_FX_SLOW)
 		roll -= 4;
@@ -2559,7 +2571,12 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 	}
 
 	*roll_out = roll;
-	return dtu_hit_test(target,attacker,roll,thac0,&ac);
+	return dtu_hit_test_vs(target,attacker,roll,thac0,&ac,Hit_by_missile);
+}
+
+int dtu_hit_by_missile(void)
+{
+	return Hit_by_missile;
 }
 
 // The weapon of a melee attack of an object: the weapon_type of the
@@ -4353,7 +4370,9 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	spell_dealt = (spell >= 0) ? spell_hit(spell,other,parent) : 0;
 
 	if (other->type == OBJ_PLAYER) {
+		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt = (m->spell >= 0) ? spell_dealt : damage_player_w(other,parent,0,weapon);
+		Hit_by_missile = 0;
 		hp = dtu_player_hit_points();
 		if (dealt > 0) {
 			sound = weapon_int(weapon,"monster_hit_sound",-1);
@@ -4373,7 +4392,9 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		if (parent && parent == ConsoleObject)
 			dtu_creature_alert(other,3);
 		Ail[other-Objects].activity = 2;
+		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
+		Hit_by_missile = 0;
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);

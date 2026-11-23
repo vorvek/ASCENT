@@ -194,6 +194,7 @@ typedef struct dtu_character {
 	fix				no_pickup_until;	// P+0x1ABD: no pick up before this game time (5 seconds after a drop)
 	int				thief_paid;			// P+0x1A53: the thief level + 1 of the last points of Mirt, 0 none
 	int				thief_points;		// P+0x1AB3: the thief skill points to spend (dtuthiefpts.c)
+	int				ac_missile;			// ASCENT: the armor class against missiles (Dtu_fix_shield_ac), set with pa.armor_class by dtu_char_update; not in the record
 } dtu_character;
 
 extern dtu_character Dtu_char;
@@ -372,6 +373,10 @@ int dtu_char_thac0(void);
 // the 18/xx part only when the player is a fighter
 int dtu_char_str_hit_bonus(int str, int extra);
 int dtu_char_hit_points(void);
+// ASCENT: the armor class against an attack: missile 0 a melee attack (the
+// value of dtu_char_armor_class), 1 a missile. They differ only with Shield
+// (Dtu_fix_shield_ac of dtuspell.h).
+int dtu_char_armor_class_vs(int missile);
 int dtu_char_max_hit_points(void);
 // Adds hit points, up to the maximum. Returns the number that was added.
 int dtu_char_heal(int points);

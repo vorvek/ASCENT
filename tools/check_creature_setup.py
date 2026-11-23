@@ -216,6 +216,19 @@ def check_abilities(args):
     assert counts["noise"] < counts["noise-orig"], "noise: the closed door does not stop it (%s)" % counts
     print("noise: %d segments, %d through the closed door with -origobj" % (counts["noise"], counts["noise-orig"]))
 
+    # Shield (Dtu_fix_shield_ac, a decision of the user): the hit test against
+    # the player uses armor class 4 for melee and 2 for a missile (dexterity
+    # 14 of the test character changes nothing); -origcombat 3 for both
+    for name, extra, want in (("shield", [], (4, 2)), ("shield-orig", ["-origcombat"], (3, 3))):
+        lines = run_test(args, name, "YPINN", 12, "5:cast=45,6:hittest=0.0,7:hittest=0.1", extra)
+        got = []
+        for kind in ("melee", "a missile"):
+            m = [l for l in lines if "attack: armor class" in l and "of obj 0 " in l and l.endswith("against " + kind)]
+            assert m, "%s: no hit test against %s" % (name, kind)
+            got.append(int(m[-1].split("armor class ")[1].split()[0]))
+        assert tuple(got) == want, "%s: armor class %s, want %s" % (name, got, want)
+        print("%s: armor class %d against melee, %d against a missile" % (name, got[0], got[1]))
+
     # D-035 (Dtu_fix_break_spread): the nine explosions of broken scenery lie
     # around it; with -origobj all of them are 5.0 to 4.5 to one side
     for name, extra in (("break", []), ("break-orig", ["-origobj"])):

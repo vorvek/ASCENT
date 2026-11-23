@@ -1985,6 +1985,10 @@ id: port.no_effect_if_your_armor_is_better
 en: No effect if your armor is better.
 tr: Sin efecto si tu armadura es mejor.
 
+id: port.armor_class_d_against_melee_weapons_and_
+en: Armor class %d against melee weapons and %d against missiles.
+tr: CA %d contra armas cuerpo a cuerpo y %d contra proyectiles.
+
 id: port.ends_after_s_points_of_weapon_damage
 en: Ends after %s points of weapon damage.
 tr: Termina tras %s puntos de daño de armas.
