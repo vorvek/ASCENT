@@ -1237,7 +1237,9 @@ class Pages:
             "A skill roll succeeds when d100 <= the skill.",
             "",
             "Skill points: Mirt, at the Yawning Portal, gives a thief 20 skill points for each thief "
-            "level gained since the last visit, and 20 more at the first visit. Each point raises one "
+            "level gained since the last visit, and 20 more at the first visit. He adds them to the "
+            "points you have (a new thief has 60, so the first visit at level 1 gives 100; in 1.3 "
+            "Mirt replaced the points, and the first visit gave 40). Each point raises one "
             "skill by 1%, up to 95%. One skill can take at most half of the points of a visit. "
             "The screen closes with Escape only when the points are spent or no skill can take more; "
             "points that no skill can take are lost. If you answer No, Mirt offers the same points "
@@ -1254,8 +1256,8 @@ class Pages:
             "notice you. An attack ends hiding.",
             "- Climb Walls: the Activate key at a wall, with no weapon in the hand. A failed roll is a "
             "slip.",
-            "- Backstab: a melee attack while Move Silently is on, on a humanoid creature, while no "
-            "creature watches you: +4 to hit, damage x2 at levels 1 to 4, x3 at 5 to 8, x4 at 9 to "
+            "- Backstab: a melee attack from behind a humanoid creature while Move Silently is on, "
+            "while no creature that can see you watches you: +4 to hit, damage x2 at levels 1 to 4, x3 at 5 to 8, x4 at 9 to "
             "12, x5 at 13 to 16, x6 at 17 and 18. The Dagger of Impaling adds 3 to 6 on a roll of 19 "
             "or 20.",
             "",

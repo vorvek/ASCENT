@@ -118,6 +118,13 @@ int Dtu_fix_prison_items = 1;
 // segment. 0 (-origscript): the rule of the executable.
 int Dtu_fix_script_area_seg = 1;
 
+// ASCENT: D-090, Mirt (0xABB53): `mov word [P+0x1AB3], dx` at 0xABBBF sets
+// the thief points, so the points that were not spent are lost, and the 60
+// points of a new thief become 40 at the first visit before the screen is
+// shown. 1 (default): Mirt adds his points to the points that are left.
+// 0 (-origscript): the rule of the executable.
+int Dtu_fix_mirt_points = 1;
+
 // The anger byte (ai_local +0x00) and 0xA9418 are in dtuobj.c.
 ubyte *dtu_script_anger(object *obj);
 void dtu_script_make_hostile(object *obj);
@@ -231,7 +238,7 @@ void dtu_script_init(void)
 	if (FindArg("-origprison"))
 		Dtu_fix_prison_items = 0;
 	if (FindArg("-origscript"))		// ASCENT: the script rules of the executable
-		Dtu_fix_script_new_char = Dtu_fix_script_abilities = Dtu_fix_script_area_seg = 0;
+		Dtu_fix_script_new_char = Dtu_fix_script_abilities = Dtu_fix_script_area_seg = Dtu_fix_mirt_points = 0;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
 	// has the English text.
 	Gab_rlh = dtu_load_file("GABE.RLH", &Gab_rlh_size);
@@ -2149,17 +2156,31 @@ static int sc_exec(sc_run *r)
 
 // 0xABB53: talking to Mirt in YPINN as a thief. The byte P+0x1A53 is the
 // thief level + 1 of the last visit (0 before the first); the points
-// (word P+0x1AB3) are set, not added. The screen (dtuthiefpts.c) returns 1
-// when it was shown; else the level is not paid.
+// (word P+0x1AB3) are set, not added (Dtu_fix_mirt_points adds them). The
+// screen (dtuthiefpts.c) returns 1 when it was shown; else the level is not
+// paid.
 static void thief_points(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa;
 	int lv = (pa->class2 == DTU_CLASS_THIEF ? pa->class2_level : pa->class1_level) + 1;
 	int paid = Dtu_char.thief_paid & 0xff;
+	int award = (lv - paid) * 20 + (paid == 0 ? 20 : 0);
 
+	// ASCENT: Dtu_fix_mirt_points: the award is added and the level is paid
+	// at once, so a visit that does not show the screen cannot add it again.
+	// Each visit offers the points that are left.
+	if (Dtu_fix_mirt_points) {
+		if (lv > paid) {
+			Dtu_char.thief_points = (Dtu_char.thief_points + award) & 0xffff;
+			Dtu_char.thief_paid = lv & 0xff;
+		}
+		slog("thief points: level %d, paid %d, %d points (added)", lv, paid, Dtu_char.thief_points);
+		dtu_thief_points_offer();
+		return;
+	}
 	if (lv <= paid)
 		return;
-	Dtu_char.thief_points = ((lv - paid) * 20 + (paid == 0 ? 20 : 0)) & 0xffff;
+	Dtu_char.thief_points = award & 0xffff;
 	slog("thief points: level %d, paid %d, %d points", lv, paid, Dtu_char.thief_points);
 	if (dtu_thief_points_offer())
 		Dtu_char.thief_paid = lv & 0xff;

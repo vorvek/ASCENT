@@ -73,6 +73,8 @@ ORIG_CASES = [
     melee("Short Sword of Quickness", QUICKNESS, [], 1.0, 1.0),
     melee("long sword, Haste", LONG_SWORD, [HASTE], 1.5, 1.0),
     melee("Short Sword of Quickness, Haste", QUICKNESS, [HASTE], 1.5, 1.0),
+    # D-098: a Slow of 1 s doubles the swing time until the item changes
+    melee("long sword, Slow that ends", LONG_SWORD, ["fx=27.1"], 2.0, 2.0),
 ]
 
 # (name, chartest commands, distance relative to the empty hand)

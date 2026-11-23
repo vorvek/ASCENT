@@ -231,9 +231,11 @@ static void read_options(void)
 	if ((t = FindArg("-chartest")) != 0 && t + 1 < Num_args)
 		Char_script = Args[t + 1];
 	if (FindArg("-origchar"))
-		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names = 0;
+		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names =
+			Dtu_fix_thac0_row = Dtu_fix_new_thac0 = 0;
 	if (FindArg("-origcombat"))
-		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = 0;
+		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
+			Dtu_fix_creature_strength = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -424,20 +426,44 @@ static int class_use_bits(void)
 	return m;
 }
 
+// ASCENT: D-002 (verified in the bytes, 0xAF62D to 0xAF654): 0xAF605 reads
+// byte level value + 1 of the row of 18 bytes, so level 18 (level value
+// 17) reads past the row: the next row in memory (0x146548 cleric,
+// 0x14655A thief, 0x14656C fighter, 0x14657E mage), and for a mage the low
+// byte 0x48 (72) of the pointer table 0x146590. 1 (default): the last
+// entry of the row. 0 (-origchar): the bytes that 1.3 reads.
+int Dtu_fix_thac0_row = 1;
+
+// ASCENT: D-089 (verified in the bytes, 0x8BF3E, 0x8BFF5): a new character
+// has THAC0 20 until the first experience award. 1 (default): the THAC0 of
+// the table from the start (each equipment update computes it). 0
+// (-origchar): only the level code computes it, as 1.3.
+int Dtu_fix_new_thac0 = 1;
+
+static int thac0_entry(int c, int l)
+{
+	if (l < 0) l = 0;
+	if (l == 18 && !Dtu_fix_thac0_row)
+		switch (c) {
+			case DTU_CLASS_CLERIC:	return Thac0_table[DTU_CLASS_THIEF][0];
+			case DTU_CLASS_THIEF:	return Thac0_table[DTU_CLASS_FIGHTER][0];
+			case DTU_CLASS_FIGHTER:	return Thac0_table[DTU_CLASS_MAGE][0];
+			default:						return 0x48;
+		}
+	if (l > 17) l = 17;
+	return Thac0_table[c][l];
+}
+
 // 0xAF605
 static void update_thac0(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa;
 	int l1 = pa->class1_level + 1, l2 = pa->class2_level + 1, t = 20, t2;
 
-	if (l1 < 0) l1 = 0;
-	if (l1 > 17) l1 = 17;
-	if (l2 < 0) l2 = 0;
-	if (l2 > 17) l2 = 17;
 	if (valid_class(pa->class1))
-		t = Thac0_table[pa->class1][l1];
+		t = thac0_entry(pa->class1, l1);
 	if (valid_class(pa->class2)) {
-		t2 = Thac0_table[pa->class2][l2];
+		t2 = thac0_entry(pa->class2, l2);
 		// The executable takes the higher value (0xAF657).
 		if (Dtu_fix_multiclass_thac0 ? (t2 < t) : (t2 > t))
 			t = t2;
@@ -946,7 +972,12 @@ void dtu_char_update(void)
 	if (ac > 10) ac = 10;
 	pa->armor_class = ac;
 
-	update_thac0();
+	// ASCENT: 0xAFB55 does not call 0xAF605 (its callers are 0x8BA3A and
+	// 0xAF489), so in 1.3 the THAC0 20 that the creation writes (0x8BFF5,
+	// D-089) stays until the first level check. Dtu_fix_new_thac0 (default)
+	// updates it here.
+	if (Dtu_fix_new_thac0)
+		update_thac0();
 }
 
 //------------------------------------------------------------------------
@@ -2606,6 +2637,13 @@ static int str_hit_bonus(int str, int extra)
 	return b;
 }
 
+// ASCENT: 0x2A789 for the creature path of 0x2A7F3 (0x2ACA7, the percent
+// 100) under -origcombat (Dtu_fix_creature_strength of dtuobj.c, D-003)
+int dtu_char_str_hit_bonus(int str, int extra)
+{
+	return str_hit_bonus(str, extra);
+}
+
 // 0x2B494: the damage bonus of the strength
 static int str_damage_bonus(int str, int extra)
 {
@@ -3651,6 +3689,7 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "break") && a >= 0 && a < MAX_OBJECTS)		// test: break=N, the scenery N breaks
 		dtu_break_dressing(&Objects[a], ConsoleObject, 0);
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
+	else if (!strcmp(cmd, "noise"))		dtu_creature_alert(ConsoleObject, a);		// ASCENT: test: noise=LEVEL, the alert 0x160AB at the player
 	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL
 	else if (!strcmp(cmd, "armspell"))	dtu_char_arm_spell(a);
 	else if (!strcmp(cmd, "sethot")) {

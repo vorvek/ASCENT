@@ -204,6 +204,31 @@ def check_abilities(args):
     assert woken, "alert: nothing woken"
     print("alert: the bump of the ghast wakes %d creatures" % len(woken))
 
+    # D-112 (Dtu_fix_noise_walls): a noise of level 2 in segment 417 of CLAN3
+    # stops at the closed door of segment 418 (wall 0); the spread of 0x162A1
+    # (-origobj) goes through it
+    counts = {}
+    for name, extra in (("noise", []), ("noise-orig", ["-origobj"])):
+        lines = run_test(args, name, "CLAN3", 12, "3:goseg=417,5:noise=2", extra)
+        n = [int(l.split("reaches ")[1].split()[0]) for l in lines if "noise: type 2 at seg 417 reaches" in l]
+        assert n, "%s: no noise event" % name
+        counts[name] = n[0]
+    assert counts["noise"] < counts["noise-orig"], "noise: the closed door does not stop it (%s)" % counts
+    print("noise: %d segments, %d through the closed door with -origobj" % (counts["noise"], counts["noise-orig"]))
+
+    # D-035 (Dtu_fix_break_spread): the nine explosions of broken scenery lie
+    # around it; with -origobj all of them are 5.0 to 4.5 to one side
+    for name, extra in (("break", []), ("break-orig", ["-origobj"])):
+        lines = run_test(args, name, "CLAN3", 20, "5:break=8", extra)		# a table
+        offs = [[float(x) for x in l.split("offset ")[1].split()[:3]] for l in lines if "break explosion: offset" in l]
+        assert len(offs) == 9, "%s: %d explosions" % (name, len(offs))
+        xz = [v for o in offs for v in (o[0], o[2])]
+        if extra:
+            assert all(-5.0 <= v <= -4.49 for v in xz), "%s: offsets %s" % (name, xz)
+        else:
+            assert all(-5.0 <= v <= 6.0 for v in xz) and max(xz) > -4.0, "%s: offsets %s" % (name, xz)
+        print("%s: nine explosions, x and z from %.2f to %.2f" % (name, min(xz), max(xz)))
+
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

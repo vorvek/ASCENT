@@ -48,6 +48,9 @@ void dtu_thief_level_textures(void);
 // texture 0 for them, and each door side with no overlay (tmap_num2 0)
 // or with texture 0 becomes a secret door in 1.3. 0 (-origchar): as 1.3.
 extern int Dtu_fix_secret_door_names;
+// ASCENT: the backstab of AD&D 2nd Edition: from behind the target, and only
+// a creature that sees the player stops it. 0 (-origcombat): 0xB337E.
+extern int Dtu_fix_backstab;
 
 // One time in each frame (dtu_char_frame): the search for traps (0xB4040
 // from game.c 0x438F3), Hide In Shadows (0xB333F from pcons.c 0x9DFDE).

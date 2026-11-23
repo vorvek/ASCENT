@@ -229,6 +229,12 @@ int dtu_item_get(int type, int id, dtu_item_data *d);
 // higher (worse) value of the two classes (0xAF651). 1 (default): the
 // lower (better) value, as in the rules of the game.
 extern int Dtu_fix_multiclass_thac0;
+// ASCENT: THAC0 at level 18 (0xAF605). 1 (default): the last entry of the
+// row of the class. 0 (-origchar): the byte past the row (20, a mage 72).
+extern int Dtu_fix_thac0_row;
+// ASCENT: THAC0 of a new character. 1 (default): by the table at once. 0
+// (-origchar): 20 until the first level check (0x8BFF5).
+extern int Dtu_fix_new_thac0;
 // The hit points of a new level. 0: as 0xAF8C7, the integer is added to
 // the fixed point hit points (they grow by n / 65536; the maximum grows by
 // n). 1 (default): the hit points grow by n, as the rules say.
@@ -362,6 +368,9 @@ int dtu_char_defense_roll(int attacker_thac0, int to_hit_bonus);
 
 int dtu_char_armor_class(void);
 int dtu_char_thac0(void);
+// ASCENT: 0x2A789, the attack bonus of strength str and percent extra, with
+// the 18/xx part only when the player is a fighter
+int dtu_char_str_hit_bonus(int str, int extra);
 int dtu_char_hit_points(void);
 int dtu_char_max_hit_points(void);
 // Adds hit points, up to the maximum. Returns the number that was added.

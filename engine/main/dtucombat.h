@@ -132,6 +132,12 @@ int dtu_combat_view_model(void);
 // max(fire_wait, 1.0) for a melee weapon, the time of the model for a
 // missile weapon or a spell; two times that with Slow (dtuatk.h).
 fix dtu_combat_swing_time(void);
+// ASCENT: 1 (default): the swing time follows the end of Slow. 0
+// (-origcombat): it stays doubled until the item in the hand changes.
+extern int Dtu_fix_slow_swing;
+// ASCENT: 1 (default): the killing blow plays the hit sound of the weapon.
+// 0 (-origcombat): its kill sound, which no table sets (0x27CCF).
+extern int Dtu_fix_kill_sound;
 
 // 0x90CEF for spell 16 (Fireball): the blindness and the deafness of a
 // player or creature at dist from the point (only the fire trap reaches it).
