@@ -134,7 +134,6 @@ int					N_icon_bitmaps = 0;
 bitmap_index		Icon_bitmaps[MAX_ICON_BITMAPS];
 
 int					N_tbl_records = 0;
-int					Tbl_generation = 0;		// ASCENT: bm.h
 tbl_record			Tbl_records[MAX_TBL_RECORDS];
 
 //-----------------------------------------------------------------

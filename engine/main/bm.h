@@ -368,11 +368,6 @@ typedef struct tbl_record {
 
 extern int N_tbl_records;
 extern tbl_record Tbl_records[MAX_TBL_RECORDS];
-// ASCENT: one more at each release of the records (a table of another
-// level). A record number is valid only with the same count: each table
-// has the same sections before $MONSTER, so the same number names another
-// monster in the table of another level.
-extern int Tbl_generation;
 
 // Find "key=value" in a record. Copies the value (without quotes; a list
 // of numbers up to the next keyword) to value. Returns 1 if the key is
@@ -418,6 +413,7 @@ extern player_type_info Player_type_info[MAX_PLAYER_TYPES];
 #define MONSTER_F_NOATTACK				0x4000
 #define MONSTER_F_MAGIC_RESISTANT		0x8000		// ASCENT: +0x98 bit 0x0400 (saving throws 0xAE77F)
 #define MONSTER_F_FIRE_RESISTANT		0x10000		// ASCENT: +0x98 bit 0x0010 (fire damage 0x91DAF)
+#define MONSTER_F_RAT					0x20000		// ASCENT: the keyword rat= (+0xD9 bit 0x04, 0x1E9E2 to 0x1EA02)
 
 typedef struct monster_info {
 	char			name[DTU_NAME_LENGTH];

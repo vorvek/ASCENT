@@ -412,7 +412,6 @@ static void bm_reset_tables()
 			Tbl_records[i].text = NULL;
 		}
 	N_tbl_records = 0;
-	Tbl_generation++;		// ASCENT: the record numbers name other lines now (bm.h)
 
 	ObjType[0] = OL_PLAYER;
 	ObjId[0] = 0;
@@ -979,7 +978,6 @@ void bm_close()
 				Tbl_records[i].text = NULL;
 			}
 		N_tbl_records = 0;
-		Tbl_generation++;		// ASCENT: the record numbers name other lines now (bm.h)
 
 		piggy_close();
 		Installed=0;
@@ -1879,6 +1877,11 @@ static void bm_read_monster()
 		else if (!stricmp( key, "hit_sound" ))		mi->hit_sound = atoi(val);
 		else if (!stricmp( key, "gravity" ))		mi->gravity = fl2f(atof(val));
 		else if (!stricmp( key, "pass_thru" ))		{ if (atoi(val)) mi->flags |= MONSTER_F_PASS_THRU; }
+		// ASCENT: the monster reader 0x1DDE6 compares the keyword with "rat"
+		// (0x1E9E2, string 0x1218EE) and sets bit 4 of the flags that go to
+		// Robot_info+0xD9 (0x1E9F5), whatever the value. The squash of
+		// collide_robot_and_player (0x26FE0) tests it.
+		else if (!stricmp( key, "rat" ))				mi->flags |= MONSTER_F_RAT;
 		else if (!stricmp( key, "state_times" ))	tok_get_fix_list( i, mi->state_times, DTU_N_STATE_TIMES );
 		else if (!stricmp( key, "speeds" ))			tok_get_fix_list( i, mi->speeds, DTU_N_SPEEDS );
 		else if (!stricmp( key, "fire_frames" ))	tok_get_short_list( i, mi->fire_frames, DTU_N_FIRE_FRAMES );
