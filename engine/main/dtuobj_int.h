@@ -124,6 +124,7 @@ typedef struct dtu_missile {
 
 extern monster_ext Monster_ext[MAX_ROBOT_TYPES];
 extern dtu_ai_local Ail[MAX_OBJECTS];
+extern dtu_missile Missile[MAX_OBJECTS];
 extern fix Dtu_clock;
 extern fix Player_max_hp;
 extern int Player_death_stage;
@@ -182,6 +183,11 @@ fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon
 fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
 void melee_hit(object *target,object *attacker);
 void weapon_test(object *obj);
+
+//------------------------------------------------------------------------
+// dtuobj_missile.c
+
+void missiles_frame(void);
 
 //------------------------------------------------------------------------
 // dtuobj_test.c
