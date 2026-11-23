@@ -129,6 +129,7 @@ extern dtu_ai_local Ail[MAX_OBJECTS];
 extern dtu_missile Missile[MAX_OBJECTS];
 extern fix Dtu_clock;
 extern int Ref_tick_count, Ref_ticks_now;
+extern int Player_armor_class;
 extern fix Player_max_hp;
 extern int Player_death_stage;
 extern fix Player_death_time;
@@ -143,13 +144,17 @@ polymodel *obj_model(object *obj);
 int is_hostile(object *obj);
 int is_flying(object *obj);
 int tbl_int(int record,char *key,int def);
+fix state_time(polymodel *po,int state);
+fix anim_speed(object *obj,int state);
 void set_anim(object *obj,int state);
 int get_weapon_sphere(object *obj,int frame,vms_vector *center,fix *radius);
 int ai_tick(int objnum,int n);
 fix creature_floor_dist(object *obj,fix radius,fix half_height);
+int ray_is_free(vms_vector *p0,int seg0,vms_vector *p1,int objnum);
 int brain_bit(int a,int b);
 int creature_ray_to(object *obj,vms_vector *to);
 int creature_ray_to_player(object *obj);
+int player_is_visible(object *obj);
 void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
 void sound_on_object(int sound,object *obj,fix volume);
 void vclip_at(int segnum,vms_vector *pos,fix size,int vclip);
@@ -160,9 +165,6 @@ int player_type_sound(char *key);
 void log_corpse_height(object *obj,const char *what);
 fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 int corpse_on_floor(object *obj);
-void cloak_reset(void);
-int opens_doors(object *obj);
-void morale_check(object *obj);
 
 //------------------------------------------------------------------------
 // dtuobj_setup.c
@@ -201,6 +203,13 @@ void weapon_test(object *obj);
 // dtuobj_missile.c
 
 void missiles_frame(void);
+
+//------------------------------------------------------------------------
+// dtuobj_ai.c
+
+void cloak_reset(void);
+int opens_doors(object *obj);
+void morale_check(object *obj);
 
 //------------------------------------------------------------------------
 // dtuobj_move.c
