@@ -26,8 +26,9 @@ all but lang_es and sounds).
             check` stops the pack.
   sounds    <hd>/sound: the port sounds that are not game data (the miss
             sounds miss*.wav of engine/main/dtumiss.c) and README.txt.
-            Only when named: the files come from a sound library, and the
-            owner must confirm that its license allows the distribution.
+            Only when named: the files come from the "Fighting SFX"
+            library of Triune Sound, under a license that the project
+            owner holds. They are not in the repository.
 
 The version of a pack is --version, else the number of PACK_VERSION (1 for
 a pack that is not there).

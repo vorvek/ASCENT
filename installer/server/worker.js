@@ -1,5 +1,5 @@
 // ASCENT content server: a Cloudflare Worker in front of the private R2
-// bucket "ascent-content" (the 1.3 patch pack and the upscaled packs).
+// bucket "ascent-content" (the 1.3 patch pack and the other content packs).
 //
 // Bindings (set at deploy time, see installer/server/README.md):
 //   BUCKET        R2 bucket ascent-content
