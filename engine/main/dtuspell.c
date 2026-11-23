@@ -3657,6 +3657,15 @@ void dtu_spell_cast_vclip(int spell,object *obj)
 		vclip_at(obj->segnum,&obj->pos,i2f(3),spell_int(spell,"cast_vclip",-1));
 }
 
+// 0x3D38E writes 1 into the fire die count of Fireball (0x1B5EA4), then
+// 0x3D3A1 calls 0x911AA(object, object, 16, 1)
+fix dtu_spell_lava(object *obj)
+{
+	if (obj == NULL || !spell_ok(16))
+		return 0;
+	return spell_damage(16,obj,obj,1,GROUP_FIRE,1,0);
+}
+
 void dtu_spell_creature_frame(object *obj,fix dist,int active)
 {
 	int n;

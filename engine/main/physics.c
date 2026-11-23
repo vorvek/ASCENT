@@ -2967,6 +2967,7 @@ int dtu_player_physics_sim(object *obj)
 	fix sim_time = FrameTime;
 	vms_vector accel,start_pos,frame_vec,new_pos,p1;
 	int floor_type,tries = 0,fate,hit_an_object = 0;
+	int lava_seg = -1,lava_side = -1;	// the wall or floor of the last move query (dtu_lava_frame)
 	int ignore_obj_list[MAX_IGNORE_OBJS],n_ignore_objs = 0;
 	fvi_query fq;
 	fvi_info hit;
@@ -3161,6 +3162,12 @@ int dtu_player_physics_sim(object *obj)
 			fate = find_vector_intersection(&fq,&hit);
 			Fvi_dtu_body = 0;
 		}
+
+		// 0x9E2BA: the hit side of the query goes to 0x30F494 (the side
+		// that the lava test 0x3D2BD reads)
+		Dtu_lava_hit_side = hit.hit_side;
+		lava_seg = (fate == HIT_WALL) ? hit.hit_side_seg : -1;
+		lava_side = hit.hit_side;
 
 		// 0x3FA08: a hit of the bottom side of a segment is a hit of the floor.
 		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
@@ -3377,6 +3384,9 @@ int dtu_player_physics_sim(object *obj)
 
 	dtu_body_log(obj);
 	dtu_move_log(obj);
+
+	// 0x9E7B8: the lava
+	dtu_lava_frame(obj,lava_seg,lava_side,Dtu_floor_dist < F1_0);
 
 	return 1;
 }

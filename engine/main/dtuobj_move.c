@@ -185,11 +185,20 @@ static void stop_at_player(object *obj)
 
 int opens_doors(object *obj);
 
-// 0x6C662 for a creature: gravity and the lift out of the floor.
-static void creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_height)
+// 0x6C662 for a creature: gravity and the lift out of the floor. Returns
+// the distance of the feet to the floor.
+static fix creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_height)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	fix d = creature_floor_dist(obj,radius,half_height);
+
+	// 0x6C871, 0x6C89A and 0x6C8C8 (in the floor): less than 1.0 above
+	// the floor ends the fall (bit 0x20 of +0x1AE, set by the trap
+	// 0x9493A). A dead body keeps it (see the caller). The start of a fall
+	// above 6.0 (0x6CB0F) and its damage (0x6C8C8) are not in the port for
+	// a creature.
+	if (d < F1_0 && ail->falling && obj->ctype.ai_info.CURRENT_STATE != DAIS_DEAD)
+		ail->falling = 0;
 
 	if (d < 0) {
 		fix push = DTU_PUSH_UP_MAX, ad = -d;
@@ -221,6 +230,7 @@ static void creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_h
 		if (d != 0 && (!is_flying(obj) || (Dtu_fix_corpse_floor && DTU_ANIM_STATE(obj) == DAS_DIE)))
 			accel->y -= fixmul(d,DTU_GRAVITY_K);
 	}
+	return d;
 }
 
 // 0x6CB68 for a creature, see dtu_integrate() in physics.c.
@@ -255,6 +265,28 @@ static void creature_integrate(object *obj,vms_vector *accel)
 		pi->velocity.y = DTU_TERMINAL_VEL;
 }
 
+// Dtu_fix_lava: the lava test of a creature that does not move. Only when
+// the floor below it is lava, and its feet are less than 1.0 above that
+// floor. That ends its fall too (an inactive creature stands on the floor
+// of its segment, 0x13F96, with no physics to end it).
+static void creature_still_lava(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	int seg = Segments[obj->segnum].children[WBOTTOM];
+	fix r, hh;
+
+	if (seg < 0)
+		seg = obj->segnum;
+	if ((Segments[seg].sides[WBOTTOM].pad & 3) != 3)
+		return;
+	dtu_get_body_size(obj,&r,&hh);
+	if (creature_floor_dist(obj,r,hh) >= F1_0)
+		return;
+	if (ail->falling && obj->ctype.ai_info.CURRENT_STATE != DAIS_DEAD)
+		ail->falling = 0;
+	dtu_lava_frame(obj,-1,-1,1);
+}
+
 void dtu_creature_physics_sim(object *obj)
 {
 	int objnum = obj-Objects;
@@ -269,20 +301,21 @@ void dtu_creature_physics_sim(object *obj)
 	// Dtu_improved_pathfinding: a body that hits a wall slides along it for
 	// the rest of the frame time (sim_time), as the ship of Descent 1 does.
 	int imp = improved_paths(), hits = 0;
-	fix sim_time = FrameTime, want = 0, moved = 0;
+	fix sim_time = FrameTime, want = 0, moved = 0, floor_d;
+	int lava_seg = -1, lava_side = -1;		// the wall or floor of the last move query (dtu_lava_frame)
 
 	if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI)
 		return;
-	if (obj->dtu.m_88 & DTU_OF_HELD)
-		return;
-	// An inactive creature does not move (0x9F196).
-	if (ail->activity == 0)
-		return;
 	if (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED))
 		return;
-	// ASCENT: 0x9F174, object flag 0x40: no move
-	if (dtu_creature_frozen(obj))
+	// An inactive creature does not move (0x9F196), nor one that is held
+	// or has the object flag 0x40 (ASCENT: 0x9F174). Dtu_fix_lava: the lava
+	// burns it all the same (1.3 burns only in the move, 0x9FE54).
+	if ((obj->dtu.m_88 & DTU_OF_HELD) || ail->activity == 0 || dtu_creature_frozen(obj)) {
+		if (Dtu_fix_lava)
+			creature_still_lava(obj);
 		return;
+	}
 
 	// ASCENT: the move query of a rat (0x9F153) starts in the body of the
 	// player when the player walks over the rat: the object test of the
@@ -362,7 +395,7 @@ void dtu_creature_physics_sim(object *obj)
 
 	vm_vec_copy_scale(&accel,&pi->thrust,fixdiv(F1_0,pi->mass));
 
-	creature_gravity(obj,&accel,cyl_radius,half_height);
+	floor_d = creature_gravity(obj,&accel,cyl_radius,half_height);
 
 	// A dying creature that does not fly falls: one eighth of the velocity
 	// in x and z on each frame (0x9F4E2).
@@ -437,6 +470,12 @@ void dtu_creature_physics_sim(object *obj)
 			Fvi_dtu_rad2 = half_height*2/3;
 		fate = find_vector_intersection(&fq,&hit);
 		Fvi_dtu_body = 0;
+
+		// 0x9F860: the hit side of the query goes to 0x30F494 (the side
+		// that the lava test reads)
+		Dtu_lava_hit_side = hit.hit_side;
+		lava_seg = (fate == HIT_WALL) ? hit.hit_side_seg : -1;
+		lava_side = hit.hit_side;
 
 		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
 			fate = 5;		// the floor
@@ -624,4 +663,96 @@ void dtu_creature_physics_sim(object *obj)
 	// ASCENT: 0x9FCF1, the footstep of a walking creature (dtufoot.c)
 	if (ail->activity == 2)
 		dtufoot_creature(obj);
+
+	// 0x9FE54: the lava
+	if (!(obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+		dtu_lava_frame(obj,lava_seg,lava_side,floor_d < F1_0);
+}
+
+//------------------------------------------------------------------------
+// The lava (0x3D2BD)
+
+// ASCENT: 0x3D2BD, called at the end of the move of the player (0x9E7B8)
+// and of a creature (0x9FE54), verified in the bytes. Not for a creature
+// with fire_immune (Robot_info+0x98 bit 0x08, MONSTER_F_FIRE_IMMUNE of the
+// port) and not while bit 0x20, 0x40 or 0x80 of +0x1AE is set (the fall,
+// the jump, the climb or Levitate). The segment is the one below the
+// object (children[3]) or, when there is none, the segment of the object.
+// The side is the hit side of the last move query (0x30F494), side 3 when
+// that is -1. When the side flags & 3 of that side are 3 (lava, 0xA6F89)
+// and the clock of the player (the dword at 0x1D339F of Players[Player_num],
+// time_level in the decompilation) is 1.0 or more away
+// from the time of the last burn (0x13B1B4), that time is set, the fire die
+// count of Fireball becomes 1 (0x1B5EA4) and 0x911AA(object, object, 16, 1)
+// burns it: 1d6 of fire, a save for half.
+//
+// Dtu_fix_lava (1, default; -origobj clears it). 1.3 has one time of the
+// last burn for all objects, so the player and a creature in the lava, or
+// two creatures, share one burn each second. The side is the hit side of
+// the last query of any object (the player or another creature), as the
+// index of a side of the segment below the object, and the move of an
+// object that stands still makes no query. So whether an object that stands
+// in the lava burns depends on what other objects hit, and a creature or
+// a player that flies over the lava burns. The corrected rule: each object
+// has its own time of the last burn; it burns when the wall or the floor
+// that its own move hit in this frame is lava, or when its feet are less
+// than 1.0 above the floor (on_floor) and that floor (side 3 of the
+// segment below, or of its segment) is lava; and a creature that does not
+// move (inactive, held, flag 0x40) burns too (creature_still_lava). 1.3
+// only burns in the move.
+int Dtu_fix_lava = 1;
+int Dtu_lava_hit_side = -1;		// 0x30F494
+
+static int side_is_lava(int segnum,int side)
+{
+	if (segnum < 0 || segnum > Highest_segment_index || side < 0 || side >= MAX_SIDES_PER_SEGMENT)
+		return 0;
+	return (Segments[segnum].sides[side].pad & 3) == 3;
+}
+
+void dtu_lava_frame(object *obj,int hit_seg,int hit_side,int on_floor)
+{
+	static fix last_burn = 0;		// 0x13B1B4
+	static fix player_burn = 0;		// Dtu_fix_lava: the time of the player
+	fix now = Players[Player_num].time_level, *last, d;
+	int seg, lava;
+
+	if (obj == NULL || obj->segnum < 0 || obj->segnum > Highest_segment_index)
+		return;
+	if (obj->type == OBJ_ROBOT) {
+		if (obj->id >= N_robot_types || (Monster_info[obj->id].flags & MONSTER_F_FIRE_IMMUNE))
+			return;
+		if (Ail[obj-Objects].falling || obj->shields < F1_0 || DTU_ANIM_STATE(obj) == DAS_DIE)
+			return;
+	}
+	else if (obj->type == OBJ_PLAYER) {
+		if (Dtu_player_state & (DTU_PS_FALLING|DTU_PS_JUMPING|DTU_PS_CLIMBING))
+			return;
+		if (Player_is_dead || Dtu_player_dead)
+			return;
+	}
+	else
+		return;
+
+	seg = Segments[obj->segnum].children[WBOTTOM];
+	if (seg < 0)
+		seg = obj->segnum;
+	if (!Dtu_fix_lava)
+		lava = side_is_lava(seg,Dtu_lava_hit_side < 0 ? WBOTTOM : Dtu_lava_hit_side);
+	else {
+		lava = (hit_seg >= 0 && side_is_lava(hit_seg,hit_side)) || (on_floor && side_is_lava(seg,WBOTTOM));
+	}
+	if (!lava)
+		return;
+
+	last = !Dtu_fix_lava ? &last_burn : (obj->type == OBJ_PLAYER) ? &player_burn : &Ail[obj-Objects].lava_time;
+	d = now - *last;
+	if (d < 0)
+		d = -d;
+	if (d < F1_0)
+		return;
+	*last = now;
+	dtu_obj_log("lava: obj %d %s burns in seg %d (0x3D2BD)",(int)(obj-Objects),
+		obj->type == OBJ_PLAYER ? "player" : dtu_object_name(obj),obj->segnum);
+	dtu_spell_lava(obj);
 }

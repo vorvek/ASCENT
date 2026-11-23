@@ -266,7 +266,7 @@ when the length of the velocity is 0x72 or less.
   object is ignored only after more than 30 hits in a row, for a try that goes away
   from it (0x9E11A).
 
-After the loop: 0x69FB8 and 0x3D2BD (not read. Probably the segment of the object).
+After the loop: 0x69FB8 and 0x3D2BD (the lava, 4.9).
 
 ### 4.6 "kneeHigh" (0x6C186)
 
@@ -306,6 +306,34 @@ at 0x13D9AE, limited to -0x3000 and 0x2FA0.
 object 0x172). It is 0 in the frames of the player models that were checked (hmc,
 dmf), and is used by the port. Eye height in the port: 12.541 above the floor for a
 human, 10.541 for a dwarf (4.1).
+
+### 4.9 The lava (0x3D2BD)
+
+**V** (the bytes, 2026-11-24) Called at the end of the move of the player (0x9E7B8)
+and of a creature (0x9FE54). Nothing for a creature with `fire_immune`
+(`Robot_info+0x98` bit 0x08, 0x3D2DA) and nothing while bit 0x20, 0x40 or 0x80 of
+`+0x1AE` is set (the fall, the jump, the climb or Levitate, 0x3D323). The segment is
+`children[3]` of the segment of the object, or the segment itself when that is -1
+(0x3D2FD). The side is the dword 0x30F494, side 3 when it is -1. The move loops copy the
+hit side of each query into it (0x9E2BA for the player, 0x9F860 for a creature), so it
+is the hit side of the last query of any object. When `side.flags & 3` is 3 (lava,
+0xA6F89) and the player clock (the dword at 0x1D339F of `Players[Player_num]`) is 1.0 or
+more from the time at 0x13B1B4, the time is set, the fire die count of Fireball
+(0x1B5EA4) becomes 1 and `0x911AA(object, object, 16, 1)` burns the object: 1d6 of fire,
+a save for half. The time at 0x13B1B4 is one for all objects.
+
+A creature runs its move only while it is active (0x9F196), so an inactive creature in
+the lava does not burn. The trap that drops the objects of a floor (0x9493A) sets bit
+0x20 (0x94984); 0x6C662 clears it when the feet are less than 1.0 above the floor
+(0x6C871, 0x6C89A) and 0x6C8C8 clears it in the floor.
+
+The port: `dtu_lava_frame` (dtuobj_move.c), from `dtu_player_physics_sim` and
+`dtu_creature_physics_sim`. Until 2026-11-24 the port had no lava damage.
+`Dtu_fix_lava` (1, `-origobj` clears it): each object has its own time; the object burns
+when the wall or floor that its own move query hit in the frame is lava, or when its
+feet are less than 1.0 above the floor below it and that floor is lava; a creature that
+does not move (inactive, held, flag 0x40) burns too. The creature part of 0x6CB0F (a
+fall that starts above 6.0) and of 0x6C8C8 (the damage of a fall) is not in the port.
 
 ## 5. Jump (0x546CC, 0x9E9D8)
 
@@ -571,6 +599,7 @@ hit, 0x6C8C8 fall damage, 0x9E88D wall hit).
 9. After the loop: `update_object_seg`, the step sound on the first frame of
    WALK and RUN, the attack sound in ATTACK. An object that is in no segment
    gets object flag 0x40 and render, control and movement type 0.
+   Then the lava 0x3D2BD (4.9, 0x9FE54).
 
 The port has the steps 1, 2, 3 (weapon test only), 5, 6, 7 and 8 without the
 push of scenery, the floor types, the sounds and the fall damage.

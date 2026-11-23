@@ -548,6 +548,27 @@ int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos);
 // 0x9493A: the floor of the segment opened. Its objects fall.
 void dtu_drop_objects_in_segment(int segnum);
 
+// 0x3D2BD: the lava burns the player or a creature at the end of its move
+// (dtuobj_move.c). hit_seg and hit_side: the wall or the floor that the
+// last move query of the object hit in this frame (-1: none). on_floor: 1
+// if the feet are less than 1.0 above the floor, else 0.
+void dtu_lava_frame(object *obj, int hit_seg, int hit_side, int on_floor);
+// 0x30F494: the hit side of the last move query of any object (the rule of
+// 1.3, Dtu_fix_lava 0)
+extern int Dtu_lava_hit_side;
+// The lava (0x3D2BD). Original: one time of the last burn for all objects,
+// and the side is the hit side of the last query of any object. Corrected:
+// each object has its time, and it burns when the wall or floor that it
+// touches is lava; a creature that does not move burns too.
+extern int Dtu_fix_lava;
+// A creature that falls (0x14206). Original: the test of the AI each 20
+// ticks makes a creature that does not see the player (a peaceful one:
+// always) inactive, and an inactive creature has no physics and stands on
+// the bottom side of its segment (0x13F96), also when that side is open: a
+// creature that falls through an opened floor stops in the air. Corrected:
+// it stays active while its feet are 1.0 or more above the floor.
+extern int Dtu_fix_fall_active;
+
 // The script of a creature (dtuhook.c): 1 if the script with this id has a
 // "say" statement, 0 if it has none, -1 if there is no script.
 int dtu_script_has_say(int id);

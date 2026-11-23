@@ -64,6 +64,7 @@ typedef struct dtu_ai_local {
 	fix		regen_time;				// object +0x8C
 	fix		regen_hp;				// Dtu_fix_revive: the hit points that a corpse has regenerated
 	ubyte		gold_done;				// Dtu_fix_revive: the corpse has left its gold
+	fix		lava_time;				// Dtu_fix_lava: the time of the last burn (0x13B1B4 in 1.3 is one for all objects)
 	// values of the corrected rules
 	fix		idle_acc;
 	int		idle_ticks;
