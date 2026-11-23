@@ -99,6 +99,7 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 #include "dtuitemfix.h"	// ASCENT: the rulebook values of the item lines
 #include "dtutblfix.h"	// ASCENT: the table fixup of 1.3 (0x1A344)
 #include "dtuspell.h"	// ASCENT: dtu_spell_table_read
+#include "texmerge.h"	// ASCENT: texmerge_mark_wall_effects
 
 // ASCENT: from here on this file is changed in most places. Descent 1
 // parsed BITMAPS.TBL only in the editor build, loaded IFF bitmaps and POF
@@ -922,6 +923,10 @@ int bm_load_level_tables( char * level_name, char * player_name )
 			Effects[i].changing_wall_texture = -1;
 			Effects[i].changing_object_texture = -1;
 		}
+
+	// ASCENT: the effect colors of the wall textures without an overlay
+	// (Dtu_fix_wall_effects, texmerge.c)
+	texmerge_mark_wall_effects();
 
 	strncpy( Bm_level_name, level_name, 15 );
 	strncpy( Bm_player_name, player_name ? player_name : "", 15 );

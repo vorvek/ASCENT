@@ -336,8 +336,9 @@ static uint8_t *load_layer(const plat_gpu_hd_layer *l, int scale, int *from_file
 					if (!file_alpha)
 						p[3] = p[3] >= 128 ? 255 : 0;
 					// an effect color keeps its palette color, as in the
-					// original bitmap (a texture that is not merged shows
-					// it; plat_gpu_fx_mark replaces it in a merged one)
+					// original bitmap (a texture without the effect flag
+					// shows it; plat_gpu_fx_mark replaces it in a merged
+					// one and in a wall texture of Dtu_fix_wall_effects)
 					if (l->rgba[o * 4 + 3] != 0 && l->index && plat_gpu_fx_code(l->index[o]))
 						memcpy(p, l->rgba + o * 4, 3);
 				}

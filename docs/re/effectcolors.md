@@ -92,7 +92,36 @@ and red edges on the water.
   the pixel one canvas row lower, so on the GPU the glass is a tinted view of the
   room and a waterfall edge shows the wall under it in the blue ramp. The pointer
   walk of the original (the pixel 2k - 1 of the next row) has no equivalent in a
-  shader. A texture that is not merged keeps the palette color, as the original.
+  shader. A texture that is not merged keeps the palette color, as the original,
+  unless `Dtu_fix_wall_effects` marks it (below).
+- `Dtu_fix_wall_effects` (texmerge.c `texmerge_mark_wall_effects`, called by
+  bmread.c after the tables; `-origfx` clears it). 1.3 draws the effect texels of
+  a wall texture without an overlay in the palette red. The level files use such
+  textures alone on a side (counted with `lvl.py` and the level tables, rendered
+  sides with no overlay; "see" is a side with a wall and a child, "solid" one
+  without a child):
+
+  | Bitmap | Effect colors | Sides alone (see / solid) |
+  |---|---|---|
+  | `wfal04` (eclip) | 0x4F, 927 texels | 134 / 1 (illusion walls, THIEF0 segments 142 and 145) |
+  | `wfal02` (eclip) | 0x4E | 2 / 2 |
+  | `water2` (eclip) | 0x6F | 11 / 37 |
+  | `web1` | 0x4E | 20 / 0 |
+  | `rg_e` | 0xBE | 2 / 0 |
+  | `miror01` | 0x6D | 0 / 2 |
+  | `port04` (eclip) | 0x4E, 0xCF | 5 / 2 |
+  | `lava`, `lavaflo`, `magma`, `port03` (eclips) | 0xCF only, 1 to 4 texels | many |
+
+  The correction sets `BM_FLAG_DTU_EFFECTS` on each texture bitmap and each frame
+  of an eclip that changes a wall texture when it has an effect color other than
+  0xCF (palette 7 0 0, near the result of the rule; this keeps the copies of the
+  GPU renderer off the lava walls). The software renderer, the GPU renderer and
+  the upscaled textures (`plat_gpu_fx_mark` on the file of an unmerged bitmap)
+  then draw them as a merged bitmap. A merged bitmap no longer inherits the flag
+  of its base; texmerge.c sets it from its own pixels.
+  Test: THIEF0, the save in front of the waterfall of segment 142: before, red
+  rims around the drops in every renderer and texture set; after, the rims show
+  the room behind in the blue ramp; `-origfx` gives the red again.
 - The upscaled textures: `tools/textures_hd.py` fills the effect texels with the
   colors around them before the upscale (`../hd_textures.md`). A set made before
   this has red around the effect texels; the game cannot remove that.
