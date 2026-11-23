@@ -196,7 +196,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 
 | Id | Item | Original | Port | Status |
 |---|---|---|---|---|
-| 0 | Ring of Protection +2 | 0xAF9AB | dtu_char_update | same: the better ring counts, none with magic armor (checked) |
+| 0 | Ring of Protection +2 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): with magic armor the better of the ring and the armor counts; the better ring counts (checked) |
 | 1 | Leather Armor | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 2 | Shield | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 3 | Chain Mail | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
@@ -210,8 +210,8 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 11 | Plate Mail +3 | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 12 | Shield +1 | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 13 | Shield +2 | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
-| 14 | Ring of Protection +1 | 0xAF9AB | dtu_char_update | same: the better ring counts, none with magic armor (checked) |
-| 15 | Ring of Protection +3 | 0xAF9AB | dtu_char_update | same: the better ring counts, none with magic armor (checked) |
+| 14 | Ring of Protection +1 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): with magic armor the better of the ring and the armor counts; the better ring counts (checked) |
+| 15 | Ring of Protection +3 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): with magic armor the better of the ring and the armor counts; the better ring counts (checked) |
 | 16 | Armoring | 0xB0014, 0xAFAD1 | armoring_ac | fixed in a95cbb3: a mage gets 1 better after each cap of Armor, Vestment, Shield (checked) |
 | 17 | Ring of Coolness | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |
 | 18 | Ring of Feather Fall | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |
@@ -235,10 +235,10 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 36 | Boots of Levitation | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Fly, Feather Fall, Levitate, Haste |
 | 37 | Boots of Speed | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Fly, Feather Fall, Levitate, Haste |
 | 38 | Girdle of Hill Giant Strength | 0xAFB55 | dtu_char_update | same: strength 19 |
-| 39 | Bracers of Defense AC8 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
-| 40 | Bracers of Defense AC6 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
-| 41 | Bracers of Defense AC4 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
-| 42 | Bracers of Defense AC2 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
+| 39 | Bracers of Defense AC8 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
+| 40 | Bracers of Defense AC6 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
+| 41 | Bracers of Defense AC4 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
+| 42 | Bracers of Defense AC2 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
 | 43 | Cloak of Elvenkind | 0xAFB55 | dtu_char_update | same: Hide In Shadows 95 |
 | 44 | Chameleon Cloak | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Improved Invisibility |
 | 45 | Cloak of Elvenkind | 0x37A6A, 0xADCB3 | dtu_char_use, dtu_combat_turn_undead | same: USE casts Continual Light; key T turns as a cleric of level 7 |

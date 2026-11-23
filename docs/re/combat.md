@@ -2267,6 +2267,8 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_stoneskin_word` | dtuspell.c | Stone Skin clears all other effect bits | only its bit is set |
 | `Dtu_fix_rary_manual` | dtuspell.c | one cast (bit 22), three levels, no second cast, the bonus stays until Dispel Magic | the manual: each cast adds three levels, the first rest after the cast fills them, the next rest ends the bonus (the end at the entry of Waterdeep is not in the port) |
 | `Dtu_fix_melf_acid` | dtuspell.c | Melf's Acid Arrows (0x8EFE0): no attack roll, 4 L acid in one hit, save for half | the AD&D 2nd edition rule: an attack roll with the THAC0 of a fighter of the caster level, 2d4 acid on a hit and 2d4 at the start of each of the next L/3 rounds of 60.0, no save (spells.md, section 10) |
+| `Dtu_fix_bracers_ac` | dtuchar.c | the Bracers of Defense are magic armor for the Rings and Cloaks of Protection (0xAFEA6): neither counts with them | the bracers are a base armor class as a body armor: the rings and the cloaks count (a decision of the user) |
+| `Dtu_fix_ring_magic_armor` | dtuchar.c | no Ring of Protection counts with magic armor (0xAFB55) | the better of the ring and the magic of the armor counts, they do not add (a decision of the user) |
 | `Dtu_fix_wizardry_ring` | dtuchar.c | the Ring of Wizardry doubles the slots of the levels 1 to 3 each time the equipment changes, halves them once at the end | one doubling while it is worn |
 | `Dtu_fix_potion_frame` | dtuchar.c | the intelligence potion rolls 1 in 63 in each frame | one roll for each reference frame (3/64 s) |
 | `Dtu_fix_luck_coin` | dtuchar.c | the Potion of Luck takes the lowest bit of the day clock (frame times) | rand() & 1 |

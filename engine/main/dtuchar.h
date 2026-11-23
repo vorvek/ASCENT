@@ -467,6 +467,18 @@ extern int Dtu_fix_creature_missile;
 // dice sum of weapon (n dice of sides) with the launcher bonus and the
 // Potion of Luck of the player (0x2B0AE to 0x2B158).
 int dtu_char_creature_missile_damage(int weapon, int n, int sides, int sum);
+// ASCENT: 0xAFB55 treats the Bracers of Defense (armor 39 to 42, 0xAF982)
+// as magic armor: no Ring and no Cloak of Protection counts with them. A
+// decision of the user (AD&D 2e): the bracers are a base armor class as a
+// body armor without magic. 1 (default): the rings and the cloaks count
+// with the bracers. 0 (-origcombat): 1.3.
+extern int Dtu_fix_bracers_ac;
+// ASCENT: with magic armor (5 to 11) no Ring of Protection counts in
+// 0xAFB55. A decision of the user: the better of the magic of the armor and
+// the ring counts, they do not add (Leather Armor +1 and a Ring of
+// Protection +2: Leather Armor and 2). 1 (default): the better one. 0
+// (-origcombat): 1.3.
+extern int Dtu_fix_ring_magic_armor;
 // 1 while the attack of the player is a backstab (0x13A955, dtuthief.c).
 extern int Dtu_backstab;
 // The option -autochoice N: the choice boxes answer N.

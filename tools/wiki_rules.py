@@ -568,9 +568,12 @@ WORN = {
                    "Continual Light around you.",
     ("armor", 46): "Invisibility while worn. It ends when you attack and comes back at the next change "
                    "of equipment.",
-    ("armor", 47): "Counts only with no shield, no magic armor or bracers, and no chain or plate mail.",
-    ("armor", 48): "Counts only with no shield, no magic armor or bracers, and no chain or plate mail.",
-    ("armor", 49): "Counts only with no shield, no magic armor or bracers, and no chain or plate mail.",
+    ("armor", 47): "Counts only with no shield, no magic armor, and no chain or plate mail. It counts "
+                   "with bracers.",
+    ("armor", 48): "Counts only with no shield, no magic armor, and no chain or plate mail. It counts "
+                   "with bracers.",
+    ("armor", 49): "Counts only with no shield, no magic armor, and no chain or plate mail. It counts "
+                   "with bracers.",
     ("armor", 50): "Dexterity +4 (Dexterity 6 or less), +2 (7 to 13) or +1 (14 to 19). Open Locks +10% "
                    "for a thief; for any other class Open Locks becomes 37%.",
     ("armor", 51): "Detect Magic while worn. It gives no light.",
@@ -610,6 +613,10 @@ FIXES = [
                                          "round for 1 round + 1 per 3 levels, as in AD&D 2nd edition; "
                                          "1.3 does 4 per level in one hit, save for half."),
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),
+    ("Dtu_fix_bracers_ac", "-origcombat", "Rings and cloaks of protection count with the Bracers of "
+                                          "Defense; in 1.3 the bracers are magic armor and they do not."),
+    ("Dtu_fix_ring_magic_armor", "-origcombat", "With magic armor the better bonus of the armor and of a Ring "
+                                                "of Protection counts; in 1.3 the ring does not count."),
     ("Dtu_fix_potion_frame", "-origcombat", "The intelligence potion does not depend on the frame rate."),
     ("Dtu_fix_luck_coin", "-origcombat", "The Potion of Luck uses a coin flip, not the day clock."),
     ("Dtu_fix_cursed_scroll", "-origcombat", "The Cursed Scroll can take up to all but one of your hit "
@@ -1525,9 +1532,11 @@ class Pages:
                 ac = self.c["ac_armor"][i]
                 eff = WORN.get(("armor", i), "")
                 if title == "Bracers":
-                    eff = "Worn in the armor place, so not with body armor. They count as magic armor."
+                    eff = ("Worn in the armor place, so not with body armor. A base armor class like body "
+                           "armor: rings and cloaks of protection count with them.")
                 if title == "Rings" and i in (0, 14, 15):
-                    eff = "Counts only without magic armor or bracers. Of two of these rings only the better counts."
+                    eff = ("With magic armor only the better bonus counts, of the ring or of the armor. Of two "
+                           "of these rings only the better counts.")
                 if i == 33:
                     ac = 0
                 eff = " ".join(x for x in (eff or "AC only.", r.note()) if x)

@@ -116,6 +116,8 @@ int Dtu_fix_speed_items = 1;
 int Dtu_fix_cursed_scroll = 1;
 int Dtu_fix_potion_class = 1;
 int Dtu_fix_creature_missile = 1;
+int Dtu_fix_bracers_ac = 1;
+int Dtu_fix_ring_magic_armor = 1;
 int Dtu_backstab = 0;
 int Dtu_auto_choice = -1;
 static int Dtu_last_attack_roll = 0;
@@ -256,7 +258,7 @@ static void read_options(void)
 		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
-			Dtu_fix_creature_strength = Dtu_fix_shield_ac = 0;
+			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_ring_magic_armor = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -512,11 +514,26 @@ static int table_ac(dtu_inv_item *e)
 // ASCENT: the numbers that 0xAFB55 tests, as names (dtu_char_update and
 // dtu_char_item_powers use them)
 static int is_shield(dtu_inv_item *e)		{ return armor_is(e, 2, 2) || armor_is(e, 12, 13); }		// 0xAF9CF
-static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || armor_is(e, 39, 42); }		// 0xAF9F3, 0xAF982
+static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || (!Dtu_fix_bracers_ac && armor_is(e, 39, 42)); }		// 0xAF9F3, 0xAF982
 static int is_heavy_armor(dtu_inv_item *e)	{ return armor_is(e, 3, 4) || armor_is(e, 7, 11); }		// 0xB0B0A
 static int is_prot_cloak(dtu_inv_item *e)	{ return armor_is(e, 47, 49); }								// 0xAF930
 static int is_prot_ring(dtu_inv_item *e)	{ return armor_is(e, 0, 0) || armor_is(e, 14, 15); }		// 0xAF9AB
 #define LATHANDER_SPELL	8		// armor 45: USE casts Continual Light (0x37A6A)
+
+// ASCENT: the armor class that the magic of a magic armor (5 to 11) adds to
+// the same armor without magic (Leather Armor 1, Chain Mail 3, Plate Mail
+// 4): -1 for a +1 armor. 0 for other items. Dtu_fix_ring_magic_armor.
+static int magic_armor_bonus(dtu_inv_item *e)
+{
+	static const ubyte base[7] = { 1, 1, 3, 3, 4, 4, 4 };
+	dtu_inv_item b;
+
+	if (!armor_is(e, 5, 11))
+		return 0;
+	b = *e;
+	b.id = base[e->id - 5];
+	return table_ac(e) - table_ac(&b);
+}
 
 // ASCENT: the armor class that an item adds in a slot (DTU_N_SLOTS: the
 // hand), before the rules that need other items (the cloaks and the rings
@@ -800,7 +817,7 @@ void dtu_char_update(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa, *base = &Dtu_char.base;
 	dtu_inv_item *e;
-	int sum = 0, ring_best = 0;
+	int sum = 0, ring_best = 0, armor_bonus = 0, ring_counts;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
 	int ac, dex, missile;
 
@@ -869,12 +886,14 @@ void dtu_char_update(void)
 	}
 
 	// armor. 0xAF9F3: the numbers 5 to 11 are magic armor. 0xAF982: 39 to
-	// 42 are the Bracers of Defense. 0xB0B0A: in the numbers 3, 4 and 7 to
-	// 11 (chain mail, plate mail) three thief skills do not work.
+	// 42 are the Bracers of Defense, magic armor too in 1.3 (0xAFEA6, not
+	// with Dtu_fix_bracers_ac). 0xB0B0A: in the numbers 3, 4 and 7 to 11
+	// (chain mail, plate mail) three thief skills do not work.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_ARMOR]);
 	if (e && e->type == OBJ_ARMOR) {
 		sum += slot_ac(e, DTU_SLOT_ARMOR);
 		magic_armor = is_magic_armor(e);
+		armor_bonus = magic_armor_bonus(e);
 		heavy_armor = is_heavy_armor(e);
 		if (heavy_armor) {								// 0xB0B36
 			pa->hide_in_shadows -= DTU_SKILL_LOSS;
@@ -900,14 +919,15 @@ void dtu_char_update(void)
 	// rings. 0xAF9AB: the numbers 0, 14 and 15 are the Rings of Protection.
 	// No ring adds to magic armor. Of two rings of protection the better one
 	// counts. 21 is the Ring of Health, 26 the Ring of Strength.
+	// ASCENT: Dtu_fix_ring_magic_armor: with magic armor the better of the
+	// ring and the magic of the armor counts (below).
+	ring_counts = !magic_armor || Dtu_fix_ring_magic_armor;
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_RING1]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
 			prot_ring = is_prot_ring(e);
-			if (!magic_armor) {
-				if (prot_ring) ring_best = table_ac(e);
-				else sum += table_ac(e);
-			}
+			if (prot_ring && ring_counts) ring_best = table_ac(e);
+			else if (!prot_ring && !magic_armor) sum += table_ac(e);
 			if (e->id == 21) pa->constitution = DTU_RING_CONSTITUTION;
 			if (e->id == 26) { pa->strength = DTU_RING_STRENGTH; pa->strength_extra = 0; }
 		}
@@ -917,21 +937,21 @@ void dtu_char_update(void)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_RING2]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
-			int this_prot = is_prot_ring(e);
 			int v = table_ac(e);
 
-			prot_ring |= this_prot;
-			if (!magic_armor) {
-				if (prot_ring) { if (v < ring_best) ring_best = v; }
-				else if (!this_prot) sum += v;
-			}
+			prot_ring |= is_prot_ring(e);
+			if (prot_ring && ring_counts) { if (v < ring_best) ring_best = v; }
+			else if (!prot_ring && !magic_armor) sum += v;
 			if (e->id == 21) pa->constitution = DTU_RING_CONSTITUTION;
 			if (e->id == 26) { pa->strength = DTU_RING_STRENGTH; pa->strength_extra = 0; }
 		}
 		else
 			sum += table_ac(e);
 	}
-	sum += ring_best;
+	if (!magic_armor)
+		sum += ring_best;
+	else if (ring_best < armor_bonus)		// only with Dtu_fix_ring_magic_armor
+		sum += ring_best - armor_bonus;
 
 	// lockpicks, for a thief (0xB02BE)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_LOCKPICK]);

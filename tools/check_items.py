@@ -242,6 +242,36 @@ def test_armor_set(t):
 
 
 # ---------------------------------------------------------------------
+# Bracers, magic armor and the protection items; Armor and Shield before
+# the armor (Dtu_fix_bracers_ac, Dtu_fix_ring_magic_armor)
+
+PROTECTION = [
+    "give=15.41.1", "equip=15.41", "give=15.0.1", "equip=15.0", "dump",     # Bracers AC4, Ring of Protection +2
+    "give=15.47.1", "equip=15.47", "dump", "unequip=1",                       # and a Cloak of Protection +1
+    "unequip=3", "give=15.5.1", "equip=15.5", "dump",                         # Leather Armor +1 and the ring +2
+    "unequip=6", "give=15.14.1", "equip=15.14", "dump",                       # Leather Armor +1 and a ring +1
+    "unequip=6", "unequip=3", "cast=2", "dump",                               # Armor, no armor
+    "give=15.1.1", "equip=15.1", "dump", "unequip=3",                         # and Leather Armor (AC 8)
+    "equip=15.41", "dump", "unequip=3",                                       # and Bracers AC4
+    "give=15.39.1", "equip=15.39", "dump", "unequip=3",                       # and Bracers AC8
+    "cast=45", "equip=15.39", "dump", "unequip=3",                            # Shield and Bracers AC8
+    "give=15.4.1", "equip=15.4", "dump",                                      # Shield and Plate Mail (AC 3)
+]
+
+
+def test_protection(t):
+    """Rings and cloaks of protection with the bracers, the better bonus of
+    a ring and magic armor, and the better armor class of the Armor and
+    Shield spells and the worn armor. -origcombat: the rules of 1.3."""
+    d, _, _ = t.run("protection", PROTECTION)
+    o, _, _ = t.run("protection_orig", PROTECTION, ["-origcombat"])
+    acs, orig = [x.ac for x in d], [x.ac for x in o]
+    check(acs == [2, 1, 6, 7, 6, 6, 4, 6, 4, 3], "AC %s" % acs)
+    check(orig == [4, 4, 7, 7, 6, 6, 4, 6, 3, 3], "-origcombat: AC %s" % orig)
+    return "AC %s, 1.3 %s" % (acs, orig)
+
+
+# ---------------------------------------------------------------------
 # A weapon power: the Sword of W'hin (0xB038F)
 
 def test_whin(t):
@@ -272,7 +302,7 @@ def test_misc(t):
     return "Cursed Scroll, Gem of Curing, plot item drop"
 
 
-TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_whin, test_misc]
+TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_protection, test_whin, test_misc]
 
 
 def main():

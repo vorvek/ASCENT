@@ -255,7 +255,12 @@ static void power_lines(int type, int id)
 			case DTU_IP_TRAPS_CLIMB:	line(LT("Sets Find/Remove Traps and Climb Walls to %d%%."), p[i].value); break;
 			case DTU_IP_PROT_CLOAK:	line(LT("No armor class bonus with a shield, magic armor or heavy armor.")); break;
 			case DTU_IP_PROT_RING:		line(LT("Of two rings of protection only the better one counts.")); break;
-			case DTU_IP_RING_NO_MAGIC:	line(LT("No armor class bonus with magic armor.")); break;
+			case DTU_IP_RING_NO_MAGIC:	// ASCENT: Dtu_fix_ring_magic_armor
+				if (Dtu_fix_ring_magic_armor)
+					line(LT("With magic armor only the better bonus counts, of the ring or of the armor."));
+				else
+					line(LT("No armor class bonus with magic armor."));
+				break;
 			case DTU_IP_ARMORING:		line(LT("A mage gets 1 better armor class after Armor, Magical Vestment and Shield.")); break;
 			case DTU_IP_WIZARDRY:		line(LT("Doubles the mage spell slots of levels 1 to 3.")); break;
 			case DTU_IP_USE_SPELL:		line(LT("Use: casts %s around you."), dtu_spell_name(p[i].value)); break;

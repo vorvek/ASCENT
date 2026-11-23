@@ -230,6 +230,12 @@ skills for some items.
      (3, 4, 7 to 11).
    - Rings of Protection (armor 0, 14, 15): with magic armor no ring counts. Of
      two rings of protection the better one counts.
+   - ASCENT: `Dtu_fix_bracers_ac` (default, `-origcombat` clears it): the
+     Bracers are no magic armor for these two rules (0xAFEA6 ors the bracers
+     test into the magic armor flag). `Dtu_fix_ring_magic_armor` (default,
+     `-origcombat` clears it): with magic armor the better of the ring and the
+     magic of the armor counts (the armor class of the armor minus that of
+     Leather Armor, Chain Mail or Plate Mail). Decisions of the user.
 3. Items that set a value while worn: Girdle 38 strength 19, Gauntlets 52 and
    Ring 26 strength 18 (percent 0), Ring 21 constitution 18, Gloves 50 dexterity
    plus 4, 2 or 1 (table 0x146240) and Open Locks plus 10 for a thief (37 for
