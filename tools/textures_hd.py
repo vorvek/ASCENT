@@ -60,12 +60,14 @@ MODELS_DIR = None    # --models; else <out>/models, then gamedata/hd/models
 sys.path.insert(0, HERE)
 import egg  # noqa: E402
 
-VERSION = 4          # bump when the processing changes; written to .method, so
+VERSION = 5          # bump when the processing changes; written to .method, so
                      # that a run makes the files of an archive again
                      # 2: wall textures use the "detail" method
                      # 3: tiling textures padded by TILE_PAD (a 3x3 tiling)
                      # 4: soft alpha edges (ALPHA_VERSION), animations with
                      #    a common static part (ANIM_VERSION)
+                     # 5: the door clips keep the reference only where the
+                     #    pixels are equal (anim_merge)
 CACHE_VERSION = 2    # part of the cache key of every bitmap; the key of a
                      # tiling bitmap also has TILE_PAD, so a change of the
                      # tiling padding does not redo the other bitmaps
@@ -86,6 +88,11 @@ ALPHA_SIGMA = 1.0
 # a niche: 64 to 98 percent; lava and waterfalls change everywhere and keep
 # the result of each frame).
 ANIM_LIGHT = 40
+# A wall clip ($WCLIP, a door) moves its picture: a part of the door slides
+# over the place of another part of a similar color. With ANIM_LIGHT the
+# result of the reference (its planks and bands) stayed there while the door
+# opened. A wall clip keeps the reference only where the pixels are equal.
+ANIM_LIGHT_WCLIP = 0
 # the color difference to the reference is blurred with this sigma (source
 # pixels): the light of a flame is drawn as a dither that changes from frame
 # to frame, which would show as a grain at 4x
@@ -215,8 +222,9 @@ def read_archive(path):
     return out
 
 
-def wall_names():
-    """Base names of the bitmaps that the tables use as wall textures."""
+def wall_names(clips=None):
+    """Base names of the bitmaps that the tables use as wall textures. clips:
+    a set that gets the base names of the wall clips ($WCLIP)."""
     names = set()
     bins = glob.glob(os.path.join(UNPACKED, "*.BIN")) + glob.glob(os.path.join(GAME_DIR, "*.BIN"))
     for p in bins:
@@ -257,6 +265,8 @@ def wall_names():
                     lw = wd.lower()
                     if lw.endswith(".bbm") or lw.endswith(".abm"):
                         names.add(lw[:-4])
+                        if section == "$WCLIP" and clips is not None:
+                            clips.add(lw[:-4])
     return names
 
 
@@ -640,13 +650,19 @@ def anim_groups(bitmaps):
     return out
 
 
-def anim_key(raw_keys, i):
-    """The cache key of frame i of an animation: its own key and the keys of all frames."""
-    h = hashlib.sha1(("anim%d|%g|%g|%g|%g|%d|" % (ANIM_VERSION, ANIM_LIGHT, ANIM_LIGHT_SIGMA, ANIM_RAMP0,
+def anim_key(raw_keys, i, limit=ANIM_LIGHT):
+    """The cache key of frame i of an animation: its own key, the keys of all
+    frames and the limit of anim_merge."""
+    h = hashlib.sha1(("anim%d|%g|%g|%g|%g|%d|" % (ANIM_VERSION, limit, ANIM_LIGHT_SIGMA, ANIM_RAMP0,
                                                    ANIM_RAMP, i)).encode())
     for k in raw_keys:
         h.update(k.encode())
     return h.hexdigest()
+
+
+def anim_light(base, clips):
+    """The limit of anim_merge for the animation base (clips: the wall clips)."""
+    return ANIM_LIGHT_WCLIP if base.lower() in clips else ANIM_LIGHT
 
 
 def static_weight(static, tiling):
@@ -678,7 +694,7 @@ def static_weight(static, tiling):
     return np.clip((d - ANIM_RAMP0) / ANIM_RAMP, 0.0, 1.0)
 
 
-def anim_merge(jobs, results):
+def anim_merge(jobs, results, limit=ANIM_LIGHT):
     """Make the frames of one animation agree where the source pixels agree.
 
     Each frame is upscaled alone, so the parts that do not move (the niche
@@ -695,7 +711,8 @@ def anim_merge(jobs, results):
     pixels (static_weight), so no seam shows. A pixel that no frame changes
     gets the result of the reference in every frame. Equal frames stay
     equal. jobs: the jobs of the frames (rgb, opaque); results: RGBA uint8
-    per frame. Returns the new list."""
+    per frame; limit: the limit instead of ANIM_LIGHT (ANIM_LIGHT_WCLIP for a
+    door). Returns the new list."""
     import numpy as np
     import torch
     S = SCALE
@@ -713,7 +730,7 @@ def anim_merge(jobs, results):
             out.append(results[r])
             continue
         d = rgb[k] - rgb[r]
-        big = ((np.abs(d).max(-1) > ANIM_LIGHT) & (op[k] | op[r])) | (op[k] != op[r])
+        big = ((np.abs(d).max(-1) > limit) & (op[k] | op[r])) | (op[k] != op[r])
         d[big] = 0.0
         d[~(op[k] | op[r])] = 0.0
         wt = static_weight(~big, tiling)[..., None] if big.any() else np.ones((h * S, w * S, 1), np.float32)
@@ -839,7 +856,7 @@ def halo_score(o4, up):
 
 # ---------------------------------------------------------------- main work
 
-def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats):
+def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats, clips=frozenset()):
     import numpy as np
     from PIL import Image
     t0 = time.time()
@@ -885,7 +902,7 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats):
         if m.base in groups:
             if m.base not in anims:
                 gj = [job_of(f) for f in groups[m.base]]
-                keys = [anim_key([g.key for g in gj], i) for i in range(len(gj))]
+                keys = [anim_key([g.key for g in gj], i, anim_light(m.base, clips)) for i in range(len(gj))]
                 anims[m.base] = (gj, keys, {})
             gj, keys, want = anims[m.base]
             i = [f.frame for f in groups[m.base]].index(m.frame)
@@ -940,7 +957,7 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats):
         upscale_jobs(list(uniq.values()), ups)
         done += len(uniq)
         progress(done)
-        res = anim_merge(gj, [uniq[g.key].result[0] for g in gj])
+        res = anim_merge(gj, [uniq[g.key].result[0] for g in gj], anim_light(base, clips))
         for i, dsts in want.items():
             cp = os.path.join(cache_dir, keys[i] + ".png")
             save_png(cp, res[i])
@@ -985,7 +1002,8 @@ def run_all(args):
             if w not in archives:
                 sys.exit("no archive %s" % w)
         order = [n for n in order if n in want]
-    walls = wall_names()
+    clips = set()
+    walls = wall_names(clips)
     cache_dir = os.path.join(args.out, "textures", ".cache")
     os.makedirs(cache_dir, exist_ok=True)
     ups = Upscaler(args.out)
@@ -993,7 +1011,7 @@ def run_all(args):
     t0 = time.time()
     print("method %s, %d archives, %d wall texture names" % (args.method, len(order), len(walls)), flush=True)
     for n in order:
-        process_archive(n, archives[n], args, ups, pal, walls, cache_dir, stats)
+        process_archive(n, archives[n], args, ups, pal, walls, cache_dir, stats, clips)
     c = stats.get("color", [])
     if c:
         worst = max(c, key=lambda r: r[3])

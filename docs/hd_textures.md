@@ -395,6 +395,38 @@ without the flame fell from 2.96 to 1.18 of 255, the high-pass part (the shimmer
 of the shapes) from 1.47 to 0.28; a wall area beside the niche has 0.00 in both,
 so the view did not move.
 
+### Doors (version 5)
+
+The report: a door of the Shadow Thieves (THIEF1, `up3` on `stone61`, wall 22
+of segment 24) left a part of its texture in place while it opened. The port
+has no pass that uses the previous frame; the fault was in the files. A door
+clip moves its picture: the planks and bands slide up over the place where
+other planks were. A plank pixel that slid over a plank pixel of a similar
+color differs from the reference frame by less than `ANIM_LIGHT`, so it got the
+result of the reference: the bands and the grain of the reference frame stayed
+in place, faint, in every frame (`up3#7` to `#9` showed the bands of `up3#5`;
+the closed `up3#0` had a smeared lower band).
+
+The wall clips (`$WCLIP`, all doors: 40 of the 81 animations, 8244 archive
+files, 471 distinct frames) now keep the result of the reference only where
+the pixels are equal (`ANIM_LIGHT_WCLIP` = 0): the frame of the door stays
+steady, the moving part keeps the result of its own frame. The effects
+(`$ECLIP`: the torches, lights, portals, magma) keep `ANIM_LIGHT`. Their cache
+keys do not change.
+
+Test: the 11 door clips of THIEF1 made again with `--names` in a copy of the
+set; a sheet of the 11 frames of `up3` (original, before, after) shows no band
+of the reference in the frames after. In the game (THIEF1 `-testpos
+15.6,-4,410,180 -testmove wait:20,use:1,wait:80`, screenshots at frames 20 to
+60) the closed door has its own lower band and grain; the reference frame is
+the same in both sets.
+
+## Making a set of version 5
+
+One run: `python -I tools/textures_hd.py`. Version 5 marks every archive
+directory as stale, so every file is linked again from the cache; only the 471
+frames of the door clips are upscaled again.
+
 ## Making a set of version 4
 
 One run: `python -I tools/textures_hd.py` (all archives, no `--force`). Version 4
