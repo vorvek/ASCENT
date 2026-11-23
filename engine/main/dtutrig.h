@@ -172,6 +172,9 @@ extern int Dtu_fix_disable_trap;
 // of the player before the move. 1 (default): the center of the segment
 // where the player arrives. -origtrig clears it.
 extern int Dtu_fix_warp_overlap;
+// D-131: the trap clock. 0: as 1.3 (0x10A0F3), the real time, which runs
+// on in a pause. 1 (default): the game time. -origtrig clears it.
+extern int Dtu_fix_trap_pause;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;
