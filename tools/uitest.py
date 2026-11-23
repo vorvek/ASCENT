@@ -606,6 +606,19 @@ def session_log(d):
     return ""
 
 
+def test_cheat_twice(t):
+    """A cheat code typed two times in a row acts two times
+    (Dtu_fix_cheat_index); with -origui it acts once, because zazb keeps its
+    index after it acted (0x432A3, D-123)."""
+    lines = ["gamekeys", "wait 20", "move 300 200"] + type_keys("zazbzazb") + ["wait 5"]
+    _, d = t.run("cheat_twice", lines, extra=["-fixedfps", "30"])
+    n = session_log(d).count("cheat zazb")
+    assert n == 2, "zazb typed twice acted %d times" % n
+    _, d = t.run("cheat_twice_orig", lines, extra=["-fixedfps", "30", "-origui"])
+    n = session_log(d).count("cheat zazb")
+    assert n == 1, "-origui: zazb typed twice acted %d times" % n
+
+
 def test_cheat_codes(t):
     """The cheat codes of 1.3 act (0x4324E, 0x428B9 to 0x42BED): zazb,
     glassy, and eightisgreat with its message 0x125783 (its two I keys open
