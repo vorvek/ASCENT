@@ -20,7 +20,7 @@ NL='
 '
 SETUP_VERSION=1
 RECORD_NAME=install-record.txt
-PACK_ORDER="lang_es textures ui movies"
+PACK_ORDER="lang_es textures ui movies sounds"
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 
@@ -50,6 +50,7 @@ Options (each one answers a question of the setup):
   --textures yes|no  the upscaled textures and interface (download)
   --movies yes|no    the upscaled movies (download)
   --spanish yes|no   the Spanish text pack (download; yes with --lang es)
+  --sounds yes|no    the miss sounds of the port (download)
   --yes              no questions: take the default of each answer not given
   --url URL          another content server (the folder of manifest.txt)
   --patch PATH       the 1.3 patch archive or folder, instead of the download
@@ -185,6 +186,7 @@ OPT_LANG=
 OPT_TEXTURES=
 OPT_MOVIES=
 OPT_SPANISH=
+OPT_SOUNDS=
 OPT_YES=no
 OPT_URL=${ASCENT_CONTENT_URL:-}
 OPT_PATCH=
@@ -208,6 +210,7 @@ while [ $# -gt 0 ]; do
 		--textures) need_arg "$1" $#; OPT_TEXTURES=$(yesno "$2") || die "--textures takes yes or no."; shift 2 ;;
 		--movies) need_arg "$1" $#; OPT_MOVIES=$(yesno "$2") || die "--movies takes yes or no."; shift 2 ;;
 		--spanish) need_arg "$1" $#; OPT_SPANISH=$(yesno "$2") || die "--spanish takes yes or no."; shift 2 ;;
+		--sounds) need_arg "$1" $#; OPT_SOUNDS=$(yesno "$2") || die "--sounds takes yes or no."; shift 2 ;;
 		--url) need_arg "$1" $#; OPT_URL=$2; shift 2 ;;
 		--patch) need_arg "$1" $#; OPT_PATCH=$2; shift 2 ;;
 		--yes|-y) OPT_YES=yes; shift ;;
@@ -584,10 +587,12 @@ done
 WANT_TEX=no
 WANT_MOV=no
 WANT_ES=no
+WANT_SND=no
 if [ "$HAVE_MANIFEST" = yes ]; then
 	tex_size=$(($(pack_size textures) + $(pack_size ui)))
 	mov_size=$(pack_size movies)
 	es_size=$(pack_size lang_es)
+	snd_size=$(pack_size sounds)
 	if [ "$tex_size" -gt 0 ]; then
 		if [ -n "$OPT_TEXTURES" ]; then WANT_TEX=$OPT_TEXTURES; else
 			ask_yn "Upscaled textures and interface, for the GPU renderer (download, $(mb "$tex_size") MB)?" yes
@@ -609,6 +614,12 @@ if [ "$HAVE_MANIFEST" = yes ]; then
 			WANT_ES=$ANSWER
 		fi
 	fi
+	if [ "$snd_size" -gt 0 ]; then
+		if [ -n "$OPT_SOUNDS" ]; then WANT_SND=$OPT_SOUNDS; else
+			ask_yn "Miss sounds: the sound of a melee attack that misses (download, $(((snd_size + 1023) / 1024)) KB)?" yes
+			WANT_SND=$ANSWER
+		fi
+	fi
 fi
 if [ "$GAME_LANG" = es ] && [ "$WANT_ES" = no ]; then
 	warn "The content server has no Spanish text pack: the game starts in English."
@@ -619,6 +630,7 @@ PACKS=
 [ "$WANT_ES" = no ] || PACKS="$PACKS lang_es"
 [ "$WANT_TEX" = no ] || PACKS="$PACKS textures ui"
 [ "$WANT_MOV" = no ] || PACKS="$PACKS movies"
+[ "$WANT_SND" = no ] || PACKS="$PACKS sounds"
 
 # ---------------------------------------------------------------------
 # 4. The summary and the free space
