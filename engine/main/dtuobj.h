@@ -544,6 +544,10 @@ int dtu_use_object(object *player);
 // pickup). The text starts with the game time and the frame number.
 void dtu_obj_log(char *format, ...);
 
+// ASCENT: test (-chartest stepback=N.D): when creature N starts its next
+// attack, the player moves D units away from it (tools/check_reach.py).
+void dtu_obj_test_stepback(int objnum, int dist);
+
 // Scenery (0xA6ACB, 0x9FA41): settings, see dtuobj.c. -origobj clears them.
 extern int Dtu_fix_cant_break;		// 1: the keyword cant_break works
 extern int Dtu_fix_push_body;		// 1: pushed scenery and the bodies: no stop inside of the player

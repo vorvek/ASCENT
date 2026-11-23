@@ -306,6 +306,33 @@ the fire frame on (models.md, "The missile in the hand").
      weapon type, hit point 0x30EF58), then byte 0x1AF = 0.
    - player (type 4): creatures only (ai.md).
 
+### The swing and the look pitch (verified, 2026-11-23)
+
+- The look pitch is the word at 0x13D9AE. It changes only the view
+  (`render_frame` 0x76FC4), the place of the arms (0x67D04), the missile
+  direction (0x562E8, for the player object only) and the arms offset in
+  `ai_animation_step` (0x11640, 0x11657). The player object orientation (+0x20)
+  has the heading only.
+- The hit window copies the orientation (+0x20) transposed to +0x44 (0x6D129 to
+  0x6D12F). 0x7473F rotates `weapon_center[frame]` with +0x44 (0x74821, 0x7483F)
+  and adds the position (+0x14, 0x74849). No instruction of 0x6CFF8 or 0x7473F
+  reads 0x13D9AE. So the swing goes where a level look goes, at every pitch.
+- Start and direction: the position moved `sqrt(2)` forward along the heading,
+  plus the rotated weapon center; the ray goes from the center away from that
+  point by the sphere radius r. The vertical reach is r (query +0x18). For the
+  Broad Sword in HMC the hit frames 6 to 8 put the center 2.8 to 7.0 below the
+  eye and 3.8 to 4.8 in front of it, r 2.6 to 2.8: the swing covers the low
+  front, not the center of the view.
+- Result: a GiantRat (body radius 5.27, half height 1.45, its top 11.45 below
+  the eye of the human fighter) is hit by the level Broad Sword at few
+  distances (none from 2 to 9 in front in CLAN3), and looking down at it does
+  not help. The Short Sword and the Dagger (r times 8, about 17) reach it.
+- Missiles: the start is the position plus 2.0 up (0x562C1), the direction
+  `rotate((0,0,1), angles_2_matrix(look_pitch,0,0) * orient)` (0x562E8 to
+  0x56323). Thrown weapons, arrows, bolts and spell missiles all go through
+  0x561DA, so they all follow the look pitch. The start is 3.0 below the eye
+  (eye_offset 5.0): a missile goes a little under the center of the screen.
+
 ### One hit per swing? (verified, a defect of 1.3)
 
 0x278B5 has a guard: if byte 0x1AF of the attacker is not 0 it prints
@@ -1980,6 +2007,60 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   wall; Magic Missile (SG0.SG) at `25,-1,215,0` hint 1, the missile homes on the
   skeleton; Burning Hands at the wall hint 0, the missiles hit the wall.
 
+### The swing at the look pitch and a committed creature attack (2026-11-23)
+
+- `Dtu_fix_swing_pitch` (dtucombat.c `swing_test`, on by default). Each hit
+  frame keeps the sphere test of 1.3 and adds the view ray: a ray from the eye
+  (the center of the body plus eye_offset) along the view with the look pitch,
+  as long as the distance from the eye to the end of the swing ray of that
+  frame at pitch 0, with the vertical radius r of the sphere, as the swing
+  query. A wall, the floor or the ceiling before the body stops it. The ray
+  enters a body through its top (the rule of `Dtu_fix_body_ray`). The sphere
+  wins when it touches an object. Looking up, the sphere and its ray turn with
+  the pitch about the eye; a wall between the eye and the turned center moves
+  the center to 0.25 before it. Looking down the sphere stays: turned, it would
+  go under the body. At pitch 0 the sphere is the one of 1.3, so each creature
+  that the level swing of 1.3 hits is still hit. The target hint uses the same
+  `swing_test`, so it shows exactly what the swing hits at each pitch.
+- The negative case: a low body (its top more than 4.0 below the eye) in front
+  of the feet is not hit by a swing at the ceiling with a Broad Sword or a Mace;
+  1.3 hits it when the level swing reaches it. The Dagger and the Short Sword
+  keep their vertical reach of about 17 at every pitch, so they still hit it.
+- `Dtu_fix_attack_commit` (dtuobj.c `weapon_test`, on by default). 1.3 and the
+  port before: a creature starts a melee attack when the player is within both
+  radii plus 2.0 (0x1599F); the hit and the roll against the armor class
+  (0x27D82, 0x29A9C, 0x2A7F3) come only when the weapon sphere of a model frame
+  touches the player, from frame 8 of the attack state to its end (0x6CFF8 from
+  `monster_physics` 0x9F2B4). A player who steps out of the sphere before that
+  takes no roll: a step back avoids each melee attack. Corrected: in each frame
+  before frame 8 the attack is tested; with the player in reach, in front of the
+  creature (facing dot 0.75, the test of 0x1396E) and no wall between the
+  centers, it is committed. When the sphere misses, the roll is made at the
+  first hit frame with the player out of reach, or at the last two frames of the
+  state. It is lost if the creature dies, is held, or loses the player
+  (invisible, hidden in shadows), or if the player is farther than twice the
+  reach or behind a wall or a closed door at that moment. The walk speed limit
+  is 49.3 and the hit comes about half a swing (0.5 s) after the start, so a
+  player who backs off at once covers some 10 to 20: twice the reach (about 28
+  for a Zombie) keeps the hit for a step back and loses it for a run away. The
+  touch spell of a lich (0x2A637) follows each melee hit that does damage, so a
+  committed hit casts it too. A missile is an object: a player who leaves its
+  path is not hit. The touches of `ai_fire_laser_at_player` (0x11B06, a special
+  attack or a spell caster in reach) are made at once at a fire frame, with a
+  reach test at that moment: no change.
+- The swing of the player keeps the rule of 1.3: the sphere test of the frames
+  6 to 8 (6/16 to 9/16 of the swing). A creature that steps out of the sphere
+  before that is not hit. The window is short, the hint shows the target before
+  the swing, and a creature chases the player to its stop distance, which is in
+  the reach, so a commit for the player would change little.
+- Test aids: `-chartest reach=N.M` (the body turns with the heading only; M 0
+  looks at the center of creature N from the eye, 1 level, 2 fully up, 3 fully
+  down; the log gives the swing of each frame, the contact, the contact of 1.3,
+  the hint), `pitch=P` (the look pitch, fixang, + is down), `stepback=N.D` (when
+  the next attack of creature N becomes valid, the player moves D away).
+  `tools/check_reach.py` has a pitch pass, a level pass and a negative pass,
+  `--weapon` and `--commit`.
+
 ## C2. Spells
 
 - Books: the two spell lists of a save game of the original (`-char FILE`). New spells
@@ -2136,6 +2217,8 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_rat_hit` | dtucombat.c, fvi.c, dtuobj.c | no swing, missile or spell missile of the player reaches a rat: the "Rat" of each table has `pass_thru`, 0x6A102 sets its object flag 0x40 at each load, and fvi_sub skips that flag (0x3F38F). A rat dies only when it runs into a player with boots (0x26FE0, see objects.md "Rats") | the swing, the missiles and the target hint of the player reach a rat; the player still walks through rats |
 | `Dtu_fix_speed_items` | dtuchar.c, dtucombat.c | the Short Bow of Speed and the Short Sword of Quickness have no power (`pc_spell1` is no keyword, `PC_spell` of a melee weapon is not read) | the arrows of the bow in the bow slot and the swings of the sword in the hand are twice as fast; no Haste effect, not more with Haste, normal with Slow (A8) |
 | `Dtu_fix_body_ray` | dtucombat.c, fvi.c, dtuobj.c | the body test of a missile (query 0xA05AD, 0x3EE70, `body_query` 0x4F7D5) fails in the infinite cylinder test 0x4F4B6 when the entry distance is below 0, before the caps clip the ray: a missile that starts above a body and within its radius misses it (31 creatures of MINE in `check_reach.py --origcombat`) | for a missile the caps decide: the ray enters through the top of the body (`check_reach.py`: no miss in MINE, BONES, CLAN3) |
+| `Dtu_fix_swing_pitch` | dtucombat.c | the swing ignores the look pitch (0x6CFF8, 0x7473F use the orientation +0x20): a low creature close to the player and at the center of the screen is not hit when the player looks down at it | the view ray adds the body at the center of the view within the reach of the frame; looking up the sphere turns with the view (C1) |
+| `Dtu_fix_attack_commit` | dtuobj.c | the roll of a creature melee attack is made only when its weapon sphere touches the player: a step back during the animation avoids it | an attack that starts with the player in reach, in front and in the open is rolled even if the player steps back, unless the player is farther than twice the reach, behind a wall, hidden, or the creature dies or is held (C1) |
 | `Dtu_fix_speed_items` | dtuchar.c | the Short Bow of Speed and the Short Sword of Quickness have no power (`pc_spell1` is no keyword, `PC_spell` of a melee weapon is not read) | Haste while the bow is in the bow slot or the sword in the hand (A8) |
 | `Dtu_fix_chill_touch` | dtuspell.c | not a correction: the table fixup 0x1A344 casts Chill Touch on the caster in 1.3 (0x1A65E, 0x56D36); `-origcombat` does not clear it | the cast is on the caster also with `-rawtables`: Chill Touch for L + 3 minutes |
 | `Dtu_fix_stoneskin_word` | dtuspell.c | Stone Skin clears all other effect bits | only its bit is set |

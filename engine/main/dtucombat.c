@@ -58,6 +58,8 @@ int Dtu_fix_haste_attack = 1;
 int Dtu_fix_missile_rate = 1;
 int Dtu_fix_rat_hit = 1;
 int Dtu_fix_body_ray = 1;
+int Dtu_fix_swing_pitch = 1;
+int Dtu_fix_attack_commit = 1;
 
 extern char Dtu_player_archive[16];		// dtugame.c
 
@@ -572,7 +574,9 @@ typedef struct {
 	int		fate;			// of the wall query
 	fvi_info	hit;
 	vms_vector center;	// the sphere
+	vms_vector p1;		// the end of its ray
 	fix		radius;
+	int		view_ray;	// ASCENT: the object was found by the view ray (Dtu_fix_swing_pitch)
 } swing_contact;
 
 // 1 if the swing stops at the contact: an object, or a wall whose side is
@@ -582,6 +586,162 @@ static int swing_stops(swing_contact *sc)
 	return sc->object >= 0 || (sc->fate == HIT_WALL && sc->hit.hit_side != 1 && sc->hit.hit_side != 3);
 }
 
+static fix body_eye_offset(void);
+
+// The eye of the arms: the center of the body plus eye_offset along uvec
+// (as improved_body_place, without the view bob)
+static void swing_eye(object *obj,vms_vector *eye)
+{
+	*eye = obj->pos;
+	vm_vec_scale_add2(eye,&obj->orient.uvec,body_eye_offset());
+}
+
+// The view matrix of render_frame: orient * angles_2_matrix(pitch,0,0)
+static void swing_view(object *obj,fixang pitch,vms_matrix *view)
+{
+	vms_angvec a;
+	vms_matrix head;
+
+	a.p = pitch; a.b = 0; a.h = 0;
+	vm_angles_2_matrix(&head,&a);
+	vm_matrix_x_matrix(view,&obj->orient,&head);
+}
+
+// ASCENT: Dtu_fix_swing_pitch (dtucombat.h), looking up. The center of the
+// sphere and the end of its ray (p1) are turned with the look pitch about
+// the eye: the point at pitch 0 in the space of the player is placed in the
+// view matrix. The distance from the eye and the length of the ray stay. If
+// a wall, the floor or the ceiling is between the eye and the center, the
+// center moves to 0.25 before it on that line and the ray keeps its
+// direction and length. Returns the segment of the center, -1 for none.
+static int swing_pitch_turn(object *obj,fixang pitch,vms_vector *center,vms_vector *p1)
+{
+	vms_matrix view;
+	vms_vector eye, d, l, ray;
+	fvi_query fq;
+	fvi_info hit;
+	int i, seg;
+
+	swing_view(obj,pitch,&view);
+	swing_eye(obj,&eye);
+	for (i=0;i<2;i++) {
+		vms_vector *p = i ? p1 : center;
+
+		vm_vec_sub(&d,p,&eye);
+		l.x = vm_vec_dot(&d,&obj->orient.rvec);
+		l.y = vm_vec_dot(&d,&obj->orient.uvec);
+		l.z = vm_vec_dot(&d,&obj->orient.fvec);
+		*p = eye;
+		vm_vec_scale_add2(p,&view.rvec,l.x);
+		vm_vec_scale_add2(p,&view.uvec,l.y);
+		vm_vec_scale_add2(p,&view.fvec,l.z);
+	}
+	vm_vec_sub(&ray,p1,center);
+
+	seg = find_point_seg(&eye,obj->segnum);
+	if (seg < 0)
+		seg = obj->segnum;
+	fq.p0 = &eye;
+	fq.p1 = center;
+	fq.startseg = seg;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&hit) == HIT_WALL) {
+		fix len;
+
+		vm_vec_sub(&d,&hit.hit_pnt,&eye);
+		len = vm_vec_normalize(&d);
+		len = len > F1_0/4 ? len - F1_0/4 : 0;
+		vm_vec_scale_add(center,&eye,&d,len);
+		vm_vec_add(p1,center,&ray);
+	}
+	return find_point_seg(center,seg);
+}
+
+// The objects of the swing query (flag 1 of the query of the executable):
+// each body, with the object test of the query (0x3EE70,
+// dtu_body_query_test in fvi.c), horizontal radius 0 and vertical radius
+// rad_v. The nearest contact wins, as in fvi_sub. Returns the object or -1.
+static int swing_objects(object *obj,vms_vector *p0,vms_vector *p1,fix rad_v,vms_vector *ip_out,fix *d_out)
+{
+	int i, best = -1;
+	fix best_d = 0x7fffffff;
+	vms_vector ip;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+		fix d;
+
+		if (o == obj || (o->type != OBJ_ROBOT && o->type != OBJ_DRESSING))
+			continue;
+		// ASCENT: Dtu_fix_revive: the fallen body of a creature that can get
+		// up is hit too (dtu_creature_down_swing)
+		if (o->flags & OF_SHOULD_BE_DEAD)
+			continue;
+		if ((o->flags & OF_DESTROYED) && !dtu_creature_down(o))
+			continue;
+		if (vm_vec_dist_quick(&o->pos,p0) > i2f(40))
+			continue;
+		Fvi_dtu_player_attack = (obj == ConsoleObject);	// ASCENT: Dtu_fix_rat_hit
+		{
+			int dead = o->flags & OF_DESTROYED;
+
+			o->flags &= ~OF_DESTROYED;
+			d = dtu_body_query_test(&ip,p0,p1,0,rad_v,o);
+			o->flags |= dead;
+		}
+		Fvi_dtu_player_attack = 0;
+		if (d > 0 && d < best_d) {
+			best_d = d;
+			best = i;
+			*ip_out = ip;
+		}
+	}
+	*d_out = best_d;
+	return best;
+}
+
+// ASCENT: Dtu_fix_swing_pitch (dtucombat.h), the view ray. A ray from the
+// eye along the view (with the look pitch) to the distance from the eye of
+// the end of the swing ray of this frame at pitch 0 (reach), against the
+// bodies as the swing query tests them (horizontal radius 0, the vertical
+// radius of the sphere, rad_v), and the ray enters a body through its cap,
+// as a missile with Dtu_fix_body_ray. Any wall, the floor or the ceiling
+// before the body stops it. Returns the object or -1.
+static int swing_view_ray(object *obj,fix reach,fix rad_v,vms_vector *ip)
+{
+	vms_matrix view;
+	vms_vector eye, end;
+	fvi_query fq;
+	fvi_info hit;
+	int seg, best;
+	fix d;
+
+	swing_eye(obj,&eye);
+	seg = find_point_seg(&eye,obj->segnum);
+	if (seg < 0)
+		return -1;
+	swing_view(obj,Dtu_look_pitch,&view);
+	vm_vec_scale_add(&end,&eye,&view.fvec,reach);
+	Fvi_dtu_missile = 1;
+	best = swing_objects(obj,&eye,&end,rad_v,ip,&d);
+	Fvi_dtu_missile = 0;
+	if (best < 0)
+		return -1;
+	fq.p0 = &eye;
+	fq.p1 = &end;
+	fq.startseg = seg;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&hit) == HIT_WALL && vm_vec_dist(&hit.hit_pnt,&eye) < d)
+		return -1;
+	return best;
+}
+
 // The weapon sphere test of 0x6CFF8 for one frame of the arms model, with no
 // effect on the game. The hit test of the swing and the target hint use it.
 // Returns 0 if the frame has no test (no weapon sphere).
@@ -589,11 +749,10 @@ static int swing_test(int frame,int weapon,swing_contact *sc)
 {
 	object *obj = ConsoleObject;
 	polymodel *po = view_po();
-	int fate, i, seg;
-	vms_vector test_pos, center, ofs, dir, p1, ip;
+	int fate = HIT_NONE, seg;
+	vms_vector test_pos, center, ofs, dir, p1, eye;
 	vms_matrix m;
-	fix radius, best_d = 0x7fffffff;
-	fvi_query fq;
+	fix radius, best_d = 0x7fffffff, reach;
 
 	if (po == NULL || !(po->box_flags & 1) || !(po->box_flags & 2) || po->weapon_center == NULL)
 		return 0;
@@ -621,71 +780,69 @@ static int swing_test(int frame,int weapon,swing_contact *sc)
 	if (big_sphere_weapon(weapon))
 		radius *= 8;
 
-	seg = find_point_seg(&center,obj->segnum);
-	if (seg < 0)
-		return 0;
-
 	vm_vec_sub(&dir,&center,&test_pos);
 	vm_vec_normalize_quick(&dir);
 	vm_vec_scale_add(&p1,&center,&dir,radius);
+	swing_eye(obj,&eye);
+	reach = vm_vec_dist(&p1,&eye);
 
-	// 0x6D312 to 0x6D353: the query has the horizontal radius 0 (+0x14)
-	// and the vertical radius r (+0x18). fvi_sub (0x3F58C) then tests the
-	// walls with 1.0, the floor with 0 and the ceiling with 1.5 r.
-	fq.p0 = &center;
-	fq.p1 = &p1;
-	fq.startseg = seg;
-	fq.rad = 0;
-	fq.thisobjnum = obj-Objects;
-	fq.ignore_obj_list = NULL;
-	fq.flags = 0;
-	Fvi_dtu_body = 4;
-	Fvi_dtu_rad2 = radius;
-	fate = find_vector_intersection(&fq,&sc->hit);
-	Fvi_dtu_body = 0;
-	Fvi_dtu_rad2 = 0;
-	sc->fate = fate;
+	// ASCENT: Dtu_fix_swing_pitch (dtucombat.h): looking up, the sphere and
+	// its ray turn with the look pitch about the eye
+	if (Dtu_fix_swing_pitch && Dtu_look_pitch < 0)
+		seg = swing_pitch_turn(obj,Dtu_look_pitch,&center,&p1);
+	else
+		seg = find_point_seg(&center,obj->segnum);
+	if (seg < 0 && !Dtu_fix_swing_pitch)
+		return 0;
+
 	sc->object = -1;
 	sc->center = center;
+	sc->p1 = p1;
 	sc->radius = radius;
+	sc->view_ray = 0;
+	sc->hit.hit_type = HIT_NONE;
+	sc->hit.hit_side = -1;
+	sc->hit.hit_seg = -1;
+	if (seg >= 0) {
+		fvi_query fq;
 
-	// The objects (flag 1 of the query of the executable): each body, with
-	// the object test of the query (0x3EE70, dtu_body_query_test in fvi.c).
-	// The nearest contact wins, as in fvi_sub.
-	for (i=0;i<=Highest_object_index;i++) {
-		object *o = &Objects[i];
-		fix d;
+		// 0x6D312 to 0x6D353: the query has the horizontal radius 0 (+0x14)
+		// and the vertical radius r (+0x18). fvi_sub (0x3F58C) then tests the
+		// walls with 1.0, the floor with 0 and the ceiling with 1.5 r.
+		fq.p0 = &center;
+		fq.p1 = &p1;
+		fq.startseg = seg;
+		fq.rad = 0;
+		fq.thisobjnum = obj-Objects;
+		fq.ignore_obj_list = NULL;
+		fq.flags = 0;
+		Fvi_dtu_body = 4;
+		Fvi_dtu_rad2 = radius;
+		fate = find_vector_intersection(&fq,&sc->hit);
+		Fvi_dtu_body = 0;
+		Fvi_dtu_rad2 = 0;
 
-		if (o == obj || (o->type != OBJ_ROBOT && o->type != OBJ_DRESSING))
-			continue;
-		// ASCENT: Dtu_fix_revive: the fallen body of a creature that can get
-		// up is hit too (dtu_creature_down_swing)
-		if (o->flags & OF_SHOULD_BE_DEAD)
-			continue;
-		if ((o->flags & OF_DESTROYED) && !dtu_creature_down(o))
-			continue;
-		if (vm_vec_dist_quick(&o->pos,&center) > i2f(40))
-			continue;
-		Fvi_dtu_player_attack = (obj == ConsoleObject);	// ASCENT: Dtu_fix_rat_hit
-		{
-			int dead = o->flags & OF_DESTROYED;
+		sc->object = swing_objects(obj,&center,&p1,radius,&sc->ip,&best_d);
+		// fvi_sub 0x3F8FF: a wall nearer than the object wins, but not the floor
+		// (side 3) against an object. The distance of an object is the return
+		// of the object test (the radius of the body for a start point in it).
+		if (sc->object >= 0 && fate == HIT_WALL && sc->hit.hit_side != 3 && vm_vec_dist(&sc->hit.hit_pnt,&center) < best_d)
+			sc->object = -1;
+	}
+	sc->fate = fate;
 
-			o->flags &= ~OF_DESTROYED;
-			d = dtu_body_query_test(&ip,&center,&p1,0,radius,o);
-			o->flags |= dead;
-		}
-		Fvi_dtu_player_attack = 0;
-		if (d > 0 && d < best_d) {
-			best_d = d;
-			sc->object = i;
+	// ASCENT: Dtu_fix_swing_pitch: the body at the center of the view, within
+	// the reach of this frame, is hit when the sphere touches no object
+	if (Dtu_fix_swing_pitch && sc->object < 0) {
+		vms_vector ip;
+		int o = swing_view_ray(obj,reach,radius,&ip);
+
+		if (o >= 0) {
+			sc->object = o;
 			sc->ip = ip;
+			sc->view_ray = 1;
 		}
 	}
-	// fvi_sub 0x3F8FF: a wall nearer than the object wins, but not the floor
-	// (side 3) against an object. The distance of an object is the return
-	// of the object test (the radius of the body for a start point in it).
-	if (sc->object >= 0 && fate == HIT_WALL && sc->hit.hit_side != 3 && vm_vec_dist(&sc->hit.hit_pnt,&center) < best_d)
-		sc->object = -1;
 	return 1;
 }
 
@@ -718,8 +875,9 @@ static void swing_hit_test(void)
 	{
 		vms_vector rel_c;
 		vm_vec_sub(&rel_c,&sc.center,&obj->pos);
-		dtu_obj_log("combat: test frame %d, sphere %.2f %.2f %.2f from the body, radius %.2f, wall %d side %d, object %d",
-			View_frame,f2fl(rel_c.x),f2fl(rel_c.y),f2fl(rel_c.z),f2fl(sc.radius),sc.fate,sc.fate == HIT_WALL ? hit->hit_side : -1,best);
+		dtu_obj_log("combat: test frame %d, sphere %.2f %.2f %.2f from the body, radius %.2f, wall %d side %d, object %d%s, pitch %d",
+			View_frame,f2fl(rel_c.x),f2fl(rel_c.y),f2fl(rel_c.z),f2fl(sc.radius),sc.fate,sc.fate == HIT_WALL ? hit->hit_side : -1,best,
+			sc.view_ray ? " (view ray)" : "",Dtu_look_pitch);
 		if (best >= 0) {
 			vms_vector r = Objects[best].pos;
 			vm_vec_sub2(&r,&obj->pos);
@@ -1297,6 +1455,8 @@ static void combat_init(void)
 		Dtu_fix_missile_rate = 0;
 		Dtu_fix_rat_hit = 0;
 		Dtu_fix_body_ray = 0;
+		Dtu_fix_swing_pitch = 0;
+		Dtu_fix_attack_commit = 0;
 		Dtu_fix_stoneskin_word = 0;
 		Dtu_fix_rary_manual = 0;
 		Dtu_fix_melf_acid = 0;
@@ -1419,28 +1579,85 @@ int dtu_combat_target_hint(void)
 	return Dtu_target_hint && Target_hint && ConsoleObject && !Player_is_dead && !Dtu_player_dead;
 }
 
-// ASCENT: test (-chartest reach=N, tools/check_reach.py). The player looks
-// at the center of creature N. The log line gives whether a wall is
-// between the eye and the creature, the first object that the swing of the
-// item in the hand touches (as melee_hint), the object that a missile of
-// the player on the same line meets (dtu_missile_path_target with weapon
-// type 0), the target hint and whether the item in the hand can hurt the
-// creature (the rule of the hint).
-void dtu_combat_reach_test(int objnum)
+// ASCENT: test: the first object that the swing of weapon w touches in the
+// hit window (as melee_hint), with a log line for each frame if log is set
+static int reach_contact(int objnum,int w,vms_vector *eye,int log)
+{
+	object *player = ConsoleObject;
+	int s = DAS_ATTACK, n = Dtu_anim_first[s+1] - Dtu_anim_first[s], rel;
+	swing_contact sc;
+
+	for (rel = 6; rel <= n - rel; rel++) {
+		if (!swing_test(Dtu_anim_first[s] + rel,w,&sc))
+			continue;
+		if (log) {
+			// right, up, forward of the body, from the eye
+			vms_vector c = sc.center, e = sc.p1;
+			vms_matrix *om = &player->orient;
+
+			vm_vec_sub2(&c,eye);
+			vm_vec_sub2(&e,eye);
+			dtu_char_log("swing %d: frame %d center %.2f %.2f %.2f end %.2f %.2f %.2f (right up forward from the eye), r %.2f, wall %d side %d, object %d%s",
+				objnum,rel,f2fl(vm_vec_dot(&c,&om->rvec)),f2fl(vm_vec_dot(&c,&om->uvec)),f2fl(vm_vec_dot(&c,&om->fvec)),
+				f2fl(vm_vec_dot(&e,&om->rvec)),f2fl(vm_vec_dot(&e,&om->uvec)),f2fl(vm_vec_dot(&e,&om->fvec)),f2fl(sc.radius),
+				sc.fate == HIT_WALL,sc.fate == HIT_WALL ? sc.hit.hit_side : -1,sc.object,sc.view_ray ? " (view ray)" : "");
+		}
+		if (sc.object >= 0)
+			return sc.object;
+		if (swing_stops(&sc))
+			break;
+	}
+	return -1;
+}
+
+// ASCENT: test (-chartest reach=N.M, tools/check_reach.py). The player
+// turns to creature N (the heading only, as in play) and looks at it with
+// the look pitch: M 0 at its center from the eye, 1 level, 2 fully up, 3
+// fully down. The log line gives whether a wall is between the body and
+// the creature, the first object that the swing of the item in the hand
+// touches (as melee_hint), the object that a missile of the player on the
+// line from the body to the creature meets (dtu_missile_path_target with
+// weapon type 0), the target hint, whether the item in the hand can hurt
+// the creature (the rule of the hint), the first contact of the swing with
+// the rule of 1.3 (orig, Dtu_fix_swing_pitch off), the height of the top of
+// the body above the eye and the distance of its center from the eye.
+void dtu_combat_reach_test(int objnum,int mode)
 {
 	object *player = ConsoleObject, *o;
-	vms_vector to, end;
+	vms_vector to, end, eye, flat;
 	fvi_query fq;
 	fvi_info hit;
-	int fate, contact = -1, missile, s = DAS_ATTACK, n, rel, w;
-	swing_contact sc;
+	int fate, contact, orig, missile, w, pitch = 0;
 
 	if (player == NULL || objnum < 0 || objnum > Highest_object_index)
 		return;
 	o = &Objects[objnum];
+	// ASCENT: the body turns with the heading only, as in play; the look
+	// pitch turns the view (it was the body orientation before 2026-11-23)
+	flat = o->pos;
+	vm_vec_sub2(&flat,&player->pos);
+	flat.y = 0;
+	if (vm_vec_normalize(&flat) > 0x100)
+		vm_vector_2_matrix(&player->orient,&flat,NULL,NULL);
+	eye = player->pos;
+	vm_vec_scale_add2(&eye,&player->orient.uvec,body_eye_offset());
+	if (mode == 0) {
+		vms_vector v;
+		fix h;
+
+		vm_vec_sub(&v,&o->pos,&eye);
+		h = fix_sqrt(fixmul(v.x,v.x) + fixmul(v.z,v.z));
+		pitch = fix_atan2(h,-v.y);		// + is down (vm_extract_angles_matrix)
+	}
+	else if (mode == 2)
+		pitch = DTU_LOOK_MIN;
+	else if (mode == 3)
+		pitch = DTU_LOOK_MAX;
+	dtu_combat_set_pitch(pitch);
+	pitch = Dtu_look_pitch;
+
 	vm_vec_sub(&to,&o->pos,&player->pos);
-	if (vm_vec_normalize(&to) > 0x100)
-		vm_vector_2_matrix(&player->orient,&to,NULL,NULL);
+	vm_vec_normalize(&to);
 
 	end = o->pos;
 	fq.p0 = &player->pos;
@@ -1453,21 +1670,31 @@ void dtu_combat_reach_test(int objnum)
 	fate = find_vector_intersection(&fq,&hit);
 
 	w = hand_weapon();
-	n = Dtu_anim_first[s+1] - Dtu_anim_first[s];
-	for (rel = 6; rel <= n - rel; rel++) {
-		if (!swing_test(Dtu_anim_first[s] + rel,w,&sc))
-			continue;
-		if (sc.object >= 0) {
-			contact = sc.object;
-			break;
-		}
-		if (swing_stops(&sc))
-			break;
+	contact = reach_contact(objnum,w,&eye,1);
+	{
+		int save = Dtu_fix_swing_pitch;
+
+		Dtu_fix_swing_pitch = 0;
+		orig = reach_contact(objnum,w,&eye,0);
+		Dtu_fix_swing_pitch = save;
 	}
 	missile = dtu_missile_path_target(&player->pos,player->segnum,&to,0,-1,player-Objects,i2f(100));
-	dtu_char_log("reach %d: %s id %d dist %.2f wall %d contact %d missile %d hint %d hurt %d up %.2f seg %d",objnum,dtu_object_name(o),o->id,
-		f2fl(vm_vec_dist(&o->pos,&player->pos)),fate == HIT_WALL,contact,missile,target_hint(),hint_creature(objnum,w),
-		f2fl(o->pos.y - player->pos.y),player->segnum);
+	{
+		fix br, bh;
+
+		dtu_get_body_size(o,&br,&bh);
+		dtu_char_log("reach %d: %s id %d dist %.2f wall %d contact %d missile %d hint %d hurt %d up %.2f seg %d pitch %d mode %d orig %d top %.2f eyedist %.2f",
+			objnum,dtu_object_name(o),o->id,f2fl(vm_vec_dist(&o->pos,&player->pos)),fate == HIT_WALL,contact,missile,target_hint(),
+			hint_creature(objnum,w),f2fl(o->pos.y - player->pos.y),player->segnum,pitch,mode,orig,f2fl(o->pos.y + bh - eye.y),
+			f2fl(vm_vec_dist(&o->pos,&eye)));
+	}
+}
+
+void dtu_combat_set_pitch(int pitch)
+{
+	if (pitch < DTU_LOOK_MIN) pitch = DTU_LOOK_MIN;
+	if (pitch > DTU_LOOK_MAX) pitch = DTU_LOOK_MAX;
+	Dtu_look_pitch = pitch;
 }
 
 int dtu_combat_view_state(void) { return View_state; }

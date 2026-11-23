@@ -207,6 +207,7 @@ typedef struct dtu_ai_local {
 	ubyte		flags;					// +0x05, AILF_
 	ubyte		activity;				// object +0x1CC: 0 inactive, 2 active
 	ubyte		swing_done;				// object +0x1AF: the swing has hit
+	ubyte		commit;					// ASCENT: Dtu_fix_attack_commit: 0 not tested, 1 no, 2 the attack is committed
 	ubyte		falling;					// object +0x1AE bit 0x20
 	short		blocker;					// object +0x138
 	short		blocked_count;			// object +0x13A
@@ -3992,7 +3993,7 @@ static void melee_hit(object *target,object *attacker)
 // creature (0x9F2B4) and of the player. The weapon sphere of the frame
 // moves from its center away from the body by its radius. The first
 // object that it touches is hit, one time for each swing.
-static void weapon_test(object *obj)
+static void weapon_sphere_test(object *obj)
 {
 	int objnum = obj-Objects;
 	int s = DTU_ANIM_STATE(obj);
@@ -4139,6 +4140,137 @@ static void weapon_test(object *obj)
 				// and the attack animation plays to its end.
 			}
 		}
+	}
+}
+
+// ASCENT: Dtu_fix_attack_commit (dtucombat.h). The test of the start of a
+// melee attack on the player (each frame of the attack state before frame
+// 8, until it passes): a hostile melee creature with the AI, the
+// player alive and not hidden from it, in the reach of the goal state
+// choice (both radii plus 2.0, 0x1599F), in front of it (the facing dot
+// 0.75 of 0x1396E) and with no wall between the two centers. At the hit
+// (at_hit 1): the creature is not dying, not held, the player is not hidden,
+// not farther than twice the reach and no wall is between them.
+static int attack_commit_valid(object *obj,int at_hit)
+{
+	object *pl = ConsoleObject;
+	vms_vector v;
+	fix dist, reach;
+	fvi_query fq;
+	fvi_info hit;
+
+	if (pl == NULL || pl->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead || !Dtu_creatures_attack)
+		return 0;
+	if (obj->control_type != CT_AI || !is_hostile(obj) || Robot_info[obj->id].attack_type != 1)
+		return 0;
+	if ((obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) || obj->shields < F1_0 || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return 0;
+	if ((obj->dtu.m_88 & DTU_OF_HELD) || dtu_thief_hidden_from(obj))
+		return 0;
+	vm_vec_sub(&v,&pl->pos,&obj->pos);
+	dist = vm_vec_normalize(&v);
+	reach = obj->size + pl->size + i2f(2);
+	if (dist > (at_hit ? 2*reach : reach))
+		return 0;
+	if (!at_hit && vm_vec_dot(&v,&obj->orient.fvec) < 0xC000)
+		return 0;
+	fq.p0 = &obj->pos;
+	fq.p1 = &pl->pos;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&hit) != HIT_NONE)
+		return 0;
+	return 1;
+}
+
+// ASCENT: test (-chartest stepback=N.D): when the next attack of creature
+// N becomes valid (attack_commit_valid, also with -origcombat), the player
+// moves D units away from it (horizontally) at once.
+static int Test_stepback_obj = -1, Test_stepback_dist = 0;
+
+void dtu_obj_test_stepback(int objnum,int dist)
+{
+	Test_stepback_obj = objnum;
+	Test_stepback_dist = dist;
+}
+
+static void test_stepback(object *obj)
+{
+	object *pl = ConsoleObject;
+	vms_vector v, p;
+	int seg;
+
+	if (Test_stepback_obj != obj-Objects || pl == NULL)
+		return;
+	Test_stepback_obj = -1;
+	vm_vec_sub(&v,&pl->pos,&obj->pos);
+	v.y = 0;
+	if (vm_vec_normalize(&v) < 0x100)
+		return;
+	vm_vec_scale_add(&p,&pl->pos,&v,i2f(Test_stepback_dist));
+	seg = find_point_seg(&p,pl->segnum);
+	if (seg < 0) {
+		dtu_obj_log("test: stepback of %d from obj %d leaves the mine",Test_stepback_dist,(int)(obj-Objects));
+		return;
+	}
+	pl->pos = p;
+	obj_relink(pl-Objects,seg);
+	dtu_obj_log("test: the player steps back %d from obj %d, distance now %.2f",Test_stepback_dist,(int)(obj-Objects),
+		f2fl(vm_vec_dist(&pl->pos,&obj->pos)));
+}
+
+// 0x6CFF8 with Dtu_fix_attack_commit (dtucombat.h): a melee attack of a
+// creature that starts on the player in reach is resolved when the sphere
+// of the weapon misses the player because the player moved: at the first
+// hit frame (8 or later) when the player is out of reach, or at the last
+// two frames of the attack state. The roll against the armor class and the
+// damage are those of the hit of the sphere (melee_hit, 0x27D82).
+static void weapon_test(object *obj)
+{
+	int objnum = obj-Objects, s, n, rel;
+	dtu_ai_local *ail;
+
+	weapon_sphere_test(obj);
+	if (obj->type != OBJ_ROBOT || objnum < 0 || objnum >= MAX_OBJECTS)
+		return;
+	ail = &Ail[objnum];
+	s = DTU_ANIM_STATE(obj);
+	if (!(s == DAS_ATTACK || s == DAS_ATTACK2 || s == DAS_ATTACK3 || s == DAS_ATTACK4)) {
+		ail->commit = 0;
+		return;
+	}
+	n = Dtu_anim_first[s+1] - Dtu_anim_first[s];
+	rel = DTU_ANIM_FRAME(obj) - Dtu_anim_first[s];
+	// the test runs in each frame before the hit frames until it passes:
+	// the creature may turn to the player while it winds up
+	if (ail->commit != 2 && rel < 8) {
+		ail->commit = attack_commit_valid(obj,0) ? 2 : 1;
+		if (ail->commit == 2) {
+			dtu_obj_log("attack: obj %d %s starts a melee attack on the player in reach, frame %d",objnum,dtu_object_name(obj),rel);
+			test_stepback(obj);
+		}
+	}
+	if (!Dtu_fix_attack_commit || ail->commit != 2 || ail->swing_done || rel < 8)
+		return;
+	{
+		fix dist = vm_vec_dist(&obj->pos,&ConsoleObject->pos);
+		fix reach = obj->size + ConsoleObject->size + i2f(2);
+
+		if (dist <= reach && rel < n - 2)
+			return;		// the sphere may still reach the player
+		ail->commit = 1;
+		if (!attack_commit_valid(obj,1)) {
+			dtu_obj_log("attack: obj %d %s: the committed attack is lost, distance %.2f, reach %.2f",objnum,dtu_object_name(obj),
+				f2fl(dist),f2fl(reach));
+			return;
+		}
+		ail->swing_done = 1;
+		dtu_obj_log("attack: obj %d %s swings at the player, frame %d (committed, distance %.2f, reach %.2f)",objnum,
+			dtu_object_name(obj),DTU_ANIM_FRAME(obj),f2fl(dist),f2fl(reach));
+		melee_hit(ConsoleObject,obj);
 	}
 }
 
