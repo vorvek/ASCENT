@@ -197,6 +197,11 @@ extern int Dtu_fix_slow_swing;
 // ASCENT: 1 (default): the killing blow plays the hit sound of the weapon.
 // 0 (-origcombat): its kill sound, which no table sets (0x27CCF).
 extern int Dtu_fix_kill_sound;
+// ASCENT: 1 (default): at rest the arms move right so that the weapon is
+// at least as far from the center of the view as the broad sword (the long
+// swords stand in the middle in 1.3: 0x43A5A, 0x67C5A, 0x4450C). 0
+// (-origcombat): the place of 1.3.
+extern int Dtu_fix_sword_view;
 
 // 0x90CEF for spell 16 (Fireball): the blindness and the deafness of a
 // player or creature at dist from the point (only the fire trap reaches it).

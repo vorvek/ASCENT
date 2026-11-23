@@ -2067,6 +2067,43 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   `tools/check_reach.py` has a pitch pass, a level pass and a negative pass,
   `--weapon` and `--commit`.
 
+### The long sword in the middle of the view (2026-11-23)
+
+Verified in the code and the models:
+
+- 0x43A5A builds the name of the arms model from the letter of the item in
+  the hand (byte 5 of the inventory record, `weapon_char`, 0x43EB2 to
+  0x43F96). Every long sword of the tables (weapons 6, 13, 14, 32, 33, 71)
+  has the letter `g`, so the plain Long Sword and the Long Sword +1 use the
+  same model (`hmcg_p.pof`, `hftg_p.pof`). The Broad Sword is `h` in all 46
+  tables.
+- 0x67C5A draws the player object 0x13880 above its position (less 16 for
+  each unit of look pitch), with no sideways offset. 0x4450C puts the arms
+  into state 1 (STAND) when the velocity is 0.
+- 0x729C1 takes the center of the body box of the frame away from the
+  position. The body box of the `g` models has another center (the long
+  blade is likely in the box): in the stand frames (1.27, 1.20, 1.58),
+  against (0.43, 0.28, 1.06) for `hmch_p.pof`. So the whole arms model is drawn 0.85 further left and
+  0.5 nearer. The middle of the blade (between the hand joint and the end
+  marker, submodel flag 0x04) is 0.07 left of the eye and 0.3 in front of
+  it: the blade stands upright in the middle of the view.
+
+The middle of the weapon right of the eye in the stand and walk frames
+(`hmc` models): long sword -0.07, bastard sword 0.39, mace 0.60, hand axe
+0.58, broad sword and short sword 0.69, club 0.70, scimitar 0.85, dagger
+0.92.
+
+`Dtu_fix_sword_view` (1, `-origcombat` clears it): for a melee weapon in
+the hand, outside the attack states, the arms model moves right along the
+right vector of the view by the largest `0.69 - x` of the stand and walk
+frames (the long sword 0.76, the bastard sword 0.31, the hand axe 0.12, the
+mace 0.10). The measure is the offset, not x/z, because the middle of the
+long sword is nearly at the eye. The shift goes out over the first 3/16 of
+the swing and comes back over 0.25 s after it; from 3/16 to the end of the
+swing the picture is that of 1.3. The hit test and the swing time do not
+use the drawn place. `tools/check_sword_view.py` reads the measure in the
+log.
+
 ## C2. Spells
 
 - Books: the two spell lists of a save game of the original (`-char FILE`). New spells
@@ -2237,6 +2274,7 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_turn_undead` | dtucombat.c | turn undead clears bit 0x10 of the next undead before the count test (0xADF09), and a T writes 0xFF over the d20 (0xAE1B8) | the bit and the d20 stay (bugs.md T2, T6) |
 | `Dtu_fix_cursed_scroll` | dtuchar.c | the Cursed Scroll does rand() % (hit points as a fix) damage, below half a point (0x38159) | rand() % hit points, whole points |
 | `Dtu_fix_creature_missile` | dtuchar.c, dtuobj.c | a creature missile adds the bow or crossbow bonus of the player and can use up the Potion of Luck of the player (0x2B0AE, 0x2B107) | only the missiles of the player |
+| `Dtu_fix_sword_view` | dtucombat.c | the arms of a long sword stand in the middle of the view (C1, "The long sword in the middle of the view") | at rest the arms move right until the middle of the weapon is as far right of the eye as that of the broad sword; out in the first 3/16 of a swing |
 
 With the option `-origobj` (dtuobj.c, 1 by default):
 

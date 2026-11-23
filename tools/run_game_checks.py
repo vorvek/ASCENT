@@ -7,8 +7,8 @@
 The checks are the tools of tools/README.md that read the game files:
 check_items, check_desc, questtest, priestcheck, check_saveload,
 check_itemfix, check_tblfix, check_creature_setup (the setup by name, with
-quest flag 67, and --abilities), check_reach (BONES, MINE, and CLAN3 with the Broad Sword), check_attack_rate and
-uitest. Run them after each merge.
+quest flag 67, and --abilities), check_reach (BONES, MINE, and CLAN3 with the Broad Sword), check_attack_rate,
+check_sword_view and uitest. Run them after each merge.
 
 Defaults (the layout of the maintainer machine):
   --exe       build/engine/main/ascent.exe of this checkout. check_tblfix
@@ -95,6 +95,8 @@ def checks(a, work):
          ["--work", os.path.join(work, "creature_abilities"), "--abilities"], game),
         ("check_reach", py + [tool("check_reach.py"), "--exe", exe, "--level", "BONES", "--jobs", "4"] + dd, game),
         ("check_attack_rate", py + [tool("check_attack_rate.py"), "--exe", exe] + dd, game),
+        # the place of the arms of a long sword (Dtu_fix_sword_view)
+        ("check_sword_view", py + [tool("check_sword_view.py"), "--exe", exe] + dd, game),
         # rats, beetles and giant bats: the swing and a steep missile
         ("check_reach_mine", py + [tool("check_reach.py"), "--exe", exe, "--level", "MINE", "--jobs", "4"] + dd, game),
         # giant rats with the Broad Sword: the swing at the look pitch and the

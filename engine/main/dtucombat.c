@@ -94,6 +94,7 @@ static int Swing_air = 0;				// ASCENT: the miss sound of the swing was tried: 1
 static int Reset_pending = 0;			// ASCENT: a load (dtu_combat_reset_view)
 static int Lift_model = -1;			// ASCENT: the model of Swing_lift (Dtu_improved_body)
 static fix Swing_lift = 0;				// ASCENT: the lift of the arms in a swing (Dtu_improved_body)
+static int Sword_model = -2;			// ASCENT: the model measured for Dtu_fix_sword_view (-2: none)
 
 static int is_attack_state(int s)
 {
@@ -298,6 +299,7 @@ static void change_player_model(int letter)
 	View_model = m;
 	View_letter = letter;
 	Lift_model = -1;					// ASCENT: the swing lift of the improved body
+	Sword_model = -2;					// ASCENT: Dtu_fix_sword_view, measure again
 	Slow_stuck = 0;					// ASCENT: Dtu_fix_slow_swing, 0x44243 takes the Slow of now
 	Swing_time = dtu_combat_swing_time();
 	// 0x43A8D and 0x43BDA: the pitch offset of the arms is off for an
@@ -1610,6 +1612,7 @@ static void combat_init(void)
 		Dtu_fix_prayer_flags = 0;
 		Dtu_fix_slow_swing = 0;
 		Dtu_fix_kill_sound = 0;
+		Dtu_fix_sword_view = 0;
 	}
 }
 
@@ -1996,7 +1999,7 @@ static int body_weapon_point(polymodel *po,int frame,vms_vector *p)
 		return 0;
 	body_joint(po,frame,tip_sub,&tip);
 	body_joint(po,frame,po->submodel_parents[tip_sub],&hand);
-	polyobj_get_body_center(View_model,frame,&bc);
+	polyobj_get_body_center((int)(po - Polygon_models),frame,&bc);
 	p->x = (tip.x + hand.x) / 2 - bc.x;
 	p->y = (tip.y + hand.y) / 2 - bc.y + (Pitch_offset ? 0x13880 : 0) - body_eye_offset();
 	p->z = (tip.z + hand.z) / 2 - bc.z;
@@ -2085,6 +2088,133 @@ static void improved_body_place(object *obj,polymodel *po,vms_vector *pos,vms_ma
 	vm_vec_add(pos,&eye,&w);
 }
 
+//------------------------------------------------------------------------
+// ASCENT: Dtu_fix_sword_view (dtucombat.h). The model of the arms of the
+// player is <archive><letter>_p.pof, with the letter weapon_char of the
+// weapon in the hand (0x43A5A, the name at 0x43EB2 to 0x43F96). Every long
+// sword of the tables (weapons 6, 13, 14, 32, 33, 71) has the letter g.
+// 0x67C5A draws the arms 0x13880 above the center of the body (less 16 per
+// unit of look pitch) with no sideways offset, 0x729C1 takes the center of
+// the body box of the frame away from the position, and 0x4450C puts the
+// arms into state 1 (STAND) when the player does not move. The body box of
+// the g models (the long blade is likely in it) has its center in the
+// stand frames 0.85 further right and 0.5 further forward than the broad
+// sword model
+// (hmcg_p.pof 1.27, 1.20, 1.58; hmch_p.pof 0.43, 0.28, 1.06). The whole
+// arms model is drawn that much left and back: the blade stands upright
+// in the middle of the view, its middle 0.07 left of the eye. The broad
+// sword (letter h) has its middle 0.69 right of the eye; every other melee
+// model holds its weapon further right or lower.
+//
+// 1 (default): in the states that are not an attack, the arms model moves
+// right along the right vector of the view, so that the middle of the
+// weapon (between the hand joint and the end marker, as body_compute_lift)
+// in the stand and walk frames is at least as far right of the eye as that
+// of the broad sword model of the same archive. The measure is the offset
+// to the right, not x/z: the middle of the long sword is only 0.3 in front
+// of the eye. Only a melee weapon in the hand. Models that already hold the
+// weapon that far right do not move. The shift goes out over the first 3/16 of the swing
+// and comes back over 0.25 s after the attack; in the rest of the swing the
+// arms are where 1.3 draws them. The hit test and the swing time do not
+// use the place of the drawn model, so they do not change. 0 (-origcombat):
+// the place of 1.3.
+int Dtu_fix_sword_view = 1;
+
+#define SWORD_VIEW_REF_LETTER	'h'			// weapon_char of the Broad Sword (weapon 20) in all 46 tables
+#define SWORD_VIEW_MAX			(F1_0*2)
+#define SWORD_VIEW_IN			(F1_0/4)	// the time to come back after an attack
+
+static int Sword_weapon = -2;			// the weapon in the hand at the measure
+static fix Sword_shift = 0;			// the full shift of the model
+static fix Sword_k = F1_0;				// the part of the shift now
+static fix Sword_last = 0;				// GameTime of the last update of Sword_k
+
+// The smallest x (right of the eye) of the weapon middle over the stand and
+// walk frames of model m, or with shift set the largest ref - x. Returns 0
+// if the model has no weapon end marker.
+static int sword_view_measure(int m,int shift,fix ref,fix *out)
+{
+	static const int states[2] = { DAS_STAND, DAS_WALK };
+	polymodel *po;
+	int i, f, n = 0;
+	fix best = 0;
+	vms_vector p;
+
+	if (m < 0 || m >= N_polygon_models || !Polygon_models[m].dtu_block)
+		return 0;
+	po = &Polygon_models[m];
+	for (i=0;i<2;i++)
+		for (f=Dtu_anim_first[states[i]];f<Dtu_anim_first[states[i]+1] && f<po->n_frames;f++) {
+			if (!body_weapon_point(po,f,&p))
+				continue;
+			if (!shift) {
+				if (n == 0 || p.x < best)
+					best = p.x;
+			} else if (n == 0 || ref - p.x > best)
+				best = ref - p.x;
+			n++;
+		}
+	*out = best;
+	return n > 0;
+}
+
+static void sword_view_compute(void)
+{
+	char name[40];
+	int w = hand_weapon(), ref_m;
+	fix mine = 0, ref = 0, shift = 0;
+	int ok;
+
+	Sword_model = View_model;
+	Sword_weapon = w;
+	Sword_shift = 0;
+	if (w < 0 || !hand_is_melee())
+		return;
+	ok = sword_view_measure(View_model,0,0,&mine);
+	snprintf(name,sizeof(name),"%s%c_p.pof",Dtu_player_archive,SWORD_VIEW_REF_LETTER);
+	ref_m = polyobj_find_model(name);
+	if (ok && sword_view_measure(ref_m,0,0,&ref) && mine < ref) {
+		sword_view_measure(View_model,1,ref,&shift);
+		if (shift > SWORD_VIEW_MAX)
+			shift = SWORD_VIEW_MAX;
+		if (shift < 0)
+			shift = 0;
+	}
+	if (Dtu_fix_sword_view)
+		Sword_shift = shift;
+	dtu_obj_log("combat: sword view of model %d: weapon middle %.3f, broad sword %.3f, shift %.3f, applied %d",
+		View_model,ok ? f2fl(mine) : -1.0,ref_m >= 0 ? f2fl(ref) : -1.0,f2fl(shift),Dtu_fix_sword_view);
+}
+
+// The shift of this frame (0 with the setting off)
+static fix sword_view_shift(void)
+{
+	fix dt, rate, k;
+
+	if (Sword_model != View_model || Sword_weapon != hand_weapon())
+		sword_view_compute();
+	if (Sword_shift == 0)
+		return 0;
+	dt = GameTime - Sword_last;
+	Sword_last = GameTime;
+	if (is_attack_state(View_state)) {
+		// out over the first 3/16 of the swing
+		rate = Swing_time > 0 ? fixdiv(F1_0*16,Swing_time*3) : 0;
+		if (dt < 0 || dt > F1_0 || rate == 0)
+			Sword_k = 0;
+		else if ((Sword_k -= fixmul(dt,rate)) < 0)
+			Sword_k = 0;
+	} else {
+		rate = fixdiv(F1_0,SWORD_VIEW_IN);
+		if (dt < 0 || dt > F1_0)
+			Sword_k = F1_0;
+		else if ((Sword_k += fixmul(dt,rate)) > F1_0)
+			Sword_k = F1_0;
+	}
+	k = fixmul(fixmul(Sword_k,Sword_k),3*F1_0 - 2*Sword_k);	// smooth start and end
+	return fixmul(Sword_shift,k);
+}
+
 // render_object 0x67C5A for the player object: the arms and the weapon.
 // The executable draws the player object like any object of its segment
 // (it has no test for the viewer). The port draws it after the mine, which
@@ -2121,6 +2251,14 @@ void dtu_combat_draw_view(void)
 			pos.x -= fixmul(sn,k) + fixmul(cs,k);
 			pos.z += fixmul(sn,k) - fixmul(cs,k);
 		}
+	}
+	// ASCENT: Dtu_fix_sword_view, along the right vector of the view (the
+	// look pitch turns about it, so it is the same in both places)
+	{
+		fix s = sword_view_shift();
+
+		if (s)
+			vm_vec_scale_add2(&pos,&orient.rvec,s);
 	}
 
 	// "The missile in the hand" (0x677EB): a thrown weapon is not drawn
