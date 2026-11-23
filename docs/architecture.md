@@ -51,7 +51,16 @@ comments.
 |---|---|---|
 | `dtugame.c` | Start of a level without the Descent menus: `-datadir`, `-level`, `-checklevel`, `-frames`, `-screenshot`. Weak definitions of the data layer. | |
 | `dtufile.c` | Access to the game files: the game directories, the disc directory, the packed files (DOG, COW, HEN). Replaces the HOG file. | `formats/packed.md` |
-| `dtuobj.c` | Objects other than the player: setup of creatures, scenery and items at level load, model animation, creature AI and movement, melee, missiles, damage, death, pushed scenery, pickup and inventory. | `re/objects.md`, `re/ai.md`, `re/models.md` |
+| `dtuobj.c` | Objects other than the player: the settings and tables, the names and the test log, the shared helpers (models, animation, sight, sounds), the corpse on the floor, the object setup at level load, rendering, the frame entry point (`dtu_objects_frame`), the revive of a corpse. The files `dtuobj_*.c` below were split from it; `dtuobj_int.h` has their shared declarations. | `re/objects.md`, `re/ai.md`, `re/models.md` |
+| `dtuobj_setup.c` | The setup of the creatures at a level start: init_ai_object, add_npc, the level fixes (0xACCDB), the creature setup by name (0xAC7B2). | `re/objects.md`, `re/ai.md` |
+| `dtuobj_item.c` | The inventory of the player, a new item on the floor, the pickup of an item, the tint of Detect Magic. | `re/objects.md` |
+| `dtuobj_combat.c` | The fight of the creatures: the hit test, the to-hit roll, the damage of weapons and spells (with the rules of the trolls and the rats), the death of a creature and of the player, the weapon test of a melee swing. | `re/combat.md`, `re/ai.md` |
+| `dtuobj_missile.c` | The missiles and the bursts: creation, flight, hits. | `re/combat.md` |
+| `dtuobj_ai.c` | The AI of a creature: attacks, the turn and the moves, the paths, blocked moves, morale, animation, `dtu_do_ai_frame`, the calls of the scripts, the AI state in a state file. | `re/ai.md` |
+| `dtuobj_move.c` | The movement of a creature: the stop distance at the player, gravity, `dtu_creature_physics_sim`. | `re/ai.md`, `re/physics.md` |
+| `dtuobj_scenery.c` | Scenery that breaks, the end of the game at the Flamesword, pushed scenery, the collision of two objects. | `re/objects.md`, `re/movies.md` |
+| `dtuobj_aware.c` | Alerts and the awareness events of the creatures, the wake of a creature, the check of the objects, the gate in of a creature, the drop of objects in a segment. | `re/ai.md` |
+| `dtuobj_test.c` | The test aids that place the player and the objects: `-testpos`, `-testobjpos`, `-testtour`. | |
 | `dtuchar.c` | The player character: attributes, equipment, item use, rest, experience, levels, choice boxes. Replaces the ship values. | `re/character.md` |
 | `dtucombat.c` | The weapon attack of the player, missile and thrown weapons, the arms in the view, Turn Undead. | `re/combat.md` part A |
 | `dtuspell.c` | Spell books, slots, casting, spell effects, area effects, durations, saving throws, scrolls, wands. | `re/combat.md` part B, `re/spells.md` |
@@ -66,7 +75,8 @@ comments.
 | `dtudesc.c` | The description window of items and spells (right click). New in the port. | `description_window.md` |
 | `dtuxp.c` | The experience of the player: the kill line, the next level window, the verbose combat log, the session log lines of deaths, awards and levels. New in the port. | `debug_logs.md` |
 | `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
-| `dtufe.c` | The front end: frame, input, `-fescript`, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
+| `dtufe.c` | The front end: frame, input, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
+| `dtufe_script.c` | The script of the option `-fescript` (split from `dtufe.c`). | `re/frontend.md` |
 | `dtufe_char.c` | Character generation. | `re/frontend.md` |
 | `dtufe_town.c` | Waterdeep, Blackstaff tower and the market. | `re/frontend.md` |
 | `dtustate.c` | Level state files and their copies in the save slots. Same format as the DOS game. | `re/levelstate.md` |
@@ -117,7 +127,7 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` (all in `physics.c`) | `controls.c` |
 | `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive`, `break_spread`, `noise_walls`, `alert_ray`, `alert_last`, `restore_spells`, `save_cast` | `dtuobj.c` |
 | `-origrevive`, `-origdrow5`, `-origguildpeace` | one each: `revive`, `drow5_shields`, `guild_peace` | `dtuobj.c` |
-| `-origcombat` | `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `cure_aid` (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class`, `chill_touch`, `slow_swing`, `kill_sound`, `backstab` (`dtuthief.c`), `creature_strength` (`dtuobj.c`), `shield_ac` (`dtuchar.c`), `swing_pitch`, `attack_commit` (`dtucombat.c`, `dtuobj.c`) | `dtucombat.c`, `dtuchar.c` |
+| `-origcombat` | `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `cure_aid` (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class`, `chill_touch`, `slow_swing`, `kill_sound`, `backstab` (`dtuthief.c`), `creature_strength` (`dtuobj_combat.c`), `shield_ac` (`dtuchar.c`), `swing_pitch`, `attack_commit` (`dtucombat.c`, `dtuobj_combat.c`) | `dtucombat.c`, `dtuchar.c` |
 | `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points` (`dtuchar.c`); `secret_door_names`, `thac0_row`, `new_thac0` (`dtuthief.c`), `save_seconds` | `dtuchar.c`, `dtuthief.c` |
 | `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap`, `trap_pause` | `dtutrig.c` |
 | `-origui` | `automap_reveal` (`automap.c`); `msg_scroll`, `view_aspect`, `button_hold` (`dtudisp.c`); `cheat_index` (`dtucheat.c`); `sensitivity_menu` (`menu.c`) | `automap.c`, `dtudisp.c`, `dtucheat.c`, `menu.c` |
@@ -249,7 +259,7 @@ boxes.
 | `-frames N` | Leave the game after N frames. |
 | `-screenshot FILE` | Write the last frame to a PPM file. |
 | `-fixedfps N` | A fixed frame time from the first frame, so that two runs give the same moves. |
-| `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of the script code in `dtufe.c`. |
+| `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of `dtufe_script.c`. |
 | `-testmove ACTIONS` | Press movement keys for a time: `forward+run:2000ms,left:30,jump:1`. |
 | `-testpos X,Y,Z[,H]` | Put the player at a position at the first frame. |
 | `-testobjpos N,X,Y,Z[,H];...` | Put objects at positions at the first frame (pushed scenery tests). |

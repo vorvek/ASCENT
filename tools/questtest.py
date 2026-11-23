@@ -26,7 +26,7 @@ import sys
 import tempfile
 
 ONES = ",".join(["1"] * 60)        # -dlgauto: the first reply, 60 times
-# The steps of the end sequence 0xA6786 (engine/main/dtuobj.c), in order
+# The steps of the end sequence 0xA6786 (engine/main/dtuobj_scenery.c), in order
 END_SEQ = (r"end sequence: start \(0xA6786\), sword in seg 487, light obj \d+, spin 0x147\s+"
            r"[\s\S]*end sequence: 147 steps, light 441\.0, spin 0x269a\s+end sequence: sound -1 on the sword\s+"
            r"end sequence: 50 explosions, 50 sounds\s+end of the game: CREDITV1")

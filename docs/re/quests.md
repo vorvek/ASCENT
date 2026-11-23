@@ -160,7 +160,7 @@ test of the query (0x3EE70) misses it with a level ray. After the death of
 Lolth the player can look up at the sword to use it (`tools/questtest.py`,
 test `flame_ending`). Tests `flame_sword_lolth_alive` (the use ray passes
 the sword, flag 0x40 on objects 2 and 3) and `flame_lolth_death` (the death
-alone runs script 322 and the end). The port: `flame_lolth_dead` (dtuobj.c).
+alone runs script 322 and the end). The port: `flame_lolth_dead` (dtuobj_combat.c).
 
 ## 5. Defects of 1.3 in the quests
 
@@ -229,7 +229,7 @@ else Straum says a line of label 0x3E9. A player with low charisma must
 talk several times.
 
 The port: the seven objects are placed, and the level fixes give the six
-the flag `OF_DTU_NOHIT` (`fix_nohit`, dtuobj.c). Test `mulhor1_ankh`: the
+the flag `OF_DTU_NOHIT` (`fix_nohit`, dtuobj_setup.c). Test `mulhor1_ankh`: the
 player takes object 33. Test `mulhor1_ankh_flagged`: the six have flag 0x40,
 the player walks into object 91 and does not take it (the build of the port
 without the flag takes it). Test `bones_straum_ankh`: label 700 takes the

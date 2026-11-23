@@ -314,7 +314,7 @@ So 1.3 never shows the table text of these fields. Checked in the Ghidra C
 write, the arguments of the copies).
 
 The first loop of 0x1A344 sets the misc flag bits 0x10 and 0x20 by name. The port has
-it in `pickup_flag_10` (dtuobj.c). The rest is the list below.
+it in `pickup_flag_10` (dtuobj_item.c). The rest is the list below.
 
 ### The fields that the fixup writes
 
@@ -644,7 +644,7 @@ and opens the wall of segment 278. Script 322 of the Flamesword (trigger 28,
 segment 486) ends the game after the death of Lolth. Without these two
 script numbers the last level cannot be finished.
 
-The port: `level_fixes_tables` and `level_fixes_objects` in dtuobj.c, called
+The port: `level_fixes_tables` and `level_fixes_objects` in dtuobj_setup.c, called
 by `dtu_objects_level_setup`. The table part runs before the object setup,
 the object part after it (setup_creature is the object setup of the load in
 the executable) and before the creature setup by name; the object part is
@@ -685,7 +685,7 @@ frame (0x13C8B, when `regeneration` is below 1) and the creature move
 The port: `OF_DTU_NOHIT` (object.h). The object loop of
 `find_vector_intersection` and `dtu_body_query_test` (the use ray) skip an
 object with it that is not a creature. `fix_nohit` sets it in the level
-fixes, `flame_lolth_dead` (dtuobj.c, called at the corpse of object 36) is
+fixes, `flame_lolth_dead` (dtuobj_combat.c, called at the corpse of object 36) is
 0x6A374. Tests `mulhor1_ankh`, `mulhor1_ankh_flagged`,
 `flame_sword_lolth_alive`, `flame_lolth_death`, `flame_ending`
 (tools/questtest.py).
@@ -696,7 +696,7 @@ rffk9, the image of Lolth that script 320 moves and that speaks. The AI
 frame (0x13C8B) and the move (0x9F174) skip a creature with the flag
 unless its type has +0x7E (regeneration) of 1 or more or is the rat type,
 and the query (0x3F38F) skips it: the image stands still and cannot be
-hit or used. The port: `dtu_creature_frozen` (dtuobj.c) and `dtu_nohit`
+hit or used. The port: `dtu_creature_frozen` (dtuobj_combat.c) and `dtu_nohit`
 (fvi.c), test `flame_lolth_image`. The 22 creature records of BONES,
 CLAN1, MINE and THIEF0 with the flag in the level file are all rats, which
 pass_thru covers. +0x1AE value 2 is set only on FLAME objects 2 and 3
@@ -876,7 +876,7 @@ The spell flag byte 0x36 has the cast field in bits 2 to 4: `cast_with_hands` cl
 it (0xE3 mask), `cast_with_wand` 4, `cast_with_scroll` 8, `cast_with_arrow` 0x10
 (0x253A8 to 0x2545D), so the last `cast_with_` word of a line decides.
 
-Port: `pickup_sound()` and `pickup_flag_10()` in `dtuobj.c`. Setup 1.0 of the port
+Port: `pickup_sound()` and `pickup_flag_10()` in `dtuobj_item.c`. Setup 1.0 of the port
 played no sound for a pick up.
 
 ### Weapon items and the parent test of the port
@@ -1088,7 +1088,7 @@ tables of all levels (`tools/egg.py bin`).
 So in 1.3 a rat can be killed only by stepping on it with boots (and it comes
 back somewhere else), or by an effect that does not use a query. The port:
 `dtu_rat_type`, `rat_squash` and the contact test in
-`dtu_creature_physics_sim` (dtuobj.c). The port tests the type for
+`dtu_creature_physics_sim` (dtuobj_move.c). The port tests the type for
 `pass_thru`, not the object flag, so a squashed rat stays pass_thru. The
 correction `Dtu_fix_rat_hit` (combat.md, C3) lets the swing, the missiles and
 the target hint of the player reach a rat. `tools/check_reach.py` checks it.

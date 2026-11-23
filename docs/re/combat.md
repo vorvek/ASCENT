@@ -1122,7 +1122,7 @@ after the `inc edx` with EDX 0: each such die adds 0, and the part for each leve
 is added after the loop. **V** in DOSBox-X: a copy of DTUGAME.EXE
 that runs the bytes of 0x91C25 with 0 sides right after div0_init and exits with
 0x2A + EDX gave 42 (EDX 0; EBX, ECX, ESI, EDI, EBP kept), and 43 with 1 side. The
-port adds 0 for each die (`spell_dice`, dtuobj.c). A fire part sets target
+port adds 0 for each die (`spell_dice`, dtuobj_combat.c). A fire part sets target
 +0x15E bit 0.
 Creature target: Robot_info+0x98 bit 1 (electricity_immune): electric 0; bit 3
 (fire_immune): fire 0; else bit 4: fire / 2. Effect bit 10 (Resist Fire / Flame
@@ -1937,12 +1937,12 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   spell effects and the bonus of the effects of the player (Bless, Strength, Slow), a
   sleeping creature is hit and wakes, `weapon_resistant`, Stoneskin, the damage roll of
   the character (a second roll on a critical hit), Chill Touch, then
-  `dtu_damage_creature_direct` of `dtuobj.c` (message, flinch, death, experience). A push
+  `dtu_damage_creature_direct` of `dtuobj_combat.c` (message, flinch, death, experience). A push
   of 20.0 divided by the mass is added to the thrust of the creature. Hit and miss
   vclips and sounds of the weapon.
 - Missile and thrown weapons: the attack plays state 6 and the missile leaves at the fire
   frame of the model (0x56A0D) from the position plus 2.0 up, along the view with the
-  look pitch, with `dtu_create_missile` of `dtuobj.c` (flight, hit, damage). One item of
+  look pitch, with `dtu_create_missile` of `dtuobj_missile.c` (flight, hit, damage). One item of
   the stack in the hand is used (`dtu_char_use_up`, 0xB7084). An arrow needs a bow, a
   bolt a crossbow. A thrown stack that is used up gives the empty hand and arms the
   first hot key (0x4448D).
@@ -1977,7 +1977,7 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
     decides, because the swing ends there.
   - missile or thrown weapon: the start of the shot (`missile_start`, the position
     plus 2.0 up, the view with the look pitch), then `dtu_missile_path_target` of
-    dtuobj.c: the wall query and the body test of `missiles_frame` (shared
+    dtuobj_missile.c: the wall query and the body test of `missiles_frame` (shared
     `missile_path_object`) along the line for speed times life. No hint without
     the bow or the crossbow that the ammunition needs.
   - spell, scroll, wand: `dtu_spell_hint_target` of dtuspell.c: no hint for a spell
@@ -2026,7 +2026,7 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   of the feet is not hit by a swing at the ceiling with a Broad Sword or a Mace;
   1.3 hits it when the level swing reaches it. The Dagger and the Short Sword
   keep their vertical reach of about 17 at every pitch, so they still hit it.
-- `Dtu_fix_attack_commit` (dtuobj.c `weapon_test`, on by default). 1.3 and the
+- `Dtu_fix_attack_commit` (dtuobj_combat.c `weapon_test`, on by default). 1.3 and the
   port before: a creature starts a melee attack when the player is within both
   radii plus 2.0 (0x1599F); the hit and the roll against the armor class
   (0x27D82, 0x29A9C, 0x2A7F3) come only when the weapon sphere of a model frame
@@ -2086,7 +2086,7 @@ longer called: `controls.c` calls `dtu_combat_attack_key()` and `dtu_combat_fram
   him). The others fire missiles with `dtu_create_missile` (templates 2 hands, 3 wand, 4
   scroll, 5 arrow), the speed of the line (default 100.0), the number of 0x56FF6.
   Homing missiles turn to the target (the rule of the turn is a guess).
-- Effects: `dtu_spell_hit` (the strong definition of the weak function of `dtuobj.c`)
+- Effects: `dtu_spell_hit` (the strong definition of the weak function of `dtuobj_combat.c`)
   runs the case of 0x8CFFF, or the area 0x90CEF for an area spell. An area spell whose
   missile hits a wall or ends has its area at the last point. The area test uses a ray
   in place of the brain table.
@@ -2200,7 +2200,7 @@ The dead code `dtu_player_attack` and `player_animation` of dtuobj.c is removed.
 
 The audit of the combat rules ([../audit/combat.md](../audit/combat.md)) added the
 effects of 0x2A7F3 and 0x2AF5E for every attacker (`dtu_hit_test`,
-`dtu_weapon_extra_damage` in `dtuobj.c`), the protections of the player in
+`dtu_weapon_extra_damage` in `dtuobj_combat.c`), the protections of the player in
 0x2A24A, the fumble texts, Flame Tongue, Mace of Disruption, the fire dice of
 weapons, the strength 18 columns and the invisibility in 0x165C4. Its table lists
 what is still open.

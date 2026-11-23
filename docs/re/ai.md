@@ -627,7 +627,7 @@ The callers and their level (`mov edx, level` before `call 0x160AB`):
   event reaches the segments up to 5 steps away, through any wall.
 
 The port: `dtu_creature_alert`, `awareness_event` and
-`awareness_events_frame` (dtuobj.c) give the same values with a search by
+`awareness_events_frame` (dtuobj_aware.c) give the same values with a search by
 distance. The agitation, the bits of +0x15E and the believed positions
 (0x15FBC, see `compute_vis_and_vec`) are not in the port. The alerts of
 0x25FB0, 0x265C1 and 0x93294 have no call in the port.
@@ -811,7 +811,7 @@ minus 1, so the last segment is never marked.
   `PC_spell` on the scenery (0x90CEF for an area spell, else 0x8CFFF), and
   the spell cases decide (combat.md B3). **Code.**
 
-The port: `dtu_break_dressing()` and the push in `dtuobj.c` (settings
+The port: `dtu_break_dressing()` and the push in `dtuobj_scenery.c` (settings
 `Dtu_fix_cant_break`, `Dtu_fix_push_body`, `Dtu_fix_push_rate` and
 `Dtu_fix_push_wall`, see combat.md C3 and objects.md, "Pushed scenery"). The move
 of the player (`dtu_player_physics_sim`, physics.c) stops at scenery and
@@ -1652,7 +1652,7 @@ player who joined the guild and did nothing against it is attacked. A
 creature that the player attacked keeps its hostility through the state
 of the level (the restore reads it after the setup), not through `add_npc`.
 
-The port (dtuobj.c): `creature_setup_by_name` and `level_start_npcs` after
+The port (dtuobj_setup.c): `creature_setup_by_name` and `level_start_npcs` after
 the object setup and the object part of the level fixes, in the order of the
 executable; `add_npc` is the old hostility part of `init_creature_ai`. The
 type entries of the setup of the level file are kept for a restore

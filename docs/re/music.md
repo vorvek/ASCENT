@@ -304,9 +304,9 @@ fly and, when the switch 0x145360 is set, creates a splash object (type 10).
 | CD audio of `songs.c` | `engine/main/songs.c` reads `DTU.SNG` and plays nothing. |
 | 16-bit effects | `digi.c` plays `piggy_get_sound_16` data with `plat_audio_play16` at the rate of the sound. `-sound8` or `Dtu_sound_16bit = 0` selects the 8-bit copy. |
 | Footsteps | `engine/main/dtufoot.c`, setting `Dtu_footsteps`. The splash is `dtu_water_splash` (dtuobj.c), with no light and to the side of the walk (bugs.md D13). The flag 0x145305 is taken as 0. The rate of the player is the original one. Correction `Dtu_fix_foot_pan` (on): the step of the player plays in the middle (pan 0.5) at the fixed volume 0.5, with no offset. |
-| Creature footsteps | `dtufoot_creature`, called at the end of `dtu_creature_physics_sim` (dtuobj.c) for a creature with activity 2. The sound choice is `rand() % 4`, not the clock. The `rat=` test is any monster type with the keyword. Correction `Dtu_fix_creature_steps` (on): one step when the creature enters the first frame of the WALK or RUN cycle, not one on each game frame that shows it. |
+| Creature footsteps | `dtufoot_creature`, called at the end of `dtu_creature_physics_sim` (dtuobj_move.c) for a creature with activity 2. The sound choice is `rand() % 4`, not the clock. The `rat=` test is any monster type with the keyword. Correction `Dtu_fix_creature_steps` (on): one step when the creature enters the first frame of the WALK or RUN cycle, not one on each game frame that shows it. |
 
-The death music (0x4249D) plays in `dtu_player_death_frame` (dtuobj.c) and on the death
+The death music (0x4249D) plays in `dtu_player_death_frame` (dtuobj_combat.c) and on the death
 screen of the front end (dtufe.c). The speech of `str_dlg.c` (WERDZ.DAT) plays for
 Khelben in the front end (dtufe.c).
 

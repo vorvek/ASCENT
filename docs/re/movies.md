@@ -134,8 +134,8 @@ runs in place of the normal break **V**:
 - FLAM1: statement D3 with sound 0xFFFF calls `dtumovie_flame()`
   (dtuscript.c), with the game time stopped. The port plays it also
   without a sound device.
-- CREDITV1: `dtu_break_dressing()` (dtuobj.c) starts the end sequence for
-  object 3 of level 0x20 and returns. `end_sequence_frame()` (dtuobj.c, in
+- CREDITV1: `dtu_break_dressing()` (dtuobj_scenery.c) starts the end sequence for
+  object 3 of level 0x20 and returns. `end_sequence_frame()` (dtuobj_scenery.c, in
   each game frame) runs steps 1 and 2 of 0xA6786, one step in each
   reference tick (3/64 s, 9.2 s in all), then calls
   `dtumovie_end_credits()`. The player keeps the controls of a game frame,
