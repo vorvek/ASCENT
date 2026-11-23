@@ -23,13 +23,17 @@ mark "bytes" are acted on; the others need a verification in the bytes first.
 
 ## Counts
 
-| State | Before this pass | After |
+| State | First pass | Second pass (2026-11-23, three groups) |
 |---|---:|---:|
-| corrected | 53 | 54 |
-| copied | 44 | 42 |
-| not applicable | 26 | 29 |
-| port differs | 59 | 57 |
+| corrected | 54 | 73 |
+| copied | 42 | 33 |
+| not applicable | 29 | 47 |
+| port differs | 57 | 29 |
 | unknown | 2 | 2 |
+
+The second pass verified each changed row in the raw bytes. Its changes are in the rows.
+The list of open rows below is from the first pass: a row is open now when its state is
+"port differs", "unknown", or "copied" with no reason in its note.
 
 Changes of this pass: D-057 (corrected, `disable_trap`), D-075 (corrected, `script_area_seg`), D-070,
 D-074 and D-101 (not defects of 1.3; the port now does what 1.3 does), D-104 (the note of the row).
