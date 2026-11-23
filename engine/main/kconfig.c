@@ -2653,7 +2653,7 @@ static void dtu_pad_defaults(void)
 		{ DTU_ACT_CYCLE_WEAPON, PLAT_PAD_Y,               255 },
 		{ DTU_ACT_RUN,          PAD_POS(PLAT_PAD_LTRIGGER), 255 },
 		{ DTU_ACT_AUTO_RUN,     PLAT_PAD_LSTICK,          255 },
-		{ DTU_ACT_QUICK_DOWN,   PLAT_PAD_RSTICK,          255 },
+		{ DTU_ACT_CLIMB,        PLAT_PAD_RSTICK,          255 },	// Quick Down until the climb key
 		{ DTU_ACT_AUTOMAP,      PLAT_PAD_BACK,            255 },
 		{ DTU_ACT_INVENTORY,    PLAT_PAD_DPAD_UP,         255 },
 		{ DTU_ACT_REST,         PLAT_PAD_DPAD_DOWN,       255 },
@@ -3664,14 +3664,30 @@ int dtu_kconfig_cfg_line(const char *name, const char *value)
 		return 1;
 	}
 	if (!strcmp(name, "PadConfig")) {
-		// a file of an earlier version has no Climb Wall (the last
-		// action): its default stays
+		// A file of an earlier version has no Climb Wall (the last
+		// action). Its R3 on Quick Down (the old default) goes to Climb
+		// Wall; an R3 on another action stays there and Climb Wall gets
+		// no button; a free R3 goes to Climb Wall (the default).
 		ubyte pad[2 * DTU_N_ACTIONS];
 		int len = (int) (strlen(value) / 4) * 2;
 		if (len > (int) sizeof(pad))
 			len = sizeof(pad);
-		if (len >= 2 * DTU_ACT_CLIMB && hex_bytes(value, pad, len))
+		if (len >= 2 * DTU_ACT_CLIMB && hex_bytes(value, pad, len)) {
 			memcpy(Dtu_pad_settings, pad, len);
+			if (len < 2 * DTU_N_ACTIONS) {
+				int a, w, r3_other = 0;
+
+				for (w = 0; w < 2; w++)
+					if (Dtu_pad_settings[DTU_ACT_QUICK_DOWN][w] == PLAT_PAD_RSTICK)
+						Dtu_pad_settings[DTU_ACT_QUICK_DOWN][w] = 255;
+				for (a = 0; a < DTU_ACT_CLIMB; a++)
+					for (w = 0; w < 2; w++)
+						if (Dtu_pad_settings[a][w] == PLAT_PAD_RSTICK)
+							r3_other = 1;
+				Dtu_pad_settings[DTU_ACT_CLIMB][0] = r3_other ? 255 : PLAT_PAD_RSTICK;
+				Dtu_pad_settings[DTU_ACT_CLIMB][1] = 255;
+			}
+		}
 		return 1;
 	}
 	if (!strcmp(name, "PadDeadZone")) {

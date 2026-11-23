@@ -1262,7 +1262,7 @@ class Pages:
             "sets the trap off.",
             "- Move Silently (key M) and Hide In Shadows (a roll each time you stop): creatures do not "
             "notice you. An attack ends hiding.",
-            "- Climb Walls: the Climb Wall key (Q) at a wall, with no weapon in the hand. A failed "
+            "- Climb Walls: the Climb Wall key (Q, R3 on the gamepad) at a wall, with no weapon in the hand. A failed "
             "roll is a slip. Activate takes hold of a ladder but does not climb a wall.",
             "- Backstab: a melee attack from behind a humanoid creature while Move Silently is on, "
             "while no creature that can see you watches you: +4 to hit, damage x2 at levels 1 to 4, x3 at 5 to 8, x4 at 9 to "

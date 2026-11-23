@@ -149,7 +149,7 @@ executable. Changes:
 
 - The port defaults of the keyboard (table above). W and S take the place of keypad 8
   and 2.
-- Climb Wall (port) in the unused items 20 and 21, default Q, label "Climb Wall"
+- Climb Wall (port) in the unused items 20 and 21, default Q (gamepad R3), label "Climb Wall"
   (`LN`, Spanish "Escalar pared" in `engine/lang/es_port.catalog`). It casts the use
   ray of 0x95050 and runs the climb of 0x951DE, without the triggers, the doors and
   the objects (`dtu_thief_climb_key` in `dtuthief.c`). Activate then takes hold of a
@@ -170,7 +170,9 @@ executable. Changes:
   the two bytes as they are. A file with no `KeyConfigClimb` line keeps the default Q,
   unless one of its key rows gives Q to another item. `PadConfig` has two bytes for
   each action in the order of the actions (`kconfig.h`); Climb Wall is the last, so
-  an older, shorter line is read and Climb Wall keeps its default.
+  an older, shorter line is read. For such a line R3 on Quick Down (the old default)
+  moves to Climb Wall and Quick Down has no button; R3 on another action stays and
+  Climb Wall has no button; a free R3 goes to Climb Wall.
 - The mouse buttons act only in the immersive mode (the Attack button too: the left
   button clicks the interface in the other mode). **G** whether the executable lets a
   click on the interface attack.
@@ -198,10 +200,12 @@ Escape; Start is Escape in the game and in the menus (not a binding).
 Defaults: left stick walk and side step, right stick turn and look, A Jump, X and RT
 Attack (a spell in the hand is cast with Attack: the game has no separate cast
 action), B Activate, Y Cycle Weapon, LT Run, left stick click Auto Run, right stick
-click Quick Down, Back Automap, d-pad up Inventory, down Rest, left Find Traps, right
-Stats, LB and RB the previous and the next hot key. No default: Slide on, Float up and
-down, Immersive Mode, Quick Up, Infravision, Disarm, Turn Undead, Move silently, Open
-Locks, Climb Wall, the hot keys 1 to 10.
+click (R3) Climb Wall, Back Automap, d-pad up Inventory, down Rest, left Find Traps,
+right Stats, LB and RB the previous and the next hot key. No default: Slide on, Float
+up and down, Immersive Mode, Quick Up, Quick Down, Infravision, Disarm, Turn Undead,
+Move silently, Open Locks, the hot keys 1 to 10. R3 was Quick Down before Climb Wall
+existed (the decision of the user: Quick Up and Quick Down are not needed on the
+gamepad; Quick Up never had a gamepad default).
 
 Tests: `engine/platform/test_pad.c` (ctest `platform_pad`), and the `-fescript`
 commands `padbutton NAME 0|1` and `padaxis NAME VALUE`, which call the functions that
