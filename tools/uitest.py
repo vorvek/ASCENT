@@ -126,6 +126,29 @@ def test_equal_minus(t):
 MIDDLE = (200, 120, 160, 80)
 
 
+def saved_sensitivity(d):
+    for root, _, files in os.walk(d):
+        for f in files:
+            if f.lower() == "ascent.cfg":
+                with open(os.path.join(root, f)) as fh:
+                    m = re.search(r"Sensitivity=(\d+)", fh.read())
+                    if m:
+                        return int(m.group(1))
+    return None
+
+
+def test_sensitivity_menu(t):
+    """The sensitivity slider of the F2 options menu keeps its value
+    (Dtu_fix_sensitivity_menu); with -origui each pass of the menu stores
+    the slider value plus 1 (0x590AC, D-140)."""
+    lines = ["gamekeys", "wait 20", "key f2", "wait 5"] + ["key down", "wait 2"] * 8 + \
+        ["key left", "wait 2"] * 3 + ["key esc", "wait 10"]
+    _, d = t.run("sensitivity", lines, extra=["-fixedfps", "30"])
+    assert saved_sensitivity(d) == 4, "the slider 4 was saved as %s" % saved_sensitivity(d)
+    _, d = t.run("sensitivity_orig", lines, extra=["-fixedfps", "30", "-origui"])
+    assert saved_sensitivity(d) == 5, "-origui: the slider 4 was saved as %s" % saved_sensitivity(d)
+
+
 def test_alt_f2_f3(t):
     """Alt+F2 opens the Save Game slot menu, Alt+F3 the restore slot menu
     (0x432B8, 0x432C2), and Alt+F3 does not change the screen as F3 does."""

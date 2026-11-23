@@ -826,10 +826,23 @@ static void dtu_options_menuset(int nitems, newmenu_item * items, int *last_key,
 	}
 }
 
+// ASCENT: D-140. 0 (the executable): each pass of the menu loop stores the
+// slider value plus 1 (0x590AC), so the sensitivity rises by one step each
+// time the menu is left or a sub menu is opened. 1 (default): the value of
+// the slider. -origui clears it.
+int Dtu_fix_sensitivity_menu = 1;
+
 static void dtu_options_menu(void)
 {
+	static int init;
 	newmenu_item m[13];
 	int i = 0, n, calibrate, graphics;
+
+	if (!init) {
+		init = 1;
+		if (FindArg("-origui"))
+			Dtu_fix_sensitivity_menu = 0;
+	}
 
 	do {
 		memset(m, 0, sizeof(m));
@@ -873,7 +886,7 @@ static void dtu_options_menu(void)
 			dtufe_graphics_menu();
 
 		Config_channels_reversed = m[6].value;
-		Config_joystick_sensitivity = m[10].value;
+		Config_joystick_sensitivity = m[10].value + (Dtu_fix_sensitivity_menu ? 0 : 1);	// 0x590AC
 	} while( i>-1 );
 
 	if ( Config_midi_volume < 1 )	{
