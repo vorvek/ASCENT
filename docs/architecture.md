@@ -112,22 +112,28 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 
 | Option | Corrections that it clears | Where |
 |---|---|---|
-| `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` | `controls.c` |
-| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture` | `dtuobj.c` |
-| `-origdrow5`, `-origguildpeace` | one each: `drow5_shields`, `guild_peace` | `dtuobj.c` |
-| `-origcombat` | `one_hit`, `haste_attack`, `rat_hit`, `stoneskin_word`, `chill_touch`, `rary_manual`, `melf_acid`, `turn_undead` (`dtucombat.c`); `wizardry_ring`, `potion_frame`, `luck_coin` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
-| `-origchar` | `multiclass_thac0`, `spell_save_repair` | `dtuchar.c` |
+| `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` (all in `physics.c`) | `controls.c` |
+| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive` | `dtuobj.c` |
+| `-origrevive`, `-origdrow5`, `-origguildpeace` | one each: `revive`, `drow5_shields`, `guild_peace` | `dtuobj.c` |
+| `-origcombat` | `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `cure_aid` (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
+| `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points` (`dtuchar.c`); `secret_door_names` (`dtuthief.c`) | `dtuchar.c`, `dtuthief.c` |
 | `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap` | `dtutrig.c` |
-| `-origui` | `automap_reveal`, `msg_scroll` | `automap.c`, `dtudisp.c` |
+| `-origui` | `automap_reveal` (`automap.c`); `msg_scroll`, `view_aspect` (`dtudisp.c`) | `automap.c`, `dtudisp.c` |
 | `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg` | `dtuscript.c` |
+| `-origscriptwalk` | `script_walk` | `dtuscript.c` |
+| `-origprison` | `prison_items` | `dtuscript.c` |
 | `-origsound` | `foot_pan`, `creature_steps` | `dtufoot.c` |
-| `-origmusic` | `start_music` | `dtumusic.c` |
+| `-origmusic` | `start_music`, `wrp_sound` | `dtumusic.c` |
 | `-origlight` | `light_stable` | `lighting.c` |
+| `-origitems` | `item_names` (`dtuitemfix.c`) | `dtuopts.c` |
+| `-origfe` | `escape_load_waterdeep` (`dtufe.c`); `market_charisma`, `market_sell_count` (`dtufe_town.c`) | `dtufe.c` |
 
-`Dtu_fix_trap_seconds` is on by default as the others (`-origtrig` clears it).
-The state files keep the trap timers in the unit of the original. Three corrections have no option yet:
-`escape_load_waterdeep` (`dtufe.c`), `market_charisma` and
-`market_sell_count` (`dtufe_town.c`).
+The table was checked against the code on 2026-11-23: each `Dtu_fix_*` that
+is defined with the value 1 is in one row. `chill_touch` (`dtuspell.c`) has
+no option yet. `Dtu_fix_trap_seconds` is on by default as the others
+(`-origtrig` clears it); the state files keep the trap timers in the unit of
+the original. `Dtu_fix_lowres_aspect` is not a correction of a defect: it is
+off by default (see below).
 
 To add a correction:
 

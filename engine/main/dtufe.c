@@ -2840,12 +2840,21 @@ static void fe_free(void)
 	sg_forget();
 }
 
+// ASCENT: -origfe gives the front end rules of the executable: it clears
+// the corrections of dtufe.c and dtufe_town.c
+static void fe_orig_options(void)
+{
+	if (FindArg("-feoriginput"))
+		Dtu_fe_original_input = 1;
+	if (FindArg("-origfe"))
+		Dtu_fix_escape_load_waterdeep = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
+}
+
 static void fe_enter(void)
 {
 	if (!Fe_ready) {
 		Fe_ready = 1;
-		if (FindArg("-feoriginput"))
-			Dtu_fe_original_input = 1;
+		fe_orig_options();
 		script_load();
 		Fe_font_l = load_font("FNTEMFL_.FNT");		// 0x13E388
 		Fe_font_m = load_font("FNTEMFM_.FNT");		// 0x13E380
@@ -3010,6 +3019,7 @@ int Dtu_fix_escape_load_waterdeep = 1;
 void dtufe_direct_start(void)
 {
 	Fe_in_game = 1;
+	fe_orig_options();
 	// ASCENT: -fescript with -level drives the game and its menus (as
 	// after the command "gamekeys")
 	script_load();

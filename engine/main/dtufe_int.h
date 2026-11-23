@@ -218,7 +218,8 @@ void fe_market_store(int s, int write);
 void fe_market_new_character(void);
 // 0x879A7: reward n (0 to 8) of Khelben adds its goods to geldor.dat.
 int fe_market_reward(int n);
-// Settings of the market (dtufe_town.c, docs/re/frontend.md)
+// Settings of the market (dtufe_town.c, docs/re/frontend.md): D-081 and
+// D-082. -origfe clears them (dtufe.c).
 extern int Dtu_fix_market_charisma;
 extern int Dtu_fix_market_sell_count;
 
