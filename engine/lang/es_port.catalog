@@ -203,6 +203,14 @@ id: port.lvl_d
 en: Lvl %d
 tr: Niv. %d
 
+id: port.l_d
+en: L-%d
+tr: N-%d
+
+id: port.many
+en: Many
+tr: Mucho
+
 id: port.l_d_d
 en: L%d +%d
 tr: N%d +%d
@@ -1952,6 +1960,10 @@ tr: No hace daño.
 id: port.s_more_damage_against_undead
 en: %s more damage against undead.
 tr: %s más de daño contra muertos vivientes.
+
+id: port.blinds_each_creature_within_s_of_the_poi
+en: Blinds each creature within %s of the point for up to %s, and deafens it unless it saves.
+tr: Ciega a cada criatura a %s o menos del punto durante hasta %s, y la ensordece si no supera la tirada de salvación.
 
 id: port.gives_s
 en: Gives %s.

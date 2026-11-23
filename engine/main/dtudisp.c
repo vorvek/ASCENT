@@ -613,8 +613,8 @@ static void item_count_text(int index, char *text)
 	}
 	if (e->count == 0 || e->count == 1)
 		return;
-	if (e->count < 0)
-		strcpy(text, Dtu_hires ? "Many" : "+++");
+	if (e->count < 0)		// ASCENT: the word of the language (32 pixels)
+		strcpy(text, Dtu_hires ? LT("Many") : "+++");
 	else
 		sprintf(text, "%d", e->count);
 }

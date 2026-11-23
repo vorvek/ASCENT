@@ -321,7 +321,10 @@ def port_strings(engine_dir):
                     r = c_literals(args, i)
                     if r:
                         b, i = r
-                        if visible(b):
+                        # LT marks a text to translate, also a short one
+                        # with one letter ("L-%d" under a spell icon)
+                        if visible(b) or (fn == 'LT' and re.search(
+                                r'[A-Za-z]', PH_RE.sub('', b.decode('latin-1')))):
                             out.append((b, '%s:%d' % (name, line), fn))
                         if rules[fn] == 'first':
                             break
