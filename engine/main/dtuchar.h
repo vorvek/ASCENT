@@ -243,6 +243,19 @@ extern int Dtu_fix_level_hit_points;
 // D-138: the potion time left that a save writes. 0: whole seconds cut
 // down, as 0xBA857. 1 (default): the nearest second.
 extern int Dtu_fix_save_seconds;
+// D-030: a stack whose count is below 1 (endless) at a use. 0: it becomes
+// one item, as 0xB6FE3. 1 (default): it stays endless. -origchar clears it.
+extern int Dtu_fix_endless_stack;
+// D-093: the thief points of a level set by a script (0x8BACD). 0: the
+// thief bit of the last character creation of the run, as 1.3. 1
+// (default): the classes of the character. -origchar clears it.
+extern int Dtu_fix_level_thief;
+
+// ASCENT: D-092, 0xB0C65 (the die of the character creation) with
+// Dtu_fix_creation_luck 0: if the Luck timer of the player is set and the
+// clock is odd, the luck ends (0xAE564) and the function returns 1 (the
+// die is the number of sides). Else 0.
+int dtu_char_creation_luck(void);
 
 // 0x8BA3A: the character becomes a character of level "level" (from 1):
 // the level of each class (one less for two classes), the experience of

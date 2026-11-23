@@ -244,6 +244,13 @@ extern int Dtu_fix_alert_last;
 // plain bonus. 0 (-origcombat): with the 18/xx part when the player is a
 // fighter, as 1.3.
 extern int Dtu_fix_creature_strength;
+// ASCENT: D-104, a spell roll that reads the die count of the table line.
+// 1: the count of the line. 0 (-origcombat): the count that the last cast
+// of Fireball, Lightning Bolt or Melf's Acid Arrows wrote into the record
+// (0x8E592, 0x8EEAB, 0x8F00E), as 1.3. dtu_spell_dice_clear: a new table
+// read (dtu_spell_table_read).
+extern int Dtu_fix_spell_dice;
+void dtu_spell_dice_clear(void);
 // 0x670D4: 0, 1 a magic object, 2 a creature with a magic weapon.
 int dtu_magic_look(object *obj);
 void dtu_set_tint(int tint);

@@ -113,6 +113,15 @@ extern int Dtu_fix_spell_hours;
 // points of Aid go first. 1 (default): a cure does not lower the hit
 // points. 0: the executable. -origcombat clears it.
 extern int Dtu_fix_cure_aid;
+// ASCENT: D-105, the Prayer of the player (0x56D6A) writes the flag word
+// +0x36 of spell 38 as 0x102 at each cast; the record keeps it until the
+// next table read. 1 (default): the flags of the table line. 0: after the
+// first Prayer of the player the line reads as 0x102 (TARGET, stackable,
+// cast with the hands, self_cast_ok, no other flag). -origcombat clears it.
+extern int Dtu_fix_prayer_flags;
+// ASCENT: the tables were read again (bmread.c, after the table fixup):
+// the writes of the casts into the spell records end.
+void dtu_spell_table_read(void);
 
 // ASCENT: the checks of the priest spells and of turn undead (the
 // -chartest command priestcheck). Writes "priestcheck: PASS ..." or

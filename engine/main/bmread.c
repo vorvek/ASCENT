@@ -98,6 +98,7 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 #include "dtufile.h"		// ASCENT: the game data files
 #include "dtuitemfix.h"	// ASCENT: the rulebook values of the item lines
 #include "dtutblfix.h"	// ASCENT: the table fixup of 1.3 (0x1A344)
+#include "dtuspell.h"	// ASCENT: dtu_spell_table_read
 
 // ASCENT: from here on this file is changed in most places. Descent 1
 // parsed BITMAPS.TBL only in the editor build, loaded IFF bitmaps and POF
@@ -898,6 +899,7 @@ int bm_load_level_tables( char * level_name, char * player_name )
 		dtu_tblfix_apply( &Tblfix_io );
 	else
 		dtu_log( "Table fixup of 1.3 not applied (-rawtables)\n" );
+	dtu_spell_table_read();		// ASCENT: the writes of the casts into the spell records end (D-104, D-105)
 
 	NumTextures = texture_count;
 	Num_tmaps = tmap_count;

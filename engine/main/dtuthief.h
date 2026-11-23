@@ -51,6 +51,11 @@ extern int Dtu_fix_secret_door_names;
 // ASCENT: the backstab of AD&D 2nd Edition: from behind the target, and only
 // a creature that sees the player stops it. 0 (-origcombat): 0xB337E.
 extern int Dtu_fix_backstab;
+// ASCENT: D-067, the Find/Remove Traps skill after the rolls of a magical
+// trap. 0 (-origchar): doubled again (an odd skill stays 1 lower), and
+// left halved after a find by the spell (0xB3CF9, 0xB3B5E). 1 (default):
+// restored.
+extern int Dtu_fix_find_traps_skill;
 
 // One time in each frame (dtu_char_frame): the search for traps (0xB4040
 // from game.c 0x438F3), Hide In Shadows (0xB333F from pcons.c 0x9DFDE).

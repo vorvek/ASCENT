@@ -2555,13 +2555,15 @@ static void fe_free(void)
 }
 
 // ASCENT: -origfe gives the front end rules of the executable: it clears
-// the corrections of dtufe.c and dtufe_town.c
+// the corrections of dtufe.c, dtufe_char.c and dtufe_town.c
 static void fe_orig_options(void)
 {
 	if (FindArg("-feoriginput"))
 		Dtu_fe_original_input = 1;
 	if (FindArg("-origfe"))
 		Dtu_fix_escape_load_waterdeep = Dtu_fix_chargen_abort = Dtu_fix_save_open_text = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
+	if (FindArg("-origfe"))
+		Dtu_fix_start_spells = Dtu_fix_chargen_percentile = Dtu_fix_creation_luck = 0;
 }
 
 static void fe_enter(void)

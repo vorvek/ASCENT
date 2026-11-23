@@ -890,11 +890,31 @@ void dtu_query_radii(object *obj, fix *rad_h, fix *rad_v)
 // in DOSBox-X with the bytes of 0x91C25 run after div0_init: EDX 0, EBX,
 // ECX, ESI, EDI and EBP kept. The part for each level is added after the
 // loop.
-static int spell_dice(int record,char *sides_key,char *count_key,char *level_key,int level,int count)
-{
-	int sides = tbl_int(record,sides_key,0), sum = 0, i;
+// ASCENT: D-104. The cases of Fireball (0x8E592), Lightning Bolt
+// (0x8EEAB) and Melf's Acid Arrows (0x8F00E) of 0x8CFFF write the die
+// count of the cast into the spell table record before the roll; the record
+// keeps it until the next table read. A roll that reads the count of the
+// table (0x3D2BD, Fireball on an object in a lava segment, which the port
+// does not have; in the port the fallen body of Dtu_fix_revive) then gets
+// the count of the last cast of any caster. 1 (default): the count of the
+// table line. -origcombat clears it (dtucombat.c).
+int Dtu_fix_spell_dice = 1;
+static int Spell_dice_written[MAX_SPELL_TYPES][4];		// the count + 1, 0: none
 
-	if (count < 0)
+void dtu_spell_dice_clear(void)
+{
+	memset(Spell_dice_written,0,sizeof(Spell_dice_written));
+}
+
+static int spell_dice(int spell,int group,char *sides_key,char *count_key,char *level_key,int level,int count)
+{
+	int record = Spell_info[spell].record, sides = tbl_int(record,sides_key,0), sum = 0, i;
+
+	if (count >= 0)
+		Spell_dice_written[spell][group] = count + 1;
+	else if (!Dtu_fix_spell_dice && Spell_dice_written[spell][group])
+		count = Spell_dice_written[spell][group] - 1;		// Dtu_fix_spell_dice
+	else
 		count = tbl_int(record,count_key,0);
 	if (sides == 0 && count == 0)
 		return 0;
@@ -924,16 +944,15 @@ int dtu_spell_damage_roll(int spell, object *target, int level)
 
 int dtu_spell_damage_roll_count(int spell, object *target, int level, int group, int count)
 {
-	int rec, base, fire, acid, elec, raw;
+	int base, fire, acid, elec, raw;
 
 	if (spell < 0 || spell >= N_spell_types || target == NULL)
 		return 0;
-	rec = Spell_info[spell].record;
 	dtu_xp_roll_clear();		// ASCENT: the verbose combat log (dtuxp.h)
-	base = spell_dice(rec,"damage_dice","#damage_dice","damage_level",level,group == 0 ? count : -1);
-	fire = spell_dice(rec,"fire_damage_dice","#fire_damage_dice","fire_damage_level",level,group == 1 ? count : -1);
-	acid = spell_dice(rec,"acid_damage_dice","#acid_damage_dice","acid_damage_level",level,group == 2 ? count : -1);
-	elec = spell_dice(rec,"elec_damage_dice","#elec_damage_dice","elec_damage_level",level,group == 3 ? count : -1);
+	base = spell_dice(spell,0,"damage_dice","#damage_dice","damage_level",level,group == 0 ? count : -1);
+	fire = spell_dice(spell,1,"fire_damage_dice","#fire_damage_dice","fire_damage_level",level,group == 1 ? count : -1);
+	acid = spell_dice(spell,2,"acid_damage_dice","#acid_damage_dice","acid_damage_level",level,group == 2 ? count : -1);
+	elec = spell_dice(spell,3,"elec_damage_dice","#elec_damage_dice","elec_damage_level",level,group == 3 ? count : -1);
 	raw = base + fire + acid + elec;
 
 	if (target->type == OBJ_ROBOT && target->id < N_robot_types) {

@@ -226,6 +226,7 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include "dtuspell.h"		// ASCENT: the jump key stops a cast
 #include "dtuopts.h"		// ASCENT: the Improvements of the movement
 #include "dtudisp.h"		// ASCENT: Dtu_immersive, the key V
+#include "dtulang.h"		// ASCENT: LN(), the Auto Run messages
 #include "dtuchar.h"		// ASCENT: the hand slot for Disarm
 #include "bm.h"
 #include "key.h"
@@ -611,8 +612,17 @@ void dtu_read_controls(void)
 	alt_last = key;
 
 	key = dtu_action_down(DTU_ACT_AUTO_RUN);
-	if (key && !caps_last)
+	if (key && !caps_last) {
 		autorun = !autorun;
+		// ASCENT: 0x53176 to 0x531A0: "Auto Run is on." (0x127F0C) or "Auto
+		// Run is off." (0x127F1C) with 0x347A2 and Player_num, the color of
+		// the player. The port had no message. The literals are not in the
+		// string table (D-096); the port translates them (dtulang.h).
+		if (Dtu_display_active) {
+			dtu_display_next_message_color(0);
+			dtu_display_add_message(autorun ? LN("Auto Run is on.") : LN("Auto Run is off."));
+		}
+	}
 	caps_last = key;
 
 	// ASCENT: the display of the game (dtudisp.c, 0x54439) owns the
