@@ -82,7 +82,7 @@ comments.
 | `dtustate.c` | Level state files and their copies in the save slots. Same format as the DOS game. | `re/levelstate.md` |
 | `dtumusic.c` | Streamed music (TUN files) and the music commands of DTU.WRP. Replaces the MIDI songs. | `re/music.md`, `formats/tun.md` |
 | `dtufoot.c` | Footstep sounds of the player and the creatures. | `re/music.md` |
-| `dtumiss.c` | The miss sound of a melee attack (port sounds of `<hd>/sound`). New in the port. | `re/combat.md` |
+| `dtumiss.c` | The miss sound of a melee attack (the `flash_sound` of the weapon). New in the port. | `re/combat.md` |
 | `dtumovie.c`, `mvedec.c` | The movie player and the MVE decoder. | `re/movies.md`, `formats/mve.md` |
 | `acm.c` | The Interplay ACM audio decoder (sounds of the EGG archives). | `formats/tun.md` |
 | `dtuogg.c` | The Ogg Vorbis decoder for replacement music (stb_vorbis). | |
@@ -189,8 +189,8 @@ touches creature N), `killby=N.A` (creature A kills creature N), `descxp`,
 Improvements menu and `MissSound` in `ascent.cfg`, on by default: a short
 whoosh when a melee attack hits nothing (`re/combat.md`, "Miss sound").
 `-origsound` and `-nomisssound` turn it off for one run without a change of
-the setting. The sounds are `<hd>/sound/miss*.wav` of the content pack
-`sounds`; without them nothing plays.
+the setting. The miss sound is the `flash_sound` of the weapon from the game
+files (`re/combat.md`).
 
 `Dtu_fix_lowres_aspect` (`dtuopts.c`) is the shape of the 320x200 frame
 of the low resolution in the window. It is off by default: square pixels
@@ -303,7 +303,7 @@ installer or by `ascent-content`. No content is in the repository.
    the upscaled textures, interface pictures and movies in `gamedata/hd`
    (`docs/hd_textures.md`). `tools/music_replace.py` makes replacement music.
 2. `tools/content_pack.py` builds ZIP packs (`patch13`, `textures`, `ui`,
-   `movies`, `lang_<code>`, `sounds`) and `manifest.txt` in `gamedata/content`
+   `movies`, `lang_<code>`) and `manifest.txt` in `gamedata/content`
    (`docs/install.md`, "Content packs").
 3. The owner copies the packs to the content server
    (`installer/server/worker.js`, `installer/content.ini`).

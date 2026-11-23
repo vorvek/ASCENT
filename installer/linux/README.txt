@@ -17,7 +17,7 @@ The setup asks for:
   image (.iso, or .cue with .bin). An installed game is not enough,
 - the language of the game (English or Spanish) and the optional
   downloads (upscaled textures and interface, upscaled movies, the
-  Spanish text, the miss sounds of a melee attack).
+  Spanish text).
 
 It downloads the files of the 1.3 patch, makes the data folder, and makes
 the command ascent-dtu (~/.local/bin) and a menu entry.

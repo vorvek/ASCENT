@@ -27,8 +27,7 @@ You must own a copy of Descent to Undermountain to use this project.
 
 ## Downloads during installation
 
-The installer and the content manager (`ascent-content`) can download the 1.3 patch, the optional upscaled textures and movies, the Spanish translation and the miss sounds.
-The miss sounds come from the "Fighting SFX" library of Triune Sound, under a license held by the project owner. They are not in this repository.
+The installer and the content manager (`ascent-content`) can download the 1.3 patch, the optional upscaled textures and movies and the Spanish translation.
 The server they download this content from uses Cloudflare.
 
 Some internet providers block Cloudflare addresses at some times. For example, providers in Spain block them during football matches.
