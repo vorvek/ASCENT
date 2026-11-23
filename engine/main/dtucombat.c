@@ -50,6 +50,7 @@
 #include "key.h"
 #include "dtuscroll.h"		// ASCENT: the scroll text screen skips the animation
 #include "dtuatk.h"			// ASCENT: the attack timing rules
+#include "dtuxp.h"			// ASCENT: the cause of a kill in the session log
 
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
@@ -407,6 +408,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 	if (creature->dtu.m_88 & DTU_FX_SLEEP) {
 		creature->dtu.m_88 &= ~(DTU_FX_SLEEP|DTU_FX_BLIND);
 		roll = 1;
+		dtu_xp_roll_clear();		// ASCENT: no roll (dtuxp.h)
 		dtu_obj_log("combat: obj %d %s sleeps: hit, it wakes",(int)(creature-Objects),dtu_object_name(creature));
 	}
 	else
@@ -427,6 +429,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 			damage = dtu_char_weapon_damage(weapon,creature);
 			if (roll == 2)
 				damage += dtu_char_weapon_damage(weapon,creature);		// a critical hit: a second roll
+			dtu_xp_dmg_end(damage);		// ASCENT: the verbose combat log (dtuxp.h)
 			// 0x29E3D: Chill Touch of the attacker (the swing is a melee hit), a
 			// failed save (category 4): an undead creature
 			// gets Fear (bit 8, the timer +0xAC) for 1d4 plus the caster
@@ -438,8 +441,13 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 					dtu_spell_set_effect(creature,DTU_FX_FEAR,i2f(60 * (rand() % 4 + 1 + dtu_spell_player_level(5))),0,0);
 					dtu_creature_morale(creature);
 				}
-				else
-					damage += rand() % 4 + 1;
+				else {
+					int c = rand() % 4 + 1;
+
+					damage += c;
+					dtu_xp_dmg_mod(c,LN("Chill Touch"));
+					dtu_xp_dmg_end(damage);
+				}
 			}
 		}
 	}
@@ -483,6 +491,7 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 		vclip_at(creature->segnum,hit_pnt,Weapon_info[weapon].impact_size,weapon_int(weapon,"monster_miss_vclip",-1));
 		sound_at(weapon_int(weapon,"monster_miss_sound",-1),creature->segnum,hit_pnt,F1_0/2);
 	}
+	dtu_xp_roll_say(player,creature);		// ASCENT: the verbose combat log (dtuxp.h)
 }
 
 //------------------------------------------------------------------------
@@ -1114,7 +1123,9 @@ int dtu_combat_turn_undead(int level)
 			strncpy(name,dtu_object_name(obj),sizeof(name)-1);
 			name[sizeof(name)-1] = 0;
 			dtu_creature_wake(obj,0);
+			dtu_xp_cause("Turn Undead");		// ASCENT: the session log (dtuxp.h)
 			dtu_damage_creature_direct(obj,NULL,obj->shields + F1_0);
+			dtu_xp_cause(NULL);
 			HUD_init_message(Text_string[928] && Text_string[928][0] ? Text_string[928] : "You destroyed the %s.",name);
 			destroys--;
 			done++;
@@ -1346,6 +1357,21 @@ void dtu_combat_frame(void)
 int dtu_combat_target_hint(void)
 {
 	return Dtu_target_hint && Target_hint && ConsoleObject && !Player_is_dead && !Dtu_player_dead;
+}
+
+// ASCENT: test: swingat=N, the weapon in the hand hits creature N as a
+// swing that touches it (the roll, the damage and the messages of
+// player_hits_creature)
+void dtu_combat_test_swing(int objnum)
+{
+	dtu_attack a;
+
+	if (objnum < 0 || objnum > Highest_object_index || Objects[objnum].type != OBJ_ROBOT || !ConsoleObject)
+		return;
+	dtu_char_get_attack(&a);
+	Smack = 0;
+	player_hits_creature(&Objects[objnum],a.weapon_id,&Objects[objnum].pos);
+	Smack = 0;
 }
 
 // ASCENT: test (-chartest reach=N, tools/check_reach.py). The player looks

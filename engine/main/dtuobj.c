@@ -68,6 +68,7 @@
 #include "text.h"		// ASCENT: Text_string, the names of the creatures
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 #include "dtulog.h"		// ASCENT: the session log
+#include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -2436,26 +2437,37 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 	if (aw & DTU_FX_LEVITATE) {
 		int m = (vm_vec_mag(&attacker->mtype.phys_info.velocity) >> 14) + 1;
 		roll -= (m < 5) ? m : 5;
+		dtu_xp_hit_mod(-((m < 5) ? m : 5),LN("levitating"));		// ASCENT: the verbose combat log (dtuxp.h)
 	}
 	if (target->type == OBJ_PLAYER) {
 		ac = dtu_player_armor_class();
 		// 0x2ACE8: the player is hidden from the attacker (0x165C4)
-		if (robot_attacker && dtu_thief_hidden_from(attacker))
+		if (robot_attacker && dtu_thief_hidden_from(attacker)) {
 			roll -= 4;
+			dtu_xp_hit_mod(-4,LN("hidden"));
+		}
 	}
 	else {
 		// 0x2ACFC: an invisible creature that the player does not see (0x16636)
-		if (dtu_spell_unseen(target))
+		if (dtu_spell_unseen(target)) {
 			roll -= 4;
+			dtu_xp_hit_mod(-4,LN("unseen"));
+		}
 		ac = robot_target ? Monster_info[target->id].armor_class : 10;
 	}
 	// 0x2AD27: Bless of the attacker
-	if (aw & DTU_FX_BLESS)
+	if (aw & DTU_FX_BLESS) {
 		roll++;
+		dtu_xp_hit_mod(1,LN("Bless"));
+	}
 	// 0x2AD36: Protection From Evil of the target: an extraplanar creature
 	// always misses, another creature has -2
-	if ((tw & DTU_FX_PROT_EVIL) && robot_attacker)
+	if ((tw & DTU_FX_PROT_EVIL) && robot_attacker) {
+		int r0 = roll;
+
 		roll = (Monster_info[attacker->id].flags & MONSTER_F_EXTRAPLANAR) ? 0 : roll - 2;
+		dtu_xp_hit_mod(roll - r0,LN("Protection From Evil"));
+	}
 	// 0x2AD70: the attack on an extraplanar creature ends Protection From
 	// Evil of the attacker (its timer +0xE0 is 0)
 	if ((aw & DTU_FX_PROT_EVIL) && robot_target && (Monster_info[target->id].flags & MONSTER_F_EXTRAPLANAR))
@@ -2464,11 +2476,15 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 	if (robot_target)
 		ac = dtu_spell_creature_ac(target,ac);
 	// 0x2AE22: Slow of the attacker
-	if (aw & DTU_FX_SLOW)
+	if (aw & DTU_FX_SLOW) {
 		roll -= 4;
+		dtu_xp_hit_mod(-4,LN("Slow"));
+	}
 	*ac_out = ac;
-	if (thac0 - ac > roll)
+	if (thac0 - ac > roll) {
+		dtu_xp_hit_end(roll,thac0 - ac,0);
 		return 0;
+	}
 	// 0x2AE44: Stone Skin takes the hit
 	if (tw & DTU_FX_STONESKIN) {
 		target->dtu.m_80--;
@@ -2480,8 +2496,10 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 			HUD_init_message("%s protected by StoneSkin Spell.",dtu_object_display_name(target));
 		dtu_obj_log("attack: the stone skin of obj %d %s takes the hit, %d left",(int)(target-Objects),
 			dtu_object_name(target),target->dtu.m_80);
+		dtu_xp_hit_end(roll,thac0 - ac,3);
 		return 0;
 	}
+	dtu_xp_hit_end(roll,thac0 - ac,1);
 	return 1;
 }
 
@@ -2496,6 +2514,7 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 	if (target->dtu.m_88 & DTU_FX_SLEEP) {
 		target->dtu.m_e8[0] = 0;
 		*roll_out = 0;
+		dtu_xp_roll_clear();		// ASCENT: no roll (dtuxp.h)
 		return 1;
 	}
 	// The roll of the player (0x2AAB5): the character code
@@ -2506,9 +2525,13 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 
 	roll = rand() % 20 + 1;
 	*roll_out = roll;
-	if (roll == 20)
+	dtu_xp_hit_start(roll);		// ASCENT: the verbose combat log (dtuxp.h)
+	if (roll == 20) {
+		dtu_xp_hit_end(roll,0,2);
 		return 2;
+	}
 	if (roll == 1) {
+		dtu_xp_hit_end(roll,0,-1);
 		// 0x2A9EB: a creature that fumbles flinches when a d20 is above its
 		// str (Robot_info +0xDE)
 		if (attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types &&
@@ -2526,19 +2549,27 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 		// is the value of an attacker of the lowest level. (guess)
 		thac0 = 20;
 		roll += weapon_int(weapon,"to_hit_bonus",0);
+		dtu_xp_hit_mod(weapon_int(weapon,"to_hit_bonus",0),LN("weapon"));
 	}
 	else {
+		int b;
+
 		thac0 = Monster_info[attacker->id].thaco;
 		// the bonus of the weapon (Weapon_info + 0x36), or of the creature
 		// for a natural weapon
 		if (weapon >= 0 && weapon < N_weapon_types && Weapon_item_info[weapon].record >= 0)
-			roll += tbl_int(Weapon_item_info[weapon].record,"to_hit_bonus",0);
+			b = tbl_int(Weapon_item_info[weapon].record,"to_hit_bonus",0);
 		else
-			roll += Monster_ext[attacker->id].to_hit_bonus;
+			b = Monster_ext[attacker->id].to_hit_bonus;
+		roll += b;
+		dtu_xp_hit_mod(b,LN("weapon"));
 		roll += str_bonus(Monster_info[attacker->id].str);
+		dtu_xp_hit_mod(str_bonus(Monster_info[attacker->id].str),LN("strength"));
 		// 0x2ACBA: Strength of the creature
-		if (attacker->dtu.m_88 & DTU_FX_STRENGTH)
+		if (attacker->dtu.m_88 & DTU_FX_STRENGTH) {
 			roll++;
+			dtu_xp_hit_mod(1,LN("Strength spell"));
+		}
 	}
 
 	*roll_out = roll;
@@ -2708,13 +2739,24 @@ static int damage_dice(object *attacker,object *target,int weapon)
 	if (n < 1) n = 1;
 	for (i=0;i<n;i++)
 		sum += rand() % sides + 1;
+	dtu_xp_dmg_start(n,sides,sum);		// ASCENT: the verbose combat log (dtuxp.h)
 	// ASCENT: Dtu_fix_creature_missile 0: the launcher and the Potion of
 	// Luck of the player (0x2B0AE, 0x2B107)
-	if (weapon >= 0 && !Dtu_fix_creature_missile)
+	if (weapon >= 0 && !Dtu_fix_creature_missile) {
+		int s0 = sum;
+
 		sum = dtu_char_creature_missile_damage(weapon,n,sides,sum);
+		dtu_xp_dmg_mod(sum - s0,LN("launcher"));
+	}
 	sum += bonus;
-	if (weapon >= 0)
+	dtu_xp_dmg_mod(bonus,NULL);
+	if (weapon >= 0) {
+		int s0 = sum;
+
 		fire = dtu_weapon_extra_damage(attacker,target,weapon,&sum);
+		dtu_xp_dmg_mod(sum - s0,NULL);
+		dtu_xp_dmg_mod(fire,LN("fire"));
+	}
 	// 0x2B50C: the player is hurt: hard_sound when the damage as a fix is
 	// above the maximum hit points / 16 as an integer (nearly always), else
 	// hit_sound, at the player, volume 1/3, at most every 0.25 s (0x25C50)
@@ -2729,7 +2771,13 @@ static int damage_dice(object *attacker,object *target,int weapon)
 				target->segnum,&target->pos,0x5555);
 		}
 	}
-	return rat_damage(attacker,sum,sum + fire);
+	{
+		int d = rat_damage(attacker,sum,sum + fire);
+
+		dtu_xp_dmg_mod(d - (sum + fire),LN("rat"));
+		dtu_xp_dmg_end(d);
+		return d;
+	}
 }
 
 //------------------------------------------------------------------------
@@ -3246,7 +3294,7 @@ static void creature_is_corpse(object *obj)
 }
 
 // The death of a creature in the damage function (0x2A091 to 0x2A245).
-static void creature_dies(object *obj,object *attacker)
+static void creature_dies(object *obj,object *attacker,int weapon)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	ai_static *aip = &obj->ctype.ai_info;
@@ -3262,16 +3310,23 @@ static void creature_dies(object *obj,object *attacker)
 	if (falls) {
 		if (attacker && attacker->type == OBJ_PLAYER)
 			HUD_init_message("%s falls, but it is not dead.",dtu_object_display_name(obj));
+		dtulog_event("Creature falls: obj %d %s, attacker %s, segment %d (Dtu_fix_revive)",(int)(obj-Objects),
+			dtu_object_name(obj),attacker ? dtu_object_name(attacker) : "none",obj->segnum);	// ASCENT: the session log
+		dtu_xp_cause(NULL);
 	}
 	else {
-	if (attacker && attacker->type == OBJ_PLAYER) {
-		HUD_init_message("You killed %s.",dtu_object_display_name(obj));
+	// ASCENT: the kill line, the line of a death with no experience and the
+	// session log line (dtuxp.c). xp -1: the player is not the attacker.
+	int xp = -1;
+
+	if (attacker && attacker->type == OBJ_PLAYER)
+		xp = (obj->dtu.m_88 & 0x01000000) ? 0 : Robot_info[obj->id].score_value;
+	dtu_xp_creature_death(obj,attacker,weapon,xp);
+	if (xp > 0) {
 		// 0x4EA50 with the score value. Not for a creature that
 		// regenerates (status bit 0x01000000).
-		if (!(obj->dtu.m_88 & 0x01000000)) {
-			dtu_player_award_xp(Robot_info[obj->id].score_value);
-			dtu_obj_log("xp: obj %d %s gives %d experience",(int)(obj-Objects),dtu_object_name(obj),Robot_info[obj->id].score_value);
-		}
+		dtu_player_award_xp(Robot_info[obj->id].score_value);
+		dtu_obj_log("xp: obj %d %s gives %d experience",(int)(obj-Objects),dtu_object_name(obj),Robot_info[obj->id].score_value);
 	}
 	// the words at 0x1D33AB and 0x1D33AD count each death
 	Players[Player_num].num_kills_level++;
@@ -3376,8 +3431,10 @@ static void creature_destroyed(object *obj,object *attacker,char *how)
 	obj->dtu.m_88 &= ~0x01000000;
 	Ail[obj-Objects].regen_hp = 0;
 	dtu_obj_log("obj %d %s: the fallen body is destroyed (%s, Dtu_fix_revive)",(int)(obj-Objects),dtu_object_name(obj),how);
+	// ASCENT: the kill line and the session log line (dtuxp.c)
+	dtu_xp_cause(how);
+	dtu_xp_creature_death(obj,attacker,-1,attacker && attacker->type == OBJ_PLAYER ? Robot_info[obj->id].score_value : -1);
 	if (attacker && attacker->type == OBJ_PLAYER) {
-		HUD_init_message("You killed %s.",dtu_object_display_name(obj));
 		dtu_player_award_xp(Robot_info[obj->id].score_value);
 		dtu_obj_log("xp: obj %d %s gives %d experience",(int)(obj-Objects),dtu_object_name(obj),Robot_info[obj->id].score_value);
 	}
@@ -3502,6 +3559,10 @@ static int spell_dice(int record,char *sides_key,char *count_key,char *level_key
 	if (sides > 0)
 		for (i=0;i<count;i++)
 			sum += rand() % sides + 1;
+	// ASCENT: the verbose combat log (dtuxp.h)
+	if (sides > 0 && count > 0)
+		dtu_xp_dmg_start(count,sides,sum);
+	dtu_xp_dmg_mod(tbl_int(record,level_key,0) * level,LN("level"));
 	return sum + tbl_int(record,level_key,0) * level;
 }
 
@@ -3521,15 +3582,17 @@ int dtu_spell_damage_roll(int spell, object *target, int level)
 
 int dtu_spell_damage_roll_count(int spell, object *target, int level, int group, int count)
 {
-	int rec, base, fire, acid, elec;
+	int rec, base, fire, acid, elec, raw;
 
 	if (spell < 0 || spell >= N_spell_types || target == NULL)
 		return 0;
 	rec = Spell_info[spell].record;
+	dtu_xp_roll_clear();		// ASCENT: the verbose combat log (dtuxp.h)
 	base = spell_dice(rec,"damage_dice","#damage_dice","damage_level",level,group == 0 ? count : -1);
 	fire = spell_dice(rec,"fire_damage_dice","#fire_damage_dice","fire_damage_level",level,group == 1 ? count : -1);
 	acid = spell_dice(rec,"acid_damage_dice","#acid_damage_dice","acid_damage_level",level,group == 2 ? count : -1);
 	elec = spell_dice(rec,"elec_damage_dice","#elec_damage_dice","elec_damage_level",level,group == 3 ? count : -1);
+	raw = base + fire + acid + elec;
 
 	if (target->type == OBJ_ROBOT && target->id < N_robot_types) {
 		monster_info *mi = &Monster_info[target->id];
@@ -3549,6 +3612,8 @@ int dtu_spell_damage_roll_count(int spell, object *target, int level, int group,
 	}
 	if (fire || acid)
 		target->dtu.m_88 &= ~0x01000000;
+	dtu_xp_dmg_mod(base + fire + acid + elec - raw,LN("resistance"));		// ASCENT: the verbose combat log
+	dtu_xp_dmg_end(base + fire + acid + elec);
 	return base + fire + acid + elec;
 }
 
@@ -3613,6 +3678,7 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 		if (hit <= 0) {
 			dtu_obj_log("attack: %s misses obj %d %s (roll %d, result %d)",attacker ? dtu_object_name(attacker) : "a missile",
 				(int)(creature-Objects),dtu_object_name(creature),roll,hit);
+			dtu_xp_roll_say(attacker,creature);		// ASCENT: the verbose combat log (dtuxp.h)
 			return 0;
 		}
 		// 0x29D9D: a creature with weapon_resistant takes no damage from
@@ -3625,6 +3691,7 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 		damage = i2f(damage_dice(attacker,creature,weapon));
 		if (hit == 2)
 			damage += i2f(damage_dice(attacker,creature,weapon));
+		dtu_xp_dmg_end(f2i(damage));
 	}
 
 	if (damage <= 0)
@@ -3657,7 +3724,9 @@ static fix damage_creature_w(object *creature, object *attacker, fix damage, int
 	}
 
 	if (creature->shields < F1_0)
-		creature_dies(creature,attacker);
+		creature_dies(creature,attacker,weapon);
+	if (weapon != DTU_DIRECT)
+		dtu_xp_roll_say(attacker,creature);		// ASCENT: the verbose combat log (dtuxp.h)
 	return damage;
 }
 
@@ -3788,6 +3857,7 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		if (hit <= 0) {
 			dtu_obj_log("attack: %s misses the player (roll %d, result %d)",
 				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);
+			dtu_xp_roll_say(attacker,player);		// ASCENT: the verbose combat log (dtuxp.h)
 			return 0;
 		}
 		// 0x2A45F: a hit stops the cast of the player (0x9305D)
@@ -3795,11 +3865,17 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		damage = i2f(damage_dice(attacker,player,weapon));
 		if (hit == 2)
 			damage += i2f(damage_dice(attacker,player,weapon));
+		dtu_xp_dmg_end(f2i(damage));
 		// 0x2A49B: Chill Touch of the attacker with a natural or a melee
 		// weapon: 1d4 more unless the player saves (category 4)
 		if (damage > 0 && attacker && (attacker->dtu.m_88 & DTU_FX_CHILL_TOUCH) &&
-			 (weapon < 0 || weapon_is_melee(weapon)) && !dtu_spell_save(player,DTU_SAVE_SPELL))
-			damage += i2f(rand() % 4 + 1);
+			 (weapon < 0 || weapon_is_melee(weapon)) && !dtu_spell_save(player,DTU_SAVE_SPELL)) {
+			int c = rand() % 4 + 1;
+
+			damage += i2f(c);
+			dtu_xp_dmg_mod(c,LN("Chill Touch"));
+			dtu_xp_dmg_end(f2i(damage));
+		}
 	}
 
 	if (damage <= 0)
@@ -3809,6 +3885,8 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		HUD_init_message("%s hit You for %d damage.",dtu_object_display_name(attacker),f2i(damage));		// 0x2A54E: TEX 831 with TEX 70
 	else
 		HUD_init_message("You took %d damage.",f2i(damage));
+	if (weapon != DTU_DIRECT)
+		dtu_xp_roll_say(attacker,player);		// ASCENT: the verbose combat log (dtuxp.h)
 
 	// 0x2A4FB: a weapon hit lowers the Armor pool too (guess: not the damage
 	// with no attacker and no weapon)
@@ -4333,6 +4411,9 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	// weapon with enemy_spell does the effect of the spell and the damage
 	// of the weapon.
 	spell = (m->spell >= 0) ? m->spell : weapon_int(weapon,"enemy_spell",-1);
+	// ASCENT: the cause of a death for the session log (dtuxp.h)
+	if (other->type == OBJ_ROBOT)
+		dtu_xp_cause(!parent ? "missile with no source (a trap or a lost parent)" : parent->type == OBJ_ROBOT ? "creature missile" : "missile of the player");
 	spell_dealt = (spell >= 0) ? spell_hit(spell,other,parent) : 0;
 
 	if (other->type == OBJ_PLAYER) {
@@ -4372,6 +4453,7 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		else
 			sound_at(weapon_int(weapon,"monster_miss_sound",-1),other->segnum,point,F1_0/4);
 	}
+	dtu_xp_cause(NULL);
 	missile_remove(obj);
 }
 

@@ -114,6 +114,8 @@ int dtu_combat_target_hint(void);
 // ASCENT: test (-chartest reach=N): the player looks at creature N, and the
 // character log gets what the swing, a missile and the target hint reach.
 void dtu_combat_reach_test(int objnum);
+// ASCENT: test: swingat=N, a swing of the player that touches creature N
+void dtu_combat_test_swing(int objnum);
 
 // The state of the arms, for tests and for the display.
 int dtu_combat_view_state(void);

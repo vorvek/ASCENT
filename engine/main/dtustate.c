@@ -46,6 +46,7 @@
 #include "dtuobj.h"
 #include "dtutrig.h"
 #include "dtufe.h"
+#include "dtulog.h"		// ASCENT: the session log
 #include "dtustate.h"
 #include "dtuchar.h"		// ASCENT: dtu_char_update() after a restore
 #include "args.h"
@@ -1031,6 +1032,18 @@ static ubyte *load_state_file(const char *name, int *size)
 	return data;
 }
 
+// ASCENT: the session log line of an object that the restore kills (the
+// line of 1.3 above it has only the number)
+static void state_kill_log(int i, object *obj, int segnum)
+{
+	if (obj->type == OBJ_FIREBALL)
+		dtulog_event("State: object %d is an effect (type 1 fireball, vclip %d, life %.2f s, saved segment %d): not restored (0xBB2E6)",
+			i, obj->id, f2fl(obj->lifeleft), segnum);
+	else
+		dtulog_event("State: object %d type %d id %d %s has the illegal segment %d: removed", i, obj->type, obj->id,
+			dtu_object_name(obj), segnum);
+}
+
 static int read_lvl_dgss(const char *name, ubyte *d, int size)
 {
 	int o = 8, n, nw, nd, nseg, rest, i, s, segnum, ok = 1;
@@ -1104,6 +1117,7 @@ static int read_lvl_dgss(const char *name, ubyte *d, int size)
 			// 0xBB2E6: an object of type 1 (fireball) or with no segment is killed
 			if (obj->type == OBJ_FIREBALL || segnum < 0 || segnum > Highest_segment_index) {
 				SLOG("STATE: killing object %d -- illegal segment\n", i);
+				state_kill_log(i, obj, segnum);		// ASCENT: what the object was
 				obj->type = OBJ_NONE;
 				continue;
 			}
@@ -1293,6 +1307,7 @@ static int read_lvl_port(ubyte *d, int size)
 			continue;
 		if (obj->type == OBJ_FIREBALL || segnum < 0 || segnum > Highest_segment_index) {
 			SLOG("STATE: killing object %d -- illegal segment\n", i);
+			state_kill_log(i, obj, segnum);		// ASCENT: what the object was
 			obj->type = OBJ_NONE;
 			continue;
 		}

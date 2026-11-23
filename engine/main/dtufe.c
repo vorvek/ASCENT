@@ -67,6 +67,7 @@
 #include "screens.h"
 #include "dtuopts.h"
 #include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items
+#include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up
 #include "dtuhdui.h"		// ASCENT: the upscaled pictures
 #include "dtulang.h"		// ASCENT: the language of the text
 #include "dtulog.h"		// ASCENT: the session log
@@ -1891,6 +1892,8 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Target hint"),            &Dtu_target_hint },		// dtucombat.c
 	{ LN("Streaming safe music"),   &Dtu_safe_music },		// dtumusic.c
 	{ LN("Rulebook items"),         &Dtu_rulebook_items },	// dtuitemfix.h: off by default
+	{ LN("Maximum HP on level up"), &Dtu_max_hp_level_up },	// dtuxp.h: off by default
+	{ LN("Verbose combat log"),     &Dtu_verbose_combat },	// dtuxp.h: off by default
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
 
