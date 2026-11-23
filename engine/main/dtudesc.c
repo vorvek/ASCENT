@@ -873,6 +873,14 @@ int dtu_desc_open_spell(int spell)
 	return open_game();
 }
 
+int dtu_desc_open_text(const char *text)
+{
+	if (Open || !text)
+		return 0;
+	snprintf(Text, sizeof(Text), "%s", text);
+	return open_game();
+}
+
 int dtu_desc_open_fe(int type, int id, int count, int price, int sell)
 {
 	if (Open || !clean_pic(1))

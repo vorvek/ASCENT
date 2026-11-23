@@ -44,6 +44,7 @@
 #include "dtuchar.h"
 #include "dtucombat.h"
 #include "dtuspell.h"
+#include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
 
 void make_random_vector(vms_vector *vec);		// ai.c
 
@@ -981,6 +982,7 @@ int dtu_spell_save(object *obj,int cat)
 	else
 		need = 10;		// the default of 0xAE596 for other types (a missile, a light)
 	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,roll >= need ? "saved" : "failed");
+	dtu_xp_save(roll,need,roll >= need);		// ASCENT: the verbose combat log (dtuxp.h)
 	return roll >= need;
 }
 
@@ -1066,10 +1068,13 @@ static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,
 
 	if (target->type == OBJ_PLAYER && (target->dtu.m_88 & DTU_FX_INVULNERABLE))
 		dmg = 0;		// 0x9178B
-	if (dmg > 0 && save && dtu_spell_save(target,DTU_SAVE_SPELL))
+	if (dmg > 0 && save && dtu_spell_save(target,DTU_SAVE_SPELL)) {
 		dmg /= 2;
+		dtu_xp_dmg_mult(-2,LN("save for half"));		// ASCENT: the verbose combat log (dtuxp.h)
+	}
 	else if (dmg > 0)
 		dtu_spell_interrupt(target,1);		// 0x913A7, 0x917D5
+	dtu_xp_dmg_end(dmg);
 	if (target->type == OBJ_ROBOT)
 		dtu_spell_creature_event(target,DTU_CSC_SPELL_HIT);		// 0x91332
 	// the Armor pool of a creature (0x913AF; the branch of the player has no
@@ -1096,6 +1101,7 @@ static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,
 	dtu_spell_log("spell: '%s' level %d on obj %d %s: damage %d, done %d, hp now %d",spell_name(spell),level,
 		(int)(target-Objects),target_name(target),dmg,f2i(dealt),
 		target->type == OBJ_PLAYER ? dtu_char_hit_points() : f2i(target->shields));
+	dtu_xp_roll_say(caster,target);		// ASCENT: the verbose combat log (dtuxp.h)
 	return dealt;
 }
 
@@ -2015,7 +2021,9 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 					target_name(target),T,roll,2*T + 70,roll >= 2*T + 70 ? "dies" : "sent away");
 				if (roll >= 2*T + 70) {
 					// 0x29A9C(target, no attacker, all its hit points)
+					dtu_xp_cause("Abjure");		// ASCENT: the session log (dtuxp.h)
 					dealt = dtu_damage_creature_direct(target,NULL,target->shields);
+					dtu_xp_cause(NULL);
 				}
 				else {
 					// the hit sound of the creature (Robot_info+0x9A), then

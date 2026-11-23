@@ -400,6 +400,10 @@ int dtu_char_pickup_allowed(void);
 // Experience to the next level and the part of the level that is left in
 // percent (0x37253). Returns the experience of the character.
 int dtu_char_next_level(int *points_to_next, int *percent_to_next);
+// ASCENT: class k (0 or 1): the class, its level (from 1), its experience
+// and the experience of its next level (-1 at the highest level). Returns
+// 0 when there is no class k.
+int dtu_char_class_xp(int k, int *cls, int *level, int *xp, int *next);
 
 // The log of the option -charlog FILE.
 void dtu_char_log(char *format, ...);

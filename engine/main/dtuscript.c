@@ -64,6 +64,7 @@
 #include "dtuscript.h"
 #include "dtumovie.h"
 #include "dtulog.h"		// ASCENT: the session log
+#include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 
 #define DTU_WEAK __attribute__((weak))
@@ -705,13 +706,18 @@ static int obj_dead(int n)
 	return 0;
 }
 
+static const char *Kill_why;		// ASCENT: the cause of the kill for the session log
+
 // 0xA6ACB: kill an object
 static void obj_kill(object *o)
 {
 	if (!o)
 		return;
-	if (o->type == OBJ_ROBOT)
+	if (o->type == OBJ_ROBOT) {
+		dtu_xp_cause(Kill_why ? Kill_why : "script statement kill (0xA6ACB)");	// ASCENT: the session log (dtuxp.h)
 		dtu_damage_creature_direct(o, NULL, o->shields > 0 ? o->shields + F1_0 : F1_0);
+		dtu_xp_cause(NULL);
+	}
 	else if (o->type == OBJ_PLAYER)
 		dtu_damage_player_direct(o, NULL, o->shields + F1_0);
 	else if (o->type == OBJ_DRESSING)
@@ -730,8 +736,11 @@ static void obj_kill(object *o)
 static void kill_after_run(object *o)
 {
 	if (o && o->shields < F1_0 && (o->type == OBJ_ROBOT || o->type == OBJ_DRESSING) &&
-		 !(o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+		 !(o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))) {
+		Kill_why = "script: below 1 hit point at the end of a run (0xAC033)";
 		obj_kill(o);
+		Kill_why = NULL;
+	}
 }
 
 // 0x5A5DE: the facing after a teleport

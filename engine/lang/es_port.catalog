@@ -2208,3 +2208,144 @@ tr: Cada golpe: el objetivo salva o recibe 1d4 más de daño; los muertos vivien
 id: port.self
 en: Self
 tr: Personal
+
+id: port.maximum_hp_on_level_up
+en: Maximum HP on level up
+tr: PG máximos al subir de nivel
+
+id: port.you_killed_s_no_experience
+en: You killed %s: no experience.
+tr: Has matado a %s: sin experiencia.
+
+id: port.you_killed_s_d_exp_d_per_class
+en: You killed %s: %d Exp (%d per class).
+tr: Has matado a %s: %d Exp (%d por clase).
+
+id: port.you_killed_s_d_exp
+en: You killed %s: %d Exp.
+tr: Has matado a %s: %d Exp.
+
+id: port.s_killed_s_no_experience
+en: %s killed %s: no experience.
+tr: %s ha matado a %s: sin experiencia.
+
+id: port.s_died_no_experience
+en: %s died: no experience.
+tr: %s ha muerto: sin experiencia.
+
+id: port.experience
+en: Experience
+tr: Experiencia
+
+id: port.s_level_d_d_of_d
+en: %s, level %d: %d of %d
+tr: %s, nivel %d: %d de %d
+
+id: port.s_level_d_d_the_highest_level
+en: %s, level %d: %d (the highest level)
+tr: %s, nivel %d: %d (el nivel máximo)
+
+id: port.each_class_gets_one_half_of_each_award
+en: Each class gets one half of each award.
+tr: Cada clase recibe la mitad de la experiencia.
+
+id: port.verbose_combat_log
+en: Verbose combat log
+tr: Registro de combate detallado
+
+id: port.roll_d20_d_critical_hit
+en: Roll d20 %d: critical hit.
+tr: Tirada d20 %d: golpe crítico.
+
+id: port.roll_d20_d_fumble
+en: Roll d20 %d: fumble.
+tr: Tirada d20 %d: pifia.
+
+id: port.roll_d20_d_s_d_vs_d_hit
+en: Roll d20 %d%s = %d vs %d: hit.
+tr: Tirada d20 %d%s = %d contra %d: impacto.
+
+id: port.roll_d20_d_s_d_vs_d_hit_stoneskin_takes_
+en: Roll d20 %d%s = %d vs %d: hit, Stoneskin takes it.
+tr: Tirada d20 %d%s = %d contra %d: impacto, lo para Piel de Piedra.
+
+id: port.roll_d20_d_s_d_vs_d_miss
+en: Roll d20 %d%s = %d vs %d: miss.
+tr: Tirada d20 %d%s = %d contra %d: fallo.
+
+id: port.save_d20_d_vs_d_made
+en: Save d20 %d vs %d: made.
+tr: Salvación d20 %d contra %d: superada.
+
+id: port.save_d20_d_vs_d_failed
+en: Save d20 %d vs %d: failed.
+tr: Salvación d20 %d contra %d: fallida.
+
+id: port.damage_s_d
+en: Damage%s = %d.
+tr: Daño%s = %d.
+
+id: port.bonus
+en: bonus
+tr: bono
+
+id: port.backstab
+en: backstab
+tr: espalda
+
+id: port.flame_tongue
+en: Flame Tongue
+tr: Lengua de fuego
+
+id: port.weapon
+en: weapon
+tr: arma
+
+id: port.strength_2
+en: strength
+tr: fuerza
+
+id: port.strength_spell
+en: Strength spell
+tr: conjuro Fuerza
+
+id: port.levitating
+en: levitating
+tr: levitando
+
+id: port.hidden
+en: hidden
+tr: oculto
+
+id: port.unseen
+en: unseen
+tr: no visto
+
+id: port.launcher
+en: launcher
+tr: lanzador
+
+id: port.fire
+en: fire
+tr: fuego
+
+id: port.rat
+en: rat
+tr: rata
+
+id: port.luck
+en: luck
+tr: suerte
+
+id: port.level
+en: level
+tr: nivel
+
+id: port.resistance
+en: resistance
+tr: resistencia
+
+id: port.save_for_half
+en: save for half
+tr: salvación: mitad
+

@@ -11,6 +11,7 @@ an item or a spell does. The code is `engine/main/dtudesc.c`.
 | Inventory screen: an entry of the list, a slot of the paper doll, a hot key box | right click | `/` for the entry or the spell that comma and period choose |
 | Spell lists of the inventory screen (the SPELLS button) | right click | `/` |
 | Market: a line of the stock or of the goods of the player | right click | none |
+| Interface screens: the experience field; statistics screen: a class line | right click: the next level window (`dtuxp.c`) | none |
 
 A key or a click of either mouse button closes the window. The press of the
 button goes to the window and the play screen sees only the release, so the

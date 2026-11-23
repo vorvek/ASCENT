@@ -645,6 +645,9 @@ FIXES = [
     ("Dtu_rulebook_items (off by default)", "-rulebookitems turns it on; -norulebookitems, -origitems "
      "and -noimprovements turn it off",
      "The setting Rulebook items: some item values and class limits of the AD&D 2nd edition rulebooks."),
+    ("Dtu_max_hp_level_up (off by default)", "-maxhplevelup turns it on; -nomaxhplevelup turns it off",
+     "The setting Maximum HP on level up: a level that rolls its hit die gets the full die (the constitution "
+     "bonus and the half for two classes stay)."),
 ]
 
 

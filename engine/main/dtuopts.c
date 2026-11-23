@@ -21,6 +21,7 @@
 #include "dtulog.h"		// ASCENT: the session log
 #include "dtulang.h"		// ASCENT: the language (Language=en)
 #include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items, Dtu_fix_item_names
+#include "dtuxp.h"		// ASCENT: Dtu_kill_xp_message, Dtu_max_hp_level_up
 
 int Dtu_improved_physics = 1;
 int Dtu_improved_jump = 1;
@@ -52,6 +53,9 @@ static int Arg_gpu_renderer = -1, Arg_render_scale = -1;
 static int File_language = -1, Arg_language = -1;
 static int File_rulebook = -1, Arg_rulebook = -1;
 static int File_lowres_aspect = -1, Arg_lowres_aspect = -1;
+static int File_kill_xp = -1, Arg_kill_xp = -1;
+static int File_max_hp = -1, Arg_max_hp = -1;
+static int File_verbose = -1, Arg_verbose = -1;
 
 typedef struct {
 	const char *name;
@@ -80,6 +84,9 @@ static dtu_opt Opts[] = {
 	// ASCENT: a new key: LowresAspect=1 (the default of one day) is ignored,
 	// so a file of that time gets square pixels
 	{ "Lowres43",            &Dtu_fix_lowres_aspect,    0, 1 },
+	{ "KillXpMessage",       &Dtu_kill_xp_message,      0, 1 },		// dtuxp.h
+	{ "MaxHpOnLevelUp",      &Dtu_max_hp_level_up,      0, 1 },		// dtuxp.h
+	{ "VerboseCombatLog",    &Dtu_verbose_combat,       0, 1 },		// dtuxp.h
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
@@ -164,6 +171,23 @@ void dtu_opts_load(void)
 		Dtu_target_hint = 0;
 		Dtu_miss_sound = 0;
 		Dtu_rulebook_items = 0;
+		Dtu_kill_xp_message = 0;		// ASCENT: dtuxp.h
+	}
+	// ASCENT: dtuxp.h. -killxpmessage and -nokillxpmessage set the kill line
+	// with the experience for one run, -maxhplevelup and -nomaxhplevelup
+	// "Maximum HP on level up".
+	if (FindArg("-killxpmessage") || FindArg("-nokillxpmessage")) {
+		File_kill_xp = Dtu_kill_xp_message;
+		Dtu_kill_xp_message = Arg_kill_xp = FindArg("-killxpmessage") && !FindArg("-nokillxpmessage");
+	}
+	if (FindArg("-maxhplevelup") || FindArg("-nomaxhplevelup")) {
+		File_max_hp = Dtu_max_hp_level_up;
+		Dtu_max_hp_level_up = Arg_max_hp = FindArg("-maxhplevelup") && !FindArg("-nomaxhplevelup");
+	}
+	// -verbosecombat and -noverbosecombat: "Verbose combat log" for one run
+	if (FindArg("-verbosecombat") || FindArg("-noverbosecombat")) {
+		File_verbose = Dtu_verbose_combat;
+		Dtu_verbose_combat = Arg_verbose = FindArg("-verbosecombat") && !FindArg("-noverbosecombat");
 	}
 	// ASCENT: the item tables (dtuitemfix.h). -rulebookitems and
 	// -norulebookitems set "Rulebook items" for one run. -origitems gives
@@ -206,6 +230,12 @@ void dtu_opts_save(void)
 			v = File_rulebook;
 		if (Opts[i].value == &Dtu_fix_lowres_aspect && File_lowres_aspect >= 0 && v == Arg_lowres_aspect)
 			v = File_lowres_aspect;
+		if (Opts[i].value == &Dtu_kill_xp_message && File_kill_xp >= 0 && v == Arg_kill_xp)
+			v = File_kill_xp;
+		if (Opts[i].value == &Dtu_max_hp_level_up && File_max_hp >= 0 && v == Arg_max_hp)
+			v = File_max_hp;
+		if (Opts[i].value == &Dtu_verbose_combat && File_verbose >= 0 && v == Arg_verbose)
+			v = File_verbose;
 		fprintf(f, "%s=%d\n", Opts[i].name, v);
 	}
 	{

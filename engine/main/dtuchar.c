@@ -50,6 +50,7 @@
 #include "gameseq.h"		// ASCENT: Current_level_num for the test command quest
 #include "dtuscroll.h"	// ASCENT: the text screen of the Scroll
 #include "dtudesc.h"		// ASCENT: the test commands of the description window
+#include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up, the session log lines
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -2486,6 +2487,23 @@ int dtu_char_next_level(int *points_to_next, int *percent_to_next)
 	return xp;
 }
 
+// ASCENT: the experience of class k (0 or 1) and of its next level (table
+// 0x146048), for the next level window (dtuxp.c). *next is -1 at the
+// highest level (18, check_level). Returns 0 when there is no class k.
+int dtu_char_class_xp(int k, int *cls, int *level, int *xp, int *next)
+{
+	dtu_player_attr *pa = &Dtu_char.pa;
+	int c = k ? pa->class2 : pa->class1, l = k ? pa->class2_level : pa->class1_level;
+
+	if (!Dtu_char.created || !valid_class(c) || l < 0 || l > 17)
+		return 0;
+	*cls = c;
+	*level = l + 1;
+	*xp = Dtu_char.experience[k];
+	*next = l >= 17 ? -1 : Xp_table[c][l + 2];
+	return 1;
+}
+
 // 0xAF43A: the levels that the experience gives. Returns 1 for a new level.
 static int check_level(int class_num, int xp, short *level)
 {
@@ -2513,12 +2531,16 @@ static int level_hit_points(int class_num, int old_level, int new_level)
 
 	if (con > 19) con = 19;
 	for (level = old_level + 1; level <= new_level && level < 18; level++) {
-		int n = 0;
+		int n = 0, rolled = level <= Hit_dice_levels[class_num];
 
-		if (level <= Hit_dice_levels[class_num])
+		if (rolled && Dtu_max_hp_level_up)
+			n += die;			// ASCENT: Dtu_max_hp_level_up (dtuxp.h): the full die
+		else if (rolled)
 			n += rand() % (die - half + 1) + half;			// one die, at least half of it
 		else
 			n += Hit_fixed[class_num];
+		dtu_char_log("level: class %d level %d: %s %d (die %d), constitution %d", class_num, level + 1, rolled ? "roll" : "fixed", n, die,
+			Con_bonus[class_num == DTU_CLASS_FIGHTER][con]);		// ASCENT: the test of tools/questtest.py
 		n += Con_bonus[class_num == DTU_CLASS_FIGHTER][con];
 		dtu_char_log("level: class %d level %d gives %d hit points", class_num, level + 1, n);
 		sum += n;
@@ -2565,6 +2587,8 @@ static void check_levels(void)
 		hp >>= 1;
 	dtu_char_log("level: class1 level %d -> %d, class2 level %d -> %d, %d hit points", old1 + 1, pa->class1_level + 1,
 		old2 + 1, pa->class2_level + 1, hp);
+	dtu_xp_log_level(old1 + 1, pa->class1_level + 1, valid_class(pa->class2) ? old2 + 1 : 0,
+		valid_class(pa->class2) ? pa->class2_level + 1 : 0, hp);		// ASCENT: the session log
 	pa->max_hit_points += hp;
 	Dtu_char.base.max_hit_points += hp;
 	Dtu_char.base.hit_points += hp;
@@ -2587,7 +2611,7 @@ static void check_levels(void)
 // 0xAF3CF
 void dtu_char_award_xp(int points)
 {
-	int classes;
+	int classes, total = points;
 
 	if (!Dtu_char.created || points == 0)
 		return;
@@ -2599,6 +2623,7 @@ void dtu_char_award_xp(int points)
 	if (classes == 2)
 		Dtu_char.experience[1] += points;
 	dtu_char_log("experience: +%d for each class, now %d", points, Dtu_char.experience[0]);
+	dtu_xp_log_award(total, points, Dtu_char.experience[0], Dtu_char.experience[1]);	// ASCENT: the session log
 	check_levels();
 }
 
@@ -2786,7 +2811,9 @@ int dtu_char_attack_roll(object *target, int weapon)
 		dtu_char_log("attack roll: the Potion of Luck gives a natural 20");
 	}
 	Dtu_last_attack_roll = roll;
+	dtu_xp_hit_start(roll);		// ASCENT: the verbose combat log (dtuxp.h)
 	if (roll == 20) {
+		dtu_xp_hit_end(roll, 0, 2);
 		// 0x2A8B3: a critical hit, sound 3001
 		HUD_init_message("You made a critical hit!");
 		digi_play_sample(3001, F1_0);
@@ -2794,6 +2821,8 @@ int dtu_char_attack_roll(object *target, int weapon)
 	}
 	else if (roll == 1) {
 		int r2 = rand() % 20 + 1;
+
+		dtu_xp_hit_end(roll, 0, -1);
 
 		// 0x2A8EC: a critical fumble, sound 3001
 		HUD_init_message("You made a critical fumble!");
@@ -2818,20 +2847,29 @@ int dtu_char_attack_roll(object *target, int weapon)
 	else {
 		int r = roll + a.to_hit_bonus;
 
+		dtu_xp_hit_mod(a.to_hit_bonus, LN("bonus"));
 		// 0x2AB66: a backstab adds 4 (melee and thrown weapons)
-		if (Dtu_backstab && a.melee)
+		if (Dtu_backstab && a.melee) {
 			r += 4;
+			dtu_xp_hit_mod(4, LN("backstab"));
+		}
 		// 0x2AB9F: Flame Tongue (71) adds 2 against a regenerating target and
 		// 4 against an undead creature
 		if (a.weapon_id == 71 && target) {
-			if (target->dtu.m_88 & DTU_FX_REGENERATE)
+			if (target->dtu.m_88 & DTU_FX_REGENERATE) {
 				r += 2;
-			if (target->type == OBJ_ROBOT && target->id < N_robot_types && (Monster_info[target->id].flags & MONSTER_F_UNDEAD))
+				dtu_xp_hit_mod(2, LN("Flame Tongue"));
+			}
+			if (target->type == OBJ_ROBOT && target->id < N_robot_types && (Monster_info[target->id].flags & MONSTER_F_UNDEAD)) {
 				r += 4;
+				dtu_xp_hit_mod(4, LN("Flame Tongue"));
+			}
 		}
 		// ASCENT: a weapon missile (arrow, bolt, thrown weapon) meets the
 		// armor class against missiles (Dtu_fix_shield_ac)
 		result = target ? dtu_hit_test_vs(target, ConsoleObject, r, a.thac0, &ac, dtu_hit_by_missile()) : (a.thac0 - 10 > r ? 0 : 1);
+		if (!target)
+			dtu_xp_hit_end(r, a.thac0 - 10, result);
 		dtu_char_log("attack roll: d20 %d, roll %d against THAC0 %d and armor class %d: %d%s", roll, r, a.thac0, ac, result,
 			Dtu_backstab ? " (backstab)" : "");
 		return result;
@@ -2849,12 +2887,16 @@ int dtu_char_weapon_damage(int weapon, object *target)
 	for (i = 0; i < a.dice_n; i++)
 		if (a.dice_sides > 0)
 			sum += rand() % a.dice_sides + 1;
+	dtu_xp_dmg_start(a.dice_n, a.dice_sides, sum);		// ASCENT: the verbose combat log (dtuxp.h)
 	if (a.weapon_id >= 0) {
 		// 0x2B0AE: the bow or the crossbow of a missile
-		if (!a.melee)
+		if (!a.melee) {
 			sum += launcher_bonus(weapon);
+			dtu_xp_dmg_mod(launcher_bonus(weapon), LN("launcher"));
+		}
 		// 0x2B107: the Potion of Luck: the highest number of the dice
 		if (luck_now()) {
+			dtu_xp_dmg_mod(a.dice_n * a.dice_sides - sum, LN("luck"));
 			sum = a.dice_n * a.dice_sides;
 			dtu_char_log("damage roll: the Potion of Luck gives the highest roll");
 		}
@@ -2865,8 +2907,12 @@ int dtu_char_weapon_damage(int weapon, object *target)
 			int mult = (lvl + 1 + 7) >> 2;
 
 			sum *= mult;
+			dtu_xp_dmg_mult(mult, LN("backstab"));
 			if (a.weapon_id == 45 && Dtu_last_attack_roll >= 19) {
-				sum += rand() % 4 + 3;
+				int x = rand() % 4 + 3;
+
+				sum += x;
+				dtu_xp_dmg_mod(x, LN("backstab"));
 				HUD_init_message("Your backstab was very successful!");
 			}
 			else
@@ -2876,14 +2922,26 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		// 0x2B1D6: the damage bonus of the weapon (the strength bonus of a
 		// melee weapon is added last, 0x2B456)
 		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : launcher_bonus(weapon));
-		fire = dtu_weapon_extra_damage(ConsoleObject, target, weapon, &sum);
-		if (a.melee)
+		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : launcher_bonus(weapon)), LN("weapon"));
+		{
+			int s0 = sum;
+
+			fire = dtu_weapon_extra_damage(ConsoleObject, target, weapon, &sum);
+			dtu_xp_dmg_mod(sum - s0, NULL);
+		}
+		if (a.melee) {
 			sum += str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra);
+			dtu_xp_dmg_mod(str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra), LN("strength"));
+		}
 	}
-	else
+	else {
 		sum += a.damage_bonus;		// 0x2AFB4: the empty hand
+		dtu_xp_dmg_mod(a.damage_bonus, NULL);
+	}
 	dtu_char_log("damage roll: %dd%d + %d: %d, fire %d", a.dice_n, a.dice_sides, a.damage_bonus, sum, fire);
 	sum += fire;
+	dtu_xp_dmg_mod(fire, LN("fire"));
+	dtu_xp_dmg_end(sum > 0 ? sum : 0);
 	return sum > 0 ? sum : 0;
 }
 
@@ -3619,6 +3677,14 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "desc"))		dtu_desc_log_all(a);			// ASCENT: test, desc or desc=CASTER_LEVEL: the texts of the description window (dtudesc.h)
 	else if (!strcmp(cmd, "descitem"))	dtu_desc_open_item(a, b, 1, -1, 0);	// ASCENT: test, descitem=TYPE.ID opens the window
 	else if (!strcmp(cmd, "descspell"))	dtu_desc_open_spell(a);			// ASCENT: test, descspell=SPELL opens the window
+	else if (!strcmp(cmd, "descxp")) {		// ASCENT: test, the next level window (dtuxp.h)
+		char t[512];
+
+		dtu_xp_next_level_text(t, sizeof(t));
+		dtu_desc_open_text(t);
+	}
+	else if (!strcmp(cmd, "killby") && a > 0 && a <= Highest_object_index && b >= 0 && b <= Highest_object_index)	// ASCENT: test: killby=N.A, creature A kills creature N
+		dtu_damage_creature_direct(&Objects[a], &Objects[b], i2f(10000));
 	else if (!strcmp(cmd, "fx"))			dtu_spell_set_effect(ConsoleObject, 1 << a, i2f(b), 0, 1);
 	else if (!strcmp(cmd, "cast"))		dtu_spell_cast_on(a, ConsoleObject, ConsoleObject);
 	else if (!strcmp(cmd, "castby") && b >= 0 && b < MAX_OBJECTS)		// test: castby=SPELL.OBJ, on the player
@@ -3633,6 +3699,7 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
 	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
 	else if (!strcmp(cmd, "class"))		Dtu_char.pa.class1 = Dtu_char.base.class1 = a;	// test: class=N, the first class
+	else if (!strcmp(cmd, "class2"))	Dtu_char.pa.class2 = Dtu_char.base.class2 = a;	// ASCENT: test: class2=N, the second class (-1: none)
 	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
 	else if (!strcmp(cmd, "activate"))	dtu_player_use();		// test: the key A
 	else if (!strcmp(cmd, "goside") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: goside=SEG.SIDE
@@ -3679,6 +3746,7 @@ static void run_command(char *cmd, char *value)
 		vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
 		obj_relink(ConsoleObject - Objects, find_point_seg(&ConsoleObject->pos, o->segnum) >= 0 ? find_point_seg(&ConsoleObject->pos, o->segnum) : o->segnum);
 	}
+	else if (!strcmp(cmd, "swingat"))	dtu_combat_test_swing(a);		// ASCENT: test: swingat=N, a swing of the player that touches creature N
 	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a, b);	// test: reach=N.M, the attacks that reach creature N (tools/check_reach.py)
 	else if (!strcmp(cmd, "pitch"))		dtu_combat_set_pitch(a);		// ASCENT: test: pitch=P, the look pitch (fixang, + is down)
 	else if (!strcmp(cmd, "stepback"))	dtu_obj_test_stepback(a, b);	// ASCENT: test: stepback=N.D, the player steps back D when creature N attacks

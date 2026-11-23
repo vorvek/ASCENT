@@ -139,6 +139,9 @@ void dtu_combat_draw_view(void);
 // dtu_combat_frame(). The cursor of the play screen (dtudisp.c) shows it.
 int dtu_combat_target_hint(void);
 
+// ASCENT: test: swingat=N, a swing of the player that touches creature N
+void dtu_combat_test_swing(int objnum);
+
 // ASCENT: test (-chartest reach=N.M): the player turns to creature N with
 // a level body and looks at it with the look pitch (M 0: at its center from
 // the eye, 1: level, 2: fully up, 3: fully down), and the character log

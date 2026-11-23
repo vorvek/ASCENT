@@ -22,6 +22,9 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size);
 int dtu_desc_open_entry(int index);			// an entry of Dtu_inventory[]
 int dtu_desc_open_spell(int spell);
 int dtu_desc_open_item(int type, int id, int count, int price, int sell);
+// ASCENT: a text of the caller (the next level window of dtuxp.c): lines
+// separated by '\n', the first line is the title.
+int dtu_desc_open_text(const char *text);
 // Open the window in the front end (the market, 640x480). The caller
 // closes it and gives it no other input while it is open.
 int dtu_desc_open_fe(int type, int id, int count, int price, int sell);

@@ -46,6 +46,7 @@
 #include "dtudlg.h"		// ASCENT: dtu_dlg_is_open, the cursor over the conversation window
 #include "dtuscroll.h"		// ASCENT: no input and no cursor while the scroll text screen is open
 #include "dtudesc.h"		// ASCENT: the description window (right click, key /)
+#include "dtuxp.h"		// ASCENT: the next level window
 #include "segment.h"
 #include "automap.h"		// ASCENT: the map of the map screen
 #include "dtucombat.h"		// ASCENT: the target hint of the cursor
@@ -1922,9 +1923,33 @@ static int inv_click(int mx, int my)
 // interface (0x2FB10 tests the button mask 0x1E9C70); the port reads only
 // the left one, so the right button had no use here. Returns 1 if a
 // window opened.
+// ASCENT: the next level window (dtuxp.h): the experience field of the
+// information areas (draw_info_areas) on the screens that show them, and
+// the class lines of the statistics screen (draw_stats)
+static int xp_rclick(int mx, int my)
+{
+	char text[512];
+	int hit = 0;
+
+	if (Dtu_interface_mode == DTU_IM_MAIN || !Dtu_char.created)
+		return 0;
+	if (in_rect(mx, my, SC(227), SC(130), SC(81), SC(6)))
+		hit = 1;
+	if (Dtu_interface_mode == DTU_IM_STATS &&
+			in_rect(mx, my, Dtu_hires ? 20 : 11, Dtu_hires ? 163 : 81, Dtu_hires ? 108 : 60, Dtu_hires ? 29 : 16))
+		hit = 1;
+	if (!hit)
+		return 0;
+	dtu_xp_next_level_text(text, sizeof(text));
+	return dtu_desc_open_text(text);
+}
+
 static int inv_rclick(int mx, int my)
 {
 	int cell, slot, size = SC(16), x, y, qy, i;
+
+	if (xp_rclick(mx, my))
+		return 1;
 
 	if (hot_keys_visible())
 		for (i = 0; i < DTU_N_HOT_KEYS; i++) {

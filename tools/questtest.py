@@ -351,7 +351,100 @@ TESTS = [
 
     # Statement 9F (script 31 of BONES): the level.
     T("level_statement", "BONES", "20:setlevel=5,30:dump", [r"script: setlevel 5", r"level 5/5"], frames=40),
+
+    # ASCENT: the kill line with the experience (Dtu_kill_xp_message,
+    # engine/main/dtuxp.h). The Ghoul (obj 34 of BAT) gives score_value 175;
+    # a character with two classes gets one half in each class.
+    T("kill_xp_line", "BAT", "20:kill=34",
+      [r"message: You killed Ghoul: 175 Exp( \(87 per class\))?\.", r"experience: \+(175|87) for each class"], frames=40),
+    T("kill_xp_line_orig", "BAT", "20:kill=34", [r"message: You killed Ghoul\.\n"],
+      [r"message: You killed Ghoul:"], frames=40, extra=["-nokillxpmessage"]),
+    # A death by another cause that the player sees gives no experience and
+    # says so: a creature kills a creature next to the player, and the kill
+    # statement of a script (0xA6ACB, killscript=0: every creature with no
+    # script) kills the creature in front of the player.
+    T("kill_by_creature_no_xp", "BAT", "20:goobj=43.12,25:killby=43.44",
+      [r"death: obj 43, attacker obj 44 gskelpus, xp -1, seen by the player 1",
+       r"message: .+ killed .+: no experience\."], [r"experience: \+"], frames=40),
+    T("kill_by_script_no_xp", "BAT", "20:goobj=43.12,25:killscript=0",
+      [r"death: obj 43, attacker none, xp -1, seen by the player 1", r"message: .+ died: no experience\."],
+      [r"experience: \+"], frames=40),
+
+    # ASCENT: Maximum HP on level up (Dtu_max_hp_level_up, dtuxp.h): with
+    # the setting each level that rolls its hit die gets the full die; off,
+    # the roll of 0xAF694 (one die, at least one half). check_hit_dice
+    # tests each line.
+    T("max_hp_level_up_on", "BAT", "20:xp=60000", [r"level: class \d level \d+: roll"], frames=40,
+      extra=["-maxhplevelup"], also=[]),
+    T("max_hp_level_up_off", "BAT", "20:xp=60000", [r"level: class \d level \d+: roll"], frames=40,
+      extra=["-nomaxhplevelup"]),
+
+    # ASCENT: the verbose combat log (Dtu_verbose_combat, dtuxp.h): the
+    # attacks of a skeleton on the player and the swings of the player at
+    # it. check_rolls tests the numbers of each line.
+    T("verbose_combat_on", "BAT",
+      "15:goobj=43,17:heal=99," + ",".join("%d:attackedby=43" % f for f in range(20, 40, 2)) + ","
+      + ",".join("%d:swingat=43" % f for f in range(40, 70, 2)),
+      [r"message: Roll d20 \d+"], frames=80, extra=["-verbosecombat"]),
+    T("verbose_combat_off", "BAT",
+      "15:goobj=43,17:heal=99," + ",".join("%d:attackedby=43" % f for f in range(20, 40, 2)) + ","
+      + ",".join("%d:swingat=43" % f for f in range(40, 70, 2)),
+      [r"attack roll: d20"], [r"message: Roll d20", r"message: .*Damage"], frames=80, extra=["-noverbosecombat"]),
 ]
+
+DIE = {0: 8, 1: 4, 2: 10, 3: 6}       # 0x13FDF3: cleric, mage, fighter, thief
+
+
+def check_hit_dice(name, text):
+    """The hit die lines of the level gains (dtuchar.c, level_hit_points)."""
+    problems = []
+    rows = re.findall(r"level: class (\d) level (\d+): roll (\d+) \(die (\d+)\)", text)
+    if not rows:
+        return ["no hit die roll"]
+    for cls, lvl, n, die in rows:
+        n, die = int(n), int(die)
+        if die != DIE[int(cls)]:
+            problems.append("class %s die %d" % (cls, die))
+        if name.endswith("_on") and n != die:
+            problems.append("class %s level %s: %d, not the full die %d" % (cls, lvl, n, die))
+        if name.endswith("_off") and not (die >> 1) <= n <= die:
+            problems.append("class %s level %s: %d out of %d..%d" % (cls, lvl, n, die >> 1, die))
+    # the sum of the hit points of the levels, halved for two classes
+    return problems
+
+
+def check_rolls(name, text):
+    """Each verbose line: the d20 from 1 to 20, the total the d20 plus the
+    listed modifiers, the damage total the dice plus the listed bonuses."""
+    problems = []
+    lines = re.findall(r"message: (Roll d20 .*)", text)
+    if not lines:
+        return ["no verbose line"]
+    for ln in lines:
+        m = re.match(r"Roll d20 (\d+)(?::|(.*?) = (-?\d+) vs (-?\d+):)", ln)
+        if not m:
+            problems.append("cannot read: " + ln)
+            continue
+        d20 = int(m.group(1))
+        if not 1 <= d20 <= 20:
+            problems.append("d20 %d: %s" % (d20, ln))
+        if m.group(3) is not None:
+            mods = sum(int(v) for v in re.findall(r"([+-]\d+)", m.group(2) or ""))
+            if d20 + mods != int(m.group(3)):
+                problems.append("total: " + ln)
+        d = re.search(r"Damage (.*) = (-?\d+)\.", ln)
+        if d:
+            parts = re.findall(r"(?:^| )(?:\d+d\d+ (\d+)|([+-]\d+)|(\d+))(?= |$)", d.group(1).replace(" + ", " "))
+            total = 0
+            for dice, mod, plain in parts:
+                total += int(dice or mod or plain)
+            if "x" not in d.group(1) and "/" not in d.group(1) and total != int(d.group(2)):
+                problems.append("damage: " + ln)
+    return problems
+
+
+CHECKS = {"max_hp_level_up_on": check_hit_dice, "max_hp_level_up_off": check_hit_dice,
+          "verbose_combat_on": check_rolls}
 
 
 def run_game(args, level, script, frames, dlg, extra, user, logdir, tag):
@@ -415,6 +508,8 @@ def main():
         for e in t["reject"]:
             if re.search(e, text):
                 problems.append("not expected: " + e)
+        if t["name"] in CHECKS:
+            problems += CHECKS[t["name"]](t["name"], text)
         if re.search(r"SOAK FAIL|Int3|Assertion|Error:", text):
             problems.append("error line in the output")
         print("%-28s %-9s %s" % (t["name"], t["level"], "ok" if not problems else "FAIL: " + "; ".join(problems)))
