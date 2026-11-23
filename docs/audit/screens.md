@@ -88,8 +88,8 @@ item is shown in the inventory (see below).
 | Inventory | In modes 3 and 6 a new message also goes to the description bar (100 characters) | 0x34A83 to 0x34AD2 | fixed |
 | Inventory | Paper doll, USE, DROP, scroll bar | 0x35ADF, 0x3010C | same (ingame-ui.md U21) |
 | Spell lists | "Lvl %d" / "L-%d", the marks as in the item list | 0xB7487, 0x32899 | same, fixed (marks) |
-| Message box | Word wrap: words split on space, tab, CR, LF (strtok); two spaces after ".", "!", "?"; a line ends at 100 characters or the box width | 0x347A7, 0x347DA | open: the port breaks lines at "\n" and uses one space |
-| Message box | Color of a line (0x34998, the color byte) | 0x34998 | open (ingame-ui.md U18) |
+| Message box | Word wrap: words split on space, tab, CR, LF (strtok); two spaces after ".", "!", "?"; a line ends at 100 characters or the box width | 0x347A7, 0x347DA | fixed: the port cuts words as 0x347A7 and joins them with one space; the two spaces never come in 1.3 (the sentence test reads the end of the string, 0x3489B) |
+| Message box | Color of a line (0x34998, the color byte) | 0x34998 | fixed: the colors of 1.3 (ingame-ui.md U18, `test_msg_colors`) |
 | Level-up box | Flag 0x146294 (always 1), class texts 642, 643, 644, 647, no hit point roll shown | 0xAF489, 0xAF694 | same |
 | Information column | Name, hit points "%d / %d", AC, "%d Exp", gold | 0x32657 to 0x326C2 | same |
 | Map screen | Keys, colors, texts | 0x1887E | same (docs/re/automap.md for the known gaps) |
