@@ -1328,7 +1328,8 @@ static char *feature_help(fe_feature *f)
 void fe_run_screen(fe_screen *s)
 {
 	int i, hot, pressed = -1, pressed_key = -1;
-	fix repeat_time = 0, release_until = 0;
+	int orig_state = 0;		// ASCENT: 1.3 input: 0 idle, 1 press animation, 2 pressed
+	fix repeat_time = 0, release_until = 0, orig_time = 0;
 	fe_seq *cur[2][3];
 	fe_screen *prev_screen;
 	fe_feature *frame_features;
@@ -1392,6 +1393,40 @@ void fe_run_screen(fe_screen *s)
 			if (f->press) f->press(s, f->id);
 			if (s->running && f->release) f->release(s, f->id);
 			fe_input_clear();
+		} else if (Dtu_fe_original_input) {
+			// ASCENT: the event loop of 1.3 (0x81F7E, DTU-Decomp docs/town.md
+			// 4.4). A press starts the press animation of the cursor; the
+			// press handler runs once, at its last frame (one frame each
+			// 0.1 s), when the cursor is still on the feature. The release
+			// handler runs once, 0.1 s after the button went up, on the
+			// same feature. A held button does not repeat.
+			if (Fe_press && hot >= 0 && orig_state == 0) {
+				fe_seq *ps = cur[s->features[hot].cursor == 1 && cur[1][0] ? 1 : 0][1];
+				int frames = ps && ps->n_frames > 1 ? ps->n_frames - 1 : 0;
+				pressed = hot;
+				orig_state = 1;
+				orig_time = fe_time() + frames * (F1_0 / 10);
+				if (s->features[hot].control >= 0)
+					fe_sound(FE_SND_CLICK);		// 0x7FEE2
+			}
+			if (orig_state == 1 && fe_time() >= orig_time) {
+				orig_state = 2;
+				orig_time = 0;
+				f = &s->features[pressed];
+				if (hot == pressed && f->press)
+					f->press(s, f->id);
+			}
+			if (orig_state == 2 && !Fe_down) {
+				if (!orig_time)
+					orig_time = fe_time() + F1_0 / 10;
+				else if (fe_time() >= orig_time) {
+					f = &s->features[pressed];
+					orig_state = 0;
+					if (hot == pressed && s->running && f->release)
+						f->release(s, f->id);
+					pressed = -1;
+				}
+			}
 		} else if (hot >= 0) {
 			int act = 0;
 			f = &s->features[hot];
@@ -1402,13 +1437,9 @@ void fe_run_screen(fe_screen *s)
 					fe_sound(FE_SND_CLICK);		// 0x7FEE2
 				act = 1;
 			} else if (Fe_down && pressed == hot) {
-				// The executable calls the action again in each frame
-				// while the button is down. The port does that only if
-				// Dtu_fe_original_input is set, and repeats with a
-				// delay on the controls that are marked.
-				if (Dtu_fe_original_input)
-					act = 1;
-				else if (f->repeat && fe_time() >= repeat_time) {
+				// ASCENT: the controls that are marked repeat with a delay
+				// (1.3 does not repeat: Dtu_fe_original_input above)
+				if (f->repeat && fe_time() >= repeat_time) {
 					repeat_time = fe_time() + F1_0 / 8;
 					act = 1;
 				}
@@ -1417,8 +1448,6 @@ void fe_run_screen(fe_screen *s)
 				if (f->press)
 					f->press(s, f->id);
 				if (f->repeat && f->release && !Fe_press)
-					f->release(s, f->id);
-				else if (Dtu_fe_original_input && !Fe_press && f->release)
 					f->release(s, f->id);
 				if (f->press || !Fe_press)
 					Fe_release = 0;
@@ -1429,14 +1458,16 @@ void fe_run_screen(fe_screen *s)
 					f->release(s, f->id);
 			}
 		}
-		if (!Fe_down)
+		if (!Fe_down && !Dtu_fe_original_input)
 			pressed = -1;
 		if (pressed_key >= 0 && fe_time() >= release_until)
 			pressed_key = -1;
 		// ASCENT: a handler may give the screen another feature list (the
 		// quantity window of the market, as 0x84EEA does)
-		if (s->features != frame_features || s->n_features != frame_n_features)
+		if (s->features != frame_features || s->n_features != frame_n_features) {
 			hot = pressed = pressed_key = -1;
+			orig_state = 0;
+		}
 
 		if (s->draw)
 			s->draw(s);
@@ -1737,7 +1768,8 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 				continue;
 			if (Fe_mx != last_mx || Fe_my != last_my || Fe_press)
 				cur = i;
-			if (Fe_press || (Dtu_fe_original_input && Fe_down)) {
+			// a press acts once (1.3 counts the presses: 0x66CCF)
+			if (Fe_press) {
 				if (m->type == FE_MI_MENU)
 					result = i;
 				else if (m->type == FE_MI_INPUT_MENU && editing < 0)
