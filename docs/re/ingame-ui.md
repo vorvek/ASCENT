@@ -569,6 +569,15 @@ wheel moves the selection, changes a slider or a number, or scrolls a list.
 The cursor of the play screen is taken out of the frame under a menu. The
 setting `Dtu_fe_original_input` turns all of this off.
 
+Port addition (not in the executable): while the immersive mode is on and
+the window has the focus, the system pointer stays hidden at the center of
+the window. SDL holds it there in the relative mode; each frame the platform
+layer (`plat_input_hold_pointer` in `engine/platform/input.c`) also sets the
+relative mode again if it went off, hides the pointer and moves it back to
+the center, so a click on the window or a change of the focus cannot leave
+it visible or off center. A drag outside the window area (the title bar,
+the border) is not stopped.
+
 Port addition (not in the executable): with the Improvements setting "Target
 hint" (`Dtu_target_hint`, `TargetHint` in `ascent.cfg`, on by default) the cursor
 of the play screen has a warm red tint while the attack of the item in the hand
