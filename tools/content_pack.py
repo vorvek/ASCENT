@@ -60,7 +60,7 @@ DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 # 3: the decided terms (Aguas Profundas, Bajomontaña, trasgo, ...), the
 #    gender of the creature names, the Spanish name on the Waterdeep picture
 #    (FEBGND 10)
-PACK_VERSION = {'lang_es': '3'}
+PACK_VERSION = {'lang_es': '4'}
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
