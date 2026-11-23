@@ -633,13 +633,21 @@ distance. The agitation, the bits of +0x15E and the believed positions
 0x25FB0, 0x265C1 and 0x93294 have no call in the port.
 
 Corrections (verified in the bytes 2026-11-23, docs/audit/defects-1.3.md
-D-112 to D-114; -origobj clears them):
+D-112 and D-113; -origobj clears them):
 
 - `Dtu_fix_noise_walls`: the noise passes only a side that a body can pass
   or that can be seen through (`WALL_IS_DOORWAY` with the fly or the render
   past flag). A closed door stops it.
-- `Dtu_fix_alert_ray`: the ray of the wake test goes from the creature to
-  the caller, not to the player.
+- The ray of the wake test goes to the player, as in 1.3 (D-114 is not a
+  defect, 2026-11-24). An active creature that does not see the player
+  rests again at its next look (0x14206), so the alert of 1.3 wakes only a
+  creature that can take on the player. The scripts need it: the trigger of
+  THIEF0 segment 207 runs script 50 of the guard (object 22) in mode 3, and
+  its label 900 sets the anger of each goblin to 5 (0xA94CE), so each goblin
+  calls 0xA9418 and its alert of level 4. A ray to the caller (the port
+  until 2026-11-24) let the goblins of the camp wake each other, and their
+  paths brought them to the guard before the player reached the camp
+  (messages 24 and 25 of the triggers of segments 212, 244 and 256).
 - `Dtu_fix_alert_last`: the wake loop includes the last object slot.
 - The roll 0x161BC is not in the port (D-040): it always passes in 1.3, and
   AD&D 2nd Edition alerts a creature that notices a fight.
@@ -2143,8 +2151,12 @@ Verified (code).
   statement. A monster is a robot with id 0 or with a script without a say
   statement.
 - 0xA9418 makes an object hostile: anger 4, flag 2 set, flag 3 and bit 9
-  cleared, +0x1A2 = 0, `ai +3` = 2, +0x170 = 5, then 0x160AB(object, 4) and
-  the morale function 0x10ADF.
+  cleared, +0x1A2 = 0, the mode `ai +3` = 3 (CHASE_OB), GOAL_STATE +0x143 =
+  2, +0x170 = 5, then 0x160AB(object, 4) and the morale function 0x10ADF.
+  It does not call 0xA6505 and does not write the activity +0x1CC
+  (verified in the bytes 0xA9418 to 0xA94B5, 2026-11-24): a creature that is
+  not active stays inactive until its own wake test sees the player.
+  `dtu_script_make_hostile` woke it until 2026-11-24.
 - The message "Cannot gate in an NPC until you kill one" (0x134A6, function
   0x13407) is the Descent 1 gate limit. It counts robots whose byte at +0x7F
   is -1 and refuses if the count is above `2 * difficulty + 3`. It has

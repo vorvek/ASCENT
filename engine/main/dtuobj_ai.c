@@ -2317,14 +2317,21 @@ int dtu_script_creature_brave(object *obj)
 }
 
 // ASCENT: 0xA9418, a script makes the object hostile: chase mode, goal
-// SRCH, animation RUN, anger 4, hostile bit, target the player, morale.
+// SRCH, animation RUN, anger 4, hostile bit (0xA9477 to 0xA9489 also clear
+// the peaceful and the fleeing bit), target the player, the alert of level
+// 4, morale. It does not wake the creature (no call of 0xA6505, no write
+// of the activity +0x1CC): a creature that is not active stays where it is
+// until its wake test sees the player (do_ai_frame, 0x13CE0). So the
+// goblins of THIEF0, which the trigger of segment 207 makes hostile (script
+// 50, label 900), wait in their camp.
 void dtu_script_make_hostile(object *obj)
 {
 	dtu_ai_local *ail;
 
 	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types || obj->shields < F1_0 || DTU_ANIM_STATE(obj) == DAS_DIE)
 		return;
-	dtu_creature_wake(obj,1);
+	obj->dtu.m_1b0 |= DTU_HOSTILE;
+	obj->dtu.m_1b0 &= ~(DTU_PEACEFUL|DTU_FLEEING);
 	ail = &Ail[obj-Objects];
 	ail->mode = DAIM_CHASE_OB;
 	obj->ctype.ai_info.GOAL_STATE = DAIS_SRCH;

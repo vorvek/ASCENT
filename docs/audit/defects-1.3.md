@@ -25,9 +25,9 @@ mark "bytes" are acted on; the others need a verification in the bytes first.
 
 | State | First pass | Second pass (2026-11-23, three groups) | Third pass (2026-11-23, port differs) |
 |---|---:|---:|---:|
-| corrected | 54 | 73 | 97 |
+| corrected | 54 | 73 | 96 |
 | copied | 42 | 33 | 34 |
-| not applicable | 29 | 47 | 51 |
+| not applicable | 29 | 47 | 52 |
 | port differs | 57 | 29 | 0 |
 | unknown | 2 | 2 | 2 |
 
@@ -37,6 +37,7 @@ The list of open rows below is from the first pass: a row is open now when its s
 
 Changes of this pass: D-057 (corrected, `disable_trap`), D-075 (corrected, `script_area_seg`), D-070,
 D-074 and D-101 (not defects of 1.3; the port now does what 1.3 does), D-104 (the note of the row).
+Later (2026-11-24): D-114 is not a defect, the setting `alert_ray` is gone.
 
 ## Open rows
 
@@ -167,7 +168,7 @@ D-074 and D-101 (not defects of 1.3; the port now does what 1.3 does), D-104 (th
 | D-111 | The Descent 1 AI setup does nothing at a level start | 0x10685 | bytes (2026-11-23) | corrected | `ai_init` (-origobj) | 0x10685 skips type 2 and 0x1038B rejects others. With the option dtuobj_setup.c init_creature_ai keeps the old morale of the object number for a level creature (read by script test 0x98 before the first 0x10ADF). |
 | D-112 | Noise spreads through closed walls | 0x162A1 | bytes (2026-11-23) | corrected | `noise_walls` (-origobj) | 0x162A1 to 0x162FD: the type is stored, and while the depth is 5 or less each child above -1 is followed (type 5 made 4), with no wall test. dtuobj_aware.c awareness_events_frame stops at a side that a body cannot pass and that cannot be seen through (a closed door). Test: check_creature_setup.py --abilities (noise, CLAN3 segment 417) |
 | D-113 | The wake loop of an alert stops one object early | 0x1628D | bytes (2026-11-23) | corrected | `alert_last` (-origobj) | 0x1628D: `cmp eax, [Highest_object_index]`, `jl`. dtuobj_aware.c dtu_creature_alert includes the last slot; -origobj stops one early as 1.3 |
-| D-114 | The ray of an alert goes to the player and not to the caller | 0x161CA | bytes (2026-11-23) | corrected | `alert_ray` (-origobj) | 0x161C6 to 0x161CA: 0x10815(creature, 0), the ray to the player. dtuobj_aware.c dtu_creature_alert casts the ray to the caller (creature_ray_to); -origobj to the player. No automated test of the ray |
+| D-114 | The ray of an alert goes to the player and not to the caller | 0x161CA | bytes (2026-11-23) | not applicable |  | 0x161C6 to 0x161CA: 0x10815(creature, 0), the ray to the player. Not a defect (2026-11-24): an active creature that does not see the player rests again at its next look (0x14206), so the alert wakes only a creature that can take on the player, and the goblins of THIEF0, which script 50 makes hostile at the trigger of segment 207, must wait in their camp (docs/re/ai.md, "Alert function"). The setting `alert_ray` (ray to the caller) is gone; dtuobj_aware.c dtu_creature_alert casts the ray to the player |
 | D-115 | An alert never sets condition bit 0x04 | 0x16262 | subsystem | not applicable |  | No observable effect (1.3 case unreachable); the port has no such branch (awareness_event dtuobj_aware.c:133). |
 | D-116 | Hiding does not lower the fire rate of ranged creatures | 0x11CA6 | subsystem | copied |  | Kept: rare; needs verification in the bytes. dtuobj_ai.c:178 ai_fire_body has no "sometimes not fire at a hidden player" rule; creature fires every fire frame. |
 | D-117 | An undead with an unknown name can never be turned | 0xAC431 | subsystem | copied |  | Kept: rare; needs verification in the bytes. dtucombat.c:909-921 turn_bits: an unknown name gets the class from the player level and bit 0x10 clear, so "You can no longer attempt..." (dtucombat.c:1040). |
