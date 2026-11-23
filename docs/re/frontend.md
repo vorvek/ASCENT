@@ -119,6 +119,14 @@ message of 0x829B1 in hue 2 for 3 seconds.
 
 - FESEQ: brushes of the cursors (entries 1 to 16 are 31x34 cursors) and
   other small animations (portraits 21 and 22, Khelben's eyes 31).
+  0x81719 draws the cursor brush with its top left corner at the cursor
+  position, which the features test; the GRAB chunk (15, 17, the middle of
+  the brush) is not used. The fingertip of the hand is the first pixel of
+  the left column, at (0, 13), so in 1.3 the point that acts is 13 pixels
+  above the fingertip. P: the port puts the first pixel that shows (from
+  the left column) at the cursor position; with -feoriginput the corner,
+  as 1.3. Until 2026-11-23 the port used GRAB, and the point that acts was
+  15 pixels right of the fingertip.
 - FESTREAM (feanim.c): 0x8C883 open(seq), 0x8C93E frame(&bitmap, advance,
   last), 0x8C925 close. 0x8B18D play(seq): blit each frame at its position
   (not masked), wait 0x199A ticks (0.1 s); a click or a key jumps to the

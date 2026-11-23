@@ -84,7 +84,8 @@ int Fe_quit;
 int Fe_screen_num = -1;
 grs_font *Fe_font_l, *Fe_font_m, *Fe_font_s;
 grs_bitmap *Fe_cursor_bm;
-int Fe_cursor_hot_x, Fe_cursor_hot_y, Fe_cursor_trans;
+int Fe_cursor_trans;
+static int Fe_cursor_tip_x, Fe_cursor_tip_y;	// ASCENT: the fingertip in the cursor bitmap
 
 static grs_bitmap *Fe_bg;				// picture of the screen (FeOffScreenCanv, 0x13E378)
 static ubyte Fe_pal[768];
@@ -226,8 +227,14 @@ int fe_frame_begin(void)
 
 void fe_frame_end(void)
 {
+	// 0x81719: the top left corner of the cursor bitmap is at the cursor
+	// position, which the features test. 1.3 does not use the hot spot of
+	// the GRAB chunk (the middle of the bitmap, the Deluxe Paint default),
+	// with which the port drew the hand about 15 pixels left of the point
+	// that the features test. ASCENT: the fingertip is at the cursor
+	// position (fe_set_cursor); 1.3 has it 13 pixels below the position.
 	if (Fe_cursor_bm)
-		fe_blit(Fe_cursor_bm, Fe_mx - Fe_cursor_hot_x, Fe_my - Fe_cursor_hot_y, Fe_cursor_trans);
+		fe_blit(Fe_cursor_bm, Fe_mx - Fe_cursor_tip_x, Fe_my - Fe_cursor_tip_y, Fe_cursor_trans);
 
 	if (Fe_need_fade_in) {
 		Fe_need_fade_in = 0;
@@ -769,9 +776,22 @@ void fe_set_cursor(fe_seq *seq, int frame)
 	if (frame < 0 || frame >= seq->n_frames)
 		frame = seq->n_frames - 1;
 	Fe_cursor_bm = seq->frames[frame];
-	Fe_cursor_hot_x = seq->hot_x;
-	Fe_cursor_hot_y = seq->hot_y;
 	Fe_cursor_trans = seq->trans;
+	// ASCENT: the tip of the hand is the first pixel that shows, from the
+	// left column on (the hand points left). 1.3 input: the top left corner.
+	Fe_cursor_tip_x = Fe_cursor_tip_y = 0;
+	if (!Dtu_fe_original_input) {
+		grs_bitmap *bm = Fe_cursor_bm;
+		int x, y;
+
+		for (x = 0; x < bm->bm_w; x++)
+			for (y = 0; y < bm->bm_h; y++)
+				if (bm->bm_data[y * bm->bm_rowsize + x] != (ubyte) seq->trans) {
+					Fe_cursor_tip_x = x;
+					Fe_cursor_tip_y = y;
+					return;
+				}
+	}
 }
 
 //------------------------------------------------------------------------
