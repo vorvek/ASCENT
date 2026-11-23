@@ -644,7 +644,18 @@ make them again.
   `ascent.cfg`, item of the Graphics menu, option `-noaniminterp`):
   `draw_polygon_model_frame_lerp` draws the joint angles (each the short way around,
   as a signed 16-bit difference) and the body center between the frame of the game and
-  the next frame of the state. `polyobj_anim_track_update` gives the next frame and
+  the next frame of the state. Each orientation has two angle triples: `(p, b, h)` and
+  `(0x8000 - p, b + 0x8000, h + 0x8000)` give the same `vm_angles_2_matrix` (checked
+  with `tools/model.py angles_matrix`, 2000 random triples, largest difference 2e-6
+  degrees). Near a pitch of 90 degrees the data switches between the two from one frame
+  to the next: `ghu_y.pof` submodel 15 (an arm), walk frames 4 and 5, is `(-85, 0, 0)`
+  then `(-87, -180, -180)` degrees, 8 degrees apart. A lerp of each angle turns bank and
+  heading by 180 degrees on the way, and the arm rolls once around between two frames.
+  The lerp takes the triple of the next frame that is nearer (sum of the three
+  differences). Over the 461793 in-state frame pairs of the 1217 animated models of the
+  archives, the path of the plain lerp leaves the shortest rotation by more than 20
+  degrees in 1108 pairs, with the nearer triple in 5 (at most 22 degrees, on steps of
+  100 to 154 degrees). `polyobj_anim_track_update` gives the next frame and
   the fraction: it learns the time of one frame from the frame changes that the draw
   sees (the mean since the first change of the state), or takes it from the state time
   where the game counts the frames by time (active creatures 0x11018: `state_time / (n

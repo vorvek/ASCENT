@@ -1290,6 +1290,33 @@ static fixang angle_lerp(fixang a,fixang b,fix frac)
 	return (fixang) (a + fixmul(d,frac));
 }
 
+static int angvec_dist(const vms_angvec *a,const vms_angvec *b)
+{
+	return abs((fixang) (b->p - a->p)) + abs((fixang) (b->b - a->b)) + abs((fixang) (b->h - a->h));
+}
+
+// ASCENT: the joint angles frac of the way from a to b. Each orientation
+// has two angle triples: (p,b,h) and (0x8000-p,b+0x8000,h+0x8000) give the
+// same matrix (vm_angles_2_matrix). Near a pitch of 90 degrees the models
+// switch between the two from one frame to the next (ghu_y.pof sub 15,
+// frames 4 and 5: (-85,0,0) and (-87,-180,-180) degrees, 8 degrees apart).
+// A lerp of each angle would turn bank and heading by 180 degrees on the
+// way (the arm rolls once around). The lerp takes the triple of b that
+// is nearer to a.
+static void angvec_lerp(vms_angvec *out,const vms_angvec *a,const vms_angvec *b,fix frac)
+{
+	vms_angvec alt;
+
+	alt.p = (fixang) (0x8000 - b->p);
+	alt.b = (fixang) (b->b + 0x8000);
+	alt.h = (fixang) (b->h + 0x8000);
+	if (angvec_dist(a,&alt) < angvec_dist(a,b))
+		b = &alt;
+	out->p = angle_lerp(a->p,b->p,frac);
+	out->b = angle_lerp(a->b,b->b,frac);
+	out->h = angle_lerp(a->h,b->h,frac);
+}
+
 void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int next,fix frac,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[])
 {
 	static vms_angvec lerp_angles[MAX_POLYMODEL_SUBMODELS];
@@ -1363,17 +1390,14 @@ void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_
 
 	angles = (frame == -1) ? NULL : po->anim_angles + frame*po->n_models;
 
-	// ASCENT: animation interpolation: each joint angle between the two
-	// frames, the short way around.
+	// ASCENT: animation interpolation: each joint between the two frames,
+	// the short way around.
 	if (next != -1) {
 		vms_angvec *a = po->anim_angles + frame*po->n_models;
 		vms_angvec *b = po->anim_angles + next*po->n_models;
 
-		for (i=0;i<po->n_models;i++) {
-			lerp_angles[i].p = angle_lerp(a[i].p,b[i].p,frac);
-			lerp_angles[i].b = angle_lerp(a[i].b,b[i].b,frac);
-			lerp_angles[i].h = angle_lerp(a[i].h,b[i].h,frac);
-		}
+		for (i=0;i<po->n_models;i++)
+			angvec_lerp(&lerp_angles[i],&a[i],&b[i],frac);
 		angles = lerp_angles;
 	}
 
