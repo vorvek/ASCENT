@@ -150,11 +150,12 @@ TESTS = [
     T("ypinn_chair", "YPINN", "10:obj=5,10:obj=26,20:goobj=5,25:activate",
       [r"obj 5: type 18 .* script 0 ", r"obj 26: type 18 .* script 0 "], [r"run script 7 of obj 5"], frames=80),
     # YPINN: Mirt (object 2, 0xABB53) and a thief of level 1. D-090
-    # (Dtu_fix_mirt_points): he adds 40 points at the first talk and nothing
+    # (Dtu_fix_mirt_points): a thief of level 1 keeps the 60 points of the new
+    # character at the first talk (the Player's Handbook value) and gets nothing
     # at the second. 1.3 (-origscript) sets the points to 40 at each talk,
     # since the screen is not shown in a hidden run and the level stays unpaid.
     T("ypinn_mirt_points", "YPINN", "5:class=3,10:goobj=2,15:talk=2,40:talk=2",
-      [r"thief points: level 1, paid 0, \d+ points \(added\)[\s\S]*thief points: level 1, paid 1, \d+ points \(added\)"],
+      [r"thief points: level 1, paid 0, 60 points \(added\)[\s\S]*thief points: level 1, paid 1, 60 points \(added\)"],
       frames=70),
     T("ypinn_mirt_points_orig", "YPINN", "5:class=3,10:goobj=2,15:talk=2,40:talk=2",
       [r"thief points: level 1, paid 0, 40 points\s[\s\S]*thief points: level 1, paid 0, 40 points\s"],

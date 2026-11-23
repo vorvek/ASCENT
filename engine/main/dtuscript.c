@@ -2166,12 +2166,21 @@ static void thief_points(void)
 	int paid = Dtu_char.thief_paid & 0xff;
 	int award = (lv - paid) * 20 + (paid == 0 ? 20 : 0);
 
-	// ASCENT: Dtu_fix_mirt_points: the award is added and the level is paid
-	// at once, so a visit that does not show the screen cannot add it again.
-	// Each visit offers the points that are left.
+	// ASCENT: Dtu_fix_mirt_points: the points of the Player's Handbook. A
+	// thief of level 1 has the 60 points of the new character (0x8BACD) and
+	// gets no more at the first visit; each later level adds 30. The
+	// executable replaces the 60 by 40 at the first visit and adds 20 for a
+	// level. The level is paid at once, so a visit that does not show the
+	// screen cannot add it again. Each visit offers the points that are left.
 	if (Dtu_fix_mirt_points) {
 		if (lv > paid) {
-			Dtu_char.thief_points = (Dtu_char.thief_points + award) & 0xffff;
+			// The first visit: the points of a new character cannot be spent
+			// before it (only the screen of Mirt spends them), so the total is
+			// set: 60 and 30 for each level above the first.
+			if (paid == 0)
+				Dtu_char.thief_points = (60 + (lv - 1) * 30) & 0xffff;
+			else
+				Dtu_char.thief_points = (Dtu_char.thief_points + (lv - paid) * 30) & 0xffff;
 			Dtu_char.thief_paid = lv & 0xff;
 		}
 		slog("thief points: level %d, paid %d, %d points (added)", lv, paid, Dtu_char.thief_points);
