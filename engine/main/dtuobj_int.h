@@ -122,10 +122,13 @@ typedef struct dtu_missile {
 //------------------------------------------------------------------------
 // dtuobj.c
 
+int improved_paths(void);
+extern fix Model_reach[MAX_POLYGON_MODELS];
 extern monster_ext Monster_ext[MAX_ROBOT_TYPES];
 extern dtu_ai_local Ail[MAX_OBJECTS];
 extern dtu_missile Missile[MAX_OBJECTS];
 extern fix Dtu_clock;
+extern int Ref_tick_count, Ref_ticks_now;
 extern fix Player_max_hp;
 extern int Player_death_stage;
 extern fix Player_death_time;
@@ -137,9 +140,11 @@ extern int Test_pos_pending;
 void log_creature_state(object *obj,char *why);
 polymodel *obj_model(object *obj);
 int is_hostile(object *obj);
+int is_flying(object *obj);
 int tbl_int(int record,char *key,int def);
 void set_anim(object *obj,int state);
 int get_weapon_sphere(object *obj,int frame,vms_vector *center,fix *radius);
+int ai_tick(int objnum,int n);
 fix creature_floor_dist(object *obj,fix radius,fix half_height);
 void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
 void sound_on_object(int sound,object *obj,fix volume);
@@ -149,7 +154,10 @@ int weapon_is_melee(int w);
 void blood(object *obj);
 int player_type_sound(char *key);
 void log_corpse_height(object *obj,const char *what);
+fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 int corpse_on_floor(object *obj);
+int opens_doors(object *obj);
+void push_dressing(object *mover,object *d,int strength);
 
 //------------------------------------------------------------------------
 // dtuobj_setup.c
@@ -188,6 +196,12 @@ void weapon_test(object *obj);
 // dtuobj_missile.c
 
 void missiles_frame(void);
+
+//------------------------------------------------------------------------
+// dtuobj_move.c
+
+fix model_weapon_reach(object *obj);
+fix creature_stop_dist(object *obj);
 
 //------------------------------------------------------------------------
 // dtuobj_test.c
