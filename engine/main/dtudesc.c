@@ -274,7 +274,7 @@ static void fx_line(int type, int id, int hand)
 		line(hand ? LT("In the hand: %s.") : LT("While worn: %s."), fx_names(buf, sizeof(buf), fx));
 	// the armor class of the effects Armor, Magical Vestment and Shield
 	if (dtu_spell_fx_ac(fx) < 10)
-		line(LT("Armor class %d at most."), dtu_spell_fx_ac(fx));
+		line(LT("Protects like worn armor of armor class %d."), dtu_spell_fx_ac(fx));
 }
 
 // What one use of a misc item does (dtu_char_misc_use)
@@ -512,6 +512,16 @@ static void damage_cap(int spell, dtu_spell_facts *f)
 		line(LT("With more caster levels: up to %d missiles."), a.missiles_hi);
 }
 
+// The armor class spells (Armor, Shield, Magical Vestment) give the armor
+// class of a worn armor: the value replaces the value of the worn items when
+// that is worse (dtu_spell_player_ac stage 0), and the other adjustments of
+// the character apply as with any armor.
+static void ac_lines(int ac)
+{
+	line(LT("Protects like worn armor of armor class %d."), ac);
+	line(LT("No effect if your armor is better."));
+}
+
 static void spell_effect(int spell, dtu_spell_facts *f)
 {
 	static const char *types[4] = { LN("Deals %s damage."), LN("Deals %s fire damage."), LN("Deals %s acid damage."),
@@ -549,11 +559,14 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 			break;
 		case DTU_SK_CAUSE:		line(LT("Causes %s."), b); break;
 		case DTU_SK_AC:
-			line(LT("Armor class %d at most."), f->ac);
+			ac_lines(f->ac);
 			if (f->fx == DTU_FX_SHIELD)
 				line(LT("Stops Magic Missile."));		// case 33
 			break;
-		case DTU_SK_ARMOR:		line(LT("Armor class %d at most, until %s points of weapon damage."), f->ac, a); break;
+		case DTU_SK_ARMOR:
+			ac_lines(f->ac);
+			line(LT("Ends after %s points of weapon damage."), a);
+			break;
 		case DTU_SK_AID:		line(LT("Adds %s hit points above the maximum, and Bless."), a); break;
 		// case 13 has no test of the caster: the area takes the player too
 		case DTU_SK_DISPEL:		line(LT("Ends all spell effects in the area, yours too.")); break;

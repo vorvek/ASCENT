@@ -1973,17 +1973,21 @@ id: port.causes_s
 en: Causes %s.
 tr: Efecto: %s.
 
-id: port.armor_class_d_at_most
-en: Armor class %d at most.
-tr: CA %d como máximo.
+id: port.protects_like_worn_armor_of_armor_class_
+en: Protects like worn armor of armor class %d.
+tr: Protege como una armadura puesta de CA %d.
 
 id: port.stops_magic_missile
 en: Stops Magic Missile.
 tr: Detiene Proyectil Mágico.
 
-id: port.armor_class_d_at_most_until_s_points_of_
-en: Armor class %d at most, until %s points of weapon damage.
-tr: CA %d como máximo, hasta %s puntos de daño de armas.
+id: port.no_effect_if_your_armor_is_better
+en: No effect if your armor is better.
+tr: Sin efecto si tu armadura es mejor.
+
+id: port.ends_after_s_points_of_weapon_damage
+en: Ends after %s points of weapon damage.
+tr: Termina tras %s puntos de daño de armas.
 
 id: port.adds_s_hit_points_above_the_maximum_and__2
 en: Adds %s hit points above the maximum, and Bless.
