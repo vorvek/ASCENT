@@ -157,7 +157,6 @@ void log_corpse_height(object *obj,const char *what);
 fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 int corpse_on_floor(object *obj);
 int opens_doors(object *obj);
-void push_dressing(object *mover,object *d,int strength);
 
 //------------------------------------------------------------------------
 // dtuobj_setup.c
@@ -202,6 +201,15 @@ void missiles_frame(void);
 
 fix model_weapon_reach(object *obj);
 fix creature_stop_dist(object *obj);
+
+//------------------------------------------------------------------------
+// dtuobj_scenery.c
+
+void end_sequence_reset(void);
+void end_sequence_frame(void);
+int dressing_pushable(object *d);
+void push_dressing(object *mover,object *d,int strength);
+void dressing_move_frame(void);
 
 //------------------------------------------------------------------------
 // dtuobj_test.c
