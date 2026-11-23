@@ -207,6 +207,10 @@ id: port.l_d
 en: L-%d
 tr: N-%d
 
+id: port.miss_sound
+en: Miss sound
+tr: Sonido de fallo
+
 id: port.many
 en: Many
 tr: +++
