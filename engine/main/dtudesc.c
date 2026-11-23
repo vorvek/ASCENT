@@ -255,14 +255,14 @@ static void power_lines(int type, int id)
 			case DTU_IP_TRAPS_CLIMB:	line(LT("Sets Find/Remove Traps and Climb Walls to %d%%."), p[i].value); break;
 			case DTU_IP_PROT_CLOAK:	// ASCENT: Dtu_fix_ring_magic_armor
 				if (Dtu_fix_ring_magic_armor)
-					line(LT("Only the highest magic protection bonus counts. A Cloak of Protection +1 does not improve a +2 armor and does not add to a Ring of Protection."));
+					line(LT("Only the highest magic protection bonus counts. A Cloak of Protection +1 does not improve a +2 armor and does not add to a Ring or Amulet of Protection."));
 				else
 					line(LT("No armor class bonus with a shield, magic armor or heavy armor."));
 				break;
 			case DTU_IP_PROT_RING:		line(LT("Of two rings of protection only the better one counts.")); break;
 			case DTU_IP_RING_NO_MAGIC:	// ASCENT: Dtu_fix_ring_magic_armor
 				if (Dtu_fix_ring_magic_armor)
-					line(LT("Only the highest magic protection bonus counts. A Ring of Protection +1 does not improve a +2 armor and does not add to a Cloak of Protection."));
+					line(LT("Only the highest magic protection bonus counts. A Ring of Protection +1 does not improve a +2 armor and does not add to a Cloak or Amulet of Protection."));
 				else
 					line(LT("No armor class bonus with magic armor."));
 				break;
@@ -272,6 +272,7 @@ static void power_lines(int type, int id)
 			case DTU_IP_TURN_UNDEAD:	line(LT("The Turn Undead key works with it.")); break;
 			case DTU_IP_INFRA_HUMAN:	break;	// the effect list names Infravision: each other race has it, so no extra line
 			case DTU_IP_FAST_ATTACK:	line(LT("Attacks twice as fast. Does not add to Haste.")); break;
+			case DTU_IP_PROT_AMULET:	line(LT("Only the highest magic protection bonus counts. An Amulet of Protection +1 does not improve a +2 armor and does not add to a Ring or Cloak of Protection.")); break;
 		}
 }
 

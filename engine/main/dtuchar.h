@@ -477,7 +477,8 @@ extern int Dtu_fix_bracers_ac;
 // 11), a Cloak of Protection counts only with no shield, magic armor or
 // heavy armor, and a ring and a cloak add. A decision of the user: only the
 // highest magic protection bonus counts, of the magic of the armor, the
-// best Ring of Protection and the Cloak of Protection; the ring and the
+// best Ring of Protection, the Cloak of Protection and the Amulet of
+// Protection (1.3 adds the amulet always); the ring and the
 // cloak count with any armor and shield (Leather Armor +1 and a Ring of
 // Protection +2: Leather Armor and 2). 1 (default): the highest one. 0
 // (-origcombat): 1.3.
@@ -584,6 +585,7 @@ int dtu_char_spider_turn_level(void);
 #define DTU_IP_TURN_UNDEAD	15		// the key of Turn Undead works
 #define DTU_IP_INFRA_HUMAN	16		// the Infravision effect only for a human
 #define DTU_IP_FAST_ATTACK	17		// ASCENT: attacks twice as fast, no Haste (dtu_char_item_fast)
+#define DTU_IP_PROT_AMULET	18		// ASCENT: only the highest magic protection bonus counts (Dtu_fix_ring_magic_armor)
 typedef struct dtu_item_power {
 	int		kind, value, value2;
 } dtu_item_power;

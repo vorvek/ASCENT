@@ -236,7 +236,8 @@ skills for some items.
      `-origcombat` clears it): only the highest magic protection bonus counts,
      of the magic of the armor (the armor class of the armor minus that of
      Leather Armor, Chain Mail or Plate Mail), the better Ring of Protection
-     and the Cloak of Protection. The ring and the cloak count with any armor,
+     the Cloak of Protection and the Amulet of Protection (armor 28 to 32; 1.3
+     adds it always). The ring and the cloak count with any armor,
      shield or bracers. A shield adds all of its armor class, as in 1.3.
      Decisions of the user.
 3. Items that set a value while worn: Girdle 38 strength 19, Gauntlets 52 and

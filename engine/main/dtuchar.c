@@ -518,6 +518,7 @@ static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || (!Dtu_
 static int is_heavy_armor(dtu_inv_item *e)	{ return armor_is(e, 3, 4) || armor_is(e, 7, 11); }		// 0xB0B0A
 static int is_prot_cloak(dtu_inv_item *e)	{ return armor_is(e, 47, 49); }								// 0xAF930
 static int is_prot_ring(dtu_inv_item *e)	{ return armor_is(e, 0, 0) || armor_is(e, 14, 15); }		// 0xAF9AB
+static int is_prot_amulet(dtu_inv_item *e)	{ return armor_is(e, 28, 32); }								// ASCENT: Amulets of Protection +1 to +5
 #define LATHANDER_SPELL	8		// armor 45: USE casts Continual Light (0x37A6A)
 
 // ASCENT: the armor class that the magic of a magic armor (5 to 11) adds to
@@ -820,7 +821,7 @@ void dtu_char_update(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa, *base = &Dtu_char.base;
 	dtu_inv_item *e;
-	int sum = 0, ring_best = 0, cloak_best = 0, armor_bonus = 0, ring_counts;
+	int sum = 0, ring_best = 0, cloak_best = 0, amulet_best = 0, armor_bonus = 0, ring_counts;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
 	int ac, dex, missile;
 
@@ -855,9 +856,16 @@ void dtu_char_update(void)
 	}
 
 	// necklace. Armor 33 (Amulet of Shield) gives a spell effect only.
+	// ASCENT: Dtu_fix_ring_magic_armor: an Amulet of Protection (28 to 32)
+	// is one more magic protection bonus, of which only the best counts
+	// (below). 1.3 adds it to all.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_NECKLACE]);
-	if (e)
-		sum += slot_ac(e, DTU_SLOT_NECKLACE);
+	if (e) {
+		if (Dtu_fix_ring_magic_armor && is_prot_amulet(e))
+			amulet_best = slot_ac(e, DTU_SLOT_NECKLACE);
+		else
+			sum += slot_ac(e, DTU_SLOT_NECKLACE);
+	}
 
 	// shield. 0xAF9CF: the numbers 2, 12 and 13 are shields.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_SHIELD]);
@@ -959,12 +967,13 @@ void dtu_char_update(void)
 			sum += table_ac(e);
 	}
 	// ASCENT: Dtu_fix_ring_magic_armor: only the best of the magic of the
-	// armor, the ring and the cloak counts; they do not add
+	// armor, the ring, the cloak and the amulet counts; they do not add
 	if (Dtu_fix_ring_magic_armor) {
 		int best = armor_bonus;
 
 		if (ring_best < best) best = ring_best;
 		if (cloak_best < best) best = cloak_best;
+		if (amulet_best < best) best = amulet_best;
 		sum += best - armor_bonus;
 	}
 	else if (!magic_armor)
@@ -1224,6 +1233,8 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		ADD(DTU_IP_NO_SKILLS, 1, 0);
 	if (slot == DTU_SLOT_CLOAK && is_prot_cloak(&e))
 		ADD(DTU_IP_PROT_CLOAK, 0, 0);
+	if (slot == DTU_SLOT_NECKLACE && is_prot_amulet(&e) && Dtu_fix_ring_magic_armor)
+		ADD(DTU_IP_PROT_AMULET, 0, 0);
 	if (slot == DTU_SLOT_CLOAK && armor_is(&e, 43, 43))
 		ADD(DTU_IP_HIDE, DTU_ELVENKIND_HIDE, 0);
 	if (slot == DTU_SLOT_RING1 && type == OBJ_ARMOR) {

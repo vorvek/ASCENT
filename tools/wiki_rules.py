@@ -569,11 +569,11 @@ WORN = {
     ("armor", 46): "Invisibility while worn. It ends when you attack and comes back at the next change "
                    "of equipment.",
     ("armor", 47): "Counts with any armor, shield or bracers. Only the highest magic protection bonus "
-                   "counts: of the magic of the armor, a Ring of Protection and this cloak.",
+                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak.",
     ("armor", 48): "Counts with any armor, shield or bracers. Only the highest magic protection bonus "
-                   "counts: of the magic of the armor, a Ring of Protection and this cloak.",
+                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak.",
     ("armor", 49): "Counts with any armor, shield or bracers. Only the highest magic protection bonus "
-                   "counts: of the magic of the armor, a Ring of Protection and this cloak.",
+                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak.",
     ("armor", 50): "Dexterity +4 (Dexterity 6 or less), +2 (7 to 13) or +1 (14 to 19). Open Locks +10% "
                    "for a thief; for any other class Open Locks becomes 37%.",
     ("armor", 51): "Detect Magic while worn. It gives no light.",
@@ -616,10 +616,10 @@ FIXES = [
     ("Dtu_fix_bracers_ac", "-origcombat", "Rings and cloaks of protection count with the Bracers of "
                                           "Defense; in 1.3 the bracers are magic armor and they do not."),
     ("Dtu_fix_ring_magic_armor", "-origcombat", "Only the highest magic protection bonus counts, of the magic "
-                                                "of the armor, a Ring and a Cloak of Protection; the ring and "
-                                                "the cloak count with any armor and shield. In 1.3 no ring "
-                                                "counts with magic armor, the cloak only with no shield, magic "
-                                                "or heavy armor, and a ring and a cloak add."),
+                                                "of the armor, a Ring, a Cloak and an Amulet of Protection; "
+                                                "they count with any armor and shield. In 1.3 no ring counts "
+                                                "with magic armor, the cloak only with no shield, magic or "
+                                                "heavy armor, and a ring, a cloak and an amulet add."),
     ("Dtu_fix_potion_frame", "-origcombat", "The intelligence potion does not depend on the frame rate."),
     ("Dtu_fix_luck_coin", "-origcombat", "The Potion of Luck uses a coin flip, not the day clock."),
     ("Dtu_fix_cursed_scroll", "-origcombat", "The Cursed Scroll can take up to all but one of your hit "
@@ -1539,8 +1539,11 @@ class Pages:
                            "armor: rings and cloaks of protection count with them.")
                 if title == "Rings" and i in (0, 14, 15):
                     eff = ("Only the highest magic protection bonus counts: of the magic of the armor, the "
-                           "best of these rings and a Cloak of Protection. Of two of these rings only the "
+                           "best of these rings and a Cloak or Amulet of Protection. Of two of these rings only the "
                            "better counts.")
+                if title == "Amulets" and 28 <= i <= 32:
+                    eff = ("Only the highest magic protection bonus counts: of the magic of the armor, "
+                           "this amulet and a Ring or Cloak of Protection.")
                 if i == 33:
                     ac = 0
                 eff = " ".join(x for x in (eff or "AC only.", r.note()) if x)

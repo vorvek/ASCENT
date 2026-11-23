@@ -233,14 +233,16 @@ def test_armor_set(t):
     d, _, _ = t.run("armor_set", a + b)
     # Plate Mail +3 -10, Shield +2 -3, Amulet +5 -5, Gauntlets -1; the ring and
     # the cloak do not count with magic armor and a shield; the misc Boots do
-    # not count in the boot place.
-    check(d[0].ac == -9, "plate set: AC %d, expected -9" % d[0].ac)
+    # not count in the boot place: 1.3 -9. Dtu_fix_ring_magic_armor: only
+    # the Amulet +5 of the magic protection bonuses counts: Plate Mail -7,
+    # Shield +2 -3, Amulet -5, Gauntlets -1.
+    check(d[0].ac == -6, "plate set: AC %d, expected -6" % d[0].ac)
     check(d[0].locks == 0 and d[0].traps == 0, "Gauntlets: thief skills %d %d" % (d[0].locks, d[0].traps))
     # Leather Armor -2, Cloak +3 -3, Rings +3 and +2: -3, Amulet -5, Gauntlets
-    # -1. Only the highest of the cloak and the ring counts
-    # (Dtu_fix_ring_magic_armor; 1.3 adds them: -4).
-    check(d[1].ac == -1, "leather set: AC %d, expected -1" % d[1].ac)
-    return "AC -9 and -1"
+    # -1: 1.3 -4. Only the highest of the cloak, the ring and the amulet counts
+    # (Dtu_fix_ring_magic_armor): Leather Armor -2, Amulet -5, Gauntlets -1.
+    check(d[1].ac == 2, "leather set: AC %d, expected 2" % d[1].ac)
+    return "AC -6 and 2"
 
 
 # ---------------------------------------------------------------------
@@ -260,6 +262,10 @@ PROTECTION = [
                                                                               # Leather Armor, Shield, Cloak +1
     "unequip=1", "unequip=5", "unequip=3", "equip=15.5", "give=15.13.1", "equip=15.13", "equip=15.0", "dump",
                                                                               # Leather Armor +1, Shield +2, Ring +2
+    "unequip=5", "give=15.30.1", "equip=15.30", "dump",                       # Leather Armor +1, Ring +2, Amulet +3
+    "unequip=3", "dump",                                                      # Ring +2 and Amulet +3
+    "unequip=6", "equip=15.5", "unequip=2", "give=15.28.1", "equip=15.28", "dump",   # Leather Armor +1, Amulet +1
+    "unequip=2",
     "unequip=6", "unequip=5", "unequip=3", "equip=15.49",                     # back to the cloak +3 alone
     "unequip=1", "cast=2", "dump",                                            # Armor, no armor
     "equip=15.1", "dump", "unequip=3",                         # and Leather Armor (AC 8)
@@ -272,14 +278,14 @@ PROTECTION = [
 
 def test_protection(t):
     """Only the highest magic protection bonus counts (the magic of the
-    armor, a ring and a cloak of protection), with any armor, shield or
+    armor, a ring, a cloak and an amulet of protection), with any armor, shield or
     bracers; a shield adds all of its armor class; the better armor class of the Armor and Shield spells and the
     worn armor. -origcombat: the rules of 1.3."""
     d, _, _ = t.run("protection", PROTECTION)
     o, _, _ = t.run("protection_orig", PROTECTION, ["-origcombat"])
     acs, orig = [x.ac for x in d], [x.ac for x in o]
-    check(acs == [2, 2, 3, 8, 6, 5, 4, 0, 6, 3, 6, 6, 4, 6, 4, 3], "AC %s" % acs)
-    check(orig == [4, 4, 4, 7, 7, 7, 6, 3, 7, 4, 6, 6, 4, 6, 3, 3], "-origcombat: AC %s" % orig)
+    check(acs == [2, 2, 3, 8, 6, 5, 4, 0, 6, 3, 5, 7, 7, 6, 6, 4, 6, 4, 3], "AC %s" % acs)
+    check(orig == [4, 4, 4, 7, 7, 7, 6, 3, 7, 4, 4, 5, 6, 6, 6, 4, 6, 3, 3], "-origcombat: AC %s" % orig)
     return "AC %s, 1.3 %s" % (acs, orig)
 
 
