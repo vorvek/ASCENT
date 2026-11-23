@@ -171,6 +171,7 @@ alone runs script 322 and the end). The port: `flame_lolth_dead` (dtuobj_combat.
 | Statement EB reads a segment and does not use it | 0xAA8C7 | Kept: the spell is around the object |
 | Statement C5 cannot set global flag 17 (script 320) | 0xAB124, numbers up to 0x20 are ignored | Kept: mission flag 17 comes from DTU.WRP |
 | Six of the seven Ankhs of MULHOR1 get object flag 0x40 from the level fixes: the object queries skip them, so only object 33 can be taken | 0xAD0C0, 0x3F38F | Intended (decoys), ported: `OF_DTU_NOHIT`. Tests `mulhor1_ankh`, `mulhor1_ankh_flagged` |
+| THIEF0 script 54 (Devlin), label 300, branch `resume obj 48 == 1`: after "Good work Mishad." the run ends, so flag 5 and flag 4 of object 10 stay clear and label 800 (gold, global flag 66) is never reached; the other two branches of the same result go to label 800 | script 54 at 0x142D to 0x1477, 0x13AD, 0x164E (tools/script.py) | `Dtu_fix_script_devlin` (on): the branch goes on to label 800. `-origscript`. Tests `thief0_devlin_goblins`, `thief0_devlin_goblins_orig` |
 
 ## 6. The Ankh of Straum (BONES, script 31)
 

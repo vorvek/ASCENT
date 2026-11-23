@@ -131,6 +131,31 @@ int Dtu_fix_script_area_seg = 1;
 // 0 (-origscript): the rule of the executable.
 int Dtu_fix_mirt_points = 1;
 
+// ASCENT: statement EC (0xAA8E4) waits NUM hundredths of a second in
+// reduced frames with the conversation window open and empty (the choice
+// before it cleared the texts, 0xB23C6). The reduced frame 0x4391D reads no
+// key, and neither the wait nor the next choice (0xB2280, 0xB2FA2) empties
+// the key buffer, so each key typed in the wait is taken by the next choice
+// at once (key_inkey 0xDA3E4 in 0xB2B6F) and its text is gone before it is
+// seen. THIEF0 script 53 (Mishad, label 900) waits rand(500..1000), up to
+// 10 seconds, for Devlin (script 54, label 300). 1 (default): a key or a
+// click while the window is open ends the wait, and the keys of the wait
+// are dropped. 0 (-origscript): the rule of the executable.
+int Dtu_fix_script_wait = 1;
+
+// ASCENT: THIEF0 script 54 (Devlin), label 300, the branch "resume obj 48
+// == 1" (0x142D): Mishad has killed the last goblins, Devlin says "Good
+// work Mishad." and sets VAR obj 6 = 13, and the run ends there. The other
+// two branches of the same result (0x13AD after "I'm impressed!" and
+// label 310, 0x164E) set flag 5 of object 10 and go to label 800, which
+// sets flag 4 of object 10, can give gold and sets global flag 66 (Braakus,
+// script 60, and Khelben, script 1, label 12, read it). Without them the
+// next talk never reaches label 800: flag 6 hides the reply to label 150
+// and label 400 needs flag 7. 1 (default): the branch also sets flag 5 of
+// object 10 and goes to label 800 (patch_devlin). 0 (-origscript): the
+// data of the script as it is.
+int Dtu_fix_script_devlin = 1;
+
 // The anger byte (ai_local +0x00) and 0xA9418 are in dtuobj.c.
 ubyte *dtu_script_anger(object *obj);
 void dtu_script_make_hostile(object *obj);
@@ -246,7 +271,7 @@ void dtu_script_init(void)
 	if (FindArg("-origscript"))		// ASCENT: the script rules of the executable
 		Dtu_fix_script_new_char = Dtu_fix_script_abilities = Dtu_fix_script_area_seg = Dtu_fix_mirt_points = 0;
 	if (FindArg("-origscript"))
-		Dtu_fix_script_run_mode = 0;
+		Dtu_fix_script_run_mode = Dtu_fix_script_wait = Dtu_fix_script_devlin = 0;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
 	// has the English text.
 	Gab_rlh = dtu_load_file("GABE.RLH", &Gab_rlh_size);
@@ -255,6 +280,43 @@ void dtu_script_init(void)
 		Gab_rlh_size = Gab_dat_size = 0;
 		dtu_log("Scripts: GABE.RLH or GABE.DAT not found\n");
 	}
+}
+
+// ASCENT: Dtu_fix_script_devlin. Script 54 of GABE 1.3 (10719 bytes):
+// "VAR obj 6 = 13" at 0x1470 (7 bytes) becomes "GOTO 003FF" (7 bytes), and
+// a new block at the end of the record has the label 0x3FF, "VAR obj 6 =
+// 13", the 10 bytes "SET flag5 obj 10, GOTO 800" of 0x13AD and ENDBLOCK.
+// No string moves: the translations know a string by its offset
+// (gab.SCRIPT.OFFSET). Another record is kept as it is.
+static ubyte *patch_devlin(int id, ubyte *p, int *size)
+{
+	static const ubyte var13[7] = { 0xE0, 0x15, 0x36, 0x00, 0x7E, 0x64, 0x00 };	// VAR obj 6 = 13
+	static const ubyte go[7] = { 0xC7, '0', '0', '3', 'f', 'f', 0x00 };				// GOTO 3FF
+	static const ubyte label[5] = { 0xCB, '3', 'f', 'f', 0x00 };					// LABEL 3FF
+	static const ubyte to800[10] = { 0xC5, 0x05, 0x15, 0x61, 0x00, 0xC7, '3', '2', '0', 0x00 };
+	const int at = 0x1470, n = *size;
+	ubyte *q;
+
+	if (!Dtu_fix_script_devlin || id != 54 || n != 10719 || p[n - 1] != 0xCC ||
+		 memcmp(p + at, var13, sizeof(var13)) || p[at + 7] != 0xF7 ||
+		 memcmp(p + 0x13AD, to800, sizeof(to800)) || memcmp(p + 0x1438, "Good work Mishad.", 17))
+		return p;
+	if ((q = malloc(n + sizeof(label) + sizeof(var13) + sizeof(to800) + 2)) == NULL)
+		return p;
+	memcpy(q, p, n);
+	memcpy(q + at, go, sizeof(go));
+	*size = n;
+	memcpy(q + *size, label, sizeof(label));
+	*size += sizeof(label);
+	memcpy(q + *size, var13, sizeof(var13));
+	*size += sizeof(var13);
+	memcpy(q + *size, to800, sizeof(to800));
+	*size += sizeof(to800);
+	q[(*size)++] = 0xCC;
+	q[*size] = 0;
+	free(p);
+	slog("script 54: after \"Good work Mishad.\" label 300 goes on to label 800 (Dtu_fix_script_devlin)");
+	return q;
 }
 
 // 0xAB9C9: the record of a script id, decoded (0xA74F8)
@@ -283,6 +345,7 @@ static ubyte *script_data(int id, int *size)
 			for (k = 0; k < (uint) sz; k++)
 				p[k] = Gab_dat[ofs + k] ^ Gab_key[k % 70] ^ Gab_key[(0xFFFFFFFFu - k) % 70];
 			p[sz] = 0;
+			p = patch_devlin(id, p, &sz);
 			Rec_data[id] = p;
 			Rec_size[id] = sz;
 			*size = sz;
@@ -2691,7 +2754,11 @@ int dtu_script_frame(void)
 	if (N_run == 0)
 		return 0;
 	if (Wait_timer) {
-		if (dtu_trap_clock() < Wait_until)
+		// ASCENT: Dtu_fix_script_wait, a key ends the wait of EC in a
+		// conversation and the keys of the wait are dropped
+		if (Dtu_fix_script_wait && dtu_dlg_is_open() && dtu_dlg_wait_key())
+			slog("wait: ended by a key (Dtu_fix_script_wait)");
+		else if (dtu_trap_clock() < Wait_until)
 			return 1;
 		Wait_timer = 0;
 	} else {

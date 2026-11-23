@@ -509,6 +509,17 @@ int dtu_dlg_poll(void)
 	return r;
 }
 
+int dtu_dlg_wait_key(void)
+{
+	int hit = 0;
+
+	while (key_inkey() != 0)
+		hit = 1;
+	if (!Dtu_fe_original_input && !Dtu_immersive && mouse_button_down_count(0) > 0)
+		hit = 1;
+	return hit;
+}
+
 //------------------------------------------------------------------------
 // Drawing
 

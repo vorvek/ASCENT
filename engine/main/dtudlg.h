@@ -39,6 +39,11 @@ void dtu_dlg_start_choice(void);
 // clears the texts and the replies (0xB23C6).
 int dtu_dlg_poll(void);
 
+// ASCENT: Dtu_fix_script_wait (dtuscript.c). While statement EC waits with
+// the window open: returns 1 if a key or a click came, and then the key
+// buffer is empty, so no key of the wait goes on to the next choice.
+int dtu_dlg_wait_key(void);
+
 // Draws the window over the screen. GameLoop calls it after the interface
 // (game_render_frame_mono).
 void dtu_dlg_draw(void);

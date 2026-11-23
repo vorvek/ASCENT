@@ -28,6 +28,15 @@ extern int Dtu_fix_script_area_seg;
 // D-125: the run mode after statement EE (0xAA989). 0: as 1.3, mode 4 of
 // the call. 1 (default): the mode of the outer run. -origscript clears it.
 extern int Dtu_fix_script_run_mode;
+// 1 (default): a key or a click ends the wait of statement EC while the
+// conversation window is open, and the keys of the wait are dropped (1.3
+// gives them to the next choices, which pass their texts unseen).
+// -origscript clears it.
+extern int Dtu_fix_script_wait;
+// 1 (default): THIEF0 script 54 (Devlin) goes on to label 800 after "Good
+// work Mishad." as its other branches of the same result do (1.3: the run
+// ends and label 800 is never reached). -origscript clears it.
+extern int Dtu_fix_script_devlin;
 
 // 1: each statement and each event of the scripts is printed to stdout
 // (option -scriptlog).
