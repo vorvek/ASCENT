@@ -52,6 +52,7 @@ int Dtu_fix_chill_touch = 1;
 int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
+int Dtu_fix_damage_save = 1;		// ASCENT: no save against Magic Missile (dtuspell.h)
 int Dtu_fix_spell_hours = 1;
 int Dtu_fix_cure_aid = 1;			// ASCENT: priest spells (dtuspell.h)
 // ASCENT: D-105 (dtuspell.h). The flag word of Prayer after 0x56D6A: the
@@ -1791,7 +1792,7 @@ static const struct { ubyte kind, save, flags; int fx, stopped_by; } Spell_rule[
 	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 30 Light
 	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 31
 	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0, 0 },						// 32 Lightning Bolt
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS|DTU_SR_STOPPED, 0, DTU_FX_SHIELD },	// 33 Magic Missile: Shield stops it
+	{ DTU_SK_DAMAGE, DTU_SS_NONE, SR_OTHERS|DTU_SR_STOPPED, 0, DTU_FX_SHIELD },	// 33 Magic Missile: Shield stops it, no save (Dtu_fix_damage_save)
 	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 34 Magical Stone
 	{ DTU_SK_AC, DTU_SS_NONE, 0, DTU_FX_VESTMENT },				// 35 Magical Vestment
 	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 36 Melf's Acid Arrows (see below)
@@ -1857,10 +1858,11 @@ static int kin_saves(object *target)
 
 // A damage spell saves for half when its line says so. The other spells
 // that deal damage (Abjure of a creature, the lights on a light
-// sensitive creature) always save for half, as in 1.3 (0x911AA).
+// sensitive creature) always save for half, as in 1.3 (0x911AA). Without
+// Dtu_fix_damage_save every damage spell saves for half (0x91382).
 static int rule_half(int spell)
 {
-	if (spell < 0 || spell >= N_SPELL_RULES || Spell_rule[spell].kind != DTU_SK_DAMAGE)
+	if (!Dtu_fix_damage_save || spell < 0 || spell >= N_SPELL_RULES || Spell_rule[spell].kind != DTU_SK_DAMAGE)
 		return 1;
 	return Spell_rule[spell].save == DTU_SS_HALF;
 }
@@ -4289,6 +4291,8 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 		f->fx = Spell_rule[spell].fx;
 		f->flags = Spell_rule[spell].flags;
 		f->stopped_by = (f->flags & DTU_SR_STOPPED) ? Spell_rule[spell].stopped_by : 0;
+		if (f->kind == DTU_SK_DAMAGE && rule_half(spell))
+			f->save = DTU_SS_HALF;		// ASCENT: Dtu_fix_damage_save 0
 	}
 	// the conditions of rule_reaches and rule_save
 	f->max_level = (f->flags & DTU_SR_LEVEL_CAP) ? spell_amount(spell,L,HIGH) : -1;

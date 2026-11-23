@@ -70,7 +70,7 @@ AREA, bit 8 cast on the caster.
 | 29 | Levitate | 0x8EDB2 | 10L minutes, no cast while levitating | case 29 | same | |
 | 30 | Light (Mage) | 0x8DC1D | flags 3: a missile, AREA of radius 3 where it lands, light 20.0; blind 10L minutes | case 30 | fixup | 2e: blinds when cast at the eyes |
 | 32 | Lightning Bolt | 0x8EE76 | flags 0x802, radius 5; electric d6, min(L, 10) dice: Ld6 at most 10d6, save half; missile life 2 s | case 32 | fixup (table text: 6L; test L5 mean 27.0) | same as 2e |
-| 33 | Magic Missile | 0x8EED5 | dice 4 sides, 1 die, +1 per level, rolled at level 1: 1d4 + 1; save half (0x911AA); (L >> 1) + 1 missiles, at most 5 | case 33 | fixup (table text: 1d4) | kept: 2e and the manual give no save and one more missile at 3, 5, 7, 9 |
+| 33 | Magic Missile | 0x8EED5 | dice 4 sides, 1 die, +1 per level, rolled at level 1: 1d4 + 1; save half (0x911AA); (L >> 1) + 1 missiles, at most 5 | case 33 | fixup (table text: 1d4) | no save since 2026-11-24 (`Dtu_fix_damage_save`, 2e and the manual; `-origcombat`: the save for half of 1.3). Kept: 2e gives one more missile at 3, 5, 7, 9 |
 | 36 | Melf's Acid Arrows | 0x8EFE0 | acid d4, the case writes 2 (L/3) + 2 dice: one hit, save half | case 36 | fixed earlier (`Dtu_fix_melf_acid`, the 2e rule). The 1.3 rule of spells.md section 10 ("4L") is the table text; corrected in section 11 | 2e: same total dice, over rounds |
 | 37 | Melf's Minute Meteors | 0x8F021 | flags 0x802, radius 6; fire 1d4 per meteor, min(L, 5) meteors, save half | case 37 | fixup (table text: 1d4 normal damage) | kept: 2e one per level, +2 attack roll |
 | 39 | Protection From Evil | 0x8F116 | class 0x26, range and radius 3, self; 2L minutes | case 39 | same; class 0x26 is in the fixup layer | |

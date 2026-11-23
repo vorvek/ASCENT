@@ -101,6 +101,15 @@ extern int Dtu_fix_rary_manual;
 // save and load. 1 (default): the 2nd edition rule. 0: the executable.
 extern int Dtu_fix_melf_acid;
 
+// ASCENT: the damage of a spell (0x911AA) rolls a saving throw (category
+// 4, 0x91382) for every spell and halves the damage on a made save, so a
+// target saves against Magic Missile (case 33, 0x8EED5). In AD&D 2nd edition
+// and in the manual Magic Missile has no saving throw. 1 (default): a
+// damage spell saves for half only when its line of the rule table says so
+// (Magic Missile: no save). 0: every damage spell saves for half, as the
+// executable. -origcombat clears it.
+extern int Dtu_fix_damage_save;
+
 // Strength (50) and Infravision (25) compute the duration in 32 bits: it
 // wraps from caster level 10 (Strength) and 8 (Infravision) and the effect
 // ends at once. Corrected: no wrap; a duration stops at 4 hours 33 minutes,
