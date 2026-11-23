@@ -165,7 +165,17 @@ setup of the level file back (`Setup_ext` in dtuobj.c) and runs no level
 fix and no creature setup; it sets the spell time of each creature
 (`dtu_ai_from_image` too) and the spell points of its type
 (`dtu_spell_creature_restore`). `Dtu_fix_scenery_restore` (on, `-origobj`
-clears it) keeps the saved hit points of scenery (bugs.md D19). Tests:
+clears it) keeps the saved hit points of scenery (bugs.md D19).
+`Dtu_fix_restore_spells` (dtustate.c, on, `-origobj` clears it; defect
+D-134, verified in the bytes: 0xBB304 calls 0xBAFE0, 0xBB015 calls 0xAE3F2,
+0xAE4FA and 0xAE506 copy the points of the type into +0x19E and +0x19F)
+keeps the saved points: the writer puts the points of the creature into
++0x19E and +0x19F and a time into +0x1A8 (never 0; 1.3 has the game time
+of the setup there), and the restore takes the points when +0x1A8 is not 0
+(a file of an older build of the port has 0). A creature with no points
+left waits the full time for new points, because the file keeps no time
+left. Test: `tools/check_saveload.py`, third run (KOBOLDS object 19, 3
+mage points, keeps 1 after a save and a load). Tests:
 `-level KOBOLDS -statetest 0,0,19,12,91,1` (weapon 18 at the first visit,
 33 and 1d4 with `-origobj` at the second, object 19 restored with 3 hit
 points), `-level DROW5 -statetest -1,0,-1,0,73` (dressing 13: 256 hit points
@@ -197,7 +207,13 @@ open (the list is left only at 0x7DE54, in the close code), so the list
 holds every door that was opened in this visit. The warp therefore closes
 all doors of the level before it saves it: a door that the player opened
 is closed when the player comes back. A save game in a level does not do
-this, so a door stays open in a save.
+this, so a door stays open in a save. Verified in the bytes (2026-11-23):
+0x5A100 to 0x5A10A call 0x7DCC3 with 0 once for each of Num_open_doors
+(0x3A3EA0), 0x5A110 to 0x5A126 clear bit 0x02 of each wall, and
+`state_save_all` (0xBA99F) calls 0x5A756 at 0xBA9FE with no call of
+0x7DCC3. The port does the same (defect D-139, kept): both results can be
+the design (a level that the player comes back to starts with its doors
+shut; a save keeps the scene as the player saved it).
 
 ## 7. Save games (V)
 

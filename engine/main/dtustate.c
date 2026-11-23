@@ -48,6 +48,7 @@
 #include "dtufe.h"
 #include "dtustate.h"
 #include "dtuchar.h"		// ASCENT: dtu_char_update() after a restore
+#include "dtuspell.h"		// ASCENT: the spell points of a creature (D-134)
 #include "args.h"
 
 // The messages of the state code go to the log and to stdout
@@ -65,6 +66,7 @@ typedef struct ls_record {
 } ls_record;
 
 int Dtu_level_has_state[LS_LEVELS];	// 0x296304
+int Dtu_fix_restore_spells = 1;		// ASCENT: D-134 (dtustate.h)
 
 static int Cleanup_registered;
 
@@ -663,6 +665,18 @@ static void obj_to_image(int objnum, ubyte *b)
 	for (i = 0; i < 5; i++) put32(b + 0xE8 + 4 * i, o->dtu.m_e8[i]);
 	put32(b + 0x1B0, o->dtu.m_1b0);
 	b[0x1D5] = o->dtu.m_1d5;
+	// ASCENT: D-134. The spell points left of a creature (+0x19E mage,
+	// +0x19F cleric) as 1.3 writes them, and a time in +0x1A8 (1.3: the
+	// game time at the setup, never 0) that marks the points as written.
+	// A file of an older build of the port has 0 there.
+	if (o->type == OBJ_ROBOT) {
+		int mage, cleric;
+
+		dtu_spell_creature_points(o, &mage, &cleric);
+		b[0x19E] = (ubyte) mage;
+		b[0x19F] = (ubyte) cleric;
+		put32(b + 0x1A8, GameTime > 0 ? GameTime : 1);
+	}
 
 	// scenery: movement type 1 as in the executable (see obj_from_image)
 	if (o->type == OBJ_DRESSING && o->movement_type == MT_NONE)
@@ -1207,8 +1221,14 @@ static void ai_restore(void)
 
 	if (!Ai_block_ok)
 		return;
+	if (FindArg("-origobj"))
+		Dtu_fix_restore_spells = 0;
 	for (i = 0; i <= Highest_object_index && i < AI_N_LOCAL; i++)
 		if (Img_ok[i] && Img_sig[i] == Objects[i].signature && Objects[i].type == OBJ_ROBOT) {
+			// ASCENT: D-134, Dtu_fix_restore_spells: the saved points stay
+			// (0xAE3F2 at 0xBB1A7 gives the points of the type again)
+			if (Dtu_fix_restore_spells && gs32(Img[i] + 0x1A8) != 0)
+				dtu_spell_creature_keep_points(&Objects[i], Img[i][0x19E], Img[i][0x19F]);
 			dtu_ai_from_image(i, Ai_block + AI_LOCAL_OFF + i * AI_LOCAL_SIZE, Img[i]);
 			dtu_obj_log("state restore: obj %d %s %s", i, dtu_object_name(&Objects[i]),
 				dtu_creature_is_hostile(&Objects[i]) ? "hostile" : "peaceful");

@@ -58,7 +58,7 @@ an assert or a table keyword where one exists.
 | 0x18D3 | 22 x 16 | the key item list (misc numbers 107 to 124) | |
 | 0x1A53 | byte | the thief level + 1 that Mirt last gave skill points for, 0 before the first visit (0xABB53) | 0 |
 | 0x1A5C | byte | THAC0 | 20 |
-| 0x1A93 to 0x1A9F | 4 int | end times of potion effects (0x1A97 strength, 0x1A9F dexterity; guess for the other two) | 0 |
+| 0x1A93 to 0x1A9F | 4 int | end times of potion effects (0x1A97 strength, 0x1A9F dexterity; guess for the other two). In a save: the seconds left, cut down by 0xBA857 (`sar 0x10` of end minus now, verified in the bytes; defect D-138). The port rounds to the nearest second (`Dtu_fix_save_seconds`, `-origchar` clears it) | 0 |
 | 0x1AA3 | char[16] | the name again | "Elmac" |
 | 0x1AB3 | word | the thief skill points to spend (set by 0xABB53, spent by 0xB5BB9) | 60 |
 | 0x1AB9 | ref | the bow slot | none |

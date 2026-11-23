@@ -169,6 +169,10 @@ void dtu_spell_creature_event(object *obj, int bits);
 // The spell state of a creature of a restored level (0xAE3F2): the points
 // of the type, the times of the restore
 void dtu_spell_creature_restore(object *obj);
+// D-134: the spell points of a creature for the state file, and the saved
+// points that a restored creature keeps (Dtu_fix_restore_spells, dtustate.c)
+void dtu_spell_creature_points(object *obj, int *mage, int *cleric);
+void dtu_spell_creature_keep_points(object *obj, int mage, int cleric);
 // The NPC table of the executable (0xA504A, 191 rows, read by 0xA7E97 at
 // the end of each $MONSTER line): THAC0, armor class, mage level and
 // points, cleric level and points by the name of the creature. Returns 1

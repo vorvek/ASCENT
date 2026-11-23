@@ -3160,6 +3160,37 @@ void dtu_spell_creature_restore(object *obj)
 	Cspell[n].cond = 0;
 }
 
+// ASCENT: D-134. The spell points of a creature for the state file (object
+// +0x19E mage, +0x19F cleric, as 1.3 keeps them in the object).
+void dtu_spell_creature_points(object *obj,int *mage,int *cleric)
+{
+	int n;
+
+	*mage = *cleric = 0;
+	if (obj == NULL || obj->type != OBJ_ROBOT)
+		return;
+	n = cspell_state(obj);
+	*mage = Cspell[n].points[0] > 0 ? Cspell[n].points[0] : 0;
+	*cleric = Cspell[n].points[1] > 0 ? Cspell[n].points[1] : 0;
+}
+
+// ASCENT: D-134 (Dtu_fix_restore_spells). A restored creature keeps the
+// saved points. With none left it waits the full time for new points, as
+// after its last cast (0x92D99); the state file keeps no time left.
+void dtu_spell_creature_keep_points(object *obj,int mage,int cleric)
+{
+	int n;
+
+	if (obj == NULL || obj->type != OBJ_ROBOT)
+		return;
+	n = cspell_state(obj);
+	Cspell[n].points[0] = mage;
+	Cspell[n].points[1] = cleric;
+	if (mage < 1 && cleric < 1 && (creature_points(obj,0) > 0 || creature_points(obj,1) > 0))
+		Cspell[n].recharge_time = GameTime + (9 - creature_mage_level(obj) - creature_cleric_level(obj)) * MINUTE;
+	dtu_spell_log("cspell: obj %d %s keeps the saved points %d %d",n,target_name(obj),mage,cleric);
+}
+
 void dtu_spell_creature_event(object *obj,int bits)
 {
 	if (obj == NULL || obj->type != OBJ_ROBOT)

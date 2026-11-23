@@ -91,6 +91,11 @@ int Dtu_fix_wizardry_ring = 1;
 // (P+0xA3) grow by n. 1 (default): the hit points grow by n. -origchar
 // clears it.
 int Dtu_fix_level_hit_points = 1;
+// ASCENT: D-138, 0xBA857 cuts the time left of a potion to whole seconds
+// (sar 16) when a save writes it, so each save and load takes up to one
+// second. 1 (default): the save rounds to the nearest second. -origchar
+// clears it.
+int Dtu_fix_save_seconds = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
 int Dtu_fix_speed_items = 1;
@@ -232,6 +237,8 @@ static void read_options(void)
 		Char_script = Args[t + 1];
 	if (FindArg("-origchar"))
 		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names = 0;
+	if (FindArg("-origchar"))
+		Dtu_fix_save_seconds = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
@@ -3188,6 +3195,9 @@ void dtu_char_pack(ubyte *record)
 		t[0] = Potion.intel_end; t[1] = Potion.str_end; t[2] = Potion.dragon_end; t[3] = Potion.dex_end;
 		for (i = 0; i < 4; i++) {
 			s = (t[i] && t[i] > GameTime) ? f2i(t[i] - GameTime) : 0;
+			// ASCENT: Dtu_fix_save_seconds, the nearest second
+			if (Dtu_fix_save_seconds && t[i] && t[i] > GameTime)
+				s = f2i(t[i] - GameTime + F1_0 / 2);
 			if (!t[i] && Potion.load_left[i])
 				s = Potion.load_left[i];
 			put_s32(record + DTU_P_POTIONS + 4 * i, s);
@@ -3771,6 +3781,14 @@ static void run_command(char *cmd, char *value)
 			(o->dtu.m_1b0 >> 20) & 0xf, (o->dtu.m_1b0 >> 24) & 0xf, (o->dtu.m_1b0 >> 28) & 0xf,
 			o->contains_type, o->contains_id, o->contains_count,
 			f2fl(o->pos.x), f2fl(o->pos.y), f2fl(o->pos.z), DTU_ANIM_STATE(o));
+	}
+	else if (!strcmp(cmd, "cpoints") && a >= 0 && a <= Highest_object_index) {	// test: cpoints=N[.MAGE], the spell points of creature N (MAGE: set them, cleric 0; D-134)
+		int m, c;
+
+		if (value && strchr(value, '.'))
+			dtu_spell_creature_keep_points(&Objects[a], b, 0);
+		dtu_spell_creature_points(&Objects[a], &m, &c);
+		dtu_char_log("cpoints: obj %d type %d mage %d cleric %d", a, Objects[a].type, m, c);
 	}
 	else if (!strcmp(cmd, "near")) {		// test: near or near=RANGE[.1], the creatures (.1: all objects) in RANGE (default 30) by distance, with the angle to the view
 		int i, range = a > 0 ? a : 30;

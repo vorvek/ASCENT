@@ -233,6 +233,9 @@ extern int Dtu_fix_multiclass_thac0;
 // the fixed point hit points (they grow by n / 65536; the maximum grows by
 // n). 1 (default): the hit points grow by n, as the rules say.
 extern int Dtu_fix_level_hit_points;
+// D-138: the potion time left that a save writes. 0: whole seconds cut
+// down, as 0xBA857. 1 (default): the nearest second.
+extern int Dtu_fix_save_seconds;
 
 // 0x8BA3A: the character becomes a character of level "level" (from 1):
 // the level of each class (one less for two classes), the experience of

@@ -69,4 +69,9 @@ void dtustate_loading_end(void);
 // each frame of the game.
 void dtustate_test_frame(void);
 
+// D-134: a restored creature (0xAE3F2 at 0xBB1A7) gets the spell points of
+// its type again. 0: as 1.3. 1 (default): it keeps the saved points.
+// -origobj clears it.
+extern int Dtu_fix_restore_spells;
+
 #endif
