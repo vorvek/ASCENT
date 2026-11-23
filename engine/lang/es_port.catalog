@@ -1435,25 +1435,25 @@ id: port.a_trap
 en: a trap
 tr: una trampa
 
-id: port.were
-en: were
-tr: has sido
+id: port.you_were
+en: You were
+tr: Has sido
 
 id: port.was
 en: was
 tr: ha sido
 
-id: port.are
-en: are
-tr: estás
+id: port.you_are
+en: You are
+tr: Estás
 
 id: port.is
 en: is
 tr: está
 
-id: port.have
-en: have
-tr: tienes
+id: port.you_have
+en: You have
+tr: Tienes
 
 id: port.has
 en: has

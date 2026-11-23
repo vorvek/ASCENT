@@ -119,9 +119,16 @@ player ("You"), else the grammatical gender of the name of the creature or
 the item (the field `gender` of its catalog entry, below: `f` gives the
 second form), else the male form (a trap, a name with no gender). For
 example the format `%s %s {sex:bendecido|bendecida} durante %d minutos.`
-gives `Tú estás bendecida durante 6 minutos.` for a female player, and
+gives `Estás bendecida durante 6 minutos.` for a female player, and
 `%s %s {sex:noqueado|noqueada} (origen: %s).` gives `Araña gigante ha sido
 noqueada (origen: Tú).`
+
+In these formats the first `%s` is the subject and the second its verb
+(`is`, `has`, `was` for a creature). When the player is the subject, the
+subject is empty and the verb holds it: `You are`, `You have`, `You were`
+(Spanish `Estás`, `Tienes`, `Has sido`), so a language can drop the subject
+pronoun. `say` skips the space at the start of the message, so the English
+text stays `You are blessed for 6 minutes.`
 
 ## Gender of the creature names
 

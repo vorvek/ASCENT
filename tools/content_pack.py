@@ -68,7 +68,9 @@ DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 #    (FEBGND 10)
 # 5: Varanegra for Blackstaff (the title of Khelben and his tower), the
 #    short wand name "Varita de Proyectiles"
-PACK_VERSION = {'lang_es': '5'}
+# 6: no subject pronoun "Tú" where the verb shows the person (two lines of
+#    dialogue)
+PACK_VERSION = {'lang_es': '6'}
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
