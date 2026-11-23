@@ -1973,17 +1973,17 @@ id: port.causes_s
 en: Causes %s.
 tr: Efecto: %s.
 
-id: port.armor_class_d_before_dexterity_if_yours_
-en: Armor class %d before Dexterity, if yours is worse.
-tr: CA %d antes de la Destreza, si la tuya es peor.
+id: port.protects_like_worn_armor_of_armor_class_
+en: Protects like worn armor of armor class %d.
+tr: Protege como una armadura puesta de CA %d.
 
 id: port.stops_magic_missile
 en: Stops Magic Missile.
 tr: Detiene Proyectil Mágico.
 
-id: port.with_your_dexterity_armor_class_d
-en: With your Dexterity: armor class %d.
-tr: Con tu Destreza: CA %d.
+id: port.no_effect_if_your_armor_is_better
+en: No effect if your armor is better.
+tr: Sin efecto si tu armadura es mejor.
 
 id: port.ends_after_s_points_of_weapon_damage
 en: Ends after %s points of weapon damage.

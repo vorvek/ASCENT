@@ -274,7 +274,7 @@ static void fx_line(int type, int id, int hand)
 		line(hand ? LT("In the hand: %s.") : LT("While worn: %s."), fx_names(buf, sizeof(buf), fx));
 	// the armor class of the effects Armor, Magical Vestment and Shield
 	if (dtu_spell_fx_ac(fx) < 10)
-		line(LT("Armor class %d before Dexterity, if yours is worse."), dtu_spell_fx_ac(fx));
+		line(LT("Protects like worn armor of armor class %d."), dtu_spell_fx_ac(fx));
 }
 
 // What one use of a misc item does (dtu_char_misc_use)
@@ -512,19 +512,14 @@ static void damage_cap(int spell, dtu_spell_facts *f)
 		line(LT("With more caster levels: up to %d missiles."), a.missiles_hi);
 }
 
-// The armor class spells (Armor, Shield, Magical Vestment) set the armor
-// class before the adjustment of the dexterity (dtu_spell_player_ac stage
-// 0, then Dex_ac in dtuchar.c), and only when the value of the character
-// is worse. The second line gives the result for this character.
+// The armor class spells (Armor, Shield, Magical Vestment) give the armor
+// class of a worn armor: the value replaces the value of the worn items when
+// that is worse (dtu_spell_player_ac stage 0), and the other adjustments of
+// the character apply as with any armor.
 static void ac_lines(int ac)
 {
-	line(LT("Armor class %d before Dexterity, if yours is worse."), ac);
-	if (Dtu_char.created) {
-		int r = ac + Dtu_char.pa.dex_ac_adjust;
-
-		if (r < -10) r = -10;
-		line(LT("With your Dexterity: armor class %d."), r);
-	}
+	line(LT("Protects like worn armor of armor class %d."), ac);
+	line(LT("No effect if your armor is better."));
 }
 
 static void spell_effect(int spell, dtu_spell_facts *f)
