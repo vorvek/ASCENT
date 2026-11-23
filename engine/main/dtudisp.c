@@ -344,6 +344,13 @@ static dtu_button Buttons_lo_stats[] = {		// 0x1442B2
 
 static dtu_button *Button_list;		// the list of the current mode, or NULL
 static int Button_pressed = -1;		// the button that is held down, or -1
+// ASCENT: D-165. 0x98772 keeps the pressed image of a button at least
+// 0.25 s (0x98800: the time at +0x31 plus 0x4000), but no code stores the
+// time of the press, so 1.3 shows a quick click for one frame. 1 (default):
+// the pressed image stays 0.25 s after the press. -origui clears it.
+int Dtu_fix_button_hold = 1;
+static int Button_shown = -1;		// the button whose pressed image stays
+static fix Button_press_time;
 
 //------------------------------------------------------------------------
 // State
@@ -464,6 +471,17 @@ static void area_text(int x, int y, int w, int h, char *s, int color)
 
 // Area type 0 (0x9BD8A): an icon of the sheet. Icon 0 is "no icon".
 // 0x36E3F: 8 icons in a row.
+// ASCENT: 0x3285F tests byte +10 of the inventory record, the plot_item
+// of the table line (0xB65BB copies it there)
+static int scroll_plot_item(int id)
+{
+	char v[16];
+
+	if (id >= N_misc_types || Misc_info[id].record < 0 || !bm_tbl_get(Misc_info[id].record, "plot_item", v, sizeof(v)))
+		return 0;
+	return atoi(v) != 0;
+}
+
 static void area_icon(int x, int y, int icon)
 {
 	int size = SC(16);
@@ -809,20 +827,51 @@ static void msg_insert(char *line, int color)
 	if (Msg_count < MSG_LINES) Msg_count++;
 }
 
-// ASCENT: the color of the next message, or -1. See
-// dtu_display_add_trigger_message().
-static int Msg_next_color = -1;
+// The color of a message line (0x34998): the palette color nearest to the
+// doubled values of the triple at 0x13B970 + 3 x index. 0x347A2 masks the
+// index to a byte, so the -1 of almost every caller is index 255 and reads
+// the bytes 7D 12 00 at 0x13BC6D, after the table (DTU-Decomp docs/hud.md
+// 6.1): (250, 36, 0), which no palette entry reaches. The green branch of
+// the index -1 (0x34A1A) is never taken. Index 0 is the color of player 0
+// (triggers, V, N), index 1 (27, 0, 0) the "You need a bow" texts (0x43CAF).
+static const ubyte Msg_color_table[8][3] = {
+	{ 15, 15, 23 }, { 27, 0, 0 }, { 0, 23, 0 }, { 30, 11, 31 },
+	{ 4, 4, 29 }, { 24, 17, 6 }, { 14, 21, 12 }, { 29, 29, 4 }
+};
+
+#define MSG_SEPARATORS	"\n\t\r "		// 0x13B09E
+
+// 0xD9ADC is gr_find_closest_color with its cache (rgb6), as in 1.3
+static int msg_color(int index)
+{
+	index &= 0xFF;
+	if (index < 8)
+		return rgb6(Msg_color_table[index][0] * 2, Msg_color_table[index][1] * 2, Msg_color_table[index][2] * 2);
+	return rgb6(0x7D * 2, 0x12 * 2, 0);
+}
+
+// ASCENT: the color index of the next message (0x347A2), or -1 for the
+// index -1 of most callers. See dtu_display_next_message_color().
+static int Msg_next_index = -1;
+
+void dtu_display_next_message_color(int index)
+{
+	Msg_next_index = index;
+}
 
 static char Desc_msg[101];				// ASCENT: the last message in the modes 3 and 6 (0x1BD69C)
 static int Desc_msg_on;
 
 void dtu_display_add_message(char *text)
 {
-	char line[MSG_LENGTH];
-	int max_w, sw, sh, aw, len, last_space, color;
+	char work[1024], line[MSG_LENGTH], *word;
+	int max_w, sw, sh, aw, space_w, line_w, len, color;
 	char *p = text;
 
-	if (!Dtu_display_active || !GAME_FONT || !text) return;
+	if (!Dtu_display_active || !GAME_FONT || !text) {
+		Msg_next_index = -1;
+		return;
+	}
 	p = text = dtu_tr(text);		// ASCENT: the text of the code in the language (dtulang.h)
 	if (strstr(text, "{sex:")) {
 		// ASCENT: the tokens {sex:} (dtulang.h) of a text that a caller made
@@ -838,31 +887,47 @@ void dtu_display_add_message(char *text)
 		snprintf(Desc_msg, sizeof(Desc_msg), "%s", text);
 		Desc_msg_on = 1;
 	}
-	// The color of a message is the first byte of the line in the original.
-	// The callers were not traced: gray is a guess.
-	color = rgb6(48, 48, 48);
-	if (Msg_next_color >= 0)
-		color = Msg_next_color;
-	max_w = Msg_rect[Dtu_hires].w - 4;
+	color = msg_color(Msg_next_index);
+	Msg_next_index = -1;
+	// 0x347A7: the words (separators LF, tab, CR and space: strtok with
+	// 0x13B09E) are joined with one space. A line is closed when the next
+	// word would make it 100 characters or more, or as wide as the box or
+	// wider (the widths of the words and of " " in the game font); a word
+	// that does not fit an empty line closes an empty line. The test of a
+	// sentence end (0x347DA) reads the byte after the line, so the two
+	// spaces of the format "  %s" are never used.
+	max_w = Msg_rect[Dtu_hires].w;
 	gr_set_curfont(GAME_FONT);
-	while (*p) {
-		len = 0;
-		last_space = -1;
-		while (p[len] && p[len] != '\n' && len < MSG_LENGTH - 1) {
-			line[len] = p[len];
-			line[len + 1] = 0;
-			gr_get_string_size(line, &sw, &sh, &aw);
-			if (sw > max_w && len > 0) break;
-			if (p[len] == ' ') last_space = len;
-			len++;
+	gr_get_string_size(" ", &space_w, &sh, &aw);
+	snprintf(work, sizeof(work), "%s", p);
+	line[0] = 0;
+	len = line_w = 0;
+	// ASCENT: the words are cut by hand, not with strtok: a caller (the
+	// script interpreter) can be in the middle of its own strtok
+	for (word = work; ; ) {
+		int wl, sp = len ? 1 : 0;
+		char *end;
+
+		word += strspn(word, MSG_SEPARATORS);
+		if (!*word)
+			break;
+		end = word + strcspn(word, MSG_SEPARATORS);
+		if (*end)
+			*end++ = 0;
+		wl = (int) strlen(word);
+		gr_get_string_size(word, &sw, &sh, &aw);
+		if (len + wl + sp >= 100 || line_w + sp * space_w + sw >= max_w) {
+			msg_insert(line, color);
+			line[0] = 0;
+			len = line_w = sp = 0;
 		}
-		if (p[len] && p[len] != '\n' && last_space > 0)
-			len = last_space;
-		line[len] = 0;
-		msg_insert(line, color);
-		p += len;
-		while (*p == ' ' || *p == '\n') p++;
+		snprintf(line + len, sizeof(line) - len, "%s%s", sp ? " " : "", word);
+		len = (int) strlen(line);
+		line_w += sp * space_w + sw;
+		word = end;
 	}
+	if (len)
+		msg_insert(line, color);
 	Msg_first = 0;
 }
 
@@ -873,10 +938,9 @@ void dtu_display_add_message(char *text)
 void dtu_display_add_trigger_message(char *text)
 {
 	if (!Dtu_display_active || !GAME_FONT || !text) return;
-	Msg_next_color = rgb6(30, 30, 46);
+	Msg_next_index = 0;
 	dtu_display_add_message(text);
-	msg_insert(" ", Msg_next_color);
-	Msg_next_color = -1;
+	msg_insert(" ", msg_color(0));		// 0x34983: index 0
 }
 
 static void msg_draw(int mx, int my)
@@ -1113,7 +1177,7 @@ void dtu_display_select_mode(int mode)
 	Dtu_interface_mode = mode;
 	immersive_follow_mode(old_mode, mode);		// ASCENT: see above
 	Dtu_automap_active = 0;		// 0x40922: a new map screen follows the player
-	Button_pressed = -1;
+	Button_pressed = Button_shown = -1;
 	Button_list = NULL;
 	Inv_held = -1;				// 0x361BF: the cursor lets go of the item
 	Inv_held_spell = -1;
@@ -1137,6 +1201,7 @@ void dtu_display_select_mode(int mode)
 						gr_bm_ubitblt(b->w, b->h, b->x, b->y, b->x0, b->y0, Button_sheet, Interface_bm);
 		}
 		Button_list = mode_buttons(mode);
+		Button_shown = -1;
 	}
 	dtu_display_init_cockpit();
 }
@@ -1253,7 +1318,8 @@ int dtu_display_init(void)
 	if (Icons_bm) Icons_bm->bm_flags |= BM_FLAG_TRANSPARENT;
 	Interface_entry = -1;
 	if (FindArg("-origui"))
-		Dtu_fix_msg_scroll = Dtu_fix_view_aspect = 0;
+		Dtu_fix_msg_scroll = Dtu_fix_view_aspect = Dtu_fix_button_hold = 0;
+	Button_shown = -1;
 	Msg_count = 0;
 	Msg_first = 0;
 	memset(Key_was_down, 0, sizeof(Key_was_down));
@@ -1614,7 +1680,7 @@ static void draw_inventory(void)
 			// The entry that the cursor holds is drawn at the cursor.
 			// ASCENT: 0x32822 to 0x32865: a spell in the item list has icon
 			// 142 (a scroll), the Scroll (misc 102) with a count of 0 icon
-			// 141. Then the marks (0x32899 to 0x328CD): icon 199 over an
+			// 141, else with plot_item icon 143. Then the marks (0x32899 to 0x328CD): icon 199 over an
 			// entry that the character cannot use (0x3533C, 0x9C6C4), else
 			// gray for an entry in use (0x323F3, method +0x4C).
 			if (n == Inv_held)
@@ -1626,6 +1692,8 @@ static void draw_inventory(void)
 					area_icon(x, y, 142);
 				else if (e->type == OBJ_MISC && e->id == 102 && e->count == 0)
 					area_icon(x, y, 141);
+				else if (e->type == OBJ_MISC && e->id == 102 && scroll_plot_item(e->id))
+					area_icon(x, y, 143);		// 0x3285F: byte +10 (plot_item) not 0
 				else
 					area_icon(x, y, entry_icon(n));
 				if (!dtu_char_item_usable(n))
@@ -2170,8 +2238,12 @@ static void draw_buttons(void)
 				if (pressed)
 					return;
 			}
-	if (Button_pressed < 0) return;
-	b = &Button_list[Button_pressed];
+	if (Button_pressed >= 0)
+		b = &Button_list[Button_pressed];
+	else if (Dtu_fix_button_hold && Button_shown >= 0 && timer_get_fixed_seconds() - Button_press_time < F1_0 / 4)
+		b = &Button_list[Button_shown];
+	else
+		return;
 	blit(Button_sheet, b->x1, b->y1, b->w, b->h, b->x, b->y, 0);
 }
 
@@ -2527,9 +2599,8 @@ static void do_input(int mx, int my)
 			Dtu_player_state ^= DTU_PS_INFRAVISION;
 			text = Text_string[(Dtu_player_state & DTU_PS_INFRAVISION) ? 820 : 821];
 		}
-		Msg_next_color = rgb6(30, 30, 46);		// 0x347A2, the color of the player
+		Msg_next_index = 0;		// 0x347A2 with Player_num: the color of the player
 		dtu_display_add_message(text ? text : "");
-		Msg_next_color = -1;
 	}
 	if (action_acts(DTU_ACT_IMMERSIVE)) {
 		// ASCENT: 0x54439 toggles the flag at 0x13BAE0 and adds TEX 817
@@ -2546,9 +2617,8 @@ static void do_input(int mx, int my)
 		if (!Dtu_immersive)
 			mouse_set_pos(View.x + View.w / 2, View.y + View.h * (Dtu_hires ? 2 : 1) / 2);
 		text = Text_string[Dtu_immersive ? 817 : 818];
-		Msg_next_color = rgb6(30, 30, 46);
+		Msg_next_index = 0;
 		dtu_display_add_message(text ? text : (Dtu_immersive ? LN("Immersive mode is on.") : LN("Immersive mode is off.")));
-		Msg_next_color = -1;
 	}
 	// The key switch of the game (0x42F9C): F3 (0x43043) calls 0x40C3A in
 	// mode 7, else 0x40974. The key "=" (also with Shift, 0x432A8) calls
@@ -2705,6 +2775,10 @@ static void do_input(int mx, int my)
 				break;
 			}
 		if (hit >= 0) {
+			if (pressed) {
+				Button_shown = hit;
+				Button_press_time = timer_get_fixed_seconds();
+			}
 			Button_pressed = hit;
 			Doll_pressed = 0;
 			if (pressed && Dtu_ui_key_repeat)

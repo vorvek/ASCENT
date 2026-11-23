@@ -72,8 +72,13 @@ and red edges on the water.
   draws the span, then does the effect pixels again in order from a copy of the
   screen before the span and the unlit texels of the span. render.c moves the pulse
   `Tmap_fx_row` as 0x72818 does (per view, not per time).
-- Not done: the tint of an object (0x14C4CD) and 0x14C4CF also turn the rule on for
-  models; the port turns it on only for merged walls.
+- The tint of an object (0x14C4CD) also turns the rule on (0xEA513, verified in
+  the bytes): the software renderer sets `Tmap_fx` for a tinted object too
+  (ntmap.c), so a model under Detect Magic shows its effect colors from the
+  screen. Not done: the GPU renderer (it marks the effect texels only in merged
+  bitmaps), and 0x14C4CF. 0x45A60 sets 0x14C4CF around the fade 0x458BA(1) at
+  0x5A054 and 0x5A3B3 (the level change) and 0xA9A77, 0xA9B71 (the movie of
+  script statement D3), so the rule is on for every polygon of those fade frames.
 - The same functions change the view behind the conversation window (the byte
   0x14C4CE, see [scripts.md](scripts.md), section 4). In the DOS game it changes
   every lit polygon; the port applies it to every lit polygon.

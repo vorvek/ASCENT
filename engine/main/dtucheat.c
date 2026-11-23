@@ -39,6 +39,7 @@
 #include "dtuspell.h"
 #include "dtuscript.h"
 #include "dtulog.h"
+#include "args.h"
 
 #define CHEAT_SOUND		200		// 0x2D955(0xC8, 0x10000)
 
@@ -54,16 +55,28 @@ static const ubyte Mesmart[] =		{ KEY_M, KEY_E, KEY_S, KEY_M, KEY_A, KEY_R, KEY_
 
 static int Zazb_i, Glassy_i, Shrink_i, Gadzooks_i, Eight_i, Kevorkian_i, Mesmart_i;
 
-// Returns 1 when the key completes the code.
-static int step(const ubyte *code, int len, int *i, int key)
+// 0 (the executable): zazb (0x432A3), shrinkiwannakill (0x4299E),
+// gadzooks (0x429DF), eightisgreat (0x42A94) and kevorkian (0x42B2B) jump
+// over the clear of their index after the code acted, so the index stays
+// at the length and the next key is compared with the byte after the table:
+// the first key of the code typed again is lost and the code does not act
+// a second time. (A key equal to that byte moves the index on into the next
+// table, which never reaches the length again; the port drops that case.)
+// 1 (default): the index starts again after each code. -origui clears it.
+int Dtu_fix_cheat_index = 1;
+
+// Returns 1 when the key completes the code. keep: the 1.3 code does not
+// clear its index after it acted.
+static int step(const ubyte *code, int len, int *i, int key, int keep)
 {
-	if (key != code[*i]) {
+	if (*i >= len || key != code[*i]) {
 		*i = 0;
 		return 0;
 	}
 	if (++*i < len)
 		return 0;
-	*i = 0;
+	if (!keep || Dtu_fix_cheat_index)
+		*i = 0;
 	return 1;
 }
 
@@ -81,13 +94,20 @@ static void give(int type, int id)
 
 void dtu_cheat_key(int key)
 {
+	static int init;
 	int i, j;
+
+	if (!init) {
+		init = 1;
+		if (FindArg("-origui"))
+			Dtu_fix_cheat_index = 0;
+	}
 
 	// 0x4324E: the cheater flag 0x13B7A3 (Cheats_enabled: the map shows
 	// all with Alt+F, 0x189A0; no experience is gained, 0x4EA85) and the
 	// experience of both classes (P+0x77, P+0x7B) is 0
 	if (!(Game_mode & GM_MULTI)) {
-		if (step(Zazb, sizeof(Zazb), &Zazb_i, key)) {
+		if (step(Zazb, sizeof(Zazb), &Zazb_i, key, 1)) {
 			digi_play_sample(CHEAT_SOUND, F1_0);
 			Cheats_enabled = 1;
 			Dtu_char.experience[0] = Dtu_char.experience[1] = 0;
@@ -98,7 +118,7 @@ void dtu_cheat_key(int key)
 		Zazb_i = 0;
 
 	// 0x428B9: "glassy": each object but the last gets texture 14 to 18
-	if (step(Glassy, sizeof(Glassy), &Glassy_i, key)) {
+	if (step(Glassy, sizeof(Glassy), &Glassy_i, key, 0)) {
 		for (i = 0; i <= Highest_object_index - 1; i++) {
 			object *o = &Objects[i];
 			int t = rand() % 5 + 14;
@@ -114,7 +134,7 @@ void dtu_cheat_key(int key)
 
 	// 0x4292A: weapon 0x36 into the inventory (0xB65BB with the fields of
 	// Weapon_info entry 0x36), message 0x125757
-	if (step(Shrink, sizeof(Shrink), &Shrink_i, key)) {
+	if (step(Shrink, sizeof(Shrink), &Shrink_i, key, 1)) {
 		give(OBJ_WEAPON, 0x36);
 		HUD_init_message("The sword of win!");
 		dtulog_event("cheat shrinkiwannakill");
@@ -122,7 +142,7 @@ void dtu_cheat_key(int key)
 
 	// 0x429A8: message 0x125769, then global script 0x1FF (0xAC055(0,
 	// 0x1FF)), the level select menu
-	if (step(Gadzooks, sizeof(Gadzooks), &Gadzooks_i, key)) {
+	if (step(Gadzooks, sizeof(Gadzooks), &Gadzooks_i, key, 1)) {
 		HUD_init_message("Ready or not, here we go!");
 		dtulog_event("cheat gadzooks");
 		dtu_script_run_id(0x1FF);
@@ -130,7 +150,7 @@ void dtu_cheat_key(int key)
 
 	// 0x429E9: message 0x125783, MISC items 0x12, 0x13, 0x14 and 0x16 to
 	// 0x1A (0xB6390(0x10, id))
-	if (step(Eight, sizeof(Eight), &Eight_i, key)) {
+	if (step(Eight, sizeof(Eight), &Eight_i, key, 1)) {
 		static const ubyte ids[] = { 0x12, 0x13, 0x14, 0x16, 0x17, 0x18, 0x19, 0x1A };
 
 		HUD_init_message("The Queen of the Demonweb Pits awaits!");
@@ -142,7 +162,7 @@ void dtu_cheat_key(int key)
 	// 0x42A9E: message 0x1257AA; each creature whose segment sees the
 	// segment of the player (0x9810D) gets all its hit points as damage
 	// with no attacker (0x29A9C)
-	if (step(Kevorkian, sizeof(Kevorkian), &Kevorkian_i, key)) {
+	if (step(Kevorkian, sizeof(Kevorkian), &Kevorkian_i, key, 1)) {
 		HUD_init_message("They were sick anyway....");
 		for (i = 0; i <= Highest_object_index; i++) {
 			object *o = &Objects[i];
@@ -157,7 +177,7 @@ void dtu_cheat_key(int key)
 	// 100 spell slots of each level (maximum and left, P+0x23 to P+0x42), and
 	// the class levels 4 (P+0xAF, P+0xB1) and the byte P+0x9C 4 in the four
 	// player records
-	if (step(Mesmart, sizeof(Mesmart), &Mesmart_i, key)) {
+	if (step(Mesmart, sizeof(Mesmart), &Mesmart_i, key, 0)) {
 		for (i = 0; i < N_spell_types; i++)
 			give(OBJ_SPELL, i);
 		for (i = 0; i < 2; i++)

@@ -92,6 +92,10 @@ int dtu_display_owns_key(int key);
 
 // Adds a text to the message box of the main screen.
 void dtu_display_add_message(char *text);
+// ASCENT: the color index (0x347A2, table 0x13B970) of the next message;
+// -1 (the default of most callers of the original) gives the color of
+// index 255. dtu_display_add_message uses it once.
+void dtu_display_next_message_color(int index);
 
 // Adds the message of a trigger: the color of the player and an empty line after it.
 void dtu_display_add_trigger_message(char *text);

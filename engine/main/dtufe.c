@@ -1328,7 +1328,8 @@ static char *feature_help(fe_feature *f)
 void fe_run_screen(fe_screen *s)
 {
 	int i, hot, pressed = -1, pressed_key = -1;
-	fix repeat_time = 0, release_until = 0;
+	int orig_state = 0;		// ASCENT: 1.3 input: 0 idle, 1 press animation, 2 pressed
+	fix repeat_time = 0, release_until = 0, orig_time = 0;
 	fe_seq *cur[2][3];
 	fe_screen *prev_screen;
 	fe_feature *frame_features;
@@ -1392,6 +1393,40 @@ void fe_run_screen(fe_screen *s)
 			if (f->press) f->press(s, f->id);
 			if (s->running && f->release) f->release(s, f->id);
 			fe_input_clear();
+		} else if (Dtu_fe_original_input) {
+			// ASCENT: the event loop of 1.3 (0x81F7E, DTU-Decomp docs/town.md
+			// 4.4). A press starts the press animation of the cursor; the
+			// press handler runs once, at its last frame (one frame each
+			// 0.1 s), when the cursor is still on the feature. The release
+			// handler runs once, 0.1 s after the button went up, on the
+			// same feature. A held button does not repeat.
+			if (Fe_press && hot >= 0 && orig_state == 0) {
+				fe_seq *ps = cur[s->features[hot].cursor == 1 && cur[1][0] ? 1 : 0][1];
+				int frames = ps && ps->n_frames > 1 ? ps->n_frames - 1 : 0;
+				pressed = hot;
+				orig_state = 1;
+				orig_time = fe_time() + frames * (F1_0 / 10);
+				if (s->features[hot].control >= 0)
+					fe_sound(FE_SND_CLICK);		// 0x7FEE2
+			}
+			if (orig_state == 1 && fe_time() >= orig_time) {
+				orig_state = 2;
+				orig_time = 0;
+				f = &s->features[pressed];
+				if (hot == pressed && f->press)
+					f->press(s, f->id);
+			}
+			if (orig_state == 2 && !Fe_down) {
+				if (!orig_time)
+					orig_time = fe_time() + F1_0 / 10;
+				else if (fe_time() >= orig_time) {
+					f = &s->features[pressed];
+					orig_state = 0;
+					if (hot == pressed && s->running && f->release)
+						f->release(s, f->id);
+					pressed = -1;
+				}
+			}
 		} else if (hot >= 0) {
 			int act = 0;
 			f = &s->features[hot];
@@ -1402,13 +1437,9 @@ void fe_run_screen(fe_screen *s)
 					fe_sound(FE_SND_CLICK);		// 0x7FEE2
 				act = 1;
 			} else if (Fe_down && pressed == hot) {
-				// The executable calls the action again in each frame
-				// while the button is down. The port does that only if
-				// Dtu_fe_original_input is set, and repeats with a
-				// delay on the controls that are marked.
-				if (Dtu_fe_original_input)
-					act = 1;
-				else if (f->repeat && fe_time() >= repeat_time) {
+				// ASCENT: the controls that are marked repeat with a delay
+				// (1.3 does not repeat: Dtu_fe_original_input above)
+				if (f->repeat && fe_time() >= repeat_time) {
 					repeat_time = fe_time() + F1_0 / 8;
 					act = 1;
 				}
@@ -1417,8 +1448,6 @@ void fe_run_screen(fe_screen *s)
 				if (f->press)
 					f->press(s, f->id);
 				if (f->repeat && f->release && !Fe_press)
-					f->release(s, f->id);
-				else if (Dtu_fe_original_input && !Fe_press && f->release)
 					f->release(s, f->id);
 				if (f->press || !Fe_press)
 					Fe_release = 0;
@@ -1429,14 +1458,16 @@ void fe_run_screen(fe_screen *s)
 					f->release(s, f->id);
 			}
 		}
-		if (!Fe_down)
+		if (!Fe_down && !Dtu_fe_original_input)
 			pressed = -1;
 		if (pressed_key >= 0 && fe_time() >= release_until)
 			pressed_key = -1;
 		// ASCENT: a handler may give the screen another feature list (the
 		// quantity window of the market, as 0x84EEA does)
-		if (s->features != frame_features || s->n_features != frame_n_features)
+		if (s->features != frame_features || s->n_features != frame_n_features) {
 			hot = pressed = pressed_key = -1;
+			orig_state = 0;
+		}
 
 		if (s->draw)
 			s->draw(s);
@@ -1737,7 +1768,8 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 				continue;
 			if (Fe_mx != last_mx || Fe_my != last_my || Fe_press)
 				cur = i;
-			if (Fe_press || (Dtu_fe_original_input && Fe_down)) {
+			// a press acts once (1.3 counts the presses: 0x66CCF)
+			if (Fe_press) {
 				if (m->type == FE_MI_MENU)
 					result = i;
 				else if (m->type == FE_MI_INPUT_MENU && editing < 0)
@@ -2316,6 +2348,10 @@ static void fe_credits(void)
 #define SG_MAX_SIZE			(SG_SIZE_BETWEEN + 12 + 54 * MAX_TRIGGERS + 16 * MAX_ROBOT_CENTERS + 40 * MAX_NUM_FUELCENS)
 
 int Fe_load_level;
+// ASCENT: the cheater flag of a loaded save game (0xBBC94) plus 1, set in
+// the first game frame after the load (the level start clears the flag
+// with game_disable_cheats); 0: nothing to set
+static int Fe_load_cheats;
 
 // The file of the last load: the base of the next save
 static ubyte *Loaded_sg;
@@ -2539,6 +2575,7 @@ int fe_load_game(int in_game)
 	dtustate_set_save_lists(between ? NULL : b + SG_SIZE_BETWEEN, between ? 0 : size - SG_SIZE_BETWEEN);
 	mode = between ? FE_GO_WATERDEEP : FE_GO_LEVEL;
 	Fe_load_level = (int) get_u32(b + SG_LEVEL);
+	Fe_load_cheats = 1 + (get_u32(b + SG_DIFFICULTY + 4) != 0);	// 0x13B7A3
 	if (Fe_load_level < 1)
 		Fe_load_level = 1;
 	loaded_character();
@@ -2555,6 +2592,9 @@ int fe_load_game(int in_game)
 // (0xBA99F(0)): then "between levels" is 0 and the three lists at 7374
 // follow. The level and the position of the player are in the level state
 // files.
+// ASCENT: 1 when the last sg_write could not open the file
+static int Sg_open_failed;
+
 static int sg_write(int slot, char *desc, int between)
 {
 	char name[16];
@@ -2596,12 +2636,14 @@ static int sg_write(int slot, char *desc, int between)
 	}
 	b[SG_RLPD + 29] = (ubyte) level;
 	put_u32(b + SG_DIFFICULTY, Difficulty_level);	// the difficulty (0x13CDCA)
+	put_u32(b + SG_DIFFICULTY + 4, Cheats_enabled ? 1 : 0);	// ASCENT: 0xBAC13, the cheater flag
 	size = SG_SIZE_BETWEEN;
 	if (!between)
 		size += dtustate_write_save_lists(b + SG_SIZE_BETWEEN, SG_MAX_SIZE - SG_SIZE_BETWEEN);
 
 	sprintf(name, "SG%d.SG", slot);
 	f = dtu_user_fopen(name, "wb");			// ASCENT: the directory of the user
+	Sg_open_failed = !f;
 	ok = f && fwrite(b, 1, size, f) == (size_t) size;
 	if (f && fclose(f))
 		ok = 0;
@@ -2624,6 +2666,14 @@ static int save_to_slot(int slot, char *desc, int between)
 	return sg_write(slot, desc, between);
 }
 
+// 0xBA99F: a file that cannot be opened (0xBAA3E) ends the save with no
+// text; only a failed write shows TEX 800 (0xBABF3). With
+// Dtu_fix_save_open_text both show TEX 800.
+static int save_failed_text(void)
+{
+	return Dtu_fix_save_open_text || !Sg_open_failed;
+}
+
 void fe_save_game(void)
 {
 	fe_menu_item m[10];
@@ -2642,7 +2692,7 @@ void fe_save_game(void)
 	choice = fe_menu(NULL, fe_text(796), m, 10, 0, 1);				// "Save Game"
 	if (choice < 0 || Fe_quit)
 		return;
-	if (!save_to_slot(choice, desc[choice], 1))
+	if (!save_to_slot(choice, desc[choice], 1) && save_failed_text())
 		fe_message_box(NULL, fe_text(800), 1, fe_text(34), NULL);	// "Error writing character data"
 }
 
@@ -2658,7 +2708,7 @@ static void ig_save_game(void)
 	choice = slot_menu_nm(1, desc);
 	if (choice < 0 || Fe_quit)
 		return;
-	if (!save_to_slot(choice, desc[choice], 0))
+	if (!save_to_slot(choice, desc[choice], 0) && save_failed_text())
 		nm_messagebox(NULL, 1, fe_text(34), fe_text(800));
 }
 
@@ -2744,6 +2794,8 @@ static void fe_main_menu(void)
 	case 0:
 		Menu_backdrop = NULL;
 		Fe_full_list = 0;			// ASCENT: 0x5831C and 0x87E65: 0x8C426
+		if (!Dtu_fix_chargen_abort)
+			fe_town_reset();		// 0x87E60: also when the player leaves the creation
 		if (fe_new_character()) {
 			Fe_have_character = 1;
 			fe_town_reset();
@@ -2808,12 +2860,21 @@ static void fe_free(void)
 	sg_forget();
 }
 
+// ASCENT: -origfe gives the front end rules of the executable: it clears
+// the corrections of dtufe.c and dtufe_town.c
+static void fe_orig_options(void)
+{
+	if (FindArg("-feoriginput"))
+		Dtu_fe_original_input = 1;
+	if (FindArg("-origfe"))
+		Dtu_fix_escape_load_waterdeep = Dtu_fix_chargen_abort = Dtu_fix_save_open_text = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
+}
+
 static void fe_enter(void)
 {
 	if (!Fe_ready) {
 		Fe_ready = 1;
-		if (FindArg("-feoriginput"))
-			Dtu_fe_original_input = 1;
+		fe_orig_options();
 		script_load();
 		Fe_font_l = load_font("FNTEMFL_.FNT");		// 0x13E388
 		Fe_font_m = load_font("FNTEMFM_.FNT");		// 0x13E380
@@ -2900,8 +2961,17 @@ void dtufe_title(void)
 int dtufe_run(void)
 {
 	fe_enter();
-	if (FindArg("-testmarket"))		// ASCENT: test option, the front end starts in the market (tools/uitest.py)
+	if (FindArg("-testmarket")) {		// ASCENT: test option, the front end starts in the market (tools/uitest.py)
+		int t;
+
 		Fe_mode = FE_GO_MARKET;
+		// -testmarketcha N: the charisma of the player; -testmarketdouble:
+		// the global flag 107, which doubles the prices (0x86F5F)
+		if ((t = FindArg("-testmarketcha")) != 0 && t + 1 < Num_args)
+			Dtu_char.pa.charisma = atoi(Args[t + 1]);
+		if (FindArg("-testmarketdouble"))
+			dtu_script_set_gflag(107, 1);
+	}
 	while (!Fe_quit) {
 		switch (Fe_mode) {
 		case FE_GO_MENU:
@@ -2971,6 +3041,17 @@ static int Fe_game_loaded;				// the ESC menu loaded a save game: the FE_GO_ mod
 // (default): the game ends and the player is in Waterdeep.
 int Dtu_fix_escape_load_waterdeep = 1;
 
+// 0 (the executable): New Game resets the mission state of Khelben
+// (0x82BC4, called at 0x87E60 before the test of the result) also when the
+// player leaves the character creation, so a loaded game loses it. 1
+// (default): only a new character resets it.
+int Dtu_fix_chargen_abort = 1;
+
+// 0 (the executable): a save game file that cannot be opened ends the save
+// with no text (0xBAA3E). 1 (default): the text "Error writing character
+// data" (TEX 800), as for a failed write.
+int Dtu_fix_save_open_text = 1;
+
 // ASCENT: the direct start (-level NAME) skips the front end. The death of
 // the player must still go to the death screen and the death menu, so the
 // game runs as if the front end started it. It gets a new level state, as
@@ -2978,6 +3059,7 @@ int Dtu_fix_escape_load_waterdeep = 1;
 void dtufe_direct_start(void)
 {
 	Fe_in_game = 1;
+	fe_orig_options();
 	// ASCENT: -fescript with -level drives the game and its menus (as
 	// after the command "gamekeys")
 	script_load();
@@ -3205,6 +3287,10 @@ int dtufe_game_frame(void)
 {
 	if (!Fe_in_game)
 		return 0;
+	if (Fe_load_cheats) {
+		Cheats_enabled = Fe_load_cheats - 1;
+		Fe_load_cheats = 0;
+	}
 	dtustate_test_frame();
 	if (Script_in_game && Script_n) {
 		dtufe_menu_script_frame();

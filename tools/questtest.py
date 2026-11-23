@@ -201,13 +201,14 @@ TESTS = [
        r"wall 40\.4: type 4[\s\S]*quest: level 1 seg 61 mission 5 .* gflags \[ 67 \]\n.*quest: mflags \[ 3 \]"],
       frames=160, extra=["-statelog"], also=[r"Restoring SG4_1\.LVL"]),
     # FLAME: three pieces are in the statue at the save. After the load the
-    # other four are placed and script 323 opens the wall.
+    # other four are placed and script 323 opens the wall. The sign of the
+    # script has a random branch: seed=1 fixes the random numbers before it.
     T("save_flame_statue", "FLAME",
       "10:give=16.18,10:give=16.19,10:give=16.20,10:give=16.22,10:give=16.23,10:give=16.24,10:give=16.26,"
       "20:goside=229.4,22:activate,40:goside=245.4,42:activate,60:goside=275.4,62:activate,70:quest,75:save=2,"
       "80:give=16.18,81:goseg=2,85:load=2,140:quest,"
       "160:goside=287.4,162:activate,180:goside=266.4,182:activate,200:goside=258.4,202:activate,"
-      "220:goside=284.4,222:activate,240:wall=278.0,250:gflag=128,260:goside=279.5,262:activate,640:wall=278.0",
+      "220:goside=284.4,222:activate,240:wall=278.0,250:gflag=128,260:goside=279.5,261:seed=1,262:activate,640:wall=278.0",
       [r"quest: items \[ 16\.102 5\.20 15\.1 16\.2 16\.79 16\.20 16\.22 16\.23 16\.26 \][\s\S]*"
        r"quest: items \[ 16\.102 5\.20 15\.1 16\.2 16\.79 16\.20 16\.22 16\.23 16\.26 \][\s\S]*"
        r"wall 278\.0: type 5[\s\S]*wall 278\.0: type 4"],
@@ -226,9 +227,11 @@ TESTS = [
       frames=480, dlg=",".join(["esc"] * 40), extra=["-statelog"], also=[r"Restoring SG5_0\.LVL"]),
     # THIEF1 and THIEF2: the prison sequence, a save in THIEF2, a load, and
     # the way back: the chest of THIEF1 (object 99) or the floor still has
-    # what the thieves took (the level state of THIEF1 is in the slot).
+    # what the thieves took (the level state of THIEF1 is in the slot). The
+    # sequence puts each item by a coin (0xAA448): seed=2 puts the Scroll on
+    # the floor of segment 297.
     T("save_prison", "THIEF1",
-      "10:gold=500,20:prison,60:quest,65:save=5,70:gold=77,75:give=16.2,80:load=5,140:quest,150:warp=6.297,190:quest,191:items=297",
+      "10:gold=500,19:seed=2,20:prison,60:quest,65:save=5,70:gold=77,75:give=16.2,80:load=5,140:quest,150:warp=6.297,190:quest,191:items=297",
       [r"prison: type 16 id 102 lies in seg 297[\s\S]*quest: level 7 seg 612 .* gold 0 hp 1 [\s\S]*"
        r"quest: level 7 seg 612 .* gold 0 hp 1 .*\n.*entries 0[\s\S]*quest: level 6 seg 297 [\s\S]*items in seg 297: .*16\.102"],
       frames=200, invuln=False, extra=["-statelog"], also=[r"Restoring SG6_7\.LVL"]),

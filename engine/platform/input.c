@@ -25,6 +25,7 @@ static int Mouse_down[3];
 static int Joy_started;
 static SDL_Joystick *Joy;
 static SDL_JoystickID Joy_id;
+static int Pad_started;		// ASCENT: the pad layer reads the gamepads (below)
 
 // ---------------------------------------------------------------------
 // Keyboard
@@ -212,6 +213,11 @@ static void joy_open_first(void)
 		return;
 	ids = SDL_GetJoysticks(&count);
 	for (i = 0; ids && i < count && !Joy; i++) {
+		// ASCENT: SDL lists a gamepad as a joystick too. While the pad
+		// layer runs it reads the gamepad, so the joystick layer skips it
+		// and a button does not act twice (audit A10).
+		if (Pad_started && SDL_IsGamepad(ids[i]))
+			continue;
 		Joy = SDL_OpenJoystick(ids[i]);
 		if (Joy)
 			Joy_id = ids[i];
@@ -301,7 +307,7 @@ int plat_joy_read_hat(void)
 
 static SDL_Gamepad *Pad;
 static SDL_JoystickID Pad_id;
-static int Pad_started, Pad_test;
+static int Pad_test;
 static unsigned char Pad_buttons[PLAT_PAD_BUTTONS];
 static unsigned char Pad_presses[PLAT_PAD_BUTTONS];
 static int Pad_axes[PLAT_PAD_AXES];
@@ -413,6 +419,14 @@ int plat_pad_init(void)
 		if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD))
 			return 0;
 		Pad_started = 1;
+		// ASCENT: a gamepad that the joystick layer opened goes to the pad
+		// layer (audit A10)
+		if (Joy && SDL_IsGamepad(Joy_id)) {
+			SDL_CloseJoystick(Joy);
+			Joy = NULL;
+			joy_release_all();
+			joy_open_first();
+		}
 	}
 	pad_open_first();
 	return Pad != NULL;

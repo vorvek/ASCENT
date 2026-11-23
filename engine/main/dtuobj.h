@@ -459,6 +459,10 @@ int dtu_hook_player_death_screen(void);
 // player. Returns 1 if it started the level again.
 int dtu_player_death_frame(void);
 
+// 1 while the game waits after the death of the player (0x423F5): the
+// world does not move, and a key ends the wait.
+int dtu_player_death_wait(void);
+
 // Starts the death of the player if the hit points are below 1.0 (0x33C5E:
 // the status display tests them each frame). dtu_objects_frame() calls it
 // on each frame. "killer" can be NULL.

@@ -13,6 +13,7 @@ The screenshot of the port is the 640x480 interface scaled 3 times.
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -123,6 +124,29 @@ def test_equal_minus(t):
 
 # The middle of the view, where the menus open
 MIDDLE = (200, 120, 160, 80)
+
+
+def saved_sensitivity(d):
+    for root, _, files in os.walk(d):
+        for f in files:
+            if f.lower() == "ascent.cfg":
+                with open(os.path.join(root, f)) as fh:
+                    m = re.search(r"Sensitivity=(\d+)", fh.read())
+                    if m:
+                        return int(m.group(1))
+    return None
+
+
+def test_sensitivity_menu(t):
+    """The sensitivity slider of the F2 options menu keeps its value
+    (Dtu_fix_sensitivity_menu); with -origui each pass of the menu stores
+    the slider value plus 1 (0x590AC, D-140)."""
+    lines = ["gamekeys", "wait 20", "key f2", "wait 5"] + ["key down", "wait 2"] * 8 + \
+        ["key left", "wait 2"] * 3 + ["key esc", "wait 10"]
+    _, d = t.run("sensitivity", lines, extra=["-fixedfps", "30"])
+    assert saved_sensitivity(d) == 4, "the slider 4 was saved as %s" % saved_sensitivity(d)
+    _, d = t.run("sensitivity_orig", lines, extra=["-fixedfps", "30", "-origui"])
+    assert saved_sensitivity(d) == 5, "-origui: the slider 4 was saved as %s" % saved_sensitivity(d)
 
 
 def test_alt_f2_f3(t):
@@ -466,6 +490,24 @@ def test_msg_arrows(t):
     assert differ(region(s["base"], *MSGBOX), region(s["down"], *MSGBOX)) < 0.001, "the down arrow did not scroll back"
 
 
+def test_msg_colors(t):
+    """The color of a message line (0x34998): the index -1 of 0x347A2 is
+    index 255 (bytes 7D 12 00 after the table 0x13B970), an orange; the
+    color of the player (index 0, the N key) is a blue."""
+    s, _ = t.run("msg_colors", ["gamekeys", "wait 30", "key r", "wait 20", "key n", "wait 20", "shot a"],
+                 extra=["-fixedfps", "30"])
+    px = region(s["a"], *MSGBOX)
+    orange = blue = 0
+    for i in range(0, len(px) - 2, 3):
+        r, g, b = px[i], px[i + 1], px[i + 2]
+        if r > 150 and 60 < g < r and b < 60:
+            orange += 1
+        elif b > 150 and r < b and g < b:
+            blue += 1
+    assert orange > 200, "no orange message line (%d pixels)" % orange
+    assert blue > 200, "no message line in the color of the player (%d pixels)" % blue
+
+
 def test_msg_arrows_orig(t):
     """-origui: the up arrow of the original shows newer lines, so at the
     newest line it does nothing, and the down arrow shows older lines."""
@@ -587,6 +629,19 @@ def session_log(d):
     return ""
 
 
+def test_cheat_twice(t):
+    """A cheat code typed two times in a row acts two times
+    (Dtu_fix_cheat_index); with -origui it acts once, because zazb keeps its
+    index after it acted (0x432A3, D-123)."""
+    lines = ["gamekeys", "wait 20", "move 300 200"] + type_keys("zazbzazb") + ["wait 5"]
+    _, d = t.run("cheat_twice", lines, extra=["-fixedfps", "30"])
+    n = session_log(d).count("cheat zazb")
+    assert n == 2, "zazb typed twice acted %d times" % n
+    _, d = t.run("cheat_twice_orig", lines, extra=["-fixedfps", "30", "-origui"])
+    n = session_log(d).count("cheat zazb")
+    assert n == 1, "-origui: zazb typed twice acted %d times" % n
+
+
 def test_cheat_codes(t):
     """The cheat codes of 1.3 act (0x4324E, 0x428B9 to 0x42BED): zazb,
     glassy, and eightisgreat with its message 0x125783 (its two I keys open
@@ -677,12 +732,58 @@ def test_fe_death_picture_key(t):
         "\n".join(l for l in text.splitlines() if "Front end" in l)
 
 
+def test_death_stops_world(t):
+    """At the death the world stops (0x33C96 ends the game loop; game()
+    waits 3 s or for a key with no game frame, 0x4240B to 0x42452): two
+    pictures of the wait are the same, and a key ends the wait at once."""
+    s, d = t.run("death_wait", ["gamekeys", "wait 20", "shot a", "wait 20", "shot b", "key space", "wait 10"],
+                 extra=["-fixedfps", "30", "-chartest", "5:damage=999"])
+    assert differ(s["a"][2], s["b"][2]) < 0.001, "the world moved during the wait of the death"
+    text = session_log(d)
+    assert "Player death: a key ends the wait" in text, "a key did not end the wait of the death"
+
+
 # The description window (engine/main/dtudesc.c, docs/description_window.md)
 # uses the picture and the text box of the scroll text screen. The cells
 # of the inventory list, high resolution: entry 1 (Broad Sword) at 51,9,
 # entry 2 (Leather Armor) at 9,67, entry 4 (Potion of Healing) at 9,125.
 DESC_CELLS = {"weapon": (67, 25), "armor": (25, 83), "potion": (25, 141)}
 DESC_EMPTY = (67, 141)      # the cell of entry 5
+
+
+def test_desc_window_death(t):
+    """A death while the description window is open: the death goes on
+    (the wait, the death picture, a key leaves it) and the front end has no
+    window left."""
+    x, y = DESC_CELLS["weapon"]
+    s, d = t.run("desc_death", ["gamekeys", "wait 10", "key i", "wait 5", "rclick %d %d" % (x, y), "wait 5",
+                                "shot open", "wait 140", "key space", "wait 30", "shot menu"],
+                 extra=["-fixedfps", "30", "-chartest", "40:damage=999"])
+    text = session_log(d)
+    assert "Player dies" in text, "the player did not die"
+    assert "Front end: death picture left" in text, "the death did not reach the death picture"
+
+
+def market_price(t, name, extra):
+    """The price that the description window of the first market row
+    shows (the line "Market: description" of the session log)."""
+    _, d = t.run(name, ["wait 60", "rclick 120 53", "wait 5", "click 600 300", "wait 5"],
+                 extra=["-testmarket"] + extra, level="")
+    m = re.search(r"Market: description of \d+\.\d+, buy price (\d+)", session_log(d))
+    assert m, name + ": no price in the description window"
+    return int(m.group(1))
+
+
+def test_desc_market_price(t):
+    """The price in the description window of the market (0x86C5A): the
+    value times the percent of the charisma (0x13F32D: 400 for charisma 0,
+    101 for 19), at least 1, then doubled with the global flag 107
+    (0x86F5F)."""
+    low = market_price(t, "mkprice_cha0", ["-testmarketcha", "0"])
+    high = market_price(t, "mkprice_cha19", ["-testmarketcha", "19"])
+    double = market_price(t, "mkprice_double", ["-testmarketcha", "19", "-testmarketdouble"])
+    assert double == 2 * high, "flag 107 did not double the price (%d, %d)" % (high, double)
+    assert abs(low / high - 400 / 101) < 0.05 * 400 / 101, "the charisma rule: %d for 0, %d for 19" % (low, high)
 
 
 def save_png(img, path):
