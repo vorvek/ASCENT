@@ -8,8 +8,8 @@ Usage:
     python -I tools/content_pack.py [--hd DIR] [--patch ZIP_OR_DIR] [--out DIR]
                                     [--lang DIR] [--version V] [PACK ...]
 
-PACK is one of patch13, textures, ui, movies, lang_es (default: all but
-lang_es).
+PACK is one of patch13, textures, ui, movies, lang_es, music (default:
+all but lang_es and music).
 
   patch13   the files of the 1.3 patch that ascent-import needs
             (installer/patch13.txt), from the patch archive dtu1_3.zip or a
@@ -24,6 +24,11 @@ lang_es).
             language <hd>/lang/es/ (orig/ and ui/, made by tools/ui_lang.py).
             The catalog is checked first: an error of `lang_extract.py
             check` stops the pack.
+  music     <hd>/music: the replacement music NAME.ogg that the setting
+            "Streaming safe music" plays in place of NAME.TUN
+            (engine/main/dtumusic.c), with README.txt and the notes
+            NAME.txt of tools/music_replace.py. Only when named: the
+            files are not in the repository.
 
 The version of a pack is --version, else the number of PACK_VERSION (1 for
 a pack that is not there).
@@ -54,6 +59,7 @@ TITLES = {
     'ui': 'Upscaled interface pictures',
     'movies': 'Upscaled movies',
     'lang_es': 'Spanish text and pictures (translation, subtitles, interface pictures)',
+    'music': 'Replacement music (for the setting Streaming safe music)',
 }
 DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 # 2: lang_es has the pictures of the language
@@ -243,6 +249,8 @@ def main(argv):
             m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'textures'))
         elif name == 'ui':
             m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'ui'))
+        elif name == 'music':
+            m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'music'))
         elif name.startswith('lang_'):
             m = write_pack(out, name, version_of, 'hd', lang_files(lang, name[5:], hd))
         else:

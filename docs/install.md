@@ -218,7 +218,8 @@ order:
 3. The language of the game: `en` or `es`.
 4. The downloads, with the sizes of `manifest.txt`: the upscaled textures and
    interface (packs `textures` and `ui`, default yes), the upscaled movies (default
-   no), the Spanish text (`lang_es`; always with the language `es`).
+   no), the Spanish text (`lang_es`; always with the language `es`), the replacement
+   music (`music`, default yes).
 
 Then it shows a summary and the free space, and asks once more. The steps:
 
@@ -255,7 +256,7 @@ Each question is also an option, for an install without questions:
 | `--prefix DIR` | the installation folder |
 | `--source PATH` | the game disc |
 | `--lang en\|es` | the language |
-| `--textures yes\|no`, `--movies yes\|no`, `--spanish yes\|no` | the downloads |
+| `--textures yes\|no`, `--movies yes\|no`, `--spanish yes\|no`, `--music yes\|no` | the downloads |
 | `--yes` | the default of each answer that is not given |
 | `--url URL` | another content server (as `/CONTENTURL=`; also `ASCENT_CONTENT_URL`; `file://` works with curl) |
 | `--patch PATH` | the 1.3 patch archive or folder, instead of the download |
@@ -332,11 +333,22 @@ files keep their upper case names: the game finds them with any case.
 | `ui` | `hd/ui` | 39 | 39 | 119,884,683 bytes |
 | `movies` | `hd/*.m1v` | 5 | 5 | 485,625,672 bytes |
 | `lang_es` (version 4) | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...`, and the pictures of the language `hd/lang/es/` (`tools/ui_lang.py`) (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 46 | 45 | 3,502,119 bytes |
+| `music` | `hd/music`: the replacement music `STARTPUB.ogg` (`engine/main/dtumusic.c`), `README.txt` and the notes `STARTPUB.txt` of `tools/music_replace.py` (only when named: `content_pack.py music`; see below) | 3 | 3 | 2,332,194 bytes |
 
 The language packs hold the Spanish text of the game files, the subtitles and the
 interface pictures with Spanish words (`docs/formats/lang.md`); they are made from the translations that
 `tools/lang_extract.py merge` writes. The translation of the text of the program is
 part of the program.
+
+The pack `music` holds the replacement music that the setting "Streaming safe music"
+(`SafeMusic` in `ascent.cfg`, off by default) plays in place of the original tracks.
+The files are not in the repository, the setup program or the Linux tarball: they
+are only on the content server. The Windows setup program (task `music`) and
+`setup.sh` (`--music`) offer the pack, checked by default because it is small; the
+setting stays off. Build it into a folder of its own, so that a sync of
+`gamedata/content` does not upload a changed pack by mistake: `content_pack.py --out
+gamedata/content-pending music` (copy `manifest.txt` there first, so that the new
+manifest keeps the other packs). Without the pack the setting has no effect.
 
 A pack is a ZIP file (PNG and M1V stored, text deflated). It has:
 
@@ -430,7 +442,7 @@ The content tool is installed with the game ("ASCENT-DTU Content" in the Start m
 
 `installer/build.sh [CONTENT_DIR]` builds `build-rel/setup/ascent-dtu-setup-<version>.exe`
 (the download sizes come from `CONTENT_DIR/manifest.txt`: MB for the textures and the
-movies, KB for `lang_es`).
+movies, KB for `lang_es` and `music`).
 
 The setup program is in English, Spanish, German, French and Italian. It starts with
 the language dialog (`ShowLanguageDialog=yes`; the language of Windows is preselected).
@@ -450,7 +462,8 @@ downloadable content: "Upscaled textures and interface (for the GPU renderer; do
 about 493 MB)", checked; "Upscaled movies (for the GPU renderer; download, about 463
 MB)", unchecked because of the size; "Spanish translation of the game text (download,
 about 2775 KB)", task `langes`, pack `lang_es`, checked only in the Spanish setup
-program), ready, the progress page of the patch download and the import (a failure
+program; "Replacement music for the setting 'Streaming safe music' (download, about
+2278 KB)" (the text has double quotes), task `music`, pack `music`, checked in every language), ready, the progress page of the patch download and the import (a failure
 stops Setup with the message of the tool), the content downloads (a failure is a
 warning: the game works without them), and the last page with "Play ASCENT-DTU".
 
@@ -465,7 +478,7 @@ uninstaller removes `default.cfg`.
 
 Command line: `/SOURCE=`, `/PATCH=`, `/CONTENTURL=`, and `/LANG=` (`english`,
 `spanish`, `german`, `french`, `italian`), `/DIR=`, `/TASKS=` (`startmenu`,
-`desktopicon`, `hdtextures`, `hdmovies`, `langes`), `/VERYSILENT`,
+`desktopicon`, `hdtextures`, `hdmovies`, `langes`, `music`), `/VERYSILENT`,
 `/SUPPRESSMSGBOXES`, `/LOG=`.
 
 The uninstaller (Windows "Installed apps") removes the program, `data`, `hd` and
