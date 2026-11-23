@@ -1168,7 +1168,14 @@ Read in the code with the work on `engine/main/dtuobj.c`.
 - Collision bodies: the port tests a moving object against the cylinder of 0x748D9 in
   the x-z plane and then compares the heights (`dtu_check_vector_to_object` in `fvi.c`).
   The test of the executable inside 0x3EFD9 (0x3EE70) is in physics.md section 3; the
-  port uses it only for the swing of the player (`dtu_body_query_test`).
+  port uses it for the swing of the player and for a missile against a creature
+  (`dtu_body_query_test`). The query of a missile (0xA05AD) takes its radii from
+  0x748D9 for the missile: the horizontal radius (edx, query +0x14) is 0x800 for a
+  weapon model with the body box and the size for other missiles; the vertical radius
+  (ebx, query +0x18) is the half height of the body box or the size
+  (`dtu_query_radii`). The ray against the capped cylinder lets a steep shot down hit
+  the top of a low body; the older test of the port took the height at the edge of
+  the body and missed it.
 - Pickup: the four player handlers are one function. The inventory is the list
   `Dtu_inventory[]` of `dtuobj.h`, not the structure of 0xB65BB. The list of items
   that did not fit (0x30F10C) is not in the port.

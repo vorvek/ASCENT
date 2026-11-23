@@ -4367,8 +4367,14 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,int parent_sig,vms_vector *best_ip)
 {
 	int j, best = -1;
-	fix best_d = 0x7fffffff;
+	fix best_d = 0x7fffffff, rad_h, rad_v;
 	vms_vector ip;
+
+	// ASCENT: the query of the missile (0xA05AD) has the radii of 0x748D9
+	// for the missile, and fvi_sub tests a creature with 0x3EE70: the ray
+	// against the capped cylinder of its body (0x4F7D5, dtu_body_query_test),
+	// so a steep shot down at a low creature goes into the top of the body.
+	dtu_query_radii(obj,&rad_h,&rad_v);
 
 	for (j=0;j<=Highest_object_index;j++) {
 		object *o = &Objects[j];
@@ -4387,7 +4393,13 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 		if (vm_vec_dist_quick(&o->pos,&obj->pos) > step + o->size + i2f(30))
 			continue;
 		Fvi_dtu_player_attack = ConsoleObject && parent == ConsoleObject-Objects;	// ASCENT: Dtu_fix_rat_hit
-		d = dtu_object_hit_test(&ip,&obj->pos,end,obj->size,o,obj);
+		if (o->type == OBJ_ROBOT) {
+			Fvi_dtu_missile = 1;		// Dtu_fix_body_ray
+			d = dtu_body_query_test(&ip,&obj->pos,end,rad_h,rad_v,o);
+			Fvi_dtu_missile = 0;
+		}
+		else
+			d = dtu_object_hit_test(&ip,&obj->pos,end,obj->size,o,obj);
 		Fvi_dtu_player_attack = 0;
 		if (d > 0 && d < best_d) {
 			best_d = d;
@@ -4418,6 +4430,10 @@ int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int we
 	stand_in.pos = *pos;
 	stand_in.segnum = segnum;
 	stand_in.size = missile_look(weapon_type,spell,&rtype,&model,&vclip);
+	// ASCENT: the look of the missile, for its query radii (dtu_query_radii)
+	stand_in.render_type = rtype;
+	if (rtype == RT_POLYOBJ)
+		stand_in.rtype.pobj_info.model_num = model;
 
 	vm_vec_scale_add(&p1,pos,dir,range);
 	fq.p0 = pos;
