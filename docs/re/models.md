@@ -666,6 +666,22 @@ make them again.
   leads the frame of the game by up to one frame (it reaches the pose of frame F+1
   when the game frame becomes F+1). Callers: `dtu_draw_polygon_object` (creatures,
   players) and `dtu_combat_draw_view` (the arms).
+- A defect of the data (bugs.md D21): `rat_l2.pof`, the GiantRat (27 submodels, 109
+  frames, the same joint angles in BANE, BEHOLDER, BONES, CLAN, DROW, MULHOR, PRISON and
+  THIEF .EGG). In DIE (frames 84 to 95) the body, submodel 1, is `(15, 0, 0)` degrees in
+  frame 87, `(3, -180, 0)` in frames 88 to 92 (on its back, legs kicking), then `(0, 0,
+  0)`, `(1, 0, 0)`, `(3, 0, 0)` in frames 93 to 95: upright again, while the legs go on
+  with the kicks of a body on its back. Submodel 0 is `(0, 0, 0)` in all these frames.
+  The boxes of frames 93 to 95 are of the upright pose (frame 93: `box1` x -1.565 to
+  2.934, the mirror of frame 88, -2.934 to 1.565). The creature holds frame 95 at the end
+  of DIE (0x11350), so its corpse stands. `rat_s.pof` (the Rat) keeps the bank -180 from
+  frame 88 to 95. `Dtu_fix_rat_die` (polyobj.c, on by default, off with `-origobj`) sets
+  frames 93 to 95 of submodel 1 to `(-p, -180, -h)`: the old pose turned by 180 degrees
+  about the z line through the joint of submodel 1 (offset 0, 0.516, 0.149), so the
+  loader turns `box1`, `box2`, `box8` and `body_center` of these frames with it (x to
+  -x, y to 1.032 - y) and negates x and y of `torso_center` and `weapon_center`. Half
+  heights and radii do not change. The sheet of `tools/model.py` with this change shows
+  the rat on its back to frame 95, the legs drawn in.
 - Not in the port: the magic effect (flag 0x20, effect modes), the special draw 0x673AD,
   the texture pulse, the draw of the viewer (the arms of the player), the model change of
   the player.
