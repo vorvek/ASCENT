@@ -82,6 +82,9 @@ void dtu_display_view_again(void);
 // handles the keys and the mouse of the interface. Called once per frame
 // in place of the copy of the view to the screen.
 void dtu_display_frame(void);
+// ASCENT: 1 while the left button, pressed in the view outside the
+// immersive mode, stays down: the attack control of a click (0x2FB10)
+int dtu_display_view_attack(void);
 
 // The inventory screen starts at entry 0 (a load or a new character).
 void dtu_display_inventory_reset(void);

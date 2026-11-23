@@ -2568,9 +2568,17 @@ static void hot_key_key(int i)
 	}
 }
 
+// ASCENT: the left button went down in the view and is still down (do_input)
+static int View_attack;
+
+int dtu_display_view_attack(void)
+{
+	return View_attack && !Dtu_immersive;
+}
+
 static void do_input(int mx, int my)
 {
-	int down, pressed, released, i;
+	int down, new_press, pressed, released, i;
 
 	// While the conversation window is open the executable runs the reduced
 	// frame 0x4391D: it draws the displays (0x324DA) but calls neither the
@@ -2753,6 +2761,7 @@ static void do_input(int mx, int my)
 	}
 
 	down = !Dtu_immersive && (mouse_get_btns() & 1);
+	new_press = down && !Mouse_was_down;
 	pressed = down && (!Mouse_was_down || Dtu_ui_key_repeat);
 	released = !down && Mouse_was_down;
 	Mouse_was_down = down;
@@ -2772,6 +2781,29 @@ static void do_input(int mx, int my)
 				inv_rclick(mx, my))
 			return;
 	}
+
+	// 0x2FB10, cursor mode, first test: a new press in the view rectangle
+	// (0x1C7F64) with no item or spell on the cursor sets the attack
+	// request (0x13B69F = 2), or uses the misc item in the hand. The melee
+	// gate (0x41E36) also needs the attack control held (0x1E9A81), which
+	// the left button (the mouse item Attack, read in each mode) gives. The
+	// port: the button counts as the attack control while it stays down
+	// after a press in the view (View_attack, dtu_display_view_attack), and
+	// controls.c passes it to dtu_combat_attack_key, which makes the
+	// request at the press. A held item there is let go (the port puts it
+	// back in the list, below).
+	if (!down)
+		View_attack = 0;
+	if (new_press && Inv_held < 0 && Inv_held_spell < 0 && View_dest_set &&
+			in_rect(mx, my, View_dest[0], View_dest[1], View_dest[2], View_dest[3])) {
+		if (Dtu_interface_mode == DTU_IM_MAP)
+			Dtu_automap_active = 0;		// the map loses the controls
+		else
+			View_attack = 1;
+		return;
+	}
+	if (View_attack)
+		return;
 
 	// 0x3010C: the scroll bar of the inventory list, in each frame while
 	// the button is down. A click that it takes goes no further.

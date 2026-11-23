@@ -219,6 +219,20 @@ def test_immersive_off_centers_mouse(t):
     assert differ(region(s["before"], *spot), region(s["after"], *spot)) > 0.05, "the cursor stayed in place"
 
 
+def test_click_view_attacks(t):
+    """Outside the immersive mode a new left press in the view attacks
+    (0x2FB10, the first test of the cursor mode); a press on the interface
+    outside the view does not."""
+    log = os.path.join(t.tmp, "click_attack", "obj.log")
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    t.run("click_attack", ["gamekeys", "wait 20", "click 20 470", "wait 40", "click 380 150", "wait 40"],
+          extra=["-objlog", log])
+    with open(log) as f:
+        text = f.read()
+    n = text.count("combat: swing starts")
+    assert n == 1, "%d swings for one click in the view and one outside it" % n
+
+
 def mouse_states(t):
     """The lines of the script command mousestate: (relative, immersive)."""
     out = []

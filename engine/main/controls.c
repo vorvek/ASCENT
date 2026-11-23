@@ -795,8 +795,9 @@ void dtu_read_controls(void)
 
 	// The attack with the item in the hand: Left Ctrl and Right Ctrl
 	// (keyboard items 18 and 19 of the key table, 0x13C010), on the key
-	// down (0x2FCBE). See dtucombat.c.
-	dtu_combat_attack_key(dtu_action_down(DTU_ACT_ATTACK) || (t & TM_ATTACK));
+	// down (0x2FCBE). See dtucombat.c. Outside the immersive mode also the
+	// left button pressed in the view (0x2FB10, dtu_display_view_attack).
+	dtu_combat_attack_key(dtu_action_down(DTU_ACT_ATTACK) || (t & TM_ATTACK) || dtu_display_view_attack());
 	dtu_combat_frame();
 
 	// Cycle Weapon: items 28 and 29 of the key table (default C), on the
