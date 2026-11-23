@@ -977,6 +977,18 @@ def cmd_merge(args, write=True):
     problems = []
     tr = {}
     names = {}      # id -> the fields gender and plural of the translation
+    # The id of a text of the code comes from its English text, with _2, _3
+    # ... in the order of the files for texts with the same id (Strength,
+    # strength). A change of the code can change that order: an entry of a
+    # part or of the port catalog with the English text of another port id
+    # goes to that id.
+    port_by_en = {e['en']: i for i, e in en.items() if i.startswith('port.')}
+
+    def port_id(i, e):
+        if (i.startswith('port.') and 'en' in e and (i not in en or e['en'] != en[i]['en'])
+                and e['en'] in port_by_en):
+            return port_by_en[e['en']]
+        return i
     if write:
         for p in PART_NAMES + extra_parts(d, lang):
             path = os.path.join(d, '%s.part%s.catalog' % (lang, p))
@@ -984,6 +996,7 @@ def cmd_merge(args, write=True):
                 problems.append(('missing', 'part %s' % p, 'no file %s' % os.path.basename(path)))
                 continue
             for i, e in read_catalog(path).items():
+                i = port_id(i, e)
                 if i not in en:
                     problems.append(('error', i, '%s: the id is not in en.catalog' % os.path.basename(path)))
                     continue
@@ -1002,16 +1015,20 @@ def cmd_merge(args, write=True):
         if os.path.exists(port_out):
             for i, e in read_catalog(port_out).items():
                 if 'tr' in e and not i.startswith(FIX_NAMES):
-                    tr[i] = e['tr']
+                    tr[port_id(i, e)] = e['tr']
     # The entries that are kept by hand in the port catalog: the corrected
-    # item names (tbl.fix.*, engine/main/dtuitemfix.c), and a text of the
-    # code that no part translates yet
+    # item names (tbl.fix.*, engine/main/dtuitemfix.c), a text of the code
+    # that no part translates yet, and a text of the code without a letter
+    # ("%d.%d"), which extract does not collect
     fixes = []
     if os.path.exists(port_out):
         for i, e in read_catalog(port_out).items():
             if 'tr' not in e:
                 continue
-            if i.startswith(FIX_NAMES):
+            i = port_id(i, e)
+            if i.startswith('port.') and i not in en and not re.search(r'[A-Za-z]', PH_RE.sub('', e.get('en', ''))):
+                fixes.append(e)
+            elif i.startswith(FIX_NAMES):
                 fixes.append(e)
                 t = {k: e[k] for k in NAME_FIELDS if k in e}
                 check_name(e, e['tr'], t, problems)

@@ -78,7 +78,13 @@ The port catalog also holds the corrected item names of
 `tbl.fix.NAME`, the corrected English name in `en`, and `tr`, `gender` and
 `plural` as for an item name of the tables. They are written by hand; `merge`
 keeps them, and it keeps a `port.*` entry of the file that no part translates
-while `en.catalog` has its English text. The game finds them as it finds a
+while `en.catalog` has its English text. It also keeps a `port.*` entry
+without a letter outside the placeholders (`%d.%d`), which `extract` does not
+collect. The id of a string of the code comes from its English text, with
+`_2`, `_3` ... in the order of the files for strings with the same id
+(`Strength` and `strength`). A change of the code can change that order, so
+`merge` gives an entry of a part or of the port catalog to the `port.*` id of
+`en.catalog` with the same English text. The game finds them as it finds a
 name of the tables, by the English text. The names that the table fixup of
 1.3 gives (the `T_NAME` rows of `engine/main/dtutblfix.c`, for example
 `Produce Fire`, `Drowslayer`) are not in the tables of the game files, so
