@@ -84,7 +84,7 @@ item is shown in the inventory (see below).
 | Inventory | Icon 199 over an entry that the character cannot use (0x3533C: class bits, count, spells 39, 40, 53, the Scroll) | 0x32899, 0x9C6C4 | fixed |
 | Inventory | Gray icon for an entry in use: armor and wearable misc items in a slot (0x3223E), weapons, misc items and spells in a hot key (0x323B0) | 0x328AB, 0x323F3, 0x9C537 | fixed |
 | Inventory | Icon 142 for a spell in the item list; icon 141 for the Scroll with a count of 0 | 0x32824 to 0x32858 | fixed |
-| Inventory | Icon 143 for the Scroll when byte +10 of its record is not 0 | 0x3285F | open: the port has no such field |
+| Inventory | Icon 143 for the Scroll when byte +10 of its record is not 0 | 0x3285F | fixed: byte +10 is the plot_item of the table line (0xB65BB); the port reads it from the table (dtudisp.c scroll_plot_item). Verified in the bytes: count 0 gives 141 (0x32858), then plot_item not 0 gives 143 (0x32865) |
 | Inventory | In modes 3 and 6 a new message also goes to the description bar (100 characters) | 0x34A83 to 0x34AD2 | fixed |
 | Inventory | Paper doll, USE, DROP, scroll bar | 0x35ADF, 0x3010C | same (ingame-ui.md U21) |
 | Spell lists | "Lvl %d" / "L-%d", the marks as in the item list | 0xB7487, 0x32899 | same, fixed (marks) |

@@ -464,6 +464,17 @@ static void area_text(int x, int y, int w, int h, char *s, int color)
 
 // Area type 0 (0x9BD8A): an icon of the sheet. Icon 0 is "no icon".
 // 0x36E3F: 8 icons in a row.
+// ASCENT: 0x3285F tests byte +10 of the inventory record, the plot_item
+// of the table line (0xB65BB copies it there)
+static int scroll_plot_item(int id)
+{
+	char v[16];
+
+	if (id >= N_misc_types || Misc_info[id].record < 0 || !bm_tbl_get(Misc_info[id].record, "plot_item", v, sizeof(v)))
+		return 0;
+	return atoi(v) != 0;
+}
+
 static void area_icon(int x, int y, int icon)
 {
 	int size = SC(16);
@@ -1614,7 +1625,7 @@ static void draw_inventory(void)
 			// The entry that the cursor holds is drawn at the cursor.
 			// ASCENT: 0x32822 to 0x32865: a spell in the item list has icon
 			// 142 (a scroll), the Scroll (misc 102) with a count of 0 icon
-			// 141. Then the marks (0x32899 to 0x328CD): icon 199 over an
+			// 141, else with plot_item icon 143. Then the marks (0x32899 to 0x328CD): icon 199 over an
 			// entry that the character cannot use (0x3533C, 0x9C6C4), else
 			// gray for an entry in use (0x323F3, method +0x4C).
 			if (n == Inv_held)
@@ -1626,6 +1637,8 @@ static void draw_inventory(void)
 					area_icon(x, y, 142);
 				else if (e->type == OBJ_MISC && e->id == 102 && e->count == 0)
 					area_icon(x, y, 141);
+				else if (e->type == OBJ_MISC && e->id == 102 && scroll_plot_item(e->id))
+					area_icon(x, y, 143);		// 0x3285F: byte +10 (plot_item) not 0
 				else
 					area_icon(x, y, entry_icon(n));
 				if (!dtu_char_item_usable(n))
