@@ -307,12 +307,41 @@ static void change_player_model(int letter)
 	dtu_obj_log("combat: player model %s (%d), letter %c, swing time %.3f",name,m,letter,f2fl(Swing_time));
 }
 
+// The arming after a thrown weapon is used up (D-179). Original: 0x446DA
+// empties the hand with 0x43A5A(-3 or -4), which also forgets the box that
+// was chosen last, and 0x4448D takes the first box whose index byte (P+
+// 0x1AC2 + 2i) is not -1. With the hand index (P+0x1AD8) below 1 it
+// writes the number of the box, not the index of its entry, to the hand
+// (list 0 at 0x444E4, index at 0x444DC), and then calls 0x43A5A with the
+// box (0x444F1 mov eax, edx; 0x444F3). 0x43A5A puts the reference of the
+// box into the hand only when its tests pass (0x43DF0); when it refuses
+// (an attack state of the arms, an attack that waits, no launcher), the
+// hand keeps the item of the list whose index is the box number.
+// Corrected (1, default): the item or the spell of the box goes into the
+// hand with no tests. The option -origcombat clears it.
+int Dtu_fix_autoarm = 1;
+
 // 0x4448D "Autoarming anything": the first hot key box that is not empty
 // arms its item or its spell.
 static void autoarm(void)
 {
 	int i;
 
+	if (!Dtu_fix_autoarm) {
+		dtu_char_set_current(-1);		// 0x446DA
+		dtu_char_forget_hot_key();
+		for (i=0;i<DTU_N_HOT_KEYS;i++)
+			if (Dtu_char.hot_key[i].n >= 0)
+				break;
+		if (i < DTU_N_HOT_KEYS) {
+			Dtu_char.current.list = 0;		// 0x444DC, 0x444E4: the box number
+			Dtu_char.current.n = i;
+			dtu_char_update();
+			dtu_obj_log("combat: autoarm box %d, the hand holds entry %d (Dtu_fix_autoarm 0)",i,i);
+			dtu_char_press_hot_key(i);		// 0x444F3: 0x43A5A(box)
+		}
+		return;
+	}
 	for (i=0;i<DTU_N_HOT_KEYS;i++)
 		if (dtu_char_hot_key_item(i) >= 0 || dtu_char_hot_key_spell(i) >= 0) {
 			dtu_char_select_hot_key(i);
@@ -1178,6 +1207,32 @@ static int turn_prefix(const char *prefix,const char *name)
 	return 1;
 }
 
+// The byte +3 that 0xAC431 gives a creature
+static int turn_class_bits(object *obj)
+{
+	int i, bits;
+
+	// 0xAC4C1: without a name match the class is from the levels of
+	// the player and bit 0x10 stays clear ("couldn't find undead")
+	// ASCENT: 0xAC4C1: the higher of the two class levels (0 based,
+	// signed) plus 1, 8 from level 7 on. It only sets the place in
+	// the order of 0xADB7D. The executable takes the levels at the
+	// level start, the port at the first use in the level.
+	{
+		int lv = Dtu_char.pa.class1_level;
+
+		if (Dtu_char.pa.class2_level > lv)
+			lv = Dtu_char.pa.class2_level;
+		bits = (lv >= 7 ? 8 : lv + 1) & 0x0F;
+	}
+	for (i=0; i<9; i++)
+		if (turn_prefix(Turn_names[i],Robot_names[obj->id])) {
+			bits = i | 0x10;
+			break;
+		}
+	return bits;
+}
+
 static int turn_bits(object *obj)
 {
 	int n = obj-Objects, i;
@@ -1189,33 +1244,72 @@ static int turn_bits(object *obj)
 	}
 	if (Turn_state[n].signature != obj->signature) {
 		Turn_state[n].signature = obj->signature;
-		// 0xAC4C1: without a name match the class is from the levels of
-		// the player and bit 0x10 stays clear ("couldn't find undead")
-		// ASCENT: 0xAC4C1: the higher of the two class levels (0 based,
-		// signed) plus 1, 8 from level 7 on. It only sets the place in
-		// the order of 0xADB7D. The executable takes the levels at the
-		// level start, the port at the first use in the level.
-		{
-			int lv = Dtu_char.pa.class1_level;
-
-			if (Dtu_char.pa.class2_level > lv)
-				lv = Dtu_char.pa.class2_level;
-			Turn_state[n].bits = (lv >= 7 ? 8 : lv + 1) & 0x0F;
-		}
-		for (i=0; i<9; i++)
-			if (turn_prefix(Turn_names[i],Robot_names[obj->id])) {
-				Turn_state[n].bits = i | 0x10;
-				break;
-			}
+		Turn_state[n].bits = turn_class_bits(obj);
 	}
 	return Turn_state[n].bits;
+}
+
+// The NPC list of the executable (D-020). Original: npc_register_object
+// (0xAC431) adds an entry of 7 bytes (object number, turn byte) to the
+// list at 0x3D42CC for each object of the level start (0xAD7C4), for a
+// gated creature (0x13407) and at the end of a morph (0x5F25C). No code
+// takes an entry out: after a death the object number can belong to a new
+// creature, which turn undead (0xADC46, the loop at 0xADD94) then handles
+// with the class and the bit 0x10 of the old entry, and a gated creature
+// that gets a used number has two entries. After 100 entries (0x145520)
+// 0xAC431 does nothing at all, so a new creature also gets no hostility,
+// awareness and target. Corrected (1, default): turn undead takes each
+// creature by object number and signature (Turn_state), and add_npc sets
+// up each creature. The option -origcombat clears it. With 0 the port
+// keeps the list; an entry whose object is no creature now is skipped
+// (0xA66C9 is not reproduced for such objects).
+int Dtu_fix_npc_list = 1;
+
+#define NPC_LIST_MAX	100
+static struct { short objnum; ubyte bits; } Npc_list[NPC_LIST_MAX];
+static int Npc_list_count;
+
+static void combat_init(void);
+
+// 0xAD779: the list is empty at each level start (also a restored level)
+void dtu_combat_npc_list_clear(void)
+{
+	combat_init();
+	Npc_list_count = 0;
+}
+
+// 0xAC431: the entry of an object. 0 when the list is full.
+int dtu_combat_npc_list_add(object *obj)
+{
+	int bits = 0x0F;		// 0xAC4A0 to 0xAC4AE: class 15, bit 0x10 clear
+
+	if (Npc_list_count >= NPC_LIST_MAX)
+		return 0;
+	// 0xAC4B4: the class only for a type with the undead flag (0x2000)
+	if (obj->type == OBJ_ROBOT && obj->id < N_robot_types && (Monster_info[obj->id].flags & MONSTER_F_UNDEAD))
+		bits = turn_class_bits(obj);
+	Npc_list[Npc_list_count].objnum = obj-Objects;
+	Npc_list[Npc_list_count].bits = bits;
+	Npc_list_count++;
+	return 1;
 }
 
 // ASCENT: for the checks of dtu_spell_priest_check(): the byte +3 of the
 // NPC list entry (class and bit 0x10) of a creature
 int dtu_combat_priest_turn_bits(object *obj)
 {
-	return (obj && obj->type == OBJ_ROBOT && obj->id < N_robot_types) ? turn_bits(obj) : -1;
+	int k;
+
+	if (!obj || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return -1;
+	if (!Dtu_fix_npc_list) {
+		// the first entry of the NPC list with the object number
+		for (k=0; k<Npc_list_count; k++)
+			if (Npc_list[k].objnum == obj-Objects)
+				return Npc_list[k].bits;
+		return -1;
+	}
+	return turn_bits(obj);
 }
 
 // 0xA66C9: the creature is alive
@@ -1257,6 +1351,7 @@ int dtu_combat_turn_undead(int level)
 {
 	object *pl = ConsoleObject;
 	int order[MAX_OBJECTS], n = 0, i, j, roll, destroys, done = 0;
+	ubyte *bitp[MAX_OBJECTS];
 	fix d;
 
 	if (!Dtu_objects_enabled || pl == NULL || pl->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead)
@@ -1299,14 +1394,28 @@ int dtu_combat_turn_undead(int level)
 		level = 1;
 
 	// The NPC list in the order of the object numbers, sorted by class
-	// (0xADB7D, the same exchange sort)
-	for (i=0; i<=Highest_object_index; i++)
-		if (Objects[i].type == OBJ_ROBOT && Objects[i].id < N_robot_types)
-			order[n++] = i;
+	// (0xADB7D, the same exchange sort). Dtu_fix_npc_list 0: the entries
+	// of the list of the executable in their order.
+	if (Dtu_fix_npc_list) {
+		for (i=0; i<=Highest_object_index; i++)
+			if (Objects[i].type == OBJ_ROBOT && Objects[i].id < N_robot_types) {
+				turn_bits(&Objects[i]);
+				bitp[n] = &Turn_state[i].bits;
+				order[n++] = i;
+			}
+	}
+	else
+		for (i=0; i<Npc_list_count; i++) {
+			bitp[n] = &Npc_list[i].bits;
+			order[n++] = Npc_list[i].objnum;
+		}
 	for (i=0; i<n-1; i++)
 		for (j=i+1; j<n; j++)
-			if ((turn_bits(&Objects[order[j]]) & 0x0F) < (turn_bits(&Objects[order[i]]) & 0x0F)) {
-				int t = order[i]; order[i] = order[j]; order[j] = t;
+			if ((*bitp[j] & 0x0F) < (*bitp[i] & 0x0F)) {
+				int t = order[i]; ubyte *b = bitp[i];
+
+				order[i] = order[j]; order[j] = t;
+				bitp[i] = bitp[j]; bitp[j] = b;
 			}
 
 	dtu_obj_log("turn undead: level %d, roll %d, at most %d destroyed",level,roll,destroys);
@@ -1315,9 +1424,9 @@ int dtu_combat_turn_undead(int level)
 		object *obj = &Objects[order[i]];
 		int bits, cls, t;
 
-		if (obj->type != OBJ_ROBOT || !(Monster_info[obj->id].flags & MONSTER_F_UNDEAD) || !turn_alive(obj) || !turn_sees_player(obj))
+		if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types || !(Monster_info[obj->id].flags & MONSTER_F_UNDEAD) || !turn_alive(obj) || !turn_sees_player(obj))
 			continue;
-		bits = turn_bits(obj);
+		bits = *bitp[i];
 		cls = bits & 0x0F;
 		if (!(bits & 0x10)) {
 			HUD_init_message("You can no longer attempt to turn the %s.",dtu_object_display_name(obj));
@@ -1328,17 +1437,17 @@ int dtu_combat_turn_undead(int level)
 		// again although nothing was tried. Dtu_fix_turn_undead keeps it.
 		if (destroys <= 0) {
 			if (!Dtu_fix_turn_undead)
-				Turn_state[obj-Objects].bits &= ~0x10;
+				*bitp[i] &= ~0x10;
 			break;
 		}
-		Turn_state[obj-Objects].bits &= ~0x10;
+		*bitp[i] &= ~0x10;
 		t = Turn_table[cls < 9 ? cls : 8][level-1];
 
 		if (t == -4) {
 			// 0xAE0DC: "unable to affect", the creature can be tried again
 			dtu_creature_turn(obj,0);
 			turn_message(927,"You are currently unable to affect the %s.",obj);
-			Turn_state[obj-Objects].bits |= 0x10;
+			*bitp[i] |= 0x10;
 		}
 		else if (t == -3 || t == -2) {
 			// 0xAE14C, 0xAE158: destroyed. 0xA6ACB(obj, no attacker, its
@@ -1473,6 +1582,8 @@ static void combat_init(void)
 		Dtu_fix_melf_acid = 0;
 		Dtu_fix_spell_hours = 0;
 		Dtu_fix_turn_undead = 0;
+		Dtu_fix_npc_list = 0;
+		Dtu_fix_autoarm = 0;
 		Dtu_fix_cure_aid = 0;
 		Dtu_fix_slow_swing = 0;
 		Dtu_fix_kill_sound = 0;

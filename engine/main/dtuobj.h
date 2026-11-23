@@ -99,8 +99,22 @@ extern int Dtu_fix_creature_move;
 // The sight of a creature. Original: the bit of the BRN file of the level
 // for the two segments (0x9810D). The BRN files of the disc are copies of
 // one matrix that fits no level. Corrected: a ray from the creature to the
-// player.
+// player. With the original rule a level with no BRN file gives 0 for each
+// bit (0x97774).
 extern int Dtu_fix_brain;
+// The morale of a level creature before its first morale check. Original
+// (0x10685): the morale of the object number from before. Corrected: the
+// mean of the flee and the attack value. -origobj clears it.
+extern int Dtu_fix_ai_init;
+// A flying creature that hits a wall. Original (0x25D43): 0 to the circle
+// distance of its type. Corrected: no change. -origobj clears it.
+extern int Dtu_fix_wall_circle;
+// A missile hit with no monster_hit_vclip. Original (0x277CD): a missile
+// that is not a model goes on. Corrected: it goes away. -origobj clears it.
+extern int Dtu_fix_hit_keep;
+// A burst whose obj_create fails. Original (0x9333B): weapon_vclip keeps
+// the random vclip. Corrected: it gets its value back. -origobj clears it.
+extern int Dtu_fix_burst_vclip;
 // 0x9810D for the segment of the creature and of the player (the rule of
 // Dtu_fix_brain).
 int dtu_brain_sees_player(object *obj);

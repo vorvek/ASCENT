@@ -99,6 +99,21 @@ extern int Dtu_fix_attack_commit;
 // number is turned; corrected: the d20 stays. -origcombat clears it.
 extern int Dtu_fix_turn_undead;
 
+// The NPC list of turn undead (0xAC431, 0xADC46). Original: the list
+// keeps each entry, also of a dead creature (100 entries at most).
+// Corrected: each creature by object number and signature. -origcombat
+// clears it.
+extern int Dtu_fix_npc_list;
+// The NPC list: empty at a level start (0xAD779), an entry for an object
+// (0xAC431, 0 when the list is full).
+void dtu_combat_npc_list_clear(void);
+int dtu_combat_npc_list_add(object *obj);
+
+// The arming after a thrown weapon is used up (0x4448D). Original: the
+// box number goes into the hand as an item index, then 0x43A5A with its
+// tests. Corrected: the box goes into the hand. -origcombat clears it.
+extern int Dtu_fix_autoarm;
+
 // Turn undead (key T, the Spider Piece 0x12): level is the cleric level
 // from 1, or 0 for the levels and the cloak of the character. Returns the
 // number of creatures that were turned or destroyed.
