@@ -223,4 +223,20 @@ int fe_market_reward(int n);
 extern int Dtu_fix_market_charisma;
 extern int Dtu_fix_market_sell_count;
 
+//------------------------------------------------------------------------
+// dtufe.c
+
+extern int Fe_frame_count;
+
+//------------------------------------------------------------------------
+// dtufe_script.c
+
+extern int Script_n, Script_pos, Script_wait;
+extern int Script_btn, Script_rbtn;
+extern char *Script_shot;
+extern int Script_in_game;
+int script_active(void);
+void script_load(void);
+void script_frame(void);
+
 #endif
