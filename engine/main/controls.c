@@ -457,8 +457,11 @@ static void dtu_move_init(void)
 		Dtu_improved_jump = Args[t+1][1] == '1';
 	}
 
+	// fixed_frametime exists only in a debug build (game.c)
+	#ifndef NDEBUG
 	if ((t = FindArg("-fixedfps")) != 0 && t+1 < Num_args && atoi(Args[t+1]) > 0)
 		fixed_frametime = F1_0 / atoi(Args[t+1]);
+	#endif
 
 	if ((t = FindArg("-testmove")) != 0 && t+1 < Num_args)
 		dtu_parse_testmove(Args[t+1]);
