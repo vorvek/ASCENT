@@ -388,6 +388,13 @@ ubyte object_rendered[MAX_OBJECTS];
 int Render_depth=DEFAULT_RENDER_DEPTH;			//how many segments deep to render
 
 int	Detriangulation_on = 1;					// 1 = allow rendering of triangulated side as a quad, 0 = don't allow
+// ASCENT: the GPU renderer draws the current view (render_frame). It draws
+// a side that is not flat as its two triangles at any distance: the quad of
+// the detriangulation (a speed hack of the software texture mapper) is split
+// by the GPU along its own diagonal, which can be the other one, so walls,
+// floors and ceilings moved and flattened when the view went past the
+// distance rule.
+static int Render_gpu_view = 0;
 
 #ifdef EDITOR
 int	Render_only_bottom=0;
@@ -916,7 +923,7 @@ static void render_side_faces(segment *segp, int sidenum)
 		}
 
 		//	Determine whether to detriangulate side: (speed hack, assumes Tulate_min_ratio == F1_0*2, should fixmul(min_dot, Tulate_min_ratio))
-		if (Detriangulation_on && ((min_dot+F1_0/256 > max_dot) || ((Viewer->segnum != segp-Segments) &&  (min_dot > Tulate_min_dot) && (max_dot < min_dot*2)))) {
+		if (Detriangulation_on && !Render_gpu_view && ((min_dot+F1_0/256 > max_dot) || ((Viewer->segnum != segp-Segments) &&  (min_dot > Tulate_min_dot) && (max_dot < min_dot*2)))) {
 			fix	n0_dot_n1;
 
 			//	The other detriangulation code doesn't deal well with badly non-planar sides.
@@ -2375,6 +2382,7 @@ void render_frame(fix eye_offset)
 	gpu_view = g3_gpu_begin_view(Dtu_gpu_renderer, Dtu_render_scale,
 		(Dtu_display_active && Dtu_hires) ? 2 : 1, Dtu_improved_occlusion,
 		(Clear_window == 1 && Clear_window_color != -1) ? Clear_window_color : BM_XRGB(0, 0, 0));
+	Render_gpu_view = gpu_view;
 	if (infra == DTU_INFRA_IMPROVED && !gpu_view)
 		dtu_infra_fallback();
 
