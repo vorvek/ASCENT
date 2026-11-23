@@ -901,9 +901,19 @@ void dtu_display_add_message(char *text)
 	snprintf(work, sizeof(work), "%s", p);
 	line[0] = 0;
 	len = line_w = 0;
-	for (word = strtok(work, MSG_SEPARATORS); word; word = strtok(NULL, MSG_SEPARATORS)) {
-		int wl = (int) strlen(word), sp = len ? 1 : 0;
+	// ASCENT: the words are cut by hand, not with strtok: a caller (the
+	// script interpreter) can be in the middle of its own strtok
+	for (word = work; ; ) {
+		int wl, sp = len ? 1 : 0;
+		char *end;
 
+		word += strspn(word, MSG_SEPARATORS);
+		if (!*word)
+			break;
+		end = word + strcspn(word, MSG_SEPARATORS);
+		if (*end)
+			*end++ = 0;
+		wl = (int) strlen(word);
 		gr_get_string_size(word, &sw, &sh, &aw);
 		if (len + wl + sp >= 100 || line_w + sp * space_w + sw >= max_w) {
 			msg_insert(line, color);
@@ -913,6 +923,7 @@ void dtu_display_add_message(char *text)
 		snprintf(line + len, sizeof(line) - len, "%s%s", sp ? " " : "", word);
 		len = (int) strlen(line);
 		line_w += sp * space_w + sw;
+		word = end;
 	}
 	if (len)
 		msg_insert(line, color);
