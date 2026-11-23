@@ -1317,7 +1317,8 @@ static void setup_creature(object *obj)
 	// ASCENT: Dtu_fix_revive: a dead creature of a restored level keeps the
 	// bit of the state file. A body that fire, acid or weapons destroyed
 	// stays dead; a fallen body that can get up keeps it.
-	if (Monster_ext[obj->id].regeneration && !(Dtu_fix_revive && Level_setup_restore && obj->shields < F1_0))
+	if (Monster_ext[obj->id].regeneration && !(Dtu_fix_revive && Level_setup_restore && obj->shields < F1_0
+		&& strnicmp(Monster_info[obj->id].name, "troll", 5) == 0))	// only a troll is a fallen body
 		obj->dtu.m_88 |= 0x01000000;
 
 	// A creature with less than one hit point is loaded dead (0x4787A).
@@ -3250,7 +3251,10 @@ static void creature_dies(object *obj,object *attacker)
 	// ASCENT: Dtu_fix_revive: the creature falls and gets up again (the
 	// regeneration bit stays, see below). No experience and no kill now:
 	// both come when the fallen body is destroyed (creature_destroyed).
-	int falls = Dtu_fix_revive && Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000);
+	// Only a troll gets up: mirt and Halaster also regenerate hit points
+	// (their table lines and setup), and a dead one must stay dead.
+	int falls = Dtu_fix_revive && Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000)
+		&& strnicmp(mi->name, "troll", 5) == 0;
 
 	if (falls) {
 		if (attacker && attacker->type == OBJ_PLAYER)
