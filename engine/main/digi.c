@@ -539,6 +539,8 @@ int digi_init()
 		Dtu_sound_16bit = 0;
 	if ( FindArg( "-soundlog" ))
 		Dtu_sound_log = 1;
+	if ( FindArg( "-origsound" ))
+		Dtu_fix_3d_volume = 0;
 
 	// ASCENT: the board and MIDI device numbers of the config file chose a
 	// SOS driver. Now there is one device, the platform mixer, and it is
@@ -928,6 +930,14 @@ void digi_play_sample( int soundno, fix max_volume )
 }
 
 
+// ASCENT: D-167. 1.3 (0x2E091) cuts the volume to 0x8000 (0x2E0A5), returns
+// below 10 (0x2E10F), then raises every volume below 0x7FFF to 0x7FFF
+// (0x2E118 to 0x2E120). So the distance volume is only a gate, and each
+// one time 3D sound (footsteps of creatures, hits, explosions) plays at the
+// same volume. Corrected (1, default): the volume of Descent 1, the
+// distance volume. -origsound clears it.
+int Dtu_fix_3d_volume = 1;
+
 void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups )
 {
 	_SOS_START_SAMPLE sSOSSampleData;
@@ -955,6 +965,11 @@ void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups )
 	}
 
 	if (volume < 10 ) return;
+
+	// ASCENT: D-167, Dtu_fix_3d_volume (0 with -origsound): the volume of
+	// 1.3, at most 0x8000 and at least 0x7FFF
+	if ( !Dtu_fix_3d_volume )
+		volume = volume > 0x8000 ? 0x8000 : (volume < 0x7FFF ? 0x7FFF : volume);
 
 	memset( &sSOSSampleData, 0, sizeof(_SOS_START_SAMPLE));
 	sSOSSampleData.wLoopCount 		= 0x00;
