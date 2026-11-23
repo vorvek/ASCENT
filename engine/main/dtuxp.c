@@ -137,6 +137,56 @@ void dtu_xp_creature_death(object *obj, object *attacker, int weapon, int xp)
 	}
 }
 
+//------------------------------------------------------------------------
+// ASCENT: a creature object that goes away or is hit by a path that is not
+// the damage function. The code that removes it names the cause
+// (dtu_creature_remove), obj_delete() writes the line.
+
+static const char *Remove_cause[MAX_OBJECTS];
+static int Remove_sig[MAX_OBJECTS];
+
+void dtu_creature_remove_cause(object *obj, const char *cause)
+{
+	int n = (int) (obj - Objects);
+
+	if (n < 0 || n >= MAX_OBJECTS)
+		return;
+	Remove_cause[n] = cause;
+	Remove_sig[n] = obj->signature;
+}
+
+void dtu_creature_remove(object *obj, const char *cause)
+{
+	dtu_creature_remove_cause(obj, cause);
+	obj->flags |= OF_SHOULD_BE_DEAD;
+}
+
+void dtu_xp_creature_removed(object *obj)
+{
+	int n = (int) (obj - Objects);
+	const char *cause = "not named (the flag of Descent code)";
+
+	if (n < 0 || n >= MAX_OBJECTS)
+		return;
+	if (Remove_cause[n] && Remove_sig[n] == obj->signature)
+		cause = Remove_cause[n];
+	dtulog_event("Creature removed: obj %d %s, cause %s, hit points %d, segment %d%s", n, dtu_object_name(obj), cause,
+		f2i(obj->shields), obj->segnum, (obj->flags & OF_DESTROYED) ? ", a corpse" : "");
+	Remove_cause[n] = NULL;
+}
+
+void dtu_xp_creature_stopped(object *obj, const char *what)
+{
+	static int count;
+
+	// a path that runs in each frame writes at most 100 lines
+	if (count >= 100)
+		return;
+	count++;
+	dtulog_event("Creature: stopped %s on obj %d %s, hit points %d, segment %d (not in 1.3)", what, (int) (obj - Objects),
+		dtu_object_name(obj), f2i(obj->shields), obj->segnum);
+}
+
 void dtu_xp_log_award(int points, int each, int xp1, int xp2)
 {
 	dtulog_event("Experience: +%d, +%d for each class, now %d / %d", points, each, xp1, xp2);

@@ -39,6 +39,14 @@ too.
   missile with no source (a trap), a creature missile, a script kill (0xA6ACB), the end of a
   script run (0xAC033), Turn Undead or Abjure. A troll that falls and can get up:
   `Creature falls: ...`.
+- Each creature object that goes away with no death of the damage function:
+  `Creature removed: obj N NAME, cause ..., hit points H, segment S`. The cause is a
+  script (the object leaves the level), Abjure, a level fix, a squashed rat with no free
+  segment, a gated creature with no AI, the end of the Fear view or the end of its
+  lifeleft. `not named` is a removal by code that does not name its cause. A rat that the
+  player squashes with boots and that jumps to another segment: `Creature squashed as a
+  rat: ...`. A Descent 1 rule that the port stops for a creature (the explosion, the
+  damage of `apply_damage_to_robot`): `Creature: stopped ...` (at most 100 lines).
 - Each award of experience: `Experience: +TOTAL, +PART for each class, now X / Y`, and each
   level gained: `Level gained: class levels A / B -> C / D, N hit points`.
 - An object that the restore of a level state kills: after the 1.3 line `STATE: killing

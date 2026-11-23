@@ -725,7 +725,7 @@ static void obj_kill(object *o)
 		// Flamesword) ends the game here (0xA6AF8, 0xA6786).
 		dtu_break_dressing(o, NULL, 0);
 	else if (o != ConsoleObject)
-		o->flags |= OF_SHOULD_BE_DEAD;
+		dtu_creature_remove(o, "a script statement kill (0xA6ACB)");
 }
 
 // ASCENT: the end of a run (0xAC033, 0xAA2EE): an object with less than
@@ -782,7 +782,7 @@ static void remove_object(object *o)
 {
 	if (!o || o == ConsoleObject)
 		return;
-	o->flags |= OF_SHOULD_BE_DEAD;
+	dtu_creature_remove(o, "a script: the object leaves the level (0xA9F58)");
 }
 
 //------------------------------------------------------------------------
@@ -1392,7 +1392,7 @@ static void give_take(sc_run *r, int give)
 		if (seg <= Highest_segment_index)
 			for (i = Segments[seg].objects; i != -1; i = Objects[i].next)
 				if (Objects[i].type == t && Objects[i].id == id) {
-					Objects[i].flags |= OF_SHOULD_BE_DEAD;		// 0x68F45
+					dtu_creature_remove(&Objects[i], "a script: take (0x68F45)");		// 0x68F45
 					break;
 				}
 		if (o) {											// 0xA7CB3
@@ -2035,7 +2035,7 @@ static int sc_exec(sc_run *r)
 			for (i = Segments[s1].objects; i != -1; i = Objects[i].next)
 				if (Objects[i].type == t2 && Objects[i].id == id) {
 					if (s2 == 0xFFFF)
-						Objects[i].flags |= OF_SHOULD_BE_DEAD;
+						dtu_creature_remove(&Objects[i], "a script: the object leaves the level (0xAA04B)");
 					else if (s2 <= Highest_segment_index)
 						move_to_segment(&Objects[i], s2, -1);
 					break;

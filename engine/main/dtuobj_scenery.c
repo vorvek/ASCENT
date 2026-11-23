@@ -925,10 +925,12 @@ static void rat_squash(object *rat)
 		dtu_obj_log("rat: obj %d is squashed and removed",n);
 		if (Monster_info[rat->id].die_sound > 0)
 			sound_at(Monster_info[rat->id].die_sound,rat->segnum,&rat->pos,F1_0);
-		rat->flags |= OF_SHOULD_BE_DEAD;
+		dtu_creature_remove(rat,"a squashed rat with no free segment (0x25ADF)");
 		return;
 	}
 	dtu_obj_log("rat: obj %d is squashed and goes to segment %d",n,seg);
+	// ASCENT: the session log, the creature leaves the place of the player
+	dtulog_event("Creature squashed as a rat: obj %d %s goes to segment %d (0x25ADF)",n,dtu_object_name(rat),seg);
 	rat->pos = pos;
 	obj_relink(n,seg);
 	rat->ctype.ai_info.behavior = DAIB_WANDER;

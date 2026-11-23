@@ -42,6 +42,17 @@ void dtu_xp_cause(const char *cause);
 // and the line of the session log.
 void dtu_xp_creature_death(object *obj, object *attacker, int weapon, int xp);
 
+// A creature object that goes away with no death of the damage function
+// (a script, Abjure, a level fix, a squashed rat, lifeleft): the code names
+// the cause, then sets OF_SHOULD_BE_DEAD (dtu_creature_remove) or deletes
+// it. obj_delete() writes the session log line "Creature removed: ...".
+void dtu_creature_remove_cause(object *obj, const char *cause);
+void dtu_creature_remove(object *obj, const char *cause);
+void dtu_xp_creature_removed(object *obj);
+// The session log line of a Descent 1 path that the port stops for a
+// creature (the explosion, apply_damage_to_robot): what, the creature.
+void dtu_xp_creature_stopped(object *obj, const char *what);
+
 // The session log line of an award (dtu_char_award_xp): the total, the
 // part of each class, the experience of the classes after it.
 void dtu_xp_log_award(int points, int each, int xp1, int xp2);

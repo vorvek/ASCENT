@@ -394,7 +394,7 @@ int dtu_gate_in_creature(int type, int segnum)
 	setup_creature(obj);
 	ail_keep_bits = 0;
 	if (obj->control_type != CT_AI) {
-		obj->flags |= OF_SHOULD_BE_DEAD;
+		dtu_creature_remove(obj,"a gated creature with no AI after its setup");
 		return -1;
 	}
 	Ail[objnum].gated = 1;

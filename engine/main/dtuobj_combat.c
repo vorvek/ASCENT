@@ -736,7 +736,7 @@ void dtu_creature_vanish(object *obj)
 	obj->control_type = CT_NONE;
 	obj->movement_type = MT_NONE;
 	obj->render_type = RT_NONE;
-	obj->flags |= OF_SHOULD_BE_DEAD;
+	dtu_creature_remove(obj,"it leaves the level (0xA9F58, Abjure)");
 }
 
 int dtu_creature_is_active(object *obj)

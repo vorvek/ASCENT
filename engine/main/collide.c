@@ -475,6 +475,8 @@ static char rcsid[] = "$Id: collide.c 2.5 1995/07/26 12:07:46 john Exp $";
 
 #include "collide.h"
 #include "dtuobj.h"		// ASCENT: the collision functions of the target game
+#include "dtugame.h"		// ASCENT: Dtu_objects_enabled
+#include "dtuxp.h"		// ASCENT: the session log line of a stopped Descent 1 path
 
 int Ugly_robot_cheat = 0;
 int Ugly_robot_texture = 0;
@@ -1249,6 +1251,16 @@ void collide_weapon_and_clutter( object * weapon, object *clutter, vms_vector *c
 int apply_damage_to_robot(object *robot, fix damage, int killer_objnum)
 {
 	if ( robot->flags&OF_EXPLODING) return 0;
+
+	// ASCENT: 1.3 has no apply_damage_to_robot: the damage of a creature is
+	// the damage function 0x29A9C (dtu_damage_creature). The callers that
+	// the target game can still reach here are Descent 1 rules: the badass
+	// explosion (fireball.c), the matcen (collide_robot_and_materialization_center)
+	// and the damage of a bump. Their kill is the explosion of Descent 1.
+	if (Dtu_objects_enabled) {
+		dtu_xp_creature_stopped(robot, "the damage of Descent 1 (apply_damage_to_robot)");
+		return 0;
+	}
 
 	if (robot->shields < 0 ) return 0;	//robot already dead...
 
