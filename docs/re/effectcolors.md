@@ -95,8 +95,13 @@ and red edges on the water.
   shader. A texture that is not merged keeps the palette color, as the original,
   unless `Dtu_fix_wall_effects` marks it (below).
 - `Dtu_fix_wall_effects` (texmerge.c `texmerge_mark_wall_effects`, called by
-  bmread.c after the tables; `-origfx` clears it). 1.3 draws the effect texels of
-  a wall texture without an overlay in the palette red. The level files use such
+  bmread.c after the tables; `-origfx` clears it). 1.3 draws a face without an
+  overlay from the bitmap itself (0x75367, 0x7558C: the merge cache only for an
+  overlay), so the effect texels of such a texture go through the light like any
+  texel: `fade[row][0x4F]` of PALETTE.256 is 0xFF (0 0 0) at row 0, dark reds (8 0 0,
+  17 1 1, then 0xC0 ramp entries) up to row 28, and the bright red 0x4E or the
+  color itself (63 0 0) only at rows 31 to 33 (verified against the file). In a
+  normal light 1.3 shows these texels black or dark red. The level files use such
   textures alone on a side (counted with `lvl.py` and the level tables, rendered
   sides with no overlay; "see" is a side with a wall and a child, "solid" one
   without a child):
@@ -121,7 +126,8 @@ and red edges on the water.
   of its base; texmerge.c sets it from its own pixels.
   Test: THIEF0, the save in front of the waterfall of segment 142: before, red
   rims around the drops in every renderer and texture set; after, the rims show
-  the room behind in the blue ramp; `-origfx` gives the red again.
+  the room behind in the blue ramp; `-origfx` gives the rule of 1.3 again (the
+  palette color through the light, dark in a dim light and red in a bright one).
 - The upscaled textures: `tools/textures_hd.py` fills the effect texels with the
   colors around them before the upscale (`../hd_textures.md`). A set made before
   this has red around the effect texels; the game cannot remove that.

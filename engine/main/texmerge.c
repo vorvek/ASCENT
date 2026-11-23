@@ -456,7 +456,8 @@ void merge_textures_super_xparent( int type, grs_bitmap * bottom_bmp, grs_bitmap
 // ASCENT: Dtu_fix_wall_effects. DTUGAME.EXE turns the rule of the effect
 // colors on only for a merged bitmap (flag 0x20, 0x7AB89) and for a tinted
 // object (draw_tmap 0xEA503). A wall texture without an overlay draws its
-// effect texels in their palette color, a bright red (63 0 0): the edges of
+// effect texels in their palette color through the light (black or dark red
+// in a dim light, the bright red 63 0 0 near full light): the edges of
 // the waterfall wfal04 as the texture of an illusion wall (THIEF0 segments
 // 142 and 145), and wfal02, water2, web1, miror01, rg_e, port04 alone on a
 // side. With the correction such a bitmap gets the flag as a merged one
