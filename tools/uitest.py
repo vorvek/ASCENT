@@ -183,6 +183,26 @@ def test_dlg_tab_focus(t):
     assert differ(region(s["open"], *LEFT), region(s["tab"], *LEFT)) < 0.02, "Tab opened the map"
 
 
+def test_dlg_click_no_attack(t):
+    """The click that chooses the last reply of a conversation does not
+    attack when the immersive mode comes back with the button still down;
+    the next press attacks."""
+    log = os.path.join(t.tmp, "dlg_click", "obj.log")
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    hold = lambda x, y: ["press %d %d" % (x, y), "wait 15", "release", "wait 20"]
+    lines = ["gamekeys", "wait 5", "key v", "wait 55"]
+    lines += hold(377, 149) * 3         # the texts with no reply
+    lines += hold(200, 170) * 4         # reply 1 to the end of the conversation
+    t.run("dlg_click", lines + ["wait 30"], extra=DURNAN + ["-objlog", log])
+    with open(log) as f:
+        n = f.read().count("combat: swing starts")
+    assert n == 0, "%d swings for the click that ended the conversation" % n
+    t.run("dlg_click", lines + hold(200, 170) + ["wait 30"], extra=DURNAN + ["-objlog", log])
+    with open(log) as f:
+        n = f.read().count("combat: swing starts")
+    assert n == 1, "%d swings for one press after the conversation" % n
+
+
 def test_shift_fkeys_and_grave(t):
     """Shift+F1 to Shift+F8 add no stereo messages of Descent 1 (not in the
     switch 0x42F9C), Shift+F3 does not change the screen, and ` writes a

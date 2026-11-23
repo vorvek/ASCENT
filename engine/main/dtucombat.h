@@ -131,6 +131,11 @@ int dtu_combat_priest_turn_bits(object *obj);
 // "attack"). The attack starts on the key down (0x2FB10).
 void dtu_combat_attack_key(int held);
 
+// ASCENT: an attack key or button that is down now does not start an
+// attack until it is released (dtudlg.c: the click that ends a
+// conversation, with the immersive mode back on).
+void dtu_combat_ignore_held_attack(void);
+
 // The attack of the player for a key down that is counted elsewhere (the
 // fire button of the key table of Descent 1 in game.c). Returns 1 if a
 // request was made. It is the entry that replaces dtu_player_attack().

@@ -1626,6 +1626,11 @@ void dtu_combat_attack_key(int held)
 	Key_last = held;
 }
 
+void dtu_combat_ignore_held_attack(void)
+{
+	Key_last = 1;
+}
+
 int dtu_combat_player_attack(void)
 {
 	if (!Dtu_objects_enabled || Player_is_dead || Dtu_player_dead || ConsoleObject == NULL || ConsoleObject->type != OBJ_PLAYER)

@@ -52,6 +52,7 @@
 #include "mouse.h"
 #include "platform.h"		// plat_mouse_wheel
 #include "dtufe.h"		// Dtu_fe_original_input
+#include "dtucombat.h"	// dtu_combat_ignore_held_attack
 
 #define DLG_MAX_REPLIES		10			// 0xA7B56
 #define DLG_TEXT_SIZE		0x4000		// DLG_SEG_SIZE (0xB2099)
@@ -146,6 +147,9 @@ static void ptr_restore(void)
 	if (Ptr_forced && !Dtu_immersive)
 		dtu_display_set_immersive(1);		// ASCENT: no jump of the view
 	Ptr_forced = 0;
+	// ASCENT: the button of the click that chose the last reply can still
+	// be down, and in the immersive mode it is the attack button
+	dtu_combat_ignore_held_attack();
 }
 
 int dtu_dlg_view_dim(void)
