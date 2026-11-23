@@ -34,6 +34,16 @@ too.
 - The events of the game: game start, each level load (name, time, segments, objects),
   the character at each level start (name, race, classes and levels, hit points,
   experience, gold), level finished, death.
+- Each creature death: `Creature death: obj N NAME, cause ..., attacker ..., experience X,
+  segment S` and the numbers of the last roll, if any. The cause is the weapon, a spell, a
+  missile with no source (a trap), a creature missile, a script kill (0xA6ACB), the end of a
+  script run (0xAC033), Turn Undead or Abjure. A troll that falls and can get up:
+  `Creature falls: ...`.
+- Each award of experience: `Experience: +TOTAL, +PART for each class, now X / Y`, and each
+  level gained: `Level gained: class levels A / B -> C / D, N hit points`.
+- An object that the restore of a level state kills: after the 1.3 line `STATE: killing
+  object N -- illegal segment`, the line `State: object N is an effect (type 1 fireball,
+  vclip V, ...)` or `State: object N type T id I NAME has the illegal segment S`.
 - The cause of each level change: `Level change: DTU.WRP line ...` (the warp line, its
   source and destination segments), `Level change: script command teleport PC ...`, or
   the exit of the inn to Waterdeep. A direct start (`-level NAME`) logs its start

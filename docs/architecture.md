@@ -64,6 +64,7 @@ comments.
 | `dtudisp.c` | The in-game interface: play screen, buttons, cursor, message box, the screens that open during play. Replaces the cockpit and HUD. | `re/ingame-ui.md` |
 | `dtuscroll.c` | The text screen of the Scroll. | `re/ingame-ui.md` |
 | `dtudesc.c` | The description window of items and spells (right click). New in the port. | `description_window.md` |
+| `dtuxp.c` | The experience of the player: the kill line, the next level window, the verbose combat log, the session log lines of deaths, awards and levels. New in the port. | `debug_logs.md` |
 | `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
 | `dtufe.c` | The front end: frame, input, `-fescript`, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
 | `dtufe_char.c` | Character generation. | `re/frontend.md` |
@@ -149,6 +150,22 @@ settings, and others). They are in `ascent.cfg`, the menus change them, and
 `-noimprovements` turns them all off. To add one, add the variable to
 `dtuopts.c` and `dtuopts.h` and a line to the table `Opts[]` of
 `dtuopts.c`.
+
+The experience and combat log improvements (`dtuxp.h`):
+
+| Setting | Default | `ascent.cfg` | One run | Menu |
+|---|---|---|---|---|
+| `Dtu_kill_xp_message`: the kill line shows the experience ("You killed Ghoul: 175 Exp (87 per class)."), and a death by another cause that the player sees says "no experience". Off: the 1.3 line "You killed X." | on | `KillXpMessage` | `-killxpmessage`, `-nokillxpmessage` | none |
+| `Dtu_max_hp_level_up`: a level that rolls its hit die (0xAF694) gets the full die. The constitution bonus, the fixed hit points of the high levels and the half for two classes (0xAF86F) stay. A new character and statement 9F (0x8BA3A) already get the full die in 1.3. | off | `MaxHpOnLevelUp` | `-maxhplevelup`, `-nomaxhplevelup` | Maximum HP on level up |
+| `Dtu_verbose_combat`: after the hit or miss message of an attack by or on the player, one line with the numbers: "Roll d20 14 +1 bonus = 15 vs 13: hit. Damage 1d8 5 +2 strength = 7." The number after "vs" is THAC0 minus the armor class in use. | off | `VerboseCombatLog` | `-verbosecombat`, `-noverbosecombat` | Verbose combat log |
+
+A right click on the experience field of the interface screens or on a
+class line of the statistics screen opens the next level window
+(description window): the experience of each class and of its next level
+(table 0x146048). The test aids: `swingat=N` (a swing of the player that
+touches creature N), `killby=N.A` (creature A kills creature N), `descxp`,
+`class2=N`. `tools/questtest.py` (kill_*, max_hp_*, verbose_combat_*) and
+`tools/uitest.py` (test_next_level_window) test them.
 
 `Dtu_fix_lowres_aspect` (`dtuopts.c`) is the shape of the 320x200 frame
 of the low resolution in the window. It is off by default: square pixels
