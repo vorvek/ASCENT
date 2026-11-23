@@ -82,6 +82,7 @@ void init_creature_ai(object *obj)
 	dtu_ai_local *ail = &Ail[objnum];
 	ai_static *aip = &obj->ctype.ai_info;
 	monster_info *mi = &Monster_info[obj->id];
+	int old_morale = ail->morale;
 
 	memset(ail,0,sizeof(*ail));
 	ail->last_logged_state = -1;
@@ -97,6 +98,10 @@ void init_creature_ai(object *obj)
 	ail->awareness = 0;
 	ail->awareness_time = i2f(3);
 	ail->morale = (mi->ai_values[0][Difficulty_level] + mi->ai_values[1][Difficulty_level]) / 2;
+	// Dtu_fix_ai_init (D-111): 0x1065D skips the robots at 0x10685, so a
+	// creature of the level file keeps the morale of its object number
+	if (!Dtu_fix_ai_init && Level_setup_pass && !ail_keep_bits)
+		ail->morale = old_morale;
 	ail->anim_start = ail->time_player_seen = ail->regen_time = GameTime;
 
 	vm_vec_zero(&obj->mtype.phys_info.velocity);
@@ -115,6 +120,14 @@ static void add_npc(object *obj)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	ai_static *aip = &obj->ctype.ai_info;
+
+	// The entry of the NPC list (dtucombat.c). With Dtu_fix_npc_list 0 a
+	// full list ends 0xAC431 at once (0xAC448): no hostility, awareness,
+	// target and states for the new creature.
+	if (!dtu_combat_npc_list_add(obj) && !Dtu_fix_npc_list) {
+		dtu_obj_log("add_npc (0xAC431): obj %d %s, the NPC list is full (Dtu_fix_npc_list 0)",(int)(obj-Objects),dtu_object_name(obj));
+		return;
+	}
 
 	// add_npc (0xAC431, code):
 	// 1. A script id that does not belong to the level is cleared: the id
@@ -892,6 +905,8 @@ void level_start_npcs(int setup)
 	short list[DTU_NPC_LIMIT];
 	int i, n = 0;
 
+	dtu_combat_npc_list_clear();		// 0xAD779
+
 	for (i=1;i<=Highest_object_index;i++) {
 		object *obj = &Objects[i];
 
@@ -909,8 +924,10 @@ void level_start_npcs(int setup)
 			break;
 		}
 		list[n++] = i;
-		if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI)
+		if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI) {
+			dtu_combat_npc_list_add(obj);		// 0xAD7C4 for an object with a script
 			continue;
+		}
 		add_npc(obj);
 		// Dtu_fix_guild_peace: the peace of quest flag 67 stays
 		if (Dtu_fix_guild_peace && !Level_setup_restore && dtu_script_gflag(67) && obj->id < N_robot_types

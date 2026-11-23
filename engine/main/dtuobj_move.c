@@ -515,6 +515,14 @@ void dtu_creature_physics_sim(object *obj)
 					wall_open_door(&Segments[hit.hit_side_seg],hit.hit_side);
 				}
 			}
+			// D-181: 0x25D35 to 0x25D43 of collide_robot_and_wall: a type
+			// with the flag 0x20 of Robot_info+0x98 (flying) gets 0 in the
+			// circle distance of the difficulty (Robot_info+0x48, the
+			// third group of $MONSTER_AI, turn_time in the port), for all
+			// creatures of the type, until the tables are read again.
+			// Dtu_fix_wall_circle (dtuobj.c) keeps the table.
+			if (!Dtu_fix_wall_circle && obj->type == OBJ_ROBOT && obj->id < N_robot_types && (Monster_info[obj->id].flags & MONSTER_F_FLYING))
+				Robot_info[obj->id].turn_time[Difficulty_level] = 0;
 
 			if (imp) {
 				// Dtu_improved_pathfinding: the body goes to the point where

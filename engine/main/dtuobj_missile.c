@@ -179,6 +179,7 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 	if (spell >= 0)
 		dtu_spell_template_used(weapon_type);		// 0x571B2: the template is magic
 	m->bounce = bounce;
+	m->pass_obj = -1;
 
 	// The time to live. The port keeps it here: the object code of
 	// Descent 1 would explode a weapon with a damage radius at its end.
@@ -222,26 +223,46 @@ void dtu_missile_set_life(int objnum, fix life)
 // 0x93294: the burst of a weapon with a min_speed (the bomb of a trap):
 // "magnitude" fragments that are drawn as the vclip, with a size of 8.0 to
 // 17.0, in random directions. They bounce.
+// ASCENT: each fragment has the vclip base + rand() % vclip_range (0x932EE
+// to 0x93306: the value goes to Weapon_info.weapon_vclip before obj_create,
+// and 0x93481 to 0x93496 write the base back after the last fragment). The
+// executable divides by a vclip_range of 0 (idiv at 0x93300); the port takes
+// the base then. A failed obj_create leaves at 0x9333B with the random value
+// in the table (D-182); Dtu_fix_burst_vclip (dtuobj.c) writes the base back.
 void dtu_create_burst(int weapon_type, int segnum, vms_vector *pos)
 {
 	int n = weapon_int(weapon_type,"magnitude",0), i;
 	int min_speed = weapon_int(weapon_type,"min_speed",0), range = weapon_int(weapon_type,"speed_range",0);
+	int vrange = weapon_int(weapon_type,"vclip_range",0);
+	short base;
 
+	if (weapon_type < 0 || weapon_type >= N_weapon_types)
+		return;
+	base = Weapon_info[weapon_type].weapon_vclip;
 	if (n > 40)
 		n = 40;
 	for (i=0;i<n;i++) {
 		vms_vector dir;
 		int objnum;
 
+		if (vrange > 0)
+			Weapon_info[weapon_type].weapon_vclip = base + rand() % vrange;
 		make_random_vector(&dir);
 		objnum = dtu_create_missile(&dir,pos,segnum,-1,weapon_type,-1,0);
-		if (objnum < 0)
-			break;
+		if (objnum < 0) {
+			if (Dtu_fix_burst_vclip)
+				Weapon_info[weapon_type].weapon_vclip = base;
+			else
+				dtu_obj_log("burst: weapon %d keeps the vclip %d (Dtu_fix_burst_vclip 0)",weapon_type,Weapon_info[weapon_type].weapon_vclip);
+			dtu_obj_log("burst: weapon %d, %d of %d fragments",weapon_type,i,n);
+			return;
+		}
 		vm_vec_copy_scale(&Objects[objnum].mtype.phys_info.velocity,&dir,i2f(min_speed + (range > 0 ? rand() % range : 0)) / 4);
 		Objects[objnum].size = i2f(8 + rand() % 10);
 		Missile[objnum].bounce = 1;
 		Missile_life[objnum] -= rand() * 2;
 	}
+	Weapon_info[weapon_type].weapon_vclip = base;
 	dtu_obj_log("burst: weapon %d, %d fragments",weapon_type,n);
 }
 
@@ -308,7 +329,7 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	weapon_info *wi = &Weapon_info[obj->id];
 	int weapon = obj->id, spell, sound;
 	object *parent = NULL;
-	fix dealt, hp, spell_dealt;
+	fix dealt = 0, hp, spell_dealt;
 
 	if (m->parent >= 0 && Objects[m->parent].signature == m->parent_sig)
 		parent = &Objects[m->parent];
@@ -385,6 +406,20 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 			sound_at(weapon_int(weapon,"monster_miss_sound",-1),other->segnum,point,F1_0/4);
 	}
 	dtu_xp_cause(NULL);
+	// D-180, Dtu_fix_hit_keep (dtuobj.c): with the rule of the executable a
+	// hit that takes hit points with a weapon whose monster_hit_vclip is
+	// below 0 (0x277CD) skips maybe_kill_weapon, and 0x27883 removes only a
+	// missile that is a model. The rule is applied to a plain missile (no
+	// spell, no bounce, stick or thrown: those take other ways of 0x272DD in
+	// the executable). The kept missile passes the creature that it hit, so
+	// that the port does not hit it again in each frame (guess).
+	if (!Dtu_fix_hit_keep && other->type == OBJ_ROBOT && m->spell < 0 && m->bounce == 0 && dealt > 0 &&
+			wi->robot_hit_vclip < 0 && obj->render_type != RT_POLYOBJ) {
+		m->pass_obj = other-Objects;
+		m->pass_sig = other->signature;
+		dtu_obj_log("missile: obj %d goes on after the hit of obj %d (no monster_hit_vclip, Dtu_fix_hit_keep 0)",(int)(obj-Objects),m->pass_obj);
+		return;
+	}
 	missile_remove(obj);
 }
 
@@ -394,7 +429,7 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 // port tests each body, see weapon_test(). step is the length of the move
 // in this frame. The missile can be a stand in object that is not in the
 // list (dtu_missile_path_target).
-static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,int parent_sig,vms_vector *best_ip)
+static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,int parent_sig,int pass,int pass_sig,vms_vector *best_ip)
 {
 	int j, best = -1;
 	fix best_d = 0x7fffffff, rad_h, rad_v;
@@ -413,6 +448,8 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 		if (o == obj || (o->type != OBJ_ROBOT && o->type != OBJ_PLAYER && o->type != OBJ_DRESSING))
 			continue;
 		if (j == parent && o->signature == parent_sig)
+			continue;
+		if (j == pass && o->signature == pass_sig)		// Dtu_fix_hit_keep
 			continue;
 		if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
 			continue;
@@ -477,7 +514,7 @@ int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int we
 	if (fate != HIT_NONE && fate != HIT_WALL)
 		return -1;
 	end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
-	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,&ip);
+	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,-1,0,&ip);
 }
 
 // The range of a missile weapon: its speed for its life.
@@ -556,7 +593,7 @@ void missiles_frame(void)
 		fate = find_vector_intersection(&fq,&hit);
 		end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
 
-		best = missile_path_object(obj,&end,step,m->parent,m->parent_sig,&best_ip);
+		best = missile_path_object(obj,&end,step,m->parent,m->parent_sig,m->pass_obj,m->pass_sig,&best_ip);
 		if (best >= 0) {
 			missile_hit_object(obj,&Objects[best],&best_ip);
 			if (obj->flags & OF_SHOULD_BE_DEAD)

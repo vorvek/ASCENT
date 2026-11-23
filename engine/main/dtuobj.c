@@ -97,7 +97,47 @@ int Dtu_fix_attack_sound = 1;
 // 0: the rule of the executable: the bit of the BRN file of the level for
 // the two segments (0x9810D). The BRN files of the disc are copies of one
 // matrix that fits no level (docs/formats/brn.md), so the default is 1.
+// With 0 and no BRN file each bit is 0 (D-119): ai_brain_load (0x97774)
+// clears its 80000 byte buffer at 0x977AE and reads nothing when the file
+// does not open (0x977F4), and 0x9810D does not test the flag 0x142958. So
+// no creature sees the player in such a level. The option -origobj clears
+// the setting.
 int Dtu_fix_brain = 1;
+
+// The morale of a creature of the level file (D-111). Original: the
+// Descent 1 init does nothing at a level start: init_ai_objects (0x1065D)
+// skips each robot at 0x10685, and init_ai_object (0x1038B) returns for any
+// other object. A level creature keeps the morale (ai_local +0x28) that
+// its object number had before (from an earlier level, 0 at the start of
+// the program) until its first morale check (0x10ADF), and the script test
+// 0x98 (dtu_script_creature_brave) can read it. Corrected (1, default):
+// the morale is the mean of the flee and the attack value at the setup
+// (init_creature_ai). The option -origobj clears it.
+int Dtu_fix_ai_init = 1;
+
+// A flying creature that walks into a wall (D-181). Original: 0x25D43 in
+// collide_robot_and_wall (0x25CAA) writes 0 to the circle distance of the
+// difficulty (Robot_info+0x48) of its type when the type has the flag 0x20
+// (flying): each creature of the type then comes to the player and does
+// not keep its distance. Corrected (1, default): the table stays. The
+// option -origobj clears it.
+int Dtu_fix_wall_circle = 1;
+
+// A missile that hits a creature (D-180). Original: when the hit takes
+// hit points and the monster_hit_vclip of the weapon is below 0 (0x277CD),
+// collide_robot_and_weapon (0x272DD) skips maybe_kill_weapon (0x2709A),
+// and only a missile that is a model is removed (0x27883). So a missile
+// that is a vclip goes on. Corrected (1, default): each missile goes away
+// at the hit. The option -origobj clears it.
+int Dtu_fix_hit_keep = 1;
+
+// The burst of a weapon (D-182). Original: combat_weapon_burst (0x93294)
+// writes base + rand() % vclip_range to Weapon_info.weapon_vclip before
+// each obj_create (0x93306) and writes the base back at the end (0x93496).
+// When obj_create fails it leaves at 0x9333B before that, so the weapon
+// type keeps a random vclip for its later missiles. Corrected (1,
+// default): the base comes back also then. The option -origobj clears it.
+int Dtu_fix_burst_vclip = 1;
 
 // The corpse of a creature. Original (0x6A48B): at the end of DIE the
 // position goes to the floor by the torso box of the frame, and a creature
@@ -808,8 +848,10 @@ int ray_is_free(vms_vector *p0,int seg0,vms_vector *p1,int objnum)
 // 0x9810D. The bit of the BRN file: segment a sees segment b.
 int brain_bit(int a,int b)
 {
-	if (Dtu_fix_brain || Brain == NULL)
+	if (Dtu_fix_brain)
 		return 1;
+	if (Brain == NULL)		// D-119: the cleared buffer of 0x97774
+		return 0;
 	if (a < 0 || a >= 800 || b < 0 || b >= 800)
 		return 0;
 	return (Brain[a*100 + b/8] >> (b & 7)) & 1;
@@ -849,7 +891,7 @@ int creature_ray_to_player(object *obj)
 // Piece 0x14): the brain bit; with Dtu_fix_brain a ray.
 int dtu_brain_sees_player(object *obj)
 {
-	if (!Dtu_fix_brain && Brain)
+	if (!Dtu_fix_brain)
 		return brain_bit(obj->segnum,ConsoleObject->segnum);
 	return ray_is_free(&obj->pos,obj->segnum,&ConsoleObject->pos,obj-Objects);
 }
@@ -861,7 +903,7 @@ int player_is_visible(object *obj)
 	// 0x165C4: Hide In Shadows hides the player (dtuthief.c)
 	if (dtu_thief_hidden_from(obj))
 		return 0;
-	if (!Dtu_fix_brain && Brain)
+	if (!Dtu_fix_brain)
 		return brain_bit(obj->segnum,ConsoleObject->segnum);
 	return ray_is_free(&obj->pos,obj->segnum,&ConsoleObject->pos,obj-Objects);
 }
@@ -876,7 +918,8 @@ void dtu_objects_init(void)
 	if (FindArg("-noobjects"))
 		Dtu_objects_enabled = 0;
 	if (FindArg("-origobj"))
-		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain =
+		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain = Dtu_fix_ai_init =
+			Dtu_fix_wall_circle = Dtu_fix_hit_keep = Dtu_fix_burst_vclip =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =

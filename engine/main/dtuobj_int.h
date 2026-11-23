@@ -117,6 +117,7 @@ typedef struct dtu_missile {
 	ubyte		bounce;					// weapon +0x0A: 1 bounce, 2 stick, 3 thrown
 	ubyte		harmless;				// object flag 0x20
 	fix		tumble_acc;
+	int		pass_obj, pass_sig;	// ASCENT: Dtu_fix_hit_keep, the creature that a kept missile passes. -1: none
 } dtu_missile;
 
 //------------------------------------------------------------------------
