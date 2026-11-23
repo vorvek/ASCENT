@@ -695,6 +695,12 @@ Settings (globals in dtuscript.c):
   in its own list, so the load (`dtu_ai_from_image`) makes the path to the
   goal segment again, and a creature with a script whose station (+0x14C)
   is its goal (both set by `E5`) walks on and runs its script at the end.
+  The port marks the walk in ai_local +0x02 (consecutive_retries, which
+  1.3 does not use): the station and the goal alone do not tell a walk.
+  The door opener (0x14AF2) gives a still creature that sees the player a
+  random path in mode 2 and leaves the goal segment 0, so the NPCs of
+  YPINN with the station 0 (objects 27, 28 and 30) walked to segment 0, in
+  front of the exit, after each restore of the inn. In 1.3 they stay.
   Doors on the path: the door opener of the AI (0x14AF2) sends a creature
   with the door bit in mode 2 to any closed door of its segment (mode
   OPENDOOR), which ended the walk; a walker is not sent there and opens a

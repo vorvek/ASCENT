@@ -632,6 +632,19 @@ static void create_path(object *obj)
 	path_set(obj,find_path(obj,obj->segnum,ail->goal_segment,ail->path,DTU_PATH_MAX,-1,0,-1),1);
 }
 
+// ASCENT: test (-chartest aipath=N.SEG): creature N gets a random path in
+// mode 2 with the goal segment SEG, as the door opener (0x14AF2) leaves it
+void dtu_obj_test_ai_path(int objnum,int seg)
+{
+	object *obj = &Objects[objnum];
+
+	if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI)
+		return;
+	Ail[objnum].goal_segment = seg;
+	create_n_segment_path(obj,8,-1);
+	dtu_obj_log("test: obj %d %s: mode %d, goal seg %d",objnum,dtu_object_name(obj),Ail[objnum].mode,seg);
+}
+
 // 0x170BC create_path_to_player
 static void create_path_to_player(object *obj,int max_length)
 {
@@ -2339,6 +2352,9 @@ void dtu_ai_to_image(int objnum, ubyte *al, ubyte *img)
 
 	al[0x00] = ail->awareness;
 	al[0x01] = ail->retry_count;
+	// ASCENT: the port marks a script walk in the byte that 1.3 does not
+	// use (consecutive_retries), see dtu_ai_from_image
+	al[0x02] = ail->script_walk == 1 ? 1 : 0;
 	al[0x03] = ail->mode;
 	al[0x04] = ail->previous_visibility;
 	al[0x05] = ail->flags;
@@ -2422,12 +2438,16 @@ void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img)
 	// (0xAA74E) makes the segment both the station (+0x14C) and the goal
 	// (ai_local +0x06) of a creature with a script; the bits 0x30 that
 	// 0xAA810 sets do not mark it, the end of an animation state clears
-	// them.
+	// them. So the port marks the walk in ai_local +0x02 (dtu_ai_to_image).
+	// The station and the goal alone do not tell a walk: the door opener
+	// (0x14AF2) gives a creature mode 2 with the goal segment 0, and the
+	// creatures of the inn with the station 0 then walked to segment 0, in
+	// front of the exit, after each restore of YPINN.
 	if (al[0x03] == DAIM_FOL_PATH && ail->goal_segment >= 0 && ail->goal_segment <= Highest_segment_index &&
 		 DTU_ANIM_STATE(obj) != DAS_DIE) {
 		ail->mode = DAIM_FOL_PATH;
 		create_path(obj);
-		if (aip->hide_segment == ail->goal_segment && (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) != 0) {
+		if (al[0x02] == 1 && aip->hide_segment == ail->goal_segment && (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) != 0) {
 			extern int Dtu_fix_script_walk;		// dtuscript.c
 
 			dtu_script_walk_start(obj,Dtu_fix_script_walk);

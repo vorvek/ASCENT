@@ -98,6 +98,13 @@ TESTS = [
     T("prison_walk103", "PRISON", "5:give=16.59,10:goobj=21.20,15:talk=21,300:obj=21",
       [r"walk to seg 428\s", r"obj 21 hffg1: opens the door seg 607 side 5", r"f300 +obj 21: type 2 id 18 seg (?!607 )\d+ .* anim 2"],
       frames=310, extra=["-noattack", "-objlog", "prison_walk_obj.log"]),
+    # The NPCs of YPINN stay at their places after a load. The door opener
+    # (0x14AF2) can leave objects 28 and 30 in mode 2 with the goal segment
+    # 0, which is also their station; that is no walk of a script.
+    T("inn_npcs_stay_load", "YPINN",
+      "10:aipath=28.0,10:aipath=30.0,20:save=3,30:load=3,600:obj=28,600:obj=30",
+      [r"f600 +obj 28: type 2 id 6 seg 55 ", r"f600 +obj 30: type 2 id 5 seg 143 "], [r"walk: obj"],
+      frames=610, extra=["-noattack"]),
     # Script 22 (objects 20, 21, 22, label 400): statement EE runs the
     # script of the other two, so the three walk at the same time.
     T("kobolds_walk3", "KOBOLDS",
