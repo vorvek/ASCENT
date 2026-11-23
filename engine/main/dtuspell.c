@@ -2278,6 +2278,15 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 
 		if (o->type == OBJ_NONE || (o->type != OBJ_PLAYER && o->type != OBJ_ROBOT && !any))
 			continue;
+		// ASCENT: Dtu_fix_revive: the area reaches the fallen body of a
+		// creature that can get up; fire or acid destroys it
+		if (dtu_creature_down(o)) {
+			if (vm_vec_dist(&o->pos,pos) <= radius && point_sees(pos,segnum,o)) {
+				dtu_creature_down_spell(o,caster,spell,level);
+				n++;
+			}
+			continue;
+		}
 		if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED|OF_EXPLODING))
 			continue;
 		if (o->type == OBJ_PLAYER && o != ConsoleObject)

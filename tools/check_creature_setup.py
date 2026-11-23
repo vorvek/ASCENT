@@ -23,7 +23,14 @@ abilities of docs/audit/monsters.md instead, with -chartest:
   - the touch spell of the lich (0x2A637): attackedby=10 in CLAN3 casts
     spell 22 (Hold Person) on the player;
   - the revive (0x1440C, Dtu_fix_revive): kill=1 in MINE, the troll gets up
-    with all hit points; with -origrevive it stays dead;
+    with all hit points and gives no experience; with -origrevive it stays
+    dead. Fire before the death, Fireball on the fallen body (area=16.1),
+    the Flame Tongue on the fallen body (hitbody=1) and a sword that cuts
+    the body apart destroy it with the experience one time; the save and
+    the load keep a fallen troll and a destroyed one;
+  - the hidden player (0x12BE8, 0x15FBC, audit C20): the ghast of CLAN3
+    does not see an invisible player and believes it at a place that moves
+    at random from the place of the last alert;
   - the group alert (0x160AB): goobj=13 in CLAN3, the player runs into the
     ghast, which wakes the creatures that see its segment.
 
@@ -130,12 +137,67 @@ def check_abilities(args):
     assert touch and held, "touch spell: %d casts, %d holds" % (len(touch), len(held))
     print("touch spell: %d casts of spell 22 by the lich, %d hold" % (len(touch), len(held)))
 
-    lines = run_test(args, "revive", "MINE", 4000, "5:kill=1")
+    xp = "xp: obj 1 Troll gives"
+    lines = run_test(args, "revive", "MINE", 4000, "5:kill=1,3500:kill=1")
     up = [l for l in lines if "obj 1 Troll: gets up again with 54 hit points" in l]
     assert up, "revive: the troll did not get up"
+    assert not [l for l in lines if xp in l], "revive: a troll that can get up gave experience"
     lines = run_test(args, "revive-orig", "MINE", 4000, "5:kill=1", ["-origrevive"])
     assert not [l for l in lines if "gets up again" in l], "revive: the troll got up with -origrevive"
-    print("revive: the troll gets up (%s); with -origrevive it stays dead" % up[0].split()[0])
+    print("revive: the troll gets up (%s) and gives no experience, also at the second fall; with -origrevive it "
+          "stays dead" % up[0].split()[0])
+
+    # Dtu_fix_revive: fire before the death, fire on the fallen body (the area
+    # of Fireball), the Flame Tongue (weapon 71) on the fallen body, and a
+    # sword (weapon 33) that cuts the fallen body apart: each destroys the
+    # troll for good with its experience one time
+    hack = ",".join("%d:hitbody=1" % f for f in range(200, 500, 10))
+    for name, script, how in (
+            ("burn-alive", "5:area=16.1,6:kill=1,300:area=16.1,400:kill=1", None),
+            ("burn-down", "5:kill=1,200:area=16.1,300:area=16.1,400:kill=1", "fire or acid"),
+            ("flame-tongue", "4:give=5.71,5:current=5.71,6:kill=1,200:hitbody=1,250:hitbody=1", "fire or acid"),
+            ("cut-apart", "4:give=5.33,5:current=5.33,6:kill=1," + hack, "cut apart")):
+        lines = run_test(args, name, "MINE", 600, script)
+        gain = [l for l in lines if xp in l]
+        assert len(gain) == 1, "%s: %d experience awards" % (name, len(gain))
+        if how:
+            assert [l for l in lines if "the fallen body is destroyed (%s" % how in l], "%s: not destroyed" % name
+        else:
+            assert not [l for l in lines if "keeps its regeneration" in l], "%s: the burned troll can get up" % name
+        print("revive: %s: destroyed for good, experience one time" % name)
+
+    # the save and the load of a level with a fallen troll: the regrown hit
+    # points stay; a destroyed troll stays dead
+    lines = run_test(args, "revive-save", "MINE", 450,
+                     "4:give=5.33,5:current=5.33,6:kill=1,200:hitbody=1,300:save=1,400:load=1")
+    kept = [l for l in lines if "loaded fallen: obj 1 Troll, regrown hp -" in l]
+    assert kept, "revive: the fallen troll lost its state in the save"
+    lines = run_test(args, "revive-save-dead", "MINE", 450, "5:area=16.1,6:kill=1,300:save=2,400:load=2")
+    assert [l for l in lines if "loaded dead: obj 1 Troll" in l], "revive: no load of the dead troll"
+    assert not [l for l in lines if "loaded fallen: obj 1" in l], "revive: the burned troll can get up after a load"
+    print("revive: the save keeps a fallen troll (%s) and a destroyed one" % kept[0].split("regrown ")[1])
+
+    # the hidden player (audit C20, 0x12BE8, 0x15FBC): the ghast of CLAN3
+    # sees the player, then the player is invisible (effect bit 17). The
+    # ghast never sees the player again, it loses the player at the sight test
+    # of 0x14206, and it believes the player at a place that moves at random
+    # (at most 8.0 for each second). The death of the skeleton (obj 5) is an
+    # alert of level 4 (0x6A45A), which puts the believed place at the player.
+    lines = run_test(args, "hidden", "CLAN3", 500, "3:goobj=13.30,60:fx=17.600,100:kill=5")
+    frame = lambda l: int(l.split()[1])
+    seen = [l for l in lines if "obj 13 Ghast: sees the player" in l]
+    assert seen and all(frame(l) < 60 for l in seen), "hidden: the ghast sees the invisible player"
+    assert [l for l in lines if "obj 13 Ghast: lost the player" in l and frame(l) > 60], "hidden: the ghast keeps the player"
+    reset = [l for l in lines if "believed position: at the player" in l and frame(l) > 100]
+    assert reset, "hidden: no reset of the believed place by the alert"
+    t0, p0 = float(reset[0].split()[0]), [float(x) for x in reset[0].split("player ")[1].split()[:3]]
+    moves = [l for l in lines if "obj 13 Ghast: believes the hidden player at" in l and float(l.split()[0]) > t0]
+    assert moves, "hidden: the ghast has no believed place"
+    t1, p1 = float(moves[0].split()[0]), [float(x) for x in moves[0].split(" at ")[1].split()[:3]]
+    d = sum((a - b) ** 2 for a, b in zip(p0, p1)) ** 0.5
+    assert 0 < d <= 8 * (t1 - t0) + 1, "hidden: the believed place moved %.1f in %.2f s" % (d, t1 - t0)
+    print("hidden: the ghast does not see the invisible player, loses it, and believes it %.1f away from the "
+          "alert after %.1f s (%d moves)" % (d, t1 - t0, len(moves)))
 
     lines = run_test(args, "alert", "CLAN3", 30, "3:goobj=13")
     woken = [l for l in lines if "alert: level 3 from obj 13 Ghast wakes" in l]

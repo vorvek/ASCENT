@@ -54,6 +54,14 @@ extern int Dtu_fix_missile_rate;
 // target hint) reach a rat. The player still walks through rats.
 extern int Dtu_fix_rat_hit;
 
+// The body test of a missile (0x3EE70 with 0x4F7D5): the infinite cylinder
+// test 0x4F4B6 fails when the entry distance is below 0, before the caps
+// clip the ray. So a missile that starts above a body and within its radius
+// (a steep shot down at a low or wide creature from close range) misses it,
+// though the swing reaches it. Corrected: for a missile the caps decide (the
+// ray enters through the top). -origcombat gives the rule of 1.3.
+extern int Dtu_fix_body_ray;
+
 // Turn undead (0xADC46). When the number of creatures that a turn can
 // destroy is used up, the executable clears the "can be tried" bit of the
 // next undead before it stops (0xADF09), so that creature can never be

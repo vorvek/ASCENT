@@ -848,6 +848,8 @@ int check_vector_to_sphere_1(vms_vector *intp,vms_vector *p0,vms_vector *p1,vms_
 // runs in the x-z plane, then the height of the hit point is compared.
 // The fvi of DTUGAME.EXE (0x3EFD9) was not read for this, so the form of
 // the test is a guess. The sizes are those of the executable (0x748D9).
+// ASCENT: a missile against a creature uses dtu_body_query_test below, the
+// test of the executable (missile_path_object in dtuobj.c).
 #include "dtugame.h"
 #include "dtuobj.h"
 #include "dtucombat.h"	// ASCENT: Dtu_fix_rat_hit
@@ -863,6 +865,10 @@ int Fvi_dtu_inside_hits = 0;
 // ASCENT: set by the caller for the test of an attack of the player: the
 // swing (dtucombat.c) and the flight of a missile of the player (dtuobj.c).
 int Fvi_dtu_player_attack = 0;
+
+// ASCENT: set by the caller for the test of a missile (missile_path_object
+// in dtuobj.c): Dtu_fix_body_ray applies.
+int Fvi_dtu_missile = 0;
 
 // "pass_thru" of the table line of a creature: the executable sets the flag
 // 0x40 of such a creature (0x6A102), and each query skips objects with that
@@ -1118,7 +1124,11 @@ fix dtu_body_query_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad_h
 			s = fabs(sqrt(R*R - dist*dist) / oc);
 			tin = t - s;
 			tout = t + s;
-			if (tin < 0 || tout < 0)
+			// 0x4F4B6 fails for an entry at a negative distance: a ray that
+			// starts above the body and within its radius misses.
+			// ASCENT: Dtu_fix_body_ray (dtucombat.h): for a missile the caps
+			// decide, as in the method of Cychosz and Waggenspack.
+			if (tout < 0 || (tin < 0 && !(Fvi_dtu_missile && Dtu_fix_body_ray)))
 				return 0;
 		}
 

@@ -20,9 +20,14 @@ A creature that a wall hides at each distance, or that another creature
 in front of it hides from each swing, is skipped. Each other
 creature must be the first contact of the swing at one of the distances,
 and the target hint must follow the rule on each frame that the swing
-touches it. The missile is counted, not checked: the body test of a missile
-(dtu_check_vector_to_object in fvi.c) takes the height at the edge of the
-body, so a steep shot down at a low creature can miss it.
+touches it. On each frame that the swing reaches the creature, a missile on
+the same line must not miss (it reaches the creature, or another creature
+in front of it): the body test of a missile is the ray against the capped
+cylinder of the body (0x3EE70, 0x4F7D5, dtu_body_query_test in fvi.c). In
+1.3 a ray that starts above a body and within its radius misses it
+(0x4F4B6); the correction Dtu_fix_body_ray lets it enter through the top,
+so a steep shot down at a low or wide creature hits. With --origcombat the
+missile part fails for such creatures.
 
 The rats have pass_thru: without the correction Dtu_fix_rat_hit
 (--origcombat, the rules of 1.3) no attack reaches them, so the check fails
@@ -81,6 +86,14 @@ def check_one(args, work, extra, n, name, seg, size):
     melee = any(int(m.group(6)) == n for m in seen)
     missile = any(int(m.group(7)) == n for m in seen)
     hint = all(m.group(8) == m.group(9) for m in seen if int(m.group(6)) == n)
+    # a missile on the same line must reach each creature that the swing
+    # reaches at that distance (another creature in front of it may take the
+    # missile: not a failure)
+    missed = [m for m in seen if int(m.group(6)) == n and int(m.group(7)) < 0]
+    if missed:
+        return ("FAIL %s obj %d %s: the swing reaches it, the missile misses: %s" % (
+            args.level, n, name, " | ".join("d %s up %s m %s" % (m.group(4), m.group(10), m.group(7)) for m in missed)),
+            False, missile)
     if melee and hint:
         return None, False, missile
     # another creature in front of it takes each swing: not a failure

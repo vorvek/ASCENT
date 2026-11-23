@@ -173,6 +173,12 @@ extern int Dtu_fix_guild_peace;
 // of AD&D 2nd edition does). A troll that took fire or acid damage stays
 // dead and gives its experience. The options -origobj and -origrevive clear
 // it. See docs/re/ai.md, "Regeneration and revive".
+// ASCENT: with the setting, a creature that falls and can get up gives no
+// experience and is not counted as a kill. It is destroyed for good, with
+// its experience one time, when fire or acid hurts the fallen body (the
+// troll of the Monstrous Compendium) or when weapons hack the fallen body
+// apart (damage equal to its full hit points while it is down). See
+// docs/audit/monsters.md, "Dtu_fix_revive".
 extern int Dtu_fix_revive;
 
 // The hatchling of DROW5 (object 83) at the level fixes (0xAD2A1).
@@ -529,5 +535,25 @@ void dtu_creature_drop_contents(object *obj);
 void dtu_creature_vanish(object *obj);
 // 1 if the creature is active (+0x1CC == 2).
 int dtu_creature_is_active(object *obj);
+
+// ASCENT: Dtu_fix_revive. 1 if obj is the fallen body of a creature that
+// can get up again (dying or lying down, the regeneration bit kept).
+int dtu_creature_down(object *obj);
+// A hit on such a body: damage of weapons (hacks the body), burn 1 for fire
+// or acid (destroys it). The attacker gets the experience.
+void dtu_creature_down_hit(object *obj, object *attacker, int damage, int burn);
+// A spell on such a body (an area spell that reaches it): the dice of the
+// spell; fire or acid destroys it.
+void dtu_creature_down_spell(object *obj, object *caster, int spell, int level);
+// The swing of the player hits such a body (dtucombat.c): no roll (the body
+// is helpless), the damage of the weapon; fire of the weapon destroys it.
+void dtu_creature_down_swing(object *obj, int weapon);
+// The hit points of a creature in the level state file (+0x6C). A fallen
+// body that can get up keeps its regenerated hit points there as
+// regen_hp - (max + 1), a value below 0, so that it loads dead.
+fix dtu_creature_saved_shields(object *obj);
+// The query radii of a moving object (0x748D9 for the object of the query,
+// outputs edx and ebx): rad_h, rad_v of the body test 0x4F7D5.
+void dtu_query_radii(object *obj, fix *rad_h, fix *rad_v);
 
 #endif

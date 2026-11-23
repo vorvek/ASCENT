@@ -1220,7 +1220,13 @@ static int sc_term(sc_run *r)
 			v = t >= 0 ? Dtu_triggers[t].on != 0 : 0;
 			break;
 		}
-		case 0xC9: v = obj_dead(num(r)); break;
+		case 0xC9: {
+			// ASCENT: Dtu_fix_revive: the fallen body of a creature that can
+			// get up is not dead yet. No script of GABE tests a troll.
+			int n = num(r);
+			v = obj_dead(n) && !dtu_creature_down(obj_num(n));
+			break;
+		}
 		case 0xD0: {
 			int t = item_type(rd(r)), id = num(r);
 			v = (t == 0xA8) ? 1 : (t >= 0 ? carries(r, t, id) : 0);

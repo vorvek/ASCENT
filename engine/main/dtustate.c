@@ -644,7 +644,9 @@ static void obj_to_image(int objnum, ubyte *b)
 	pmat(b + 0x20, &o->orient);
 	pmat(b + 0x44, &o->dtu.orient_copy);
 	put32(b + 0x68, o->size);
-	put32(b + 0x6C, o->shields);
+	// ASCENT: a fallen body that can get up keeps its regrown hit points
+	// (Dtu_fix_revive, dtu_creature_saved_shields)
+	put32(b + 0x6C, o->type == OBJ_ROBOT ? dtu_creature_saved_shields(o) : o->shields);
 	pvec(b + 0x70, &o->last_pos);
 	b[0x7C] = o->contains_type;
 	b[0x7D] = o->contains_id;

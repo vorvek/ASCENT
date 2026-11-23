@@ -183,7 +183,7 @@ of YPINN (200 hit points, str 19, 10000 XP).
 | all | alert of a rest place | 0x3E2C1 | `dtu_char_rest` | Fixed, df15f2e |
 | all | alerts of level 2 when the player runs into scenery or a wall fast, and of the burst 0x93294 | 0x26142, 0x26194, 0x2668E, 0x93477 | none | Open, small |
 | all | alert of the player bump in the move code | 0x9E70D | the collision of the port (0x2707A) | Same in effect: the port has one collision path |
-| all | hidden or invisible player: chase toward a believed position that moves at random (16.0 per 2.0 s), set by the events of type 2 to 4 | 0x12BE8, 0x15FBC | none: a hidden player is not seen at all | Open, medium (audit C20, sweep G4) |
+| all | hidden or invisible player: chase toward a believed position that moves at random (16.0 per 2.0 s), set by the events of type 2 to 4 | 0x12BE8, 0x15FBC | `cloak_position`, `cloak_reset` (dtuobj.c) | Same, see "Hidden player" below (audit C20, sweep G4) |
 | all | Chill Touch of a creature on another creature | 0x29E3D | none | Open, small (C18; creatures fight each other only in scripts) |
 | all | agitation counter | 0x167174 | none | Not ported (no reader in the AI found) |
 | all | pathing through doors, the door bit | 0x1686D, 0x14AF2, 0x25CAA | `create_path`, door opener | Same (ai.md, "Paths") |
@@ -209,11 +209,98 @@ Edition. The options `-origobj` and `-origrevive` give the 1.3 rule. Test:
 `check_creature_setup.py --abilities` (MINE, troll obj 1: up after 56.6 s
 with 54 hit points; with -origrevive it stays dead).
 
+What the revive code of 1.3 tests (0x1440C to 0x14655, read in the
+pseudocode of `do_ai_frame`): `regeneration` of the type not 0, the status
+bit 0x01000000, the time since the last step, the hit points (+0x6C) below
+or at the maximum, the last frame of DIE, and the distance of the player.
+It tests no damage type, no hit on the body, no lower limit of the hit
+points, no time limit and no count of revives. Only the clear of the bit
+ends it: fire damage of a weapon (0x2B5D4, the Flame Tongue against a
+regenerating target 0x2B1FA, the fire dice of a weapon 0x2B327) and fire or
+acid damage of a spell (0x91BC3). The experience test of the death in
+0x29A9C (0x4EA50 only when the bit is clear) comes before the clear at
+0x2A1ED.
+1.3 counts each death in the kill counters (0x1D33AB, 0x1D33AD).
+
+The rules of the port with the setting (Monstrous Compendium 1, Troll: only
+fire and acid cause permanent damage; a troll at 0 hit points or less that
+is burned or put in acid is killed for good; a cut apart troll regrows from
+its largest piece):
+
+- A creature that falls with the bit gives no experience and no kill, and
+  the log says "Troll falls, but it is not dead." When it gets up: "Troll
+  gets up again." (Spanish in engine/lang/es_port.catalog).
+- Fire or acid damage before the death clears the bit (1.3): the death is
+  final and gives the experience.
+- Fire or acid on the fallen body destroys it: the area of a spell
+  (Fireball, Produce Fire, the Wand of Fireballs; `dtu_spell_area`) and the
+  swing of the Flame Tongue (+2 fire against a regenerating target) on the
+  body (`dtu_creature_down_swing`). The swing of the player now reaches a
+  fallen body that can get up, with no roll (the body is helpless).
+- Other damage on the fallen body takes away the hit points that it regrew;
+  damage equal to its full hit points while it is down (54 for a troll)
+  cuts it apart for good. This is the way of a fighter or a thief with no
+  fire: the game has no oil, no torch and no fire arrow, and no level with
+  trolls places a fire item for these classes.
+- The destruction gives the experience and the kill one time
+  (`creature_destroyed`), also when it comes while the body is down.
+- The script test "dead" (0xC9) is 0 for a fallen body that can get up. No
+  script of GABE.RLH tests a troll, so no quest waits for one.
+- The level state keeps a fallen body: the regrown hit points go into +0x6C
+  as regen_hp - (max + 1), a value below 0 (`dtu_creature_saved_shields`); a
+  dead creature of a restored level keeps the bit of the file, so a
+  destroyed troll stays dead. The swing hit on a body, the area spells and
+  the save are in `check_creature_setup.py --abilities`.
+
+Not changed: a missile (arrow, bolt, Melf's Acid Arrows, Burning Hands)
+does not hit a fallen body. Halaster (FLAME object 17, `regeneration` 1 from
+the level fixes) and Mirt of the inn would get up as well.
+
+The regenerating creatures of the levels (setup log of all levels): MINE
+obj 1 (Troll, peaceful by the level fixes), DROW2 obj 32, 33, 35, DROW3 obj
+28, 56, 57, 58, 105 to 108 (Troll), BEHOLDER obj 18 (Troll), 50, 51, 79, 80
+(armTroll), BEHOLDR2 obj 30, 31, 52, 53, 62, 87, 90, 91 (armTroll), 89
+(Troll). Fire and acid that the levels place: Fireball scrolls (THIEF1,
+BANE, MINE, MULHOR1, MULHOR2, CLAN1), Melf's Acid Arrows (MULHOR1, DROW4),
+Flaming Sphere (DROW3), the Wand of Fireballs (CLAN2, BEHOLDER, carried by a
+creature in DROW1). The scrolls and the wands are for a mage or a cleric.
+The Flame Tongue (fighter and thief) is only in the market: list 5 of the
+rewards (0x13F506), added at mission 14, before DROW2, DROW3 and the
+BEHOLDER levels. Lava does no damage in 1.3 (`scrape_object_on_wall` has no
+caller), and no trap near a troll was found.
+
+## Hidden player
+
+The original (0x12BE8, verified in the assembly): when the player is hidden
+from the creature (0x165C4) or the creature has the status bit 4, the entry
+`objnum % 8` of `Ai_cloak_info` moves each 2.0 s by a random unit vector
+(flat; in three directions when the player has the effects 0x200800 or
++0x1AE bit 0x80) times 8 times the time since its last move, and the
+creature uses it as the player: the distance, the turn, the walk, and the
+attack (0x1293D: the attack choice also when the creature does not face the
+place). Its sight is the brain bit (0x109E7). `add_awareness_event`
+(0x16055) puts all entries at the player for the types 2, 3 and 4 (0x15FBC).
+The sight test of an active creature (0x14206, about one tick in 20) also
+tests 0x165C4 and makes the creature inactive, so 1.3 loses a hidden player
+soon; an inactive creature turns to the believed place.
+
+The port does the same, with these rules for the invisibility (C1): the
+sight is a ray to the believed place, the creature never makes a path to
+the segment of the player, a creature that shoots aims at the believed
+place, and a touch needs the real distance. The start value of the entries
+in 1.3 was not found; the port puts them at the player at each level start.
+The bit 0x80 of the player +0x1AE has no place in the port. Test:
+`check_creature_setup.py --abilities` (CLAN3, the ghast).
+
 ## Tests
 
 - `python -I tools/check_creature_setup.py --exe EXE --datadir ... --work
-  DIR --abilities`: the touch spell, the revive (and -origrevive) and the
-  group alert.
+  DIR --abilities`: the touch spell, the revive (and -origrevive, the
+  experience, fire, the Flame Tongue, the cut, the save), the hidden player
+  and the group alert.
 - `-chartest kill=OBJNUM`: the player kills a creature (new test command).
+- `-chartest area=SPELL.OBJ`: the area of a spell of the player at object
+  OBJ. `-chartest hitbody=OBJ`: the weapon in the hand hits the fallen body
+  OBJ.
 - `-chartest attackedby=10` in CLAN3: the lich casts Hold Person
   ("Hold Person cast on You by Lich for 4 minutes.").
