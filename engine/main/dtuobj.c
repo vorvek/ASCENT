@@ -348,6 +348,8 @@ static int weapon_is_melee(int w);
 static int player_type_sound(char *key);
 static void blood(object *obj);
 static void setup_creature(object *obj);
+static int Level_setup_restore;		// ASCENT: defined below
+static void cloak_reset(void);
 static void morale_check(object *obj);
 static int N_aware_events;		// the awareness events of the frame (0x13A6BC)
 static void player_dies(object *player,object *attacker);
@@ -2067,6 +2069,9 @@ void dtu_objects_level_setup(void)
 
 	Dtu_clock = 0;
 	N_aware_events = 0;
+	// ASCENT: the believed position of a hidden player starts at the player
+	// (C20; the start value of 1.3 was not found)
+	cloak_reset();
 	Ref_tick_count = Ref_ticks_now = 0;
 	Ref_tick_acc = 0;
 	memset(Model_reach,0,sizeof(Model_reach));
@@ -4555,6 +4560,72 @@ static void creature_cast(object *obj,int spell,vms_vector *dir,vms_vector *fire
 		ail->spell_time = GameTime + (rand() % 11) * F1_0 + tbl_int(Spell_info[spell].record,"level",1) * 4 * F1_0;
 }
 
+// ASCENT: the believed position of a hidden player (audit C20, Ai_cloak_info
+// 0x153A30: 8 entries of time and position, the entry objnum % 8 for a
+// creature). compute_vis_and_vec (0x12BE8): when the player is hidden from
+// the creature (0x165C4) or the creature has the status bit 4, the entry
+// moves each 2.0 seconds by a random vector (flat, 0x127F3; in three
+// directions, 0x127BF, when the player flies: effects 0x200800 or +0x1AE
+// bit 0x80) times 8 times the time since its last move (16.0 for 2.0 s), and
+// the creature uses it in place of the player (0x146CE): the distance, the
+// turn, the walk and the attack. 0x15FBC (the awareness events of the types 2
+// to 4, 0x16055) puts all entries at the player. The creature never sees the
+// player: its sight is the ray to the believed position, and a path never
+// goes to the segment of the player (the port's rule that keeps the
+// invisibility of the player, audit C1).
+static struct { fix last_time; vms_vector pos; } Ai_cloak[8];
+static vms_vector *Ai_believed = NULL;		// the aim of ai_fire for a hidden player
+
+static void cloak_reset(void)
+{
+	int i;
+
+	if (ConsoleObject == NULL)
+		return;
+	for (i=0;i<8;i++) {
+		Ai_cloak[i].pos = ConsoleObject->pos;		// 0x15FBC: Believed_player_pos
+		Ai_cloak[i].last_time = GameTime;
+	}
+	dtu_obj_log("believed position: at the player %.1f %.1f %.1f (0x15FBC)",f2fl(ConsoleObject->pos.x),f2fl(ConsoleObject->pos.y),
+		f2fl(ConsoleObject->pos.z));
+}
+
+// 1 if the creature uses the believed position (0x12C11 to 0x12C25)
+static int cloak_applies(object *obj)
+{
+	return dtu_thief_hidden_from(obj) || (obj->dtu.m_88 & 4);
+}
+
+// 0x12C2B to 0x12CB9: the move of the entry of the creature
+static vms_vector *cloak_position(object *obj)
+{
+	int k = (obj-Objects) % 8;
+	fix elapsed = GameTime - Ai_cloak[k].last_time;
+
+	if (elapsed < 0) {
+		Ai_cloak[k].last_time = GameTime;
+		elapsed = 0;
+	}
+	if (elapsed > 0x20000) {
+		vms_vector r;
+
+		Ai_cloak[k].last_time = GameTime;
+		// (the bit 0x80 of the player +0x1AE has no place in the port)
+		if (ConsoleObject->dtu.m_88 & 0x200800)
+			make_random_vector(&r);
+		else {
+			r.x = (rand() - 0x4000) | 1;
+			r.y = 0;
+			r.z = rand() - 0x4000;
+			vm_vec_normalize_quick(&r);
+		}
+		vm_vec_scale_add2(&Ai_cloak[k].pos,&r,elapsed << 3);
+		dtu_obj_log("obj %d %s: believes the hidden player at %.1f %.1f %.1f",(int)(obj-Objects),dtu_object_name(obj),
+			f2fl(Ai_cloak[k].pos.x),f2fl(Ai_cloak[k].pos.y),f2fl(Ai_cloak[k].pos.z));
+	}
+	return &Ai_cloak[k].pos;
+}
+
 static void melee_hit(object *target,object *attacker);
 
 // 0x11B06 ai_fire. "AI: critter fires."
@@ -4597,7 +4668,13 @@ static void ai_fire_body(object *obj,fix dist)
 	// time of the flight. The y part of the lead is not set in the
 	// executable (0x11CC4). It is 0 here.
 	aim = target->pos;
-	if (w >= 0 && !(target->mtype.phys_info.velocity.x < F1_0 && target->mtype.phys_info.velocity.z < F1_0)) {
+	// ASCENT: a hidden player: the believed position, with no lead (C20).
+	// The touch below needs the real distance.
+	if (Ai_believed) {
+		aim = *Ai_believed;
+		dist = vm_vec_dist(&obj->pos,&target->pos);
+	}
+	else if (w >= 0 && !(target->mtype.phys_info.velocity.x < F1_0 && target->mtype.phys_info.velocity.z < F1_0)) {
 		fix speed = Weapon_info[w < N_weapon_types ? w : 0].speed[Difficulty_level];
 
 		if (speed > 0) {
@@ -6697,9 +6774,9 @@ void dtu_do_ai_frame(object *obj)
 	ai_static *aip = &obj->ctype.ai_info;
 	robot_info *ri;
 	monster_info *mi;
-	vms_vector vec_to_player;
+	vms_vector vec_to_player, *believed;
 	fix dist;
-	int A, B, visible = -1, dying, blocked;
+	int A, B, visible = -1, dying, blocked, hidden;
 
 	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
 		return;
@@ -6774,7 +6851,9 @@ void dtu_do_ai_frame(object *obj)
 		// random when the player is behind the creature, which is often the
 		// case on a path around a wall, and the creature then stands for
 		// one animation before it sees the player again.
-		if (ail->activity == 0 && improved_paths() && is_hostile(obj) && ail->path_len >= 2 &&
+		// ASCENT: not for a hidden player (C20: the creature does not know
+		// the segment of the player)
+		if (ail->activity == 0 && improved_paths() && is_hostile(obj) && ail->path_len >= 2 && !cloak_applies(obj) &&
 			 ail->path[ail->path_len-1] == ConsoleObject->segnum && (ail->mode == DAIM_CHASE_OB || ail->mode == DAIM_FOL_PATH) &&
 			 ail->target != -1 && !Player_is_dead && !Dtu_player_dead)
 			ail->activity = 2;
@@ -6809,9 +6888,12 @@ void dtu_do_ai_frame(object *obj)
 		}
 	}
 
-	// 0x146D0: the distance to the player
+	// 0x146D0: the distance to the player. ASCENT: 0x146CE, a hidden
+	// player: to the believed position (cloak_position, C20)
 	ail->time_since_processed += FrameTime;
-	vm_vec_sub(&vec_to_player,&ConsoleObject->pos,&obj->pos);
+	hidden = !dying && cloak_applies(obj);
+	believed = hidden ? cloak_position(obj) : &ConsoleObject->pos;
+	vm_vec_sub(&vec_to_player,believed,&obj->pos);
 	dist = vm_vec_mag(&vec_to_player);
 	if (dist > 0x100)
 		vm_vec_normalize(&vec_to_player);
@@ -6868,7 +6950,12 @@ void dtu_do_ai_frame(object *obj)
 		if (!Dtu_idle_anim_near)
 			set_anim(obj,DAS_STAND);
 
-		visible = player_is_visible(obj);
+		// ASCENT: a hidden player (C20): the creature turns to the believed
+		// position when it sees that place (0x14A1C calls compute_vis_and_vec)
+		if (hidden)
+			visible = ray_is_free(&obj->pos,obj->segnum,believed,objnum);
+		else
+			visible = player_is_visible(obj);
 		if (visible)
 			ail->time_player_seen = GameTime;
 		if (visible || ail->previous_visibility)
@@ -6879,9 +6966,14 @@ void dtu_do_ai_frame(object *obj)
 		return;
 	}
 
-	// 0x15074: the sight
-	visible = player_is_visible(obj);
-	creature_sight_sound(obj,visible,&vec_to_player);
+	// 0x15074: the sight. ASCENT: a hidden player (C20): the ray to the
+	// believed position (0x12CEF tests the brain bit there); the player is
+	// not seen, the place where the creature believes it is.
+	if (hidden)
+		visible = ray_is_free(&obj->pos,obj->segnum,believed,objnum);
+	else
+		visible = player_is_visible(obj);
+	creature_sight_sound(obj,hidden ? 0 : visible,&vec_to_player);
 	if (visible)
 		ail->time_player_seen = GameTime;
 
@@ -6974,7 +7066,8 @@ void dtu_do_ai_frame(object *obj)
 				// executable makes a random path of 5 segments here on each
 				// frame and goes back to CHASE_OB on the next frame (the
 				// awareness is 1 or more), so the creature never moves.
-				if (improved_paths() && Dtu_fix_path_follow && aip->behavior != DAIB_HOME && aip->behavior != DAIB_GUARD &&
+				// ASCENT: no path to the segment of a hidden player (C20)
+				if (!hidden && improved_paths() && Dtu_fix_path_follow && aip->behavior != DAIB_HOME && aip->behavior != DAIB_GUARD &&
 					 ail->morale >= B && chase_by_path(obj))
 					;
 				else if (aip->behavior == DAIB_HOME || aip->behavior == DAIB_GUARD)
@@ -6997,7 +7090,7 @@ void dtu_do_ai_frame(object *obj)
 			}
 			else if (aip->CURRENT_STATE == DAIS_REST && aip->GOAL_STATE == DAIS_REST && visible && ail->morale >= B)
 				aip->GOAL_STATE = DAIS_SRCH;
-			else if (GameTime - ail->time_player_seen > i2f(8)) {
+			else if (!hidden && GameTime - ail->time_player_seen > i2f(8)) {
 				if (ail->morale >= B)
 					create_path_to_player(obj,10);
 			}
@@ -7005,9 +7098,12 @@ void dtu_do_ai_frame(object *obj)
 				// Dtu_improved_pathfinding: also a creature that sees the
 				// player but cannot walk to the player in a straight line
 				// (the line is not free for its body) takes the path.
+				// ASCENT: a hidden player: the line to the believed position,
+				// and no path (C20)
 				if (improved_paths() && Ref_ticks_now > 0)
-					ail->body_line = (obj->segnum == ConsoleObject->segnum) || body_line_free(obj,&ConsoleObject->pos);
-				if (Dtu_fix_path_follow && (!visible || (improved_paths() && !ail->body_line)) && aip->behavior != DAIB_STATION && chase_by_path(obj)) {
+					ail->body_line = hidden ? body_line_free(obj,believed) :
+						(obj->segnum == ConsoleObject->segnum) || body_line_free(obj,&ConsoleObject->pos);
+				if (!hidden && Dtu_fix_path_follow && (!visible || (improved_paths() && !ail->body_line)) && aip->behavior != DAIB_STATION && chase_by_path(obj)) {
 					// as in the mode FOL_PATH (0x153F0)
 					if (ail->morale >= B && aip->GOAL_STATE != DAIS_FLIN)
 						aip->GOAL_STATE = DAIS_LOCK;
@@ -7042,7 +7138,8 @@ void dtu_do_ai_frame(object *obj)
 	if (visible && is_hostile(obj) && ail->morale >= B) {
 		fix dot = vm_vec_dot(&obj->orient.fvec,&vec_to_player);
 
-		if (dot >= 3*F1_0/4 && aip->GOAL_STATE <= DAIS_ATAK && aip->GOAL_STATE != DAIS_FLIN) {
+		// 0x1293D: or the player is hidden (0x165C4), C20
+		if ((dot >= 3*F1_0/4 || hidden) && aip->GOAL_STATE <= DAIS_ATAK && aip->GOAL_STATE != DAIS_FLIN) {
 			choose_attack_goal(obj,dist);
 			if (ail->awareness < 1) {
 				ail->awareness = 1;
@@ -7122,7 +7219,9 @@ void dtu_do_ai_frame(object *obj)
 						 (DTU_ANIM_FRAME(obj) == po->fire_frames[0] || DTU_ANIM_FRAME(obj) == po->fire_frames[1]) &&
 						 !(Dtu_fix_fire_once && ail->fired)) {
 						ail->fired = 1;
+						Ai_believed = hidden ? believed : NULL;		// ASCENT: C20
 						ai_fire(obj,dist);
+						Ai_believed = NULL;
 					}
 					if (aip->behavior != DAIB_PATROL && (ail->mode == DAIM_STILL || ail->mode == DAIM_FOL_PATH)) {
 						if (ail->morale >= B)
@@ -7288,8 +7387,10 @@ static struct { short segnum; short type; } Aware_events[AWARE_MAX_EVENTS];
 
 static void awareness_event(object *obj, int type)
 {
-	// 0x15FBC (types 2 to 4, the believed position of a hidden player) is
-	// in cloak_seen() (dtu_creature_alert)
+	// ASCENT: 0x16055: the types 2 to 4 call 0x15FBC, which puts the
+	// believed position of a hidden player at the player (cloak_reset)
+	if (type >= 2 && type <= 4)
+		cloak_reset();
 	if (N_aware_events < AWARE_MAX_EVENTS && obj->segnum >= 0 && obj->segnum <= Highest_segment_index) {
 		Aware_events[N_aware_events].segnum = obj->segnum;
 		Aware_events[N_aware_events].type = type;
