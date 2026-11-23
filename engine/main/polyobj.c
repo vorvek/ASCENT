@@ -142,6 +142,9 @@ polymodel Polygon_models[MAX_POLYGON_MODELS];	// = {&bot11,&bot17,&robot_s2,&rob
 
 int N_polygon_models = 0;
 
+// ASCENT: D-050, see polyobj.h
+int Dtu_fix_model_mapper = 1;
+
 #define MAX_POLYGON_VECS 1000
 g3s_point robot_points[MAX_POLYGON_VECS];
 
@@ -775,7 +778,8 @@ int load_polygon_model(char *filename,int n_textures,grs_bitmap ***textures)
 	// only in part (docs/formats/tbl.md). The first table line that names a
 	// model gives it the slots of its texture list. A later line with the
 	// same model name gets the same model, with the textures of the first
-	// line, as in the original.
+	// line, as in the original. -origobj gives $WEAPON and $SPELL models
+	// the header rule (Dtu_fix_model_slots, bmread.c).
 	int mn;
 	polymodel *pm;
 
@@ -1378,9 +1382,12 @@ void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_
 	// Linear_tmap_polygon_objects (0x13D3E3) is 1 and nothing changes it.
 	// The linear mapper bends the textures of large polygons near the eye
 	// (beds, tables). The port draws all models with the perspective
-	// mapper. The GPU renderer is always perspective correct.
+	// mapper (Dtu_fix_model_mapper, 1, default). -origobj clears it: the
+	// caller (dtu_draw_polygon_object) chooses the mapper of 1.3. The GPU
+	// renderer is always perspective correct.
 	im_save = Interpolation_method;
-	Interpolation_method = 2;
+	if (Dtu_fix_model_mapper)
+		Interpolation_method = 2;
 
 	if (po->n_models > 1)
 		draw_model_sorted(po,angles,light,glow_values,show_hidden);

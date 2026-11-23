@@ -1304,6 +1304,7 @@ set_thrust_from_velocity(object *obj)
 #include "kconfig.h"
 #include "dtuthief.h"		// ASCENT: the climb and the slow sneak of the thief
 #include "dtuopts.h"		// ASCENT: Dtu_improved_physics, Dtu_improved_jump
+#include "digi.h"			// ASCENT: the sound of a fall
 #include <math.h>
 
 // The setting for the movement: 1 is the person of the target game, 0 is
@@ -1326,6 +1327,13 @@ int Dtu_fix_jump_path = 1;			// the jump: a throw with a constant gravity, with 
 int Dtu_fix_ladder = 1;			// a ladder: no velocity into the wall, the hold of its top edge, the step onto the floor, the hold when the player steps down onto it
 int Dtu_fix_wall_slide = 1;		// a wall takes away the velocity into it, with no bounce back
 int Dtu_fix_wall_overlap = 1;	// a body that starts inside the reach of a wall is moved out of it (no stuck player)
+
+// The volume of the land_sound of a fall (D-178). 1.3 (0x6C9FF to 0x6CA1E)
+// takes 0x10000 / min(200 - fell, 1): 1.0 for a fall below 200, a division
+// by zero at 200 and a negative volume above it (the sound code refuses
+// it, 0x2E65B). Corrected (1, default): 1.0 for every fall. -origphys
+// clears it: the volume of 1.3, and no sound at 200 in place of the fault.
+int Dtu_fix_fall_sound = 1;
 
 // The state of the player (the byte at 0x1AE of the object in the
 // executable) and the values that belong to it.
@@ -1475,6 +1483,32 @@ static void dtu_start_fall(object *obj)
 	Dtu_fall_start_y = obj->pos.y;
 }
 
+int player_type_sound(char *key);		// dtuobj.c
+
+// 0x6C9E8 to 0x6CA3D: the sound of a fall of the player. 0x2E816 stops the
+// sounds linked to the player object, 0x2E610 links the land_sound of the
+// player line (P+0x1D4E37, read by 0x1FA0B) to it with the distance 200.0.
+// The solo flag of 0x2E610 (no sound while the last sample of the driver
+// plays) belongs to the DOS sound driver and is left out. For the volume
+// see Dtu_fix_fall_sound.
+static void dtu_fall_sound(object *obj,int fell)
+{
+	int sound = player_type_sound("land_sound");
+	int objnum = obj-Objects;
+	fix volume = F1_0;
+
+	digi_kill_sound_linked_to_object(objnum);
+	if (!Dtu_fix_fall_sound) {
+		int divisor = 200 - fell < 1 ? 200 - fell : 1;
+
+		if (divisor == 0)
+			return;		// 1.3: divide fault at 0x6CA1E
+		volume = F1_0 / divisor;
+	}
+	if (sound >= 0)
+		digi_link_sound_to_object2(sound,objnum,0,volume,i2f(200));
+}
+
 // 0x6C8C8. The damage of a fall, and the end of the fall. The executable
 // lets a thief take hold of a wall here. That part is not in the port.
 static void dtu_fall_damage(object *obj)
@@ -1490,6 +1524,8 @@ static void dtu_fall_damage(object *obj)
 				damage >>= 1;
 
 			mprintf((0,"RLH: Object %d fell %d descent feet.\n",(int)(obj-Objects),fell));
+			if (obj == ConsoleObject)
+				dtu_fall_sound(obj,fell);
 			HUD_init_message("You fell %d feet!",fell);
 			dtu_damage_player(obj,NULL,i2f(damage));		// ASCENT: was apply_damage_to_player() of Descent 1, see dtuobj.c
 		}

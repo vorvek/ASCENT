@@ -54,6 +54,7 @@
 #include "dtuscript.h"	// ASCENT: quest flag 67 in the creature setup
 #include "textures.h"	// ASCENT: the lava textures of BANE
 #include "tmapfx.h"	// ASCENT: the tint of Detect Magic
+#include "texmap.h"	// ASCENT: Interpolation_method, Dtu_fix_model_mapper
 #include "dtuchar.h"
 #include "digi.h"
 #include "sounds.h"
@@ -881,7 +882,8 @@ void dtu_objects_init(void)
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
-			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_ray = Dtu_fix_alert_last = 0;
+			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_ray = Dtu_fix_alert_last =
+			Dtu_fix_water_splash = Dtu_fix_model_mapper = 0;
 	if (FindArg("-origrevive"))
 		Dtu_fix_revive = 0;
 	if (FindArg("-origdrow5"))
@@ -1213,7 +1215,7 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 {
 	polymodel *po = obj_model(obj);
 	int frame = DTU_ANIM_FRAME(obj);
-	int show_hidden = 1;
+	int show_hidden = 1, im_save;
 	vms_vector draw_pos;
 
 	if (po == NULL)
@@ -1240,6 +1242,13 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 	draw_pos = obj->pos;
 	draw_pos.y += corpse_draw_drop(obj);
 
+	// Dtu_fix_model_mapper (polyobj.h): with -origobj each object but the
+	// viewer is drawn with the linear texture mapper, as 1.3 does (0x675D4
+	// to 0x675EC).
+	im_save = Interpolation_method;
+	if (!Dtu_fix_model_mapper && obj != Viewer)
+		Interpolation_method = 1;
+
 	// ASCENT: animation interpolation (Dtu_anim_interp). The frame of the
 	// game rules stays; only the picture is between the frames. An active
 	// creature counts its frames by the game time (0x11018), so the time of
@@ -1259,10 +1268,11 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 				(obj->type == OBJ_ROBOT && (Ail[objnum].flags & AILF_BACKWARD)) ? -1 : 1,GameTime,&next);
 		}
 		draw_polygon_model_frame_lerp(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,next,frac,show_hidden,light,glow,alt_textures);
-		return;
 	}
+	else
+		draw_polygon_model_frame(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
 
-	draw_polygon_model_frame(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
+	Interpolation_method = im_save;
 }
 
 // Render type 8 (0x67E2D): one bitmap of the object bitmaps as a rod that
@@ -1346,8 +1356,13 @@ void vclip_at(int segnum,vms_vector *pos,fix size,int vclip)
 // - x and z are world axes, so for half of the headings every second
 //   splash is 2.8 units in front of the player, and the player walks into
 //   the sprite (radius 4.7): white sparkles fill the bottom of the view.
-// The port gives the splash no light (dtu_object_light, lighting.c) and
-// puts it to the side of the walk, on the right vector of the player.
+// Corrected (Dtu_fix_water_splash, 1, default): the port gives the splash
+// no light (dtu_object_light, lighting.c) and puts it to the side of the
+// walk, on the right vector of the player. The option -origobj clears it:
+// the splash lights as vclip 10 and the offset is on world x and z, as in
+// 1.3 (0x43510 to 0x4351B).
+int Dtu_fix_water_splash = 1;
+
 #define N_SPLASH_SIG	16
 static int Splash_sig[N_SPLASH_SIG];
 static int Splash_next;
@@ -1363,6 +1378,12 @@ void dtu_water_splash(object *obj,fix side_step)
 		return;
 	o->pos.y -= obj->size >> 1;
 	o->lifeleft >>= 1;
+	if (!Dtu_fix_water_splash) {
+		// 1.3: 0x100 * side_step on world x and z, and the light of vclip 10
+		o->pos.x += side_step << 8;
+		o->pos.z += side_step << 8;
+		return;
+	}
 	// the length of the offset of the original: 0x100 * |side_step| * sqrt(2)
 	vm_vec_scale_add2(&o->pos,&obj->orient.rvec,fixmul(side_step << 8,0x16A0A));
 	Splash_sig[Splash_next] = o->signature;

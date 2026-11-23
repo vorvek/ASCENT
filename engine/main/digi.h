@@ -172,6 +172,9 @@ extern int digi_link_sound_to_pos2( int soundnum, short segnum, short sidenum, v
 extern void digi_play_midi_song( char * filename, char * melodic_bank, char * drum_bank, int loop );
 
 extern void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups ); // Volume from 0-0x7fff
+// ASCENT: D-167. 1: the distance volume of a one time 3D sound. 0
+// (-origsound): the volume of 1.3, 0x7FFF to 0x8000 for each sound (digi.c).
+extern int Dtu_fix_3d_volume;
 
 // ASCENT: plays signed 16-bit mono data of the port that is not a sound of
 // the archives (the miss sounds of dtumiss.c). The data must stay in
