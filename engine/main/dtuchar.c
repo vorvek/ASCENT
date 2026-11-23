@@ -3752,10 +3752,11 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "obj") && a >= 0 && a <= Highest_object_index) {		// test: obj=N, the state of object N in one line
 		object *o = &Objects[a];
 
-		dtu_char_log("obj %d: type %d id %d seg %d hp %d flags 0x%x script %d resume %d sflags 0x%x var %d talks %d contains %d.%d x%d",
+		dtu_char_log("obj %d: type %d id %d seg %d hp %d flags 0x%x script %d resume %d sflags 0x%x var %d talks %d contains %d.%d x%d pos %.1f,%.1f,%.1f anim %d",
 			a, o->type, o->id, o->segnum, f2i(o->shields), o->flags, o->dtu.m_1b0 & 0x1ff, (o->dtu.m_1b0 >> 10) & 0x3ff,
 			(o->dtu.m_1b0 >> 20) & 0xf, (o->dtu.m_1b0 >> 24) & 0xf, (o->dtu.m_1b0 >> 28) & 0xf,
-			o->contains_type, o->contains_id, o->contains_count);
+			o->contains_type, o->contains_id, o->contains_count,
+			f2fl(o->pos.x), f2fl(o->pos.y), f2fl(o->pos.z), DTU_ANIM_STATE(o));
 	}
 	else if (!strcmp(cmd, "near")) {		// test: near or near=RANGE[.1], the creatures (.1: all objects) in RANGE (default 30) by distance, with the angle to the view
 		int i, range = a > 0 ? a : 30;

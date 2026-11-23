@@ -667,11 +667,23 @@ Settings (globals in dtuscript.c):
 - `Dtu_fix_script_abilities` (1): statements 99, 9A and 9B also change the
   values without items, so the next change of the equipment keeps the
   change. The executable changes only the values with items.
-- `Dtu_script_walk_teleport` (1, a port decision): `E5` moves the object to
-  the last segment of the path at the end of the run and then runs mode 2.
-  0 (`-scriptwalk`): the creature gets the path of the AI (0xAA74E) and the
-  script runs in mode 2 at its end; the creature did not move in the test,
-  see ../audit/quests.md Q11.
+- `Dtu_fix_script_walk` (1): `E5` gives the creature the path of the AI to
+  the last segment (0xAA74E) and the run goes on. The creature walks along
+  the path with the walk animation (AI goal SRCH) at the walk speed of its
+  model, also farther than 200.0 from the player and in each frame (not in
+  the reduced frames of a far creature, 0x1498B). Another creature or the
+  player in the way gives a new path (improved pathfinding). At the end it
+  stops (AI mode 0, animation STAND) and its script runs in mode 2 with no
+  charisma roll for flag 1: the block `CB E7 <segment>` of the segment.
+  When the creature turns hostile the walk ends. 1.3 (`-origscriptwalk`):
+  a creature that is not hostile has the goal NONE, so the animation STAND
+  has no speed (0x10148, 0x11EC9); the path follower turns it to the
+  player (0x17CFC); within 200.0 of the player the end of the path gives a
+  path to the player (0x170BC) and no run; farther away 0x17411 counts the
+  index only (no move, disassembly 0x17446 to 0x17504) and runs mode 2 in
+  the segment where the creature still stands. So the creature never
+  leaves its place. Tests: questtest `kobolds_walk`, `kobolds_walk3`,
+  `kobolds_walk_orig`.
 - `Dtu_fix_prison_items` (1): the prison sequence takes each item that is
   not worn. The executable reads the wrong entry after it removes one
   (`-origprison`).

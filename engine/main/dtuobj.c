@@ -5817,7 +5817,10 @@ static void follow_path(object *obj,int visible,fix dist_to_player)
 
 	// 0x17734: a creature that is farther than 200.0 from the player does
 	// not move. The executable still counts its path index up (0x17411).
-	if (dist_to_player > i2f(200)) {
+	// ASCENT: a creature on a path of statement E5 of its script
+	// (Dtu_fix_script_walk) walks on, so that it comes to the end of the
+	// path where its script goes on.
+	if (dist_to_player > i2f(200) && ail->script_walk != 1) {
 		if (ail->mode == DAIM_HOME)
 			ail->mode = DAIM_STILL;
 		return;
@@ -5857,6 +5860,8 @@ static void follow_path(object *obj,int visible,fix dist_to_player)
 			ail->script_walk = 2;
 			ail->mode = DAIM_STILL;
 			vm_vec_zero(&obj->mtype.phys_info.velocity);
+			aip->GOAL_STATE = aip->CURRENT_STATE = DAIS_NONE;
+			set_anim(obj,DAS_STAND);
 			dtu_obj_log("obj %d %s: at the end of the path of its script (seg %d)",(int)(obj-Objects),dtu_object_name(obj),obj->segnum);
 			return;
 		}
@@ -6693,8 +6698,10 @@ void dtu_do_ai_frame(object *obj)
 	// 0x1490B: a creature with a mage or a cleric level casts (dtuspell.c)
 	dtu_spell_creature_frame(obj,dist,ail->activity == 2);
 
-	// 0x1498B: a creature that is far away is not processed on each frame
-	if (ail->awareness < 3) {
+	// 0x1498B: a creature that is far away is not processed on each frame.
+	// ASCENT: a creature on a path of its script is (Dtu_fix_script_walk),
+	// else it walks only in the frames of the AI.
+	if (ail->awareness < 3 && ail->script_walk != 1) {
 		if (dist > i2f(150) && ail->time_since_processed <= F1_0)
 			return;
 		if (dist > i2f(100) && ail->time_since_processed <= F1_0/2)
@@ -6774,6 +6781,10 @@ void dtu_do_ai_frame(object *obj)
 			follow_path(obj,visible,dist);
 			if (aip->behavior != DAIB_PATROL && ail->morale >= B && is_hostile(obj) && aip->GOAL_STATE != DAIS_FLIN)
 				aip->GOAL_STATE = DAIS_LOCK;
+			// ASCENT: Dtu_fix_script_walk, the walk animation (the goal SRCH
+			// gives WALK, 0x10148) for a creature on a path of its script
+			else if (ail->script_walk == 1 && aip->GOAL_STATE != DAIS_FLIN)
+				aip->GOAL_STATE = DAIS_SRCH;
 			break;
 
 		case DAIM_HOME:				// 0x1541A
@@ -6944,6 +6955,10 @@ void dtu_do_ai_frame(object *obj)
 		case DAIS_SRCH:
 		case DAIS_LOCK:
 		case DAIS_RECO:
+			// ASCENT: a creature on a path of its script faces the way it
+			// walks (path_steer turns it)
+			if (ail->script_walk == 1)
+				break;
 			if (visible && ail->morale >= B)
 				turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
 			else
@@ -7022,9 +7037,17 @@ void dtu_script_walk_segment(object *obj,int seg)
 	create_path(obj);
 }
 
-void dtu_script_walk_start(object *obj)
+// fix 1 (Dtu_fix_script_walk): the creature walks along the path with the
+// walk animation (goal SRCH, animation WALK) and stays active to its end,
+// also farther than 200.0 from the player. With fix 0 the rules of 1.3
+// stay: the goal NONE of a creature that is not hostile gives the
+// animation STAND and no speed, and the path follower turns it to the
+// player (0x17CFC).
+void dtu_script_walk_start(object *obj,int fix)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
+	char segs[96];
+	int k, n = 0;
 
 	if (obj->type != OBJ_ROBOT)
 		return;
@@ -7033,9 +7056,22 @@ void dtu_script_walk_start(object *obj)
 	ail->flags |= 0x30;
 	if (obj->id < N_robot_types)
 		ail->morale = (Monster_info[obj->id].ai_values[0][Difficulty_level] + Monster_info[obj->id].ai_values[1][Difficulty_level]) / 2;
-	ail->script_walk = 1;
-	dtu_obj_log("obj %d %s: walks a path of %d segments to seg %d for its script",(int)(obj-Objects),dtu_object_name(obj),
-		ail->path_len,ail->goal_segment);
+	ail->script_walk = 0;
+	if (fix && ail->path_len >= 2 && DTU_ANIM_STATE(obj) != DAS_DIE) {
+		ail->script_walk = 1;
+		ail->activity = 2;
+		obj->ctype.ai_info.GOAL_STATE = obj->ctype.ai_info.CURRENT_STATE = DAIS_SRCH;
+		DTU_ANIM_GOAL(obj) = DAS_WALK;
+		set_anim(obj,DAS_WALK);
+		ail->anim_start = GameTime;
+	}
+	else if (fix && DTU_ANIM_STATE(obj) != DAS_DIE && obj->segnum == ail->goal_segment)
+		ail->script_walk = 2;		// in the segment already: at the end of the path
+	segs[0] = 0;
+	for (k=0;k<ail->path_len && n < (int)sizeof(segs)-8;k++)
+		n += sprintf(segs+n,"%s%d",k ? " " : "",ail->path[k]);
+	dtu_obj_log("obj %d %s: walks a path of %d segments to seg %d for its script (%s): %s",(int)(obj-Objects),dtu_object_name(obj),
+		ail->path_len,ail->goal_segment,ail->script_walk ? "walk" : "1.3 rule",segs);
 }
 
 // 0: the creature is not on a path of a script. 1: it walks. 2: it is at
