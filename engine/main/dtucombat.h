@@ -62,6 +62,18 @@ extern int Dtu_fix_rat_hit;
 // ray enters through the top). -origcombat gives the rule of 1.3.
 extern int Dtu_fix_body_ray;
 
+// The swing and the look pitch. The weapon sphere of the swing (0x6CFF8,
+// 0x7473F) is turned with the object orientation (+0x20), which has the
+// heading only; the look pitch (0x13D9AE) turns only the view and the
+// missiles. So a swing goes where a level look goes: a low creature that
+// is close and at the center of the screen while the player looks down is
+// not hit. Corrected: the sphere of each frame (its center and the end of
+// its ray) is turned with the look pitch about the eye, so the swing
+// follows the view at the same distance from the eye. At pitch 0 nothing
+// changes. A wall or floor between the eye and the sphere stops it there.
+// -origcombat gives the rule of 1.3.
+extern int Dtu_fix_swing_pitch;
+
 // Turn undead (0xADC46). When the number of creatures that a turn can
 // destroy is used up, the executable clears the "can be tried" bit of the
 // next undead before it stops (0xADF09), so that creature can never be
@@ -111,9 +123,14 @@ void dtu_combat_draw_view(void);
 // dtu_combat_frame(). The cursor of the play screen (dtudisp.c) shows it.
 int dtu_combat_target_hint(void);
 
-// ASCENT: test (-chartest reach=N): the player looks at creature N, and the
-// character log gets what the swing, a missile and the target hint reach.
-void dtu_combat_reach_test(int objnum);
+// ASCENT: test (-chartest reach=N.M): the player turns to creature N with
+// a level body and looks at it with the look pitch (M 0: at its center from
+// the eye, 1: level, 2: fully up, 3: fully down), and the character log
+// gets what the swing, a missile and the target hint reach.
+void dtu_combat_reach_test(int objnum,int mode);
+
+// ASCENT: test (-chartest pitch=P): the look pitch (fixang, + is down).
+void dtu_combat_set_pitch(int pitch);
 
 // The state of the arms, for tests and for the display.
 int dtu_combat_view_state(void);

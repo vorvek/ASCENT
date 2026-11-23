@@ -3608,7 +3608,8 @@ static void run_command(char *cmd, char *value)
 		vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
 		obj_relink(ConsoleObject - Objects, find_point_seg(&ConsoleObject->pos, o->segnum) >= 0 ? find_point_seg(&ConsoleObject->pos, o->segnum) : o->segnum);
 	}
-	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a);		// test: reach=N, the attacks that reach creature N (tools/check_reach.py)
+	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a, b);	// test: reach=N.M, the attacks that reach creature N (tools/check_reach.py)
+	else if (!strcmp(cmd, "pitch"))		dtu_combat_set_pitch(a);		// ASCENT: test: pitch=P, the look pitch (fixang, + is down)
 	else if (!strcmp(cmd, "goobjh") && a >= 0 && a <= Highest_object_index) {		// test: goobjh=N.D, D (default 4.0) in front of object N at the height of the player
 		object *o = &Objects[a];
 		vms_vector to, p;

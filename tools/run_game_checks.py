@@ -7,7 +7,7 @@
 The checks are the tools of tools/README.md that read the game files:
 check_items, check_desc, questtest, priestcheck, check_saveload,
 check_itemfix, check_tblfix, check_creature_setup (the setup by name, with
-quest flag 67, and --abilities), check_reach (BONES and MINE), check_attack_rate and
+quest flag 67, and --abilities), check_reach (BONES, MINE, and CLAN3 with the Broad Sword), check_attack_rate and
 uitest. Run them after each merge.
 
 Defaults (the layout of the maintainer machine):
@@ -97,6 +97,10 @@ def checks(a, work):
         ("check_attack_rate", py + [tool("check_attack_rate.py"), "--exe", exe] + dd, game),
         # rats, beetles and giant bats: the swing and a steep missile
         ("check_reach_mine", py + [tool("check_reach.py"), "--exe", exe, "--level", "MINE", "--jobs", "4"] + dd, game),
+        # giant rats with the Broad Sword: the swing at the look pitch and the
+        # negative pass (Dtu_fix_swing_pitch)
+        ("check_reach_clan3", py + [tool("check_reach.py"), "--exe", exe, "--level", "CLAN3", "--weapon", "20", "--jobs", "4"] + dd,
+         game),
         ("uitest", py + [tool("uitest.py"), "--exe", exe] + dd + ["--hddir", hd], game or need(hd)),
     ]
     return out
