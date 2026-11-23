@@ -39,6 +39,7 @@
 #include "dtuobj.h"
 #include "dtutrig.h"
 #include "dtuscript.h"
+#include "kconfig.h"		// ASCENT: Dtu_fix_climb_key
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -815,7 +816,8 @@ void dtu_hook_warp_displace(object *player, int segnum, vms_vector *point)
 }
 
 // 0x951DE: the use action on a side that is no door: the player climbs
-// (dtuthief.c).
+// (dtuthief.c). ASCENT: with Dtu_fix_climb_key (kconfig.h) Activate takes
+// hold of a ladder only; a wall is climbed with the Climb Wall key.
 void dtu_hook_use_wall(object *obj, int segnum, int side)
 {
 	if (!Dtu_objects_enabled || obj != ConsoleObject)
@@ -823,7 +825,7 @@ void dtu_hook_use_wall(object *obj, int segnum, int side)
 	// 0x951D1: the talk comes first in the port, see dtu_use_object()
 	if (dtu_use_object(obj))
 		return;
-	dtu_thief_climb_start(obj,segnum,side);
+	dtu_thief_climb_start(obj,segnum,side,!Dtu_fix_climb_key);
 }
 
 // 0x7EDFA: the use action that hit no side. The use ray goes through an

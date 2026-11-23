@@ -193,9 +193,19 @@ enum {
 	DTU_ACT_HOT_KEY_1,
 	// the port: the previous and the next hot key (the gamepad shoulders)
 	DTU_ACT_PREV_HOT_KEY = DTU_ACT_HOT_KEY_1 + 10, DTU_ACT_NEXT_HOT_KEY,
+	// the port: Climb Wall, the keyboard items 20 and 21 ("(unused)" in
+	// 1.3). 1.3 climbs with Activate (0x951DE). At the end, so the
+	// PadConfig of an older ascent.cfg stays valid.
+	DTU_ACT_CLIMB,
 	DTU_N_ACTIONS
 };
 #define DTU_N_HOT_ACTIONS	10
+
+// ASCENT: Climb Wall is a key of its own (1, default): Activate takes hold
+// of a ladder but does not climb a wall, so a lever or a button gives no
+// climb message. 1.3 climbs with Activate (0x95050 calls 0x951DE for each
+// side that is no door). -origui clears it: Activate climbs too.
+extern int Dtu_fix_climb_key;
 
 extern int Dtu_control_type;		// 1 to 4 a joystick, 5 the mouse
 int dtu_action_key(int act, int which);			// scan code of key 0 or 1, 255 for none
