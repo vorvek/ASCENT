@@ -998,7 +998,7 @@ int dtu_spell_save(object *obj,int cat)
 		level = creature_level(obj);
 		need = save_number(creature_cleric_level(obj) > 0 ? DTU_CLASS_CLERIC : DTU_CLASS_FIGHTER,level,cat);
 		if (monster_flag(obj,MONSTER_F_MAGIC_RESISTANT))
-			need -= (level > 12 ? 12 : level) / 3;
+			need -= level / 3;		// the level before the cap of 12 (ESI, 0xAE6E0 and 0xAE792)
 	}
 	else if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types) {
 		// The tables 0x1456E6, 0x1456E8, 0x1456EA by explode_sound, byte

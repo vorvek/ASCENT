@@ -33,8 +33,9 @@ gives each object its own shields). XP is `score_value`, given at the death
   spell 22 Hold Person) and the `enemy_spell` of a weapon, which is -1 in all
   shipped tables.
 - Immunities: `weapon_resistant` (only a `magic` weapon hits, 0x29D9D),
-  `magic_resistant` (the saving throw need goes down by min(level, 12) / 3,
-  0xAE77F), `fire_immune` and `fire_resistant` (0x91DAF, 0x2B3B3),
+  `magic_resistant` (the saving throw need goes down by level / 3, the level
+  before the cap of 12 of the table row: ESI at 0xAE6E0, the divide at
+  0xAE799; the port capped the level first until 2026-11-24, 0xAE77F), `fire_immune` and `fire_resistant` (0x91DAF, 0x2B3B3),
   `electricity_immune` (0x91D90), `undead` (Turn Undead, Mace of Disruption,
   Flame Tongue +4, Chill Touch Fear, the morale function), `no_sleep` and
   `no_scare` (0x92F5D), `extraplanar` (Protection From Evil, no corpse).
@@ -153,7 +154,7 @@ the weapon. Mage/cleric: the caster levels of the type. Levels: the levels
 of DTU.MSN that place the type.
 
 Special cases of the setup by name (ai.md, "Creature setup by name"): the
-lich (flags 0x7042: undead, weapon_resistant, no_sleep, magic_resistant,
+lich (flags 0x7042: undead, weapon_resistant, no_sleep,
 electricity_immune, humanoid; 10d1; touch spell 22), the CLAN3 type 10 (the
 same), the spectator (attack type 0, weapon 0, 2d3), the hatchling
 (fire_immune, fire_resistant, 7000 XP), gargoyle, mephits and flayers
@@ -170,7 +171,7 @@ of YPINN (200 hit points, str 19, 10000 XP).
 | all | ranged attack, spell missile | 0x11B06, 0x10040 | `ai_fire`, `creature_cast` | Same |
 | casters | creature spells | 0x92D99, 0x9231F, 0x91FDC | dtuspell.c | Same (combat.md B10) |
 | Lich, CLAN3 type 10 | touch spell 22 (Hold Person) after each hit with damage | 0x2A637 to 0x2A67B | `damage_player_w` | Fixed, 9f709bf (audit C16) |
-| Lich, CLAN3 type 10 | magic resistance from the setup flags 0x7042 | 0xACA16, 0xAE77F | `monster_flags_from_table`, `dtu_spell_save` | Fixed, fdb1c24: the port read `magic_resistant` from the table line only, so the setup flag had no effect |
+| Lich, CLAN3 type 10 | no magic resistance: the setup ORs 0x7042 into +0x98 (0xACA01), and 0x7042 has no bit 0x0400 (`magic_resistant`, 0xAE77F) | 0xACA01, 0xAE77F | `monster_flags_from_table`, `dtu_spell_save` | Same. Checked 2026-11-24 in the bytes and in the game (CLAN3 obj 10: flags 0xd3, save need 10 at level 11, no bonus). The earlier note of fdb1c24 named magic_resistant among the setup flags in error |
 | Hatchling, 0x5CBA types | fire_resistant from the setup flags | 0xAC7B2, 0xAD2A1, 0x91DAF | `monster_flags_from_table` | Fixed, fdb1c24 (same cause) |
 | Troll, armTroll, Halaster, Mirt | regeneration of hit points | 0x1440C | `dtu_do_ai_frame` | Same |
 | Troll, armTroll, Halaster, Mirt | revive of a dead creature | 0x1440C to 0x14655 | `corpse_regen_frame` | Fixed, 8b11534 (`Dtu_fix_revive`, below) |
