@@ -2348,6 +2348,10 @@ static void fe_credits(void)
 #define SG_MAX_SIZE			(SG_SIZE_BETWEEN + 12 + 54 * MAX_TRIGGERS + 16 * MAX_ROBOT_CENTERS + 40 * MAX_NUM_FUELCENS)
 
 int Fe_load_level;
+// ASCENT: the cheater flag of a loaded save game (0xBBC94) plus 1, set in
+// the first game frame after the load (the level start clears the flag
+// with game_disable_cheats); 0: nothing to set
+static int Fe_load_cheats;
 
 // The file of the last load: the base of the next save
 static ubyte *Loaded_sg;
@@ -2571,6 +2575,7 @@ int fe_load_game(int in_game)
 	dtustate_set_save_lists(between ? NULL : b + SG_SIZE_BETWEEN, between ? 0 : size - SG_SIZE_BETWEEN);
 	mode = between ? FE_GO_WATERDEEP : FE_GO_LEVEL;
 	Fe_load_level = (int) get_u32(b + SG_LEVEL);
+	Fe_load_cheats = 1 + (get_u32(b + SG_DIFFICULTY + 4) != 0);	// 0x13B7A3
 	if (Fe_load_level < 1)
 		Fe_load_level = 1;
 	loaded_character();
@@ -2631,6 +2636,7 @@ static int sg_write(int slot, char *desc, int between)
 	}
 	b[SG_RLPD + 29] = (ubyte) level;
 	put_u32(b + SG_DIFFICULTY, Difficulty_level);	// the difficulty (0x13CDCA)
+	put_u32(b + SG_DIFFICULTY + 4, Cheats_enabled ? 1 : 0);	// ASCENT: 0xBAC13, the cheater flag
 	size = SG_SIZE_BETWEEN;
 	if (!between)
 		size += dtustate_write_save_lists(b + SG_SIZE_BETWEEN, SG_MAX_SIZE - SG_SIZE_BETWEEN);
@@ -3281,6 +3287,10 @@ int dtufe_game_frame(void)
 {
 	if (!Fe_in_game)
 		return 0;
+	if (Fe_load_cheats) {
+		Cheats_enabled = Fe_load_cheats - 1;
+		Fe_load_cheats = 0;
+	}
 	dtustate_test_frame();
 	if (Script_in_game && Script_n) {
 		dtufe_menu_script_frame();
