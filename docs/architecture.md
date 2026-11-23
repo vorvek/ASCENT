@@ -21,7 +21,7 @@ about the original game are in `docs/re/` and `docs/formats/`.
 | `engine/lang/` | The translations of the text of the code (`<code>_port.catalog`). |
 | `engine/third_party/` | stb_image, stb_vorbis and pl_mpeg, with their licenses. |
 | `engine/main/editor/`, `engine/ui/` | The level editor of Descent 1 and its interface library. Not built. |
-| `installer/` | `ascent-import`, `ascent-content`, the Inno Setup script and the content server worker. Windows only. |
+| `installer/` | `ascent-import`, `ascent-content`, the Inno Setup script and the content server worker. Windows only, but `ascent-import` also builds on Linux. |
 | `tools/` | Python tools for the game files. See `tools/README.md`. |
 | `docs/` | The documents. See `docs/README.md`. |
 
@@ -34,9 +34,12 @@ the list of `DESCENT_OBJS` of the original makefile with the new files.
 Files that the build does not use, and why they stay, are listed in
 [reference-sources.md](reference-sources.md).
 
-The game program builds on Windows (MSYS2 UCRT64). The libraries and the
-tests also build on Linux. The game code still calls `stricmp`, `strnicmp`
-and `strlwr`, which Linux does not have.
+The game program builds on Windows (MSYS2 UCRT64) and on Linux (GCC or
+Clang). On Linux, `engine/includes/portable.h` supplies the functions of
+the Watcom and Windows C libraries that the code calls (`stricmp`,
+`strnicmp`, `strlwr`, `strupr`, `itoa`); `d_common` includes it in each
+file. `ascent-import` builds on both systems; `ascent-content` and the
+setup program are for Windows only.
 
 ## Game code
 
@@ -175,8 +178,8 @@ to 6 keep their meaning, so an older `ascent.cfg` stays valid.
 
 ctest runs 16 programs (`test_*.c` in the library directories). None needs
 the game files: `test_2d` skips its data checks when `ASCENT_DATA_DIR` has
-no font files. CI runs them on Windows and Linux
-(`.github/workflows/build.yml`).
+no font files. CI runs them on Windows and on Linux with GCC and Clang
+(`.github/workflows/build.yml`), and builds the game on both systems.
 
 Tests that need the game files. `tools/run_game_checks.py` runs the game
 checks of the tools in one command and prints one line for each check and a

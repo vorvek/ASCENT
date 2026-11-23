@@ -1,6 +1,6 @@
 # Maintenance: refactors for a later pass
 
-This is a ranked list of refactors. None is done yet. Each one must keep the
+This is a ranked list of refactors. Item 10 is done; the others are not. Each one must keep the
 behavior: build, run ctest, and run the soak test and `tools/uitest.py` on
 the levels the change touches before and after it. Do one file at a time and
 move code without changing it in the same commit.
@@ -150,17 +150,26 @@ prints the table, and a new correction is one line.
 
 Risk: low. The defaults must not change.
 
-### 10. Build the game on Linux
+### 10. Build the game on Linux (done)
 
-Problem: the libraries and tests build on Linux, but the game code calls
-`stricmp`, `strnicmp` and `strlwr`.
+Done on 2026-11-23. `engine/includes/portable.h` gives `stricmp`,
+`strnicmp`, `strcmpi`, `strlwr`, `strupr` and `itoa` on the systems other
+than Windows. `d_common` includes it in each file with `-include`, so the
+original files need no edit. The other fixes:
 
-Proposal: a small compatibility header in `engine/includes` that maps them
-to `strcasecmp`, `strncasecmp` and a local lower-case function, and then the
-`ascent` target in the Linux CI job.
+- `args.c`: a `/` at the start of an argument stays on Linux (an absolute
+  path); on Windows it still becomes `-`.
+- `text.c`: the escape scan used `strcpy` on overlapping strings. The
+  `strcpy` of glibc gave `Unsupported key sequence` for `DTUE.TEX`.
+- `dtusoak.c`: `unistd.h` for `_exit`.
+- `installer/src/inst.c`: a parameter named `link` hid `link()`.
+  `ascent-import` builds on Linux; `ascent-content` stays Windows only.
+- `CMakeLists.txt`: on Linux the SDL3 search skips the directories of
+  `PATH` (in WSL they have the SDL3 of MSYS2).
 
-Risk: low for the build; the run on Linux needs a separate test of the file
-names (the game files are upper case).
+`dtufile.c` already finds a file when the case of its name differs
+(`dtu_find_in_dir`). The CI job builds the game with GCC and Clang and
+runs ctest.
 
 ## Other large functions outside the dtu files
 

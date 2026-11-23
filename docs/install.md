@@ -181,6 +181,28 @@ ascent-import --source PATH --dest DIR [--patch PATH] [--check]
   `INFO`, `ERROR: <text>`. Exit status: 0 done, 1 usage, 2 no game data, 3 patch
   needed, 4 patch not valid, 5 files missing, 6 write error.
 
+## Linux
+
+There is no setup program for Linux. Build the game from the source:
+
+```sh
+cmake --preset debug               # downloads and builds SDL3 if it is not installed
+cmake --build --preset debug --target ascent ascent-import
+```
+
+The SDL3 build needs the development packages that `.github/workflows/build.yml`
+installs (Ubuntu names). Make the data folder with `ascent-import` from the disc and the
+1.3 patch, then start the game with the folder:
+
+```sh
+build-debug/installer/ascent-import --source /path/to/disc --patch /path/to/patch.zip --dest ~/dtu-data
+build-debug/engine/main/ascent -datadir ~/dtu-data
+```
+
+Without `-datadir` the data folder is `data` next to the executable, and the files of
+the player go to `~/.local/share/ASCENT-DTU`. The game files keep their upper case
+names: the game finds them with any case.
+
 ## Content packs
 
 `tools/content_pack.py` builds the packs from `gamedata/hd` and the patch into
