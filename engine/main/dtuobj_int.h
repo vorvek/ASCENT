@@ -124,14 +124,29 @@ typedef struct dtu_missile {
 
 extern monster_ext Monster_ext[MAX_ROBOT_TYPES];
 extern dtu_ai_local Ail[MAX_OBJECTS];
+extern fix Dtu_clock;
+extern fix Player_max_hp;
+extern int Player_death_stage;
+extern fix Player_death_time;
+extern int Player_swing_done;
 extern FILE *Obj_log;
+extern int Obj_log_frames;
 extern int Setup_log;
 extern int Test_pos_pending;
+void log_creature_state(object *obj,char *why);
 polymodel *obj_model(object *obj);
 int is_hostile(object *obj);
 int tbl_int(int record,char *key,int def);
+void set_anim(object *obj,int state);
+int get_weapon_sphere(object *obj,int frame,vms_vector *center,fix *radius);
 fix creature_floor_dist(object *obj,fix radius,fix half_height);
-int damage_dice(object *attacker,object *target,int weapon);
+void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
+void sound_on_object(int sound,object *obj,fix volume);
+void vclip_at(int segnum,vms_vector *pos,fix size,int vclip);
+int weapon_int(int w,char *key,int def);
+int weapon_is_melee(int w);
+void blood(object *obj);
+int player_type_sound(char *key);
 void log_corpse_height(object *obj,const char *what);
 int corpse_on_floor(object *obj);
 
@@ -155,6 +170,18 @@ void level_start_npcs(int setup);
 
 item_info *item_table_entry(int type,int id);
 void pick_up_item(object *player,object *item);
+
+//------------------------------------------------------------------------
+// dtuobj_combat.c
+
+extern int Hit_by_missile;
+int damage_dice(object *attacker,object *target,int weapon);
+void creature_is_corpse(object *obj);
+fix spell_hit(int spell,object *target,object *attacker);
+fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
+fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
+void melee_hit(object *target,object *attacker);
+void weapon_test(object *obj);
 
 //------------------------------------------------------------------------
 // dtuobj_test.c
