@@ -261,6 +261,9 @@ static int open_gl_window(const char *title, int ww, int wh)
 
 int plat_init(const char *title, int w, int h, int scale)
 {
+	// ASCENT: the relative mode (the immersive mode) holds the system
+	// pointer at the center of the window (input.c, plat_input_hold_pointer)
+	SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_CENTER, "1");
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
 		return -1;
 	Quit_requested = 0;
@@ -555,6 +558,7 @@ int plat_pump(void)
 			window_to_frame(&ev.button.x, &ev.button.y);
 		plat_input_sdl_event(&ev);
 	}
+	plat_input_hold_pointer();		// ASCENT: the immersive mode
 	return !Quit_requested;
 }
 

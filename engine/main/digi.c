@@ -1120,31 +1120,58 @@ void digi_get_sound_loc( vms_matrix * listener, vms_vector * listener_pos, int l
 	}
 }
 
-// ASCENT: the port sounds that are not in the archives (digi.h)
-int digi_play_pcm16( const short *data, int length, int rate, fix max_volume, vms_vector *pos, int segnum, fix max_distance )
+// ASCENT: a sound of the archives with the mixer handle (digi.h). With
+// obj not NULL the volume and the pan are those of the place of obj for the
+// viewer when the sound starts (as digi_link_sound_to_object2 for a sound
+// that does not play forever); else the pan is the center, as
+// digi_play_sample.
+int digi_play_sample_handle( int soundno, fix max_volume, object *obj, fix max_distance )
 {
-	int volume = max_volume, pan = PLAT_AUDIO_PAN_CENTER, handle;
+	digi_sound *snd;
+	_SOS_START_SAMPLE sSOSSampleData;
+	int volume = max_volume, pan = 0xffff/2;
+	int org = soundno;
 
-	if ( !Digi_initialized || digi_driver_board < 1 || data == NULL || length <= 0 ) return -1;
-	if ( pos != NULL )	{
+	(void) org;
+
+	soundno = digi_xlat_sound(soundno);
+	if ( !Digi_initialized || digi_driver_board < 1 || soundno < 0 ) return -1;
+	snd = &GameSounds[soundno];
+	if ( snd->data == NULL ) return -1;
+	if ( obj != NULL )	{
 		if ( Viewer == NULL ) return -1;
-		digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum, pos, segnum, max_volume, &volume, &pan, max_distance );
+		digi_get_sound_loc( &Viewer->orient, &Viewer->pos, Viewer->segnum, &obj->pos, obj->segnum, max_volume, &volume, &pan, max_distance );
 		if ( volume <= 0 ) return -1;
 	}
-	handle = plat_audio_play16( data, length, rate, fixmuldiv(volume,digi_volume,F1_0), pan, 0 );
-	if ( handle == DIGI_NO_HANDLE )
-		Dtu_sound_no_channel++;
-	else
-		Dtu_sound_starts16++;
-	if ( Dtu_sound_log )
-		printf( "SOUND: t %.3f port sound 16 bits %d Hz %d samples volume %d pan %d handle %d\n", f2fl(GameTime),
-			rate, length, fixmuldiv(volume,digi_volume,F1_0), pan, handle );
-	return handle;
+#ifdef NEWDEMO
+	if ( Newdemo_state == ND_STATE_RECORDING )	{
+		if ( obj != NULL )
+			newdemo_record_sound_3d( org, pan, volume );
+		else
+			newdemo_record_sound( org );
+	}
+#endif
+	memset( &sSOSSampleData, 0, sizeof(_SOS_START_SAMPLE));
+	sSOSSampleData.wLoopCount 				= 0x00;
+	sSOSSampleData.wVolume					= fixmuldiv(volume,digi_volume,F1_0);
+	sSOSSampleData.wSampleID				= soundno;
+	sSOSSampleData.dwSampleSize 			= snd->length;
+	sSOSSampleData.lpSamplePtr				= snd->data;
+	sSOSSampleData.wSamplePanLocation	= pan;
+	return digi_start_sound( &sSOSSampleData, soundno );
 }
 
-int digi_pcm16_playing( int handle )
+int digi_handle_playing( int handle )
 {
 	return handle >= 0 && plat_audio_is_playing( handle );
+}
+
+// ASCENT: stops a sound of digi_play_sample_handle (a short fade of the
+// mixer). A handle that no longer plays does nothing.
+void digi_stop_handle( int handle )
+{
+	if ( handle >= 0 && plat_audio_is_playing( handle ) )
+		plat_audio_stop( handle );
 }
 
 

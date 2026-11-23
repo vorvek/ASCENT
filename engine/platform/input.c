@@ -589,6 +589,47 @@ void plat_input_sdl_event(const SDL_Event *ev)
 	}
 }
 
+// ASCENT: SDL holds the pointer at the center in the relative mode, but
+// after a change of the focus (a click on the window, Alt+Tab) it can
+// delay that or leave the pointer where the click was, and the system can
+// show the pointer again. Each frame with the focus, this sets the
+// relative mode again if it is off, hides the pointer and moves it to the
+// center of the window if it is not there. A move with a button held
+// outside the window area (a move of the window by its title bar, a change
+// of its size) is not stopped.
+void plat_input_hold_pointer(void)
+{
+	SDL_Window **windows;
+	SDL_Window *win = NULL;
+	int count = 0;
+	int wx, wy, ww, wh, inside;
+	float gx, gy, cx, cy;
+	SDL_MouseButtonFlags held;
+
+	if (!Relative_wanted || !SDL_WasInit(SDL_INIT_VIDEO))
+		return;
+	windows = SDL_GetWindows(&count);
+	if (windows && count > 0)
+		win = windows[0];
+	SDL_free(windows);
+	if (!win || !(SDL_GetWindowFlags(win) & SDL_WINDOW_INPUT_FOCUS))
+		return;
+	if (!SDL_GetWindowRelativeMouseMode(win)) {
+		SDL_SetWindowRelativeMouseMode(win, true);
+		Relative_applied = 1;
+	}
+	if (SDL_CursorVisible())
+		SDL_HideCursor();
+	if (!SDL_GetWindowPosition(win, &wx, &wy) || !SDL_GetWindowSize(win, &ww, &wh) || ww <= 0 || wh <= 0)
+		return;
+	held = SDL_GetGlobalMouseState(&gx, &gy);
+	cx = (float) wx + (float) (ww / 2);
+	cy = (float) wy + (float) (wh / 2);
+	inside = gx >= (float) wx && gy >= (float) wy && gx < (float) (wx + ww) && gy < (float) (wy + wh);
+	if ((gx - cx > 2.0f || cx - gx > 2.0f || gy - cy > 2.0f || cy - gy > 2.0f) && (inside || !held))
+		SDL_WarpMouseGlobal(cx, cy);
+}
+
 // ASCENT: video.c calls this after a change between the window and the
 // full screen form, so that the mouse grab follows.
 void plat_input_window_changed(void)

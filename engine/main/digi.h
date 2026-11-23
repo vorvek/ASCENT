@@ -176,15 +176,18 @@ extern void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups
 // (-origsound): the volume of 1.3, 0x7FFF to 0x8000 for each sound (digi.c).
 extern int Dtu_fix_3d_volume;
 
-// ASCENT: plays signed 16-bit mono data of the port that is not a sound of
-// the archives (the miss sounds of dtumiss.c). The data must stay in
-// memory. max_volume is 0 to F1_0, as for digi_play_sample. With pos not
-// NULL the sound has the volume and the pan of that place for the viewer
-// when it starts (it is not linked to the place). Returns the mixer handle,
-// or -1 if it does not play.
-extern int digi_play_pcm16( const short *data, int length, int rate, fix max_volume, vms_vector *pos, int segnum, fix max_distance );
-// ASCENT: 1 if the handle of digi_play_pcm16 still plays.
-extern int digi_pcm16_playing( int handle );
+// ASCENT: plays a sound of the archives (as digi_play_sample) and returns
+// its mixer handle, or -1 if it does not play. With obj not NULL the sound
+// has the volume and the pan of the place of obj for the viewer when it
+// starts (it is not linked to the object). The miss sounds of dtumiss.c.
+struct object;
+extern int digi_play_sample_handle( int soundno, fix max_volume, struct object *obj, fix max_distance );
+// ASCENT: the index of GameSounds for a sound number, -1 if there is none.
+extern int digi_xlat_sound( int soundno );
+// ASCENT: 1 if the handle of digi_play_sample_handle still plays.
+extern int digi_handle_playing( int handle );
+// ASCENT: stops a sound of digi_play_sample_handle; nothing if it no longer plays.
+extern void digi_stop_handle( int handle );
 
 extern void digi_init_sounds();
 extern void digi_sync_sounds();

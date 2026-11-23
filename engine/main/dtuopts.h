@@ -119,12 +119,11 @@ extern int Dtu_fix_lowres_aspect;
 // -safemusic and -nosafemusic change it for one run.
 extern int Dtu_safe_music;
 
-// Miss sound: a short whoosh when a melee attack hits nothing, for the
-// player (a swing at the air, a missed roll) and for a creature that
-// misses the player (dtumiss.c). 1.3 has no sound there. On by default;
-// the files are <hd>/sound/miss*.wav of the content pack "sounds", and
-// without them nothing plays. -origsound and -nomisssound turn it off for
-// one run.
+// Miss sound: the swing sound of the weapon (its flash_sound, a game
+// sound) when a melee attack hits nothing, for the player (a swing at the
+// air, a missed roll) and for a creature that misses the player
+// (dtumiss.c). 1.3 has no sound there. On by default. -origsound and
+// -nomisssound turn it off for one run.
 extern int Dtu_miss_sound;
 
 // Rulebook items: the values and the class limits of some item lines take
