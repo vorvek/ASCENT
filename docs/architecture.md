@@ -117,7 +117,7 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origdrow5`, `-origguildpeace` | one each: `drow5_shields`, `guild_peace` | `dtuobj.c` |
 | `-origcombat` | `one_hit`, `haste_attack`, `rat_hit`, `stoneskin_word`, `chill_touch`, `rary_manual`, `melf_acid`, `turn_undead` (`dtucombat.c`); `wizardry_ring`, `potion_frame`, `luck_coin` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
 | `-origchar` | `multiclass_thac0`, `spell_save_repair`, `save_seconds` | `dtuchar.c` |
-| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap` | `dtutrig.c` |
+| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap` | `dtutrig.c` |
 | `-origui` | `automap_reveal`, `msg_scroll` | `automap.c`, `dtudisp.c` |
 | `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg` | `dtuscript.c` |
 | `-origsound` | `foot_pan`, `creature_steps` | `dtufoot.c` |

@@ -168,6 +168,10 @@ extern int Dtu_fix_trigger_repeat;
 // side of the trap that is switched off. 0 (-origtrig): the rule of the
 // executable. No shipped trigger uses disable_trap.
 extern int Dtu_fix_disable_trap;
+// 0xAD9B2 at 0x5A278: the overlap test of the warp. 0: as 1.3, the position
+// of the player before the move. 1 (default): the center of the segment
+// where the player arrives. -origtrig clears it.
+extern int Dtu_fix_warp_overlap;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;
@@ -275,6 +279,10 @@ void dtu_hook_drop_objects(int segnum);
 // the use action with no side in reach (objects).
 void dtu_hook_use_wall(object *obj, int segnum, int side);
 void dtu_hook_use_nothing(object *obj);
+
+// 0xAD9B2: the warp moves each live creature of the destination segment
+// that overlaps point to its hide segment (dtuhook.c).
+void dtu_hook_warp_displace(object *player, int segnum, vms_vector *point);
 
 // 0x5B3AC: a command line of DTU.WRP (dest_level -2): code 0 leaves the
 // dungeon, 1..19 are mission checks, the others start and stop music and

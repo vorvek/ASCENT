@@ -72,6 +72,7 @@ int Dtu_fix_trap_seconds = 1;
 int Dtu_fix_trap_close_door = 1;
 int Dtu_fix_trigger_repeat = 1;
 int Dtu_fix_disable_trap = 1;
+int Dtu_fix_warp_overlap = 1;
 int Dtu_trig_log = 0;
 
 static short	Active_traps[DTU_MAX_ACTIVE_TRAPS];		// 0x3A7CD0
@@ -164,6 +165,11 @@ DTU_WEAK void dtu_hook_use_wall(object *obj, int segnum, int side)
 DTU_WEAK void dtu_hook_use_nothing(object *obj)
 {
 	tlog("hook use_nothing()");
+}
+
+DTU_WEAK void dtu_hook_warp_displace(object *player, int segnum, vms_vector *point)
+{
+	tlog("hook warp_displace(seg %d)", segnum);
 }
 
 DTU_WEAK void dtu_hook_warp_command(int code, int value)
@@ -1186,6 +1192,11 @@ static void warp_place_player(int dest_seg, int value)
 		return;
 	}
 	compute_segment_center(&center, &Segments[dest_seg]);
+	// ASCENT: 0x5A278, 0xAD9B2: the creatures of the segment that overlap
+	// the player go to their hide segments. 1.3 tests the position of the
+	// player before the move (the old segment, or the player start of the
+	// new level file). Dtu_fix_warp_overlap: the point of the arrival.
+	dtu_hook_warp_displace(obj, dest_seg, Dtu_fix_warp_overlap ? &center : &obj->pos);
 	obj->pos = center;
 	obj->last_pos = center;
 	obj_relink(obj-Objects, dest_seg);
@@ -1875,6 +1886,8 @@ static void read_options(void)
 		Dtu_trig_log = 1;
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
+	if (FindArg("-origtrig"))
+		Dtu_fix_warp_overlap = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }

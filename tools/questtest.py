@@ -181,6 +181,12 @@ TESTS = [
     T("warp_keeps_effects", "HUB1", "10:damage=5,12:fx=3.600,14:cast=20,20:quest,30:warp=3.376,60:quest",
       [r"quest: level 1 .* hp 7 fx 0x1008 [\s\S]*quest: level 3 .* hp 7 fx 0x1008 "], frames=70, invuln=False),
 
+    # A warp (0x5A278, 0xAD9B2) sends a creature that overlaps the arrival
+    # to its hide segment: KOBOLDS object 57 (seg 48, hide segment 0 of the
+    # level file). Dtu_fix_warp_overlap tests the point of the arrival.
+    T("warp_displace", "KOBOLDS", "5:obj=57,10:warp=2.48,11:obj=57",
+      [r"f5\s+obj 57: type 2 id 1 seg 48 ", r"obj 57 kob_swrd overlaps the arrival in seg 48 and goes to seg 0",
+       r"f11\s+obj 57: type 2 id 1 seg 0 "], frames=14, extra=["-objlog", "warp_displace_obj.log"]),
     # The talk of WEAPON 13 before a warp (0x59D2D): script 0x1FD runs.
     T("drowslayer_warp", "DROW1", "10:give=5.13,15:current=5.13,30:warp=20.1,31:quest,60:warp=21.1,100:quest",
       [r"warp with WEAPON 13 in the hand: script 0x1FD"], frames=120),

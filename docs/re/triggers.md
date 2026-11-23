@@ -343,7 +343,20 @@ changes (section 2):
    "solo-warp!". Else log "Warping to %s, Segment %d.", close the moving doors, clear
    the door flag 2 of all walls, save the state of the level (0x5A756), load the
    level and its warp lines.
-6. The player object is put back, moved to the center of the destination segment
+6. The player object is put back (0xBB563). 0xAD9B2 (0x5A278, verified in the
+   bytes): each live creature of the destination segment with a model whose body
+   radius plus the body radius of the player (0x746B3) is more than the distance
+   to the player goes to the center of its hide segment (+0x14C, via 0x13899,
+   which turns it to the player and plays a sound). The test takes the position
+   of the player before the move: the old segment for a warp inside the level,
+   the player object of the new level file for a change of level. So it almost
+   never fires where the player arrives (defect). The port:
+   `dtu_hook_warp_displace` (dtuhook.c, no sound); `Dtu_fix_warp_overlap`
+   (`-origtrig` clears it) tests the center of the destination segment. A
+   wandering creature (behavior 0x81) keeps the hide segment of the level file,
+   0 for most (init_ai_object 0x1038B sets it only for 0x80, 0x82 to 0x84). Test
+   `warp_displace` (tools/questtest.py).
+   Then the player is moved to the center of the destination segment
    with velocity 0, and turned by `value` (0x5A5DE): 0 east (forward +x), 1 west
    (-x), 2 north (+z), 3 south (-z).
 7. Return 1.
