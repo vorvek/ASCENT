@@ -106,6 +106,12 @@ TESTS = [
        r"f200 +obj 21: type 2 id \d+ seg 389 ", r"f200 +obj 22: type 2 id \d+ seg 388 ",
        r"end of its path in seg 386", r"end of its path in seg 389", r"end of its path in seg 388"],
       frames=210, extra=["-noattack"]),
+    # D-125: statement EE (0xAA989) does not give the outer run its mode
+    # back; Dtu_fix_script_run_mode does, so the talk counts (1.3: 0).
+    T("script_ee_mode", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+      [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 1 "], frames=210, extra=["-noattack"]),
+    T("script_ee_mode_orig", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+      [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 0 "], frames=210, extra=["-noattack", "-origscript"]),
     # The rule of 1.3 (-origscriptwalk): the kobold does not move.
     T("kobolds_walk_orig", "KOBOLDS",
       "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,300:obj=8",

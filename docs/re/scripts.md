@@ -156,7 +156,7 @@ in GABE (tools/script.py stats).
 | EB | NUM NUM | 0xAB48F (0xAA8B3) | spell NUM from the current object (0x90CEF). The segment NUM is checked against the highest segment but not passed (a defect of the executable, D-075: script 291 of IBBALAR casts its lights and fires at the speaker, not at the segments 177 to 233). The port centers the spell on the segment (`Dtu_fix_script_area_seg`, `-origscript`) | 87 |
 | EC | NUM | 0xAB4A3 (0xAA8E4) | wait NUM ticks of the 1/100 s clock 0xEDC4C, with reduced frames 0x4391D | 206 |
 | ED | `C4` NUM SIDE \| NUM | 0xAB4B7 (0xAA908) | switch the trigger of the side off (0xA83BD), or kill object NUM (0xA6ACB) | 39 |
-| EE | NUM | 0xAB4C1 (0xAA989) | run the script of object NUM in mode 4, then go on. The pointer, slot, depth, label, object and 0x145535 are saved and restored; the mode is not (it stays 4) | 10 |
+| EE | NUM | 0xAB4C1 (0xAA989) | run the script of object NUM in mode 4, then go on. The pointer, slot, depth, label, object and 0x145535 are saved and restored; the mode is not (it stays 4; verified in the bytes, 0xAA9A0 to 0xAAA10 save and restore 0x145537, 0x145525, 0x145526, 0x14552A, 0x145532 and 0x145535, and 0xABD35 writes 0x145536). `Dtu_fix_script_run_mode` (`-origscript` clears it) gives the outer run its mode back (D-125; test `script_ee_mode`) | 10 |
 | F2 | condition | 0xAB43F (0xA8C3A) | IF (section 3.3) | 1406 |
 | F4..F8 | none | 0xAB449 | ELSE of depth 1 to 5, reached at the end of a true branch: skip to the ENDIF of the current depth and run it | 686 |
 | F9..FD | none | 0xAB45E | ENDIF: depth - 1 | 1406 |

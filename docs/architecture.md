@@ -119,7 +119,7 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origchar` | `multiclass_thac0`, `spell_save_repair`, `save_seconds` | `dtuchar.c` |
 | `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap` | `dtutrig.c` |
 | `-origui` | `automap_reveal`, `msg_scroll` | `automap.c`, `dtudisp.c` |
-| `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg` | `dtuscript.c` |
+| `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg`, `script_run_mode` | `dtuscript.c` |
 | `-origsound` | `foot_pan`, `creature_steps` | `dtufoot.c` |
 | `-origmusic` | `start_music` | `dtumusic.c` |
 | `-origlight` | `light_stable` | `lighting.c` |
