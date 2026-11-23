@@ -1697,6 +1697,10 @@ id: port.infravision_only_for_a_human
 en: Infravision only for a human.
 tr: Infravisión solo para un humano.
 
+id: port.attacks_twice_as_fast_does_not_add_to_ha
+en: Attacks twice as fast. Does not add to Haste.
+tr: Ataca el doble de rápido. No se suma a Celeridad.
+
 id: port.in_the_hand_s
 en: In the hand: %s.
 tr: En la mano: %s.

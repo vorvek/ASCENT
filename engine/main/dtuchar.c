@@ -40,7 +40,7 @@
 #include "dtuthief.h"
 #include "dtufile.h"		// ASCENT: dtu_log()
 #include "dtucombat.h"	// ASCENT: turn undead of the Spider Piece 0x12
-#include "dtuatk.h"		// ASCENT: the items with Haste (Dtu_fix_speed_items)
+#include "dtuatk.h"		// ASCENT: the fast items (Dtu_fix_speed_items)
 #include "newmenu.h"
 #include "digi.h"
 #include "automap.h"
@@ -525,8 +525,6 @@ static int armor_id(dtu_item_ref ref)
 static int item_bits(int type, int id, int slot, int any_race)
 {
 	int bits = 0, human = any_race || Dtu_char.pa.race == 0;
-	item_info *it;
-	dtu_item_data d;
 
 	switch (slot) {
 		case DTU_SLOT_BOOT:			// boots (0xAFBEE, jump table 0xAFAE5)
@@ -564,14 +562,6 @@ static int item_bits(int type, int id, int slot, int any_race)
 					case 25: bits |= 1 << 9; break;		// Quickness: Haste
 				}
 			break;
-		case DTU_SLOT_BOW:
-			// ASCENT: Dtu_fix_speed_items. The line of the Short Bow of Speed has
-			// pc_spell1=21 (Haste). The executable has no such keyword and 0xAFB55
-			// does not read the bow slot.
-			it = item_entry(type, id);
-			if (it)
-				bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell1", -1), Dtu_fix_speed_items);
-			break;
 		case DTU_N_SLOTS:
 			// weapon 54 in the hand (0xB038F): bits 0, 1, 3, 5, 7, 8, 9, 12,
 			// and 6 for a human
@@ -580,17 +570,30 @@ static int item_bits(int type, int id, int slot, int any_race)
 				if (human)
 					bits |= 0x40;
 			}
-			// ASCENT: Dtu_fix_speed_items. The line of the Short Sword of
-			// Quickness has pc_spell=21; the executable reads PC_spell only for
-			// a weapon with attack_type 0 (0x44300).
-			if (type == OBJ_WEAPON) {
-				it = item_entry(type, id);
-				if (it && dtu_item_get(type, id, &d) && d.melee)
-					bits |= dtu_atk_item_bits(rec_int(it->record, "pc_spell", -1), Dtu_fix_speed_items);
-			}
 			break;
 	}
 	return bits;
+}
+
+// ASCENT: Dtu_fix_speed_items. The line of the Short Bow of Speed has
+// pc_spell1=21 and the line of the Short Sword of Quickness pc_spell=21
+// (Haste). The executable has no keyword pc_spell1, 0xAFB55 does not read
+// the bow slot and 0x44300 reads PC_spell only for a weapon with
+// attack_type 0: no power. Corrected: the attacks of the item are twice as
+// fast (dtuatk.c). No Haste effect: item_bits does not read them.
+int dtu_char_item_fast(int type, int id)
+{
+	item_info *it = item_entry(type, id);
+	dtu_item_data d;
+	int slot = dtu_char_item_slot(type, id);
+
+	if (!it)
+		return 0;
+	if (slot == DTU_SLOT_BOW)
+		return dtu_atk_item_fast(rec_int(it->record, "pc_spell1", -1), Dtu_fix_speed_items);
+	if (slot == DTU_N_SLOTS && dtu_item_get(type, id, &d) && d.melee)
+		return dtu_atk_item_fast(rec_int(it->record, "pc_spell", -1), Dtu_fix_speed_items);
+	return 0;
 }
 
 static int worn_item_bits(void)
@@ -1148,6 +1151,9 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		ADD(DTU_IP_USE_SPELL, LATHANDER_SPELL, 0);
 		ADD(DTU_IP_TURN_UNDEAD, 0, 0);
 	}
+	// ASCENT: the attack rate of the fast items (Dtu_fix_speed_items)
+	if (dtu_char_item_fast(type, id))
+		ADD(DTU_IP_FAST_ATTACK, 0, 0);
 	// 0xB0968: the effect Infravision of a worn item only for a human
 	if (dtu_char_item_fx(type, id) & DTU_FX_INFRAVISION)
 		ADD(DTU_IP_INFRA_HUMAN, 0, 0);

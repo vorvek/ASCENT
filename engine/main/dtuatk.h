@@ -49,11 +49,22 @@ fix dtu_atk_fire_lead(fix state_time,int first,int end,int fire_frame);
 // shorter time (the halved swing) is animated too.
 int dtu_atk_state_animates(fix state_time,int attack_state,int fix_haste);
 
-// The item bits (0xAFB55) of the bow in the bow slot (the keyword
-// pc_spell1= of its table line) or of the melee weapon in the hand (the
-// keyword pc_spell=); -1: no keyword. The executable gives these items no
-// effect: 0. fix_items (Dtu_fix_speed_items): spell 21 (Haste) gives item
-// bit 9, the bit of the Ring of Quickness and the Boots of Speed.
-int dtu_atk_item_bits(int pc_spell,int fix_items);
+// The speed power of the bow in the bow slot (the keyword pc_spell1= of
+// its table line) or of the melee weapon in the hand (the keyword
+// pc_spell=); -1: no keyword. The executable gives these items no power
+// (0xAFB55 does not read the bow slot, 0x44300 reads PC_spell only for a
+// weapon with attack_type 0): 0. fix_items (Dtu_fix_speed_items): 1 for
+// spell 21 (Haste): the attacks of that item are twice as fast.
+int dtu_atk_item_fast(int pc_spell,int fix_items);
+
+// The effects for the attack rate of the item in use. A fast item counts
+// as Haste for the rate of its own attacks only: it gives no Haste effect
+// and does not add to Haste (Haste and a fast item: twice as fast, not
+// four times). A fast item and Slow cancel, as Haste and Slow do.
+int dtu_atk_rate_effects(int effects,int item_fast);
+
+// fix_haste for the attack rate: the speed of a fast item always halves
+// the time, also with the 1.3 rule of Haste (no Haste effect besides it).
+int dtu_atk_rate_fix_haste(int effects,int item_fast,int fix_haste);
 
 #endif
