@@ -665,7 +665,7 @@ hook calls `dtu_script_run(obj, 3)`, DTU.WRP commands 1 to 19 call
 `dtu_mission_check`, the Blackstaff screen calls `dtu_mission_advance`, the
 save and load of dtufe.c call `dtu_mission_write_save` and
 `dtu_mission_read_save`, a new character calls `dtu_mission_new_character`.
-dtuobj.c gives the anger byte (`dtu_script_anger`) and 0xA9418
+dtuobj_ai.c gives the anger byte (`dtu_script_anger`) and 0xA9418
 (`dtu_script_make_hostile`).
 
 Settings (globals in dtuscript.c):

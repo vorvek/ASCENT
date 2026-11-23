@@ -434,7 +434,7 @@ edition rule. `-origcombat` gives the 1.3 rule.
 - One arrow (`missile_count` is 1 for line 36 in both rules).
 - The attack roll: d20 against the THAC0 of a fighter of the caster level (21 - L, the
   fighter row of the table 0x146590, 20 at most, 3 at least) and the armor class of
-  the target, through `dtu_hit_test` (dtuobj.c, the port of 0x2AA5B to 0x2AF4F): the
+  the target, through `dtu_hit_test` (dtuobj_combat.c, the port of 0x2AA5B to 0x2AF4F): the
   effects of the attacker and of the target count (Bless, Slow, Levitate, Protection
   From Evil, an unseen target -4, the armor class spells of a creature, and Stone Skin
   takes the hit). No strength, dexterity, weapon or range modifier. A natural 1 misses,

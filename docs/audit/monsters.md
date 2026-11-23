@@ -164,7 +164,7 @@ of YPINN (200 hit points, str 19, 10000 XP).
 
 | Creature | Ability | Original | Port | Status |
 |---|---|---|---|---|
-| all | values of the type after the setup by name and the level fixes | 0xAC7B2, 0xACCDB | `creature_setup_by_name`, `level_start_npcs` (dtuobj.c) | Same (965 placements, check_creature_setup.py) |
+| all | values of the type after the setup by name and the level fixes | 0xAC7B2, 0xACCDB | `creature_setup_by_name`, `level_start_npcs` (dtuobj_setup.c) | Same (965 placements, check_creature_setup.py) |
 | all | NPC overlay: THAC0, armor class, caster levels | 0xA7E97, table 0xA504A | `dtu_objects_level_setup`, dtunpc.h | Same |
 | all | melee weapon test, to-hit roll, damage dice | 0x6CFF8, 0x2A7F3, 0x2AF5E | `weapon_test`, `damage_player_w` | Same (combat.md C2) |
 | all | ranged attack, spell missile | 0x11B06, 0x10040 | `ai_fire`, `creature_cast` | Same |
@@ -183,7 +183,7 @@ of YPINN (200 hit points, str 19, 10000 XP).
 | all | alert of a rest place | 0x3E2C1 | `dtu_char_rest` | Fixed, df15f2e |
 | all | alerts of level 2 when the player runs into scenery or a wall fast, and of the burst 0x93294 | 0x26142, 0x26194, 0x2668E, 0x93477 | none | Open, small |
 | all | alert of the player bump in the move code | 0x9E70D | the collision of the port (0x2707A) | Same in effect: the port has one collision path |
-| all | hidden or invisible player: chase toward a believed position that moves at random (16.0 per 2.0 s), set by the events of type 2 to 4 | 0x12BE8, 0x15FBC | `cloak_position`, `cloak_reset` (dtuobj.c) | Same, see "Hidden player" below (audit C20, sweep G4) |
+| all | hidden or invisible player: chase toward a believed position that moves at random (16.0 per 2.0 s), set by the events of type 2 to 4 | 0x12BE8, 0x15FBC | `cloak_position`, `cloak_reset` (dtuobj_ai.c) | Same, see "Hidden player" below (audit C20, sweep G4) |
 | all | Chill Touch of a creature on another creature | 0x29E3D | none | Open, small (C18; creatures fight each other only in scripts) |
 | all | agitation counter | 0x167174 | none | Not ported (no reader in the AI found) |
 | all | pathing through doors, the door bit | 0x1686D, 0x14AF2, 0x25CAA | `create_path`, door opener | Same (ai.md, "Paths") |

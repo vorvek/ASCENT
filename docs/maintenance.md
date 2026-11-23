@@ -1,6 +1,6 @@
 # Maintenance: refactors for a later pass
 
-This is a ranked list of refactors. Item 10 is done; the others are not. Each one must keep the
+This is a ranked list of refactors. Items 1 and 10 are done; the others are not. Each one must keep the
 behavior: build, run ctest, and run the soak test and `tools/uitest.py` on
 the levels the change touches before and after it. Do one file at a time and
 move code without changing it in the same commit.
@@ -12,7 +12,7 @@ code between a `{` and a `}` in column 0).
 
 | File | Lines | Functions | Largest functions (lines) |
 |---|---|---|---|
-| `dtuobj.c` | 8070 | 213 | `dtu_do_ai_frame` 443, `dtu_creature_physics_sim` 335, `dtu_objects_level_setup` 239, `dressing_move_frame` 176, `level_fixes_objects` 163, `weapon_test` 148 |
+| `dtuobj.c` before the split (2026-11-23) | 9559 | 260 | `dtu_do_ai_frame` 486, `dtu_creature_physics_sim` 362, `dtu_objects_level_setup` 261, `level_fixes_objects` 180 |
 | `dtuspell.c` | 3154 | 130 | `apply_spell` 491 |
 | `dtufe.c` | 3121 | 113 | `fe_menu` 249, `fe_run_screen` 160 |
 | `dtuchar.c` | 3019 | 119 | `use_misc` 254, `dtu_char_update` 196, `run_command` 124 |
@@ -26,31 +26,42 @@ code between a `{` and a `}` in column 0).
 
 ## Ranked list
 
-### 1. Split dtuobj.c
+### 1. Split dtuobj.c (done)
 
-Problem: one file of 8070 lines holds the object setup, rendering, damage
-and death, missiles, creature movement, the creature AI, paths, collisions
-of pushed scenery and the test aids of the player. It has many file
-statics, so every change touches the same file, and parallel work on it
-conflicts.
+Done on 2026-11-23, on the text of cc4c21a. The functions moved without a
+change: only `static` went away where another file now calls a function or
+reads a variable, and `dtuobj_int.h` declares these, as `dtufe_int.h` does
+for the front end. No name changed. A function whose name a Descent 1 file
+also has (`create_path` of `aipath.c`) stays static, so its callers stay in
+its file. One commit for each file:
 
-Proposed split, along the section comments that exist:
+| File | Lines | Functions | Largest functions (lines) |
+|---|---|---|---|
+| `dtuobj.c` | 1779 | 50 | `dtu_objects_level_setup` 261, `dtu_objects_frame` 76, `corpse_regen_frame` 73 |
+| `dtuobj_ai.c` | 2436 | 57 | `dtu_do_ai_frame` 486, `blocked_move` 120, `follow_path` 116 |
+| `dtuobj_combat.c` | 1644 | 58 | `weapon_sphere_test` 149, `damage_player_w` 100, `dtu_hit_test_vs` 79 |
+| `dtuobj_scenery.c` | 998 | 20 | `dressing_move_frame` 177, `end_sequence_frame` 64 |
+| `dtuobj_setup.c` | 934 | 25 | `level_fixes_objects` 180, `creature_setup_by_name` 112 |
+| `dtuobj_move.c` | 619 | 6 | `dtu_creature_physics_sim` 362 |
+| `dtuobj_missile.c` | 582 | 13 | `missiles_frame` 91, `missile_hit_object` 85 |
+| `dtuobj_aware.c` | 465 | 10 | `dtu_gate_in_creature` 54 |
+| `dtuobj_item.c` | 449 | 18 | `pick_up_item` 65 |
+| `dtuobj_test.c` | 180 | 3 | `dtu_test_place_player` 40 |
 
-- `dtuobj_setup.c`: "Setup" (creature setup by name, level fixes, the
-  setup log).
-- `dtuobj_damage.c`: "Damage", death, corpses, drops.
-- `dtumissile.c`: missiles and bursts (`dtu_create_missile` to
-  `missiles_frame`).
-- `dtuobj_move.c`: creature gravity, integration, `dtu_creature_physics_sim`,
-  "Collisions" and pushed scenery.
-- `dtuobj_ai.c`: "The AI" and paths (`dtu_do_ai_frame`, `path_advance_body`).
-- `dtuobj.c`: tables, helpers, inventory, rendering, the frame entry points.
-- A private header `dtuobj_int.h`, as `dtufe_int.h` does for the front end.
+The proof: the game checks of `tools/run_game_checks.py` and ctest gave
+the same results before and after, the release build links, and hidden
+runs with fixed random numbers (`seed=N`, `-fixedfps 30`, BONES, MINE and
+CLAN3, melee, spells and the AI alone) wrote the same `-objlog` and
+`-charlog` files, byte for byte.
 
-Risk: high. The statics become shared, and the order of static
-initialization and of the calls in one frame must not change. The AI files
-are under active work: do this when no branch changes `dtuobj.c`. Split
-`dtu_do_ai_frame` only after the move, in a separate change.
+Left for a later pass:
+
+- Split `dtu_do_ai_frame` (486 lines) into steps, in a separate change.
+- Many helpers of `dtuobj.c` are now shared through `dtuobj_int.h`
+  (`obj_model`, `is_hostile`, `sound_at`, `tbl_int` and others). A later
+  pass can give them `dtu_` names and move them to a header of their own.
+- The table of the creature names (`Creature_names`) and the display names
+  could go to a file of their own.
 
 ### 2. Make apply_spell a table of spell handlers
 
@@ -119,8 +130,9 @@ keep its entry points unchanged.
 ### 7. Move the test aids out of the game files
 
 Problem: test code is mixed with game code: `run_command` (`-chartest`) in
-`dtuchar.c`, `-testpos`, `-testobjpos`, `-testtour` and `-testkill` in
-`dtuobj.c`, `-statetest` in `dtustate.c`, `-testmove` in `controls.c`.
+`dtuchar.c`, `-testkill` in `dtuobj.c`, `-statetest` in `dtustate.c`,
+`-testmove` in `controls.c`. `-testpos`, `-testobjpos` and `-testtour` are
+already in `dtuobj_test.c` (item 1).
 
 Proposal: one file `dtutest.c` with the test options, which calls the game
 through the public headers. The soak test (`dtusoak.c`) already works this

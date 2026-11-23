@@ -136,7 +136,7 @@ such a value:
   Color Spray (`color_time`); `DTU_FIREBALL_BLIND_DIST` and
   `DTU_FIREBALL_BLIND_SECONDS` (`dtucombat.h`) give the blindness and the
   deafness near the point of Fireball.
-- `dtu_missile_weapon_range` (`dtuobj.c`), and `dtu_atk_state_time`,
+- `dtu_missile_weapon_range` (`dtuobj_missile.c`), and `dtu_atk_state_time`,
   `dtu_atk_melee_wait` and `dtu_atk_missile_wait` (`dtuatk.c`) with the
   `fire_wait` of `Weapon_info[]`, as `dtucombat.c` calls them.
 - `dtu_char_dragon_minutes` and `dtu_char_spider_turn_level` (`dtuchar.c`),
