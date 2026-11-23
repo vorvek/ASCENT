@@ -253,11 +253,16 @@ static void power_lines(int type, int id)
 					LT("Find/Remove Traps and Open Locks do not work."));
 				break;
 			case DTU_IP_TRAPS_CLIMB:	line(LT("Sets Find/Remove Traps and Climb Walls to %d%%."), p[i].value); break;
-			case DTU_IP_PROT_CLOAK:	line(LT("No armor class bonus with a shield, magic armor or heavy armor.")); break;
+			case DTU_IP_PROT_CLOAK:	// ASCENT: Dtu_fix_ring_magic_armor
+				if (Dtu_fix_ring_magic_armor)
+					line(LT("Only the highest magic protection bonus counts. A Cloak of Protection +1 does not improve a +2 armor and does not add to a Ring of Protection."));
+				else
+					line(LT("No armor class bonus with a shield, magic armor or heavy armor."));
+				break;
 			case DTU_IP_PROT_RING:		line(LT("Of two rings of protection only the better one counts.")); break;
 			case DTU_IP_RING_NO_MAGIC:	// ASCENT: Dtu_fix_ring_magic_armor
 				if (Dtu_fix_ring_magic_armor)
-					line(LT("With magic armor only the better bonus counts, of the ring or of the armor."));
+					line(LT("Only the highest magic protection bonus counts. A Ring of Protection +1 does not improve a +2 armor and does not add to a Cloak of Protection."));
 				else
 					line(LT("No armor class bonus with magic armor."));
 				break;

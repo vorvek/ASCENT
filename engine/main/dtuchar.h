@@ -473,10 +473,13 @@ int dtu_char_creature_missile_damage(int weapon, int n, int sides, int sum);
 // body armor without magic. 1 (default): the rings and the cloaks count
 // with the bracers. 0 (-origcombat): 1.3.
 extern int Dtu_fix_bracers_ac;
-// ASCENT: with magic armor (5 to 11) no Ring of Protection counts in
-// 0xAFB55. A decision of the user: the better of the magic of the armor and
-// the ring counts, they do not add (Leather Armor +1 and a Ring of
-// Protection +2: Leather Armor and 2). 1 (default): the better one. 0
+// ASCENT: in 0xAFB55 no Ring of Protection counts with magic armor (5 to
+// 11), a Cloak of Protection counts only with no shield, magic armor or
+// heavy armor, and a ring and a cloak add. A decision of the user: only the
+// highest magic protection bonus counts, of the magic of the armor, the
+// best Ring of Protection and the Cloak of Protection; the ring and the
+// cloak count with any armor and shield (Leather Armor +1 and a Ring of
+// Protection +2: Leather Armor and 2). 1 (default): the highest one. 0
 // (-origcombat): 1.3.
 extern int Dtu_fix_ring_magic_armor;
 // 1 while the attack of the player is a backstab (0x13A955, dtuthief.c).

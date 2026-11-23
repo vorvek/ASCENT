@@ -407,6 +407,14 @@ id: port.no_armor_class_bonus_with_magic_armor
 en: No armor class bonus with magic armor.
 tr: No mejora la CA con una armadura mágica.
 
+id: port.only_the_highest_magic_protection_bonus_
+en: Only the highest magic protection bonus counts. A Cloak of Protection +1 does not improve a +2 armor and does not add to a Ring of Protection.
+tr: Solo cuenta el mayor bono de protección mágica. Una Capa de protección +1 no mejora una armadura +2 ni se suma a un Anillo de protección.
+
+id: port.only_the_highest_magic_protection_bonus__2
+en: Only the highest magic protection bonus counts. A Ring of Protection +1 does not improve a +2 armor and does not add to a Cloak of Protection.
+tr: Solo cuenta el mayor bono de protección mágica. Un Anillo de protección +1 no mejora una armadura +2 ni se suma a una Capa de protección.
+
 id: port.a_mage_gets_1_better_armor_class_after_a
 en: A mage gets 1 better armor class after Armor, Magical Vestment and Shield.
 tr: Un mago tiene 1 punto mejor de CA tras Armadura, Vestimenta Mágica y Escudo.

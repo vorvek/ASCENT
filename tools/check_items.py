@@ -236,9 +236,11 @@ def test_armor_set(t):
     # not count in the boot place.
     check(d[0].ac == -9, "plate set: AC %d, expected -9" % d[0].ac)
     check(d[0].locks == 0 and d[0].traps == 0, "Gauntlets: thief skills %d %d" % (d[0].locks, d[0].traps))
-    # Leather Armor -2, Cloak +3 -3, Rings +3 and +2: -3, Amulet -5, Gauntlets -1
-    check(d[1].ac == -4, "leather set: AC %d, expected -4" % d[1].ac)
-    return "AC -9 and -4"
+    # Leather Armor -2, Cloak +3 -3, Rings +3 and +2: -3, Amulet -5, Gauntlets
+    # -1. Only the highest of the cloak and the ring counts
+    # (Dtu_fix_ring_magic_armor; 1.3 adds them: -4).
+    check(d[1].ac == -1, "leather set: AC %d, expected -1" % d[1].ac)
+    return "AC -9 and -1"
 
 
 # ---------------------------------------------------------------------
@@ -247,27 +249,37 @@ def test_armor_set(t):
 
 PROTECTION = [
     "give=15.41.1", "equip=15.41", "give=15.0.1", "equip=15.0", "dump",     # Bracers AC4, Ring of Protection +2
-    "give=15.47.1", "equip=15.47", "dump", "unequip=1",                       # and a Cloak of Protection +1
-    "unequip=3", "give=15.5.1", "equip=15.5", "dump",                         # Leather Armor +1 and the ring +2
-    "unequip=6", "give=15.14.1", "equip=15.14", "dump",                       # Leather Armor +1 and a ring +1
-    "unequip=6", "unequip=3", "cast=2", "dump",                               # Armor, no armor
-    "give=15.1.1", "equip=15.1", "dump", "unequip=3",                         # and Leather Armor (AC 8)
+    "give=15.47.1", "equip=15.47", "dump",                                    # and a Cloak of Protection +1
+    "unequip=6", "dump",                                                      # Bracers AC4 and the cloak +1
+    "unequip=3", "equip=15.0", "dump",                                        # the ring +2 and the cloak +1
+    "give=15.5.1", "equip=15.5", "dump",                                      # and Leather Armor +1
+    "unequip=6", "unequip=1", "give=15.49.1", "equip=15.49", "dump",          # Leather Armor +1, Cloak +3
+    "give=15.2.1", "equip=15.2", "dump", "unequip=5",                         # and a Shield
+    "unequip=3", "give=15.4.1", "equip=15.4", "dump", "unequip=3",            # Plate Mail and the cloak +3
+    "unequip=1", "give=15.1.1", "equip=15.1", "give=15.47.1", "equip=15.47", "give=15.2.1", "equip=15.2", "dump",
+                                                                              # Leather Armor, Shield, Cloak +1
+    "unequip=1", "unequip=5", "unequip=3", "equip=15.5", "give=15.13.1", "equip=15.13", "equip=15.0", "dump",
+                                                                              # Leather Armor +1, Shield +2, Ring +2
+    "unequip=6", "unequip=5", "unequip=3", "equip=15.49",                     # back to the cloak +3 alone
+    "unequip=1", "cast=2", "dump",                                            # Armor, no armor
+    "equip=15.1", "dump", "unequip=3",                         # and Leather Armor (AC 8)
     "equip=15.41", "dump", "unequip=3",                                       # and Bracers AC4
     "give=15.39.1", "equip=15.39", "dump", "unequip=3",                       # and Bracers AC8
     "cast=45", "equip=15.39", "dump", "unequip=3",                            # Shield and Bracers AC8
-    "give=15.4.1", "equip=15.4", "dump",                                      # Shield and Plate Mail (AC 3)
+    "equip=15.4", "dump",                                                     # Shield and Plate Mail (AC 3)
 ]
 
 
 def test_protection(t):
-    """Rings and cloaks of protection with the bracers, the better bonus of
-    a ring and magic armor, and the better armor class of the Armor and
-    Shield spells and the worn armor. -origcombat: the rules of 1.3."""
+    """Only the highest magic protection bonus counts (the magic of the
+    armor, a ring and a cloak of protection), with any armor, shield or
+    bracers; a shield adds all of its armor class; the better armor class of the Armor and Shield spells and the
+    worn armor. -origcombat: the rules of 1.3."""
     d, _, _ = t.run("protection", PROTECTION)
     o, _, _ = t.run("protection_orig", PROTECTION, ["-origcombat"])
     acs, orig = [x.ac for x in d], [x.ac for x in o]
-    check(acs == [2, 1, 6, 7, 6, 6, 4, 6, 4, 3], "AC %s" % acs)
-    check(orig == [4, 4, 7, 7, 6, 6, 4, 6, 3, 3], "-origcombat: AC %s" % orig)
+    check(acs == [2, 2, 3, 8, 6, 5, 4, 0, 6, 3, 6, 6, 4, 6, 4, 3], "AC %s" % acs)
+    check(orig == [4, 4, 4, 7, 7, 7, 6, 3, 7, 4, 6, 6, 4, 6, 3, 3], "-origcombat: AC %s" % orig)
     return "AC %s, 1.3 %s" % (acs, orig)
 
 

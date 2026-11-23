@@ -522,12 +522,15 @@ static int is_prot_ring(dtu_inv_item *e)	{ return armor_is(e, 0, 0) || armor_is(
 
 // ASCENT: the armor class that the magic of a magic armor (5 to 11) adds to
 // the same armor without magic (Leather Armor 1, Chain Mail 3, Plate Mail
-// 4): -1 for a +1 armor. 0 for other items. Dtu_fix_ring_magic_armor.
+// 4): -1 for a +1 armor. Bracers that are magic armor (Dtu_fix_bracers_ac
+// 0): all of their armor class. 0 for other items. Dtu_fix_ring_magic_armor.
 static int magic_armor_bonus(dtu_inv_item *e)
 {
 	static const ubyte base[7] = { 1, 1, 3, 3, 4, 4, 4 };
 	dtu_inv_item b;
 
+	if (!Dtu_fix_bracers_ac && armor_is(e, 39, 42))
+		return table_ac(e);
 	if (!armor_is(e, 5, 11))
 		return 0;
 	b = *e;
@@ -817,7 +820,7 @@ void dtu_char_update(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa, *base = &Dtu_char.base;
 	dtu_inv_item *e;
-	int sum = 0, ring_best = 0, armor_bonus = 0, ring_counts;
+	int sum = 0, ring_best = 0, cloak_best = 0, armor_bonus = 0, ring_counts;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
 	int ac, dex, missile;
 
@@ -904,10 +907,17 @@ void dtu_char_update(void)
 
 	// cloak. 0xAF930: the numbers 47 to 49 are the Cloaks of Protection.
 	// They do not work with a shield, magic armor or heavy armor.
+	// ASCENT: Dtu_fix_ring_magic_armor: a Cloak of Protection counts with
+	// any armor and shield, as a Ring of Protection, and only the best magic
+	// protection bonus counts (below).
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_CLOAK]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
-			if (!is_prot_cloak(e) || (!shield && !magic_armor && !heavy_armor))
+			if (!is_prot_cloak(e))
+				sum += slot_ac(e, DTU_SLOT_CLOAK);
+			else if (Dtu_fix_ring_magic_armor)
+				cloak_best = slot_ac(e, DTU_SLOT_CLOAK);
+			else if (!shield && !magic_armor && !heavy_armor)
 				sum += slot_ac(e, DTU_SLOT_CLOAK);
 			if (e->id == 43)								// Cloak of Elvenkind
 				pa->hide_in_shadows = DTU_ELVENKIND_HIDE;
@@ -919,8 +929,8 @@ void dtu_char_update(void)
 	// rings. 0xAF9AB: the numbers 0, 14 and 15 are the Rings of Protection.
 	// No ring adds to magic armor. Of two rings of protection the better one
 	// counts. 21 is the Ring of Health, 26 the Ring of Strength.
-	// ASCENT: Dtu_fix_ring_magic_armor: with magic armor the better of the
-	// ring and the magic of the armor counts (below).
+	// ASCENT: Dtu_fix_ring_magic_armor: the best ring counts with any armor
+	// (below).
 	ring_counts = !magic_armor || Dtu_fix_ring_magic_armor;
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_RING1]);
 	if (e) {
@@ -948,10 +958,17 @@ void dtu_char_update(void)
 		else
 			sum += table_ac(e);
 	}
-	if (!magic_armor)
+	// ASCENT: Dtu_fix_ring_magic_armor: only the best of the magic of the
+	// armor, the ring and the cloak counts; they do not add
+	if (Dtu_fix_ring_magic_armor) {
+		int best = armor_bonus;
+
+		if (ring_best < best) best = ring_best;
+		if (cloak_best < best) best = cloak_best;
+		sum += best - armor_bonus;
+	}
+	else if (!magic_armor)
 		sum += ring_best;
-	else if (ring_best < armor_bonus)		// only with Dtu_fix_ring_magic_armor
-		sum += ring_best - armor_bonus;
 
 	// lockpicks, for a thief (0xB02BE)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_LOCKPICK]);
