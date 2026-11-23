@@ -1474,6 +1474,8 @@ static void combat_init(void)
 		Dtu_fix_spell_hours = 0;
 		Dtu_fix_turn_undead = 0;
 		Dtu_fix_cure_aid = 0;
+		Dtu_fix_spell_dice = 0;
+		Dtu_fix_prayer_flags = 0;
 		Dtu_fix_slow_swing = 0;
 		Dtu_fix_kill_sound = 0;
 	}

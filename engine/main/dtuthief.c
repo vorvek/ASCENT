@@ -445,6 +445,23 @@ static void search_triggers(int seg, int side, int spell, int dwarf)
 	}
 }
 
+// ASCENT: D-067. For a magical trap 0xB396C halves the Find/Remove Traps
+// skill (P+0xCF) before the rolls (0xB3A4A, sar 1) and doubles it after
+// them (0xB3CF9, add), so an odd skill stays 1 lower. With the Find Traps
+// spell it returns at 0xB3B5E before the doubling: the skill stays halved.
+// Both last until the next 0xAFB55 (dtu_char_update). 1 (default): the
+// skill is restored on each path. -origchar clears it (dtuchar.c).
+int Dtu_fix_find_traps_skill = 1;
+
+// The skill after the rolls of a trap (0xB3CE2): magical 0 changed nothing
+static void restore_find_traps(int saved, int magical)
+{
+	if (Dtu_fix_find_traps_skill)
+		Dtu_char.pa.find_traps = saved;
+	else if (magical)
+		Dtu_char.pa.find_traps <<= 1;		// 0xB3CF9
+}
+
 // 0xB396C
 static void search_traps(int seg, int side, int spell, int dwarf)
 {
@@ -466,8 +483,8 @@ static void search_traps(int seg, int side, int spell, int dwarf)
 		magical = tp->spawn_object >= 0 || tp->robot_type >= 0;
 		// a magical trap halves the skill for the rolls (0xB3A4A). The
 		// executable doubles it again after the rolls (0xB3CF9), so an
-		// odd skill is 1 lower until the next 0xAFB55; the port keeps the
-		// value.
+		// odd skill is 1 lower until the next 0xAFB55
+		// (Dtu_fix_find_traps_skill).
 		if (magical)
 			pa->find_traps >>= 1;
 		if (Trap_find(t) < 0x80) {
@@ -475,12 +492,12 @@ static void search_traps(int seg, int side, int spell, int dwarf)
 			ok = dtu_thief_roll(3, NULL);
 			if (!ok) {
 				Set_trap_find(t, level);
-				pa->find_traps = saved;
+				restore_find_traps(saved, magical);
 				continue;
 			}
 		}
 		if (Trap_find(t) == 0xFE || Trap_remove(t) == level) {
-			pa->find_traps = saved;
+			restore_find_traps(saved, magical);
 			continue;
 		}
 		// 0xB3ABB: the automap shows a found trap (side flag 8)
@@ -492,20 +509,22 @@ static void search_traps(int seg, int side, int spell, int dwarf)
 			dtu_char_log("thief: the spell finds trap %d", t);
 			Set_trap_find(t, 0xFE);
 			Set_trap_remove(t, level);
-			// 0xB396C returns here without the restore of the skill (a
-			// defect of 1.3); the next dtu_char_update() restores it
-			pa->find_traps = saved;
+			// 0xB3B5E returns here without the restore of the skill (a
+			// defect of 1.3, Dtu_fix_find_traps_skill); the next
+			// dtu_char_update() restores it
+			if (Dtu_fix_find_traps_skill)
+				pa->find_traps = saved;
 			return;
 		}
 		dtu_char_log("thief: found trap %d", t);
 		if (dtu_char_choice(magical ? text(944, "You found a magical trap!\nWould you like to disable it?") :
 				text(945, "You found a trap!\nWould you like to disable it?"), 2, text(32, "Yes"), text(33, "No")) != 0) {
 			Set_trap_find(t, 0xFE);
-			pa->find_traps = saved;
+			restore_find_traps(saved, magical);
 			continue;
 		}
 		ok = dtu_thief_roll(3, &roll);
-		pa->find_traps = saved;
+		restore_find_traps(saved, magical);
 		if (!ok) {
 			Set_trap_remove(t, level);
 			if (roll >= 96) {

@@ -29,6 +29,20 @@ extern int Dtu_fix_chargen_abort;
 // 0xBAA3E: 1 (default): a save file that cannot be opened shows TEX 800.
 // -origfe clears it.
 extern int Dtu_fix_save_open_text;
+// ASCENT: D-094, 0x8BD16: 1 (default): each mage gets the start spells of
+// this creation. -origfe clears it (dtufe_char.c).
+extern int Dtu_fix_start_spells;
+// ASCENT: D-095, 0x8AAD4: 1 (default): the stored exceptional strength is
+// the one that the screen shows. -origfe clears it (dtufe_char.c).
+extern int Dtu_fix_chargen_percentile;
+// ASCENT: D-092, 0xB0C88: 1 (default): a die of the character creation is
+// random. -origfe clears it (dtufe_char.c).
+extern int Dtu_fix_creation_luck;
+
+// ASCENT: the class mask of the last character creation of this run
+// (0x3A6465: 1 fighter, 2 thief, 4 mage, 8 cleric; 0 if none). 0x8BACD
+// reads it (Dtu_fix_level_thief, dtuchar.h).
+int dtu_fe_class_mask(void);
 
 // The game sets this to 1 when the player leaves the dungeon through the
 // exit of the Yawning Portal (command 0 of DTU.WRP). The front end then

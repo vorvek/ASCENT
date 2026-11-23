@@ -127,8 +127,8 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` (all in `physics.c`) | `controls.c` |
 | `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive`, `break_spread`, `noise_walls`, `alert_ray`, `alert_last`, `restore_spells`, `save_cast` | `dtuobj.c` |
 | `-origrevive`, `-origdrow5`, `-origguildpeace` | one each: `revive`, `drow5_shields`, `guild_peace` | `dtuobj.c` |
-| `-origcombat` | `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `cure_aid` (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class`, `chill_touch`, `slow_swing`, `kill_sound`, `backstab` (`dtuthief.c`), `creature_strength` (`dtuobj_combat.c`), `shield_ac` (`dtuchar.c`), `swing_pitch`, `attack_commit` (`dtucombat.c`, `dtuobj_combat.c`) | `dtucombat.c`, `dtuchar.c` |
-| `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points` (`dtuchar.c`); `secret_door_names`, `thac0_row`, `new_thac0` (`dtuthief.c`), `save_seconds` | `dtuchar.c`, `dtuthief.c` |
+| `-origcombat` | `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `cure_aid` (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class`, `chill_touch`, `slow_swing`, `kill_sound`, `backstab` (`dtuthief.c`), `creature_strength` (`dtuobj_combat.c`), `shield_ac` (`dtuchar.c`), `swing_pitch`, `attack_commit` (`dtucombat.c`, `dtuobj_combat.c`), `spell_dice` (`dtuobj_combat.c`), `prayer_flags` (`dtuspell.c`) | `dtucombat.c`, `dtuchar.c` |
+| `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points`, `endless_stack`, `level_thief` (`dtuchar.c`); `secret_door_names`, `thac0_row`, `new_thac0`, `find_traps_skill` (`dtuthief.c`), `save_seconds` | `dtuchar.c`, `dtuthief.c` |
 | `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap`, `trap_pause` | `dtutrig.c` |
 | `-origui` | `automap_reveal` (`automap.c`); `msg_scroll`, `view_aspect`, `button_hold` (`dtudisp.c`); `cheat_index` (`dtucheat.c`); `sensitivity_menu` (`menu.c`) | `automap.c`, `dtudisp.c`, `dtucheat.c`, `menu.c` |
 | `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg`, `mirt_points`, `script_run_mode` | `dtuscript.c` |
@@ -139,7 +139,7 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origmusic` | `start_music`, `wrp_sound` | `dtumusic.c` |
 | `-origlight` | `light_stable` | `lighting.c` |
 | `-origitems` | `item_names` (`dtuitemfix.c`) | `dtuopts.c` |
-| `-origfe` | `escape_load_waterdeep`, `chargen_abort`, `save_open_text` (`dtufe.c`); `market_charisma`, `market_sell_count` (`dtufe_town.c`) | `dtufe.c` |
+| `-origfe` | `escape_load_waterdeep`, `chargen_abort`, `save_open_text` (`dtufe.c`); `start_spells`, `chargen_percentile`, `creation_luck` (`dtufe_char.c`); `market_charisma`, `market_sell_count` (`dtufe_town.c`) | `dtufe.c` |
 
 The table was checked against the code on 2026-11-23: each `Dtu_fix_*` that
 is defined with the value 1 is in one row. `chill_touch` (`dtuspell.c`) has

@@ -51,6 +51,7 @@
 #include "dtuscroll.h"	// ASCENT: the text screen of the Scroll
 #include "dtudesc.h"		// ASCENT: the test commands of the description window
 #include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up, the session log lines
+#include "dtufe.h"		// ASCENT: the class mask of the front end (Dtu_fix_level_thief)
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -97,6 +98,18 @@ int Dtu_fix_level_hit_points = 1;
 // second. 1 (default): the save rounds to the nearest second. -origchar
 // clears it.
 int Dtu_fix_save_seconds = 1;
+// ASCENT: D-030, 0xB6FE3 (called first by 0xB7084, use one) stores 1 at
+// entry +8 when the count of a stackable item is below 1 (0xB703E to
+// 0xB7045), so an endless stack (count -1) becomes one item at its first
+// use. No shipped item has an endless stack. 1 (default): the endless
+// stack stays. -origchar clears it.
+int Dtu_fix_endless_stack = 1;
+// ASCENT: D-093, 0x8BACD in 0x8BA3A (script statement 9F, the level
+// fixes) tests the thief bit of the front end class mask 0x3A6465, which
+// only character creation writes: the 60 + 30 * level value thief points
+// follow the last character created in this run (none: no points). 1
+// (default): the classes of the character. -origchar clears it.
+int Dtu_fix_level_thief = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
 int Dtu_fix_speed_items = 1;
@@ -240,7 +253,7 @@ static void read_options(void)
 		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names =
 			Dtu_fix_thac0_row = Dtu_fix_new_thac0 = 0;
 	if (FindArg("-origchar"))
-		Dtu_fix_save_seconds = 0;
+		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
 			Dtu_fix_creature_strength = Dtu_fix_shield_ac = 0;
@@ -1826,20 +1839,26 @@ void dtu_char_potions_end(int force)
 // ASCENT: 0xB6FE3, called first by 0xB7084 (use one): a stack of a
 // stackable type above its stack_limit drops to the limit. The executable
 // also makes a count below 1 into 1, so an endless stack (-1) goes at its
-// first use; the port keeps the endless stack (a defect, no setting: no
-// shipped item has one).
+// first use; the port keeps the endless stack (Dtu_fix_endless_stack, D-030).
 static void clamp_stacks(void)
 {
 	dtu_item_data d;
 	int i;
 
-	for (i = 0; i < Dtu_n_inventory; i++)
+	for (i = 0; i < Dtu_n_inventory; i++) {
+		if (!Dtu_fix_endless_stack && Dtu_inventory[i].count < 1 && dtu_item_get(Dtu_inventory[i].type, Dtu_inventory[i].id, &d) &&
+				d.stackable) {
+			dtu_char_log("use: entry %d '%s' count %d becomes 1 (0xB7045)", i, Dtu_inventory[i].name, Dtu_inventory[i].count);
+			Dtu_inventory[i].count = 1;
+			continue;
+		}
 		if (dtu_item_get(Dtu_inventory[i].type, Dtu_inventory[i].id, &d) && d.stackable &&
 				!(Dtu_inventory[i].type == OBJ_MISC && Dtu_inventory[i].id == 102) && Dtu_inventory[i].count > d.stack_limit) {
 			dtu_char_log("use: entry %d '%s' count %d cut to the stack limit %d (0xB6FE3)", i, Dtu_inventory[i].name,
 				Dtu_inventory[i].count, d.stack_limit);
 			Dtu_inventory[i].count = d.stack_limit;
 		}
+	}
 }
 
 static int any_potion(void)
@@ -2655,7 +2674,8 @@ void dtu_char_set_level(int level)
 	Dtu_char.base.class1_level = Dtu_char.base.class2_level = (short) lv;
 	Dtu_char.experience[0] = Xp_table[pa->class1][lv + 1];
 	Dtu_char.experience[1] = two ? Xp_table[pa->class2][lv + 1] : 0;
-	if (has_class(DTU_CLASS_THIEF))
+	// 0x8BACD: the thief bit of the front end class mask (Dtu_fix_level_thief)
+	if (Dtu_fix_level_thief ? has_class(DTU_CLASS_THIEF) : (dtu_fe_class_mask() & 2) != 0)
 		Dtu_char.thief_points = 60 + 30 * lv;
 	hp = (die[pa->class1] + Con_bonus[pa->class1 == DTU_CLASS_FIGHTER][con]) * (lv + 1);
 	if (two)
@@ -2789,13 +2809,30 @@ void dtu_char_get_attack(dtu_attack *a)
 // fix) is odd. Then the luck ends (0xAE564: sound 0x8A8). The bit depends
 // on the frame times (at a fixed frame rate with an even frame time it is
 // never odd); corrected: a coin flip.
+static void luck_end(void)		// 0xAE564
+{
+	Potion.luck_end = 0;
+	digi_play_sample(0x8A8, F1_0);
+	dtu_script_set_gflag(0x4D, 0);		// ASCENT: 0xAE58E, global flag 77
+}
+
 static int luck_now(void)
 {
 	if (!Potion.luck_end || !(Dtu_fix_luck_coin ? (rand() & 1) : (GameTime & 1)))
 		return 0;
-	Potion.luck_end = 0;
-	digi_play_sample(0x8A8, F1_0);
-	dtu_script_set_gflag(0x4D, 0);		// ASCENT: 0xAE58E, global flag 77
+	luck_end();
+	return 1;
+}
+
+// 0xB0C88: the Luck timer of Players[Player_num] and the odd clock P+0x83
+// (GameTime, as luck_now). The timer can be left from a game before the creation:
+// nothing clears it before the new character is made.
+int dtu_char_creation_luck(void)
+{
+	if (!Potion.luck_end || !(GameTime & 1))
+		return 0;
+	dtu_char_log("creation: the Luck timer gives a die its number of sides (0xB0C88)");
+	luck_end();
 	return 1;
 }
 

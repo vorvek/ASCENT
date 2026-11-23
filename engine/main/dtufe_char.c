@@ -63,6 +63,36 @@ static int Bonus_box;			// free bonus points
 static int Holding, Held_value, Held_bonus;
 static int Percentile;			// exceptional strength roll (0x13F868)
 static int Final[6], Final_percentile;		// the result (record at 0x3A63F8)
+static int Stored_percentile;		// ASCENT: the strength_extra of the record (Dtu_fix_chargen_percentile)
+
+// ASCENT: D-094. The mage start spells of 0x8BB91 are the id words of six
+// entries of the mage start list (0x13F729 + 8 n, the list 0x13F715). The
+// write at 0x8BD16 puts the first INT / 3 shuffled spells there and no code
+// restores the list, so a later mage of the same run keeps the spells of an
+// earlier mage after its own count (not spell 46). 1 (default): each mage
+// gets its count and spell 46, from a copy. -origfe clears it.
+int Dtu_fix_start_spells = 1;
+static int Start_spell_list[6] = { 46, 46, 46, 46, 46, 46 };		// 0x13F729
+
+// ASCENT: D-095. The store 0x8AAA7 starts the exceptional strength at the
+// roll 0x13F868 (load at 0x8AAD4) and steps it 10 for each bonus point
+// above 18; the screen (0x89D42) starts at 1 when the rolled number is
+// below 18. The screen draw writes the to hit and damage bonuses with the
+// screen value (0x891FE). So a fighter with 17 and one bonus point sees
+// 18/01 and gets 18/(roll) as strength_extra. 1 (default): the record has
+// the value of the screen. -origfe clears it.
+int Dtu_fix_chargen_percentile = 1;
+
+// ASCENT: D-092. The die 0xB0C65 of the creation (0xB0CDB) reads the Luck
+// timer of Players[Player_num] (0xB0C88): with a timer left from a game of
+// this run and an odd clock the luck ends (0xAE564) and the die is its
+// number of sides. 1 (default): the die is random. -origfe clears it.
+int Dtu_fix_creation_luck = 1;
+
+int dtu_fe_class_mask(void)
+{
+	return Class_mask;
+}
 
 #define BONUS_POINTS	7		// 0x89B95. The manual says 5.
 
@@ -469,7 +499,10 @@ static int roll_3d6(void)
 	int i, sum = 0, r;
 
 	for (i = 0; i < 3; i++) {
-		do r = fe_rand() % 6 + 1; while (r == 1);
+		if (!Dtu_fix_creation_luck && dtu_char_creation_luck())
+			r = 6;			// 0xB0CA7: the number of sides (Dtu_fix_creation_luck)
+		else
+			do r = fe_rand() % 6 + 1; while (r == 1);
 		sum += r;
 	}
 	return sum;
@@ -863,6 +896,20 @@ static void s3_store(void)			// 0x8AAA7
 	}
 	if (Final[ST_STR] < 18)
 		Final_percentile = 1;
+	Stored_percentile = Final_percentile;
+	// ASCENT: 0x8AAD4, the store starts at the roll (Dtu_fix_chargen_percentile)
+	if (!Dtu_fix_chargen_percentile && row_exceptional(ST_STR) && Final[ST_STR] >= 18) {
+		int mod = Race_mod[Race][ST_STR], b = Row_bonus[ST_STR], cap = row_cap(ST_STR), to18 = 18 - (Row_value[ST_STR] + mod), p;
+
+		if (b > cap) b = cap;
+		if (to18 < 0) to18 = 0;
+		b -= b < to18 ? b : to18;
+		for (p = Percentile; b-- > 0 && p != 0; ) {
+			p += 10;
+			if (p > 99) p = 0;
+		}
+		Stored_percentile = p;
+	}
 }
 
 static int s3_may_leave(fe_screen *s)			// 0x88CE8
@@ -1155,7 +1202,7 @@ static void make_player(void)
 	pa->armor_class = 10;
 	pa->dex_ac_adjust = (short) Dex_armor[clamp_stat(Final[ST_DEX])];
 	pa->strength = (ushort) Final[ST_STR];
-	pa->strength_extra = (ushort) Final_percentile;
+	pa->strength_extra = (ushort) Stored_percentile;		// ASCENT: 0x8AAD4 (Dtu_fix_chargen_percentile)
 	pa->wisdom = (ushort) Final[ST_WIS];
 	pa->intelligence = (ushort) Final[ST_INT];
 	pa->charisma = (ushort) Final[ST_CHA];
@@ -1215,8 +1262,13 @@ static void make_player(void)
 			list[j] = t;
 		}
 		if (count > 6) count = 6;
+		// 0x8BD16 writes the first count spells into the start list
+		// (Dtu_fix_start_spells)
+		if (!Dtu_fix_start_spells)
+			for (i = 0; i < count; i++)
+				Start_spell_list[i] = list[i];
 		for (i = 0; i < 6; i++) {
-			int id = i < count ? list[i] : 46;
+			int id = Dtu_fix_start_spells ? (i < count ? list[i] : 46) : Start_spell_list[i];
 			if (!has_item(OBJ_SPELL, id))
 				dtu_inventory_add(OBJ_SPELL, id, 1);
 		}
@@ -1308,7 +1360,7 @@ int fe_make_test_character(int race, int mask, const int stats[6], int percentil
 	Class_mask = mask;
 	for (i = 0; i < 6; i++)
 		Final[i] = stats[i];
-	Final_percentile = percentile;
+	Final_percentile = Stored_percentile = percentile;
 	Cheat_stats = 0;
 	Portrait = 0;
 	Alignment = (mask & CM_THIEF) ? 4 : 0;

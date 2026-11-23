@@ -54,6 +54,14 @@ int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
 int Dtu_fix_spell_hours = 1;
 int Dtu_fix_cure_aid = 1;			// ASCENT: priest spells (dtuspell.h)
+// ASCENT: D-105 (dtuspell.h). The flag word of Prayer after 0x56D6A: the
+// bits of the reader 0x242F6, +0x36: 1 AREA, 2 stackable, 0x1C the cast
+// (0 hands, 4 wand, 8 scroll, 0x10 arrow), 0x20 potion, 0x40 always, 0x80
+// homing; +0x37: 1 self_cast_ok, 2 non_hotkey_item, 4 cast_in_front, 8
+// hit_objects (the table fixup). 43 of the 46 tables already have 0x102 on
+// line 38; DEMO and MOIN1 have cast_with_wand, BASE has cast_in_front.
+int Dtu_fix_prayer_flags = 1;
+static int Prayer_written;		// the player cast Prayer since the table read
 
 // Rary's Mnemonic Enhancer: the extra mage slots of spell levels 1 to 3
 // (P+0x23 to P+0x25 of the executable). Rary_rest: the number of rests
@@ -161,7 +169,27 @@ static int dtu_tbl_int(int record,char *key,int def)
 
 static int spell_flag(int spell,char *flag)
 {
+	// ASCENT: the word 0x102 of 0x56D6A (Dtu_fix_prayer_flags)
+	if (spell == 38 && Prayer_written && !Dtu_fix_prayer_flags) {
+		static char *on[] = { "stackable", "self_cast_ok", "cast_with_hands" };
+		static char *off[] = { "cast_with_wand", "cast_with_scroll", "cast_with_arrow", "potion", "always", "homing",
+			"non_hotkey_item", "cast_in_front", "hit_objects" };
+		int i;
+
+		for (i = 0; i < (int) (sizeof(on) / sizeof(on[0])); i++)
+			if (!stricmp(flag,on[i]))
+				return spell_ok(spell);
+		for (i = 0; i < (int) (sizeof(off) / sizeof(off[0])); i++)
+			if (!stricmp(flag,off[i]))
+				return 0;
+	}
 	return spell_ok(spell) && bm_tbl_has_flag(Spell_info[spell].record,flag);
+}
+
+void dtu_spell_table_read(void)
+{
+	Prayer_written = 0;
+	dtu_spell_dice_clear();
 }
 
 static char *spell_name(int spell)
@@ -174,6 +202,8 @@ static int spell_area(int spell)
 {
 	char v[16];
 
+	if (spell == 38 && Prayer_written && !Dtu_fix_prayer_flags)
+		return 0;		// ASCENT: the word 0x102 of 0x56D6A (Dtu_fix_prayer_flags)
 	return spell_ok(spell) && bm_tbl_get(Spell_info[spell].record,"type",v,sizeof(v)) && !stricmp(v,"AREA");
 }
 
@@ -2819,7 +2849,10 @@ static void cast_now(int spell,int source)
 		// Always on the player himself (0x56D36): an AREA line around him
 		// (0x90CEF), else 0x8CFFF on him. 0x56D6A sets the word +0x36 of
 		// Prayer (38) to 0x102 before the test: the AREA bit is clear, so
-		// Prayer blesses the caster only.
+		// Prayer blesses the caster only. The record keeps the word
+		// (Dtu_fix_prayer_flags).
+		if (spell == 38)
+			Prayer_written = 1;
 		if (spell_area(spell) && spell != 38)
 			dtu_spell_area(spell,&player->pos,player->segnum,player,L);
 		else
