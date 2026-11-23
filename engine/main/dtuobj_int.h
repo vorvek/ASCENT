@@ -119,4 +119,14 @@ typedef struct dtu_missile {
 	fix		tumble_acc;
 } dtu_missile;
 
+//------------------------------------------------------------------------
+// dtuobj.c
+
+extern int Test_pos_pending;
+
+//------------------------------------------------------------------------
+// dtuobj_test.c
+
+void test_place_player(void);
+
 #endif
