@@ -26,6 +26,9 @@ extern int Dtu_fix_escape_load_waterdeep;
 // 0x87E60: 1 (default): an aborted New Game keeps the mission state of
 // Khelben (D-084). -origfe clears it.
 extern int Dtu_fix_chargen_abort;
+// 0xBAA3E: 1 (default): a save file that cannot be opened shows TEX 800.
+// -origfe clears it.
+extern int Dtu_fix_save_open_text;
 
 // The game sets this to 1 when the player leaves the dungeon through the
 // exit of the Yawning Portal (command 0 of DTU.WRP). The front end then

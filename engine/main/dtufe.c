@@ -2587,6 +2587,9 @@ int fe_load_game(int in_game)
 // (0xBA99F(0)): then "between levels" is 0 and the three lists at 7374
 // follow. The level and the position of the player are in the level state
 // files.
+// ASCENT: 1 when the last sg_write could not open the file
+static int Sg_open_failed;
+
 static int sg_write(int slot, char *desc, int between)
 {
 	char name[16];
@@ -2634,6 +2637,7 @@ static int sg_write(int slot, char *desc, int between)
 
 	sprintf(name, "SG%d.SG", slot);
 	f = dtu_user_fopen(name, "wb");			// ASCENT: the directory of the user
+	Sg_open_failed = !f;
 	ok = f && fwrite(b, 1, size, f) == (size_t) size;
 	if (f && fclose(f))
 		ok = 0;
@@ -2656,6 +2660,14 @@ static int save_to_slot(int slot, char *desc, int between)
 	return sg_write(slot, desc, between);
 }
 
+// 0xBA99F: a file that cannot be opened (0xBAA3E) ends the save with no
+// text; only a failed write shows TEX 800 (0xBABF3). With
+// Dtu_fix_save_open_text both show TEX 800.
+static int save_failed_text(void)
+{
+	return Dtu_fix_save_open_text || !Sg_open_failed;
+}
+
 void fe_save_game(void)
 {
 	fe_menu_item m[10];
@@ -2674,7 +2686,7 @@ void fe_save_game(void)
 	choice = fe_menu(NULL, fe_text(796), m, 10, 0, 1);				// "Save Game"
 	if (choice < 0 || Fe_quit)
 		return;
-	if (!save_to_slot(choice, desc[choice], 1))
+	if (!save_to_slot(choice, desc[choice], 1) && save_failed_text())
 		fe_message_box(NULL, fe_text(800), 1, fe_text(34), NULL);	// "Error writing character data"
 }
 
@@ -2690,7 +2702,7 @@ static void ig_save_game(void)
 	choice = slot_menu_nm(1, desc);
 	if (choice < 0 || Fe_quit)
 		return;
-	if (!save_to_slot(choice, desc[choice], 0))
+	if (!save_to_slot(choice, desc[choice], 0) && save_failed_text())
 		nm_messagebox(NULL, 1, fe_text(34), fe_text(800));
 }
 
@@ -2849,7 +2861,7 @@ static void fe_orig_options(void)
 	if (FindArg("-feoriginput"))
 		Dtu_fe_original_input = 1;
 	if (FindArg("-origfe"))
-		Dtu_fix_escape_load_waterdeep = Dtu_fix_chargen_abort = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
+		Dtu_fix_escape_load_waterdeep = Dtu_fix_chargen_abort = Dtu_fix_save_open_text = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
 }
 
 static void fe_enter(void)
@@ -3019,6 +3031,11 @@ int Dtu_fix_escape_load_waterdeep = 1;
 // player leaves the character creation, so a loaded game loses it. 1
 // (default): only a new character resets it.
 int Dtu_fix_chargen_abort = 1;
+
+// 0 (the executable): a save game file that cannot be opened ends the save
+// with no text (0xBAA3E). 1 (default): the text "Error writing character
+// data" (TEX 800), as for a failed write.
+int Dtu_fix_save_open_text = 1;
 
 // ASCENT: the direct start (-level NAME) skips the front end. The death of
 // the player must still go to the death screen and the death menu, so the

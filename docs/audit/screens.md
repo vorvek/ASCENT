@@ -30,7 +30,7 @@ a save with more than ten items (SG0.SG of the install has six).
 | Character | An aborted New Game also resets Khelben (0x82BC4) and the first list (0x8C426) | 0x87E60, 0x87E65 | open: the list is reset (fixed with the main menu item); the Khelben reset of a loaded game on abort is a defect of 1.3, not ported |
 | Character | Abort question, refusals TEX 712, 713, 716, 717, class help 613 to 619, 634, 635, name box, alignment rule | 0x87EFC, 0x881ED, 0x8C0BB | same |
 | Load | A file with a valid header whose character cannot be read: TEX 804 "Error reading character data", and 0xBB763 (no character, Khelben reset, first list). Other failures TEX 802 | 0xBBB44 to 0xBBB53 | fixed |
-| Save | A failed open shows no text; a failed write TEX 800 | 0xBA99F | open (minor: the port shows TEX 800 for both) |
+| Save | A failed open shows no text; a failed write TEX 800 | 0xBA99F | corrected: `Dtu_fix_save_open_text` (TEX 800 for both; verified in the bytes: 0xBAA3E goes to the exit with no text, 0xBABF3 shows the text of a failed write); `-origfe` gives no text |
 | Load and save | Spacer, width 190, TEX 67, 796, 797, 798, 801 | 0xBA647, 0xBA486 | same |
 | Options | Hires Dungeon Graphics and "Hear Khelben In English"; two blank lines after Reverse Stereo | 0x58C18 | port (FE-10, FE-11) |
 | Death | The world stops at once when the hit points go below 1 (0x13AD0D, 0x13D3F7); a wait of 3 s or a key; fade out (32 steps) | 0x33C5E, 0x423F5 to 0x42460 | fixed: the world stops at the death, the streams stop, a key ends the wait (dtuobj.c dtu_player_death_wait, verified in the bytes: 0x33C96, 0x4240B to 0x42452); `test_death_stops_world` |
