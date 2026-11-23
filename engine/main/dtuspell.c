@@ -4154,6 +4154,10 @@ int dtu_spell_priest_check(void)
 			continue;
 		if (Dtu_char.pa.class2_level > lv)
 			lv = Dtu_char.pa.class2_level;
+		// -origcombat (Dtu_fix_npc_list 0): the NPC list of 1.3 gives a
+		// creature without the undead flag the class 15 (0xAC4A0 to 0xAC4AE)
+		if (!Dtu_fix_npc_list && b == 0x0F && !(Monster_info[o->id].flags & MONSTER_F_UNDEAD))
+			continue;
 		if ((b & 0x10) ? (b & 0x0F) >= 9 : (b & 0x0F) != ((lv >= 7 ? 8 : lv + 1) & 0x0F)) {
 			priest_result("turn_class",0,"obj %d %s: bits 0x%02x",i,target_name(o),b);
 			n++;
