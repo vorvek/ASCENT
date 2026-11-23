@@ -8,8 +8,8 @@ Usage:
     python -I tools/content_pack.py [--hd DIR] [--patch ZIP_OR_DIR] [--out DIR]
                                     [--lang DIR] [--version V] [PACK ...]
 
-PACK is one of patch13, textures, ui, movies, lang_es (default: all but
-lang_es).
+PACK is one of patch13, textures, ui, movies, lang_es, sounds (default:
+all but lang_es and sounds).
 
   patch13   the files of the 1.3 patch that ascent-import needs
             (installer/patch13.txt), from the patch archive dtu1_3.zip or a
@@ -24,6 +24,10 @@ lang_es).
             language <hd>/lang/es/ (orig/ and ui/, made by tools/ui_lang.py).
             The catalog is checked first: an error of `lang_extract.py
             check` stops the pack.
+  sounds    <hd>/sound: the port sounds that are not game data (the miss
+            sounds miss*.wav of engine/main/dtumiss.c) and README.txt.
+            Only when named: the files come from a sound library, and the
+            owner must confirm that its license allows the distribution.
 
 The version of a pack is --version, else the number of PACK_VERSION (1 for
 a pack that is not there).
@@ -54,6 +58,7 @@ TITLES = {
     'ui': 'Upscaled interface pictures',
     'movies': 'Upscaled movies',
     'lang_es': 'Spanish text and pictures (translation, subtitles, interface pictures)',
+    'sounds': 'Port sounds (the sound of a melee attack that misses)',
 }
 DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 # 2: lang_es has the pictures of the language
@@ -243,6 +248,8 @@ def main(argv):
             m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'textures'))
         elif name == 'ui':
             m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'ui'))
+        elif name == 'sounds':
+            m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'sound'))
         elif name.startswith('lang_'):
             m = write_pack(out, name, version_of, 'hd', lang_files(lang, name[5:], hd))
         else:

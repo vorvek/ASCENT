@@ -71,6 +71,7 @@ comments.
 | `dtustate.c` | Level state files and their copies in the save slots. Same format as the DOS game. | `re/levelstate.md` |
 | `dtumusic.c` | Streamed music (TUN files) and the music commands of DTU.WRP. Replaces the MIDI songs. | `re/music.md`, `formats/tun.md` |
 | `dtufoot.c` | Footstep sounds of the player and the creatures. | `re/music.md` |
+| `dtumiss.c` | The miss sound of a melee attack (port sounds of `<hd>/sound`). New in the port. | `re/combat.md` |
 | `dtumovie.c`, `mvedec.c` | The movie player and the MVE decoder. | `re/movies.md`, `formats/mve.md` |
 | `acm.c` | The Interplay ACM audio decoder (sounds of the EGG archives). | `formats/tun.md` |
 | `dtuogg.c` | The Ogg Vorbis decoder for replacement music (stb_vorbis). | |
@@ -156,6 +157,13 @@ settings, and others). They are in `ascent.cfg`, the menus change them, and
 `-noimprovements` turns them all off. To add one, add the variable to
 `dtuopts.c` and `dtuopts.h` and a line to the table `Opts[]` of
 `dtuopts.c`.
+
+`Dtu_miss_sound` (`dtuopts.c`, played by `dtumiss.c`) is "Miss sound" in the
+Improvements menu and `MissSound` in `ascent.cfg`, on by default: a short
+whoosh when a melee attack hits nothing (`re/combat.md`, "Miss sound").
+`-origsound` and `-nomisssound` turn it off for one run without a change of
+the setting. The sounds are `<hd>/sound/miss*.wav` of the content pack
+`sounds`; without them nothing plays.
 
 `Dtu_fix_lowres_aspect` (`dtuopts.c`) is the shape of the 320x200 frame
 of the low resolution in the window. It is off by default: square pixels

@@ -37,6 +37,7 @@ int Dtu_safe_music = 0;
 int Dtu_anim_interp = 1;
 int Dtu_improved_infravision = 1;
 int Dtu_target_hint = 1;
+int Dtu_miss_sound = 1;			// ASCENT: dtumiss.c
 int Dtu_fix_lowres_aspect = 0;		// ASCENT: 1: the 320x200 frame at 4:3 (dtuopts.h)
 
 #define DTU_OPTS_FILE	"ascent.cfg"
@@ -74,6 +75,7 @@ static dtu_opt Opts[] = {
 	{ "AnimInterpolation",   &Dtu_anim_interp,          0, 1 },
 	{ "ImprovedInfravision", &Dtu_improved_infravision, 0, 1 },
 	{ "TargetHint",          &Dtu_target_hint,          0, 1 },
+	{ "MissSound",           &Dtu_miss_sound,           0, 1 },
 	{ "RulebookItems",       &Dtu_rulebook_items,       0, 1 },		// dtuitemfix.h
 	// ASCENT: a new key: LowresAspect=1 (the default of one day) is ignored,
 	// so a file of that time gets square pixels
@@ -160,6 +162,7 @@ void dtu_opts_load(void)
 		Dtu_improved_occlusion = Dtu_improved_body = 0;
 		Dtu_improved_infravision = 0;
 		Dtu_target_hint = 0;
+		Dtu_miss_sound = 0;
 		Dtu_rulebook_items = 0;
 	}
 	// ASCENT: the item tables (dtuitemfix.h). -rulebookitems and

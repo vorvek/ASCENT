@@ -331,7 +331,19 @@ files keep their upper case names: the game finds them with any case.
 | `textures` | `hd/textures` without `.cache` | 60,396 | 3,896 | 396,695,525 bytes |
 | `ui` | `hd/ui` | 39 | 39 | 119,884,683 bytes |
 | `movies` | `hd/*.m1v` | 5 | 5 | 485,625,672 bytes |
+| `sounds` | `hd/sound`: the port sounds `miss1.wav` to `miss5.wav` (`engine/main/dtumiss.c`) and `README.txt` (only when named: `content_pack.py sounds`; see below) | 6 | 6 | 51,037 bytes |
 | `lang_es` (version 4) | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...`, and the pictures of the language `hd/lang/es/` (`tools/ui_lang.py`) (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 46 | 45 | 3,502,119 bytes |
+
+The pack `sounds` holds sounds that are not game data: the miss sounds are cut from a
+commercial sound effects library (Triune Sound, "Fighting SFX"). They never go into
+git, the installer or the Linux tarball. The setup does not install the pack; a player
+installs it with `ascent-content install sounds` or the window of `ascent-content`.
+Before the pack goes to the server the owner must confirm that the license of the
+library allows its distribution in a free game. Build it into a folder of its own, so
+that a sync of `gamedata/content` does not upload it by mistake:
+`content_pack.py --out gamedata/content-pending sounds` (copy `manifest.txt` there
+first, so that the new manifest keeps the other packs). Without the pack the game has
+no miss sound, as 1.3.
 
 The language packs hold the Spanish text of the game files, the subtitles and the
 interface pictures with Spanish words (`docs/formats/lang.md`); they are made from the translations that
