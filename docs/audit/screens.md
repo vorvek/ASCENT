@@ -33,7 +33,7 @@ a save with more than ten items (SG0.SG of the install has six).
 | Save | A failed open shows no text; a failed write TEX 800 | 0xBA99F | open (minor: the port shows TEX 800 for both) |
 | Load and save | Spacer, width 190, TEX 67, 796, 797, 798, 801 | 0xBA647, 0xBA486 | same |
 | Options | Hires Dungeon Graphics and "Hear Khelben In English"; two blank lines after Reverse Stereo | 0x58C18 | port (FE-10, FE-11) |
-| Death | The world stops at once when the hit points go below 1 (0x13AD0D, 0x13D3F7); a wait of 3 s or a key; fade out (32 steps) | 0x33C5E, 0x423F5 to 0x42460 | open: the port runs the world for 3 s (dtuobj.c, death sequence) |
+| Death | The world stops at once when the hit points go below 1 (0x13AD0D, 0x13D3F7); a wait of 3 s or a key; fade out (32 steps) | 0x33C5E, 0x423F5 to 0x42460 | fixed: the world stops at the death, the streams stop, a key ends the wait (dtuobj.c dtu_player_death_wait, verified in the bytes: 0x33C96, 0x4240B to 0x42452); `test_death_stops_world` |
 | Death picture | FEBGND 161, music 7 after the picture, the keys that are down are taken, then any key; the mouse does nothing | 0x42478 to 0x4252E | fixed (key wait) |
 | Death picture | Fade out in 32 steps before the Death Menu | 0x4253E, 0x4254F | fixed |
 | Death Menu | Load Game, Abort Game, "Death Menu\n" | 0x42593 | same |

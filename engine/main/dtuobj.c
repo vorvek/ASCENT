@@ -61,6 +61,7 @@
 #include "fireball.h"
 #include "palette.h"
 #include "dtumusic.h"
+#include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
 #include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
@@ -3711,6 +3712,30 @@ void dtu_player_check_death(object *killer)
 // port waits 3.0 seconds, fades out and plays the music. Then the front
 // end takes over (dtu_hook_player_death_screen), or the level starts
 // again after DTU_DEATH_RESTART_WAIT.
+// ASCENT: 0x33C96 ends the game loop at the death (0x13D3F7), so in 1.3 the
+// world stops at once: game() stops the streams (0xA48D0) and waits 3 s or
+// for a key (0x4240B to 0x42452) with no game frame. The game loop calls
+// this before the world moves: 1 while the wait runs (the world does not
+// move), and a key ends the wait.
+int dtu_player_death_wait(void)
+{
+	static int streams_stopped;
+
+	if (!Dtu_objects_enabled || !Dtu_player_dead || Player_death_stage != 1) {
+		streams_stopped = 0;
+		return 0;
+	}
+	if (!streams_stopped) {
+		streams_stopped = 1;
+		dtumusic_stop();
+		key_flush();
+	} else if (key_inkey()) {
+		Player_death_time = GameTime - DTU_DEATH_WAIT;
+		dtulog_event("Player death: a key ends the wait");
+	}
+	return 1;
+}
+
 int dtu_player_death_frame(void)
 {
 	if (!Dtu_objects_enabled || !Dtu_player_dead || Player_death_stage == 0)

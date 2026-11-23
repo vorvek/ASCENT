@@ -4219,6 +4219,16 @@ mem_check();
 		if (Newdemo_state != ND_STATE_PLAYBACK)
 			do_controlcen_dead_frame();
 
+		// ASCENT: after the death of the player the world stops and the
+		// keys go to the wait of the death (dtuobj.c, 0x423F5)
+		if (dtu_player_death_wait()) {
+			memset(&Controls, 0, sizeof(Controls));
+			GameTime += FrameTime;
+			digi_sync_sounds();
+			dtumusic_frame();
+			return;
+		}
+
 		// ASCENT: while a script waits (a conversation, dtuscript.c) the
 		// keys go to the conversation window. While the scroll text screen
 		// is open the frame reads no controls and gives the keys to the

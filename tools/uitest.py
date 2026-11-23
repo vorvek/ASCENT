@@ -677,6 +677,17 @@ def test_fe_death_picture_key(t):
         "\n".join(l for l in text.splitlines() if "Front end" in l)
 
 
+def test_death_stops_world(t):
+    """At the death the world stops (0x33C96 ends the game loop; game()
+    waits 3 s or for a key with no game frame, 0x4240B to 0x42452): two
+    pictures of the wait are the same, and a key ends the wait at once."""
+    s, d = t.run("death_wait", ["gamekeys", "wait 20", "shot a", "wait 20", "shot b", "key space", "wait 10"],
+                 extra=["-fixedfps", "30", "-chartest", "5:damage=999"])
+    assert differ(s["a"][2], s["b"][2]) < 0.001, "the world moved during the wait of the death"
+    text = session_log(d)
+    assert "Player death: a key ends the wait" in text, "a key did not end the wait of the death"
+
+
 # The description window (engine/main/dtudesc.c, docs/description_window.md)
 # uses the picture and the text box of the scroll text screen. The cells
 # of the inventory list, high resolution: entry 1 (Broad Sword) at 51,9,
