@@ -1243,10 +1243,11 @@ class Pages:
             "",
             "A skill roll succeeds when d100 <= the skill.",
             "",
-            "Skill points: Mirt, at the Yawning Portal, gives a thief 20 skill points for each thief "
-            "level gained since the last visit, and 20 more at the first visit. He adds them to the "
-            "points you have (a new thief has 60, so the first visit at level 1 gives 100; in 1.3 "
-            "Mirt replaced the points, and the first visit gave 40). Each point raises one "
+            "Skill points: a new thief has 60 skill points (Player's Handbook). Mirt, at the "
+            "Yawning Portal, lets you spend them, and adds 30 for each thief level gained since "
+            "the last visit. In the original 1.3 game Mirt gives 20 for each level, and 20 more at "
+            "the first visit, and replaces the points you have (the first visit at level 1 "
+            "gives 40). Each point raises one "
             "skill by 1%, up to 95%. One skill can take at most half of the points of a visit. "
             "The screen closes with Escape only when the points are spent or no skill can take more; "
             "points that no skill can take are lost. If you answer No, Mirt offers the same points "
