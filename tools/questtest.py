@@ -70,6 +70,34 @@ TESTS = [
        r"walk: obj 8 is at the end of its path in seg 424\s[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 119\s",
        r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
       frames=1300, extra=["-noattack"]),
+    # The other scripts with statement E5 (Dtu_fix_script_walk). THIEF0
+    # script 53 (object 48, label 800): WALK 181 178 165 keeps the last
+    # segment (D-076).
+    T("thief0_walk53", "THIEF0", "10:goobj=48.20,12:resume=48.800,15:talk=48,890:obj=48",
+      [r"run script 53 of obj 48 .* at label 320", r"walk to seg 165\s", r"walk: obj 48 is at the end of its path in seg 165\s",
+       r"f890 +obj 48: type 2 id 0 seg 165 "], frames=900, extra=["-noattack"]),
+    # THIEF1 script 62 (object 25, label 10): WALK 161.
+    T("thief1_walk62", "THIEF1", "10:goobj=25.20,12:resume=25.10,15:talk=25,890:obj=25",
+      [r"walk to seg 161\s", r"walk: obj 25 is at the end of its path in seg 161\s", r"f890 +obj 25: type 2 id \d+ seg 161 "],
+      frames=900, extra=["-noattack"]),
+    # THIEF1 script 60 (object 95, label 930): out of its area the guard
+    # walks back to segment 639 and the script runs there in mode 2.
+    T("thief1_walk60", "THIEF1", "8:objseg=95.630,10:goobj=95.20,12:resume=95.930,15:talk=95",
+      [r"walk to seg 639\s", r"walk: obj 95 is at the end of its path in seg 639\s", r"run script 60 of obj 95 .* in mode 2 "],
+      frames=300, extra=["-noattack"]),
+    # THIEF2 script 71 (object 1, label 900): WALK 635 625. A door on the
+    # path (segment 635 side 5) opens when the goblin walks into it; the
+    # door opener (0x14AF2) does not send a walker to a door.
+    T("thief2_walk71", "THIEF2", "10:goobj=1.20,12:resume=1.900,15:talk=1,300:obj=1",
+      [r"walk to seg 625\s", r"obj 1 gbloser: opens the door seg 635 side 5", r"walk: obj 1 is at the end of its path in seg 625\s",
+       r"f300 +obj 1: type 2 id 17 seg 625 "], frames=310, extra=["-noattack", "-objlog", "thief2_walk_obj.log"]),
+    # PRISON script 103 (object 21, a prisoner with no door bit): with MISC
+    # 59 the prisoner walks out of its cell and opens the cell door. The
+    # path search stops at a depth of 30 segments (0x1686D), short of
+    # segment 428.
+    T("prison_walk103", "PRISON", "5:give=16.59,10:goobj=21.20,15:talk=21,300:obj=21",
+      [r"walk to seg 428\s", r"obj 21 hffg1: opens the door seg 607 side 5", r"f300 +obj 21: type 2 id 18 seg (?!607 )\d+ .* anim 2"],
+      frames=310, extra=["-noattack", "-objlog", "prison_walk_obj.log"]),
     # Script 22 (objects 20, 21, 22, label 400): statement EE runs the
     # script of the other two, so the three walk at the same time.
     T("kobolds_walk3", "KOBOLDS",

@@ -4888,6 +4888,8 @@ static void stop_at_player(object *obj)
 //------------------------------------------------------------------------
 // Movement of a creature (pmon.c, 0x9F153)
 
+static int opens_doors(object *obj);
+
 // 0x6C662 for a creature: gravity and the lift out of the floor.
 static void creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_height)
 {
@@ -5208,7 +5210,7 @@ void dtu_creature_physics_sim(object *obj)
 			// bit opens a door that it walks into. The door must be closed,
 			// with no key and no lock. This is the only place where a
 			// creature opens a door.
-			if (Monster_ext[obj->id].door_opening && hit.hit_side_seg >= 0 && hit.hit_side >= 0) {
+			if (opens_doors(obj) && hit.hit_side_seg >= 0 && hit.hit_side >= 0) {
 				int wn = Segments[hit.hit_side_seg].sides[hit.hit_side].wall_num;
 
 				if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE &&
@@ -5511,11 +5513,21 @@ static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_play
 
 // 0x1320F ai_door_is_openable: a creature with the door bit can go through
 // a door with no key and no lock. The state of the door is not tested.
+// ASCENT: 1 while dtu_script_walk_start() makes the path of a creature
+// with no door bit that walks for its script (Dtu_fix_script_walk)
+static int Script_walk_doors;
+
+// 1 if the creature can open a door: the door bit, or a walk of its script
+static int opens_doors(object *obj)
+{
+	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1;
+}
+
 static int door_is_openable(object *obj,segment *segp,int side)
 {
 	int wn = segp->sides[side].wall_num;
 
-	if (wn < 0 || obj->type != OBJ_ROBOT || !Monster_ext[obj->id].door_opening)
+	if (wn < 0 || obj->type != OBJ_ROBOT || !opens_doors(obj))
 		return 0;
 	return Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE && !(Walls[wn].flags & WALL_DOOR_LOCKED);
 }
@@ -5549,7 +5561,7 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 	static ubyte visited[MAX_SEGMENTS];
 	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
 	int head = 0, tail = 0, found = -1, i, n, cur;
-	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening;
+	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors;
 	int walker = improved_paths() && obj->type == OBJ_ROBOT && !is_flying(obj);
 
 	if (start < 0 || start > Highest_segment_index)
@@ -7202,8 +7214,11 @@ void dtu_do_ai_frame(object *obj)
 
 	// 0x14AF2: the door opener, for each creature with the door bit. It
 	// only sends the creature to a door. The door opens when the creature
-	// walks into it (dtu_creature_physics_sim).
-	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB) {
+	// walks into it (dtu_creature_physics_sim). ASCENT: a creature on the
+	// path of its script (Dtu_fix_script_walk) is not sent to a door: the
+	// mode OPENDOOR would end the walk, and a door on its path opens when it
+	// walks into it.
+	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB && ail->script_walk != 1) {
 		if (ail->mode == DAIM_STILL) {
 			if (visible)
 				create_n_segment_path(obj,8+Difficulty_level,-1);
@@ -7522,6 +7537,16 @@ void dtu_script_walk_start(object *obj,int fix)
 	if (obj->id < N_robot_types)
 		ail->morale = (Monster_info[obj->id].ai_values[0][Difficulty_level] + Monster_info[obj->id].ai_values[1][Difficulty_level]) / 2;
 	ail->script_walk = 0;
+	// ASCENT: a creature with no door bit gets no path through a segment
+	// with a wall (0x16999), so a prisoner of PRISON (script 103) cannot
+	// leave its cell. On the path of its script it opens a door with no key
+	// and no lock as a creature with the door bit does.
+	if (fix && ail->path_len < 2 && obj->id < N_robot_types && !Monster_ext[obj->id].door_opening &&
+		 ail->goal_segment >= 0 && obj->segnum != ail->goal_segment) {
+		Script_walk_doors = 1;
+		create_path(obj);
+		Script_walk_doors = 0;
+	}
 	if (fix && ail->path_len >= 2 && DTU_ANIM_STATE(obj) != DAS_DIE) {
 		ail->script_walk = 1;
 		ail->activity = 2;

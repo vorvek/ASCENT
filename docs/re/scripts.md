@@ -695,8 +695,19 @@ Settings (globals in dtuscript.c):
   in its own list, so the load (`dtu_ai_from_image`) makes the path to the
   goal segment again, and a creature with a script whose station (+0x14C)
   is its goal (both set by `E5`) walks on and runs its script at the end.
-  Tests: questtest `kobolds_walk`, `kobolds_walk_saveload`, `kobolds_walk3`,
-  `kobolds_walk_orig`.
+  Doors on the path: the door opener of the AI (0x14AF2) sends a creature
+  with the door bit in mode 2 to any closed door of its segment (mode
+  OPENDOOR), which ended the walk; a walker is not sent there and opens a
+  door on its path when it walks into it (THIEF2 script 71, segment 635
+  side 5). A creature with no door bit gets no path through a segment
+  with a wall (0x16999), so the prisoners of PRISON (script 103) could not
+  leave the cell: on the path of its script a creature opens a door with
+  no key and no lock. The path search stops at a depth of 30 segments
+  (0x1686D), so the prisoner stops at segment 302, short of 428 (a search
+  past the limit took a way that the body does not pass at segment 15;
+  open). Tests: questtest `kobolds_walk`, `kobolds_walk_saveload`,
+  `kobolds_walk3`, `kobolds_walk_orig`, `thief0_walk53`, `thief1_walk62`,
+  `thief1_walk60`, `thief2_walk71`, `prison_walk103`.
 - `Dtu_fix_script_area_seg` (1): statement EB centers its area spell on the
   segment that it names (D-075). `-origscript` clears it, `script_new_char`
   and `script_abilities`.

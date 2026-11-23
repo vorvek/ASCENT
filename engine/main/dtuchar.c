@@ -3782,6 +3782,11 @@ static void run_command(char *cmd, char *value)
 			o->contains_type, o->contains_id, o->contains_count,
 			f2fl(o->pos.x), f2fl(o->pos.y), f2fl(o->pos.z), DTU_ANIM_STATE(o));
 	}
+	else if (!strcmp(cmd, "objseg") && a > 0 && a <= Highest_object_index && b >= 0 && b <= Highest_segment_index) {	// test: objseg=N.SEG, object N to the center of segment SEG
+		compute_segment_center(&Objects[a].pos, &Segments[b]);
+		Objects[a].last_pos = Objects[a].pos;
+		obj_relink(a, b);
+	}
 	else if (!strcmp(cmd, "cpoints") && a >= 0 && a <= Highest_object_index) {	// test: cpoints=N[.MAGE], the spell points of creature N (MAGE: set them, cleric 0; D-134)
 		int m, c;
 
