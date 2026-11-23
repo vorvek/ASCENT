@@ -167,7 +167,7 @@ alone runs script 322 and the end). The port: `flame_lolth_dead` (dtuobj.c).
 | Defect | Evidence | The port |
 |---|---|---|
 | The prison sequence takes entry i of the item list, reads the entry that moved to its place and skips it | 0xAA47B (0xB6D24, 0xB6F01 moves the entries), 0xAA4AE reads `[ecx]` after it, 0xAA58C `inc esi` | `Dtu_fix_prison_items` (on): each item that is not worn goes to the thieves. `-origprison` |
-| A creature that is not hostile walks to the player, not along its path, so the walk statement E5 does not reach its end near the player | 0x17CFC | The object is moved to the end of the path and the script goes on (`Dtu_script_walk_teleport`) |
+| A creature that is not hostile does not walk along the path of statement E5: the goal NONE gives the animation STAND with no speed, the path follower turns it to the player, the end of the path near the player gives a path to the player, and far away only the index moves | 0x10148, 0x17CFC, 0x17505 end, 0x17411 | `Dtu_fix_script_walk` (on): the creature walks the path and its script runs in mode 2 at the end. `-origscriptwalk` |
 | Statement EB reads a segment and does not use it | 0xAA8C7 | Kept: the spell is around the object |
 | Statement C5 cannot set global flag 17 (script 320) | 0xAB124, numbers up to 0x20 are ignored | Kept: mission flag 17 comes from DTU.WRP |
 | Six of the seven Ankhs of MULHOR1 get object flag 0x40 from the level fixes: the object queries skip them, so only object 33 can be taken | 0xAD0C0, 0x3F38F | Intended (decoys), ported: `OF_DTU_NOHIT`. Tests `mulhor1_ankh`, `mulhor1_ankh_flagged` |

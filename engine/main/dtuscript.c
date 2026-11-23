@@ -79,19 +79,25 @@ int Dtu_script_log = 0;
 int Dtu_fix_script_abilities = 1;
 
 // E5 (walk). In the executable the creature gets a path of the AI to the
-// last segment of the statement (0xAA74E) and its script runs in mode 2 at
-// the end of the path (0x174FC). A creature that does not fly and is not
-// hostile walks to the player and not to the points of its path there
-// (0x17CFC), so the end of the path is not reached while the player
-// stands near: a defect of 1.3.
-// Dtu_script_walk_teleport 1 (default, a port decision): the creature is
-// moved to the last segment at the end of the run and the script runs in
-// mode 2 at once, so that a script that goes on in its segment block (CB
-// E7) cannot stop. 0 (option -scriptwalk): the creature gets the path
-// (dtuobj.c) and the script runs in mode 2 at its end; in the tests of
-// 2026-11-22 the kobold of script 21 stood still on its path, so this is
-// not the default.
-int Dtu_script_walk_teleport = 1;
+// last segment of the statement (0xAA74E, one path for each segment, so
+// only the last stays) and the run goes on with the next statement
+// (0xAA79F does not wait). AI mode 2, no target, morale (A + B) / 2. The
+// walk then fails in 1.3: a creature that is not hostile has the AI goal
+// NONE and the animation STAND, which has no speed (0x10148, 0x11EC9), and
+// the path follower turns it to the player (0x17CFC). Within 200.0 of the
+// player the end of the path gives a path to the player (0x170BC, the
+// end of 0x17505) and no run of the script. Farther away 0x17411 only
+// counts the path index (no move) and at its end runs the script in mode
+// 2 (0x174FC), whose start label is the block "CB E7 <segment>" of the
+// segment of the object (0xA78CF): the creature did not move, so no
+// block of a shipped script matches. The creature stays where it is.
+// Dtu_fix_script_walk 1 (default): the creature walks along the path with
+// the walk animation at the walk speed of its model, also farther than
+// 200.0 from the player, and at the end it stops (AI mode 0, animation
+// STAND) and its script runs in mode 2 (dtu_script_frame), as the blocks
+// CB E7 of the scripts 21 and 60 need. 0 (option -origscriptwalk): the
+// rules of 1.3.
+int Dtu_fix_script_walk = 1;
 
 // 1 (default): the corrected rule of the prison sequence 0xAA3F3. The
 // executable takes entry i of the item list with 0xB6D24, which moves the
@@ -220,8 +226,8 @@ void dtu_script_init(void)
 	}
 	if (FindArg("-scriptlog"))
 		Dtu_script_log = 1;
-	if (FindArg("-scriptwalk"))
-		Dtu_script_walk_teleport = 0;
+	if (FindArg("-origscriptwalk"))
+		Dtu_fix_script_walk = 0;
 	if (FindArg("-origprison"))
 		Dtu_fix_prison_items = 0;
 	if (FindArg("-origscript"))		// ASCENT: the script rules of the executable
@@ -620,7 +626,6 @@ typedef struct sc_run {
 	int		pending_reply;	// the reply list of a CD is complete
 	int		n_replies;		// 0x145531 + 1
 	int		reply_label[SC_MAX_REPLIES];
-	int		walk_seg;		// the last segment of an E5
 } sc_run;
 
 static sc_run Run[SC_MAX_NEST];
@@ -643,13 +648,9 @@ void dtu_script_prison_guard(object *obj, int set_target);
 // dtuobj.c: 1 if the flee value A of the creature (Robot_info +0x80) is
 // below its morale (0x59DF2)
 int dtu_script_creature_brave(object *obj);
-// A run in mode 2 after a walk (Dtu_script_walk_teleport)
-static int Walk_obj = -1, Walk_sig = 0, Walk_seg = -1;
-static uint Walk_until = 0;
-
-// dtuobj.c: the path of statement E5
+// dtuobj.c: the path of statement E5 (Dtu_fix_script_walk)
 void dtu_script_walk_segment(object *obj, int seg);
-void dtu_script_walk_start(object *obj);
+void dtu_script_walk_start(object *obj, int fix);
 int dtu_script_walk_state(object *obj);
 
 static object *run_obj(sc_run *r)
@@ -2058,12 +2059,12 @@ static int sc_exec(sc_run *r)
 			}
 			if (!at_end(r)) r->p++;
 			r->after_flag0 = 1;
-			r->walk_seg = last;
 			slog("walk to seg %d", last);
-			// ASCENT: 0xAA74E and 0xAA810: the path of the AI (dtuobj.c)
-			if (!Dtu_script_walk_teleport && o && o->type == OBJ_ROBOT && last >= 0) {
+			// ASCENT: 0xAA74E and 0xAA810: the path of the AI (dtuobj.c).
+			// The run goes on; the creature walks when the game runs again.
+			if (o && o->type == OBJ_ROBOT && last >= 0) {
 				dtu_script_walk_segment(o, last);
-				dtu_script_walk_start(o);
+				dtu_script_walk_start(o, Dtu_fix_script_walk);
 			}
 			break;
 		}
@@ -2174,8 +2175,14 @@ static int start_label(sc_run *r, object *obj, int mode)
 	if (obj->dtu.m_1b0 & SB_FLAG(2))		status = 0x3EA;
 	else if (obj->dtu.m_1b0 & SB_FLAG(3))	status = 0x3EB;
 	else if (obj->dtu.m_1b0 & SB_FLAG(1))	status = 0x3E9;
+	// ASCENT: Dtu_fix_script_walk. The executable makes the status test
+	// in each mode, so the run at the end of a walk (mode 2) fails at the
+	// charisma roll of a wary creature (flag 1, which script 21 sets
+	// before its walk). The roll is for the talk of the player.
+	if (mode == DTU_RUN_PATH && Dtu_fix_script_walk && status == 0x3E9)
+		status = 0x3E8;
 
-	if (status == 0x3EA || (status == 0x3E9 && rand() % 20 + 1 > Dtu_char.pa.charisma)) {
+	if (status == 0x3EA ||(status == 0x3E9 && rand() % 20 + 1 > Dtu_char.pa.charisma)) {
 		if (sc_goto(r, status) && rand() % 2) {
 			show_line(r);
 			// 0xAAB25: the attack sound of the robot (not in the port)
@@ -2248,7 +2255,6 @@ static int start_run(object *obj, int id, int mode, int temp)
 	r->signature = obj->signature;
 	r->temp = temp;
 	r->result = 1;
-	r->walk_seg = -1;
 	Cur_mode = mode;
 	if (obj->type == OBJ_ROBOT && !obj_dead(objnum))
 		dtu_creature_wake(obj, 0);							// 0xA6505(object, 1)
@@ -2303,14 +2309,6 @@ static void finish_run(sc_run *r)
 	}
 	if (r->temp && o)
 		o->flags |= OF_SHOULD_BE_DEAD;						// 0xA74D0 deletes the temporary object
-	if (o && r->walk_seg >= 0) {
-		// ASCENT: the object walks (statement E5); dtu_script_frame()
-		// runs the script in mode 2 at the end of the path
-		Walk_obj = r->objnum;
-		Walk_sig = o->signature;
-		Walk_seg = r->walk_seg;
-		Walk_until = dtu_trap_clock() + 6000;
-	}
 	slog("end of script %d of obj %d", r->id, r->objnum);
 }
 
@@ -2550,7 +2548,6 @@ void dtu_script_level_start(void)
 	N_run = 0;
 	Wait_timer = 0;
 	Warp_level = -1;
-	Walk_obj = -1;
 	After_kind = 0;
 	dtu_dlg_close();
 	dtu_dlg_reset_view();
@@ -2619,28 +2616,22 @@ int dtu_script_frame(void)
 		} else if (dtu_trig_script_warp(After_level, After_seg, After_value, 1) == 1 && After_prison)
 			prison_arrival();
 	}
-	if (Walk_obj >= 0 && N_run == 0) {
-		object *o = obj_num(Walk_obj);
-		int state = 0, arrived = 0;
+	// ASCENT: Dtu_fix_script_walk. A creature at the end of the path of
+	// statement E5 runs its script in mode 2 when its flag 0 is set
+	// (0x174E2 to 0x174FC in the path index function 0x17411). One run in
+	// a frame: the run can open the window.
+	if (N_run == 0) {
+		int i;
 
-		if (!o || o->signature != Walk_sig || obj_dead(Walk_obj))
-			Walk_obj = -1;
-		else {
-			state = dtu_script_walk_state(o);
-			if (state == 2)
-				arrived = 1;
-			else if (Dtu_script_walk_teleport || state == 0 || dtu_trap_clock() >= Walk_until) {
-				// the default; or the creature has no path, left it or did
-				// not reach its end in 60 seconds
-				slog("walk: obj %d is moved to seg %d (state %d)", Walk_obj, Walk_seg, state);
-				move_to_segment(o, Walk_seg, -1);
-				arrived = 1;
-			}
-		}
-		if (arrived) {
-			Walk_obj = -1;
+		for (i = 0; i <= Highest_object_index; i++) {
+			object *o = &Objects[i];
+
+			if (o->type != OBJ_ROBOT || obj_dead(i) || dtu_script_walk_state(o) != 2)
+				continue;
+			slog("walk: obj %d is at the end of its path in seg %d", i, o->segnum);
 			if (o->dtu.m_1b0 & SB_FLAG(0))
 				dtu_script_run(o, DTU_RUN_PATH);				// 0x174FC
+			break;
 		}
 	}
 	if (N_run == 0)

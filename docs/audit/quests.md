@@ -34,7 +34,7 @@ Most important first. "Before" is the port before this audit.
 | Q8 | Statement EB (an area spell) did nothing (world W9). 87 uses. | 0xAA8B3: 0x90CEF(spell, object, object) | Fixed. Not tested in a level |
 | Q9 | Statement 9F (the level) did nothing. One use: the favor "Power" of Straum (script 31 at 03098). | 0xAB71A, 0x8BA3A. Test `level_statement` | Fixed (`dtu_char_set_level` of dtuchar.c). The thief points of 0x8BAD6 are not changed |
 | Q10 | The sounds of D4 and D5 played at the player, D6 and D7 did nothing (world W14). 14 uses. | 0xA9BE6 (0x2E627), 0xA9CBE (0x2E94B), 0xA9DD2 (0x2E816), 0xA9DEC (0x2EB77) | Fixed (the linked sounds of digi). Not tested by ear |
-| Q11 | Statement E5 (walk, world W10): the object is moved to the end of the path. The path of the AI is now made with the option `-scriptwalk`, but the creature did not move on it in the test (KOBOLDS object 8, script 21), so the option is off. In 1.3 a creature that is not hostile walks to the player and not along the path (0x17CFC), so the walk is broken there too. | 0xAA74E, 0xAA79F, 0x17411. 16 uses in 7 scripts, all creatures with behavior 0x81 | Open, small: why `follow_path` does not move the creature |
+| Q11 | Statement E5 (walk, world W10): the object is moved to the end of the path. The path of the AI is now made with the option `-scriptwalk`, but the creature did not move on it in the test (KOBOLDS object 8, script 21), so the option is off. In 1.3 a creature that is not hostile walks to the player and not along the path (0x17CFC), so the walk is broken there too. | 0xAA74E, 0xAA79F, 0x17411. 16 uses in 7 scripts, all creatures with behavior 0x81 | Fixed: `Dtu_fix_script_walk` (scripts.md settings). The creature had the animation STAND (goal NONE of a creature that is not hostile, no speed), and the test player was farther than 200.0. In 1.3 the walk never moves the creature (0x17411 counts the index only). Tests `kobolds_walk` (script 21, the chain of three CB E7 blocks to segment 119), `kobolds_walk3` (script 22, three walkers), `kobolds_walk_orig` |
 | Q12 | The light and the 50 sounds before the credits movie (0xA6786) are not in the port. | docs/re/movies.md | Open, cosmetic |
 | Q13 | The warp overlap check 0xAD9B2 (a creature in the segment of the arrival is moved) is not in the port. | D:\dev\DTU-Decomp analysis/sweep/range2-gaps.md G10 | Open, cosmetic |
 | Q14 | Object flag 0x40 of the level fixes (world W12): six of the seven Ankhs of MULHOR1. In the port each of the seven could be taken. The flag takes an object out of the object queries (0x3F38F), so in 1.3 only object 33 (segment 585, behind the door of the Ruby Key) can be taken; the six decoys are still drawn. No code chooses one at random. The same flag holds the Flamesword of FLAME until the death of Lolth, which runs script 322 itself (0x6A374). | 0xAD0C0, 0x3F380 to 0x3F392, 0x6A579, 0x6A374. Tests `mulhor1_ankh`, `mulhor1_ankh_flagged`, `flame_sword_lolth_alive`, `flame_lolth_death`, `flame_ending` | Fixed (`OF_DTU_NOHIT`, `fix_nohit`, `flame_lolth_dead` of dtuobj.c). Intended: no setting |
@@ -66,7 +66,7 @@ Most important first. "Before" is the port before this audit.
 | DD | move an item | 10 | yes |
 | DE | summon | 45 | yes |
 | DF, E0 | resume label, variable | 128, 104 | yes |
-| E5 | walk | 16 | partial (Q11) |
+| E5 | walk | 16 | ported (Q11) |
 | EA | spell at an object | 130 | yes |
 | EB | area spell | 87 | yes (Q8) |
 | EC | wait | 206 | yes (game time, the world stands) |

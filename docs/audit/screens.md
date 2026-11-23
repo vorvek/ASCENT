@@ -37,7 +37,7 @@ a save with more than ten items (SG0.SG of the install has six).
 | Death picture | FEBGND 161, music 7 after the picture, the keys that are down are taken, then any key; the mouse does nothing | 0x42478 to 0x4252E | fixed (key wait) |
 | Death picture | Fade out in 32 steps before the Death Menu | 0x4253E, 0x4254F | fixed |
 | Death Menu | Load Game, Abort Game, "Death Menu\n" | 0x42593 | same |
-| Ending | The light and 50 explosion sounds before CREDITV1 (0xA6786) | 0xA6A2F | open (docs/re/movies.md) |
+| Ending | The light and 50 explosion sounds before CREDITV1 (0xA6786) | 0xA6A2F | fixed (docs/re/movies.md section 5) |
 | Ending | After the movie the main menu (Function_mode 6, 0xB89C5); no character | 0x42649 | fixed with the main menu item |
 
 ## Waterdeep and the town

@@ -26,6 +26,10 @@ import sys
 import tempfile
 
 ONES = ",".join(["1"] * 60)        # -dlgauto: the first reply, 60 times
+# The steps of the end sequence 0xA6786 (engine/main/dtuobj.c), in order
+END_SEQ = (r"end sequence: start \(0xA6786\), sword in seg 487, light obj \d+, spin 0x147\s+"
+           r"[\s\S]*end sequence: 147 steps, light 441\.0, spin 0x269a\s+end sequence: sound -1 on the sword\s+"
+           r"end sequence: 50 explosions, 50 sounds\s+end of the game: CREDITV1")
 
 
 def T(name, level, script, expect, reject=(), frames=400, dlg=ONES, extra=(), invuln=True, also=()):
@@ -42,6 +46,34 @@ TESTS = [
       [r"quest: mflags \[ \]"], frames=90),
     T("kobolds_flag1", "KOBOLDS", "20:killscript=23,40:goseg=6,60:quest",
       [r"mission check 1: done", r"quest: mflags \[ 1 \]"], frames=90),
+    # KOBOLDS: statement E5 (walk) of script 21 (object 8, flags 4 to 7):
+    # the kobold walks to segment 424 (it passes other segments on the
+    # way), and the blocks CB E7 424, 43 and 125 teleport it and walk it on
+    # to segment 119 (Dtu_fix_script_walk). -noattack keeps the player
+    # alive for the 43 seconds.
+    T("kobolds_walk", "KOBOLDS",
+      "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,"
+      "90:obj=8,150:obj=8,300:obj=8,1290:obj=8",
+      [r"f90 +obj 8: type 2 id 1 seg (?!337 )(?!424 )\d+ .* anim 2",
+       r"f150 +obj 8: type 2 id 1 seg (?!337 )(?!424 )\d+ .* anim 2",
+       r"walk to seg 424\s[\s\S]*walk: obj 8 is at the end of its path in seg 424\s+script: run script 21 of obj 8 .* in mode 2 [^\n]*\s+script: teleport NPC to seg 29 "
+       r"[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 125\s[\s\S]*end of its path in seg 119\s",
+       r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
+      frames=1300, extra=["-noattack"]),
+    # Script 22 (objects 20, 21, 22, label 400): statement EE runs the
+    # script of the other two, so the three walk at the same time.
+    T("kobolds_walk3", "KOBOLDS",
+      "10:goobj=20.20,12:resume=20.400,15:talk=20,30:obj=22,200:obj=20,200:obj=21,200:obj=22",
+      [r"f30 +obj 22: type 2 id \d+ seg 383 .* anim 2", r"f200 +obj 20: type 2 id \d+ seg 386 ",
+       r"f200 +obj 21: type 2 id \d+ seg 389 ", r"f200 +obj 22: type 2 id \d+ seg 388 ",
+       r"end of its path in seg 386", r"end of its path in seg 389", r"end of its path in seg 388"],
+      frames=210, extra=["-noattack"]),
+    # The rule of 1.3 (-origscriptwalk): the kobold does not move.
+    T("kobolds_walk_orig", "KOBOLDS",
+      "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,300:obj=8",
+      [r"walk to seg 424", r"f300 +obj 8: type 2 id 1 seg 337 "], [r"end of its path"],
+      frames=310, extra=["-noattack", "-origscriptwalk"]),
+
     # Mission 2, BONES: command 2 at segment 241, script 32.
     T("bones_flag2", "BONES", "20:killscript=32,40:goseg=241,60:quest",
       [r"quest: mflags \[ 2 \]"], frames=90),
@@ -99,11 +131,14 @@ TESTS = [
     T("flame_sword_lolth_alive", "FLAME", "20:goseg=486,40:aim=3,45:activate,120:obj=3,121:obj=2",
       [r"obj 3: type 18 .* flags 0x40 ", r"obj 2: type 18 .* flags 0x40 "],
       [r"run script 322 of obj 3", r"CREDITV1"], frames=140),
+    # The end sequence 0xA6786 before the credits: a light that grows by
+    # 3.0 in each of 147 steps while the sword spins faster, then 50
+    # explosions with 50 sounds (one step in each reference tick, 9.2 s).
     T("flame_lolth_death", "FLAME", "10:kill=36,15:obj=3",
       [r"obj 3: type 18 .* flags 0x40 ", r"run script 322 of obj 3 .* in mode 0", r"YOU  HAVE  DESTROYED",
-       r"end of the game: CREDITV1"], frames=260),
+       END_SEQ, r"end of the game: CREDITV1"], frames=600),
     T("flame_ending", "FLAME", "10:kill=36,20:goseg=486,40:aim=3,45:activate",
-      [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", r"end of the game: CREDITV1"], frames=260),
+      [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", END_SEQ, r"end of the game: CREDITV1"], frames=600),
 
     # IBBALAR: the use action on the altar of Cyric (object 2, scenery,
     # script 294).
