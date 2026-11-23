@@ -841,6 +841,7 @@ static const ubyte Msg_color_table[8][3] = {
 
 #define MSG_SEPARATORS	"\n\t\r "		// 0x13B09E
 
+// 0xD9ADC is gr_find_closest_color with its cache (rgb6), as in 1.3
 static int msg_color(int index)
 {
 	index &= 0xFF;
