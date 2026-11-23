@@ -1713,73 +1713,117 @@ static void spell_damage_args(int spell,int L,int *group,int *count,int *level)
 
 // ASCENT: the rule of each spell, read by apply_spell and by the
 // description window (dtu_spell_get_facts): the kind of the effect text
-// (DTU_SK_), the saving throw (DTU_SS_) and the effect bit (DTU_FX_).
-// apply_spell sets and tests the bit of its line (rule_fx), rolls the save
-// of a case only when the line has one (rule_save) and a damage spell
-// saves for half when its line says so (spell_damage). So a change of
-// a line changes the game and the text. The numbers (time, amount,
-// dice) are the functions spell_time, spell_amount and
-// spell_damage_args, which both read too.
+// (DTU_SK_), the saving throw (DTU_SS_), the conditions (DTU_SR_) and the
+// effect bit (DTU_FX_). apply_spell sets and tests the bit of its line
+// (rule_fx), rolls the save of a case only when the line has one and the
+// target is one that saves (rule_save, save_level), a damage spell saves
+// for half when its line says so (spell_damage), and each case tests the
+// conditions of its line through rule_reaches. So a change of a line
+// changes the game and the text. The numbers (time, amount, dice) are the
+// functions spell_time, spell_amount and spell_damage_args, which both
+// read too. dtu_spell_rule_check tests that the kind of each line fits its
+// other values.
 #define N_SPELL_RULES	56
 
-static const struct { ubyte kind, save; int fx; } Spell_rule[N_SPELL_RULES] = {
-	{ DTU_SK_ABJURE, DTU_SS_NONE, 0 },						// 0 Abjure: a d20 and a d100, no save
-	{ DTU_SK_AID, DTU_SS_NONE, DTU_FX_BLESS },				// 1 Aid
-	{ DTU_SK_ARMOR, DTU_SS_NONE, DTU_FX_ARMOR },			// 2 Armor
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_BLESS },				// 3 Bless
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 4 Burning Hands
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_CHILL_TOUCH },		// 5 Chill Touch
-	{ DTU_SK_COLOR, DTU_SS_SOME, 0 },						// 6 Color Spray
-	{ DTU_SK_CAUSE, DTU_SS_NEGATES, DTU_FX_CONFUSION },	// 7 Confusion
-	{ DTU_SK_BLIND, DTU_SS_NEGATES, DTU_FX_BLIND },		// 8 Continual Light
-	{ DTU_SK_BLIND, DTU_SS_NEGATES, DTU_FX_BLIND },		// 9
-	{ DTU_SK_HEAL, DTU_SS_NONE, 0 },						// 10 Cure Light Wounds
-	{ DTU_SK_HEAL, DTU_SS_NONE, 0 },						// 11 Cure Serious Wounds
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_DETECT_MAGIC },		// 12 Detect Magic
-	{ DTU_SK_DISPEL, DTU_SS_NONE, 0 },						// 13 Dispel Magic
-	{ DTU_SK_FEAR, DTU_SS_NEGATES, DTU_FX_FEAR },			// 14 Fear
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_FEATHER_FALL },		// 15 Feather Fall
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 16 Fireball
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 17 Produce Fire
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_RESIST_FIRE },		// 18 Flame Walk
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_FLY },				// 19 Fly
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_FREE_ACTION },		// 20 Free Action
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_HASTE },				// 21 Haste
-	{ DTU_SK_HOLD, DTU_SS_NEGATES, DTU_FX_HOLD },			// 22 Hold Person
-	{ DTU_SK_HOLD_UNDEAD, DTU_SS_SOME, DTU_FX_HOLD },		// 23 Hold Undead: a save above level 2
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_IMP_INVIS },			// 24 Improved Invisibility
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_INFRAVISION },		// 25 Infravision
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_INVISIBLE },			// 26 Invisibility
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_JUMP },				// 27 Jump
-	{ DTU_SK_KNOCK, DTU_SS_NONE, 0 },						// 28 Knock (the wall hit of dtuobj.c)
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_LEVITATE },			// 29 Levitate
-	{ DTU_SK_BLIND, DTU_SS_NEGATES, DTU_FX_BLIND },		// 30 Light
-	{ DTU_SK_BLIND, DTU_SS_NEGATES, DTU_FX_BLIND },		// 31
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 32 Lightning Bolt
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 33 Magic Missile
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 34 Magical Stone
-	{ DTU_SK_AC, DTU_SS_NONE, DTU_FX_VESTMENT },			// 35 Magical Vestment
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 36 Melf's Acid Arrows (see below)
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0 },						// 37 Melf's Minute Meteors
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_BLESS },				// 38 Prayer
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_PROT_EVIL },			// 39 Protection From Evil
-	{ DTU_SK_FIRE_POOL, DTU_SS_NONE, DTU_FX_PROT_FIRE },	// 40 Protection From Fire
-	{ DTU_SK_RARY, DTU_SS_NONE, DTU_FX_MNEMONIC },			// 41 Rary's Mnemonic Enhancer
-	{ DTU_SK_CURE_SENSES, DTU_SS_NONE, 0 },					// 42 Cure Blindness or Deafness
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_RESIST_FIRE },		// 43 Resist Fire
-	{ DTU_SK_SCARE, DTU_SS_SOME, DTU_FX_FEAR },				// 44 Scare
-	{ DTU_SK_AC, DTU_SS_NONE, DTU_FX_SHIELD },				// 45 Shield
-	{ DTU_SK_SLEEP, DTU_SS_NONE, DTU_FX_SLEEP },			// 46 Sleep
-	{ DTU_SK_CAUSE, DTU_SS_NEGATES, DTU_FX_SLOW },			// 47 Slow
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_SPIDER_CLIMB },		// 48 Spider Climb
-	{ DTU_SK_STONESKIN, DTU_SS_NONE, DTU_FX_STONESKIN },	// 49 Stone Skin
-	{ DTU_SK_STRENGTH, DTU_SS_NONE, DTU_FX_STRENGTH },		// 50 Strength
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_FIND_TRAPS },		// 51 Find Traps
-	{ DTU_SK_HOLD, DTU_SS_NEGATES, DTU_FX_HOLD },			// 52 Hold Person
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_PROT_EVIL },			// 53 Protection From Evil
-	{ DTU_SK_GIVE, DTU_SS_NONE, DTU_FX_DETECT_MAGIC },		// 54 Detect Magic
-	{ DTU_SK_DISPEL, DTU_SS_NONE, 0 },						// 55 Dispel Magic
+#define SR_OTHERS	DTU_SR_SPARES_CASTER
+
+static const struct { ubyte kind, save, flags; int fx, stopped_by; } Spell_rule[N_SPELL_RULES] = {
+	{ DTU_SK_ABJURE, DTU_SS_NONE, 0, 0 },						// 0 Abjure: a d20 and a d100, no save
+	{ DTU_SK_AID, DTU_SS_NONE, 0, DTU_FX_BLESS },				// 1 Aid
+	{ DTU_SK_ARMOR, DTU_SS_NONE, 0, DTU_FX_ARMOR },				// 2 Armor
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_BLESS },				// 3 Bless
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 4 Burning Hands
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_CHILL_TOUCH },		// 5 Chill Touch
+	{ DTU_SK_COLOR, DTU_SS_NEGATES, SR_OTHERS, 0 },				// 6 Color Spray: a save above save_level
+	{ DTU_SK_CAUSE, DTU_SS_NEGATES, 0, DTU_FX_CONFUSION },		// 7 Confusion
+	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 8 Continual Light
+	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 9
+	{ DTU_SK_HEAL, DTU_SS_NONE, DTU_SR_NO_UNDEAD, 0 },			// 10 Cure Light Wounds (and not extraplanar)
+	{ DTU_SK_HEAL, DTU_SS_NONE, DTU_SR_NO_UNDEAD, 0 },			// 11 Cure Serious Wounds
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_DETECT_MAGIC },		// 12 Detect Magic
+	{ DTU_SK_DISPEL, DTU_SS_NONE, 0, 0 },						// 13 Dispel Magic
+	{ DTU_SK_FEAR, DTU_SS_NEGATES, SR_OTHERS|DTU_SR_NO_UNDEAD, DTU_FX_FEAR },	// 14 Fear
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_FEATHER_FALL },		// 15 Feather Fall
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, DTU_SR_BURST_BLINDS, 0 },		// 16 Fireball: no test of the caster
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 17 Produce Fire
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_RESIST_FIRE },		// 18 Flame Walk
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_FLY },				// 19 Fly
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_FREE_ACTION },		// 20 Free Action
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_HASTE },				// 21 Haste
+	{ DTU_SK_HOLD, DTU_SS_NEGATES, SR_OTHERS|DTU_SR_NO_UNDEAD|DTU_SR_HUMANOID, DTU_FX_HOLD },	// 22 Hold Person
+	{ DTU_SK_HOLD_UNDEAD, DTU_SS_NEGATES, SR_OTHERS|DTU_SR_UNDEAD_ONLY|DTU_SR_LEVEL_CAP, DTU_FX_HOLD },	// 23 Hold Undead: a save above save_level
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_IMP_INVIS },			// 24 Improved Invisibility
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_INFRAVISION },		// 25 Infravision
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_INVISIBLE },			// 26 Invisibility
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_JUMP },				// 27 Jump
+	{ DTU_SK_KNOCK, DTU_SS_NONE, 0, 0 },						// 28 Knock (the wall hit of dtuobj.c)
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_LEVITATE },			// 29 Levitate
+	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 30 Light
+	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 31
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0, 0 },						// 32 Lightning Bolt
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS|DTU_SR_STOPPED, 0, DTU_FX_SHIELD },	// 33 Magic Missile: Shield stops it
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 34 Magical Stone
+	{ DTU_SK_AC, DTU_SS_NONE, 0, DTU_FX_VESTMENT },				// 35 Magical Vestment
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 36 Melf's Acid Arrows (see below)
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 37 Melf's Minute Meteors
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_BLESS },				// 38 Prayer
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_PROT_EVIL },			// 39 Protection From Evil
+	{ DTU_SK_FIRE_POOL, DTU_SS_NONE, 0, DTU_FX_PROT_FIRE },		// 40 Protection From Fire
+	{ DTU_SK_RARY, DTU_SS_NONE, 0, DTU_FX_MNEMONIC },			// 41 Rary's Mnemonic Enhancer
+	{ DTU_SK_CURE_SENSES, DTU_SS_NONE, 0, 0 },					// 42 Cure Blindness or Deafness
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_RESIST_FIRE },		// 43 Resist Fire
+	{ DTU_SK_CAUSE, DTU_SS_NEGATES, SR_OTHERS|DTU_SR_NO_UNDEAD|DTU_SR_LEVEL_CAP|DTU_SR_SAVE_KIN, DTU_FX_FEAR },	// 44 Scare
+	{ DTU_SK_AC, DTU_SS_NONE, 0, DTU_FX_SHIELD },				// 45 Shield
+	{ DTU_SK_CAUSE, DTU_SS_NONE, SR_OTHERS|DTU_SR_NO_UNDEAD|DTU_SR_LEVEL_CAP, DTU_FX_SLEEP },	// 46 Sleep
+	{ DTU_SK_CAUSE, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_SLOW },	// 47 Slow
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_SPIDER_CLIMB },		// 48 Spider Climb
+	{ DTU_SK_STONESKIN, DTU_SS_NONE, 0, DTU_FX_STONESKIN },		// 49 Stone Skin
+	{ DTU_SK_STRENGTH, DTU_SS_NONE, 0, DTU_FX_STRENGTH },		// 50 Strength
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_FIND_TRAPS },			// 51 Find Traps
+	{ DTU_SK_HOLD, DTU_SS_NEGATES, SR_OTHERS|DTU_SR_NO_UNDEAD|DTU_SR_HUMANOID, DTU_FX_HOLD },	// 52 Hold Person
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_PROT_EVIL },			// 53 Protection From Evil
+	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_DETECT_MAGIC },		// 54 Detect Magic
+	{ DTU_SK_DISPEL, DTU_SS_NONE, 0, 0 },						// 55 Dispel Magic
 };
+
+static int rule_flags(int spell)
+{
+	return (spell >= 0 && spell < N_SPELL_RULES) ? Spell_rule[spell].flags : 0;
+}
+
+// ASCENT: the sides of the one more die against undead (Magical Stone,
+// case 34), 0 none
+static int spell_undead_die(int spell)
+{
+	return spell == 34 ? STONE_UNDEAD_DIE : 0;
+}
+
+// ASCENT: the level above which a target gets the save of the line, -1
+// every target. Color Spray: a target above the caster level or of level 6
+// or more (T > L || T >= 6, case 6); Hold Undead: above level 2 (case 23).
+#define COLOR_SAVE_LEVEL	5
+#define HOLD_UNDEAD_SAVE_LEVEL	2
+
+static int save_level(int spell,int L)
+{
+	switch (spell) {
+		case 6:		return L < COLOR_SAVE_LEVEL ? L : COLOR_SAVE_LEVEL;
+		case 23:	return HOLD_UNDEAD_SAVE_LEVEL;
+	}
+	return -1;
+}
+
+// ASCENT: DTU_SR_SAVE_KIN (0x8F467, Scare): the player saves only as an
+// elf, a half-elf or a cleric; a creature only with a cleric level or with
+// +0xD9 bit 3
+static int kin_saves(object *target)
+{
+	if (target->type == OBJ_PLAYER)
+		return Dtu_char.pa.race == DTU_RACE_ELF || (Dtu_char.pa.flags & DTU_PF_HALF_ELF) || char_is(DTU_CLASS_CLERIC);
+	if (target->type == OBJ_ROBOT)
+		return creature_cleric_level(target) || creature_rf_name(target);
+	return 1;
+}
 
 // A damage spell saves for half when its line says so. The other spells
 // that deal damage (Abjure of a creature, the lights on a light
@@ -1791,11 +1835,48 @@ static int rule_half(int spell)
 	return Spell_rule[spell].save == DTU_SS_HALF;
 }
 
-static int rule_save(int spell,object *target)
+// The save of the line: none for a line with no save, for a target at or
+// below save_level and, with DTU_SR_SAVE_KIN, for a target of another kin
+static int rule_save(int spell,object *target,int T,int L)
 {
 	if (spell < 0 || spell >= N_SPELL_RULES || Spell_rule[spell].save == DTU_SS_NONE)
 		return 0;
+	if (save_level(spell,L) >= 0 && T <= save_level(spell,L))
+		return 0;
+	if ((Spell_rule[spell].flags & DTU_SR_SAVE_KIN) && !kin_saves(target))
+		return 0;
 	return dtu_spell_save(target,DTU_SAVE_SPELL);
+}
+
+// ASCENT: 1 if the conditions (DTU_SR_) of the line let the spell act on
+// the target; the cases test them here, the window prints them
+static int rule_reaches(int spell,object *target,int self,int T,int L,int mf)
+{
+	int fl = rule_flags(spell);
+
+	if (self && (fl & DTU_SR_SPARES_CASTER))
+		return 0;
+	if ((fl & DTU_SR_UNDEAD_ONLY) && !(mf & MONSTER_F_UNDEAD))
+		return 0;
+	if ((fl & DTU_SR_NO_UNDEAD) && (mf & MONSTER_F_UNDEAD))
+		return 0;
+	if ((fl & DTU_SR_HUMANOID) && target->type == OBJ_ROBOT && !(mf & MONSTER_F_HUMANOID))
+		return 0;
+	if ((fl & DTU_SR_LEVEL_CAP) && T > spell_amount(spell,L,ROLL))
+		return 0;
+	if ((fl & DTU_SR_STOPPED) && (target->dtu.m_88 & Spell_rule[spell].stopped_by))
+		return 0;
+	return 1;
+}
+
+int dtu_spell_stopped_by_fx(int fx)
+{
+	int s;
+
+	for (s=0;s<N_SPELL_RULES;s++)
+		if ((Spell_rule[s].flags & DTU_SR_STOPPED) && (Spell_rule[s].stopped_by & fx))
+			return s;
+	return -1;
 }
 
 //------------------------------------------------------------------------
@@ -1806,6 +1887,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 	int T, self = (target == caster), mf;
 	int rule_fx = (spell >= 0 && spell < N_SPELL_RULES) ? Spell_rule[spell].fx : 0;	// ASCENT: the effect of the line
 	fix dealt = 0;
+	fix dur = 0;		// ASCENT: the duration that a case set, for its message (spell_time)
 
 	if (!spell_ok(spell) || target == NULL)
 		return 0;
@@ -1869,24 +1951,24 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			dtu_spell_log("spell: effect Armor on obj %d %s, pool %d hit points",(int)(target-Objects),target_name(target),spell_amount(2,L,ROLL));
 			break;
 		case 3:		// Bless: 6 rounds
-			if (fx_set(target,rule_fx,spell_time(3,L,ROLL)))
-				say_effect(self,"%s %s blessed for %d minutes.",V_ARE,"Bless cast on %s by %s for %d minutes.",6);
+			if (fx_set(target,rule_fx,dur = spell_time(3,L,ROLL)))
+				say_effect(self,"%s %s blessed for %d minutes.",V_ARE,"Bless cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 4:		// Burning Hands: fire 1d3 + 2 L
 		case 17:		// Flaming Sphere (no dice in the line); 0x1A344 makes it the
 						// cleric spell Produce Fire (level 4, fire 1d4 + 1 per level)
 		case 37:		// Melf's Minute Meteors: 1d4
-			if (!self)
+			if (rule_reaches(spell,target,self,T,L,mf))
 				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
 			break;
 		case 5:		// Chill Touch: on the caster only, L+3 rounds
-			if (self && fx_set(target,rule_fx,spell_time(5,L,ROLL)))
-				say("%s %s chill touch for %d minutes.",Msg_t,Msg_have,L+3);
+			if (self && fx_set(target,rule_fx,dur = spell_time(5,L,ROLL)))
+				say("%s %s chill touch for %d minutes.",Msg_t,Msg_have,MINUTES(dur));
 			break;
 		case 6:		// Color Spray
-			if (self || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
 				break;
-			if ((T > L || T >= 6) && rule_save(spell,target))
+			if (rule_save(spell,target,T,L))
 				break;
 			if (T <= L) {
 				if (fx_set(target,DTU_FX_SLEEP,color_time(0,ROLL))) {
@@ -1907,16 +1989,16 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 7:		// Confusion: L+2 rounds
-			if (!rule_save(spell,target) && fx_set(target,rule_fx,spell_time(7,L,ROLL)))
-				say("Confusion cast on %s by %s for %d minutes.",Msg_t,Msg_c,L+2);
+			if (!rule_save(spell,target,T,L) && fx_set(target,rule_fx,dur = spell_time(7,L,ROLL)))
+				say("Confusion cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(dur));
 			break;
 		case 8: case 9:		// Continual Light: blind with no end
 		case 30: case 31:		// Light: blind for 10 L or 10 (L+6) rounds
-			if (self || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & rule_fx))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & rule_fx))
 				break;
 			// ASCENT: 0x8DC4D: a save ends the case (0x90024), so a light
 			// sensitive creature takes the damage only with the blindness
-			if (rule_save(spell,target))
+			if (rule_save(spell,target,T,L))
 				return 0;
 			{
 				fix d = spell_time(spell,L,ROLL);
@@ -1937,7 +2019,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			break;
 		case 10:		// Cure Light Wounds: 1d8, not undead or extraplanar
 		case 11:		// Cure Serious Wounds: 3 to 17
-			if (mf & (MONSTER_F_UNDEAD|MONSTER_F_EXTRAPLANAR))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (mf & MONSTER_F_EXTRAPLANAR))
 				break;
 			heal(target,spell_amount(spell,L,ROLL),spell);
 			if (spell == 10)
@@ -1948,8 +2030,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 12:		// Detect Magic (mage): 2 L rounds
 		case 54:		// Detect Magic (cleric): 10 rounds
 			// The text only when the player is the target (0x8E08A)
-			if (fx_set(target,rule_fx,spell_time(spell,L,ROLL)) && target == ConsoleObject)
-				say("%s can detect magic for %d minutes.",Msg_t,MINUTES(spell_time(spell,L,ROLL)));
+			if (fx_set(target,rule_fx,dur = spell_time(spell,L,ROLL)) && target == ConsoleObject)
+				say("%s can detect magic for %d minutes.",Msg_t,MINUTES(dur));
 			break;
 		case 13: case 55:	// Dispel Magic: all effects of the target end, no save
 			fx_expire(target,1);
@@ -1958,19 +2040,14 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			break;
 		case 14:		// Fear: L rounds
 		case 44:		// Scare: 1d4 + L rounds, targets of level 6 or less
-			if (self || (mf & (MONSTER_F_NO_SCARE|MONSTER_F_UNDEAD)) || (target->dtu.m_88 & rule_fx))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (mf & MONSTER_F_NO_SCARE) || (target->dtu.m_88 & rule_fx))
 				break;
-			if (spell == 44 && (T > spell_amount(44,L,ROLL) || (mf & MONSTER_F_EXTRAPLANAR)))
+			if (spell == 44 && (mf & MONSTER_F_EXTRAPLANAR))
 				break;
 			// 0x8F467: Scare has a save only for an elf, a half-elf or a
 			// cleric player, and for a creature with +0xD9 bit 3 or a cleric
-			// level
-			if (spell == 44 && target->type == OBJ_PLAYER &&
-				 !(Dtu_char.pa.race == DTU_RACE_ELF || (Dtu_char.pa.flags & DTU_PF_HALF_ELF) || char_is(DTU_CLASS_CLERIC)))
-				;
-			else if (spell == 44 && target->type == OBJ_ROBOT && !creature_cleric_level(target) && !creature_rf_name(target))
-				;
-			else if (rule_save(spell,target))
+			// level (DTU_SR_SAVE_KIN of its line, kin_saves)
+			if (rule_save(spell,target,T,L))
 				break;
 			{
 				fix d = wisdom_cut(target,spell_time(spell,L,ROLL));
@@ -2052,8 +2129,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 15:		// Feather Fall: L rounds
-			if (fx_set(target,rule_fx,spell_time(15,L,ROLL)))
-				say_effect(self,"%s %s feather fall for %d minutes.",V_HAVE,"Feather fall cast on %s by %s for %d minutes.",L);
+			if (fx_set(target,rule_fx,dur = spell_time(15,L,ROLL)))
+				say_effect(self,"%s %s feather fall for %d minutes.",V_HAVE,"Feather fall cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 16:		// Fireball: min(L, 10) d6 of fire (the fixup 0x1A9C7: 6 sides, 0 per level)
 			{
@@ -2064,8 +2141,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 18:		// Flame Walk: L+1 rounds
-			if (fx_set(target,rule_fx,spell_time(18,L,ROLL)))
-				say_effect(self,"%s %s fire tolerance for %d minutes.",V_HAVE,"Flame Walk cast on %s by %s for %d minutes.",L+1);
+			if (fx_set(target,rule_fx,dur = spell_time(18,L,ROLL)))
+				say_effect(self,"%s %s fire tolerance for %d minutes.",V_HAVE,"Flame Walk cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 19:		// Fly: 10 (1d6 + L) rounds
 			if (fx_set(target,rule_fx,spell_time(19,L,ROLL)))
@@ -2078,21 +2155,19 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				return 0;
 			if (target->dtu.m_88 & DTU_FX_HOLD)
 				fx_end(target,14);
-			if (fx_set(target,rule_fx,spell_time(20,L,ROLL)))
-				say_effect(self,"%s %s Free Action for %d minutes.",V_HAVE,"Free Action cast on %s by %s for %d minutes.",10*L);
+			if (fx_set(target,rule_fx,dur = spell_time(20,L,ROLL)))
+				say_effect(self,"%s %s Free Action for %d minutes.",V_HAVE,"Free Action cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 21:		// Haste: ends Slow, L+3 rounds
 			if (target->dtu.m_88 & DTU_FX_SLOW)
 				fx_end(target,27);
-			if (fx_set(target,rule_fx,spell_time(21,L,ROLL)))
-				say_effect(self,"%s %s Haste for %d minutes.",V_HAVE,"Haste cast on %s by %s for %d minutes.",L+3);
+			if (fx_set(target,rule_fx,dur = spell_time(21,L,ROLL)))
+				say_effect(self,"%s %s Haste for %d minutes.",V_HAVE,"Haste cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 22: case 52:	// Hold Person: 2 L rounds, a humanoid or the player
-			if (self || (target->dtu.m_88 & (rule_fx|DTU_FX_FREE_ACTION)) || (mf & MONSTER_F_UNDEAD))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & (rule_fx|DTU_FX_FREE_ACTION)))
 				break;
-			if (target->type == OBJ_ROBOT && !(mf & MONSTER_F_HUMANOID))
-				break;
-			if (!rule_save(spell,target)) {
+			if (!rule_save(spell,target,T,L)) {
 				fix d = wisdom_cut(target,spell_time(spell,L,ROLL));
 
 				// ASCENT: 0x8E8C5: the counter of the cast must be above 0
@@ -2112,9 +2187,9 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 23:		// Hold Undead: 1d4 + L rounds, undead of level L or less
-			if (self || (target->dtu.m_88 & rule_fx) || !(mf & MONSTER_F_UNDEAD) || T > spell_amount(23,L,ROLL))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx))
 				break;
-			if (T > 2 && rule_save(spell,target))
+			if (rule_save(spell,target,T,L))
 				break;
 			{
 				fix d = spell_time(23,L,ROLL);
@@ -2123,8 +2198,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 24:		// Improved Invisibility: L+4 rounds
-			if (fx_set(target,rule_fx,spell_time(24,L,ROLL)))
-				say_effect(self,"%s %s invisible for %d minutes.",V_ARE,"Improved Invisibility cast on %s by %s for %d minutes.",L+4);
+			if (fx_set(target,rule_fx,dur = spell_time(24,L,ROLL)))
+				say_effect(self,"%s %s invisible for %d minutes.",V_ARE,"Improved Invisibility cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 25:		// Infravision: humans only, 2 hours and 1 hour for each level
 			if (target->type == OBJ_PLAYER && Dtu_char.pa.race != DTU_RACE_HUMAN)
@@ -2151,8 +2226,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			dtu_spell_log("spell: Knock has no effect in the executable");
 			break;
 		case 29:		// Levitate: 10 L rounds
-			if (fx_set(target,rule_fx,spell_time(29,L,ROLL)))
-				say_effect(self,"%s can levitate for %d minutes.",V_NONE,"Levitate cast on %s by %s for %d minutes.",10*L);
+			if (fx_set(target,rule_fx,dur = spell_time(29,L,ROLL)))
+				say_effect(self,"%s can levitate for %d minutes.",V_NONE,"Levitate cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 32:		// Lightning Bolt: min(L, 10) d6 of electricity (the fixup 0x1AAE9)
 			{
@@ -2163,7 +2238,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 33:		// Magic Missile: 1d4 with the level 1, Shield stops it
-			if (self || (target->dtu.m_88 & DTU_FX_SHIELD))
+			if (!rule_reaches(spell,target,self,T,L,mf))
 				break;
 			{
 				int g, n, l;
@@ -2173,17 +2248,19 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 34:		// Magical Stone: 1d4, two dice against undead
-			if (!self)
-				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,(mf & MONSTER_F_UNDEAD) ? rnd(STONE_UNDEAD_DIE) : 0);
+			if (rule_reaches(spell,target,self,T,L,mf))
+				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,(mf & MONSTER_F_UNDEAD) ? rnd(spell_undead_die(spell)) : 0);
 			break;
 		case 35:		// Magical Vestment: 5 L rounds
-			if (fx_set(target,rule_fx,spell_time(35,L,ROLL)))
-				say_effect(self,"%s %s Magical Vestment for %d minutes.",V_HAVE,"Magical Vestment cast on %s by %s for %d minutes.",5*L);
+			if (fx_set(target,rule_fx,dur = spell_time(35,L,ROLL)))
+				say_effect(self,"%s %s Magical Vestment for %d minutes.",V_HAVE,"Magical Vestment cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 36:		// Melf's Acid Arrows: 2 (L/3) + 2 acid dice + 4 L
-			if (!self && Dtu_fix_melf_acid)
+			if (!rule_reaches(spell,target,self,T,L,mf))
+				break;
+			if (Dtu_fix_melf_acid)
 				dealt = melf_acid_hit(spell,target,caster,L);
-			else if (!self) {
+			else {
 				int g, n, l;
 
 				spell_damage_args(spell,L,&g,&n,&l);
@@ -2193,14 +2270,14 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 38:		// Prayer: Bless for L rounds on the caster and on the others
 			// whose bit 0x200 of 0x1B0 is clear (as read). The casts of the
 			// player (0x56D6A) and of a creature reach only the caster.
-			if ((self || !(target->dtu.m_1b0 & DTU_PEACEFUL)) && fx_set(target,rule_fx,spell_time(38,L,ROLL)))
-				say_effect(self,"%s %s Prayer for %d minutes.",V_HAVE,"Prayer cast on %s by %s for %d minutes.",L);
+			if ((self || !(target->dtu.m_1b0 & DTU_PEACEFUL)) && fx_set(target,rule_fx,dur = spell_time(38,L,ROLL)))
+				say_effect(self,"%s %s Prayer for %d minutes.",V_HAVE,"Prayer cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 39:		// Protection From Evil (mage): 2 L rounds
 		case 53:		// Protection From Evil (cleric): 3 L rounds
-			if (fx_set(target,rule_fx,spell_time(spell,L,ROLL)))
+			if (fx_set(target,rule_fx,dur = spell_time(spell,L,ROLL)))
 				say_effect(self,"%s %s Protection From Evil for %d minutes.",V_HAVE,
-					"Protection From Evil cast on %s by %s for %d minutes.",MINUTES(spell_time(spell,L,ROLL)));
+					"Protection From Evil cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 40:		// Protection From Fire: a pool of 12 L hit points
 			// ASCENT: 0x8F1B2: no effect while the pool of bit 9 lasts (the
@@ -2242,17 +2319,17 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				target->dtu.m_8c[3] = 0;
 			break;
 		case 43:		// Resist Fire: L rounds
-			if (fx_set(target,rule_fx,spell_time(43,L,ROLL)))
-				say_effect(self,"%s %s Fire Resistance for %d minutes.",V_HAVE,"Resist Fire cast on %s by %s for %d minutes.",L);
+			if (fx_set(target,rule_fx,dur = spell_time(43,L,ROLL)))
+				say_effect(self,"%s %s Fire Resistance for %d minutes.",V_HAVE,"Resist Fire cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 45:		// Shield: 5 L rounds
-			if (fx_set(target,rule_fx,spell_time(45,L,ROLL)))
-				say_effect(self,"%s %s Shielded for %d minutes.",V_ARE,"Shield cast on %s by %s for %d minutes.",5*L);
+			if (fx_set(target,rule_fx,dur = spell_time(45,L,ROLL)))
+				say_effect(self,"%s %s Shielded for %d minutes.",V_ARE,"Shield cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 46: {		// Sleep (0x8F766): 5 L rounds, targets of level 3 or less
 			int cost;
 
-			if (self || (target->dtu.m_88 & rule_fx) || (mf & (MONSTER_F_NO_SLEEP|MONSTER_F_UNDEAD)) || T > spell_amount(46,L,ROLL))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx) || (mf & MONSTER_F_NO_SLEEP))
 				break;
 			if (target->type == OBJ_PLAYER) {
 				if (Dtu_char.pa.race == DTU_RACE_ELF && rnd(10) <= 9) break;
@@ -2273,26 +2350,26 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			Sleep_pool = (signed char) (Sleep_pool - cost);
 			dtu_spell_log("spell: Sleep pool %d left after obj %d %s (cost %d)",Sleep_pool,(int)(target-Objects),target_name(target),cost);
-			if (fx_set(target,rule_fx,spell_time(46,L,ROLL))) {
+			if (fx_set(target,rule_fx,dur = spell_time(46,L,ROLL))) {
 				if (target->type == OBJ_PLAYER) {
 					target->dtu.m_88 |= DTU_FX_BLIND;
 					target->dtu.m_8c[3] = target->dtu.m_e8[0];
 				}
-				say_effect(self,"%s will be Sleeping for %d minutes.",V_NONE,"Sleep cast on %s by %s for %d minutes.",5*L);
+				say_effect(self,"%s will be Sleeping for %d minutes.",V_NONE,"Sleep cast on %s by %s for %d minutes.",MINUTES(dur));
 			}
 			break;
 		}
 		case 47:		// Slow: ends Haste, L+3 rounds
-			if (self || (target->dtu.m_88 & rule_fx) || rule_save(spell,target))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx) || rule_save(spell,target,T,L))
 				break;
 			if (target->dtu.m_88 & DTU_FX_HASTE)
 				fx_end(target,13);
-			if (fx_set(target,rule_fx,spell_time(47,L,ROLL)))
-				say_effect(self,"%s %s Slowed for %d minutes.",V_ARE,"Slow cast on %s by %s for %d minutes.",L+3);
+			if (fx_set(target,rule_fx,dur = spell_time(47,L,ROLL)))
+				say_effect(self,"%s %s Slowed for %d minutes.",V_ARE,"Slow cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 48:		// Spider Climb: L+3 rounds
-			if (fx_set(target,rule_fx,spell_time(48,L,ROLL)))
-				say_effect(self,"%s may Spider Climb for %d minutes.",V_NONE,"Spider Climb cast on %s by %s for %d minutes.",L+3);
+			if (fx_set(target,rule_fx,dur = spell_time(48,L,ROLL)))
+				say_effect(self,"%s may Spider Climb for %d minutes.",V_NONE,"Spider Climb cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 49:		// Stone Skin: 1d4 + L/2 hits
 			if (target->dtu.m_88 & rule_fx)
@@ -2321,11 +2398,11 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 51:		// "Burning Hands" (cold): the code is Find Traps, 30 rounds
-			if (fx_set(target,rule_fx,spell_time(51,L,ROLL))) {
+			if (fx_set(target,rule_fx,dur = spell_time(51,L,ROLL))) {
 				if (self)
-					say("%s can Find Traps for %d minutes.",Msg_t,MINUTES(spell_time(51,L,ROLL)));
+					say("%s can Find Traps for %d minutes.",Msg_t,MINUTES(dur));
 				else
-					say("Find Traps cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(spell_time(51,L,ROLL)));
+					say("Find Traps cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(dur));
 			}
 			break;
 		default:
@@ -2370,7 +2447,8 @@ static void light_object(int spell,vms_vector *pos,int segnum,int L)
 	if (objnum < 0)
 		return;
 	Objects[objnum].ctype.light_info.intensity = (spell == 30 || spell == 31) ? i2f(20) : i2f(60);
-	Objects[objnum].lifeleft = (spell == 30) ? 10*L*MINUTE : (spell == 31) ? 10*(L+6)*MINUTE : IMMORTAL_TIME;
+	// ASCENT: the blindness of the spell (spell_time), no end for Continual Light
+	Objects[objnum].lifeleft = (spell == 30 || spell == 31) ? spell_time(spell,L,ROLL) : IMMORTAL_TIME;
 	dtu_spell_log("spell: light object %d, light %.0f, life %.0f",objnum,f2fl(Objects[objnum].ctype.light_info.intensity),
 		Objects[objnum].lifeleft == IMMORTAL_TIME ? -1.0 : f2fl(Objects[objnum].lifeleft));
 }
@@ -2414,7 +2492,7 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 		if (!point_sees(pos,segnum,o))
 			continue;
 		apply_spell(spell,o,caster,level);
-		if (spell == 16 && (o->type == OBJ_PLAYER || o->type == OBJ_ROBOT))		// 0x90DDF: Fireball, the fire trap (dtucombat.c)
+		if ((rule_flags(spell) & DTU_SR_BURST_BLINDS) && (o->type == OBJ_PLAYER || o->type == OBJ_ROBOT))		// 0x90DDF: Fireball, the fire trap (dtucombat.c)
 			dtu_fireball_blind_deaf(o,vm_vec_dist(&o->pos,pos));
 		n++;
 	}
@@ -3399,7 +3477,7 @@ static int cspell_weight(object *obj,int e,fix dist)
 			fq.thisobjnum = obj-Objects; fq.ignore_obj_list = NULL; fq.flags = 0;
 			return find_vector_intersection(&fq,&hit) == HIT_WALL ? -1 : 50;
 		}
-		case 33:	return (creature_clear(obj,i2f(5)) && !(pw & DTU_FX_SHIELD)) ? 50 : -1;
+		case 33:	return (creature_clear(obj,i2f(5)) && !(pw & Spell_rule[33].stopped_by)) ? 50 : -1;
 		case 34:	return creature_clear(obj,i2f(30)) ? 50 : -1;
 		case 37:	return creature_clear(obj,i2f(30)) ? 30 : -1;
 		case 35:
@@ -3611,6 +3689,15 @@ void dtu_spell_frame(void)
 			dtu_spell_fill_slots();
 		Fill_at_start = 0;
 		Cast_timer = DTU_FX_NO_END;
+		// ASCENT: the rule table against its sentences, once (dtu_spell_rule_check)
+		{
+			static int rule_checked;
+
+			if (!rule_checked) {
+				rule_checked = 1;
+				Assert(dtu_spell_rule_check() == 0);
+			}
+		}
 		// ASCENT: a load of a save game: the cast that ran at the save goes
 		// on (0x164C7 reads 0x153EBC with Ai_local_info), with the spell in
 		// the hand of the save
@@ -4048,6 +4135,77 @@ int dtu_spell_priest_check(void)
 }
 
 //------------------------------------------------------------------------
+// ASCENT: the check of the rule table (dtuspell.h). The kind of a line
+// chooses the sentence of the window; this tests that the other values of
+// the line fit that sentence, so that a line whose case code changes
+// fails here or in the game runs of tools/check_desc.py.
+
+static int rule_problem(int spell,const char *what)
+{
+	dtu_spell_log("spell: rule check: spell %d '%s': %s",spell,spell_ok(spell) ? spell_name(spell) : "?",what);
+	return 1;
+}
+
+int dtu_spell_rule_check(void)
+{
+	int s, bad = 0;
+
+	for (s=0;s<N_SPELL_RULES;s++) {
+		int k = Spell_rule[s].kind, fl = Spell_rule[s].flags, fx = Spell_rule[s].fx, g;
+		int needs_fx = k == DTU_SK_GIVE || k == DTU_SK_CAUSE || k == DTU_SK_AC || k == DTU_SK_ARMOR || k == DTU_SK_AID ||
+			k == DTU_SK_BLIND || k == DTU_SK_HOLD || k == DTU_SK_HOLD_UNDEAD || k == DTU_SK_FEAR || k == DTU_SK_FIRE_POOL ||
+			k == DTU_SK_RARY || k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH;
+		int timed = k == DTU_SK_GIVE || k == DTU_SK_CAUSE || k == DTU_SK_AC || k == DTU_SK_BLIND || k == DTU_SK_HOLD ||
+			k == DTU_SK_HOLD_UNDEAD || k == DTU_SK_FEAR || k == DTU_SK_AID || k == DTU_SK_COLOR;
+		int amount = k == DTU_SK_HEAL || k == DTU_SK_AID || k == DTU_SK_ARMOR || k == DTU_SK_FIRE_POOL ||
+			k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH || k == DTU_SK_HOLD;
+		dtu_spell_facts f;
+
+		if (!spell_ok(s))
+			continue;
+		dtu_spell_get_facts(s,5,&f);
+		if (needs_fx != (fx != 0))
+			bad += rule_problem(s,needs_fx ? "the kind names an effect, the line has none" : "the line has an effect that the kind does not name");
+		if (timed && spell_time(s,5,HIGH) == 0)
+			bad += rule_problem(s,"the kind gives a duration, spell_time has none");
+		if (amount && spell_amount(s,5,HIGH) <= 0)
+			bad += rule_problem(s,"the kind gives an amount, spell_amount has none");
+		if (k == DTU_SK_DAMAGE && f.kind == DTU_SK_DAMAGE) {		// Dtu_fix_melf_acid: the acid sentence
+			for (g=0;g<4;g++)
+				if ((f.dice_n[g] > 0 && f.dice_sides[g] > 0) || f.dice_add[g])
+					break;
+			if (g == 4)
+				bad += rule_problem(s,"a damage line with no dice");
+		}
+		if (k == DTU_SK_GIVE && !spell_self(s))
+			bad += rule_problem(s,"\"Gives\" on a spell that is not cast on the caster");
+		if ((k == DTU_SK_CAUSE || k == DTU_SK_HOLD || k == DTU_SK_HOLD_UNDEAD) && spell_self(s))
+			bad += rule_problem(s,"\"Causes\" or \"Holds\" on a spell cast on the caster");
+		if (k == DTU_SK_HOLD && (!(fl & DTU_SR_HUMANOID) || fx != DTU_FX_HOLD))
+			bad += rule_problem(s,"\"Holds up to N humanoids\" needs DTU_SR_HUMANOID and Hold");
+		if (k == DTU_SK_HOLD_UNDEAD && ((fl & (DTU_SR_UNDEAD_ONLY|DTU_SR_LEVEL_CAP)) != (DTU_SR_UNDEAD_ONLY|DTU_SR_LEVEL_CAP) || fx != DTU_FX_HOLD))
+			bad += rule_problem(s,"\"Holds undead of level N or less\" needs DTU_SR_UNDEAD_ONLY, DTU_SR_LEVEL_CAP and Hold");
+		if ((fl & DTU_SR_LEVEL_CAP) && ((k != DTU_SK_CAUSE && k != DTU_SK_HOLD_UNDEAD) || spell_amount(s,5,HIGH) < 1))
+			bad += rule_problem(s,"a level limit needs a sentence that prints it and an amount");
+		if ((fl & DTU_SR_UNDEAD_ONLY) && (fl & DTU_SR_NO_UNDEAD))
+			bad += rule_problem(s,"undead only and no undead");
+		if ((save_level(s,5) >= 0 || (fl & DTU_SR_SAVE_KIN)) && Spell_rule[s].save == DTU_SS_NONE)
+			bad += rule_problem(s,"a save condition on a line with no save");
+		if (Spell_rule[s].save == DTU_SS_SOME)
+			bad += rule_problem(s,"DTU_SS_SOME in the table: the facts derive it from the save conditions");
+		// the window has the sentence "Stops Magic Missile." only (shield_lines)
+		if ((fl & DTU_SR_STOPPED) && (s != 33 || Spell_rule[s].stopped_by != DTU_FX_SHIELD))
+			bad += rule_problem(s,"a stopped spell that the window has no sentence for");
+		if ((fl & DTU_SR_BURST_BLINDS) && (k != DTU_SK_DAMAGE || !spell_area(s)))
+			bad += rule_problem(s,"the blindness near the point needs an area damage spell");
+		if ((fl & DTU_SR_SPARES_CASTER) && spell_self(s) && !spell_area(s))
+			bad += rule_problem(s,"a spell cast on the caster alone cannot spare the caster");
+	}
+	dtu_spell_log("spell: rule check: %d problems",bad);
+	return bad;
+}
+
+//------------------------------------------------------------------------
 // ASCENT: the facts of a spell for the description window (dtuspell.h)
 
 
@@ -4092,7 +4250,14 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 		f->kind = Spell_rule[spell].kind;
 		f->save = Spell_rule[spell].save;
 		f->fx = Spell_rule[spell].fx;
+		f->flags = Spell_rule[spell].flags;
+		f->stopped_by = (f->flags & DTU_SR_STOPPED) ? Spell_rule[spell].stopped_by : 0;
 	}
+	// the conditions of rule_reaches and rule_save
+	f->max_level = (f->flags & DTU_SR_LEVEL_CAP) ? spell_amount(spell,L,HIGH) : -1;
+	f->save_level = f->save != DTU_SS_NONE ? save_level(spell,L) : -1;
+	if (f->save != DTU_SS_NONE && (f->save_level >= 0 || (f->flags & DTU_SR_SAVE_KIN)))
+		f->save = DTU_SS_SOME;
 	f->time_lo = facts_seconds(spell_time(spell,L,LOW));
 	f->time_hi = facts_seconds(spell_time(spell,L,HIGH));
 	f->amount_lo = spell_amount(spell,L,LOW);
@@ -4118,10 +4283,9 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 			f->dice_n[g] = (g == group) ? count : spell_int(spell,keys[g][1],0);
 			f->dice_add[g] = spell_int(spell,keys[g][2],0) * level;
 		}
-		if (spell == 34)
-			f->undead_die = STONE_UNDEAD_DIE;
+		f->undead_die = spell_undead_die(spell);
 		// the area of Fireball (dtu_spell_area, dtu_fireball_blind_deaf)
-		if (spell == 16 && f->area) {
+		if ((f->flags & DTU_SR_BURST_BLINDS) && f->area) {
 			f->blind_dist = DTU_FIREBALL_BLIND_DIST;
 			f->blind_seconds = DTU_FIREBALL_BLIND_SECONDS;
 		}

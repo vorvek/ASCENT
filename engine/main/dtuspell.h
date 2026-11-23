@@ -353,7 +353,7 @@ void dtu_spell_log(char *format, ...);
 #define DTU_SS_NONE		0		// no saving throw
 #define DTU_SS_HALF		1		// a save halves the damage
 #define DTU_SS_NEGATES	2		// a save stops the effect
-#define DTU_SS_SOME		3		// a save only for some targets
+#define DTU_SS_SOME		3		// a save only for some targets (save_level, DTU_SR_SAVE_KIN)
 
 #define DTU_SK_NONE			0		// the effect function has no code for it
 #define DTU_SK_DAMAGE		1		// the damage dice
@@ -373,12 +373,24 @@ void dtu_spell_log(char *format, ...);
 #define DTU_SK_STRENGTH		15		// amount more strength
 #define DTU_SK_BLIND			16		// blinds the target (light)
 #define DTU_SK_COLOR			17		// sleep, blindness or stun by the level of the target
-#define DTU_SK_SLEEP			18		// sleep on targets of level amount or less
-#define DTU_SK_SCARE			19		// fear on targets of level amount or less
-#define DTU_SK_HOLD_UNDEAD	20		// holds undead of level amount or less
+										// 18 and 19 (Sleep, Scare) are DTU_SK_CAUSE with DTU_SR_LEVEL_CAP
+#define DTU_SK_HOLD_UNDEAD	20		// holds undead of level max_level or less
 #define DTU_SK_FEAR			21		// fear; the target may drop its weapon
 #define DTU_SK_ACID			22		// the dice now and in each of amount later rounds
 #define DTU_SK_HOLD			23		// holds up to amount humanoids
+
+// ASCENT: the conditions of a spell line (Spell_rule of dtuspell.c). The
+// cases of the effect function test them through one predicate, and the
+// window prints the lines that they give, so a change of a flag changes the
+// game and the text.
+#define DTU_SR_SPARES_CASTER	0x01	// no effect on the caster ("Also hits you" for an area without it)
+#define DTU_SR_UNDEAD_ONLY	0x02	// only undead targets
+#define DTU_SR_NO_UNDEAD		0x04	// no effect on undead
+#define DTU_SR_HUMANOID		0x08	// a creature target must be a humanoid (the player is one)
+#define DTU_SR_LEVEL_CAP		0x10	// no effect on a target above level max_level
+#define DTU_SR_SAVE_KIN		0x20	// the save only for an elf, a half-elf or a cleric (Scare)
+#define DTU_SR_STOPPED		0x40	// the effect stopped_by on the target stops the spell
+#define DTU_SR_BURST_BLINDS	0x80	// blinds and deafens near the point of the area (Fireball)
 
 typedef struct dtu_spell_facts {
 	int	book;					// 0 mage, 1 cleric, -1 none
@@ -401,6 +413,10 @@ typedef struct dtu_spell_facts {
 	int	undead_die;				// sides of one more die against undead, 0 none
 	int	blind_dist;				// Fireball: blinds and deafens within this many units of the point, 0 none
 	int	blind_seconds;			// the longest blindness of blind_dist
+	int	flags;					// ASCENT: DTU_SR_
+	int	max_level;				// the highest level of a target (DTU_SR_LEVEL_CAP), else -1
+	int	save_level;				// only a target above this level saves, -1 every target
+	int	stopped_by;				// the effect bit that stops the spell (DTU_SR_STOPPED), else 0
 } dtu_spell_facts;
 
 // The facts of a spell at caster level L (-1: the level of the player).
@@ -411,6 +427,13 @@ int dtu_spell_get_facts(int spell, int L, dtu_spell_facts *f);
 int dtu_spell_fx_ac(int fx);
 // ASCENT: the same against melee (missile 0) or missiles (1), Shield
 int dtu_spell_fx_ac_vs(int fx, int missile);
+// ASCENT: the spell that the effect bits of fx stop on their owner
+// (DTU_SR_STOPPED of the rule), -1 none
+int dtu_spell_stopped_by_fx(int fx);
+// ASCENT: the check of the rule table against the kinds of the sentences
+// (dtu_desc_log_all, and once at the first level in a debug build).
+// Returns the number of problems; each goes to the -objlog file.
+int dtu_spell_rule_check(void);
 // The classes that can use the spell as an item (dtu_spell_usable), as
 // DTU_USE_ bits of dtuchar.h.
 int dtu_spell_use_classes(int spell);
