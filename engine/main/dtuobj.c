@@ -1437,7 +1437,9 @@ static void fix_delete(int n, int type, int id)
 
 // Object flag 0x40: the object queries skip the object (0x3F38F), so the
 // player cannot walk into it, take it or use it, and shots pass it. It is
-// still drawn. The flag on FLAME object 35 (a creature) is not in the port.
+// still drawn. On a creature the AI frame (0x13C8B) and the move (0x9F174)
+// skip it too (dtu_creature_frozen): FLAME object 35, the image of Lolth
+// that script 320 moves and that speaks.
 static void fix_nohit(int n, int type)
 {
 	object *o = fix_obj(n,type,-1);
@@ -1764,6 +1766,8 @@ static void level_fixes_objects(int has_state)
 				Ail[36].target = 0;
 				fix_log(36,"Lolth: 256 hit points, no effects");
 			}
+			// ASCENT: 0xAD4F2 to 0xAD4FB: object 35, if a creature
+			fix_nohit(35,OBJ_ROBOT);
 			break;
 	}
 }
@@ -2676,6 +2680,16 @@ int dtu_rat_type(int id)
 		rat[id] = bm_tbl_get(r,"rat",value,sizeof(value)) ? 1 : 0;
 	}
 	return rat[id];
+}
+
+// ASCENT: object flag 0x40 on a creature (dtuobj.h)
+int dtu_creature_frozen(object *obj)
+{
+	if (obj->type != OBJ_ROBOT || !(obj->flags & OF_DTU_NOHIT) || obj->id >= N_robot_types)
+		return 0;
+	// 0x13C96 and 0x9F17E: +0x7E (regeneration) of 1 or more; 0x13C9D and
+	// 0x9F18A: the rat type
+	return Monster_ext[obj->id].regeneration < 1 && !dtu_rat_type(obj->id);
 }
 
 // 0x2AF5E. Returns the damage as an integer. A weapon of 0 or more gives
@@ -4969,6 +4983,9 @@ void dtu_creature_physics_sim(object *obj)
 		return;
 	if (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED))
 		return;
+	// ASCENT: 0x9F174, object flag 0x40: no move
+	if (dtu_creature_frozen(obj))
+		return;
 
 	// ASCENT: the move query of a rat (0x9F153) starts in the body of the
 	// player when the player walks over the rat: the object test of the
@@ -6975,6 +6992,9 @@ void dtu_do_ai_frame(object *obj)
 	int A, B, visible = -1, dying, blocked, hidden;
 
 	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return;
+	// ASCENT: 0x13C8B, object flag 0x40 (FLAME object 35)
+	if (dtu_creature_frozen(obj))
 		return;
 	ri = &Robot_info[obj->id];
 	mi = &Monster_info[obj->id];

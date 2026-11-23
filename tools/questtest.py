@@ -137,6 +137,13 @@ TESTS = [
     T("flame_lolth_death", "FLAME", "10:kill=36,15:obj=3",
       [r"obj 3: type 18 .* flags 0x40 ", r"run script 322 of obj 3 .* in mode 0", r"YOU  HAVE  DESTROYED",
        END_SEQ, r"end of the game: CREDITV1"], frames=600),
+    # FLAME: the level fix 0xAD4FB gives object 35 (rffk9, the image of
+    # Lolth that script 320 moves and that speaks) flag 0x40: the AI frame
+    # (0x13C8B) and the move (0x9F174) skip it, and the use ray passes it.
+    T("flame_lolth_image", "FLAME", "5:obj=35,10:goobj=35.12,300:obj=35,310:aim=35,312:activate,380:obj=35",
+      [r"f5\s+obj 35: type 2 id 8 .* flags 0x40 .* pos -0\.2,46\.6,140\.1",
+       r"f380\s+obj 35: type 2 id 8 .* var 0 .* pos -0\.2,46\.6,140\.1"],
+      [r"run script 320 of obj 35"], frames=400),
     T("flame_ending", "FLAME", "10:kill=36,20:goseg=486,40:aim=3,45:activate",
       [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", END_SEQ, r"end of the game: CREDITV1"], frames=600),
 
