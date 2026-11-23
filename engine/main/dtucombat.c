@@ -224,10 +224,32 @@ static int hand_fast(void)
 	return 0;
 }
 
+// ASCENT: D-098 (verified in part in the bytes: 0x44243 doubles the swing
+// time with Slow when the item is taken into the hand, 0x8FB9B doubles it at
+// the cast). Nothing halves it at the end of Slow, so the item stays slow
+// until the item in the hand changes. 1 (default): the time follows the
+// effects of each frame. 0 (-origcombat): Slow stays in the swing time
+// until the next change of the item in the hand.
+int Dtu_fix_slow_swing = 1;
+static int Slow_stuck = 0;
+
+// ASCENT: D-012. The hit of the player that kills a creature plays the
+// monster_kill_sound of the weapon in place of monster_hit_sound (0x27CCF
+// to 0x27D08, the missile 0x27650), and no shipped table sets it, so the
+// killing blow is silent at the hit point. 1 (default): the hit sound
+// plays on that blow too. 0 (-origcombat): the rule of 1.3.
+int Dtu_fix_kill_sound = 1;
+
 // The effects and the Haste rule for the attack rate (dtuatk.c)
 static int rate_effects(void)
 {
-	return dtu_atk_rate_effects(ConsoleObject ? ConsoleObject->dtu.m_88 : 0,hand_fast());
+	int fx = ConsoleObject ? ConsoleObject->dtu.m_88 : 0;
+
+	if (fx & DTU_FX_SLOW)
+		Slow_stuck = 1;
+	if (!Dtu_fix_slow_swing && Slow_stuck)
+		fx |= DTU_FX_SLOW;
+	return dtu_atk_rate_effects(fx,hand_fast());
 }
 
 static int rate_fix_haste(void)
@@ -268,6 +290,7 @@ static void change_player_model(int letter)
 	View_model = m;
 	View_letter = letter;
 	Lift_model = -1;					// ASCENT: the swing lift of the improved body
+	Slow_stuck = 0;					// ASCENT: Dtu_fix_slow_swing, 0x44243 takes the Slow of now
 	Swing_time = dtu_combat_swing_time();
 	// 0x43A8D and 0x43BDA: the pitch offset of the arms is off for an
 	// arrow or a bolt (the bow and the crossbow are held differently)
@@ -472,7 +495,10 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 			// blow had no impact sound at the hit point (docs/re/bugs.md,
 			// "Impact sound of the killing blow"). The port plays the hit
 			// sound on each hit, and the kill sound as well if a table sets it.
-			sound_at(weapon_int(weapon,"monster_hit_sound",-1),creature->segnum,hit_pnt,F1_0/2);
+			// Dtu_fix_kill_sound (D-012, verified in the bytes at 0x27CCF to
+			// 0x27D08); -origcombat gives the rule of 1.3.
+			if (alive || Dtu_fix_kill_sound)
+				sound_at(weapon_int(weapon,"monster_hit_sound",-1),creature->segnum,hit_pnt,F1_0/2);
 			if (!alive)
 				sound_at(weapon_int(weapon,"monster_kill_sound",-1),creature->segnum,hit_pnt,F1_0/2);
 		}
@@ -1234,6 +1260,8 @@ static void combat_init(void)
 		Dtu_fix_spell_hours = 0;
 		Dtu_fix_turn_undead = 0;
 		Dtu_fix_cure_aid = 0;
+		Dtu_fix_slow_swing = 0;
+		Dtu_fix_kill_sound = 0;
 	}
 }
 

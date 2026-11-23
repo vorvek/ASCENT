@@ -632,6 +632,18 @@ distance. The agitation, the bits of +0x15E and the believed positions
 (0x15FBC, see `compute_vis_and_vec`) are not in the port. The alerts of
 0x25FB0, 0x265C1 and 0x93294 have no call in the port.
 
+Corrections (verified in the bytes 2026-11-23, docs/audit/defects-1.3.md
+D-112 to D-114; -origobj clears them):
+
+- `Dtu_fix_noise_walls`: the noise passes only a side that a body can pass
+  or that can be seen through (`WALL_IS_DOORWAY` with the fly or the render
+  past flag). A closed door stops it.
+- `Dtu_fix_alert_ray`: the ray of the wake test goes from the creature to
+  the caller, not to the player.
+- `Dtu_fix_alert_last`: the wake loop includes the last object slot.
+- The roll 0x161BC is not in the port (D-040): it always passes in 1.3, and
+  AD&D 2nd Edition alerts a creature that notices a fight.
+
 ### Regeneration and revive
 
 See step 10 of `do_ai_frame`. The damage function clears all effects of a

@@ -191,6 +191,8 @@ static dtu_inv_item *metal_armor(void)
 
 // 0xAC2F5: a creature watches: alive, not peaceful, active, and the
 // player is not hidden from it. No distance and no line of sight.
+// ASCENT: with Dtu_fix_backstab the creature must also see the player (a
+// free ray, dtu_brain_sees_player).
 static int creature_watches(void)
 {
 	int i;
@@ -205,6 +207,8 @@ static int creature_watches(void)
 		if (!dtu_creature_is_active(o))
 			continue;
 		if (dtu_thief_hidden_from(o))
+			continue;
+		if (Dtu_fix_backstab && o->id < N_robot_types && !dtu_brain_sees_player(o))
 			continue;
 		return 1;
 	}
@@ -951,6 +955,15 @@ int dtu_thief_unnoticed_by(object *c)
 //------------------------------------------------------------------------
 // Backstab (0xB337E)
 
+// ASCENT: D-099 of docs/audit/defects-1.3.md (verified in the bytes,
+// 0xB337E to 0xB33F4 and 0xAC2F5). 0xB337E has no angle test, and 0xAC2F5
+// lets one active creature anywhere in the level stop every backstab. 1
+// (default): the rule of AD&D 2nd Edition (the thief attacks from behind a
+// victim that is not aware of it): the player must be behind the target
+// (the half space behind its face, as 0x142BF), and only a watcher that
+// sees the player stops the backstab. -origcombat clears it (dtuchar.c).
+int Dtu_fix_backstab = 1;
+
 int dtu_thief_backstab_check(object *target, int weapon)
 {
 	dtu_item_data d;
@@ -964,6 +977,15 @@ int dtu_thief_backstab_check(object *target, int weapon)
 		return 0;
 	if (!target || target->type != OBJ_ROBOT || target->id >= N_robot_types || !(Monster_info[target->id].flags & MONSTER_F_HUMANOID))
 		return 0;
+	if (Dtu_fix_backstab) {
+		vms_vector v;
+
+		vm_vec_sub(&v, &ConsoleObject->pos, &target->pos);
+		if (vm_vec_dot(&target->orient.fvec, &v) > 0) {
+			dtu_char_log("thief: no backstab on obj %d %s, the player is in front of it", (int)(target-Objects), dtu_object_name(target));
+			return 0;
+		}
+	}
 	if (creature_watches())
 		return 0;
 	dtu_char_log("thief: backstab on obj %d %s", (int)(target-Objects), dtu_object_name(target));

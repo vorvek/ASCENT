@@ -958,7 +958,9 @@ static int brain_bit(int a,int b)
 // 0x10815. The ray from a creature to the player. A creature that does not
 // fly looks from 5.0 above its center. A blocked ray counts as free for a
 // melee creature that is closer than 100.0.
-static int creature_ray_to_player(object *obj)
+// ASCENT: creature_ray_to() takes the end point (the alert of
+// Dtu_fix_alert_ray casts it to the caller).
+static int creature_ray_to(object *obj,vms_vector *to)
 {
 	vms_vector p0 = obj->pos;
 	int seg;
@@ -970,12 +972,17 @@ static int creature_ray_to_player(object *obj)
 		p0 = obj->pos;
 		seg = obj->segnum;
 	}
-	if (ray_is_free(&p0,seg,&ConsoleObject->pos,obj-Objects))
+	if (ray_is_free(&p0,seg,to,obj-Objects))
 		return 1;
 	if (Robot_info[obj->id].attack_type == 1 && Monster_ext[obj->id].spell_level == 0)
-		if (vm_vec_dist(&obj->pos,&ConsoleObject->pos) < i2f(100))
+		if (vm_vec_dist(&obj->pos,to) < i2f(100))
 			return 1;
 	return 0;
+}
+
+static int creature_ray_to_player(object *obj)
+{
+	return creature_ray_to(obj,&ConsoleObject->pos);
 }
 
 // 0x9810D(creature segment, player segment) for other code (the Spider
@@ -1136,7 +1143,8 @@ void dtu_objects_init(void)
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
-			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive = 0;
+			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
+			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_ray = Dtu_fix_alert_last = 0;
 	if (FindArg("-origrevive"))
 		Dtu_fix_revive = 0;
 	if (FindArg("-origdrow5"))
@@ -2413,9 +2421,18 @@ void dtu_draw_dressing_vclip(object *obj)
 //------------------------------------------------------------------------
 // Damage
 
-// 0x2A789 without the percent part of strength 18
+// 0x2A789 without the percent part of strength 18.
+// ASCENT: D-003 (verified in the bytes): the creature path calls 0x2A789
+// with the percent 100 (0x2ACA2), and 0x2A789 adds the 18/91-100 part when
+// the player (not the creature) is a fighter (0x2A7AB to 0x2A7B7). 1
+// (default): the plain bonus of the strength. 0 (-origcombat, dtuchar.c):
+// the rule of the executable.
+int Dtu_fix_creature_strength = 1;
+
 static int str_bonus(int str)
 {
+	if (!Dtu_fix_creature_strength)
+		return dtu_char_str_hit_bonus(str,100);
 	if (str < 1) str = 1;
 	if (str > 19) str = 19;
 	return Str_to_hit[str];
@@ -2426,6 +2443,15 @@ static int str_bonus(int str)
 // the d20 with the bonuses of the attacker. Returns 1 for a hit, 0 for a
 // miss; *ac_out is the armor class of the test.
 int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
+{
+	return dtu_hit_test_vs(target,attacker,roll,thac0,ac_out,0);
+}
+
+// ASCENT: 1 while the hit of a weapon missile is applied (missile_hit_object),
+// for the armor class against missiles (Dtu_fix_shield_ac)
+static int Hit_by_missile = 0;
+
+int dtu_hit_test_vs(object *target,object *attacker,int roll,int thac0,int *ac_out,int missile)
 {
 	int tw = target->dtu.m_88, aw = attacker ? attacker->dtu.m_88 : 0, ac;
 	int robot_attacker = attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types;
@@ -2438,7 +2464,8 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 		roll -= (m < 5) ? m : 5;
 	}
 	if (target->type == OBJ_PLAYER) {
-		ac = dtu_player_armor_class();
+		// ASCENT: the value for the attack type (Shield, Dtu_fix_shield_ac)
+		ac = missile ? dtu_char_armor_class_vs(1) : dtu_player_armor_class();
 		// 0x2ACE8: the player is hidden from the attacker (0x165C4)
 		if (robot_attacker && dtu_thief_hidden_from(attacker))
 			roll -= 4;
@@ -2462,7 +2489,9 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 		attacker->dtu.m_e0[0] = 0;
 	// 0x2ADA3: the effects that change the armor class of a creature
 	if (robot_target)
-		ac = dtu_spell_creature_ac(target,ac);
+		ac = dtu_spell_creature_ac_vs(target,ac,missile);
+	dtu_obj_log("attack: armor class %d of obj %d %s against %s",ac,(int)(target-Objects),dtu_object_name(target),
+		missile ? "a missile" : "melee");
 	// 0x2AE22: Slow of the attacker
 	if (aw & DTU_FX_SLOW)
 		roll -= 4;
@@ -2542,7 +2571,12 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 	}
 
 	*roll_out = roll;
-	return dtu_hit_test(target,attacker,roll,thac0,&ac);
+	return dtu_hit_test_vs(target,attacker,roll,thac0,&ac,Hit_by_missile);
+}
+
+int dtu_hit_by_missile(void)
+{
+	return Hit_by_missile;
 }
 
 // The weapon of a melee attack of an object: the weapon_type of the
@@ -4336,7 +4370,9 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	spell_dealt = (spell >= 0) ? spell_hit(spell,other,parent) : 0;
 
 	if (other->type == OBJ_PLAYER) {
+		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt = (m->spell >= 0) ? spell_dealt : damage_player_w(other,parent,0,weapon);
+		Hit_by_missile = 0;
 		hp = dtu_player_hit_points();
 		if (dealt > 0) {
 			sound = weapon_int(weapon,"monster_hit_sound",-1);
@@ -4356,7 +4392,9 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		if (parent && parent == ConsoleObject)
 			dtu_creature_alert(other,3);
 		Ail[other-Objects].activity = 2;
+		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
+		Hit_by_missile = 0;
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);
@@ -4365,9 +4403,11 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 			// ASCENT: the original plays no weapon sound when the hit
 			// kills (0x27650: die_sound, or monster_kill_sound, which no
 			// shipped table sets). The port plays the impact sound on the
-			// killing hit too (docs/re/bugs.md).
+			// killing hit too (docs/re/bugs.md), Dtu_fix_kill_sound of
+			// dtucombat.c; -origcombat plays monster_kill_sound.
 			else
-				sound_at(weapon_int(weapon,"monster_hit_sound",-1),other->segnum,point,F1_0/4);
+				sound_at(weapon_int(weapon,(hp < F1_0 && !Dtu_fix_kill_sound) ? "monster_kill_sound" : "monster_hit_sound",-1),
+					other->segnum,point,F1_0/4);
 		}
 		else
 			sound_at(weapon_int(weapon,"monster_miss_sound",-1),other->segnum,point,F1_0/4);
@@ -6444,11 +6484,25 @@ static void end_sequence_frame(void)
 // explosions of break_vclip (default 137) at the size of the object, the
 // scenery of the segment falls (movement type 1), then 0x6A3CC removes the
 // object and object_create_egg drops what it contains. The nine places of
-// the explosions: x and z += rand() % 11.0 - 5.0, y += rand() % 0.6875 -
-// 0.3125; rand() is at most 0x7FFF, so the modulo does nothing and the
-// places are 5.0 to 4.5 to the side and -0.31 to 0.19 up and down (a
-// defect of 1.3, kept). explode 1: 0x911AA with 0x3CA7E: the explosion
+// the explosions: each one is made at the center of the object, then its
+// x and z += rand() % 11.0 - 5.0, y += rand() % 0.6875 - 0.3125 (0xA6C90 to
+// 0xA6CD6). rand() is at most 0x7FFF, so the modulo does nothing and all
+// nine are 5.0 to 4.5 to one side and -0.31 to 0.19 up and down (D-035).
+// ASCENT: Dtu_fix_break_spread (default) scales rand() to the range, so
+// the places are -5.0 to 6.0 on x and z, as the constants say. -origobj
+// gives the 1.3 places. explode 1: 0x911AA with 0x3CA7E: the explosion
 // vclip 2 at 2.5 times the size and explode_sound (no debris in the port).
+int Dtu_fix_break_spread = 1;
+
+static fix break_offset(fix range,fix low)
+{
+	int r = rand() & 0x7FFF;		// the rand() of Watcom C (0xD7AC4)
+
+	if (Dtu_fix_break_spread)
+		return (fix) (((long long) r * range) >> 15) - low;
+	return (r % range) - low;
+}
+
 void dtu_break_dressing(object *d,object *by,int explode)
 {
 	dressing_info *di;
@@ -6478,12 +6532,15 @@ void dtu_break_dressing(object *d,object *by,int explode)
 		if (di->explode_sound >= 0)
 			sound_at(di->explode_sound,d->segnum,&d->pos,F1_0);
 		vclip = (di->break_vclip >= 0) ? di->break_vclip : 137;
-		p = d->pos;
+		// ASCENT: each explosion at the center plus its own offset, as
+		// 0xA6C7E moves the new object (the port added up the offsets)
 		for (i=0;i<9;i++) {
+			p = d->pos;
+			p.x += break_offset(i2f(11),i2f(5));
+			p.z += break_offset(i2f(11),i2f(5));
+			p.y += break_offset(0xB000,0x5000);
 			vclip_at(d->segnum,&p,d->size,vclip);
-			p.x += (rand() % i2f(11)) - i2f(5);
-			p.z += (rand() % i2f(11)) - i2f(5);
-			p.y += (rand() % 0xB000) - 0x5000;
+			dtu_obj_log("break explosion: offset %.2f %.2f %.2f",f2fl(p.x-d->pos.x),f2fl(p.y-d->pos.y),f2fl(p.z-d->pos.z));
 		}
 		// the other scenery of the segment falls (guess for the meaning)
 		for (i=0;i<=Highest_object_index;i++)
@@ -7609,6 +7666,23 @@ void dtu_creature_wake(object *obj, int make_hostile)
 // segment gets that awareness, the awareness time 3.0 and the morale check.
 // The recursion has no visited set (up to 6^5 calls for one event); the port
 // gives the same values with a search by distance.
+//
+// ASCENT: settings of the alert (D-112 to D-114 of docs/audit/defects-1.3.md,
+// verified in the bytes). -origobj clears them.
+// Dtu_fix_noise_walls: 0x162A1 follows each child with no wall test, so the
+// noise goes through closed doors and walls. 1 (default): the noise passes
+// only a side that a body can pass or that can be seen through (an open
+// door, a grate); a closed door stops it.
+// Dtu_fix_alert_ray: 0x161CA casts the ray of the wake test to the player
+// (0x10815), also when the caller is a corpse or a hit creature. 1
+// (default): the ray goes to the caller.
+// Dtu_fix_alert_last: the wake loop ends before Highest_object_index
+// (0x1628D, jl), so the creature in the last slot never wakes. 1 (default):
+// the loop includes it.
+int Dtu_fix_noise_walls = 1;
+int Dtu_fix_alert_ray = 1;
+int Dtu_fix_alert_last = 1;
+
 #define AWARE_MAX_EVENTS	64
 static struct { short segnum; short type; } Aware_events[AWARE_MAX_EVENTS];
 
@@ -7650,12 +7724,16 @@ static void awareness_events_frame(void)
 			for (side=0;side<MAX_SIDES_PER_SEGMENT;side++) {
 				int c = Segments[s].children[side];
 
+				if (Dtu_fix_noise_walls && c >= 0 &&
+					 !(WALL_IS_DOORWAY(&Segments[s],side) & (WID_FLY_FLAG|WID_RENDPAST_FLAG)))
+					continue;
 				if (c >= 0 && c <= Highest_segment_index && depth[c] == 0xff) {
 					depth[c] = depth[s] + 1;
 					queue[tail++] = c;
 				}
 			}
 		}
+		dtu_obj_log("noise: type %d at seg %d reaches %d segments",type,Aware_events[e].segnum,tail);
 	}
 	N_aware_events = 0;
 
@@ -7682,7 +7760,7 @@ void dtu_creature_alert(object *caller, int level)
 	awareness_event(caller,level);
 	if (level < 3)
 		return;
-	for (i=1;i<Highest_object_index;i++) {
+	for (i=1;i<Highest_object_index + (Dtu_fix_alert_last ? 1 : 0);i++) {
 		object *obj = &Objects[i];
 		vms_vector v;
 
@@ -7692,7 +7770,8 @@ void dtu_creature_alert(object *caller, int level)
 			continue;
 		if (Ail[i].activity == 2 || (obj->dtu.m_1b0 & (DTU_PEACEFUL|DTU_FLEEING)))
 			continue;
-		if (!brain_bit(obj->segnum,caller->segnum) || !creature_ray_to_player(obj))
+		if (!brain_bit(obj->segnum,caller->segnum) ||
+			 !(Dtu_fix_alert_ray ? creature_ray_to(obj,&caller->pos) : creature_ray_to_player(obj)))
 			continue;
 		vm_vec_sub(&v,&caller->pos,&obj->pos);
 		if ((obj->dtu.m_88 & DTU_FX_DEAF) && vm_vec_dot(&v,&obj->orient.fvec) <= 0)

@@ -214,6 +214,22 @@ extern int Dtu_fix_scenery_restore;
 // previous level looked up (0 if that level has no such texture).
 // Corrected: the numbers of BANE.
 extern int Dtu_fix_bane_texture;
+
+// ASCENT: the nine explosions of broken scenery (0xA6ACB). Original: all
+// on one side of the object. Corrected: spread around it. -origobj clears it.
+extern int Dtu_fix_break_spread;
+
+// ASCENT: the alert and the noise (0x160AB, 0x162A1, see dtuobj.c).
+// Corrected: noise stops at a closed door, the wake ray goes to the caller,
+// the last object slot wakes too. -origobj clears them.
+extern int Dtu_fix_noise_walls;
+extern int Dtu_fix_alert_ray;
+extern int Dtu_fix_alert_last;
+
+// ASCENT: the strength bonus of a creature (0x2A789 from 0x2ACA7). 1: the
+// plain bonus. 0 (-origcombat): with the 18/xx part when the player is a
+// fighter, as 1.3.
+extern int Dtu_fix_creature_strength;
 // 0x670D4: 0, 1 a magic object, 2 a creature with a magic weapon.
 int dtu_magic_look(object *obj);
 void dtu_set_tint(int tint);
@@ -391,6 +407,11 @@ int dtu_rat_type(int id);
 // thac0 - ac <= roll, and Stone Skin, which takes a hit. roll is the d20
 // with the bonuses of the attacker. Returns 1 for a hit, 0 for a miss.
 int dtu_hit_test(object *target, object *attacker, int roll, int thac0, int *ac_out);
+// ASCENT: the same against a melee attack (missile 0) or a missile (1): the
+// armor class of Shield (Dtu_fix_shield_ac). dtu_hit_by_missile() is 1 while
+// the hit of a weapon missile is applied.
+int dtu_hit_test_vs(object *target, object *attacker, int roll, int thac0, int *ac_out, int missile);
+int dtu_hit_by_missile(void);
 // 0x2AF5E: Flame Tongue, Mace of Disruption and the fire dice of a weapon
 // (any attacker). *damage is the normal part. Returns the fire part.
 int dtu_weapon_extra_damage(object *attacker, object *target, int weapon, int *damage);

@@ -461,8 +461,10 @@ SPELLS = {
              eff="Only targets of level 6 or lower; not undead, extraplanar creatures or creatures that "
                  "cannot be scared. The target flees and drops its weapon half of the time."),
     45: dict(src="0x8F6AE, 0xB0659", dur="5 minutes per level", save="None", target="You",
-             eff="Your armor class becomes at most 3, before the Dexterity adjustment. Magic Missile "
-                 "does no damage to you."),
+             eff="An invisible barrier in front of you: armor class 4 against melee weapons and 2 "
+                 "against missiles (arrows, bolts, thrown weapons). No effect if your armor is "
+                 "better. Magic Missile does no damage to you. The original 1.3 game gives armor "
+                 "class 3 against both."),
     46: dict(src="0x8F766", dur="5 minutes per level", save="See effect", target="The creature the missile hits",
              eff="Only targets of level 3 or lower; not undead or creatures immune to sleep. Each cast "
                  "has a pool of 4 to 16 (an even number). A creature costs a quarter of its maximum hit "
@@ -534,7 +536,8 @@ def vestment_text():
 # Effects of worn items: the item bits of 0xAFB55 (combat.md B6a).
 WORN = {
     ("armor", 16): "For a mage (also of two classes): the spells Armor, Shield and Magical Vestment on you "
-                   "give an armor class 1 better than their limit (Armor 5, Shield 2). No effect for "
+                   "give an armor class 1 better than their limit (Armor 5, Shield 3 against melee "
+                   "and 1 against missiles). No effect for "
                    "other classes or without these spells.",
     ("armor", 17): "Resist Fire while worn: fire damage halved.",
     ("armor", 18): "Feather Fall while worn.",
@@ -551,7 +554,8 @@ WORN = {
                    "levels 1 to 3. The original 1.3 game doubles them again at each change of "
                    "equipment and halves them once when you take it off; ASCENT corrects this and "
                    "doubles them once.",
-    ("armor", 33): "Shield while worn: armor class at most 3, no damage from Magic Missile. Its own "
+    ("armor", 33): "Shield while worn: armor class 4 against melee weapons and 2 against missiles "
+                   "(3 against both in the original 1.3 game), no damage from Magic Missile. Its own "
                    "armor class value does not count.",
     ("armor", 34): "Fly while worn.",
     ("armor", 35): "Feather Fall while worn.",
@@ -1237,7 +1241,9 @@ class Pages:
             "A skill roll succeeds when d100 <= the skill.",
             "",
             "Skill points: Mirt, at the Yawning Portal, gives a thief 20 skill points for each thief "
-            "level gained since the last visit, and 20 more at the first visit. Each point raises one "
+            "level gained since the last visit, and 20 more at the first visit. He adds them to the "
+            "points you have (a new thief has 60, so the first visit at level 1 gives 100; in 1.3 "
+            "Mirt replaced the points, and the first visit gave 40). Each point raises one "
             "skill by 1%, up to 95%. One skill can take at most half of the points of a visit. "
             "The screen closes with Escape only when the points are spent or no skill can take more; "
             "points that no skill can take are lost. If you answer No, Mirt offers the same points "
@@ -1254,8 +1260,8 @@ class Pages:
             "notice you. An attack ends hiding.",
             "- Climb Walls: the Activate key at a wall, with no weapon in the hand. A failed roll is a "
             "slip.",
-            "- Backstab: a melee attack while Move Silently is on, on a humanoid creature, while no "
-            "creature watches you: +4 to hit, damage x2 at levels 1 to 4, x3 at 5 to 8, x4 at 9 to "
+            "- Backstab: a melee attack from behind a humanoid creature while Move Silently is on, "
+            "while no creature that can see you watches you: +4 to hit, damage x2 at levels 1 to 4, x3 at 5 to 8, x4 at 9 to "
             "12, x5 at 13 to 16, x6 at 17 and 18. The Dagger of Impaling adds 3 to 6 on a roll of 19 "
             "or 20.",
             "",
@@ -1464,7 +1470,8 @@ class Pages:
             "# Armor",
             "",
             "- Armor class starts at 10. Each worn item lowers it by its AC bonus. Then come the "
-            "spell limits (Armor 6, Shield 3, Magical Vestment), Slow +4, the Dexterity adjustment "
+            "spell limits (Armor 6, Shield 4 against melee and 2 against missiles, Magical "
+            "Vestment), Slow +4, the Dexterity adjustment "
             "and Invulnerability -2. The result stays within -10 to 10.",
             "- AC alone: your armor class with only this item and Dexterity 7 to 14.",
             "- Mage spells: a mage cannot cast a mage spell while wearing any item on this page except "
