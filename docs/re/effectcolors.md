@@ -131,6 +131,19 @@ and red edges on the water.
 - The upscaled textures: `tools/textures_hd.py` fills the effect texels with the
   colors around them before the upscale (`../hd_textures.md`). A set made before
   this has red around the effect texels; the game cannot remove that.
+- A texture of effect texels and transparent pixels only: `web1` (the cobwebs of
+  THIEF1, 336 pixels of 0x4E, the rest 255; also `web2`, `web4`, `effect#0` to
+  `#9`, the effect walls `bg_e`, `rg_e`, `gg_e`, `cg_e`, `sh_e`). The tool has no
+  other color to fill them from, so the file keeps the red of 0x4E in every
+  pixel. With the upscaled set the GPU renderer showed red dots along the threads
+  of the cobwebs: the texels inside the alpha of the file but outside the smooth
+  mask of the effect texels kept that red and were drawn opaque (118 of the
+  65536 texels of `web1`). `plat_gpu_fx_mark` now makes every texel that is not
+  an effect texel transparent when the texture has no opaque texel of another
+  color. Test: THIEF1 `-testpos -271,-22,295,90` (the webs of segments 94 to 97),
+  frame 150: before, red dots on the webs; after, none, as with the 8-bit
+  textures of the GPU renderer and the software renderer. A texture with other
+  colors (a waterfall, a merged wall) does not change.
 
 Tests (BONES, `-testpos 0,0,-296,180`: the glass door `glasdr1`; `-testpos
 182,-6,86,90`: the waterfall `wfal04`): before, the panes were solid red and the

@@ -230,7 +230,7 @@ static uint8_t *smooth_mask(const uint8_t *bits, int iw, int ih, int w, int h)
 
 void plat_gpu_fx_mark(uint8_t *rgba, int w, int h, const uint8_t *index, int iw, int ih)
 {
-	int x, y, any = 0, gap = 0;
+	int x, y, any = 0, gap = 0, solid = 0;
 	uint8_t *bits = NULL, *m = NULL;
 
 	if (!rgba || !index || w <= 0 || h <= 0 || iw <= 0 || ih <= 0)
@@ -278,10 +278,24 @@ void plat_gpu_fx_mark(uint8_t *rgba, int w, int h, const uint8_t *index, int iw,
 			if (k && p[3]) {
 				p[3] = (uint8_t) (255 - 8 * k);
 				any = 1;
-			}
+			} else if (p[3] == 255 && index[n] != 255 && !plat_gpu_fx_code(index[n]))
+				solid = 1;
 		}
 	free(bits);
 	free(m);
+	// ASCENT: a texture of effect texels and transparent pixels only (the
+	// cobweb web1 of THIEF1: 336 texels of 0x4E, the rest color 255) has no
+	// color to fill the texels around its mask from. Those texels kept the
+	// red of the palette (from the source pixel or from the transparent
+	// fill of the upscaled file) and showed as red dots along the threads.
+	// Each texel that is not an effect texel becomes transparent, as the
+	// pixels around the threads are.
+	if (any && !solid) {
+		for (y = 0; y < w * h; y++)
+			if (rgba[y * 4 + 3] == 254 || rgba[y * 4 + 3] == 255)
+				rgba[y * 4 + 3] = 0;
+		return;
+	}
 	if (gap) {
 		fill_colors(rgba, w, h, 1);
 		for (y = 0; y < w * h; y++)
