@@ -479,6 +479,14 @@ id: port.you_killed_s
 en: You killed %s.
 tr: Has matado a %s.
 
+id: port.s_falls_but_it_is_not_dead
+en: %s falls, but it is not dead.
+tr: %s cae, pero no ha muerto.
+
+id: port.s_gets_up_again
+en: %s gets up again.
+tr: %s se levanta de nuevo.
+
 id: port.you_hit_s_for_d_damage
 en: You hit %s for %d damage.
 tr: Golpeas a %s y causas %d de daño.

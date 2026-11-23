@@ -621,8 +621,11 @@ FIXES = [
     ("Dtu_fix_bane_texture", "-origobj", "Two spinning objects in Bane's level get their own texture; 1.3 "
                                          "takes it from the level played before."),
     ("Dtu_fix_revive", "-origobj or -origrevive", "A killed troll (a regenerating creature) gets up again "
-     "unless fire or acid hurt it, and gives its experience only when it stays dead; in 1.3 it never "
-     "gets up."),
+     "unless fire or acid hurt it. Fire or acid on the fallen body, or weapon damage equal to its full hit "
+     "points while it is down, destroys it. It gives its experience one time, when it stays dead; in 1.3 "
+     "it never gets up."),
+    ("Dtu_fix_body_ray", "-origcombat", "An arrow, bolt or thrown weapon shot steeply down at a low or wide "
+     "creature from close range hits it; in 1.3 it misses."),
     ("Dtu_fix_prison_items", "-origprison", "In the prison of the Shadow Thieves every item that you do "
      "not wear goes to the thieves; 1.3 loses every second item and copies the next one."),
     ("Dtu_fix_market_charisma", "none", "The market uses the Charisma of your character; 1.3 uses the "

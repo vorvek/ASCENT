@@ -1314,11 +1314,29 @@ static void setup_creature(object *obj)
 
 	// The status bit of a creature that regenerates (set at creation if
 	// "regeneration" of the monster table is not 0).
-	if (Monster_ext[obj->id].regeneration)
+	// ASCENT: Dtu_fix_revive: a dead creature of a restored level keeps the
+	// bit of the state file. A body that fire, acid or weapons destroyed
+	// stays dead; a fallen body that can get up keeps it.
+	if (Monster_ext[obj->id].regeneration && !(Dtu_fix_revive && Level_setup_restore && obj->shields < F1_0))
 		obj->dtu.m_88 |= 0x01000000;
 
 	// A creature with less than one hit point is loaded dead (0x4787A).
 	if (obj->shields < F1_0) {
+		// ASCENT: Dtu_fix_revive: the hit points that the fallen body regrew
+		// (dtu_creature_saved_shields), and its gold is left
+		if (Dtu_fix_revive && Level_setup_restore) {
+			dtu_ai_local *ail = &Ail[obj-Objects];
+
+			ail->regen_hp = 0;
+			if (obj->shields < 0 && (obj->dtu.m_88 & 0x01000000) && Monster_ext[obj->id].regeneration > 0)
+				ail->regen_hp = obj->shields + i2f(Monster_info[obj->id].max_hit_points + 1);
+			ail->regen_time = GameTime;
+			ail->gold_done = 1;
+			ail->flags = 0;
+			obj->shields = 0;
+			if (obj->dtu.m_88 & 0x01000000)
+				dtu_obj_log("loaded fallen: obj %d %s, regrown hp %d (Dtu_fix_revive)",(int)(obj-Objects),dtu_object_name(obj),f2i(ail->regen_hp));
+		}
 		obj->ctype.ai_info.CURRENT_STATE = obj->ctype.ai_info.GOAL_STATE = DAIS_DEAD;
 		DTU_ANIM_STATE(obj) = DAS_DIE;
 		DTU_ANIM_FRAME(obj) = Dtu_anim_first[DAS_DIE+1] - 1;
@@ -3197,7 +3215,8 @@ static void creature_is_corpse(object *obj)
 	obj->control_type = CT_NONE;
 	obj->movement_type = MT_NONE;
 	Ail[obj-Objects].gold_done = 1;
-	Ail[obj-Objects].regen_hp = 0;
+	// ASCENT: regen_hp starts at the death (creature_dies), so that the hits
+	// on the dying body count (Dtu_fix_revive)
 	Ail[obj-Objects].regen_time = GameTime;
 	dtu_obj_log("obj %d %s: is a corpse",(int)(obj-Objects),dtu_object_name(obj));
 	if (Obj_log)
@@ -3215,17 +3234,29 @@ static void creature_dies(object *obj,object *attacker)
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	ai_static *aip = &obj->ctype.ai_info;
 	monster_info *mi = &Monster_info[obj->id];
+	// ASCENT: Dtu_fix_revive: the creature falls and gets up again (the
+	// regeneration bit stays, see below). No experience and no kill now:
+	// both come when the fallen body is destroyed (creature_destroyed).
+	int falls = Dtu_fix_revive && Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000);
 
+	if (falls) {
+		if (attacker && attacker->type == OBJ_PLAYER)
+			HUD_init_message("%s falls, but it is not dead.",dtu_object_display_name(obj));
+	}
+	else {
 	if (attacker && attacker->type == OBJ_PLAYER) {
 		HUD_init_message("You killed %s.",dtu_object_display_name(obj));
 		// 0x4EA50 with the score value. Not for a creature that
 		// regenerates (status bit 0x01000000).
-		if (!(obj->dtu.m_88 & 0x01000000))
+		if (!(obj->dtu.m_88 & 0x01000000)) {
 			dtu_player_award_xp(Robot_info[obj->id].score_value);
+			dtu_obj_log("xp: obj %d %s gives %d experience",(int)(obj-Objects),dtu_object_name(obj),Robot_info[obj->id].score_value);
+		}
 	}
 	// the words at 0x1D33AB and 0x1D33AD count each death
 	Players[Player_num].num_kills_level++;
 	Players[Player_num].num_kills_total++;
+	}
 
 	// 0x2A157: the die sound, if the number is not 0
 	if (mi->die_sound > 0)
@@ -3244,8 +3275,9 @@ static void creature_dies(object *obj,object *attacker)
 	// (0x1440C) never runs for a creature that was killed, and the kill gave
 	// no experience (the test above). Dtu_fix_revive: the bit stays unless
 	// fire or acid took it, and the corpse regenerates (corpse_regen_frame).
-	if (Dtu_fix_revive && Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000)) {
+	if (falls) {
 		obj->dtu.m_88 = 0x01000000;
+		ail->regen_hp = 0;
 		dtu_obj_log("obj %d %s: keeps its regeneration (Dtu_fix_revive)",(int)(obj-Objects),dtu_object_name(obj));
 	}
 	else
@@ -3293,6 +3325,129 @@ void dtu_creature_vanish(object *obj)
 int dtu_creature_is_active(object *obj)
 {
 	return obj && obj->type == OBJ_ROBOT && Ail[obj-Objects].activity == 2;
+}
+
+// ASCENT: Dtu_fix_revive, the fallen body of a creature that can get up.
+// 1.3 offers no way to end the revive but fire or acid before the death:
+// the code of 0x1440C tests only the regeneration bit, the hit points and
+// the distance of the player (no damage type, no count, no time limit, no
+// hit on the body). The Monstrous Compendium (Troll): "Only fire and acid
+// cause permanent damage", and a troll at 0 hit points or less that is
+// burned or put in acid is killed for good; a troll that is cut apart
+// regrows only from its largest piece. The port: fire or acid on the
+// fallen body destroys it; other damage on the fallen body takes away the
+// hit points that it regrew, and damage equal to its full hit points cuts
+// it apart for good (the game has no oil or torch for a fighter or a thief,
+// see docs/audit/monsters.md).
+int dtu_creature_down(object *obj)
+{
+	if (!Dtu_fix_revive || obj == NULL || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	if (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD))
+		return 0;
+	return Monster_ext[obj->id].regeneration > 0 && Monster_info[obj->id].max_hit_points > 0
+		&& (obj->dtu.m_88 & 0x01000000) && obj->ctype.ai_info.CURRENT_STATE == DAIS_DEAD;
+}
+
+// The fallen body is destroyed: the experience and the kill that the fall
+// did not give (creature_dies), one time.
+static void creature_destroyed(object *obj,object *attacker,char *how)
+{
+	obj->dtu.m_88 &= ~0x01000000;
+	Ail[obj-Objects].regen_hp = 0;
+	dtu_obj_log("obj %d %s: the fallen body is destroyed (%s, Dtu_fix_revive)",(int)(obj-Objects),dtu_object_name(obj),how);
+	if (attacker && attacker->type == OBJ_PLAYER) {
+		HUD_init_message("You killed %s.",dtu_object_display_name(obj));
+		dtu_player_award_xp(Robot_info[obj->id].score_value);
+		dtu_obj_log("xp: obj %d %s gives %d experience",(int)(obj-Objects),dtu_object_name(obj),Robot_info[obj->id].score_value);
+	}
+	Players[Player_num].num_kills_level++;
+	Players[Player_num].num_kills_total++;
+}
+
+void dtu_creature_down_hit(object *obj, object *attacker, int damage, int burn)
+{
+	dtu_ai_local *ail;
+	int max;
+
+	if (!dtu_creature_down(obj))
+		return;
+	ail = &Ail[obj-Objects];
+	max = Monster_info[obj->id].max_hit_points;
+	if (burn) {
+		creature_destroyed(obj,attacker,"fire or acid");
+		return;
+	}
+	if (damage <= 0)
+		return;
+	ail->regen_hp -= i2f(damage);
+	dtu_obj_log("obj %d %s: the fallen body takes %d, regrown hp %d (cut apart at %d)",(int)(obj-Objects),dtu_object_name(obj),
+		damage,f2i(ail->regen_hp),-max);
+	if (ail->regen_hp <= -i2f(max))
+		creature_destroyed(obj,attacker,"cut apart");
+}
+
+void dtu_creature_down_spell(object *obj, object *caster, int spell, int level)
+{
+	int damage, burn;
+
+	if (!dtu_creature_down(obj) || spell < 0 || spell >= N_spell_types)
+		return;
+	// 0x91BC3 clears the bit for fire or acid damage
+	damage = dtu_spell_damage_roll(spell,obj,level);
+	burn = !(obj->dtu.m_88 & 0x01000000);
+	obj->dtu.m_88 |= 0x01000000;
+	dtu_obj_log("spell: spell %d '%s' level %d on the fallen body of obj %d %s: damage %d%s",spell,Spell_info[spell].name,level,
+		(int)(obj-Objects),dtu_object_name(obj),damage,burn ? ", fire or acid" : "");
+	dtu_creature_down_hit(obj,caster,damage,burn);
+}
+
+void dtu_creature_down_swing(object *obj, int weapon)
+{
+	int damage, burn;
+
+	if (!dtu_creature_down(obj))
+		return;
+	// the damage roll of the weapon (dtu_weapon_extra_damage clears the bit
+	// for fire, 0x2B5D4)
+	damage = dtu_char_weapon_damage(weapon,obj);
+	burn = !(obj->dtu.m_88 & 0x01000000);
+	obj->dtu.m_88 |= 0x01000000;
+	dtu_obj_log("combat: the player hits the fallen body of obj %d %s: damage %d%s",(int)(obj-Objects),dtu_object_name(obj),damage,
+		burn ? ", fire" : "");
+	if (damage > 0)
+		HUD_init_message("You hit %s for %d damage.",dtu_object_display_name(obj),damage);
+	dtu_creature_down_hit(obj,ConsoleObject,damage,burn);
+}
+
+fix dtu_creature_saved_shields(object *obj)
+{
+	if (!dtu_creature_down(obj))
+		return obj->shields;
+	return Ail[obj-Objects].regen_hp - i2f(Monster_info[obj->id].max_hit_points + 1);
+}
+
+// 0x748D9 for the moving object of a query (0xA05AD for a missile): a
+// model with the body box (flag 1) gives body_radius[0] (0x800 for a
+// weapon, type 5) and the half height (the torso of the frame with the
+// torso box); other objects give the size twice.
+void dtu_query_radii(object *obj, fix *rad_h, fix *rad_v)
+{
+	polymodel *po = (obj->render_type == RT_POLYOBJ) ? obj_model(obj) : NULL;
+
+	if (po && po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius && po->body_half_height) {
+		int frame = DTU_ANIM_FRAME(obj);
+
+		*rad_h = (obj->type == OBJ_WEAPON) ? 0x800 : po->body_radius[0];
+		*rad_v = po->body_half_height[0];
+		if ((po->box_flags & DTU_BOX_TORSO) && po->torso_half_height && po->n_frames > 0) {
+			if (frame < 0 || frame >= po->n_frames)
+				frame = 0;
+			*rad_v = po->torso_half_height[frame];
+		}
+		return;
+	}
+	*rad_h = *rad_v = obj->size;
 }
 
 // The weapon number of the damage functions for damage with no to-hit
@@ -8503,6 +8658,7 @@ static void corpse_regen_frame(void)
 		obj->dtu.m_1b0 = (obj->dtu.m_1b0 | DTU_HOSTILE) & ~DTU_FLEEING;
 		ail->awareness = 4;
 		dtu_obj_log("obj %d %s: gets up again with %d hit points (Dtu_fix_revive)",i,dtu_object_name(obj),max);
+		HUD_init_message("%s gets up again.",dtu_object_display_name(obj));		// ASCENT: the message of the revive
 		morale_check(obj);
 		dtu_creature_alert(obj,4);		// 0x14602: the alert of level 4
 		dtu_spell_creature_event(obj,DTU_CSC_ALERT);

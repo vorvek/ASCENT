@@ -565,12 +565,22 @@ static int swing_test(int frame,int weapon,swing_contact *sc)
 
 		if (o == obj || (o->type != OBJ_ROBOT && o->type != OBJ_DRESSING))
 			continue;
-		if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
+		// ASCENT: Dtu_fix_revive: the fallen body of a creature that can get
+		// up is hit too (dtu_creature_down_swing)
+		if (o->flags & OF_SHOULD_BE_DEAD)
+			continue;
+		if ((o->flags & OF_DESTROYED) && !dtu_creature_down(o))
 			continue;
 		if (vm_vec_dist_quick(&o->pos,&center) > i2f(40))
 			continue;
 		Fvi_dtu_player_attack = (obj == ConsoleObject);	// ASCENT: Dtu_fix_rat_hit
-		d = dtu_body_query_test(&ip,&center,&p1,0,radius,o);
+		{
+			int dead = o->flags & OF_DESTROYED;
+
+			o->flags &= ~OF_DESTROYED;
+			d = dtu_body_query_test(&ip,&center,&p1,0,radius,o);
+			o->flags |= dead;
+		}
 		Fvi_dtu_player_attack = 0;
 		if (d > 0 && d < best_d) {
 			best_d = d;
@@ -638,7 +648,15 @@ static void swing_hit_test(void)
 		object *other = &Objects[best];
 
 		if (other->type == OBJ_ROBOT) {
-			if (!(other->type == OBJ_ROBOT && DTU_ANIM_STATE(other) == DAS_DIE))
+			if (dtu_creature_down(other)) {
+				// ASCENT: Dtu_fix_revive: a hit on the fallen body
+				if (!Smack) {
+					Smack = 8;
+					View_goal = DAS_FIDGET;
+					dtu_creature_down_swing(other,weapon);
+				}
+			}
+			else if (!(other->type == OBJ_ROBOT && DTU_ANIM_STATE(other) == DAS_DIE))
 				player_hits_creature(other,weapon,&sc.ip);
 		}
 		else if (other->type == OBJ_DRESSING) {

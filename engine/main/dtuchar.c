@@ -3505,6 +3505,14 @@ static void run_command(char *cmd, char *value)
 		else if (a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_DRESSING)	// scenery breaks (tools/questtest.py)
 			dtu_break_dressing(&Objects[a], NULL, 0);
 	}
+	else if (!strcmp(cmd, "area") && b >= 0 && b <= Highest_object_index)		// ASCENT: test: area=SPELL.OBJ, the area of the spell of the player at object OBJ
+		dtu_spell_area(a, &Objects[b].pos, Objects[b].segnum, ConsoleObject, dtu_player_level());
+	else if (!strcmp(cmd, "hitbody") && a >= 0 && a <= Highest_object_index) {	// ASCENT: test: hitbody=OBJ, the weapon in the hand hits the fallen body OBJ (Dtu_fix_revive)
+		dtu_attack at;
+
+		dtu_char_get_attack(&at);
+		dtu_creature_down_swing(&Objects[a], at.weapon_id);
+	}
 	else if (!strcmp(cmd, "heal"))		dtu_char_heal(a);
 	else if (!strcmp(cmd, "use"))			dtu_char_use(index);
 	else if (!strcmp(cmd, "usecur"))		dtu_char_use_current();
