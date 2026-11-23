@@ -238,6 +238,22 @@ TESTS = [
     T("thief1_restore_rule", "THIEF1", "20:warp=7.612,60:warp=6.1,100:quest",
       [r"level rule of the restore \(0x5A855\), level 6", r"quest: level 6 "], frames=120,
       extra=["-triglog", "-statelog"]),
+    # THIEF2: the symbol of Mask (trigger 46, seg 266 side 0) opens the wall
+    # of the cache (trap 18, seg 255 side 0). 1.3 (-origtrig) makes trigger
+    # 46 a copy of trigger 43 at the load (0x494EB calls 0x5A855(1)): trap
+    # 17 and the door of seg 607, the wall stays closed
+    # (Dtu_fix_thief2_cache).
+    T("thief2_mask_cache", "THIEF2", "20:goside=266.0,22:activate,40:wall=255.0",
+      [r"trap 18 runs: seg 255 side 0", r"wall 255\.0: type 4 "], [r"level rule of thief2", r"level rule of the load"],
+      frames=50, extra=["-triglog"]),
+    T("thief2_mask_cache_orig", "THIEF2", "20:goside=266.0,22:activate,40:wall=255.0",
+      [r"level rule of the load \(0x5A855\), level 7", r"trap 17 runs", r"level rule of thief2: trigger 46 opens the door of seg 607",
+       r"wall 255\.0: type 5 "], [r"trap 18 runs"], frames=50, extra=["-triglog", "-origtrig"]),
+    # The same after a restore of the state of THIEF2: the symbol still
+    # opens the wall.
+    T("thief2_mask_cache_restore", "THIEF2", "20:warp=6.1,60:warp=7.266,100:goside=266.0,102:activate,120:wall=255.0",
+      [r"Restoring TEMP7\.LVL", r"trap 18 runs: seg 255 side 0", r"wall 255\.0: type 4 "], [r"level rule of thief2"],
+      frames=130, extra=["-triglog", "-statelog"]),
     # The spell effects of the player (the bits +0x88 of the player object)
     # stay after a warp (0xBB563).
     T("warp_keeps_effects", "HUB1", "10:damage=5,12:fx=3.600,14:cast=20,20:quest,30:warp=3.376,60:quest",

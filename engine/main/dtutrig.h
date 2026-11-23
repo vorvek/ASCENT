@@ -175,6 +175,13 @@ extern int Dtu_fix_warp_overlap;
 // D-131: the trap clock. 0: as 1.3 (0x10A0F3), the real time, which runs
 // on in a pause. 1 (default): the game time. -origtrig clears it.
 extern int Dtu_fix_trap_pause;
+// The thief2 rules of 1.3 (0x93A7D, 0x5A95A) mend the trigger chain of seg
+// 224 of THIEF2 and make trigger 46 (the symbol of Mask that opens the wall
+// of the cache, seg 255 side 0) a copy of trigger 43, so the wall never
+// opens. 1 (default): no thief2 rules when Dtu_fix_trigger_table makes the
+// chains again, and a level state with the copy gets trigger 46 of the
+// level file back. 0 (-origtrig): the rules of 1.3.
+extern int Dtu_fix_thief2_cache;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;
@@ -190,9 +197,10 @@ void dtu_trig_load_level(char *level_name, int level_index);
 // level rule of flame).
 void dtu_trig_door_opened(int segnum, int side);
 
-// 0x5A855(0): the fixed trigger changes of five levels after the restore
-// of a level state. level_index is the index in the mission file.
-void dtu_trig_state_rules(int level_index);
+// 0x5A855: the fixed trigger changes of five levels after the load of a
+// level (restore 0) and after the restore of a level state (restore 1).
+// level_index is the index in the mission file.
+void dtu_trig_state_rules(int level_index, int restore);
 
 // 0x939AD: fires the triggers on a side. obj is the object that acts.
 void dtu_trig_check(int segnum, int side, int type, object *obj);

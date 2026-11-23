@@ -75,7 +75,13 @@ int Dtu_fix_trigger_repeat = 1;
 int Dtu_fix_disable_trap = 1;
 int Dtu_fix_warp_overlap = 1;
 int Dtu_fix_trap_pause = 1;
+int Dtu_fix_thief2_cache = 1;
 int Dtu_trig_log = 0;
+
+// The level file record of THIEF2 trigger 46 and the second texture of its
+// side, for a level state that has the copy of trigger 43 (Dtu_fix_thief2_cache)
+static dtu_trigger Thief2_t46;
+static short Thief2_t46_tex = -1;
 
 static short	Active_traps[DTU_MAX_ACTIVE_TRAPS];		// 0x3A7CD0
 static int		Num_active_traps = 0;						// 0x14221C
@@ -915,6 +921,59 @@ static void flame_talk_frame(void)
 		dtu_hook_trigger_object(36, 0);
 }
 
+// ASCENT: the thief2 rules of 1.3 (0x93A7D, 0x5A95A) mend the chain of seg
+// 224 of THIEF2.TIG: it is 43 -> 46, so the use of side 0 (the lever of
+// trigger 45) fires trigger 46, and the triggers 44 and 45 never fire. 1.3
+// makes trigger 46 a copy of 43 and opens two of the three doors after 43
+// and 46. But trigger 46 is the symbol of Mask in seg 266 side 0 (first
+// trap 18, the wall of seg 255 side 0 in front of the cache of the
+// guildleader, message 16). With the copy no trigger has the first trap
+// 18, so the wall never opens and the secret search finds the wall but
+// not its mechanism (text 948). With Dtu_fix_trigger_table the chain of
+// seg 224 is 43 -> 44 -> 45 and these rules are not needed.
+// Dtu_fix_thief2_cache (1, -origtrig clears it): no thief2 rules when the
+// table is made again.
+static int thief2_rules(void)
+{
+	return !(Dtu_fix_thief2_cache && Dtu_fix_trigger_table);
+}
+
+// Dtu_fix_thief2_cache: a level state of 1.3 or of an older port has the
+// copy of trigger 43 in trigger 46. Trigger 46 gets back the fields of the
+// level file that 0x5A95A copies (not the fire count), and its side the
+// texture of the level file if it has a lever texture of the copy.
+static void thief2_undo_copy(void)
+{
+	dtu_trigger *b = &Dtu_triggers[46], *f = &Thief2_t46;
+	short on = b->tex_on, off = b->tex_off;
+
+	if (f->seg != b->seg || f->side != b->side || (b->first_trap == f->first_trap && b->flags == f->flags
+			&& b->tex_on == f->tex_on && b->tex_off == f->tex_off))
+		return;
+	b->flags = f->flags;
+	b->activation_mask = f->activation_mask;
+	b->player_mask_a = f->player_mask_a;
+	b->player_mask_b = f->player_mask_b;
+	b->sound = f->sound;
+	b->tex_on = f->tex_on;
+	b->tex_off = f->tex_off;
+	b->skip_count = f->skip_count;
+	b->first_trap = f->first_trap;
+	b->enable_trigger = f->enable_trigger;
+	b->enable_trap = f->enable_trap;
+	b->disable_trigger = f->disable_trigger;
+	b->disable_trap = f->disable_trap;
+	b->object_num = f->object_num;
+	b->say_index = f->say_index;
+	tlog("thief2: trigger 46 of the state is the copy of trigger 43, the level file is back (first trap %d)", b->first_trap);
+	if (Thief2_t46_tex >= 0 && side_ok(b->seg, b->side)) {
+		short t = Segments[b->seg].dtu_tmap_num2[(int) b->side];
+
+		if ((on >= 0 && t == on) || (off >= 0 && t == off))
+			set_side_tmap2(b->seg, b->side, Thief2_t46_tex);
+	}
+}
+
 // The end of 0x939AD has fixed rules for two levels. Level 7 (thief2):
 // the triggers 46 and 43 take the lock from a door and open it. Level 32
 // (flame): after the triggers 33, 32 and 26 (0x93ADE), object 36 (the
@@ -936,7 +995,7 @@ static void trig_level_rules(int last_trigger)
 		}
 		return;
 	}
-	if (Level_index != 7)
+	if (Level_index != 7 || !thief2_rules())
 		return;
 	if (last_trigger == 46) {
 		door_seg = 607; lock_seg = 608;
@@ -956,8 +1015,12 @@ static void trig_level_rules(int last_trigger)
 	trap_open_door(door_seg, WFRONT);
 }
 
-// 0x5A855(0): after the restore of a level state (0x5AA75), fixed changes
-// of the triggers of five levels. level_index is the index in DTU.MSN.
+// 0x5A855: fixed changes of the triggers of five levels, after each load of
+// a level (0x494EB at 0x49C38, argument 1) and after the restore of a level
+// state (0x5AA75 at 0x5AB53, argument 0). level_index is the index in
+// DTU.MSN. Argument 1 also resets the fire count, the bytes 0x0F and 0x10
+// of each trigger and the bytes 3 and 4 of each trap: all are 0 in the
+// shipped files, so the port needs no reset.
 // - 2 (kobolds): trigger 1 (the one-time message of seg 167) is off.
 // - 6 (thief1): trigger 34 is off. ASCENT: 0x5A94E `mov byte ptr [esi +
 //   0xbe0], 0` is 34 * 0x59 + 0x0E, the `on` byte (the KOBOLDS store at
@@ -965,9 +1028,10 @@ static void trig_level_rules(int last_trigger)
 //   position and left the rule out (D-070).
 // - 7 (thief2): the triggers 43 and 46 are on, and trigger 46 gets the
 //   flags, masks, textures, count, traps and message of trigger 43 (0x5A95A).
+//   Not with Dtu_fix_thief2_cache (thief2_rules).
 // - 21 (drow2): trigger 20 runs the script of object 42 (object_num).
 // - 32 (flame): the triggers 26, 32 and 33 (Lolth, object 36) are on again.
-void dtu_trig_state_rules(int level_index)
+void dtu_trig_state_rules(int level_index, int restore)
 {
 	dtu_trigger *a, *b;
 
@@ -983,6 +1047,10 @@ void dtu_trig_state_rules(int level_index)
 		case 7:
 			if (Dtu_num_triggers <= 46)
 				break;
+			if (!thief2_rules()) {
+				thief2_undo_copy();
+				return;
+			}
 			a = &Dtu_triggers[43];
 			b = &Dtu_triggers[46];
 			a->on = b->on = 1;
@@ -1014,7 +1082,7 @@ void dtu_trig_state_rules(int level_index)
 		default:
 			return;
 	}
-	tlog("level rule of the restore (0x5A855), level %d", level_index);
+	tlog("level rule of the %s (0x5A855), level %d", restore ? "restore" : "load", level_index);
 }
 
 // 0x939AD
@@ -1894,7 +1962,7 @@ static void read_options(void)
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-origtrig"))
-		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = 0;
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }
@@ -1971,4 +2039,13 @@ void dtu_trig_load_level(char *level_name, int level_index)
 
 	tlog("level %s (%d): %d triggers, %d traps, %d messages", level_name, level_index,
 		Dtu_num_triggers, Dtu_num_traps, (Say_data && Say_size >= 8) ? (int)get_u32(Say_data+4) : 0);
+
+	Thief2_t46_tex = -1;
+	if (level_index == 7 && Dtu_num_triggers > 46) {
+		Thief2_t46 = Dtu_triggers[46];
+		if (side_ok(Thief2_t46.seg, Thief2_t46.side))
+			Thief2_t46_tex = Segments[Thief2_t46.seg].dtu_tmap_num2[(int) Thief2_t46.side];
+	}
+	// 0x494EB calls 0x5A855(1) after the load of the TIG and TAP files
+	dtu_trig_state_rules(level_index, 0);
 }

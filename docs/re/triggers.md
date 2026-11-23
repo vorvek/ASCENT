@@ -95,6 +95,19 @@ Not checked in the running original. The port setting `Dtu_fix_trigger_repeat`
 **V** Fixed level rules at the end of 0x939AD. Level 7 (thief2): after trigger 46 the
 code clears the lock of the wall of segment 608 side 4 and opens the door of segment
 607 side 5. After trigger 43 the same for segment 610 side 4 and segment 609 side 5.
+These rules and the copy of trigger 43 into trigger 46 (0x5A855, levelstate.md section
+5) mend the chain of segment 224 of THIEF2.TIG, which is 43 -> 46 (**D**): the use of
+side 0 fires trigger 46, and the triggers 44 and 45 never fire. But trigger 46 is the
+symbol of Mask in segment 266 side 0 of the bath house (`s_mask`), and its trap 18
+opens the closed wall of segment 255 side 0 in front of the cache of the guildleader
+(segments 256 to 260, message 16 "You have found the guildleader's cache!", object
+58). 0x5A855 runs at each load of the level (0x494EB at 0x49C38), so in 1.3 no
+trigger has the first trap 18: the symbol turns into a lever that runs trap 17 (one
+charge, the door of segment 613) and opens the door of segment 607, and the wall of
+the cache never opens. The secret search finds the wall (text 949) but not its
+mechanism (text 948, "However, you can't seem to find its opening mechanism...").
+Segments 256 to 260 have no other way in (**D**). A defect of 1.3:
+`Dtu_fix_thief2_cache` (section 9).
 Level 32 (flame): after trigger 33, 32 or 26 it calls 0xAC055(object 36, 0), that is
 `run_script(object 36, 0)` (the player talks to Lolth), when the 4-bit variable of the
 script of object 36 (0x2B4B20, bits 24..27, statement E0) is below 1, 2 or 3. Script
@@ -410,10 +423,11 @@ stations of type 4 and 5 (0x5A42C). **G**: the code of the types 4 and 5 does no
 | `Dtu_fix_trap_close_door` | 1 | Trap flag 2 calls `wall_close_door` with a wall number | The door of the trap starts to close. Off: no action |
 | `Dtu_fix_disable_trap` | 1 | `disable_trap` clears the side flags 0x28 of the trap with the number of the firing trigger (0x94231) | The side of the trap that is switched off |
 | `Dtu_fix_trap_seconds` | 1 | A trap time of N seconds is 0.182 * N seconds | The time is N seconds |
+| `Dtu_fix_thief2_cache` | 1 | THIEF2: trigger 46 is a copy of trigger 43 and the triggers 43 and 46 open the doors of segments 609 and 607 (section 2). The wall of the cache never opens | With `Dtu_fix_trigger_table` the chain of segment 224 is 43, 44, 45 and these rules are not applied: the symbol of Mask opens the wall of the cache. A level state with the copy (a save of 1.3 or of an older port) gets trigger 46 and the texture of its side of the level file back |
 | `Dtu_trig_log` | 0 | | Prints each trigger and trap event |
 
-Options: `-triglog` sets `Dtu_trig_log`. `-origtrig` clears the four fix settings
-that are on. `-trapseconds` sets `Dtu_fix_trap_seconds`.
+Options: `-triglog` sets `Dtu_trig_log`. `-origtrig` clears the fix settings of
+this table and `Dtu_fix_warp_overlap`, `Dtu_fix_trap_pause`. `-trapseconds` sets `Dtu_fix_trap_seconds`.
 
 `Dtu_fix_trap_seconds` is on: the loader of the executable scales seconds by 18.2
 but its clock counts 1/100 second, so a trap time of N seconds lasts 0.182 * N

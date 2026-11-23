@@ -142,10 +142,23 @@ of each trap that is on and has a `spawn_object` or a `robot_type`. No reader
 of side flag 0x20 was found (all readers of the side flag byte 0x2206A9 test
 the bits 0 to 4).
 
-The port: `dtu_trig_state_rules` (dtutrig.c) after the read of the TIG and TAP
-state files in `restore_files` (dtustate.c), all rules but the byte of
-thief1. The reset of argument 1 is the load of the TIG and TAP files of the
-level. Test: `-level FLAME -statetest -1,0,-1,1,62 -triglog` warps to HUB4
+**V** 0x5A855 has two callers: the level loader 0x494EB at 0x49C38 (argument
+1, after the load of the TIG and TAP files at 0x49C2E) and 0x5AA75 at
+0x5AB53 (argument 0). Argument 0 skips only the reset (`je 0x5a901`), so the
+rules of the table run at each load of a level, the first visit included.
+In 1.3 the message of KOBOLDS segment 167 never shows, THIEF1 trigger 34
+never fires and DROW2 trigger 20 runs the script of object 42 from the
+first visit on.
+
+The port: `dtu_trig_state_rules` (dtutrig.c) at the end of
+`dtu_trig_load_level` and after the read of the TIG and TAP state files in
+`restore_files` (dtustate.c). The reset of argument 1 is the load of the TIG
+and TAP files of the level: the fire count, the bytes 0x0F, 0x10 of each
+trigger and the bytes 3, 4 of each trap are 0 in all shipped files (**V**,
+checked in the files). The rule of thief2 is a defect of 1.3 that keeps the
+cache of the guildleader closed: with `Dtu_fix_thief2_cache` (on,
+`-origtrig` clears it) the port does not apply it (triggers.md, sections 2
+and 9). Test: `-level FLAME -statetest -1,0,-1,1,62 -triglog` warps to HUB4
 and back and prints "level rule of the restore (0x5A855), level 32" after
 "Restoring TEMP32.LVL."
 
@@ -157,8 +170,8 @@ timers +0x1A8 and +0x1C0 = the time of the restore, the mage and cleric
 points of its type, +0x15E = 0. The restore never runs 0xACCDB or 0xAC7B2
 again and reads no type table: the types keep what the setup of the level
 file (with the saved-state argument) gave them. The trigger rule of KOBOLDS
-(trigger 1 off) runs also when the trigger was saved on: the message of
-segment 167 is for the first visit only, so the port keeps it.
+(trigger 1 off) runs at the load and at the restore, so the message of
+segment 167 never shows; the port does the same.
 
 The port: `dtu_objects_level_setup_restore` copies the type entries of the
 setup of the level file back (`Setup_ext` in dtuobj.c) and runs no level
