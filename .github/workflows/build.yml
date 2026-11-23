@@ -6,7 +6,8 @@
 #
 # Both systems build the libraries, the tests, the game (target ascent)
 # and ascent-import. Linux builds with GCC and with Clang. ascent-content
-# and the setup program are for Windows only.
+# and the setup program are for Windows only. The GCC job of Linux also
+# builds the Linux release tarball and keeps it as a build artifact.
 name: build
 
 on:
@@ -78,3 +79,18 @@ jobs:
           cmake --build --preset debug --target ascent
       - name: Test
         run: ctest --preset debug
+      # The Linux release tarball (installer/build-linux.sh, docs/install.md):
+      # a build artifact of the GCC job, not a release.
+      - name: Check setup.sh
+        if: matrix.cc == 'gcc'
+        run: shellcheck -s sh installer/linux/setup.sh installer/build-linux.sh
+      - name: Release tarball
+        if: matrix.cc == 'gcc'
+        run: sh installer/build-linux.sh
+      - name: Keep the tarball
+        if: matrix.cc == 'gcc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ascent-dtu-linux-x86_64
+          path: build-rel-linux/ascent-dtu-*-linux-x86_64.tar.gz
+          if-no-files-found: error

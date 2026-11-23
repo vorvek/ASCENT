@@ -56,6 +56,7 @@ an input file unless you name it as the output.
 
 - `engine/main/cc.sh`: compile files of `engine/main` one at a time with the flags of a configured build, and print their errors and warnings.
 - `installer/build.sh`: the release build, the install step and the setup program. See `docs/install.md`.
+- `installer/build-linux.sh`: the Linux release build and the tarball with `installer/linux/setup.sh`. See the Linux section of `docs/install.md`.
 - `cmake/embed_text.cmake`: turn a translation catalog of the code into a C array.
 - `cmake/version.cmake`: write `ascent_version.h` from `git describe`.
 

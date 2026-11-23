@@ -1,0 +1,2 @@
+# Shell scripts keep LF line ends: a Linux shell cannot run a CRLF script.
+*.sh text eol=lf
