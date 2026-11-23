@@ -163,7 +163,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 97 | Crossbow +1 | 0x2AB36, 0x2B0EE | launcher_bonus | same: to_hit_bonus to the roll and the damage of arrows or bolts |
 | 98 | Crossbow +2 | 0x2AB36, 0x2B0EE | launcher_bonus | same: to_hit_bonus to the roll and the damage of arrows or bolts |
 | 99 | Crossbow +3 | 0x2AB36, 0x2B0EE | launcher_bonus | same: to_hit_bonus to the roll and the damage of arrows or bolts |
-| 100 | Short Bow of Speed | 0x2AB36 | launcher_bonus | same: +2; 0xAFB55 does not read the bow place, pc_spell1 is not read. Speed items: other agent |
+| 100 | Short Bow of Speed | 0x2AB36 | launcher_bonus | same: +2; 0xAFB55 does not read the bow place, pc_spell1 is not read. Port: `Dtu_fix_speed_items`, the arrows twice as fast while it is in the bow slot, no Haste effect (combat.md A8) |
 | 101 | Orb of Insight | 0x37A6A | use_misc | same: script event 0x1FE |
 | 102 | Scroll | 0x9DC42 | use_misc, dtu_scroll_show | same: scroll text of the count, not used up |
 | 103 | Banegem | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8 |
@@ -323,7 +323,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 66 | Rod of Genericness | none | - | same: no spell (enemy_spell=-1); not in the levels |
 | 67 | Rod of Genericness | none | - | same: no spell (enemy_spell=-1); not in the levels |
 | 68 | Rod of Genericness | none | - | same: no spell (enemy_spell=-1); not in the levels |
-| 69 | Short Sword of Quickness | 0x56A0D | hand_spell | pc_spell 21 (Haste): speed items, other agent |
+| 69 | Short Sword of Quickness | 0x56A0D | hand_spell | pc_spell 21 (Haste) is not read for a melee weapon. Port: `Dtu_fix_speed_items`, swings of 0.5 s in the hand, no Haste effect (combat.md A8) |
 | 70 | Mace of Disruption | 0x2B1F2 | dtu_weapon_extra_damage | same: undead destroyed or double damage (audit C5) |
 | 71 | Flame Tongue | 0x2AB9F, 0x2B1F2 | dtu_weapon_extra_damage | same: +2/+4 and fire (audit C5) |
 | 72 | Dwarven Sword | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |

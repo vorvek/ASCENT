@@ -700,12 +700,27 @@ object.
 | Haste, melee | gate 1.5 `t`, swing `t` | gate and swing `t / 2`, the swing is animated below 1.0 | `Dtu_fix_haste_attack` |
 | Missile, thrown: attack state | time of the model (1.0), Slow times 2 | the same | |
 | Missile, thrown: rate | none | `fire_wait` from shot to shot, Slow times 2, Haste / 2. A press is accepted when its fire frame comes at or after the end of the wait, else it is consumed | `Dtu_fix_missile_rate` |
-| Short Bow of Speed in the bow slot | none | Haste (item bit 9): arrows 1.0 s apart instead of 2.0 | `Dtu_fix_speed_items` |
-| Short Sword of Quickness in the hand | none | Haste (item bit 9): swing 0.5 s | `Dtu_fix_speed_items` |
+| Short Bow of Speed in the bow slot | none | its arrows twice as fast: the wait / 2 (1.0 s for an Arrow instead of 2.0). No Haste effect | `Dtu_fix_speed_items` |
+| Short Sword of Quickness in the hand | none | its swings twice as fast: swing and gate 0.5 s, animated. No Haste effect | `Dtu_fix_speed_items` |
+| Speed item with Haste | | twice as fast, not four times | `Dtu_fix_speed_items` |
+| Speed item with Slow | | the normal rate: they cancel, as Haste and Slow do | `Dtu_fix_speed_items` |
 | Level and class | not read | not read | |
 
 Kept from 1.3 as intended code: the lower limit 1.0 of the swing time, so a
-fast weapon is not faster than a Long Sword. AD&D 2nd edition gives a fighter
+fast weapon is not faster than a Long Sword (a Dagger swings in 1.0 s, as its
+description says it is fast).
+
+The speed items (`Dtu_fix_speed_items`, decision of 2026-11-23). The power is
+an attack rate bonus of the item only: the bow counts while it is in the bow
+slot and the arrow is in the hand, the sword while it is in the hand. It sets
+no effect bit: no move speed times 2, no Haste in the effect list, no change
+to other weapons, spells or casting. For the rate the item counts as one more
+source of Haste (dtuatk.c `dtu_atk_rate_effects`): the Haste bit is one bit,
+so Haste from a spell, a potion, the Ring of Quickness or the Boots of Speed
+adds nothing to it. Slow and the item cancel, as Slow and Haste do in the
+rate rules (two times, then half). The item halves the time also when
+`Dtu_fix_haste_attack` is off, unless Haste is on (then the 1.3 rule of the
+spell stays). AD&D 2nd edition gives a fighter
 3/2 attacks at level 7 and 2 at level 13, and a short bow 2 shots in a round;
 1.3 has no rounds for the player and the port adds none.
 
@@ -724,7 +739,18 @@ Corrected errors of the port (found with this section):
 - The attack state of a missile weapon lasted `max(fire_wait, 1.0)` (2.0 for
   an arrow, 3.0 for a bolt) instead of the time of the model.
 
-Measured in BANE (`-noattack`, a key press every 0.2 s, `-objlog`; time
+Measured with tools/check_attack_rate.py (YPINN, 30 frames a second, a key
+press every 2 or 3 frames; time between two accepted melee attacks or two
+arrows, the steps of the presses included): Long Sword 1.07, Dagger 1.07,
+Short Sword of Quickness 0.53 (swing 0.50), with Haste 0.53, with Slow 1.07,
+Long Sword with Haste 0.53, Dagger with Haste 0.53, Long Sword with Slow 2.10;
+Short Bow 2.10, Short Bow of Speed 1.10, with Haste 1.10, Short Bow with Haste
+1.10, Short Bow of Speed with Slow 2.10. The walk of 30 frames is the same
+with the empty hand, the sword in the hand and the bow in the bow slot, two
+times as far with the Ring of Quickness. With `-origcombat`: Short Sword of
+Quickness 1.07, with Haste 1.60.
+
+Measured before the speed item rule of 2026-11-23, in BANE (`-noattack`, a key press every 0.2 s, `-objlog`; time
 between two swing starts or two shots): Long Sword 1.2, Dagger 1.2, Warhammer
 1.6, Long Sword with Haste 0.6, with Slow 2.2, with Haste and `-origcombat`
 1.6, fighter with 900000 experience 1.2; Short Bow with Arrow 2.2, Short Bow
@@ -2063,7 +2089,7 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_haste_attack` | dtucombat.c | Haste adds half a swing time to the wait (Haste is slower) | Haste halves the swing time (guess of the intent) and, with `Dtu_fix_missile_rate`, the wait of a missile weapon |
 | `Dtu_fix_missile_rate` | dtucombat.c | no wait between the shots of a missile or thrown weapon: each key press fires (0x56BB0) | `fire_wait` from shot to shot, two times with Slow (A8) |
 | `Dtu_fix_rat_hit` | dtucombat.c, fvi.c, dtuobj.c | no swing, missile or spell missile of the player reaches a rat: the "Rat" of each table has `pass_thru`, 0x6A102 sets its object flag 0x40 at each load, and fvi_sub skips that flag (0x3F38F). A rat dies only when it runs into a player with boots (0x26FE0, see objects.md "Rats") | the swing, the missiles and the target hint of the player reach a rat; the player still walks through rats |
-| `Dtu_fix_speed_items` | dtuchar.c | the Short Bow of Speed and the Short Sword of Quickness have no power (`pc_spell1` is no keyword, `PC_spell` of a melee weapon is not read) | Haste while the bow is in the bow slot or the sword in the hand (A8) |
+| `Dtu_fix_speed_items` | dtuchar.c, dtucombat.c | the Short Bow of Speed and the Short Sword of Quickness have no power (`pc_spell1` is no keyword, `PC_spell` of a melee weapon is not read) | the arrows of the bow in the bow slot and the swings of the sword in the hand are twice as fast; no Haste effect, not more with Haste, normal with Slow (A8) |
 | `Dtu_fix_chill_touch` | dtuspell.c | not a correction: the table fixup 0x1A344 casts Chill Touch on the caster in 1.3 (0x1A65E, 0x56D36); `-origcombat` does not clear it | the cast is on the caster also with `-rawtables`: Chill Touch for L + 3 minutes |
 | `Dtu_fix_stoneskin_word` | dtuspell.c | Stone Skin clears all other effect bits | only its bit is set |
 | `Dtu_fix_rary_manual` | dtuspell.c | one cast (bit 22), three levels, no second cast, the bonus stays until Dispel Magic | the manual: each cast adds three levels, the first rest after the cast fills them, the next rest ends the bonus (the end at the entry of Waterdeep is not in the port) |
