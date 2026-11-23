@@ -95,6 +95,7 @@ static int Fe_mode = FE_GO_MENU;		// Function_mode of the executable (0x1468CC)
 static int Fe_have_character;			// 0x141BBB
 static int Fe_in_game;					// the front end started the game that runs
 static int Fe_was_relative;
+static int Fe_entered;					// ASCENT: fe_enter ran, fe_leave did not
 static int Fe_loading_from;			// see dtufe_loading_from_frontend()
 static int Fe_ready_tables;			// the front end had its tables one time
 
@@ -2596,7 +2597,13 @@ static void fe_enter(void)
 	}
 	Fe_ready_tables = 1;
 	gr_set_current_canvas(&grd_curscreen->sc_canvas);
-	Fe_was_relative = plat_mouse_get_relative();
+	// ASCENT: after a death dtufe_game_ended and then dtufe_run call
+	// fe_enter with no fe_leave between; the second call must not take
+	// the mode that the first one set (the relative mode of the game
+	// stayed off after a load from the Death Menu)
+	if (!Fe_entered)
+		Fe_was_relative = plat_mouse_get_relative();
+	Fe_entered = 1;
 	plat_mouse_set_relative(0);
 	key_flush();
 	mouse_flush();
@@ -2624,6 +2631,7 @@ static void fe_leave(void)
 		gr_set_mode(SM_320x200C);
 	dtu_load_palette();
 	plat_mouse_set_relative(Fe_was_relative);
+	Fe_entered = 0;
 	key_flush();
 	mouse_flush();
 }

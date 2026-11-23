@@ -259,6 +259,28 @@ def test_immersive_screens(t):
     assert got == want, "mouse states %s, expected %s" % (got, want)
 
 
+def test_immersive_death_load(t):
+    """The immersive mode on, a save in slot 3, the death, a key on the
+    death picture, Load Game of the Death Menu, slot 3 in the load screen,
+    Yes: back in the game the mouse is relative again (the front end
+    entered twice after the death and kept the mode of the first entry).
+    Timing: a key in the frames of the game before the death picture ends
+    the wait of the death (dtu_player_death_wait) or is lost (fe_enter and
+    the death picture flush the keys), so the picture never gets it. With
+    -fixedfps the death picture is up at about frame 170; the rest of the
+    wait runs on the picture, which waits for the key."""
+    _, d = t.run("immersive_death_load", ["gamekeys", "wait 20", "key v", "wait 5", "mousestate", "wait 300",
+                                          "key space", "wait 30", "key enter", "wait 10",
+                                          "click 265 261", "wait 10", "key enter", "wait 60", "mousestate"],
+                 extra=["-fixedfps", "30", "-chartest", "40:save=3,60:damage=999"])
+    text = session_log(d)
+    assert "Front end: death picture left" in text, "the death picture did not take the key"
+    assert re.search(r"Front end: loaded .*SG3\.SG", text), "slot 3 was not loaded:\n" + \
+        "\n".join(l for l in text.splitlines() if "Front end" in l)
+    got = mouse_states(t)
+    assert got == [(1, 1), (1, 1)], "mouse states %s, expected [(1, 1), (1, 1)]" % got
+
+
 def test_immersive_screen_no_jump(t):
     """The mouse movement made while a screen frees the mouse does not turn
     the view when the immersive mode returns."""
