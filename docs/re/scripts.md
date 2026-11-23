@@ -690,7 +690,12 @@ Settings (globals in dtuscript.c):
   path to the player (0x170BC) and no run; farther away 0x17411 counts the
   index only (no move, disassembly 0x17446 to 0x17504) and runs mode 2 in
   the segment where the creature still stands. So the creature never
-  leaves its place. Tests: questtest `kobolds_walk`, `kobolds_walk3`,
+  leaves its place. A save and a load on the way: 1.3 keeps AI mode 2 and
+  the path points (Point_segs) in the state file. The port keeps its paths
+  in its own list, so the load (`dtu_ai_from_image`) makes the path to the
+  goal segment again, and a creature with a script whose station (+0x14C)
+  is its goal (both set by `E5`) walks on and runs its script at the end.
+  Tests: questtest `kobolds_walk`, `kobolds_walk_saveload`, `kobolds_walk3`,
   `kobolds_walk_orig`.
 - `Dtu_fix_script_area_seg` (1): statement EB centers its area spell on the
   segment that it names (D-075). `-origscript` clears it, `script_new_char`

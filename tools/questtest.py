@@ -60,6 +60,16 @@ TESTS = [
        r"[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 125\s[\s\S]*end of its path in seg 119\s",
        r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
       frames=1300, extra=["-noattack"]),
+    # The same walk with a save and a load on the way (1.3 keeps the path in
+    # Point_segs): the kobold walks on to segment 424 and the script goes
+    # on to segment 119.
+    T("kobolds_walk_saveload", "KOBOLDS",
+      "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,"
+      "90:obj=8,95:save=3,100:load=3,140:obj=8,1290:obj=8",
+      [r"f140 +obj 8: type 2 id 1 seg (?!341 )(?!424 )\d+ ",
+       r"walk: obj 8 is at the end of its path in seg 424\s[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 119\s",
+       r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
+      frames=1300, extra=["-noattack"]),
     # Script 22 (objects 20, 21, 22, label 400): statement EE runs the
     # script of the other two, so the three walk at the same time.
     T("kobolds_walk3", "KOBOLDS",
