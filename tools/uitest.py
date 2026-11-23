@@ -756,6 +756,51 @@ def test_desc_window(t):
     assert differ(mk["market_base"][2], mk["market_closed"][2]) < 0.02, "the window of the market did not close"
 
 
+# ASCENT: the next level window (engine/main/dtuxp.c): a right click on the
+# experience field of the information areas (227,130 81x6 of the 320x200
+# frame, doubled in the 640x480 interface) or on a class line of the
+# statistics screen. The character is made a thief and mage with 2112
+# experience in each class (thief level 2, mage level 1), as in the report
+# of a player.
+XP_FIELD = (454 + 40, 260 + 6)
+XP_CLASS_LINE = (20 + 30, 163 + 6)
+XP_CHAR = "5:class=3,6:class2=1,7:xp=4224"
+
+
+def test_next_level_window(t):
+    """The right click on the experience field and on the class line opens
+    the window; a click closes it. The window in both languages and both
+    interfaces, to look at (--shots)."""
+    log = os.path.join(t.tmp, "xp_window", "char.log")
+    # Enter closes the box of the new thief level
+    lines = ["gamekeys", "wait 30", "key enter", "wait 5", "key p", "wait 5", "move 600 400", "wait 3", "shot base",
+             "rclick %d %d" % XP_FIELD, "wait 5", "shot field", "click 600 400", "wait 5", "shot closed",
+             "rclick %d %d" % XP_CLASS_LINE, "wait 5", "shot class", "click 600 400", "wait 5"]
+    s, d = t.run("xp_window", lines, extra=["-fixedfps", "30", "-charlog", log, "-chartest", XP_CHAR])
+    for name in ("field", "class"):
+        assert differ(region(s["base"], *SCROLLTEXT), region(s[name], *SCROLLTEXT)) > 0.3, "no window for the " + name
+    assert differ(region(s["base"], *SCROLLTEXT), region(s["closed"], *SCROLLTEXT)) < 0.05, "the window did not close"
+    with open(log, encoding="latin-1") as f:
+        text = f.read()
+    for want in ("Thief, level 2: 2112 of 2500", "Mage, level 1: 2112 of 2500", "one half of each award"):
+        assert want in text, "the window has no " + want
+    shots = {"high_en": s["field"]}
+    for lang in ("en", "es"):
+        for res, extra in (("high", []), ("low", ["-lowres"])):
+            if (res, lang) == ("high", "en"):
+                continue
+            # the experience field in the 320x200 frame of -lowres
+            x, y = XP_FIELD if res == "high" else (227 + 40, 130 + 3)
+            sh, dl = t.run("xp_%s_%s" % (res, lang), ["gamekeys", "wait 30", "key enter", "wait 5", "key p", "wait 5",
+                                                    "rclick %d %d" % (x, y), "wait 5", "shot w"],
+                           extra=["-fixedfps", "30", "-language", lang, "-chartest", XP_CHAR] + extra)
+            shots["%s_%s" % (res, lang)] = sh["w"]
+    if t.args.shots:
+        os.makedirs(t.args.shots, exist_ok=True)
+        for name, img in shots.items():
+            save_png(img, os.path.join(t.args.shots, "xp_window_%s.png" % name))
+
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
 
 
