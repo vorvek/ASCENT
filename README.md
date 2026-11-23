@@ -5,8 +5,8 @@ ASCENT-DTU is a source port of Descent to Undermountain (Interplay, 1997).
 The original game runs on DOS and uses a modified Descent engine. It had a troubled development, not helped by using an engine meant for spaceships flying mining tunnels instead of
 dungeon crawling humanoids. Version 1.3 of the game still has many defects.
 
-ASCENT-DTU aims to make the game playable in modern Windows, alongside bugfixes and optional improvements.
-The game also builds on Linux from the source (see the Linux section of [docs/install.md](docs/install.md)).
+ASCENT-DTU aims to make the game playable on modern Windows and Linux, alongside bugfixes and optional improvements.
+On Windows, run the setup program; on Linux, unpack the release tarball and run `./setup.sh` (see [docs/install.md](docs/install.md)).
 
 ## New features
 
@@ -38,7 +38,7 @@ The upscaled files are not necessary to play. The 1.3 patch is also available at
 
 ## Troubleshooting
 
-Each run writes a log in `%APPDATA%\ASCENT-DTU\logs`. If the game fails or crashes, send the newest `ascent-*.log` (and the `.dmp` file with the same name after a crash).
+Each run writes a log in `%APPDATA%\ASCENT-DTU\logs` (on Linux `~/.local/share/ASCENT-DTU/logs`). If the game fails or crashes, send the newest `ascent-*.log` (and the `.dmp` file with the same name after a crash).
 See [docs/debug_logs.md](docs/debug_logs.md).
 
 ## Source layout

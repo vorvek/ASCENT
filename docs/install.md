@@ -3,7 +3,8 @@
 The setup program (`installer/ascent.iss`, Inno Setup 6.5 or later) installs ASCENT-DTU
 for one user, makes the data folder from the original game files, gets the files of
 the 1.3 patch, and can download the upscaled content.
-`installer/build.sh` builds it.
+`installer/build.sh` builds it. On Linux, `setup.sh` of the release tarball does the
+same work (see Linux below); `installer/build-linux.sh` builds the tarball.
 
 ## Game files that the port needs
 
@@ -183,7 +184,123 @@ ascent-import --source PATH --dest DIR [--patch PATH] [--check]
 
 ## Linux
 
-There is no setup program for Linux. Build the game from the source:
+### Install the release
+
+The Linux release is `ascent-dtu-<version>-linux-x86_64.tar.gz`. It needs an x86_64
+system with glibc 2.38 or later (for example Ubuntu 24.04, Debian 13, Fedora 39) and
+X11 or Wayland.
+
+The Linux build is new. It was tested in WSL (Debian 13) only: the build of the
+tarball, `setup.sh` with a copy of the disc (user and root installs, the real content
+server and a local test server, stopped and damaged downloads, the removal), and 200
+frames of a level with `-hidden` and the SDL dummy video and audio drivers, in English
+and Spanish. Not tested: a real desktop (the menu entry, a window, the GPU renderer
+with OpenGL), audio output, keyboard, mouse and gamepad input, a real CD drive, and a
+disc image as the source.
+
+Unpack it and run the setup in its folder:
+
+```sh
+tar xzf ascent-dtu-1.0-linux-x86_64.tar.gz
+cd ascent-dtu-1.0-linux-x86_64
+./setup.sh
+```
+
+The setup needs a POSIX shell, coreutils, curl or wget, and unzip. It asks, in this
+order:
+
+1. The installation folder. The default is `~/.local/share/ASCENT-DTU/game`. Run as
+   root, the default is `/opt/ascent-dtu` (an install for all users). The folder must
+   be new, empty, or an earlier installation (then the setup updates it).
+2. The game disc: a mounted CD, a copy of the disc in a folder, or an image (`.iso`,
+   or `.cue` with `.bin`). `ascent-import --check` examines it. An installed game
+   is refused, as in the Windows setup program.
+3. The language of the game: `en` or `es`.
+4. The downloads, with the sizes of `manifest.txt`: the upscaled textures and
+   interface (packs `textures` and `ui`, default yes), the upscaled movies (default
+   no), the Spanish text (`lang_es`; always with the language `es`).
+
+Then it shows a summary and the free space, and asks once more. The steps:
+
+- It copies the program (`ascent`, `ascent-import`, `content.ini` with the server
+  address that it used, the license texts, `setup.sh` for the removal).
+- It downloads `manifest.txt` and the pack `patch13`, checks the size and the SHA-256,
+  and runs `ascent-import --source ... --dest PREFIX/data --patch ...`. A failure stops
+  the setup and removes `data`.
+- It installs the chosen packs: download to `content/download` (a `.part` file; a
+  stopped download goes on with a Range request at the next run), check of the size
+  and the SHA-256, unpack into `content/staging-<pack>`, check of each file against
+  `_files.txt`, the links of `_links.txt` (hard links, else copies), then the move
+  into `hd` and the state file `content/installed/<pack>.txt` (the format of
+  `ascent-content`). A damaged pack is deleted. A pack that fails is a warning: the
+  game works without it.
+- With the language `es` and `lang_es` installed it writes `default.cfg` with
+  `Language=es`, as the Spanish Windows setup does. The player's `ascent.cfg` is not
+  changed, so a language chosen in the game stays.
+- The icon: `ascent-dtu.png` from `data/DTU.ICO` of the disc, made with `icotool`
+  (package `icoutils`), `magick` or `convert` (ImageMagick). Without one of them the
+  setup says so and makes no icon.
+- The launcher `PREFIX/ascent-dtu` starts the game in `~/.local/share/ASCENT-DTU`
+  (the folder of the player, where the screenshots then go). The setup links it as
+  `~/.local/bin/ascent-dtu` (root: `/usr/local/bin`) and says when that folder is not
+  in `PATH`. The menu entry is `ascent-dtu.desktop` in
+  `~/.local/share/applications` (root: `/usr/local/share/applications`).
+- `install-record.txt` lists each file and folder that the setup made, and
+  `setup.log` keeps the output of the tools.
+
+Each question is also an option, for an install without questions:
+
+| Option | Answer |
+|---|---|
+| `--prefix DIR` | the installation folder |
+| `--source PATH` | the game disc |
+| `--lang en\|es` | the language |
+| `--textures yes\|no`, `--movies yes\|no`, `--spanish yes\|no` | the downloads |
+| `--yes` | the default of each answer that is not given |
+| `--url URL` | another content server (as `/CONTENTURL=`; also `ASCENT_CONTENT_URL`; `file://` works with curl) |
+| `--patch PATH` | the 1.3 patch archive or folder, instead of the download |
+
+```sh
+./setup.sh --yes --source /media/cdrom --lang en --textures no
+```
+
+`PREFIX/setup.sh --uninstall` removes the entries of `install-record.txt` (the
+program, `data`, `hd`, `content`, the launcher, the menu entry, and the folders that
+the setup made if they are empty). It asks first; `--yes` does not ask. The saves and
+settings in `~/.local/share/ASCENT-DTU` stay; `--purge` removes them too.
+
+There is no `ascent-content` for Linux: it uses WinHTTP and a Windows window. The
+setup does its work with curl or wget, unzip and sha256sum, so it needs no second
+program. To add a pack later, run the setup again with the same folder.
+
+### Build the release
+
+```sh
+installer/build-linux.sh
+```
+
+It configures `build-rel-linux` (Release, `ASCENT_RELEASE=ON`), builds `ascent` and
+`ascent-import`, stages the files and packs
+`build-rel-linux/ascent-dtu-<version>-linux-x86_64.tar.gz`. The variables:
+`ASCENT_VERSION` (default 1.0), `ASCENT_BUILD_DIR`, and `SDL3_SOURCE_DIR` (an SDL
+checkout of the tag in `CMakeLists.txt`, to build without the download).
+
+- SDL3 is built from the source and linked statically
+  (`CMAKE_DISABLE_FIND_PACKAGE_SDL3=ON`, so the FetchContent path of `CMakeLists.txt`
+  is used even when the system has SDL3). Ubuntu 24.04 has no SDL3 package, and the
+  static SDL3 makes the program independent of the SDL3 of the system. It loads X11, Wayland, ALSA, PulseAudio and PipeWire with
+  `dlopen` when it starts, so the program needs only `libc` and `libm`. The script
+  stops if `ascent` links a shared SDL3.
+- The glibc of the build system is the oldest glibc that the release runs on. The CI
+  job builds on Ubuntu 24.04.
+- The build needs the packages of the Linux job of `.github/workflows/build.yml`.
+- The tarball has `ascent`, `ascent-import`, `setup.sh`, `content.ini`, `README.txt`
+  (`installer/linux/README.txt`), `LICENSE-PARALLAX.txt` and `LICENSE-SDL3.txt`. It has
+  no game file and no original art: the icon is made from the disc at install time.
+- The CI job `linux` (GCC) runs the script and keeps the tarball as the build
+  artifact `ascent-dtu-linux-x86_64`. It also runs `shellcheck` on `setup.sh`.
+
+### Build from the source
 
 ```sh
 cmake --preset debug               # downloads and builds SDL3 if it is not installed
@@ -200,8 +317,8 @@ build-debug/engine/main/ascent -datadir ~/dtu-data
 ```
 
 Without `-datadir` the data folder is `data` next to the executable, and the files of
-the player go to `~/.local/share/ASCENT-DTU`. The game files keep their upper case
-names: the game finds them with any case.
+the player go to `~/.local/share/ASCENT-DTU` (`$XDG_DATA_HOME/ASCENT-DTU`). The game
+files keep their upper case names: the game finds them with any case.
 
 ## Content packs
 
