@@ -7,7 +7,7 @@ set(MAIN_SOURCES
   menu.c newmenu.c kconfig.c joydefs.c gauges.c hud.c automap.c kmatrix.c
   endlevel.c terrain.c gamefont.c newdemo.c songs.c digi.c
   bm.c bmread.c piggy.c paging.c texmerge.c gamemine.c gamesave.c polyobj.c
-  dtufile.c acm.c dtumusic.c dtuogg.c dtufoot.c
+  dtufile.c acm.c dtumusic.c dtuogg.c dtufoot.c dtumiss.c
   robot.c vclip.c effects.c weapon.c powerup.c mglobal.c hash.c
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c

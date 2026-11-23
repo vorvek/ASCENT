@@ -173,6 +173,16 @@ extern void digi_play_midi_song( char * filename, char * melodic_bank, char * dr
 
 extern void digi_play_sample_3d( int soundno, int angle, int volume, int no_dups ); // Volume from 0-0x7fff
 
+// ASCENT: plays signed 16-bit mono data of the port that is not a sound of
+// the archives (the miss sounds of dtumiss.c). The data must stay in
+// memory. max_volume is 0 to F1_0, as for digi_play_sample. With pos not
+// NULL the sound has the volume and the pan of that place for the viewer
+// when it starts (it is not linked to the place). Returns the mixer handle,
+// or -1 if it does not play.
+extern int digi_play_pcm16( const short *data, int length, int rate, fix max_volume, vms_vector *pos, int segnum, fix max_distance );
+// ASCENT: 1 if the handle of digi_play_pcm16 still plays.
+extern int digi_pcm16_playing( int handle );
+
 extern void digi_init_sounds();
 extern void digi_sync_sounds();
 extern void digi_kill_sound_linked_to_segment( int segnum, int sidenum, int soundnum );

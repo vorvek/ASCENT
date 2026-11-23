@@ -50,6 +50,7 @@
 #include "key.h"
 #include "dtuscroll.h"		// ASCENT: the scroll text screen skips the animation
 #include "dtuatk.h"			// ASCENT: the attack timing rules
+#include "dtumiss.h"			// ASCENT: the miss sound
 
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
@@ -84,6 +85,7 @@ static fix Fire_next = 0, Fire_last = -0x7fffffff;	// 0x215D80, 0x215D78 (hand 1
 static fix Missile_last = -0x7fffffff;	// ASCENT: the time of the last shot (Dtu_fix_missile_rate)
 static int Missile_passed = 0;			// ASCENT: the request has passed the wait of Dtu_fix_missile_rate
 static fix Swing_started = 0;			// for the log: the game time of the start of the swing
+static int Swing_touch = 0;				// ASCENT: the swing touched something, or its miss sound was heard (dtumiss.c)
 static int Lift_model = -1;			// ASCENT: the model of Swing_lift (Dtu_improved_body)
 static fix Swing_lift = 0;				// ASCENT: the lift of the arms in a swing (Dtu_improved_body)
 
@@ -313,6 +315,20 @@ static fix state_time(int s)
 	return 0;
 }
 
+// ASCENT: the miss sound of a melee swing that touched nothing (dtumiss.c),
+// one time for each swing. Not for a missile or a thrown weapon: they have
+// the sounds of the shot.
+static void swing_air_miss(void)
+{
+	int w = hand_weapon();
+
+	if (Swing_touch)
+		return;
+	Swing_touch = 1;
+	if (w < 0 || weapon_int(w,"attack_type",1) == 1)
+		dtu_miss_sound_player("air");
+}
+
 static void view_animation(void)
 {
 	int s = View_state, first = Dtu_anim_first[s], end = Dtu_anim_first[s+1];
@@ -340,8 +356,10 @@ static void view_animation(void)
 			return;
 	}
 
-	if (is_attack_state(s))
+	if (is_attack_state(s)) {
 		dtu_obj_log("combat: swing ends at %.3f, %.3f after its start",f2fl(GameTime),f2fl(GameTime - Swing_started));
+		swing_air_miss();		// ASCENT: if the frames of the hit test were skipped
+	}
 
 	// 0x44653 to 0x446DF: a thrown weapon that is used up: the empty hand
 	if (is_attack_state(s) && is_thrown(hand_weapon())) {
@@ -356,6 +374,7 @@ static void view_animation(void)
 	if (is_attack_state(View_state)) {
 		Smack = 0;
 		Swing_started = GameTime;
+		Swing_touch = 0;		// ASCENT: the miss sound
 		// The executable leaves the goal at the attack state (guess: the
 		// movement code sets it back). The port plays one swing.
 		View_goal = DAS_STAND;
@@ -371,11 +390,20 @@ static int creature_is_undead(object *obj)
 	return obj->id < N_robot_types && (Monster_info[obj->id].flags & MONSTER_F_UNDEAD);
 }
 
+// The sounds of the contact of a melee weapon with a creature (0x27AF5,
+// 0x27B38)
+static void contact_sounds(object *creature,int weapon)
+{
+	if (weapon >= 0)
+		sound_on_object(weapon_int(weapon,"monster_hit_sound",-1),creature,F1_0/2);
+	sound_on_object(Monster_info[creature->id].hit_sound,creature,F1_0/2);
+}
+
 static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt)
 {
 	object *player = ConsoleObject;
 	monster_info *mi;
-	int roll, ac, damage = 0, alive;
+	int roll, ac, damage = 0, alive, miss_sound;
 	fix hp0, dealt = 0;
 
 	if (creature->id >= N_robot_types)
@@ -393,10 +421,12 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 	if (creature->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED) || creature->shields < F1_0)
 		return;
 
-	// The sounds of the contact, before the roll (0x27AF5, 0x27B38)
-	if (weapon >= 0)
-		sound_on_object(weapon_int(weapon,"monster_hit_sound",-1),creature,F1_0/2);
-	sound_on_object(mi->hit_sound,creature,F1_0/2);
+	// The sounds of the contact, before the roll (0x27AF5, 0x27B38).
+	// ASCENT: with the miss sound (dtumiss.c) they wait for the roll: a hit
+	// plays them, a miss plays the miss sound in their place.
+	miss_sound = dtu_miss_sound_ready();
+	if (!miss_sound)
+		contact_sounds(creature,weapon);
 	dtu_creature_alert(player,3);		// ASCENT: 0x27B3F, the alert function 0x160AB
 
 	// 0x29A9C: the to-hit roll (0x2A7F3). A sleeping creature is hit and
@@ -411,6 +441,13 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 	}
 	else
 		roll = dtu_char_attack_roll(creature,weapon);
+
+	if (miss_sound) {
+		if (roll > 0)
+			contact_sounds(creature,weapon);
+		else
+			dtu_miss_sound_player("roll");
+	}
 
 	if (roll > 0) {
 		// 0x29D80: the hit stops the cast of the creature (0x9305D); 0x29D85
@@ -639,6 +676,8 @@ static void swing_hit_test(void)
 	}
 	n = Dtu_anim_first[s+1] - Dtu_anim_first[s];
 	rel = View_frame - Dtu_anim_first[s];
+	if (rel > n - rel)
+		swing_air_miss();		// ASCENT: the frames of the hit test are over
 	if (rel < 6 || rel > n - rel)
 		return;
 	// A missile weapon does not hit with the swing (guess: 0x7473F gives the
@@ -663,6 +702,7 @@ static void swing_hit_test(void)
 
 	if (!swing_stops(&sc))
 		return;
+	Swing_touch = 1;		// ASCENT: no miss sound for a swing that touches something
 
 	// 0x6D3D0: a hit. The byte 0x1AF is cleared before the hit (the defect
 	// that the correction removes), and the swing ends at once on the

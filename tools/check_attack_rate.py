@@ -17,12 +17,23 @@ presses come in steps). The move cases walk forward for 30 frames
 The rules are in engine/main/dtuatk.c (docs/re/combat.md, section A8).
 Dtu_fix_speed_items: the Short Sword of Quickness and the Short Bow of
 Speed attack twice as fast, do not add to Haste, cancel Slow and do not
-change the move speed. The exit status is 0 if all cases pass.
+change the move speed.
+
+The miss sound (engine/main/dtumiss.c, docs/re/combat.md "Miss sound"):
+the check writes three short test WAV files to <tmp>/hd/sound and gives
+-hddir. Each swing of a long sword at the air logs one miss sound "(air)".
+In BONES the player swings at a zombie (goobjh, reach, heal each frame):
+a swing with a hit logs no miss sound of the player, a swing with a missed
+roll logs one "(roll)", and each melee miss of a creature on the player
+logs one miss sound of that creature (or "skipped" while the last one
+plays). A bow shot logs none, and with -origsound or without the files
+nothing plays and the swings go on. The exit status is 0 if all cases pass.
 """
 import argparse
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -38,6 +49,10 @@ ACCEPT = re.compile(r"combat: attack request accepted at ([0-9.]+)")
 FIRE = re.compile(r"^\s*([0-9.]+)\s+\d+ combat: the player fires weapon")
 SWING = re.compile(r"combat: swing ends at [0-9.]+, ([0-9.]+) after its start")
 MOVE = re.compile(r"^MOVE (\d+) t \S+ pos (\S+) \S+ (\S+) ")
+MISS = re.compile(r"combat: miss sound (?:\d+ of the player|skipped) \((air|roll)\)")
+MISS_CREATURE = re.compile(r"combat: miss sound (?:\d+ of creature obj|skipped \(creature obj) (\d+)")
+CREATURE_MISSES = re.compile(r"attack: (\S+) misses the player")
+ZOMBIE, ZOMBIE_SEG = 11, 153        # BONES: obj 11 Zombie in segment 153
 
 
 def melee(name, weapon, fx, expect, swing):
@@ -84,13 +99,14 @@ MOVES = [
 ]
 
 
-def run(args, d, cmds, testmove, frames, extra):
+def run(args, d, cmds, testmove, frames, extra, level="YPINN", script=None):
     os.makedirs(os.path.join(d, "user"), exist_ok=True)
-    script = ",".join("%d:%s" % (5 + i, c) for i, c in enumerate(["class=2"] + cmds))
+    if script is None:
+        script = ",".join("%d:%s" % (5 + i, c) for i, c in enumerate(["class=2"] + cmds))
     cmd = [os.path.abspath(args.exe)]
     for dd in args.datadir:
         cmd += ["-datadir", dd]
-    cmd += ["-nomovies", "-mute", "-hidden", "-nolog", "-userdir", os.path.join(d, "user"), "-level", "YPINN",
+    cmd += ["-nomovies", "-mute", "-hidden", "-nolog", "-userdir", os.path.join(d, "user"), "-level", level,
             "-frames", str(frames), "-fixedfps", str(FPS), "-invulnerability", "-chartest", script,
             "-testmove", testmove] + extra
     subprocess.run(cmd, capture_output=True, timeout=args.timeout, cwd=d)
@@ -146,6 +162,112 @@ def move_case(args, tmp, i, case, extra):
     return ((x1 - x0) ** 2 + (z1 - z0) ** 2) ** 0.5
 
 
+def write_test_sounds(hd):
+    """Three test WAV files (0.27 s of a falling noise, 16 bits, one channel,
+    22050 Hz) in hd/sound. They stand for the miss sounds of the content pack."""
+    os.makedirs(os.path.join(hd, "sound"), exist_ok=True)
+    seed = 1
+    for n in (1, 2, 3):
+        vals = []
+        for k in range(int(0.27 * 22050)):
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff
+            vals.append(int(((seed >> 8) % 16001 - 8000) * (1 - k / 5954.0)))
+        data = struct.pack("<%dh" % len(vals), *vals)
+        with open(os.path.join(hd, "sound", "miss%d.wav" % n), "wb") as f:
+            f.write(struct.pack("<4sI4s4sIHHIIHH4sI", b"RIFF", 36 + len(data), b"WAVE", b"fmt ", 16, 1, 1,
+                                22050, 44100, 2, 16, b"data", len(data)) + data)
+
+
+def swings(text):
+    """The lines of each swing of the player: from "swing starts" to "swing ends"."""
+    out, cur = [], None
+    for ln in text:
+        if "combat: swing starts" in ln:
+            cur = []
+        elif cur is not None:
+            cur.append(ln)
+            if "combat: swing ends" in ln:
+                out.append(cur)
+                cur = None
+    return out
+
+
+def miss_cases(args, tmp, extra):
+    """The cases of the miss sound. Returns the failures."""
+    hd = os.path.join(tmp, "hd")
+    empty = os.path.join(tmp, "hd_empty")
+    write_test_sounds(hd)
+    os.makedirs(empty, exist_ok=True)
+    bad = []
+    presses = "wait:30" + ",attack:1,wait:3" * 31
+    frames = 30 + 31 * 4 + 40
+    sword = ["give=%s" % LONG_SWORD, "current=%s" % LONG_SWORD]
+
+    def obj_log(name, cmds, hddir, more=(), level="YPINN", script=None, testmove=presses, n=frames):
+        d = os.path.join(tmp, name)
+        log = os.path.join(d, "obj.log")
+        run(args, d, cmds, testmove, n, extra + ["-objlog", log, "-hddir", hddir] + list(more), level, script)
+        return lines(log)
+
+    # swings at the air
+    sw = swings(obj_log("miss_air", sword, hd))
+    air = [sum(1 for ln in s if MISS.search(ln)) for s in sw]
+    if len(sw) < 3 or air != [1] * len(sw):
+        bad.append("miss sound, swing at the air: %d swings, miss sounds %s, expected one each" % (len(sw), air))
+    print("%-36s %d swings, %d miss sounds" % ("miss sound: swing at the air", len(sw), sum(air)))
+
+    # a zombie: hits, missed rolls, and the misses of the creatures
+    # (strength 3: -3 to hit, so that some rolls miss)
+    end = 40 + 31 * 10 + 20
+    script = ["5:class=2", "6:give=%s" % LONG_SWORD, "7:current=%s" % LONG_SWORD, "8:xp=500000", "9:str=3",
+              "10:goseg=%d" % ZOMBIE_SEG]
+    script += ["%d:heal=100" % f for f in range(40, end)]
+    script += ["%d:goobjh=%d.6,%d:reach=%d" % (f, ZOMBIE, f, ZOMBIE) for f in range(40, end, 3)]
+    tm = "wait:40" + ",attack:1,wait:9" * 31
+    text = obj_log("miss_zombie", [], hd, level="BONES", script=",".join(script), testmove=tm, n=end + 20)
+    hits = rolls = airs = 0
+    for s in swings(text):
+        hit = any("combat: player hits" in ln for ln in s)
+        missed = any("combat: player misses" in ln for ln in s)
+        touch = any("the weapon hits" in ln or "combat: contact obj" in ln for ln in s)
+        found = [m.group(1) for m in (MISS.search(ln) for ln in s) if m]
+        if hit:
+            hits += 1
+            want = []
+        elif missed:
+            rolls += 1
+            want = ["roll"]
+        elif touch:
+            want = []
+        else:
+            airs += 1
+            want = ["air"]
+        if found != want:
+            bad.append("miss sound, zombie: a swing (%s) logs %s, expected %s" %
+                       ("hit" if hit else "missed roll" if missed else "contact" if touch else "air", found, want))
+    if not hits or not rolls:
+        bad.append("miss sound, zombie: %d hits and %d missed rolls, the run needs one of each" % (hits, rolls))
+    cm = sum(1 for ln in text if CREATURE_MISSES.search(ln))
+    cs = sum(1 for ln in text if MISS_CREATURE.search(ln))
+    if not cm or cm != cs:
+        bad.append("miss sound, zombie: %d misses of the creatures, %d miss sounds" % (cm, cs))
+    print("%-36s %d hits, %d missed rolls, %d at the air; creatures: %d misses, %d sounds" %
+          ("miss sound: zombie", hits, rolls, airs, cm, cs))
+
+    # a bow shot, -origsound, no files
+    bow_cmds = ["give=%s" % SHORT_BOW, "equip=%s" % SHORT_BOW, "give=%s.99" % ARROW, "current=%s" % ARROW]
+    for name, cmds, hddir, more in (("bow shot", bow_cmds, hd, []),
+                                    ("-origsound", sword, hd, ["-origsound"]),
+                                    ("no sound files", sword, empty, [])):
+        text = obj_log("miss_" + name.strip("-").replace(" ", "_"), cmds, hddir, more)
+        n = sum(1 for ln in text if "combat: miss sound" in ln)
+        acts = sum(1 for ln in text if "combat: swing starts" in ln or "the player fires" in ln)
+        if n or acts < 2:
+            bad.append("miss sound, %s: %d miss sounds (expected 0), %d attacks" % (name, n, acts))
+        print("%-36s %d attacks, %d miss sounds" % ("miss sound: " + name, acts, n))
+    return bad
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--exe", required=True)
@@ -153,17 +275,20 @@ def main():
     p.add_argument("--origcombat", action="store_true", help="the rules of 1.3")
     p.add_argument("--keep", action="store_true")
     p.add_argument("--timeout", type=int, default=300)
+    p.add_argument("--miss-only", action="store_true", help="only the cases of the miss sound")
     args = p.parse_args()
     extra = ["-origcombat"] if args.origcombat else []
     tmp = tempfile.mkdtemp(prefix="check_attack_rate_")
     bad = []
-    for i, case in enumerate(ORIG_CASES if args.origcombat else CASES):
+    if not args.origcombat:
+        bad += miss_cases(args, tmp, extra)
+    for i, case in enumerate([] if args.miss_only else ORIG_CASES if args.origcombat else CASES):
         b, mean, sw = attack_case(args, tmp, i, case, extra)
         bad += b
         print("%-36s %s %s%s" % (case[0], "%.3f s" % mean if mean else "-",
                                  "swing %.3f s" % sw if sw else "", "  FAIL" if b else ""))
     base = None
-    for i, case in enumerate(MOVES):
+    for i, case in enumerate([] if args.miss_only else MOVES):
         dist = move_case(args, tmp, i, case, extra)
         if dist is None:
             bad.append("%s: no move log" % case[0])

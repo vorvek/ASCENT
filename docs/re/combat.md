@@ -465,6 +465,41 @@ creature and weapon pairs do not have) and the shorter swing. The port has all o
 these (`player_hits_creature`, `swing_hit_test` of dtucombat.c). The target hint
 (C1) is an addition, not a restored behavior.
 
+### Miss sound (port improvement)
+
+1.3 has no sound for a melee attack that hits nothing (above). The tables do
+have a sound for each melee weapon in `flash_sound` (W+0x20): 2400 (`cmbt01a`) for
+the blades and axes, 2420 (`cmbt06a`) for the maces and hammers, 2435 (no `$SOUND`
+line in BANE.BIN) for the clubs. The code reads `flash_sound` only for a missile
+(0x55511, 0x934A8, 0x93294), the spell missiles (0x56FF6, 0x946FA) and the paging
+of the weapon in the hand (0x6AB61), so a swing never plays it; a thrown dagger or
+axe plays 2400 when it flies. **V** The three sounds of that group (2400, 2420 and
+2436 `cmbt11b`) are 0.67 to 0.83 s long with a slow start (60 to 100 ms to the
+peak, low pitch); the hit sounds start at once. Their use as a swing sound is a
+guess (**G**).
+
+The port setting "Miss sound" (`Dtu_miss_sound`, `dtumiss.c`, on by default)
+plays a short whoosh of `<hd>/sound/miss*.wav` (content pack `sounds`, not game
+data):
+
+- A swing of the player that touches nothing: one sound when the frames of the hit
+  test are over (relative frame above n / 2, 0.53 s into a swing of 1.0 s, 0.27 s
+  with Haste), or at the end of the swing if those frames were skipped. A swing
+  that touches a creature, scenery or a wall has none.
+- A missed attack roll of the player: the miss sound plays in place of the two
+  contact sounds (weapon `monster_hit_sound`, creature `hit_sound`), which then
+  play only for a hit. In 1.3 a missed roll sounds as a hit.
+- A missed melee roll of a creature on the player (0x2A24A, `damage_player_w`):
+  the sound at the place of the creature at volume 0.25, distance 200.
+- Not for a missile or a thrown weapon, and not with a hit. The player sound is
+  at volume 0.5, as the contact sounds. A sound is chosen at random with no
+  immediate repeat; a new one does not start while the last one plays.
+
+`-origsound`, `-nomisssound` and the setting off give the 1.3 sounds. The files
+(5 cuts of about 0.25 s, 16-bit mono, 22050 Hz, the format of the game sounds,
+`tools/content_pack.py`, docs/install.md) are cut to the level of the sword hit
+sound 2412. `tools/check_attack_rate.py` checks the rule with test files.
+
 ## A5. Missile and thrown weapons
 
 ### When the player fires (verified, 0x56A0D, called by 0x44300 each frame while the request is pending)

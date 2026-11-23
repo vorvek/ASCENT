@@ -68,6 +68,7 @@
 #include "text.h"		// ASCENT: Text_string, the names of the creatures
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 #include "dtulog.h"		// ASCENT: the session log
+#include "dtumiss.h"		// ASCENT: the miss sound of a creature
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -3788,6 +3789,9 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 		if (hit <= 0) {
 			dtu_obj_log("attack: %s misses the player (roll %d, result %d)",
 				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);
+			// ASCENT: the miss sound of a melee attack (dtumiss.c)
+			if (attacker && attacker->type == OBJ_ROBOT && (weapon < 0 || weapon_is_melee(weapon)))
+				dtu_miss_sound_creature(attacker);
 			return 0;
 		}
 		// 0x2A45F: a hit stops the cast of the player (0x9305D)
