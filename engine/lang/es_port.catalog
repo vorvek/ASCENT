@@ -1983,6 +1983,18 @@ id: port.save_d20_d_vs_d_failed
 en: Save d20 %d vs %d: failed.
 tr: Salvación d20 %d contra %d: fallida.
 
+id: port.save_d20_d_s_d_vs_d_made
+en: Save d20 %d%s = %d vs %d: made.
+tr: Salvación d20 %d%s = %d contra %d: superada.
+
+id: port.save_d20_d_s_d_vs_d_failed
+en: Save d20 %d%s = %d vs %d: failed.
+tr: Salvación d20 %d%s = %d contra %d: fallida.
+
+id: port.magic_resistance
+en: magic resistance
+tr: resistencia a la magia
+
 id: port.damage_s_d
 en: Damage%s = %d.
 tr: Daño%s = %d.

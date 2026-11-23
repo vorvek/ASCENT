@@ -216,6 +216,8 @@ static struct {
 	char dmg_text[128];
 	int save;				// 0: no save, 1: a save
 	int save_d20, save_need, save_made;
+	int save_bonus;			// the sum of the save bonuses
+	char save_mods[64];
 } Roll;
 
 static void cat(char *dst, int size, const char *format, ...)
@@ -305,6 +307,18 @@ void dtu_xp_save(int d20, int need, int made)
 	Roll.save_d20 = d20;
 	Roll.save_need = need;
 	Roll.save_made = made;
+	Roll.save_bonus = 0;
+	Roll.save_mods[0] = 0;
+}
+
+void dtu_xp_save_mod(int v, const char *tag)
+{
+	if (!Roll.save || v == 0)
+		return;
+	Roll.save_bonus += v;
+	cat(Roll.save_mods, sizeof(Roll.save_mods), " %+d", v);
+	if (tag)
+		cat(Roll.save_mods, sizeof(Roll.save_mods), " %s", dtu_tr(tag));
 }
 
 // The text of the numbers, in the language
@@ -324,7 +338,15 @@ static int roll_text(char *out, int size)
 	if (Roll.save) {
 		if (out[0])
 			cat(out, size, " ");
-		if (Roll.save_made)
+		// a bonus is shown on the roll, as the attack roll: d20 + bonus
+		// against the number before the bonus
+		if (Roll.save_mods[0] && Roll.save_made)
+			cat(out, size, LT("Save d20 %d%s = %d vs %d: made."), Roll.save_d20, Roll.save_mods,
+				Roll.save_d20 + Roll.save_bonus, Roll.save_need + Roll.save_bonus);
+		else if (Roll.save_mods[0])
+			cat(out, size, LT("Save d20 %d%s = %d vs %d: failed."), Roll.save_d20, Roll.save_mods,
+				Roll.save_d20 + Roll.save_bonus, Roll.save_need + Roll.save_bonus);
+		else if (Roll.save_made)
 			cat(out, size, LT("Save d20 %d vs %d: made."), Roll.save_d20, Roll.save_need);
 		else
 			cat(out, size, LT("Save d20 %d vs %d: failed."), Roll.save_d20, Roll.save_need);

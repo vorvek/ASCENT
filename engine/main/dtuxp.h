@@ -74,8 +74,11 @@ void dtu_xp_dmg_start(int n, int sides, int sum);
 void dtu_xp_dmg_mod(int v, const char *tag);
 void dtu_xp_dmg_mult(int m, const char *tag);
 void dtu_xp_dmg_end(int total);
-// A saving throw: the d20, the number needed, made or not.
+// A saving throw: the d20, the number needed, made or not. A bonus (v: the
+// amount by which the number went down, tag: a short name, LN) is shown on
+// the roll: "Save d20 11 +4 magic resistance = 15 vs 17: failed."
 void dtu_xp_save(int d20, int need, int made);
+void dtu_xp_save_mod(int v, const char *tag);
 // The text of the reported numbers ("" when none).
 const char *dtu_xp_roll_text(void);
 // The line in the message log when the setting is on and the player is a or

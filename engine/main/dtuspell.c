@@ -978,7 +978,7 @@ int dtu_spell_player_save_number(int cat)
 
 int dtu_spell_save(object *obj,int cat)
 {
-	int need = 20, roll = rand() % 20 + 1, level;
+	int need = 20, roll = rand() % 20 + 1, level, resist = 0;
 
 	if (Priest_force_save >= 0)
 		return Priest_force_save;
@@ -999,7 +999,7 @@ int dtu_spell_save(object *obj,int cat)
 		level = creature_level(obj);
 		need = save_number(creature_cleric_level(obj) > 0 ? DTU_CLASS_CLERIC : DTU_CLASS_FIGHTER,level,cat);
 		if (monster_flag(obj,MONSTER_F_MAGIC_RESISTANT))
-			need -= level / 3;		// the level before the cap of 12 (ESI, 0xAE6E0 and 0xAE792)
+			need -= resist = level / 3;		// the level before the cap of 12 (ESI, 0xAE6E0 and 0xAE792)
 	}
 	else if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types) {
 		// The tables 0x1456E6, 0x1456E8, 0x1456EA by explode_sound, byte
@@ -1012,8 +1012,12 @@ int dtu_spell_save(object *obj,int cat)
 	}
 	else
 		need = 10;		// the default of 0xAE596 for other types (a missile, a light)
-	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,roll >= need ? "saved" : "failed");
-	dtu_xp_save(roll,need,roll >= need);		// ASCENT: the verbose combat log (dtuxp.h)
+	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d%s: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,
+		resist ? " (magic resistance, the number lowered by level / 3)" : "",roll >= need ? "saved" : "failed");
+	// ASCENT: the verbose combat log (dtuxp.h). 1.3 has no roll for magic
+	// resistance: the flag lowers the save number, shown as a bonus
+	dtu_xp_save(roll,need,roll >= need);
+	dtu_xp_save_mod(resist,LN("magic resistance"));
 	return roll >= need;
 }
 
@@ -1868,16 +1872,23 @@ static int rule_half(int spell)
 }
 
 // The save of the line: none for a line with no save, for a target at or
-// below save_level and, with DTU_SR_SAVE_KIN, for a target of another kin
-static int rule_save(int spell,object *target,int T,int L)
+// below save_level and, with DTU_SR_SAVE_KIN, for a target of another kin.
+// ASCENT: the verbose combat log shows the roll at once (no damage follows
+// that would show it; the damage of a light starts a new line).
+static int rule_save(int spell,object *target,object *caster,int T,int L)
 {
+	int made;
+
 	if (spell < 0 || spell >= N_SPELL_RULES || Spell_rule[spell].save == DTU_SS_NONE)
 		return 0;
 	if (save_level(spell,L) >= 0 && T <= save_level(spell,L))
 		return 0;
 	if ((Spell_rule[spell].flags & DTU_SR_SAVE_KIN) && !kin_saves(target))
 		return 0;
-	return dtu_spell_save(target,DTU_SAVE_SPELL);
+	dtu_xp_roll_clear();
+	made = dtu_spell_save(target,DTU_SAVE_SPELL);
+	dtu_xp_roll_say(caster,target);		// ASCENT: the verbose combat log (dtuxp.h)
+	return made;
 }
 
 // ASCENT: 1 if the conditions (DTU_SR_) of the line let the spell act on
@@ -2000,7 +2011,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 6:		// Color Spray
 			if (!rule_reaches(spell,target,self,T,L,mf) || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
 				break;
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				break;
 			if (T <= L) {
 				if (fx_set(target,DTU_FX_SLEEP,color_time(0,ROLL))) {
@@ -2021,7 +2032,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 7:		// Confusion: L+2 rounds
-			if (!rule_save(spell,target,T,L) && fx_set(target,rule_fx,dur = spell_time(7,L,ROLL)))
+			if (!rule_save(spell,target,caster,T,L) && fx_set(target,rule_fx,dur = spell_time(7,L,ROLL)))
 				say("Confusion cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(dur));
 			break;
 		case 8: case 9:		// Continual Light: blind with no end
@@ -2030,7 +2041,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				break;
 			// ASCENT: 0x8DC4D: a save ends the case (0x90024), so a light
 			// sensitive creature takes the damage only with the blindness
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				return 0;
 			{
 				fix d = spell_time(spell,L,ROLL);
@@ -2079,7 +2090,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			// 0x8F467: Scare has a save only for an elf, a half-elf or a
 			// cleric player, and for a creature with +0xD9 bit 3 or a cleric
 			// level (DTU_SR_SAVE_KIN of its line, kin_saves)
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				break;
 			{
 				fix d = wisdom_cut(target,spell_time(spell,L,ROLL));
@@ -2199,7 +2210,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 22: case 52:	// Hold Person: 2 L rounds, a humanoid or the player
 			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & (rule_fx|DTU_FX_FREE_ACTION)))
 				break;
-			if (!rule_save(spell,target,T,L)) {
+			if (!rule_save(spell,target,caster,T,L)) {
 				fix d = wisdom_cut(target,spell_time(spell,L,ROLL));
 
 				// ASCENT: 0x8E8C5: the counter of the cast must be above 0
@@ -2221,7 +2232,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 23:		// Hold Undead: 1d4 + L rounds, undead of level L or less
 			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx))
 				break;
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				break;
 			{
 				fix d = spell_time(23,L,ROLL);
@@ -2392,7 +2403,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			break;
 		}
 		case 47:		// Slow: ends Haste, L+3 rounds
-			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx) || rule_save(spell,target,T,L))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx) || rule_save(spell,target,caster,T,L))
 				break;
 			if (target->dtu.m_88 & DTU_FX_HASTE)
 				fx_end(target,13);
