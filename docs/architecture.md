@@ -268,8 +268,9 @@ boxes.
 | `-testdeath N` | The player dies at frame N. |
 | `-testcrash N [KIND]` | Make a crash at frame N to test the crash report. |
 | `-statetest DOOR,SIDE,OBJ[,WARP,BACK[,DAMAGE]]` | Open a door, damage a creature, warp away and back, and print the level state. |
-| `-chartest LIST` | Character commands at frames: `str=`, `attackedby=`, `equip=`, `use=`, `xp=`, `castby=` and more (see `run_command` in `dtuchar.c`). |
+| `-chartest LIST` | Character commands at frames: `str=`, `attackedby=`, `equip=`, `use=`, `xp=`, `castby=`, the look of a direct start (`charname=`, `female=`, `portrait=`, `race=`, `class=`) and more (see `run_command` in `dtuchar.c`). |
 | `-testmarket` | The front end starts in the market. |
+| `-testblackstaff` | The front end starts at Khelben in Blackstaff tower (the first visit). |
 | `-autochoice N` | Choice boxes answer N. |
 | `-dlgauto LIST` | Conversations take their replies from the list. |
 | `-testspell N`, `-testslots N` | Put spell N in the book and hand; give N slots for each spell level. |
