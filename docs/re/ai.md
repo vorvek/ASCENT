@@ -896,7 +896,7 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_idle_anim` | one idle step (0x14013) per game frame | one step per 3/64 second |
 | `Dtu_fix_ai_ticks` | the tests "(clock + objnum) % N == 0" are true in one game frame of N | true one time in N periods of 3/64 second. The test with 255 for a player behind the creature is a random number |
 | `Dtu_fix_creature_move` | velocity * 0.5 per frame, two steps of 1/64 second at most, lift out of the floor 2.0 per frame, blocked counters per frame | the same per 3/64 second, all steps |
-| `Dtu_fix_brain` | sight by the BRN matrix | sight by a ray (the BRN files of the disc fit no level) |
+| `Dtu_fix_brain` | sight by the BRN matrix | sight by a ray (the BRN files of the disc fit no level). The melee rule of 0x10815 (a blocked ray passes for a melee creature nearer than 100.0) needs the two segments to see each other: the ray of the BRN builder 0x9786A from the center of the segment of the player to the center of the segment of the creature, with each side that has a child open (`seg_sees_seg`, dtuobj.c). Without that test the rule woke the Ghouls of BAT through rock from the corridor above them, at 92.0 to 99.0 |
 | `Dtu_fix_path_follow` | a walking creature on a path walks to the player (0x17CA8) | it walks to the next point of the path. A hostile creature in CHASE_OB that does not see the player takes a path to the player |
 | `Dtu_fix_fire_once` | one missile in each frame that the fire frame lasts (0x13A2A) | one missile for each attack animation |
 | `Dtu_fix_attack_sound` | the attack sound of compute_vis_and_vec needs visibility 2, which never comes | the sound plays by the rules of that code |

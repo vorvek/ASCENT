@@ -1227,6 +1227,12 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 int Fvi_dtu_body = 0;
 fix Fvi_dtu_rad2 = 0;
 
+// ASCENT: the query passes each side that has a child segment, as if each
+// door and each closed wall were open. The sight of the segments
+// (seg_sees_seg in dtuobj.c) sets it: the builder of the BRN files opens
+// all doors and switches all traps before its rays (0x9786A).
+int Fvi_dtu_open_walls = 0;
+
 // ASCENT: Dtu_improved_physics, the capsule of the player (physics.c).
 // While the player moves, the test of an object takes the height of the
 // capsule: from Fvi_dtu_cap_down below the center (the feet) to
@@ -1569,6 +1575,8 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 						} else {
 							wid_flag = WALL_IS_DOORWAY(seg, side);
 						}
+						if (Fvi_dtu_open_walls && seg->children[side] >= 0)
+							wid_flag |= WID_FLY_FLAG;
 
 						if ((wid_flag & WID_FLY_FLAG) ||
 							((wid_flag == WID_TRANSPARENT_WALL) && 

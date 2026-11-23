@@ -95,6 +95,9 @@ int Dtu_fix_fire_once = 1;
 int Dtu_fix_attack_sound = 1;
 
 // 1: a creature sees the player if a ray from it to the player is free.
+// The rule of 0x10815 that lets a melee creature nearer than 100.0 pass a
+// blocked ray needs the two segments to see each other, by the ray of the
+// BRN builder (seg_sees_seg).
 // 0: the rule of the executable: the bit of the BRN file of the level for
 // the two segments (0x9810D). The BRN files of the disc are copies of one
 // matrix that fits no level (docs/formats/brn.md), so the default is 1.
@@ -858,14 +861,69 @@ int brain_bit(int a,int b)
 	return (Brain[a*100 + b/8] >> (b & 7)) & 1;
 }
 
+// ASCENT: the sight of two segments for Dtu_fix_brain: the bit that the
+// builder of the BRN files (0x9786A) would write for this level. It puts
+// one object at the center of a, one at the center of b, and casts a ray of
+// radius 0x4000 from b to a with all doors open and all traps switched; a
+// ray that reaches a sets the bit, and each segment sees itself. The port
+// casts the same ray with each side that has a child open
+// (Fvi_dtu_open_walls) and keeps the answer for the level: 2 bits for each
+// pair, known and seen.
+static ubyte Seg_sight[(MAX_SEGMENTS * MAX_SEGMENTS * 2 + 7) / 8];
+
+static void seg_sight_reset(void)
+{
+	memset(Seg_sight,0,sizeof(Seg_sight));
+}
+
+static int seg_sees_seg(int a,int b)
+{
+	int n, known, seen;
+	vms_vector ca, cb;
+	fvi_query fq;
+	fvi_info hit;
+
+	if (a == b)
+		return 1;
+	if (a < 0 || a > Highest_segment_index || b < 0 || b > Highest_segment_index)
+		return 0;
+	n = (a * MAX_SEGMENTS + b) * 2;
+	known = (Seg_sight[n >> 3] >> (n & 7)) & 1;
+	seen = (Seg_sight[(n+1) >> 3] >> ((n+1) & 7)) & 1;
+	if (known)
+		return seen;
+
+	compute_segment_center(&ca,&Segments[a]);
+	compute_segment_center(&cb,&Segments[b]);
+	fq.p0 = &cb;
+	fq.p1 = &ca;
+	fq.startseg = b;
+	fq.rad = 0x4000;
+	fq.thisobjnum = -1;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	Fvi_dtu_open_walls = 1;
+	seen = find_vector_intersection(&fq,&hit) == HIT_NONE;
+	Fvi_dtu_open_walls = 0;
+
+	Seg_sight[n >> 3] |= 1 << (n & 7);
+	if (seen)
+		Seg_sight[(n+1) >> 3] |= 1 << ((n+1) & 7);
+	return seen;
+}
+
 // 0x10815. The ray from a creature to the player. A creature that does not
 // fly looks from 5.0 above its center. A blocked ray counts as free for a
 // melee creature that is closer than 100.0.
-// ASCENT: creature_ray_to() takes the end point (the alert of
-// Dtu_fix_alert_ray casts it to the caller).
-int creature_ray_to(object *obj,vms_vector *to)
+// ASCENT: in the executable each caller tests the brain bit of the two
+// segments first (0x13D48, 0x14271, 0x1616D), so the melee rule acts only
+// between segments that see each other. With Dtu_fix_brain the brain bit is
+// 1, and the melee rule alone woke a creature through 100.0 of rock (the
+// Ghouls of BAT in the corridor above them); the rule now needs the sight
+// of the two segments (seg_sees_seg).
+int creature_ray_to_player(object *obj)
 {
-	vms_vector p0 = obj->pos;
+	vms_vector p0 = obj->pos, *to = &ConsoleObject->pos;
 	int seg;
 
 	if (!is_flying(obj))
@@ -878,14 +936,10 @@ int creature_ray_to(object *obj,vms_vector *to)
 	if (ray_is_free(&p0,seg,to,obj-Objects))
 		return 1;
 	if (Robot_info[obj->id].attack_type == 1 && Monster_ext[obj->id].spell_level == 0)
-		if (vm_vec_dist(&obj->pos,to) < i2f(100))
+		if (vm_vec_dist(&obj->pos,to) < i2f(100) &&
+			 (!Dtu_fix_brain || seg_sees_seg(obj->segnum,ConsoleObject->segnum)))
 			return 1;
 	return 0;
-}
-
-int creature_ray_to_player(object *obj)
-{
-	return creature_ray_to(obj,&ConsoleObject->pos);
 }
 
 // 0x9810D(creature segment, player segment) for other code (the Spider
@@ -1067,6 +1121,7 @@ void dtu_objects_level_setup(void)
 		Player_armor_class = tbl_int(Player_type_info[0].record,"armor_class",10);
 
 	// The BRN file of the level (loader 0x97774)
+	seg_sight_reset();
 	if (Brain) {
 		free(Brain);
 		Brain = NULL;
