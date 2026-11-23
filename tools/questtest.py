@@ -361,9 +361,10 @@ TESTS = [
 
     # ASCENT: the kill line with the experience (Dtu_kill_xp_message,
     # engine/main/dtuxp.h). The Ghoul (obj 34 of BAT) gives score_value 175;
-    # a character with two classes gets one half in each class.
+    # a character with two classes gets one half in each class (the session
+    # log); the message log shows the total only.
     T("kill_xp_line", "BAT", "20:kill=34",
-      [r"message: You killed Ghoul: 175 Exp( \(87 per class\))?\.", r"experience: \+(175|87) for each class"], frames=40),
+      [r"message: You killed Ghoul: 175 Exp\.\n", r"experience: \+(175|87) for each class"], frames=40),
     T("kill_xp_line_orig", "BAT", "20:kill=34", [r"message: You killed Ghoul\.\n"],
       [r"message: You killed Ghoul:"], frames=40, extra=["-nokillxpmessage"]),
     # A death by another cause that the player sees gives no experience and
