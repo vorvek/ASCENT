@@ -1700,7 +1700,13 @@ The lockpick slot is not read here (it only adds to Open Locks in 0xAFB55).
   or more. Conditions: weapon >= 0, the attacker is the player, thief_ability
   P+0xC5 != 0, P+0xA0 bit 4 (a made sneak), Weapon_info attack type (+0x12) 1
   (melee), the target `humanoid` (+0x98 & 0x40), and 0xAC2F5() == 0. No angle
-  or facing test.
+  or facing test. 0xAC2F5 is true for any creature of the NPC list that
+  lives, is not peaceful, is active and is not fooled by the hiding, with no
+  distance and no ray (verified in the bytes 2026-11-23, D-099).
+- `Dtu_fix_backstab` (default, -origcombat clears it, AD&D 2nd Edition: the
+  thief attacks from behind a victim that is not aware): the player must be
+  in the half space behind the face of the target, and only a watcher that
+  sees the player (a ray) stops the backstab.
 - Effects: hit roll + 4 (0x2AB66); damage x (thief level from 0 + 1 + 7) >> 2;
   weapon 45 with a hit roll of 19 or more: + rand % 4 + 3, "Your backstab was
   very successful!", else "Your backstab was successful!". TEX 937 is unused.

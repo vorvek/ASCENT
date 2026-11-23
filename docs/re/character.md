@@ -746,6 +746,15 @@ race and class combination at levels 1, 5 and 10 (docs/audit/character.md).
   sets the points to `(thief level - paid) * 20 + (paid == 0 ? 20 : 0)`
   before the screen 0xB5B49 is shown, so the 60 are never spent: the first
   visit gives 40.
+- `Dtu_fix_mirt_points` (default, -origscript clears it, D-090 verified in
+  the bytes 2026-11-23): Mirt adds the award to the points that are left
+  and pays the level at once; each talk offers the points that are left. A
+  new thief has 100 points after the first talk.
+- THAC0 (D-002, D-089, verified in the bytes 2026-11-23): `Dtu_fix_thac0_row`
+  takes the last entry of the row at level 18 (1.3 reads the byte past the
+  row: 20, a mage 72). `Dtu_fix_new_thac0` gives a new character the THAC0
+  of the table at once (1.3 keeps the 20 of 0x8BFF5 until the first level
+  check, because 0xAFB55 does not call 0xAF605). -origchar clears both.
 
 ### Find/Remove Traps
 
