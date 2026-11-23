@@ -805,10 +805,12 @@ void dtu_dlg_draw(void)
 	else
 		frame_rect(L->x - 3, L->y, L->x + L->w + 3, ry, c_frame);
 
-	// ASCENT: the arrows of the reply area, right of the frame, while
-	// replies are out of the area above (Dlg_first) or below
+	// ASCENT: the arrows of the reply area, right of the frame, from what
+	// this draw showed: up while the first reply is not shown, down while
+	// the last reply is not shown whole (a selection taller than the area
+	// is cut). Nothing before the first poll of a choice sets the area.
 	Arrow_up = Arrow_down = 0;
-	if (Dlg_waiting && Dlg_n_replies > 0) {
+	if (Dlg_waiting && Dlg_n_replies > 0 && Reply_shown > 0) {
 		int half = Dtu_hires ? 5 : 3, ax = L->x + L->w + 4 + half + 1;
 
 		Arrow_x0 = ax - half - 1;
@@ -819,7 +821,7 @@ void dtu_dlg_draw(void)
 			Arrow_up = 1;
 			arrow(ax, Arrow_up_y, half, 1, c_sel);
 		}
-		if (Dlg_first + Dlg_visible < Dlg_n_replies) {
+		if (Dlg_first + Reply_shown < Dlg_n_replies || Reply_y1[Reply_shown - 1] > rty + rh) {
 			Arrow_down = 1;
 			arrow(ax, Arrow_down_y, half, -1, c_sel);
 		}
