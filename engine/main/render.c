@@ -772,8 +772,12 @@ void render_face(int segnum, int sidenum, int nv, short *vp, int tmap1, int tmap
 		// ASCENT: the heat of the face for the improved infravision
 		if (Dtu_infra_heat)
 			G3_gpu_heat = dtu_infra_face_heat(tmap1, tmap2);
+		// ASCENT: the holes of a side with no segment behind it look into
+		// the void; the GPU draws them opaque (G3_gpu_opaque, 3d.h)
+		G3_gpu_opaque = !IS_CHILD(Segments[segnum].children[sidenum]);
 		g3_draw_tmap(nv,pointlist,(g3s_uvl *) uvl_copy,bm);
 		G3_gpu_heat = 0;
+		G3_gpu_opaque = 0;
 	}
 
 	#ifndef NDEBUG
