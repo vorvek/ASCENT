@@ -201,6 +201,10 @@ objects. `rad` and `height` are the floor search values of 4.1. For the results 
 (start not in the segment): `d = -abs(last d)` and the text "RLH: %d has bad gravity!".
 Else `d = 8.0` (0x80000). If `abs(d) < 0x1999` (0.1) then `d = 0`.
 
+**V** This is the path of the player and the creatures (0x6C527). For scenery (type
+0x12) the query has the flag 1 (objects), and the results 2 and 4 count too (0x6C358,
+0x6C401): scenery lies on other scenery, for example a chest on a crate.
+
 ### 4.3 Gravity (0x6C662)
 
 **V** `no_gravity` is true for a robot with the flag 0x20 of its type (flying) that is
@@ -266,6 +270,36 @@ when the length of the velocity is 0x72 or less.
   object is ignored only after more than 30 hits in a row, for a try that goes away
   from it (0x9E11A).
 
+**V** More on the results 2 and 4 (0x9E2C9 to 0x9E797). On each result that is not 0
+the position is first the hit point of the query (0x9E2EC; the end point with the state
+bit 2 or 0x80, 0x9E2E2). It goes back to the start of the frame only while the counter
+0x1452F1 (hits of the same object in a row) is below 9 (0x9E598): from the 9th hit the
+player stays at the hit point. The block does not change the velocity, the state byte
+or the fall. `collide_two_objects` (0x29455) calls `collide_player_and_dressing`
+(0x25FB0) for the player and scenery, and that calls 0x261DB when bit 0 of the scenery
+flags is clear: `n = normalize(scenery.pos - player.pos)`; if `n.y < -0.8` then `n =
+(0,-1,0)` and the byte 0x13A950 becomes 1 (0x2622D); if `n.y > -0.5` then `n.y = 0`;
+then `velocity -= n * dot(n, velocity)`. So a hit from above takes away the velocity
+down, and 0x13A950 marks a player on top of scenery: the jump key (section 5) permits a
+jump with it. At a speed of 42.67 or more the function gives the alert level 2 and plays
+the sound 70 (0x26187). A hit of an object does not end a jump (0x9E946, which calls the
+jump stop, has no caller).
+
+**V** The body test 0x4F7D5 for a start point inside of the grown cylinder gives the
+hit point `pos - R * (unit vector to the axis)`: on the side of the cylinder, at the
+height of the center of the scenery (0x4F88B to 0x4F8AA). A ray that starts within the
+radius and is not parallel to the axis misses (0x4F4B6 needs an entry at 0 or more).
+
+**G** (derived from the rules above, no run of the executable) The executable wants a
+player to stand on scenery and to jump from it, but the result is not stable. The jump
+has a speed forward, so the ray down over the top misses and ends inside of the
+cylinder. In the next frame each try hits, the velocity down goes, and the player is
+0 to 3 units in the top. With a velocity in x and z the tries go on, the counter
+reaches 9 in the second frame, and the player goes to the hit point at the side of the
+scenery. A walk on the top is not possible (each try starts inside). The port without
+Improved physics has no 0x261DB and no 0x13A950: the player hangs over the scenery and
+pushes it (section 13.2).
+
 After the loop: 0x69FB8 and 0x3D2BD (not read. Probably the segment of the object).
 
 ### 4.6 "kneeHigh" (0x6C186)
@@ -311,7 +345,9 @@ human, 10.541 for a dwarf (4.1).
 
 **V** The jump key: in levitation it ends the levitation ("Levitate cancelled."). No
 jump in flight, in a jump, or when the feet are more than 3.0 above the floor. Else
-`jump_time = 0`, `base_y = pos.y` and the state bit 0x40 is set.
+`jump_time = 0`, `base_y = pos.y` and the state bit 0x40 is set. A jump is also
+permitted with the state bit 0x80 or with the byte 0x13A950 (the player is on top of
+scenery, section 4.5; 0x5473A). The key clears 0x13A950 (0x54789).
 
 **V** A jump frame replaces the thrust and drag steps:
 
@@ -815,7 +851,8 @@ floor_rad / 2`) to the head (`body_half_height[0]` above the center).
   and a dwarf passes under objects 1.7 lower than before.
 - The creatures, the weapons and the reach of the creatures (0x746B3) do not change.
 
-With Improved physics off the body of the original is used, with no change.
+With Improved physics off the body of the original is used, with no change. Section
+13.2 replaces the item "Objects" above for scenery.
 
 Measured (port, `-fixedfps`, the same runs give the same moves; "before" is the body of
 the original with the step rule, "after" the capsule; Improved physics on unless noted):
@@ -873,3 +910,101 @@ the original with the step rule, "after" the capsule; Improved physics on unless
   player has a velocity but does not move are holds of the game (a cast, scenery that
   stops the player, the jumps of the test to a point in the air) that come in both
   builds.
+
+### 13.2 Scenery as solid bodies (`Dtu_improved_physics`)
+
+New code, not in the executable: `engine/main/dtusolid.c`, the move of the player in
+`physics.c`, the push, the fall and the sound in `dtuobj_scenery.c`.
+
+The problem (saved game of a user, level THIEF0, segment 85): the way to an opening
+goes from a bench (obj 4) to a barrel (obj 3), a crate (obj 2), and a chest (obj 5)
+that lies on a second crate (obj 1). With the rules of the port before this change the
+player who jumped at the bench came down on its cylinder, each try of each frame hit
+it and pushed it (8 push lines in each frame, 1211 in 2.4 s), the player stayed in the
+air 3.3 above the floor with a velocity down that grew to 198, and no jump was
+possible (the floor search does not see objects). The intent of the executable is a
+stand on scenery (section 4.5), but its rules do not give a stable one.
+
+The rules with Improved physics on:
+
+- Shape. Upright scenery (the up vector has y of 0.9 or more) with the box of the
+  model is that box, turned with the object: `box1_min[0]` to `box1_max[0]` minus
+  `body_center[0]` (the model is drawn with `body_center` at the position of the
+  object, models.md). Other scenery is the cylinder of `dtu_get_body_cylinder()`.
+  Scenery with `pass_thru` is no body.
+- The body of the player for scenery is an upright cylinder: the radius of the move
+  query (`rad`, 3.59 for a human), from the feet to the head of the capsule (13.1).
+- Top. The top of scenery under the axis, or within `rad` of it, is a support of the
+  capsule as a floor is, when it is not more than 1.5 (`DTU_SOLID_STEP`) above the
+  feet. So the floor distance, the gravity, the jump key and the end of a jump see it.
+  An axis that is more than 1.0 outside of the top is on an edge: the slide of 13.1
+  takes the player off it.
+- Side. The move of the player is tested against the box grown by `rad` (round
+  corners). A side stops the velocity into it and keeps the velocity along it. The
+  player moves up to the side (1/32 before it), and the rest of the frame goes on.
+  A top that is 1.5 or less above the feet is no side: the player steps onto it.
+- A move down onto a top ends a jump or a fall as a floor does (fall damage as 0x6CD45).
+  A move up against a bottom stops the velocity up.
+- The move query of fvi does not test scenery for the player in this mode. All
+  scenery near the player is tested, not only that of the segments of the move.
+- A body that starts inside of scenery moves out of it with 16.0 for each second.
+- Push. The player who stands on a floor and holds the keys against a side (the key
+  direction has 0.5 or more into the side, the side is 0.125 or less ahead) for 0.3 s
+  moves the scenery, when the strength is above `pushable` (the test of 0x9E5BE). The
+  speed grows in 0.25 s to `24.0 * (1 - 0.6 * pushable / strength)`: 24.0 is one half
+  of the walk speed limit, the mean speed of the push cycle of the executable at its
+  reference frame rate (objects.md). The scenery moves directly by the speed times the
+  frame time, as far as the walls and the other bodies let it (the tests of
+  `Dtu_fix_push_body` and `Dtu_fix_push_wall`), and the player gets its speed. No
+  velocity stays in the scenery: it stops when the player stops. There is no push in a
+  jump, in a fall, or of the scenery that holds the player. Other scenery in the way
+  moves too when the strength is above its `pushable`. Scenery that lies on the pushed
+  scenery moves with it.
+- Fall. Scenery that was pushed, or that lay on scenery that moved or broke, falls
+  with the gravity of the jump (209.07) when its support (the floor under its
+  position, or the top of other scenery under it) is 0.5 or more below it. At the
+  start of a level and after a load no scenery falls (a level can have scenery on a
+  wall), but scenery that is less than 3.0 deep in the top of other scenery is put
+  onto that top: the gravity of the port before this change let a chest sink into its
+  crate at each push (the saved game has the chest 1.44 in the crate).
+- A creature pushes scenery with the rules of objects.md, as before.
+
+The sound of scenery that moves (both settings): the executable links the sound 2706
+to the object one time while its speed is above 0x70 and ends it below that (0xA0323
+to 0xA038A). The port played it at the place of the object each 8 frames while the
+scenery had a velocity: more copies at the same time at a high frame rate (18 for each
+second at 144 frames), also for scenery that a wall held in its place. Now one sound
+is linked to the object, as a loop, from 0.1 s after the scenery started to move until
+0.125 s after it moved the last time. **G** The loop: the executable passes 0 for the
+loop flag, and the length of its sound was not checked. The sound was not heard in
+a test (the tests run with `-mute`).
+
+Measured (`-fixedfps`, THIEF0, the character of the saved game, creatures removed with
+`-testkill 1`, `-noattack`):
+
+| Test | 20 | 60 | 144 |
+|---|---|---|---|
+| Bench to barrel: on the bench (`onobj=4`), face the barrel, walk 0.1 s, jump, walk 0.7 s. End height of the center (barrel top + stand = 12.05) | 12.05 | 12.05 | 12.05 |
+| Barrel to crate (14.12) | 14.12 | 14.12 | 14.12 |
+| Crate to chest on the next crate (21.12) | 21.12 | 21.12 | 21.15 |
+| Push lines in these three tests | 0 | 0 | 0 |
+| Walk of 1.0 s into the side of the crate obj 2 from 9.9 away: the crate moves (a wall stops it after 2.8) | 2.76 | 2.77 | 2.81 |
+| The same, walk of 0.8 s, with a push delay of 0.15 s (240 frames per second: 2.46) | 2.42 | 2.42 | 2.45 |
+
+- The saved game, 60 frames per second: a jump at the bench lands on it (0 push
+  lines; before 1211), and the chest is put back onto its crate at the load.
+- Three jumps against the side of the crate from the floor with 0.5 s of walk
+  between them: the crate moves 0.84 (the player leans on it between the jumps).
+- With `-noimprovements` and with `-origphys -origobj -noimprovements` the move log
+  of a walk, a jump and a walk at the crate is the same file before and after the
+  change (300 frames).
+- A first version took the push speed from the velocity of the player at the hit and
+  the lean time from the hits of the move. At 144 and 240 frames per second most
+  frames have no hit (the velocity into the side is 0 after a hit and grows only with
+  a thrust step of 1/64 s), so the push started late: 0.03 and 0.00 against 2.04 at 60
+  frames per second for a walk of 0.8 s.
+
+Not done: with Improved physics off the rules of 0x261DB and 0x13A950 (section 4.5)
+are not in the port. A player who comes down on a creature still hangs over it (the
+move stops at a creature). The player does not move with scenery that a creature
+pushes under the player.

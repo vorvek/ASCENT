@@ -1305,6 +1305,7 @@ set_thrust_from_velocity(object *obj)
 #include "dtuthief.h"		// ASCENT: the climb and the slow sneak of the thief
 #include "dtuopts.h"		// ASCENT: Dtu_improved_physics, Dtu_improved_jump
 #include "digi.h"			// ASCENT: the sound of a fall
+#include "dtusolid.h"		// ASCENT: Dtu_improved_physics, scenery as solid bodies
 #include <math.h>
 
 // The setting for the movement: 1 is the person of the target game, 0 is
@@ -1399,6 +1400,7 @@ static fix dtu_capsule_floor_dist(object *obj);
 static void dtu_relink(object *obj,int seg);
 static dtu_cap_support Dtu_cap_sup;		// the support of the last dtu_capsule_floor_dist()
 static int Dtu_cap_grounded = 0;		// the capsule stood on the floor at the end of the last gravity step
+static int Dtu_stand_obj = -1;			// the scenery that holds the capsule (dtusolid.c), or -1
 
 // Returns how many times a rule that the executable applies one time per
 // frame must be applied in this frame. *acc is the time that is left.
@@ -2712,11 +2714,34 @@ static fix dtu_capsule_floor_dist(object *obj)
 	dtu_body b;
 	dtu_capsule c;
 	fix feet,d;
+	int found;
 
 	dtu_player_body(&b);
 	dtu_capsule_get(&b,&c);
 	feet = obj->pos.y - c.stand;
-	if (!dtu_capsule_support(&obj->pos,obj->segnum,&c,feet,feet + DTU_KNEE_HIGH,&Dtu_cap_sup)) {
+	found = dtu_capsule_support(&obj->pos,obj->segnum,&c,feet,feet + DTU_KNEE_HIGH,&Dtu_cap_sup);
+	// The top of scenery holds the body too (dtusolid.c). An axis that is
+	// outside of the top is on its edge: dtu_capsule_slide() takes the
+	// player off it.
+	Dtu_stand_obj = -1;
+	if (dtu_solid_on()) {
+		vms_vector dir;
+		fix top,dist;
+		int n = dtu_solid_support(&obj->pos,b.move_rad,feet - DTU_FLOOR_PROBE,feet + DTU_SOLID_STEP,&top,&dir,&dist);
+
+		if (n >= 0 && (!found || top > Dtu_cap_sup.y)) {
+			fix gap = found ? top - Dtu_cap_sup.y : DTU_FLOOR_PROBE;
+
+			Dtu_cap_sup.y = top;
+			Dtu_cap_sup.edge = dist > DTU_SOLID_RIM;
+			Dtu_cap_sup.slope = F1_0;
+			Dtu_cap_sup.gap = gap < DTU_FLOOR_PROBE ? gap : DTU_FLOOR_PROBE;
+			Dtu_cap_sup.dir = dir;
+			Dtu_stand_obj = n;
+			found = 1;
+		}
+	}
+	if (!found) {
 		Dtu_cap_sup.edge = 0;
 		return DTU_FLOOR_PROBE;
 	}
@@ -2954,6 +2979,102 @@ static int dtu_push_out_of_wall(object *obj,dtu_body *body,fvi_info *hit,vms_vec
 	return 1;
 }
 
+// ASCENT: Dtu_improved_physics. The push of scenery (dtusolid.c,
+// dtuobj_scenery.c). The player who stands on a floor and walks against a
+// side of scenery for DTU_PUSH_DELAY moves it, when the strength is above
+// "pushable" (the test of 0x9E5BE). The scenery moves away from the side
+// that the player touches, with DTU_PUSH_SPEED at most (one half of the
+// walk speed limit: the mean speed of the push cycle of the executable,
+// docs/re/objects.md) and slower when "pushable" is near to the strength.
+// The player keeps the speed of the scenery. There is no push in a jump or
+// a fall, so a jump at a crate does not move it.
+#define DTU_PUSH_DELAY		0x4ccc		// 0.3 s
+#define DTU_PUSH_IDLE		0x1999		// 0.1 s with no contact ends the push
+#define DTU_PUSH_SPEED		0x180000	// 24.0
+#define DTU_PUSH_RAMP		0x4000		// 0.25 s, the push speed grows from 0 in this time
+#define DTU_PUSH_REACH		0x2000		// 0.125, the player leans on a side that is this near
+#define DTU_SOLID_OUT_SPEED	0x100000	// 16.0, the speed out of scenery that the body is inside of
+
+static int Dtu_push_obj = -1;
+static fix Dtu_push_time = 0,Dtu_push_idle = 0;
+
+// One time in each frame, before the move: the player stands on a floor
+// and the keys move the player in the direction dir. A side of scenery
+// that is DTU_PUSH_REACH or less ahead is the side that the player leans
+// on. (The test does not wait for a hit of the move: at a high frame rate
+// most frames have no hit, because the velocity into the side is 0 after a
+// hit and grows again only with a thrust step.) After DTU_PUSH_DELAY the
+// scenery moves, and the player gets its speed into the side. Returns 1
+// while the player leans on scenery that the player can push.
+static int dtu_solid_lean(object *obj,dtu_body *body,dtu_capsule *c,vms_vector *dir,fix sim_time)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	vms_vector probe,n,delta;
+	fix t,speed,f;
+	int kind,objnum,strength,pushable;
+
+	if (!Dtu_cap_grounded || (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_FALLING|DTU_PS_CLIMBING)))
+		return 0;
+	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE))
+		return 0;
+	vm_vec_copy_scale(&probe,dir,DTU_PUSH_REACH);
+	objnum = dtu_solid_sweep(&obj->pos,&probe,body->move_rad,c->stand,c->head,&t,&n,&kind);
+	if (objnum < 0 || kind != DTU_SOLID_SIDE || objnum == Dtu_stand_obj)
+		return 0;
+	strength = dtu_player_push_strength();
+	pushable = dressing_pushable(&Objects[objnum]);
+	// the keys must move the player against the side
+	if (vm_vec_dot(dir,&n) > -F1_0/2 || strength <= pushable)
+		return 0;
+
+	if (Dtu_push_obj != objnum) {
+		Dtu_push_obj = objnum;
+		Dtu_push_time = 0;
+	}
+	if (Dtu_push_time <= DTU_PUSH_DELAY || sim_time <= 0)
+		return 1;
+
+	// The speed grows to its value in DTU_PUSH_RAMP. It is in proportion
+	// to the part of the key direction that goes into the side.
+	speed = fixmul(DTU_PUSH_SPEED,F1_0 - fixmuldiv(0x9999,i2f(pushable),i2f(strength)));
+	if (Dtu_push_time - DTU_PUSH_DELAY < DTU_PUSH_RAMP)
+		speed = fixmuldiv(speed,Dtu_push_time - DTU_PUSH_DELAY,DTU_PUSH_RAMP);
+	speed = fixmul(speed,-vm_vec_dot(dir,&n));
+	vm_vec_copy_scale(&delta,&n,-fixmul(speed,sim_time));
+	f = dtu_dressing_push(&Objects[objnum],&delta,strength);
+	// the velocity of the player into the side is that of the scenery
+	vm_vec_scale_add2(&pi->velocity,&n,-vm_vec_dot(&pi->velocity,&n) - fixmul(speed,f));
+	return 1;
+}
+
+// The body is inside of scenery: it moves out of it, DTU_SOLID_OUT_SPEED
+// at most, when the way is free.
+static void dtu_solid_move_out(object *obj,dtu_body *body,dtu_capsule *c,fix sim_time)
+{
+	vms_vector n,np;
+	fvi_query fq;
+	fvi_info hit;
+	fix depth,out = fixmul(DTU_SOLID_OUT_SPEED,sim_time);
+	int seg;
+
+	if (dtu_solid_overlap(&obj->pos,body->move_rad,c->stand,c->head,&n,&depth) < 0)
+		return;
+	if (out > depth)
+		out = depth;
+	vm_vec_scale_add(&np,&obj->pos,&n,out);
+	fq.p0 = &obj->pos;
+	fq.p1 = &np;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&hit) != HIT_NONE || (seg = find_point_seg(&np,obj->segnum)) < 0)
+		return;
+	obj->pos = np;
+	dtu_relink(obj,seg);
+}
+
 // 0x14534B, 0x14534F: the object that stopped the player in the last
 // tries, and the number of its hits in a row.
 static int Dtu_block_obj = -1;
@@ -2973,6 +3094,10 @@ int dtu_player_physics_sim(object *obj)
 	dtu_body body;		// ASCENT: the body of the frame (0x748D9)
 	dtu_capsule cap;	// ASCENT: Dtu_improved_physics, the capsule
 	int capsule;
+	// ASCENT: Dtu_improved_physics, scenery as solid bodies (dtusolid.c)
+	int solids,have_push_dir,push_seen = 0;
+	vms_vector push_dir;
+	fix move_time;
 
 	if (obj->dtu.m_88 & DTU_OF_HELD)
 		return 1;
@@ -2980,6 +3105,8 @@ int dtu_player_physics_sim(object *obj)
 	dtu_player_body(&body);
 	dtu_capsule_get(&body,&cap);
 	capsule = dtu_capsule_on();
+	solids = capsule && dtu_solid_on();
+	have_push_dir = dtu_thrust_dir(obj,&push_dir);
 
 	n_phys_segs = 0;
 	floor_type = dtu_floor_type(obj);
@@ -3109,16 +3236,25 @@ int dtu_player_physics_sim(object *obj)
 	if (Dtu_wall_time < F1_0)
 		Dtu_wall_time += sim_time;
 
+	// ASCENT: Dtu_improved_physics. A body that is inside of scenery (a
+	// saved game, scenery that a creature pushed) moves out of it.
+	if (solids) {
+		dtu_solid_move_out(obj,&body,&cap,sim_time);
+		push_seen = have_push_dir && dtu_solid_lean(obj,&body,&cap,&push_dir,sim_time);
+	}
+	start_pos = obj->pos;
+	move_time = sim_time;
+
 	// The move. A hit puts the player back to the start of the frame and
 	// changes the velocity. Then the move starts again, 8 times at most.
 	for (;;) {
 
-		if (vm_vec_mag(&pi->velocity) <= 0x72)
+		if (vm_vec_mag(&pi->velocity) <= 0x72 || move_time <= 0)
 			break;
 
-		frame_vec.x = fixmul(pi->velocity.x,sim_time);
-		frame_vec.y = fixmul(pi->velocity.y,sim_time);
-		frame_vec.z = fixmul(pi->velocity.z,sim_time);
+		frame_vec.x = fixmul(pi->velocity.x,move_time);
+		frame_vec.y = fixmul(pi->velocity.y,move_time);
+		frame_vec.z = fixmul(pi->velocity.z,move_time);
 
 		if (++tries > 8) {
 			mprintf((0,"Stupid human. "));
@@ -3173,6 +3309,75 @@ int dtu_player_physics_sim(object *obj)
 				n_phys_segs--;
 			while (i<hit.n_segs && n_phys_segs<MAX_FVI_SEGS-1)
 				phys_seglist[n_phys_segs++] = hit.seglist[i++];
+		}
+
+		// ASCENT: Dtu_improved_physics. The scenery, when the move reaches
+		// it before the hit of the query. The player moves up to the
+		// scenery, and the rest of the frame goes on with the velocity
+		// that is left.
+		if (solids && fate != HIT_BAD_P0) {
+			vms_vector sn;
+			fix st;
+			int skind;
+			int sobj = dtu_solid_sweep(&obj->pos,&frame_vec,body.move_rad,cap.stand,cap.head,&st,&sn,&skind);
+
+			if (sobj >= 0 && (fate == HIT_NONE || fixmul(st,vm_vec_mag(&frame_vec)) <= vm_vec_dist(&hit.hit_pnt,&obj->pos))) {
+				vms_vector np;
+				int seg;
+
+				{
+					char text[160];
+
+					snprintf(text,sizeof(text),"SOLID obj %d %s at %.4f of the move, away %.3f %.3f %.3f\n",sobj,
+						skind == DTU_SOLID_TOP ? "top" : skind == DTU_SOLID_BOTTOM ? "bottom" : "side",f2fl(st),f2fl(sn.x),f2fl(sn.y),f2fl(sn.z));
+					dtu_move_log_line(text);
+				}
+				vm_vec_scale_add(&np,&obj->pos,&frame_vec,st);
+				if (skind == DTU_SOLID_SIDE)
+					vm_vec_scale_add2(&np,&sn,DTU_SOLID_SKIN);
+				if ((seg = find_point_seg(&np,obj->segnum)) >= 0) {
+					obj->pos = np;
+					dtu_relink(obj,seg);
+					start_pos = np;
+				}
+				move_time = fixmul(move_time,F1_0 - st);
+
+				if (skind == DTU_SOLID_TOP) {
+					// the feet come down on the top: the end of a jump or of
+					// a fall, as on a floor (0x6CD45)
+					if (Dtu_player_state & DTU_PS_JUMPING) {
+						Dtu_jump_time = 0;
+						Dtu_jump_vy = 0;
+					}
+					Dtu_player_state &= ~(DTU_PS_JUMPING|DTU_PS_CLIMBING);
+					if (pi->velocity.y < 0)
+						pi->velocity.y = 0;
+					dtu_fall_damage(obj);
+				}
+				else if (skind == DTU_SOLID_BOTTOM) {
+					if (pi->velocity.y > 0)
+						pi->velocity.y = 0;
+					if ((Dtu_player_state & DTU_PS_JUMPING) && Dtu_jump_vy > 0)
+						Dtu_jump_vy = 0;
+				}
+				else {
+					fix vn = -vm_vec_dot(&pi->velocity,&sn);
+
+					if (vn > 0)
+						vm_vec_scale_add2(&pi->velocity,&sn,vn);
+					else
+						vm_vec_scale_add2(&pi->velocity,&sn,F1_0);
+					if ((Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_path) {
+						fix d = vm_vec_dot(&Dtu_jump_hvel,&sn);
+
+						if (d < 0)
+							vm_vec_scale_add2(&Dtu_jump_hvel,&sn,-d);
+					}
+				}
+				if (obj->flags & OF_SHOULD_BE_DEAD)
+					break;
+				continue;
+			}
 		}
 
 		if (fate == HIT_NONE) {
@@ -3358,6 +3563,16 @@ int dtu_player_physics_sim(object *obj)
 	if (!hit_an_object) {
 		Dtu_block_obj = -1;
 		Dtu_block_hits = 0;
+	}
+
+	// ASCENT: Dtu_improved_physics, how long the player leans on scenery
+	if (push_seen) {
+		Dtu_push_time += sim_time;
+		Dtu_push_idle = 0;
+	}
+	else if ((Dtu_push_idle += sim_time) > DTU_PUSH_IDLE) {
+		Dtu_push_obj = -1;
+		Dtu_push_time = Dtu_push_idle = 0;
 	}
 
 	if (Dtu_jump_set_vel && !(Dtu_player_state & DTU_PS_JUMPING) && Dtu_fix_jump_exit)

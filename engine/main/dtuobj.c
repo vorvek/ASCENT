@@ -263,6 +263,7 @@ static fix corpse_draw_drop(object *obj);
 fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 item_info *item_table_entry(int type,int id);
 int dressing_pushable(object *d);
+void dressing_level_reset(void);
 fix damage_player_w(object *player, object *attacker, fix damage, int weapon);
 fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);
 fix spell_hit(int spell,object *target,object *attacker);
@@ -1003,6 +1004,7 @@ void dtu_objects_level_setup(void)
 	// ASCENT: the believed position of a hidden player starts at the player
 	// (C20; the start value of 1.3 was not found)
 	cloak_reset();
+	dressing_level_reset();		// ASCENT: Dtu_improved_physics (dtuobj_scenery.c)
 	Ref_tick_count = Ref_ticks_now = 0;
 	end_sequence_reset();
 	Ref_tick_acc = 0;
@@ -1213,11 +1215,14 @@ void dtu_objects_level_setup(void)
 				polymodel *po = obj_model(&Objects[i]);
 				int b = po && po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius;
 
-				dtu_obj_log("obj %d %s: dressing %d shields %.1f pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f body flags %d r %.2f hh %.2f",
+				dtu_obj_log("obj %d %s: dressing %d shields %.1f pushable %d mass %.2f drag %.4f size %.2f seg %d pos %.2f %.2f %.2f body flags %d r %.2f hh %.2f box %.2f %.2f %.2f to %.2f %.2f %.2f center y %.2f up %.2f",
 					i,dtu_object_name(&Objects[i]),Objects[i].id,f2fl(Objects[i].shields),dressing_pushable(&Objects[i]),
 					f2fl(Objects[i].mtype.phys_info.mass),f2fl(Objects[i].mtype.phys_info.drag),f2fl(Objects[i].size),
 					Objects[i].segnum,f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z),
-					po ? po->box_flags : -1,b ? f2fl(po->body_radius[0]) : 0.0,b ? f2fl(po->body_half_height[0]) : 0.0);
+					po ? po->box_flags : -1,b ? f2fl(po->body_radius[0]) : 0.0,b ? f2fl(po->body_half_height[0]) : 0.0,
+					po && po->box1_min ? f2fl(po->box1_min[0].x) : 0.0,po && po->box1_min ? f2fl(po->box1_min[0].y) : 0.0,po && po->box1_min ? f2fl(po->box1_min[0].z) : 0.0,
+					po && po->box1_max ? f2fl(po->box1_max[0].x) : 0.0,po && po->box1_max ? f2fl(po->box1_max[0].y) : 0.0,po && po->box1_max ? f2fl(po->box1_max[0].z) : 0.0,
+					po && po->body_center ? f2fl(po->body_center[0].y) : 0.0,f2fl(Objects[i].orient.uvec.y));
 			}
 			else if (Objects[i].type == OBJ_MISC || Objects[i].type == OBJ_ARMOR || Objects[i].type == OBJ_SPELL || Objects[i].type == OBJ_WEAPON)
 				dtu_obj_log("obj %d %s: item type %d id %d seg %d pos %.2f %.2f %.2f render %d size %.2f life %.1f count %d flags 0x%x parent %d/%d",

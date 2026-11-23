@@ -68,6 +68,10 @@
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
 #include "dtuobj_int.h"
+#include "dtusolid.h"	// ASCENT: Dtu_improved_physics, scenery as solid bodies
+#include "physics.h"		// ASCENT: Dtu_player_walk, DTU_FIX_JUMP_GRAVITY
+#include "digi.h"
+#include <math.h>
 
 // Scenery that moves (movement type 1 of the executable): pushed scenery
 // (0x9FA41, 0x9E5BE) and the scenery that falls after a break (0xA6ACB).
@@ -78,6 +82,8 @@ static int Dressing_str[MAX_OBJECTS];		// strength of the push (Dtu_fix_push_bod
 static vms_vector Dressing_vpush[MAX_OBJECTS];	// velocity of the mover at the push (Dtu_fix_push_rate)
 static vms_vector Dressing_slide[MAX_OBJECTS];	// velocity of the slide at the end of a push (Dtu_fix_push_rate)
 static ubyte Dressing_slid[MAX_OBJECTS];		// the slide of this push has started
+static ubyte Dressing_awake[MAX_OBJECTS];		// ASCENT: Dtu_improved_physics, the support of the scenery is tested in the next frame
+static fix Dressing_y_slack = 0;			// ASCENT: Dtu_improved_physics, bodies that overlap less than this in height are not in the way
 // Pushed scenery and the bodies of the player, the creatures and other
 // scenery. The executable stops the move of scenery whose center is inside
 // of the body of the player (twice the radius of its move query, plus half
@@ -344,6 +350,8 @@ void dtu_break_dressing(object *d,object *by,int explode)
 		for (i=0;i<=Highest_object_index;i++)
 			if (Objects[i].type == OBJ_DRESSING && Objects[i].segnum == d->segnum && &Objects[i] != d)
 				Dressing_fall[i] = 1;
+		// ASCENT: Dtu_improved_physics, scenery that lay on this one falls
+		memset(Dressing_awake,1,sizeof(Dressing_awake));
 	}
 	d->flags |= OF_SHOULD_BE_DEAD;
 	if (!explode) {
@@ -589,7 +597,7 @@ static int dressing_hit_object(object *d,vms_vector *p0,vms_vector *p1,fix rad,f
 
 		if (o == d || o->type == OBJ_NONE || !dressing_other_body(o,&r,&hh))
 			continue;
-		if (abs(p0->y - o->pos.y) > hh + rad2)
+		if (abs(p0->y - o->pos.y) > hh + rad2 - Dressing_y_slack)
 			continue;
 		if (Dtu_fix_push_body && o->type == OBJ_DRESSING && dressing_box_hit(d,o,p0,p1,rad,&t)) {
 			if (t < 0)
@@ -700,6 +708,267 @@ static fix dressing_wall_frac(object *d,vms_vector *frame_vec)
 	return best;
 }
 
+//------------------------------------------------------------------------
+// ASCENT: Dtu_improved_physics. The push of scenery by the player, the
+// fall of scenery and the sound of scenery that moves. New code, not in
+// the executable (docs/re/physics.md, section 13.2).
+//
+// The push of the executable gives the scenery 8 times the velocity of
+// the mover at each hit, and the scenery slows down by 8 times in each
+// frame. Here the player moves the scenery directly: dtu_dressing_push()
+// moves it by a distance, as far as the walls and the other bodies let
+// it, and tells the player how far it went. Scenery that lies on the
+// pushed scenery moves with it. Scenery with no support falls.
+
+#define DTU_SOLID_GRAVITY		DTU_FIX_JUMP_GRAVITY	// the fall of scenery, as the jump of the player
+#define DTU_SOLID_FALL_GAP		(F1_0/2)		// scenery falls when its support is this much or more below it
+#define DTU_SOLID_REST_GAP		(F1_0*3/4)		// scenery lies on other scenery when its bottom is this near to the top
+#define DTU_SOLID_LIFT_MAX		i2f(3)			// scenery that is less than this deep in the top of other scenery is put onto it
+#define DTU_PUSH_SND_START		0x1999			// 0.1 s: the sound starts after scenery moved this long
+#define DTU_PUSH_SND_HOLD		0x2000			// 0.125 s: the sound stops after scenery did not move this long
+
+static fix Dressing_vy[MAX_OBJECTS];			// the velocity of the fall
+static ubyte Dressing_moved[MAX_OBJECTS];		// the scenery moved in this frame
+static fix Dressing_move_time[MAX_OBJECTS];	// how long it moves
+static fix Dressing_snd_hold[MAX_OBJECTS];
+static ubyte Dressing_snd_on[MAX_OBJECTS];
+
+int dtu_solid_on(void)
+{
+	return Dtu_improved_physics && Dtu_player_walk && Dtu_objects_enabled;
+}
+
+// A new level or a loaded game: no scenery moves. Scenery that is in the
+// top of other scenery is put onto it (Dressing_awake 2: a saved game of
+// an earlier version can have scenery that sank into the scenery under
+// it). No scenery falls at that time: the level can have scenery that
+// hangs on a wall.
+void dressing_level_reset(void)
+{
+	memset(Dressing_fall,0,sizeof(Dressing_fall));
+	memset(Dressing_awake,2,sizeof(Dressing_awake));
+	memset(Dressing_vy,0,sizeof(Dressing_vy));
+	memset(Dressing_moved,0,sizeof(Dressing_moved));
+	memset(Dressing_move_time,0,sizeof(Dressing_move_time));
+	memset(Dressing_snd_hold,0,sizeof(Dressing_snd_hold));
+	memset(Dressing_snd_on,0,sizeof(Dressing_snd_on));
+}
+
+// 1 if the scenery of the shape a lies on the scenery of the shape b
+static int dressing_lies_on(dtu_solid *a,dtu_solid *b)
+{
+	if (fabs(a->bot - b->top) > f2fl(DTU_SOLID_REST_GAP))
+		return 0;
+	return dtu_solid_inside(b,a->cx,a->cz,0) || dtu_solid_inside(a,b->cx,b->cz,0);
+}
+
+static fix dressing_push_move(object *d,vms_vector *delta,int strength,int depth)
+{
+	int n = d-Objects, i, pass, hit_obj, seg, n_riders = 0;
+	short riders[8];
+	fix frac = F1_0, br, bhh, len = vm_vec_mag(delta);
+	vms_vector p1, mv;
+	dtu_solid sd;
+
+	if (len <= 0 || d->type != OBJ_DRESSING)
+		return 0;
+	dressing_body(d,&br,&bhh);
+
+	if (depth < 2 && dtu_solid_get(d,&sd))
+		for (i=0;i<=Highest_object_index && n_riders < 8;i++) {
+			dtu_solid sr;
+
+			if (i != n && Objects[i].type == OBJ_DRESSING && dtu_solid_get(&Objects[i],&sr) && sr.bot > sd.bot && dressing_lies_on(&sr,&sd))
+				riders[n_riders++] = i;
+		}
+
+	for (pass=0;pass<2;pass++) {
+		vm_vec_add(&p1,&d->pos,delta);
+		// scenery that lies on this one, or under it, is not in the way
+		Dressing_y_slack = DTU_SOLID_REST_GAP;
+		hit_obj = dressing_hit_object(d,&d->pos,&p1,br,bhh,&frac);
+		Dressing_y_slack = 0;
+		if (hit_obj < 0) {
+			frac = F1_0;
+			break;
+		}
+		// other scenery in the way moves too when the strength is enough
+		if (pass == 0 && depth < 2 && Objects[hit_obj].type == OBJ_DRESSING && strength > dressing_pushable(&Objects[hit_obj])) {
+			vms_vector rest;
+
+			vm_vec_copy_scale(&rest,delta,F1_0 - frac);
+			if (dressing_push_move(&Objects[hit_obj],&rest,strength,depth+1) > 0)
+				continue;
+		}
+		frac -= fixdiv(DTU_PUSH_WALL_GAP,len);
+		break;
+	}
+	if (frac > 0) {
+		vm_vec_copy_scale(&mv,delta,frac);
+		frac = fixmul(frac,dressing_wall_frac(d,&mv));
+	}
+	if (frac <= 0)
+		return 0;
+	vm_vec_copy_scale(&mv,delta,frac);
+	vm_vec_add(&p1,&d->pos,&mv);
+	seg = find_point_seg(&p1,d->segnum);
+	if (seg < 0)
+		return 0;
+	d->pos = p1;
+	if (seg != d->segnum)
+		obj_relink(n,seg);
+	Dressing_moved[n] = 1;
+	Dressing_awake[n] = 1;
+	for (i=0;i<n_riders;i++) {
+		dressing_push_move(&Objects[riders[i]],&mv,0,2);
+		Dressing_awake[riders[i]] = 1;
+	}
+	return frac;
+}
+
+// The strength of the player for a push (P+0xB7, 0x9E5BE)
+int dtu_player_push_strength(void)
+{
+	return Dtu_char.created ? Dtu_char.pa.strength : 18;
+}
+
+// The player pushes the scenery d by delta. Returns the part of delta (0
+// to 1) that the scenery moved.
+fix dtu_dressing_push(object *d,vms_vector *delta,int strength)
+{
+	fix f = dressing_push_move(d,delta,strength,0);
+
+	if (f > 0)
+		dtu_obj_log("push: the player moves obj %d %s by %.3f, part %.2f",(int)(d-Objects),dtu_object_name(d),f2fl(vm_vec_mag(delta)),f2fl(f));
+	return f;
+}
+
+// The height on which the scenery d with the shape s lies: the floor
+// under its position, or the top of other scenery under it. Returns 0 if
+// there is none. *on_solid: it is other scenery.
+static int dressing_rest_height(object *d,dtu_solid *s,double *y,int *on_solid)
+{
+	fvi_query gq;
+	fvi_info gh;
+	vms_vector down = d->pos;
+	int found = 0, i;
+
+	*on_solid = 0;
+	down.y -= i2f(200);
+	gq.p0 = &d->pos; gq.p1 = &down; gq.startseg = d->segnum; gq.rad = 0;
+	gq.thisobjnum = d-Objects; gq.ignore_obj_list = NULL; gq.flags = 0;
+	if (find_vector_intersection(&gq,&gh) == HIT_WALL) {
+		*y = f2fl(gh.hit_pnt.y);
+		found = 1;
+	}
+	for (i=0;i<=Highest_object_index;i++) {
+		dtu_solid o;
+
+		if (&Objects[i] == d || Objects[i].type != OBJ_DRESSING || !dtu_solid_get(&Objects[i],&o))
+			continue;
+		if (o.top > s->bot + f2fl(DTU_SOLID_LIFT_MAX) || o.bot >= s->bot || (found && o.top <= *y))
+			continue;
+		if (!dtu_solid_inside(&o,s->cx,s->cz,0) && !dtu_solid_inside(s,o.cx,o.cz,0))
+			continue;
+		*y = o.top;
+		*on_solid = 1;
+		found = 1;
+	}
+	return found;
+}
+
+// Scenery whose support went away falls, with a constant gravity. Scenery
+// that is in the top of other scenery is put onto it.
+static void dressing_settle_frame(void)
+{
+	int i;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *d = &Objects[i];
+		dtu_solid s;
+		double rest, gap;
+		int on_solid;
+		fix dy = 0;
+
+		if (!Dressing_awake[i])
+			continue;
+		if (!dtu_solid_get(d,&s) || !dressing_rest_height(d,&s,&rest,&on_solid)) {
+			Dressing_awake[i] = 0;
+			Dressing_vy[i] = 0;
+			continue;
+		}
+		gap = s.bot - rest;
+		if (Dressing_awake[i] == 1 && (gap >= f2fl(DTU_SOLID_FALL_GAP) || (Dressing_vy[i] < 0 && gap > 0))) {
+			Dressing_vy[i] -= fixmul(DTU_SOLID_GRAVITY,FrameTime);
+			dy = fixmul(Dressing_vy[i],FrameTime);
+			if (-f2fl(dy) >= gap) {
+				dy = -fl2f(gap);
+				Dressing_vy[i] = 0;
+				Dressing_awake[i] = 0;
+				dtu_obj_log("fall: obj %d %s lands at %.2f",i,dtu_object_name(d),rest);
+			}
+		}
+		else {
+			if (on_solid && gap < -0.05 && gap > -f2fl(DTU_SOLID_LIFT_MAX)) {
+				dy = -fl2f(gap);
+				dtu_obj_log("fall: obj %d %s is put onto the top at %.2f, up %.2f",i,dtu_object_name(d),rest,-gap);
+			}
+			Dressing_vy[i] = 0;
+			Dressing_awake[i] = 0;
+		}
+		if (dy) {
+			vms_vector p = d->pos;
+			int seg;
+
+			p.y += dy;
+			seg = find_point_seg(&p,d->segnum);
+			if (seg < 0) {
+				Dressing_vy[i] = 0;
+				Dressing_awake[i] = 0;
+				continue;
+			}
+			d->pos = p;
+			if (seg != d->segnum)
+				obj_relink(i,seg);
+		}
+	}
+}
+
+// The sound 2706 of scenery that moves. The executable links the sound to
+// the object while its speed is above 0x70. The port played the sound at
+// the place of the object each 8 frames, so more copies of it played at
+// the same time at a high frame rate, and it played for scenery that a
+// wall or a body held in its place. Now: one linked sound for each object,
+// from DTU_PUSH_SND_START after the scenery started to move until
+// DTU_PUSH_SND_HOLD after it moved the last time.
+static void dressing_sound_frame(void)
+{
+	int i;
+
+	for (i=0;i<MAX_OBJECTS;i++) {
+		int moved = Dressing_moved[i] && i <= Highest_object_index && Objects[i].type == OBJ_DRESSING;
+
+		Dressing_moved[i] = 0;
+		if (moved) {
+			Dressing_move_time[i] += FrameTime;
+			Dressing_snd_hold[i] = DTU_PUSH_SND_HOLD;
+			if (!Dressing_snd_on[i] && Dressing_move_time[i] >= DTU_PUSH_SND_START) {
+				digi_link_sound_to_object2(2706,i,1,F1_0/2,i2f(200));
+				Dressing_snd_on[i] = 1;
+			}
+		}
+		else if (Dressing_snd_hold[i] > 0) {
+			Dressing_snd_hold[i] -= FrameTime;
+			if (Dressing_snd_hold[i] <= 0) {
+				if (Dressing_snd_on[i])
+					digi_kill_sound_linked_to_object(i);
+				Dressing_snd_on[i] = 0;
+				Dressing_move_time[i] = 0;
+			}
+		}
+	}
+}
+
 // 0x9FE68: the move of scenery with movement type 1. The velocity is
 // halved and x and z are divided by 4, then gravity and the move. The
 // sound 2706 plays while the speed is above 0x70. The move ends at a stop.
@@ -717,11 +986,16 @@ static fix dressing_wall_frac(object *d,vms_vector *frame_vec)
 void dressing_move_frame(void)
 {
 	int i;
+	int solid = dtu_solid_on();
+
+	// ASCENT: Dtu_improved_physics, the fall of scenery
+	if (solid)
+		dressing_settle_frame();
 
 	for (i=0;i<=Highest_object_index;i++) {
 		object *d = &Objects[i];
 		physics_info *pi = &d->mtype.phys_info;
-		vms_vector p1, frame_vec;
+		vms_vector p1, frame_vec, old_pos;
 		fix speed, frac, br, bhh;
 		int hit_obj;
 
@@ -734,8 +1008,13 @@ void dressing_move_frame(void)
 		pi->velocity.x = (pi->velocity.x / 2) >> 2;
 		pi->velocity.z = (pi->velocity.z / 2) >> 2;
 		pi->velocity.y /= 2;
-		// gravity (0x6C662): down to the floor, 3.0 times the distance
-		{
+		// gravity (0x6C662): down to the floor, 3.0 times the distance.
+		// ASCENT: Dtu_improved_physics has its own fall (dressing_settle_frame).
+		if (solid) {
+			pi->velocity.y = 0;
+			Dressing_awake[i] = 1;
+		}
+		else {
 			fvi_query gq;
 			fvi_info gh;
 			vms_vector down = d->pos;
@@ -776,7 +1055,8 @@ void dressing_move_frame(void)
 			vm_vec_zero(&pi->velocity);
 			vm_vec_zero(&Dressing_slide[i]);
 			Dressing_fall[i] = 0;
-			dtu_obj_log("push: obj %d %s stops at %.2f %.2f %.2f",i,dtu_object_name(d),f2fl(d->pos.x),f2fl(d->pos.y),f2fl(d->pos.z));
+			if (!solid || Dressing_move_time[i] > 0)
+				dtu_obj_log("push: obj %d %s stops at %.2f %.2f %.2f",i,dtu_object_name(d),f2fl(d->pos.x),f2fl(d->pos.y),f2fl(d->pos.z));
 			continue;
 		}
 		vm_vec_copy_scale(&frame_vec,&pi->velocity,FrameTime);
@@ -860,6 +1140,7 @@ void dressing_move_frame(void)
 			}
 		}
 
+		old_pos = d->pos;
 		if (frac > 0) {
 			int seg;
 
@@ -887,9 +1168,11 @@ void dressing_move_frame(void)
 			pi->velocity.x = pi->velocity.z = 0;
 			vm_vec_zero(&Dressing_slide[i]);
 		}
-		if (FrameCount % 8 == 0)
-			sound_at(2706,d->segnum,&d->pos,F1_0/2);
+		// ASCENT: the sound only for scenery that moved in this frame
+		if (vm_vec_dist_quick(&old_pos,&d->pos) > 0x70)
+			Dressing_moved[i] = 1;
 	}
+	dressing_sound_frame();
 }
 
 // ASCENT: collide_robot_and_player 0x26FE0 to 0x27054: a creature of the
@@ -988,7 +1271,7 @@ int dtu_collide_two_objects(object *a, object *b, vms_vector *collision_point)
 				// decides only whether the player goes back to the start of
 				// the frame (0x9E598), not the push. The player stays out
 				// of the scenery (physics.c).
-				push_dressing(a,b,Dtu_char.created ? Dtu_char.pa.strength : 18);
+				push_dressing(a,b,dtu_player_push_strength());
 				break;
 		}
 	}

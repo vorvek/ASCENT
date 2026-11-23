@@ -33,6 +33,7 @@
 #include "gauges.h"
 #include "dtugame.h"
 #include "dtuobj.h"
+#include "dtusolid.h"	// ASCENT: the test command onobj
 #include "dtudisp.h"
 #include "dtutrig.h"
 #include "dtuchar.h"
@@ -3832,6 +3833,14 @@ static void run_command(char *cmd, char *value)
 
 		p.x = o->pos.x;
 		p.z = o->pos.z;
+		// ASCENT: Dtu_improved_physics: over the top of scenery, the player
+		// comes down on it
+		{
+			dtu_solid s;
+
+			if (dtu_solid_on() && dtu_solid_get(o, &s))
+				p.y = fl2f(s.top) + i2f(8);
+		}
 		seg = find_point_seg(&p, o->segnum);
 		if (seg >= 0) {
 			ConsoleObject->pos = p;

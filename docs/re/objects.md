@@ -1322,6 +1322,12 @@ ran ahead, so the push grew with the frame rate. In the corner of segment 20
 of YPINN the center of a chair stopped 0.2 from both walls, and the center of a
 table at a wall stopped at the wall.
 
+With Improved physics on, the player does not push scenery with these rules:
+scenery is a solid body with a top, and the player moves it directly
+(physics.md section 13.2). The rules here stay for the creatures and for
+Improved physics off. The sound 2706 is one linked sound for each object in
+both cases (physics.md section 13.2).
+
 ### Frame rate
 
 With the slow down in each frame the push is a cycle of two frames: the mover

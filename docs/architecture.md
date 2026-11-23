@@ -59,6 +59,7 @@ comments.
 | `dtuobj_ai.c` | The AI of a creature: attacks, the turn and the moves, the paths, blocked moves, morale, animation, `dtu_do_ai_frame`, the calls of the scripts, the AI state in a state file. | `re/ai.md` |
 | `dtuobj_move.c` | The movement of a creature: the stop distance at the player, gravity, `dtu_creature_physics_sim`. | `re/ai.md`, `re/physics.md` |
 | `dtuobj_scenery.c` | Scenery that breaks, the end of the game at the Flamesword, pushed scenery, the collision of two objects. | `re/objects.md`, `re/movies.md` |
+| `dtusolid.c` | Improved physics: scenery as solid bodies for the player (the top holds the player, a side stops the move). New in the port. | `re/physics.md` section 13.2 |
 | `dtuobj_aware.c` | Alerts and the awareness events of the creatures, the wake of a creature, the check of the objects, the gate in of a creature, the drop of objects in a segment. | `re/ai.md` |
 | `dtuobj_test.c` | The test aids that place the player and the objects: `-testpos`, `-testobjpos`, `-testtour`. | |
 | `dtuchar.c` | The player character: attributes, equipment, item use, rest, experience, levels, choice boxes. Replaces the ship values. | `re/character.md` |

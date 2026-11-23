@@ -752,9 +752,11 @@ minus 1, so the last segment is never marked.
 - The player (0x9E53D to 0x9E766), verified: the push happens at each hit.
   The counter 0x1452F1 (hits of the object 0x1452F5 in a row, cleared by a
   frame whose move is free, 0x9E423) only decides whether the position goes
-  back to the start (below 9 hits, 0x9E598); the position of a try is the
-  start anyway, so the count changes nothing. (Correction: an earlier
-  version of this note said the push stops after 9 hits.) The move loop goes
+  back to the start (below 9 hits, 0x9E598). (Correction: an earlier
+  version of this note said the push stops after 9 hits, and a later one
+  that the count changes nothing. Before the test the position is the hit
+  point of the query, 0x9E2EC, so from the 9th hit the player stays at the
+  hit point: physics.md section 4.5.) The move loop goes
   on with the next try (up to 8, section 4.5 of physics.md) and the object is
   not put into the ignore list: scenery stops the player. The player thrust
   is 0 at that time (pcons.c clears it before the move), so the scenery gets

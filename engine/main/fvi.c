@@ -853,6 +853,7 @@ int check_vector_to_sphere_1(vms_vector *intp,vms_vector *p0,vms_vector *p1,vms_
 #include "dtugame.h"
 #include "dtuobj.h"
 #include "dtucombat.h"	// ASCENT: Dtu_fix_rat_hit
+#include "dtusolid.h"	// ASCENT: dtu_solid_on
 #include "bm.h"
 #include "polyobj.h"
 #include <math.h>
@@ -911,6 +912,10 @@ static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector
 		return 0;
 	// "pass_thru" of the table line
 	if (dtu_pass_thru(obj))
+		return 0;
+	// ASCENT: Dtu_improved_physics. The move of the player tests scenery
+	// as a solid body with a top (dtusolid.c, physics.c), not here.
+	if (Fvi_dtu_capsule && obj->type == OBJ_DRESSING && otherobj->type == OBJ_PLAYER && dtu_solid_on())
 		return 0;
 	// ASCENT: a creature with flag 0x40 (0x3F38F), also for the object
 	// loops of the use action and of the moves (dtuhook.c, dtuobj.c)
