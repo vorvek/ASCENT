@@ -2698,6 +2698,8 @@ int dtufe_run(void)
 		if (FindArg("-testmarketdouble"))
 			dtu_script_set_gflag(107, 1);
 	}
+	if (FindArg("-testblackstaff"))		// ASCENT: test option, the front end starts at Khelben (the first visit)
+		Fe_mode = FE_GO_BLACKSTAFF;
 	while (!Fe_quit) {
 		switch (Fe_mode) {
 		case FE_GO_MENU:

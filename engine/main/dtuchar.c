@@ -3737,6 +3737,16 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
 	else if (!strcmp(cmd, "class"))		Dtu_char.pa.class1 = Dtu_char.base.class1 = a;	// test: class=N, the first class
 	else if (!strcmp(cmd, "class2"))	Dtu_char.pa.class2 = Dtu_char.base.class2 = a;	// ASCENT: test: class2=N, the second class (-1: none)
+	else if (!strcmp(cmd, "female"))		Dtu_char.pa.female = Dtu_char.base.female = (ubyte) (a != 0);	// ASCENT: test: female=0|1
+	else if (!strcmp(cmd, "portrait") && a >= 0 && a < 32) {	// ASCENT: test: portrait=N, the in-game portrait (0 to 13 female, 14 to 31 male)
+		Dtu_char.portrait = Dtu_player_portrait = a;
+		Dtu_char.created = 1;
+	}
+	else if (!strcmp(cmd, "charname") && value) {		// ASCENT: test: charname=NAME, the name on the main screen
+		strncpy(Dtu_char.name, value, sizeof(Dtu_char.name) - 1);
+		Dtu_char.name[sizeof(Dtu_char.name) - 1] = 0;
+		Dtu_char.created = 1;
+	}
 	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
 	else if (!strcmp(cmd, "activate"))	dtu_player_use();		// test: the key A
 	else if (!strcmp(cmd, "goside") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: goside=SEG.SIDE

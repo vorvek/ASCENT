@@ -8,6 +8,12 @@ dungeon crawling humanoids. Version 1.3 of the game still has many defects.
 ASCENT-DTU aims to make the game playable on modern Windows and Linux, alongside bugfixes and optional improvements.
 On Windows, run the setup program; on Linux, unpack the release tarball and run `./setup.sh` (see [docs/install.md](docs/install.md)).
 
+<p align="center">
+  <a href="docs/screenshots/drow.png"><img src="docs/screenshots/thumbs/drow.jpg" width="32%" alt="A drow priestess in the Yawning Portal"></a>
+  <a href="docs/screenshots/skeletons.png"><img src="docs/screenshots/thumbs/skeletons.jpg" width="32%" alt="A mage fights skeletons with a wand of magic missiles"></a>
+  <a href="docs/screenshots/troll.png"><img src="docs/screenshots/thumbs/troll.jpg" width="32%" alt="A dwarf fights a troll with an axe"></a>
+</p>
+
 ## New features
 
 * Gamepad support
@@ -19,6 +25,12 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Target hint: the cursor turns a little red when your attack would reach an enemy.
 * Full screen shaders.
 * A Spanish translation! (More languages coming soon).
+
+<p align="center">
+  <a href="docs/screenshots/improvements.png"><img src="docs/screenshots/thumbs/improvements.jpg" width="32%" alt="The Improvements menu"></a>
+  <a href="docs/screenshots/graphics.png"><img src="docs/screenshots/thumbs/graphics.jpg" width="32%" alt="The Graphics menu"></a>
+  <a href="docs/screenshots/khelben_es.png"><img src="docs/screenshots/thumbs/khelben_es.jpg" width="32%" alt="Khelben's first speech in Spanish"></a>
+</p>
 
 ## Game files
 
