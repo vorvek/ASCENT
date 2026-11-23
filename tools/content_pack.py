@@ -66,7 +66,9 @@ DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 # 3: the decided terms (Aguas Profundas, Bajomontaña, trasgo, ...), the
 #    gender of the creature names, the Spanish name on the Waterdeep picture
 #    (FEBGND 10)
-PACK_VERSION = {'lang_es': '4'}
+# 5: Varanegra for Blackstaff (the title of Khelben and his tower), the
+#    short wand name "Varita de Proyectiles"
+PACK_VERSION = {'lang_es': '5'}
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
