@@ -67,7 +67,8 @@ too.
 - The last line `Session end: normal exit` or `Session end: exit after an error`. A log
   without it is the log of a session that crashed or was stopped.
 
-Each line starts with the seconds since the start. Each line is written to the disk at
+Each line starts with the seconds since the start. The file is UTF-8: the Latin-1 text of
+the game (Spanish names and rolls) is converted. Each line is written to the disk at
 once, so a crash keeps the lines before it.
 
 ## Crash report
