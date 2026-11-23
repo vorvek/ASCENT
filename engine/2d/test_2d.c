@@ -1554,6 +1554,124 @@ static void test_frame(const char * picture_name, int have_data)
 	}
 }
 
+// ASCENT: a sheet of the letters of the translations in every font of the
+// game (font.c, docs/formats/lang.md), 3 times the size, for a look by
+// eye. Each row: the name of the file (FNTEMFS_), then the text of
+// Sheet_text in that font. The picture has the pixels of the game fonts:
+// it stays in the build directory.
+static const char * Sheet_fonts[] = {
+	"FNTECLL_.FNT", "FNTECLMU.FNT", "FNTECLMS.FNT", "FNTECLMT.FNT", "FNTEMLS_.FNT",
+	"FNTECHL_.FNT", "FNTECHMU.FNT", "FNTECHMS.FNT", "FNTECHMT.FNT", "FNTEMHS_.FNT",
+	"FNTEMFL_.FNT", "FNTEMFM_.FNT", "FNTEMFS_.FNT" };
+static const char * Sheet_text[] = {
+	"a\xE1 e\xE9 i\xED o\xF3 u\xFA u\xFC n\xF1 \xBF? \xA1!",
+	"A\xC1 E\xC9 I\xCD O\xD3 U\xDA U\xDC N\xD1 SOLO T\xDA, solo t\xFA" };
+
+#define BITS_TO_BYTES(x)	(((x)+7)>>3)		// as font.c
+#define SHEET_W 1400
+#define SHEET_SCALE 3
+
+static int sheet_pixel(grs_font * font, int c, int x, int y, int * w)
+{
+	int letter = c - font->ft_minchar;
+	ubyte * fp;
+
+	*w = 0;
+	if (letter < 0 || letter > font->ft_maxchar - font->ft_minchar)
+		return -1;
+	if (font->ft_flags & FT_PROPORTIONAL)	{
+		*w = font->ft_widths[letter];
+		fp = font->ft_chars[letter];
+	} else	{
+		*w = font->ft_w;
+		fp = font->ft_data + letter * ((font->ft_flags & FT_COLOR) ? font->ft_w : BITS_TO_BYTES(font->ft_w)) * font->ft_h;
+	}
+	if (x < 0 || x >= *w || y < 0 || y >= font->ft_h || !fp)
+		return -1;
+	if (font->ft_flags & FT_COLOR)
+		return fp[y * *w + x] == 255 ? -1 : fp[y * *w + x];
+	return (fp[y * BITS_TO_BYTES(*w) + (x >> 3)] & (0x80 >> (x & 7))) ? 256 : -1;
+}
+
+// Draws s at x,y (unscaled units) into the RGB sheet; returns the width.
+static int sheet_string(ubyte * rgb, int sheet_h, grs_font * font, const char * s, int x0, int y0)
+{
+	int x = x0, i, gx, gy, w, sx, sy;
+
+	for (i=0; s[i]; i++ )	{
+		int c = (ubyte)s[i];
+		sheet_pixel( font, c, 0, 0, &w );
+		for (gy=0; gy<font->ft_h; gy++ )
+			for (gx=0; gx<w; gx++ )	{
+				int p = sheet_pixel( font, c, gx, gy, &w ), r, g, b;
+				if (p < 0) continue;
+				if (p == 256) r = g = b = 255;
+				else	{
+					r = gr_palette[p*3] << 2; g = gr_palette[p*3+1] << 2; b = gr_palette[p*3+2] << 2;
+				}
+				for (sy=0; sy<SHEET_SCALE; sy++ )
+					for (sx=0; sx<SHEET_SCALE; sx++ )	{
+						int px = (x + gx) * SHEET_SCALE + sx, py = (y0 + gy) * SHEET_SCALE + sy;
+						if (px < 0 || px >= SHEET_W || py < 0 || py >= sheet_h) continue;
+						rgb[(py*SHEET_W + px)*3] = (ubyte)r;
+						rgb[(py*SHEET_W + px)*3+1] = (ubyte)g;
+						rgb[(py*SHEET_W + px)*3+2] = (ubyte)b;
+					}
+			}
+		x += w + 1;
+	}
+	return x - x0;
+}
+
+static void write_glyph_sheet(const char * picture_name)
+{
+	char name[512];
+	grs_font * fonts[sizeof(Sheet_fonts)/sizeof(Sheet_fonts[0])], * label;
+	int n = (int)(sizeof(Sheet_fonts)/sizeof(Sheet_fonts[0])), i, j, y, h = 4;
+	ubyte * rgb;
+	FILE * fp;
+	char * dot;
+
+	label = gr_init_font( data_path("FNTEMFS_.FNT") );
+	for (i=0; i<n; i++ )	{
+		fonts[i] = file_exists( data_path(Sheet_fonts[i]) ) ? gr_init_font( data_path(Sheet_fonts[i]) ) : NULL;
+		if (fonts[i])
+			h += 2 * (fonts[i]->ft_h + 4) + 4;
+	}
+	h *= SHEET_SCALE;
+	rgb = (ubyte *)malloc( SHEET_W * h * 3 );
+	if (!rgb || !label)
+		return;
+	for (i=0; i<SHEET_W*h; i++ )	{
+		rgb[i*3] = 16; rgb[i*3+1] = 24; rgb[i*3+2] = 48;
+	}
+	y = 4;
+	for (i=0; i<n; i++ )	{
+		if (!fonts[i]) continue;
+		sheet_string( rgb, h, label, Sheet_fonts[i], 2, y );
+		for (j=0; j<2; j++ )	{
+			sheet_string( rgb, h, fonts[i], Sheet_text[j], 80, y );
+			y += fonts[i]->ft_h + 4;
+		}
+		y += 4;
+	}
+	snprintf( name, sizeof(name), "%s", picture_name );
+	dot = strrchr( name, '.' );
+	if (dot) *dot = 0;
+	strncat( name, "_glyphs.ppm", sizeof(name) - strlen(name) - 1 );
+	fp = fopen( name, "wb" );
+	if (fp)	{
+		fprintf( fp, "P6\n%d %d\n255\n", SHEET_W, h );
+		fwrite( rgb, 1, SHEET_W * h * 3, fp );
+		fclose( fp );
+		printf( "wrote %s\n", name );
+	}
+	free( rgb );
+	for (i=0; i<n; i++ )
+		if (fonts[i]) gr_close_font( fonts[i] );
+	gr_close_font( label );
+}
+
 int main(int argc, char ** argv)
 {
 	const char * dir = NULL;
@@ -1594,6 +1712,8 @@ int main(int argc, char ** argv)
 				"first argument, or set ASCENT_DATA_DIR.\n", Data_dir );
 
 	test_frame( picture_name, have_data );
+	if (have_data)
+		write_glyph_sheet( picture_name );
 
 	printf( "%d checks, %d failed%s\n", Num_checks, Num_failed, have_data ? "" : " (data tests skipped)" );
 	return Num_failed ? 1 : 0;

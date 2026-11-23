@@ -769,6 +769,64 @@ static int row_empty(const ubyte *px, int w, int y)
 	return 1;
 }
 
+// Makes the letter in the rows top to bottom lower by need rows: its
+// bottom row stays, its top moves down. First a row equal to the row
+// under it goes (the pair nearest the middle first), so the shape stays;
+// then the rows that are left are taken evenly. With dup_only the letter
+// changes only when the equal rows are enough. Returns 1 when it changed.
+static int squeeze_rows(ubyte *px, int w, int top, int bottom, int need, int dup_only)
+{
+	ubyte tmp[64 * 64];
+	int rows[64], cnt = bottom - top + 1, m = cnt - need, i, y;
+
+	if (need <= 0 || m < 1 || cnt > 64)
+		return 0;
+	for (i = 0; i < cnt; i++)
+		rows[i] = top + i;
+	while (cnt > m) {
+		int best = -1, bestd = 1 << 30;
+		for (i = 0; i + 1 < cnt; i++)
+			if (!memcmp(px + rows[i] * w, px + rows[i + 1] * w, w)) {
+				int d = abs(2 * i + 1 - (cnt - 1));
+				if (d < bestd) {
+					bestd = d;
+					best = i;
+				}
+			}
+		if (best < 0)
+			break;
+		memmove(rows + best + 1, rows + best + 2, (cnt - best - 2) * sizeof(int));
+		cnt--;
+	}
+	if (dup_only && cnt > m)
+		return 0;
+	// then a row (not the first or the last) equal to another row, nearest
+	// the middle: E keeps its middle bar
+	while (cnt > m) {
+		int best = -1, bestd = 1 << 30, j;
+		for (i = 1; i + 1 < cnt; i++)
+			for (j = 0; j < cnt; j++)
+				if (j != i && !memcmp(px + rows[i] * w, px + rows[j] * w, w)) {
+					int d = abs(2 * i - (cnt - 1));
+					if (d < bestd) {
+						bestd = d;
+						best = i;
+					}
+					break;
+				}
+		if (best < 0)
+			break;
+		memmove(rows + best, rows + best + 1, (cnt - best - 1) * sizeof(int));
+		cnt--;
+	}
+	memcpy(tmp, px, w * (bottom + 1));
+	for (y = top; y <= bottom; y++)
+		memset(px + y * w, GL_EMPTY, w);
+	for (y = 0; y < m; y++)
+		memcpy(px + (top + need + y) * w, tmp + rows[(y * cnt + cnt / 2) / m] * w, w);
+	return 1;
+}
+
 // The base glyph with the accent, in place. h is the height of the font.
 static void glyph_compose(ubyte *px, int w, int h, int accent)
 {
@@ -860,6 +918,14 @@ static void glyph_compose(ubyte *px, int w, int h, int accent)
 		if (n - need >= 5) {
 			ah = a2;
 			gap = 1;
+		} else if (n - need >= 3 && squeeze_rows(px, w, top, bottom, need, 1)) {
+			// ASCENT: a small font (FNTEMLS_, capitals of 5 rows): a letter
+			// with equal rows (U, O, I) loses them and keeps its shape, so
+			// the accent gets the empty row. Else the accent on the top of
+			// U reads as an O.
+			ah = a2;
+			top += need;
+			goto draw;
 		} else if (top >= ah) {
 			gap = 0;
 			need = 0;
@@ -876,15 +942,12 @@ static void glyph_compose(ubyte *px, int w, int h, int accent)
 		if (m < 2)
 			return;
 		if (need > 0) {
-			memcpy(tmp, px, w * h);
-			for (y = top; y <= bottom; y++)
-				memset(px + y * w, GL_EMPTY, w);
-			for (y = 0; y < m; y++)
-				memcpy(px + (top + need + y) * w, tmp + (top + (y * n + n / 2) / m) * w, w);
+			squeeze_rows(px, w, top, bottom, need, 0);		// ASCENT: equal rows first
 			top += need;
 		}
 	}
 
+draw:
 	{
 		int y0 = top - gap - ah, r, k;
 
@@ -892,6 +955,24 @@ static void glyph_compose(ubyte *px, int w, int h, int accent)
 		switch (accent) {
 			case ACC_ACUTE:
 			case ACC_GRAVE:
+				if (ah == 1 && gap == 0) {
+					// ASCENT: one row on the letter: one stroke to the side
+					// of the middle, over an empty pixel of the top row when
+					// there is one (Á, Ó of FNTEMLS_), so that it does not
+					// make the letter taller.
+					int s = accent == ACC_ACUTE ? 1 : -1, c = cx + s, j;
+					for (j = 0; j < 4; j++) {
+						static const int step[4] = { 1, 2, 0, 3 };
+						int cc = cx + s * step[j];
+						if (cc >= minx && cc <= maxx && px[top * w + cc] == GL_EMPTY) {
+							c = cc;
+							break;
+						}
+					}
+					for (k = 0; k < t; k++)
+						PUT(c + s * k, y0);
+					break;
+				}
 				for (r = 0; r < ah; r++) {
 					int d = accent == ACC_ACUTE ? ah - 1 - r : r;
 					for (k = 0; k < t + (ah == 1); k++)
