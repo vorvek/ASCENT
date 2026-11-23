@@ -220,7 +220,9 @@ void load_text()
 				Error("Unsupported key sequence <\\%c> on line %d of file <%s>",p[1],i+1,filename); 
 
 			p[0] = newchar;
-			strcpy(p+1,p+2);
+			// ASCENT: was strcpy(p+1,p+2). strcpy of overlapping strings is
+			// undefined, and the strcpy of glibc copies them wrong.
+			memmove(p+1,p+2,strlen(p+2)+1);
 			p++;
 		}
  

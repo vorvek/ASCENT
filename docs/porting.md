@@ -12,6 +12,8 @@ These rules apply to each change that makes the code build on a modern system.
 - Each library links `d_common` and the libraries that it uses. `d_common` supplies the compiler flags and `engine/includes`.
 - `engine/CMakeLists.txt` adds a directory when it contains a `CMakeLists.txt` file. Do not change that file to add a library.
 - A test program has the file name `test_<name>.c`. Register it with `add_test`.
+- The code builds on Windows and on Linux. A function of the Watcom or Windows C library that Linux does not have (`stricmp`, `strlwr`) goes into `engine/includes/portable.h`. `d_common` includes that header in each file, so the files that call the function need no edit.
+- The game files have upper case names. Find a game file with `dtu_find_file` (`dtufile.c`), which ignores the case on Linux too.
 
 ```bash
 cmake -S . -B build -G Ninja

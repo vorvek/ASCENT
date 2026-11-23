@@ -6,6 +6,7 @@ The original game runs on DOS and uses a modified Descent engine. It had a troub
 dungeon crawling humanoids. Version 1.3 of the game still has many defects.
 
 ASCENT-DTU aims to make the game playable in modern Windows, alongside bugfixes and optional improvements.
+The game also builds on Linux from the source (see the Linux section of [docs/install.md](docs/install.md)).
 
 ## New features
 

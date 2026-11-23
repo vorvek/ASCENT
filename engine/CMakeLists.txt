@@ -8,6 +8,12 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     -funsigned-char -fwrapv -fno-strict-aliasing
     -Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-pointer-sign
     -Werror=implicit-function-declaration -Werror=incompatible-pointer-types)
+  # ASCENT: stricmp, strnicmp, strlwr, strupr and itoa of the Watcom and
+  # Windows C libraries for the other systems (includes/portable.h).
+  if(NOT WIN32)
+    target_compile_options(d_common INTERFACE
+      -include ${CMAKE_CURRENT_SOURCE_DIR}/includes/portable.h)
+  endif()
 endif()
 
 # ASCENT: the release build keeps the debug information in the objects of

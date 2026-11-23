@@ -1,11 +1,12 @@
 # Build the port and run the tests that need no game files.
 #
-# All 16 tests that ctest runs work without the game files: test_2d skips
+# The tests that ctest runs work without the game files: test_2d skips
 # its data tests when ASCENT_DATA_DIR has no font files. test_dtudata and
 # tools/uitest.py need the game files and are not run here.
 #
-# Linux builds the libraries and the tests. The game program (target
-# ascent) builds only on Windows for now.
+# Both systems build the libraries, the tests, the game (target ascent)
+# and ascent-import. Linux builds with GCC and with Clang. ascent-content
+# and the setup program are for Windows only.
 name: build
 
 on:
@@ -45,22 +46,35 @@ jobs:
 
   linux:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [ gcc, clang ]
+    env:
+      CC: ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Install packages
+        # The build dependencies of SDL3 (README-linux.md of SDL). The
+        # configure step of SDL3 stops when the X11 extension XTest
+        # (libxtst-dev) is missing.
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
-            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-            libegl1-mesa-dev libgl1-mesa-dev libasound2-dev libpulse-dev
+          sudo apt-get install -y ninja-build clang \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libegl1-mesa-dev libgl1-mesa-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libdbus-1-dev libudev-dev
       - name: Configure
         # Ubuntu has no SDL3 package: the configure step downloads and
         # builds SDL3 (CMakeLists.txt).
         run: cmake --preset debug
       - name: Build
-        run: cmake --build --preset debug
+        run: |
+          cmake --build --preset debug
+          cmake --build --preset debug --target ascent
       - name: Test
         run: ctest --preset debug
