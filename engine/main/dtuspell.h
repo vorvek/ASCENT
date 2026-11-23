@@ -104,10 +104,17 @@ extern int Dtu_fix_melf_acid;
 // ASCENT: the damage of a spell (0x911AA) rolls a saving throw (category
 // 4, 0x91382) for every spell and halves the damage on a made save, so a
 // target saves against Magic Missile (case 33, 0x8EED5). In AD&D 2nd edition
-// and in the manual Magic Missile has no saving throw. 1 (default): a
-// damage spell saves for half only when its line of the rule table says so
-// (Magic Missile: no save). 0: every damage spell saves for half, as the
-// executable. -origcombat clears it.
+// and in the manual Magic Missile has no saving throw; Magical Stone (34)
+// and Melf's Minute Meteors (37) have none either but need an attack roll.
+// 1 (default): a damage spell saves for half only when its line of the
+// rule table says so (Magic Missile, Magical Stone, Minute Meteors: no
+// save), and a line with DTU_SR_ATTACK_ROLL needs an attack roll first: a
+// d20 with the THAC0 of the caster (the player, a creature, else 20)
+// against the armor class of the target against missiles, a natural 1
+// misses, a natural 20 hits; Minute Meteors +2 to hit (2e: +2, no penalty
+// for range). The stones are magical, which no spell damage tests. 0: no
+// attack roll, every damage spell saves for half, as the executable.
+// -origcombat clears it.
 extern int Dtu_fix_damage_save;
 
 // Strength (50) and Infravision (25) compute the duration in 32 bits: it
@@ -409,6 +416,7 @@ void dtu_spell_log(char *format, ...);
 #define DTU_SR_SAVE_KIN		0x20	// the save only for an elf, a half-elf or a cleric (Scare)
 #define DTU_SR_STOPPED		0x40	// the effect stopped_by on the target stops the spell
 #define DTU_SR_BURST_BLINDS	0x80	// blinds and deafens near the point of the area (Fireball)
+#define DTU_SR_ATTACK_ROLL	0x100	// ASCENT: a damage spell that needs an attack roll (Dtu_fix_damage_save)
 
 typedef struct dtu_spell_facts {
 	int	book;					// 0 mage, 1 cleric, -1 none
@@ -429,6 +437,7 @@ typedef struct dtu_spell_facts {
 	int	ac_missile;				// ASCENT: the same against missiles (Shield, Dtu_fix_shield_ac)
 	int	dice_n[4], dice_sides[4], dice_add[4];	// damage: normal, fire, acid, electric
 	int	undead_die;				// sides of one more die against undead, 0 none
+	int	attack_bonus;			// ASCENT: the bonus to hit of an attack roll (DTU_SR_ATTACK_ROLL in flags)
 	int	blind_dist;				// Fireball: blinds and deafens within this many units of the point, 0 none
 	int	blind_seconds;			// the longest blindness of blind_dist
 	int	flags;					// ASCENT: DTU_SR_

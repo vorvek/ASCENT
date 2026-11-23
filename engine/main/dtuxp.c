@@ -210,6 +210,7 @@ int Dtu_verbose_combat = 0;
 static struct {
 	int hit;					// 0: no attack roll, 1: a roll
 	int d20, total, need, result;
+	int natural;			// 1: a natural 20 that hits whatever the total (a spell attack roll)
 	char hit_mods[96];
 	int dmg;					// 0: no damage roll
 	int dmg_total;
@@ -232,13 +233,38 @@ static void cat(char *dst, int size, const char *format, ...)
 	va_end(ap);
 }
 
+// 1: the next dtu_xp_roll_clear() keeps the attack roll (dtu_xp_hit_keep)
+static int Keep_hit = 0;
+
 void dtu_xp_roll_clear(void)
 {
+	if (Keep_hit) {
+		int hit = Roll.hit, d20 = Roll.d20, total = Roll.total, need = Roll.need, result = Roll.result, natural = Roll.natural;
+		char mods[sizeof(Roll.hit_mods)];
+
+		memcpy(mods, Roll.hit_mods, sizeof(mods));
+		memset(&Roll, 0, sizeof(Roll));
+		Roll.hit = hit; Roll.d20 = d20; Roll.total = total; Roll.need = need; Roll.result = result; Roll.natural = natural;
+		memcpy(Roll.hit_mods, mods, sizeof(mods));
+		Keep_hit = 0;
+		return;
+	}
 	memset(&Roll, 0, sizeof(Roll));
+}
+
+void dtu_xp_hit_keep(void)
+{
+	Keep_hit = Roll.hit;
+}
+
+void dtu_xp_hit_natural(void)
+{
+	Roll.natural = Roll.hit;
 }
 
 void dtu_xp_hit_start(int d20)
 {
+	Keep_hit = 0;
 	dtu_xp_roll_clear();
 	Roll.hit = 1;
 	Roll.d20 = d20;
@@ -325,7 +351,11 @@ void dtu_xp_save_mod(int v, const char *tag)
 static int roll_text(char *out, int size)
 {
 	out[0] = 0;
-	if (Roll.hit && Roll.result == 2)
+	if (Roll.hit && Roll.natural && Roll.result == 1)
+		cat(out, size, LT("Roll d20 %d: natural 20, hit."), Roll.d20);
+	else if (Roll.hit && Roll.natural && Roll.result == 3)
+		cat(out, size, LT("Roll d20 %d: natural 20, hit, Stoneskin takes it."), Roll.d20);
+	else if (Roll.hit && Roll.result == 2)
 		cat(out, size, LT("Roll d20 %d: critical hit."), Roll.d20);
 	else if (Roll.hit && Roll.result == -1)
 		cat(out, size, LT("Roll d20 %d: fumble."), Roll.d20);
@@ -375,5 +405,6 @@ void dtu_xp_roll_say(object *a, object *b)
 		HUD_init_message("%s", text);
 		dtu_char_log("message: %s", text);
 	}
+	Keep_hit = 0;
 	dtu_xp_roll_clear();
 }

@@ -67,6 +67,11 @@ void dtu_xp_roll_clear(void);
 void dtu_xp_hit_start(int d20);
 void dtu_xp_hit_mod(int v, const char *tag);
 void dtu_xp_hit_end(int total, int need, int result);
+// A spell attack roll (dtuspell.c): a natural 20 hits whatever the total
+// ("Roll d20 20: natural 20, hit."), and the roll stays through the next
+// dtu_xp_roll_clear() (that of the damage roll) for the line of the hit.
+void dtu_xp_hit_natural(void);
+void dtu_xp_hit_keep(void);
 // The damage roll: the dice and their sum (a second call adds a second
 // roll), the bonuses and a multiplier (m < 0: a division by -m, a save for
 // half) in the order of the code, the total.

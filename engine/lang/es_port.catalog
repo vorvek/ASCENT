@@ -1995,6 +1995,30 @@ id: port.magic_resistance
 en: magic resistance
 tr: resistencia a la magia
 
+id: port.spell
+en: spell
+tr: conjuro
+
+id: port.undead
+en: undead
+tr: muerto viviente
+
+id: port.roll_d20_d_natural_20_hit
+en: Roll d20 %d: natural 20, hit.
+tr: Tirada d20 %d: 20 natural, impacto.
+
+id: port.roll_d20_d_natural_20_hit_stoneskin_take
+en: Roll d20 %d: natural 20, hit, Stoneskin takes it.
+tr: Tirada d20 %d: 20 natural, impacto, lo para Piel de Piedra.
+
+id: port.each_missile_needs_an_attack_roll_d_to_h
+en: Each missile needs an attack roll, %+d to hit.
+tr: Cada proyectil necesita una tirada de ataque con %+d.
+
+id: port.each_missile_needs_an_attack_roll
+en: Each missile needs an attack roll.
+tr: Cada proyectil necesita una tirada de ataque.
+
 id: port.damage_s_d
 en: Damage%s = %d.
 tr: Daño%s = %d.

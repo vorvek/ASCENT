@@ -552,6 +552,11 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 	fx_names(b, sizeof(b), f->fx);
 	switch (f->kind) {
 		case DTU_SK_DAMAGE:
+			// ASCENT: the attack roll of the line (Dtu_fix_damage_save, spell_attack_hit)
+			if ((f->flags & DTU_SR_ATTACK_ROLL) && f->attack_bonus)
+				line(LT("Each missile needs an attack roll, %+d to hit."), f->attack_bonus);
+			else if (f->flags & DTU_SR_ATTACK_ROLL)
+				line(LT("Each missile needs an attack roll."));
 			for (g = 0; g < 4; g++)
 				if ((f->dice_n[g] > 0 && f->dice_sides[g] > 0) || f->dice_add[g]) {
 					line(dtu_tr(types[g]), dice(a, f->dice_n[g], f->dice_sides[g], f->dice_add[g]));
