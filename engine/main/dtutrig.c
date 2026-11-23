@@ -76,6 +76,7 @@ int Dtu_fix_disable_trap = 1;
 int Dtu_fix_warp_overlap = 1;
 int Dtu_fix_trap_pause = 1;
 int Dtu_fix_thief2_cache = 1;
+int Dtu_fix_keep_triggers = 1;
 int Dtu_trig_log = 0;
 
 // The level file record of THIEF2 trigger 46 and the second texture of its
@@ -974,6 +975,23 @@ static void thief2_undo_copy(void)
 	}
 }
 
+// ASCENT: Dtu_fix_keep_triggers. 0x5A855 runs at each load of a level, so in
+// 1.3 the message of KOBOLDS seg 167 (trigger 1) never shows and the heal
+// of THIEF1 seg 281 (trigger 34) never runs. With the setting the rule
+// leaves them on, and a level state of 1.3 or of an older port gets the
+// trigger back on when the rule switched it off: off, never fired, and not
+// found by the thief search (byte 0x0F is 0xFE or 0xFF for a trigger that a
+// thief found, and the remove switches it off).
+static void keep_trigger_on(int n)
+{
+	dtu_trigger *t = &Dtu_triggers[n];
+
+	if (t->on || t->fire_count != 0 || (t->unk0f & 0xFF) >= 0xFE)
+		return;
+	t->on = 1;
+	tlog("trigger %d of the state is on again (Dtu_fix_keep_triggers)", n);
+}
+
 // The end of 0x939AD has fixed rules for two levels. Level 7 (thief2):
 // the triggers 46 and 43 take the lock from a door and open it. Level 32
 // (flame): after the triggers 33, 32 and 26 (0x93ADE), object 36 (the
@@ -1022,10 +1040,13 @@ static void trig_level_rules(int last_trigger)
 // of each trigger and the bytes 3 and 4 of each trap: all are 0 in the
 // shipped files, so the port needs no reset.
 // - 2 (kobolds): trigger 1 (the one-time message of seg 167) is off.
+//   Not with Dtu_fix_keep_triggers (keep_trigger_on).
 // - 6 (thief1): trigger 34 is off. ASCENT: 0x5A94E `mov byte ptr [esi +
 //   0xbe0], 0` is 34 * 0x59 + 0x0E, the `on` byte (the KOBOLDS store at
 //   0x5A945 is 0x59 + 0x0E). An older note read it as byte 6 of the
-//   position and left the rule out (D-070).
+//   position and left the rule out (D-070). Trigger 34 heals the player
+//   who touches the ladder of seg 281 side 4 (trap 12, stat_delta 6). Not
+//   with Dtu_fix_keep_triggers.
 // - 7 (thief2): the triggers 43 and 46 are on, and trigger 46 gets the
 //   flags, masks, textures, count, traps and message of trigger 43 (0x5A95A).
 //   Not with Dtu_fix_thief2_cache (thief2_rules).
@@ -1037,12 +1058,22 @@ void dtu_trig_state_rules(int level_index, int restore)
 
 	switch (level_index) {
 		case 2:
-			if (Dtu_num_triggers > 1)
-				Dtu_triggers[1].on = 0;
+			if (Dtu_num_triggers <= 1)
+				break;
+			if (Dtu_fix_keep_triggers) {
+				keep_trigger_on(1);
+				return;
+			}
+			Dtu_triggers[1].on = 0;
 			break;
 		case 6:
-			if (Dtu_num_triggers > 34)
-				Dtu_triggers[34].on = 0;
+			if (Dtu_num_triggers <= 34)
+				break;
+			if (Dtu_fix_keep_triggers) {
+				keep_trigger_on(34);
+				return;
+			}
+			Dtu_triggers[34].on = 0;
 			break;
 		case 7:
 			if (Dtu_num_triggers <= 46)
@@ -1962,7 +1993,7 @@ static void read_options(void)
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-origtrig"))
-		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = 0;
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }

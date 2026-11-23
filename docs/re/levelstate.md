@@ -147,7 +147,8 @@ the bits 0 to 4).
 0x5AB53 (argument 0). Argument 0 skips only the reset (`je 0x5a901`), so the
 rules of the table run at each load of a level, the first visit included.
 In 1.3 the message of KOBOLDS segment 167 never shows, THIEF1 trigger 34
-never fires and DROW2 trigger 20 runs the script of object 42 from the
+(the heal of the ladder of segment 281) never fires and DROW2 trigger 20
+runs the script of object 42 (the release of the young dragons) from the
 first visit on.
 
 The port: `dtu_trig_state_rules` (dtutrig.c) at the end of
@@ -158,7 +159,10 @@ trigger and the bytes 3, 4 of each trap are 0 in all shipped files (**V**,
 checked in the files). The rule of thief2 is a defect of 1.3 that keeps the
 cache of the guildleader closed: with `Dtu_fix_thief2_cache` (on,
 `-origtrig` clears it) the port does not apply it (triggers.md, sections 2
-and 9). Test: `-level FLAME -statetest -1,0,-1,1,62 -triglog` warps to HUB4
+and 9). `Dtu_fix_keep_triggers` (on, `-origtrig` clears it) leaves
+KOBOLDS trigger 1 and THIEF1 trigger 34 on, and turns them on again in a
+level state where the rule switched them off (off, never fired, not found
+by a thief). Test: `-level FLAME -statetest -1,0,-1,1,62 -triglog` warps to HUB4
 and back and prints "level rule of the restore (0x5A855), level 32" after
 "Restoring TEMP32.LVL."
 
@@ -171,7 +175,7 @@ points of its type, +0x15E = 0. The restore never runs 0xACCDB or 0xAC7B2
 again and reads no type table: the types keep what the setup of the level
 file (with the saved-state argument) gave them. The trigger rule of KOBOLDS
 (trigger 1 off) runs at the load and at the restore, so the message of
-segment 167 never shows; the port does the same.
+segment 167 never shows in 1.3; the port shows it (`Dtu_fix_keep_triggers`).
 
 The port: `dtu_objects_level_setup_restore` copies the type entries of the
 setup of the level file back (`Setup_ext` in dtuobj.c) and runs no level

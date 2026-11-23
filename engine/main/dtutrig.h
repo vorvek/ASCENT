@@ -182,6 +182,12 @@ extern int Dtu_fix_trap_pause;
 // chains again, and a level state with the copy gets trigger 46 of the
 // level file back. 0 (-origtrig): the rules of 1.3.
 extern int Dtu_fix_thief2_cache;
+// 0x5A855 runs at each load of a level and switches off KOBOLDS trigger 1
+// (the message of seg 167) and THIEF1 trigger 34 (the heal of the ladder of
+// seg 281), so they never fire in 1.3. 1 (default): the rule leaves them on,
+// and a level state where the rule switched one off (off, never fired, not
+// found by a thief) gets it back on. 0 (-origtrig): the rule of 1.3.
+extern int Dtu_fix_keep_triggers;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;

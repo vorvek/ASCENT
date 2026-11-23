@@ -234,10 +234,31 @@ TESTS = [
       [r"wall 40\.4: type 4[\s\S]*quest: level 3 [\s\S]*wall 40\.4: type 4[\s\S]*quest: level 1 "], frames=170,
       extra=["-triglog", "-statelog"]),
     # THIEF1: after the restore of its state, 0x5A855(0) switches trigger 34
-    # off (0x5A94E, the `on` byte 34 * 0x59 + 0x0E; D-070).
+    # off (0x5A94E, the `on` byte 34 * 0x59 + 0x0E; D-070). 1.3
+    # (-origtrig) only: Dtu_fix_keep_triggers leaves it on.
     T("thief1_restore_rule", "THIEF1", "20:warp=7.612,60:warp=6.1,100:quest",
       [r"level rule of the restore \(0x5A855\), level 6", r"quest: level 6 "], frames=120,
+      extra=["-triglog", "-statelog", "-origtrig"]),
+    T("thief1_restore_keep", "THIEF1", "20:warp=7.612,60:warp=6.1,100:quest",
+      [r"Restoring TEMP6\.LVL", r"quest: level 6 "], [r"level rule of the (load|restore) \(0x5A855\), level 6"], frames=120,
       extra=["-triglog", "-statelog"]),
+    # THIEF1 trigger 34: the ladder of seg 281 side 4 heals 6 points (trap
+    # 12, stat_delta 6). 1.3 switches the trigger off at each load (0x5A855
+    # at 0x49C38); Dtu_fix_keep_triggers leaves it on.
+    T("thief1_heal281", "THIEF1", "10:damage=8,20:goside=281.4,80:quest",
+      [r"trap 12 runs: seg 281 side 4", r"quest: level 6 seg 281 "], frames=90,
+      extra=["-triglog", "-testmove", "wait:22,forward:40"]),
+    T("thief1_heal281_orig", "THIEF1", "10:damage=8,20:goside=281.4,80:quest",
+      [r"level rule of the load \(0x5A855\), level 6", r"trigger 34 \(on=0 type=8", r"quest: level 6 seg 281 "],
+      [r"trap 12 runs"], frames=90, extra=["-triglog", "-origtrig", "-testmove", "wait:22,forward:40"]),
+    # KOBOLDS trigger 1: the message of seg 167 ("This room is strangely
+    # quiet"). 1.3 switches it off at each load; Dtu_fix_keep_triggers
+    # leaves it on.
+    T("kobolds_msg167", "KOBOLDS", "20:goseg=167",
+      [r"say 2: This room is strangely quiet"], [r"level rule of the load"], frames=40, extra=["-triglog"]),
+    T("kobolds_msg167_orig", "KOBOLDS", "20:goseg=167",
+      [r"level rule of the load \(0x5A855\), level 2", r"trigger 1 \(on=0 type=8"], [r"say 2:"], frames=40,
+      extra=["-triglog", "-origtrig"]),
     # THIEF2: the symbol of Mask (trigger 46, seg 266 side 0) opens the wall
     # of the cache (trap 18, seg 255 side 0). 1.3 (-origtrig) makes trigger
     # 46 a copy of trigger 43 at the load (0x494EB calls 0x5A855(1)): trap
