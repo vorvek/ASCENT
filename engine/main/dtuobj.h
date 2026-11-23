@@ -573,6 +573,10 @@ void dtu_obj_log(char *format, ...);
 // attack, the player moves D units away from it (tools/check_reach.py).
 void dtu_obj_test_stepback(int objnum, int dist);
 
+// ASCENT: test (-chartest aipath=N.SEG): creature N gets a random path in
+// AI mode 2 with the goal segment SEG, as the door opener leaves it.
+void dtu_obj_test_ai_path(int objnum, int seg);
+
 // Scenery (0xA6ACB, 0x9FA41): settings, see dtuobj.c. -origobj clears them.
 extern int Dtu_fix_cant_break;		// 1: the keyword cant_break works
 extern int Dtu_fix_push_body;		// 1: pushed scenery and the bodies: no stop inside of the player
