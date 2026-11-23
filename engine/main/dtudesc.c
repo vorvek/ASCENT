@@ -272,6 +272,7 @@ static void power_lines(int type, int id)
 			case DTU_IP_TURN_UNDEAD:	line(LT("The Turn Undead key works with it.")); break;
 			case DTU_IP_INFRA_HUMAN:	break;	// the effect list names Infravision: each other race has it, so no extra line
 			case DTU_IP_FAST_ATTACK:	line(LT("Attacks twice as fast. Does not add to Haste.")); break;
+			case DTU_IP_PROT_SAVES:	line(LT("Saving throws: %d better. Of several protection items only the best one counts."), p[i].value); break;
 			case DTU_IP_PROT_AMULET:	line(LT("Only the highest magic protection bonus counts. An Amulet of Protection +1 does not improve a +2 armor and does not add to a Ring or Cloak of Protection.")); break;
 		}
 }

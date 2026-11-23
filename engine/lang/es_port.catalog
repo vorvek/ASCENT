@@ -419,6 +419,46 @@ id: port.only_the_highest_magic_protection_bonus__3
 en: Only the highest magic protection bonus counts. An Amulet of Protection +1 does not improve a +2 armor and does not add to a Ring or Cloak of Protection.
 tr: Solo cuenta el mayor bono de protección mágica. Un Amuleto de protección +1 no mejora una armadura +2 ni se suma a un Anillo o a una Capa de protección.
 
+id: port.saving_throws_d_better_of_several_protec
+en: Saving throws: %d better. Of several protection items only the best one counts.
+tr: Tiradas de salvación: %d mejor. De varios objetos de protección solo cuenta el mejor.
+
+id: port.paralyzation_poison_death
+en: Paralyzation/Poison/Death
+tr: Parálisis/Veneno/Muerte
+
+id: port.rod_staff_wand
+en: Rod/Staff/Wand
+tr: Vara/Bastón/Varita
+
+id: port.petrification_polymorph
+en: Petrification/Polymorph
+tr: Petrificación/Polimorfia
+
+id: port.breath_weapon
+en: Breath Weapon
+tr: Arma de aliento
+
+id: port.spell
+en: Spell
+tr: Conjuro
+
+id: port.para
+en: Para
+tr: Parál
+
+id: port.rod
+en: Rod
+tr: Vara
+
+id: port.petri
+en: Petri
+tr: Petrif
+
+id: port.breath
+en: Breath
+tr: Aliento
+
 id: port.a_mage_gets_1_better_armor_class_after_a
 en: A mage gets 1 better armor class after Armor, Magical Vestment and Shield.
 tr: Un mago tiene 1 punto mejor de CA tras Armadura, Vestimenta Mágica y Escudo.

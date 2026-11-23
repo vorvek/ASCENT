@@ -2179,6 +2179,18 @@ static void draw_stats(void)
 		area_text_left(Dtu_hires ? 338 : 183, y, Dtu_hires ? 50 : 24, h, text, c);
 	}
 
+	// ASCENT: the five saving throws with the bonus of the protection items
+	// (dtu_char_save_number, Dtu_fix_prot_saves) on the empty boards below
+	// the thief skills: five rows in high resolution, three rows of two
+	// with the short names in low resolution
+	for (i = 0; i < 5; i++) {
+		sprintf(text, "%d", dtu_char_save_number(i));
+		if (Dtu_hires)
+			skill_row(212, 185 + 13 * i, 185, 13, (char *) dtu_char_save_name(i, 0), text, rgb6(63, 48, 32));
+		else
+			skill_row(i & 1 ? 156 : 102, 91 + 12 * (i / 2), 50, 12, (char *) dtu_char_save_name(i, 1), text, rgb6(63, 48, 32));
+	}
+
 	// ASCENT: the spell tables (0x331AC to 0x334A6, areas made at 0x9A312
 	// from the tables 0x144CA8 to 0x144D40): the headers "Mage Spells" and
 	// "Cleric Spells" (TEX 765, 766), and for the spell levels 1 to 4 the

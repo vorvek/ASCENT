@@ -393,6 +393,27 @@ int dtu_char_hit_points(void);
 // value of dtu_char_armor_class), 1 a missile. They differ only with Shield
 // (Dtu_fix_shield_ac of dtuspell.h).
 int dtu_char_armor_class_vs(int missile);
+// ASCENT: the saving throws of the player. In 1.3 no item changes a save
+// (0xAE596). A decision of the user (AD&D 2e): the best of the worn Rings,
+// Cloak and Amulet of Protection adds its bonus to the five saves; they do
+// not add together. 1 (default). 0 (-origcombat): 1.3.
+extern int Dtu_fix_prot_saves;
+// The bonus of the protection items (0 with Dtu_fix_prot_saves 0).
+int dtu_char_save_bonus(void);
+// The number the player needs for a save of category 0 to 4 (DTU_SAVE_ of
+// dtuspell.h), with the bonus of the items (the statistics screen).
+int dtu_char_save_number(int cat);
+// The name of a save category in the language; brief: the short name of
+// the low resolution statistics screen.
+const char *dtu_char_save_name(int cat, int brief);
+// The cause of the next save of the player for the session log: what (a
+// spell, "Chill Touch") and who (the caster or attacker, or NULL). The
+// next save takes it.
+void dtu_char_save_cause(const char *what, const char *who);
+// dtu_spell_save of the player: need is the number of the class table.
+// Returns the number with the bonus of the items and writes the session
+// log line (cause, category, d20, numbers, made or failed).
+int dtu_char_player_save(int cat, int roll, int need);
 int dtu_char_max_hit_points(void);
 // Adds hit points, up to the maximum. Returns the number that was added.
 int dtu_char_heal(int points);
@@ -586,6 +607,7 @@ int dtu_char_spider_turn_level(void);
 #define DTU_IP_INFRA_HUMAN	16		// the Infravision effect only for a human
 #define DTU_IP_FAST_ATTACK	17		// ASCENT: attacks twice as fast, no Haste (dtu_char_item_fast)
 #define DTU_IP_PROT_AMULET	18		// ASCENT: only the highest magic protection bonus counts (Dtu_fix_ring_magic_armor)
+#define DTU_IP_PROT_SAVES		19		// ASCENT: value better saving throws, the best protection item counts (Dtu_fix_prot_saves)
 typedef struct dtu_item_power {
 	int		kind, value, value2;
 } dtu_item_power;

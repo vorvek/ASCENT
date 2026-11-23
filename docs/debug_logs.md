@@ -41,6 +41,12 @@ too.
   `Creature falls: ...`.
 - Each award of experience: `Experience: +TOTAL, +PART for each class, now X / Y`, and each
   level gained: `Level gained: class levels A / B -> C / D, N hit points`.
+- Each saving throw of the player: `Save of the player: CAUSE (SOURCE), CATEGORY: d20 R,
+  needs N (table T, protection +B): made` (or `failed`). The cause is a spell (the
+  source is its caster), Chill Touch (the attacker), or the blindness or deafness of
+  the fire (Fireball, the fire trap). N is the number of the class table T minus the
+  bonus B of the best Ring, Cloak or Amulet of Protection (`Dtu_fix_prot_saves`). With
+  the verbose combat log on, the message area also shows `Save d20 R vs N: made.`.
 - An object that the restore of a level state kills: after the 1.3 line `STATE: killing
   object N -- illegal segment`, the line `State: object N is an effect (type 1 fireball,
   vclip V, ...)` or `State: object N type T id I NAME has the illegal segment S`.

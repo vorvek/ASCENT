@@ -569,11 +569,14 @@ WORN = {
     ("armor", 46): "Invisibility while worn. It ends when you attack and comes back at the next change "
                    "of equipment.",
     ("armor", 47): "Counts with any armor, shield or bracers. Only the highest magic protection bonus "
-                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak.",
+                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak. "
+                   "The bonus also makes the saving throws better (the best protection item).",
     ("armor", 48): "Counts with any armor, shield or bracers. Only the highest magic protection bonus "
-                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak.",
+                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak. "
+                   "The bonus also makes the saving throws better (the best protection item).",
     ("armor", 49): "Counts with any armor, shield or bracers. Only the highest magic protection bonus "
-                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak.",
+                   "counts: of the magic of the armor, a Ring or Amulet of Protection and this cloak. "
+                   "The bonus also makes the saving throws better (the best protection item).",
     ("armor", 50): "Dexterity +4 (Dexterity 6 or less), +2 (7 to 13) or +1 (14 to 19). Open Locks +10% "
                    "for a thief; for any other class Open Locks becomes 37%.",
     ("armor", 51): "Detect Magic while worn. It gives no light.",
@@ -613,6 +616,9 @@ FIXES = [
                                          "round for 1 round + 1 per 3 levels, as in AD&D 2nd edition; "
                                          "1.3 does 4 per level in one hit, save for half."),
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),
+    ("Dtu_fix_prot_saves", "-origcombat", "The best Ring, Cloak or Amulet of Protection also makes your "
+                                          "saving throws better by its bonus; in 1.3 no item changes a save. "
+                                          "The statistics screen shows the five saves."),
     ("Dtu_fix_bracers_ac", "-origcombat", "Rings and cloaks of protection count with the Bracers of "
                                           "Defense; in 1.3 the bracers are magic armor and they do not."),
     ("Dtu_fix_ring_magic_armor", "-origcombat", "Only the highest magic protection bonus counts, of the magic "
@@ -1223,7 +1229,9 @@ class Pages:
             "",
             "Roll d20: the save succeeds at the number or more. The level is your higher class level, "
             "at most 12. With two classes the better number of the two tables counts. Race, "
-            "Constitution, Wisdom and magic items do not change saves. Spells use the Spell column.",
+            "Constitution and Wisdom do not change saves. The best worn Ring, Cloak or Amulet of "
+            "Protection lowers all five numbers by its bonus (1.3: no item changes a save). Spells "
+            "use the Spell column. The statistics screen shows your five numbers.",
             "",
             md_table(["Class", "Levels", "Paralyzation, poison, death", "Rod, staff, wand",
                       "Petrification, polymorph", "Breath", "Spell"], save_rows),
@@ -1540,10 +1548,12 @@ class Pages:
                 if title == "Rings" and i in (0, 14, 15):
                     eff = ("Only the highest magic protection bonus counts: of the magic of the armor, the "
                            "best of these rings and a Cloak or Amulet of Protection. Of two of these rings only the "
-                           "better counts.")
+                           "better counts. The bonus also makes the saving throws better (the best "
+                           "protection item).")
                 if title == "Amulets" and 28 <= i <= 32:
                     eff = ("Only the highest magic protection bonus counts: of the magic of the armor, "
-                           "this amulet and a Ring or Cloak of Protection.")
+                           "this amulet and a Ring or Cloak of Protection. The bonus also makes the "
+                           "saving throws better (the best protection item).")
                 if i == 33:
                     ac = 0
                 eff = " ".join(x for x in (eff or "AC only.", r.note()) if x)

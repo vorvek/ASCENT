@@ -49,6 +49,7 @@
 #include "wall.h"			// ASCENT: the test command wall of -chartest
 #include "gameseq.h"		// ASCENT: Current_level_num for the test command quest
 #include "dtuscroll.h"	// ASCENT: the text screen of the Scroll
+#include "dtulog.h"		// ASCENT: the session log line of a save of the player
 #include "dtudesc.h"		// ASCENT: the test commands of the description window
 #include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up, the session log lines
 #include "dtufe.h"		// ASCENT: the class mask of the front end (Dtu_fix_level_thief)
@@ -118,6 +119,7 @@ int Dtu_fix_potion_class = 1;
 int Dtu_fix_creature_missile = 1;
 int Dtu_fix_bracers_ac = 1;
 int Dtu_fix_ring_magic_armor = 1;
+int Dtu_fix_prot_saves = 1;
 int Dtu_backstab = 0;
 int Dtu_auto_choice = -1;
 static int Dtu_last_attack_roll = 0;
@@ -258,7 +260,8 @@ static void read_options(void)
 		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
-			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_ring_magic_armor = 0;
+			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_ring_magic_armor =
+			Dtu_fix_prot_saves = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -1251,6 +1254,8 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		if (id == 27)
 			ADD(DTU_IP_WIZARDRY, 0, 0);
 	}
+	if (Dtu_fix_prot_saves && (is_prot_ring(&e) || is_prot_cloak(&e) || is_prot_amulet(&e)) && table_ac(&e))
+		ADD(DTU_IP_PROT_SAVES, -table_ac(&e), 0);
 	if (slot == DTU_SLOT_LOCKPICK && dtu_char_lockpick_bonus(id))
 		ADD(DTU_IP_LOCKS_THIEF, dtu_char_lockpick_bonus(id), 0);
 	if (slot == DTU_N_SLOTS && id == 54)
@@ -1733,6 +1738,66 @@ int dtu_char_armor_class_vs(int missile)
 	if (!missile || !ConsoleObject || !(ConsoleObject->dtu.m_88 & DTU_FX_SHIELD))
 		return Dtu_char.pa.armor_class;
 	return Dtu_char.ac_missile;
+}
+
+//------------------------------------------------------------------------
+// ASCENT: the saving throws of the player (Dtu_fix_prot_saves). 0xAE596
+// reads only the class levels: no item changes a save in 1.3.
+
+static const char *Save_name[5] = {
+	LN("Paralyzation/Poison/Death"), LN("Rod/Staff/Wand"), LN("Petrification/Polymorph"),
+	LN("Breath Weapon"), LN("Spell")
+};
+// the short names of the statistics screen in low resolution
+static const char *Save_short[5] = { LN("Para"), LN("Rod"), LN("Petri"), LN("Breath"), LN("Spell") };
+static char Save_what[80], Save_who[48];
+
+const char *dtu_char_save_name(int cat, int brief)
+{
+	if (cat < 0 || cat > 4)
+		return "?";
+	return dtu_tr(brief ? Save_short[cat] : Save_name[cat]);
+}
+
+int dtu_char_save_bonus(void)
+{
+	static const int slots[4] = { DTU_SLOT_RING1, DTU_SLOT_RING2, DTU_SLOT_CLOAK, DTU_SLOT_NECKLACE };
+	dtu_inv_item *e;
+	int i, v, best = 0;
+
+	if (!Dtu_fix_prot_saves || !Dtu_char.created)
+		return 0;
+	for (i = 0; i < 4; i++) {
+		e = ref_entry(Dtu_char.slot[slots[i]]);
+		if (e && (is_prot_ring(e) || is_prot_cloak(e) || is_prot_amulet(e))) {
+			v = -table_ac(e);
+			if (v > best)
+				best = v;
+		}
+	}
+	return best;
+}
+
+int dtu_char_save_number(int cat)
+{
+	return dtu_spell_player_save_number(cat) - dtu_char_save_bonus();
+}
+
+void dtu_char_save_cause(const char *what, const char *who)
+{
+	snprintf(Save_what, sizeof(Save_what), "%s", what ? what : "");
+	snprintf(Save_who, sizeof(Save_who), "%s", who ? who : "");
+}
+
+int dtu_char_player_save(int cat, int roll, int need)
+{
+	int bonus = dtu_char_save_bonus(), n = need - bonus;
+
+	dtulog_event("Save of the player: %s%s%s%s, %s: d20 %d, needs %d (table %d, protection %+d): %s",
+		Save_what[0] ? Save_what : "unknown cause", Save_who[0] ? " (" : "", Save_who, Save_who[0] ? ")" : "",
+		(cat >= 0 && cat < 5) ? Save_name[cat] : "?", roll, n, need, bonus, roll >= n ? "made" : "failed");
+	Save_what[0] = Save_who[0] = 0;
+	return n;
 }
 
 int dtu_char_thac0(void)

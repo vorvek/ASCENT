@@ -320,7 +320,34 @@ def test_misc(t):
     return "Cursed Scroll, Gem of Curing, plot item drop"
 
 
-TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_protection, test_whin, test_misc]
+def save_lines(t, name):
+    """The save lines of the session log of a run (user/logs)."""
+    d = os.path.join(t.tmp, name, "user", "logs")
+    out = []
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        with open(os.path.join(d, f), encoding="utf-8", errors="replace") as fh:
+            out += [l for l in fh.read().split("\n") if "Save of the player:" in l]
+    return out
+
+
+def test_saves(t):
+    """The best protection item adds its bonus to the saves of the player
+    (Dtu_fix_prot_saves): Ring of Protection +3 and Cloak +1, a fighter of
+    level 1 needs 17 against a spell, 14 with the ring. Each save writes a
+    session log line. -origcombat: no bonus."""
+    cmds = ["give=15.15.1", "equip=15.15", "give=15.47.1", "equip=15.47", "castby=7.17", "castby=7.17"]
+    t.run("saves", cmds)
+    t.run("saves_orig", cmds, ["-origcombat"])
+    new, orig = save_lines(t, "saves"), save_lines(t, "saves_orig")
+    check(len(new) == 2 and len(orig) == 2, "save lines: %d and %d" % (len(new), len(orig)))
+    for l in new:
+        check("Confusion" in l and "Spell: d20" in l and "needs 14 (table 17, protection +3)" in l, "line: %s" % l)
+    for l in orig:
+        check("needs 17 (table 17, protection +0)" in l, "-origcombat line: %s" % l)
+    return new[0].split("] ", 1)[-1]
+
+
+TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_protection, test_saves, test_whin, test_misc]
 
 
 def main():

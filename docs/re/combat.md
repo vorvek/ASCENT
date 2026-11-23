@@ -1369,6 +1369,14 @@ Tables (rows by level band, columns 0..4):
 
 These are the AD&D 2nd edition saving throw tables.
 
+ASCENT: `Dtu_fix_prot_saves` (default, `-origcombat` clears it, a decision of the
+user): the best worn Ring, Cloak or Amulet of Protection subtracts its bonus from
+the five numbers of the player; the items do not add together
+(`dtu_char_save_bonus`, called from the player branch of `dtu_spell_save`). The
+statistics screen shows the five numbers with the bonus (under the thief skills;
+short names in low resolution), and each save of the player writes a line in the
+session log (`docs/debug_logs.md`).
+
 ## B6. Usable items: 0x37A6A(index) (displays.c, Code)
 
 Called from the inventory input (0x2FCC0), the inventory browser (0x35ABD) and the
@@ -2269,6 +2277,7 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_melf_acid` | dtuspell.c | Melf's Acid Arrows (0x8EFE0): no attack roll, 4 L acid in one hit, save for half | the AD&D 2nd edition rule: an attack roll with the THAC0 of a fighter of the caster level, 2d4 acid on a hit and 2d4 at the start of each of the next L/3 rounds of 60.0, no save (spells.md, section 10) |
 | `Dtu_fix_bracers_ac` | dtuchar.c | the Bracers of Defense are magic armor for the Rings and Cloaks of Protection (0xAFEA6): neither counts with them | the bracers are a base armor class as a body armor: the rings and the cloaks count (a decision of the user) |
 | `Dtu_fix_ring_magic_armor` | dtuchar.c | no Ring of Protection counts with magic armor, a Cloak of Protection counts only with no shield, magic armor or heavy armor (0xAF930), and a ring, a cloak and an Amulet of Protection add (0xAFB55) | only the highest magic protection bonus counts, of the magic of the armor, the best ring, the cloak and the amulet; the ring and the cloak count with any armor, shield or bracers; a shield always adds all of its armor class (decisions of the user) |
+| `Dtu_fix_prot_saves` | dtuchar.c, dtuspell.c | no item changes a save of the player (0xAE596 reads the class levels only) | the best of the Rings, Cloak and Amulet of Protection subtracts its bonus from the five saves (a decision of the user) |
 | `Dtu_fix_wizardry_ring` | dtuchar.c | the Ring of Wizardry doubles the slots of the levels 1 to 3 each time the equipment changes, halves them once at the end | one doubling while it is worn |
 | `Dtu_fix_potion_frame` | dtuchar.c | the intelligence potion rolls 1 in 63 in each frame | one roll for each reference frame (3/64 s) |
 | `Dtu_fix_luck_coin` | dtuchar.c | the Potion of Luck takes the lowest bit of the day clock (frame times) | rand() & 1 |
