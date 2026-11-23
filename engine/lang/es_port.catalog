@@ -2045,6 +2045,10 @@ id: port.causes_s_on_creatures_of_level_d_or_less
 en: Causes %s on creatures of level %d or less.
 tr: Efecto: %s en criaturas de nivel %d o menos.
 
+id: port.causes_s_on_creatures_of_level_d_or_less_2
+en: Causes %s on creatures of level %d or less. The target may drop its weapon.
+tr: Efecto: %s en criaturas de nivel %d o menos. El objetivo puede soltar su arma.
+
 id: port.holds_undead_of_level_d_or_less
 en: Holds undead of level %d or less.
 tr: Inmoviliza muertos vivientes de nivel %d o menos.

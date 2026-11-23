@@ -215,9 +215,9 @@ change of the rule needs a change here:
   (Cure: extraplanar; Fear and Scare: MONSTER_F_NO_SCARE; Sleep:
   MONSTER_F_NO_SLEEP, the elf and the half-elf; Infravision: a creature
   with infravision; the Sleep pool) are in the cases.
-- Scare makes the target drop its weapon on a d2 as Fear does, and its
-  sentence does not say it: no pattern of the catalog has a level limit
-  and the weapon together.
+- Scare makes the target drop its weapon on a d2 as Fear does. Its
+  sentence says it with a test of the spell number 44 in case
+  `DTU_SK_CAUSE` of `spell_effect`, not with a flag of the rule table.
 - The Chill Touch line: the melee hit of `dtucombat.c` (0x29E3D) applies
   the 1d4 and the Fear of undead.
 - `dtudesc.c` items, which need a function of `dtuchar.c` or `dtuobj.c`:

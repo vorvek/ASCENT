@@ -573,7 +573,7 @@ def check_conditions(args, tmp, run_name, extra):
         return bad + ["conditions: no texts of BANE"]
     for sp in COND_SPELLS:
         lines = texts.get(("spell", str(sp)), [])
-        m1 = find(lines, r"^Causes (.+) on creatures of level (\d+) or less\.$")
+        m1 = find(lines, r"^Causes (.+) on creatures of level (\d+) or less\.( The target may drop its weapon\.)?$")
         m2 = find(lines, r"^Holds undead of level (\d+) or less\.$")
         if not (m1 or m2):
             bad.append("conditions: spell %d '%s': no level limit line" % (sp, lines[0] if lines else "?"))

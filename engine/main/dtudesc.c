@@ -578,7 +578,11 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 			break;
 		// DTU_SR_LEVEL_CAP: the highest level of a target (rule_reaches)
 		case DTU_SK_CAUSE:
-			if (f->max_level >= 0)
+			// Scare (case 44 of dtuspell.c) drops the weapon of the target on a
+			// d2, as Fear does (0xAE837, 0x3C4BD)
+			if (f->max_level >= 0 && spell == 44)
+				line(LT("Causes %s on creatures of level %d or less. The target may drop its weapon."), b, f->max_level);
+			else if (f->max_level >= 0)
 				line(LT("Causes %s on creatures of level %d or less."), b, f->max_level);
 			else
 				line(LT("Causes %s."), b);
