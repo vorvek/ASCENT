@@ -322,7 +322,8 @@ void script_frame(void)
 			// ASCENT: for tools/uitest.py
 			int mx = 0, my = 0;
 			mouse_get_pos(&mx, &my);
-			printf("Mousestate relative=%d immersive=%d x=%d y=%d\n", plat_mouse_get_relative(), Dtu_immersive, mx, my);
+			printf("Mousestate relative=%d immersive=%d x=%d y=%d menu=%d\n", plat_mouse_get_relative(), Dtu_immersive, mx, my,
+				nm_pointer_held());
 			fflush(stdout);
 		} else
 			printf("Script: unknown command '%s'\n", s);

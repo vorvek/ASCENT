@@ -233,6 +233,9 @@ extern int newmenu_filelist( char * title, char * filespace, char * filename );
 // Returns 0 if the user closed the window.
 extern int nm_show_frame();
 
+// ASCENT: new. 1 while an open menu holds the mouse pointer.
+extern int nm_pointer_held(void);
+
 // ASCENT: new. File search, replaces _dos_findfirst and _dos_findnext of
 // Watcom C (see newmenu.c). nm_findfirst and nm_findnext return 0 when
 // they found a file. The name of the file is in the name field. Call

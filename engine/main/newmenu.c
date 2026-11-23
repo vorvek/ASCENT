@@ -591,6 +591,11 @@ static int nm_pointer_on()
 	return Nm_ptr_depth > 0 && !Dtu_fe_original_input;
 }
 
+int nm_pointer_held(void)
+{
+	return Nm_ptr_depth > 0;
+}
+
 static void nm_pointer_begin()
 {
 	if (Nm_ptr_depth++ == 0)	{

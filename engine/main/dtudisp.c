@@ -54,6 +54,7 @@
 #include "timer.h"			// ASCENT: the repeat of a held scroll bar arrow
 #include "dtuopts.h"		// ASCENT: Dtu_fix_lowres_aspect, the shape of the shown pixel
 #include "platform.h"		// ASCENT: plat_mouse_wheel
+#include "newmenu.h"		// ASCENT: nm_pointer_held
 
 int Dtu_hires = 1;					// 0x13A94B
 int Dtu_display_active = 0;
@@ -2887,6 +2888,14 @@ void dtu_display_frame(void)
 	dtu_char_frame();
 	dtu_lang_sync();		// ASCENT: the text follows the sex of the player (dtulang.h)
 	if (!Dtu_display_active) return;
+
+	// ASCENT: the front end, the menus and the thief points box save and
+	// restore the relative mode of the mouse each on its own; a death, the
+	// death menu and a load can leave it off while the immersive mode is on
+	// (then the view stops turning at the edge of the window). In the game
+	// frame the mode follows Dtu_immersive.
+	if (!nm_pointer_held() && plat_mouse_get_relative() != (Dtu_immersive != 0))
+		mouse_set_relative(Dtu_immersive);
 
 	mouse_get_pos(&mx, &my);
 	do_input(mx, my);
