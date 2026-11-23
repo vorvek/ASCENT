@@ -244,7 +244,7 @@ def check_game(args, tmp, run_name, extra):
         got = dump_value(("armor", a), r"armor class (-?\d+),")
         m1, m2 = find(lines, r"^Armor class: (-?\d+)$"), find(lines, r"^Armor class: (\d+) better$")
         want = int(m1.group(1)) if m1 else 10 - int(m2.group(1)) if m2 else 10
-        cap = find(lines, r"^Armor class (-?\d+) at most\.$")
+        cap = find(lines, r"^Armor class (-?\d+) before Dexterity, if yours is worse\.$")
         if cap:
             want = min(want, int(cap.group(1)))
         # one point of armor class for dexterity 15 (the character has 14)
