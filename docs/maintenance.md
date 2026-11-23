@@ -127,6 +127,13 @@ Proposal: `dtufe_script.c` (the `-fescript` interpreter) and `dtufe_menu.c`
 Risk: low to medium. The script interpreter also drives the game menus, so
 keep its entry points unchanged.
 
+Done in part on 2026-11-23: `dtufe_script.c` has the interpreter (376
+lines, 7 functions), moved without a change; `dtufe_int.h` declares what
+`dtufe.c` and `dtufe_script.c` share. Open: `dtufe_menu.c`. The menu code
+reads `Fe_pal` of `dtufe.c`, and `dtudesc.c` includes `dtufe_int.h` and has
+a static `Fe_pal` of its own, so a declaration of `Fe_pal` in `dtufe_int.h`
+does not build. Rename the variable of `dtudesc.c` first, in its own commit.
+
 ### 7. Move the test aids out of the game files
 
 Problem: test code is mixed with game code: `run_command` (`-chartest`) in

@@ -75,7 +75,8 @@ comments.
 | `dtudesc.c` | The description window of items and spells (right click). New in the port. | `description_window.md` |
 | `dtuxp.c` | The experience of the player: the kill line, the next level window, the verbose combat log, the session log lines of deaths, awards and levels. New in the port. | `debug_logs.md` |
 | `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
-| `dtufe.c` | The front end: frame, input, `-fescript`, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
+| `dtufe.c` | The front end: frame, input, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
+| `dtufe_script.c` | The script of the option `-fescript` (split from `dtufe.c`). | `re/frontend.md` |
 | `dtufe_char.c` | Character generation. | `re/frontend.md` |
 | `dtufe_town.c` | Waterdeep, Blackstaff tower and the market. | `re/frontend.md` |
 | `dtustate.c` | Level state files and their copies in the save slots. Same format as the DOS game. | `re/levelstate.md` |
@@ -258,7 +259,7 @@ boxes.
 | `-frames N` | Leave the game after N frames. |
 | `-screenshot FILE` | Write the last frame to a PPM file. |
 | `-fixedfps N` | A fixed frame time from the first frame, so that two runs give the same moves. |
-| `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of the script code in `dtufe.c`. |
+| `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of `dtufe_script.c`. |
 | `-testmove ACTIONS` | Press movement keys for a time: `forward+run:2000ms,left:30,jump:1`. |
 | `-testpos X,Y,Z[,H]` | Put the player at a position at the first frame. |
 | `-testobjpos N,X,Y,Z[,H];...` | Put objects at positions at the first frame (pushed scenery tests). |
