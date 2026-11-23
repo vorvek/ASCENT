@@ -11,7 +11,7 @@ set(MAIN_SOURCES
   robot.c vclip.c effects.c weapon.c powerup.c mglobal.c hash.c
   object.c physics.c collide.c fvi.c gameseg.c laser.c fireball.c ai.c
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
-  lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtuobj_test.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuatk.c dtuspell.c dtuthief.c
+  lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtuobj_test.c dtuobj_item.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuatk.c dtuspell.c dtuthief.c
   dtufe.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuscroll.c dtudesc.c dtuthiefpts.c dtucheat.c dtuopts.c
   dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c dtuitemfix.c dtutblfix.c dtuxp.c)
 

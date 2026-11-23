@@ -123,6 +123,14 @@ typedef struct dtu_missile {
 // dtuobj.c
 
 extern int Test_pos_pending;
+int tbl_int(int record,char *key,int def);
+fix creature_floor_dist(object *obj,fix radius,fix half_height);
+
+//------------------------------------------------------------------------
+// dtuobj_item.c
+
+item_info *item_table_entry(int type,int id);
+void pick_up_item(object *player,object *item);
 
 //------------------------------------------------------------------------
 // dtuobj_test.c
