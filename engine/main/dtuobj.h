@@ -335,6 +335,10 @@ void dtu_draw_item(object *obj);
 
 // The splash of a step of the player in water (dtufoot.c)
 void dtu_water_splash(object *obj, fix side_step);
+// 1: the splash casts no light and lies on the right vector of the player.
+// 0 (-origobj): the light of vclip 10 and the offset on world x and z (1.3,
+// 0x434AB to 0x4351B).
+extern int Dtu_fix_water_splash;
 // 1 for a splash of dtu_water_splash(): it casts no light (lighting.c)
 int dtu_is_water_splash(object *obj);
 void dtu_draw_dressing_vclip(object *obj);

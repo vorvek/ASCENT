@@ -242,6 +242,18 @@ void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,i
 // takes the short way around. next -1 or frac 0 is draw_polygon_model_frame.
 void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int next,fix frac,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[]);
 
+// ASCENT: D-050. 1.3 draws each model but the one of the viewer with the
+// linear texture mapper (0x675D4 to 0x675EC: Linear_tmap_polygon_objects,
+// the byte 0x13D3E3, is 1 and no code writes it), which bends the textures
+// of large polygons near the eye. Corrected (1, default): the software
+// renderer draws all models with the perspective mapper. -origobj clears
+// it. The GPU renderer is perspective correct in both cases.
+extern int Dtu_fix_model_mapper;
+
+// ASCENT: D-054, the texture slots of $WEAPON and $SPELL models (bmread.c).
+// 1: the slots of the table line. 0 (-origobj): the header rule of 1.3.
+extern int Dtu_fix_model_slots;
+
 // ASCENT: the frame times that the draw of an animated model sees, for the
 // interpolation. The game code sets the frame numbers as the original does
 // (by the game time, by steps or by frames); the tracker learns the time

@@ -1590,6 +1590,7 @@ static int line_picture_slot()
 static int Line_n_models;
 static char *Line_model_name[MAX_LINE_MODELS];
 static int Line_model_first[MAX_LINE_MODELS+1];
+static int Line_model_was_bound[MAX_LINE_MODELS];	// an earlier line gave the model its slots
 
 static void line_models_start()
 {
@@ -1616,9 +1617,58 @@ static void line_models_load( int * model_nums, robot_info * r )
 	Line_model_first[Line_n_models] = N_ObjBitmapPtrs;
 	for (i=0; i<Line_n_models; i++ ) {
 		int n_textures = Line_model_first[i+1] - Line_model_first[i];
+		int mn = polyobj_find_model( Line_model_name[i] );
+
+		Line_model_was_bound[i] = mn >= 0 && Polygon_models[mn].dtu_bound;
 		model_nums[i] = load_polygon_model( Line_model_name[i], n_textures, Line_model_first[i], (i==0)?r:NULL );
 		if ( model_nums[i] < 0 )
 			bm_warning( "model '%s' is not in the EGG archive", Line_model_name[i] );
+	}
+}
+
+// ASCENT: D-054. The texture slots of a $WEAPON or $SPELL model. The
+// archive loader of 1.3 points po->textures at the first_texture of the
+// EGG header, plus 1 for a model of the level archive (0x70EED to
+// 0x70F09; 0x70B89 for the player archive), and the readers of $WEAPON
+// (0x2252F) and $SPELL (0x25591) pass their slots to load_polygon_model
+// but do not store them after it, so the header value stays. The slots of
+// the running table parse differ from the header, and in MINES1, PRISON1
+// and TRAIN1 some arrows, bolts and spell models get bitmap 0 (docs/re/
+// models.md, "Textures"). Corrected (1, default): the model draws with the
+// slots of its table line, as the creature and scenery models do in 1.3.
+// -origobj clears it: the header rule. A model that a $MONSTER or
+// $DRESSING line names later still gets the slots of that line, as in 1.3.
+int Dtu_fix_model_slots = 1;
+
+static void line_models_header_slots( int * model_nums )
+{
+	static int done = 0;
+	int i, first_level_model = 0;
+
+	if ( !done ) {
+		done = 1;
+		if ( FindArg( "-origobj" ) )
+			Dtu_fix_model_slots = 0;
+	}
+	if ( Dtu_fix_model_slots )
+		return;
+
+	piggy_get_egg_counts( piggy_get_num_eggs() - 1, NULL, NULL, NULL, NULL, NULL, &first_level_model );
+	for (i=0; i<Line_n_models; i++ ) {
+		polymodel *pm;
+		int first;
+
+		// a model that a $MONSTER or $DRESSING line bound before keeps its
+		// slots (1.3 stores them there)
+		if ( model_nums[i] < 0 || Line_model_was_bound[i] )
+			continue;
+		pm = &Polygon_models[model_nums[i]];
+		first = pm->dtu_first_texture_file + (model_nums[i] >= first_level_model ? 1 : 0);
+		if ( first < 0 || first + pm->dtu_n_textures_file > MAX_OBJ_BITMAPS || pm->dtu_n_textures_file >= MAX_POLYOBJ_TEXTURES )
+			continue;
+		pm->first_texture = first;
+		pm->n_textures = pm->dtu_n_textures_file;
+		pm->dtu_bound = 0;		// a later $MONSTER or $DRESSING line stores its slots
 	}
 }
 
@@ -2024,6 +2074,8 @@ static void bm_read_item(int kind)
 	}
 
 	line_models_load( model_nums, NULL );
+	if ( kind == OL_SPELL )
+		line_models_header_slots( model_nums );		// Dtu_fix_model_slots
 	if ( Line_n_models > 0 )
 		it->model_num = model_nums[0];
 
@@ -2178,6 +2230,7 @@ static void bm_read_dtu_weapon()
 	}
 
 	line_models_load( model_nums, NULL );
+	line_models_header_slots( model_nums );		// Dtu_fix_model_slots
 	if ( Line_n_models > 0 && model_nums[0] >= 0 ) {
 		wi->render_type = WEAPON_RENDER_POLYMODEL;
 		wi->model_num = model_nums[0];
