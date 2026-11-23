@@ -1062,7 +1062,9 @@ void draw_tmap(grs_bitmap *bp,int nverts,g3s_point **vertbuf)
 	Transparency_on = bp->bm_flags & BM_FLAG_TRANSPARENT;
 	if (bp->bm_flags & BM_FLAG_NO_LIGHTING)
 		Lighting_on = 0;
-	Tmap_fx = (bp->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;	// ASCENT: tmapfx.c
+	// ASCENT: tmapfx.c. 0xEA503 to 0xEA525: bitmap flag 0x20, or the tint of
+	// the current object (0x14C4CD), so a tinted model shows the rule too
+	Tmap_fx = (bp->bm_flags & BM_FLAG_DTU_EFFECTS) != 0 || Tmap_tint != 0;
 	tmap_dim_polygon(Lighting_on);		// ASCENT: the conversation window (tmapfx.c)
 	tmap_tint_polygon(Lighting_on);		// ASCENT: the tint of Detect Magic (tmapfx.c)
 
