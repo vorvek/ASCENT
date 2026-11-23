@@ -368,6 +368,11 @@ typedef struct tbl_record {
 
 extern int N_tbl_records;
 extern tbl_record Tbl_records[MAX_TBL_RECORDS];
+// ASCENT: one more at each release of the records (a table of another
+// level). A record number is valid only with the same count: each table
+// has the same sections before $MONSTER, so the same number names another
+// monster in the table of another level.
+extern int Tbl_generation;
 
 // Find "key=value" in a record. Copies the value (without quotes; a list
 // of numbers up to the next keyword) to value. Returns 1 if the key is

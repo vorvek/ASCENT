@@ -382,16 +382,23 @@ static int rat_damage(object *attacker,int normal,int damage)
 // monster table, dtuobj.h)
 int dtu_rat_type(int id)
 {
-	// the answer for each type, with the table record it was read from
-	static int rec[MAX_ROBOT_TYPES], rat[MAX_ROBOT_TYPES], init = 0;
+	// the answer for each type, with the table record it was read from.
+	// ASCENT: the answers of the tables of another level are forgotten
+	// (Tbl_generation, bm.h). Each table has the same number of records
+	// before $MONSTER, so a type has the same record number in each table:
+	// type 4 is the Rat of BONES and the priestess of YPINN, type 6 the Rat
+	// of BAT and a shadow thief (shmfc3) of THIEF0 to THIEF2. With the old
+	// answer a creature that touched a player with boots was squashed as a rat: the
+	// blood vclip 9 and a jump to a random segment (rat_squash, 0x26FE0).
+	static int rec[MAX_ROBOT_TYPES], rat[MAX_ROBOT_TYPES], gen = -1;
 	char value[16];
 	int r;
 
 	if (id < 0 || id >= N_robot_types || id >= MAX_ROBOT_TYPES || (r = Monster_info[id].record) < 0)
 		return 0;
-	if (!init) {
+	if (gen != Tbl_generation) {
 		memset(rec,-1,sizeof(rec));
-		init = 1;
+		gen = Tbl_generation;
 	}
 	if (rec[id] != r) {
 		rec[id] = r;

@@ -412,6 +412,7 @@ static void bm_reset_tables()
 			Tbl_records[i].text = NULL;
 		}
 	N_tbl_records = 0;
+	Tbl_generation++;		// ASCENT: the record numbers name other lines now (bm.h)
 
 	ObjType[0] = OL_PLAYER;
 	ObjId[0] = 0;
@@ -978,6 +979,7 @@ void bm_close()
 				Tbl_records[i].text = NULL;
 			}
 		N_tbl_records = 0;
+		Tbl_generation++;		// ASCENT: the record numbers name other lines now (bm.h)
 
 		piggy_close();
 		Installed=0;
