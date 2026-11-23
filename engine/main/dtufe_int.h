@@ -126,7 +126,7 @@ extern int Fe_quit;						// 1: the window was closed, each loop must end
 extern int Fe_screen_num;				// number of the loaded screen, or -1
 extern grs_font *Fe_font_l, *Fe_font_m, *Fe_font_s;
 extern grs_bitmap *Fe_cursor_bm;		// picture of the cursor in this frame
-extern int Fe_cursor_hot_x, Fe_cursor_hot_y, Fe_cursor_trans;
+extern int Fe_cursor_trans;
 
 //------------------------------------------------------------------------
 // dtufe.c
