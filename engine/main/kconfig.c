@@ -2828,6 +2828,22 @@ static void kc_build_grid(kc_item *items, const int *acts, int n_acts)
 	}
 }
 
+// ASCENT: D-159. In 1.3 an unbound first key (0xFF) of Attack (items 18,
+// 19: 0x538D5 jumps to 0x5390D) and of Cycle Weapon (items 28, 29: 0x53D0E
+// jumps to 0x53D3A) skips the test of the second key, so the second key
+// works only while a first key is bound. All other pairs test the second
+// key. Corrected (1, default): each key of the pair acts alone. -origui
+// clears it.
+int Dtu_fix_key_pair = 1;
+
+// ASCENT: D-162. In 1.3 the mouse items 8, 9 (Float up, Float down) and
+// 19, 20 (Float U/D axis and its invert) are drawn and can be bound, but
+// controls_read_all (0x52737) never reads them: no code refers to their
+// values (0x13CA3D, 0x13CA53, 0x13CB2F, 0x13CB45; the mouse table is at
+// 0x13C978). The joystick items of the same commands are read (0x52B17).
+// Corrected (1, default): the mouse items act. -origui clears it.
+int Dtu_fix_mouse_float = 1;
+
 static void dtu_kc_init(void)
 {
 	int i;
@@ -2836,6 +2852,8 @@ static void dtu_kc_init(void)
 		return;
 	Dtu_kc_ready = 1;
 	dtu_kconfig_defaults();
+	if (FindArg("-origui"))
+		Dtu_fix_key_pair = Dtu_fix_mouse_float = 0;
 
 	// The hot key page
 	{
@@ -2888,6 +2906,8 @@ static int dtu_button_down(int act)
 			return 0;
 		for (i = 0; i < DTU_KC_N_MOUSE; i++)
 			if (Dtu_kc_mouse[i].type == BT_MOUSE_BUTTON && Dtu_kc_mouse[i].text_num1 == text &&
+				(Dtu_fix_mouse_float || (i != 8 && i != 9)) &&		// D-162
+
 				Dtu_kc_settings[5][i] != 255 && mouse_button_state(Dtu_kc_settings[5][i]))
 				return 1;
 	} else if (Dtu_control_type >= 1 && Dtu_control_type <= 4 && joy_present) {
@@ -2903,6 +2923,10 @@ int dtu_action_down(int act)
 {
 	int k0 = dtu_action_key(act, 0), k1 = dtu_action_key(act, 1);
 
+	// D-159: -origui, the second key of Attack and Cycle Weapon needs a
+	// first key
+	if (!Dtu_fix_key_pair && k0 == 255 && (act == DTU_ACT_ATTACK || act == DTU_ACT_CYCLE_WEAPON))
+		k1 = 255;
 	if ((k0 != 255 && keyd_pressed[k0]) || (k1 != 255 && keyd_pressed[k1]))
 		return 1;
 	return dtu_button_down(act) || pad_down(act);
@@ -2988,7 +3012,8 @@ int dtu_control_axes(int *look, int *turn, int *slide, int *updown)
 		src = 1;
 		for (i = 0; i < DTU_KC_N_MOUSE; i++)
 			for (j = 0; j < 4; j++)
-				if (Dtu_kc_mouse[i].type == BT_MOUSE_AXIS && Dtu_kc_mouse[i].text_num1 == texts[j]) {
+				if (Dtu_kc_mouse[i].type == BT_MOUSE_AXIS && Dtu_kc_mouse[i].text_num1 == texts[j] &&
+					(Dtu_fix_mouse_float || i != 19)) {		// D-162
 					int v = Dtu_kc_settings[5][i];
 					if (v < 2) {
 						*out[j] = raw[v];
