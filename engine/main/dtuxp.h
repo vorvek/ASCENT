@@ -68,8 +68,8 @@ int dtu_xp_next_level_text(char *out, int size);
 // menu, -verbosecombat and -noverbosecombat for one run). The attack and
 // damage code reports each number where it computes it; one line in the
 // message log shows them after the hit or miss message of an attack by or
-// on the player, with the attacker and the target first:
-// "You -> Rat: Roll d20 14 +2 = 16 vs 13: hit. Damage 1d8 5 +1 = 6."
+// on the player, with the attacker and the target first (dtu_xp_line_say):
+// "Elflama -> Rat: Roll d20 14 +2 = 16 vs 13: hit. Damage 1d8 5 +1 = 6."
 // "vs" is the number needed (THAC0 minus the armor class in use).
 extern int Dtu_verbose_combat;
 void dtu_xp_roll_clear(void);
@@ -93,5 +93,25 @@ const char *dtu_xp_roll_text(void);
 // The line in the message log when the setting is on and the player is a or
 // b, then the numbers are cleared.
 void dtu_xp_roll_say(object *a, object *b);
+
+// The shared form of a verbose line of an attack, a spell, a save or a
+// magic resistance roll: "ATTACKER -> TARGET: text" in the color of the
+// attacker. The names: the name of the character for the player, the name
+// of the creature in the language of the text, "a trap" for no object or a
+// trap. The message box shows the arrow glyph (character 127 of the game
+// font), the log files "->".
+#define DTU_XP_LINE_OTHER		0		// neither is the player
+#define DTU_XP_LINE_BY_PLAYER	1		// the player attacks or casts
+#define DTU_XP_LINE_ON_PLAYER	2		// a creature or a trap attacks the player
+// The colors (r, g, b of 0 to 63) of the two kinds
+#define DTU_XP_COLOR_BY_PLAYER	16, 63, 16		// green
+#define DTU_XP_COLOR_ON_PLAYER	62, 8, 8		// red
+// Writes the prefix for the message box into shown and for the logs into
+// logged (either may be NULL) and returns the kind (DTU_XP_LINE_*).
+int dtu_xp_line_prefix(object *attacker, object *target, char *shown, int shown_size, char *logged, int logged_size);
+// The message box line with the prefix and the color of the kind, and the
+// line "message: ..." of the -charlog file. Shows the text whether or not
+// the verbose setting is on: the caller tests Dtu_verbose_combat.
+void dtu_xp_line_say(object *attacker, object *target, const char *text);
 
 #endif

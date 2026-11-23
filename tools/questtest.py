@@ -429,9 +429,10 @@ def check_rolls(name, text):
     if not lines:
         return ["no verbose line"]
     for ln in lines:
-        # "attacker -> target: " before the numbers (dtu_xp_roll_say)
+        # "attacker -> target: " before the numbers (dtu_xp_line_say; the
+        # player is the name of the character, or "You" with no character)
         w = re.match(r"(.+?) -> (.+?): (Roll d20 .*)", ln)
-        if not w or "You" not in (w.group(1), w.group(2)):
+        if not w or w.group(1) == w.group(2):
             problems.append("no attacker and target: " + ln)
             continue
         ln = w.group(3)

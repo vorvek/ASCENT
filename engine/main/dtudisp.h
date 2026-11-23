@@ -99,6 +99,10 @@ void dtu_display_add_message(char *text);
 // -1 (the default of most callers of the original) gives the color of
 // index 255. dtu_display_add_message uses it once.
 void dtu_display_next_message_color(int index);
+// ASCENT: the color of the next message as r, g, b (0 to 63, the nearest
+// color of the palette), for a color that the table of 1.3 does not have
+// (the verbose combat log, dtuxp.c). It wins over the index.
+void dtu_display_next_message_rgb(int r, int g, int b);
 
 // Adds the message of a trigger: the color of the player and an empty line after it.
 void dtu_display_add_trigger_message(char *text);

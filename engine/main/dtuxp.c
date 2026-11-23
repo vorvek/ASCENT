@@ -22,6 +22,7 @@
 #include "dtuchar.h"
 #include "dtulog.h"
 #include "dtulang.h"
+#include "dtudisp.h"		// ASCENT: the color of a verbose line
 #include "dtuxp.h"
 
 int Dtu_kill_xp_message = 1;
@@ -395,28 +396,76 @@ const char *dtu_xp_roll_text(void)
 	return text;
 }
 
-// The name of the attacker or the target in the verbose line: "You" for the
-// player, "a trap" for no object or a trap (a light object), else the name
-// in the language (the words of the spell messages, msg_setup of dtuspell.c)
-static const char *roll_who(object *o)
+// ASCENT: the attacker, the arrow and the target of a verbose line, and
+// its color (dtuxp.h)
+
+// The game font of the message box (FNTEMLS_ low, FNTEMHS_ high) has a
+// right arrow at character 127 (its glyphs 127 to 130 are the arrows
+// right, down, left and up, checked in both files). The log files get
+// "->".
+#define XP_ARROW	""
+
+// The name of the attacker or the target: the name of the character for
+// the player ("You" with no character), "a trap" for no object or a trap
+// (a light object), else the name of the creature in the language of the
+// text (dtu_object_display_name, as the hit messages)
+static const char *line_who(object *o)
 {
 	if (o == ConsoleObject)
-		return LT("You");
+		return Dtu_char.created && Dtu_char.name[0] ? Dtu_char.name : LT("You");
 	if (o == NULL || o->type == OBJ_LIGHT)
 		return LT("a trap");
 	return dtu_object_display_name(o);
 }
 
+int dtu_xp_line_prefix(object *attacker, object *target, char *shown, int shown_size, char *logged, int logged_size)
+{
+	char a[64], t[64];
+
+	// one copy: dtu_object_display_name can share its buffer
+	snprintf(a, sizeof(a), "%s", line_who(attacker));
+	snprintf(t, sizeof(t), "%s", line_who(target));
+	if (shown && shown_size > 0)
+		snprintf(shown, shown_size, "%s " XP_ARROW " %s: ", a, t);
+	if (logged && logged_size > 0)
+		snprintf(logged, logged_size, "%s -> %s: ", a, t);
+	if (ConsoleObject && attacker == ConsoleObject)
+		return DTU_XP_LINE_BY_PLAYER;
+	if (ConsoleObject && target == ConsoleObject)
+		return DTU_XP_LINE_ON_PLAYER;
+	return DTU_XP_LINE_OTHER;
+}
+
+void dtu_xp_line_say(object *attacker, object *target, const char *text)
+{
+	char shown[96], logged[96], line[400];
+	int kind;
+
+	if (!text || !text[0])
+		return;
+	kind = dtu_xp_line_prefix(attacker, target, shown, sizeof(shown), logged, sizeof(logged));
+	// The colors (r, g, b of 0 to 63, the nearest palette color): green for
+	// the attacks of the player, a light red for the attacks on the player.
+	// The other messages use amber (the index 255 of 1.3), blue grey (the
+	// triggers, index 0) and dark red (index 1, "You need a bow").
+	if (kind == DTU_XP_LINE_BY_PLAYER)
+		dtu_display_next_message_rgb(DTU_XP_COLOR_BY_PLAYER);
+	else if (kind == DTU_XP_LINE_ON_PLAYER)
+		dtu_display_next_message_rgb(DTU_XP_COLOR_ON_PLAYER);
+	snprintf(line, sizeof(line), "%s%s", shown, text);
+	HUD_init_message("%s", line);
+	// a message that HUD_init_message drops (the same as the last one)
+	// leaves no color for the next message
+	dtu_display_next_message_color(-1);
+	snprintf(line, sizeof(line), "%s%s", logged, text);
+	dtu_char_log("message: %s", line);
+}
+
 void dtu_xp_roll_say(object *a, object *b)
 {
-	char text[256], line[300];
+	char text[256];
 
-	if (Dtu_verbose_combat && ConsoleObject && (a == ConsoleObject || b == ConsoleObject) && roll_text(text, sizeof(text))) {
-		// "attacker -> target: numbers", so that the lines of the player
-		// and of the enemies differ
-		snprintf(line, sizeof(line), "%s -> %s: %s", roll_who(a), roll_who(b), text);
-		HUD_init_message("%s", line);
-		dtu_char_log("message: %s", line);
-	}
+	if (Dtu_verbose_combat && ConsoleObject && (a == ConsoleObject || b == ConsoleObject) && roll_text(text, sizeof(text)))
+		dtu_xp_line_say(a, b, text);
 	dtu_xp_roll_clear();
 }
