@@ -22,6 +22,12 @@ A fifth run (--only game) compares numbers of the texts with the game: the
 run wears each armor, drinks each potion, fires each wand and casts
 each of the 56 spells, and the armor class, the hit points, the effects, their times and
 the spells of the game logs must be the ones of the texts.
+
+Two more runs (--only conditions, also part of --only game) compare the
+condition lines of the spell texts with the game: the caster in the area,
+Shield against Magic Missile, the level limits, undead only and no saving
+throw (check_conditions). Each text run also needs "rule check: 0
+problems" (dtu_spell_rule_check of dtuspell.c).
 """
 import argparse
 import os
@@ -65,6 +71,11 @@ def check(out, name):
         bad.append("%s: %d market texts for %d items" % (name, market, items))
     if "not checked" in out:
         bad.append("%s: the market texts were not checked" % name)
+    # dtu_spell_rule_check: the kinds and the conditions of the spell lines
+    rc = re.search(r"^desc: rule check: (\d+) problems", out, re.M)
+    if not rc or rc.group(1) != "0":
+        bad.append("%s: the rule check of the spell table: %s problems (see the -objlog file)" %
+                   (name, rc.group(1) if rc else "no"))
     print("%s: %d items, %d market lines, %d spells, %s failed" % (name, items, market, spells, total.group(2)))
     return bad
 
@@ -434,6 +445,162 @@ def check_game(args, tmp, run_name, extra):
     return bad
 
 
+# ---------------------------------------------------------------------------
+# The condition lines of the spell texts against the game. The lines come
+# from the conditions of the rule table (DTU_SR_ of dtuspell.h), and the
+# cases of the effect function test the same conditions (rule_reaches,
+# rule_save). These runs check that a line and the game agree:
+# - "Also hits you when you are in the area.": each area spell that lands
+#   is cast at the player; with the line the player must be hit, without it
+#   (and without "yours too") never.
+# - "Stops Magic Missile.": a creature casts Magic Missile at the player
+#   with Shield (no damage) and without it (damage).
+# - "Causes X on creatures of level N or less." and "Holds undead of level
+#   N or less.": the spells on the creatures of BANE: no target above level
+#   N and no living target of Hold Undead gets the effect, and a target at
+#   or below N does.
+# - "Saving throw: None": the target rolls no save.
+
+COND_TRIALS = 12
+COND_SELF_TRIALS = 4
+COND_SPELLS = [23, 44, 46]
+BANE_TARGETS = [6, 8, 13, 16, 18, 42]
+BANE_UNDEAD = {6, 8, 13}  # Banegard, ske_axe, Zombie (MONSTER_F_UNDEAD)
+
+
+def run_script(args, d, level, s, extra):
+    os.makedirs(os.path.join(d, "user"), exist_ok=True)
+    obj_log = os.path.join(d, "obj.log")
+    cmd = [os.path.abspath(args.exe)]
+    for dd in args.datadir:
+        cmd += ["-datadir", dd]
+    cmd += ["-nomovies", "-mute", "-hidden", "-fixedfps", "30", "-userdir", os.path.join(d, "user"), "-level", level,
+            "-frames", str(s.frame + 20), "-chartest", ",".join(s.cmds), "-objlog", obj_log] + extra
+    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=600, cwd=d)
+    return parse_texts(r.stdout), by_frame(obj_log, r"\s*[0-9.]+\s+(\d+) ")
+
+
+def trials_of(ol, frames):
+    """[(obj, level, damage, {effects}, [lines])] of the spelltest trials in the frames."""
+    res = []
+    for f in frames:
+        cur = None
+        for line in ol.get(f, []):
+            m = re.search(r"spelltest: '.+' \(\d+\) level \d+ on obj (\d+) .*\(level (\d+)\), trial", line)
+            if m:
+                cur = [int(m.group(1)), int(m.group(2)), 0, set(), []]
+                res.append(cur)
+                continue
+            if cur is None:
+                continue
+            cur[4].append(line)
+            m = re.search(r"spelltest: result: hit points (-?\d+) to (-?\d+)", line)
+            if m:
+                cur[2] = int(m.group(1)) - int(m.group(2))
+            m = re.search(r"spelltest:   new effect (.+?),", line)
+            if m:
+                cur[3].add(m.group(1))
+    return res
+
+
+def saves_of(trial):
+    return [l for l in trial[4] if re.search(r"save: obj %d " % trial[0], l)]
+
+
+def check_conditions(args, tmp, run_name, extra):
+    bad = []
+    n = 0
+    # the player as the target of each spell, and Magic Missile against Shield
+    s = Script()
+    s.add("class=1")
+    s.add("xp=200000")
+    s.add("desc=%d" % SPELL_LEVEL, "desc")
+    s.frame += 2
+    # one trial for each heal: the trials do not give the hit points back
+    for sp in ALL_SPELLS:
+        for i in range(COND_SELF_TRIALS):
+            s.add("heal=500")
+            s.add("spelltest=%d.%d.-1.1" % (sp, SPELL_LEVEL), ("self", sp))
+    s.add("heal=500")
+    s.add("spelltest=45.%d.-1.0" % SPELL_LEVEL, "shield")
+    for i in range(6):
+        s.add("castby=33.%d" % TARGET, "mm_shield")
+    s.add("spelltest=13.%d.-1.0" % SPELL_LEVEL)
+    for i in range(6):
+        s.add("heal=500")
+        s.add("castby=33.%d" % TARGET, "mm_free")
+    texts, ol = run_script(args, os.path.join(tmp, run_name + "-self"), "YPINN", s, extra)
+    if not texts:
+        return ["conditions: no texts"]
+    for sp in ALL_SPELLS:
+        lines = texts.get(("spell", str(sp)), [])
+        tr = [t for t in trials_of(ol, s.marks[("self", sp)]) if t[0] == 0]
+        if not lines or not tr:
+            bad.append("conditions: spell %d: no text or no trial on the player" % sp)
+            continue
+        hit = any(t[2] > 0 or t[3] for t in tr)
+        if any(re.search(r"^Area: .* where it lands$", l) for l in lines):
+            n += 1
+            if "Also hits you when you are in the area." in lines and not hit:
+                bad.append("conditions: spell %d '%s': the text hits the caster in the area, the game does not" % (sp, lines[0]))
+            elif ("Also hits you when you are in the area." not in lines and not any("yours too" in l for l in lines)
+                  and hit):
+                bad.append("conditions: spell %d '%s': the game hits the caster in the area, the text does not say it" %
+                           (sp, lines[0]))
+        if "Saving throw: None" in lines:
+            n += 1
+            if any(saves_of(t) for t in tr):
+                bad.append("conditions: spell %d '%s': no saving throw in the text, the player rolls one" % (sp, lines[0]))
+    shield = texts.get(("spell", "45"), [])
+    if "Stops Magic Missile." in shield:
+        n += 1
+        hits = lambda mark: [l for f in s.marks[mark] for l in ol.get(f, [])
+                             if re.search(r"spell: 'Magic Missile' level \d+ on obj 0 you: damage", l)]
+        if hits("mm_shield") or not hits("mm_free"):
+            bad.append("conditions: Shield: %d Magic Missile hits with Shield, %d without" %
+                       (len(hits("mm_shield")), len(hits("mm_free"))))
+    # the level limits and the undead of BANE
+    s = Script()
+    s.add("class=1")
+    s.add("xp=200000")
+    s.add("desc=%d" % SPELL_LEVEL, "desc")
+    s.frame += 2
+    for sp in COND_SPELLS:
+        for t in BANE_TARGETS:
+            s.add("spelltest=%d.%d.%d.%d" % (sp, SPELL_LEVEL, t, COND_TRIALS), ("cond", sp, t))
+    texts, ol = run_script(args, os.path.join(tmp, run_name + "-bane"), "BANE", s, extra)
+    if not texts:
+        return bad + ["conditions: no texts of BANE"]
+    for sp in COND_SPELLS:
+        lines = texts.get(("spell", str(sp)), [])
+        m1 = find(lines, r"^Causes (.+) on creatures of level (\d+) or less\.$")
+        m2 = find(lines, r"^Holds undead of level (\d+) or less\.$")
+        if not (m1 or m2):
+            bad.append("conditions: spell %d '%s': no level limit line" % (sp, lines[0] if lines else "?"))
+            continue
+        fx, cap = (m1.group(1), int(m1.group(2))) if m1 else ("Hold Person", int(m2.group(1)))
+        reached = 0
+        for t in BANE_TARGETS:
+            tr = [x for x in trials_of(ol, s.marks[("cond", sp, t)]) if x[0] == t]
+            if not tr:
+                bad.append("conditions: spell %d on obj %d: no trial" % (sp, t))
+                continue
+            n += 1
+            level, got = tr[0][1], any(fx in x[3] for x in tr)
+            out = level > cap or (m2 and t not in BANE_UNDEAD)
+            if out and got:
+                bad.append("conditions: spell %d '%s': obj %d (level %d%s) gets %s, the text limits it to level %d%s" %
+                           (sp, lines[0], t, level, ", undead" if t in BANE_UNDEAD else "", fx, cap,
+                            " and undead" if m2 else ""))
+            reached += got
+            if "Saving throw: None" in lines and any(saves_of(x) for x in tr):
+                bad.append("conditions: spell %d '%s': no saving throw in the text, obj %d rolls one" % (sp, lines[0], t))
+        if not reached:
+            bad.append("conditions: spell %d '%s': no target of BANE gets %s" % (sp, lines[0], fx))
+    print("%s: %d condition lines against the game, %d differ" % (run_name, n, len(bad)))
+    return bad
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--exe", required=True)
@@ -455,6 +622,8 @@ def main():
     for name, extra in GAME_RUNS:
         if not args.only or args.only == "game":
             problems += [name + " " + pr for pr in check_game(args, tmp, name, extra)]
+    if not args.only or args.only in ("game", "conditions"):
+        problems += ["game-conditions " + pr for pr in check_conditions(args, tmp, "game-conditions", [])]
     if args.dump and first is not None:
         with open(args.dump, "w", encoding="utf-8") as f:
             f.write("".join(line + "\n" for line in first.splitlines() if line.startswith("desc:")))

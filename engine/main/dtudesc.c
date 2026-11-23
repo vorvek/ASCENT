@@ -535,7 +535,10 @@ static void shield_lines(int ac, int ac_missile)
 	else
 		line(LT("Protects like worn armor of armor class %d."), ac);
 	line(LT("No effect if your armor is better."));
-	line(LT("Stops Magic Missile."));		// case 33
+	// the line of the spell that the effect stops (DTU_SR_STOPPED, rule_reaches);
+	// dtu_spell_rule_check fails on a stopped spell that has no sentence here
+	if (dtu_spell_stopped_by_fx(DTU_FX_SHIELD) == 33)
+		line(LT("Stops Magic Missile."));
 }
 
 static void spell_effect(int spell, dtu_spell_facts *f)
@@ -573,7 +576,13 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 			if (f->fx == DTU_FX_CHILL_TOUCH)
 				line(LT("Each melee hit: the target saves or takes 1d4 more damage; undead get Fear."));
 			break;
-		case DTU_SK_CAUSE:		line(LT("Causes %s."), b); break;
+		// DTU_SR_LEVEL_CAP: the highest level of a target (rule_reaches)
+		case DTU_SK_CAUSE:
+			if (f->max_level >= 0)
+				line(LT("Causes %s on creatures of level %d or less."), b, f->max_level);
+			else
+				line(LT("Causes %s."), b);
+			break;
 		case DTU_SK_AC:
 			if (f->fx == DTU_FX_SHIELD)
 				shield_lines(f->ac, f->ac_missile);
@@ -598,9 +607,7 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 		// light_object (dtuspell.c): the light stays where the missile lands
 		case DTU_SK_BLIND:		line(LT("Makes a light where it lands. Blinds a creature that it hits.")); break;
 		case DTU_SK_COLOR:		line(LT("Puts to sleep, blinds or stuns, by the level of the target.")); break;
-		case DTU_SK_SLEEP:
-		case DTU_SK_SCARE:		line(LT("Causes %s on creatures of level %d or less."), b, f->amount_hi); break;
-		case DTU_SK_HOLD_UNDEAD:	line(LT("Holds undead of level %d or less."), f->amount_hi); break;
+		case DTU_SK_HOLD_UNDEAD:	line(LT("Holds undead of level %d or less."), f->max_level); break;
 		case DTU_SK_FEAR:		line(LT("Causes %s. The target may drop its weapon."), b); break;
 		case DTU_SK_ACID:
 			if (f->amount_hi > 0)
@@ -649,14 +656,16 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 	line(LT("Range: %s"), f.self ? LT("Self") : feet(a, f.range));
 	if (f.area)
 		line(LT("Area: %s"), (sprintf(b, f.self ? LT("%s around you") : LT("%s where it lands"), feet(a, f.radius)), b));
-	// ASCENT: the object loop of 0x90CEF has no test of the caster (0x90D54
-	// to 0x90DDA), and the Fireball case (0x8E55C) has none either: a burst
-	// near the caster burns the caster too. The cases of Burning Hands,
-	// Produce Fire and Melf's Minute Meteors skip the caster.
-	if (f.area && spell == 16)
-		line(LT("Also hits you when you are in the area."));
 	else
 		line(LT("Area: %s"), f.self ? LT("Only you") : LT("One target"));
+	// ASCENT: the object loop of 0x90CEF has no test of the caster (0x90D54
+	// to 0x90DDA): an area that lands near the caster takes the caster
+	// unless the case skips the caster (DTU_SR_SPARES_CASTER, rule_reaches);
+	// the Fireball case (0x8E55C) does not skip it. An area around the caster gets no such
+	// line (the effect sentence says what the caster gets), and the sentence
+	// of Dispel Magic says it.
+	if (f.area && !f.self && !(f.flags & DTU_SR_SPARES_CASTER) && f.kind != DTU_SK_DISPEL)
+		line(LT("Also hits you when you are in the area."));
 	if (f.missiles_hi > 1)
 		line(LT("Missiles: %s"), range_text(a, f.missiles_lo, f.missiles_hi));
 	if (f.kind == DTU_SK_ARMOR || f.kind == DTU_SK_FIRE_POOL || f.kind == DTU_SK_STONESKIN)
@@ -1128,6 +1137,11 @@ int dtu_desc_log_all(int L)
 			extra++;
 		}
 	printf("desc: %d texts of numbers of all kinds\n", extra);
+	// ASCENT: the kinds and the conditions of the spell lines against the
+	// sentences (dtu_spell_rule_check; the problems go to the -objlog file)
+	c = dtu_spell_rule_check();
+	printf("desc: rule check: %d problems\n", c);
+	fail += c;
 	if (!fe_font)
 		printf("desc: the market texts were not checked: no font of the front end\n");
 	printf("desc: %d texts, %d failed\n", n, fail);

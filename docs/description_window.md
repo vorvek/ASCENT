@@ -141,24 +141,98 @@ such a value:
   `fire_wait` of `Weapon_info[]`, as `dtucombat.c` calls them.
 - `dtu_char_dragon_minutes` and `dtu_char_spider_turn_level` (`dtuchar.c`),
   `dtu_spell_use_classes` and `dtu_spell_fx_ac` (`dtuspell.c`).
+- The conditions of each line of `Spell_rule` (`DTU_SR_` of `dtuspell.h`):
+  the spell spares its caster, undead only, no undead, humanoids only, the
+  level limit (`max_level`, from `spell_amount`), the save only for some
+  kin (Scare), the effect that stops the spell (Shield stops Magic
+  Missile), the blindness near the point (Fireball). The cases of
+  `apply_spell` test them through `rule_reaches`, `dtu_spell_area` reads
+  the blindness flag, and the creature spell choice reads the effect that
+  stops Magic Missile. The window prints "Also hits you when you are in
+  the area." for an area that lands and does not spare the caster, the
+  level of the limit, and "Stops Magic Missile." from these flags.
+- The save conditions: `save_level` (Color Spray: a target above the
+  caster level or of level 6 or more; Hold Undead: above level 2) and
+  `DTU_SR_SAVE_KIN`. `rule_save` applies them, and the facts give "Some
+  targets" for a line that has one. The table has no `DTU_SS_SOME`.
+- The messages of the casts give the minutes of the time that the case
+  set (`dur`, from `spell_time`), and the life of the light object is the
+  time of the blindness of Light. No message has a typed formula.
+
+## One source
+
+A rule that the window states lives in one place, and the game and the
+window both read it there:
+
+| Rule | Where it lives | Read by |
+|---|---|---|
+| Effect bit, save kind, sentence kind | `Spell_rule` | `apply_spell`, `rule_save`, `spell_damage`, `dtu_spell_get_facts` |
+| Caster spared, undead only, no undead, humanoid, level limit, stopped by | `Spell_rule` flags, `stopped_by` | `rule_reaches` (the cases), creature spell choice, the facts |
+| Who saves | `save_level`, `DTU_SR_SAVE_KIN`, `kin_saves` | `rule_save`, the facts (`DTU_SS_SOME`) |
+| Blindness near the point | `DTU_SR_BURST_BLINDS`, `DTU_FIREBALL_BLIND_*` | `dtu_spell_area`, the facts |
+| Duration | `spell_time`, `color_time` | the cases, their messages, `light_object`, the facts |
+| Amount, level limit, targets, acid rounds | `spell_amount` | the cases, `rule_reaches`, the facts |
+| Damage dice, undead die | `spell_damage_args`, `spell_undead_die` | the cases, the facts |
+| Armor class caps | `effects_ac`, `dtu_spell_shield_ac` | the armor class code, the facts, `fx_line` |
+
+To add or change a spell:
+
+1. Set its line of `Spell_rule`: the kind (the sentence), the save, the
+   flags and the effect bit. Do not test a condition of a flag by hand in
+   the case: call `rule_reaches` and `rule_save`.
+2. Give its time in `spell_time` and its amount in `spell_amount`. The case
+   sets `dur` from `spell_time` and its message prints `MINUTES(dur)`.
+3. Build and run `-chartest 5:desc`: the line `desc: rule check: 0
+   problems` must show. `dtu_spell_rule_check` fails when the kind does not
+   fit the other values (an effect, a time, an amount, a level limit with
+   no sentence that prints it, a stopped spell with no sentence). A
+   debug build also asserts it at the first level.
+4. Run `tools/check_desc.py`: the game runs compare the numbers and the
+   condition lines with the game.
+
+A new condition that the window must print needs a flag, a test in
+`rule_reaches` or `rule_save`, a line in `dtudesc.c`, a case in
+`dtu_spell_rule_check` and a check in `check_conditions` of
+`tools/check_desc.py`. A new pattern needs its Spanish text in
+`engine/lang/es_port.catalog`.
+
+To add or change an item: the numbers come from `dtu_char_misc_use`,
+`dtu_char_item_powers`, `dtu_char_item_fx`, `dtu_char_item_ac` and the
+table line. Change the rule there, not in `dtudesc.c`.
+
+## Typed by hand
 
 These parts are typed by hand and can go out of step with the game. A
 change of the rule needs a change here:
 
-- The kind of `Spell_rule` chooses the sentence of the window; the cases of
-  `apply_spell` do not read it. The extra conditions of a case (the level
-  tests of Color Spray and Hold Undead, the save of Scare only for some
-  targets, the immunities) are in the case, and the sentence names them.
-- Each sentence of `spell_effect`, `use_line` and `power_lines`
-  (`dtudesc.c`), and the lines of the weapons 45, 70 and 71 (0x2AB9F,
-  0x2B15B, 0x2B1F2).
+- The sentence of each kind (`spell_effect`) and of each item use and
+  power (`use_line`, `power_lines`). The numbers in them come from the
+  shared functions; the words are typed.
+- The level thresholds of the three effects of Color Spray (T <= L,
+  T <= L + 2) are in case 6; the sentence names them only as "by the level
+  of the target".
+- The immunity flags of the creatures that the window does not name
+  (Cure: extraplanar; Fear and Scare: MONSTER_F_NO_SCARE; Sleep:
+  MONSTER_F_NO_SLEEP, the elf and the half-elf; Infravision: a creature
+  with infravision; the Sleep pool) are in the cases.
+- Scare makes the target drop its weapon on a d2 as Fear does, and its
+  sentence does not say it: no pattern of the catalog has a level limit
+  and the weapon together.
+- The Chill Touch line: the melee hit of `dtucombat.c` (0x29E3D) applies
+  the 1d4 and the Fear of undead.
+- `dtudesc.c` items, which need a function of `dtuchar.c` or `dtuobj.c`:
+  `counted` and `charged` repeat which uses `use_misc` uses up and which
+  use one charge; the lines of the weapons 45, 70 and 71 repeat the
+  numbers of `dtu_weapon_extra_damage` (0x2AB9F, 0x2B15B, 0x2B1F2); "Attacks
+  twice as fast" repeats the factor of the speed items; the DRAGON,
+  TOUGH and GEM extra lines repeat rules of `use_misc`.
 - The classes line of a potion is the class word of its table line. The
   inventory marks the potion as not usable for another class, but
   `dtu_char_use` has no class test (as 0x37A6A): each class can drink the
   Potion of Hill Giant Strength and the Potion of Invulnerability.
 
-`tools/check_desc.py` guards the numbers: its game runs compare the texts
-with what the game does (see Tests).
+`tools/check_desc.py` guards the numbers and the condition lines: its game
+runs compare the texts with what the game does (see Tests).
 
 The values that depend on the character use the character now: the caster
 level, the class level of the Potion of Dragon's Blood and of the Spider
@@ -205,7 +279,14 @@ the gender of the item ("Con magia.", "Al llevar: %s.", "Efecto: %s.").
   the text, each effect that the text gives (`Gives ...`) must happen, and
   its time must be in the duration of the text. The
   results come from the `-charlog` and `-objlog` lines that the game code
-  writes where it applies the value.
+  writes where it applies the value. Two more runs check the condition
+  lines (`check_conditions`): each area spell that lands is cast at the
+  player (hit with "Also hits you when you are in the area.", else never),
+  a creature casts Magic Missile at the player with Shield and without it,
+  Hold Undead, Scare and Sleep go on six creatures of BANE (no target
+  above the level limit and no living target of Hold Undead gets the
+  effect, one below it does), and a spell with "Saving throw: None" rolls
+  no save. Each text run needs the line `desc: rule check: 0 problems`.
 - `tools/uitest.py --only desc_window [--shots DIR]`: right clicks on a
   weapon, an armor and a potion, the key `/`, a spell (`-chartest
   30:descspell=16`) and a line of the market (`-testmarket`); no window for
