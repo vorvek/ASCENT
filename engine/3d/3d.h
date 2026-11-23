@@ -417,6 +417,10 @@ void g3_gpu_view_darken(int x0,int y0,int x1,int y1,int level);
 //GPU renderer (PLAT_GPU_HEAT_* of platform.h: 0 cold, 1 warm, 2 hot, 3 glow). The
 //game sets it before it draws an object or a face and sets 0 after.
 extern int G3_gpu_heat;
+//1 while the game draws a face of a side with no segment behind it: the
+//GPU draws its transparent texels opaque (they look into the void; 1.3
+//shows the frames before there, the GPU showed black).
+extern int G3_gpu_opaque;
 //The pulsing fade table row of the effect color 0xCF (Tmap_fx_row of the
 //texture mapper, tmapfx.c). The game sets it at the start of each view.
 extern int G3_gpu_fx_row;

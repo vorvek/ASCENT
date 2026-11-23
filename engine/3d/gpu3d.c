@@ -42,6 +42,7 @@ static char Opt_hd_dir[600];
 static int Rgb_gen = 1;		//changes when the RGB textures must be made again
 static int Hd_log;			//ASCENT_GPU_HDLOG=1: print the requests of upscaled textures
 int G3_gpu_heat;			//3d.h
+int G3_gpu_opaque;		//3d.h
 int G3_gpu_fx_row = 25;	//3d.h
 int G3_gpu_dim;			//3d.h
 int G3_gpu_tint;			//3d.h
@@ -296,6 +297,52 @@ static int expand6(int v)
 	return (v << 2) | (v >> 4);
 }
 
+//The color of each pixel with alpha 0 becomes the average of its
+//neighbours with a color, one ring for each pass, so that a face drawn
+//opaque (G3_gpu_opaque) shows the colors around a hole, not black. The
+//alpha stays 0. A pass that fills nothing ends the work.
+static void fill_holes(ubyte *p,int w,int h)
+{
+	static ubyte *done;
+	static int done_size;
+	int pass, x, y, k, changed = 1;
+
+	if (w * h > done_size) {
+		ubyte *nd = (ubyte *) realloc(done,(size_t) w * h);
+		if (!nd)
+			return;
+		done = nd;
+		done_size = w * h;
+	}
+	for (k=0;k<w*h;k++)
+		done[k] = p[k*4+3] != 0;
+	for (pass=0;pass<w+h && changed;pass++) {
+		changed = 0;
+		for (y=0;y<h;y++)
+			for (x=0;x<w;x++) {
+				int i = y * w + x, n = 0, r = 0, g = 0, b = 0, d;
+				static const int dx[4] = { 1, -1, 0, 0 }, dy[4] = { 0, 0, 1, -1 };
+
+				if (done[i])
+					continue;
+				for (d=0;d<4;d++) {
+					int xx = (x + dx[d] + w) % w, yy = (y + dy[d] + h) % h, j = yy * w + xx;
+					if (done[j] == 1) {
+						r += p[j*4]; g += p[j*4+1]; b += p[j*4+2]; n++;
+					}
+				}
+				if (n) {
+					p[i*4] = (ubyte) (r / n); p[i*4+1] = (ubyte) (g / n); p[i*4+2] = (ubyte) (b / n);
+					done[i] = 2;		//filled in this pass: a source from the next pass on
+					changed = 1;
+				}
+			}
+		for (k=0;k<w*h;k++)
+			if (done[k] == 2)
+				done[k] = 1;
+	}
+}
+
 //The 8-bit pixels expanded with the palette of the view. Color 255 (the
 //transparent color) has alpha 0. The result is in Rgba_buf.
 static ubyte *expand_rgba(const ubyte *pix,int w,int h)
@@ -316,6 +363,7 @@ static ubyte *expand_rgba(const ubyte *pix,int w,int h)
 		Rgba_buf[i*4+2] = (ubyte) expand6(Opt_palette[c*3+2]);
 		Rgba_buf[i*4+3] = c == 255 ? 0 : 255;
 	}
+	fill_holes(Rgba_buf,w,h);
 	return Rgba_buf;
 }
 
@@ -792,7 +840,7 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	m.mode = PLAT_GPU_TEXTURED;
 	m.texture = tex;
 	m.lit = !(bm->bm_flags & BM_FLAG_NO_LIGHTING);
-	m.transparent = (bm->bm_flags & BM_FLAG_TRANSPARENT) != 0;
+	m.transparent = (bm->bm_flags & BM_FLAG_TRANSPARENT) != 0 && !G3_gpu_opaque;
 	m.heat = G3_gpu_heat;
 	//the effect colors of a merged bitmap take the colors of the image
 	//under the face (texmap/tmapfx.c); the lit mappers of the original do it
