@@ -46,7 +46,10 @@ missile part fails for such creatures.
 reach, and the test command stepback=N.D moves the player back at once by
 8.0 (out of reach, within twice the reach: the roll is made; with
 -origcombat the zombie does not swing at the player) and by 40.0 (farther
-than twice the reach: no roll).
+than twice the reach: no roll). The player has the Invulnerability effect
+(fx=18): the zombies (level below 4) still swing, but their hits do no
+damage, so the player lives until the attack of the test. The run sets
+seed=1.
 
 The rats have pass_thru: without the correction Dtu_fix_rat_hit
 (--origcombat, the rules of 1.3) no attack reaches them, so the check fails
@@ -95,7 +98,13 @@ def committed_attack(args, work, origcombat, step):
     player steps back by step when the attack starts (stepback=N.D)."""
     n, seg = COMMIT_OBJ
     user = os.path.join(work, "commit%d%s" % (step, "o" if origcombat else ""))
-    script = "5:give=5.20,6:current=5.20,10:goseg=%d,40:goobjh=%d.5,41:stepback=%d.%d" % (seg, n, n, step)
+    # -invulnerability does not protect the player of DTU: two zombies of
+    # the segment can kill the player (12 hit points) before the attack of
+    # the test, and then the test does not start. Which rolls hit depends on
+    # the random numbers. The Invulnerability effect (fx=18) keeps off the
+    # zombies after their swing (damage_player_w); seed=N fixes the rolls.
+    script = ("2:seed=1,3:fx=18.600,5:give=5.20,6:current=5.20,10:goseg=%d,40:goobjh=%d.5,41:stepback=%d.%d"
+              % (seg, n, n, step))
     olog = os.path.join(user, "obj.log")
     run(args, user, script, 200, (["-origcombat"] if origcombat else []) + ["-objlog", olog], level="BONES")
     try:
