@@ -771,6 +771,49 @@ void dtu_hook_drop_objects(int segnum)
 		dtu_drop_objects_in_segment(segnum);
 }
 
+// ASCENT: 0xAD9B2 (level_warp_displace_robots), called by the warp at
+// 0x5A278 before the player goes to the center of the segment: each live
+// creature of the segment with a model whose body overlaps the point
+// (distance below the sum of the two body radii of 0x746B3) goes to the
+// center of its hide segment (+0x14C) and turns to the player, as
+// teleport_boss (0x13899) does. The sound of 0x13899 is not in the port.
+void dtu_hook_warp_displace(object *player, int segnum, vms_vector *point)
+{
+	int n, next;
+	fix pr, ph;
+
+	if (!Dtu_objects_enabled || !player || segnum < 0 || segnum > Highest_segment_index)
+		return;
+	dtu_get_body_size(player,&pr,&ph);
+	for (n = Segments[segnum].objects; n != -1; n = next) {
+		object *o = &Objects[n];
+		vms_vector dir;
+		fix r, h;
+		int hide;
+
+		next = o->next;
+		if (o == player || o->type != OBJ_ROBOT || o->render_type != RT_POLYOBJ)
+			continue;
+		// 0xA66C9: a dead creature stays
+		if (o->shields < F1_0 || (o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) ||
+			 o->ctype.ai_info.CURRENT_STATE == DAIS_DEAD || DTU_ANIM_STATE(o) == DAS_DIE)
+			continue;
+		dtu_get_body_size(o,&r,&h);
+		if (vm_vec_dist_quick(point,&o->pos) >= pr + r)
+			continue;
+		hide = o->ctype.ai_info.hide_segment;
+		if (hide < 0 || hide > Highest_segment_index)
+			continue;
+		compute_segment_center(&o->pos,&Segments[hide]);
+		o->last_pos = o->pos;
+		obj_relink(n,hide);
+		vm_vec_sub(&dir,&player->pos,&o->pos);
+		if (vm_vec_mag_quick(&dir) > 0)
+			vm_vector_2_matrix(&o->orient,&dir,NULL,NULL);
+		dtu_obj_log("warp: obj %d %s overlaps the arrival in seg %d and goes to seg %d (0xAD9B2)",n,dtu_object_name(o),segnum,hide);
+	}
+}
+
 // 0x951DE: the use action on a side that is no door: the player climbs
 // (dtuthief.c).
 void dtu_hook_use_wall(object *obj, int segnum, int side)

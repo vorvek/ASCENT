@@ -99,6 +99,11 @@ int Dtu_fix_script_abilities = 1;
 // rules of 1.3.
 int Dtu_fix_script_walk = 1;
 
+// ASCENT: D-125. 1 (default): after statement EE the outer run gets its
+// run mode back. 0 (-origscript): it runs on in the mode 4 of the call, as
+// 0xAA989 does.
+int Dtu_fix_script_run_mode = 1;
+
 // 1 (default): the corrected rule of the prison sequence 0xAA3F3. The
 // executable takes entry i of the item list with 0xB6D24, which moves the
 // later entries down (0xB6F01), and then reads class, id and count at the
@@ -239,6 +244,8 @@ void dtu_script_init(void)
 		Dtu_fix_prison_items = 0;
 	if (FindArg("-origscript"))		// ASCENT: the script rules of the executable
 		Dtu_fix_script_new_char = Dtu_fix_script_abilities = Dtu_fix_script_area_seg = Dtu_fix_mirt_points = 0;
+	if (FindArg("-origscript"))
+		Dtu_fix_script_run_mode = 0;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
 	// has the English text.
 	Gab_rlh = dtu_load_file("GABE.RLH", &Gab_rlh_size);
@@ -629,6 +636,7 @@ typedef struct sc_run {
 	ubyte		*s;
 	int		size, p, depth, label;
 	int		after_flag0;	// 0x145535
+	int		mode;			// ASCENT: the run mode 0x145536 of this run (Dtu_fix_script_run_mode)
 	int		result;			// the result of 0xAAE3E: 0 after DB to another level
 	int		pending_reply;	// the reply list of a CD is complete
 	int		n_replies;		// 0x145531 + 1
@@ -637,7 +645,7 @@ typedef struct sc_run {
 
 static sc_run Run[SC_MAX_NEST];
 static int N_run = 0;
-static int Cur_mode = 0;					// 0x145536 (statement EE does not restore it)
+static int Cur_mode = 0;					// 0x145536 (statement EE does not restore it; Dtu_fix_script_run_mode)
 static int Wait_timer = 0;					// an EC waits
 static uint Wait_until = 0;
 
@@ -2285,6 +2293,7 @@ static int start_run(object *obj, int id, int mode, int temp)
 	r->signature = obj->signature;
 	r->temp = temp;
 	r->result = 1;
+	r->mode = mode;
 	Cur_mode = mode;
 	if (obj->type == OBJ_ROBOT && !obj_dead(objnum))
 		dtu_creature_wake(obj, 0);							// 0xA6505(object, 1)
@@ -2355,6 +2364,12 @@ static int continue_runs(void)
 			continue;
 		finish_run(r);
 		N_run--;
+		// ASCENT: 0xAA989 (statement EE) saves the state of the run and
+		// gives it back after the call, but not the run mode 0x145536, so
+		// the outer run goes on in mode 4 (the talk counter is not raised
+		// at its end). Dtu_fix_script_run_mode: the outer run gets its mode.
+		if (Dtu_fix_script_run_mode && N_run > 0)
+			Cur_mode = Run[N_run - 1].mode;
 	}
 	return 0;
 }

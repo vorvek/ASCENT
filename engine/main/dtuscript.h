@@ -25,6 +25,9 @@ extern int Dtu_fix_script_new_char;
 // on the named segment; the executable uses the object of the script.
 // -origscript clears it and the other script corrections.
 extern int Dtu_fix_script_area_seg;
+// D-125: the run mode after statement EE (0xAA989). 0: as 1.3, mode 4 of
+// the call. 1 (default): the mode of the outer run. -origscript clears it.
+extern int Dtu_fix_script_run_mode;
 
 // 1: each statement and each event of the scripts is printed to stdout
 // (option -scriptlog).

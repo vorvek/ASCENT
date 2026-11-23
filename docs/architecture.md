@@ -113,13 +113,13 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | Option | Corrections that it clears | Where |
 |---|---|---|
 | `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` (all in `physics.c`) | `controls.c` |
-| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive`, `break_spread`, `noise_walls`, `alert_ray`, `alert_last` | `dtuobj.c` |
+| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive`, `break_spread`, `noise_walls`, `alert_ray`, `alert_last`, `restore_spells`, `save_cast` | `dtuobj.c` |
 | `-origrevive`, `-origdrow5`, `-origguildpeace` | one each: `revive`, `drow5_shields`, `guild_peace` | `dtuobj.c` |
 | `-origcombat` | `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `cure_aid` (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class`, `chill_touch`, `slow_swing`, `kill_sound`, `backstab` (`dtuthief.c`), `creature_strength` (`dtuobj.c`), `shield_ac` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
-| `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points` (`dtuchar.c`); `secret_door_names`, `thac0_row`, `new_thac0` (`dtuthief.c`) | `dtuchar.c`, `dtuthief.c` |
-| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap` | `dtutrig.c` |
+| `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points` (`dtuchar.c`); `secret_door_names`, `thac0_row`, `new_thac0` (`dtuthief.c`), `save_seconds` | `dtuchar.c`, `dtuthief.c` |
+| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap`, `trap_pause` | `dtutrig.c` |
 | `-origui` | `automap_reveal` (`automap.c`); `msg_scroll`, `view_aspect`, `button_hold` (`dtudisp.c`); `cheat_index` (`dtucheat.c`); `sensitivity_menu` (`menu.c`) | `automap.c`, `dtudisp.c`, `dtucheat.c`, `menu.c` |
-| `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg`, `mirt_points` | `dtuscript.c` |
+| `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg`, `mirt_points`, `script_run_mode` | `dtuscript.c` |
 | `-origscriptwalk` | `script_walk` | `dtuscript.c` |
 | `-origprison` | `prison_items` | `dtuscript.c` |
 | `-origdrow5`, `-origguildpeace` | one each: `drow5_shields`, `guild_peace` | `dtuobj.c` |

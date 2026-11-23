@@ -156,7 +156,7 @@ in GABE (tools/script.py stats).
 | EB | NUM NUM | 0xAB48F (0xAA8B3) | spell NUM from the current object (0x90CEF). The segment NUM is checked against the highest segment but not passed (a defect of the executable, D-075: script 291 of IBBALAR casts its lights and fires at the speaker, not at the segments 177 to 233). The port centers the spell on the segment (`Dtu_fix_script_area_seg`, `-origscript`) | 87 |
 | EC | NUM | 0xAB4A3 (0xAA8E4) | wait NUM ticks of the 1/100 s clock 0xEDC4C, with reduced frames 0x4391D | 206 |
 | ED | `C4` NUM SIDE \| NUM | 0xAB4B7 (0xAA908) | switch the trigger of the side off (0xA83BD), or kill object NUM (0xA6ACB) | 39 |
-| EE | NUM | 0xAB4C1 (0xAA989) | run the script of object NUM in mode 4, then go on. The pointer, slot, depth, label, object and 0x145535 are saved and restored; the mode is not (it stays 4) | 10 |
+| EE | NUM | 0xAB4C1 (0xAA989) | run the script of object NUM in mode 4, then go on. The pointer, slot, depth, label, object and 0x145535 are saved and restored; the mode is not (it stays 4; verified in the bytes, 0xAA9A0 to 0xAAA10 save and restore 0x145537, 0x145525, 0x145526, 0x14552A, 0x145532 and 0x145535, and 0xABD35 writes 0x145536). `Dtu_fix_script_run_mode` (`-origscript` clears it) gives the outer run its mode back (D-125; test `script_ee_mode`) | 10 |
 | F2 | condition | 0xAB43F (0xA8C3A) | IF (section 3.3) | 1406 |
 | F4..F8 | none | 0xAB449 | ELSE of depth 1 to 5, reached at the end of a true branch: skip to the ENDIF of the current depth and run it | 686 |
 | F9..FD | none | 0xAB45E | ENDIF: depth - 1 | 1406 |
@@ -690,8 +690,24 @@ Settings (globals in dtuscript.c):
   path to the player (0x170BC) and no run; farther away 0x17411 counts the
   index only (no move, disassembly 0x17446 to 0x17504) and runs mode 2 in
   the segment where the creature still stands. So the creature never
-  leaves its place. Tests: questtest `kobolds_walk`, `kobolds_walk3`,
-  `kobolds_walk_orig`.
+  leaves its place. A save and a load on the way: 1.3 keeps AI mode 2 and
+  the path points (Point_segs) in the state file. The port keeps its paths
+  in its own list, so the load (`dtu_ai_from_image`) makes the path to the
+  goal segment again, and a creature with a script whose station (+0x14C)
+  is its goal (both set by `E5`) walks on and runs its script at the end.
+  Doors on the path: the door opener of the AI (0x14AF2) sends a creature
+  with the door bit in mode 2 to any closed door of its segment (mode
+  OPENDOOR), which ended the walk; a walker is not sent there and opens a
+  door on its path when it walks into it (THIEF2 script 71, segment 635
+  side 5). A creature with no door bit gets no path through a segment
+  with a wall (0x16999), so the prisoners of PRISON (script 103) could not
+  leave the cell: on the path of its script a creature opens a door with
+  no key and no lock. The path search stops at a depth of 30 segments
+  (0x1686D), so the prisoner stops at segment 302, short of 428 (a search
+  past the limit took a way that the body does not pass at segment 15;
+  open). Tests: questtest `kobolds_walk`, `kobolds_walk_saveload`,
+  `kobolds_walk3`, `kobolds_walk_orig`, `thief0_walk53`, `thief1_walk62`,
+  `thief1_walk60`, `thief2_walk71`, `prison_walk103`.
 - `Dtu_fix_script_area_seg` (1): statement EB centers its area spell on the
   segment that it names (D-075). `-origscript` clears it, `script_new_char`
   and `script_abilities`.

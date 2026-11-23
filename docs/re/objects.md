@@ -690,9 +690,21 @@ fixes, `flame_lolth_dead` (dtuobj.c, called at the corpse of object 36) is
 `flame_sword_lolth_alive`, `flame_lolth_death`, `flame_ending`
 (tools/questtest.py).
 
-Not in the port: flag 0x40 of a creature (FLAME object 35, and 22 creature
-records of BONES, CLAN1, MINE and THIEF0 that have the flag in the level
-file; the AI and move tests above), +0x1AE bit 2 (MULHOR1, FLAME), +0x144
+Flag 0x40 of a creature (2026-11-23, verified in the bytes): 0xAD4F2 tests
+that FLAME object 35 is a creature and 0xAD4FB sets the flag. Object 35 is
+rffk9, the image of Lolth that script 320 moves and that speaks. The AI
+frame (0x13C8B) and the move (0x9F174) skip a creature with the flag
+unless its type has +0x7E (regeneration) of 1 or more or is the rat type,
+and the query (0x3F38F) skips it: the image stands still and cannot be
+hit or used. The port: `dtu_creature_frozen` (dtuobj.c) and `dtu_nohit`
+(fvi.c), test `flame_lolth_image`. The 22 creature records of BONES,
+CLAN1, MINE and THIEF0 with the flag in the level file are all rats, which
+pass_thru covers. +0x1AE value 2 is set only on FLAME objects 2 and 3
+(0xAD3DF, 0xAD45A; MULHOR1 0xAD0C0 to 0xAD124 writes only flag 0x40). Its
+readers (0x29966, 0x6CE53) test a moving object, and the altar and the
+sword do not move, so it has no effect for players; 0x6A374 clears it.
+
+Not in the port: +0x144
 bit 0 of YPINN object 41 (a piece of scenery),
 the texture of BANE objects 26 and 27 (the executable takes one of four
 texture numbers that the previous level start looked up: `lava02`, `lava`,

@@ -400,6 +400,11 @@ char *dtu_object_name(object *obj);
 // runs its AI frame with the flag 0x40 (0x13C8B, 0x9F174), does 1 damage
 // (0x2B58D) and is squashed when it touches a player with boots (0x26FE0).
 int dtu_rat_type(int id);
+// ASCENT: 1 for a creature with object flag 0x40 (FLAME object 35, from
+// the level fix 0xAD4FB): the AI frame (0x13C8B) and the move (0x9F174)
+// skip it, unless its type regenerates (+0x7E of 1 or more) or is the rat
+// type. The object queries skip it too (fvi.c).
+int dtu_creature_frozen(object *obj);
 
 // 0x2AA5B to 0x2AF4F of the to-hit roll 0x2A7F3: the effects of the
 // attacker and of the target (Levitate, hidden or invisible, Bless,

@@ -60,6 +60,44 @@ TESTS = [
        r"[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 125\s[\s\S]*end of its path in seg 119\s",
        r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
       frames=1300, extra=["-noattack"]),
+    # The same walk with a save and a load on the way (1.3 keeps the path in
+    # Point_segs): the kobold walks on to segment 424 and the script goes
+    # on to segment 119.
+    T("kobolds_walk_saveload", "KOBOLDS",
+      "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,"
+      "90:obj=8,95:save=3,100:load=3,140:obj=8,1290:obj=8",
+      [r"f140 +obj 8: type 2 id 1 seg (?!341 )(?!424 )\d+ ",
+       r"walk: obj 8 is at the end of its path in seg 424\s[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 119\s",
+       r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
+      frames=1300, extra=["-noattack"]),
+    # The other scripts with statement E5 (Dtu_fix_script_walk). THIEF0
+    # script 53 (object 48, label 800): WALK 181 178 165 keeps the last
+    # segment (D-076).
+    T("thief0_walk53", "THIEF0", "10:goobj=48.20,12:resume=48.800,15:talk=48,890:obj=48",
+      [r"run script 53 of obj 48 .* at label 320", r"walk to seg 165\s", r"walk: obj 48 is at the end of its path in seg 165\s",
+       r"f890 +obj 48: type 2 id 0 seg 165 "], frames=900, extra=["-noattack"]),
+    # THIEF1 script 62 (object 25, label 10): WALK 161.
+    T("thief1_walk62", "THIEF1", "10:goobj=25.20,12:resume=25.10,15:talk=25,890:obj=25",
+      [r"walk to seg 161\s", r"walk: obj 25 is at the end of its path in seg 161\s", r"f890 +obj 25: type 2 id \d+ seg 161 "],
+      frames=900, extra=["-noattack"]),
+    # THIEF1 script 60 (object 95, label 930): out of its area the guard
+    # walks back to segment 639 and the script runs there in mode 2.
+    T("thief1_walk60", "THIEF1", "8:objseg=95.630,10:goobj=95.20,12:resume=95.930,15:talk=95",
+      [r"walk to seg 639\s", r"walk: obj 95 is at the end of its path in seg 639\s", r"run script 60 of obj 95 .* in mode 2 "],
+      frames=300, extra=["-noattack"]),
+    # THIEF2 script 71 (object 1, label 900): WALK 635 625. A door on the
+    # path (segment 635 side 5) opens when the goblin walks into it; the
+    # door opener (0x14AF2) does not send a walker to a door.
+    T("thief2_walk71", "THIEF2", "10:goobj=1.20,12:resume=1.900,15:talk=1,300:obj=1",
+      [r"walk to seg 625\s", r"obj 1 gbloser: opens the door seg 635 side 5", r"walk: obj 1 is at the end of its path in seg 625\s",
+       r"f300 +obj 1: type 2 id 17 seg 625 "], frames=310, extra=["-noattack", "-objlog", "thief2_walk_obj.log"]),
+    # PRISON script 103 (object 21, a prisoner with no door bit): with MISC
+    # 59 the prisoner walks out of its cell and opens the cell door. The
+    # path search stops at a depth of 30 segments (0x1686D), short of
+    # segment 428.
+    T("prison_walk103", "PRISON", "5:give=16.59,10:goobj=21.20,15:talk=21,300:obj=21",
+      [r"walk to seg 428\s", r"obj 21 hffg1: opens the door seg 607 side 5", r"f300 +obj 21: type 2 id 18 seg (?!607 )\d+ .* anim 2"],
+      frames=310, extra=["-noattack", "-objlog", "prison_walk_obj.log"]),
     # Script 22 (objects 20, 21, 22, label 400): statement EE runs the
     # script of the other two, so the three walk at the same time.
     T("kobolds_walk3", "KOBOLDS",
@@ -68,6 +106,12 @@ TESTS = [
        r"f200 +obj 21: type 2 id \d+ seg 389 ", r"f200 +obj 22: type 2 id \d+ seg 388 ",
        r"end of its path in seg 386", r"end of its path in seg 389", r"end of its path in seg 388"],
       frames=210, extra=["-noattack"]),
+    # D-125: statement EE (0xAA989) does not give the outer run its mode
+    # back; Dtu_fix_script_run_mode does, so the talk counts (1.3: 0).
+    T("script_ee_mode", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+      [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 1 "], frames=210, extra=["-noattack"]),
+    T("script_ee_mode_orig", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+      [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 0 "], frames=210, extra=["-noattack", "-origscript"]),
     # The rule of 1.3 (-origscriptwalk): the kobold does not move.
     T("kobolds_walk_orig", "KOBOLDS",
       "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,300:obj=8",
@@ -137,6 +181,13 @@ TESTS = [
     T("flame_lolth_death", "FLAME", "10:kill=36,15:obj=3",
       [r"obj 3: type 18 .* flags 0x40 ", r"run script 322 of obj 3 .* in mode 0", r"YOU  HAVE  DESTROYED",
        END_SEQ, r"end of the game: CREDITV1"], frames=600),
+    # FLAME: the level fix 0xAD4FB gives object 35 (rffk9, the image of
+    # Lolth that script 320 moves and that speaks) flag 0x40: the AI frame
+    # (0x13C8B) and the move (0x9F174) skip it, and the use ray passes it.
+    T("flame_lolth_image", "FLAME", "5:obj=35,10:goobj=35.12,300:obj=35,310:aim=35,312:activate,380:obj=35",
+      [r"f5\s+obj 35: type 2 id 8 .* flags 0x40 .* pos -0\.2,46\.6,140\.1",
+       r"f380\s+obj 35: type 2 id 8 .* var 0 .* pos -0\.2,46\.6,140\.1"],
+      [r"run script 320 of obj 35"], frames=400),
     T("flame_ending", "FLAME", "10:kill=36,20:goseg=486,40:aim=3,45:activate",
       [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", END_SEQ, r"end of the game: CREDITV1"], frames=600),
 
@@ -185,6 +236,22 @@ TESTS = [
     T("warp_keeps_effects", "HUB1", "10:damage=5,12:fx=3.600,14:cast=20,20:quest,30:warp=3.376,60:quest",
       [r"quest: level 1 .* hp 7 fx 0x1008 [\s\S]*quest: level 3 .* hp 7 fx 0x1008 "], frames=70, invuln=False),
 
+    # A warp (0x5A278, 0xAD9B2) sends a creature that overlaps the arrival
+    # to its hide segment: KOBOLDS object 57 (seg 48, hide segment 0 of the
+    # level file). Dtu_fix_warp_overlap tests the point of the arrival.
+    T("warp_displace", "KOBOLDS", "5:obj=57,10:warp=2.48,11:obj=57",
+      [r"f5\s+obj 57: type 2 id 1 seg 48 ", r"obj 57 kob_swrd overlaps the arrival in seg 48 and goes to seg 0",
+       r"f11\s+obj 57: type 2 id 1 seg 0 "], frames=14, extra=["-objlog", "warp_displace_obj.log"]),
+    # A cast that runs at a save: 1.3 writes the cast timer 0x153EBC into
+    # the AI block of the save (0x16413) and then ends the running cast
+    # (0x164B3); Dtu_fix_save_cast keeps it. The load gives the cast of the
+    # save back (0x164C7).
+    T("save_cast_runs_on", "KOBOLDS", "5:class=1,6:give=17.12.1,10:armspell=12,40:fire,42:save=3,80:fire",
+      [r"the cast of 'Detect Magic' starts", r"'Detect Magic' \(12\) level 1 on obj 0"], [r"the save ends the running cast"],
+      frames=90, extra=["-testslots", "9", "-objlog", "save_cast_obj.log"]),
+    T("load_cast_goes_on", "KOBOLDS", "5:class=1,6:give=17.12.1,10:armspell=12,40:fire,42:save=3,44:load=3,120:fire",
+      [r"the cast of 'Detect Magic' from the save goes on, the cast at 2\.300", r"'Detect Magic' \(12\) level 1 on obj 0"],
+      frames=130, extra=["-testslots", "9", "-objlog", "load_cast_obj.log"]),
     # The talk of WEAPON 13 before a warp (0x59D2D): script 0x1FD runs.
     T("drowslayer_warp", "DROW1", "10:give=5.13,15:current=5.13,30:warp=20.1,31:quest,60:warp=21.1,100:quest",
       [r"warp with WEAPON 13 in the hand: script 0x1FD"], frames=120),

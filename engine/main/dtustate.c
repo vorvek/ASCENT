@@ -48,6 +48,7 @@
 #include "dtufe.h"
 #include "dtustate.h"
 #include "dtuchar.h"		// ASCENT: dtu_char_update() after a restore
+#include "dtuspell.h"		// ASCENT: the spell points of a creature (D-134)
 #include "args.h"
 
 // The messages of the state code go to the log and to stdout
@@ -65,6 +66,20 @@ typedef struct ls_record {
 } ls_record;
 
 int Dtu_level_has_state[LS_LEVELS];	// 0x296304
+int Dtu_fix_restore_spells = 1;		// ASCENT: D-134 (dtustate.h)
+int Dtu_fix_save_cast = 1;			// ASCENT: the cast at a save (dtustate.h)
+
+// ASCENT: -origobj clears the corrections of this file
+static void state_options(void)
+{
+	static int done;
+
+	if (done)
+		return;
+	done = 1;
+	if (FindArg("-origobj"))
+		Dtu_fix_restore_spells = Dtu_fix_save_cast = 0;
+}
 
 static int Cleanup_registered;
 
@@ -663,6 +678,18 @@ static void obj_to_image(int objnum, ubyte *b)
 	for (i = 0; i < 5; i++) put32(b + 0xE8 + 4 * i, o->dtu.m_e8[i]);
 	put32(b + 0x1B0, o->dtu.m_1b0);
 	b[0x1D5] = o->dtu.m_1d5;
+	// ASCENT: D-134. The spell points left of a creature (+0x19E mage,
+	// +0x19F cleric) as 1.3 writes them, and a time in +0x1A8 (1.3: the
+	// game time at the setup, never 0) that marks the points as written.
+	// A file of an older build of the port has 0 there.
+	if (o->type == OBJ_ROBOT) {
+		int mage, cleric;
+
+		dtu_spell_creature_points(o, &mage, &cleric);
+		b[0x19E] = (ubyte) mage;
+		b[0x19F] = (ubyte) cleric;
+		put32(b + 0x1A8, GameTime > 0 ? GameTime : 1);
+	}
 
 	// scenery: movement type 1 as in the executable (see obj_from_image)
 	if (o->type == OBJ_DRESSING && o->movement_type == MT_NONE)
@@ -962,6 +989,9 @@ static int write_lvl(const char *name)
 			if (o->control_type == CT_AI)
 				dtu_ai_to_image(i, al, img);
 		}
+		// ASCENT: 0x16413 writes 0x153EBC (Ai_local_info[0] +0x0C), the
+		// cast timer of the player (0x3FFFFFFF for none)
+		put32(ai + AI_LOCAL_OFF + 0x0C, dtu_spell_cast_timer());
 	}
 
 	// 5. the automap (900 bytes, one for each segment)
@@ -1207,8 +1237,13 @@ static void ai_restore(void)
 
 	if (!Ai_block_ok)
 		return;
+	state_options();
 	for (i = 0; i <= Highest_object_index && i < AI_N_LOCAL; i++)
 		if (Img_ok[i] && Img_sig[i] == Objects[i].signature && Objects[i].type == OBJ_ROBOT) {
+			// ASCENT: D-134, Dtu_fix_restore_spells: the saved points stay
+			// (0xAE3F2 at 0xBB1A7 gives the points of the type again)
+			if (Dtu_fix_restore_spells && gs32(Img[i] + 0x1A8) != 0)
+				dtu_spell_creature_keep_points(&Objects[i], Img[i][0x19E], Img[i][0x19F]);
 			dtu_ai_from_image(i, Ai_block + AI_LOCAL_OFF + i * AI_LOCAL_SIZE, Img[i]);
 			dtu_obj_log("state restore: obj %d %s %s", i, dtu_object_name(&Objects[i]),
 				dtu_creature_is_hostile(&Objects[i]) ? "hostile" : "peaceful");
@@ -1423,6 +1458,11 @@ int dtustate_save_level(int level_index)
 	temp_name(name, level_index, 2);
 	ok &= write_tap(name);
 	SLOG("State: %s the state of level %d\n", ok ? "saved" : "cannot save", level_index);
+	// ASCENT: 0x164B3 sets the cast timer to 0x3FFFFFFF after the write, so
+	// a save in 1.3 starts the running cast again. Dtu_fix_save_cast: the
+	// cast runs on.
+	state_options();
+	dtu_spell_cast_saved(!Dtu_fix_save_cast);
 	return ok;
 }
 
@@ -1602,6 +1642,7 @@ void dtustate_warp_leave(int level_index)
 
 static void st_level_start(void);
 static void apply_save_lists(void);
+static ubyte *Save_lists;
 
 void dtustate_warp_enter(int level_index)
 {
@@ -1616,10 +1657,17 @@ void dtustate_game_started(int level_num)
 	// 0x4DD5A: StartNewGame restores level 0. A load of a save game in a
 	// level (0xBBDE5) restores the level of the save; the port starts that
 	// level through StartNewGame.
+	int from_save = Save_lists != NULL;
+
 	images_forget();
 	apply_save_lists();
-	if (dtustate_restore_level(level_num - 1))
+	if (dtustate_restore_level(level_num - 1)) {
 		dtu_trig_player_placed();
+		// ASCENT: 0x164C7 in the load of a save game in a level reads the
+		// cast timer of the save (0x153EBC) with Ai_local_info
+		if (from_save && Ai_block_ok)
+			dtu_spell_cast_load(gs32(Ai_block + AI_LOCAL_OFF + 0x0C));
+	}
 	dtustate_loading_end();
 	st_level_start();
 }

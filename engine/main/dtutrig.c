@@ -35,6 +35,7 @@
 #include "sounds.h"
 #include "text.h"
 #include "mem.h"
+#include "timer.h"		// ASCENT: the real clock of Dtu_fix_trap_pause 0
 #include "dtufile.h"
 #include "dtugame.h"
 #include "dtudisp.h"
@@ -72,6 +73,8 @@ int Dtu_fix_trap_seconds = 1;
 int Dtu_fix_trap_close_door = 1;
 int Dtu_fix_trigger_repeat = 1;
 int Dtu_fix_disable_trap = 1;
+int Dtu_fix_warp_overlap = 1;
+int Dtu_fix_trap_pause = 1;
 int Dtu_trig_log = 0;
 
 static short	Active_traps[DTU_MAX_ACTIVE_TRAPS];		// 0x3A7CD0
@@ -164,6 +167,11 @@ DTU_WEAK void dtu_hook_use_wall(object *obj, int segnum, int side)
 DTU_WEAK void dtu_hook_use_nothing(object *obj)
 {
 	tlog("hook use_nothing()");
+}
+
+DTU_WEAK void dtu_hook_warp_displace(object *player, int segnum, vms_vector *point)
+{
+	tlog("hook warp_displace(seg %d)", segnum);
 }
 
 DTU_WEAK void dtu_hook_warp_command(int code, int value)
@@ -291,8 +299,13 @@ static int player_index(object *obj)
 // game time, so that a run with -fixedfps gives the same result each time.
 // The offset stands for the time before the level: the stamp of a trap
 // that never ran is 0xFFFFFFFF, and the first interval test must pass.
+// ASCENT: D-131, Dtu_fix_trap_pause 0 (-origtrig): the real clock of 1.3,
+// which runs on in a pause, a menu and a conversation, with no offset (no
+// interval passes in the first one after the program start).
 uint dtu_trap_clock(void)
 {
+	if (!Dtu_fix_trap_pause)
+		return (uint)(((int64_t)timer_get_fixed_seconds() * 100) >> 16);
 	return (uint)(((int64_t)GameTime * 100) >> 16) + 360000;
 }
 
@@ -1186,6 +1199,11 @@ static void warp_place_player(int dest_seg, int value)
 		return;
 	}
 	compute_segment_center(&center, &Segments[dest_seg]);
+	// ASCENT: 0x5A278, 0xAD9B2: the creatures of the segment that overlap
+	// the player go to their hide segments. 1.3 tests the position of the
+	// player before the move (the old segment, or the player start of the
+	// new level file). Dtu_fix_warp_overlap: the point of the arrival.
+	dtu_hook_warp_displace(obj, dest_seg, Dtu_fix_warp_overlap ? &center : &obj->pos);
 	obj->pos = center;
 	obj->last_pos = center;
 	obj_relink(obj-Objects, dest_seg);
@@ -1875,6 +1893,8 @@ static void read_options(void)
 		Dtu_trig_log = 1;
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
+	if (FindArg("-origtrig"))
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }
