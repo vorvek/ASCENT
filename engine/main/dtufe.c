@@ -2776,6 +2776,8 @@ static void fe_main_menu(void)
 	case 0:
 		Menu_backdrop = NULL;
 		Fe_full_list = 0;			// ASCENT: 0x5831C and 0x87E65: 0x8C426
+		if (!Dtu_fix_chargen_abort)
+			fe_town_reset();		// 0x87E60: also when the player leaves the creation
 		if (fe_new_character()) {
 			Fe_have_character = 1;
 			fe_town_reset();
@@ -2847,7 +2849,7 @@ static void fe_orig_options(void)
 	if (FindArg("-feoriginput"))
 		Dtu_fe_original_input = 1;
 	if (FindArg("-origfe"))
-		Dtu_fix_escape_load_waterdeep = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
+		Dtu_fix_escape_load_waterdeep = Dtu_fix_chargen_abort = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
 }
 
 static void fe_enter(void)
@@ -3011,6 +3013,12 @@ static int Fe_game_loaded;				// the ESC menu loaded a save game: the FE_GO_ mod
 // runs (0x423E1 sets Function_mode 2 again after the load set 4). 1
 // (default): the game ends and the player is in Waterdeep.
 int Dtu_fix_escape_load_waterdeep = 1;
+
+// 0 (the executable): New Game resets the mission state of Khelben
+// (0x82BC4, called at 0x87E60 before the test of the result) also when the
+// player leaves the character creation, so a loaded game loses it. 1
+// (default): only a new character resets it.
+int Dtu_fix_chargen_abort = 1;
 
 // ASCENT: the direct start (-level NAME) skips the front end. The death of
 // the player must still go to the death screen and the death menu, so the

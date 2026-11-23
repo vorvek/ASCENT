@@ -23,6 +23,9 @@ extern int Dtu_fe_original_input;
 // 0x423E1: 1 (default): a save of Waterdeep that the ESC menu loads ends
 // the game in the level and goes to Waterdeep (D-083). -origfe clears it.
 extern int Dtu_fix_escape_load_waterdeep;
+// 0x87E60: 1 (default): an aborted New Game keeps the mission state of
+// Khelben (D-084). -origfe clears it.
+extern int Dtu_fix_chargen_abort;
 
 // The game sets this to 1 when the player leaves the dungeon through the
 // exit of the Yawning Portal (command 0 of DTU.WRP). The front end then
