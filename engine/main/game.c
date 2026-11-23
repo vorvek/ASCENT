@@ -347,6 +347,7 @@ static char rcsid[] = "$Id: game.c 2.36 1996/01/05 16:52:05 john Exp $";
 #include "gamefont.h"
 #include "dtugame.h"		// ASCENT: the direct start, Dtu_objects_enabled
 #include "dtuobj.h"		// ASCENT: the objects of the target game
+#include "dtustep.h"		// ASCENT: Dtu_fixed_step
 #include "dtucombat.h"	// ASCENT: the attack of the player
 #include "dtufe.h"		// ASCENT: the front end ends the game
 #include "dtumusic.h"	// ASCENT: the streamed music
@@ -1332,6 +1333,20 @@ void calc_frame_time()
 		}
 	}
 	if (fixed_frametime) FrameTime = fixed_frametime;
+	// ASCENT: the test option -renderfps N: each picture has 1/N second,
+	// with the fixed step (dtustep.c). So a test has the same steps in
+	// each run, at the picture rate N.
+	{
+		static fix render_frametime = -1;
+		int t;
+
+		if (render_frametime < 0) {
+			render_frametime = 0;
+			if ((t = FindArg("-renderfps")) != 0 && t+1 < Num_args && atoi(Args[t+1]) > 0)
+				render_frametime = F1_0 / atoi(Args[t+1]);
+		}
+		if (render_frametime && !fixed_frametime) FrameTime = render_frametime;
+	}
 	#endif
 
 	#ifndef NDEBUG
@@ -4157,9 +4172,40 @@ extern	int	Do_appearance_effect;
 
 
 
+// ASCENT: GameLoop() of Descent 1 in three parts, so that the fixed step
+// (dtustep.c) can do the parts of the game more or less often than the
+// picture. The order of one frame of the executable: game_frame_start(),
+// game_frame_render(), calc_frame_time(), game_frame_sim().
+static void game_frame_start(void);
+static void game_frame_render(void);
+static void game_frame_sim(int ReadControlsFlag);
+
+// ASCENT: 1 if this frame uses the fixed step. Not with the test option
+// -fixedfps (one step with that time for each picture: the tests of the
+// frame rate), not in a demo, not in a network game.
+static int game_fixed_step(void)
+{
+	if (!Dtu_fixed_step || !Dtu_objects_enabled)
+		return 0;
+	#ifndef NDEBUG
+	// the option is read in the first calc_frame_time(), after the first picture
+	if (fixed_frametime || FindArg("-fixedfps"))
+		return 0;
+	#endif
+	if (Newdemo_state != ND_STATE_NORMAL && Newdemo_state != ND_STATE_RECORDING)
+		return 0;
+	#ifdef NETWORK
+	if (Game_mode & GM_MULTI)
+		return 0;
+	#endif
+	return 1;
+}
+
 void GameLoop(int RenderFlag, int ReadControlsFlag )
 {
 	static int desc_dead_countdown=100;   /*  used if player shouldn't be playing */
+	static fix step_acc = 0;		// ASCENT: the time that the steps did not use yet
+	static fix picture_time = 0;	// ASCENT: the time of the last picture
 
 #ifndef	NDEBUG
 	//	Used to slow down frame rate for testing things.
@@ -4177,7 +4223,62 @@ void GameLoop(int RenderFlag, int ReadControlsFlag )
 			if (!(--desc_dead_countdown))  // if so, at zero, then pull the plug
 				Error ("Loading overlay -- error number: %d\n", (int)desc_id_exit_num);
 		}
-				
+
+	if (!game_fixed_step()) {
+		// one step for each picture, with the time of the picture
+		step_acc = 0;
+		Dtu_step_alpha = F1_0;
+		Dtu_step_running = 0;
+		game_frame_start();
+		if (RenderFlag)
+			game_frame_render();
+		calc_frame_time();
+		game_frame_sim(ReadControlsFlag);
+		return;
+	}
+
+	// ASCENT: Dtu_fixed_step. The picture shows the state between the last
+	// two steps; the code of the picture has the time of the picture as
+	// FrameTime (the texts of the HUD count with it).
+	Dtu_step_running = 1;
+	if (RenderFlag) {
+		if (picture_time > 0)
+			FrameTime = picture_time;
+		dtu_step_view_begin();
+		game_frame_render();
+		dtu_step_view_end();
+	}
+
+	calc_frame_time();
+	picture_time = FrameTime;
+	step_acc += FrameTime;
+	{
+		int n = 0, level = Current_level_num;
+
+		while (step_acc >= DTU_STEP_TIME && n < DTU_STEP_MAX) {
+			step_acc -= DTU_STEP_TIME;
+			n++;
+			FrameTime = DTU_STEP_TIME;
+			FrameCount++;
+			dtu_step_store();
+			game_frame_start();
+			game_frame_sim(ReadControlsFlag);
+			// a new level or the end of the game: no more steps for this picture
+			if (Function_mode != FMODE_GAME || Current_level_num != level || Endlevel_sequence) {
+				step_acc = 0;
+				dtu_step_reset();
+				break;
+			}
+		}
+		if (step_acc >= DTU_STEP_TIME)
+			step_acc = 0;		// the picture took too long: the time is dropped
+	}
+	Dtu_step_alpha = fixdiv(step_acc,DTU_STEP_TIME);
+	FrameTime = picture_time;
+}
+
+static void game_frame_start(void)
+{
 		#ifndef RELEASE
 		if (FindArg("-invulnerability"))
 			Players[Player_num].flags |= PLAYER_FLAGS_INVULNERABLE;
@@ -4198,23 +4299,19 @@ player_follow_path(ConsoleObject);
 			multi_do_frame();
 		#endif
 
-		if (RenderFlag) {
+}
+
+static void game_frame_render(void)
+{
 			if (force_cockpit_redraw) {			//screen need redrawing?
 				init_cockpit();
 				force_cockpit_redraw=0;
 			}
 			game_render_frame();
-		}
+}
 
-//		mprintf(0,"Velocity %2.2f\n", f2fl(vm_vec_mag(&ConsoleObject->phys_info.velocity)));
-
-#if 0
-mem_fill();
-mem_check();
-#endif
-
-		calc_frame_time();
-
+static void game_frame_sim(int ReadControlsFlag)
+{
 		dead_player_frame();
 		if (Newdemo_state != ND_STATE_PLAYBACK)
 			do_controlcen_dead_frame();

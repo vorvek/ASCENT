@@ -64,6 +64,7 @@
 #include "dtumusic.h"
 #include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
+#include "dtustep.h"
 #include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
@@ -1004,6 +1005,7 @@ void dtu_objects_level_setup(void)
 	// ASCENT: the believed position of a hidden player starts at the player
 	// (C20; the start value of 1.3 was not found)
 	cloak_reset();
+	dtu_step_reset();			// ASCENT: Dtu_fixed_step (dtustep.c)
 	dressing_level_reset();		// ASCENT: Dtu_improved_physics (dtuobj_scenery.c)
 	Ref_tick_count = Ref_ticks_now = 0;
 	end_sequence_reset();

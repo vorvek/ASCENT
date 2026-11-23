@@ -204,6 +204,7 @@ extern int Dtu_turn_dir;
 extern fix Dtu_turn_hold, Dtu_turn_full_thrust, Dtu_turn_other_thrust;
 extern ubyte Dtu_player_state;
 extern fixang Dtu_look_pitch;
+extern fix Dtu_bob_phase;		// ASCENT: for the picture between two steps (dtustep.c)
 extern int Dtu_move_mode;
 extern fix Dtu_floor_dist;
 extern int Dtu_jump_skill;

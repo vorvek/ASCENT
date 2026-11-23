@@ -1345,7 +1345,7 @@ fix Dtu_floor_dist = 0;				// result of the last dtu_apply_gravity()
 int Dtu_jump_skill = 0;				// the word at 0x1D33DF of the player structure. Its source is not known
 
 static int Dtu_bob_mode = 0;		// the byte at 0x14530D
-static fix Dtu_bob_phase = 0;		// the float at 0x38DFAC, as a fix angle
+fix Dtu_bob_phase = 0;		// the float at 0x38DFAC, as a fix angle
 static fix Dtu_fly_bob_phase = 0;	// the float at 0x13D435, as a fix angle
 static fix Dtu_fall_start_y = 0;	// the table at 0x30E2D4, for the player
 static fix Dtu_jump_time = 0;		// 0x13D43A

@@ -60,6 +60,7 @@ comments.
 | `dtuobj_move.c` | The movement of a creature: the stop distance at the player, gravity, `dtu_creature_physics_sim`. | `re/ai.md`, `re/physics.md` |
 | `dtuobj_scenery.c` | Scenery that breaks, the end of the game at the Flamesword, pushed scenery, the collision of two objects. | `re/objects.md`, `re/movies.md` |
 | `dtusolid.c` | Improved physics: scenery as solid bodies for the player (the top holds the player, a side stops the move). New in the port. | `re/physics.md` section 13.2 |
+| `dtustep.c` | The fixed step of 1/60 second and the picture between two steps. New in the port. | `re/physics.md` section 14 |
 | `dtuobj_aware.c` | Alerts and the awareness events of the creatures, the wake of a creature, the check of the objects, the gate in of a creature, the drop of objects in a segment. | `re/ai.md` |
 | `dtuobj_test.c` | The test aids that place the player and the objects: `-testpos`, `-testobjpos`, `-testtour`. | |
 | `dtuchar.c` | The player character: attributes, equipment, item use, rest, experience, levels, choice boxes. Replaces the ship values. | `re/character.md` |
@@ -259,7 +260,9 @@ boxes.
 | `-checklevel NAME` | Load a level, print a summary, exit. |
 | `-frames N` | Leave the game after N frames. |
 | `-screenshot FILE` | Write the last frame to a PPM file. |
-| `-fixedfps N` | A fixed frame time from the first frame, so that two runs give the same moves. |
+| `-fixedfps N` | A fixed frame time from the first frame, so that two runs give the same moves. One step of the game for each picture (no fixed step). |
+| `-renderfps N` | Each picture has 1/N second, with the fixed step of 1/60 second (`dtustep.c`). |
+| `-nofixedstep` | One step of the game for each picture with the time of the picture, as the executable. |
 | `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of `dtufe_script.c`. |
 | `-testmove ACTIONS` | Press movement keys for a time: `forward+run:2000ms,left:30,jump:1`. |
 | `-testpos X,Y,Z[,H]` | Put the player at a position at the first frame. |

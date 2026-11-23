@@ -491,6 +491,9 @@ setting is 1 (corrected) by default. The option `-origphys` sets all to 0.
 
 Not corrected: the 8 tries of the move loop for each frame.
 
+Since the fixed step (section 14) the game runs with a frame time of 1/60 s at each
+picture rate, and these settings matter only without it (`-fixedfps N`, `-nofixedstep`).
+
 ## 9. The port
 
 Files: `engine/main/physics.c` (end of the file), `physics.h`, `controls.c`, `fvi.c`,
@@ -1008,3 +1011,64 @@ Not done: with Improved physics off the rules of 0x261DB and 0x13A950 (section 4
 are not in the port. A player who comes down on a creature still hangs over it (the
 move stops at a creature). The player does not move with scenery that a creature
 pushes under the player.
+
+## 14. The fixed step (`Dtu_fixed_step`, port)
+
+New code, not in the executable: `engine/main/dtustep.c` and `GameLoop()` in `game.c`.
+
+The executable does one step of the game for each picture, with the time of the
+picture as `FrameTime` (section 8). The port has a correction for each known rule that
+counts frames, but a step of 1/144 s and a step of 1/20 s never give the same result,
+and each new rule must be made independent of the frame rate again (the first version
+of the push of 13.2 was not).
+
+With `Dtu_fixed_step` (on by default) the game runs in steps of 1/60 s:
+
+- `GameLoop()` has three parts: `game_frame_start()` (the values of the player),
+  `game_frame_render()` (the picture) and `game_frame_sim()` (the controls, the game
+  time, the scripts, the walls and triggers, the objects, the AI). Without the fixed
+  step their order is that of the executable: start, picture, `calc_frame_time()`, sim.
+- With the fixed step the time of each picture goes to an account. For each 1/60 s in
+  the account the game does `game_frame_start()` and `game_frame_sim()` with `FrameTime`
+  1/60 s: no step in a picture at a high frame rate, more than one at a low frame
+  rate, 8 at most (more time is dropped, for example after a long load). `FrameCount`
+  counts the steps, not the pictures.
+- The picture shows the state between the last two steps. The part of a step that
+  stays in the account is `Dtu_step_alpha` (0 to 1). Before a step the positions and
+  orientations of all objects, the look pitch and the phase of the view motion are
+  stored. For the picture each object goes to `stored + (now - stored) * alpha` (the
+  orientation from the forward and up vectors), and after the picture the state of
+  the game comes back. An object that moved more than 25.0 in one step (a warp, a
+  load) is not put between. So the picture is up to one step (1/60 s) behind the
+  game.
+- The code of the picture has the time of the picture as `FrameTime` (the texts of
+  the HUD count with it).
+- The keys and the mouse are read in the steps. Key events stay in their queue until a
+  step reads them.
+- A new level, the end of the game or a load ends the steps of that picture.
+
+Not with the fixed step: the test option `-fixedfps N` (one step of 1/N s for each
+picture, as before: the tests of the frame rate and all measurements of this document
+use it), a demo, a network game. `-nofixedstep` and `-origphys` turn it off. The new
+test option `-renderfps N` gives each picture 1/N s with the fixed step.
+
+The `Dtu_fix_*` corrections of section 8 stay: they are needed without the fixed step,
+and at 1/60 s they give what `-fixedfps 60` gave before.
+
+Measured:
+
+- THIEF0, a walk, a jump and a walk at a crate (the test of 13.2), 5 s: the move log
+  is the same file with `-fixedfps 60` and with `-renderfps` 20, 60, 144 and 240 (301
+  steps each). With `-renderfps 144 -nofixedstep` it has 719 steps and another end
+  height of the center (4.08 against 4.15).
+- With `-fixedfps 60` the move logs are the same files as before this change, with
+  the Improvements on and off.
+- The picture (line `VIEW` of `-movelog`: the place of the player in each picture),
+  YPINN, a walk with a turn, 0.5 s of constant motion: the turn between two pictures
+  has a standard deviation of 0.1 to 0.2 percent of its mean at 45, 144 and 240
+  pictures per second (0.07 percent at 60, where each picture is one step).
+
+Not done: the view turns with the steps, so the mouse look has up to 1/60 s more
+delay than before at a high frame rate. The animation frames of the models, the
+doors, the vclips and the lights change in steps of 1/60 s. The menus and the front
+end are not part of the game loop and do not change.

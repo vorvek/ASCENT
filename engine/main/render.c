@@ -343,6 +343,7 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "dtuopts.h"		// ASCENT: the GPU renderer settings
 #include "dtuinfra.h"		// ASCENT: infravision
 #include "dtuobj.h"		// ASCENT: the tint of Detect Magic
+#include "dtustep.h"		// ASCENT: Dtu_step_running
 #include "dtuspell.h"		// ASCENT: DTU_FX_DETECT_MAGIC
 #include "dtudisp.h"		// ASCENT: Dtu_hires, Dtu_display_active
 #include "palette.h"		// ASCENT: gr_palette for the GPU renderer
@@ -2281,7 +2282,8 @@ void render_frame(fix eye_offset)
 
 	if (Endlevel_sequence) {
 		render_endlevel_frame(eye_offset);
-		FrameCount++;
+		if (!Dtu_step_running)		// ASCENT: with the fixed step a step counts the frame (game.c)
+			FrameCount++;
 		return;
 	}
 
@@ -2463,7 +2465,8 @@ void render_frame(fix eye_offset)
 
 	g3_end_frame();
 
-	FrameCount++;		//we have rendered a frame
+	if (!Dtu_step_running)		// ASCENT: with the fixed step a step counts the frame (game.c)
+		FrameCount++;		//we have rendered a frame
 }
 
 int first_terminal_seg;

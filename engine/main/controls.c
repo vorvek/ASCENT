@@ -224,6 +224,7 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include "dtutrig.h"		// ASCENT: dtu_player_use()
 #include "dtuthief.h"		// ASCENT: the thief keys and the climb
 #include "dtuspell.h"		// ASCENT: the jump key stops a cast
+#include "dtustep.h"		// ASCENT: Dtu_fixed_step
 #include "dtuopts.h"		// ASCENT: the Improvements of the movement
 #include "dtudisp.h"		// ASCENT: Dtu_immersive, the key V
 #include "dtulang.h"		// ASCENT: LN(), the Auto Run messages
@@ -440,6 +441,9 @@ static void dtu_move_init(void)
 	if (FindArg("-fly"))
 		Dtu_player_walk = 0;
 
+	// ASCENT: Dtu_fixed_step (dtustep.c)
+	if (FindArg("-origphys") || FindArg("-nofixedstep"))
+		Dtu_fixed_step = 0;
 	if (FindArg("-origphys"))
 		Dtu_fix_physics_steps = Dtu_fix_frame_drag = Dtu_fix_stop_decay =
 			Dtu_fix_floor_push = Dtu_fix_look_return = Dtu_fix_fly_bob = Dtu_fix_turn_ramp = Dtu_fix_jump_exit =
