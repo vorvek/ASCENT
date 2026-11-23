@@ -393,11 +393,11 @@ TESTS = [
     T("verbose_combat_on", "BAT",
       "15:goobj=43,17:heal=99," + ",".join("%d:attackedby=43" % f for f in range(20, 40, 2)) + ","
       + ",".join("%d:swingat=43" % f for f in range(40, 70, 2)),
-      [r"message: Roll d20 \d+"], frames=80, extra=["-verbosecombat"]),
+      [r"message: .+ -> .+: Roll d20 \d+"], frames=80, extra=["-verbosecombat"]),
     T("verbose_combat_off", "BAT",
       "15:goobj=43,17:heal=99," + ",".join("%d:attackedby=43" % f for f in range(20, 40, 2)) + ","
       + ",".join("%d:swingat=43" % f for f in range(40, 70, 2)),
-      [r"attack roll: d20"], [r"message: Roll d20", r"message: .*Damage"], frames=80, extra=["-noverbosecombat"]),
+      [r"attack roll: d20"], [r"message: .*Roll d20", r"message: .*Damage"], frames=80, extra=["-noverbosecombat"]),
 ]
 
 DIE = {0: 8, 1: 4, 2: 10, 3: 6}       # 0x13FDF3: cleric, mage, fighter, thief
@@ -425,10 +425,16 @@ def check_rolls(name, text):
     """Each verbose line: the d20 from 1 to 20, the total the d20 plus the
     listed modifiers, the damage total the dice plus the listed bonuses."""
     problems = []
-    lines = re.findall(r"message: (Roll d20 .*)", text)
+    lines = re.findall(r"message: (.*?Roll d20 .*)", text)
     if not lines:
         return ["no verbose line"]
     for ln in lines:
+        # "attacker -> target: " before the numbers (dtu_xp_roll_say)
+        w = re.match(r"(.+?) -> (.+?): (Roll d20 .*)", ln)
+        if not w or "You" not in (w.group(1), w.group(2)):
+            problems.append("no attacker and target: " + ln)
+            continue
+        ln = w.group(3)
         m = re.match(r"Roll d20 (\d+)(?::|(.*?) = (-?\d+) vs (-?\d+):)", ln)
         if not m:
             problems.append("cannot read: " + ln)

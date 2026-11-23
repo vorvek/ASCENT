@@ -395,13 +395,28 @@ const char *dtu_xp_roll_text(void)
 	return text;
 }
 
+// The name of the attacker or the target in the verbose line: "You" for the
+// player, "a trap" for no object or a trap (a light object), else the name
+// in the language (the words of the spell messages, msg_setup of dtuspell.c)
+static const char *roll_who(object *o)
+{
+	if (o == ConsoleObject)
+		return LT("You");
+	if (o == NULL || o->type == OBJ_LIGHT)
+		return LT("a trap");
+	return dtu_object_display_name(o);
+}
+
 void dtu_xp_roll_say(object *a, object *b)
 {
-	char text[256];
+	char text[256], line[300];
 
 	if (Dtu_verbose_combat && ConsoleObject && (a == ConsoleObject || b == ConsoleObject) && roll_text(text, sizeof(text))) {
-		HUD_init_message("%s", text);
-		dtu_char_log("message: %s", text);
+		// "attacker -> target: numbers", so that the lines of the player
+		// and of the enemies differ
+		snprintf(line, sizeof(line), "%s -> %s: %s", roll_who(a), roll_who(b), text);
+		HUD_init_message("%s", line);
+		dtu_char_log("message: %s", line);
 	}
 	dtu_xp_roll_clear();
 }

@@ -68,7 +68,8 @@ int dtu_xp_next_level_text(char *out, int size);
 // menu, -verbosecombat and -noverbosecombat for one run). The attack and
 // damage code reports each number where it computes it; one line in the
 // message log shows them after the hit or miss message of an attack by or
-// on the player: "Roll d20 14 +2 = 16 vs 13: hit. Damage 1d8 5 +1 = 6."
+// on the player, with the attacker and the target first:
+// "You -> Rat: Roll d20 14 +2 = 16 vs 13: hit. Damage 1d8 5 +1 = 6."
 // "vs" is the number needed (THAC0 minus the armor class in use).
 extern int Dtu_verbose_combat;
 void dtu_xp_roll_clear(void);
