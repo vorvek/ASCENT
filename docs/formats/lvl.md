@@ -312,6 +312,13 @@ Same size and layout as the Descent 1 editor `side` struct.
 | 8 | 48 | uvl[4] | uvls | per corner: fix u, fix v, fix l (light) |
 | 56 | 24 | vec[2] | normals | one normal per triangle, pointing into the segment |
 
+Light values of 0x82C8DD37 to 0x839FBB60 (fix about -32000): 164 corners in BEHOLDR2,
+HUB4, IBBALAR1, IBBALAR2, MINE, PRISON and THIEF1 (THIEF1 segment 204 side 4 has
+0x832FD5E8 at its 4 corners). The texture mapper of 1.3 shifts the light left by 5 in
+32 bits (draw_tmap 0xEA4C4) and clamps the result to 0 .. 0x1F8000 (0xE906C); each of
+these values wraps to a positive value above 0x1F8000, so the corner is drawn at full
+light. All other light values are 0 to 1.0.
+
 Texture index 0 to 4 (all named `green`) is on 4921 sides. All but 5 of them are sides
 that are not drawn (a child segment and no wall). Guess: it is the editor default
 texture.
