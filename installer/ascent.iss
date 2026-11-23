@@ -38,6 +38,9 @@
 #ifndef LANG_ES_KB
   #define LANG_ES_KB "2775"
 #endif
+#ifndef SOUNDS_KB
+  #define SOUNDS_KB "50"
+#endif
 ; The content server: the one place is installer/content.ini.
 #define BaseUrl ReadIni(SourcePath + "content.ini", "content", "base_url", "")
 
@@ -85,6 +88,8 @@ Name: "hdmovies"; Description: "{cm:TaskMovies,{#MOVIES_MB}}"; GroupDescription:
 ; The Spanish text of the game: checked when the setup program is in Spanish
 Name: "langes"; Description: "{cm:TaskLangEs,{#LANG_ES_KB}}"; GroupDescription: "{cm:GroupContent}"; Languages: spanish; Check: HasContentServer
 Name: "langes"; Description: "{cm:TaskLangEs,{#LANG_ES_KB}}"; GroupDescription: "{cm:GroupContent}"; Languages: english german french italian; Flags: unchecked; Check: HasContentServer
+; The port sounds (pack sounds): checked, because the pack is small
+Name: "sounds"; Description: "{cm:TaskSounds,{#SOUNDS_KB}}"; GroupDescription: "{cm:GroupContent}"; Check: HasContentServer
 
 [Files]
 Source: "{#STAGE}\ascent.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -122,6 +127,7 @@ english.GroupContent=Downloadable content (can also be added later with ASCENT-D
 english.TaskTextures=Upscaled textures and interface (for the GPU renderer; download, about %1 MB)
 english.TaskMovies=Upscaled movies (for the GPU renderer; download, about %1 MB)
 english.TaskLangEs=Spanish translation of the game text (download, about %1 KB)
+english.TaskSounds=Miss sounds: the sound of a melee attack that misses (download, about %1 KB)
 english.ShortcutContent=ASCENT-DTU Content
 english.RunPlay=Play ASCENT-DTU
 english.DiscPageTitle=Game disc
@@ -148,6 +154,7 @@ english.ErrImport=The game files cannot be copied.
 english.PackTextures=Upscaled textures and interface
 english.PackMovies=Upscaled movies
 english.PackLangEs=Spanish translation of the game text
+english.PackSounds=Miss sounds
 english.StepPack=Downloading: %1...
 english.ErrPack=This content cannot be installed now: %1. The game works without it; install it later with ASCENT-DTU Content in the Start menu.
 english.UninstallAsk=Remove your saved games and settings of ASCENT-DTU too?
@@ -159,6 +166,7 @@ spanish.GroupContent=Contenido descargable (también se puede añadir más tarde
 spanish.TaskTextures=Texturas e IU en alta resolución (para el renderizador por GPU; descarga de unos %1 MB)
 spanish.TaskMovies=Vídeos en alta resolución (para el renderizador por GPU; descarga de unos %1 MB)
 spanish.TaskLangEs=Traducción al español de los textos del juego (descarga de unos %1 KB)
+spanish.TaskSounds=Sonidos de fallo: el sonido de un ataque cuerpo a cuerpo que falla (descarga de unos %1 KB)
 spanish.ShortcutContent=Contenido de ASCENT-DTU
 spanish.RunPlay=Jugar a ASCENT-DTU
 spanish.DiscPageTitle=Disco del juego
@@ -185,6 +193,7 @@ spanish.ErrImport=No se pueden copiar los archivos del juego.
 spanish.PackTextures=Texturas e IU en alta resolución
 spanish.PackMovies=Vídeos en alta resolución
 spanish.PackLangEs=Traducción al español de los textos del juego
+spanish.PackSounds=Sonidos de fallo
 spanish.StepPack=Descargando: %1...
 spanish.ErrPack=Este contenido no se puede instalar ahora: %1. El juego funciona sin él; puede instalarlo más tarde con Contenido de ASCENT-DTU en el menú Inicio.
 spanish.UninstallAsk=¿Eliminar también las partidas guardadas y la configuración de ASCENT-DTU?
@@ -196,6 +205,7 @@ german.GroupContent=Herunterladbare Inhalte (auch später mit ASCENT-DTU Inhalte
 german.TaskTextures=Hochskalierte Texturen und Oberfläche (für den GPU-Renderer; Download, etwa %1 MB)
 german.TaskMovies=Hochskalierte Videos (für den GPU-Renderer; Download, etwa %1 MB)
 german.TaskLangEs=Spanische Übersetzung der Spieltexte (Download, etwa %1 KB)
+german.TaskSounds=Fehlschlag-Geräusche: das Geräusch eines verfehlten Nahkampfangriffs (Download, etwa %1 KB)
 german.ShortcutContent=ASCENT-DTU Inhalte
 german.RunPlay=ASCENT-DTU spielen
 german.DiscPageTitle=Spiel-CD
@@ -222,6 +232,7 @@ german.ErrImport=Die Spieldateien können nicht kopiert werden.
 german.PackTextures=Hochskalierte Texturen und Oberfläche
 german.PackMovies=Hochskalierte Videos
 german.PackLangEs=Spanische Übersetzung der Spieltexte
+german.PackSounds=Fehlschlag-Geräusche
 german.StepPack=Download: %1...
 german.ErrPack=Dieser Inhalt kann jetzt nicht installiert werden: %1. Das Spiel funktioniert auch ohne ihn; Sie können ihn später mit ASCENT-DTU Inhalte im Startmenü installieren.
 german.UninstallAsk=Auch die Spielstände und Einstellungen von ASCENT-DTU entfernen?
@@ -233,6 +244,7 @@ french.GroupContent=Contenu téléchargeable (peut aussi être ajouté plus tard
 french.TaskTextures=Textures et interface en haute résolution (pour le rendu GPU ; téléchargement d'environ %1 Mo)
 french.TaskMovies=Vidéos en haute résolution (pour le rendu GPU ; téléchargement d'environ %1 Mo)
 french.TaskLangEs=Traduction espagnole des textes du jeu (téléchargement d'environ %1 Ko)
+french.TaskSounds=Sons d'attaque manquée : le son d'une attaque au corps à corps qui manque sa cible (téléchargement d'environ %1 Ko)
 french.ShortcutContent=Contenu ASCENT-DTU
 french.RunPlay=Jouer à ASCENT-DTU
 french.DiscPageTitle=Disque du jeu
@@ -259,6 +271,7 @@ french.ErrImport=Impossible de copier les fichiers du jeu.
 french.PackTextures=Textures et interface en haute résolution
 french.PackMovies=Vidéos en haute résolution
 french.PackLangEs=Traduction espagnole des textes du jeu
+french.PackSounds=Sons d'attaque manquée
 french.StepPack=Téléchargement : %1...
 french.ErrPack=Ce contenu ne peut pas être installé maintenant : %1. Le jeu fonctionne sans lui ; vous pourrez l'installer plus tard avec Contenu ASCENT-DTU dans le menu Démarrer.
 french.UninstallAsk=Supprimer aussi les parties sauvegardées et les paramètres d'ASCENT-DTU ?
@@ -270,6 +283,7 @@ italian.GroupContent=Contenuti scaricabili (si possono aggiungere anche in segui
 italian.TaskTextures=Texture e interfaccia ad alta risoluzione (per il renderer GPU; download di circa %1 MB)
 italian.TaskMovies=Filmati ad alta risoluzione (per il renderer GPU; download di circa %1 MB)
 italian.TaskLangEs=Traduzione spagnola dei testi del gioco (download di circa %1 KB)
+italian.TaskSounds=Suoni dei colpi mancati: il suono di un attacco in mischia che manca il bersaglio (download di circa %1 KB)
 italian.ShortcutContent=Contenuti ASCENT-DTU
 italian.RunPlay=Gioca ad ASCENT-DTU
 italian.DiscPageTitle=Disco del gioco
@@ -296,6 +310,7 @@ italian.ErrImport=Impossibile copiare i file del gioco.
 italian.PackTextures=Texture e interfaccia ad alta risoluzione
 italian.PackMovies=Filmati ad alta risoluzione
 italian.PackLangEs=Traduzione spagnola dei testi del gioco
+italian.PackSounds=Suoni dei colpi mancati
 italian.StepPack=Download: %1...
 italian.ErrPack=Questo contenuto non può essere installato ora: %1. Il gioco funziona anche senza; è possibile installarlo in seguito con Contenuti ASCENT-DTU nel menu Start.
 italian.UninstallAsk=Rimuovere anche le partite salvate e le impostazioni di ASCENT-DTU?
@@ -569,7 +584,8 @@ begin
   if CurStep = ssPostInstall then begin
     if ExpandConstant('{param:CONTENTURL|}') <> '' then
       SetIniString('content', 'base_url', ExpandConstant('{param:CONTENTURL|}'), ExpandConstant('{app}\content.ini'));
-    if WizardIsTaskSelected('hdtextures') or WizardIsTaskSelected('hdmovies') or WizardIsTaskSelected('langes') then begin
+    if WizardIsTaskSelected('hdtextures') or WizardIsTaskSelected('hdmovies') or WizardIsTaskSelected('langes')
+      or WizardIsTaskSelected('sounds') then begin
       ProgressPage.Show();
       try
         if WizardIsTaskSelected('langes') then
@@ -579,6 +595,8 @@ begin
           InstallPacks('textures ui', 'PackTextures');
         if WizardIsTaskSelected('hdmovies') then
           InstallPacks('movies', 'PackMovies');
+        if WizardIsTaskSelected('sounds') then
+          InstallPacks('sounds', 'PackSounds');
       finally
         ProgressPage.Hide();
       end;
