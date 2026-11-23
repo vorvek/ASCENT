@@ -1,7 +1,7 @@
 /*
  * ascent-content: installs, removes, checks and repairs the downloadable
  * content of ASCENT (the upscaled textures, interface and movies, the
- * Spanish text, the miss sounds), and
+ * Spanish text), and
  * downloads the 1.3 patch pack for the setup program.
  *
  * This file is new. The DOS game had no downloadable content.
