@@ -122,9 +122,33 @@ typedef struct dtu_missile {
 //------------------------------------------------------------------------
 // dtuobj.c
 
+extern monster_ext Monster_ext[MAX_ROBOT_TYPES];
+extern dtu_ai_local Ail[MAX_OBJECTS];
+extern FILE *Obj_log;
+extern int Setup_log;
 extern int Test_pos_pending;
+polymodel *obj_model(object *obj);
+int is_hostile(object *obj);
 int tbl_int(int record,char *key,int def);
 fix creature_floor_dist(object *obj,fix radius,fix half_height);
+int damage_dice(object *attacker,object *target,int weapon);
+void log_corpse_height(object *obj,const char *what);
+int corpse_on_floor(object *obj);
+
+//------------------------------------------------------------------------
+// dtuobj_setup.c
+
+extern int ail_keep_bits;
+extern int Dtu_script_level;
+extern int Level_setup_pass;
+void init_creature_ai(object *obj);
+void setup_creature(object *obj);
+extern int Level_setup_restore;
+void level_fixes_tables(int has_state);
+void lava_textures_lookup(void);
+void level_fixes_objects(int has_state);
+void level_fixes_scenery_shields(void);
+void level_start_npcs(int setup);
 
 //------------------------------------------------------------------------
 // dtuobj_item.c
