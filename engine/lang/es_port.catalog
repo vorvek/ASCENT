@@ -239,6 +239,14 @@ id: port.immersive_mode_is_off
 en: Immersive mode is off.
 tr: Modo inmersivo desactivado.
 
+id: port.auto_run_is_on
+en: Auto Run is on.
+tr: Correr siempre activado.
+
+id: port.auto_run_is_off
+en: Auto Run is off.
+tr: Correr siempre desactivado.
+
 id: port.press_enter
 en: Press Enter...
 tr: Pulsa Enter...
