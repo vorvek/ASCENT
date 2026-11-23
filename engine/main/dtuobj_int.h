@@ -132,6 +132,7 @@ extern int Ref_tick_count, Ref_ticks_now;
 extern fix Player_max_hp;
 extern int Player_death_stage;
 extern fix Player_death_time;
+extern int N_aware_events;
 extern int Player_swing_done;
 extern FILE *Obj_log;
 extern int Obj_log_frames;
@@ -146,6 +147,9 @@ void set_anim(object *obj,int state);
 int get_weapon_sphere(object *obj,int frame,vms_vector *center,fix *radius);
 int ai_tick(int objnum,int n);
 fix creature_floor_dist(object *obj,fix radius,fix half_height);
+int brain_bit(int a,int b);
+int creature_ray_to(object *obj,vms_vector *to);
+int creature_ray_to_player(object *obj);
 void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
 void sound_on_object(int sound,object *obj,fix volume);
 void vclip_at(int segnum,vms_vector *pos,fix size,int vclip);
@@ -156,7 +160,9 @@ int player_type_sound(char *key);
 void log_corpse_height(object *obj,const char *what);
 fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 int corpse_on_floor(object *obj);
+void cloak_reset(void);
 int opens_doors(object *obj);
+void morale_check(object *obj);
 
 //------------------------------------------------------------------------
 // dtuobj_setup.c
@@ -210,6 +216,11 @@ void end_sequence_frame(void);
 int dressing_pushable(object *d);
 void push_dressing(object *mover,object *d,int strength);
 void dressing_move_frame(void);
+
+//------------------------------------------------------------------------
+// dtuobj_aware.c
+
+void awareness_events_frame(void);
 
 //------------------------------------------------------------------------
 // dtuobj_test.c
