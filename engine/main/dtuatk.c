@@ -70,9 +70,18 @@ int dtu_atk_state_animates(fix state_time,int attack_state,int fix_haste)
 	return fix_haste && attack_state && state_time > 0;
 }
 
-int dtu_atk_item_bits(int pc_spell,int fix_items)
+int dtu_atk_item_fast(int pc_spell,int fix_items)
 {
-	if (fix_items && pc_spell == 21)
-		return 1 << 9;
-	return 0;
+	return fix_items && pc_spell == 21;
+}
+
+int dtu_atk_rate_effects(int effects,int item_fast)
+{
+	// the Haste bit is one bit: a second source of speed adds nothing
+	return item_fast ? effects | DTU_ATK_HASTE : effects;
+}
+
+int dtu_atk_rate_fix_haste(int effects,int item_fast,int fix_haste)
+{
+	return fix_haste || (item_fast && !(effects & DTU_ATK_HASTE));
 }

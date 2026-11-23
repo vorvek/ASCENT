@@ -408,9 +408,11 @@ extern int Dtu_fix_luck_coin;
 // pc_spell1, the code of the worn items (0xAFB55) does not read the bow
 // slot, and PC_spell of a melee weapon is never read (0x44300 calls
 // 0x56A0D only for attack_type 0): the bow is a Short Bow +2 and the sword
-// a Short Sword +2. Corrected: the bow in the bow slot and the sword in
-// the hand give Haste (item bit 9), like the Ring of Quickness and the
-// Boots of Speed. -origcombat clears it.
+// a Short Sword +2. Corrected: the bow in the bow slot shoots and the
+// sword in the hand swings twice as fast (dtu_char_item_fast, dtuatk.c).
+// It is no Haste effect (no move speed, no entry in the effect list) and
+// does not add to Haste; with Slow the rate is normal. -origcombat clears
+// it.
 extern int Dtu_fix_speed_items;
 // ASCENT: the Cursed Scroll does rand() % (hit points as a fix) damage
 // (0x38159), so less than half a point. 1 (default): rand() % hit points
@@ -532,6 +534,7 @@ int dtu_char_spider_turn_level(void);
 #define DTU_IP_USE_SPELL		14		// USE casts spell value around the player
 #define DTU_IP_TURN_UNDEAD	15		// the key of Turn Undead works
 #define DTU_IP_INFRA_HUMAN	16		// the Infravision effect only for a human
+#define DTU_IP_FAST_ATTACK	17		// ASCENT: attacks twice as fast, no Haste (dtu_char_item_fast)
 typedef struct dtu_item_power {
 	int		kind, value, value2;
 } dtu_item_power;
@@ -540,6 +543,10 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n);
 // The effects (DTU_FX_) that the item gives while it is worn, or in the
 // hand for a weapon (0xAFB55 with 0xB08A8).
 int dtu_char_item_fx(int type, int id);
+// ASCENT: 1 if the item has the speed power of Dtu_fix_speed_items: the
+// bow in the bow slot shoots and the melee weapon in the hand swings twice
+// as fast (dtuatk.c). It gives no Haste effect.
+int dtu_char_item_fast(int type, int id);
 // The armor class that the item adds in its slot (negative is better), as
 // dtu_char_update counts it before the rules that need other items.
 int dtu_char_item_ac(int type, int id);

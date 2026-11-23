@@ -133,7 +133,7 @@ line numbers of the table section.
 | Id | Finding | Why not changed |
 |---|---|---|
 | O1 | Values: Bracers of Defense AC2 500 (AC8 500, AC6 1500, AC4 2500), Chain Mail +2 2500 (as +1), Bolt +2 300 (as +1). | The DMG has experience values only (p. 186: 500 for each point of AC; p. 189, Table 106), no price. The market reads `item_info.value`, not the table line, so "Rulebook items" does not reach it. Small: a helper for the value in `dtufe_town.c` and `dtu_item_get`. |
-| O2 | Short Sword of Quickness and Short Bow of Speed have no speed power. | Mechanics (the other audit). |
+| O2 | Short Sword of Quickness and Short Bow of Speed have no speed power. | Done: `Dtu_fix_speed_items` (-origcombat gives 1.3). Their attacks are twice as fast, with no Haste effect, not more with Haste, normal with Slow (docs/re/combat.md, A8). |
 | O3 | Ring of Armoring (the Armor spell number in its line) does nothing. The Lantern does nothing. | Mechanics. |
 | O4 | Boots +1 AC, Gauntlets +1 AC, and +1 AC of the Gloves of Dexterity, the Glim-Gauntlet and the Gauntlets of Ogre Power. The rulebooks give these no armor class. | The values are in the code tables 0x145C04 and 0x145A04, not in the item lines. A change moves every armor class of the game. |
 | O5 | Names that differ from the DMG but fit their effect: Ring of Coolness (Fire Resistance), Ring of Feather Fall (Feather Falling), Gloves of Dexterity (Gauntlets of Dexterity), Wand of Fireballs (Wand of Fire). | Not defects. Each new name needs a translation. |

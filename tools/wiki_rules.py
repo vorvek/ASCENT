@@ -369,7 +369,8 @@ SPELLS = {
              eff="Ends Slow. You move twice as fast, a melee swing takes half the time (0.5 s for most "
                  "weapons), and arrows, bolts and thrown weapons wait half as long between shots. The "
                  "original 1.3 game makes the melee attacks slower (one each 1.5 swing times) and does "
-                 "not change the shots; ASCENT corrects this."),
+                 "not change the shots; ASCENT corrects this. The Short Sword of Quickness and the Short Bow "
+                 "of Speed do not make it faster again."),
     22: dict(src="0x8E85A, 0x56FF6", dur="2 minutes per level", save="Negates", target="The creature the missile hits",
              eff="Only humanoid creatures and players; not undead, not with Free Action. The target "
                  "cannot move. Each cast holds at most 1d4 targets; a target that saves does not count. "
@@ -591,8 +592,10 @@ FIXES = [
     ("Dtu_fix_haste_attack", "-origcombat", "Haste halves the swing time; 1.3 makes the melee attacks slower."),
     ("Dtu_fix_missile_rate", "-origcombat", "Arrows, bolts and thrown weapons wait their Speed from one "
      "shot to the next (Haste halves it, Slow doubles it); in 1.3 each key press fires."),
-    ("Dtu_fix_speed_items", "-origcombat", "The Short Bow of Speed in the bow slot and the Short Sword of "
-     "Quickness in the hand give Haste, as their table lines say; in 1.3 they have no power."),
+    ("Dtu_fix_speed_items", "-origcombat", "The Short Bow of Speed in the bow slot shoots and the Short "
+     "Sword of Quickness in the hand swings twice as fast, as their table lines say; in 1.3 they have no "
+     "power. It is no Haste: you do not move faster, it does not add to Haste, and with Slow the rate is "
+     "normal."),
     ("Dtu_fix_magic_tint", "-origobj", "The blue tint of Detect Magic is drawn on all magic things in "
                                        "view; 1.3 draws it mostly on near ones."),
     ("Dtu_fix_spell_save_repair", "-origchar", "Saves of older ASCENT versions get their spells moved "
@@ -1317,6 +1320,10 @@ class Pages:
         fw = float(r.num("fire_wait", 0.25))
         melee = (r.get("attack_type") or "").upper() != "PROJECTILE"
         speed = "%g s" % (max(fw, 1.0) if melee else fw)
+        if melee and r.get("pc_spell") == "21":
+            # Dtu_fix_speed_items: the swing of the Short Sword of Quickness
+            # is twice as fast (engine/main/dtuatk.c)
+            speed = "%g s" % (max(fw, 1.0) / 2)
         if "." not in speed:
             speed = speed.replace(" s", ".0 s")
         notes = []
@@ -1375,8 +1382,9 @@ class Pages:
             "- Speed: the time of a melee swing. Every swing lasts at least 1.0 s, so a faster weapon "
             "swings at 1.0 s. For a thrown or missile weapon it is the wait from one shot to the "
             "next (the original 1.3 game has no wait: each key press fires; ASCENT corrects this). "
-            "Haste halves the time, also below 1.0 s, and Slow doubles it. The level and the class "
-            "do not change it: no character gets more attacks.",
+            "Haste halves the time, also below 1.0 s, and Slow doubles it. The Short Sword of "
+            "Quickness and the Short Bow of Speed halve it too, but not again with Haste. The level "
+            "and the class do not change it: no character gets more attacks.",
             "- Magic: a creature that resists weapons takes no damage from a weapon that is not magic.",
             "- F/T/M/C: the classes that may use it ([[Classes]]).",
             "- Value: the base price in gold. -: the item has no price.",
@@ -2033,8 +2041,9 @@ WEAPON_NOTES = {
     54: "In the hand: Chill Touch, Resist Fire, Feather Fall, Free Action, Jump, Detect Magic, Haste, "
         "Improved Invisibility and Infravision with no end, and Find/Remove "
         "Traps and Climb Walls 95%.",
-    69: "Haste while it is in the hand: a swing of 0.5 s, and you move twice as fast. The original 1.3 "
-        "game gives it no power; ASCENT corrects this.",
+    69: "Attacks twice as fast while it is in the hand: a swing of 0.5 s. It is no Haste: you do not "
+        "move faster, and with Haste the swing stays 0.5 s. The original 1.3 game gives it no power; "
+        "ASCENT corrects this.",
     70: "Against undead: double damage on d100 <= 5 x (level of the undead - 4); otherwise the undead "
         "is destroyed.",
     71: "+2 to hit and +2 fire damage against a regenerating target, +4 and +4 against undead.",
@@ -2042,8 +2051,9 @@ WEAPON_NOTES = {
     74: "No bonus to hit, despite the +1.",
 }
 
-SPEED_BOW_NOTE = ("Haste while it is in the bow slot: half the wait between arrows, and you move twice as "
-                  "fast. The original 1.3 game gives it no power; ASCENT corrects this.")
+SPEED_BOW_NOTE = ("Shoots twice as fast while it is in the bow slot: half the wait between arrows. It is no "
+                  "Haste: you do not move faster, and with Haste the wait is not halved again. The original "
+                  "1.3 game gives it no power; ASCENT corrects this.")
 
 # 0x37A6A, combat.md B6
 POTIONS = {
@@ -2106,11 +2116,12 @@ SOURCES_FINDINGS = [
     ["The Short Sword of Quickness never casts Haste and has no Haste in 1.3.",
      "`PC_spell` (Weapon_info+0x3A) is read only in 0x56A0D (0x56B1C, 0x56CA4). Its one caller 0x44300 "
      "calls it only for a spell (type 0x11) or a weapon with `attack_type` 0 (0x44423 to 0x44445). The "
-     "sword is a melee weapon (default `attack_type` 1)."],
+     "sword is a melee weapon (default `attack_type` 1). ASCENT makes its swings twice as fast, with no "
+     "Haste effect (docs/re/combat.md, section A8)."],
     ["The Short Bow of Speed has no Haste in 1.3.",
      "The line has `pc_spell1=21`. The image has no keyword `pc_spell1` (`PC_spell` 0x1121AD, `PC_spell_2` "
-     "0x112742), and the code of the worn items 0xAFB55 does not read the bow slot. ASCENT gives the "
-     "Haste (docs/re/combat.md, section A8)."],
+     "0x112742), and the code of the worn items 0xAFB55 does not read the bow slot. ASCENT makes its "
+     "arrows twice as fast, with no Haste effect (docs/re/combat.md, section A8)."],
     ["Arrows, bolts and thrown weapons have no wait between shots in 1.3.",
      "The fire timer of 0x56A0D starts again when the function was not called in the last two frames "
      "(0x56BB0), and each shot ends the request, which needs a new key press. `fire_wait` is read "

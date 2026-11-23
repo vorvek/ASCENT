@@ -206,6 +206,34 @@ static int hand_is_melee(void)
 	return w < 0 || weapon_int(w,"attack_type",1) == 1;
 }
 
+// ASCENT: Dtu_fix_speed_items. 1 if the attack of the hand is twice as
+// fast: the Short Sword of Quickness in the hand, or an arrow with the
+// Short Bow of Speed in the bow slot. It is no Haste effect: the speed
+// counts only for the attack rate (dtuatk.c) and does not add to Haste.
+static int hand_fast(void)
+{
+	int w = hand_weapon(), n = Dtu_char.slot[DTU_SLOT_BOW].n;
+
+	if (w < 0 || dtu_spell_in_hand())
+		return 0;
+	if (hand_is_melee())
+		return dtu_char_item_fast(OBJ_WEAPON,w);
+	if (weapon_flag(w,"arrow") && n >= 0 && n < Dtu_n_inventory && Dtu_inventory[n].type)
+		return dtu_char_item_fast(Dtu_inventory[n].type,Dtu_inventory[n].id);
+	return 0;
+}
+
+// The effects and the Haste rule for the attack rate (dtuatk.c)
+static int rate_effects(void)
+{
+	return dtu_atk_rate_effects(ConsoleObject ? ConsoleObject->dtu.m_88 : 0,hand_fast());
+}
+
+static int rate_fix_haste(void)
+{
+	return dtu_atk_rate_fix_haste(ConsoleObject ? ConsoleObject->dtu.m_88 : 0,hand_fast(),Dtu_fix_haste_attack);
+}
+
 fix dtu_combat_swing_time(void)
 {
 	int w = hand_weapon();
@@ -214,7 +242,7 @@ fix dtu_combat_swing_time(void)
 	if (View_model >= 0 && View_model < N_polygon_models && Polygon_models[View_model].dtu_block)
 		model_time = Polygon_models[View_model].state_times[DAS_ATTACK];
 	return dtu_atk_state_time(hand_is_melee(),w >= 0 ? Weapon_info[w].fire_wait : 0,model_time,
-		ConsoleObject ? ConsoleObject->dtu.m_88 : 0,Dtu_fix_haste_attack);
+		rate_effects(),rate_fix_haste());
 }
 
 // 0x43A5A: the model of the player for the item in the hand. The name is
@@ -295,7 +323,7 @@ static void view_animation(void)
 	// ASCENT: with Dtu_fix_haste_attack the halved swing of Haste (0.5 for
 	// most weapons) is animated too. Before this the swing of a player with
 	// Haste never left its first frame and never ended: no attack at all.
-	if (dtu_atk_state_animates(st,is_attack_state(s),Dtu_fix_haste_attack) && end > first) {
+	if (dtu_atk_state_animates(st,is_attack_state(s),rate_fix_haste()) && end > first) {
 		fix elapsed = GameTime - View_anim_start;
 		View_frame = first + (int)((((int64_t)elapsed * ((int64_t)(end - first) << 16)) / st + 0x8000) >> 16);
 	}
@@ -709,7 +737,7 @@ static char *missile_needs(int w)
 // (Dtu_fix_missile_rate, dtuatk.c). 0 with the rule of the executable.
 static fix missile_wait(int w)
 {
-	return dtu_atk_missile_wait(Weapon_info[w].fire_wait,ConsoleObject->dtu.m_88,Dtu_fix_missile_rate,Dtu_fix_haste_attack);
+	return dtu_atk_missile_wait(Weapon_info[w].fire_wait,rate_effects(),Dtu_fix_missile_rate,rate_fix_haste());
 }
 
 // Returns 1 if the request is done.
@@ -795,8 +823,8 @@ static void start_attack(void)
 		// fire_wait apart. A press starts the attack state when its fire
 		// frame comes at or after the end of the wait; an earlier press is
 		// consumed, like a press at the gate of a melee weapon. Haste halves
-		// the wait (Dtu_fix_haste_attack), which is the effect of the Short
-		// Bow of Speed (Dtu_fix_speed_items).
+		// the wait (Dtu_fix_haste_attack). The Short Bow of Speed halves it
+		// too, but not again with Haste (Dtu_fix_speed_items, hand_fast).
 		if (!Missile_passed) {
 			fix wait = missile_wait(w), lead = 0;
 			fix since = GameTime - Missile_last;
@@ -834,7 +862,7 @@ static void start_attack(void)
 		}
 		// 0x41EC3: with Haste the executable adds half of the swing time
 		// (Haste is slower); dtuatk.c has the rule and its correction
-		Last_attack = GameTime + (dtu_atk_melee_wait(t,ConsoleObject->dtu.m_88,Dtu_fix_haste_attack) - t);
+		Last_attack = GameTime + (dtu_atk_melee_wait(t,rate_effects(),rate_fix_haste()) - t);
 	}
 
 	// 0x44300: the goal becomes ATTACK (state 6; the states 7, 11 and 12

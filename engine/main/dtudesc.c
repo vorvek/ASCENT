@@ -261,6 +261,7 @@ static void power_lines(int type, int id)
 			case DTU_IP_USE_SPELL:		line(LT("Use: casts %s around you."), dtu_spell_name(p[i].value)); break;
 			case DTU_IP_TURN_UNDEAD:	line(LT("The Turn Undead key works with it.")); break;
 			case DTU_IP_INFRA_HUMAN:	break;	// the effect list names Infravision: each other race has it, so no extra line
+			case DTU_IP_FAST_ATTACK:	line(LT("Attacks twice as fast. Does not add to Haste.")); break;
 		}
 }
 
@@ -343,7 +344,7 @@ static void class_line(int mask)
 static void weapon_text(int id, dtu_item_data *d, int count, int r)
 {
 	char buf[256], b2[64] = "";
-	int pc_spell = tbl_int(r, "pc_spell", -1), range, fx;
+	int pc_spell = tbl_int(r, "pc_spell", -1), range, fx, fh;
 	fix wait;
 
 	if (pc_spell >= 0 && !d->melee) {
@@ -365,12 +366,15 @@ static void weapon_text(int id, dtu_item_data *d, int count, int r)
 	line(LT("To hit: %s"), buf);
 	// the Haste or the Slow that the weapon itself gives in the hand
 	fx = dtu_char_item_fx(OBJ_WEAPON, id) & (DTU_ATK_HASTE | DTU_ATK_SLOW);
+	// ASCENT: with the speed of the weapon (Dtu_fix_speed_items, dtuatk.c)
+	fh = dtu_atk_rate_fix_haste(fx, dtu_char_item_fast(OBJ_WEAPON, id), Dtu_fix_haste_attack);
+	fx = dtu_atk_rate_effects(fx, dtu_char_item_fast(OBJ_WEAPON, id));
 	if (d->melee) {
 		// dtu_combat_swing_time and the gate of the next attack
 		// (dtucombat.c, docs/re/combat.md A8)
-		fix t = dtu_atk_state_time(1, Weapon_info[id].fire_wait, F1_0, fx, Dtu_fix_haste_attack);
+		fix t = dtu_atk_state_time(1, Weapon_info[id].fire_wait, F1_0, fx, fh);
 
-		line(LT("Melee weapon, %s s for each attack."), seconds(buf, dtu_atk_melee_wait(t, fx, Dtu_fix_haste_attack)));
+		line(LT("Melee weapon, %s s for each attack."), seconds(buf, dtu_atk_melee_wait(t, fx, fh)));
 	}
 	else {
 		// the life of the missile at its speed (missiles_frame, dtuobj.c);
@@ -389,7 +393,7 @@ static void weapon_text(int id, dtu_item_data *d, int count, int r)
 			line(range > 0 ? LT("Missile, range %s.") : LT("Missile."), b2);
 		// missile_wait (dtucombat.c): 0 with the rule of the executable,
 		// where the time of the arm model sets the rate
-		wait = dtu_atk_missile_wait(Weapon_info[id].fire_wait, fx, Dtu_fix_missile_rate, Dtu_fix_haste_attack);
+		wait = dtu_atk_missile_wait(Weapon_info[id].fire_wait, fx, Dtu_fix_missile_rate, fh);
 		if (wait > 0)
 			line(LT("%s s for each shot."), seconds(buf, wait));
 		if (count >= 0 && d->stackable)
@@ -455,6 +459,7 @@ int dtu_desc_item_text(int type, int id, int count, int price, int sell, char *o
 		line(LT("Slot: %s"), slot_name(slot));
 		class_line(d.class_mask);
 		fx_line(type, id, 0);
+		power_lines(type, id);		// ASCENT: the Short Bow of Speed
 	}
 	else if (slot >= 0) {
 		int ac = dtu_char_item_ac(type, id);

@@ -38,16 +38,31 @@ static void check(const char *what, fix got, fix expect)
 	}
 }
 
-// The time from one accepted melee attack to the next, with the item
-// bits of the weapon in the hand (pc_spell of its line, -1 for none)
+// The time from one accepted melee attack to the next, with the speed
+// power of the weapon in the hand (pc_spell of its line, -1 for none), as
+// dtucombat.c computes it. fix_haste: Dtu_fix_haste_attack, fix_items:
+// Dtu_fix_speed_items.
+static fix melee_item2(fix fire_wait, int effects, int pc_spell, int fix_haste, int fix_items)
+{
+	int fast = dtu_atk_item_fast(pc_spell, fix_items);
+	int e = dtu_atk_rate_effects(effects, fast), fh = dtu_atk_rate_fix_haste(effects, fast, fix_haste);
+	fix st = dtu_atk_state_time(1, fire_wait, MODEL_ATTACK, e, fh);
+
+	return dtu_atk_melee_wait(st, e, fh);
+}
+
 static fix melee_item(fix fire_wait, int effects, int pc_spell, int fixes)
 {
-	fix st;
+	return melee_item2(fire_wait, effects, pc_spell, fixes, fixes);
+}
 
-	if (dtu_atk_item_bits(pc_spell, fixes) & (1 << 9))
-		effects |= DTU_ATK_HASTE;
-	st = dtu_atk_state_time(1, fire_wait, MODEL_ATTACK, effects, fixes);
-	return dtu_atk_melee_wait(st, effects, fixes);
+// The time of the swing (the attack state) with the speed power
+static fix swing_item(fix fire_wait, int effects, int pc_spell, int fixes)
+{
+	int fast = dtu_atk_item_fast(pc_spell, fixes);
+
+	return dtu_atk_state_time(1, fire_wait, MODEL_ATTACK, dtu_atk_rate_effects(effects, fast),
+		dtu_atk_rate_fix_haste(effects, fast, fixes));
 }
 
 static fix melee(fix fire_wait, int effects, int fixes)
@@ -57,13 +72,14 @@ static fix melee(fix fire_wait, int effects, int fixes)
 	return dtu_atk_melee_wait(st, effects, fixes);
 }
 
-// The time from one shot to the next, with the item bits of the bow in
+// The time from one shot to the next, with the speed power of the bow in
 // the bow slot (pc_spell1 of its line, -1 for a bow without the keyword)
 static fix shot(fix fire_wait, int effects, int bow_pc_spell1, int fixes)
 {
-	if (dtu_atk_item_bits(bow_pc_spell1, fixes) & (1 << 9))
-		effects |= DTU_ATK_HASTE;
-	return dtu_atk_missile_wait(fire_wait, effects, fixes, fixes);
+	int fast = dtu_atk_item_fast(bow_pc_spell1, fixes);
+
+	return dtu_atk_missile_wait(fire_wait, dtu_atk_rate_effects(effects, fast), fixes,
+		dtu_atk_rate_fix_haste(effects, fast, fixes));
 }
 
 int main(void)
@@ -82,7 +98,7 @@ int main(void)
 	check("1.3 short bow", shot(FW_ARROW, 0, -1, fixes), 0);
 	check("1.3 Short Bow of Speed", shot(FW_ARROW, 0, 21, fixes), 0);
 	check("1.3 bow, Haste", shot(FW_ARROW, DTU_ATK_HASTE, -1, fixes), 0);
-	check("1.3 Short Bow of Speed, item bits", dtu_atk_item_bits(21, fixes), 0);
+	check("1.3 Short Bow of Speed, fast", dtu_atk_item_fast(21, fixes), 0);
 	check("1.3 arrow, attack state", dtu_atk_state_time(0, FW_ARROW, MODEL_ATTACK, 0, fixes), SEC(1.0));
 	check("1.3 arrow, attack state, Slow", dtu_atk_state_time(0, FW_ARROW, MODEL_ATTACK, DTU_ATK_SLOW, fixes), SEC(2.0));
 	check("1.3 state time 0.5 animates", dtu_atk_state_animates(SEC(0.5), 1, fixes), 0);
@@ -94,6 +110,16 @@ int main(void)
 	check("fast weapon (dagger)", melee(FW_DAGGER, 0, fixes), SEC(1.0));
 	check("short sword +2", melee_item(SEC(0.6), 0, -1, fixes), SEC(1.0));
 	check("Short Sword of Quickness", melee_item(FW_QUICKNESS, 0, 21, fixes), SEC(0.5));
+	check("Short Sword of Quickness, swing", swing_item(FW_QUICKNESS, 0, 21, fixes), SEC(0.5));
+	check("Short Sword of Quickness, Haste", melee_item(FW_QUICKNESS, DTU_ATK_HASTE, 21, fixes), SEC(0.5));
+	check("Short Sword of Quickness, Haste, swing", swing_item(FW_QUICKNESS, DTU_ATK_HASTE, 21, fixes), SEC(0.5));
+	check("Short Sword of Quickness, Slow", melee_item(FW_QUICKNESS, DTU_ATK_SLOW, 21, fixes), SEC(1.0));
+	check("Short Sword of Quickness, Slow and Haste", melee_item(FW_QUICKNESS, DTU_ATK_SLOW | DTU_ATK_HASTE, 21, fixes), SEC(1.0));
+	// the speed of the item without the correction of Haste: still twice
+	// as fast; with the 1.3 Haste the 1.3 rule of the spell stays
+	check("Short Sword of Quickness, 1.3 Haste rule", melee_item2(FW_QUICKNESS, 0, 21, 0, 1), SEC(0.5));
+	check("long sword with a speed keyword (another spell)", melee_item(FW_LONG_SWORD, 0, 2, fixes), SEC(1.0));
+	check("dagger, Haste", melee(FW_DAGGER, DTU_ATK_HASTE, fixes), SEC(0.5));
 	check("slow weapon (warhammer)", melee(FW_WARHAMMER, 0, fixes), SEC(1.5));
 	check("long sword, Haste", melee(FW_LONG_SWORD, DTU_ATK_HASTE, fixes), SEC(0.5));
 	check("warhammer, Haste", melee(FW_WARHAMMER, DTU_ATK_HASTE, fixes), SEC(0.75));
@@ -103,11 +129,17 @@ int main(void)
 	check("Short Bow of Speed", shot(FW_ARROW, 0, 21, fixes), SEC(1.0));
 	check("short bow, Haste", shot(FW_ARROW, DTU_ATK_HASTE, -1, fixes), SEC(1.0));
 	check("Short Bow of Speed, Haste", shot(FW_ARROW, DTU_ATK_HASTE, 21, fixes), SEC(1.0));
+	check("Short Bow of Speed, Slow", shot(FW_ARROW, DTU_ATK_SLOW, 21, fixes), SEC(2.0));
 	check("short bow, Slow", shot(FW_ARROW, DTU_ATK_SLOW, -1, fixes), SEC(4.0));
 	check("crossbow", shot(FW_BOLT, 0, -1, fixes), SEC(3.0));
 	check("dart", shot(FW_DART, 0, -1, fixes), SEC(0.5));
-	check("Short Bow of Speed, item bits", dtu_atk_item_bits(21, fixes), 1 << 9);
-	check("bow with another spell, item bits", dtu_atk_item_bits(2, fixes), 0);
+	check("Short Bow of Speed, fast", dtu_atk_item_fast(21, fixes), 1);
+	check("bow with another spell, fast", dtu_atk_item_fast(2, fixes), 0);
+	check("bow without the keyword, fast", dtu_atk_item_fast(-1, fixes), 0);
+	// the speed is no Haste effect: the rate effects are a copy, and
+	// without a fast item they are the effects
+	check("rate effects, no fast item", dtu_atk_rate_effects(DTU_ATK_SLOW, 0), DTU_ATK_SLOW);
+	check("rate effects, fast item, Haste", dtu_atk_rate_effects(DTU_ATK_HASTE, 1), DTU_ATK_HASTE);
 	check("arrow, attack state", dtu_atk_state_time(0, FW_ARROW, MODEL_ATTACK, 0, fixes), SEC(1.0));
 	check("arrow, attack state, Haste", dtu_atk_state_time(0, FW_ARROW, MODEL_ATTACK, DTU_ATK_HASTE, fixes), SEC(1.0));
 	// The fire frame of the attack state: frames 44 to 59, fire frame 56
