@@ -67,6 +67,19 @@ typedef struct ls_record {
 
 int Dtu_level_has_state[LS_LEVELS];	// 0x296304
 int Dtu_fix_restore_spells = 1;		// ASCENT: D-134 (dtustate.h)
+int Dtu_fix_save_cast = 1;			// ASCENT: the cast at a save (dtustate.h)
+
+// ASCENT: -origobj clears the corrections of this file
+static void state_options(void)
+{
+	static int done;
+
+	if (done)
+		return;
+	done = 1;
+	if (FindArg("-origobj"))
+		Dtu_fix_restore_spells = Dtu_fix_save_cast = 0;
+}
 
 static int Cleanup_registered;
 
@@ -976,6 +989,9 @@ static int write_lvl(const char *name)
 			if (o->control_type == CT_AI)
 				dtu_ai_to_image(i, al, img);
 		}
+		// ASCENT: 0x16413 writes 0x153EBC (Ai_local_info[0] +0x0C), the
+		// cast timer of the player (0x3FFFFFFF for none)
+		put32(ai + AI_LOCAL_OFF + 0x0C, dtu_spell_cast_timer());
 	}
 
 	// 5. the automap (900 bytes, one for each segment)
@@ -1221,8 +1237,7 @@ static void ai_restore(void)
 
 	if (!Ai_block_ok)
 		return;
-	if (FindArg("-origobj"))
-		Dtu_fix_restore_spells = 0;
+	state_options();
 	for (i = 0; i <= Highest_object_index && i < AI_N_LOCAL; i++)
 		if (Img_ok[i] && Img_sig[i] == Objects[i].signature && Objects[i].type == OBJ_ROBOT) {
 			// ASCENT: D-134, Dtu_fix_restore_spells: the saved points stay
@@ -1443,6 +1458,11 @@ int dtustate_save_level(int level_index)
 	temp_name(name, level_index, 2);
 	ok &= write_tap(name);
 	SLOG("State: %s the state of level %d\n", ok ? "saved" : "cannot save", level_index);
+	// ASCENT: 0x164B3 sets the cast timer to 0x3FFFFFFF after the write, so
+	// a save in 1.3 starts the running cast again. Dtu_fix_save_cast: the
+	// cast runs on.
+	state_options();
+	dtu_spell_cast_saved(!Dtu_fix_save_cast);
 	return ok;
 }
 
@@ -1622,6 +1642,7 @@ void dtustate_warp_leave(int level_index)
 
 static void st_level_start(void);
 static void apply_save_lists(void);
+static ubyte *Save_lists;
 
 void dtustate_warp_enter(int level_index)
 {
@@ -1636,10 +1657,17 @@ void dtustate_game_started(int level_num)
 	// 0x4DD5A: StartNewGame restores level 0. A load of a save game in a
 	// level (0xBBDE5) restores the level of the save; the port starts that
 	// level through StartNewGame.
+	int from_save = Save_lists != NULL;
+
 	images_forget();
 	apply_save_lists();
-	if (dtustate_restore_level(level_num - 1))
+	if (dtustate_restore_level(level_num - 1)) {
 		dtu_trig_player_placed();
+		// ASCENT: 0x164C7 in the load of a save game in a level reads the
+		// cast timer of the save (0x153EBC) with Ai_local_info
+		if (from_save && Ai_block_ok)
+			dtu_spell_cast_load(gs32(Ai_block + AI_LOCAL_OFF + 0x0C));
+	}
 	dtustate_loading_end();
 	st_level_start();
 }

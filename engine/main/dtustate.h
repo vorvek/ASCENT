@@ -73,5 +73,9 @@ void dtustate_test_frame(void);
 // its type again. 0: as 1.3. 1 (default): it keeps the saved points.
 // -origobj clears it.
 extern int Dtu_fix_restore_spells;
+// The cast of the player at a save: 0: as 1.3, the save starts it again
+// (0x164B3 after the write of 0x153EBC). 1 (default): it runs on.
+// -origobj clears it. A load gives back the cast of the save in both.
+extern int Dtu_fix_save_cast;
 
 #endif

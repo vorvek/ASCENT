@@ -187,6 +187,16 @@ TESTS = [
     T("warp_displace", "KOBOLDS", "5:obj=57,10:warp=2.48,11:obj=57",
       [r"f5\s+obj 57: type 2 id 1 seg 48 ", r"obj 57 kob_swrd overlaps the arrival in seg 48 and goes to seg 0",
        r"f11\s+obj 57: type 2 id 1 seg 0 "], frames=14, extra=["-objlog", "warp_displace_obj.log"]),
+    # A cast that runs at a save: 1.3 writes the cast timer 0x153EBC into
+    # the AI block of the save (0x16413) and then ends the running cast
+    # (0x164B3); Dtu_fix_save_cast keeps it. The load gives the cast of the
+    # save back (0x164C7).
+    T("save_cast_runs_on", "KOBOLDS", "5:class=1,6:give=17.12.1,10:armspell=12,40:fire,42:save=3,80:fire",
+      [r"the cast of 'Detect Magic' starts", r"'Detect Magic' \(12\) level 1 on obj 0"], [r"the save ends the running cast"],
+      frames=90, extra=["-testslots", "9", "-objlog", "save_cast_obj.log"]),
+    T("load_cast_goes_on", "KOBOLDS", "5:class=1,6:give=17.12.1,10:armspell=12,40:fire,42:save=3,44:load=3,120:fire",
+      [r"the cast of 'Detect Magic' from the save goes on, the cast at 2\.300", r"'Detect Magic' \(12\) level 1 on obj 0"],
+      frames=130, extra=["-testslots", "9", "-objlog", "load_cast_obj.log"]),
     # The talk of WEAPON 13 before a warp (0x59D2D): script 0x1FD runs.
     T("drowslayer_warp", "DROW1", "10:give=5.13,15:current=5.13,30:warp=20.1,31:quest,60:warp=21.1,100:quest",
       [r"warp with WEAPON 13 in the hand: script 0x1FD"], frames=120),

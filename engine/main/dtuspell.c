@@ -85,6 +85,7 @@ int Dtu_spell_slots_left[2][9];
 
 static fix Cast_timer = DTU_FX_NO_END;	// 0x153EBC
 static int Cast_spell = -1;
+static fix Cast_loaded = DTU_FX_NO_END;	// ASCENT: the cast of a loaded save, for the level start
 static int Hand_ref = -2;				// Dtu_char.current.n when the spell was taken in the hand
 static int Screen_sel = 0;
 
@@ -3160,6 +3161,25 @@ void dtu_spell_creature_restore(object *obj)
 	Cspell[n].cond = 0;
 }
 
+// ASCENT: the cast timer for the state file (dtuspell.h)
+fix dtu_spell_cast_timer(void)
+{
+	return Cast_timer;
+}
+
+void dtu_spell_cast_saved(int restart)
+{
+	if (restart && Cast_timer != DTU_FX_NO_END) {
+		Cast_timer = DTU_FX_NO_END;
+		dtu_spell_log("spell: the save ends the running cast (0x164B3)");
+	}
+}
+
+void dtu_spell_cast_load(fix timer)
+{
+	Cast_loaded = (timer > 0 && timer != DTU_FX_NO_END) ? timer : DTU_FX_NO_END;
+}
+
 // ASCENT: D-134. The spell points of a creature for the state file (object
 // +0x19E mage, +0x19F cleric, as 1.3 keeps them in the object).
 void dtu_spell_creature_points(object *obj,int *mage,int *cleric)
@@ -3552,6 +3572,19 @@ void dtu_spell_frame(void)
 			dtu_spell_fill_slots();
 		Fill_at_start = 0;
 		Cast_timer = DTU_FX_NO_END;
+		// ASCENT: a load of a save game: the cast that ran at the save goes
+		// on (0x164C7 reads 0x153EBC with Ai_local_info), with the spell in
+		// the hand of the save
+		if (Cast_loaded != DTU_FX_NO_END) {
+			int source, spell = hand_spell(&source);
+
+			if (spell >= 0 && source == 0) {
+				Cast_timer = Cast_loaded;
+				Cast_spell = spell;
+				dtu_spell_log("spell: the cast of '%s' from the save goes on, the cast at %.3f",spell_name(spell),f2fl(Cast_timer));
+			}
+			Cast_loaded = DTU_FX_NO_END;
+		}
 		memset(Tracked,0,sizeof(Tracked));
 		acid_clear();
 		// Test options: -testslots N gives N slots for each spell level,
