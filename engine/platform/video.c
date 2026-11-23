@@ -508,6 +508,31 @@ static void window_to_frame(float *x, float *y)
 	*y = (*y - ry) * fh / rh;
 }
 
+// ASCENT: put the system pointer on the frame pixel (x, y), so that the
+// next motion event outside the relative mode starts there (mouse.c). The
+// inverse of window_to_frame, to the middle of the pixel.
+void plat_mouse_warp_frame(int x, int y)
+{
+	float rx, ry, rw, rh;
+	int fw, fh;
+
+	if (!Window || !(SDL_GetWindowFlags(Window) & SDL_WINDOW_INPUT_FOCUS))
+		return;
+	if (Use_gl)
+		gpu_frame_rect(&rx, &ry, &rw, &rh, &fw, &fh);
+	else {
+		rx = Sdl_rect_x;
+		ry = Sdl_rect_y;
+		rw = Sdl_rect_w;
+		rh = Sdl_rect_h;
+		fw = Frame_w;
+		fh = Frame_h;
+	}
+	if (rw <= 0 || rh <= 0 || fw <= 0 || fh <= 0)
+		return;
+	SDL_WarpMouseInWindow(Window, rx + ((float) x + 0.5f) * rw / fw, ry + ((float) y + 0.5f) * rh / fh);
+}
+
 // Alt+Enter: full screen or window.
 static void toggle_fullscreen(void)
 {

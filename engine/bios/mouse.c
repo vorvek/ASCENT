@@ -197,9 +197,16 @@ void mouse_close()
 // ASCENT: new function. on=1: the pointer is hidden and held in the window
 // (the state after mouse_init, for the game). on=0: the system pointer is
 // free and mouse_get_pos returns its position in frame pixels.
+// ASCENT: at the end of the relative mode the system pointer goes to the
+// position of the game, so that the next motion event does not jump back to
+// where the pointer was when the mode started.
 void mouse_set_relative( int on )
 {
+	int was = plat_mouse_get_relative();
+
 	plat_mouse_set_relative( on );
+	if (Mouse_installed && was && !on)
+		plat_mouse_warp_frame(Mouse.x, Mouse.y);
 }
 
 int mouse_set_limits( int x1, int y1, int x2, int y2 )
@@ -254,9 +261,9 @@ int mouse_get_btns()
 	return status;
 }
 
-// ASCENT: this sets the position that mouse_get_pos returns. It does not
-// move the system pointer. If not in relative mode, the next motion event
-// sets the position to the system pointer again.
+// ASCENT: this sets the position that mouse_get_pos returns. If not in
+// relative mode, the system pointer moves there too, because the next
+// motion event sets the position to the system pointer.
 void mouse_set_pos( int x, int y)
 {
 	if (!Mouse_installed)
@@ -265,6 +272,8 @@ void mouse_set_pos( int x, int y)
 	Mouse.x = x;
 	Mouse.y = y;
 	mouse_clip_pos();
+	if (!plat_mouse_get_relative())
+		plat_mouse_warp_frame(Mouse.x, Mouse.y);
 }
 
 void mouse_flush()

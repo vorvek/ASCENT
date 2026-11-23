@@ -44,6 +44,10 @@ void plat_bind_vga_aspect(const int *on);
 // tests (the script command presentstate).
 void plat_get_present_rect(float *x, float *y, float *w, float *h, int *frame_w, int *frame_h, int *win_w, int *win_h);
 
+// ASCENT: put the system pointer on the frame pixel (x, y) of the last
+// frame. Nothing happens when the window has no input focus.
+void plat_mouse_warp_frame(int x, int y);
+
 // ASCENT: a test aid. Queues a mouse event at (x, y) in window coordinates,
 // as the system sends it: the next plat_pump maps it to frame pixels.
 // button < 0: a motion; else a press (down 1) or a release of button 0, 1
