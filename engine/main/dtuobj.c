@@ -2037,6 +2037,8 @@ void dtu_objects_level_setup_restore(void)
 	Level_setup_restore = 0;
 }
 
+static void end_sequence_reset(void);		// ASCENT: the end of the game (0xA6786)
+
 void dtu_objects_level_setup(void)
 {
 	int i, has_state;
@@ -2050,6 +2052,7 @@ void dtu_objects_level_setup(void)
 	Dtu_clock = 0;
 	N_aware_events = 0;
 	Ref_tick_count = Ref_ticks_now = 0;
+	end_sequence_reset();
 	Ref_tick_acc = 0;
 	memset(Model_reach,0,sizeof(Model_reach));
 	memset(Model_points,0,sizeof(Model_points));
@@ -6016,6 +6019,165 @@ int dtu_dressing_unbreakable(object *d)
 	return Dtu_fix_cant_break && (Dressing_info[d->id].flags & DRESSING_F_CANT_BREAK);
 }
 
+//------------------------------------------------------------------------
+// The end of the game (0xA6786, called by 0xA6ACB for object 3 of level
+// 0x20, the Flamesword). Verified in the disassembly 0xA6786 to 0xA6ACB:
+// 1. 0x40974 and 0x34B26: the full view and the hands of the interface
+//    (the port draws them each frame). 0x417ED and 0x40E50: the player
+//    stops and its controls and keys are cleared. 0xD74C3 and 0x6B088:
+//    the orientation of the player is made again from its forward vector.
+// 2. A light object (0x68AC8: type 13, id 0, the segment and the place of
+//    the sword, control type 14 CT_LIGHT): lifeleft 0x3FFFFFFF, the
+//    intensity (+0x140) 0, +0x1AE bit 2, object flags 0xC0. "DLOG:
+//    couldn't make light!!!" when the object list is full.
+// 3. While the spin rate y of the sword (+0x100, 0x147 from the level
+//    fixes) is not above 0x2666, one game frame 0x435A6(1, 0) for each
+//    step: the view bob byte 0x14530D = 0, the velocity z of the player =
+//    9.0, the spin rate y + 0x41, the intensity of the light + 3.0 (the
+//    word +0x142), spin_object (0x69777) when the sword spins (movement
+//    type 3, so it turns twice in a frame). 147 steps: light 441.0, spin
+//    0x269A.
+// 4. The explode_sound of the sword type (Dressing_info +0x0A) linked to
+//    the sword, forever, volume 1.0 (0x2E600 makes it 0.5). Render type
+//    of the sword 0 (it is gone), object flag 0x40.
+// 5. 50 steps, one game frame each: an explosion of vclip 0 at the sword
+//    (0x3BD4C), size 1.0 to 10.0 (rand() % 10 + 1), its +0x1AE bit 2 and
+//    flag 0x40; x and z += rand() % 11.0 - 3.0, y += rand() % 0.6875 -
+//    0.6875 (rand() is at most 0x7FFF, so the modulo does nothing and the
+//    explosions are 3.0 to 2.5 to the side and 0.69 to 0.19 lower, kept as
+//    in dtu_break_dressing); sound 0xA8D + rand() % 5 (2701 to 2705)
+//    linked to the explosion at volume rand() % 1.0 (0 to 0.5).
+// 6. With no digital sound (0x2EF31) the function returns: no movie and
+//    the game goes on. Else stop_time, the streams stop, the sound of
+//    object 3 stops (0x2E816(3)), frames while the music or the sound
+//    stream plays and while keys come, CREDITV1.MVE (0x96439), Function_
+//    mode 6 (the front end), start_time.
+// The port steps 3 and 5 once in each reference tick (DTU_REF_FRAMETIME,
+// 3/64 s, the corrected rules of the AI), so the sequence takes 9.2 s at
+// each frame rate. The player keeps the controls of a game frame, as in
+// 1.3 (0x435A6 reads them). The port plays the movie also with no sound.
+// The test log lines: "end sequence: ..." (tools/questtest.py).
+
+static int End_seq_step = 0;		// 0 none, 1 the spin, 2 the explosions, 3 done
+static int End_seq_light = -1, End_seq_light_sig;
+static int End_seq_n, End_seq_sounds;
+static fix End_seq_acc;
+
+int spin_object(object *obj);		// object.c
+
+static void end_sequence_reset(void)
+{
+	End_seq_step = 0;
+	End_seq_light = -1;
+}
+
+static void end_sequence_start(object *sword)
+{
+	object *p = ConsoleObject;
+	vms_vector f;
+	int n;
+
+	if (End_seq_step)
+		return;
+	End_seq_step = 1;
+	End_seq_n = End_seq_sounds = 0;
+	End_seq_acc = 0;
+	if (p) {
+		vm_vec_zero(&p->mtype.phys_info.velocity);			// 0x417ED
+		f = p->orient.fvec;
+		vm_vector_2_matrix(&p->orient,&f,NULL,NULL);		// 0xD74C3
+		check_and_fix_matrix(&p->orient);					// 0x6B088
+	}
+	game_flush_inputs();										// 0x40E50
+	n = obj_create(OBJ_LIGHT,0,sword->segnum,&sword->pos,NULL,0,CT_LIGHT,MT_NONE,RT_NONE);
+	End_seq_light = n;
+	if (n < 0)
+		printf("end sequence: DLOG: couldn't make light!!!\n");
+	else {
+		object *l = &Objects[n];
+
+		l->lifeleft = 0x3FFFFFFF;
+		l->ctype.light_info.intensity = 0;
+		l->flags |= OF_DTU_NOHIT;
+		End_seq_light_sig = l->signature;
+	}
+	printf("end sequence: start (0xA6786), sword in seg %d, light obj %d, spin 0x%x\n",sword->segnum,n,sword->mtype.spin_rate.y);
+	dtu_obj_log("end sequence (0xA6786): light obj %d",n);
+}
+
+static object *end_sequence_light(void)
+{
+	if (End_seq_light < 0 || Objects[End_seq_light].type != OBJ_LIGHT || Objects[End_seq_light].signature != End_seq_light_sig)
+		return NULL;
+	return &Objects[End_seq_light];
+}
+
+// Each game frame while the sequence runs
+static void end_sequence_frame(void)
+{
+	object *s = &Objects[3], *p = ConsoleObject, *l = end_sequence_light();
+
+	if (End_seq_step == 0 || End_seq_step == 3)
+		return;
+	End_seq_acc += FrameTime;
+	if (End_seq_step == 1) {
+		if (p)
+			p->mtype.phys_info.velocity.z = i2f(9);
+		if (s->movement_type == MT_SPINNING)
+			spin_object(s);									// 0x69777
+		while (End_seq_acc >= DTU_REF_FRAMETIME && End_seq_step == 1) {
+			End_seq_acc -= DTU_REF_FRAMETIME;
+			if (s->mtype.spin_rate.y > 0x2666) {
+				dressing_info *di = (s->id < N_dressing_types) ? &Dressing_info[s->id] : NULL;
+
+				printf("end sequence: %d steps, light %.1f, spin 0x%x\n",End_seq_n,l ? f2fl(l->ctype.light_info.intensity) : 0.0,
+					s->mtype.spin_rate.y);
+				printf("end sequence: sound %d on the sword\n",di ? di->explode_sound : -1);
+				if (di && di->explode_sound >= 0 && di->explode_sound < MAX_SOUNDS)
+					digi_link_sound_to_object2(di->explode_sound,3,1,F1_0/2,i2f(200));		// 0x2E600(sound, 3, 1, 1.0)
+				s->render_type = RT_NONE;
+				s->flags |= OF_DTU_NOHIT;
+				End_seq_step = 2;
+				End_seq_n = 0;
+				break;
+			}
+			s->mtype.spin_rate.y += 0x41;
+			if (l)
+				l->ctype.light_info.intensity += i2f(3);
+			End_seq_n++;
+		}
+	}
+	while (End_seq_step == 2 && End_seq_acc >= DTU_REF_FRAMETIME) {
+		int e = -1, size = i2f(rand() % 10 + 1), snd;
+		fix vol;
+
+		End_seq_acc -= DTU_REF_FRAMETIME;
+		if (Vclip[0].num_frames > 0 && Vclip[0].play_time > 0 && s->segnum >= 0) {
+			object *x = object_create_explosion(s->segnum,&s->pos,size,0);
+
+			if (x) {
+				e = x - Objects;
+				x->flags |= OF_DTU_NOHIT;
+				x->pos.x += (rand() % i2f(11)) - i2f(3);
+				x->pos.y += (rand() % 0xB000) - 0xB000;
+				x->pos.z += (rand() % i2f(11)) - i2f(3);
+			}
+		}
+		vol = rand() % F1_0;
+		snd = 0xA8D + rand() % 5;
+		if (e >= 0 && snd < MAX_SOUNDS) {
+			digi_link_sound_to_object2(snd,e,0,vol > F1_0/2 ? F1_0/2 : vol,i2f(200));
+			End_seq_sounds++;
+		}
+		if (++End_seq_n >= 50) {
+			printf("end sequence: %d explosions, %d sounds\n",End_seq_n,End_seq_sounds);
+			digi_kill_sound_linked_to_object(3);					// 0x2E816(3)
+			End_seq_step = 3;
+			dtumovie_end_credits();
+		}
+	}
+}
+
 // 0xA6ACB (explode 0) for scenery: explode_sound at volume 1.0, nine
 // explosions of break_vclip (default 137) at the size of the object, the
 // scenery of the segment falls (movement type 1), then 0x6A3CC removes the
@@ -6034,11 +6196,10 @@ void dtu_break_dressing(object *d,object *by,int explode)
 	if (d->type != OBJ_DRESSING || d->id >= N_dressing_types || (d->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)))
 		return;
 	// ASCENT: 0xA6AF8: in level 0x20 (FLAME) object 3, the Flamesword, ends
-	// the game (0xA6786): the credits movie and the front end (dtumovie.c).
-	// The light and the 50 sounds of 0xA6786 before the movie are not in
-	// the port (docs/re/movies.md).
+	// the game (0xA6786): the light, the spin, the 50 explosions with their
+	// sounds, then the credits movie and the front end (end_sequence_frame).
 	if (!explode && Current_level_num - 1 == 0x20 && d - Objects == 3) {
-		dtumovie_end_credits();
+		end_sequence_start(d);
 		return;
 	}
 	di = &Dressing_info[d->id];
@@ -8576,6 +8737,7 @@ void dtu_objects_frame(void)
 	dtu_player_check_death(NULL);
 	missiles_frame();
 	dressing_move_frame();
+	end_sequence_frame();			// ASCENT: the end of the game (0xA6786)
 	corpse_regen_frame();
 	awareness_events_frame();		// 0x16366 of the game frame (0x438AC)
 

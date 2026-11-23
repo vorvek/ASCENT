@@ -26,6 +26,10 @@ import sys
 import tempfile
 
 ONES = ",".join(["1"] * 60)        # -dlgauto: the first reply, 60 times
+# The steps of the end sequence 0xA6786 (engine/main/dtuobj.c), in order
+END_SEQ = (r"end sequence: start \(0xA6786\), sword in seg 487, light obj \d+, spin 0x147\s+"
+           r"[\s\S]*end sequence: 147 steps, light 441\.0, spin 0x269a\s+end sequence: sound -1 on the sword\s+"
+           r"end sequence: 50 explosions, 50 sounds\s+end of the game: CREDITV1")
 
 
 def T(name, level, script, expect, reject=(), frames=400, dlg=ONES, extra=(), invuln=True, also=()):
@@ -127,11 +131,14 @@ TESTS = [
     T("flame_sword_lolth_alive", "FLAME", "20:goseg=486,40:aim=3,45:activate,120:obj=3,121:obj=2",
       [r"obj 3: type 18 .* flags 0x40 ", r"obj 2: type 18 .* flags 0x40 "],
       [r"run script 322 of obj 3", r"CREDITV1"], frames=140),
+    # The end sequence 0xA6786 before the credits: a light that grows by
+    # 3.0 in each of 147 steps while the sword spins faster, then 50
+    # explosions with 50 sounds (one step in each reference tick, 9.2 s).
     T("flame_lolth_death", "FLAME", "10:kill=36,15:obj=3",
       [r"obj 3: type 18 .* flags 0x40 ", r"run script 322 of obj 3 .* in mode 0", r"YOU  HAVE  DESTROYED",
-       r"end of the game: CREDITV1"], frames=260),
+       END_SEQ, r"end of the game: CREDITV1"], frames=600),
     T("flame_ending", "FLAME", "10:kill=36,20:goseg=486,40:aim=3,45:activate",
-      [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", r"end of the game: CREDITV1"], frames=260),
+      [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", END_SEQ, r"end of the game: CREDITV1"], frames=600),
 
     # IBBALAR: the use action on the altar of Cyric (object 2, scenery,
     # script 294).

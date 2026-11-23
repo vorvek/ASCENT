@@ -96,13 +96,26 @@ FLAME.LV2 object 3 is type 18 (scenery), model `sword23.pof` on the altar
 (object 2, `altar_a.pof`) in segment 487: the Flamesword. Then 0xA6786
 runs in place of the normal break **V**:
 
-1. Not decoded in detail (**G** for the meaning): work on the player
-   record (0x40974, 0x34B26), a new object of type 0x0D at the sword
-   (0x68AC8), a loop with game frames (0x435A6) while a value of that object
-   is below 0x2666 (**G**: a light that grows), a sound (0x2E600).
-2. 50 times: a position moves by a random offset, a sound 0xA8D +
-   rand() % 5 plays there (0x2E600) and one game frame runs (0x435A6) **V**.
-   **G**: the sword explodes.
+1. 0x40974 and 0x34B26 (the full view, the hands of the interface),
+   0x417ED and 0x40E50 (the player stops, the controls and keys are
+   cleared), 0xD74C3 and 0x6B088 (the orientation of the player from its
+   forward vector). A light object (0x68AC8: type 13, id 0, control type 14,
+   at the sword): lifeleft 0x3FFFFFFF, intensity (+0x140) 0, +0x1AE bit 2,
+   flags 0xC0; "DLOG: couldn't make light!!!" when there is no object.
+   Then, while the spin rate y of the sword (+0x100, 0x147 from the level
+   fixes) is not above 0x2666, one game frame (0x435A6(1, 0)) for each
+   step: byte 0x14530D = 0, the velocity z of the player = 9.0, spin rate
+   y + 0x41, the intensity + 3.0 (word +0x142), spin_object (0x69777) for a
+   spinning sword. 147 steps: intensity 441.0, spin rate 0x269A **V**
+   (disassembly 0xA6786 to 0xA6910).
+2. The explode_sound of the sword type (Dressing_info +0x0A; the line of
+   `flamesword` in FLAME.BIN has none, so no sound) linked to the sword
+   forever (0x2E600), render type of the sword 0 (it is gone), flag 0x40.
+   Then 50 times: an explosion of vclip 0 at the sword (0x3BD4C), size
+   rand() % 10 + 1, moved by x, z += rand() % 11.0 - 3.0 and y +=
+   rand() % 0.6875 - 0.6875 (rand() is at most 0x7FFF, so the modulo does
+   nothing), a sound 0xA8D + rand() % 5 linked to it at volume
+   rand() % 1.0 (0x2E600), one game frame (0x435A6) **V**.
 3. If 0x2EF31 (digital sound, see 4.1): stop the game time, stop all
    streams, 0x2E816(3), wait while streams play, empty the key buffer, play
    CREDITV1.MVE, `Function_mode` (0x1468CC) = 6 (back from the game:
@@ -121,11 +134,16 @@ runs in place of the normal break **V**:
 - FLAM1: statement D3 with sound 0xFFFF calls `dtumovie_flame()`
   (dtuscript.c), with the game time stopped. The port plays it also
   without a sound device.
-- CREDITV1: `dtu_break_dressing()` (dtuobj.c) calls `dtumovie_end_credits()`
-  for object 3 of level 0x20 and returns. After the movie the game ends to
-  the main menu (`dtu_hook_player_death_screen`, the hook that leaves the
-  game; the player is not dead, so the front end shows the main menu). The
-  steps 1 and 2 of 0xA6786 (the light and the 50 sounds) are not in the port.
+- CREDITV1: `dtu_break_dressing()` (dtuobj.c) starts the end sequence for
+  object 3 of level 0x20 and returns. `end_sequence_frame()` (dtuobj.c, in
+  each game frame) runs steps 1 and 2 of 0xA6786, one step in each
+  reference tick (3/64 s, 9.2 s in all), then calls
+  `dtumovie_end_credits()`. The player keeps the controls of a game frame,
+  as in 1.3. After the movie the game ends to the main menu
+  (`dtu_hook_player_death_screen`, the hook that leaves the game; the
+  player is not dead, so the front end shows the main menu). The port plays
+  the movie also with no digital sound. Log lines "end sequence: ..." on
+  stdout; questtest `flame_lolth_death`, `flame_ending`.
 - Skip: any key except Alt (Alt+Tab and Alt+Enter do not skip), and also
   the left or right mouse button (a port change; the original reads only
   the keys). Closing the window stops the movie.
