@@ -344,6 +344,13 @@ static dtu_button Buttons_lo_stats[] = {		// 0x1442B2
 
 static dtu_button *Button_list;		// the list of the current mode, or NULL
 static int Button_pressed = -1;		// the button that is held down, or -1
+// ASCENT: D-165. 0x98772 keeps the pressed image of a button at least
+// 0.25 s (0x98800: the time at +0x31 plus 0x4000), but no code stores the
+// time of the press, so 1.3 shows a quick click for one frame. 1 (default):
+// the pressed image stays 0.25 s after the press. -origui clears it.
+int Dtu_fix_button_hold = 1;
+static int Button_shown = -1;		// the button whose pressed image stays
+static fix Button_press_time;
 
 //------------------------------------------------------------------------
 // State
@@ -1158,7 +1165,7 @@ void dtu_display_select_mode(int mode)
 	Dtu_interface_mode = mode;
 	immersive_follow_mode(old_mode, mode);		// ASCENT: see above
 	Dtu_automap_active = 0;		// 0x40922: a new map screen follows the player
-	Button_pressed = -1;
+	Button_pressed = Button_shown = -1;
 	Button_list = NULL;
 	Inv_held = -1;				// 0x361BF: the cursor lets go of the item
 	Inv_held_spell = -1;
@@ -1182,6 +1189,7 @@ void dtu_display_select_mode(int mode)
 						gr_bm_ubitblt(b->w, b->h, b->x, b->y, b->x0, b->y0, Button_sheet, Interface_bm);
 		}
 		Button_list = mode_buttons(mode);
+		Button_shown = -1;
 	}
 	dtu_display_init_cockpit();
 }
@@ -1298,7 +1306,8 @@ int dtu_display_init(void)
 	if (Icons_bm) Icons_bm->bm_flags |= BM_FLAG_TRANSPARENT;
 	Interface_entry = -1;
 	if (FindArg("-origui"))
-		Dtu_fix_msg_scroll = Dtu_fix_view_aspect = 0;
+		Dtu_fix_msg_scroll = Dtu_fix_view_aspect = Dtu_fix_button_hold = 0;
+	Button_shown = -1;
 	Msg_count = 0;
 	Msg_first = 0;
 	memset(Key_was_down, 0, sizeof(Key_was_down));
@@ -2217,8 +2226,12 @@ static void draw_buttons(void)
 				if (pressed)
 					return;
 			}
-	if (Button_pressed < 0) return;
-	b = &Button_list[Button_pressed];
+	if (Button_pressed >= 0)
+		b = &Button_list[Button_pressed];
+	else if (Dtu_fix_button_hold && Button_shown >= 0 && timer_get_fixed_seconds() - Button_press_time < F1_0 / 4)
+		b = &Button_list[Button_shown];
+	else
+		return;
 	blit(Button_sheet, b->x1, b->y1, b->w, b->h, b->x, b->y, 0);
 }
 
@@ -2750,6 +2763,10 @@ static void do_input(int mx, int my)
 				break;
 			}
 		if (hit >= 0) {
+			if (pressed) {
+				Button_shown = hit;
+				Button_press_time = timer_get_fixed_seconds();
+			}
 			Button_pressed = hit;
 			Doll_pressed = 0;
 			if (pressed && Dtu_ui_key_repeat)
