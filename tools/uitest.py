@@ -466,6 +466,24 @@ def test_msg_arrows(t):
     assert differ(region(s["base"], *MSGBOX), region(s["down"], *MSGBOX)) < 0.001, "the down arrow did not scroll back"
 
 
+def test_msg_colors(t):
+    """The color of a message line (0x34998): the index -1 of 0x347A2 is
+    index 255 (bytes 7D 12 00 after the table 0x13B970), an orange; the
+    color of the player (index 0, the N key) is a blue."""
+    s, _ = t.run("msg_colors", ["gamekeys", "wait 30", "key r", "wait 20", "key n", "wait 20", "shot a"],
+                 extra=["-fixedfps", "30"])
+    px = region(s["a"], *MSGBOX)
+    orange = blue = 0
+    for i in range(0, len(px) - 2, 3):
+        r, g, b = px[i], px[i + 1], px[i + 2]
+        if r > 150 and 60 < g < r and b < 60:
+            orange += 1
+        elif b > 150 and r < b and g < b:
+            blue += 1
+    assert orange > 200, "no orange message line (%d pixels)" % orange
+    assert blue > 200, "no message line in the color of the player (%d pixels)" % blue
+
+
 def test_msg_arrows_orig(t):
     """-origui: the up arrow of the original shows newer lines, so at the
     newest line it does nothing, and the down arrow shows older lines."""

@@ -475,6 +475,25 @@ Verified from 0x33F55 and 0x34682:
   are more lines than visible lines. The manual picture shows the arrows
   with an empty box. This difference is not explained (guess: an older
   build).
+- Words (0x347A7, verified in the bytes): the text is cut with strtok and
+  the separators LF, tab, CR and space (0x13B09E). The words are joined with
+  one space. A line is closed when the next word would make it 100
+  characters or more, or as wide as the box or wider (0x348C4, 0x348D9: the
+  width of the words and of " " in the game font, box width 244 low, 470
+  high). A word that does not fit an empty line closes an empty line. The
+  sentence test 0x347DA reads the byte after the line (0x3489B reads
+  `[esp + edi]`, the end of the string), so the two spaces after ".", "!"
+  or "?" of the format "  %s" (0x13B099) never come. The port does the same
+  (dtudisp.c dtu_display_add_message).
+- Color (0x34998, verified in the bytes): the palette color nearest to the
+  doubled triple at 0x13B970 + 3 x index. 0x347A2 masks the index to a
+  byte. About 50 callers pass -1, which becomes 255 and reads the bytes
+  7D 12 00 at 0x13BC6D (no code writes there): (250, 36, 0), an orange in
+  the palettes of the game. The green of the index -1 (0x34A1A) is never
+  used. The callers that pass `Player_num` (0x531A0 Auto Run, 0x5446B to
+  0x546BD the V and N keys, the trigger text 0x94F5B) get (30, 30, 46); the
+  three "You need a bow" texts (0x41DC1, 0x41E16, 0x43CAF) pass 1 to 0x347A7
+  and get (54, 0, 0). The port has the same colors (`test_msg_colors`).
 - The message box is drawn only if the byte at 0x13AD43 is not 0. It is set
   to 1 at 0x340C9 (display setup of a mode, not read in detail).
 

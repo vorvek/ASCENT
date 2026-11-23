@@ -39,6 +39,7 @@
 #include "fireball.h"
 #include "dtugame.h"
 #include "dtuobj.h"
+#include "dtudisp.h"		// ASCENT: the color of a message
 #include "dtuchar.h"
 #include "dtutrig.h"
 #include "kconfig.h"		// ASCENT: the key table
@@ -831,7 +832,9 @@ static void start_attack(void)
 		char *need = missile_needs(w);
 
 		if (need) {
+			dtu_display_next_message_color(1);		// 0x43CA7: index 1
 			HUD_init_message("%s",need);
+			dtu_display_next_message_color(-1);
 			Request = 0;
 			return;
 		}

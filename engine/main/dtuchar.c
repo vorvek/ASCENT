@@ -1400,7 +1400,9 @@ void dtu_char_press_hot_key(int key)
 
 		if ((arrow && Dtu_char.slot[DTU_SLOT_BOW].n < 0) || (!arrow && bolt && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0)) {
 			// 0x1258C0 with "bow" and "arrow" or "crossbow" and "bolt"
+			dtu_display_next_message_color(1);		// ASCENT: 0x43CA7: index 1
 			HUD_init_message("You need a %s to fire %ss", arrow ? LT("bow") : LT("crossbow"), arrow ? LT("arrow") : LT("bolt"));
+			dtu_display_next_message_color(-1);
 			refuse(key, "no launcher");
 			return;
 		}

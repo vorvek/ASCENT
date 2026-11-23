@@ -820,20 +820,50 @@ static void msg_insert(char *line, int color)
 	if (Msg_count < MSG_LINES) Msg_count++;
 }
 
-// ASCENT: the color of the next message, or -1. See
-// dtu_display_add_trigger_message().
-static int Msg_next_color = -1;
+// The color of a message line (0x34998): the palette color nearest to the
+// doubled values of the triple at 0x13B970 + 3 x index. 0x347A2 masks the
+// index to a byte, so the -1 of almost every caller is index 255 and reads
+// the bytes 7D 12 00 at 0x13BC6D, after the table (DTU-Decomp docs/hud.md
+// 6.1): (250, 36, 0), which no palette entry reaches. The green branch of
+// the index -1 (0x34A1A) is never taken. Index 0 is the color of player 0
+// (triggers, V, N), index 1 (27, 0, 0) the "You need a bow" texts (0x43CAF).
+static const ubyte Msg_color_table[8][3] = {
+	{ 15, 15, 23 }, { 27, 0, 0 }, { 0, 23, 0 }, { 30, 11, 31 },
+	{ 4, 4, 29 }, { 24, 17, 6 }, { 14, 21, 12 }, { 29, 29, 4 }
+};
+
+#define MSG_SEPARATORS	"\n\t\r "		// 0x13B09E
+
+static int msg_color(int index)
+{
+	index &= 0xFF;
+	if (index < 8)
+		return rgb6(Msg_color_table[index][0] * 2, Msg_color_table[index][1] * 2, Msg_color_table[index][2] * 2);
+	return rgb6(0x7D * 2, 0x12 * 2, 0);
+}
+
+// ASCENT: the color index of the next message (0x347A2), or -1 for the
+// index -1 of most callers. See dtu_display_next_message_color().
+static int Msg_next_index = -1;
+
+void dtu_display_next_message_color(int index)
+{
+	Msg_next_index = index;
+}
 
 static char Desc_msg[101];				// ASCENT: the last message in the modes 3 and 6 (0x1BD69C)
 static int Desc_msg_on;
 
 void dtu_display_add_message(char *text)
 {
-	char line[MSG_LENGTH];
-	int max_w, sw, sh, aw, len, last_space, color;
+	char work[1024], line[MSG_LENGTH], *word;
+	int max_w, sw, sh, aw, space_w, line_w, len, color;
 	char *p = text;
 
-	if (!Dtu_display_active || !GAME_FONT || !text) return;
+	if (!Dtu_display_active || !GAME_FONT || !text) {
+		Msg_next_index = -1;
+		return;
+	}
 	p = text = dtu_tr(text);		// ASCENT: the text of the code in the language (dtulang.h)
 	if (strstr(text, "{sex:")) {
 		// ASCENT: the tokens {sex:} (dtulang.h) of a text that a caller made
@@ -849,31 +879,36 @@ void dtu_display_add_message(char *text)
 		snprintf(Desc_msg, sizeof(Desc_msg), "%s", text);
 		Desc_msg_on = 1;
 	}
-	// The color of a message is the first byte of the line in the original.
-	// The callers were not traced: gray is a guess.
-	color = rgb6(48, 48, 48);
-	if (Msg_next_color >= 0)
-		color = Msg_next_color;
-	max_w = Msg_rect[Dtu_hires].w - 4;
+	color = msg_color(Msg_next_index);
+	Msg_next_index = -1;
+	// 0x347A7: the words (separators LF, tab, CR and space: strtok with
+	// 0x13B09E) are joined with one space. A line is closed when the next
+	// word would make it 100 characters or more, or as wide as the box or
+	// wider (the widths of the words and of " " in the game font); a word
+	// that does not fit an empty line closes an empty line. The test of a
+	// sentence end (0x347DA) reads the byte after the line, so the two
+	// spaces of the format "  %s" are never used.
+	max_w = Msg_rect[Dtu_hires].w;
 	gr_set_curfont(GAME_FONT);
-	while (*p) {
-		len = 0;
-		last_space = -1;
-		while (p[len] && p[len] != '\n' && len < MSG_LENGTH - 1) {
-			line[len] = p[len];
-			line[len + 1] = 0;
-			gr_get_string_size(line, &sw, &sh, &aw);
-			if (sw > max_w && len > 0) break;
-			if (p[len] == ' ') last_space = len;
-			len++;
+	gr_get_string_size(" ", &space_w, &sh, &aw);
+	snprintf(work, sizeof(work), "%s", p);
+	line[0] = 0;
+	len = line_w = 0;
+	for (word = strtok(work, MSG_SEPARATORS); word; word = strtok(NULL, MSG_SEPARATORS)) {
+		int wl = (int) strlen(word), sp = len ? 1 : 0;
+
+		gr_get_string_size(word, &sw, &sh, &aw);
+		if (len + wl + sp >= 100 || line_w + sp * space_w + sw >= max_w) {
+			msg_insert(line, color);
+			line[0] = 0;
+			len = line_w = sp = 0;
 		}
-		if (p[len] && p[len] != '\n' && last_space > 0)
-			len = last_space;
-		line[len] = 0;
-		msg_insert(line, color);
-		p += len;
-		while (*p == ' ' || *p == '\n') p++;
+		snprintf(line + len, sizeof(line) - len, "%s%s", sp ? " " : "", word);
+		len = (int) strlen(line);
+		line_w += sp * space_w + sw;
 	}
+	if (len)
+		msg_insert(line, color);
 	Msg_first = 0;
 }
 
@@ -884,10 +919,9 @@ void dtu_display_add_message(char *text)
 void dtu_display_add_trigger_message(char *text)
 {
 	if (!Dtu_display_active || !GAME_FONT || !text) return;
-	Msg_next_color = rgb6(30, 30, 46);
+	Msg_next_index = 0;
 	dtu_display_add_message(text);
-	msg_insert(" ", Msg_next_color);
-	Msg_next_color = -1;
+	msg_insert(" ", msg_color(0));		// 0x34983: index 0
 }
 
 static void msg_draw(int mx, int my)
@@ -2540,9 +2574,8 @@ static void do_input(int mx, int my)
 			Dtu_player_state ^= DTU_PS_INFRAVISION;
 			text = Text_string[(Dtu_player_state & DTU_PS_INFRAVISION) ? 820 : 821];
 		}
-		Msg_next_color = rgb6(30, 30, 46);		// 0x347A2, the color of the player
+		Msg_next_index = 0;		// 0x347A2 with Player_num: the color of the player
 		dtu_display_add_message(text ? text : "");
-		Msg_next_color = -1;
 	}
 	if (action_acts(DTU_ACT_IMMERSIVE)) {
 		// ASCENT: 0x54439 toggles the flag at 0x13BAE0 and adds TEX 817
@@ -2559,9 +2592,8 @@ static void do_input(int mx, int my)
 		if (!Dtu_immersive)
 			mouse_set_pos(View.x + View.w / 2, View.y + View.h * (Dtu_hires ? 2 : 1) / 2);
 		text = Text_string[Dtu_immersive ? 817 : 818];
-		Msg_next_color = rgb6(30, 30, 46);
+		Msg_next_index = 0;
 		dtu_display_add_message(text ? text : (Dtu_immersive ? LN("Immersive mode is on.") : LN("Immersive mode is off.")));
-		Msg_next_color = -1;
 	}
 	// The key switch of the game (0x42F9C): F3 (0x43043) calls 0x40C3A in
 	// mode 7, else 0x40974. The key "=" (also with Shift, 0x432A8) calls
