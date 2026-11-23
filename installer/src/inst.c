@@ -150,17 +150,17 @@ int inst_copy_file(const char *from, const char *to)
 	return ok;
 }
 
-int inst_link_or_copy(const char *target, const char *link)
+int inst_link_or_copy(const char *target, const char *dest)
 {
-	remove(link);
+	remove(dest);
 #ifdef _WIN32
-	if (CreateHardLinkA(link, target, NULL))
+	if (CreateHardLinkA(dest, target, NULL))
 		return 1;
 #else
-	if (link(target, link) == 0)
+	if (link(target, dest) == 0)
 		return 1;
 #endif
-	return inst_copy_file(target, link);
+	return inst_copy_file(target, dest);
 }
 
 static int list_add(inst_list *l, const char *name, int64_t size)

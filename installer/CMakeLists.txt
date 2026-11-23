@@ -30,12 +30,18 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(ascent_inst PRIVATE -Wall -Wno-unused-function)
 endif()
 
-# The tools link the MinGW runtime statically: they need no DLL.
-set(TOOL_LINK_OPTIONS -static -static-libgcc)
-
-add_executable(ascent-import src/ascent_import.c res/tools.rc)
+# ASCENT: ascent-import also builds on the other systems (inst.c has the
+# file functions of each). The rest of this file is for Windows only.
+add_executable(ascent-import src/ascent_import.c)
 target_include_directories(ascent-import PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(ascent-import PRIVATE ascent_inst)
+if(NOT WIN32)
+  return()
+endif()
+
+# The tools link the MinGW runtime statically: they need no DLL.
+set(TOOL_LINK_OPTIONS -static -static-libgcc)
+target_sources(ascent-import PRIVATE res/tools.rc)
 target_link_options(ascent-import PRIVATE ${TOOL_LINK_OPTIONS})
 
 add_executable(ascent-content WIN32 src/ascent_content.c res/tools.rc)

@@ -107,8 +107,12 @@ void InitArgs( int argc,char **argv )	{
 //NO_DESCENT_INI	}
 
 	for (i=0; i< Num_args; i++ )	{
-		if ( Args[i][0] == '/' )  
+#ifdef _WIN32
+		// ASCENT: on the other systems a '/' starts an absolute path (the
+		// value of -datadir, for example), not a DOS style option.
+		if ( Args[i][0] == '/' )
 			Args[i][0] = '-';
+#endif
 
 		if ( Args[i][0] == '-' )
 			strlwr( Args[i]  );		// Convert all args to lowercase

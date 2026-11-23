@@ -14,7 +14,13 @@ endif()
 string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
 
 # SDL3: use an installed package when one exists. If not, download and build it.
-find_package(SDL3 CONFIG QUIET)
+# On Linux the search skips the directories of PATH: in WSL, PATH has the
+# Windows directories, and an SDL3 of MSYS2 there is the wrong platform.
+if(WIN32)
+  find_package(SDL3 CONFIG QUIET)
+else()
+  find_package(SDL3 CONFIG QUIET NO_SYSTEM_ENVIRONMENT_PATH)
+endif()
 if(NOT SDL3_FOUND)
   include(FetchContent)
   set(SDL_SHARED OFF CACHE BOOL "" FORCE)
@@ -42,6 +48,6 @@ endif()
 
 enable_testing()
 add_subdirectory(engine)
-if(WIN32)
-  add_subdirectory(installer)	# the import tool, the content tool, the install rules
-endif()
+# The import tool (all systems); on Windows also the content tool and the
+# install rules.
+add_subdirectory(installer)

@@ -20,6 +20,9 @@
 #include <string.h>
 #include <signal.h>
 #include <stdarg.h>
+#ifndef _WIN32
+#include <unistd.h>		// ASCENT: _exit (stdlib.h of Windows has it)
+#endif
 
 #include "inferno.h"
 #include "types.h"
