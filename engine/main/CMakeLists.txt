@@ -45,9 +45,16 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   # The original code declares many functions without a return type.
   target_compile_options(d_main PRIVATE
     -Wno-error=implicit-int -Wno-implicit-int
-    -Wno-error=return-mismatch -Wno-return-type
+    -Wno-return-type
     -Wno-unknown-pragmas -Wno-parentheses -Wno-misleading-indentation
     -Wno-unused-function -Wno-comment -Wno-char-subscripts)
+endif()
+# -Wreturn-mismatch is an error by default from GCC 14. GCC 13 (Ubuntu 24.04)
+# does not have the option and stops at an unknown -Wno-error= name.
+include(CheckCCompilerFlag)
+check_c_compiler_flag(-Wreturn-mismatch ASCENT_HAS_WRETURN_MISMATCH)
+if(ASCENT_HAS_WRETURN_MISMATCH)
+  target_compile_options(d_main PRIVATE -Wno-error=return-mismatch)
 endif()
 
 # The executable is not part of the default build until the game code links.
