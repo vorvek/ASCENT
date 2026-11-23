@@ -2955,8 +2955,17 @@ void dtufe_title(void)
 int dtufe_run(void)
 {
 	fe_enter();
-	if (FindArg("-testmarket"))		// ASCENT: test option, the front end starts in the market (tools/uitest.py)
+	if (FindArg("-testmarket")) {		// ASCENT: test option, the front end starts in the market (tools/uitest.py)
+		int t;
+
 		Fe_mode = FE_GO_MARKET;
+		// -testmarketcha N: the charisma of the player; -testmarketdouble:
+		// the global flag 107, which doubles the prices (0x86F5F)
+		if ((t = FindArg("-testmarketcha")) != 0 && t + 1 < Num_args)
+			Dtu_char.pa.charisma = atoi(Args[t + 1]);
+		if (FindArg("-testmarketdouble"))
+			dtu_script_set_gflag(107, 1);
+	}
 	while (!Fe_quit) {
 		switch (Fe_mode) {
 		case FE_GO_MENU:

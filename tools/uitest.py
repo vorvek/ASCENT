@@ -13,6 +13,7 @@ The screenshot of the port is the 640x480 interface scaled 3 times.
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -712,6 +713,41 @@ def test_death_stops_world(t):
 # entry 2 (Leather Armor) at 9,67, entry 4 (Potion of Healing) at 9,125.
 DESC_CELLS = {"weapon": (67, 25), "armor": (25, 83), "potion": (25, 141)}
 DESC_EMPTY = (67, 141)      # the cell of entry 5
+
+
+def test_desc_window_death(t):
+    """A death while the description window is open: the death goes on
+    (the wait, the death picture, a key leaves it) and the front end has no
+    window left."""
+    x, y = DESC_CELLS["weapon"]
+    s, d = t.run("desc_death", ["gamekeys", "wait 10", "key i", "wait 5", "rclick %d %d" % (x, y), "wait 5",
+                                "shot open", "wait 140", "key space", "wait 30", "shot menu"],
+                 extra=["-fixedfps", "30", "-chartest", "40:damage=999"])
+    text = session_log(d)
+    assert "Player dies" in text, "the player did not die"
+    assert "Front end: death picture left" in text, "the death did not reach the death picture"
+
+
+def market_price(t, name, extra):
+    """The price that the description window of the first market row
+    shows (the line "Market: description" of the session log)."""
+    _, d = t.run(name, ["wait 60", "rclick 120 53", "wait 5", "click 600 300", "wait 5"],
+                 extra=["-testmarket"] + extra, level="")
+    m = re.search(r"Market: description of \d+\.\d+, buy price (\d+)", session_log(d))
+    assert m, name + ": no price in the description window"
+    return int(m.group(1))
+
+
+def test_desc_market_price(t):
+    """The price in the description window of the market (0x86C5A): the
+    value times the percent of the charisma (0x13F32D: 400 for charisma 0,
+    101 for 19), at least 1, then doubled with the global flag 107
+    (0x86F5F)."""
+    low = market_price(t, "mkprice_cha0", ["-testmarketcha", "0"])
+    high = market_price(t, "mkprice_cha19", ["-testmarketcha", "19"])
+    double = market_price(t, "mkprice_double", ["-testmarketcha", "19", "-testmarketdouble"])
+    assert double == 2 * high, "flag 107 did not double the price (%d, %d)" % (high, double)
+    assert abs(low / high - 400 / 101) < 0.05 * 400 / 101, "the charisma rule: %d for 0, %d for 19" % (low, high)
 
 
 def save_png(img, path):
