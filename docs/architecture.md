@@ -293,7 +293,7 @@ installer or by `ascent-content`. No content is in the repository.
    the upscaled textures, interface pictures and movies in `gamedata/hd`
    (`docs/hd_textures.md`). `tools/music_replace.py` makes replacement music.
 2. `tools/content_pack.py` builds ZIP packs (`patch13`, `textures`, `ui`,
-   `movies`, `lang_<code>`) and `manifest.txt` in `gamedata/content`
+   `movies`, `lang_<code>`, `sounds`) and `manifest.txt` in `gamedata/content`
    (`docs/install.md`, "Content packs").
 3. The owner copies the packs to the content server
    (`installer/server/worker.js`, `installer/content.ini`).

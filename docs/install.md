@@ -218,7 +218,8 @@ order:
 3. The language of the game: `en` or `es`.
 4. The downloads, with the sizes of `manifest.txt`: the upscaled textures and
    interface (packs `textures` and `ui`, default yes), the upscaled movies (default
-   no), the Spanish text (`lang_es`; always with the language `es`).
+   no), the Spanish text (`lang_es`; always with the language `es`), the miss sounds
+   (`sounds`, default yes).
 
 Then it shows a summary and the free space, and asks once more. The steps:
 
@@ -255,7 +256,7 @@ Each question is also an option, for an install without questions:
 | `--prefix DIR` | the installation folder |
 | `--source PATH` | the game disc |
 | `--lang en\|es` | the language |
-| `--textures yes\|no`, `--movies yes\|no`, `--spanish yes\|no` | the downloads |
+| `--textures yes\|no`, `--movies yes\|no`, `--spanish yes\|no`, `--sounds yes\|no` | the downloads |
 | `--yes` | the default of each answer that is not given |
 | `--url URL` | another content server (as `/CONTENTURL=`; also `ASCENT_CONTENT_URL`; `file://` works with curl) |
 | `--patch PATH` | the 1.3 patch archive or folder, instead of the download |
@@ -335,15 +336,16 @@ files keep their upper case names: the game finds them with any case.
 | `lang_es` (version 4) | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...`, and the pictures of the language `hd/lang/es/` (`tools/ui_lang.py`) (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 46 | 45 | 3,502,119 bytes |
 
 The pack `sounds` holds sounds that are not game data: the miss sounds are cut from a
-commercial sound effects library (Triune Sound, "Fighting SFX"). They never go into
-git, the installer or the Linux tarball. The setup does not install the pack; a player
-installs it with `ascent-content install sounds` or the window of `ascent-content`.
-Before the pack goes to the server the owner must confirm that the license of the
-library allows its distribution in a free game. Build it into a folder of its own, so
-that a sync of `gamedata/content` does not upload it by mistake:
-`content_pack.py --out gamedata/content-pending sounds` (copy `manifest.txt` there
-first, so that the new manifest keeps the other packs). Without the pack the game has
-no miss sound, as 1.3.
+commercial sound effects library, "Fighting SFX" of Triune Sound, under a license that
+the project owner holds. The samples are not in the repository, the setup program or
+the Linux tarball: they are only on the content server. The Windows setup program
+(task `sounds`) and `setup.sh` (`--sounds`) offer the pack, checked by default because
+it is small; `ascent-content install sounds` or the window of `ascent-content` installs
+it later. Build it into a folder of its own, so that a sync of `gamedata/content` does
+not upload a changed pack by mistake: `content_pack.py --out gamedata/content-pending
+sounds` (copy `manifest.txt` there first, so that the new manifest keeps the other
+packs). The game plays the files for the setting "Miss sound" (`MissSound` in
+`ascent.cfg`). Without the pack the game has no miss sound, as 1.3.
 
 The language packs hold the Spanish text of the game files, the subtitles and the
 interface pictures with Spanish words (`docs/formats/lang.md`); they are made from the translations that
@@ -442,7 +444,7 @@ The content tool is installed with the game ("ASCENT-DTU Content" in the Start m
 
 `installer/build.sh [CONTENT_DIR]` builds `build-rel/setup/ascent-dtu-setup-<version>.exe`
 (the download sizes come from `CONTENT_DIR/manifest.txt`: MB for the textures and the
-movies, KB for `lang_es`).
+movies, KB for `lang_es` and `sounds`).
 
 The setup program is in English, Spanish, German, French and Italian. It starts with
 the language dialog (`ShowLanguageDialog=yes`; the language of Windows is preselected).
@@ -462,7 +464,8 @@ downloadable content: "Upscaled textures and interface (for the GPU renderer; do
 about 493 MB)", checked; "Upscaled movies (for the GPU renderer; download, about 463
 MB)", unchecked because of the size; "Spanish translation of the game text (download,
 about 2775 KB)", task `langes`, pack `lang_es`, checked only in the Spanish setup
-program), ready, the progress page of the patch download and the import (a failure
+program; "Miss sounds: the sound of a melee attack that misses (download, about 50
+KB)", task `sounds`, pack `sounds`, checked in every language), ready, the progress page of the patch download and the import (a failure
 stops Setup with the message of the tool), the content downloads (a failure is a
 warning: the game works without them), and the last page with "Play ASCENT-DTU".
 
@@ -477,7 +480,7 @@ uninstaller removes `default.cfg`.
 
 Command line: `/SOURCE=`, `/PATCH=`, `/CONTENTURL=`, and `/LANG=` (`english`,
 `spanish`, `german`, `french`, `italian`), `/DIR=`, `/TASKS=` (`startmenu`,
-`desktopicon`, `hdtextures`, `hdmovies`, `langes`), `/VERYSILENT`,
+`desktopicon`, `hdtextures`, `hdmovies`, `langes`, `sounds`), `/VERYSILENT`,
 `/SUPPRESSMSGBOXES`, `/LOG=`.
 
 The uninstaller (Windows "Installed apps") removes the program, `data`, `hd` and
