@@ -74,6 +74,22 @@ extern int Dtu_fix_body_ray;
 // -origcombat gives the rule of 1.3.
 extern int Dtu_fix_swing_pitch;
 
+// The melee attack of a creature. A creature starts an attack on the player
+// in reach (both radii plus 2.0, the goal state choice 0x1599F), and the hit
+// is the weapon sphere of its model frames from frame 8 of the attack state
+// to its end (0x6CFF8 from 0x9F2B4). The roll against the armor class is
+// made only when the sphere touches the player (0x27D82, 0x29A9C, 0x2A7F3).
+// So a step back during the animation avoids every melee attack, and the
+// armor class does not count. Corrected: an attack that starts with the
+// player in reach, in front of the creature (facing dot 0.75, 0x1396E) and
+// with no wall between them is committed. When the sphere misses because
+// the player moved, the roll and the hit are made at the first hit frame
+// with the player out of reach, or at the last two frames of the state.
+// The attack is lost if the creature dies, is held or loses the player
+// (invisible, hidden), or if the player is farther than twice the reach or
+// behind a wall or a closed door. -origcombat gives the rule of 1.3.
+extern int Dtu_fix_attack_commit;
+
 // Turn undead (0xADC46). When the number of creatures that a turn can
 // destroy is used up, the executable clears the "can be tried" bit of the
 // next undead before it stops (0xADF09), so that creature can never be

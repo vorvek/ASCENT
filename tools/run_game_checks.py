@@ -99,6 +99,8 @@ def checks(a, work):
         ("check_reach_mine", py + [tool("check_reach.py"), "--exe", exe, "--level", "MINE", "--jobs", "4"] + dd, game),
         # giant rats with the Broad Sword: the swing at the look pitch and the
         # negative pass (Dtu_fix_swing_pitch)
+        # a step back during the attack of a creature (Dtu_fix_attack_commit)
+        ("check_reach_commit", py + [tool("check_reach.py"), "--exe", exe, "--commit"] + dd, game),
         ("check_reach_clan3", py + [tool("check_reach.py"), "--exe", exe, "--level", "CLAN3", "--weapon", "20", "--jobs", "4"] + dd,
          game),
         ("uitest", py + [tool("uitest.py"), "--exe", exe] + dd + ["--hddir", hd], game or need(hd)),

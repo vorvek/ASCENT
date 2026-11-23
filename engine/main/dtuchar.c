@@ -3610,6 +3610,7 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a, b);	// test: reach=N.M, the attacks that reach creature N (tools/check_reach.py)
 	else if (!strcmp(cmd, "pitch"))		dtu_combat_set_pitch(a);		// ASCENT: test: pitch=P, the look pitch (fixang, + is down)
+	else if (!strcmp(cmd, "stepback"))	dtu_obj_test_stepback(a, b);	// ASCENT: test: stepback=N.D, the player steps back D when creature N attacks
 	else if (!strcmp(cmd, "goobjh") && a >= 0 && a <= Highest_object_index) {		// test: goobjh=N.D, D (default 4.0) in front of object N at the height of the player
 		object *o = &Objects[a];
 		vms_vector to, p;

@@ -115,7 +115,7 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` | `controls.c` |
 | `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture` | `dtuobj.c` |
 | `-origdrow5`, `-origguildpeace` | one each: `drow5_shields`, `guild_peace` | `dtuobj.c` |
-| `-origcombat` | `one_hit`, `haste_attack`, `rat_hit`, `stoneskin_word`, `chill_touch`, `rary_manual`, `melf_acid`, `turn_undead` (`dtucombat.c`); `wizardry_ring`, `potion_frame`, `luck_coin` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
+| `-origcombat` | `one_hit`, `haste_attack`, `rat_hit`, `body_ray`, `swing_pitch`, `attack_commit` (`dtuobj.c`), `stoneskin_word`, `chill_touch`, `rary_manual`, `melf_acid`, `turn_undead` (`dtucombat.c`); `wizardry_ring`, `potion_frame`, `luck_coin` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
 | `-origchar` | `multiclass_thac0`, `spell_save_repair` | `dtuchar.c` |
 | `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap` | `dtutrig.c` |
 | `-origui` | `automap_reveal`, `msg_scroll` | `automap.c`, `dtudisp.c` |

@@ -41,6 +41,13 @@ cylinder of the body (0x3EE70, 0x4F7D5, dtu_body_query_test in fvi.c). In
 so a steep shot down at a low or wide creature hits. With --origcombat the
 missile part fails for such creatures.
 
+--commit runs only the test of the committed melee attack of a creature
+(Dtu_fix_attack_commit): a Zombie of BONES starts an attack on the player in
+reach, and the test command stepback=N.D moves the player back at once by
+8.0 (out of reach, within twice the reach: the roll is made; with
+-origcombat the zombie does not swing at the player) and by 40.0 (farther
+than twice the reach: no roll).
+
 The rats have pass_thru: without the correction Dtu_fix_rat_hit
 (--origcombat, the rules of 1.3) no attack reaches them, so the check fails
 for them. The exit status is 0 if all creatures pass.
@@ -59,11 +66,12 @@ REACH = re.compile(r"reach (\d+): (\S+) id (\d+) dist (\S+) wall (\d) contact (-
                    r"hurt (\d) up (\S+) seg (-?\d+) pitch (-?\d+) mode (\d) orig (-?\d+) top (\S+) eyedist (\S+)")
 DISTS = (3, 4, 5, 6, 7, 8, 10, 14)
 START = 40       # the first reach frame: the player lands after goseg
+COMMIT_OBJ = (11, 153)  # --commit: a Zombie of BONES and its segment
 LOW = 4.0        # the negative pass: the top of the body at least this far below the eye
 BIG = (0x12, 0x13, 0x22, 0x23, 0x2B, 0x2C, 0x2D, 0x45)    # the sphere times 8 (0x6D2A0): no negative pass
 
 
-def run(args, user, script, frames, extra=()):
+def run(args, user, script, frames, extra=(), level=None):
     os.makedirs(user, exist_ok=True)
     log = os.path.join(user, "char.log")
     if os.path.exists(log):
@@ -71,7 +79,7 @@ def run(args, user, script, frames, extra=()):
     cmd = [args.exe]
     for d in args.datadir:
         cmd += ["-datadir", d]
-    cmd += ["-nomovies", "-mute", "-hidden", "-nolog", "-userdir", user, "-level", args.level,
+    cmd += ["-nomovies", "-mute", "-hidden", "-nolog", "-userdir", user, "-level", level or args.level,
             "-frames", str(frames), "-fixedfps", "30", "-invulnerability", "-charlog", log,
             "-chartest", script] + list(extra)
     subprocess.run(cmd, capture_output=True, timeout=args.timeout, cwd=user)
@@ -80,6 +88,55 @@ def run(args, user, script, frames, extra=()):
             return f.read()
     except OSError:
         return ""
+
+
+def committed_attack(args, work, origcombat, step):
+    """The log lines of the attack of the zombie COMMIT_OBJ of BONES after the
+    player steps back by step when the attack starts (stepback=N.D)."""
+    n, seg = COMMIT_OBJ
+    user = os.path.join(work, "commit%d%s" % (step, "o" if origcombat else ""))
+    script = "5:give=5.20,6:current=5.20,10:goseg=%d,40:goobjh=%d.5,41:stepback=%d.%d" % (seg, n, n, step)
+    olog = os.path.join(user, "obj.log")
+    run(args, user, script, 200, (["-origcombat"] if origcombat else []) + ["-objlog", olog], level="BONES")
+    try:
+        with open(olog, encoding="latin-1") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    start = [i for i, l in enumerate(lines) if "test: the player steps back" in l]
+    if not start:
+        return None
+    out = []
+    for l in lines[start[0] + 1:]:
+        if "attack: obj %d " % n in l and "starts a melee attack" in l:
+            break
+        if "attack: obj %d " % n in l:
+            out.append(l.strip())
+    return out
+
+
+def check_commit(args, work):
+    """Dtu_fix_attack_commit: a step back during the attack of a creature.
+    One step (8.0, out of the reach of 13.9 and within twice the reach): with
+    the correction the roll is made (the committed swing), with -origcombat
+    the creature does not swing at the player. 40.0 is farther than twice
+    the reach: no roll. Returns the failures."""
+    fails = []
+    near = committed_attack(args, work, False, 8)
+    near_orig = committed_attack(args, work, True, 8)
+    far = committed_attack(args, work, False, 40)
+    if near is None or near_orig is None or far is None:
+        return ["FAIL commit: the zombie %d of BONES did not start an attack on the player" % COMMIT_OBJ[0]]
+    if not any("swings at the player" in l and "committed" in l for l in near):
+        fails.append("FAIL commit: a step back of 8 avoids the attack with the correction: %s" % " | ".join(near))
+    if any("swings at the player" in l for l in near_orig):
+        fails.append("FAIL commit: with -origcombat the zombie still swings at the player: %s" % " | ".join(near_orig))
+    if any("swings at the player" in l for l in far):
+        fails.append("FAIL commit: a step back of 40 is hit: %s" % " | ".join(far))
+    swung = lambda ls: any("swings at the player" in l for l in ls)
+    print("check_reach commit: a step of 8: %s; with -origcombat: %s; a step of 40: %s" % (
+        "roll" if swung(near) else "no roll", "roll" if swung(near_orig) else "no roll", "roll" if swung(far) else "no roll"))
+    return fails
 
 
 def check_one(args, work, extra, n, name, seg, size):
@@ -145,12 +202,18 @@ def main():
     p.add_argument("--weapon", type=int, default=19, help="the weapon in the hand (19 Short Sword, 20 Broad Sword, 27 Mace)")
     p.add_argument("--origcombat", action="store_true", help="run with -origcombat (the rules of 1.3)")
     p.add_argument("--timeout", type=int, default=300)
+    p.add_argument("--commit", action="store_true", help="only the test of the committed attack of a creature (BONES)")
     args = p.parse_args()
     args.exe = os.path.abspath(args.exe)
     extra = ["-origcombat"] if args.origcombat else []
 
     work = tempfile.mkdtemp(prefix="check_reach_")
     try:
+        if args.commit:
+            fails = check_commit(args, work)
+            for f in fails:
+                print(f)
+            return 1 if fails else 0
         text = run(args, os.path.join(work, "list"), "10:near=30000", 12, extra)
         creatures = {}
         for m in NEAR.finditer(text):

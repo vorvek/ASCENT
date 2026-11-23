@@ -31,7 +31,7 @@ an input file unless you name it as the output.
 - `lvlcheck.py`: compare the level loader of the port (`-checklevel`) with `lvl.py`.
 - `objcheck.py`: check the object records of the level files against the level tables (`docs/re/objects.md`).
 - `check_creature_setup.py`: compare the creature setup by name of the port (`-setuplog`) with the reference library of the decompilation.
-- `check_reach.py`: the swing and the target hint of the player reach each live creature of a level (default BONES), with the `-chartest` commands `goobjh` and `reach`. `--origcombat` gives the rules of 1.3, where no attack reaches a rat (`Dtu_fix_rat_hit`, `docs/re/combat.md`).
+- `check_reach.py`: the swing and the target hint of the player reach each live creature of a level (default BONES), with the `-chartest` commands `goobjh` and `reach`. `--origcombat` gives the rules of 1.3, where no attack reaches a rat (`Dtu_fix_rat_hit`, `docs/re/combat.md`). It looks at each creature at its look pitch, level and fully up (`Dtu_fix_swing_pitch`); `--weapon N` sets the weapon in the hand; `--commit` tests a step back during the attack of a Zombie of BONES (`stepback`, `Dtu_fix_attack_commit`).
 - `check_attack_rate.py`: measures the time between the attacks of the player (melee and arrows, with Haste and Slow) and the walk distance, with `-testmove` and `-objlog`. It checks the rules of `docs/re/combat.md` A8, also `Dtu_fix_speed_items`. `--origcombat` gives the rules of 1.3.
 - `uitest.py`: interface tests. Each test starts the game hidden at a level, drives it with `-fescript` and checks the screenshots. Needs the game files.
 

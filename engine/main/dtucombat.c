@@ -57,6 +57,7 @@ int Dtu_fix_missile_rate = 1;
 int Dtu_fix_rat_hit = 1;
 int Dtu_fix_body_ray = 1;
 int Dtu_fix_swing_pitch = 1;
+int Dtu_fix_attack_commit = 1;
 
 extern char Dtu_player_archive[16];		// dtugame.c
 
@@ -1386,6 +1387,7 @@ static void combat_init(void)
 		Dtu_fix_rat_hit = 0;
 		Dtu_fix_body_ray = 0;
 		Dtu_fix_swing_pitch = 0;
+		Dtu_fix_attack_commit = 0;
 		Dtu_fix_stoneskin_word = 0;
 		Dtu_fix_rary_manual = 0;
 		Dtu_fix_melf_acid = 0;
