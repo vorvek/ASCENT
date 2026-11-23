@@ -16,7 +16,10 @@
  *   ramp before it shows the window and goes on; the port does not wait.
  * - The keys are those of the executable except Tab, which the interface
  *   uses: Up and Down (also the keypad), Enter (also the keypad), Space,
- *   Escape. The scroll arrows FEBGND 186 to 189 are not done.
+ *   Escape. The scroll arrows FEBGND 186 to 189 are not done. New in the
+ *   port: an orange arrow right of the frame at the top (bottom) of the
+ *   reply area while replies are out of the area above (below); a click
+ *   on it selects the next reply in that direction.
  * - New in the port: the keys 1 to 9 (also the keypad digits) choose the
  *   reply with that number at once. A keypad digit with no reply of that
  *   number keeps its old use (8 Up, 2 Down). The play screen does not run
@@ -78,6 +81,8 @@ static fix Dim_time = 0;
 // The mouse (see the top of the file)
 static int Reply_y0[DLG_MAX_REPLIES], Reply_y1[DLG_MAX_REPLIES];	// the rows of each shown reply at the last draw
 static int Reply_shown = 0;				// the replies that the last draw showed, from Dlg_first
+// ASCENT: the arrows of the reply area at the last draw (dtu_dlg_draw)
+static int Arrow_up, Arrow_down, Arrow_x0, Arrow_x1, Arrow_up_y, Arrow_down_y;
 
 // The replies in the reply area: the first (0x3D498C) and the count
 // (0x3D4984). A choice starts with none (0xB2280).
@@ -329,6 +334,22 @@ static int mouse_poll(void)
 	Ptr_y = y;
 	click = mouse_button_down_count(0) > 0;
 	wheel = plat_mouse_wheel();
+	// ASCENT: a click on an arrow of the reply area selects the next reply
+	// out of the area (keep_reply_visible then moves the area)
+	if (click && x >= Arrow_x0 && x <= Arrow_x1) {
+		int h = Arrow_x1 - Arrow_x0 + 2;
+
+		if (Arrow_up && y >= Arrow_up_y - 2 && y <= Arrow_up_y + h) {
+			Dlg_sel = Dlg_first - 1;
+			Dlg_focus_replies = 1;
+			return -1;
+		}
+		if (Arrow_down && y >= Arrow_down_y - h && y <= Arrow_down_y + 2) {
+			Dlg_sel = Dlg_first + Dlg_visible;
+			Dlg_focus_replies = 1;
+			return -1;
+		}
+	}
 	if (x < Area_x0 || x > Area_x1 || y < Area_y0 || y >= Area_y1)
 		return -1;
 	for (i = 0; i < Reply_shown; i++)
@@ -542,6 +563,17 @@ static void draw_line(int x, int y, const char *s, int len)
 	memcpy(buf, s, len);
 	buf[len] = 0;
 	gr_string(x, y, buf);
+}
+
+// ASCENT: a filled triangle of height half + 1 with its tip at (x, y),
+// pointing up (dir 1) or down (dir -1)
+static void arrow(int x, int y, int half, int dir, int color)
+{
+	int k;
+
+	gr_setcolor(color);
+	for (k = 0; k <= half; k++)
+		gr_rect(x - k, y + dir * k, x + k, y + dir * k);
 }
 
 static void frame_rect(int x0, int y0, int x1, int y1, int color)
@@ -772,6 +804,26 @@ void dtu_dlg_draw(void)
 		frame_rect(L->x - 3, ry, L->x + L->w + 3, rbottom, c_frame);
 	else
 		frame_rect(L->x - 3, L->y, L->x + L->w + 3, ry, c_frame);
+
+	// ASCENT: the arrows of the reply area, right of the frame, while
+	// replies are out of the area above (Dlg_first) or below
+	Arrow_up = Arrow_down = 0;
+	if (Dlg_waiting && Dlg_n_replies > 0) {
+		int half = Dtu_hires ? 5 : 3, ax = L->x + L->w + 4 + half + 1;
+
+		Arrow_x0 = ax - half - 1;
+		Arrow_x1 = ax + half + 1;
+		Arrow_up_y = ry + 2;
+		Arrow_down_y = rbottom - 2;
+		if (Dlg_first > 0) {
+			Arrow_up = 1;
+			arrow(ax, Arrow_up_y, half, 1, c_sel);
+		}
+		if (Dlg_first + Dlg_visible < Dlg_n_replies) {
+			Arrow_down = 1;
+			arrow(ax, Arrow_down_y, half, -1, c_sel);
+		}
+	}
 
 	// ASCENT: the cursor over the window (dtu_display_frame leaves it out
 	// while the window is open)

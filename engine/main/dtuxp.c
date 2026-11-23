@@ -95,7 +95,6 @@ void dtu_xp_creature_death(object *obj, object *attacker, int weapon, int xp)
 {
 	char buf[32], who[64];
 	const char *cause = cause_text(attacker, weapon, buf, sizeof(buf));
-	int two = Dtu_char.pa.class2 >= 0 && Dtu_char.pa.class2 <= 3;
 
 	if (attacker && attacker->type == OBJ_PLAYER)
 		snprintf(who, sizeof(who), "player");
@@ -124,8 +123,6 @@ void dtu_xp_creature_death(object *obj, object *attacker, int weapon, int xp)
 			say(LN("You killed %s."), name);
 		else if (xp == 0)
 			say(LN("You killed %s: no experience."), name);
-		else if (two)
-			say(LN("You killed %s: %d Exp (%d per class)."), name, xp, xp / 2 > 0 ? xp / 2 : 1);
 		else
 			say(LN("You killed %s: %d Exp."), name, xp);
 	}

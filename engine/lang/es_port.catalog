@@ -2229,10 +2229,6 @@ id: port.you_killed_s_no_experience
 en: You killed %s: no experience.
 tr: Has matado a %s: sin experiencia.
 
-id: port.you_killed_s_d_exp_d_per_class
-en: You killed %s: %d Exp (%d per class).
-tr: Has matado a %s: %d Exp (%d por clase).
-
 id: port.you_killed_s_d_exp
 en: You killed %s: %d Exp.
 tr: Has matado a %s: %d Exp.
