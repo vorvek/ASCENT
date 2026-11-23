@@ -8,4 +8,8 @@
 // Each key of the game (the key code with its modifiers) goes here once.
 void dtu_cheat_key(int key);
 
+// D-123: 1 (default): a cheat code clears its index after it acted, so
+// it can be typed again at once. 0 (-origui): five codes keep it (1.3).
+extern int Dtu_fix_cheat_index;
+
 #endif

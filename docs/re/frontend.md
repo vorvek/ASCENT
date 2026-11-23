@@ -672,15 +672,17 @@ used.
 
 ## 12. Input
 
-The menus of the executable act on the state of the button, not on a new
-press (G for the effect on each control). An older version of this note said
-that the action of a pressed feature runs again in each frame while the
-button is down (0x81F7E). DTU-Decomp `docs/town.md` (the cursor state
-machine, 0x82146 to 0x82195) reads it otherwise: the press handler runs once,
-when the press animation of the cursor ends; with the button still down the
-release state starts the press animation again, so a held button repeats at
-the pace of the animation, not in each frame. The port option
-`Dtu_fe_original_input` follows the older reading (open point).
+The screens of the front end (the town, the character screens) follow the
+event loop `menu_event_loop` (0x81F7E, DTU-Decomp `docs/town.md` 4.4). A press
+starts the press animation of the cursor (one frame each 0.1 s). At its last
+frame the press handler of the feature runs once, if the cursor is still on
+the feature. With the button still down nothing more happens: the code at
+0x82146 to 0x82195 (verified in the bytes) sends only the hover events 0, 1
+and 2 (0x825FD). 0.1 s after the button goes up the release handler runs once,
+on the same feature. A held button does not repeat. The menus (newmenu_do3,
+0x63FB2) take the mouse buttons as keys by the press count (0x66CCF), so a
+press acts once. An older version of this note said that the press handler
+runs again in each frame while the button is down; that was wrong.
 
 ## 13. The port
 
@@ -702,10 +704,12 @@ the pace of the animation, not in each frame. The port option
 
 Decisions of the port (P):
 
-- Input: `Dtu_fe_original_input` (option `-feoriginput`) gives the behavior
-  of section 12. It is 0 by default: a press or a key acts one time, and
-  only the controls where a person expects it (the portrait arrows, the
-  sliders) repeat with a delay (0.4 s, then 8 or 10 times a second).
+- Input: `Dtu_fe_original_input` (option `-feoriginput`) gives the rule of
+  section 12: the press acts at the end of the press animation of the
+  cursor, the release 0.1 s after the button goes up, and nothing repeats.
+  It is 0 by default: a press or a key acts at once, one time, and only the
+  controls where a person expects it (the portrait arrows, the sliders)
+  repeat with a delay (0.4 s, then 8 or 10 times a second).
 - The script of the option `-fescript FILE` drives the front end for tests
   (comment in dtufe.c). While it runs the clock is the frame count (30
   frames are one second).

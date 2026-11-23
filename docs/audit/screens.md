@@ -30,10 +30,10 @@ a save with more than ten items (SG0.SG of the install has six).
 | Character | An aborted New Game also resets Khelben (0x82BC4) and the first list (0x8C426) | 0x87E60, 0x87E65 | open: the list is reset (fixed with the main menu item); the Khelben reset of a loaded game on abort is a defect of 1.3, not ported |
 | Character | Abort question, refusals TEX 712, 713, 716, 717, class help 613 to 619, 634, 635, name box, alignment rule | 0x87EFC, 0x881ED, 0x8C0BB | same |
 | Load | A file with a valid header whose character cannot be read: TEX 804 "Error reading character data", and 0xBB763 (no character, Khelben reset, first list). Other failures TEX 802 | 0xBBB44 to 0xBBB53 | fixed |
-| Save | A failed open shows no text; a failed write TEX 800 | 0xBA99F | open (minor: the port shows TEX 800 for both) |
+| Save | A failed open shows no text; a failed write TEX 800 | 0xBA99F | corrected: `Dtu_fix_save_open_text` (TEX 800 for both; verified in the bytes: 0xBAA3E goes to the exit with no text, 0xBABF3 shows the text of a failed write); `-origfe` gives no text |
 | Load and save | Spacer, width 190, TEX 67, 796, 797, 798, 801 | 0xBA647, 0xBA486 | same |
 | Options | Hires Dungeon Graphics and "Hear Khelben In English"; two blank lines after Reverse Stereo | 0x58C18 | port (FE-10, FE-11) |
-| Death | The world stops at once when the hit points go below 1 (0x13AD0D, 0x13D3F7); a wait of 3 s or a key; fade out (32 steps) | 0x33C5E, 0x423F5 to 0x42460 | open: the port runs the world for 3 s (dtuobj.c, death sequence) |
+| Death | The world stops at once when the hit points go below 1 (0x13AD0D, 0x13D3F7); a wait of 3 s or a key; fade out (32 steps) | 0x33C5E, 0x423F5 to 0x42460 | fixed: the world stops at the death, the streams stop, a key ends the wait (dtuobj.c dtu_player_death_wait, verified in the bytes: 0x33C96, 0x4240B to 0x42452); `test_death_stops_world` |
 | Death picture | FEBGND 161, music 7 after the picture, the keys that are down are taken, then any key; the mouse does nothing | 0x42478 to 0x4252E | fixed (key wait) |
 | Death picture | Fade out in 32 steps before the Death Menu | 0x4253E, 0x4254F | fixed |
 | Death Menu | Load Game, Abort Game, "Death Menu\n" | 0x42593 | same |
@@ -84,12 +84,12 @@ item is shown in the inventory (see below).
 | Inventory | Icon 199 over an entry that the character cannot use (0x3533C: class bits, count, spells 39, 40, 53, the Scroll) | 0x32899, 0x9C6C4 | fixed |
 | Inventory | Gray icon for an entry in use: armor and wearable misc items in a slot (0x3223E), weapons, misc items and spells in a hot key (0x323B0) | 0x328AB, 0x323F3, 0x9C537 | fixed |
 | Inventory | Icon 142 for a spell in the item list; icon 141 for the Scroll with a count of 0 | 0x32824 to 0x32858 | fixed |
-| Inventory | Icon 143 for the Scroll when byte +10 of its record is not 0 | 0x3285F | open: the port has no such field |
+| Inventory | Icon 143 for the Scroll when byte +10 of its record is not 0 | 0x3285F | fixed: byte +10 is the plot_item of the table line (0xB65BB); the port reads it from the table (dtudisp.c scroll_plot_item). Verified in the bytes: count 0 gives 141 (0x32858), then plot_item not 0 gives 143 (0x32865) |
 | Inventory | In modes 3 and 6 a new message also goes to the description bar (100 characters) | 0x34A83 to 0x34AD2 | fixed |
 | Inventory | Paper doll, USE, DROP, scroll bar | 0x35ADF, 0x3010C | same (ingame-ui.md U21) |
 | Spell lists | "Lvl %d" / "L-%d", the marks as in the item list | 0xB7487, 0x32899 | same, fixed (marks) |
-| Message box | Word wrap: words split on space, tab, CR, LF (strtok); two spaces after ".", "!", "?"; a line ends at 100 characters or the box width | 0x347A7, 0x347DA | open: the port breaks lines at "\n" and uses one space |
-| Message box | Color of a line (0x34998, the color byte) | 0x34998 | open (ingame-ui.md U18) |
+| Message box | Word wrap: words split on space, tab, CR, LF (strtok); two spaces after ".", "!", "?"; a line ends at 100 characters or the box width | 0x347A7, 0x347DA | fixed: the port cuts words as 0x347A7 and joins them with one space; the two spaces never come in 1.3 (the sentence test reads the end of the string, 0x3489B) |
+| Message box | Color of a line (0x34998, the color byte) | 0x34998 | fixed: the colors of 1.3 (ingame-ui.md U18, `test_msg_colors`) |
 | Level-up box | Flag 0x146294 (always 1), class texts 642, 643, 644, 647, no hit point roll shown | 0xAF489, 0xAF694 | same |
 | Information column | Name, hit points "%d / %d", AC, "%d Exp", gold | 0x32657 to 0x326C2 | same |
 | Map screen | Keys, colors, texts | 0x1887E | same (docs/re/automap.md for the known gaps) |

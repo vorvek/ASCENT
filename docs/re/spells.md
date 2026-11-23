@@ -649,10 +649,22 @@ character starts with all of them, as before). The thief state of a level
 (dtuthief.c); a level change ends Hide In Shadows and a climb. The effects of
 the player cross a warp (0xBB563, dtutrig.c).
 
-Not traced: 0x16413 writes `Ai_local_info` before it clears 0x153EBC, so the
-level state and a save made during a cast hold the running cast time. Whether a
-later read gives it back was not traced. The port ends the cast at each level
-start.
+The cast timer in a state file (verified in the bytes, 2026-11-23): 0x153EBC is
+`Ai_local_info[0]` +0x0C. `ai_save_state` (0x16413) writes `Ai_local_info` with
+it (0x16445) and then sets it to 0x3FFFFFFF (0x164B3), so each level state write
+(a warp, a save, the portal of the inn) ends the running cast: after a save the
+next frame of the held key starts the cast again with its full time.
+`ai_restore_state` (0x164C7) reads it back (0x164F9) with no reset, and the load
+0xBB780 reads the game time of the save first, so a load of a save game in a
+level gives back the cast with its time left. A warp to a level with a state
+also reads the timer that the level file kept from the last visit; the port
+ends the cast at each warp instead (a stale cast of an old visit). game()
+sets 0x3FFFFFFF at 0x41FB7; whether a load from the front end passes there
+after the read was not traced. The port: the state writer puts the timer into
+record 0 +0x0C of the AI block, the load of a save gives it back at the level
+start when the spell is in the hand (`dtu_spell_cast_load`), and
+`Dtu_fix_save_cast` (dtustate.c, `-origobj` clears it) keeps the running cast
+at a save. Tests `save_cast_runs_on`, `load_cast_goes_on` (tools/questtest.py).
 
 Check: `tools/check_saveload.py` (a cast, two level changes, a save and a load,
 then the exit of the inn, Waterdeep and the Yawning Portal).

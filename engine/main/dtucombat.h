@@ -62,6 +62,34 @@ extern int Dtu_fix_rat_hit;
 // ray enters through the top). -origcombat gives the rule of 1.3.
 extern int Dtu_fix_body_ray;
 
+// The swing and the look pitch. The weapon sphere of the swing (0x6CFF8,
+// 0x7473F) is turned with the object orientation (+0x20), which has the
+// heading only; the look pitch (0x13D9AE) turns only the view and the
+// missiles. So a swing goes where a level look goes: a low creature that
+// is close and at the center of the screen while the player looks down is
+// not hit. Corrected: the sphere of each frame (its center and the end of
+// its ray) is turned with the look pitch about the eye, so the swing
+// follows the view at the same distance from the eye. At pitch 0 nothing
+// changes. A wall or floor between the eye and the sphere stops it there.
+// -origcombat gives the rule of 1.3.
+extern int Dtu_fix_swing_pitch;
+
+// The melee attack of a creature. A creature starts an attack on the player
+// in reach (both radii plus 2.0, the goal state choice 0x1599F), and the hit
+// is the weapon sphere of its model frames from frame 8 of the attack state
+// to its end (0x6CFF8 from 0x9F2B4). The roll against the armor class is
+// made only when the sphere touches the player (0x27D82, 0x29A9C, 0x2A7F3).
+// So a step back during the animation avoids every melee attack, and the
+// armor class does not count. Corrected: an attack that starts with the
+// player in reach, in front of the creature (facing dot 0.75, 0x1396E) and
+// with no wall between them is committed. When the sphere misses because
+// the player moved, the roll and the hit are made at the first hit frame
+// with the player out of reach, or at the last two frames of the state.
+// The attack is lost if the creature dies, is held or loses the player
+// (invisible, hidden), or if the player is farther than twice the reach or
+// behind a wall or a closed door. -origcombat gives the rule of 1.3.
+extern int Dtu_fix_attack_commit;
+
 // Turn undead (0xADC46). When the number of creatures that a turn can
 // destroy is used up, the executable clears the "can be tried" bit of the
 // next undead before it stops (0xADF09), so that creature can never be
@@ -111,11 +139,17 @@ void dtu_combat_draw_view(void);
 // dtu_combat_frame(). The cursor of the play screen (dtudisp.c) shows it.
 int dtu_combat_target_hint(void);
 
-// ASCENT: test (-chartest reach=N): the player looks at creature N, and the
-// character log gets what the swing, a missile and the target hint reach.
-void dtu_combat_reach_test(int objnum);
 // ASCENT: test: swingat=N, a swing of the player that touches creature N
 void dtu_combat_test_swing(int objnum);
+
+// ASCENT: test (-chartest reach=N.M): the player turns to creature N with
+// a level body and looks at it with the look pitch (M 0: at its center from
+// the eye, 1: level, 2: fully up, 3: fully down), and the character log
+// gets what the swing, a missile and the target hint reach.
+void dtu_combat_reach_test(int objnum,int mode);
+
+// ASCENT: test (-chartest pitch=P): the look pitch (fixang, + is down).
+void dtu_combat_set_pitch(int pitch);
 
 // The state of the arms, for tests and for the display.
 int dtu_combat_view_state(void);
@@ -134,6 +168,12 @@ int dtu_combat_view_model(void);
 // max(fire_wait, 1.0) for a melee weapon, the time of the model for a
 // missile weapon or a spell; two times that with Slow (dtuatk.h).
 fix dtu_combat_swing_time(void);
+// ASCENT: 1 (default): the swing time follows the end of Slow. 0
+// (-origcombat): it stays doubled until the item in the hand changes.
+extern int Dtu_fix_slow_swing;
+// ASCENT: 1 (default): the killing blow plays the hit sound of the weapon.
+// 0 (-origcombat): its kill sound, which no table sets (0x27CCF).
+extern int Dtu_fix_kill_sound;
 
 // 0x90CEF for spell 16 (Fireball): the blindness and the deafness of a
 // player or creature at dist from the point (only the fire trap reaches it).

@@ -72,6 +72,7 @@ comments.
 | `dtustate.c` | Level state files and their copies in the save slots. Same format as the DOS game. | `re/levelstate.md` |
 | `dtumusic.c` | Streamed music (TUN files) and the music commands of DTU.WRP. Replaces the MIDI songs. | `re/music.md`, `formats/tun.md` |
 | `dtufoot.c` | Footstep sounds of the player and the creatures. | `re/music.md` |
+| `dtumiss.c` | The miss sound of a melee attack (port sounds of `<hd>/sound`). New in the port. | `re/combat.md` |
 | `dtumovie.c`, `mvedec.c` | The movie player and the MVE decoder. | `re/movies.md`, `formats/mve.md` |
 | `acm.c` | The Interplay ACM audio decoder (sounds of the EGG archives). | `formats/tun.md` |
 | `dtuogg.c` | The Ogg Vorbis decoder for replacement music (stb_vorbis). | |
@@ -113,22 +114,29 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 
 | Option | Corrections that it clears | Where |
 |---|---|---|
-| `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` | `controls.c` |
-| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture` | `dtuobj.c` |
+| `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap` (all in `physics.c`) | `controls.c` |
+| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `corpse_floor`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive`, `break_spread`, `noise_walls`, `alert_ray`, `alert_last`, `restore_spells`, `save_cast` | `dtuobj.c` |
+| `-origrevive`, `-origdrow5`, `-origguildpeace` | one each: `revive`, `drow5_shields`, `guild_peace` | `dtuobj.c` |
+| `-origcombat` | `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `cure_aid` (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class`, `chill_touch`, `slow_swing`, `kill_sound`, `backstab` (`dtuthief.c`), `creature_strength` (`dtuobj.c`), `shield_ac` (`dtuchar.c`), `swing_pitch`, `attack_commit` (`dtucombat.c`, `dtuobj.c`) | `dtucombat.c`, `dtuchar.c` |
+| `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points` (`dtuchar.c`); `secret_door_names`, `thac0_row`, `new_thac0` (`dtuthief.c`), `save_seconds` | `dtuchar.c`, `dtuthief.c` |
+| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap`, `trap_pause` | `dtutrig.c` |
+| `-origui` | `automap_reveal` (`automap.c`); `msg_scroll`, `view_aspect`, `button_hold` (`dtudisp.c`); `cheat_index` (`dtucheat.c`); `sensitivity_menu` (`menu.c`) | `automap.c`, `dtudisp.c`, `dtucheat.c`, `menu.c` |
+| `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg`, `mirt_points`, `script_run_mode` | `dtuscript.c` |
+| `-origscriptwalk` | `script_walk` | `dtuscript.c` |
+| `-origprison` | `prison_items` | `dtuscript.c` |
 | `-origdrow5`, `-origguildpeace` | one each: `drow5_shields`, `guild_peace` | `dtuobj.c` |
-| `-origcombat` | `one_hit`, `haste_attack`, `rat_hit`, `stoneskin_word`, `chill_touch`, `rary_manual`, `melf_acid`, `turn_undead` (`dtucombat.c`); `wizardry_ring`, `potion_frame`, `luck_coin` (`dtuchar.c`) | `dtucombat.c`, `dtuchar.c` |
-| `-origchar` | `multiclass_thac0`, `spell_save_repair` | `dtuchar.c` |
-| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap` | `dtutrig.c` |
-| `-origui` | `automap_reveal`, `msg_scroll` | `automap.c`, `dtudisp.c` |
-| `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg` | `dtuscript.c` |
 | `-origsound` | `foot_pan`, `creature_steps` | `dtufoot.c` |
-| `-origmusic` | `start_music` | `dtumusic.c` |
+| `-origmusic` | `start_music`, `wrp_sound` | `dtumusic.c` |
 | `-origlight` | `light_stable` | `lighting.c` |
+| `-origitems` | `item_names` (`dtuitemfix.c`) | `dtuopts.c` |
+| `-origfe` | `escape_load_waterdeep`, `chargen_abort`, `save_open_text` (`dtufe.c`); `market_charisma`, `market_sell_count` (`dtufe_town.c`) | `dtufe.c` |
 
-`Dtu_fix_trap_seconds` is on by default as the others (`-origtrig` clears it).
-The state files keep the trap timers in the unit of the original. Three corrections have no option yet:
-`escape_load_waterdeep` (`dtufe.c`), `market_charisma` and
-`market_sell_count` (`dtufe_town.c`).
+The table was checked against the code on 2026-11-23: each `Dtu_fix_*` that
+is defined with the value 1 is in one row. `chill_touch` (`dtuspell.c`) has
+no option yet. `Dtu_fix_trap_seconds` is on by default as the others
+(`-origtrig` clears it); the state files keep the trap timers in the unit of
+the original. `Dtu_fix_lowres_aspect` is not a correction of a defect: it is
+off by default (see below).
 
 To add a correction:
 
@@ -166,6 +174,13 @@ class line of the statistics screen opens the next level window
 touches creature N), `killby=N.A` (creature A kills creature N), `descxp`,
 `class2=N`. `tools/questtest.py` (kill_*, max_hp_*, verbose_combat_*) and
 `tools/uitest.py` (test_next_level_window) test them.
+
+`Dtu_miss_sound` (`dtuopts.c`, played by `dtumiss.c`) is "Miss sound" in the
+Improvements menu and `MissSound` in `ascent.cfg`, on by default: a short
+whoosh when a melee attack hits nothing (`re/combat.md`, "Miss sound").
+`-origsound` and `-nomisssound` turn it off for one run without a change of
+the setting. The sounds are `<hd>/sound/miss*.wav` of the content pack
+`sounds`; without them nothing plays.
 
 `Dtu_fix_lowres_aspect` (`dtuopts.c`) is the shape of the 320x200 frame
 of the low resolution in the window. It is off by default: square pixels

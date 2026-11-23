@@ -60,6 +60,44 @@ TESTS = [
        r"[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 125\s[\s\S]*end of its path in seg 119\s",
        r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
       frames=1300, extra=["-noattack"]),
+    # The same walk with a save and a load on the way (1.3 keeps the path in
+    # Point_segs): the kobold walks on to segment 424 and the script goes
+    # on to segment 119.
+    T("kobolds_walk_saveload", "KOBOLDS",
+      "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,"
+      "90:obj=8,95:save=3,100:load=3,140:obj=8,1290:obj=8",
+      [r"f140 +obj 8: type 2 id 1 seg (?!341 )(?!424 )\d+ ",
+       r"walk: obj 8 is at the end of its path in seg 424\s[\s\S]*end of its path in seg 43\s[\s\S]*end of its path in seg 119\s",
+       r"f1290 +obj 8: type 2 id 1 seg 119 .* anim 1"],
+      frames=1300, extra=["-noattack"]),
+    # The other scripts with statement E5 (Dtu_fix_script_walk). THIEF0
+    # script 53 (object 48, label 800): WALK 181 178 165 keeps the last
+    # segment (D-076).
+    T("thief0_walk53", "THIEF0", "10:goobj=48.20,12:resume=48.800,15:talk=48,890:obj=48",
+      [r"run script 53 of obj 48 .* at label 320", r"walk to seg 165\s", r"walk: obj 48 is at the end of its path in seg 165\s",
+       r"f890 +obj 48: type 2 id 0 seg 165 "], frames=900, extra=["-noattack"]),
+    # THIEF1 script 62 (object 25, label 10): WALK 161.
+    T("thief1_walk62", "THIEF1", "10:goobj=25.20,12:resume=25.10,15:talk=25,890:obj=25",
+      [r"walk to seg 161\s", r"walk: obj 25 is at the end of its path in seg 161\s", r"f890 +obj 25: type 2 id \d+ seg 161 "],
+      frames=900, extra=["-noattack"]),
+    # THIEF1 script 60 (object 95, label 930): out of its area the guard
+    # walks back to segment 639 and the script runs there in mode 2.
+    T("thief1_walk60", "THIEF1", "8:objseg=95.630,10:goobj=95.20,12:resume=95.930,15:talk=95",
+      [r"walk to seg 639\s", r"walk: obj 95 is at the end of its path in seg 639\s", r"run script 60 of obj 95 .* in mode 2 "],
+      frames=300, extra=["-noattack"]),
+    # THIEF2 script 71 (object 1, label 900): WALK 635 625. A door on the
+    # path (segment 635 side 5) opens when the goblin walks into it; the
+    # door opener (0x14AF2) does not send a walker to a door.
+    T("thief2_walk71", "THIEF2", "10:goobj=1.20,12:resume=1.900,15:talk=1,300:obj=1",
+      [r"walk to seg 625\s", r"obj 1 gbloser: opens the door seg 635 side 5", r"walk: obj 1 is at the end of its path in seg 625\s",
+       r"f300 +obj 1: type 2 id 17 seg 625 "], frames=310, extra=["-noattack", "-objlog", "thief2_walk_obj.log"]),
+    # PRISON script 103 (object 21, a prisoner with no door bit): with MISC
+    # 59 the prisoner walks out of its cell and opens the cell door. The
+    # path search stops at a depth of 30 segments (0x1686D), short of
+    # segment 428.
+    T("prison_walk103", "PRISON", "5:give=16.59,10:goobj=21.20,15:talk=21,300:obj=21",
+      [r"walk to seg 428\s", r"obj 21 hffg1: opens the door seg 607 side 5", r"f300 +obj 21: type 2 id 18 seg (?!607 )\d+ .* anim 2"],
+      frames=310, extra=["-noattack", "-objlog", "prison_walk_obj.log"]),
     # Script 22 (objects 20, 21, 22, label 400): statement EE runs the
     # script of the other two, so the three walk at the same time.
     T("kobolds_walk3", "KOBOLDS",
@@ -68,6 +106,12 @@ TESTS = [
        r"f200 +obj 21: type 2 id \d+ seg 389 ", r"f200 +obj 22: type 2 id \d+ seg 388 ",
        r"end of its path in seg 386", r"end of its path in seg 389", r"end of its path in seg 388"],
       frames=210, extra=["-noattack"]),
+    # D-125: statement EE (0xAA989) does not give the outer run its mode
+    # back; Dtu_fix_script_run_mode does, so the talk counts (1.3: 0).
+    T("script_ee_mode", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+      [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 1 "], frames=210, extra=["-noattack"]),
+    T("script_ee_mode_orig", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+      [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 0 "], frames=210, extra=["-noattack", "-origscript"]),
     # The rule of 1.3 (-origscriptwalk): the kobold does not move.
     T("kobolds_walk_orig", "KOBOLDS",
       "10:goobj=8.20,12:objflag=8.4,12:objflag=8.5,12:objflag=8.6,12:objflag=8.7,15:talk=8,300:obj=8",
@@ -137,6 +181,13 @@ TESTS = [
     T("flame_lolth_death", "FLAME", "10:kill=36,15:obj=3",
       [r"obj 3: type 18 .* flags 0x40 ", r"run script 322 of obj 3 .* in mode 0", r"YOU  HAVE  DESTROYED",
        END_SEQ, r"end of the game: CREDITV1"], frames=600),
+    # FLAME: the level fix 0xAD4FB gives object 35 (rffk9, the image of
+    # Lolth that script 320 moves and that speaks) flag 0x40: the AI frame
+    # (0x13C8B) and the move (0x9F174) skip it, and the use ray passes it.
+    T("flame_lolth_image", "FLAME", "5:obj=35,10:goobj=35.12,300:obj=35,310:aim=35,312:activate,380:obj=35",
+      [r"f5\s+obj 35: type 2 id 8 .* flags 0x40 .* pos -0\.2,46\.6,140\.1",
+       r"f380\s+obj 35: type 2 id 8 .* var 0 .* pos -0\.2,46\.6,140\.1"],
+      [r"run script 320 of obj 35"], frames=400),
     T("flame_ending", "FLAME", "10:kill=36,20:goseg=486,40:aim=3,45:activate",
       [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", END_SEQ, r"end of the game: CREDITV1"], frames=600),
 
@@ -149,6 +200,17 @@ TESTS = [
     # 0xAD63B, D-074), as 1.3 does.
     T("ypinn_chair", "YPINN", "10:obj=5,10:obj=26,20:goobj=5,25:activate",
       [r"obj 5: type 18 .* script 0 ", r"obj 26: type 18 .* script 0 "], [r"run script 7 of obj 5"], frames=80),
+    # YPINN: Mirt (object 2, 0xABB53) and a thief of level 1. D-090
+    # (Dtu_fix_mirt_points): a thief of level 1 keeps the 60 points of the new
+    # character at the first talk (the Player's Handbook value) and gets nothing
+    # at the second. 1.3 (-origscript) sets the points to 40 at each talk,
+    # since the screen is not shown in a hidden run and the level stays unpaid.
+    T("ypinn_mirt_points", "YPINN", "5:class=3,10:goobj=2,15:talk=2,40:talk=2",
+      [r"thief points: level 1, paid 0, 60 points \(added\)[\s\S]*thief points: level 1, paid 1, 60 points \(added\)"],
+      frames=70),
+    T("ypinn_mirt_points_orig", "YPINN", "5:class=3,10:goobj=2,15:talk=2,40:talk=2",
+      [r"thief points: level 1, paid 0, 40 points\s[\s\S]*thief points: level 1, paid 0, 40 points\s"],
+      [r"\(added\)"], frames=70, extra=["-origscript"]),
 
     # THIEF1: the prison sequence of script 60 (statement DB with segment
     # 0xFFFF): the items that are not worn stay in THIEF1, the player is in
@@ -174,6 +236,22 @@ TESTS = [
     T("warp_keeps_effects", "HUB1", "10:damage=5,12:fx=3.600,14:cast=20,20:quest,30:warp=3.376,60:quest",
       [r"quest: level 1 .* hp 7 fx 0x1008 [\s\S]*quest: level 3 .* hp 7 fx 0x1008 "], frames=70, invuln=False),
 
+    # A warp (0x5A278, 0xAD9B2) sends a creature that overlaps the arrival
+    # to its hide segment: KOBOLDS object 57 (seg 48, hide segment 0 of the
+    # level file). Dtu_fix_warp_overlap tests the point of the arrival.
+    T("warp_displace", "KOBOLDS", "5:obj=57,10:warp=2.48,11:obj=57",
+      [r"f5\s+obj 57: type 2 id 1 seg 48 ", r"obj 57 kob_swrd overlaps the arrival in seg 48 and goes to seg 0",
+       r"f11\s+obj 57: type 2 id 1 seg 0 "], frames=14, extra=["-objlog", "warp_displace_obj.log"]),
+    # A cast that runs at a save: 1.3 writes the cast timer 0x153EBC into
+    # the AI block of the save (0x16413) and then ends the running cast
+    # (0x164B3); Dtu_fix_save_cast keeps it. The load gives the cast of the
+    # save back (0x164C7).
+    T("save_cast_runs_on", "KOBOLDS", "5:class=1,6:give=17.12.1,10:armspell=12,40:fire,42:save=3,80:fire",
+      [r"the cast of 'Detect Magic' starts", r"'Detect Magic' \(12\) level 1 on obj 0"], [r"the save ends the running cast"],
+      frames=90, extra=["-testslots", "9", "-objlog", "save_cast_obj.log"]),
+    T("load_cast_goes_on", "KOBOLDS", "5:class=1,6:give=17.12.1,10:armspell=12,40:fire,42:save=3,44:load=3,120:fire",
+      [r"the cast of 'Detect Magic' from the save goes on, the cast at 2\.300", r"'Detect Magic' \(12\) level 1 on obj 0"],
+      frames=130, extra=["-testslots", "9", "-objlog", "load_cast_obj.log"]),
     # The talk of WEAPON 13 before a warp (0x59D2D): script 0x1FD runs.
     T("drowslayer_warp", "DROW1", "10:give=5.13,15:current=5.13,30:warp=20.1,31:quest,60:warp=21.1,100:quest",
       [r"warp with WEAPON 13 in the hand: script 0x1FD"], frames=120),
@@ -190,13 +268,14 @@ TESTS = [
        r"wall 40\.4: type 4[\s\S]*quest: level 1 seg 61 mission 5 .* gflags \[ 67 \]\n.*quest: mflags \[ 3 \]"],
       frames=160, extra=["-statelog"], also=[r"Restoring SG4_1\.LVL"]),
     # FLAME: three pieces are in the statue at the save. After the load the
-    # other four are placed and script 323 opens the wall.
+    # other four are placed and script 323 opens the wall. The sign of the
+    # script has a random branch: seed=1 fixes the random numbers before it.
     T("save_flame_statue", "FLAME",
       "10:give=16.18,10:give=16.19,10:give=16.20,10:give=16.22,10:give=16.23,10:give=16.24,10:give=16.26,"
       "20:goside=229.4,22:activate,40:goside=245.4,42:activate,60:goside=275.4,62:activate,70:quest,75:save=2,"
       "80:give=16.18,81:goseg=2,85:load=2,140:quest,"
       "160:goside=287.4,162:activate,180:goside=266.4,182:activate,200:goside=258.4,202:activate,"
-      "220:goside=284.4,222:activate,240:wall=278.0,250:gflag=128,260:goside=279.5,262:activate,640:wall=278.0",
+      "220:goside=284.4,222:activate,240:wall=278.0,250:gflag=128,260:goside=279.5,261:seed=1,262:activate,640:wall=278.0",
       [r"quest: items \[ 16\.102 5\.20 15\.1 16\.2 16\.79 16\.20 16\.22 16\.23 16\.26 \][\s\S]*"
        r"quest: items \[ 16\.102 5\.20 15\.1 16\.2 16\.79 16\.20 16\.22 16\.23 16\.26 \][\s\S]*"
        r"wall 278\.0: type 5[\s\S]*wall 278\.0: type 4"],
@@ -215,9 +294,11 @@ TESTS = [
       frames=480, dlg=",".join(["esc"] * 40), extra=["-statelog"], also=[r"Restoring SG5_0\.LVL"]),
     # THIEF1 and THIEF2: the prison sequence, a save in THIEF2, a load, and
     # the way back: the chest of THIEF1 (object 99) or the floor still has
-    # what the thieves took (the level state of THIEF1 is in the slot).
+    # what the thieves took (the level state of THIEF1 is in the slot). The
+    # sequence puts each item by a coin (0xAA448): seed=2 puts the Scroll on
+    # the floor of segment 297.
     T("save_prison", "THIEF1",
-      "10:gold=500,20:prison,60:quest,65:save=5,70:gold=77,75:give=16.2,80:load=5,140:quest,150:warp=6.297,190:quest,191:items=297",
+      "10:gold=500,19:seed=2,20:prison,60:quest,65:save=5,70:gold=77,75:give=16.2,80:load=5,140:quest,150:warp=6.297,190:quest,191:items=297",
       [r"prison: type 16 id 102 lies in seg 297[\s\S]*quest: level 7 seg 612 .* gold 0 hp 1 [\s\S]*"
        r"quest: level 7 seg 612 .* gold 0 hp 1 .*\n.*entries 0[\s\S]*quest: level 6 seg 297 [\s\S]*items in seg 297: .*16\.102"],
       frames=200, invuln=False, extra=["-statelog"], also=[r"Restoring SG6_7\.LVL"]),

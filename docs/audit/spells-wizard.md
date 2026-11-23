@@ -77,7 +77,7 @@ AREA, bit 8 cast on the caster.
 | 40 | Protection From Fire | 0x8F1B2 | class 0x27 (has the mage bit) | priest audit | fixup: whether a mage can learn it was not checked | |
 | 41 | Rary's Mnemonic Enhancer | 0x8F21D | one cast, slots until Dispel Magic | case 41 | fixed earlier (`Dtu_fix_rary_manual`); not run by `spelltest` (choice box) | |
 | 44 | Scare | 0x8F467 | flags 3: AREA of radius 30 where it lands; level 6 or lower | case 44 | fixup | kept: the manual says level 6 or more is safe |
-| 45 | Shield | 0x8F6AE | 5L minutes, AC 3, stops Magic Missile | case 45 | same | |
+| 45 | Shield | 0x8F6AE | 5L minutes, AC 3, stops Magic Missile | case 45 | fixed (`Dtu_fix_shield_ac`, -origcombat gives AC 3): AC 4 against melee, 2 against missiles (the player, a creature with Shield, the Amulet of Shield, the Ring of Armoring 3 and 1), stops Magic Missile | decision of the user, the 2e spell text: AC 4 against melee weapons, 2 against missiles, immune to Magic Missile |
 | 46 | Sleep | 0x8F766 | flags 3: AREA of radius 60 where it lands; level 3 or lower, pool 4 to 16 | case 46 | fixup | 2e: 2d4 HD in an area |
 | 47 | Slow | 0x8FAD8 | flags 3: AREA of radius 80 where it lands; save, L + 3 minutes | case 47 | fixup | 2e: an area |
 | 48 | Spider Climb | 0x8FBEE | L + 3 minutes | case 48 | same | |

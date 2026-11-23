@@ -58,7 +58,7 @@ an assert or a table keyword where one exists.
 | 0x18D3 | 22 x 16 | the key item list (misc numbers 107 to 124) | |
 | 0x1A53 | byte | the thief level + 1 that Mirt last gave skill points for, 0 before the first visit (0xABB53) | 0 |
 | 0x1A5C | byte | THAC0 | 20 |
-| 0x1A93 to 0x1A9F | 4 int | end times of potion effects (0x1A97 strength, 0x1A9F dexterity; guess for the other two) | 0 |
+| 0x1A93 to 0x1A9F | 4 int | end times of potion effects (0x1A97 strength, 0x1A9F dexterity; guess for the other two). In a save: the seconds left, cut down by 0xBA857 (`sar 0x10` of end minus now, verified in the bytes; defect D-138). The port rounds to the nearest second (`Dtu_fix_save_seconds`, `-origchar` clears it) | 0 |
 | 0x1AA3 | char[16] | the name again | "Elmac" |
 | 0x1AB3 | word | the thief skill points to spend (set by 0xABB53, spent by 0xB5BB9) | 60 |
 | 0x1AB9 | ref | the bow slot | none |
@@ -746,6 +746,15 @@ race and class combination at levels 1, 5 and 10 (docs/audit/character.md).
   sets the points to `(thief level - paid) * 20 + (paid == 0 ? 20 : 0)`
   before the screen 0xB5B49 is shown, so the 60 are never spent: the first
   visit gives 40.
+- `Dtu_fix_mirt_points` (default, -origscript clears it, D-090 verified in
+  the bytes 2026-11-23): Mirt adds the award to the points that are left
+  and pays the level at once; each talk offers the points that are left. A
+  new thief has 100 points after the first talk.
+- THAC0 (D-002, D-089, verified in the bytes 2026-11-23): `Dtu_fix_thac0_row`
+  takes the last entry of the row at level 18 (1.3 reads the byte past the
+  row: 20, a mage 72). `Dtu_fix_new_thac0` gives a new character the THAC0
+  of the table at once (1.3 keeps the 20 of 0x8BFF5 until the first level
+  check, because 0xAFB55 does not call 0xAF605). -origchar clears both.
 
 ### Find/Remove Traps
 

@@ -92,6 +92,11 @@ int Dtu_fix_wizardry_ring = 1;
 // (P+0xA3) grow by n. 1 (default): the hit points grow by n. -origchar
 // clears it.
 int Dtu_fix_level_hit_points = 1;
+// ASCENT: D-138, 0xBA857 cuts the time left of a potion to whole seconds
+// (sar 16) when a save writes it, so each save and load takes up to one
+// second. 1 (default): the save rounds to the nearest second. -origchar
+// clears it.
+int Dtu_fix_save_seconds = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
 int Dtu_fix_speed_items = 1;
@@ -232,9 +237,13 @@ static void read_options(void)
 	if ((t = FindArg("-chartest")) != 0 && t + 1 < Num_args)
 		Char_script = Args[t + 1];
 	if (FindArg("-origchar"))
-		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names = 0;
+		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names =
+			Dtu_fix_thac0_row = Dtu_fix_new_thac0 = 0;
+	if (FindArg("-origchar"))
+		Dtu_fix_save_seconds = 0;
 	if (FindArg("-origcombat"))
-		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = 0;
+		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
+			Dtu_fix_creature_strength = Dtu_fix_shield_ac = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -425,20 +434,44 @@ static int class_use_bits(void)
 	return m;
 }
 
+// ASCENT: D-002 (verified in the bytes, 0xAF62D to 0xAF654): 0xAF605 reads
+// byte level value + 1 of the row of 18 bytes, so level 18 (level value
+// 17) reads past the row: the next row in memory (0x146548 cleric,
+// 0x14655A thief, 0x14656C fighter, 0x14657E mage), and for a mage the low
+// byte 0x48 (72) of the pointer table 0x146590. 1 (default): the last
+// entry of the row. 0 (-origchar): the bytes that 1.3 reads.
+int Dtu_fix_thac0_row = 1;
+
+// ASCENT: D-089 (verified in the bytes, 0x8BF3E, 0x8BFF5): a new character
+// has THAC0 20 until the first experience award. 1 (default): the THAC0 of
+// the table from the start (each equipment update computes it). 0
+// (-origchar): only the level code computes it, as 1.3.
+int Dtu_fix_new_thac0 = 1;
+
+static int thac0_entry(int c, int l)
+{
+	if (l < 0) l = 0;
+	if (l == 18 && !Dtu_fix_thac0_row)
+		switch (c) {
+			case DTU_CLASS_CLERIC:	return Thac0_table[DTU_CLASS_THIEF][0];
+			case DTU_CLASS_THIEF:	return Thac0_table[DTU_CLASS_FIGHTER][0];
+			case DTU_CLASS_FIGHTER:	return Thac0_table[DTU_CLASS_MAGE][0];
+			default:						return 0x48;
+		}
+	if (l > 17) l = 17;
+	return Thac0_table[c][l];
+}
+
 // 0xAF605
 static void update_thac0(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa;
 	int l1 = pa->class1_level + 1, l2 = pa->class2_level + 1, t = 20, t2;
 
-	if (l1 < 0) l1 = 0;
-	if (l1 > 17) l1 = 17;
-	if (l2 < 0) l2 = 0;
-	if (l2 > 17) l2 = 17;
 	if (valid_class(pa->class1))
-		t = Thac0_table[pa->class1][l1];
+		t = thac0_entry(pa->class1, l1);
 	if (valid_class(pa->class2)) {
-		t2 = Thac0_table[pa->class2][l2];
+		t2 = thac0_entry(pa->class2, l2);
 		// The executable takes the higher value (0xAF657).
 		if (Dtu_fix_multiclass_thac0 ? (t2 < t) : (t2 > t))
 			t = t2;
@@ -659,8 +692,10 @@ static void worn_effects(void)
 // ASCENT: 0xAFAD1 with the Ring of Armoring (armor 16) on a mage: the caps
 // of Armor, Magical Vestment and Shield of dtu_spell_player_ac(), each
 // followed by 1 better armor class (0xB05FC, 0xB064F, 0xB067C).
-static int armoring_ac(int ac)
+// ASCENT: missile: the value against missiles (Shield, Dtu_fix_shield_ac).
+static int armoring_ac(int ac, int missile)
 {
+	int shield = dtu_spell_shield_ac(missile);
 	int w = (ConsoleObject && ConsoleObject->type == OBJ_PLAYER) ? ConsoleObject->dtu.m_88 : 0;
 
 	if ((w & DTU_FX_ARMOR) && ac > 6)
@@ -671,8 +706,8 @@ static int armoring_ac(int ac)
 		if (v < 1) v = 1;
 		if (v < ac) ac = v - 1;
 	}
-	if ((w & DTU_FX_SHIELD) && ac > 3)
-		ac = 3 - 1;
+	if ((w & DTU_FX_SHIELD) && ac > shield)
+		ac = shield - 1;
 	if (w & DTU_FX_SLOW)
 		ac += 4;
 	return ac;
@@ -754,7 +789,7 @@ void dtu_char_update(void)
 	dtu_inv_item *e;
 	int sum = 0, ring_best = 0;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
-	int ac, dex;
+	int ac, dex, missile;
 
 	if (!Dtu_char.created)
 		return;
@@ -929,25 +964,37 @@ void dtu_char_update(void)
 
 	// 0xB05C5. The spell effects that change the armor class (0xB05D4 to
 	// 0xB0696 and 0xB0702) are in dtuspell.c.
-	ac = 10 + (signed char) sum;
-	// ASCENT: Ring 16 (Armoring) in a ring place sets a flag (0xB0014,
-	// 0xB01B6) that 0xAFAD1 reads: a mage gets 1 more after each cap.
-	if (has_class(DTU_CLASS_MAGE) && (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 16 || armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 16))
-		ac = armoring_ac(ac);
-	else
-		ac = dtu_spell_player_ac(ac, 0);
 	dex = pa->dexterity;
 	if (dex < 1) dex = 1;
 	if (dex > 19) dex = 19;
 	pa->dexterity = dex;
 	pa->dex_ac_adjust = Dex_ac[dex];
-	ac += pa->dex_ac_adjust;
-	ac = dtu_spell_player_ac(ac, 1);
-	if (ac < -10) ac = -10;
-	if (ac > 10) ac = 10;
-	pa->armor_class = ac;
+	// ASCENT: two values, against melee (the record, the screens) and
+	// against missiles; they differ only with Shield (Dtu_fix_shield_ac)
+	for (missile = 0; missile < 2; missile++) {
+		ac = 10 + (signed char) sum;
+		// ASCENT: Ring 16 (Armoring) in a ring place sets a flag (0xB0014,
+		// 0xB01B6) that 0xAFAD1 reads: a mage gets 1 more after each cap.
+		if (has_class(DTU_CLASS_MAGE) && (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 16 || armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 16))
+			ac = armoring_ac(ac, missile);
+		else
+			ac = dtu_spell_player_ac_vs(ac, 0, missile);
+		ac += pa->dex_ac_adjust;
+		ac = dtu_spell_player_ac(ac, 1);
+		if (ac < -10) ac = -10;
+		if (ac > 10) ac = 10;
+		if (missile)
+			Dtu_char.ac_missile = ac;
+		else
+			pa->armor_class = ac;
+	}
 
-	update_thac0();
+	// ASCENT: 0xAFB55 does not call 0xAF605 (its callers are 0x8BA3A and
+	// 0xAF489), so in 1.3 the THAC0 20 that the creation writes (0x8BFF5,
+	// D-089) stays until the first level check. Dtu_fix_new_thac0 (default)
+	// updates it here.
+	if (Dtu_fix_new_thac0)
+		update_thac0();
 }
 
 //------------------------------------------------------------------------
@@ -1401,7 +1448,9 @@ void dtu_char_press_hot_key(int key)
 
 		if ((arrow && Dtu_char.slot[DTU_SLOT_BOW].n < 0) || (!arrow && bolt && Dtu_char.slot[DTU_SLOT_CROSSBOW].n < 0)) {
 			// 0x1258C0 with "bow" and "arrow" or "crossbow" and "bolt"
+			dtu_display_next_message_color(1);		// ASCENT: 0x43CA7: index 1
 			HUD_init_message("You need a %s to fire %ss", arrow ? LT("bow") : LT("crossbow"), arrow ? LT("arrow") : LT("bolt"));
+			dtu_display_next_message_color(-1);
 			refuse(key, "no launcher");
 			return;
 		}
@@ -1613,6 +1662,16 @@ void dtu_char_add_hit_points(int points)
 int dtu_char_armor_class(void)
 {
 	return Dtu_char.created ? Dtu_char.pa.armor_class : 10;
+}
+
+int dtu_char_armor_class_vs(int missile)
+{
+	if (!Dtu_char.created)
+		return 10;
+	// the two values differ only with Shield
+	if (!missile || !ConsoleObject || !(ConsoleObject->dtu.m_88 & DTU_FX_SHIELD))
+		return Dtu_char.pa.armor_class;
+	return Dtu_char.ac_missile;
 }
 
 int dtu_char_thac0(void)
@@ -2631,6 +2690,13 @@ static int str_hit_bonus(int str, int extra)
 	return b;
 }
 
+// ASCENT: 0x2A789 for the creature path of 0x2A7F3 (0x2ACA7, the percent
+// 100) under -origcombat (Dtu_fix_creature_strength of dtuobj.c, D-003)
+int dtu_char_str_hit_bonus(int str, int extra)
+{
+	return str_hit_bonus(str, extra);
+}
+
 // 0x2B494: the damage bonus of the strength
 static int str_damage_bonus(int str, int extra)
 {
@@ -2799,7 +2865,9 @@ int dtu_char_attack_roll(object *target, int weapon)
 				dtu_xp_hit_mod(4, LN("Flame Tongue"));
 			}
 		}
-		result = target ? dtu_hit_test(target, ConsoleObject, r, a.thac0, &ac) : (a.thac0 - 10 > r ? 0 : 1);
+		// ASCENT: a weapon missile (arrow, bolt, thrown weapon) meets the
+		// armor class against missiles (Dtu_fix_shield_ac)
+		result = target ? dtu_hit_test_vs(target, ConsoleObject, r, a.thac0, &ac, dtu_hit_by_missile()) : (a.thac0 - 10 > r ? 0 : 1);
 		if (!target)
 			dtu_xp_hit_end(r, a.thac0 - 10, result);
 		dtu_char_log("attack roll: d20 %d, roll %d against THAC0 %d and armor class %d: %d%s", roll, r, a.thac0, ac, result,
@@ -3246,6 +3314,9 @@ void dtu_char_pack(ubyte *record)
 		t[0] = Potion.intel_end; t[1] = Potion.str_end; t[2] = Potion.dragon_end; t[3] = Potion.dex_end;
 		for (i = 0; i < 4; i++) {
 			s = (t[i] && t[i] > GameTime) ? f2i(t[i] - GameTime) : 0;
+			// ASCENT: Dtu_fix_save_seconds, the nearest second
+			if (Dtu_fix_save_seconds && t[i] && t[i] > GameTime)
+				s = f2i(t[i] - GameTime + F1_0 / 2);
 			if (!t[i] && Potion.load_left[i])
 				s = Potion.load_left[i];
 			put_s32(record + DTU_P_POTIONS + 4 * i, s);
@@ -3676,7 +3747,9 @@ static void run_command(char *cmd, char *value)
 		obj_relink(ConsoleObject - Objects, find_point_seg(&ConsoleObject->pos, o->segnum) >= 0 ? find_point_seg(&ConsoleObject->pos, o->segnum) : o->segnum);
 	}
 	else if (!strcmp(cmd, "swingat"))	dtu_combat_test_swing(a);		// ASCENT: test: swingat=N, a swing of the player that touches creature N
-	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a);		// test: reach=N, the attacks that reach creature N (tools/check_reach.py)
+	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a, b);	// test: reach=N.M, the attacks that reach creature N (tools/check_reach.py)
+	else if (!strcmp(cmd, "pitch"))		dtu_combat_set_pitch(a);		// ASCENT: test: pitch=P, the look pitch (fixang, + is down)
+	else if (!strcmp(cmd, "stepback"))	dtu_obj_test_stepback(a, b);	// ASCENT: test: stepback=N.D, the player steps back D when creature N attacks
 	else if (!strcmp(cmd, "goobjh") && a >= 0 && a <= Highest_object_index) {		// test: goobjh=N.D, D (default 4.0) in front of object N at the height of the player
 		object *o = &Objects[a];
 		vms_vector to, p;
@@ -3719,6 +3792,12 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "break") && a >= 0 && a < MAX_OBJECTS)		// test: break=N, the scenery N breaks
 		dtu_break_dressing(&Objects[a], ConsoleObject, 0);
 	else if (!strcmp(cmd, "restreset"))	memset(Rest_time, 0, sizeof(Rest_time));		// test: the rest places work again
+	else if (!strcmp(cmd, "noise"))		dtu_creature_alert(ConsoleObject, a);		// ASCENT: test: noise=LEVEL, the alert 0x160AB at the player
+	else if (!strcmp(cmd, "hittest") && a >= 0 && a <= Highest_object_index) {	// ASCENT: test: hittest=OBJ.MISSILE, the hit test 0x2A7F3 on object OBJ, melee (0) or a missile (1)
+		int ac = 0;
+		dtu_hit_test_vs(&Objects[a], NULL, 0, 20, &ac, b);
+		dtu_char_log("hittest: obj %d, %s: armor class %d", a, b ? "missile" : "melee", ac);
+	}
 	else if (!strcmp(cmd, "sethotspell"))	dtu_char_set_hot_key_spell(a, b);		// sethotspell=KEY.SPELL
 	else if (!strcmp(cmd, "armspell"))	dtu_char_arm_spell(a);
 	else if (!strcmp(cmd, "sethot")) {
@@ -3803,6 +3882,7 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "prison"))		dtu_script_test_prison();		// test: the prison sequence 0xAA3F3
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);			// test: setlevel=N, statement 9F
+	else if (!strcmp(cmd, "seed"))		srand(a);						// ASCENT: test: seed=N, the random numbers from here on
 	else if (!strcmp(cmd, "gflag"))		dtu_script_set_gflag(a, value && strchr(value, '.') ? b : 1);		// test: gflag=N[.VALUE]
 	else if (!strcmp(cmd, "mflag"))		dtu_mission_set_flag(a, value && strchr(value, '.') ? b : 1);		// test: mflag=K[.VALUE]
 	else if (!strcmp(cmd, "talk") && a > 0 && a <= Highest_object_index)		// test: talk=N, the use action on object N
@@ -3839,6 +3919,19 @@ static void run_command(char *cmd, char *value)
 			(o->dtu.m_1b0 >> 20) & 0xf, (o->dtu.m_1b0 >> 24) & 0xf, (o->dtu.m_1b0 >> 28) & 0xf,
 			o->contains_type, o->contains_id, o->contains_count,
 			f2fl(o->pos.x), f2fl(o->pos.y), f2fl(o->pos.z), DTU_ANIM_STATE(o));
+	}
+	else if (!strcmp(cmd, "objseg") && a > 0 && a <= Highest_object_index && b >= 0 && b <= Highest_segment_index) {	// test: objseg=N.SEG, object N to the center of segment SEG
+		compute_segment_center(&Objects[a].pos, &Segments[b]);
+		Objects[a].last_pos = Objects[a].pos;
+		obj_relink(a, b);
+	}
+	else if (!strcmp(cmd, "cpoints") && a >= 0 && a <= Highest_object_index) {	// test: cpoints=N[.MAGE], the spell points of creature N (MAGE: set them, cleric 0; D-134)
+		int m, c;
+
+		if (value && strchr(value, '.'))
+			dtu_spell_creature_keep_points(&Objects[a], b, 0);
+		dtu_spell_creature_points(&Objects[a], &m, &c);
+		dtu_char_log("cpoints: obj %d type %d mage %d cleric %d", a, Objects[a].type, m, c);
 	}
 	else if (!strcmp(cmd, "near")) {		// test: near or near=RANGE[.1], the creatures (.1: all objects) in RANGE (default 30) by distance, with the angle to the view
 		int i, range = a > 0 ? a : 30;

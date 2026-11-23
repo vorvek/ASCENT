@@ -24,6 +24,11 @@ the inn to Waterdeep and through the Yawning Portal into the game. It
 checks that the load keeps the used slot and that the game start after
 Waterdeep fills it (game() 0x42284).
 
+The third run starts KOBOLDS. It checks that a save rounds the time left
+of a potion to the nearest second (Dtu_fix_save_seconds, D-138) and that
+a creature keeps its spell points after a save and a load
+(Dtu_fix_restore_spells, D-134).
+
 The test writes only in a new temporary directory. Returns 1 on an error.
 """
 import argparse
@@ -43,7 +48,8 @@ SCRIPT = ("5:class=1,6:give=17.12.1,7:mission=1,10:warp=1.136,30:slots,32:gorest
 # Y is the Yawning Portal of Waterdeep.
 SCRIPT2 = "20:slots,30:goseg=1,100:slots,300:slots"
 FESCRIPT2 = "wait 60\nkey enter\nwait 10\nkey enter\nwait 10\ngamekeys\nwait 120\nkey enter\nwait 300\nkey y\nwait 400\nquit\n"
-SG_PLAYER = 141          # the player record in a save of the port (DTU_SG_PLAYER_OFFSET)
+SCRIPT3 = "5:give=16.72,10:use=16.72,12:cpoints=19.1,22:save=3,60:cpoints=19.2,80:load=3,180:cpoints=19"
+SG_PLAYER = 141         # the player record in a save of the port (DTU_SG_PLAYER_OFFSET)
 
 
 def dump(lines, frame):
@@ -159,6 +165,31 @@ def main():
         if got != (1, 1):
             errors.append("the game start after Waterdeep did not fill the slot (left and maximum %s, expected (1, 1))"
                           % (got,))
+
+        # The third run (D-134, D-138): KOBOLDS. The Potion of Agility (600 s)
+        # at frame 10 and a save 0.4 s later: the save has 600 seconds left
+        # (1.3 cuts to 599). The spellcaster object 19 (3 mage points) keeps
+        # 1 point after the save and the load (1.3 gives it 3 again).
+        log3 = os.path.join(tmp, "char3.log")
+        for f in ("SG3.SG",):
+            if os.path.exists(os.path.join(tmp, f)):
+                os.remove(os.path.join(tmp, f))
+        cmd = base + ["-level", "KOBOLDS", "-frames", "200", "-charlog", log3, "-chartest", SCRIPT3]
+        run(cmd, tmp, errors, "third run")
+        lines = open(log3, encoding="latin-1").read().splitlines() if os.path.exists(log3) else []
+        sg = os.path.join(tmp, "SG3.SG")
+        if not os.path.exists(sg):
+            errors.append("third run: no save in slot 3")
+        else:
+            b = open(sg, "rb").read()
+            off = SG_PLAYER + 0x1A93 + 12
+            left = int.from_bytes(b[off:off + 4], "little", signed=True) if len(b) >= off + 4 else None
+            if left != 600:
+                errors.append("third run: the save has %s seconds of the Potion of Agility, expected 600" % left)
+        pts = [ln for ln in lines if re.search(r"\bf180\s+cpoints: obj 19 ", ln)]
+        if not pts or "mage 1 cleric 0" not in pts[0]:
+            errors.append("third run: the spellcaster after the load: %s, expected mage 1 cleric 0" %
+                          (pts[0].strip() if pts else "no line"))
     finally:
         if a.keep:
             print("check_saveload: files in %s" % tmp)

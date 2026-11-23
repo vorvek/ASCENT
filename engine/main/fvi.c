@@ -884,6 +884,18 @@ static int dtu_pass_thru(object *obj)
 	return !(Fvi_dtu_player_attack && Dtu_fix_rat_hit);
 }
 
+// ASCENT: 0x3F38F skips an object with flag 0x40. A creature with
+// pass_thru (the rat) has the flag from its type: dtu_pass_thru() decides
+// for it. Another creature with the flag (FLAME object 35) is skipped.
+static int dtu_nohit(object *obj)
+{
+	if (!(obj->flags & OF_DTU_NOHIT))
+		return 0;
+	if (obj->type != OBJ_ROBOT)
+		return 1;
+	return obj->id < N_robot_types && !(Monster_info[obj->id].flags & MONSTER_F_PASS_THRU);
+}
+
 static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad,object *obj,object *otherobj)
 {
 	vms_vector center,f0,f1,fc,fi;
@@ -899,6 +911,10 @@ static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector
 		return 0;
 	// "pass_thru" of the table line
 	if (dtu_pass_thru(obj))
+		return 0;
+	// ASCENT: a creature with flag 0x40 (0x3F38F), also for the object
+	// loops of the use action and of the moves (dtuhook.c, dtuobj.c)
+	if (obj->type == OBJ_ROBOT && dtu_nohit(obj))
 		return 0;
 
 	dtu_get_body_cylinder(obj,&center,&radius,&half_height);
@@ -1015,7 +1031,7 @@ fix dtu_body_query_test(vms_vector *intp,vms_vector *p0,vms_vector *p1,fix rad_h
 	if (obj->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
 		return 0;
 	// ASCENT: the use ray: 0x3F38F skips an object with flag 0x40
-	if ((obj->flags & OF_DTU_NOHIT) && obj->type != OBJ_ROBOT)
+	if (dtu_nohit(obj))
 		return 0;
 	// "pass_thru": the executable sets the flag 0x40 of such a creature,
 	// and the query skips objects with that flag
@@ -1443,7 +1459,7 @@ int fvi_sub(vms_vector *intp,int *ints,vms_vector *p0,int startseg,vms_vector *p
 		for (objnum=seg->objects;objnum!=-1;objnum=Objects[objnum].next)
 			if (	!(Objects[objnum].flags & OF_SHOULD_BE_DEAD) &&
 					// ASCENT: 0x3F38F skips an object with flag 0x40
-					!((Objects[objnum].flags & OF_DTU_NOHIT) && Objects[objnum].type != OBJ_ROBOT) &&
+					!dtu_nohit(&Objects[objnum]) &&
 				 	!(thisobjnum == objnum ) &&
 				 	(ignore_obj_list==NULL || !obj_in_list(objnum,ignore_obj_list)) &&
 				 	!laser_are_related( objnum, thisobjnum ) &&

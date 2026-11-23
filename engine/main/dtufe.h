@@ -14,10 +14,21 @@
 
 // 0 (default): a key or a mouse button acts one time for each press, and
 // a held button repeats with a delay only on the controls where that is
-// useful (portrait arrows, sliders). 1: as the original, the action of a
-// control runs again in each frame while the button is down. The option
+// useful (portrait arrows, sliders). 1: as the original (0x81F7E): a press
+// acts once at the end of the press animation of the cursor, the release
+// 0.1 s after the button goes up, and nothing repeats. The option
 // -feoriginput sets it to 1.
 extern int Dtu_fe_original_input;
+
+// 0x423E1: 1 (default): a save of Waterdeep that the ESC menu loads ends
+// the game in the level and goes to Waterdeep (D-083). -origfe clears it.
+extern int Dtu_fix_escape_load_waterdeep;
+// 0x87E60: 1 (default): an aborted New Game keeps the mission state of
+// Khelben (D-084). -origfe clears it.
+extern int Dtu_fix_chargen_abort;
+// 0xBAA3E: 1 (default): a save file that cannot be opened shows TEX 800.
+// -origfe clears it.
+extern int Dtu_fix_save_open_text;
 
 // The game sets this to 1 when the player leaves the dungeon through the
 // exit of the Yawning Portal (command 0 of DTU.WRP). The front end then

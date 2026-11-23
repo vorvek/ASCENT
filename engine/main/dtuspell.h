@@ -169,6 +169,17 @@ void dtu_spell_creature_event(object *obj, int bits);
 // The spell state of a creature of a restored level (0xAE3F2): the points
 // of the type, the times of the restore
 void dtu_spell_creature_restore(object *obj);
+// The cast of the player in a state file (0x153EBC, Ai_local_info[0]
+// +0x0C): the running cast time; the end of a save (restart 1: the cast
+// starts again, 0x164B3); the cast time of a loaded save, which the level
+// start gives back when the spell is in the hand.
+fix dtu_spell_cast_timer(void);
+void dtu_spell_cast_saved(int restart);
+void dtu_spell_cast_load(fix timer);
+// D-134: the spell points of a creature for the state file, and the saved
+// points that a restored creature keeps (Dtu_fix_restore_spells, dtustate.c)
+void dtu_spell_creature_points(object *obj, int *mage, int *cleric);
+void dtu_spell_creature_keep_points(object *obj, int mage, int cleric);
 // The NPC table of the executable (0xA504A, 191 rows, read by 0xA7E97 at
 // the end of each $MONSTER line): THAC0, armor class, mage level and
 // points, cleric level and points by the name of the creature. Returns 1
@@ -310,6 +321,16 @@ int dtu_spell_object_level(object *obj, int spell);
 int dtu_spell_player_ac(int ac, int stage);
 // The armor class of a creature with its spell effects (0x2ADAF to 0x2AE1D).
 int dtu_spell_creature_ac(object *creature, int ac);
+// ASCENT: the same against a melee attack (missile 0) or a missile (1).
+// They differ only with Shield (Dtu_fix_shield_ac).
+int dtu_spell_player_ac_vs(int ac, int stage, int missile);
+int dtu_spell_creature_ac_vs(object *creature, int ac, int missile);
+// ASCENT: Shield and the Amulet of Shield (spell 45, DTU_FX_SHIELD). 1
+// (default): armor class 4 against melee weapons and 2 against missiles, a
+// decision of the user (the spell text of AD&D). 0 (-origcombat): 3 against
+// both, as 1.3. dtu_spell_shield_ac() gives the value.
+extern int Dtu_fix_shield_ac;
+int dtu_spell_shield_ac(int missile);
 // 0x16636: 1 if the object is an invisible creature that the player does
 // not see.
 int dtu_spell_unseen(object *obj);
@@ -374,7 +395,8 @@ typedef struct dtu_spell_facts {
 	int	fx;						// the effect bit (DTU_FX_), 0 none
 	int	time_lo, time_hi;		// the duration in seconds; -1 no end; 0 none
 	int	amount_lo, amount_hi;	// the amount of the kind
-	int	ac;						// the armor class at most (DTU_SK_AC, DTU_SK_ARMOR)
+	int	ac;						// the armor class at most (DTU_SK_AC, DTU_SK_ARMOR), against melee
+	int	ac_missile;				// ASCENT: the same against missiles (Shield, Dtu_fix_shield_ac)
 	int	dice_n[4], dice_sides[4], dice_add[4];	// damage: normal, fire, acid, electric
 	int	undead_die;				// sides of one more die against undead, 0 none
 	int	blind_dist;				// Fireball: blinds and deafens within this many units of the point, 0 none
@@ -387,6 +409,8 @@ int dtu_spell_get_facts(int spell, int L, dtu_spell_facts *f);
 // The armor class of a player of armor class 10 with the effects of the
 // mask (Armor, Magical Vestment, Shield); 10 with none of them.
 int dtu_spell_fx_ac(int fx);
+// ASCENT: the same against melee (missile 0) or missiles (1), Shield
+int dtu_spell_fx_ac_vs(int fx, int missile);
 // The classes that can use the spell as an item (dtu_spell_usable), as
 // DTU_USE_ bits of dtuchar.h.
 int dtu_spell_use_classes(int spell);

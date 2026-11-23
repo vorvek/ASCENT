@@ -194,6 +194,7 @@ typedef struct dtu_character {
 	fix				no_pickup_until;	// P+0x1ABD: no pick up before this game time (5 seconds after a drop)
 	int				thief_paid;			// P+0x1A53: the thief level + 1 of the last points of Mirt, 0 none
 	int				thief_points;		// P+0x1AB3: the thief skill points to spend (dtuthiefpts.c)
+	int				ac_missile;			// ASCENT: the armor class against missiles (Dtu_fix_shield_ac), set with pa.armor_class by dtu_char_update; not in the record
 } dtu_character;
 
 extern dtu_character Dtu_char;
@@ -229,10 +230,19 @@ int dtu_item_get(int type, int id, dtu_item_data *d);
 // higher (worse) value of the two classes (0xAF651). 1 (default): the
 // lower (better) value, as in the rules of the game.
 extern int Dtu_fix_multiclass_thac0;
+// ASCENT: THAC0 at level 18 (0xAF605). 1 (default): the last entry of the
+// row of the class. 0 (-origchar): the byte past the row (20, a mage 72).
+extern int Dtu_fix_thac0_row;
+// ASCENT: THAC0 of a new character. 1 (default): by the table at once. 0
+// (-origchar): 20 until the first level check (0x8BFF5).
+extern int Dtu_fix_new_thac0;
 // The hit points of a new level. 0: as 0xAF8C7, the integer is added to
 // the fixed point hit points (they grow by n / 65536; the maximum grows by
 // n). 1 (default): the hit points grow by n, as the rules say.
 extern int Dtu_fix_level_hit_points;
+// D-138: the potion time left that a save writes. 0: whole seconds cut
+// down, as 0xBA857. 1 (default): the nearest second.
+extern int Dtu_fix_save_seconds;
 
 // 0x8BA3A: the character becomes a character of level "level" (from 1):
 // the level of each class (one less for two classes), the experience of
@@ -362,7 +372,14 @@ int dtu_char_defense_roll(int attacker_thac0, int to_hit_bonus);
 
 int dtu_char_armor_class(void);
 int dtu_char_thac0(void);
+// ASCENT: 0x2A789, the attack bonus of strength str and percent extra, with
+// the 18/xx part only when the player is a fighter
+int dtu_char_str_hit_bonus(int str, int extra);
 int dtu_char_hit_points(void);
+// ASCENT: the armor class against an attack: missile 0 a melee attack (the
+// value of dtu_char_armor_class), 1 a missile. They differ only with Shield
+// (Dtu_fix_shield_ac of dtuspell.h).
+int dtu_char_armor_class_vs(int missile);
 int dtu_char_max_hit_points(void);
 // Adds hit points, up to the maximum. Returns the number that was added.
 int dtu_char_heal(int points);

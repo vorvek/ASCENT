@@ -61,6 +61,7 @@
 #include "fireball.h"
 #include "palette.h"
 #include "dtumusic.h"
+#include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
 #include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
@@ -69,6 +70,7 @@
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 #include "dtulog.h"		// ASCENT: the session log
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
+#include "dtumiss.h"		// ASCENT: the miss sound of a creature
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -206,6 +208,7 @@ typedef struct dtu_ai_local {
 	ubyte		flags;					// +0x05, AILF_
 	ubyte		activity;				// object +0x1CC: 0 inactive, 2 active
 	ubyte		swing_done;				// object +0x1AF: the swing has hit
+	ubyte		commit;					// ASCENT: Dtu_fix_attack_commit: 0 not tested, 1 no, 2 the attack is committed
 	ubyte		falling;					// object +0x1AE bit 0x20
 	short		blocker;					// object +0x138
 	short		blocked_count;			// object +0x13A
@@ -959,7 +962,9 @@ static int brain_bit(int a,int b)
 // 0x10815. The ray from a creature to the player. A creature that does not
 // fly looks from 5.0 above its center. A blocked ray counts as free for a
 // melee creature that is closer than 100.0.
-static int creature_ray_to_player(object *obj)
+// ASCENT: creature_ray_to() takes the end point (the alert of
+// Dtu_fix_alert_ray casts it to the caller).
+static int creature_ray_to(object *obj,vms_vector *to)
 {
 	vms_vector p0 = obj->pos;
 	int seg;
@@ -971,12 +976,17 @@ static int creature_ray_to_player(object *obj)
 		p0 = obj->pos;
 		seg = obj->segnum;
 	}
-	if (ray_is_free(&p0,seg,&ConsoleObject->pos,obj-Objects))
+	if (ray_is_free(&p0,seg,to,obj-Objects))
 		return 1;
 	if (Robot_info[obj->id].attack_type == 1 && Monster_ext[obj->id].spell_level == 0)
-		if (vm_vec_dist(&obj->pos,&ConsoleObject->pos) < i2f(100))
+		if (vm_vec_dist(&obj->pos,to) < i2f(100))
 			return 1;
 	return 0;
+}
+
+static int creature_ray_to_player(object *obj)
+{
+	return creature_ray_to(obj,&ConsoleObject->pos);
 }
 
 // 0x9810D(creature segment, player segment) for other code (the Spider
@@ -1137,7 +1147,8 @@ void dtu_objects_init(void)
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
-			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive = 0;
+			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
+			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_ray = Dtu_fix_alert_last = 0;
 	if (FindArg("-origrevive"))
 		Dtu_fix_revive = 0;
 	if (FindArg("-origdrow5"))
@@ -1438,7 +1449,9 @@ static void fix_delete(int n, int type, int id)
 
 // Object flag 0x40: the object queries skip the object (0x3F38F), so the
 // player cannot walk into it, take it or use it, and shots pass it. It is
-// still drawn. The flag on FLAME object 35 (a creature) is not in the port.
+// still drawn. On a creature the AI frame (0x13C8B) and the move (0x9F174)
+// skip it too (dtu_creature_frozen): FLAME object 35, the image of Lolth
+// that script 320 moves and that speaks.
 static void fix_nohit(int n, int type)
 {
 	object *o = fix_obj(n,type,-1);
@@ -1765,6 +1778,8 @@ static void level_fixes_objects(int has_state)
 				Ail[36].target = 0;
 				fix_log(36,"Lolth: 256 hit points, no effects");
 			}
+			// ASCENT: 0xAD4F2 to 0xAD4FB: object 35, if a creature
+			fix_nohit(35,OBJ_ROBOT);
 			break;
 	}
 }
@@ -2414,9 +2429,18 @@ void dtu_draw_dressing_vclip(object *obj)
 //------------------------------------------------------------------------
 // Damage
 
-// 0x2A789 without the percent part of strength 18
+// 0x2A789 without the percent part of strength 18.
+// ASCENT: D-003 (verified in the bytes): the creature path calls 0x2A789
+// with the percent 100 (0x2ACA2), and 0x2A789 adds the 18/91-100 part when
+// the player (not the creature) is a fighter (0x2A7AB to 0x2A7B7). 1
+// (default): the plain bonus of the strength. 0 (-origcombat, dtuchar.c):
+// the rule of the executable.
+int Dtu_fix_creature_strength = 1;
+
 static int str_bonus(int str)
 {
+	if (!Dtu_fix_creature_strength)
+		return dtu_char_str_hit_bonus(str,100);
 	if (str < 1) str = 1;
 	if (str > 19) str = 19;
 	return Str_to_hit[str];
@@ -2427,6 +2451,15 @@ static int str_bonus(int str)
 // the d20 with the bonuses of the attacker. Returns 1 for a hit, 0 for a
 // miss; *ac_out is the armor class of the test.
 int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
+{
+	return dtu_hit_test_vs(target,attacker,roll,thac0,ac_out,0);
+}
+
+// ASCENT: 1 while the hit of a weapon missile is applied (missile_hit_object),
+// for the armor class against missiles (Dtu_fix_shield_ac)
+static int Hit_by_missile = 0;
+
+int dtu_hit_test_vs(object *target,object *attacker,int roll,int thac0,int *ac_out,int missile)
 {
 	int tw = target->dtu.m_88, aw = attacker ? attacker->dtu.m_88 : 0, ac;
 	int robot_attacker = attacker && attacker->type == OBJ_ROBOT && attacker->id < N_robot_types;
@@ -2440,7 +2473,8 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 		dtu_xp_hit_mod(-((m < 5) ? m : 5),LN("levitating"));		// ASCENT: the verbose combat log (dtuxp.h)
 	}
 	if (target->type == OBJ_PLAYER) {
-		ac = dtu_player_armor_class();
+		// ASCENT: the value for the attack type (Shield, Dtu_fix_shield_ac)
+		ac = missile ? dtu_char_armor_class_vs(1) : dtu_player_armor_class();
 		// 0x2ACE8: the player is hidden from the attacker (0x165C4)
 		if (robot_attacker && dtu_thief_hidden_from(attacker)) {
 			roll -= 4;
@@ -2474,7 +2508,9 @@ int dtu_hit_test(object *target,object *attacker,int roll,int thac0,int *ac_out)
 		attacker->dtu.m_e0[0] = 0;
 	// 0x2ADA3: the effects that change the armor class of a creature
 	if (robot_target)
-		ac = dtu_spell_creature_ac(target,ac);
+		ac = dtu_spell_creature_ac_vs(target,ac,missile);
+	dtu_obj_log("attack: armor class %d of obj %d %s against %s",ac,(int)(target-Objects),dtu_object_name(target),
+		missile ? "a missile" : "melee");
 	// 0x2AE22: Slow of the attacker
 	if (aw & DTU_FX_SLOW) {
 		roll -= 4;
@@ -2573,7 +2609,12 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 	}
 
 	*roll_out = roll;
-	return dtu_hit_test(target,attacker,roll,thac0,&ac);
+	return dtu_hit_test_vs(target,attacker,roll,thac0,&ac,Hit_by_missile);
+}
+
+int dtu_hit_by_missile(void)
+{
+	return Hit_by_missile;
 }
 
 // The weapon of a melee attack of an object: the weapon_type of the
@@ -2707,6 +2748,16 @@ int dtu_rat_type(int id)
 		rat[id] = bm_tbl_get(r,"rat",value,sizeof(value)) ? 1 : 0;
 	}
 	return rat[id];
+}
+
+// ASCENT: object flag 0x40 on a creature (dtuobj.h)
+int dtu_creature_frozen(object *obj)
+{
+	if (obj->type != OBJ_ROBOT || !(obj->flags & OF_DTU_NOHIT) || obj->id >= N_robot_types)
+		return 0;
+	// 0x13C96 and 0x9F17E: +0x7E (regeneration) of 1 or more; 0x13C9D and
+	// 0x9F18A: the rat type
+	return Monster_ext[obj->id].regeneration < 1 && !dtu_rat_type(obj->id);
 }
 
 // 0x2AF5E. Returns the damage as an integer. A weapon of 0 or more gives
@@ -3780,6 +3831,30 @@ void dtu_player_check_death(object *killer)
 // port waits 3.0 seconds, fades out and plays the music. Then the front
 // end takes over (dtu_hook_player_death_screen), or the level starts
 // again after DTU_DEATH_RESTART_WAIT.
+// ASCENT: 0x33C96 ends the game loop at the death (0x13D3F7), so in 1.3 the
+// world stops at once: game() stops the streams (0xA48D0) and waits 3 s or
+// for a key (0x4240B to 0x42452) with no game frame. The game loop calls
+// this before the world moves: 1 while the wait runs (the world does not
+// move), and a key ends the wait.
+int dtu_player_death_wait(void)
+{
+	static int streams_stopped;
+
+	if (!Dtu_objects_enabled || !Dtu_player_dead || Player_death_stage != 1) {
+		streams_stopped = 0;
+		return 0;
+	}
+	if (!streams_stopped) {
+		streams_stopped = 1;
+		dtumusic_stop();
+		key_flush();
+	} else if (key_inkey()) {
+		Player_death_time = GameTime - DTU_DEATH_WAIT;
+		dtulog_event("Player death: a key ends the wait");
+	}
+	return 1;
+}
+
 int dtu_player_death_frame(void)
 {
 	if (!Dtu_objects_enabled || !Dtu_player_dead || Player_death_stage == 0)
@@ -3858,6 +3933,9 @@ static fix damage_player_w(object *player, object *attacker, fix damage, int wea
 			dtu_obj_log("attack: %s misses the player (roll %d, result %d)",
 				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);
 			dtu_xp_roll_say(attacker,player);		// ASCENT: the verbose combat log (dtuxp.h)
+			// ASCENT: the miss sound of a melee attack (dtumiss.c)
+			if (attacker && attacker->type == OBJ_ROBOT && (weapon < 0 || weapon_is_melee(weapon)))
+				dtu_miss_sound_creature(attacker);
 			return 0;
 		}
 		// 0x2A45F: a hit stops the cast of the player (0x9305D)
@@ -3993,7 +4071,7 @@ static void melee_hit(object *target,object *attacker)
 // creature (0x9F2B4) and of the player. The weapon sphere of the frame
 // moves from its center away from the body by its radius. The first
 // object that it touches is hit, one time for each swing.
-static void weapon_test(object *obj)
+static void weapon_sphere_test(object *obj)
 {
 	int objnum = obj-Objects;
 	int s = DTU_ANIM_STATE(obj);
@@ -4140,6 +4218,137 @@ static void weapon_test(object *obj)
 				// and the attack animation plays to its end.
 			}
 		}
+	}
+}
+
+// ASCENT: Dtu_fix_attack_commit (dtucombat.h). The test of the start of a
+// melee attack on the player (each frame of the attack state before frame
+// 8, until it passes): a hostile melee creature with the AI, the
+// player alive and not hidden from it, in the reach of the goal state
+// choice (both radii plus 2.0, 0x1599F), in front of it (the facing dot
+// 0.75 of 0x1396E) and with no wall between the two centers. At the hit
+// (at_hit 1): the creature is not dying, not held, the player is not hidden,
+// not farther than twice the reach and no wall is between them.
+static int attack_commit_valid(object *obj,int at_hit)
+{
+	object *pl = ConsoleObject;
+	vms_vector v;
+	fix dist, reach;
+	fvi_query fq;
+	fvi_info hit;
+
+	if (pl == NULL || pl->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead || !Dtu_creatures_attack)
+		return 0;
+	if (obj->control_type != CT_AI || !is_hostile(obj) || Robot_info[obj->id].attack_type != 1)
+		return 0;
+	if ((obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) || obj->shields < F1_0 || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return 0;
+	if ((obj->dtu.m_88 & DTU_OF_HELD) || dtu_thief_hidden_from(obj))
+		return 0;
+	vm_vec_sub(&v,&pl->pos,&obj->pos);
+	dist = vm_vec_normalize(&v);
+	reach = obj->size + pl->size + i2f(2);
+	if (dist > (at_hit ? 2*reach : reach))
+		return 0;
+	if (!at_hit && vm_vec_dot(&v,&obj->orient.fvec) < 0xC000)
+		return 0;
+	fq.p0 = &obj->pos;
+	fq.p1 = &pl->pos;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq,&hit) != HIT_NONE)
+		return 0;
+	return 1;
+}
+
+// ASCENT: test (-chartest stepback=N.D): when the next attack of creature
+// N becomes valid (attack_commit_valid, also with -origcombat), the player
+// moves D units away from it (horizontally) at once.
+static int Test_stepback_obj = -1, Test_stepback_dist = 0;
+
+void dtu_obj_test_stepback(int objnum,int dist)
+{
+	Test_stepback_obj = objnum;
+	Test_stepback_dist = dist;
+}
+
+static void test_stepback(object *obj)
+{
+	object *pl = ConsoleObject;
+	vms_vector v, p;
+	int seg;
+
+	if (Test_stepback_obj != obj-Objects || pl == NULL)
+		return;
+	Test_stepback_obj = -1;
+	vm_vec_sub(&v,&pl->pos,&obj->pos);
+	v.y = 0;
+	if (vm_vec_normalize(&v) < 0x100)
+		return;
+	vm_vec_scale_add(&p,&pl->pos,&v,i2f(Test_stepback_dist));
+	seg = find_point_seg(&p,pl->segnum);
+	if (seg < 0) {
+		dtu_obj_log("test: stepback of %d from obj %d leaves the mine",Test_stepback_dist,(int)(obj-Objects));
+		return;
+	}
+	pl->pos = p;
+	obj_relink(pl-Objects,seg);
+	dtu_obj_log("test: the player steps back %d from obj %d, distance now %.2f",Test_stepback_dist,(int)(obj-Objects),
+		f2fl(vm_vec_dist(&pl->pos,&obj->pos)));
+}
+
+// 0x6CFF8 with Dtu_fix_attack_commit (dtucombat.h): a melee attack of a
+// creature that starts on the player in reach is resolved when the sphere
+// of the weapon misses the player because the player moved: at the first
+// hit frame (8 or later) when the player is out of reach, or at the last
+// two frames of the attack state. The roll against the armor class and the
+// damage are those of the hit of the sphere (melee_hit, 0x27D82).
+static void weapon_test(object *obj)
+{
+	int objnum = obj-Objects, s, n, rel;
+	dtu_ai_local *ail;
+
+	weapon_sphere_test(obj);
+	if (obj->type != OBJ_ROBOT || objnum < 0 || objnum >= MAX_OBJECTS)
+		return;
+	ail = &Ail[objnum];
+	s = DTU_ANIM_STATE(obj);
+	if (!(s == DAS_ATTACK || s == DAS_ATTACK2 || s == DAS_ATTACK3 || s == DAS_ATTACK4)) {
+		ail->commit = 0;
+		return;
+	}
+	n = Dtu_anim_first[s+1] - Dtu_anim_first[s];
+	rel = DTU_ANIM_FRAME(obj) - Dtu_anim_first[s];
+	// the test runs in each frame before the hit frames until it passes:
+	// the creature may turn to the player while it winds up
+	if (ail->commit != 2 && rel < 8) {
+		ail->commit = attack_commit_valid(obj,0) ? 2 : 1;
+		if (ail->commit == 2) {
+			dtu_obj_log("attack: obj %d %s starts a melee attack on the player in reach, frame %d",objnum,dtu_object_name(obj),rel);
+			test_stepback(obj);
+		}
+	}
+	if (!Dtu_fix_attack_commit || ail->commit != 2 || ail->swing_done || rel < 8)
+		return;
+	{
+		fix dist = vm_vec_dist(&obj->pos,&ConsoleObject->pos);
+		fix reach = obj->size + ConsoleObject->size + i2f(2);
+
+		if (dist <= reach && rel < n - 2)
+			return;		// the sphere may still reach the player
+		ail->commit = 1;
+		if (!attack_commit_valid(obj,1)) {
+			dtu_obj_log("attack: obj %d %s: the committed attack is lost, distance %.2f, reach %.2f",objnum,dtu_object_name(obj),
+				f2fl(dist),f2fl(reach));
+			return;
+		}
+		ail->swing_done = 1;
+		dtu_obj_log("attack: obj %d %s swings at the player, frame %d (committed, distance %.2f, reach %.2f)",objnum,
+			dtu_object_name(obj),DTU_ANIM_FRAME(obj),f2fl(dist),f2fl(reach));
+		melee_hit(ConsoleObject,obj);
 	}
 }
 
@@ -4417,7 +4626,9 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	spell_dealt = (spell >= 0) ? spell_hit(spell,other,parent) : 0;
 
 	if (other->type == OBJ_PLAYER) {
+		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt = (m->spell >= 0) ? spell_dealt : damage_player_w(other,parent,0,weapon);
+		Hit_by_missile = 0;
 		hp = dtu_player_hit_points();
 		if (dealt > 0) {
 			sound = weapon_int(weapon,"monster_hit_sound",-1);
@@ -4437,7 +4648,9 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		if (parent && parent == ConsoleObject)
 			dtu_creature_alert(other,3);
 		Ail[other-Objects].activity = 2;
+		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
+		Hit_by_missile = 0;
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);
@@ -4446,9 +4659,11 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 			// ASCENT: the original plays no weapon sound when the hit
 			// kills (0x27650: die_sound, or monster_kill_sound, which no
 			// shipped table sets). The port plays the impact sound on the
-			// killing hit too (docs/re/bugs.md).
+			// killing hit too (docs/re/bugs.md), Dtu_fix_kill_sound of
+			// dtucombat.c; -origcombat plays monster_kill_sound.
 			else
-				sound_at(weapon_int(weapon,"monster_hit_sound",-1),other->segnum,point,F1_0/4);
+				sound_at(weapon_int(weapon,(hp < F1_0 && !Dtu_fix_kill_sound) ? "monster_kill_sound" : "monster_hit_sound",-1),
+					other->segnum,point,F1_0/4);
 		}
 		else
 			sound_at(weapon_int(weapon,"monster_miss_sound",-1),other->segnum,point,F1_0/4);
@@ -4956,6 +5171,8 @@ static void stop_at_player(object *obj)
 //------------------------------------------------------------------------
 // Movement of a creature (pmon.c, 0x9F153)
 
+static int opens_doors(object *obj);
+
 // 0x6C662 for a creature: gravity and the lift out of the floor.
 static void creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_height)
 {
@@ -5050,6 +5267,9 @@ void dtu_creature_physics_sim(object *obj)
 	if (ail->activity == 0)
 		return;
 	if (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED))
+		return;
+	// ASCENT: 0x9F174, object flag 0x40: no move
+	if (dtu_creature_frozen(obj))
 		return;
 
 	// ASCENT: the move query of a rat (0x9F153) starts in the body of the
@@ -5273,7 +5493,7 @@ void dtu_creature_physics_sim(object *obj)
 			// bit opens a door that it walks into. The door must be closed,
 			// with no key and no lock. This is the only place where a
 			// creature opens a door.
-			if (Monster_ext[obj->id].door_opening && hit.hit_side_seg >= 0 && hit.hit_side >= 0) {
+			if (opens_doors(obj) && hit.hit_side_seg >= 0 && hit.hit_side >= 0) {
 				int wn = Segments[hit.hit_side_seg].sides[hit.hit_side].wall_num;
 
 				if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE &&
@@ -5576,11 +5796,21 @@ static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_play
 
 // 0x1320F ai_door_is_openable: a creature with the door bit can go through
 // a door with no key and no lock. The state of the door is not tested.
+// ASCENT: 1 while dtu_script_walk_start() makes the path of a creature
+// with no door bit that walks for its script (Dtu_fix_script_walk)
+static int Script_walk_doors;
+
+// 1 if the creature can open a door: the door bit, or a walk of its script
+static int opens_doors(object *obj)
+{
+	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1;
+}
+
 static int door_is_openable(object *obj,segment *segp,int side)
 {
 	int wn = segp->sides[side].wall_num;
 
-	if (wn < 0 || obj->type != OBJ_ROBOT || !Monster_ext[obj->id].door_opening)
+	if (wn < 0 || obj->type != OBJ_ROBOT || !opens_doors(obj))
 		return 0;
 	return Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE && !(Walls[wn].flags & WALL_DOOR_LOCKED);
 }
@@ -5614,7 +5844,7 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 	static ubyte visited[MAX_SEGMENTS];
 	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
 	int head = 0, tail = 0, found = -1, i, n, cur;
-	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening;
+	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors;
 	int walker = improved_paths() && obj->type == OBJ_ROBOT && !is_flying(obj);
 
 	if (start < 0 || start > Highest_segment_index)
@@ -6526,11 +6756,25 @@ static void end_sequence_frame(void)
 // explosions of break_vclip (default 137) at the size of the object, the
 // scenery of the segment falls (movement type 1), then 0x6A3CC removes the
 // object and object_create_egg drops what it contains. The nine places of
-// the explosions: x and z += rand() % 11.0 - 5.0, y += rand() % 0.6875 -
-// 0.3125; rand() is at most 0x7FFF, so the modulo does nothing and the
-// places are 5.0 to 4.5 to the side and -0.31 to 0.19 up and down (a
-// defect of 1.3, kept). explode 1: 0x911AA with 0x3CA7E: the explosion
+// the explosions: each one is made at the center of the object, then its
+// x and z += rand() % 11.0 - 5.0, y += rand() % 0.6875 - 0.3125 (0xA6C90 to
+// 0xA6CD6). rand() is at most 0x7FFF, so the modulo does nothing and all
+// nine are 5.0 to 4.5 to one side and -0.31 to 0.19 up and down (D-035).
+// ASCENT: Dtu_fix_break_spread (default) scales rand() to the range, so
+// the places are -5.0 to 6.0 on x and z, as the constants say. -origobj
+// gives the 1.3 places. explode 1: 0x911AA with 0x3CA7E: the explosion
 // vclip 2 at 2.5 times the size and explode_sound (no debris in the port).
+int Dtu_fix_break_spread = 1;
+
+static fix break_offset(fix range,fix low)
+{
+	int r = rand() & 0x7FFF;		// the rand() of Watcom C (0xD7AC4)
+
+	if (Dtu_fix_break_spread)
+		return (fix) (((long long) r * range) >> 15) - low;
+	return (r % range) - low;
+}
+
 void dtu_break_dressing(object *d,object *by,int explode)
 {
 	dressing_info *di;
@@ -6560,12 +6804,15 @@ void dtu_break_dressing(object *d,object *by,int explode)
 		if (di->explode_sound >= 0)
 			sound_at(di->explode_sound,d->segnum,&d->pos,F1_0);
 		vclip = (di->break_vclip >= 0) ? di->break_vclip : 137;
-		p = d->pos;
+		// ASCENT: each explosion at the center plus its own offset, as
+		// 0xA6C7E moves the new object (the port added up the offsets)
 		for (i=0;i<9;i++) {
+			p = d->pos;
+			p.x += break_offset(i2f(11),i2f(5));
+			p.z += break_offset(i2f(11),i2f(5));
+			p.y += break_offset(0xB000,0x5000);
 			vclip_at(d->segnum,&p,d->size,vclip);
-			p.x += (rand() % i2f(11)) - i2f(5);
-			p.z += (rand() % i2f(11)) - i2f(5);
-			p.y += (rand() % 0xB000) - 0x5000;
+			dtu_obj_log("break explosion: offset %.2f %.2f %.2f",f2fl(p.x-d->pos.x),f2fl(p.y-d->pos.y),f2fl(p.z-d->pos.z));
 		}
 		// the other scenery of the segment falls (guess for the meaning)
 		for (i=0;i<=Highest_object_index;i++)
@@ -7058,6 +7305,9 @@ void dtu_do_ai_frame(object *obj)
 
 	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
 		return;
+	// ASCENT: 0x13C8B, object flag 0x40 (FLAME object 35)
+	if (dtu_creature_frozen(obj))
+		return;
 	ri = &Robot_info[obj->id];
 	mi = &Monster_info[obj->id];
 	A = mi->ai_values[0][Difficulty_level];
@@ -7264,8 +7514,11 @@ void dtu_do_ai_frame(object *obj)
 
 	// 0x14AF2: the door opener, for each creature with the door bit. It
 	// only sends the creature to a door. The door opens when the creature
-	// walks into it (dtu_creature_physics_sim).
-	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB) {
+	// walks into it (dtu_creature_physics_sim). ASCENT: a creature on the
+	// path of its script (Dtu_fix_script_walk) is not sent to a door: the
+	// mode OPENDOOR would end the walk, and a door on its path opens when it
+	// walks into it.
+	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB && ail->script_walk != 1) {
 		if (ail->mode == DAIM_STILL) {
 			if (visible)
 				create_n_segment_path(obj,8+Difficulty_level,-1);
@@ -7584,6 +7837,16 @@ void dtu_script_walk_start(object *obj,int fix)
 	if (obj->id < N_robot_types)
 		ail->morale = (Monster_info[obj->id].ai_values[0][Difficulty_level] + Monster_info[obj->id].ai_values[1][Difficulty_level]) / 2;
 	ail->script_walk = 0;
+	// ASCENT: a creature with no door bit gets no path through a segment
+	// with a wall (0x16999), so a prisoner of PRISON (script 103) cannot
+	// leave its cell. On the path of its script it opens a door with no key
+	// and no lock as a creature with the door bit does.
+	if (fix && ail->path_len < 2 && obj->id < N_robot_types && !Monster_ext[obj->id].door_opening &&
+		 ail->goal_segment >= 0 && obj->segnum != ail->goal_segment) {
+		Script_walk_doors = 1;
+		create_path(obj);
+		Script_walk_doors = 0;
+	}
 	if (fix && ail->path_len >= 2 && DTU_ANIM_STATE(obj) != DAS_DIE) {
 		ail->script_walk = 1;
 		ail->activity = 2;
@@ -7691,6 +7954,23 @@ void dtu_creature_wake(object *obj, int make_hostile)
 // segment gets that awareness, the awareness time 3.0 and the morale check.
 // The recursion has no visited set (up to 6^5 calls for one event); the port
 // gives the same values with a search by distance.
+//
+// ASCENT: settings of the alert (D-112 to D-114 of docs/audit/defects-1.3.md,
+// verified in the bytes). -origobj clears them.
+// Dtu_fix_noise_walls: 0x162A1 follows each child with no wall test, so the
+// noise goes through closed doors and walls. 1 (default): the noise passes
+// only a side that a body can pass or that can be seen through (an open
+// door, a grate); a closed door stops it.
+// Dtu_fix_alert_ray: 0x161CA casts the ray of the wake test to the player
+// (0x10815), also when the caller is a corpse or a hit creature. 1
+// (default): the ray goes to the caller.
+// Dtu_fix_alert_last: the wake loop ends before Highest_object_index
+// (0x1628D, jl), so the creature in the last slot never wakes. 1 (default):
+// the loop includes it.
+int Dtu_fix_noise_walls = 1;
+int Dtu_fix_alert_ray = 1;
+int Dtu_fix_alert_last = 1;
+
 #define AWARE_MAX_EVENTS	64
 static struct { short segnum; short type; } Aware_events[AWARE_MAX_EVENTS];
 
@@ -7732,12 +8012,16 @@ static void awareness_events_frame(void)
 			for (side=0;side<MAX_SIDES_PER_SEGMENT;side++) {
 				int c = Segments[s].children[side];
 
+				if (Dtu_fix_noise_walls && c >= 0 &&
+					 !(WALL_IS_DOORWAY(&Segments[s],side) & (WID_FLY_FLAG|WID_RENDPAST_FLAG)))
+					continue;
 				if (c >= 0 && c <= Highest_segment_index && depth[c] == 0xff) {
 					depth[c] = depth[s] + 1;
 					queue[tail++] = c;
 				}
 			}
 		}
+		dtu_obj_log("noise: type %d at seg %d reaches %d segments",type,Aware_events[e].segnum,tail);
 	}
 	N_aware_events = 0;
 
@@ -7764,7 +8048,7 @@ void dtu_creature_alert(object *caller, int level)
 	awareness_event(caller,level);
 	if (level < 3)
 		return;
-	for (i=1;i<Highest_object_index;i++) {
+	for (i=1;i<Highest_object_index + (Dtu_fix_alert_last ? 1 : 0);i++) {
 		object *obj = &Objects[i];
 		vms_vector v;
 
@@ -7774,7 +8058,8 @@ void dtu_creature_alert(object *caller, int level)
 			continue;
 		if (Ail[i].activity == 2 || (obj->dtu.m_1b0 & (DTU_PEACEFUL|DTU_FLEEING)))
 			continue;
-		if (!brain_bit(obj->segnum,caller->segnum) || !creature_ray_to_player(obj))
+		if (!brain_bit(obj->segnum,caller->segnum) ||
+			 !(Dtu_fix_alert_ray ? creature_ray_to(obj,&caller->pos) : creature_ray_to_player(obj)))
 			continue;
 		vm_vec_sub(&v,&caller->pos,&obj->pos);
 		if ((obj->dtu.m_88 & DTU_FX_DEAF) && vm_vec_dot(&v,&obj->orient.fvec) <= 0)
@@ -9251,5 +9536,24 @@ void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img)
 		DTU_ANIM_STATE(obj) = s;
 		DTU_ANIM_FRAME(obj) = f;
 		DTU_ANIM_GOAL(obj) = g;
+	}
+
+	// ASCENT: a creature on a path (AI mode 2). 1.3 keeps the path in
+	// Point_segs of the state file, so the creature walks on after a load.
+	// The port makes the path to the goal segment again, and a walk of a
+	// script walks on and runs the script at its end. Statement E5
+	// (0xAA74E) makes the segment both the station (+0x14C) and the goal
+	// (ai_local +0x06) of a creature with a script; the bits 0x30 that
+	// 0xAA810 sets do not mark it, the end of an animation state clears
+	// them.
+	if (al[0x03] == DAIM_FOL_PATH && ail->goal_segment >= 0 && ail->goal_segment <= Highest_segment_index &&
+		 DTU_ANIM_STATE(obj) != DAS_DIE) {
+		ail->mode = DAIM_FOL_PATH;
+		create_path(obj);
+		if (aip->hide_segment == ail->goal_segment && (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) != 0) {
+			extern int Dtu_fix_script_walk;		// dtuscript.c
+
+			dtu_script_walk_start(obj,Dtu_fix_script_walk);
+		}
 	}
 }

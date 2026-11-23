@@ -1156,6 +1156,8 @@ static void mk_frame(fe_screen *s)
 	// count of one item) of another line; -1 for the stock with no limit
 	if (dtu_desc_open_fe(e->type, e->id, mk_stackable(e->type, e->id) ? (e->qty >= 0 ? e->qty : -1) : e->cond,
 			Mk_sell ? e->sell_price : e->buy_price, Mk_sell)) {
+		dtu_log("Market: description of %d.%d, %s price %d\n", e->type, e->id, Mk_sell ? "sale" : "buy",
+			Mk_sell ? e->sell_price : e->buy_price);
 		s->features = Mk_no_features;
 		s->n_features = 0;
 		s->help_x2 = s->help_x1;
