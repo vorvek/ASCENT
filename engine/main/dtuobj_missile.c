@@ -82,6 +82,28 @@ static void missile_remove(object *obj)
 
 static fix Missile_life[MAX_OBJECTS];		// lifeleft (object +0x84)
 
+// A value of the $SPELL line of a spell missile, or def
+static fix spell_line_fix(int spell,char *key,fix def)
+{
+	char v[32];
+
+	if (spell < 0 || spell >= N_spell_types || !bm_tbl_get(Spell_info[spell].record,key,v,sizeof(v)))
+		return def;
+	return fl2f(atof(v));
+}
+
+// The trail of a missile: the vclip that 0x5656C puts at the missile in 95
+// of 100 frames (0x568EE to 0x56A03: object_create_explosion at the
+// position, with the size of the missile). Weapon_info +0xD5 is the
+// vclip_trail of the weapon line (0x209F3); 0x56FF6 and 0x946FA copy the one
+// of the spell line into the template of a spell missile. -1: none.
+static int missile_trail(object *obj,int spell)
+{
+	if (spell >= 0)
+		return f2i(spell_line_fix(spell,"vclip_trail",-F1_0));
+	return weapon_int(obj->id,"vclip_trail",-1);
+}
+
 // The look and the size of a missile (part of 0x55511): the render type,
 // the model or the vclip, and the size.
 static fix missile_look(int weapon_type,int spell,int *rtype,int *model,int *vclip)
@@ -117,6 +139,13 @@ static fix missile_look(int weapon_type,int spell,int *rtype,int *model,int *vcl
 	else if (*vclip >= 0 && *vclip < VCLIP_MAXNUM) {
 		*rtype = RT_WEAPON_VCLIP;
 		size = wi->blob_size;
+		// ASCENT: 0x56FF6 (the player) and 0x946FA (a creature) copy
+		// weapon_vclip_size of the spell line (Spell_info +0x68, 1.0 when
+		// the line has none, 0x242F6) to the blob size of the template
+		// (Weapon_info +0x6C). The port took the blob size of the template
+		// (1/16): a Fireball (size 3.0) was a dot.
+		if (spell >= 0 && spell < N_spell_types)
+			size = spell_line_fix(spell,"weapon_vclip_size",F1_0);
 	}
 	if (size < F1_0/16)
 		size = F1_0/16;
@@ -608,9 +637,21 @@ void missiles_frame(void)
 			if (seg < 0)
 				missile_remove(obj);
 			else {
+				int trail = missile_trail(obj,m->spell), n = 1;
+
 				obj->pos = p1;
 				if (seg != obj->segnum)
 					obj_relink(i,seg);
+				// one try in each frame of the executable; with
+				// Dtu_fix_creature_move in each reference frame time, as the
+				// turn of a thrown weapon above
+				if (trail > 0 && Dtu_fix_creature_move) {
+					m->trail_acc += FrameTime;
+					n = m->trail_acc / DTU_REF_FRAMETIME;
+					m->trail_acc -= n * DTU_REF_FRAMETIME;
+				}
+				if (trail > 0 && n > 0 && rand() % 100 < 95)
+					vclip_at(obj->segnum,&obj->pos,obj->size,trail);
 			}
 		}
 		else
