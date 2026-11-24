@@ -2633,6 +2633,8 @@ static void fe_orig_options(void)
 	if (FindArg("-origfe"))
 		Dtu_fix_escape_load_waterdeep = Dtu_fix_chargen_abort = Dtu_fix_save_open_text = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
 	if (FindArg("-origfe"))
+		Dtu_fix_market_charges = Dtu_fix_market_buy_stock = 0;
+	if (FindArg("-origfe"))
 		Dtu_fix_start_spells = Dtu_fix_chargen_percentile = Dtu_fix_creation_luck = 0;
 }
 
@@ -2749,6 +2751,9 @@ int dtufe_run(void)
 			Dtu_char.pa.charisma = atoi(Args[t + 1]);
 		if (FindArg("-testmarketdouble"))
 			dtu_script_set_gflag(107, 1);
+		// -testmarketgold N: the gold of the player
+		if ((t = FindArg("-testmarketgold")) != 0 && t + 1 < Num_args)
+			Dtu_gold = Dtu_char.pa.gold = atoi(Args[t + 1]);
 	}
 	if (FindArg("-testblackstaff")) {		// ASCENT: test option, the front end starts at Khelben (the first visit)
 		int t;

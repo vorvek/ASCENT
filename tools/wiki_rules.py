@@ -660,6 +660,10 @@ FIXES = [
      "Charisma of the character made last in the same run of the program."),
     ("Dtu_fix_market_sell_count", "none", "A sale adds the number sold to the stock of the market; 1.3 "
      "adds the number that you had."),
+    ("Dtu_fix_market_charges", "-origfe", "A wand from the market that has no count gets the charges of its "
+     "kind; 1.3 gives it charges with no limit."),
+    ("Dtu_fix_market_buy_stock", "-origfe", "Items that your bag cannot take stay in the market; 1.3 removes "
+     "them from the stock."),
     ("Dtu_fix_item_names", "-origitems", "Items with a wrong name show the right one: the Cloak of Lathander "
                                          "(1.3: Lathandar), the Ring of Armoring and three more."),
     ("Dtu_rulebook_items (off by default)", "-rulebookitems turns it on; -norulebookitems, -origitems "

@@ -141,7 +141,7 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origmusic` | `start_music`, `wrp_sound` | `dtumusic.c` |
 | `-origlight` | `light_stable` | `lighting.c` |
 | `-origitems` | `item_names` (`dtuitemfix.c`) | `dtuopts.c` |
-| `-origfe` | `escape_load_waterdeep`, `chargen_abort`, `save_open_text` (`dtufe.c`); `start_spells`, `chargen_percentile`, `creation_luck` (`dtufe_char.c`); `market_charisma`, `market_sell_count` (`dtufe_town.c`) | `dtufe.c` |
+| `-origfe` | `escape_load_waterdeep`, `chargen_abort`, `save_open_text` (`dtufe.c`); `start_spells`, `chargen_percentile`, `creation_luck` (`dtufe_char.c`); `market_charisma`, `market_sell_count`, `market_charges`, `market_buy_stock` (`dtufe_town.c`) | `dtufe.c` |
 
 The table was checked against the code on 2026-11-23: each `Dtu_fix_*` that
 is defined with the value 1 is in one row. `chill_touch` (`dtuspell.c`) has
