@@ -156,6 +156,10 @@ int Dtu_fix_burst_vclip = 1;
 // option -origobj clears it. See docs/re/ai.md, "The corpse".
 int Dtu_fix_corpse_floor = 1;
 
+// The feet of a standing creature (dtuobj.h). The options -origobj and
+// -origfeet clear it.
+int Dtu_fix_creature_feet = 1;
+
 // The peace of the members of the Shadow Thieves with quest flag 67
 // (dtuobj.h). The options -origobj and -origguildpeace clear it.
 int Dtu_fix_guild_peace = 1;
@@ -203,6 +207,12 @@ static struct {
 	ubyte ok;
 	vms_vector mn, mx;
 } Model_points[MAX_POLYGON_MODELS];
+
+// Dtu_fix_creature_feet: the lift of the drawing of each frame of each
+// model, in units of 1/256, see creature_feet_lift(). -1: not computed.
+// Cleared at the setup of a level.
+#define DTU_FEET_FRAMES	192		// Dtu_anim_first[DTU_N_ANIM_STATES]
+static short Feet_lift[MAX_POLYGON_MODELS][DTU_FEET_FRAMES];
 
 //------------------------------------------------------------------------
 // Tables
@@ -264,8 +274,10 @@ void morale_check(object *obj);
 int N_aware_events;		// the awareness events of the frame (0x13A6BC)
 fix creature_floor_dist(object *obj,fix radius,fix half_height);
 void log_corpse_height(object *obj,const char *what);
+void creature_floor_log(object *obj,const char *when);
 int corpse_on_floor(object *obj);
 static fix corpse_draw_drop(object *obj);
+static fix creature_feet_lift(object *obj,int frame,int next,fix frac);
 fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 item_info *item_table_entry(int type,int id);
 int dressing_pushable(object *d);
@@ -980,7 +992,7 @@ void dtu_objects_init(void)
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain = Dtu_fix_ai_init =
 			Dtu_fix_wall_circle = Dtu_fix_hit_keep = Dtu_fix_burst_vclip =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
-			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_scenery_floor = Dtu_fix_corpse_floor =
+			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_scenery_floor = Dtu_fix_corpse_floor = Dtu_fix_creature_feet =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
 			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_last =
@@ -992,6 +1004,8 @@ void dtu_objects_init(void)
 		Dtu_fix_npc_body = 0;
 	if (FindArg("-origrevive"))
 		Dtu_fix_revive = 0;
+	if (FindArg("-origfeet"))
+		Dtu_fix_creature_feet = 0;
 	if (FindArg("-origdrow5"))
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))
@@ -1073,6 +1087,7 @@ void dtu_objects_level_setup(void)
 	Ref_tick_acc = 0;
 	memset(Model_reach,0,sizeof(Model_reach));
 	memset(Model_points,0,sizeof(Model_points));
+	memset(Feet_lift,0xFF,sizeof(Feet_lift));
 
 	// 0xA7E97 at the end of each $MONSTER line: the NPC table replaces
 	// thaco and armor_class (and the spell levels and points, which
@@ -1322,6 +1337,7 @@ void dtu_objects_level_setup(void)
 						f2fl(po->body_half_height[l+1]),f2fl(po->body_center[l+1].y),f2fl(po->box1_min[l+1].y),f2fl(po->box1_max[l+1].y),f2fl(po->body_radius[l+1]),
 						po->torso_half_height ? f2fl(po->torso_half_height[l]) : -1.0,po->torso_radius ? f2fl(po->torso_radius[0]) : -1.0,
 						f2fl(model_weapon_reach(&Objects[i])),f2fl(creature_stop_dist(&Objects[i])),f2fl(Objects[i].size + ConsoleObject->size + i2f(2)));
+				creature_floor_log(&Objects[i],"level start");
 			}
 	}
 }
@@ -1360,6 +1376,9 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 	// go (in the floor) is drawn lower.
 	draw_pos = obj->pos;
 	draw_pos.y += corpse_draw_drop(obj);
+	// Dtu_fix_creature_feet: the feet of a standing creature on its floor
+	if (!Dtu_anim_interp || frame < 0)
+		draw_pos.y += creature_feet_lift(obj,frame,-1,0);
 
 	// Dtu_fix_model_mapper (polyobj.h): with -origobj each object but the
 	// viewer is drawn with the linear texture mapper, as 1.3 does (0x675D4
@@ -1386,6 +1405,7 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 			frac = polyobj_anim_track_update(&track[objnum],obj->signature,s,frame,first,last,est,
 				(obj->type == OBJ_ROBOT && (Ail[objnum].flags & AILF_BACKWARD)) ? -1 : 1,GameTime,&next);
 		}
+		draw_pos.y += creature_feet_lift(obj,frame,next,frac);
 		draw_polygon_model_frame_lerp(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,next,frac,show_hidden,light,glow,alt_textures);
 	}
 	else
@@ -1723,6 +1743,47 @@ static fix corpse_draw_drop(object *obj)
 	return -(depth + mn.y);
 }
 
+// ASCENT: Dtu_fix_creature_feet. The lift of the drawing of a frame of
+// the model of obj: the depth of the lowest drawn point of the frame below
+// the bottom of the body box of the rest pose (body_half_height[0] below
+// the position, where the gravity and the AI put the floor), 0 if it is not
+// lower. With next (animation interpolation) the lift goes from that of
+// frame to that of next by frac.
+static fix feet_lift_frame(object *obj,int frame)
+{
+	int n = obj->rtype.pobj_info.model_num;
+	polymodel *po = obj_model(obj);
+	vms_vector mn, mx;
+	fix lift = 0;
+
+	if (po == NULL || n < 0 || n >= MAX_POLYGON_MODELS || frame < 0 || frame >= po->n_frames || frame >= DTU_FEET_FRAMES)
+		return 0;
+	if (Feet_lift[n][frame] < 0) {
+		if ((po->box_flags & DTU_BOX_BODY) && po->body_half_height && polyobj_frame_points_box(n,frame,&mn,&mx) &&
+			 mn.y < -po->body_half_height[0])
+			lift = -po->body_half_height[0] - mn.y;
+		if (lift > i2f(100))
+			lift = i2f(100);
+		Feet_lift[n][frame] = (short)(lift >> 8);
+	}
+	return (fix)Feet_lift[n][frame] << 8;
+}
+
+static fix creature_feet_lift(object *obj,int frame,int next,fix frac)
+{
+	fix a, b;
+
+	if (!Dtu_fix_creature_feet || obj->type != OBJ_ROBOT || obj->render_type != RT_POLYOBJ || frame < 0)
+		return 0;
+	if (DTU_ANIM_STATE(obj) == DAS_DIE || is_flying(obj))
+		return 0;
+	a = feet_lift_frame(obj,frame);
+	if (next < 0)
+		return a;
+	b = feet_lift_frame(obj,next);
+	return a + fixmul(b - a,frac);
+}
+
 // ASCENT: Dtu_fix_corpse_floor. The corpse lies with its lowest drawn point
 // on the floor. The floor is the highest floor under the center of the
 // drawn body and under four points of it (at 0.6 of its half size), but
@@ -1765,6 +1826,42 @@ int corpse_on_floor(object *obj)
 	if (seg != obj->segnum)
 		obj_relink(obj-Objects,seg);
 	return 1;
+}
+
+// The -objlog line of the height of a standing creature: the position, the
+// floor under it, the center of the bottom side of its segment (0x13F96),
+// the half height of the body (body_half_height[0], 0x746B3), the body
+// center of the rest pose and of the frame, and the lowest drawn point of
+// the rest pose and of the current frame.
+void creature_floor_log(object *obj,const char *when)
+{
+	polymodel *po = obj_model(obj);
+	int frame = DTU_ANIM_FRAME(obj), objnum = obj-Objects;
+	double floor = -9999, rest_bot = -9999, frame_bot = -9999, c0 = 0, cf = 0;
+	vms_vector mn, mx, c;
+	fix f, r, hh;
+
+	if (!Obj_log || obj->type != OBJ_ROBOT || po == NULL)
+		return;
+	if (floor_under_point(obj,&obj->pos,&f))
+		floor = f2fl(f);
+	if (model_points_box(obj,-1,&mn,&mx))
+		rest_bot = f2fl(obj->pos.y + mn.y);
+	if (frame >= 0 && frame < po->n_frames && model_points_box(obj,frame,&mn,&mx))
+		frame_bot = f2fl(obj->pos.y + mn.y);
+	if (po->body_center) {
+		c0 = f2fl(po->body_center[0].y);
+		if (frame >= 0 && frame < po->n_frames)
+			cf = f2fl(po->body_center[frame+1].y);
+	}
+	dtu_get_body_size(obj,&r,&hh);
+	compute_center_point_on_side(&c,&Segments[obj->segnum],WBOTTOM);
+	dtu_obj_log("floor (%s): obj %d %s model %d %s seg %d act %d anim %s frame %d fly %d pos y %.2f floor %.2f side %.2f hh %.2f (feet %+.2f) center rest %.2f frame %.2f drawn rest %.2f (%+.2f) frame %.2f (%+.2f) lift %.2f up %.2f",
+		when,objnum,dtu_object_name(obj),obj->rtype.pobj_info.model_num,
+		obj->rtype.pobj_info.model_num < N_polygon_models ? Pof_names[obj->rtype.pobj_info.model_num] : "-",
+		obj->segnum,Ail[objnum].activity,anim_name(DTU_ANIM_STATE(obj)),frame,is_flying(obj),
+		f2fl(obj->pos.y),floor,f2fl(c.y),f2fl(hh),f2fl(obj->pos.y - hh) - floor,c0,cf,
+		rest_bot,rest_bot - floor,frame_bot,frame_bot - floor,f2fl(creature_feet_lift(obj,frame,-1,0)),f2fl(obj->orient.uvec.y));
 }
 
 //------------------------------------------------------------------------
@@ -1921,6 +2018,9 @@ void dtu_objects_frame(void)
 			// a dying body: the height of its lowest drawn point
 			if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) == DAS_DIE && !(o->flags & OF_DESTROYED))
 				log_corpse_height(o,"dying");
+			// a standing creature: the height of its feet
+			if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) != DAS_DIE && !(o->flags & (OF_DESTROYED|OF_SHOULD_BE_DEAD)))
+				creature_floor_log(o,"frame");
 			if (o->type == OBJ_ROBOT && o->control_type == CT_AI && Ail[i].activity == 2)
 				dtu_obj_log("pos: obj %d %s: seg %d pos %.1f %.1f %.1f dist %.1f mode %s path %d/%d player seg %d anim %s vis %d retry %d blocked %d/%d(%s) hits %d %d %d %d last %d:%d obj %d",i,dtu_object_name(o),o->segnum,
 					f2fl(o->pos.x),f2fl(o->pos.y),f2fl(o->pos.z),f2fl(vm_vec_dist(&o->pos,&ConsoleObject->pos)),
