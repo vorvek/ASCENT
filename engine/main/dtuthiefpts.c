@@ -39,6 +39,7 @@
 #include "dtumusic.h"		// dtumusic_frame (0xA4F83)
 #include "dtufe.h"			// dtufe_menu_script_frame
 #include "dtuchar.h"
+#include "dtulog.h"			// ASCENT: the session log
 #include "dtuthiefpts.h"
 
 #define N_SKILLS	5
@@ -559,6 +560,9 @@ static int points_screen(void)
 		*Base[i] = Work[i];
 	}
 	dtu_char_log("thief points: hide %d, move %d, open locks %d, traps %d, climb %d; %d points left",
+		Work[0], Work[1], Work[2], Work[3], Work[4], Dtu_char.thief_points);
+	// ASCENT: the session log, the values without items
+	dtulog_event("Thief points: spent, hide %d, move %d, open locks %d, traps %d, climb %d, %d points left",
 		Work[0], Work[1], Work[2], Work[3], Work[4], Dtu_char.thief_points);
 	key_flush();
 	start_time();									// 0x40E2A

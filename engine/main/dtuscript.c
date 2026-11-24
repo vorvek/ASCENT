@@ -2201,6 +2201,9 @@ static void thief_points(void)
 			Dtu_char.thief_paid = lv & 0xff;
 		}
 		slog("thief points: level %d, paid %d, %d points (added)", lv, paid, Dtu_char.thief_points);
+		// ASCENT: the session log
+		dtulog_event("Thief points: Mirt, thief level %d, levels paid before %d, %d points to spend", lv, paid,
+			Dtu_char.thief_points);
 		dtu_thief_points_offer();
 		return;
 	}
@@ -2208,6 +2211,8 @@ static void thief_points(void)
 		return;
 	Dtu_char.thief_points = award & 0xffff;
 	slog("thief points: level %d, paid %d, %d points", lv, paid, Dtu_char.thief_points);
+	dtulog_event("Thief points: Mirt, thief level %d, levels paid before %d, %d points to spend", lv, paid,
+		Dtu_char.thief_points);
 	if (dtu_thief_points_offer())
 		Dtu_char.thief_paid = lv & 0xff;
 }

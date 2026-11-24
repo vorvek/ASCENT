@@ -41,6 +41,9 @@ too.
   `Creature falls: ...`.
 - Each award of experience: `Experience: +TOTAL, +PART for each class, now X / Y`, and each
   level gained: `Level gained: class levels A / B -> C / D, N hit points`.
+- Each talk of a thief with Mirt in the inn: `Thief points: Mirt, thief level L, levels paid
+  before P, N points to spend`, and after the skill point screen `Thief points: spent, hide
+  H, move M, open locks O, traps T, climb C, N points left` (the values without items).
 - An object that the restore of a level state kills: after the 1.3 line `STATE: killing
   object N -- illegal segment`, the line `State: object N is an effect (type 1 fireball,
   vclip V, ...)` or `State: object N type T id I NAME has the illegal segment S`.
