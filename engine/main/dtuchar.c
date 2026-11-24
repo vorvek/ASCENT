@@ -1370,12 +1370,17 @@ void dtu_char_unequip(int slot)
 	dtu_char_update();
 }
 
+static int Last_hot_key = -1;			// 0x13AD15: the box that was chosen last
+
+// 0x43A5A: a negative argument empties the hand and sets the box that was
+// chosen last to -1 (0x43CE2), so the next key 1 to 0 takes its box again.
 void dtu_char_set_current(int index)
 {
 	dtu_item_data d;
 
 	if (index < 0) {
 		Dtu_char.current.n = -1;
+		Last_hot_key = -1;
 		dtu_spell_put_away();
 		dtu_char_update();
 		return;
@@ -1468,8 +1473,6 @@ int dtu_char_set_hot_key_spell(int key, int spell)
 	dtu_char_log("hot key %d: spell %d '%s'", key, spell, dtu_spell_name(spell));
 	return 1;
 }
-
-static int Last_hot_key = -1;			// 0x13AD15: the box that was chosen last
 
 // 0x43A5A with a box: the item or the spell of the box goes into the hand.
 // A spell needs no test here: the attack key makes the tests of 0x41A4D.
