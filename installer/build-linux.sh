@@ -40,12 +40,13 @@ rm -rf "$BUILD/stage"
 mkdir -p "$STAGE"
 cp "$BUILD/engine/main/ascent" "$BUILD/installer/ascent-import" "$STAGE/"
 strip "$STAGE/ascent-import"
-cp installer/content.ini "$STAGE/"
 cp installer/linux/setup.sh "$STAGE/"
-sed "s/@VERSION@/$VERSION/g" installer/linux/README.txt > "$STAGE/README.txt"
-cp engine/readme.txt "$STAGE/LICENSE-PARALLAX.txt"
+# A Windows checkout has CRLF line ends in the text files: remove the CR.
+tr -d '\r' < installer/content.ini > "$STAGE/content.ini"
+sed "s/@VERSION@/$VERSION/g" installer/linux/README.txt | tr -d '\r' > "$STAGE/README.txt"
+tr -d '\r' < engine/readme.txt > "$STAGE/LICENSE-PARALLAX.txt"
 SDL_SRC=${SDL3_SOURCE_DIR:-$BUILD/_deps/sdl3-src}
-cp "$SDL_SRC/LICENSE.txt" "$STAGE/LICENSE-SDL3.txt"
+tr -d '\r' < "$SDL_SRC/LICENSE.txt" > "$STAGE/LICENSE-SDL3.txt"
 chmod 755 "$STAGE/setup.sh" "$STAGE/ascent" "$STAGE/ascent-import"
 chmod 644 "$STAGE/content.ini" "$STAGE/README.txt" "$STAGE"/LICENSE-*.txt
 
