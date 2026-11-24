@@ -1045,6 +1045,9 @@ With `Dtu_fixed_step` (on by default) the game runs in steps of 1/60 s:
   the HUD count with it).
 - The keys and the mouse are read in the steps. Key events stay in their queue until a
   step reads them.
+- The map of the map screen is drawn with the picture: its control values add up over
+  the steps until the next map frame takes them (`dtu_automap_read_controls`,
+  `docs/re/automap.md`).
 - A new level, the end of the game or a load ends the steps of that picture.
 
 Not with the fixed step: the test option `-fixedfps N` (one step of 1/N s for each

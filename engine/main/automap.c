@@ -1422,37 +1422,60 @@ int dtu_automap_owns_key(int key)
 // back zoom, turn left and right turn, slide left and right and float up
 // and down move the center, look up and down pitch (a guess: the key
 // table of the executable has no pitch item), attack resets the view.
+//
+// The turn: a turn key adds one eighth of its time to the heading time
+// (0x5332D to 0x5341E), and 0x40E50 clears the record in each map frame,
+// so the turn of the walk does not ramp up here: one eighth of the frame
+// time, fixdiv(FrameTime / 8, 11500) in each frame, 256 degrees per
+// second. The port uses the same rule for the pitch keys, and the whole
+// stick of the gamepad turns at the rate of a key. The executable flushes
+// the keys in each map frame too (key_flush in 0x40E50), so a held key
+// counts only after a new make code of the keyboard: the turn of 1.3
+// depends on the key repeat of the keyboard and on the frame rate, and is
+// slower than 256 degrees per second. The port does not do that flush
+// (docs/re/automap.md).
+//
+// The values add up over the steps of the game (Dtu_fixed_step, two or
+// more steps for a picture below 60 pictures per second) until the next
+// map frame takes them and clears them.
 int dtu_automap_read_controls(void)
 {
 	static int attack_was = 0;
 	control_info *c = &Dtu_map_controls;
 	fix ft = FrameTime;
+	fix turn = ft / 8;		// 0x533B2: sar 3
 	int a = dtu_action_down(DTU_ACT_ATTACK);
 
 	if (!Dtu_automap_active) {
 		attack_was = a;
 		return 0;
 	}
-	memset(c, 0, sizeof(*c));
 	if (dtu_action_down(DTU_ACT_FORWARD)) c->forward_thrust_time += ft;
 	if (dtu_action_down(DTU_ACT_BACK)) c->forward_thrust_time -= ft;
-	if (dtu_action_down(DTU_ACT_TURN_LEFT)) c->heading_time -= ft;
-	if (dtu_action_down(DTU_ACT_TURN_RIGHT)) c->heading_time += ft;
+	if (dtu_action_down(DTU_ACT_TURN_LEFT)) c->heading_time -= turn;
+	if (dtu_action_down(DTU_ACT_TURN_RIGHT)) c->heading_time += turn;
 	if (dtu_action_down(DTU_ACT_SLIDE_LEFT)) c->sideways_thrust_time -= ft;
 	if (dtu_action_down(DTU_ACT_SLIDE_RIGHT)) c->sideways_thrust_time += ft;
 	if (dtu_action_down(DTU_ACT_FLOAT_UP)) c->vertical_thrust_time += ft;
 	if (dtu_action_down(DTU_ACT_FLOAT_DOWN)) c->vertical_thrust_time -= ft;
-	if (dtu_action_down(DTU_ACT_LOOK_UP)) c->pitch_time -= ft;
-	if (dtu_action_down(DTU_ACT_LOOK_DOWN)) c->pitch_time += ft;
+	if (dtu_action_down(DTU_ACT_LOOK_UP)) c->pitch_time -= turn;
+	if (dtu_action_down(DTU_ACT_LOOK_DOWN)) c->pitch_time += turn;
 	c->forward_thrust_time += fixmul(ft, dtu_pad_amount(DTU_ACT_FORWARD) - dtu_pad_amount(DTU_ACT_BACK));
-	c->heading_time += fixmul(ft, dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT));
+	c->heading_time += fixmul(turn, dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT));
 	c->sideways_thrust_time += fixmul(ft, dtu_pad_amount(DTU_ACT_SLIDE_RIGHT) - dtu_pad_amount(DTU_ACT_SLIDE_LEFT));
-	c->pitch_time += fixmul(ft, dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP));
+	c->pitch_time += fixmul(turn, dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP));
 	if (a && !attack_was)
 		c->fire_primary_down_count = 1;
 	attack_was = a;
 	memset(&Controls, 0, sizeof(Controls));
 	return 1;
+}
+
+void dtu_automap_print_state(void)
+{
+	printf("Mapstate active=%d p=%d b=%d h=%d time=%.4f\n", Dtu_automap_active,
+		(int) (ushort) Dtu_tangles.p, (int) (ushort) Dtu_tangles.b, (int) (ushort) Dtu_tangles.h, f2fl(GameTime));
+	fflush(stdout);
 }
 
 void dtu_automap_frame(grs_canvas *parent, int x, int y, int w, int h)
@@ -1494,7 +1517,7 @@ void dtu_automap_frame(grs_canvas *parent, int x, int y, int w, int h)
 			if ( vm_vec_dist_quick( &view_target, &plr->pos) > i2f(1000) )
 				view_target = old_vt;
 		}
-		// the map uses the controls of a frame of the player once
+		// the map uses the controls of the steps since the last map frame once
 		memset(c, 0, sizeof(*c));
 	}
 

@@ -78,4 +78,8 @@ extern int dtu_automap_owns_key(int key);
 // map frame, clears the controls of the player and returns 1.
 extern int dtu_automap_read_controls(void);
 
+// For tools/uitest.py (the script command "mapstate"): prints the angles
+// of the map and the game time.
+extern void dtu_automap_print_state(void);
+
 #endif
