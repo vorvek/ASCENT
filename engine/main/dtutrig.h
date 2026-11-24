@@ -198,6 +198,11 @@ extern int Dtu_fix_touch_use;
 // again until 30 seconds after the player left the segment, and not when
 // each trap of the trigger is used up. 0 (-origtrig): as 1.3.
 extern int Dtu_fix_say_repeat;
+// BAT trigger 24 (the Banegem) has the place of the wall with the symbol
+// of Cyric and the side number of the ceiling. 1 (default): the use
+// action also fires a trigger whose place is the center of the side that
+// its ray found (dtutrig.c). 0 (-origtrig): only the side number counts.
+extern int Dtu_fix_trigger_side;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;

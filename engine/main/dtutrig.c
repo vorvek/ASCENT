@@ -1670,6 +1670,40 @@ void dtu_trig_frame(void)
 //------------------------------------------------------------------------
 // Use action (0x95050)
 
+// ASCENT: Dtu_fix_trigger_side. BAT trigger 24 (the Banegem at the symbol
+// of Cyric: needs MISC 103, takes it, trap 5, message 18) has the place of
+// the center of side 3 of segment 85, the wall with the symbol, and the
+// side number 4, the ceiling above the player (verified with tools/lvl.py
+// and BAT.TIG; the place of each other trigger for the use action is the
+// center of its side). The level ray of the use action (0xB30FD) never
+// ends in the ceiling, so only the push of 1.3 (type 8, a jump into the
+// ceiling) could fire the trigger, and Dtu_fix_touch_use took that away.
+// 1 (default): a trigger for the use action whose place is the center of
+// the side that the ray found, and whose side number is another one,
+// fires. 0 (-origtrig): only the side number counts.
+int Dtu_fix_trigger_side = 1;
+
+static int use_trigger_at_side(int segnum, int side)
+{
+	vms_vector c;
+	int n, steps;
+
+	if (!seg_ok(segnum) || segnum >= DTU_TRIG_SEG_TABLE)
+		return -1;
+	compute_center_point_on_side(&c, &Segments[segnum], side);
+	n = Dtu_trigger_seg_table[segnum];
+	for (steps=0; n >= 0 && n < Dtu_num_triggers && steps <= DTU_MAX_TRIGGERS; steps++) {
+		dtu_trigger *t = &Dtu_triggers[n];
+
+		if (t->side != side && t->side != WBOTTOM && (t->activation_mask & DTU_ACT_USE) && vm_vec_dist(&c, &t->pos) < F1_0)
+			return n;
+		if (t->next_in_seg == n)
+			break;
+		n = t->next_in_seg;
+	}
+	return -1;
+}
+
 void dtu_player_use(void)
 {
 	object *obj = ConsoleObject;
@@ -1705,6 +1739,15 @@ void dtu_player_use(void)
 	if (hit_type == HIT_WALL && hit.hit_side >= 0 && side_ok(hit.hit_seg, hit.hit_side)) {
 		tlog("use: seg=%d side=%d", hit.hit_seg, hit.hit_side);
 		dtu_trig_check(hit.hit_seg, hit.hit_side, DTU_ACT_USE, obj);
+		if (Dtu_fix_trigger_side && seg_ok(hit.hit_seg)) {
+			int n = use_trigger_at_side(hit.hit_seg, hit.hit_side);
+
+			if (n >= 0) {
+				tlog("use: trigger %d has the place of side %d and the side number %d", n, hit.hit_side, Dtu_triggers[n].side);
+				dtu_trig_fire(n, DTU_ACT_USE, obj);
+				trig_level_rules(n);
+			}
+		}
 		// a trigger can load another level
 		if (!seg_ok(hit.hit_seg))
 			return;
@@ -2069,7 +2112,7 @@ static void read_options(void)
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-origtrig"))
-		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = 0;
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = Dtu_fix_trigger_side = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }

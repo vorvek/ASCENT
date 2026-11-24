@@ -294,6 +294,15 @@ TESTS = [
     T("thief1_lever_use", "THIEF1", "20:goside=90.2,22:move=7,30:activate",
       [r"trigger 11 \(on=1 type=1 [^\n]*\n[\s\S]*trap 7 runs"], [r"trigger 11 \(on=1 type=8"], frames=60,
       extra=["-triglog", "-testmove", "wait:40,forward:20"]),
+    # BAT trigger 24, the Banegem at the symbol of Cyric: its place is the
+    # center of side 3 of seg 85 (the wall) and its side number is 4 (the
+    # ceiling). Dtu_fix_trigger_side: the use action on the wall fires it.
+    T("bat_banegem_use", "BAT", "5:give=16.103,20:goside=85.3,30:activate,50:quest",
+      [r"trigger 24 has the place of side 3 and the side number 4", r"take: 1 of entry \d+ 'Banegem'",
+       r"f50 +quest: [^\n]*gflags \[[^\]]* 73 "], frames=70, extra=["-triglog"]),
+    T("bat_banegem_use_orig", "BAT", "5:give=16.103,20:goside=85.3,30:activate,50:quest",
+      [r"use: seg=85 side=3", r"f50 +quest: "], [r"take: 1 of entry \d+ 'Banegem'"], frames=70,
+      extra=["-triglog", "-origtrig"]),
     # BAT trigger 10, the skull of seg 39 (no disable_trigger, a warp
     # command line in the segment). Dtu_fix_say_repeat: no message again
     # within 30 seconds after the player left the segment.
