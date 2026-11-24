@@ -3750,6 +3750,7 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "search"))		dtu_thief_search_toggle();		// test: the key F
 	else if (!strcmp(cmd, "activate"))	dtu_player_use();		// test: the key A
+	else if (!strcmp(cmd, "climb"))		dtu_thief_climb_key(ConsoleObject);		// ASCENT: test: the Climb Wall key
 	else if (!strcmp(cmd, "goside") && a >= 0 && a <= Highest_segment_index && b >= 0 && b < 6) {		// test: goside=SEG.SIDE
 		vms_vector c, s, d;
 

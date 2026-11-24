@@ -1262,8 +1262,8 @@ class Pages:
             "sets the trap off.",
             "- Move Silently (key M) and Hide In Shadows (a roll each time you stop): creatures do not "
             "notice you. An attack ends hiding.",
-            "- Climb Walls: the Activate key at a wall, with no weapon in the hand. A failed roll is a "
-            "slip.",
+            "- Climb Walls: the Climb Wall key (Q, R3 on the gamepad) at a wall, with no weapon in the hand. A failed "
+            "roll is a slip. Activate takes hold of a ladder but does not climb a wall.",
             "- Backstab: a melee attack from behind a humanoid creature while Move Silently is on, "
             "while no creature that can see you watches you: +4 to hit, damage x2 at levels 1 to 4, x3 at 5 to 8, x4 at 9 to "
             "12, x5 at 13 to 16, x6 at 17 and 18. The Dagger of Impaling adds 3 to 6 on a roll of 19 "

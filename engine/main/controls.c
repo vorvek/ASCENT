@@ -352,13 +352,14 @@ static fix Turn_other_heading = 0;
 #define TM_SEARCH		0x8000
 #define TM_SNEAK		0x10000
 #define TM_DISARM		0x20000		// ASCENT: the key H, the empty hand
+#define TM_CLIMB		0x40000		// ASCENT: Climb Wall (the key Q)
 
 static struct { char *name; int mask; } Test_action_names[] = {
 	{"forward",TM_FORWARD}, {"back",TM_BACK}, {"left",TM_LEFT}, {"right",TM_RIGHT},
 	{"slideleft",TM_SLIDELEFT}, {"slideright",TM_SLIDERIGHT}, {"run",TM_RUN},
 	{"jump",TM_JUMP}, {"lookup",TM_LOOKUP}, {"lookdown",TM_LOOKDOWN},
 	{"up",TM_UP}, {"down",TM_DOWN}, {"use",TM_USE}, {"attack",TM_ATTACK},
-	{"picklock",TM_PICKLOCK}, {"search",TM_SEARCH}, {"sneak",TM_SNEAK}, {"disarm",TM_DISARM}, {"wait",0}
+	{"picklock",TM_PICKLOCK}, {"search",TM_SEARCH}, {"sneak",TM_SNEAK}, {"disarm",TM_DISARM}, {"climb",TM_CLIMB}, {"wait",0}
 };
 
 #define MAX_TEST_STEPS	64
@@ -786,6 +787,13 @@ void dtu_read_controls(void)
 	// down, and the action itself waits half a second between two uses.
 	if (dtu_action_down(DTU_ACT_ACTIVATE) || (t & TM_USE))
 		dtu_player_use();
+
+	// ASCENT: Climb Wall (the port, default Q): the climb of 0x951DE on
+	// its own key, so Activate at a lever gives no climb message
+	// (Dtu_fix_climb_key, kconfig.h). As Activate: in each frame while the
+	// key is down, half a second between two tries.
+	if (dtu_action_down(DTU_ACT_CLIMB) || (t & TM_CLIMB))
+		dtu_thief_climb_key(obj);
 
 	// Disarm: entry 50 of the key table (default D at 0x13C010; the port
 	// has H). 0x53E91: on each frame while the key is down, 0x43A5A(-3)

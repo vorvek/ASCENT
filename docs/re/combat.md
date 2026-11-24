@@ -2225,8 +2225,9 @@ cast as in C2.
 
 Thief skills (B7, `dtuthief.c`): Open Locks (key O), Find/Remove Traps (key F, the box
 with `dtu_char_choice`), Move Silently (key M), Hide In Shadows (one roll at each stop),
-Climb Walls (Activate on a solid side, the thrust of 0x2C144 and the frame 0x9EBEB in
-`physics.c`), the backstab, the slow move while sneaking or searching, Hide and Sneak in
+Climb Walls (Activate on a solid side in 1.3; in the port the Climb Wall key, default Q and gamepad R3,
+and Activate only takes hold of a ladder: `Dtu_fix_climb_key`, `-origui` gives 1.3;
+the thrust of 0x2C144 and the frame 0x9EBEB in `physics.c`), the backstab, the slow move while sneaking or searching, Hide and Sneak in
 the sight of the creatures (0x165C4, 0x13D8E). Not in the port: the racial search for
 secret walls (0xB3ECE), the marker object of the Find Traps spell, the side pad bits
 of found traps, the fall damage skip of 0x6C8C8. The thief point screen (thiefpts.c) is

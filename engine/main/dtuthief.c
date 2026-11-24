@@ -1073,7 +1073,7 @@ static int can_climb_by_skill(object *obj)
 	return has_class(DTU_CLASS_THIEF) || Dtu_char.pa.climb_walls != 0 || (obj->dtu.m_88 & (DTU_FX_LEVITATE|DTU_FX_SPIDER_CLIMB));
 }
 
-void dtu_thief_climb_start(object *obj, int segnum, int side)
+void dtu_thief_climb_start(object *obj, int segnum, int side, int walls)
 {
 	segment *segp;
 	dtu_inv_item *armor;
@@ -1093,7 +1093,7 @@ void dtu_thief_climb_start(object *obj, int segnum, int side)
 		dtu_char_log("climb: the player holds the ladder of seg %d side %d", segnum, side);
 		return;
 	}
-	if (segp->children[side] != -1)
+	if (!walls || segp->children[side] != -1)
 		return;
 	if (!can_climb_by_skill(obj)) {
 		message(931, "You cannot perform this action.");
@@ -1114,6 +1114,39 @@ void dtu_thief_climb_start(object *obj, int segnum, int side)
 		if (hand_is_weapon())
 			dtu_char_log("climb: a weapon in the hand");
 	}
+}
+
+// ASCENT: Climb Wall (port). The use ray of 0x95050 (20 units forward,
+// dtu_player_use in dtutrig.c) and the climb of 0x951DE, without the
+// triggers, the doors and the objects of the use action.
+void dtu_thief_climb_key(object *obj)
+{
+	static fix last_time = -F1_0;
+	fvi_query fq;
+	fvi_info hit;
+	vms_vector end;
+	fix dt;
+
+	if (!obj || obj != ConsoleObject || obj->type != OBJ_PLAYER)
+		return;
+	dt = GameTime - last_time;
+	if (dt < 0)
+		dt = -dt;
+	if (dt < F1_0/2)
+		return;
+	last_time = GameTime;
+	vm_vec_scale_add(&end, &obj->pos, &obj->orient.fvec, i2f(20));
+	fq.p0 = &obj->pos;
+	fq.p1 = &end;
+	fq.startseg = obj->segnum;
+	fq.rad = 0;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	if (find_vector_intersection(&fq, &hit) == HIT_WALL && hit.hit_side >= 0)
+		dtu_thief_climb_start(obj, hit.hit_seg, hit.hit_side, 1);
+	else
+		dtu_char_log("climb: the Climb Wall key, no side in reach");
 }
 
 void dtu_thief_climb_thrust(object *obj, fix forward, fix side)
