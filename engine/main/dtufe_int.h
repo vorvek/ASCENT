@@ -122,6 +122,7 @@ extern int Fe_mx, Fe_my;				// cursor position
 extern int Fe_down, Fe_press, Fe_release;		// left button: state and edges
 extern int Fe_rdown, Fe_rpress;		// right button
 extern int Fe_key;						// key of this frame (value of key_inkey), or 0
+extern int Fe_wheel;						// ASCENT: wheel steps of this frame (positive: away from the user)
 extern int Fe_quit;						// 1: the window was closed, each loop must end
 extern int Fe_screen_num;				// number of the loaded screen, or -1
 extern grs_font *Fe_font_l, *Fe_font_m, *Fe_font_s;
@@ -169,7 +170,7 @@ char *fe_text(int n);					// Text_string[n], or ""
 
 void fe_sound(int number);
 void fe_refuse(void);
-int fe_speech_play(int werdz_entry);
+int fe_speech_queue(int werdz_entry);		// plays the line after the lines before it
 int fe_speech_playing(void);
 void fe_speech_stop(void);
 

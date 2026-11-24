@@ -793,6 +793,31 @@ def test_stats_spell_table(t):
     assert differ(region(f["stats"], *MAGECOUNT), region(m["stats"], *MAGECOUNT)) > 0.01, "the mage column is the same"
 
 
+def test_fe_khelben_speech_queue(t):
+    """The voice lines of Khelben play one after another to their end
+    (0xA317B queues a line, 0xA361B starts the next at the end of the
+    sample): a line whose text shows while another line plays waits for
+    it. The talk after mission 5 has the lines 40 to 45; under -fescript
+    the text runs ahead of the sound, so the lines 41 to 45 wait."""
+    _, d = t.run("fe_khelben_speech", ["wait 6000"], extra=["-testblackstaff", "-testblackstaffmission", "5",
+                                                            "-language", "en"], level="")
+    text = session_log(d)
+    waits = [int(n) for n in re.findall(r"Front end: speech (\d+) waits", text)]
+    assert waits == [41, 42, 43, 44, 45], "the lines that waited: %s" % waits
+    starts = re.findall(r"Front end: speech (\d+) starts at (\d+) ms, (\d+) samples at (\d+) Hz", text)
+    ends = re.findall(r"Front end: speech (\d+) ends at (\d+) ms, after (\d+) ms", text)
+    assert starts and starts[0][0] == "40", "the first line did not start: %s" % starts[:1]
+    assert len(starts) >= 2, "only one line played"
+    length = {n: 1000 * int(c) // int(r) for n, _, c, r in starts}
+    # each line that the next line follows played to its end; the last one
+    # may stop at the end of the run
+    for i in range(len(starts) - 1):
+        n, at = ends[i][0], int(ends[i][1])
+        assert n == starts[i][0], "line %s ended out of order" % n
+        assert int(ends[i][2]) >= length[n] - 100, "line %s stopped after %s of %d ms" % (n, ends[i][2], length[n])
+        assert int(starts[i + 1][1]) >= at, "line %s started before line %s ended" % (starts[i + 1][0], n)
+
+
 def test_fe_death_picture_key(t):
     """The death picture (0x42517 to 0x4252E) ignores the mouse and goes on
     at the first key, with no shortest time; then the Death Menu, and after
@@ -849,6 +874,25 @@ def market_price(t, name, extra):
     m = re.search(r"Market: description of \d+\.\d+, buy price (\d+)", session_log(d))
     assert m, name + ": no price in the description window"
     return int(m.group(1))
+
+
+# The catalog of the market: the nine rows (x 35 to 365, y 37 to 365)
+MKLIST = (35, 37, 330, 328)
+
+
+def test_market_wheel(t):
+    """The mouse wheel over the catalog of the market moves the list by one
+    line for each step, as one press of the arrow (0x84B6D, 0x84B8A)."""
+    s, _ = t.run("mk_wheel", ["wait 60", "move 200 200", "wait 3", "shot base", "wheel -1", "wait 3", "shot wheel",
+                              "wheel 1", "wait 3", "shot back", "move 600 200", "wheel -1", "wait 3", "move 200 200",
+                              "wait 3", "shot outside"],
+                 extra=["-testmarket"], level="")
+    a, _ = t.run("mk_arrow", ["wait 60", "click 380 111", "wait 3", "move 200 200", "wait 3", "shot arrow"],
+                 extra=["-testmarket"], level="")
+    assert differ(region(s["base"], *MKLIST), region(s["wheel"], *MKLIST)) > 0.02, "the wheel did not scroll"
+    assert differ(region(s["wheel"], *MKLIST), region(a["arrow"], *MKLIST)) < 0.001, "one step is not one arrow press"
+    assert differ(region(s["base"], *MKLIST), region(s["back"], *MKLIST)) < 0.001, "the wheel did not scroll back"
+    assert differ(region(s["base"], *MKLIST), region(s["outside"], *MKLIST)) < 0.001, "the wheel scrolled outside the list"
 
 
 def test_desc_market_price(t):

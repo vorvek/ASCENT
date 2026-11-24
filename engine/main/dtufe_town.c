@@ -324,7 +324,7 @@ static void bs_frame(fe_screen *s)
 			bs_event *e = &Bs_event[Bs_next_event++];
 			ubyte pal[768];
 			if (e->type == 's')
-				fe_speech_play(e->value);
+				fe_speech_queue(e->value);		// 0x8399B: 0xA317B queues the line
 			else {
 				if (Bs_picture) gr_free_bitmap(Bs_picture);
 				Bs_picture = (e->type == 'p') ? fe_febgnd(27 + e->value, pal) : NULL;		// 0x13E886
@@ -1143,6 +1143,14 @@ static void mk_frame(fe_screen *s)
 		}
 		fe_input_clear();
 		return;
+	}
+	// ASCENT: the mouse wheel over the catalog or its arrows moves the list
+	// by one line for each step, as one press of an arrow. The original
+	// (DOS) has no wheel.
+	if (Fe_wheel && !Mk_popup_on && x >= 0 && y >= 0 && Fe_mx <= 396 && y < 0x148) {
+		int i, n = Fe_wheel < 0 ? -Fe_wheel : Fe_wheel;
+		for (i = 0; i < n; i++)
+			mk_scroll(s, Fe_wheel > 0 ? 7 : 8);
 	}
 	if (!Fe_rpress || Mk_popup_on || x < 0 || y < 0 || x >= MK_ROW_W || y >= 0x148)
 		return;

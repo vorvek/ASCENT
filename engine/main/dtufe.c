@@ -80,6 +80,7 @@ int Dtu_fe_return_waterdeep = 0;
 int Fe_mx = FE_W / 2, Fe_my = FE_H / 2;
 int Fe_down, Fe_press, Fe_release, Fe_rdown, Fe_rpress;
 int Fe_key;
+int Fe_wheel;
 int Fe_quit;
 int Fe_screen_num = -1;
 grs_font *Fe_font_l, *Fe_font_m, *Fe_font_s;
@@ -177,6 +178,7 @@ void fe_input_clear(void)
 {
 	Fe_press = Fe_release = Fe_rpress = 0;
 	Fe_key = 0;
+	Fe_wheel = 0;
 }
 
 static void speech_frame(void);
@@ -202,6 +204,7 @@ int fe_frame_begin(void)
 		r = (b >> 1) & 1;
 		Fe_key = key_inkey();
 	}
+	Fe_wheel = plat_mouse_wheel();		// ASCENT: the original (DOS) has no wheel
 	Fe_press = l && !prev_l;
 	Fe_release = !l && prev_l;
 	Fe_rpress = r && !prev_r;
@@ -921,7 +924,15 @@ void fe_refuse(void)			// 0x80EF7
 // Speech: one stream of WERDZ.DAT (the dialogue stream, 0xA317B).
 static short *Speech_data;
 static int Speech_handle = -1;
+static int Speech_entry = -1;
+static uint64_t Speech_start_us;
 static ubyte *Werdz_jrg;
+
+// 0xA317B queues a line and the service 0xA361B starts the next line of
+// the queue when the sample ends (0xA315E), so each line plays to its end.
+#define SPEECH_QUEUE	32
+static int Speech_queue[SPEECH_QUEUE];
+static int Speech_queued;
 
 int fe_speech_playing(void)
 {
@@ -945,12 +956,16 @@ static void speech_release(int all)
 			free(Speech_old[i]);
 }
 
-void fe_speech_stop(void)
+static void speech_halt(void)
 {
 	int i;
 
-	if (Speech_handle >= 0)
+	if (Speech_handle >= 0) {
+		uint64_t now = plat_time_us();
 		plat_audio_stop(Speech_handle);
+		dtu_log("Front end: speech %d ends at %u ms, after %u ms\n", Speech_entry,
+			(unsigned) (now / 1000), (unsigned) ((now - Speech_start_us) / 1000));
+	}
 	Speech_handle = -1;
 	if (!Speech_data)
 		return;
@@ -966,20 +981,47 @@ void fe_speech_stop(void)
 	Speech_data = NULL;
 }
 
+// The stop of all streams (0x82B31 after the screen) empties the queue too.
+void fe_speech_stop(void)
+{
+	Speech_queued = 0;
+	speech_halt();
+}
+
+static int speech_start(int n);
+
 static void speech_frame(void)
 {
 	if (Speech_handle >= 0 && !plat_audio_is_playing(Speech_handle))
-		fe_speech_stop();
+		speech_halt();
+	while (Speech_handle < 0 && Speech_queued > 0) {
+		int n = Speech_queue[0];
+		Speech_queued--;
+		memmove(Speech_queue, Speech_queue + 1, Speech_queued * sizeof(Speech_queue[0]));
+		speech_start(n);
+	}
 	speech_release(0);
 }
 
-int fe_speech_play(int n)
+// 0xA317B: the line waits in the queue for the end of the lines before it.
+int fe_speech_queue(int n)
+{
+	if (Speech_handle < 0 && !Speech_queued)
+		return speech_start(n);
+	if (Speech_queued >= SPEECH_QUEUE)
+		return 0;
+	Speech_queue[Speech_queued++] = n;
+	dtu_log("Front end: speech %d waits at %u ms for speech %d\n", n, (unsigned) (plat_time_us() / 1000), Speech_entry);
+	return 1;
+}
+
+static int speech_start(int n)
 {
 	acm_info info;
 	ubyte *p;
 	int size, count, i;
 
-	fe_speech_stop();
+	speech_halt();
 	if (!Werdz_jrg)
 		Werdz_jrg = dtu_load_file("WERDZ.JRG", &size);
 	if (!Werdz_jrg || n < 0 || n >= (int) get_u32(Werdz_jrg))
@@ -1002,8 +1044,13 @@ int fe_speech_play(int n)
 		(PLAT_AUDIO_VOLUME_MAX * Config_digi_volume) / 8, PLAT_AUDIO_PAN_CENTER, 0);
 	if (Speech_handle < 0) {
 		free(Speech_data);
+		Speech_data = NULL;
 		return 0;
 	}
+	Speech_entry = n;
+	Speech_start_us = plat_time_us();
+	dtu_log("Front end: speech %d starts at %u ms, %d samples at %d Hz\n", n,
+		(unsigned) (Speech_start_us / 1000), count, info.rate);
 	return 1;
 }
 
@@ -2698,8 +2745,14 @@ int dtufe_run(void)
 		if (FindArg("-testmarketdouble"))
 			dtu_script_set_gflag(107, 1);
 	}
-	if (FindArg("-testblackstaff"))		// ASCENT: test option, the front end starts at Khelben (the first visit)
+	if (FindArg("-testblackstaff")) {		// ASCENT: test option, the front end starts at Khelben (the first visit)
+		int t;
+
 		Fe_mode = FE_GO_BLACKSTAFF;
+		// -testblackstaffmission N: the talk of mission N (blurb 0)
+		if ((t = FindArg("-testblackstaffmission")) != 0 && t + 1 < Num_args)
+			Fe_khelben_mission = atoi(Args[t + 1]);
+	}
 	while (!Fe_quit) {
 		switch (Fe_mode) {
 		case FE_GO_MENU:
