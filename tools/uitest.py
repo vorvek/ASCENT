@@ -793,6 +793,31 @@ def test_stats_spell_table(t):
     assert differ(region(f["stats"], *MAGECOUNT), region(m["stats"], *MAGECOUNT)) > 0.01, "the mage column is the same"
 
 
+def test_fe_khelben_speech_queue(t):
+    """The voice lines of Khelben play one after another to their end
+    (0xA317B queues a line, 0xA361B starts the next at the end of the
+    sample): a line whose text shows while another line plays waits for
+    it. The talk after mission 5 has the lines 40 to 45; under -fescript
+    the text runs ahead of the sound, so the lines 41 to 45 wait."""
+    _, d = t.run("fe_khelben_speech", ["wait 6000"], extra=["-testblackstaff", "-testblackstaffmission", "5",
+                                                            "-language", "en"], level="")
+    text = session_log(d)
+    waits = [int(n) for n in re.findall(r"Front end: speech (\d+) waits", text)]
+    assert waits == [41, 42, 43, 44, 45], "the lines that waited: %s" % waits
+    starts = re.findall(r"Front end: speech (\d+) starts at (\d+) ms, (\d+) samples at (\d+) Hz", text)
+    ends = re.findall(r"Front end: speech (\d+) ends at (\d+) ms, after (\d+) ms", text)
+    assert starts and starts[0][0] == "40", "the first line did not start: %s" % starts[:1]
+    assert len(starts) >= 2, "only one line played"
+    length = {n: 1000 * int(c) // int(r) for n, _, c, r in starts}
+    # each line that the next line follows played to its end; the last one
+    # may stop at the end of the run
+    for i in range(len(starts) - 1):
+        n, at = ends[i][0], int(ends[i][1])
+        assert n == starts[i][0], "line %s ended out of order" % n
+        assert int(ends[i][2]) >= length[n] - 100, "line %s stopped after %s of %d ms" % (n, ends[i][2], length[n])
+        assert int(starts[i + 1][1]) >= at, "line %s started before line %s ended" % (starts[i + 1][0], n)
+
+
 def test_fe_death_picture_key(t):
     """The death picture (0x42517 to 0x4252E) ignores the mouse and goes on
     at the first key, with no shortest time; then the Death Menu, and after

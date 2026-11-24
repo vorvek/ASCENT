@@ -308,7 +308,11 @@ fly and, when the switch 0x145360 is set, creates a splash object (type 10).
 
 The death music (0x4249D) plays in `dtu_player_death_frame` (dtuobj_combat.c) and on the death
 screen of the front end (dtufe.c). The speech of `str_dlg.c` (WERDZ.DAT) plays for
-Khelben in the front end (dtufe.c).
+Khelben in the front end (dtufe.c). Each `~sN` of the text queues line N (0x8399B calls
+0xA317B); the service 0xA361B starts the next line of the queue when the sample ends
+(0xA315E), so a line plays to its end even when the text has shown the next `~s`. The port
+queues the lines the same way (`fe_speech_queue`); the stop of all streams after the
+screen (0x82B31) empties the queue. 1.3 has no key that skips a line.
 
 Not in the port: the call at 0x43DAF has no call site.
 

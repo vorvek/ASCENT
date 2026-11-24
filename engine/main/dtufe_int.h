@@ -169,7 +169,7 @@ char *fe_text(int n);					// Text_string[n], or ""
 
 void fe_sound(int number);
 void fe_refuse(void);
-int fe_speech_play(int werdz_entry);
+int fe_speech_queue(int werdz_entry);		// plays the line after the lines before it
 int fe_speech_playing(void);
 void fe_speech_stop(void);
 

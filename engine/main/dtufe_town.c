@@ -324,7 +324,7 @@ static void bs_frame(fe_screen *s)
 			bs_event *e = &Bs_event[Bs_next_event++];
 			ubyte pal[768];
 			if (e->type == 's')
-				fe_speech_play(e->value);
+				fe_speech_queue(e->value);		// 0x8399B: 0xA317B queues the line
 			else {
 				if (Bs_picture) gr_free_bitmap(Bs_picture);
 				Bs_picture = (e->type == 'p') ? fe_febgnd(27 + e->value, pal) : NULL;		// 0x13E886

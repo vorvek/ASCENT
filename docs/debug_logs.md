@@ -49,6 +49,9 @@ too.
   damage of `apply_damage_to_robot`): `Creature: stopped ...` (at most 100 lines).
 - Each award of experience: `Experience: +TOTAL, +PART for each class, now X / Y`, and each
   level gained: `Level gained: class levels A / B -> C / D, N hit points`.
+- Each voice line of Khelben: `Front end: speech N starts at T ms, S samples at R Hz`, `Front
+  end: speech N waits at T ms for speech M` (the line is queued while line M plays) and
+  `Front end: speech N ends at T ms, after D ms`.
 - Each talk of a thief with Mirt in the inn: `Thief points: Mirt, thief level L, levels paid
   before P, N points to spend`, and after the skill point screen `Thief points: spent, hide
   H, move M, open locks O, traps T, climb C, N points left` (the values without items).
