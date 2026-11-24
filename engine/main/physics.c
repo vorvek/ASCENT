@@ -1392,6 +1392,7 @@ typedef struct dtu_cap_support {
 	fix slope;		// the slope of the bottom at the edge (dy/dx)
 	fix gap;		// how much higher the support is than the floor under the axis (DTU_FLOOR_PROBE: no floor there)
 	vms_vector dir;	// the direction in x and z from the edge to the axis
+	fix gx,gz;		// the slope (dy/dx, dy/dz) of the face that holds the body, 0 for an edge
 } dtu_cap_support;
 static int dtu_capsule_on(void);
 static void dtu_capsule_get(dtu_body *b,dtu_capsule *c);
@@ -2441,7 +2442,9 @@ static void dtu_body_log(object *obj)
 //   a side when its center is less than R from the edge of the side
 //   (check_sphere_to_face: the test is a slab, not round). A full round
 //   bottom (depth R) would put the center into the reach of the wall
-//   under the edge again.
+//   under the edge again. An edge where the floor goes on past it (the
+//   top of a slope, cap_floor_goes_on) does not hold the body: there the
+//   face under the axis does, as in the floor search of the original.
 // There is no sphere at the feet for the walls: in the fvi test a sphere
 // there would stop at each step and edge (any riser within R of its
 // center), and it would lower the reach of a jump onto a ledge by
@@ -2478,6 +2481,8 @@ static void dtu_capsule_get(dtu_body *b,dtu_capsule *c)
 }
 
 #define DTU_CAP_MAX_SEGS	48
+#define CAP_MAX_UP			128		// the faces that face up near the axis
+#define CAP_GO_ON_DIST		0.05	// the test point past an edge (cap_floor_goes_on)
 
 typedef struct cap_search {
 	double px,pz;		// the axis
@@ -2488,9 +2493,37 @@ typedef struct cap_search {
 	double best;
 	int found,edge;
 	double slope,dx,dz;
+	double gx,gz;		// the slope of the best support when it is a face
 	double face_best;	// the highest face under the axis
 	int face_found;
+	int n_up;			// the faces that face up near the axis (cap_floor_goes_on)
+	double up[CAP_MAX_UP][4][3];	// three corners and the normal
 } cap_search;
+
+// The floor goes on past the point e of an edge toward the axis (dx, dz):
+// a face that faces up is there at the height of the edge (a slope after a
+// flat floor, the other half of a side). Such an edge is a fold of the
+// floor, not the edge of a step: the face under the axis holds the body.
+static int cap_floor_goes_on(cap_search *s,const double *e,double dx,double dz)
+{
+	double px = e[0] + dx*CAP_GO_ON_DIST, pz = e[2] + dz*CAP_GO_ON_DIST;
+	int i;
+
+	for (i=0; i<s->n_up; i++) {
+		double (*f)[3] = s->up[i];
+		double d0 = (f[1][0]-f[0][0])*(pz-f[0][2]) - (f[1][2]-f[0][2])*(px-f[0][0]);
+		double d1 = (f[2][0]-f[1][0])*(pz-f[1][2]) - (f[2][2]-f[1][2])*(px-f[1][0]);
+		double d2 = (f[0][0]-f[2][0])*(pz-f[2][2]) - (f[0][2]-f[2][2])*(px-f[2][0]);
+		double y;
+
+		if (!((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0)))
+			continue;
+		y = f[0][1] - (f[3][0]*(px-f[0][0]) + f[3][2]*(pz-f[0][2]))/f[3][1];
+		if (fabs(y - e[1]) <= CAP_GO_ON_DIST*3 + 0.01)
+			return 1;
+	}
+	return 0;
+}
 
 static void cap_take(cap_search *s,double y,int edge,double slope,double dx,double dz)
 {
@@ -2505,6 +2538,7 @@ static void cap_take(cap_search *s,double y,int edge,double slope,double dx,doub
 	s->found = 1;
 	s->best = y;
 	s->edge = edge;
+	s->gx = s->gz = 0;
 	s->slope = slope;
 	s->dx = dx;
 	s->dz = dz;
@@ -2567,6 +2601,12 @@ static void cap_edge(cap_search *s,const double *a,const double *b)
 	}
 	else
 		cx = cz = 0;
+	if (hl > 1e-3) {
+		double e[3] = { a[0] + t*dx, a[1] + t*(b[1]-a[1]), a[2] + t*dz };
+
+		if (cap_floor_goes_on(s,e,cx,cz))
+			return;
+	}
 	cap_take(s,y,hl > 1e-3,k > 1e-6 ? s->a*sqrt(h2)/(r2*k) : 1e6,cx,cz);
 }
 
@@ -2577,13 +2617,29 @@ static void cap_vert(double *d,int v)
 	d[2] = f2fl(Vertices[v].z);
 }
 
+static void cap_seg_center(segment *seg,double *center)
+{
+	int j;
+
+	center[0] = center[1] = center[2] = 0;
+	for (j=0; j<MAX_VERTICES_PER_SEGMENT; j++) {
+		double v[3];
+
+		cap_vert(v,seg->verts[j]);
+		center[0] += v[0]/MAX_VERTICES_PER_SEGMENT;
+		center[1] += v[1]/MAX_VERTICES_PER_SEGMENT;
+		center[2] += v[2]/MAX_VERTICES_PER_SEGMENT;
+	}
+}
+
 // A solid side of a segment: its faces that face up (the normal into the
 // segment has y > 0.1) under the axis, and its edges in reach. The floor
 // is side 3 in most segments, but a ramp or the floor of a turned segment
 // can be another side (the floor search of the original, a line, finds
 // them too: fvi.c mode 2 tests the other sides with the radius 0). The
 // top edge of a wall is the edge of a step.
-static void cap_side(cap_search *s,segment *seg,int sidenum,const double *center)
+// Pass 0 takes the faces, pass 1 the edges (after all faces are known).
+static void cap_side(cap_search *s,segment *seg,int sidenum,const double *center,int pass)
 {
 	static const int tri[3][2][3] = {
 		{ {0,1,2}, {0,2,3} },		// SIDE_IS_QUAD, SIDE_IS_TRI_02
@@ -2606,6 +2662,12 @@ static void cap_side(cap_search *s,segment *seg,int sidenum,const double *center
 
 		if (len < 1e-9)
 			continue;
+		if (pass == 1) {
+			cap_edge(s,p0,p1);
+			cap_edge(s,p1,p2);
+			cap_edge(s,p2,p0);
+			continue;
+		}
 		nx /= len; ny /= len; nz /= len;
 		// the normal into the segment
 		if (nx*(center[0]-p0[0]) + ny*(center[1]-p0[1]) + nz*(center[2]-p0[2]) < 0) {
@@ -2616,13 +2678,31 @@ static void cap_side(cap_search *s,segment *seg,int sidenum,const double *center
 			double d0 = (p1[0]-p0[0])*(s->pz-p0[2]) - (p1[2]-p0[2])*(s->px-p0[0]);
 			double d1 = (p2[0]-p1[0])*(s->pz-p1[2]) - (p2[2]-p1[2])*(s->px-p1[0]);
 			double d2 = (p0[0]-p2[0])*(s->pz-p2[2]) - (p0[2]-p2[2])*(s->px-p2[0]);
+			double r = s->r + CAP_GO_ON_DIST;
 
-			if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0))
-				cap_take(s,p0[1] - (nx*(s->px-p0[0]) + nz*(s->pz-p0[2]))/ny,0,0,0,0);
+			if ((d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0)) {
+				double y = p0[1] - (nx*(s->px-p0[0]) + nz*(s->pz-p0[2]))/ny;
+
+				cap_take(s,y,0,0,0,0);
+				if (s->found && s->best == y && !s->edge) {
+					s->gx = -nx/ny;
+					s->gz = -nz/ny;
+				}
+			}
+			// a face in reach of the axis, for cap_floor_goes_on()
+			if (s->n_up < CAP_MAX_UP &&
+					!(p0[0] < s->px - r && p1[0] < s->px - r && p2[0] < s->px - r) &&
+					!(p0[0] > s->px + r && p1[0] > s->px + r && p2[0] > s->px + r) &&
+					!(p0[2] < s->pz - r && p1[2] < s->pz - r && p2[2] < s->pz - r) &&
+					!(p0[2] > s->pz + r && p1[2] > s->pz + r && p2[2] > s->pz + r)) {
+				double (*f)[3] = s->up[s->n_up++];
+
+				memcpy(f[0],p0,sizeof(f[0]));
+				memcpy(f[1],p1,sizeof(f[1]));
+				memcpy(f[2],p2,sizeof(f[2]));
+				f[3][0] = nx; f[3][1] = ny; f[3][2] = nz;
+			}
 		}
-		cap_edge(s,p0,p1);
-		cap_edge(s,p1,p2);
-		cap_edge(s,p2,p0);
 	}
 }
 
@@ -2645,26 +2725,21 @@ static int dtu_capsule_support(vms_vector *axis,int segnum,dtu_capsule *c,fix fe
 	s.hi_face = f2fl(feet + c->stand);
 	s.hi_edge = f2fl(hi_edge);
 	s.found = 0;
+	s.gx = s.gz = 0;
 	s.best = 0;
 	s.face_found = 0;
 	s.face_best = 0;
+	s.n_up = 0;
 
 	list[0] = segnum;
 	for (i=0; i<n; i++) {
 		segment *seg = &Segments[list[i]];
-		double center[3] = { 0, 0, 0 };
+		double center[3];
 
-		for (j=0; j<MAX_VERTICES_PER_SEGMENT; j++) {
-			double v[3];
-
-			cap_vert(v,seg->verts[j]);
-			center[0] += v[0]/MAX_VERTICES_PER_SEGMENT;
-			center[1] += v[1]/MAX_VERTICES_PER_SEGMENT;
-			center[2] += v[2]/MAX_VERTICES_PER_SEGMENT;
-		}
+		cap_seg_center(seg,center);
 		for (sd=0; sd<MAX_SIDES_PER_SEGMENT; sd++)
 			if (!(WALL_IS_DOORWAY(seg,sd) & WID_FLY_FLAG))
-				cap_side(&s,seg,sd,center);
+				cap_side(&s,seg,sd,center,0);
 		for (sd=0; sd<MAX_SIDES_PER_SEGMENT; sd++) {
 			int ch = seg->children[sd];
 			double mnx=1e30,mxx=-1e30,mny=1e30,mxy=-1e30,mnz=1e30,mxz=-1e30;
@@ -2694,6 +2769,16 @@ static int dtu_capsule_support(vms_vector *axis,int segnum,dtu_capsule *c,fix fe
 			list[n++] = ch;
 		}
 	}
+	// the edges, after the faces of all segments in reach
+	for (i=0; i<n; i++) {
+		segment *seg = &Segments[list[i]];
+		double center[3];
+
+		cap_seg_center(seg,center);
+		for (sd=0; sd<MAX_SIDES_PER_SEGMENT; sd++)
+			if (!(WALL_IS_DOORWAY(seg,sd) & WID_FLY_FLAG))
+				cap_side(&s,seg,sd,center,1);
+	}
 	if (!s.found)
 		return 0;
 	out->y = fl2f(s.best);
@@ -2702,6 +2787,8 @@ static int dtu_capsule_support(vms_vector *axis,int segnum,dtu_capsule *c,fix fe
 	out->dir.x = fl2f(s.dx);
 	out->dir.y = 0;
 	out->dir.z = fl2f(s.dz);
+	out->gx = fl2f(s.gx);
+	out->gz = fl2f(s.gz);
 	out->gap = s.face_found && s.best - s.face_best < f2fl(DTU_FLOOR_PROBE) ? fl2f(s.best - s.face_best) : DTU_FLOOR_PROBE;
 	return 1;
 }
@@ -2737,12 +2824,14 @@ static fix dtu_capsule_floor_dist(object *obj)
 			Dtu_cap_sup.slope = F1_0;
 			Dtu_cap_sup.gap = gap < DTU_FLOOR_PROBE ? gap : DTU_FLOOR_PROBE;
 			Dtu_cap_sup.dir = dir;
+			Dtu_cap_sup.gx = Dtu_cap_sup.gz = 0;
 			Dtu_stand_obj = n;
 			found = 1;
 		}
 	}
 	if (!found) {
 		Dtu_cap_sup.edge = 0;
+		Dtu_cap_sup.gx = Dtu_cap_sup.gz = 0;
 		return DTU_FLOOR_PROBE;
 	}
 	d = feet - Dtu_cap_sup.y;
@@ -2905,6 +2994,37 @@ static void dtu_capsule_slide(object *obj)
 	if (v < DTU_CAP_SLIDE_SPEED) {
 		pi->velocity.x += fixmul(Dtu_cap_sup.dir.x,DTU_CAP_SLIDE_SPEED - v);
 		pi->velocity.z += fixmul(Dtu_cap_sup.dir.z,DTU_CAP_SLIDE_SPEED - v);
+	}
+}
+
+static int Dtu_slope_vel = 0;		// dtu_capsule_follow_slope() set the velocity down
+
+// The body stands on a face that slopes down in the direction of the walk:
+// the move goes down along the face. Without this the move goes straight
+// on, the center comes nearer to a ceiling that slopes with the floor (the
+// stairs of BONES: 0.19 of room under the ceiling reach of the original
+// for a human), each move hits that ceiling, and the hit takes half of the
+// speed. The floor snap of dtu_apply_gravity() puts the body back on the
+// floor at the start of the next frame. Up a slope the floor hit lifts the
+// body as before.
+static void dtu_capsule_follow_slope(object *obj)
+{
+	physics_info *pi = &obj->mtype.phys_info;
+	fix vy;
+
+	if (!Dtu_cap_grounded || Dtu_cap_sup.edge || Dtu_floor_dist != 0 || Dtu_stand_obj >= 0)
+		vy = 0;
+	else
+		vy = fixmul(pi->velocity.x,Dtu_cap_sup.gx) + fixmul(pi->velocity.z,Dtu_cap_sup.gz);
+	if (vy < 0) {
+		pi->velocity.y = vy;
+		Dtu_slope_vel = 1;
+	}
+	else if (Dtu_slope_vel) {
+		// the walk down the slope has ended: no more move down
+		if (pi->velocity.y < 0)
+			pi->velocity.y = 0;
+		Dtu_slope_vel = 0;
 	}
 }
 
@@ -3209,8 +3329,10 @@ int dtu_player_physics_sim(object *obj)
 		}
 		else if (Dtu_improved_physics && !(Dtu_player_state & (DTU_PS_CLIMBING|DTU_PS_JUMPING|DTU_PS_FALLING)) && Dtu_floor_dist <= F1_0) {
 			dtu_improved_walk(obj,sim_time);
-			if (capsule)
+			if (capsule) {
 				dtu_capsule_slide(obj);
+				dtu_capsule_follow_slope(obj);
+			}
 		}
 	}
 

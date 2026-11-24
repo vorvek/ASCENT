@@ -829,6 +829,26 @@ floor_rad / 2`) to the head (`body_half_height[0]` above the center).
   is always more than `R` above an edge that holds the body, so the slab of the side
   under the edge does not catch it. A round bottom with the depth `R` would put the
   center into that reach again.
+- An edge where the floor goes on (a face that faces up is 0.05 past the edge toward the
+  axis, at the height of the edge within 0.16) is a fold of the floor, not the edge of a
+  step, and does not hold the body: the face under the axis does. Examples: the top of
+  a slope after a flat floor, the line between the two halves of a side. Before this
+  rule the round bottom rode on the top edge of a slope until the axis was about 4.0
+  past it, 2.7 above the face under the axis. On the stairs of BONES (segments 404, 406,
+  408, 410 and 412: slopes of 45 degrees, 2.5 long, with a ceiling 20 above that slopes too)
+  the sphere of the center then came within the ceiling reach of the original
+  (`rad2 * 1.5`, 8.62 for a human) of the ceiling of the slope, and each move hit it:
+  the player went down from 403 into 404 and stopped there (z 350.3). On the face under
+  the axis the center is 8.81 from that ceiling. The test of the fold is
+  `cap_floor_goes_on` (physics.c).
+- A walk on the floor down a face that slopes (the face under the axis holds the body,
+  no edge, no scenery): the velocity gets the downward part of the slope in the
+  direction of the walk (`dtu_capsule_follow_slope`), so the move goes along the face.
+  A straight move on the BONES stairs takes the center 0.58 nearer to the sloped ceiling
+  for each frame at 60 frames per second and the walk speed, more than the 0.19 of room,
+  and the wall rule of the hit takes half of the speed: the walk down took 1.7 times as
+  long as the walk up. Now one ceiling hit is left at the top of each slope. Up a slope
+  the floor hit lifts the body as before.
 - The capsule that stood on the floor in the last frame (no jump, climb, fall, flight,
   levitation or ladder step) is put onto its support at once: up by 5.5 at most (the
   head test point of 4.3 must be in a segment), down by 4.0 at most. So it does not
@@ -906,6 +926,23 @@ the original with the step rule, "after" the capsule; Improved physics on unless
   in the air with `WALLOVERLAP` (FLAME 45), out of a corner (DROW1 287). In none did the
   capsule stop where the original passed (doors and openings: the walls are tested
   with the same sphere and radius).
+- The fold rule and the walk down a slope (the two items above, 2026-11-24):
+  - BONES, from the center of 403 toward 413 (`-testpos`, 1 s wait, then forward):
+    before, the player stopped in 404 at z 350.3 at 20, 30, 60 and 144 frames per
+    second, walk and run (with `-origphys` it went through). After, it reaches 413 and
+    walks on to 440; from 404 to 413 in 90 frames at 60 frames per second (before the
+    slope rule 128, the walk up 80). Up from 413 to 403: the same as before.
+  - DROW1 486 to 481 and back, THIEF1 383 to 381 and back, walk and run, 20 to 144
+    frames per second: all reach the other end, as before.
+  - Walks over the ramps of all levels (segments whose floor is not flat, from the
+    segment before to the segment after and back, 5 for each level, 2.5 s, 60 frames
+    per second walk and 30 run), before and after: no walk stops where it passed
+    before. Now passing: BONES 404, DROW2 124 and 249, FLAME 644 (642 to 643). The
+    other differences are paths that differ by a few units (creatures that move, BAT).
+  - The tests of section 10 and 13.1 (BANE step for the three sizes, YPINN and DROW1
+    walks, YPINN idle, PRISON jump, 20, 60 and 200 frames per second): the same
+    numbers. HUB1 ledge walk-off: the same path, the end height is 0.04 to 0.1 lower
+    (within the 0.1 of `DTU_FLOOR_EPS`; the floor of segment 71 slopes a little).
 - Soak test (`-soak 3` and `-soak 4`, 2700 frames at 30 frames per second, the seven
   levels above, `-hidden`): no `SOAK FAIL` (the player and the objects stay inside the
   mine and in their segments) before or after. YPINN with the seed 3 stops at frame 302
