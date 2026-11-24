@@ -233,9 +233,13 @@ def miss_cases(args, tmp, extra):
     print("%-36s %s of the swing time" % ("miss sound: start", " ".join("%.2f" % d for d in delays)))
 
     # a zombie: hits, missed rolls, and the misses of the creatures
-    # (strength 3: -3 to hit, so that some rolls miss)
+    # (a fighter of level 4, THAC0 17, with strength 3: -3 to hit, so that
+    # about half of the rolls miss against armor class 8 and the zombie
+    # lives through many swings: the run has hits and missed rolls with any
+    # sequence of the random numbers. Level 4 for the hit points: a hit of
+    # the zombie can take 12.)
     end = 40 + 31 * 10 + 20
-    script = ["5:class=2", "6:give=%s" % LONG_SWORD, "7:current=%s" % LONG_SWORD, "8:xp=500000", "9:str=3",
+    script = ["5:class=2", "6:give=%s" % LONG_SWORD, "7:current=%s" % LONG_SWORD, "8:xp=5000", "9:str=3",
               "10:goseg=%d" % ZOMBIE_SEG]
     script += ["%d:heal=100" % f for f in range(40, end)]
     script += ["%d:goobjh=%d.6,%d:reach=%d" % (f, ZOMBIE, f, ZOMBIE) for f in range(40, end, 3)]
