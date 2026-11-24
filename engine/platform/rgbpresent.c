@@ -132,6 +132,9 @@ static void present_gl(SDL_Window *win, const uint32_t *pixels, int w, int h, in
 		// The rows of the frame go from the top; OpenGL counts from the bottom.
 		rglBlitFramebuffer(0, 0, w, h, x, y + dh, x + dw, y, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 	}
+	// A capture hook on the swap (OBS Studio) reads from the read framebuffer
+	// that is bound. Bind the window, or the hook copies the movie texture.
+	rglBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 	SDL_GL_SwapWindow(win);
 
 	rglBindTexture(GL_TEXTURE_2D, old_tex);
