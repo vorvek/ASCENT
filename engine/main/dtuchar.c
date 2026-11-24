@@ -833,7 +833,7 @@ void dtu_char_update(void)
 	dtu_inv_item *e;
 	int sum = 0, ring_best = 0, cloak_best = 0, amulet_best = 0, armor_bonus = 0, ring_counts;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
-	int ac, dex, missile;
+	int ac, dex, missile, prot_all = 0, prot_items = 0, armoring;
 
 	if (!Dtu_char.created)
 		return;
@@ -985,6 +985,10 @@ void dtu_char_update(void)
 		if (cloak_best < best) best = cloak_best;
 		if (amulet_best < best) best = amulet_best;
 		sum += best - armor_bonus;
+		prot_all = best;
+		prot_items = ring_best;
+		if (cloak_best < prot_items) prot_items = cloak_best;
+		if (amulet_best < prot_items) prot_items = amulet_best;
 	}
 	else if (!magic_armor)
 		sum += ring_best;
@@ -1040,14 +1044,24 @@ void dtu_char_update(void)
 	pa->dex_ac_adjust = Dex_ac[dex];
 	// ASCENT: two values, against melee (the record, the screens) and
 	// against missiles; they differ only with Shield (Dtu_fix_shield_ac)
+	// ASCENT: Ring 16 (Armoring) in a ring place sets a flag (0xB0014,
+	// 0xB01B6) that 0xAFAD1 reads: a mage gets 1 more after each cap.
+	armoring = has_class(DTU_CLASS_MAGE) && (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 16 || armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 16);
 	for (missile = 0; missile < 2; missile++) {
 		ac = 10 + (signed char) sum;
-		// ASCENT: Ring 16 (Armoring) in a ring place sets a flag (0xB0014,
-		// 0xB01B6) that 0xAFAD1 reads: a mage gets 1 more after each cap.
-		if (has_class(DTU_CLASS_MAGE) && (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) == 16 || armor_id(Dtu_char.slot[DTU_SLOT_RING2]) == 16))
-			ac = armoring_ac(ac, missile);
-		else
-			ac = dtu_spell_player_ac_vs(ac, 0, missile);
+		ac = armoring ? armoring_ac(ac, missile) : dtu_spell_player_ac_vs(ac, 0, missile);
+		// ASCENT: Dtu_fix_ring_magic_armor: 1.3 applies the caps of Armor,
+		// Magical Vestment and Shield to the sum with the magic protection
+		// bonus, so a Ring of Protection adds nothing to a spell that gives a
+		// better armor class than the armor. Corrected: the caps apply to the
+		// armor class without the bonus, then the best of the ring, the cloak
+		// and the amulet counts. The better of the two results counts.
+		if (Dtu_fix_ring_magic_armor) {
+			int b = 10 + (signed char) sum - prot_all;
+
+			b = (armoring ? armoring_ac(b, missile) : dtu_spell_player_ac_vs(b, 0, missile)) + prot_items;
+			if (b < ac) ac = b;
+		}
 		ac += pa->dex_ac_adjust;
 		ac = dtu_spell_player_ac(ac, 1);
 		if (ac < -10) ac = -10;

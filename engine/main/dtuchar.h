@@ -531,7 +531,10 @@ extern int Dtu_fix_bracers_ac;
 // best Ring of Protection, the Cloak of Protection and the Amulet of
 // Protection (1.3 adds the amulet always); the ring and the
 // cloak count with any armor and shield (Leather Armor +1 and a Ring of
-// Protection +2: Leather Armor and 2). 1 (default): the highest one. 0
+// Protection +2: Leather Armor and 2). The caps of Armor, Magical Vestment
+// and Shield apply to the armor class without the bonus, so the ring, the
+// cloak and the amulet count with these spells too (Armor 6 and a Ring of
+// Protection +2: 4; 1.3 gives 6). 1 (default): the highest one. 0
 // (-origcombat): 1.3.
 extern int Dtu_fix_ring_magic_armor;
 // 1 while the attack of the player is a backstab (0x13A955, dtuthief.c).
