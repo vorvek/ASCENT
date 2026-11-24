@@ -3656,7 +3656,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
 // spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
-// str=STRENGTH.PERCENT, dex=DEXTERITY,
+// str=STRENGTH.PERCENT, dex=DEXTERITY, cha=CHARISMA,
 // attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
@@ -3931,6 +3931,9 @@ static void run_command(char *cmd, char *value)
 		dtu_char_update();
 	}
 	else if (!strcmp(cmd, "wis"))			Dtu_char.pa.wisdom = Dtu_char.base.wisdom = a;		// ASCENT: test: wis=N
+	// ASCENT: test: cha=N. 20 passes every charisma roll of a script (d20
+	// above the charisma fails, start_label of dtuscript.c)
+	else if (!strcmp(cmd, "cha"))			Dtu_char.pa.charisma = Dtu_char.base.charisma = a;
 	else if (!strcmp(cmd, "dex")) {		// ASCENT: dex=N: the base dexterity (test)
 		Dtu_char.base.dexterity = a;
 		dtu_char_update();
