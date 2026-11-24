@@ -250,7 +250,7 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 		roll += b;
 		dtu_xp_hit_mod(b,LN("weapon"));
 		roll += str_bonus(Monster_info[attacker->id].str);
-		dtu_xp_hit_mod(str_bonus(Monster_info[attacker->id].str),LN("strength"));
+		dtu_xp_hit_mod(str_bonus(Monster_info[attacker->id].str),dtu_xp_ability_tag(DTU_XP_TEX_STR));
 		// 0x2ACBA: Strength of the creature
 		if (attacker->dtu.m_88 & DTU_FX_STRENGTH) {
 			roll++;

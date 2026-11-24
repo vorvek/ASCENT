@@ -3072,8 +3072,15 @@ int dtu_char_attack_roll(object *target, int weapon)
 	}
 	else {
 		int r = roll + a.to_hit_bonus;
+		// ASCENT: the verbose combat log names the parts of to_hit_bonus
+		// (weapon_attack): the strength of a melee attack and the bow or
+		// crossbow of a missile, apart from the bonus of the weapon
+		int sh = (a.melee && Dtu_char.created) ? str_hit_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : 0;
+		int lh = (!a.melee && a.weapon_id >= 0) ? missile_launcher_bonus(weapon, a.thrown) : 0;
 
-		dtu_xp_hit_mod(a.to_hit_bonus, LN("bonus"));
+		dtu_xp_hit_mod(a.to_hit_bonus - sh - lh, LN("bonus"));
+		dtu_xp_hit_mod(sh, dtu_xp_ability_tag(DTU_XP_TEX_STR));
+		dtu_xp_hit_mod(lh, LN("launcher"));
 		// 0x2AB66: a backstab adds 4 (melee and thrown weapons)
 		if (Dtu_backstab && a.melee) {
 			r += 4;
@@ -3171,7 +3178,7 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		}
 		if (a.melee) {
 			sum += str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra);
-			dtu_xp_dmg_mod(str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra), LN("strength"));
+			dtu_xp_dmg_mod(str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra), dtu_xp_ability_tag(DTU_XP_TEX_STR));
 		}
 		// ASCENT: 0x2B47E: the strength bonus to damage also for a thrown
 		// weapon (Weapon_info+0x0A = 3); the port gave it none
