@@ -251,6 +251,18 @@ extern int Dtu_fix_thrown_launcher;
 // executable. The strength bonus to damage of a thrown weapon is 1.3
 // (0x2B47E) and needs no setting.
 extern int Dtu_fix_thrown_str_hit;
+// ASCENT: 0x29D9D tests weapon_resistant (the mummies and the other
+// creatures that only magic weapons hit) with the flag "magic" of the
+// missile type only (W+0x3E bit 0x10 of the arrow or the bolt): an Arrow
+// from the Short Bow of Speed, a Short Bow +2 or a Crossbow +3 does no
+// damage, though the bow adds its bonus to hit and to damage (0x2AB00,
+// 0x2B0B7). AD&D 2e: a missile from a magic launcher counts as a magic
+// weapon. 1 (default): a missile of the player that gets a launcher bonus
+// above 0 is magic. 0 (-origcombat): 1.3.
+extern int Dtu_fix_launcher_magic;
+// 1 if the missile weapon type of the player gets the magic of its launcher
+// (Dtu_fix_launcher_magic): the worn bow or crossbow has a bonus above 0.
+int dtu_char_launcher_magic(int weapon);
 // The hit points of a new level. 0: as 0xAF8C7, the integer is added to
 // the fixed point hit points (they grow by n / 65536; the maximum grows by
 // n). 1 (default): the hit points grow by n, as the rules say.

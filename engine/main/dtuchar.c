@@ -80,6 +80,7 @@ dtu_character Dtu_char;
 int Dtu_fix_multiclass_thac0 = 1;
 int Dtu_fix_thrown_launcher = 1;		// ASCENT: dtuchar.h
 int Dtu_fix_thrown_str_hit = 1;		// ASCENT: dtuchar.h
+int Dtu_fix_launcher_magic = 1;		// ASCENT: dtuchar.h
 // ASCENT: the spell lists of a save of an older version of the port, which
 // put the spells of a new character and the picked up spells into the item
 // list and gave a new cleric only Abjure (1.3: 0xB65BB, 0x8BDB4, 0xAF8F5).
@@ -2946,6 +2947,18 @@ static int launcher_bonus(int weapon)
 static int missile_launcher_bonus(int weapon, int thrown)
 {
 	return (thrown && Dtu_fix_thrown_launcher) ? 0 : launcher_bonus(weapon);
+}
+
+// ASCENT: Dtu_fix_launcher_magic (dtuchar.h)
+int dtu_char_launcher_magic(int weapon)
+{
+	dtu_item_data d;
+
+	if (!Dtu_fix_launcher_magic || weapon < 0 || weapon >= N_weapon_types || Weapon_item_info[weapon].record < 0)
+		return 0;
+	if (!dtu_item_get(OBJ_WEAPON, weapon, &d) || d.melee)
+		return 0;
+	return missile_launcher_bonus(weapon, d.thrown) > 0;
 }
 
 // The values of an attack with a weapon (-1: the empty hand)
