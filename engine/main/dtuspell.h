@@ -110,6 +110,24 @@ extern int Dtu_fix_melf_acid;
 // rule. 0 (-origcombat): the executable.
 extern int Dtu_fix_burning_hands;
 
+// ASCENT: Haste (spell 21) acts on each player or creature in its area
+// around the caster (0x90CEF has no test of the side), so it hastes
+// hostile creatures too, and a creature that the player hastes becomes
+// hostile. 1 (default): only the caster's side (the player and creatures
+// that are not hostile, or the hostile creatures for a hostile caster),
+// and a friend stays a friend. 0 (-origcombat): the executable.
+extern int Dtu_fix_haste_friends;
+// ASCENT: Hold Undead (spell 23) lowers a budget of L levels for each held
+// undead (Spell_info+0x46) and never tests it: each undead of level L or
+// less can be held. 1 (default): the AD&D 2nd edition rule, the levels of
+// the held undead add up to at most L. 0 (-origcombat): the executable.
+extern int Dtu_fix_hold_undead_hd;
+// ASCENT: the counter of Haste is set only by the cast of the player
+// (0x56A0D); the cast of a creature (0x91FDC) uses what is left, 0 at the
+// start, so it hastes no one. 1 (default): a creature sets it to its
+// level. 0 (-origcombat): the executable.
+extern int Dtu_fix_haste_count;
+
 // ASCENT: the damage of a spell (0x911AA) rolls a saving throw (category
 // 4, 0x91382) for every spell and halves the damage on a made save, so a
 // target saves against Magic Missile (case 33, 0x8EED5). In AD&D 2nd edition
@@ -249,8 +267,13 @@ int dtu_npc_row(char *name, int v[6]);
 void dtu_spell_set_wizardry(int n);
 // 1 if the spell has type=AREA (Spell_info+0x36 bit 0).
 int dtu_spell_is_area(int spell);
-// 0x8CAD3: the cast vclip of a spell on an object (the potions use it).
+// 0x8CAD3: the cast effects of a spell on the player or a creature (the
+// potions and the items use it): the cast sound, the cast vclip (the
+// weapon_vclip of the line) and a light object of player_light.
 void dtu_spell_cast_vclip(int spell, object *obj);
+// ASCENT: render_frame 0x76C7C: the view orientation of a confused player
+// wobbles. Changes m (a copy of the view orientation) for the frame.
+void dtu_spell_view_confusion(vms_matrix *m);
 // 0x3D38E to 0x3D3A1: the burn of the lava (dtu_lava_frame, dtuobj.h): the
 // damage of the spell 0x911AA with Fireball (16) at level 1, one fire die,
 // on the object with the object as the caster. Returns the damage done.

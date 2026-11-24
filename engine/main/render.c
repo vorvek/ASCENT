@@ -2274,6 +2274,7 @@ void render_frame(fix eye_offset)
 	uint64_t t0;		// ASCENT: ASCENT_RENDER_STATS
 	int gpu_view_full;	// ASCENT: the full depth of the GPU renderer
 	int infra;			// ASCENT: the infravision mode of the view (dtuinfra.h)
+	vms_matrix view_orient;	// ASCENT: the view orientation of the frame (dtu_spell_view_confusion)
 
 //Total_num_tmaps_drawn += Num_tmaps_drawn;
 //if ((FrameCount > 0) && (Total_num_tmaps_drawn))
@@ -2340,10 +2341,14 @@ void render_frame(fix eye_offset)
 	if (start_seg_num==-1)
 		start_seg_num = Viewer->segnum;
 
+	// ASCENT: the view of a confused player wobbles (0x76C7C, dtuspell.h)
+	view_orient = Viewer->orient;
+	dtu_spell_view_confusion(&view_orient);
+
 	if (Viewer==ConsoleObject && Use_player_head_angles) {
 		vms_matrix headm,viewm;
 		vm_angles_2_matrix(&headm,&Player_head_angles);
-		vm_matrix_x_matrix(&viewm,&Viewer->orient,&headm);
+		vm_matrix_x_matrix(&viewm,&view_orient,&headm);
 		g3_set_view_matrix(&Viewer_eye,&viewm,Render_zoom);
 	//@@} else if ((Cockpit_mode==CM_REAR_VIEW) && (Viewer==ConsoleObject)) {
 	} else if (Rear_view && (Viewer==ConsoleObject)) {
@@ -2351,7 +2356,7 @@ void render_frame(fix eye_offset)
 		Player_head_angles.p = Player_head_angles.b = 0;
 		Player_head_angles.h = 0x7fff;
 		vm_angles_2_matrix(&headm,&Player_head_angles);
-		vm_matrix_x_matrix(&viewm,&Viewer->orient,&headm);
+		vm_matrix_x_matrix(&viewm,&view_orient,&headm);
 		g3_set_view_matrix(&Viewer_eye,&viewm,Render_zoom);
 	} else	{
 #ifdef JOHN_ZOOM
@@ -2364,7 +2369,7 @@ void render_frame(fix eye_offset)
 		}
 		g3_set_view_matrix(&Viewer_eye,&Viewer->orient,fixdiv(Render_zoom,Zoom_factor));
 #else
-		g3_set_view_matrix(&Viewer_eye,&Viewer->orient,Render_zoom);
+		g3_set_view_matrix(&Viewer_eye,&view_orient,Render_zoom);
 #endif
 	}
 
