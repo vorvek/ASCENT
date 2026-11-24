@@ -334,6 +334,17 @@ void dtu_creature_morale(object *obj)
 		morale_check(obj);
 }
 
+// ASCENT: 0x9026D: the end of Confusion on a creature: hostile, not
+// fleeing and not peaceful, target 0 (the player), then the morale check
+void dtu_creature_confusion_end(object *obj)
+{
+	if (obj->type != OBJ_ROBOT || obj->control_type != CT_AI || obj->id >= N_robot_types || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return;
+	obj->dtu.m_1b0 = (obj->dtu.m_1b0 & ~(DTU_FLEEING|DTU_PEACEFUL)) | DTU_HOSTILE;
+	Ail[obj-Objects].target = 0;
+	morale_check(obj);
+}
+
 void dtu_creature_turn(object *obj, int turned)
 {
 	dtu_ai_local *ail;

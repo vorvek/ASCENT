@@ -1621,6 +1621,9 @@ static void combat_init(void)
 		Dtu_fix_kill_sound = 0;
 		Dtu_fix_fireball_blind = 0;
 		Dtu_fix_burning_hands = 0;
+		Dtu_fix_haste_friends = 0;
+		Dtu_fix_hold_undead_hd = 0;
+		Dtu_fix_haste_count = 0;
 		Dtu_fix_sword_view = 0;
 	}
 }

@@ -596,6 +596,9 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 		case DTU_SK_HEAL:		line(LT("Heals %s hit points."), a); break;
 		case DTU_SK_GIVE:
 			line(LT("Gives %s."), b);
+			// ASCENT: Dtu_fix_haste_friends (case 21 of dtuspell.c)
+			if (f->side_only)
+				line(LT("Only you and the creatures that are not hostile to you."));
 			// 0x29E3D (dtucombat.c): the effect acts in the melee hit of the player
 			if (f->fx == DTU_FX_CHILL_TOUCH)
 				line(LT("Each melee hit: the target saves or takes 1d4 more damage; undead get Fear."));
@@ -635,7 +638,13 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 		// light_object (dtuspell.c): the light stays where the missile lands
 		case DTU_SK_BLIND:		line(LT("Makes a light where it lands. Blinds a creature that it hits.")); break;
 		case DTU_SK_COLOR:		line(LT("Puts to sleep, blinds or stuns, by the level of the target.")); break;
-		case DTU_SK_HOLD_UNDEAD:	line(LT("Holds undead of level %d or less."), f->max_level); break;
+		// ASCENT: Dtu_fix_hold_undead_hd: the levels of the held undead add up
+		case DTU_SK_HOLD_UNDEAD:
+			if (f->level_total)
+				line(LT("Holds undead whose levels add up to %d or less."), f->max_level);
+			else
+				line(LT("Holds undead of level %d or less."), f->max_level);
+			break;
 		case DTU_SK_FEAR:		line(LT("Causes %s. The target may drop its weapon."), b); break;
 		case DTU_SK_ACID:
 			if (f->amount_hi > 0)
@@ -687,6 +696,8 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 		line(LT("Area: %s"), LT("An arc of 120 degrees in front of you"));
 	else if (f.area)
 		line(LT("Area: %s"), (sprintf(b, f.self ? LT("%s around you") : LT("%s where it lands"), feet(a, f.radius)), b));
+	else if (f.bounce)
+		line(LT("Area: %s"), LT("The first creature it hits"));		// ASCENT: Lightning Bolt (dtuobj_missile.c)
 	else
 		line(LT("Area: %s"), f.self ? LT("Only you") : LT("One target"));
 	// ASCENT: the object loop of 0x90CEF has no test of the caster (0x90D54
@@ -697,8 +708,13 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 	// of Dispel Magic says it.
 	if (f.area && !f.self && !(f.flags & DTU_SR_SPARES_CASTER) && f.kind != DTU_SK_DISPEL)
 		line(LT("Also hits you when you are in the area."));
+	if (f.bounce)
+		line(LT("Bounces off walls. After a bounce it can hit you."));
 	if (f.missiles_hi > 1)
 		line(LT("Missiles: %s"), range_text(a, f.missiles_lo, f.missiles_hi));
+	// ASCENT: the counters of Haste, Slow and Hold Undead (spell_targets)
+	if (f.targets_hi > 0)
+		line(LT("Most targets: %s"), range_text(a, f.targets_lo, f.targets_hi));
 	if (f.kind == DTU_SK_ARMOR || f.kind == DTU_SK_FIRE_POOL || f.kind == DTU_SK_STONESKIN)
 		strcpy(a, LT("Until used up"));
 	else if (f.kind == DTU_SK_RARY)

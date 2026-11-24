@@ -80,6 +80,19 @@ static int Sleep_pool = 0;
 // ASCENT: Spell_info[22]+0x49 and Spell_info[52]+0x49, the counters of
 // Hold Person (0x56FF6, 0x8E8BB)
 static int Hold_count[2] = { 0, 0 };
+// ASCENT: the counters Spell_info+0x49 of Haste (L at the cast on the
+// caster, 0x56A0D), Slow (L at the launch, 0x56FF6) and Hold Undead (1d3
+// at the launch). Each case needs its counter above 0 and takes one for
+// each target (0x8E79C, 0x8FAD8, 0x8EA21). Hold_undead_hd: Spell_info[23]
+// +0x46, L at the launch, lowered by the level of each held undead and
+// never tested by 1.3 (Dtu_fix_hold_undead_hd).
+static int Haste_count = 0;
+static int Slow_count = 0;
+static int Hold_undead_count = 0;
+static int Hold_undead_hd = 0;
+int Dtu_fix_haste_friends = 1;		// ASCENT: dtuspell.h
+int Dtu_fix_hold_undead_hd = 1;
+int Dtu_fix_haste_count = 1;
 
 static int rand_mod(int n);
 static int creature_cleric_level(object *obj);
@@ -871,6 +884,10 @@ static void fx_end(object *obj,int b)
 			if (obj->type == OBJ_PLAYER)
 				dtu_fear_view_end(obj);
 			break;
+		case 5:		// ASCENT: Confusion: a creature is hostile again (0x9026D)
+			if (obj->type == OBJ_ROBOT)
+				dtu_creature_confusion_end(obj);
+			break;
 		case 26:	// Sleep also ends the blindness
 			obj->dtu.m_88 &= ~DTU_FX_BLIND;
 			break;
@@ -1054,6 +1071,207 @@ static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip)
 	if (Vclip[vclip].num_frames <= 0 || Vclip[vclip].play_time <= 0)
 		return;
 	object_create_explosion(segnum,pos,size,vclip);
+}
+
+//------------------------------------------------------------------------
+// ASCENT: the vclips that follow an object: the cast vclip of a spell on
+// the caster (0x8CAD3) and the vclip above a target (0x8CCED). 1.3 moves
+// them in the draw of the vclip (0x7C474: +0x1D6, the caster at +0x142)
+// and in the move of the object (0x697F7: control type 3, the target at
+// +0x1D7, until GameTime passes +0x1CD).
+
+#define MAX_ATTACHED	32
+#define ATTACH_FRONT	0		// in front of the caster, its size away
+#define ATTACH_ABOVE	1		// 8.0 above the target, the vclip loops until the end time
+
+static struct {
+	int objnum, signature;		// the vclip object, signature 0: free
+	int parent, parent_sig;
+	int mode;
+	fix end;
+} Attached[MAX_ATTACHED];
+
+static void attach_vclip(object *v,object *parent,int mode,fix end)
+{
+	int i;
+
+	for (i=0;i<MAX_ATTACHED;i++)
+		if (Attached[i].signature == 0)
+			break;
+	if (i >= MAX_ATTACHED)
+		return;
+	Attached[i].objnum = v-Objects;
+	Attached[i].signature = v->signature;
+	Attached[i].parent = parent-Objects;
+	Attached[i].parent_sig = parent->signature;
+	Attached[i].mode = mode;
+	Attached[i].end = end;
+}
+
+static void attached_frame(void)
+{
+	int i;
+
+	for (i=0;i<MAX_ATTACHED;i++) {
+		object *v, *p;
+		vms_vector pos;
+		int seg;
+
+		if (Attached[i].signature == 0)
+			continue;
+		v = &Objects[Attached[i].objnum];
+		p = &Objects[Attached[i].parent];
+		if (v->signature != Attached[i].signature || v->type != OBJ_FIREBALL || (v->flags & OF_SHOULD_BE_DEAD)) {
+			Attached[i].signature = 0;
+			continue;
+		}
+		if (p->signature != Attached[i].parent_sig || p->type == OBJ_NONE || (p->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)) ||
+			 (Attached[i].mode == ATTACH_ABOVE && GameTime > Attached[i].end)) {
+			v->lifeleft = 0;
+			v->flags |= OF_SHOULD_BE_DEAD;
+			Attached[i].signature = 0;
+			continue;
+		}
+		pos = p->pos;
+		if (Attached[i].mode == ATTACH_FRONT) {
+			// 0x7C4A1: the position plus the forward vector times the size
+			// (+0x1A8 = 8, 8/4 halves), then times size/2 when that is
+			// outside the mine
+			vm_vec_scale_add2(&pos,&p->orient.fvec,p->size);
+			seg = find_point_seg(&pos,p->segnum);
+			if (seg < 0) {
+				pos = p->pos;
+				vm_vec_scale_add2(&pos,&p->orient.fvec,p->size/2);
+				seg = find_point_seg(&pos,p->segnum);
+			}
+		}
+		else {
+			pos.y += i2f(8);
+			seg = find_point_seg(&pos,p->segnum);
+			// the vclip plays again until the end of the effect
+			if (v->lifeleft < Vclip[v->id].play_time/2)
+				v->lifeleft += Vclip[v->id].play_time;
+		}
+		if (seg < 0)
+			continue;
+		v->pos = pos;
+		if (seg != v->segnum)
+			obj_relink(v-Objects,seg);
+	}
+}
+
+// 0x8CAD3: the cast effects of a spell on a player or a creature: the
+// cast_sound (volume 1/3, numbers 0 to 5499), the cast_vclip or, when the
+// line has none (every line of the tables), the weapon_vclip, at the
+// position plus 0.9 size forward, size/2 large. A line with the cast on
+// the caster (Spell_info+0x37 bit 0) keeps it in front of the caster
+// (+0x1D6 = 1). Then a light object of player_light at the position.
+// 1.3 gives the light the play time of the vclip cast_vclip, which is -1
+// (the word before the Vclip array, not read); the port takes the play
+// time of the vclip shown, else 1.0.
+static void cast_effects(int spell,object *c)
+{
+	int sound, vclip, objnum;
+	fix light, life = F1_0;
+
+	if (c == NULL || (c->type != OBJ_PLAYER && c->type != OBJ_ROBOT) || !spell_ok(spell))
+		return;
+	sound = spell_int(spell,"cast_sound",10);
+	if (sound >= 0 && sound < 0x157C)
+		sound_at(sound,c->segnum,&c->pos,F1_0/3);
+	vclip = spell_int(spell,"cast_vclip",-1);
+	if (vclip == -1)
+		vclip = spell_int(spell,"weapon_vclip",-1);
+	if (vclip >= 0 && vclip < VCLIP_MAXNUM && Vclip[vclip].num_frames > 0 && Vclip[vclip].play_time > 0 && c->size > 0) {
+		vms_vector pos = c->pos;
+		int seg;
+		object *v;
+
+		vm_vec_scale_add2(&pos,&c->orient.fvec,fixmul(c->size,0xE666));
+		seg = find_point_seg(&pos,c->segnum);
+		if (seg < 0) {
+			pos = c->pos;
+			seg = c->segnum;
+		}
+		v = object_create_explosion(seg,&pos,c->size/2,vclip);
+		if (v == NULL)
+			return;		// 0x8CBC9: no light either
+		life = Vclip[vclip].play_time;
+		if (spell_self(spell))
+			attach_vclip(v,c,ATTACH_FRONT,0);
+		dtu_spell_log("spell: cast vclip %d of '%s' on obj %d, size %.2f%s",vclip,spell_name(spell),(int)(c-Objects),
+			f2fl(c->size/2),spell_self(spell) ? ", in front" : "");
+	}
+	light = spell_fix(spell,"player_light",0);
+	if (light != 0 && (objnum = obj_create(OBJ_LIGHT,0,c->segnum,&c->pos,NULL,0,CT_LIGHT,MT_NONE,RT_NONE)) >= 0) {
+		Objects[objnum].ctype.light_info.intensity = light;
+		Objects[objnum].lifeleft = life;
+		dtu_spell_log("spell: cast light object %d, light %.1f, life %.2f",objnum,f2fl(light),f2fl(life));
+	}
+}
+
+// ASCENT: the view of a confused player (render_frame 0x76C7C, the player
+// type_flags bit 0x10 that Confusion and the stun of Color Spray set with
+// bit 0x20). Two counters bounce: the turn from -5 to 5 (start 4), the
+// pitch from -4 to 3 (start 0), one step in each frame of 1.3; the port
+// steps once in each reference frame (DTU_REF_FRAMETIME). The rows of the
+// view orientation get x += pitch, z += turn (rvec, fvec) and x -= turn,
+// z -= pitch (uvec), each times 0x1010, for the frame only.
+void dtu_spell_view_confusion(vms_matrix *m)
+{
+	static int turn = 4, turn_dir = 1, pitch = 0, pitch_dir = 1;
+	static fix next = 0;
+	vms_vector *row[3];
+	int i;
+
+	if (ConsoleObject == NULL || !(ConsoleObject->dtu.m_88 & DTU_FX_CONFUSION))
+		return;
+	if (next > GameTime + F1_0 || next < GameTime - F1_0)
+		next = GameTime;
+	while (next <= GameTime) {
+		next += DTU_REF_FRAMETIME;
+		turn += turn_dir;
+		if (turn < -4) turn_dir = 1;
+		if (turn > 4) turn_dir = -1;
+		pitch += pitch_dir;
+		if (pitch < -3) pitch_dir = 1;
+		if (pitch > 2) pitch_dir = -1;
+	}
+	row[0] = &m->rvec; row[1] = &m->uvec; row[2] = &m->fvec;
+	for (i=0;i<3;i++) {
+		if (i == 1) {
+			row[i]->x -= turn * 0x1010;
+			row[i]->z -= pitch * 0x1010;
+		}
+		else {
+			row[i]->x += pitch * 0x1010;
+			row[i]->z += turn * 0x1010;
+		}
+	}
+}
+
+// 0x8CCED: the cast_on_top vclip of the line 8.0 above the target, size/4
+// large, until GameTime plus the duration of the effect. The common end
+// of 0x8CFFF calls it; the port calls it when the case sets its effect.
+static void top_vclip(int spell,object *t,fix duration)
+{
+	int vclip = spell_int(spell,"cast_on_top",-1), seg;
+	vms_vector pos;
+	object *v;
+
+	if (t == NULL || (t->type != OBJ_PLAYER && t->type != OBJ_ROBOT) || vclip < 0 || vclip >= VCLIP_MAXNUM)
+		return;
+	if (Vclip[vclip].num_frames <= 0 || Vclip[vclip].play_time <= 0)
+		return;
+	pos = t->pos;
+	pos.y += i2f(8);
+	if ((seg = find_point_seg(&pos,t->segnum)) < 0)
+		return;
+	if ((v = object_create_explosion(seg,&pos,t->size/4,vclip)) == NULL)
+		return;
+	attach_vclip(v,t,ATTACH_ABOVE,duration >= DTU_FX_NO_END ? DTU_FX_NO_END : GameTime + duration);
+	dtu_spell_log("spell: vclip %d of '%s' above obj %d for %.1f seconds",vclip,spell_name(spell),(int)(t-Objects),
+		duration >= DTU_FX_NO_END ? -1.0 : f2fl(duration));
 }
 
 //------------------------------------------------------------------------
@@ -1812,6 +2030,38 @@ static int spell_amount(int spell,int L,int mode)
 	return 0;
 }
 
+// ASCENT: the most targets of a cast (the counters Spell_info+0x49), 0 no
+// limit. Hold Person has its counter in spell_amount (DTU_SK_HOLD).
+static int spell_targets(int spell,int L,int mode)
+{
+	switch (spell) {
+		case 21:	return L;				// Haste (0x56A0D)
+		case 47:	return L;				// Slow (0x56FF6)
+		case 23:	return die(3,mode);	// Hold Undead (0x56FF6)
+	}
+	return 0;
+}
+
+// ASCENT: the counter of a cast on the caster: 0x56A0D sets the one of
+// Haste to the caster level before the cast of the player. A creature
+// cast (0x91FDC) sets none, so 1.3 hastes with what the last cast of the
+// player left (0 at the start). Dtu_fix_haste_count: a creature sets it
+// to its level too.
+static void self_cast_counters(int spell,int L)
+{
+	if (spell == 21) {
+		Haste_count = spell_targets(21,L,ROLL);
+		dtu_spell_log("spell: Haste counter %d",Haste_count);
+	}
+}
+
+// ASCENT: Dtu_fix_haste_friends: the side of an object for Haste, 0 the
+// player and the creatures that are not hostile to him, 1 the hostile ones
+static int haste_side(object *o)
+{
+	return o->type == OBJ_ROBOT && dtu_creature_is_hostile(o);
+}
+
 // ASCENT: the dice group, the dice count and the level of the damage roll
 // of a spell (the cases write the count of their group, 0x8E592, 0x8EEAB,
 // 0x8EFE0). Magic Missile rolls with level 1.
@@ -2047,7 +2297,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 
 	// A creature that is the target of the player wakes and is hostile
 	// (0xA6505 with 1, then 0x12AD9)
-	if (target->type == OBJ_ROBOT && !self && caster && caster->type == OBJ_PLAYER)
+	// ASCENT: Dtu_fix_haste_friends: a friend that Haste reaches stays a friend
+	if (target->type == OBJ_ROBOT && !self && caster && caster->type == OBJ_PLAYER && !(spell == 21 && Dtu_fix_haste_friends))
 		dtu_creature_wake(target,1);
 
 	dtu_spell_log("spell: '%s' (%d) level %d on obj %d %s (level %d)",spell_name(spell),spell,L,(int)(target-Objects),target_name(target),T);
@@ -2127,13 +2378,24 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 					say("%s %s blinded by %s.",Msg_ts,Msg_were,Msg_c);
 			}
 			else if (!(target->dtu.m_88 & (DTU_FX_FREE_ACTION|DTU_FX_HOLD))) {
-				if (fx_set(target,DTU_FX_HOLD,wisdom_cut(target,color_time(2,ROLL))))
+				if (fx_set(target,DTU_FX_HOLD,dur = wisdom_cut(target,color_time(2,ROLL)))) {
+					// ASCENT: 0x8CFFF case 6: a stunned player is confused for the
+					// same time too (the bit, the view of dtu_spell_view_confusion)
+					if (target == ConsoleObject)
+						fx_set(target,DTU_FX_CONFUSION,dur);
 					say("%s %s stunned by %s.",Msg_ts,Msg_were,Msg_c);
+				}
 			}
 			break;
 		case 7:		// Confusion: L+2 rounds
-			if (!rule_save(spell,target,caster,T,L) && fx_set(target,rule_fx,dur = spell_time(7,L,ROLL)))
+			if (!rule_save(spell,target,caster,T,L) && fx_set(target,rule_fx,dur = spell_time(7,L,ROLL))) {
 				say("Confusion cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(dur));
+				top_vclip(spell,target,dur);		// 0x8CCED
+				// ASCENT: the common end 0x90024: the morale check of a
+				// creature, which rolls the action of a confused one (0x10ADF)
+				if (target->type == OBJ_ROBOT)
+					dtu_creature_morale(target);
+			}
 			break;
 		case 8: case 9:		// Continual Light: blind with no end
 		case 30: case 31:		// Light: blind for 10 L or 10 (L+6) rounds
@@ -2147,6 +2409,11 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				fix d = spell_time(spell,L,ROLL);
 
 				if (fx_set(target,rule_fx,d)) {
+					// ASCENT: 0x8DCC8 adds the low word of player_light (0 for
+					// 20.0 and 60.0) to the light +0x1A6 of the target, which the
+					// draw 0x67523 moves back to the light of the segment: no
+					// light. Then 0x8DCD3: the cast effects on the target.
+					cast_effects(spell,target);
 					if (d == DTU_FX_NO_END)
 						say("%s %s blinded by %s indefinitely.",Msg_ts,Msg_were,Msg_c);
 					else
@@ -2197,6 +2464,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				int drop = (spell == 14) ? (rand() % 100 + 1 <= 65 - 5*T) : (rand() % 2 != 0);
 
 				fx_set(target,rule_fx,d);
+				top_vclip(spell,target,d);		// 0x8CCED: Fear 130, Scare 24
 				// The weapon falls: the player 0xAE837, a creature 0x3C4BD
 				if (drop) {
 					if (target->type == OBJ_PLAYER)
@@ -2302,6 +2570,20 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				say_effect(self,"%s %s Free Action for %d minutes.",V_HAVE,"Free Action cast on %s by %s for %d minutes.",MINUTES(dur));
 			break;
 		case 21:		// Haste: ends Slow, L+3 rounds
+			// ASCENT: Dtu_fix_haste_friends: not on the other side of the
+			// caster (0x90CEF has no test: 1.3 hastes enemies in the area)
+			if (Dtu_fix_haste_friends && !self && caster && haste_side(target) != haste_side(caster)) {
+				dtu_spell_log("spell: Haste spares obj %d, on the other side (Dtu_fix_haste_friends)",(int)(target-Objects));
+				return 0;
+			}
+			// 0x8E79C: a hasted target, then the counter of the cast
+			if (target->dtu.m_88 & rule_fx)
+				return 0;
+			if (Haste_count <= 0) {
+				dtu_spell_log("spell: Haste counter is 0: no effect on obj %d",(int)(target-Objects));
+				return 0;
+			}
+			Haste_count--;
 			if (target->dtu.m_88 & DTU_FX_SLOW)
 				fx_end(target,27);
 			if (fx_set(target,rule_fx,dur = spell_time(21,L,ROLL)))
@@ -2326,18 +2608,35 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 						say_effect(self,"%s %s held for %d seconds.",V_ARE,"Hold Person cast on %s by %s for %d seconds.",f2i(d));
 					else
 						say_effect(self,"%s %s held for %d minutes.",V_ARE,"Hold Person cast on %s by %s for %d minutes.",MINUTES(d));
+					top_vclip(spell,target,d);		// 0x8CCED
 				}
 			}
 			break;
 		case 23:		// Hold Undead: 1d4 + L rounds, undead of level L or less
-			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx))
+			// ASCENT: 0x8EA21 also returns on Free Action (0x5000)
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & (rule_fx|DTU_FX_FREE_ACTION)))
 				break;
 			if (rule_save(spell,target,caster,T,L))
 				break;
+			// ASCENT: the counter of the cast (1d3) and, with
+			// Dtu_fix_hold_undead_hd, the levels left of the cast (1.3 lowers
+			// +0x46 by T and never tests it: only T <= L counts)
+			if (Hold_undead_count <= 0) {
+				dtu_spell_log("spell: Hold Undead counter is 0: no effect");
+				return 0;
+			}
+			if (Dtu_fix_hold_undead_hd && T > Hold_undead_hd) {
+				dtu_spell_log("spell: Hold Undead has %d levels left: obj %d of level %d is not held",Hold_undead_hd,(int)(target-Objects),T);
+				return 0;
+			}
+			Hold_undead_count--;
+			Hold_undead_hd -= T;
 			{
 				fix d = spell_time(23,L,ROLL);
-				if (fx_set(target,rule_fx,d))
+				if (fx_set(target,rule_fx,d)) {
 					say("Hold Undead cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(d));
+					top_vclip(spell,target,d);		// 0x8CCED
+				}
 			}
 			break;
 		case 24:		// Improved Invisibility: L+4 rounds
@@ -2503,8 +2802,17 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			break;
 		}
 		case 47:		// Slow: ends Haste, L+3 rounds
-			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx) || rule_save(spell,target,caster,T,L))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx))
 				break;
+			// ASCENT: 0x8FAD8: the counter of the cast before the save, one
+			// for each slowed target
+			if (Slow_count <= 0) {
+				dtu_spell_log("spell: Slow counter is 0: no effect");
+				return 0;
+			}
+			if (rule_save(spell,target,caster,T,L))
+				break;
+			Slow_count--;
 			if (target->dtu.m_88 & DTU_FX_HASTE)
 				fx_end(target,13);
 			if (fx_set(target,rule_fx,dur = spell_time(47,L,ROLL)))
@@ -2946,6 +3254,22 @@ static int missile_count_mode(int spell,int L,int mode)
 			Hold_count[spell == 52] = spell_amount(spell,L,ROLL);		// ASCENT: 1d4, as the description window
 			dtu_spell_log("spell: Hold Person counter %d",Hold_count[spell == 52]);
 			return 1;
+		case 23:
+			// ASCENT: 0x56FF6: the counter of Hold Undead is 1d3, the level
+			// budget +0x46 is L
+			if (mode == ROLL) {
+				Hold_undead_count = spell_targets(23,L,ROLL);
+				Hold_undead_hd = L;
+				dtu_spell_log("spell: Hold Undead counter %d, levels %d",Hold_undead_count,Hold_undead_hd);
+			}
+			return 1;
+		case 47:
+			// ASCENT: 0x56FF6: the counter of Slow is L
+			if (mode == ROLL) {
+				Slow_count = spell_targets(47,L,ROLL);
+				dtu_spell_log("spell: Slow counter %d",Slow_count);
+			}
+			return 1;
 		case 4:	return 6;
 		case 6:	return die(6,mode);
 		case 7:	return die(4,mode) + L;
@@ -3014,10 +3338,13 @@ static void cast_now(int spell,int source)
 	object *player = ConsoleObject;
 	int L = dtu_spell_player_level(spell), template_w;
 
-	sound_at(spell_int(spell,"cast_sound",10),player->segnum,&player->pos,F1_0/2);
+	// ASCENT: a cast on the caster plays the sound in cast_effects (0x8CAD3)
+	if (!spell_self(spell))
+		sound_at(spell_int(spell,"cast_sound",10),player->segnum,&player->pos,F1_0/2);
 	dtu_spell_log("spell: the player casts '%s' (%d) at level %d, source %d, at %.3f",spell_name(spell),spell,L,source,f2fl(GameTime));
 
 	if (spell_self(spell)) {
+		self_cast_counters(spell,L);		// 0x56A0D: the counter of Haste
 		// Always on the player himself (0x56D36): an AREA line around him
 		// (0x90CEF), else 0x8CFFF on him. 0x56D6A sets the word +0x36 of
 		// Prayer (38) to 0x102 before the test: the AREA bit is clear, so
@@ -3029,7 +3356,7 @@ static void cast_now(int spell,int source)
 			dtu_spell_area(spell,&player->pos,player->segnum,player,L);
 		else
 			apply_spell(spell,player,player,L);
-		vclip_at(player->segnum,&player->pos,i2f(3),spell_int(spell,"cast_vclip",-1));
+		cast_effects(spell,player);		// 0x56A0D line 171
 		return;
 	}
 
@@ -3380,6 +3707,13 @@ fix dtu_spell_cast_on(int spell,object *target,object *caster)
 
 	if (!spell_ok(spell) || target == NULL)
 		return 0;
+	// ASCENT: a whole cast (the test commands, a potion): the counters of
+	// Haste, Slow and Hold Undead as the cast sets them. The touch of a
+	// creature sets its Hold Person counter itself (dtu_spell_touch_counter).
+	if (spell == 21)
+		self_cast_counters(spell,L);
+	else if (spell == 23 || spell == 47)
+		missile_count(spell,L);
 	if (spell_area(spell))
 		return dtu_spell_area(spell,&target->pos,target->segnum,caster,L);
 	return apply_spell(spell,target,caster,L);
@@ -3752,11 +4086,13 @@ static void creature_cast(object *obj)
 	// around it (0x90CEF), else 0x8CFFF. No case of Prayer here: as TARGET
 	// it blesses the creature only.
 	if (spell_self(s) || s == 13 || s == 55) {
+		if (Dtu_fix_haste_count)
+			self_cast_counters(s,L);		// ASCENT: 1.3 sets no counter here (Dtu_fix_haste_count)
 		if (spell_area(s))
 			dtu_spell_area(s,&obj->pos,obj->segnum,obj,L);
 		else
 			apply_spell(s,obj,obj,L);
-		vclip_at(obj->segnum,&obj->pos,i2f(3),spell_int(s,"cast_vclip",-1));
+		cast_effects(s,obj);		// 0x91FDC: 0x8CAD3
 	}
 	else {
 		// 0x56FF6(obj, spell, template 3, hand 1): the missile goes from the
@@ -3864,7 +4200,7 @@ int dtu_spell_is_area(int spell)
 void dtu_spell_cast_vclip(int spell,object *obj)
 {
 	if (obj && spell_ok(spell))
-		vclip_at(obj->segnum,&obj->pos,i2f(3),spell_int(spell,"cast_vclip",-1));
+		cast_effects(spell,obj);		// 0x8CAD3: the cast sound, the vclip in front and the light
 }
 
 // 0x3D38E writes 1 into the fire die count of Fireball (0x1B5EA4), then
@@ -3964,6 +4300,7 @@ void dtu_spell_frame(void)
 			Cast_loaded = DTU_FX_NO_END;
 		}
 		memset(Tracked,0,sizeof(Tracked));
+		memset(Attached,0,sizeof(Attached));
 		acid_clear();
 		// Test options: -testslots N gives N slots for each spell level,
 		// -testspell N puts spell N into the book and into the hand.
@@ -3992,6 +4329,7 @@ void dtu_spell_frame(void)
 	acid_frame();
 
 	tracked_frame();
+	attached_frame();		// ASCENT: the vclips that follow an object
 }
 
 //------------------------------------------------------------------------
@@ -4100,6 +4438,8 @@ void dtu_spell_test(int spell,int level,int objnum,int trials)
 		save_obj = *t;
 		save_char = Dtu_char;
 		n = cone ? 1 : missile_count(spell,level);
+		if (spell_self(spell))
+			self_cast_counters(spell,level);		// ASCENT: the counter of Haste (0x56A0D)
 		dtu_spell_log("spelltest: '%s' (%d) level %d on obj %d %s (level %d), trial %d: %d missiles%s, hit points %d, effects 0x%08x",
 			spell_name(spell),spell,level,(int)(t-Objects),target_name(t),object_level(t,spell),trial,n,
 			cone ? " (arc)" : spell_area(spell) ? " (area)" : "",hp0,fx0);
@@ -4535,6 +4875,14 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 	f->save_level = f->save != DTU_SS_NONE ? save_level(spell,L) : -1;
 	if (f->save != DTU_SS_NONE && (f->save_level >= 0 || (f->flags & DTU_SR_SAVE_KIN)))
 		f->save = DTU_SS_SOME;
+	// ASCENT: the counters of the cast (spell_targets), the rules of
+	// Dtu_fix_hold_undead_hd and Dtu_fix_haste_friends, the bounce of
+	// Lightning Bolt (dtuobj_missile.c, 0x571C5)
+	f->targets_lo = spell_targets(spell,L,LOW);
+	f->targets_hi = spell_targets(spell,L,HIGH);
+	f->level_total = (spell == 23 && Dtu_fix_hold_undead_hd);
+	f->side_only = (spell == 21 && Dtu_fix_haste_friends);
+	f->bounce = (spell == 32);
 	f->time_lo = facts_seconds(spell_time(spell,L,LOW));
 	f->time_hi = facts_seconds(spell_time(spell,L,HIGH));
 	f->amount_lo = spell_amount(spell,L,LOW);

@@ -1527,6 +1527,36 @@ void morale_check(object *obj)
 	if (aip->GOAL_STATE == DAIS_DEAD || aip->CURRENT_STATE == DAIS_DEAD || DTU_ANIM_STATE(obj) == DAS_DIE)
 		return;
 
+	// ASCENT: 0x10ADF: a confused creature (effect bit 0x20, Confusion)
+	// rolls rand() % 10 first: 0 "wanders" and 1 to 5 "stands confused"
+	// (morale (A + B) / 2, goal state none, peaceful, not hostile and not
+	// fleeing; standing also activity 0 and +0x1DB = GameTime + 60.0, whose
+	// reader is not known), 6 to 8 "attacks" (morale B, chase, hostile),
+	// 9 "acts normal" (the check below). The end of Confusion makes it
+	// hostile again (dtu_creature_confusion_end).
+	if (obj->dtu.m_88 & DTU_FX_CONFUSION) {
+		int r = rand() % 10;
+
+		if (r < 6) {
+			ail->morale = (A + B) / 2;
+			aip->GOAL_STATE = DAIS_NONE;
+			obj->dtu.m_1b0 = (obj->dtu.m_1b0 & ~(DTU_HOSTILE|DTU_FLEEING)) | DTU_PEACEFUL;
+			if (r >= 1)
+				ail->activity = 0;
+			dtu_obj_log("morale: obj %d %s is confused: %s",(int)(obj-Objects),dtu_object_name(obj),r < 1 ? "wanders" : "stands confused");
+			return;
+		}
+		if (r < 9) {
+			ail->morale = B;
+			ail->mode = DAIM_CHASE_OB;
+			aip->GOAL_STATE = DAIS_SRCH;
+			obj->dtu.m_1b0 |= DTU_HOSTILE;
+			dtu_obj_log("morale: obj %d %s is confused: attacks",(int)(obj-Objects),dtu_object_name(obj));
+			return;
+		}
+		dtu_obj_log("morale: obj %d %s is confused: acts normal",(int)(obj-Objects),dtu_object_name(obj));
+	}
+
 	if (mi->flags & MONSTER_F_UNDEAD)
 		mor = (obj->dtu.m_1b0 & DTU_FLEEING) ? 0 : 20;
 	else {

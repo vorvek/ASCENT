@@ -850,6 +850,14 @@ tr: Duerme, ciega o aturde, según el nivel del objetivo.
 id: port.holds_undead_of_level_d_or_less
 en: Holds undead of level %d or less.
 tr: Inmoviliza muertos vivientes de nivel %d o menos.
+id: port.holds_undead_whose_levels_add_up_to_d_or_less
+en: Holds undead whose levels add up to %d or less.
+tr: Inmoviliza muertos vivientes cuyos niveles suman %d o menos.
+
+id: port.only_you_and_the_creatures_that_are_not_hostile_to_you
+en: Only you and the creatures that are not hostile to you.
+tr: Solo tú y las criaturas que no te son hostiles.
+
 
 id: port.causes_s_the_target_may_drop_its_weapon
 en: Causes %s. The target may drop its weapon.
@@ -926,6 +934,18 @@ tr: También te alcanza si estás en el área.
 id: port.missiles_s
 en: Missiles: %s
 tr: Proyectiles: %s
+id: port.most_targets_s
+en: Most targets: %s
+tr: Máximo de objetivos: %s
+
+id: port.the_first_creature_it_hits
+en: The first creature it hits
+tr: La primera criatura que alcanza
+
+id: port.bounces_off_walls_after_a_bounce_it_can_hit_you
+en: Bounces off walls. After a bounce it can hit you.
+tr: Rebota en las paredes. Tras un rebote puede alcanzarte.
+
 
 id: port.until_used_up
 en: Until used up

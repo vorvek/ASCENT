@@ -680,6 +680,29 @@ to the functions named here.
 5. R4: trace bit 5 (Confusion) in the creature AI and the player flags of 0x8DB82
    before any change.
 
+Done (2026-11-25), with what the bytes showed:
+
+- S1: `cast_effects` (0x8CAD3). The vclip is at the position plus 0.9 size forward,
+  size/2 large; a line with the cast on the caster (+0x37 bit 0) keeps it at one size in
+  front of the caster (0x7C474, +0x1A8 = 8). The cast sound of a cast on the caster is
+  played here (volume 1/3). The light object lives the play time of the vclip
+  `cast_vclip`, which is -1: 1.3 reads the word before the Vclip array (0x396F9A, no
+  reference found, G); the port takes the play time of the vclip shown.
+- S6: `top_vclip` (0x8CCED), size/4, 8.0 above the target, until the effect ends. 1.3
+  also reaches the call when Hold Person or Hold Undead finds no humanoid or undead
+  (the jump to 0x8FFE5 with a stale duration): no effect for the player, not ported.
+- S8: the target light is no light. 0x8DCC8 adds the low word of `player_light` (0
+  for 20.0 and 60.0) to +0x1A6, the integer part of the drawn light +0x1A4, and the
+  draw (0x67523) moves it back to the light of the segment each frame. The cast effects
+  (0x8DCD3) give the target the vclip and a light object of `player_light`.
+- R4: bit 0x20 on a creature: the morale function 0x10ADF rolls rand() % 10 (wanders,
+  stands confused, attacks, acts normal); the end (0x9026D) makes it hostile again and
+  checks the morale. On the player: `type_flags` 0x10 makes `render_frame` (0x76C7C)
+  skew the view rows with two bouncing counters. The stun of Color Spray sets the same
+  bits on the player. A mushroom (0x25FB0) sets 0x10 for 16.0 s: not in the port.
+- The port calls no morale check at the common end of 0x8CFFF (0x90024) for a
+  creature target; the port adds it only for Confusion.
+
 ### Group C: the texts (`engine/main/dtudesc.c`, after group B)
 
 1. Haste, Slow, Hold Undead: "Up to N targets" from the new counters (L, L, 1 to 3).
