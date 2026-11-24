@@ -495,6 +495,8 @@ static int openable_door_in_segment(object *obj)
 // New in the executable: a segment with special 1 or 2 is never on a
 // path, and a creature with no door bit gets no path through a segment
 // that has a wall on any side (but for the first and the last segment).
+// Dtu_improved_pathfinding changes the last rule for a hostile creature
+// (side_filter below).
 // Returns the number of segments in out[], 0 if there is no path.
 static int find_path(object *obj,int start,int end,short *out,int max_out,int max_depth,int random_flag,int avoid_seg)
 {
@@ -503,6 +505,14 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 	int head = 0, tail = 0, found = -1, i, n, cur;
 	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors;
 	int walker = improved_paths() && obj->type == OBJ_ROBOT && !is_flying(obj);
+	// Dtu_improved_pathfinding: a hostile creature with no door bit keeps
+	// out of the sides that its body cannot pass (a door that is not open,
+	// a closed wall), not out of each segment with a wall. The filter of
+	// the executable leaves out a segment with an open door, an illusion
+	// wall or a closed wall on any side, so in many rooms such a creature
+	// has no path to the player and walks straight into a wall. It still
+	// opens no door.
+	int side_filter = improved_paths() && obj->type == OBJ_ROBOT && is_hostile(obj);
 
 	if (start < 0 || start > Highest_segment_index)
 		return 0;
@@ -527,7 +537,7 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 			continue;
 		if (Segments[i].special == 1 || Segments[i].special == 2)
 			visited[i] = 1;
-		else if (!has_door_bit) {
+		else if (!has_door_bit && !side_filter) {
 			int side;
 
 			for (side=0;side<MAX_SIDES_PER_SEGMENT;side++)
@@ -565,8 +575,17 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 			// up through the top side of a segment (an opening in the
 			// ceiling, side 1 in the levels of the game). The search of the
 			// executable is the one of the ships of Descent 1.
-			if (side == WTOP && walker)
-				continue;
+			// A shallow segment (a pit or a step under the floor, BONES
+			// segment 53) has its top side less than a knee high above its
+			// floor (dtu_knee_high() of physics.c): a body walks out of it.
+			if (side == WTOP && walker) {
+				vms_vector top, bottom;
+
+				compute_center_point_on_side(&top,segp,WTOP);
+				compute_center_point_on_side(&bottom,segp,WBOTTOM);
+				if (top.y - bottom.y > DTU_KNEE_HIGH)
+					continue;
+			}
 			if ((WALL_IS_DOORWAY(segp,side) & WID_FLY_FLAG) || door_is_openable(obj,segp,side)) {
 				visited[child] = 1;
 				parent[child] = cur;
