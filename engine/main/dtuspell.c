@@ -1085,10 +1085,13 @@ static int caster_thac0(object *caster)
 // row of dexterity 0 and 20 unread): the table of 1.3 for the accessor 0x8C047,
 // which clamps the dexterity to 1 to 19 and which no code calls. Its values
 // are the "Missile Attack Adjustment" of AD&D 2nd edition. The port uses it
-// for the attack roll of a spell of the player (Dtu_fix_damage_save).
+// for the attack roll of a spell of the player (Dtu_fix_damage_save) and of
+// a weapon missile of the player (Dtu_fix_dex_missile, dtuchar.c).
 static const signed char Dex_missile[20] = { -9, -6, -4, -3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 3 };
 
-static int dex_missile_adjust(void)
+int Dtu_fix_dex_missile = 1;		// ASCENT: dtuspell.h
+
+int dtu_dex_missile_adjust(void)
 {
 	int dex = Dtu_char.pa.dexterity;
 
@@ -1107,7 +1110,7 @@ static int spell_attack_hit(int spell,object *target,object *caster,int thac0,in
 	int d20 = rnd(20), ac = 0, hit, dex = 0;
 
 	if (Dtu_fix_damage_save && caster && caster->type == OBJ_PLAYER)
-		dex = dex_missile_adjust();
+		dex = dtu_dex_missile_adjust();
 
 	dtu_xp_hit_start(d20);		// ASCENT: the verbose combat log (dtuxp.h)
 	if (d20 == 1) {

@@ -2890,6 +2890,13 @@ int dtu_char_attack_roll(object *target, int weapon)
 			r += 4;
 			dtu_xp_hit_mod(4, LN("backstab"));
 		}
+		// ASCENT: the missile attack adjustment of dexterity (Dtu_fix_dex_missile, dtuspell.h)
+		if (Dtu_fix_dex_missile && !a.melee && a.weapon_id >= 0) {
+			int dx = dtu_dex_missile_adjust();
+
+			r += dx;
+			dtu_xp_hit_mod(dx, dtu_xp_ability_tag(DTU_XP_TEX_DEX));
+		}
 		// 0x2AB9F: Flame Tongue (71) adds 2 against a regenerating target and
 		// 4 against an undead creature
 		if (a.weapon_id == 71 && target) {
@@ -3440,7 +3447,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
 // spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
-// str=STRENGTH.PERCENT,
+// str=STRENGTH.PERCENT, dex=DEXTERITY,
 // attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
@@ -3707,6 +3714,11 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "str")) {		// str=STRENGTH.PERCENT: the base strength (test)
 		Dtu_char.base.strength = a;
 		Dtu_char.base.strength_extra = b;
+		dtu_char_update();
+		dump_character();
+	}
+	else if (!strcmp(cmd, "dex")) {		// ASCENT: dex=N: the base dexterity (test)
+		Dtu_char.base.dexterity = a;
 		dtu_char_update();
 		dump_character();
 	}

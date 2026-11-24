@@ -119,6 +119,19 @@ extern int Dtu_fix_melf_acid;
 // -origcombat clears it.
 extern int Dtu_fix_damage_save;
 
+// ASCENT: the attack roll of a weapon missile of the player (an arrow, a
+// bolt, a thrown weapon: attack type PROJECTILE, 0x2AAF6) adds the weapon,
+// the bow or crossbow (0x2AB0A) and no dexterity: the missile attack
+// adjustment table 0x14028E has no reader (0x8C047 is never called). AD&D
+// 2nd edition adds the "Missile Attack Adjustment" of dexterity to every
+// missile attack. 1 (default): the player adds it (dtu_dex_missile_adjust,
+// "+N (DEX)" in the verbose combat log). 0: the executable. A creature has
+// no dexterity. -origcombat clears it.
+extern int Dtu_fix_dex_missile;
+// The missile attack adjustment of the dexterity of the player (0x14028E,
+// dexterity limited to 1 to 19 as 0x8C047): -6 to +3.
+int dtu_dex_missile_adjust(void);
+
 // Strength (50) and Infravision (25) compute the duration in 32 bits: it
 // wraps from caster level 10 (Strength) and 8 (Infravision) and the effect
 // ends at once. Corrected: no wrap; a duration stops at 4 hours 33 minutes,
