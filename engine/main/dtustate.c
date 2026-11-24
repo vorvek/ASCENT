@@ -1488,7 +1488,7 @@ static int restore_files(char names[3][32], int level_index)
 	read_tig(names[1]);
 	read_tap(names[2]);
 	// 0x5AA75 calls 0x5A855(0) after the read of the triggers and traps
-	dtu_trig_state_rules(level_index);
+	dtu_trig_state_rules(level_index, 1);
 	// 0xBAFE0 sets each object up again from the tables (0xAE3F2). The
 	// port does it for all objects of the level with the function of the
 	// level start.
