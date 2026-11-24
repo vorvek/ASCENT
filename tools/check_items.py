@@ -221,6 +221,24 @@ def test_rings(t):
     return "%d ring effects, Health, Strength, Protection, Armoring" % len(RINGS)
 
 
+def test_armoring_bracers(t):
+    """A mage with the Ring of Armoring and Armor, then Shield: each better
+    Bracers of Defense never gives a worse armor class (Dtu_fix_armoring_cap).
+    -origcombat: 1.3, AC6 gives 6 with Armor and AC8 gives 5."""
+    cmds = ["class=1", "class2=-1", "give=15.16.1", "equip=15.16", "cast=2"]
+    for b in (39, 40, 41, 42):
+        cmds += ["give=15.%d.1" % b, "equip=15.%d" % b, "dump", "unequip=3"]
+    cmds += ["cast=45"]
+    for b in (39, 40, 41, 42):
+        cmds += ["equip=15.%d" % b, "dump", "unequip=3"]
+    d, _, _ = t.run("armoring_bracers", cmds)
+    o, _, _ = t.run("armoring_bracers_orig", cmds, ["-origcombat"])
+    acs, orig = [x.ac for x in d], [x.ac for x in o]
+    check(acs == [5, 5, 4, 2, 3, 3, 3, 2], "AC %s" % acs)
+    check(orig == [5, 6, 4, 2, 2, 2, 2, 2], "-origcombat: AC %s" % orig)
+    return "AC %s, 1.3 %s" % (acs, orig)
+
+
 # ---------------------------------------------------------------------
 # Armor class of a full set (0xAFB55)
 
@@ -359,7 +377,7 @@ def test_saves(t):
     return "%d lines, e.g. %s" % (len(new), new[1].split("] ", 1)[-1])
 
 
-TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_protection, test_saves, test_whin, test_misc]
+TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc]
 
 
 def main():

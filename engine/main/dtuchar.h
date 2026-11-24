@@ -541,6 +541,13 @@ int dtu_char_creature_missile_damage(int weapon, int n, int sides, int sum);
 // body armor without magic. 1 (default): the rings and the cloaks count
 // with the bracers. 0 (-origcombat): 1.3.
 extern int Dtu_fix_bracers_ac;
+// ASCENT: with the Ring of Armoring a mage gets 1 better armor class after
+// each cap of Armor, Magical Vestment and Shield (0xAFAD1), but 0xAFB55
+// gives it only to an armor class worse than the cap (0xB05FC, 0xB064F,
+// 0xB067C): a better armor or Bracers of Defense can give a worse armor
+// class (AC6 bracers 6 with Armor, AC8 bracers 5). 1 (default): the caps
+// are 1 better (Armor 5). 0 (-origcombat): 1.3.
+extern int Dtu_fix_armoring_cap;
 // ASCENT: in 0xAFB55 no Ring of Protection counts with magic armor (5 to
 // 11), a Cloak of Protection counts only with no shield, magic armor or
 // heavy armor, and a ring and a cloak add. A decision of the user: only the
