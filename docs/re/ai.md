@@ -1096,8 +1096,15 @@ The rules of the executable (Code):
   CRYPTS, DROW1, KOBOLDS, BANE and MYRKUL only orcs, goblins, kobolds, Ogre2,
   `gbloser` and `Lich3` have `humanoid`. The human thieves of THIEF1
   (`shmtd2`, `sfmtd2`, ...), the drow of DROW1 and `hmfg1` of CRYPTS have no
-  door bit, as the skeletons, ghouls, rats and Banegards. The port keeps the
-  bit as it is.
+  door bit, as the skeletons, ghouls, rats and Banegards. The door must have
+  no key (`keys` 1) and the side that the creature passes or hits must not
+  have the lock flag 8 (`WALL_DOOR_LOCKED`); the state is closed for 0x25CAA.
+  A key door, a door with a lock (picked with 0xB3400) and a door that a
+  trap locks (TAP toggle lock) stay closed. The lock flag is on each wall,
+  so a door locked on one side only (THIEF1 wall 23, seg 21 side 4; wall 22
+  on the other side is not locked) opens from the other side, for the
+  player too (wall.c tests the side that the player hits). The port keeps
+  this for the types with the door bit.
 - Ladders: a creature does not climb. The ladder code 0x9EBEB
   (`pcons_push_fall`) is called from `player_physics` and from the fall
   damage 0x6C8C8 only for `ConsoleObject`, and the ladder textures
@@ -1150,6 +1157,29 @@ Changes (all with `Dtu_improved_pathfinding`, none with `-origobj` or
   pushes the scenery.
 - `body_line_free()` tests at least a fourth of the cylinder plus 0.25 (the
   walls add 1.0, as in the move).
+- People open doors (a decision of the project): a hostile creature whose
+  model is a person opens a door as a type with the door bit does, with the
+  same tests (no key, no lock flag on the side), for its paths
+  (`door_is_openable()`) and when it walks into the door (0x25CAA). The door
+  opener of the brain code (0x14AF2) stays for the door bit only, and a
+  creature that is not hostile keeps the rules of the executable. A person
+  is a type whose model name (the `model=` word of its monster line, the
+  name in `Pof_names`) starts with `hum_` (humans: the thieves `shmtd2`,
+  `sfmtd2`, `shmfc3` and the others of THIEF*, `hmfg1`, `hffg1`, `hmft4`,
+  `Jeryth`, the people of the inn), `haf` (halflings: `sfmtf2`, `fmtnpc`),
+  `dwf_` (`dmfw1`), `drw` and `dlf_` (the drow `rmfg5`, `rmfb5`, `rmmk5`,
+  `rffk5`, `rfft6` and the others), `elf_` (`priestes`), `orc_`, `gob_`,
+  `kob` (door bit already), `ogr`, `ognew`, `armogr` (ogres), `troll`,
+  `armtroll`, `lic_` (the lich), `min_` (the mind flayer), `ban_`
+  (Banegards), `ghu_`, `gha_` (ghouls and ghasts, intelligent in AD&D 2e),
+  `mum_` (mummies, the intelligence of ghouls in AD&D 2e), and the named
+  `durnan`, `daland`, `thashasa`, `hal.`, `ibba`. Not people: the animals
+  (rats, bats, spiders, beetles, scarabs), the skeletons (`ske_`, the guards
+  `gua_`), zombies, the spirits (`magesprt`, `prstsprt`), beholders,
+  dragons, mephits, gargoyles and `avatar`. The tables have no intelligence
+  value (`iq` is the sight and morale number), so the list is by the model.
+  The log line "obj N NAME: hp ..." of a level start has "person 0/1" and
+  the model name.
 - Paths: a hostile creature with no door bit takes no path through a side
   that its body cannot pass (a door that is not open, a closed wall), and is
   not kept out of a segment because of a wall on another side. It opens no
@@ -1204,6 +1234,19 @@ the player opens the door of seg 38/39 and steps into seg 40; the Ghoul obj
 27 (no door bit) takes a path of 3 segments through the open door (before:
 no path, it walked straight and got there too in this place). With the
 door closed it stays behind it (no path, as before).
+
+People and doors (25 s each): THIEF1 `-testpos 15.7,-4,482.7`: the thief
+`shmtd2` obj 26 opens the door wall 127 (seg 482 side 4) at 4.7 s, obj 27
+opens wall 110, and obj 20 and 26 stand at 13.1 from the player at the end
+(before: "no way", both at the wall). DROW1 `-testpos 269.7,-4,265.1`: the
+drow `rmfg5` obj 21 opens wall 28 (seg 234 side 5) at 2.3 s and stands at
+4.4 from the player (before: STILL behind the door at 9.2). DROW1
+`-testpos 247,-4,142.5`: the skeletons `ske_axe` obj 76 and 77 open no door
+(76 stays at the closed door wall 16; the Ghoul obj 10 opens wall 20).
+THIEF1 `-testpos 15.6,-4,402.7`: the thieves `sfmtd2` obj 5 and 6 stay in
+seg 21 at the locked side of the door (wall 23), and no creature opens
+wall 23. With `-noimprovedpaths` and with `-origobj` the DROW1 log is the
+same as before (but the new fields of the start line).
 
 Open: the armOgre of CRYPTS still does not fit through the low opening of
 seg 103 (top side) and stands there. A creature with no door bit still

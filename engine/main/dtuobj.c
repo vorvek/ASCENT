@@ -1039,6 +1039,8 @@ void dtu_objects_level_setup(void)
 		Monster_ext[i].door_opening = (tbl_int(rec,"door_opening",0) == 1) || (Monster_info[i].flags & MONSTER_F_HUMANOID);
 		Monster_ext[i].blood_vclip = tbl_int(rec,"monster_hit_vclip",9);
 		Monster_ext[i].touch_spell = -1;
+		Monster_ext[i].person = Robot_info[i].model_num >= 0 && Robot_info[i].model_num < N_polygon_models &&
+			dtu_model_is_person(Pof_names[Robot_info[i].model_num]);
 	}
 	memset(Missile,0,sizeof(Missile));
 	Player_death_stage = 0;
@@ -1227,10 +1229,11 @@ void dtu_objects_level_setup(void)
 					Objects[i].flags,Objects[i].ctype.laser_info.parent_num,Objects[i].ctype.laser_info.parent_signature);
 		for (i=0;i<=Highest_object_index;i++)
 			if (Objects[i].type == OBJ_ROBOT)
-				dtu_obj_log("obj %d %s: hp %d hostile %d behavior 0x%x attack %d weapon %d spell_level %d door %d seg %d contains %d/%d/%d script %d model %d size %.2f pos %.2f %.2f %.2f",
+				dtu_obj_log("obj %d %s: hp %d hostile %d behavior 0x%x attack %d weapon %d spell_level %d door %d person %d (%s) seg %d contains %d/%d/%d script %d model %d size %.2f pos %.2f %.2f %.2f",
 					i,dtu_object_name(&Objects[i]),f2i(Objects[i].shields),is_hostile(&Objects[i]),
 					Objects[i].ctype.ai_info.behavior,Robot_info[Objects[i].id].attack_type,Monster_ext[Objects[i].id].weapon_type,
-					Monster_ext[Objects[i].id].spell_level,Monster_ext[Objects[i].id].door_opening,Objects[i].segnum,
+					Monster_ext[Objects[i].id].spell_level,Monster_ext[Objects[i].id].door_opening,Monster_ext[Objects[i].id].person,
+					Robot_info[Objects[i].id].model_num >= 0 && Robot_info[Objects[i].id].model_num < N_polygon_models ? Pof_names[Robot_info[Objects[i].id].model_num] : "-",Objects[i].segnum,
 					Objects[i].contains_type,Objects[i].contains_id,Objects[i].contains_count,Objects[i].dtu.m_1b0 & DTU_SCRIPT_MASK,
 					Objects[i].rtype.pobj_info.model_num,f2fl(Objects[i].size),
 					f2fl(Objects[i].pos.x),f2fl(Objects[i].pos.y),f2fl(Objects[i].pos.z));

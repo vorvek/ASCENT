@@ -458,10 +458,53 @@ static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_play
 // with no door bit that walks for its script (Dtu_fix_script_walk)
 static int Script_walk_doors;
 
+// ASCENT: Dtu_improved_pathfinding (a decision of the project). In the
+// executable only a type with the door bit opens doors: door_opening=1 or
+// the word "humanoid" of the monster line (0x1061B), which the tables give
+// to orcs, goblins, kobolds, ogres and liches only. The humans, drow,
+// dwarves, halflings, elves, Banegards and ghouls have no door bit. With
+// the setting a hostile creature whose model is a person (by the model
+// name of the monster line) opens a door as a creature with the door bit
+// does: with no key and no lock (door_is_openable(), 0x25CAA). Animals,
+// skeletons, zombies, spirits and monsters (beholders, dragons, mephits,
+// gargoyles, beetles, spiders) do not. The door opener of the brain code
+// (0x14AF2) stays for the door bit only.
+int dtu_model_is_person(const char *pof)
+{
+	static const char *const prefix[] = {
+		"hum_",		// humans: the thieves of THIEF*, hmfg1, the people of the inn
+		"haf",		// halflings
+		"dwf_",		// dwarves
+		"drw",		// drow men (drw_mfg5, drwmmk7b)
+		"dlf_",		// drow women
+		"elf_",		// elves
+		"orc_", "gob_", "kob",		// door bit in the tables already
+		"ogr", "ognew", "armogr",	// ogres
+		"troll", "armtroll",			// trolls
+		"lic_",		// the lich (door bit already)
+		"min_",		// the mind flayer
+		"ban_",		// Banegards
+		"ghu_", "gha_",				// ghouls and ghasts (intelligent in AD&D 2e)
+		"mum_",		// mummies (the intelligence of ghouls in AD&D 2e)
+		"durnan", "daland", "thashasa", "hal.", "ibba",		// named people
+	};
+	int k;
+
+	for (k=0;k<(int)(sizeof(prefix)/sizeof(*prefix));k++)
+		if (!strnicmp(pof,prefix[k],strlen(prefix[k])))
+			return 1;
+	return 0;
+}
+
+static int person_opens_doors(object *obj)
+{
+	return improved_paths() && obj->type == OBJ_ROBOT && obj->id < N_robot_types && Monster_ext[obj->id].person && is_hostile(obj);
+}
+
 // 1 if the creature can open a door: the door bit, or a walk of its script
 int opens_doors(object *obj)
 {
-	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1;
+	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1 || person_opens_doors(obj);
 }
 
 static int door_is_openable(object *obj,segment *segp,int side)
@@ -504,7 +547,7 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 	static ubyte visited[MAX_SEGMENTS];
 	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
 	int head = 0, tail = 0, found = -1, i, n, cur;
-	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors;
+	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors || person_opens_doors(obj);
 	int walker = improved_paths() && obj->type == OBJ_ROBOT && !is_flying(obj);
 	// Dtu_improved_pathfinding: a hostile creature with no door bit keeps
 	// out of the sides that its body cannot pass (a door that is not open,
