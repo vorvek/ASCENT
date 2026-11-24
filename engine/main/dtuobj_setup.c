@@ -87,6 +87,10 @@ void init_creature_ai(object *obj)
 	memset(ail,0,sizeof(*ail));
 	ail->last_logged_state = -1;
 	ail->blocker = -1;
+	// 0xAC764 (add_npc) and 0x103F8 (0x1038B): the height for the fall damage
+	// (0x6C8C8). The restore (0xBB552) sets it for the player only, so a
+	// restored creature keeps the height of the level file.
+	ail->fall_start_y = obj->pos.y;
 
 	if (aip->behavior < DAIB_GUARD || aip->behavior > DAIB_STATION)
 		aip->behavior = DAIB_WANDER;

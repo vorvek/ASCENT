@@ -568,6 +568,13 @@ extern int Dtu_fix_lava;
 // creature that falls through an opened floor stops in the air. Corrected:
 // it stays active while its feet are 1.0 or more above the floor.
 extern int Dtu_fix_fall_active;
+// The end of the fall of a creature (0x6C662). Original: the damage of the
+// fall (0x6C8C8) comes when the creature is in the floor or hits it in its
+// move; a frame that ends less than 1.0 above the floor ends the fall with
+// no damage (0x6C871), so the damage depends on the frame rate (at a high
+// frame rate a long fall does no damage). Corrected: that end of a fall
+// takes the damage too, also for a creature that became inactive.
+extern int Dtu_fix_fall_land;
 
 // The script of a creature (dtuhook.c): 1 if the script with this id has a
 // "say" statement, 0 if it has none, -1 if there is no script.

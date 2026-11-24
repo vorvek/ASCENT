@@ -185,20 +185,53 @@ static void stop_at_player(object *obj)
 
 int opens_doors(object *obj);
 
+// ASCENT: Dtu_fix_fall_land (dtuobj.h). -origobj clears it.
+int Dtu_fix_fall_land = 1;
+
+// 0x6C8C8 for a creature, verified in the bytes: the damage of a fall and
+// the end of the fall. Only with the fall bit (bit 0x20 of +0x1AE) and none
+// of the effects 0x200880 (Levitate, Fly, Feather Fall): fell = (the height
+// of the start - y) >> 17 ("descent feet", half units). Above 10: fell / 10
+// + rand() % (fell / 10 * 5 + 1), one half on a floor of the type 1
+// (water, side 3 of the segment of the creature), and 0x29A9C(creature, no
+// attacker, damage, -1). Then the height of the start becomes y and the
+// fall bit is cleared. The splash vclip of a fall on water or lava
+// (0x6C93C to 0x6C964) is not in the port, as for the player.
+static void creature_fall_damage(object *obj)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+
+	// (0x29A9C does nothing to a dead body)
+	if (ail->falling && !(obj->dtu.m_88 & (DTU_FX_LEVITATE|DTU_FX_FLY|DTU_FX_FEATHER_FALL)) &&
+		 obj->shields >= F1_0 && DTU_ANIM_STATE(obj) != DAS_DIE) {
+		int fell = (ail->fall_start_y - obj->pos.y) >> 17;
+
+		if (fell > 10) {
+			int base = fell/10;
+			int damage = rand() % (base*5 + 1) + base;
+
+			if ((Segments[obj->segnum].sides[WBOTTOM].pad & 3) == 1)
+				damage >>= 1;
+			dtu_obj_log("fall: obj %d %s fell %d descent feet, %d damage (0x6C8C8)",(int)(obj-Objects),
+				dtu_object_name(obj),fell,damage);
+			damage_creature_w(obj,NULL,i2f(damage),-1);
+		}
+	}
+	ail->fall_start_y = obj->pos.y;
+	ail->falling = 0;
+}
+
 // 0x6C662 for a creature: gravity and the lift out of the floor. Returns
 // the distance of the feet to the floor.
 static fix creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_height)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	fix d = creature_floor_dist(obj,radius,half_height);
-
-	// 0x6C871, 0x6C89A and 0x6C8C8 (in the floor): less than 1.0 above
-	// the floor ends the fall (bit 0x20 of +0x1AE, set by the trap
-	// 0x9493A). A dead body keeps it (see the caller). The start of a fall
-	// above 6.0 (0x6CB0F) and its damage (0x6C8C8) are not in the port for
-	// a creature.
-	if (d < F1_0 && ail->falling && obj->ctype.ai_info.CURRENT_STATE != DAIS_DEAD)
-		ail->falling = 0;
+	// 0x6C74F to 0x6C798: no fall for a creature that flies and is not
+	// dying, nor with the effects 0x200880 (bit 0x80 of +0x1AE, the climb
+	// of the player, is not used for a creature in the port)
+	int no_fall = (is_flying(obj) && DTU_ANIM_STATE(obj) != DAS_DIE) ||
+		(obj->dtu.m_88 & (DTU_FX_LEVITATE|DTU_FX_FLY|DTU_FX_FEATHER_FALL));
 
 	if (d < 0) {
 		fix push = DTU_PUSH_UP_MAX, ad = -d;
@@ -221,6 +254,9 @@ static fix creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_he
 			obj->pos = new_pos;
 		if (obj->mtype.phys_info.velocity.y < 0)
 			obj->mtype.phys_info.velocity.y = 0;
+		// 0x6C839: in the floor, the end of a fall
+		if (!no_fall)
+			creature_fall_damage(obj);
 	}
 	else {
 		ail->push_acc = 0;
@@ -229,6 +265,19 @@ static fix creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_he
 		// died, in the air.
 		if (d != 0 && (!is_flying(obj) || (Dtu_fix_corpse_floor && DTU_ANIM_STATE(obj) == DAS_DIE)))
 			accel->y -= fixmul(d,DTU_GRAVITY_K);
+		// 0x6C871, 0x6C89A: less than 1.0 above the floor ends a fall with
+		// no damage (Dtu_fix_fall_land: with the damage). 1.0 or more starts
+		// one in 1.3 (0x6CB0F: the fall bit and the height of the start).
+		// The port leaves that start out: its floor probe is thin (see
+		// creature_floor_dist), so a creature that the knee lift puts on a
+		// step is 1.0 or more above the floor under its center, and the fall
+		// bit (x and z velocity / 8) stops it at the step. So only the trap
+		// 0x9493A starts a fall of a creature in the port.
+		if (!no_fall && d < F1_0) {
+			if (Dtu_fix_fall_land && ail->falling)
+				creature_fall_damage(obj);
+			ail->falling = 0;
+		}
 	}
 	return d;
 }
@@ -265,26 +314,36 @@ static void creature_integrate(object *obj,vms_vector *accel)
 		pi->velocity.y = DTU_TERMINAL_VEL;
 }
 
-// Dtu_fix_lava: the lava test of a creature that does not move. Only when
-// the floor below it is lava, and its feet are less than 1.0 above that
-// floor. That ends its fall too (an inactive creature stands on the floor
-// of its segment, 0x13F96, with no physics to end it).
-static void creature_still_lava(object *obj)
+// Dtu_fix_lava and Dtu_fix_fall_land: a creature that does not move
+// (inactive, held, flag 0x40). 1.3 runs no physics for it. An inactive
+// creature stands on the floor of its segment (0x13F96): when its feet are
+// less than 1.0 above the floor below it, its fall ends (Dtu_fix_fall_land:
+// with the damage of 0x6C8C8) and the lava of that floor burns it
+// (Dtu_fix_lava). The floor query is made only for a creature that falls
+// or that stands over lava.
+static void creature_still(object *obj)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
-	int seg = Segments[obj->segnum].children[WBOTTOM];
+	int seg = Segments[obj->segnum].children[WBOTTOM], lava, falls;
 	fix r, hh;
 
+	if (obj->ctype.ai_info.CURRENT_STATE == DAIS_DEAD || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return;
 	if (seg < 0)
 		seg = obj->segnum;
-	if ((Segments[seg].sides[WBOTTOM].pad & 3) != 3)
+	lava = Dtu_fix_lava && (Segments[seg].sides[WBOTTOM].pad & 3) == 3;
+	falls = Dtu_fix_fall_land && ail->falling;
+	if (!lava && !falls)
 		return;
 	dtu_get_body_size(obj,&r,&hh);
 	if (creature_floor_dist(obj,r,hh) >= F1_0)
 		return;
-	if (ail->falling && obj->ctype.ai_info.CURRENT_STATE != DAIS_DEAD)
+	if (falls)
+		creature_fall_damage(obj);
+	else
 		ail->falling = 0;
-	dtu_lava_frame(obj,-1,-1,1);
+	if (lava && !(obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+		dtu_lava_frame(obj,-1,-1,1);
 }
 
 void dtu_creature_physics_sim(object *obj)
@@ -312,8 +371,8 @@ void dtu_creature_physics_sim(object *obj)
 	// or has the object flag 0x40 (ASCENT: 0x9F174). Dtu_fix_lava: the lava
 	// burns it all the same (1.3 burns only in the move, 0x9FE54).
 	if ((obj->dtu.m_88 & DTU_OF_HELD) || ail->activity == 0 || dtu_creature_frozen(obj)) {
-		if (Dtu_fix_lava)
-			creature_still_lava(obj);
+		if (Dtu_fix_lava || Dtu_fix_fall_land)
+			creature_still(obj);
 		return;
 	}
 
@@ -529,6 +588,10 @@ void dtu_creature_physics_sim(object *obj)
 
 				vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,-d);
 			}
+			// 0x9F903: the floor ends a fall (0x6C8C8)
+			creature_fall_damage(obj);
+			if (obj->flags & OF_SHOULD_BE_DEAD)
+				break;
 		}
 		else if (fate == HIT_WALL && hit.hit_side == WTOP && !imp) {
 			// 0x9F97A: a hit on a top side (or a bottom side, above) is
@@ -698,7 +761,7 @@ void dtu_creature_physics_sim(object *obj)
 // that its own move hit in this frame is lava, or when its feet are less
 // than 1.0 above the floor (on_floor) and that floor (side 3 of the
 // segment below, or of its segment) is lava; and a creature that does not
-// move (inactive, held, flag 0x40) burns too (creature_still_lava). 1.3
+// move (inactive, held, flag 0x40) burns too (creature_still). 1.3
 // only burns in the move.
 int Dtu_fix_lava = 1;
 int Dtu_lava_hit_side = -1;		// 0x30F494
