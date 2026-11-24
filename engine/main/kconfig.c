@@ -3656,11 +3656,14 @@ int dtu_kconfig_cfg_line(const char *name, const char *value)
 			Dtu_control_type = n;
 		return 1;
 	}
-	// ASCENT: Joystick/Mouse Sensitivity (byte 0x13BFEF of kconfig.dat)
+	// ASCENT: Joystick/Mouse Sensitivity (byte 0x13BFEF of kconfig.dat),
+	// 1 to 8. A file of an earlier version can have 0 (its options menu
+	// stored the slider value): 0 gave no look and no mouse turn, so it
+	// becomes 1, the lowest value of the executable.
 	if (!strcmp(name, "Sensitivity")) {
 		n = atoi(value);
 		if (n >= 0 && n <= 8)
-			Config_joystick_sensitivity = (ubyte) n;
+			Config_joystick_sensitivity = (ubyte) (n < 1 ? 1 : n);
 		return 1;
 	}
 	if (!strcmp(name, "PadConfig")) {

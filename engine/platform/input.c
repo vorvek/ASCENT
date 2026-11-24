@@ -620,6 +620,17 @@ void plat_input_hold_pointer(void)
 	}
 	if (SDL_CursorVisible())
 		SDL_HideCursor();
+	// ASCENT: Wayland has no global pointer position and no window
+	// position (SDL gives 0), and SDL does not hold the pointer at the
+	// center there, so the test below warps after each motion. Without the
+	// warp protocol a warp of SDL takes the pointer lock of the relative
+	// mode away and sets it again. The relative mode of Wayland locks the
+	// pointer itself: no warp. (Not tested on a Wayland desktop.)
+	{
+		const char *driver = SDL_GetCurrentVideoDriver();
+		if (driver && SDL_strcmp(driver, "wayland") == 0)
+			return;
+	}
 	if (!SDL_GetWindowPosition(win, &wx, &wy) || !SDL_GetWindowSize(win, &ww, &wh) || ww <= 0 || wh <= 0)
 		return;
 	held = SDL_GetGlobalMouseState(&gx, &gy);

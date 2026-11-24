@@ -828,8 +828,10 @@ static void dtu_options_menuset(int nitems, newmenu_item * items, int *last_key,
 
 // ASCENT: D-140. 0 (the executable): each pass of the menu loop stores the
 // slider value plus 1 (0x590AC), so the sensitivity rises by one step each
-// time the menu is left or a sub menu is opened. 1 (default): the value of
-// the slider. -origui clears it.
+// time the menu is left or a sub menu is opened. 1 (default): the slider
+// shows the sensitivity minus 1, so a pass keeps the value. The range stays
+// that of the executable, 1 to 8: the slider at the left is 1, not 0 (0
+// stops the look keys and the mouse, controls.c). -origui clears it.
 int Dtu_fix_sensitivity_menu = 1;
 
 static void dtu_options_menu(void)
@@ -858,9 +860,15 @@ static void dtu_options_menu(void)
 		m[7].type = NM_TYPE_MENU; m[7].text=LN("Improvements...");
 		m[8].type = NM_TYPE_MENU; m[8].text=TXT_DETAIL_LEVELS;
 		m[9].type = NM_TYPE_MENU; m[9].text=TXT_CONTROLS_;
-		if (Config_joystick_sensitivity > 7)
-			Config_joystick_sensitivity = 7;
-		m[10].type = NM_TYPE_SLIDER; m[10].text=TXT_JOYS_SENSITIVITY; m[10].value=Config_joystick_sensitivity; m[10].min_value=0; m[10].max_value=7;
+		if (Config_joystick_sensitivity > 8)
+			Config_joystick_sensitivity = 8;
+		if (Config_joystick_sensitivity < 1)
+			Config_joystick_sensitivity = 1;
+		m[10].type = NM_TYPE_SLIDER; m[10].text=TXT_JOYS_SENSITIVITY; m[10].min_value=0; m[10].max_value=7;
+		if (Dtu_fix_sensitivity_menu)
+			m[10].value = Config_joystick_sensitivity - 1;
+		else
+			m[10].value = Config_joystick_sensitivity > 7 ? 7 : Config_joystick_sensitivity;	// 0x58E9E
 		n = 11;
 		calibrate = -1;
 		if (Dtu_control_type >= 1 && Dtu_control_type <= 4) {
@@ -886,7 +894,7 @@ static void dtu_options_menu(void)
 			dtufe_graphics_menu();
 
 		Config_channels_reversed = m[6].value;
-		Config_joystick_sensitivity = m[10].value + (Dtu_fix_sensitivity_menu ? 0 : 1);	// 0x590AC
+		Config_joystick_sensitivity = m[10].value + 1;	// 0x590AC
 	} while( i>-1 );
 
 	if ( Config_midi_volume < 1 )	{

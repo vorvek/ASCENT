@@ -594,11 +594,17 @@ void creature_is_corpse(object *obj)
 
 		if (r >= 6) {
 			int amount = rand() % (mi->moola >> 2) + 1;
-			int n = dtu_create_item(OBJ_MISC,1,1,obj->segnum,&obj->pos);
+			// 0x6A6AC: the gold is an explosion object of size 3.5
+			// (0x38000), not of the size of the misc table (2). The move
+			// query of the player touches an item at size + its radius
+			// (0x3ED76): with the size 2 a body over the gold on the
+			// floor did not reach it.
+			int n = dtu_create_item_size(OBJ_MISC,1,1,obj->segnum,&obj->pos,DTU_GOLD_SIZE);
 
 			if (n >= 0) {
 				Objects[n].shields = i2f(amount);
-				dtu_obj_log("drop: obj %d %s leaves %d gold (obj %d)",(int)(obj-Objects),dtu_object_name(obj),amount,n);
+				dtu_obj_log("drop: obj %d %s leaves %d gold (obj %d) at %.2f %.2f %.2f",(int)(obj-Objects),dtu_object_name(obj),amount,n,
+					f2fl(Objects[n].pos.x),f2fl(Objects[n].pos.y),f2fl(Objects[n].pos.z));
 			}
 		}
 	}
@@ -715,7 +721,8 @@ void dtu_creature_drop_contents(object *obj)
 			n = dtu_gate_in_creature(id,obj->segnum);
 		else if (!(type == OBJ_WEAPON && (id == 10 || id == 0x1c || id == 0x28 || id == 0x4a || id == 0x4b)))
 			n = dtu_create_item(type,id,count,obj->segnum,&obj->pos);
-		dtu_obj_log("drop: obj %d %s leaves type %d id %d count %d (obj %d)",(int)(obj-Objects),dtu_object_name(obj),type,id,count,n);
+		dtu_obj_log("drop: obj %d %s leaves type %d id %d count %d (obj %d) at %.2f %.2f %.2f",(int)(obj-Objects),dtu_object_name(obj),type,id,count,n,
+			f2fl(n >= 0 ? Objects[n].pos.x : 0),f2fl(n >= 0 ? Objects[n].pos.y : 0),f2fl(n >= 0 ? Objects[n].pos.z : 0));
 		obj->contains_type = obj->contains_id = -1;
 		obj->contains_count = 0;
 	}
