@@ -478,6 +478,21 @@ int Dtu_fix_market_charisma = 1;
 // the number sold.
 int Dtu_fix_market_sell_count = 1;
 
+// 0 (the executable): a bought item gets the count of the line. The goods
+// of the rewards of Khelben have count -1 (0x13F6A0), and a non-stackable
+// item keeps it in the stock, so a bought Wand of Magic Missiles has count
+// -1, which 0xB7084 never takes down: a wand with no limit, sold at the
+// price of all its charges (0x86C5A prices a count of -1 as the most).
+// 1 (default): an item of count -1 gets the charges of its table line
+// (`uses`, at least 1).
+int Dtu_fix_market_charges = 1;
+
+// 0 (the executable): Accept (0x85458) takes the quantity from the line of
+// the stock before it gives the items, so an item that the bag does not
+// take is lost from the stock (the gold is not taken for it). 1 (default):
+// the line loses only the items that were given.
+int Dtu_fix_market_buy_stock = 1;
+
 // The tables at 0x13F2DD (the player sells) and 0x13F32D (the player
 // buys): percent of the value for charisma 0 to 19.
 static short Mk_sell_percent[20] = { 20, 25, 27, 33, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 88, 93, 97, 99, 100 };
@@ -1223,6 +1238,19 @@ static int mk_take_from_line(mk_list *l, mk_entry *e, int n)
 	return 1;
 }
 
+// The count of a bought item: the count of the line; with
+// Dtu_fix_market_charges a count of -1 of a non-stackable item gives the
+// charges of the table line.
+static int mk_buy_count(mk_entry *e)
+{
+	int uses;
+
+	if (e->cond >= 0 || !Dtu_fix_market_charges || mk_stackable(e->type, e->id))
+		return e->cond;
+	uses = mk_tbl_int(mk_item(e->type, e->id), "uses", 1);
+	return uses > 0 ? uses : 1;
+}
+
 // 0x85458: "Accept"
 static void mk_accept(fe_screen *s, int id)
 {
@@ -1231,18 +1259,26 @@ static void mk_accept(fe_screen *s, int id)
 	int i, n = 0, gold0 = Dtu_gold;
 
 	if (!Mk_sell) {
-		mk_take_from_line(l, Mk_trans, Mk_trans_qty);
+		int count = mk_buy_count(&w);
+
+		if (!Dtu_fix_market_buy_stock)
+			mk_take_from_line(l, Mk_trans, Mk_trans_qty);
 		for (i = 0; i < Mk_trans_qty; i++) {
 			if (Dtu_n_inventory >= MK_PLAYER_ITEMS)
 				continue;
-			if (dtu_inventory_add(w.type, w.id, w.cond) < 0)		// 0xB6315
+			// 0xB6315 to 0xB65BB: only a count of 0 is refused, so a line
+			// of count -1 gives an item of count -1. dtu_inventory_add
+			// refuses a count below 1; a non-stackable item is appended.
+			if ((count < 0 ? dtu_inventory_append(w.type, w.id, count) : dtu_inventory_add(w.type, w.id, count)) < 0)
 				continue;
-			mk_add_player(w.type, w.id, w.cond);				// 0x876ED
+			mk_add_player(w.type, w.id, count);				// 0x876ED
 			Dtu_gold -= Mk_trans_price;
 			n++;
 		}
 		if (Dtu_gold < 0)			// 0x8559D: the sign of the gold
 			Dtu_gold = 0;
+		if (Dtu_fix_market_buy_stock && n > 0)
+			mk_take_from_line(l, Mk_trans, n);
 	} else {
 		mk_take_from_line(l, Mk_trans, Mk_trans_qty);
 		for (i = 0; i < Mk_trans_qty; i++)

@@ -14,6 +14,7 @@ The screenshot of the port is the 640x480 interface scaled 3 times.
 import argparse
 import os
 import re
+import struct
 import subprocess
 import sys
 import tempfile
@@ -905,6 +906,56 @@ def test_desc_market_price(t):
     double = market_price(t, "mkprice_double", ["-testmarketcha", "19", "-testmarketdouble"])
     assert double == 2 * high, "flag 107 did not double the price (%d, %d)" % (high, double)
     assert abs(low / high - 400 / 101) < 0.05 * 400 / 101, "the charisma rule: %d for 0, %d for 19" % (low, high)
+
+
+def market_buy_wands(t, name, extra, count=-1):
+    """Buys two of a stock line of two Wands of Magic Missiles with the count
+    (-1: the count of the Khelben rewards, 0x13F6A0). Returns the trade line of
+    the session log and the stock file after the exit."""
+    user = os.path.join(t.tmp, name, "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
+        f.write(struct.pack("<iBBi", 2, 5, 55, count))
+    # the weapons list, the first row, one more, Accept (the pop-up of
+    # FEBGND 25 is centered: Accept at +54,+258), then the exit
+    _, d = t.run(name, ["wait 60", "key w", "wait 5", "click 120 53", "wait 5", "key right", "wait 3",
+                        "shot popup", "click %d %d" % (MK_POPUP[0] + 120, MK_POPUP[1] + 285), "wait 5",
+                        "key escape", "wait 20"],
+                 extra=["-testmarket", "-testmarketgold", "5000", "-testmarketcha", "13"] + extra, level="")
+    m = re.search(r"Market: bought .*", session_log(d))
+    assert m, name + ": no trade in the session log"
+    with open(os.path.join(user, "GELDOR.DAT"), "rb") as f:
+        data = f.read()
+    stock = [struct.unpack("<iBBi", data[i:i + 10]) for i in range(0, len(data) - 9, 10)]
+    return m.group(0), stock, t.stdout
+
+
+# The corner of the quantity pop-up of the market (FEBGND 25, centered)
+MK_POPUP = (113, 70)
+
+
+def test_market_buy_charges(t):
+    """A bought item of count -1 gets the charges of its table line
+    (Dtu_fix_market_charges, D-185: 1.3 gives count -1, no limit), and the
+    stock loses only the items that were given (Dtu_fix_market_buy_stock,
+    D-186). The gold is taken for each item given."""
+    line, stock, out = market_buy_wands(t, "mk_buy_wand", [])
+    assert "bought 2 x" in line and "gold 5000 -> 1400" in line, line
+    assert not [r for r in stock if r[1] == 5 and r[2] == 55], "the stock keeps a wand: %s" % stock
+    m = re.search(r"Market: bought 2 x .*the inventory has (\d+) of them", out)
+    assert m and m.group(1) == "30", "the two wands do not have 15 charges each: %s" % out[-500:]
+    line, stock, out = market_buy_wands(t, "mk_buy_wand_orig", ["-origfe"])
+    assert "bought 2 x" in line and "gold 5000 -> 1400" in line, line
+    m = re.search(r"Market: bought 2 x .*the inventory has (-?\d+) of them", out)
+    assert m and m.group(1) == "-2", "1.3 gives count -1: %s" % out[-500:]
+    # count 0: the bag takes no item (0xB65BB), so no gold is taken and the
+    # line stays; 1.3 loses the line
+    line, stock, out = market_buy_wands(t, "mk_buy_none", [], 0)
+    assert "bought 0 x" in line and "gold 5000 -> 5000" in line, line
+    assert (2, 5, 55, 0) in stock, "the stock lost the line: %s" % stock
+    line, stock, out = market_buy_wands(t, "mk_buy_none_orig", ["-origfe"], 0)
+    assert "bought 0 x" in line and "gold 5000 -> 5000" in line, line
+    assert not [r for r in stock if r[1] == 5 and r[2] == 55], "1.3 keeps the line: %s" % stock
 
 
 def save_png(img, path):

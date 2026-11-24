@@ -530,6 +530,10 @@ Accept (0x85458), on a copy of the line:
   0xB6315 puts the item record into the item list, the line goes to the
   player list (0x876ED) and the price is taken from the gold. At the end a
   negative gold becomes 0.
+  The count of the item is the count of the line (the word +8 of the record,
+  0x873EE keeps it for a non-stackable item and writes 1 for a stackable
+  one); 0xB65BB refuses only a count of 0, so a count of -1 gives an item
+  with no limit of charges (V).
 - Sell: the line of the player goes down; for each item 0xB6E01(class,
   number, count) takes one item and the price goes to the gold; 0xAFB55
   (the character values); then 0x873EE adds to the stock the quantity of
@@ -780,6 +784,8 @@ Settings (on by default, each corrects a defect of the executable):
 |---|---|---|---|
 | `Dtu_fix_market_charisma` | dtufe_town.c | after a new character the market uses the charisma of that character for the rest of the run, also for a loaded character (0x13E38C) | the charisma of the player |
 | `Dtu_fix_market_sell_count` | dtufe_town.c | a sale adds to the stock the items the player had in the line, not the items sold (0x8564F) | the items sold |
+| `Dtu_fix_market_charges` | dtufe_town.c | a bought non-stackable item gets the count of the line; a line of count -1 (the rewards of 0x13F6A0) gives an item of count -1, which 0xB7084 never takes down | the `uses` of the table line (at least 1) |
+| `Dtu_fix_market_buy_stock` | dtufe_town.c | Accept takes the whole quantity from the line of the stock, also the items that the bag did not take (0x85458) | the items given |
 | `Dtu_fix_escape_load_waterdeep` | dtufe.c | a save of Waterdeep loaded from the ESC menu gives the character but the game goes on in the level (0x423E1) | the player is in Waterdeep |
 
 ## 14. The words in the pictures (V)
