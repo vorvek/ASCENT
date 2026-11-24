@@ -375,6 +375,7 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 #include "dtugame.h"		// ASCENT: Dtu_objects_enabled
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtuinfra.h"		// ASCENT: the heat of an object (improved infravision)
+#include "dtuxp.h"		// ASCENT: the session log line of a creature that goes away
 #include "arcade.h"
 #include "multi.h"
 #include "menu.h"
@@ -1601,6 +1602,11 @@ void obj_delete(int objnum)
 	Assert(obj->type != OBJ_NONE);
 	Assert(obj != ConsoleObject);
 
+	// ASCENT: the session log line of a creature that goes away (dtuxp.h).
+	// A death of the target game leaves a corpse and deletes nothing.
+	if (Dtu_objects_enabled && obj->type == OBJ_ROBOT)
+		dtu_xp_creature_removed(obj);
+
 	if (obj == Viewer)		//deleting the viewer?
 		Viewer = ConsoleObject;						//..make the player the viewer
 
@@ -2063,8 +2069,18 @@ void object_move_one( object * obj )
 	}
 
 	if (obj->lifeleft < 0 ) {		// We died of old age
-		obj->flags |= OF_SHOULD_BE_DEAD;
-		if ( Weapon_info[obj->id].damage_radius )
+		// ASCENT: the target game (0x69A98) removes the object and has no
+		// badass explosion (it makes the burst of a weapon with the flag
+		// +0x1AE bit 0 only, see dtuobj_missile.c). The explosion of
+		// Descent 1 takes Weapon_info[obj->id] of any type of object, so
+		// the end of the life of a creature or a light could blow up the
+		// creatures near it. A missile of the target game has its own life
+		// (dtuobj_missile.c).
+		if (Dtu_objects_enabled && obj->type == OBJ_ROBOT)
+			dtu_creature_remove(obj, "its lifeleft ran out (0x69A98)");
+		else
+			obj->flags |= OF_SHOULD_BE_DEAD;
+		if ( !Dtu_objects_enabled && Weapon_info[obj->id].damage_radius )
 			explode_badass_weapon(obj);
 	}
 

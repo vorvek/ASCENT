@@ -126,6 +126,8 @@ static char rcsid[] = "$Id: fireball.c 2.2 1995/03/21 14:39:57 john Exp $";
 #include "ai.h"
 #include "weapon.h"
 #include "fireball.h"
+#include "dtugame.h"		// ASCENT: Dtu_objects_enabled
+#include "dtuxp.h"		// ASCENT: the session log line of a stopped explosion
 #include "collide.h"
 #include "newmenu.h"
 #include "network.h"
@@ -954,6 +956,17 @@ maybe_delete_object(object *del_obj)
 void explode_object(object *hitobj,fix delay_time)
 {
 	if (hitobj->flags & OF_EXPLODING) return;
+
+	// ASCENT: a creature of the target game never explodes. explode_object
+	// of 1.3 (0x3CA7E) has six callers, for debris, clutter and scenery
+	// only (0x26FB7, 0x27111, 0x29999, 0x29A9C, 0x3CBC9, 0x911AA). Here the
+	// explosion of Descent 1 would burst the model of the creature into
+	// debris with its explosion vclip and delete it: no death, no corpse,
+	// no experience.
+	if (Dtu_objects_enabled && hitobj->type == OBJ_ROBOT) {
+		dtu_xp_creature_stopped(hitobj, "the explosion of Descent 1 (explode_object)");
+		return;
+	}
 
 	if (delay_time) {		//wait a little while before creating explosion
 		int objnum;

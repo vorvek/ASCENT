@@ -413,6 +413,7 @@ extern player_type_info Player_type_info[MAX_PLAYER_TYPES];
 #define MONSTER_F_NOATTACK				0x4000
 #define MONSTER_F_MAGIC_RESISTANT		0x8000		// ASCENT: +0x98 bit 0x0400 (saving throws 0xAE77F)
 #define MONSTER_F_FIRE_RESISTANT		0x10000		// ASCENT: +0x98 bit 0x0010 (fire damage 0x91DAF)
+#define MONSTER_F_RAT					0x20000		// ASCENT: the keyword rat= (+0xD9 bit 0x04, 0x1E9E2 to 0x1EA02)
 
 typedef struct monster_info {
 	char			name[DTU_NAME_LENGTH];

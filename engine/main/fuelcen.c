@@ -273,6 +273,7 @@ static char rcsid[] = "$Id: fuelcen.c 2.3 1995/03/21 14:38:40 john Exp $";
 #include "render.h"	// ASCENT: Render_list for the fire of a rest place
 #include "dtuchar.h"	// ASCENT: dtu_char_rest_ready()
 #include "dtutrig.h"	// ASCENT: dtu_warp_lookup() for the sparkles of a warp
+#include "dtugame.h"	// ASCENT: Dtu_objects_enabled
 
 // The max number of fuel stations per mine.
 
@@ -968,7 +969,11 @@ void fuelcen_update_all()
 			rest_fire_proc(&Station[i]);		// ASCENT: a rest place
 
 		if ( Station[i].Type == SEGMENT_IS_ROBOTMAKER )	{
-			if (! (Game_suspended & SUSP_ROBOTS))
+			// ASCENT: the target game makes no creatures in a matcen: the
+			// station frame 0x3DCAF has no robot maker (create_morph_robot
+			// 0x3DA5A has no caller), and the matcen of Descent 1 whacks a
+			// creature in its segment until it explodes.
+			if (! (Game_suspended & SUSP_ROBOTS) && !Dtu_objects_enabled)
 				robotmaker_proc( &Station[i] );
 		} else if ( Station[i].Type == SEGMENT_IS_CONTROLCEN )	{
 			controlcen_proc( &Station[i] );

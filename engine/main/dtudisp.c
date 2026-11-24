@@ -855,10 +855,17 @@ static int msg_color(int index)
 // ASCENT: the color index of the next message (0x347A2), or -1 for the
 // index -1 of most callers. See dtu_display_next_message_color().
 static int Msg_next_index = -1;
+static int Msg_next_rgb = -1;		// ASCENT: a palette color, or -1 (dtudisp.h)
 
 void dtu_display_next_message_color(int index)
 {
 	Msg_next_index = index;
+	Msg_next_rgb = -1;
+}
+
+void dtu_display_next_message_rgb(int r, int g, int b)
+{
+	Msg_next_rgb = rgb6(r, g, b);
 }
 
 static char Desc_msg[101];				// ASCENT: the last message in the modes 3 and 6 (0x1BD69C)
@@ -872,6 +879,7 @@ void dtu_display_add_message(char *text)
 
 	if (!Dtu_display_active || !GAME_FONT || !text) {
 		Msg_next_index = -1;
+		Msg_next_rgb = -1;
 		return;
 	}
 	p = text = dtu_tr(text);		// ASCENT: the text of the code in the language (dtulang.h)
@@ -889,8 +897,9 @@ void dtu_display_add_message(char *text)
 		snprintf(Desc_msg, sizeof(Desc_msg), "%s", text);
 		Desc_msg_on = 1;
 	}
-	color = msg_color(Msg_next_index);
+	color = Msg_next_rgb >= 0 ? Msg_next_rgb : msg_color(Msg_next_index);
 	Msg_next_index = -1;
+	Msg_next_rgb = -1;
 	// 0x347A7: the words (separators LF, tab, CR and space: strtok with
 	// 0x13B09E) are joined with one space. A line is closed when the next
 	// word would make it 100 characters or more, or as wide as the box or

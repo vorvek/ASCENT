@@ -40,6 +40,49 @@ static void log_exit(void)
 	Log_on = 0;
 }
 
+// ASCENT: the log file is UTF-8. The text of the game is Latin-1 (the
+// translations, docs/formats/lang.md): a text that is not valid UTF-8 is
+// taken as Latin-1 and each byte above 127 becomes two bytes. A text that
+// is valid UTF-8 (a path, a message of SDL) stays as it is.
+static int is_utf8(const unsigned char *s)
+{
+	while (*s) {
+		int n = 0;
+
+		if (*s < 0x80) { s++; continue; }
+		if ((*s & 0xE0) == 0xC0) n = 1;
+		else if ((*s & 0xF0) == 0xE0) n = 2;
+		else if ((*s & 0xF8) == 0xF0) n = 3;
+		else return 0;
+		for (s++; n > 0; n--, s++)
+			if ((*s & 0xC0) != 0x80)
+				return 0;
+	}
+	return 1;
+}
+
+static void log_utf8(const char *text)
+{
+	char out[2048];
+	const unsigned char *s = (const unsigned char *) text;
+	int n = 0;
+
+	if (is_utf8(s)) {
+		plat_log("%s", text);
+		return;
+	}
+	for (; *s && n < (int) sizeof(out) - 3; s++) {
+		if (*s < 0x80)
+			out[n++] = (char) *s;
+		else {
+			out[n++] = (char) (0xC0 | (*s >> 6));
+			out[n++] = (char) (0x80 | (*s & 0x3F));
+		}
+	}
+	out[n] = 0;
+	plat_log("%s", out);
+}
+
 // Error(), Warning() and Int3() (error.c)
 static void log_error_func(const char *kind, const char *msg)
 {
@@ -61,7 +104,7 @@ void dtulog_message(const char *text)
 		return;
 	N_messages++;
 	if (N_messages <= DTULOG_MAX_MESSAGES)
-		plat_log("%s", text);
+		log_utf8(text);		// ASCENT: Latin-1 names in UTF-8
 	else if (N_messages == DTULOG_MAX_MESSAGES + 1)
 		plat_log("More messages of the data loaders: not written (the count is at the end)");
 }
@@ -76,7 +119,7 @@ void dtulog_event(const char *format, ...)
 	va_start(args, format);
 	vsnprintf(buf, sizeof(buf), format, args);
 	va_end(args);
-	plat_log("%s", buf);
+	log_utf8(buf);		// ASCENT: Latin-1 names in UTF-8
 }
 
 // An automated run (a test) has no message box after a crash.
@@ -159,7 +202,7 @@ void dtulog_character(const char *why)
 	static const char *classes[4] = { "cleric", "mage", "fighter", "thief" };
 	static const char *races[5] = { "human", "dwarf", "elf", "dark elf", "halfling" };
 	const dtu_player_attr *pa = &Dtu_char.pa;
-	char cls[100];
+	char cls[100], line[400];
 	const char *race;
 
 	if (!Log_on)
@@ -177,13 +220,14 @@ void dtulog_character(const char *why)
 		snprintf(cls, sizeof(cls), "class %d", pa->class1);
 	if (pa->class2 >= 0 && pa->class2 < 4 && pa->class2 != pa->class1)
 		snprintf(cls + strlen(cls), sizeof(cls) - strlen(cls), " / %s %d", classes[(int) pa->class2], pa->class2_level + 1);
-	plat_log("Character (%s): '%s', %s %s, %s, hit points %d of %d, experience %d/%d, gold %d",
+	snprintf(line, sizeof(line), "Character (%s): '%s', %s %s, %s, hit points %d of %d, experience %d/%d, gold %d",
 		why, Dtu_char.name, pa->female ? "female" : "male", race, cls,
 		// the record of the character: the player object gets its hit
 		// points after the level start (the object still has the 100 of
 		// Descent at this point)
 		pa->hit_points, pa->max_hit_points,
 		Dtu_char.experience[0], Dtu_char.experience[1], Dtu_gold);
+	log_utf8(line);		// ASCENT: the name can have Latin-1 letters
 }
 
 // ----------------------------------------------------------------------

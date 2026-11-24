@@ -335,7 +335,7 @@ static void fix_delete(int n, int type, int id)
 	object *o = fix_obj(n,type,id);
 
 	if (o) {
-		o->flags |= OF_SHOULD_BE_DEAD;		// 0x6A3CC
+		dtu_creature_remove(o,"a level fix (0xACCDB)");		// 0x6A3CC
 		fix_log(n,"removed");
 	}
 }

@@ -2464,6 +2464,7 @@ void dtu_fear_view_end(object *player)
 	player->orient = v->orient;
 	compute_segment_center(&player->pos, &Segments[seg]);
 	obj_relink(player - Objects, seg);
+	dtu_creature_remove_cause(v, "the end of the Fear view (0x903D4)");
 	obj_delete(v - Objects);
 	dtu_char_log("fear: the view ends, the player is in segment %d", seg);
 }

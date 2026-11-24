@@ -382,22 +382,15 @@ static int rat_damage(object *attacker,int normal,int damage)
 // monster table, dtuobj.h)
 int dtu_rat_type(int id)
 {
-	// the answer for each type, with the table record it was read from
-	static int rec[MAX_ROBOT_TYPES], rat[MAX_ROBOT_TYPES], init = 0;
-	char value[16];
-	int r;
-
-	if (id < 0 || id >= N_robot_types || id >= MAX_ROBOT_TYPES || (r = Monster_info[id].record) < 0)
+	// ASCENT: the flag of the type, set by the reader of each table
+	// (MONSTER_F_RAT, bm.h), as the bit of 1.3. The port read the word from
+	// the table record before and kept the answer by the record number:
+	// each table has the same records before $MONSTER, so after BONES the
+	// priestess of YPINN (type 4) and after BAT a shadow thief of THIEF0
+	// to THIEF2 (type 6) were rats and a touch with boots squashed them.
+	if (id < 0 || id >= N_robot_types)
 		return 0;
-	if (!init) {
-		memset(rec,-1,sizeof(rec));
-		init = 1;
-	}
-	if (rec[id] != r) {
-		rec[id] = r;
-		rat[id] = bm_tbl_get(r,"rat",value,sizeof(value)) ? 1 : 0;
-	}
-	return rat[id];
+	return (Monster_info[id].flags & MONSTER_F_RAT) != 0;
 }
 
 // ASCENT: object flag 0x40 on a creature (dtuobj.h)
@@ -736,7 +729,7 @@ void dtu_creature_vanish(object *obj)
 	obj->control_type = CT_NONE;
 	obj->movement_type = MT_NONE;
 	obj->render_type = RT_NONE;
-	obj->flags |= OF_SHOULD_BE_DEAD;
+	dtu_creature_remove(obj,"it leaves the level (0xA9F58, Abjure)");
 }
 
 int dtu_creature_is_active(object *obj)

@@ -39,6 +39,14 @@ too.
   missile with no source (a trap), a creature missile, a script kill (0xA6ACB), the end of a
   script run (0xAC033), Turn Undead or Abjure. A troll that falls and can get up:
   `Creature falls: ...`.
+- Each creature object that goes away with no death of the damage function:
+  `Creature removed: obj N NAME, cause ..., hit points H, segment S`. The cause is a
+  script (the object leaves the level), Abjure, a level fix, a squashed rat with no free
+  segment, a gated creature with no AI, the end of the Fear view or the end of its
+  lifeleft. `not named` is a removal by code that does not name its cause. A rat that the
+  player squashes with boots and that jumps to another segment: `Creature squashed as a
+  rat: ...`. A Descent 1 rule that the port stops for a creature (the explosion, the
+  damage of `apply_damage_to_robot`): `Creature: stopped ...` (at most 100 lines).
 - Each award of experience: `Experience: +TOTAL, +PART for each class, now X / Y`, and each
   level gained: `Level gained: class levels A / B -> C / D, N hit points`.
 - Each talk of a thief with Mirt in the inn: `Thief points: Mirt, thief level L, levels paid
@@ -62,7 +70,8 @@ too.
 - The last line `Session end: normal exit` or `Session end: exit after an error`. A log
   without it is the log of a session that crashed or was stopped.
 
-Each line starts with the seconds since the start. Each line is written to the disk at
+Each line starts with the seconds since the start. The file is UTF-8: the Latin-1 text of
+the game (Spanish names and rolls) is converted. Each line is written to the disk at
 once, so a crash keeps the lines before it.
 
 ## Crash report
