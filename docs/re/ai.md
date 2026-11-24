@@ -905,6 +905,9 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_fire_once` | one missile in each frame that the fire frame lasts (0x13A2A) | one missile for each attack animation |
 | `Dtu_fix_attack_sound` | the attack sound of compute_vis_and_vec needs visibility 2, which never comes | the sound plays by the rules of that code |
 | `Dtu_fix_corpse_floor` | the corpse goes to the floor by the torso box (0x6A48B), a flyer has no gravity in DIE | the dying body falls, the corpse lies with its lowest drawn point on the floor, also in a loaded level. See "The corpse" |
+| `Dtu_fix_fall_active` | the test each 20 ticks (0x14206) makes a creature that does not see the player inactive (a peaceful one always), and an inactive creature has no physics and stands on the bottom side of its segment (0x13F96), also an open one: a creature that falls through an opened floor stops in the air | a creature that does not fly stays active while its feet are 1.0 or more above the floor |
+| `Dtu_fix_lava` | one time of the last burn for all objects (0x13B1B4), the side is the hit side of the last query of any object (0x30F494), and only a creature that moves burns (0x9FE54) | each object has its time, it burns when the wall or floor that it touches is lava, a creature that does not move burns too. physics.md 4.9 |
+| `Dtu_fix_fall_land` | a fall that ends less than 1.0 above the floor at the start of a frame does no damage (0x6C871), so whether a long fall hurts depends on the frame rate, and an inactive creature never ends its fall | that end of a fall takes the damage of 0x6C8C8 too, also for an inactive creature. The player: `Dtu_fix_fall_land_player` (`-origphys`). physics.md 4.7 |
 
 | `Dtu_fix_revive` | the death clears the regeneration bit (0x2A1D0), so a regenerating creature never gets up | the bit stays unless fire or acid took it, and the corpse gets up (0x1440C); option `-origrevive` |
 

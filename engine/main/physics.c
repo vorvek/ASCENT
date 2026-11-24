@@ -1336,6 +1336,15 @@ int Dtu_fix_wall_overlap = 1;	// a body that starts inside the reach of a wall i
 // clears it: the volume of 1.3, and no sound at 200 in place of the fault.
 int Dtu_fix_fall_sound = 1;
 
+// The end of a fall of the player (0x6C662), the sibling of
+// Dtu_fix_fall_land of the creatures (dtuobj.h). 1.3 ends a fall with no
+// damage when a frame starts less than 1.0 above the floor (0x6C871,
+// 0x6C89A); the damage of 0x6C8C8 comes only when the feet are in the
+// floor or the move hits it. So whether a long fall hurts depends on the
+// frame rate and on where the frames fall. Corrected (1, default): that end
+// of a fall takes the damage too. -origphys clears it.
+int Dtu_fix_fall_land_player = 1;
+
 // The state of the player (the byte at 0x1AE of the object in the
 // executable) and the values that belong to it.
 ubyte Dtu_player_state = 0;
@@ -1518,6 +1527,9 @@ static void dtu_fall_damage(object *obj)
 	if ((Dtu_player_state & DTU_PS_FALLING) && !(obj->dtu.m_88 & DTU_OF_NO_GRAVITY)) {
 		int fell = (Dtu_fall_start_y - obj->pos.y) >> 17;		// "descent feet": half units
 
+		// ASCENT: the log of -objlog (test aid)
+		if (fell > 0)
+			dtu_obj_log("fall: the player fell %d descent feet (0x6C8C8)",fell);
 		if (fell > 10) {
 			int base = fell/10;
 			int damage = rand() % (base*5 + 1) + base;
@@ -1534,6 +1546,16 @@ static void dtu_fall_damage(object *obj)
 	}
 
 	Dtu_fall_start_y = obj->pos.y;
+	Dtu_player_state &= ~DTU_PS_FALLING;
+}
+
+// 0x6C871, 0x6C89A: less than 1.0 above the floor (or on it) ends a fall.
+// 1.3 clears the fall bit with no damage; Dtu_fix_fall_land_player gives
+// the damage of 0x6C8C8.
+static void dtu_fall_land(object *obj)
+{
+	if (Dtu_fix_fall_land_player && (Dtu_player_state & DTU_PS_FALLING))
+		dtu_fall_damage(obj);
 	Dtu_player_state &= ~DTU_PS_FALLING;
 }
 
@@ -1628,12 +1650,12 @@ static void dtu_apply_gravity(object *obj,vms_vector *accel)
 			accel->y -= fixmul(ad,DTU_GRAVITY_K);
 			Dtu_gravity_drag = 1;
 			if (ad < F1_0)
-				Dtu_player_state &= ~DTU_PS_FALLING;
+				dtu_fall_land(obj);
 			else if (!(Dtu_player_state & DTU_PS_FALLING))
 				dtu_start_fall(obj);
 		}
 		else
-			Dtu_player_state &= ~DTU_PS_FALLING;
+			dtu_fall_land(obj);
 	}
 }
 
@@ -3088,6 +3110,7 @@ int dtu_player_physics_sim(object *obj)
 	fix sim_time = FrameTime;
 	vms_vector accel,start_pos,frame_vec,new_pos,p1;
 	int floor_type,tries = 0,fate,hit_an_object = 0;
+	int lava_seg = -1,lava_side = -1;	// the wall or floor of the last move query (dtu_lava_frame)
 	int ignore_obj_list[MAX_IGNORE_OBJS],n_ignore_objs = 0;
 	fvi_query fq;
 	fvi_info hit;
@@ -3297,6 +3320,12 @@ int dtu_player_physics_sim(object *obj)
 			fate = find_vector_intersection(&fq,&hit);
 			Fvi_dtu_body = 0;
 		}
+
+		// 0x9E2BA: the hit side of the query goes to 0x30F494 (the side
+		// that the lava test 0x3D2BD reads)
+		Dtu_lava_hit_side = hit.hit_side;
+		lava_seg = (fate == HIT_WALL) ? hit.hit_side_seg : -1;
+		lava_side = hit.hit_side;
 
 		// 0x3FA08: a hit of the bottom side of a segment is a hit of the floor.
 		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
@@ -3592,6 +3621,9 @@ int dtu_player_physics_sim(object *obj)
 
 	dtu_body_log(obj);
 	dtu_move_log(obj);
+
+	// 0x9E7B8: the lava
+	dtu_lava_frame(obj,lava_seg,lava_side,Dtu_floor_dist < F1_0);
 
 	return 1;
 }

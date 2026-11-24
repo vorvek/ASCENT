@@ -201,6 +201,10 @@ void dtu_spell_set_wizardry(int n);
 int dtu_spell_is_area(int spell);
 // 0x8CAD3: the cast vclip of a spell on an object (the potions use it).
 void dtu_spell_cast_vclip(int spell, object *obj);
+// 0x3D38E to 0x3D3A1: the burn of the lava (dtu_lava_frame, dtuobj.h): the
+// damage of the spell 0x911AA with Fireball (16) at level 1, one fire die,
+// on the object with the object as the caster. Returns the damage done.
+fix dtu_spell_lava(object *obj);
 // 0x92FF2 ("randomizing spell table"): a rest shuffles the creature spell
 // table.
 void dtu_spell_rest_shuffle(void);

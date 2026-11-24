@@ -1679,6 +1679,21 @@ static void idle_animation(object *obj)
 		log_creature_state(obj,"idle step");
 }
 
+// ASCENT: Dtu_fix_fall_active (dtuobj.h). -origobj clears it.
+int Dtu_fix_fall_active = 1;
+
+// 1 if a creature that does not fly has its feet 1.0 or more above the
+// floor (the end of a fall in 0x6C662)
+static int creature_in_air(object *obj)
+{
+	fix r, hh;
+
+	if (is_flying(obj) || DTU_ANIM_STATE(obj) == DAS_DIE)
+		return 0;
+	dtu_get_body_size(obj,&r,&hh);
+	return creature_floor_dist(obj,r,hh) >= F1_0;
+}
+
 // The test of do_ai_frame that makes a creature active (0x13CE0, and
 // 0x14230 for a creature that is active).
 static int wake_test(object *obj)
@@ -1817,6 +1832,11 @@ void dtu_do_ai_frame(object *obj)
 		// for a creature that walks away from the player, and the script
 		// waits for the end of the path).
 		if (ail->activity == 0 && ail->script_walk == 1)
+			ail->activity = 2;
+		// Dtu_fix_fall_active: a creature in the air stays active until it
+		// lands, so that its physics runs (an inactive creature stands on
+		// the bottom side of its segment, 0x13F96, also an open one)
+		if (ail->activity == 0 && Dtu_fix_fall_active && creature_in_air(obj))
 			ail->activity = 2;
 		if (ail->activity == 0) {
 			ail->anim_start = GameTime + FrameTime;

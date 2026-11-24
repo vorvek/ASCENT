@@ -219,6 +219,9 @@ for the state bit 0x80.
   is not set.
 - `d == 0`: the fall bit is cleared.
 
+These two clears end a fall with no damage (0x6C871, 0x6C89A). The port can give them the
+damage: `Dtu_fix_fall_land_player` and `Dtu_fix_fall_land`, see 4.7.
+
 So gravity is not a constant. It grows with the distance to the floor, up to
 `3.0 * 8.0 = 24.0` for each FT step (1536 for each second squared) when no floor is
 within 8.0.
@@ -300,7 +303,7 @@ scenery. A walk on the top is not possible (each try starts inside). The port wi
 Improved physics has no 0x261DB and no 0x13A950: the player hangs over the scenery and
 pushes it (section 13.2).
 
-After the loop: 0x69FB8 and 0x3D2BD (not read. Probably the segment of the object).
+After the loop: 0x69FB8 and 0x3D2BD (the lava, 4.9).
 
 ### 4.6 "kneeHigh" (0x6C186)
 
@@ -323,6 +326,42 @@ The texts are "RLH: Object %d fell %d descent feet." and "You fell %d feet!". A 
 can take hold of a wall here (0x9EBEB with 20.0). At the end `start_y = pos.y` and the
 fall bit is cleared.
 
+The gravity (0x6C662, 4.3) clears the fall bit with no damage when the feet are less than
+1.0 above the floor at the start of a frame (0x6C871, 0x6C89A); the damage comes only from
+a body in the floor or a hit of the floor in the move. So whether a long fall hurts depends
+on the frame rate and on where the frames fall. Port test with `-origphys` at 60 steps per
+second (`-fixedfps 60`), the player dropped from the center of BONES segments, five start
+frames each: segment 495 (30.0 to the floor of 494, 11 descent feet) gave no damage in 5 of
+5; segments 491 (20 or 21 feet) and 343 (12 feet) took the damage. `Dtu_fix_fall_land_player`
+(physics.c, 1, `-origphys` clears it, the player sibling of `Dtu_fix_fall_land` of the
+creatures, which `-origobj` clears): that end of a fall goes through 0x6C8C8 too, so it takes
+the damage above 10 feet. With it segment 495 took 1 to 5 in 4 of 5 (the fifth fell 10 feet,
+no damage), 491 and 343 in 5 of 5. Stairs and steps give no damage with it: BONES 114 to 93
+(a 2.5 step, 3 feet), DROW1 486 to 481 (steps of 2.3 to 4.9, 2 feet), THIEF1 383 to 381 and
+KOBOLDS from 2, walking and running. The objlog (`-objlog`) has the line "fall: the player
+fell N descent feet" for each end of a fall of 1 foot or more that goes through 0x6C8C8.
+
+For a creature (verified in the bytes, 2026-11-24): `start_y` is the table 0x30E2D4, one
+dword per object, written by add_npc (0xAC764), 0x1038B (0x103F8), the end of each call
+of 0x6C8C8 and the start of a fall, 0x6CB0F (gravity, 1.0 or more above the floor, fall
+bit clear). The restore of a level writes it for the player only (0xBB552). The damage
+goes to `0x29A9C(creature, no attacker, damage, -1)`: no experience. Callers: the floor
+hit of the move (0x9F903) and the gravity when the feet are in the floor (0x6C839).
+0x6C871 clears the fall bit with no damage when the feet are less than 1.0 above the
+floor at the start of a frame, so a fall ends with damage only when one frame takes the
+body from 1.0 or more above the floor into it. With the rules of 1.3 (`-origobj`) the
+goblin of THIEF2 (13 descent feet) took the damage in 1 of 9 port tests (15, 20 and 30
+frames per second, three activation frames each), at 15. The port: `creature_fall_damage` (dtuobj_move.c). `Dtu_fix_fall_land` (1,
+`-origobj` clears it): the end of a fall less than 1.0 above the floor takes the damage
+too, also for a creature that the AI made inactive before its physics ended the fall. The
+splash vclip of a fall on water or lava (0x6C93C) is not in the port, for the player
+neither. The start of a fall by the gravity (0x6CB0F) is not in the port for a creature:
+the floor probe of the port is thin (`creature_floor_dist`), so the knee lift leaves a
+creature 1.0 or more above the floor under its center at a step, and the fall bit (x and
+z velocity / 8) stopped it there (questtest `kobolds_walk_saveload`: the walk to segment
+43 ended in segment 36). So in the port only the trap 0x9493A starts the fall of a
+creature, and a creature that walks off a ledge takes no fall damage.
+
 ### 4.8 Eye
 
 **V** `eye = pos + orient.uvec * eye_offset`, plus the y of a vector of the model for
@@ -340,6 +379,41 @@ at 0x13D9AE, limited to -0x3000 and 0x2FA0.
 object 0x172). It is 0 in the frames of the player models that were checked (hmc,
 dmf), and is used by the port. Eye height in the port: 12.541 above the floor for a
 human, 10.541 for a dwarf (4.1).
+
+### 4.9 The lava (0x3D2BD)
+
+**V** (the bytes, 2026-11-24) Called at the end of the move of the player (0x9E7B8)
+and of a creature (0x9FE54). Nothing for a creature with `fire_immune`
+(`Robot_info+0x98` bit 0x08, 0x3D2DA) and nothing while bit 0x20, 0x40 or 0x80 of
+`+0x1AE` is set (the fall, the jump, the climb or Levitate, 0x3D323). The segment is
+`children[3]` of the segment of the object, or the segment itself when that is -1
+(0x3D2FD). The side is the dword 0x30F494, side 3 when it is -1. The move loops copy the
+hit side of each query into it (0x9E2BA for the player, 0x9F860 for a creature), so it
+is the hit side of the last query of any object. When `side.flags & 3` is 3 (lava,
+0xA6F89) and the player clock (the dword at 0x1D339F of `Players[Player_num]`) is 1.0 or
+more from the time at 0x13B1B4, the time is set, the fire die count of Fireball
+(0x1B5EA4) becomes 1 and `0x911AA(object, object, 16, 1)` burns the object: 1d6 of fire,
+a save for half. The time at 0x13B1B4 is one for all objects.
+
+A creature runs its move only while it is active (0x9F196), so an inactive creature in
+the lava does not burn. The trap that drops the objects of a floor (0x9493A) sets bit
+0x20 (0x94984) and wakes each creature with 0xA6505(creature, 1) (0x949CB). The 1 is the
+see sound; 0xA6505 keeps the hostile bit (+0x1B0 bit 0x400000): a peaceful creature
+stays peaceful, with target -1 (0xA66A4). The burn gives experience only when the id
+byte of the caster (+5) is Player_num (0x915E7, then 0x4EA50 at 0x91643). The lava passes
+the object itself as the caster, so the death of a goblin in the lava gives no
+experience; the kill counters of the player go up all the same (0x91652, 0x91659). A
+creature of type 0 that burns would give it (the port tests the object type of the
+caster, `spell_deal` in dtuspell.c). The fall damage has no attacker. 0x6C662 clears
+bit 0x20 when the feet are less than 1.0 above the floor
+(0x6C871, 0x6C89A) and 0x6C8C8 clears it in the floor.
+
+The port: `dtu_lava_frame` (dtuobj_move.c), from `dtu_player_physics_sim` and
+`dtu_creature_physics_sim`. Until 2026-11-24 the port had no lava damage.
+`Dtu_fix_lava` (1, `-origobj` clears it): each object has its own time; the object burns
+when the wall or floor that its own move query hit in the frame is lava, or when its
+feet are less than 1.0 above the floor below it and that floor is lava; a creature that
+does not move (inactive, held, flag 0x40) burns too. The fall of a creature: 4.7.
 
 ## 5. Jump (0x546CC, 0x9E9D8)
 
@@ -610,9 +684,11 @@ hit, 0x6C8C8 fall damage, 0x9E88D wall hit).
 9. After the loop: `update_object_seg`, the step sound on the first frame of
    WALK and RUN, the attack sound in ATTACK. An object that is in no segment
    gets object flag 0x40 and render, control and movement type 0.
+   Then the lava 0x3D2BD (4.9, 0x9FE54).
 
 The port has the steps 1, 2, 3 (weapon test only), 5, 6, 7 and 8 without the
-push of scenery, the floor types, the sounds and the fall damage.
+push of scenery, the floor types and the sounds. The fall damage (4.7) is in the port
+since 2026-11-24.
 `Dtu_fix_creature_move` (on by default) makes three parts independent of the
 frame rate: the factor 0.5 of step 2 acts per 3/64 second (v goes to the
 speed of the state with the same time constant as at that frame time), the

@@ -436,6 +436,9 @@ void dtu_drop_objects_in_segment(int segnum)
 		if (obj->type == OBJ_PLAYER || (obj->flags & OF_SHOULD_BE_DEAD))
 			continue;
 		if (obj->type == OBJ_ROBOT && obj->control_type == CT_AI) {
+			// 0x94984: bit 0x20 of +0x1AE, the fall (no lava, x and z
+			// velocity / 8, until the feet are less than 1.0 above a floor)
+			Ail[objnum].falling = 1;
 			dtu_creature_wake(obj,0);
 			continue;
 		}

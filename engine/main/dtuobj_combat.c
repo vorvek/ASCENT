@@ -894,9 +894,9 @@ void dtu_query_radii(object *obj, fix *rad_h, fix *rad_v)
 // (0x8EEAB) and Melf's Acid Arrows (0x8F00E) of 0x8CFFF write the die
 // count of the cast into the spell table record before the roll; the record
 // keeps it until the next table read. A roll that reads the count of the
-// table (0x3D2BD, Fireball on an object in a lava segment, which the port
-// does not have; in the port the fallen body of Dtu_fix_revive) then gets
-// the count of the last cast of any caster. 1 (default): the count of the
+// table (in the port the fallen body of Dtu_fix_revive) then gets the count
+// of the last cast of any caster. The lava (0x3D2BD, dtu_spell_lava) writes
+// 1 at 0x3D38E before its roll. 1 (default): the count of the
 // table line. -origcombat clears it (dtucombat.c).
 int Dtu_fix_spell_dice = 1;
 static int Spell_dice_written[MAX_SPELL_TYPES][4];		// the count + 1, 0: none
