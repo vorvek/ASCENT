@@ -72,6 +72,15 @@ too.
   source and destination segments), `Level change: script command teleport PC ...`, or
   the exit of the inn to Waterdeep. A direct start (`-level NAME`) logs its start
   segment (`Level start: segment ...`, see `docs/audit/world.md`, W20).
+- The input devices: `Input: gamepad 'NAME' (vendor V product P), axes LX LY RX RY LT RT`
+  (the axes at the open; an axis away from 0 counts only after `Input: gamepad axis N at
+  rest`), `Input: joystick 'NAME' ...`, and `Input: relative mouse mode on failed: ...`.
+- The look input, for a report of a view that does not look up or down (at most 4
+  lines of each): `Look keys: held 60 frames (up U, down D), pitch A to B, look sum S,
+  sensitivity N, control type T, gamepad look up X down Y, immersive I` (a look sum of 0
+  with a key down: something else looks in the other direction), and in the immersive
+  mode each 300 frames `Mouse look: 300 frames, source S, mouse look M, mouse axes look L
+  turn T, pitch A to B, control type C` (axes 0: the game got no mouse motion).
 - The messages of the data loaders (`dtu_log()`: tables, archives, music, movies, front
   end loads and saves of save games, level states). At most 3000 in one session.
 - `Error()`, `Warning()` and `Int3()` (at most 500 warnings), the messages of SDL, the
