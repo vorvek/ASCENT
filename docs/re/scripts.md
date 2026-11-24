@@ -154,7 +154,7 @@ in GABE (tools/script.py stats).
 | E5 | HEX ... `E6` | 0xAB435 (0xAA79F) | walk a path through the segments (plain HEX, not NUM). Sets 0x145535 = 1 (flag 0 stays set), target -1, AI mode 2, ai_local +5 bits 0x30, speed. At the end of the path the AI runs the script in mode 2 (0x174FC) | 16 |
 | EA | NUM NUM | 0xAB47B (0xAA86C) | spell NUM (at most 50) from the current object at object NUM (0x8CFFF) | 130 |
 | EB | NUM NUM | 0xAB48F (0xAA8B3) | spell NUM from the current object (0x90CEF). The segment NUM is checked against the highest segment but not passed (a defect of the executable, D-075: script 291 of IBBALAR casts its lights and fires at the speaker, not at the segments 177 to 233). The port centers the spell on the segment (`Dtu_fix_script_area_seg`, `-origscript`) | 87 |
-| EC | NUM | 0xAB4A3 (0xAA8E4) | wait NUM ticks of the 1/100 s clock 0xEDC4C, with reduced frames 0x4391D | 206 |
+| EC | NUM | 0xAB4A3 (0xAA8E4) | wait NUM ticks of the 1/100 s clock 0xEDC4C, with reduced frames 0x4391D. The reduced frame reads no key and nothing empties the key buffer (no call of key_flush 0xDA2A4 in 0xAA8E4, 0xB2280 or 0xB2FA2), so the next choices take the keys of the wait. The port ends the wait at a key or a click while the window is open and drops the keys of the wait (`Dtu_fix_script_wait`, `-origscript`) | 206 |
 | ED | `C4` NUM SIDE \| NUM | 0xAB4B7 (0xAA908) | switch the trigger of the side off (0xA83BD), or kill object NUM (0xA6ACB) | 39 |
 | EE | NUM | 0xAB4C1 (0xAA989) | run the script of object NUM in mode 4, then go on. The pointer, slot, depth, label, object and 0x145535 are saved and restored; the mode is not (it stays 4; verified in the bytes, 0xAA9A0 to 0xAAA10 save and restore 0x145537, 0x145525, 0x145526, 0x14552A, 0x145532 and 0x145535, and 0xABD35 writes 0x145536). `Dtu_fix_script_run_mode` (`-origscript` clears it) gives the outer run its mode back (D-125; test `script_ee_mode`) | 10 |
 | F2 | condition | 0xAB43F (0xA8C3A) | IF (section 3.3) | 1406 |
@@ -720,6 +720,28 @@ Settings (globals in dtuscript.c):
 - `Dtu_fix_prison_items` (1): the prison sequence takes each item that is
   not worn. The executable reads the wrong entry after it removes one
   (`-origprison`).
+- `Dtu_fix_script_wait` (1): a key or a click ends the wait of `EC` while
+  the conversation window is open, and the keys typed in the wait are
+  dropped. In 1.3 the window is empty in the wait (the choice before it
+  cleared the texts, 0xB23C6), the wait runs to its end and each key of the
+  wait is taken by the next choice at once, so its text is gone before it
+  is seen. THIEF0 script 53 (Mishad, label 900) waits rand(500..1000), up
+  to 10 seconds, when Devlin (script 54, label 300) sends him to look at the
+  goblins. `-origscript` clears it.
+- `Dtu_fix_script_devlin` (1): THIEF0 script 54, label 300, branch
+  `resume obj 48 == 1` (0x142D, Mishad killed the last goblins): after
+  "Good work Mishad." and `VAR obj 6 = 13` the run ends, while the two
+  other branches of the same result (0x13AD, label 310 at 0x164E) set flag
+  5 of object 10 and go to label 800 (flag 4 of object 10, gold, global flag
+  66 that Braakus, script 60, and Khelben, script 1 label 12, read). The
+  next talk never reaches label 800 then: flag 6 hides the reply to label
+  150 and label 400 needs flag 7. The port replaces `VAR obj 6 = 13` at
+  0x1470 by `GOTO 3FF` (7 bytes) and adds a block `CB 3FF` with `VAR obj 6
+  = 13`, `SET flag5 obj 10`, `GOTO 800` at the end of the record, so no
+  string moves (the translations know a string by its offset). The
+  script has no experience award. Tests: questtest
+  `thief0_devlin_goblins`, `thief0_devlin_goblins_orig`. `-origscript`
+  clears it.
 
 Since 2026-11-22 (../audit/quests.md): `EB` casts the area spell around the
 object, `9F` sets the level (0x8BA3A), D4 to D7 play and stop linked sounds,

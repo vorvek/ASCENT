@@ -76,6 +76,22 @@ TESTS = [
     T("thief0_walk53", "THIEF0", "10:goobj=48.20,12:resume=48.800,15:talk=48,890:obj=48",
       [r"run script 53 of obj 48 .* at label 320", r"walk to seg 165\s", r"walk: obj 48 is at the end of its path in seg 165\s",
        r"f890 +obj 48: type 2 id 0 seg 165 "], frames=900, extra=["-noattack"]),
+    # THIEF0 script 54 (Devlin, object 41) with 12 of the 13 goblins dead:
+    # "The goblins are already dead." (label 300) calls Mishad (script 53,
+    # label 900), who waits rand(500..1000) and, with seed 1, kills the last
+    # goblin and sets his resume label to 1. Devlin says "Good work Mishad."
+    # and, with Dtu_fix_script_devlin, goes on to label 800 (flag 4 of
+    # object 10). 1.3 (-origscript) ends the run there.
+    T("thief0_devlin_goblins", "THIEF0", "5:seed=1," + ",".join("6:kill=%d" % n for n in
+      (31, 30, 28, 29, 38, 36, 34, 37, 39, 33, 32, 35)) + ",10:goobj=41.20,15:talk=41",
+      [r"script: wait \d+\s", r"Good work Mishad\.[\s\S]*goto 3FF\s+script: set flag 5 of obj 10\s+"
+       r"script: goto 320\s+script: set flag 4 of obj 10\s"], frames=500,
+      dlg="enter,5,enter,enter,2," + ",".join(["enter"] * 10), extra=["-noattack"]),
+    T("thief0_devlin_goblins_orig", "THIEF0", "5:seed=1," + ",".join("6:kill=%d" % n for n in
+      (31, 30, 28, 29, 38, 36, 34, 37, 39, 33, 32, 35)) + ",10:goobj=41.20,15:talk=41",
+      [r"Good work Mishad\.[\s\S]*I mean, you did a good job as well\.\"\s+dlg: choice 0\s+script: end of script 54 of obj 41"],
+      reject=[r"set flag 4 of obj 10"], frames=500,
+      dlg="enter,5,enter,enter,2," + ",".join(["enter"] * 10), extra=["-noattack", "-origscript"]),
     # THIEF1 script 62 (object 25, label 10): WALK 161.
     T("thief1_walk62", "THIEF1", "10:goobj=25.20,12:resume=25.10,15:talk=25,890:obj=25",
       [r"walk to seg 161\s", r"walk: obj 25 is at the end of its path in seg 161\s", r"f890 +obj 25: type 2 id \d+ seg 161 "],
