@@ -120,8 +120,12 @@ def run_test(args, name, level, frames, script, extra=()):
         cmd += ["-hddir", args.hddir]
     # the player gets its hit points back each 10 frames, so that it lives
     heal = ",".join("%d:heal=100" % f for f in range(10, frames, 10))
-    cmd += ["-nomovies", "-mute", "-hidden", "-userdir", user, "-level", level, "-frames", str(frames),
-            "-objlog", objlog, "-chartest", heal + "," + script] + list(extra)
+    # -fixedfps: one step of the game for each frame, so the frame numbers of
+    # the object log are the frames of the script (with the fixed step of
+    # 1/60 second a frame can hold several steps, as many as the time of the
+    # frame needs)
+    cmd += ["-nomovies", "-mute", "-hidden", "-fixedfps", "30", "-userdir", user, "-level", level,
+            "-frames", str(frames), "-objlog", objlog, "-chartest", heal + "," + script] + list(extra)
     if args.software:
         cmd += ["-software"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=user)
@@ -167,9 +171,11 @@ def check_abilities(args):
         print("revive: %s: destroyed for good, experience one time" % name)
 
     # the save and the load of a level with a fallen troll: the regrown hit
-    # points stay; a destroyed troll stays dead
+    # points stay; a destroyed troll stays dead. The body regrows one point
+    # in each second, so the save comes 0.1 s after the cut (the regrown
+    # points are still below 0).
     lines = run_test(args, "revive-save", "MINE", 450,
-                     "4:give=5.33,5:current=5.33,6:kill=1,200:hitbody=1,300:save=1,400:load=1")
+                     "4:give=5.33,5:current=5.33,6:kill=1,200:hitbody=1,203:save=1,400:load=1")
     kept = [l for l in lines if "loaded fallen: obj 1 Troll, regrown hp -" in l]
     assert kept, "revive: the fallen troll lost its state in the save"
     lines = run_test(args, "revive-save-dead", "MINE", 450, "5:area=16.1,6:kill=1,300:save=2,400:load=2")
