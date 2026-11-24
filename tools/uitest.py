@@ -139,14 +139,22 @@ def saved_sensitivity(d):
 
 def test_sensitivity_menu(t):
     """The sensitivity slider of the F2 options menu keeps its value
-    (Dtu_fix_sensitivity_menu); with -origui each pass of the menu stores
-    the slider value plus 1 (0x590AC, D-140)."""
-    lines = ["gamekeys", "wait 20", "key f2", "wait 5"] + ["key down", "wait 2"] * 8 + \
-        ["key left", "wait 2"] * 3 + ["key esc", "wait 10"]
+    (Dtu_fix_sensitivity_menu): the slider shows the sensitivity minus 1 and
+    the menu stores the slider value plus 1 (0x590AC), so the range is 1 to
+    8 as in the executable. With -origui the slider shows the sensitivity
+    (at most 7), so each pass of the menu adds 1 (D-140). From 8: three
+    steps left give 5; a second pass of the menu keeps 5, with -origui 6.
+    Eight steps left give 1, not 0 (no look at 0)."""
+    def menu(steps):
+        return ["key f2", "wait 5"] + ["key down", "wait 2"] * 8 + \
+            ["key left", "wait 2"] * steps + ["key esc", "wait 10"]
+    lines = ["gamekeys", "wait 20"] + menu(3) + menu(0)
     _, d = t.run("sensitivity", lines, extra=["-fixedfps", "30"])
-    assert saved_sensitivity(d) == 4, "the slider 4 was saved as %s" % saved_sensitivity(d)
+    assert saved_sensitivity(d) == 5, "the slider 4 was saved as %s after two passes" % saved_sensitivity(d)
     _, d = t.run("sensitivity_orig", lines, extra=["-fixedfps", "30", "-origui"])
-    assert saved_sensitivity(d) == 5, "-origui: the slider 4 was saved as %s" % saved_sensitivity(d)
+    assert saved_sensitivity(d) == 6, "-origui: the slider 4 was saved as %s after two passes" % saved_sensitivity(d)
+    _, d = t.run("sensitivity_low", ["gamekeys", "wait 20"] + menu(8), extra=["-fixedfps", "30"])
+    assert saved_sensitivity(d) == 1, "the slider at the left was saved as %s" % saved_sensitivity(d)
 
 
 def test_alt_f2_f3(t):
