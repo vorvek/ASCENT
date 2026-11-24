@@ -55,6 +55,7 @@ int Dtu_fix_melf_acid = 1;
 int Dtu_fix_burning_hands = 1;
 int Dtu_fix_damage_save = 1;		// ASCENT: no save against Magic Missile (dtuspell.h)
 int Dtu_fix_spell_hours = 1;
+int Dtu_fix_rest_effects = 1;		// ASCENT: a rest ends the spell effects (dtuspell.h)
 int Dtu_fix_cure_aid = 1;			// ASCENT: priest spells (dtuspell.h)
 // ASCENT: D-105 (dtuspell.h). The flag word of Prayer after 0x56D6A: the
 // bits of the reader 0x242F6, +0x36: 1 AREA, 2 stackable, 0x1C the cast
@@ -3333,6 +3334,36 @@ void dtu_spell_dispel(object *obj)
 {
 	if (obj)
 		fx_expire(obj,1);
+}
+
+// ASCENT: Dtu_fix_rest_effects (dtuspell.h). The effects with a timer end,
+// Protection From Fire (a pool with the 2e limit of 1 turn per level) and
+// Invisibility (the spell has no timer here, 2e: 24 hours at most) too.
+// An effect with no end stays: Armor, Stoneskin, deafness, the blindness
+// of Continual Light, Rary's Mnemonic Enhancer, regeneration and the items
+// (a timer of DTU_FX_NO_END). keep: the effects of the worn items.
+void dtu_spell_rest_effects(object *obj,int keep)
+{
+	int b, n = 0;
+
+	if (!Dtu_fix_rest_effects || obj == NULL)
+		return;
+	for (b=0;b<32;b++) {
+		int mask = (b == 31) ? DTU_FX_VESTMENT : (1 << b), end = 0;
+
+		if (!(obj->dtu.m_88 & mask) || (keep & mask))
+			continue;
+		if (b == 9 || b == 17)
+			end = 1;
+		else if (Fx_timer[b])
+			end = *timer_ref(obj,Fx_timer[b]) != DTU_FX_NO_END;
+		if (end) {
+			dtu_spell_log("spell: the rest ends %s of obj %d (Dtu_fix_rest_effects)",Fx_name[b],(int)(obj-Objects));
+			fx_end(obj,b);
+			n++;
+		}
+	}
+	dtu_spell_log("spell: the rest ended %d effects, effect bits now 0x%08x",n,obj->dtu.m_88);
 }
 
 // ASCENT: 0x2A670: the touch spell sets the counter Spell_info+0x49 of Hold

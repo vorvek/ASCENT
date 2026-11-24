@@ -769,3 +769,170 @@ the cast time) are left out when they repeat the block above.
 | 54 | Range: Self, Duration: 10 minutes, Gives Detect Magic. |
 
 Wands: "Charges: N | Classes: ... | Each use casts SPELL." for the eight wands and the rod.
+
+## Durations
+
+Added 2026-11-25 (the stream report: Protection From Evil ended fast, a Potion of Flying
+lasted long).
+
+### Game time and real time
+
+- 1.3: `calc_frame_time` (0x40E91) takes FrameTime from the timer and limits it to 0x1B4 to
+  0x3333 (1/150 to 1/5 second); `game_frame` (0x435A6) and `game_frame_reduced` (0x4391D, the
+  frame while a conversation waits) add it to GameTime. V (pseudocode).
+- Port: `game.c:1313-1314` has the same limits; `game.c:4323` and `:4344` add FrameTime to
+  GameTime, and the fixed step (`Dtu_fixed_step`) adds the same real time in steps. V (code).
+- So one game second is one real second (slower only below 5 frames per second, or when a
+  picture takes longer than the step limit). The turbo option doubles FrameTime in both.
+- A round of 2e is 60 game seconds (`MINUTE`, `dtuspell.c:94`; 0x3C0000 in 0x8CFFF), a turn
+  600. An effect stores its end time (GameTime + duration) and 0x9002C (port `fx_expire`)
+  compares it with GameTime in each frame, so the frame rate does not change a duration.
+- Game run: Protection From Evil (mage) at caster level 1, no `-fixedfps`, measured with the
+  wall clock: 119.9 s from the cast to "Protection From Evil expired." (log: cast at GameTime
+  0.95, end at 120.95). V.
+- Effects stay over a level change and a save and load (game run: PfE and Fly cast on BANE,
+  warp to KOBOLDS, save slot 3, load: effect bits 0x00800802 after the load). V. The timers
+  after the load were not read.
+- Not checked: whether GameTime runs while the inventory or the menus are open, in 1.3 and
+  in the port.
+
+### What the player sees
+
+The cast message ("You have Protection From Evil for N minutes.", whole minutes rounded down;
+Fly, Invisibility, Armor and Stone Skin give no time), the description window (the duration
+at the caster level, as in the appendix) and "NAME expired." at the end. The port has no
+display of the time left. 1.3 shows none in the code read (G: the HUD code of 1.3 was not
+searched for one).
+
+### Spells
+
+L = caster level (`dtu_spell_player_level`, `dtuspell.c:272`: the level of the class plus 1,
+the higher class for a spell of both books; a scroll, wand, rod or potion that casts a spell
+uses the same level, a creature `creature_level`). 1.3 = the line of `Spell_duration` in the
+pseudocode of 0x8CFFF. Real time = game time. Port lines: `spell_time` in
+`engine/main/dtuspell.c`.
+
+| Spell | Port | 1.3 (0x8CFFF line) | 2e | Real time at L 1 / L 5 | Verdict |
+|---|---|---|---|---|---|
+| 1 Aid (Bless) | (L+1) rounds, :1747 | (L+1)*0x3C0000, 207 | 1 rd + 1/level | 2 / 6 min | same |
+| 2 Armor | pool 8 + L, no timer, :2080 | pool, no timer | until dispelled or more than 8 + L damage | until used up | same (see below) |
+| 3 Bless | 360 s, :1748 | 0x1680000, 249 | 6 rds | 6 min | same |
+| 5 Chill Touch | (L+3), :1749 | 270 | 3 rds + 1/level | 4 / 8 min | same |
+| 6 Color Spray | sleep 2 to 8, blind 1d4, stun 1 round, :1734 | 371, 332, 298 | unconscious 2d4, blind 1d4, stun 1 rd | 1 to 8 min | same |
+| 7 Confusion | (L+2), :1750 | 438 | 2 rds + 1/level | 3 / 7 min | same |
+| 8, 9 Continual Light | no end, :1751 | 0x3FFFFFFF, 475 | permanent | no end | same |
+| 12 Detect Magic (mage) | 2L, :1754 | L*0x780000, 595 | 2 rds/level | 2 / 10 min | same |
+| 54 Detect Magic (cleric) | 600 s, :1755 | 0x2580000, 598 | 1 turn | 10 min | same |
+| 14 Fear | L, :1756 (on the player / (wisdom / 2)) | 699, 701 | rounds = caster level | 1 / 5 min | same |
+| 15 Feather Fall | L, :1758 | 743 | 1 rd/level | 1 / 5 min | same |
+| 18 Flame Walk | (L+1), :1759 | 788 | 1 rd + 1/level | 2 / 6 min | same |
+| 19 Fly | 10 (1d6 + L), :1760 | (rand%6+1+L)*0x2580000, 804 | 1 turn/level + 1d6 turns | 20 to 70 / 60 to 110 min | same |
+| 20 Free Action | 10L, :1761 | L*0x2580000, 826 | 1 turn/level | 10 / 50 min | same |
+| 21 Haste | (L+3), :1762 | 848 | 3 rds + 1/level | 4 / 8 min | same |
+| 22, 52 Hold Person | 2L, :1763 (on the player / (wisdom / 2)) | L*0x780000, 879 | 2 rds/level | 2 / 10 min | same |
+| 23 Hold Undead | 1d4 + L, :1764 | 938 | 1d4 rds + 1/level | 2 to 5 / 6 to 9 min | same |
+| 24 Improved Invisibility | (L+4), :1765 | 951 | 4 rds + 1/level | 5 / 9 min | same |
+| 25 Infravision | (6L+12) turns = L+2 hours, :1766 | (L*6+0xC)*0x2580000, 981 | 2 hrs + 1/level | 3 / 7 hours | same (`Dtu_fix_spell_hours` from L 8) |
+| 26 Invisibility | no end, :1767 | 0x3FFFFFFF, 996 | until an attack, 24 hours at most | until an attack | same, no 24 hour cap |
+| 27 Jump | 1d3 + L, :1768 | 1018 | 1d3 rds + 1/level | 2 to 4 / 6 to 8 min | same |
+| 29 Levitate | 10L, :1769 | L*0x2580000, 1035 | 1 turn/level | 10 / 50 min | same |
+| 30 Light (mage) | 10L, :1752 | L*0x2580000, 468 | 1 turn/level | 10 / 50 min | same |
+| 31 Light (cleric) | 10 (L+6), :1753 | 468 | 1 hr + 1 turn/level | 70 / 110 min | same |
+| 35 Magical Vestment | 5L, :1770 | L*0x12C0000, 1089 | 5 rds/level | 5 / 25 min | same |
+| 38 Prayer | L, :1771 | 1125 | 1 rd/level | 1 / 5 min | same |
+| 39 Protection From Evil (mage) | 2L, :1772 | L*0x780000, 1141 | 2 rds/level | 2 / 10 min | same |
+| 53 Protection From Evil (cleric) | 3L, :1773 | L*0xB40000, 1144 | 3 rds/level | 3 / 15 min | same |
+| 40 Protection From Fire | pool 12L, no timer | pool, no timer | pool, 1 turn/level at most | until used up | 1.3 has no time limit (kept) |
+| 43 Resist Fire | L, :1774 | 1241 | 1 rd/level | 1 / 5 min | same |
+| 44 Scare | 1d4 + L, :1757 (on the player / (wisdom / 2)) | 1306 | 1d4 rds + 1/level | 2 to 5 / 6 to 9 min | same |
+| 45 Shield | 5L, :1775 | L*0x12C0000, 1361 | 5 rds/level | 5 / 25 min | same |
+| 46 Sleep | 5L, :1776 | 1457 | 5 rds/level | 5 / 25 min | same |
+| 47 Slow | (L+3), :1777 | 1534 | 3 rds + 1/level | 4 / 8 min | same |
+| 48 Spider Climb | (L+3), :1778 | 1555 | 3 rds + 1/level | 4 / 8 min | same |
+| 49 Stone Skin | hits 1d4 + L/2, no timer | no timer | until the attacks are used | until used up | same |
+| 50 Strength | L hours, :1779 | L*0xE100000, 1678 | 1 hr/level | 1 / 5 hours | same (`Dtu_fix_spell_hours` from L 10) |
+| 51 Find Traps | 1800 s, :1780 | 0x7080000, 1693 | 3 turns | 30 min | same |
+| 41 Rary's Mnemonic Enhancer | no timer | no end | 1 day | until the second rest (`Dtu_fix_rary_manual`) | decided earlier |
+
+Each port value is the 1.3 value, and each 1.3 value is the 2e value with 1 round = 1 minute.
+V (the pseudocode lines above and `spell_time`; the 2e column from `WizardSpells.json` and
+`PriestSpells.json` of the 2e site, fetched 2026-11-25).
+
+Armor: the port takes weapon damage from the pool (0x29F3E, 0x2A4FB, 0x913AF for a creature;
+`dtu_spell_armor_hit`, `dtuspell.c:838`) and 0x9002C ends the effect when the pool is below
+1.0, so it ends after 8 + L points (2e: more than 8 + L). Spell damage on the player does not
+take from the pool (the player branch of 0x913AF has no such step). A 1 point difference,
+kept as 1.3. Game run: a scimitar hit of 12 on Armor of level 1: "the Armor pool of obj 0
+you takes 12.0, left 0.0". V.
+
+### Potions and items
+
+Port: the table `Misc_use` (`engine/main/dtuchar.c:2099` to `:2115`), times
+(rand() % t_mod + t_add) * t_unit seconds. 1.3: `inventory_use_item` (0x37A6A),
+DTU-Decomp `docs/items.md` section 7. In both, a new end replaces an old one only when it is
+later. 2e (G, not checked against the book; the potion rules are not on the spell site): a
+potion lasts 4 + 1d4 turns unless the item says otherwise.
+
+| Potion | Port and 1.3 | 2e (G) | Real time |
+|---|---|---|---|
+| 72 Agility | 600 s | no 2e item | 10 min |
+| 74 Dragon's Blood | (rand % (class 1 level + 1) + 1) rounds | no 2e item | 1 to L min |
+| 76 Fire Resistance | Resist Fire 600 s | 5 to 8 turns | 10 min |
+| 77 Flying | the spell Fly at the drinker's level | 5 to 8 turns | 10 (1d6 + L) min |
+| 78 Freedom | Free Action (rand % 4 + 5) turns | 5 to 8 turns | 50 to 80 min |
+| 80 Hill Giant Strength | (rand % 4 + 5) turns | 5 to 8 turns | 50 to 80 min |
+| 81 Hill Giant Intelligence | (rand % 4 + 5) turns | no 2e item | 50 to 80 min |
+| 82 Infravision | (rand % 8 + 1) turns | 5 to 8 turns | 10 to 80 min |
+| 83 Invisibility | (rand % 4 + 3) turns | 5 to 8 turns | 30 to 60 min |
+| 84 Invulnerability | (rand % 16 + 5) rounds | 5 to 8 turns | 5 to 20 min |
+| 85 Jumping | the spell Jump | no 2e item | 1d3 + L min |
+| 86 Luck | 3600 s | no 2e item | 60 min |
+| 87 Speed | Haste (rand % 16 + 5) rounds | 5 to 8 turns | 5 to 20 min |
+| 88 Toughening | Bless (rand % 6 + 7) turns | no 2e item | 70 to 120 min |
+
+The Potion of Flying of the stream: the spell Fly at the level of the drinker, so 10 times
+(1d6 + L) minutes of real time: 20 to 70 minutes at level 1, 50 to 100 at level 4. It is
+close to the 2e potion (50 to 80 minutes, G), so the 1.3 rule stays.
+
+Worn items (rings, boots, cloaks, the amulet, the gauntlet, weapon 54) give their effects
+with no end while worn (0xB08A8, `worn_effects` in `dtuchar.c`); the Assembled Spider gives
+four effects with no end (case 0x19 of `use_misc`). No other item has a timer.
+
+### Verdict on the stream report
+
+No port bug in the durations or in the count. Protection From Evil lasts 2 rounds per level
+(mage) or 3 (cleric) in 1.3 and in 2e: 2 real minutes per level of a mage. Fly lasts 1d6 + L
+turns, so a potion lasts about an hour or more. Both are right; the difference is the 2e rule.
+
+### Rest (`Dtu_fix_rest_effects`, new)
+
+1.3: `player_rest_button` (0x360D5) calls `spell_restore_slots` (0x3551B, the slots only)
+and `player_rest_stop` (0x3E1F6: the alert, the spell table shuffle 0x92FF2, the hit points,
+the sound, the appearance vclip 0x4D95D, the rest time of the place, the fire). No effect
+and no potion timer ends. V (pseudocode).
+
+The rule of the user: a rest ends the spell effects on the party, except Armor. The port
+(`dtu_spell_rest_effects`, `dtuspell.c:3277`, called by `dtu_char_rest`, `dtuchar.c`) ends:
+
+- each effect with a timer: the spells, the creature spells on the player and the effects of
+  the potions (they set the same bits, so a potion effect cannot be told from a spell);
+- Protection From Fire (a pool; 2e: 1 turn per level at most) and Invisibility (no timer in
+  1.3; 2e: 24 hours at most);
+- the five potion timers (Agility, Dragon's Blood, Hill Giant Strength and Intelligence,
+  Luck): each is shorter than a rest.
+
+It keeps the effects with no time limit in 2e: Armor and Stone Skin (until damage or Dispel
+Magic), the blindness of Continual Light (permanent) and deafness (no timer, cured by the
+spell); Rary's Mnemonic Enhancer (its own rest rule, `Dtu_fix_rary_manual`); regeneration;
+and every effect of an item: the worn items (passed as a mask) and the Assembled Spider (a
+timer with no end). `-origcombat` clears the setting.
+
+Game runs (BANE, rest place segment 68, `-chartest`, `-objlog`): Protection From Evil, Fly,
+Armor, Stone Skin, Invisibility, Shield, Bless, the Potions of Agility and Speed and a
+blindness of 600 s, then a rest: 7 effects end with their "expired." texts, the potion
+timers end, the bits after the rest are 0x20000001 (Armor and Stone Skin). With
+`-origcombat` nothing ends. With the Ring of Free Action and the Elven Cloak worn plus
+Improved Invisibility and Protection From Evil: the two spells end, Free Action and the
+Invisibility of the cloak stay (bits 0x00021001). One text glitch, as in 1.3 at a normal
+end: the two invisibilities share a timer and end together (0x906B9), so "Invisibility
+expired." shows and the cloak sets Invisibility again at once.

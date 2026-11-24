@@ -146,6 +146,16 @@ int dtu_dex_missile_adjust(void);
 // ends at once. Corrected: no wrap; a duration stops at 4 hours 33 minutes,
 // the longest timer of the port below DTU_FX_NO_END.
 extern int Dtu_fix_spell_hours;
+// A rest (0x360D5, 0x3E1F6) fills the hit points and the slots and ends no
+// effect: a buff cast before a rest lasts through it. The rule of the
+// port (2e: a rest is hours long): the rest ends the effects of the spells
+// and the potions on the player and the potion timers. Effects with no
+// time limit in 2e stay (Armor, Stoneskin, the blindness of Continual
+// Light, deafness), so do Rary's Mnemonic Enhancer (its own rest rule,
+// Dtu_fix_rary_manual) and the effects of items. 1 (default): the rule of
+// the port. 0: the executable. -origcombat clears it.
+extern int Dtu_fix_rest_effects;
+void dtu_spell_rest_effects(object *obj, int keep);
 // ASCENT: Cure Light Wounds and Cure Serious Wounds (0x8DE4B, 0x8DF37) add
 // the points and then cut the hit points to the maximum, so a cure on a
 // character with the extra hit points of Aid takes them away. A healing

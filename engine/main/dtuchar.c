@@ -2652,6 +2652,18 @@ int dtu_char_rest(void)
 		return 0;
 	}
 	dtu_char_log("rest: segment %d, hit points %d -> %d", seg, dtu_char_hit_points(), dtu_char_max_hit_points());
+	// ASCENT: Dtu_fix_rest_effects (dtuspell.h): the spell and potion
+	// effects end, not those of the worn items. Before the hit points, so
+	// the end of Aid does not cut them.
+	if (Dtu_fix_rest_effects) {
+		int keep = 0, i;
+
+		for (i = 0; i < 15; i++)
+			if ((Worn_bits & (1 << i)) && Worn_fx[i])
+				keep |= Worn_fx[i];
+		dtu_spell_rest_effects(player, keep);
+		dtu_char_potions_end(1);
+	}
 	set_hit_points(Dtu_char.pa.max_hit_points);
 	Rest_time[seg] = GameTime + i2f(300);
 	HUD_init_message("You feel refreshed");
