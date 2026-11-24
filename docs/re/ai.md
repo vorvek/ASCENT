@@ -1187,11 +1187,12 @@ Changes (all with `Dtu_improved_pathfinding`, none with `-origobj` or
   `kob` (door bit already), `ogr`, `ognew`, `armogr` (ogres), `troll`,
   `armtroll`, `lic_` (the lich), `min_` (the mind flayer), `ban_`
   (Banegards), `ghu_`, `gha_` (ghouls and ghasts, intelligent in AD&D 2e),
-  `mum_` (mummies, the intelligence of ghouls in AD&D 2e), and the named
+  `mum_` (mummies, the intelligence of ghouls in AD&D 2e), `gar_`
+  (gargoyles: they have hands and are not mindless), and the named
   `durnan`, `daland`, `thashasa`, `hal.`, `ibba`. Not people: the animals
   (rats, bats, spiders, beetles, scarabs), the skeletons (`ske_`, the guards
   `gua_`), zombies, the spirits (`magesprt`, `prstsprt`), beholders,
-  dragons, mephits, gargoyles and `avatar`. The tables have no intelligence
+  dragons, mephits and `avatar`. The tables have no intelligence
   value (`iq` is the sight and morale number), so the list is by the model.
   The log line "obj N NAME: hp ..." of a level start has "person 0/1" and
   the model name.
@@ -1262,6 +1263,17 @@ THIEF1 `-testpos 15.6,-4,402.7`: the thieves `sfmtd2` obj 5 and 6 stay in
 seg 21 at the locked side of the door (wall 23), and no creature opens
 wall 23. With `-noimprovedpaths` and with `-origobj` the DROW1 log is the
 same as before (but the new fields of the start line).
+
+Gargoyles (`gar_gy.pof`, they fly) are in MYRKUL (obj 14, 24, 25, 43, 46)
+and IBBALAR (obj 79, 80, 81, 109). The doors near them are auto doors
+(flag 0x10) with no key and no lock: IBBALAR wall 42 (seg 110 side 5), 45
+and 46 are 5 to 7 segments from obj 79 to 81, MYRKUL wall 54 is 7 segments
+from obj 14; the others have no door in 7 segments. The player cannot
+close a door: an open door closes by itself after 5.0 s (`WALL_DOOR_AUTO`,
+wall.c) or by a trap. IBBALAR `-testpos 0,46,192.5` (seg 109, behind wall
+42): the Gargoyle obj 79 opens wall 42 at 9.4 s and ends 10.3 from the
+player; before, the three gargoyles waited behind the closed door at 16.8
+to 18.0.
 
 Open: the armOgre of CRYPTS still does not fit through the low opening of
 seg 103 (top side) and stands there. A creature with no door bit still

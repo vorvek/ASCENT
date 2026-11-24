@@ -467,7 +467,8 @@ static int Script_walk_doors;
 // name of the monster line) opens a door as a creature with the door bit
 // does: with no key and no lock (door_is_openable(), 0x25CAA). Animals,
 // skeletons, zombies, spirits and monsters (beholders, dragons, mephits,
-// gargoyles, beetles, spiders) do not. The door opener of the brain code
+// beetles, spiders) do not. Gargoyles do (they have hands and are not
+// mindless, a decision of the project). The door opener of the brain code
 // (0x14AF2) stays for the door bit only.
 int dtu_model_is_person(const char *pof)
 {
@@ -486,6 +487,7 @@ int dtu_model_is_person(const char *pof)
 		"ban_",		// Banegards
 		"ghu_", "gha_",				// ghouls and ghasts (intelligent in AD&D 2e)
 		"mum_",		// mummies (the intelligence of ghouls in AD&D 2e)
+		"gar_",		// gargoyles (MYRKUL, IBBALAR; they fly)
 		"durnan", "daland", "thashasa", "hal.", "ibba",		// named people
 	};
 	int k;
