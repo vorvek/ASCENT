@@ -833,7 +833,7 @@ void dtu_char_update(void)
 	dtu_inv_item *e;
 	int sum = 0, ring_best = 0, cloak_best = 0, amulet_best = 0, armor_bonus = 0, ring_counts;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
-	int ac, dex, missile, prot_all = 0, prot_items = 0, armoring;
+	int ac, dex, missile, prot_all = 0, prot_items = 0, shield_ac = 0, armoring;
 
 	if (!Dtu_char.created)
 		return;
@@ -882,6 +882,8 @@ void dtu_char_update(void)
 	if (e) {
 		shield = is_shield(e);
 		sum += slot_ac(e, DTU_SLOT_SHIELD);
+		if (shield)
+			shield_ac = slot_ac(e, DTU_SLOT_SHIELD);
 	}
 
 	// gauntlet
@@ -1054,12 +1056,14 @@ void dtu_char_update(void)
 		// Magical Vestment and Shield to the sum with the magic protection
 		// bonus, so a Ring of Protection adds nothing to a spell that gives a
 		// better armor class than the armor. Corrected: the caps apply to the
-		// armor class without the bonus, then the best of the ring, the cloak
-		// and the amulet counts. The better of the two results counts.
+		// armor class without the bonus and without the shield, then the
+		// shield and the best of the ring, the cloak and the amulet count
+		// (a cleric of level 10 with Magical Vestment 4, a Shield +2 and a
+		// Ring of Protection +2: -1). The better of the two results counts.
 		if (Dtu_fix_ring_magic_armor) {
-			int b = 10 + (signed char) sum - prot_all;
+			int b = 10 + (signed char) sum - prot_all - shield_ac;
 
-			b = (armoring ? armoring_ac(b, missile) : dtu_spell_player_ac_vs(b, 0, missile)) + prot_items;
+			b = (armoring ? armoring_ac(b, missile) : dtu_spell_player_ac_vs(b, 0, missile)) + prot_items + shield_ac;
 			if (b < ac) ac = b;
 		}
 		ac += pa->dex_ac_adjust;
