@@ -1144,6 +1144,14 @@ static void mk_frame(fe_screen *s)
 		fe_input_clear();
 		return;
 	}
+	// ASCENT: the mouse wheel over the catalog or its arrows moves the list
+	// by one line for each step, as one press of an arrow. The original
+	// (DOS) has no wheel.
+	if (Fe_wheel && !Mk_popup_on && x >= 0 && y >= 0 && Fe_mx <= 396 && y < 0x148) {
+		int i, n = Fe_wheel < 0 ? -Fe_wheel : Fe_wheel;
+		for (i = 0; i < n; i++)
+			mk_scroll(s, Fe_wheel > 0 ? 7 : 8);
+	}
 	if (!Fe_rpress || Mk_popup_on || x < 0 || y < 0 || x >= MK_ROW_W || y >= 0x148)
 		return;
 	while (row < MK_ROWS && y >= MK_ROW_H) {		// the rows of 0x84BE4

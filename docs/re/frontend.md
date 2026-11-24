@@ -411,6 +411,10 @@ Features (list 0x13EE9C, 57 bytes each; all act on release):
 | 7 | (366,43)-(396,73), control 1 `btnmkup` | Up | "Scroll up" | 0x84B6D |
 | 8 | (365,96)-(395,126), control 2 `btnmkdwn` | Down | "Scroll down" | 0x84B8A |
 
+ASCENT: the mouse wheel over the catalog or its arrows (x 35 to 396, y 37 to 364) moves the
+list by one line for each step, as one press of an arrow (`mk_frame`, dtufe_town.c), not while
+the quantity window or the description window is open. 1.3 (DOS) reads no wheel.
+
 The catalog (0x85AF0): 9 rows at (35, 37 + 37 i), 330x32. A row (0x85E06):
 the icon (32x32 at the left, the icon number is `icon=` of the item; color
 255 is not drawn, 0xE1280), at x 37 the quantity (medium font, hue 2; "many"

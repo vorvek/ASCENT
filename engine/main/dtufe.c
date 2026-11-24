@@ -80,6 +80,7 @@ int Dtu_fe_return_waterdeep = 0;
 int Fe_mx = FE_W / 2, Fe_my = FE_H / 2;
 int Fe_down, Fe_press, Fe_release, Fe_rdown, Fe_rpress;
 int Fe_key;
+int Fe_wheel;
 int Fe_quit;
 int Fe_screen_num = -1;
 grs_font *Fe_font_l, *Fe_font_m, *Fe_font_s;
@@ -177,6 +178,7 @@ void fe_input_clear(void)
 {
 	Fe_press = Fe_release = Fe_rpress = 0;
 	Fe_key = 0;
+	Fe_wheel = 0;
 }
 
 static void speech_frame(void);
@@ -202,6 +204,7 @@ int fe_frame_begin(void)
 		r = (b >> 1) & 1;
 		Fe_key = key_inkey();
 	}
+	Fe_wheel = plat_mouse_wheel();		// ASCENT: the original (DOS) has no wheel
 	Fe_press = l && !prev_l;
 	Fe_release = !l && prev_l;
 	Fe_rpress = r && !prev_r;

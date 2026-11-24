@@ -876,6 +876,25 @@ def market_price(t, name, extra):
     return int(m.group(1))
 
 
+# The catalog of the market: the nine rows (x 35 to 365, y 37 to 365)
+MKLIST = (35, 37, 330, 328)
+
+
+def test_market_wheel(t):
+    """The mouse wheel over the catalog of the market moves the list by one
+    line for each step, as one press of the arrow (0x84B6D, 0x84B8A)."""
+    s, _ = t.run("mk_wheel", ["wait 60", "move 200 200", "wait 3", "shot base", "wheel -1", "wait 3", "shot wheel",
+                              "wheel 1", "wait 3", "shot back", "move 600 200", "wheel -1", "wait 3", "move 200 200",
+                              "wait 3", "shot outside"],
+                 extra=["-testmarket"], level="")
+    a, _ = t.run("mk_arrow", ["wait 60", "click 380 111", "wait 3", "move 200 200", "wait 3", "shot arrow"],
+                 extra=["-testmarket"], level="")
+    assert differ(region(s["base"], *MKLIST), region(s["wheel"], *MKLIST)) > 0.02, "the wheel did not scroll"
+    assert differ(region(s["wheel"], *MKLIST), region(a["arrow"], *MKLIST)) < 0.001, "one step is not one arrow press"
+    assert differ(region(s["base"], *MKLIST), region(s["back"], *MKLIST)) < 0.001, "the wheel did not scroll back"
+    assert differ(region(s["base"], *MKLIST), region(s["outside"], *MKLIST)) < 0.001, "the wheel scrolled outside the list"
+
+
 def test_desc_market_price(t):
     """The price in the description window of the market (0x86C5A): the
     value times the percent of the charisma (0x13F32D: 400 for charisma 0,
