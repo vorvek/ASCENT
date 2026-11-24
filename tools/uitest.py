@@ -719,6 +719,22 @@ def test_cheat_twice(t):
     assert n == 1, "-origui: zazb typed twice acted %d times" % n
 
 
+def test_disarm_then_hot_key(t):
+    """H empties the hand and sets the box that was chosen last to -1
+    (0x43A5A(-3), 0x43CE2), so key 1 then takes its box again with no
+    refusal sound."""
+    lines = ["gamekeys", "wait 20", "move 300 200", "key 2", "wait 3", "key 1", "wait 3",
+             "hold h 3", "wait 6", "key 1", "wait 3"]
+    _, d = t.run("disarm_hot_key", lines, extra=["-fixedfps", "30", "-charlog", "char.log"])
+    with open(os.path.join(d, "char.log"), errors="replace") as f:
+        log = f.read()
+    i = log.find("KCFG: Disarming")
+    assert i >= 0, "H did not disarm"
+    after = log[i:]
+    assert "refused: the box that was chosen last" not in after, "key 1 after H was refused"
+    assert "current item: entry" in after, "key 1 after H took no item"
+
+
 def test_cheat_codes(t):
     """The cheat codes of 1.3 act (0x4324E, 0x428B9 to 0x42BED): zazb,
     glassy, and eightisgreat with its message 0x125783 (its two I keys open
