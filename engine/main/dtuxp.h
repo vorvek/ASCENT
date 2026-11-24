@@ -72,6 +72,12 @@ void dtu_xp_hit_end(int total, int need, int result);
 // dtu_xp_roll_clear() (that of the damage roll) for the line of the hit.
 void dtu_xp_hit_natural(void);
 void dtu_xp_hit_keep(void);
+// The tag of an ability bonus: the abbreviation of the character sheet (TEX
+// 655 to 660, "STR:" ... "CHA:", in the language of the game texts) without
+// the colon, in brackets: "(DEX)", Spanish "(DES)". text: DTU_XP_TEX_.
+#define DTU_XP_TEX_STR	655
+#define DTU_XP_TEX_DEX	656
+const char *dtu_xp_ability_tag(int text);
 // The damage roll: the dice and their sum (a second call adds a second
 // roll), the bonuses and a multiplier (m < 0: a division by -m, a save for
 // half) in the order of the code, the total.

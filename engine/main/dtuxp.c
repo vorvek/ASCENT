@@ -252,6 +252,23 @@ void dtu_xp_roll_clear(void)
 	memset(&Roll, 0, sizeof(Roll));
 }
 
+const char *dtu_xp_ability_tag(int text)
+{
+	static char tags[6][16];
+	static const char *def[6] = { "STR:", "DEX:", "CON:", "INT:", "WIS:", "CHA:" };
+	int k = text - DTU_XP_TEX_STR, n;
+	const char *s;
+
+	if (k < 0 || k > 5)
+		return NULL;
+	s = tex(text, (char *) def[k]);
+	// the abbreviation of the character sheet without its colon, in brackets
+	for (n = 0; s[n] && s[n] != ':' && n < 10; n++)
+		;
+	snprintf(tags[k], sizeof(tags[k]), "(%.*s)", n, s);
+	return tags[k];
+}
+
 void dtu_xp_hit_keep(void)
 {
 	Keep_hit = Roll.hit;

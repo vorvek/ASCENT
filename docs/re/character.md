@@ -248,6 +248,14 @@ skills for some items.
    4, 3, 2, 1, 0 for 7 to 14, -1, -2, -3, -4, -4), then the limit -10 to 10.
 8. 0xB0A92 returns the result. The screens print it.
 
+The table 0x14028E (21 dwords, dexterity 0 to 20): -9, -6, -4, -3, -2, -1, 0
+for 6 to 15, 1, 2, 2, 3, 4. Its only reader is the accessor 0x8C047, which
+clamps the dexterity to 1 to 19 (0x8C047 to 0x8C064) and which no code calls,
+so 1.3 has no dexterity bonus to hit. For 1 to 19 the values are the AD&D 2nd
+edition "Missile Attack Adjustment". Checked 2026-11-24 in the bytes of the
+executable and the instructions. The port uses it for the attack roll of a
+spell of the player (`Dtu_fix_damage_save`, dtuspell.c `Dex_missile`).
+
 ## 6. Equipment and the paper doll
 
 The paper doll has 12 places (**Code** 0x30650 to 0x31193, positions from the

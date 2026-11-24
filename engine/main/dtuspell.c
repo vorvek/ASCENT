@@ -1081,14 +1081,33 @@ static int caster_thac0(object *caster)
 	return 20;
 }
 
+// ASCENT: the missile attack adjustment of dexterity 1 to 19 (0x14028E, the
+// row of dexterity 0 and 20 unread): the table of 1.3 for the accessor 0x8C047,
+// which clamps the dexterity to 1 to 19 and which no code calls. Its values
+// are the "Missile Attack Adjustment" of AD&D 2nd edition. The port uses it
+// for the attack roll of a spell of the player (Dtu_fix_damage_save).
+static const signed char Dex_missile[20] = { -9, -6, -4, -3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 3 };
+
+static int dex_missile_adjust(void)
+{
+	int dex = Dtu_char.pa.dexterity;
+
+	return Dex_missile[dex < 1 ? 1 : dex > 19 ? 19 : dex];
+}
+
 // ASCENT: the attack roll of a spell (Dtu_fix_damage_save, Dtu_fix_melf_acid):
 // a d20 + bonus with thac0 against the armor class of the target (against
 // missiles when missile is 1) and its effects (dtu_hit_test_vs); a natural 1
-// misses, a natural 20 hits. A miss prints the miss and the line of the
-// verbose combat log. Returns 1 for a hit. "what" names the rule in the log.
+// misses, a natural 20 hits. The player adds the missile attack adjustment
+// of dexterity (Dtu_fix_damage_save); a creature has no dexterity. A miss
+// prints the miss and the line of the verbose combat log. Returns 1 for a
+// hit. "what" names the rule in the log.
 static int spell_attack_hit(int spell,object *target,object *caster,int thac0,int bonus,int missile,const char *what)
 {
-	int d20 = rnd(20), ac = 0, hit;
+	int d20 = rnd(20), ac = 0, hit, dex = 0;
+
+	if (Dtu_fix_damage_save && caster && caster->type == OBJ_PLAYER)
+		dex = dex_missile_adjust();
 
 	dtu_xp_hit_start(d20);		// ASCENT: the verbose combat log (dtuxp.h)
 	if (d20 == 1) {
@@ -1098,11 +1117,12 @@ static int spell_attack_hit(int spell,object *target,object *caster,int thac0,in
 	}
 	else {
 		dtu_xp_hit_mod(bonus,LN("spell"));
-		hit = dtu_hit_test_vs(target,caster,d20 == 20 ? 100 : d20 + bonus,thac0,&ac,missile);
+		dtu_xp_hit_mod(dex,dtu_xp_ability_tag(DTU_XP_TEX_DEX));
+		hit = dtu_hit_test_vs(target,caster,d20 == 20 ? 100 : d20 + bonus + dex,thac0,&ac,missile);
 		if (d20 == 20)
 			dtu_xp_hit_natural();
-		dtu_spell_log("spell: '%s'%s: attack roll d20 %d%+d against THAC0 %d and armor class %d: %s",
-			spell_name(spell),what,d20,bonus,thac0,ac,hit ? "hit" : "miss");
+		dtu_spell_log("spell: '%s'%s: attack roll d20 %d%+d, dexterity %+d, against THAC0 %d and armor class %d: %s",
+			spell_name(spell),what,d20,bonus,dex,thac0,ac,hit ? "hit" : "miss");
 	}
 	if (!hit) {
 		if (caster && caster->type == OBJ_PLAYER)

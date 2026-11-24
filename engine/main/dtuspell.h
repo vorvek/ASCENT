@@ -112,7 +112,9 @@ extern int Dtu_fix_melf_acid;
 // d20 with the THAC0 of the caster (the player, a creature, else 20)
 // against the armor class of the target against missiles, a natural 1
 // misses, a natural 20 hits; Minute Meteors +2 to hit (2e: +2, no penalty
-// for range). The stones are magical, which no spell damage tests. 0: no
+// for range). The player adds the missile attack adjustment of dexterity
+// (the 1.3 table 0x14028E, which 1.3 never reads), also to the arrow of
+// Melf's Acid Arrows. The stones are magical, which no spell damage tests. 0: no
 // attack roll, every damage spell saves for half, as the executable.
 // -origcombat clears it.
 extern int Dtu_fix_damage_save;
