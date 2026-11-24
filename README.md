@@ -66,12 +66,11 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 * The guildleader's cache in the thieves' guild opens.
 * Devlin's reward for the goblins works, and scripted pauses in conversations can be skipped.
-* A lost message in KOBOLDS and a healing ladder in THIEF1 are back.
-* Mirt adds thief points instead of replacing them.
+* Some cutting room floor items found throughout the original code; a few messages, mostly. Also, a *healing ladder*.
 * The Shadow Thieves no longer attack you if you are a member of the guild.
 * Traps run on real seconds instead of depending on the FPS, and they stop while the game is paused.
 * Some triggers that never fired in seven levels work now.
-* The message of a place does not show again until 30 seconds after you left it, so a fight in and out of a room no longer repeats it, and the message of an event that is over (a trap that ran, creatures that came out) shows only while the event can happen.
+* The message of a place does not show again until 30 seconds after you left it, so a fight in and out of a cell no longer repeats it, and the message of an event that is over (a trap that ran, creatures that came out) shows only while the event can happen.
 
 **Creatures**
 
