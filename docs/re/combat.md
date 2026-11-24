@@ -1377,6 +1377,23 @@ statistics screen shows the five numbers with the bonus (under the thief skills;
 short names in low resolution), and each save of the player writes a line in the
 session log (`docs/debug_logs.md`).
 
+ASCENT: `Dtu_fix_ability_saves` (default, `-origcombat` clears it, a decision of the
+user, AD&D 2e): the ability bonuses add to the bonus of the items.
+
+- Constitution, dwarves and halflings (the races of character creation are human,
+  half-elf, elf, drow, dwarf and halfling: no gnome): +1 for Con 4 to 6, +2 for 7 to 10,
+  +3 for 11 to 13, +4 for 14 to 17, +5 for 18 and more, against Rod/Staff/Wand and
+  Spell. The 2e bonus against poison is not applied: no code makes the player save
+  against poison, and category 0 is also paralyzation and death magic.
+- Wisdom (magical defense adjustment) against the spells that attack the mind: Wis 1
+  or 2 -6 and -4, 3 -3, 4 -2, 5 to 7 -1, 8 to 14 0, 15 +1, 16 +2, 17 +3, 18 and more
+  +4. The spells with a save that it covers: 7 Confusion, 14 Fear, 22 and 52 Hold
+  Person, 44 Scare. 23 Hold Undead holds only undead and 46 Sleep has no save. Color
+  Spray, Slow and the light spells do not attack the mind.
+
+The statistics screen includes the Constitution bonus; the Wisdom adjustment depends
+on the spell and is only in the session log line.
+
 ## B6. Usable items: 0x37A6A(index) (displays.c, Code)
 
 Called from the inventory input (0x2FCC0), the inventory browser (0x35ABD) and the
@@ -2277,6 +2294,7 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_melf_acid` | dtuspell.c | Melf's Acid Arrows (0x8EFE0): no attack roll, 4 L acid in one hit, save for half | the AD&D 2nd edition rule: an attack roll with the THAC0 of a fighter of the caster level, 2d4 acid on a hit and 2d4 at the start of each of the next L/3 rounds of 60.0, no save (spells.md, section 10) |
 | `Dtu_fix_bracers_ac` | dtuchar.c | the Bracers of Defense are magic armor for the Rings and Cloaks of Protection (0xAFEA6): neither counts with them | the bracers are a base armor class as a body armor: the rings and the cloaks count (a decision of the user) |
 | `Dtu_fix_ring_magic_armor` | dtuchar.c | no Ring of Protection counts with magic armor, a Cloak of Protection counts only with no shield, magic armor or heavy armor (0xAF930), and a ring, a cloak and an Amulet of Protection add (0xAFB55) | only the highest magic protection bonus counts, of the magic of the armor, the best ring, the cloak and the amulet; the ring and the cloak count with any armor, shield or bracers; a shield always adds all of its armor class (decisions of the user) |
+| `Dtu_fix_ability_saves` | dtuchar.c | no ability or race changes a save of the player | dwarves and halflings add the Constitution bonus against Rod/Staff/Wand and Spell, Wisdom adjusts the saves against the spells that attack the mind (AD&D 2e, a decision of the user) |
 | `Dtu_fix_prot_saves` | dtuchar.c, dtuspell.c | no item changes a save of the player (0xAE596 reads the class levels only) | the best of the Rings, Cloak and Amulet of Protection subtracts its bonus from the five saves (a decision of the user) |
 | `Dtu_fix_wizardry_ring` | dtuchar.c | the Ring of Wizardry doubles the slots of the levels 1 to 3 each time the equipment changes, halves them once at the end | one doubling while it is worn |
 | `Dtu_fix_potion_frame` | dtuchar.c | the intelligence potion rolls 1 in 63 in each frame | one roll for each reference frame (3/64 s) |

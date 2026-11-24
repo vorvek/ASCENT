@@ -400,19 +400,33 @@ int dtu_char_armor_class_vs(int missile);
 extern int Dtu_fix_prot_saves;
 // The bonus of the protection items (0 with Dtu_fix_prot_saves 0).
 int dtu_char_save_bonus(void);
+// ASCENT: the ability bonuses of the saves (AD&D 2e). 1.3 has none. A
+// decision of the user: dwarves and halflings get the Constitution bonus
+// against Rod/Staff/Wand and Spell, and Wisdom adjusts the saves against
+// the spells that attack the mind. They add to the bonus of the
+// protection items. 1 (default). 0 (-origcombat): 1.3.
+extern int Dtu_fix_ability_saves;
+// The Constitution bonus of a save category (0 for other races).
+int dtu_char_con_save_bonus(int cat);
+// The Wisdom adjustment against a spell (0 for a spell that does not
+// attack the mind, or -1: no spell).
+int dtu_char_wis_save_bonus(int spell);
 // The number the player needs for a save of category 0 to 4 (DTU_SAVE_ of
-// dtuspell.h), with the bonus of the items (the statistics screen).
+// dtuspell.h), with the bonus of the items and of Constitution (the
+// statistics screen; the Wisdom adjustment depends on the spell).
 int dtu_char_save_number(int cat);
 // The name of a save category in the language; brief: the short name of
 // the low resolution statistics screen.
 const char *dtu_char_save_name(int cat, int brief);
-// The cause of the next save of the player for the session log: what (a
-// spell, "Chill Touch") and who (the caster or attacker, or NULL). The
-// next save takes it.
-void dtu_char_save_cause(const char *what, const char *who);
+// The cause of the next save of the player for the session log and the
+// Wisdom adjustment: spell (the spell number, or -1), what (a spell,
+// "Chill Touch") and who (the caster or attacker, or NULL). The next save
+// takes it.
+void dtu_char_save_cause(int spell, const char *what, const char *who);
 // dtu_spell_save of the player: need is the number of the class table.
-// Returns the number with the bonus of the items and writes the session
-// log line (cause, category, d20, numbers, made or failed).
+// Returns the number with the bonuses (items, Constitution, Wisdom) and
+// writes the session log line (cause, category, d20, the number, the
+// table number and each bonus, made or failed).
 int dtu_char_player_save(int cat, int roll, int need);
 int dtu_char_max_hit_points(void);
 // Adds hit points, up to the maximum. Returns the number that was added.

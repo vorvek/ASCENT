@@ -1945,7 +1945,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 	// The names, the verbs and 0x8CEAE, before the switch as in 0x8CFFF
 	msg_setup(target,caster);
 	if (target->type == OBJ_PLAYER)		// ASCENT: the session log line of a save (dtuchar.h)
-		dtu_char_save_cause(spell_name(spell),caster && caster != target ? dtu_object_name(caster) : NULL);
+		dtu_char_save_cause(spell,spell_name(spell),caster && caster != target ? dtu_object_name(caster) : NULL);
 
 	switch (spell) {
 		case 1: {	// Aid (0x8D3F7): 1d8 hit points above the maximum, Bless

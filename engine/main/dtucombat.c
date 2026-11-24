@@ -2323,7 +2323,7 @@ void dtu_fireball_blind_deaf(object *o, fix dist)
 		// 0xAE596(obj, 4): a save skips the message, the flash and the
 		// sound, but not the blindness (0x90E22 jumps to 0x90F73)
 		if (player)
-			dtu_char_save_cause("the blindness of the fire", NULL);		// ASCENT: the session log
+			dtu_char_save_cause(-1, "the blindness of the fire", NULL);		// ASCENT: the session log
 		if (!dtu_spell_save(o, 4)) {
 			if (player) {
 				// 0x90E32 also sets 0x13D50C, 0x1F3B00, 0x1F3AF8, 0x46C688
@@ -2340,7 +2340,7 @@ void dtu_fireball_blind_deaf(object *o, fix dist)
 		o->dtu.m_88 |= DTU_FX_BLIND;
 	}
 	if (player)
-		dtu_char_save_cause("the deafness of the fire", NULL);		// ASCENT: the session log
+		dtu_char_save_cause(-1, "the deafness of the fire", NULL);		// ASCENT: the session log
 	if (!(o->dtu.m_88 & DTU_FX_DEAF) && !dtu_spell_save(o, 2)) {
 		if (player) {
 			// 0x2DF7E: the volume of the sounds, rand() % 0x1800 of 0x8000

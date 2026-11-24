@@ -120,6 +120,7 @@ int Dtu_fix_creature_missile = 1;
 int Dtu_fix_bracers_ac = 1;
 int Dtu_fix_ring_magic_armor = 1;
 int Dtu_fix_prot_saves = 1;
+int Dtu_fix_ability_saves = 1;
 int Dtu_backstab = 0;
 int Dtu_auto_choice = -1;
 static int Dtu_last_attack_roll = 0;
@@ -261,7 +262,7 @@ static void read_options(void)
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
 			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_ring_magic_armor =
-			Dtu_fix_prot_saves = 0;
+			Dtu_fix_prot_saves = Dtu_fix_ability_saves = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -1751,6 +1752,7 @@ static const char *Save_name[5] = {
 // the short names of the statistics screen in low resolution
 static const char *Save_short[5] = { LN("Para"), LN("Rod"), LN("Petri"), LN("Breath"), LN("Spell") };
 static char Save_what[80], Save_who[48];
+static int Save_spell = -1;
 
 const char *dtu_char_save_name(int cat, int brief)
 {
@@ -1778,25 +1780,85 @@ int dtu_char_save_bonus(void)
 	return best;
 }
 
-int dtu_char_save_number(int cat)
+// ASCENT: Dtu_fix_ability_saves. The Constitution bonus of the dwarves and
+// the halflings (AD&D 2e: +1 for each 3.5 points) against Rod/Staff/Wand
+// and Spell. The game has no gnome (the races of character creation:
+// human, half-elf, elf, drow, dwarf, halfling) and no save against
+// poison: category 0 is also paralyzation and death magic, so it gets no
+// bonus.
+int dtu_char_con_save_bonus(int cat)
 {
-	return dtu_spell_player_save_number(cat) - dtu_char_save_bonus();
+	int c = Dtu_char.pa.constitution;
+
+	if (!Dtu_fix_ability_saves || !Dtu_char.created || (cat != DTU_SAVE_ROD && cat != DTU_SAVE_SPELL) ||
+		 (Dtu_char.pa.race != DTU_RACE_DWARF && Dtu_char.pa.race != DTU_RACE_HALFLING))
+		return 0;
+	return c >= 18 ? 5 : c >= 14 ? 4 : c >= 11 ? 3 : c >= 7 ? 2 : c >= 4 ? 1 : 0;
 }
 
-void dtu_char_save_cause(const char *what, const char *who)
+// ASCENT: Dtu_fix_ability_saves. The magical defense adjustment of Wisdom
+// (AD&D 2e) against the spells that attack the mind. Of the spells with a
+// save: 7 Confusion, 14 Fear, 22 and 52 Hold Person, 44 Scare. (23 Hold
+// Undead holds only undead; 46 Sleep has no save.)
+int dtu_char_wis_save_bonus(int spell)
 {
+	static const signed char adj[19] = { -6, -6, -4, -3, -2, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4 };
+	int w = Dtu_char.pa.wisdom;
+
+	if (!Dtu_fix_ability_saves || !Dtu_char.created)
+		return 0;
+	if (spell != 7 && spell != 14 && spell != 22 && spell != 52 && spell != 44)
+		return 0;
+	if (w < 0) w = 0;
+	if (w > 18) w = 18;
+	return adj[w];
+}
+
+int dtu_char_save_number(int cat)
+{
+	return dtu_spell_player_save_number(cat) - dtu_char_save_bonus() - dtu_char_con_save_bonus(cat);
+}
+
+void dtu_char_save_cause(int spell, const char *what, const char *who)
+{
+	Save_spell = spell;
 	snprintf(Save_what, sizeof(Save_what), "%s", what ? what : "");
 	snprintf(Save_who, sizeof(Save_who), "%s", who ? who : "");
 }
 
+// The abbreviation of an ability of the statistics screen (TEX 655 to 660,
+// "STR:" ...) without the colon, in the language
+static void ability_word(char *out, int size, int n, const char *def)
+{
+	int k;
+
+	snprintf(out, size, "%s", game_text(n, (char *) def));
+	k = (int) strlen(out);
+	while (k > 0 && (out[k - 1] == ':' || out[k - 1] == ' '))
+		out[--k] = 0;
+}
+
 int dtu_char_player_save(int cat, int roll, int need)
 {
-	int bonus = dtu_char_save_bonus(), n = need - bonus;
+	int prot = dtu_char_save_bonus(), con = dtu_char_con_save_bonus(cat), wis = dtu_char_wis_save_bonus(Save_spell);
+	int n = need - prot - con - wis;
+	char terms[120] = "", w[16];
 
-	dtulog_event("Save of the player: %s%s%s%s, %s: d20 %d, needs %d (table %d, protection %+d): %s",
+	if (prot)
+		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (protection)", prot);
+	if (con) {
+		ability_word(w, sizeof(w), 657, "CON");
+		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (%s)", con, w);
+	}
+	if (wis) {
+		ability_word(w, sizeof(w), 659, "WIS");
+		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (%s)", wis, w);
+	}
+	dtulog_event("Save of the player: %s%s%s%s, %s: d20 %d, needs %d (table %d%s): %s",
 		Save_what[0] ? Save_what : "unknown cause", Save_who[0] ? " (" : "", Save_who, Save_who[0] ? ")" : "",
-		(cat >= 0 && cat < 5) ? Save_name[cat] : "?", roll, n, need, bonus, roll >= n ? "made" : "failed");
+		(cat >= 0 && cat < 5) ? Save_name[cat] : "?", roll, n, need, terms, roll >= n ? "made" : "failed");
 	Save_what[0] = Save_who[0] = 0;
+	Save_spell = -1;
 	return n;
 }
 
@@ -3823,6 +3885,11 @@ static void run_command(char *cmd, char *value)
 		dtu_char_update();
 		dump_character();
 	}
+	else if (!strcmp(cmd, "con")) {		// ASCENT: test: con=N, the base constitution
+		Dtu_char.base.constitution = a;
+		dtu_char_update();
+	}
+	else if (!strcmp(cmd, "wis"))			Dtu_char.pa.wisdom = Dtu_char.base.wisdom = a;		// ASCENT: test: wis=N
 	else if (!strcmp(cmd, "priestcheck"))	dtu_spell_priest_check();		// ASCENT: test, docs/audit/spells-priest.md
 	else if (!strcmp(cmd, "desc"))		dtu_desc_log_all(a);			// ASCENT: test, desc or desc=CASTER_LEVEL: the texts of the description window (dtudesc.h)
 	else if (!strcmp(cmd, "descitem"))	dtu_desc_open_item(a, b, 1, -1, 0);	// ASCENT: test, descitem=TYPE.ID opens the window

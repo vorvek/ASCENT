@@ -331,20 +331,32 @@ def save_lines(t, name):
 
 
 def test_saves(t):
-    """The best protection item adds its bonus to the saves of the player
-    (Dtu_fix_prot_saves): Ring of Protection +3 and Cloak +1, a fighter of
-    level 1 needs 17 against a spell, 14 with the ring. Each save writes a
-    session log line. -origcombat: no bonus."""
-    cmds = ["give=15.15.1", "equip=15.15", "give=15.47.1", "equip=15.47", "castby=7.17", "castby=7.17"]
+    """The bonuses of the saves of the player, each with a session log
+    line: the best protection item (Dtu_fix_prot_saves; a Ring of
+    Protection +3 and a Cloak +1: +3), the Constitution of a dwarf or a
+    halfling against Rod/Staff/Wand and Spell, Wisdom against the spells
+    that attack the mind (Dtu_fix_ability_saves). A human fighter of level
+    1 needs 17 against a spell. -origcombat: no bonus."""
+    cmds = ["give=15.15.1", "equip=15.15", "give=15.47.1", "equip=15.47", "castby=7.17",
+            "unequip=6", "unequip=1",
+            "race=1", "con=18", "wis=17", "castby=47.17",       # dwarf, Con 18, Slow: +5 (CON), no WIS
+            "race=4", "con=11", "castby=30.17",                  # halfling, Con 11, Light: +3 (CON)
+            "race=0", "castby=22.17",                             # human, Wis 17, Hold Person: +3 (WIS)
+            "wis=4", "castby=14.17"]                              # Wis 4, Fear: -2 (WIS)
     t.run("saves", cmds)
     t.run("saves_orig", cmds, ["-origcombat"])
     new, orig = save_lines(t, "saves"), save_lines(t, "saves_orig")
-    check(len(new) == 2 and len(orig) == 2, "save lines: %d and %d" % (len(new), len(orig)))
-    for l in new:
-        check("Confusion" in l and "Spell: d20" in l and "needs 14 (table 17, protection +3)" in l, "line: %s" % l)
+    want = ["Confusion (Aleena), Spell: d20 %d, needs 14 (table 17, +3 (protection))",
+            "Slow (Aleena), Spell: d20 %d, needs 12 (table 17, +5 (CON))",
+            "Light (Mage) (Aleena), Spell: d20 %d, needs 14 (table 17, +3 (CON))",
+            "Hold Person (Aleena), Spell: d20 %d, needs 14 (table 17, +3 (WIS))",
+            "Fear (Aleena), Spell: d20 %d, needs 19 (table 17, -2 (WIS))"]
+    check(len(new) == len(want) and len(orig) == len(want), "save lines: %d and %d" % (len(new), len(orig)))
+    for l, w in zip(new, want):
+        check(re.search(re.escape(w).replace("%d", r"\d+"), l), "line: %s, expected %s" % (l, w))
     for l in orig:
-        check("needs 17 (table 17, protection +0)" in l, "-origcombat line: %s" % l)
-    return new[0].split("] ", 1)[-1]
+        check(re.search(r"needs 17 \(table 17\):", l), "-origcombat line: %s" % l)
+    return "%d lines, e.g. %s" % (len(new), new[1].split("] ", 1)[-1])
 
 
 TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_protection, test_saves, test_whin, test_misc]

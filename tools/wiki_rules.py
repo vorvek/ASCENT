@@ -616,6 +616,10 @@ FIXES = [
                                          "round for 1 round + 1 per 3 levels, as in AD&D 2nd edition; "
                                          "1.3 does 4 per level in one hit, save for half."),
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),
+    ("Dtu_fix_ability_saves", "-origcombat", "Dwarves and halflings get their Constitution bonus "
+                                             "against Rod/Staff/Wand and Spell, and Wisdom changes the "
+                                             "save against spells that attack the mind, as in AD&D 2nd "
+                                             "edition; in 1.3 they do not."),
     ("Dtu_fix_prot_saves", "-origcombat", "The best Ring, Cloak or Amulet of Protection also makes your "
                                           "saving throws better by its bonus; in 1.3 no item changes a save. "
                                           "The statistics screen shows the five saves."),
@@ -1228,10 +1232,13 @@ class Pages:
             "## Saving throws",
             "",
             "Roll d20: the save succeeds at the number or more. The level is your higher class level, "
-            "at most 12. With two classes the better number of the two tables counts. Race, "
-            "Constitution and Wisdom do not change saves. The best worn Ring, Cloak or Amulet of "
-            "Protection lowers all five numbers by its bonus (1.3: no item changes a save). Spells "
-            "use the Spell column. The statistics screen shows your five numbers.",
+            "at most 12. With two classes the better number of the two tables counts. The best "
+            "worn Ring, Cloak or Amulet of Protection lowers all five numbers by its bonus. A "
+            "dwarf or halfling lowers Rod/Staff/Wand and Spell by its Constitution bonus (Con 4-6 "
+            "1, 7-10 2, 11-13 3, 14-17 4, 18 or more 5). Wisdom changes the save against Confusion, "
+            "Fear, Hold Person and Scare (Wis 3 -3, 4 -2, 5-7 -1, 15 +1, 16 +2, 17 +3, 18 +4). "
+            "In 1.3 nothing changes a save. Spells use the Spell column. The statistics screen "
+            "shows your five numbers.",
             "",
             md_table(["Class", "Levels", "Paralyzation, poison, death", "Rod, staff, wand",
                       "Petrification, polymorph", "Breath", "Spell"], save_rows),
