@@ -3947,6 +3947,10 @@ static void run_command(char *cmd, char *value)
 		else if (a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_DRESSING)	// scenery breaks (tools/questtest.py)
 			dtu_break_dressing(&Objects[a], NULL, 0);
 	}
+	else if (!strcmp(cmd, "dropcontents") && a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
+		// ASCENT: test: dropcontents=OBJNUM, the creature leaves what it carries as at its death
+		// (0x3C4BD). Repairs a save of a build that left a dead creature with its contents.
+		dtu_creature_drop_contents(&Objects[a]);
 	else if (!strcmp(cmd, "area") && b >= 0 && b <= Highest_object_index)		// ASCENT: test: area=SPELL.OBJ, the area of the spell of the player at object OBJ
 		dtu_spell_area(a, &Objects[b].pos, Objects[b].segnum, ConsoleObject, dtu_player_level());
 	else if (!strcmp(cmd, "hitbody") && a >= 0 && a <= Highest_object_index) {	// ASCENT: test: hitbody=OBJ, the weapon in the hand hits the fallen body OBJ (Dtu_fix_revive)
