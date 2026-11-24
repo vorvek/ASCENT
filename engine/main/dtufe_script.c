@@ -46,6 +46,7 @@
 #include "menu.h"			// ASCENT: Player_default_difficulty
 #include "dtutrig.h"
 #include "gamefont.h"
+#include "automap.h"		// ASCENT: the command "mapstate"
 #include "dtufe.h"
 #include "dtufe_int.h"
 #include "dtumovie.h"
@@ -292,6 +293,9 @@ void script_frame(void)
 		} else if (!stricmp(cmd, "rel")) {
 			// ASCENT: a relative mouse movement (the look of the immersive mode)
 			plat_input_mouse_motion(x, y, Fe_mx, Fe_my);
+			return;
+		} else if (!stricmp(cmd, "mapstate")) {
+			dtu_automap_print_state();		// ASCENT: for tools/uitest.py
 			return;
 		} else if (!stricmp(cmd, "viewstate")) {
 			dtu_display_print_view();		// ASCENT: for tools/uitest.py

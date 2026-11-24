@@ -230,6 +230,27 @@ def test_map_minus_equal(t):
     assert differ(region(s["map"], *mapr), region(s["less"], *mapr)) > 0.001, "minus did not change the map"
 
 
+def map_turn_rate(t, name, fps, extra=()):
+    """Degrees per second of the map heading with the right turn key held
+    for 2 s at fps pictures per second (the command "mapstate")."""
+    n = 2 * fps
+    t.run(name, ["gamekeys", "wait 20", "key tab", "wait 5", "click 200 200", "wait 5", "mapstate",
+                 "hold right %d" % n] + ["mapstate"] * (n + 4), extra=["-renderfps", str(fps)] + list(extra))
+    h = [int(m.group(1)) for m in re.finditer(r"Mapstate active=1 p=\d+ b=\d+ h=(\d+)", t.stdout)]
+    assert len(h) > n, "%s: no map state" % name
+    turn = sum((b - a + 32768) % 65536 - 32768 for a, b in zip(h, h[1:]))
+    return turn * 360 / 65536 / 2
+
+
+def test_map_turn_rate(t):
+    """The turn key turns the map by FrameTime / 8 for each step (0x5332D,
+    fixdiv by 11500 at 0x18ADC): 256 degrees per second at any picture
+    rate (docs/re/automap.md)."""
+    for fps, extra in ((30, ()), (144, ()), (30, ("-nofixedstep",))):
+        r = map_turn_rate(t, "map_turn_%d%s" % (fps, "".join(extra)), fps, extra)
+        assert 240 < r < 270, "%d pictures per second %s: %.1f degrees per second" % (fps, " ".join(extra), r)
+
+
 def test_immersive_off_centers_mouse(t):
     """Immersive mode off puts the mouse in the middle of the view
     (0x54470 to 0x544D7)."""
