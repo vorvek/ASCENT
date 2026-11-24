@@ -39,6 +39,7 @@
 int dtu_solid_get(object *o,dtu_solid *s)
 {
 	polymodel *po;
+	vms_vector mn, mx;
 
 	if (o->type != OBJ_DRESSING || o->render_type != RT_POLYOBJ)
 		return 0;
@@ -53,7 +54,10 @@ int dtu_solid_get(object *o,dtu_solid *s)
 	s->ax = 1; s->az = 0;
 	s->bx = 0; s->bz = 1;
 	s->r = 0;
-	if (po && po->box1_min && po->box1_max && o->orient.uvec.y >= F1_0*9/10) {
+	// The box of the drawn points of the model (model_points_box), not box
+	// 1 of the file: the box of chair.pof is 2.95 above the drawn chair, so
+	// a chair stood on its seat 2.95 under the floor after a push.
+	if (po && o->orient.uvec.y >= F1_0*9/10 && model_points_box(o,-1,&mn,&mx)) {
 		double ax = f2fl(o->orient.rvec.x), az = f2fl(o->orient.rvec.z);
 		double bx = f2fl(o->orient.fvec.x), bz = f2fl(o->orient.fvec.z);
 		double la = sqrt(ax*ax + az*az), lb = sqrt(bx*bx + bz*bz);
@@ -62,16 +66,10 @@ int dtu_solid_get(object *o,dtu_solid *s)
 			s->ax = ax/la; s->az = az/la;
 			s->bx = bx/lb; s->bz = bz/lb;
 		}
-		// The model is drawn with body_center at the position of the
-		// object (0x729C1, docs/re/models.md), so the box is relative to it.
-		vms_vector c = { 0, 0, 0 };
-
-		if (po->body_center)
-			c = po->body_center[0];
-		s->lo[0] = f2fl(po->box1_min[0].x - c.x); s->hi[0] = f2fl(po->box1_max[0].x - c.x);
-		s->lo[1] = f2fl(po->box1_min[0].z - c.z); s->hi[1] = f2fl(po->box1_max[0].z - c.z);
-		s->bot = f2fl(o->pos.y + po->box1_min[0].y - c.y);
-		s->top = f2fl(o->pos.y + po->box1_max[0].y - c.y);
+		s->lo[0] = f2fl(mn.x); s->hi[0] = f2fl(mx.x);
+		s->lo[1] = f2fl(mn.z); s->hi[1] = f2fl(mx.z);
+		s->bot = f2fl(o->pos.y + mn.y);
+		s->top = f2fl(o->pos.y + mx.y);
 	}
 	else {
 		vms_vector center;
