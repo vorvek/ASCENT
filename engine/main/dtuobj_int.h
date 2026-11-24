@@ -128,6 +128,8 @@ typedef struct dtu_missile {
 	fix		tumble_acc;
 	fix		trail_acc;				// ASCENT: the frame time of the trail (missile_trail)
 	int		pass_obj, pass_sig;	// ASCENT: Dtu_fix_hit_keep, the creature that a kept missile passes. -1: none
+	fix		light;					// ASCENT: lightcast of the missile (player_light of the spell, 0x56FF6), or -1: that of the weapon
+	ubyte		unlinked;				// ASCENT: +0x144 cleared (Lightning Bolt after a wall): the parent can be hit
 } dtu_missile;
 
 //------------------------------------------------------------------------
