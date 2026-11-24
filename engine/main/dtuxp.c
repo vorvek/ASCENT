@@ -261,12 +261,15 @@ int Dtu_verbose_combat = 0;
 static struct {
 	int hit;					// 0: no attack roll, 1: a roll
 	int d20, total, need, result;
+	int natural;			// 1: a natural 20 that hits whatever the total (a spell attack roll)
 	char hit_mods[96];
 	int dmg;					// 0: no damage roll
 	int dmg_total;
 	char dmg_text[128];
 	int save;				// 0: no save, 1: a save
 	int save_d20, save_need, save_made;
+	int save_bonus;			// the sum of the save bonuses
+	char save_mods[64];
 } Roll;
 
 static void cat(char *dst, int size, const char *format, ...)
@@ -281,13 +284,55 @@ static void cat(char *dst, int size, const char *format, ...)
 	va_end(ap);
 }
 
+// 1: the next dtu_xp_roll_clear() keeps the attack roll (dtu_xp_hit_keep)
+static int Keep_hit = 0;
+
 void dtu_xp_roll_clear(void)
 {
+	if (Keep_hit) {
+		int hit = Roll.hit, d20 = Roll.d20, total = Roll.total, need = Roll.need, result = Roll.result, natural = Roll.natural;
+		char mods[sizeof(Roll.hit_mods)];
+
+		memcpy(mods, Roll.hit_mods, sizeof(mods));
+		memset(&Roll, 0, sizeof(Roll));
+		Roll.hit = hit; Roll.d20 = d20; Roll.total = total; Roll.need = need; Roll.result = result; Roll.natural = natural;
+		memcpy(Roll.hit_mods, mods, sizeof(mods));
+		Keep_hit = 0;
+		return;
+	}
 	memset(&Roll, 0, sizeof(Roll));
+}
+
+const char *dtu_xp_ability_tag(int text)
+{
+	static char tags[6][16];
+	static const char *def[6] = { "STR:", "DEX:", "CON:", "INT:", "WIS:", "CHA:" };
+	int k = text - DTU_XP_TEX_STR, n;
+	const char *s;
+
+	if (k < 0 || k > 5)
+		return NULL;
+	s = tex(text, (char *) def[k]);
+	// the abbreviation of the character sheet without its colon, in brackets
+	for (n = 0; s[n] && s[n] != ':' && n < 10; n++)
+		;
+	snprintf(tags[k], sizeof(tags[k]), "(%.*s)", n, s);
+	return tags[k];
+}
+
+void dtu_xp_hit_keep(void)
+{
+	Keep_hit = Roll.hit;
+}
+
+void dtu_xp_hit_natural(void)
+{
+	Roll.natural = Roll.hit;
 }
 
 void dtu_xp_hit_start(int d20)
 {
+	Keep_hit = 0;
 	dtu_xp_roll_clear();
 	Roll.hit = 1;
 	Roll.d20 = d20;
@@ -356,13 +401,29 @@ void dtu_xp_save(int d20, int need, int made)
 	Roll.save_d20 = d20;
 	Roll.save_need = need;
 	Roll.save_made = made;
+	Roll.save_bonus = 0;
+	Roll.save_mods[0] = 0;
+}
+
+void dtu_xp_save_mod(int v, const char *tag)
+{
+	if (!Roll.save || v == 0)
+		return;
+	Roll.save_bonus += v;
+	cat(Roll.save_mods, sizeof(Roll.save_mods), " %+d", v);
+	if (tag)
+		cat(Roll.save_mods, sizeof(Roll.save_mods), " %s", dtu_tr(tag));
 }
 
 // The text of the numbers, in the language
 static int roll_text(char *out, int size)
 {
 	out[0] = 0;
-	if (Roll.hit && Roll.result == 2)
+	if (Roll.hit && Roll.natural && Roll.result == 1)
+		cat(out, size, LT("Roll d20 %d: natural 20, hit."), Roll.d20);
+	else if (Roll.hit && Roll.natural && Roll.result == 3)
+		cat(out, size, LT("Roll d20 %d: natural 20, hit, Stoneskin takes it."), Roll.d20);
+	else if (Roll.hit && Roll.result == 2)
 		cat(out, size, LT("Roll d20 %d: critical hit."), Roll.d20);
 	else if (Roll.hit && Roll.result == -1)
 		cat(out, size, LT("Roll d20 %d: fumble."), Roll.d20);
@@ -375,7 +436,15 @@ static int roll_text(char *out, int size)
 	if (Roll.save) {
 		if (out[0])
 			cat(out, size, " ");
-		if (Roll.save_made)
+		// a bonus is shown on the roll, as the attack roll: d20 + bonus
+		// against the number before the bonus
+		if (Roll.save_mods[0] && Roll.save_made)
+			cat(out, size, LT("Save d20 %d%s = %d vs %d: made."), Roll.save_d20, Roll.save_mods,
+				Roll.save_d20 + Roll.save_bonus, Roll.save_need + Roll.save_bonus);
+		else if (Roll.save_mods[0])
+			cat(out, size, LT("Save d20 %d%s = %d vs %d: failed."), Roll.save_d20, Roll.save_mods,
+				Roll.save_d20 + Roll.save_bonus, Roll.save_need + Roll.save_bonus);
+		else if (Roll.save_made)
 			cat(out, size, LT("Save d20 %d vs %d: made."), Roll.save_d20, Roll.save_need);
 		else
 			cat(out, size, LT("Save d20 %d vs %d: failed."), Roll.save_d20, Roll.save_need);
@@ -467,5 +536,6 @@ void dtu_xp_roll_say(object *a, object *b)
 
 	if (Dtu_verbose_combat && ConsoleObject && (a == ConsoleObject || b == ConsoleObject) && roll_text(text, sizeof(text)))
 		dtu_xp_line_say(a, b, text);
+	Keep_hit = 0;
 	dtu_xp_roll_clear();
 }

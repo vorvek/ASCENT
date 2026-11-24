@@ -79,6 +79,17 @@ void dtu_xp_roll_clear(void);
 void dtu_xp_hit_start(int d20);
 void dtu_xp_hit_mod(int v, const char *tag);
 void dtu_xp_hit_end(int total, int need, int result);
+// A spell attack roll (dtuspell.c): a natural 20 hits whatever the total
+// ("Roll d20 20: natural 20, hit."), and the roll stays through the next
+// dtu_xp_roll_clear() (that of the damage roll) for the line of the hit.
+void dtu_xp_hit_natural(void);
+void dtu_xp_hit_keep(void);
+// The tag of an ability bonus: the abbreviation of the character sheet (TEX
+// 655 to 660, "STR:" ... "CHA:", in the language of the game texts) without
+// the colon, in brackets: "(DEX)", Spanish "(DES)". text: DTU_XP_TEX_.
+#define DTU_XP_TEX_STR	655
+#define DTU_XP_TEX_DEX	656
+const char *dtu_xp_ability_tag(int text);
 // The damage roll: the dice and their sum (a second call adds a second
 // roll), the bonuses and a multiplier (m < 0: a division by -m, a save for
 // half) in the order of the code, the total.
@@ -86,8 +97,11 @@ void dtu_xp_dmg_start(int n, int sides, int sum);
 void dtu_xp_dmg_mod(int v, const char *tag);
 void dtu_xp_dmg_mult(int m, const char *tag);
 void dtu_xp_dmg_end(int total);
-// A saving throw: the d20, the number needed, made or not.
+// A saving throw: the d20, the number needed, made or not. A bonus (v: the
+// amount by which the number went down, tag: a short name, LN) is shown on
+// the roll: "Save d20 11 +4 magic resistance = 15 vs 17: failed."
 void dtu_xp_save(int d20, int need, int made);
+void dtu_xp_save_mod(int v, const char *tag);
 // The text of the reported numbers ("" when none).
 const char *dtu_xp_roll_text(void);
 // The line in the message log when the setting is on and the player is a or

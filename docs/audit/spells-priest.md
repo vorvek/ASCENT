@@ -63,7 +63,7 @@ Status: OK = the port follows 1.3; Fixed = changed by this audit (commit
 | 18 | Flame Walk | 0x8E5D1 | case 18 | OK (bit 10, the same as Resist Fire) | 2e: immunity to normal fire |
 | 20 | Free Action | 0x8E6F2 | case 20 | Fixed: with Free Action on the case returns before it ends Hold (0x8E6F8). 1.3 sets the Hold timer to 0 (the end comes in the next frame), the port ends Hold at once | same |
 | 31 | Light (Cleric) | 0x8DC1D | case 31 | as 8; 1d6 to a light sensitive creature that fails | 2e: no damage |
-| 34 | Magical Stone | 0x8EEFE | case 34 | OK: one die, two against undead (Spell_info+0x3B) | 2e: 3 stones; 1.3: 1d3 (0x56FF6) |
+| 34 | Magical Stone | 0x8EEFE | case 34 | OK: one die, two against undead (Spell_info+0x3B). Since 2026-11-24 (`Dtu_fix_damage_save`, 2e): no save, each stone needs an attack roll with the THAC0 of the caster and the missile attack adjustment of dexterity for the player (0x14028E), against the armor class against missiles; `-origcombat`: the save for half of 1.3 | 2e: 3 stones, thrown with an attack roll, magical for what they can hit; 1.3: 1d3 (0x56FF6) |
 | 35 | Magical Vestment | 0x8EF49 | case 35 | OK | 2e: AC 5, better above level 5; 1.3: AC 6 at levels 1 and 2 (integer division of a negative number) |
 | 38 | Prayer | 0x8F078, 0x56D6A | case 38 | OK: Bless for L min on the caster only | 2e: allies +1, enemies -1 to hit, damage and saves |
 | 40 | Protection From Fire | 0x8F1B2 | case 40 | Fixed: no effect while bit 9 is on (the port added a second pool) | same pool of 12 per level |

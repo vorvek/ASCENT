@@ -78,6 +78,8 @@ _Static_assert(DTU_P_ATTR + sizeof(dtu_player_attr) == 0xE7, "player record");
 
 dtu_character Dtu_char;
 int Dtu_fix_multiclass_thac0 = 1;
+int Dtu_fix_thrown_launcher = 1;		// ASCENT: dtuchar.h
+int Dtu_fix_thrown_str_hit = 1;		// ASCENT: dtuchar.h
 // ASCENT: the spell lists of a save of an older version of the port, which
 // put the spells of a new character and the picked up spells into the item
 // list and gave a new cleric only Abjure (1.3: 0xB65BB, 0x8BDB4, 0xAF8F5).
@@ -397,6 +399,9 @@ int dtu_item_get(int type, int id, dtu_item_data *d)
 		d->damage_bonus = rec_int(r, "damage_bonus", 0);
 		d->to_hit_bonus = rec_int(r, "to_hit_bonus", 0);
 		d->attack_wait = rec_fix(r, "fire_wait", F1_0 / 4);
+		// ASCENT: 0x21020: thrown= with a value that is not 0 writes 3 into
+		// Weapon_info+0x0A (bounce 1 and stick 2 write the same byte)
+		d->thrown = rec_int(r, "thrown", 0) != 0;
 		d->hot_key_ok = 1;
 	}
 	else
@@ -2918,6 +2923,13 @@ static int launcher_bonus(int weapon)
 	return 0;
 }
 
+// ASCENT: the launcher bonus of a missile of the player: none for a thrown
+// weapon (Dtu_fix_thrown_launcher)
+static int missile_launcher_bonus(int weapon, int thrown)
+{
+	return (thrown && Dtu_fix_thrown_launcher) ? 0 : launcher_bonus(weapon);
+}
+
 // The values of an attack with a weapon (-1: the empty hand)
 static void weapon_attack(int weapon, dtu_attack *a)
 {
@@ -2943,6 +2955,7 @@ static void weapon_attack(int weapon, dtu_attack *a)
 		// 0x2AAE7 and 0x2B06A: the weapon
 		a->weapon_id = weapon;
 		a->melee = d.melee;
+		a->thrown = d.thrown;
 		a->to_hit_bonus = d.to_hit_bonus;
 		a->dice_n = d.dice_n;
 		a->dice_sides = d.dice_sides;
@@ -2955,8 +2968,8 @@ static void weapon_attack(int weapon, dtu_attack *a)
 		else {
 			// 0x2AB00 and 0x2B0B7: a missile gets the to_hit_bonus of the
 			// bow or the crossbow, for the attack and for the damage.
-			a->to_hit_bonus += launcher_bonus(weapon);
-			a->damage_bonus += launcher_bonus(weapon);
+			a->to_hit_bonus += missile_launcher_bonus(weapon, a->thrown);
+			a->damage_bonus += missile_launcher_bonus(weapon, a->thrown);
 		}
 	}
 	else {
@@ -3066,6 +3079,20 @@ int dtu_char_attack_roll(object *target, int weapon)
 			r += 4;
 			dtu_xp_hit_mod(4, LN("backstab"));
 		}
+		// ASCENT: the strength bonus to hit of a thrown weapon (Dtu_fix_thrown_str_hit)
+		if (Dtu_fix_thrown_str_hit && !a.melee && a.thrown && a.weapon_id >= 0) {
+			int sx = str_hit_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra);
+
+			r += sx;
+			dtu_xp_hit_mod(sx, dtu_xp_ability_tag(DTU_XP_TEX_STR));
+		}
+		// ASCENT: the missile attack adjustment of dexterity (Dtu_fix_dex_missile, dtuspell.h)
+		if (Dtu_fix_dex_missile && !a.melee && a.weapon_id >= 0) {
+			int dx = dtu_dex_missile_adjust();
+
+			r += dx;
+			dtu_xp_hit_mod(dx, dtu_xp_ability_tag(DTU_XP_TEX_DEX));
+		}
 		// 0x2AB9F: Flame Tongue (71) adds 2 against a regenerating target and
 		// 4 against an undead creature
 		if (a.weapon_id == 71 && target) {
@@ -3104,8 +3131,8 @@ int dtu_char_weapon_damage(int weapon, object *target)
 	if (a.weapon_id >= 0) {
 		// 0x2B0AE: the bow or the crossbow of a missile
 		if (!a.melee) {
-			sum += launcher_bonus(weapon);
-			dtu_xp_dmg_mod(launcher_bonus(weapon), LN("launcher"));
+			sum += missile_launcher_bonus(weapon, a.thrown);
+			dtu_xp_dmg_mod(missile_launcher_bonus(weapon, a.thrown), LN("launcher"));
 		}
 		// 0x2B107: the Potion of Luck: the highest number of the dice
 		if (luck_now()) {
@@ -3134,8 +3161,8 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		}
 		// 0x2B1D6: the damage bonus of the weapon (the strength bonus of a
 		// melee weapon is added last, 0x2B456)
-		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : launcher_bonus(weapon));
-		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : launcher_bonus(weapon)), LN("weapon"));
+		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown));
+		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown)), LN("weapon"));
 		{
 			int s0 = sum;
 
@@ -3145,6 +3172,12 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		if (a.melee) {
 			sum += str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra);
 			dtu_xp_dmg_mod(str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra), LN("strength"));
+		}
+		// ASCENT: 0x2B47E: the strength bonus to damage also for a thrown
+		// weapon (Weapon_info+0x0A = 3); the port gave it none
+		else if (a.thrown) {
+			sum += str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra);
+			dtu_xp_dmg_mod(str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra), dtu_xp_ability_tag(DTU_XP_TEX_STR));
 		}
 	}
 	else {
@@ -3616,7 +3649,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
 // spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
-// str=STRENGTH.PERCENT,
+// str=STRENGTH.PERCENT, dex=DEXTERITY,
 // attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
@@ -3891,6 +3924,11 @@ static void run_command(char *cmd, char *value)
 		dtu_char_update();
 	}
 	else if (!strcmp(cmd, "wis"))			Dtu_char.pa.wisdom = Dtu_char.base.wisdom = a;		// ASCENT: test: wis=N
+	else if (!strcmp(cmd, "dex")) {		// ASCENT: dex=N: the base dexterity (test)
+		Dtu_char.base.dexterity = a;
+		dtu_char_update();
+		dump_character();
+	}
 	else if (!strcmp(cmd, "priestcheck"))	dtu_spell_priest_check();		// ASCENT: test, docs/audit/spells-priest.md
 	else if (!strcmp(cmd, "desc"))		dtu_desc_log_all(a);			// ASCENT: test, desc or desc=CASTER_LEVEL: the texts of the description window (dtudesc.h)
 	else if (!strcmp(cmd, "descitem"))	dtu_desc_open_item(a, b, 1, -1, 0);	// ASCENT: test, descitem=TYPE.ID opens the window

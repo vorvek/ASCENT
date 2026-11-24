@@ -1603,6 +1603,10 @@ static void combat_init(void)
 		Dtu_fix_stoneskin_word = 0;
 		Dtu_fix_rary_manual = 0;
 		Dtu_fix_melf_acid = 0;
+		Dtu_fix_damage_save = 0;
+		Dtu_fix_dex_missile = 0;
+		Dtu_fix_thrown_launcher = 0;
+		Dtu_fix_thrown_str_hit = 0;
 		Dtu_fix_spell_hours = 0;
 		Dtu_fix_turn_undead = 0;
 		Dtu_fix_npc_list = 0;

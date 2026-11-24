@@ -258,6 +258,37 @@ skills for some items.
    4, 3, 2, 1, 0 for 7 to 14, -1, -2, -3, -4, -4), then the limit -10 to 10.
 8. 0xB0A92 returns the result. The screens print it.
 
+The table 0x14028E (21 dwords, dexterity 0 to 20): -9, -6, -4, -3, -2, -1, 0
+for 6 to 15, 1, 2, 2, 3, 4. Its only reader is the accessor 0x8C047, which
+clamps the dexterity to 1 to 19 (0x8C047 to 0x8C064) and which no code calls,
+so 1.3 has no dexterity bonus to hit. For 1 to 19 the values are the AD&D 2nd
+edition "Missile Attack Adjustment". Checked 2026-11-24 in the bytes of the
+executable and the instructions. The port uses it for the attack roll of a
+spell of the player (`Dtu_fix_damage_save`, dtuspell.c `Dex_missile`) and of a
+weapon missile of the player (`Dtu_fix_dex_missile`).
+
+The attack roll of a weapon of the player (0x2A7F3, checked 2026-11-24 in the
+instructions): the weapon to-hit bonus (0x2AAE7); for attack type 0
+(PROJECTILE, `Weapon_info+0x12`, 0x2AAF6) the to-hit bonus of the bow (flag
+`arrow`) or else of the crossbow (0x2AB0A to 0x2AB91), and nothing more; for a
+melee weapon (type 1) or `Weapon_info+0x0A` = 3, the backstab +4 and the
+strength bonus 0x2A789 (0x2AB4F to 0x2AB91); a PROJECTILE weapon never
+reaches that test. The damage (0x2AF5E): a missile adds the same launcher bonus
+(0x2B0AE to 0x2B105); the strength damage bonus (table 0x13A9A2, the 18/xx
+part 0x13AA06) goes to attack type 1 or `Weapon_info+0x0A` = 3 (0x2B475 to
+0x2B505). The reader stores 3 there for `thrown=1` of the line (0x21020; 1 for
+`bounce`, 2 for `stick`). The thrown weapons of the tables (Dart, Throwing
+Dagger, Throwing Axe, Throwing Hammer and their + versions) are PROJECTILE with
+`thrown=1`: no strength to hit, the strength bonus to damage, and the launcher
+bonus of the worn crossbow (they have no `arrow` flag) to hit and to damage.
+Arrows and bolts get no strength. AD&D 2nd edition gives a bow no strength
+bonus and a thrown weapon the strength bonus to damage (and to hit). The port
+gave a thrown weapon no strength damage (it did not read `thrown`): corrected
+2026-11-24 (`dtu_item_data.thrown`, `dtu_char_weapon_damage`). The launcher
+bonus of a thrown weapon is a defect (`Dtu_fix_thrown_launcher`), and the
+missing strength bonus to hit differs from 2e (`Dtu_fix_thrown_str_hit`); see
+combat.md, the list of the settings.
+
 ## 6. Equipment and the paper doll
 
 The paper doll has 12 places (**Code** 0x30650 to 0x31193, positions from the

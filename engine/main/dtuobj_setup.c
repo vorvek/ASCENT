@@ -285,7 +285,7 @@ static int monster_flags_from_table(int w)
 	if (w & 0x0004) f |= MONSTER_F_EXTRAPLANAR;
 	if (w & 0x0008) f |= MONSTER_F_FIRE_IMMUNE;
 	if (w & 0x0010) f |= MONSTER_F_FIRE_RESISTANT;		// ASCENT
-	if (w & 0x0400) f |= MONSTER_F_MAGIC_RESISTANT;		// ASCENT: the lich (0x7042)
+	if (w & 0x0400) f |= MONSTER_F_MAGIC_RESISTANT;		// ASCENT: a table line (0xAE77F); the lich word 0x7042 has no such bit
 	if (w & 0x0020) f |= MONSTER_F_FLYING;
 	if (w & 0x0040) f |= MONSTER_F_HUMANOID;
 	if (w & 0x0300) f |= MONSTER_F_LIGHT_SENSITIVE;

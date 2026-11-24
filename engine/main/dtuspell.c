@@ -52,6 +52,7 @@ int Dtu_fix_chill_touch = 1;
 int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
+int Dtu_fix_damage_save = 1;		// ASCENT: no save against Magic Missile (dtuspell.h)
 int Dtu_fix_spell_hours = 1;
 int Dtu_fix_cure_aid = 1;			// ASCENT: priest spells (dtuspell.h)
 // ASCENT: D-105 (dtuspell.h). The flag word of Prayer after 0x56D6A: the
@@ -977,7 +978,7 @@ int dtu_spell_player_save_number(int cat)
 
 int dtu_spell_save(object *obj,int cat)
 {
-	int need = 20, roll = rand() % 20 + 1, level;
+	int need = 20, roll = rand() % 20 + 1, level, resist = 0;
 
 	if (Priest_force_save >= 0)
 		return Priest_force_save;
@@ -999,7 +1000,7 @@ int dtu_spell_save(object *obj,int cat)
 		level = creature_level(obj);
 		need = save_number(creature_cleric_level(obj) > 0 ? DTU_CLASS_CLERIC : DTU_CLASS_FIGHTER,level,cat);
 		if (monster_flag(obj,MONSTER_F_MAGIC_RESISTANT))
-			need -= (level > 12 ? 12 : level) / 3;
+			need -= resist = level / 3;		// the level before the cap of 12 (ESI, 0xAE6E0 and 0xAE792)
 	}
 	else if (obj->type == OBJ_DRESSING && obj->id < N_dressing_types) {
 		// The tables 0x1456E6, 0x1456E8, 0x1456EA by explode_sound, byte
@@ -1012,8 +1013,12 @@ int dtu_spell_save(object *obj,int cat)
 	}
 	else
 		need = 10;		// the default of 0xAE596 for other types (a missile, a light)
-	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,roll >= need ? "saved" : "failed");
-	dtu_xp_save(roll,need,roll >= need);		// ASCENT: the verbose combat log (dtuxp.h)
+	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d%s: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,
+		resist ? " (magic resistance, the number lowered by level / 3)" : "",roll >= need ? "saved" : "failed");
+	// ASCENT: the verbose combat log (dtuxp.h). 1.3 has no roll for magic
+	// resistance: the flag lowers the save number, shown as a bonus
+	dtu_xp_save(roll,need,roll >= need);
+	dtu_xp_save_mod(resist,LN("magic resistance"));
 	return roll >= need;
 }
 
@@ -1062,6 +1067,76 @@ static void vclip_at(int segnum,vms_vector *pos,fix size,int vclip)
 // Arrows).
 static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,int save);
 static int rule_half(int spell);		// ASCENT: the save for half of the line of the spell
+static int rule_attack(int spell);		// ASCENT: the attack roll of the line (Dtu_fix_damage_save)
+static int rule_attack_bonus(int spell);
+static int rnd(int n);
+
+// ASCENT: the THAC0 of the caster of a spell attack roll: the player, a
+// creature (its table value), else 20 (a trap, as the missile of a trap)
+static int caster_thac0(object *caster)
+{
+	if (caster && caster->type == OBJ_PLAYER)
+		return dtu_char_thac0();
+	if (caster && caster->type == OBJ_ROBOT && caster->id < N_robot_types)
+		return Monster_info[caster->id].thaco;
+	return 20;
+}
+
+// ASCENT: the missile attack adjustment of dexterity 1 to 19 (0x14028E, the
+// row of dexterity 0 and 20 unread): the table of 1.3 for the accessor 0x8C047,
+// which clamps the dexterity to 1 to 19 and which no code calls. Its values
+// are the "Missile Attack Adjustment" of AD&D 2nd edition. The port uses it
+// for the attack roll of a spell of the player (Dtu_fix_damage_save) and of
+// a weapon missile of the player (Dtu_fix_dex_missile, dtuchar.c).
+static const signed char Dex_missile[20] = { -9, -6, -4, -3, -2, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 3 };
+
+int Dtu_fix_dex_missile = 1;		// ASCENT: dtuspell.h
+
+int dtu_dex_missile_adjust(void)
+{
+	int dex = Dtu_char.pa.dexterity;
+
+	return Dex_missile[dex < 1 ? 1 : dex > 19 ? 19 : dex];
+}
+
+// ASCENT: the attack roll of a spell (Dtu_fix_damage_save, Dtu_fix_melf_acid):
+// a d20 + bonus with thac0 against the armor class of the target (against
+// missiles when missile is 1) and its effects (dtu_hit_test_vs); a natural 1
+// misses, a natural 20 hits. The player adds the missile attack adjustment
+// of dexterity (Dtu_fix_damage_save); a creature has no dexterity. A miss
+// prints the miss and the line of the verbose combat log. Returns 1 for a
+// hit. "what" names the rule in the log.
+static int spell_attack_hit(int spell,object *target,object *caster,int thac0,int bonus,int missile,const char *what)
+{
+	int d20 = rnd(20), ac = 0, hit, dex = 0;
+
+	if (Dtu_fix_damage_save && caster && caster->type == OBJ_PLAYER)
+		dex = dtu_dex_missile_adjust();
+
+	dtu_xp_hit_start(d20);		// ASCENT: the verbose combat log (dtuxp.h)
+	if (d20 == 1) {
+		dtu_xp_hit_end(d20,0,-1);
+		hit = 0;
+		dtu_spell_log("spell: '%s'%s: attack roll d20 1: a natural 1 misses",spell_name(spell),what);
+	}
+	else {
+		dtu_xp_hit_mod(bonus,LN("spell"));
+		dtu_xp_hit_mod(dex,dtu_xp_ability_tag(DTU_XP_TEX_DEX));
+		hit = dtu_hit_test_vs(target,caster,d20 == 20 ? 100 : d20 + bonus + dex,thac0,&ac,missile);
+		if (d20 == 20)
+			dtu_xp_hit_natural();
+		dtu_spell_log("spell: '%s'%s: attack roll d20 %d%+d, dexterity %+d, against THAC0 %d and armor class %d: %s",
+			spell_name(spell),what,d20,bonus,dex,thac0,ac,hit ? "hit" : "miss");
+	}
+	if (!hit) {
+		if (caster && caster->type == OBJ_PLAYER)
+			HUD_init_message("You miss %s with %s.",dtu_object_display_name(target),spell_name(spell));
+		else if (target->type == OBJ_PLAYER && caster)
+			HUD_init_message("%s misses you with %s.",dtu_object_display_name(caster),spell_name(spell));
+		dtu_xp_roll_say(caster,target);
+	}
+	return hit;
+}
 
 static fix spell_damage(int spell,object *target,object *caster,int level,int group,int count,int extra)
 {
@@ -1086,7 +1161,15 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 
 	// the case writes the number of dice of its group (0x8E592, 0x8EEAB,
 	// 0x8EFE0) before the roll
+	// ASCENT: the attack roll of the line (Dtu_fix_damage_save); a hit shows
+	// its roll in the line of the damage (verbose combat log)
+	if (rule_attack(spell)) {
+		if (!spell_attack_hit(spell,target,caster,caster_thac0(caster),rule_attack_bonus(spell),1,""))
+			return 0;
+		dtu_xp_hit_keep();
+	}
 	dmg = (group >= 0 ? dtu_spell_damage_roll_count(spell,target,level,group,count) : dtu_spell_damage_roll(spell,target,level)) + extra;
+	dtu_xp_dmg_mod(extra,LN("undead"));		// ASCENT: the die of Magical Stone against undead (verbose combat log)
 	return spell_deal(spell,target,caster,level,dmg,rule_half(spell));
 }
 
@@ -1536,6 +1619,8 @@ static fix acid_damage(int spell,object *target,object *caster,int level)
 
 	for (i=0;i<ACID_DICE;i++)
 		dmg += rnd(ACID_SIDES);
+	dtu_xp_roll_clear();		// ASCENT: the verbose combat log (dtuxp.h)
+	dtu_xp_dmg_start(ACID_DICE,ACID_SIDES,dmg);
 
 	target->dtu.m_88 &= ~DTU_FX_REGENERATE;
 	return spell_deal(spell,target,caster,level,dmg,0);
@@ -1549,27 +1634,15 @@ static int spell_amount(int spell,int L,int mode);		// ASCENT: below
 
 static fix melf_acid_hit(int spell,object *target,object *caster,int L)
 {
-	int thac0 = 21 - L, d20 = rnd(20), ac = 0, hit, rounds = spell_amount(36,L,ROLL);
+	int thac0 = 21 - L, rounds = spell_amount(36,L,ROLL);
 	fix dealt;
 
 	if (thac0 > 20) thac0 = 20;
 	if (thac0 < 3) thac0 = 3;
-	if (d20 == 1)
-		hit = 0;
-	else
-		hit = dtu_hit_test(target,caster,d20 == 20 ? 100 : d20,thac0,&ac);
-	if (d20 == 1)
-		dtu_spell_log("spell: '%s' (Dtu_fix_melf_acid): attack roll d20 1: a natural 1 misses",spell_name(spell));
-	else
-		dtu_spell_log("spell: '%s' (Dtu_fix_melf_acid): attack roll d20 %d against fighter THAC0 %d (level %d) and armor class %d: %s",
-			spell_name(spell),d20,thac0,L,ac,hit ? "hit" : "miss");
-	if (!hit) {
-		if (caster && caster->type == OBJ_PLAYER)
-			HUD_init_message("You miss %s with %s.",dtu_object_display_name(target),spell_name(spell));
-		else if (target->type == OBJ_PLAYER && caster)
-			HUD_init_message("%s misses you with %s.",dtu_object_display_name(caster),spell_name(spell));
+	// the THAC0 of a fighter of the caster level, the armor class against melee
+	if (!spell_attack_hit(spell,target,caster,thac0,0,0," (Dtu_fix_melf_acid, fighter THAC0)"))
 		return 0;
-	}
+	dtu_xp_hit_keep();		// ASCENT: the roll in the line of the first round (dtuxp.h)
 	dtu_spell_log("spell: '%s': acid round 1 of %d on obj %d %s at %.2f",spell_name(spell),rounds + 1,(int)(target-Objects),
 		target_name(target),f2fl(GameTime));
 	dealt = acid_damage(spell,target,caster,L);
@@ -1771,7 +1844,7 @@ static void spell_damage_args(int spell,int L,int *group,int *count,int *level)
 
 #define SR_OTHERS	DTU_SR_SPARES_CASTER
 
-static const struct { ubyte kind, save, flags; int fx, stopped_by; } Spell_rule[N_SPELL_RULES] = {
+static const struct { ubyte kind, save; ushort flags; int fx, stopped_by; } Spell_rule[N_SPELL_RULES] = {
 	{ DTU_SK_ABJURE, DTU_SS_NONE, 0, 0 },						// 0 Abjure: a d20 and a d100, no save
 	{ DTU_SK_AID, DTU_SS_NONE, 0, DTU_FX_BLESS },				// 1 Aid
 	{ DTU_SK_ARMOR, DTU_SS_NONE, 0, DTU_FX_ARMOR },				// 2 Armor
@@ -1805,11 +1878,11 @@ static const struct { ubyte kind, save, flags; int fx, stopped_by; } Spell_rule[
 	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 30 Light
 	{ DTU_SK_BLIND, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_BLIND },	// 31
 	{ DTU_SK_DAMAGE, DTU_SS_HALF, 0, 0 },						// 32 Lightning Bolt
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS|DTU_SR_STOPPED, 0, DTU_FX_SHIELD },	// 33 Magic Missile: Shield stops it
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 34 Magical Stone
+	{ DTU_SK_DAMAGE, DTU_SS_NONE, SR_OTHERS|DTU_SR_STOPPED, 0, DTU_FX_SHIELD },	// 33 Magic Missile: Shield stops it, no save (Dtu_fix_damage_save)
+	{ DTU_SK_DAMAGE, DTU_SS_NONE, SR_OTHERS|DTU_SR_ATTACK_ROLL, 0 },	// 34 Magical Stone: an attack roll, no save (Dtu_fix_damage_save)
 	{ DTU_SK_AC, DTU_SS_NONE, 0, DTU_FX_VESTMENT },				// 35 Magical Vestment
 	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 36 Melf's Acid Arrows (see below)
-	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 37 Melf's Minute Meteors
+	{ DTU_SK_DAMAGE, DTU_SS_NONE, SR_OTHERS|DTU_SR_ATTACK_ROLL, 0 },	// 37 Melf's Minute Meteors: an attack roll +2, no save (Dtu_fix_damage_save)
 	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_BLESS },				// 38 Prayer
 	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_PROT_EVIL },			// 39 Protection From Evil
 	{ DTU_SK_FIRE_POOL, DTU_SS_NONE, 0, DTU_FX_PROT_FIRE },		// 40 Protection From Fire
@@ -1871,25 +1944,47 @@ static int kin_saves(object *target)
 
 // A damage spell saves for half when its line says so. The other spells
 // that deal damage (Abjure of a creature, the lights on a light
-// sensitive creature) always save for half, as in 1.3 (0x911AA).
+// sensitive creature) always save for half, as in 1.3 (0x911AA). Without
+// Dtu_fix_damage_save every damage spell saves for half (0x91382).
 static int rule_half(int spell)
 {
-	if (spell < 0 || spell >= N_SPELL_RULES || Spell_rule[spell].kind != DTU_SK_DAMAGE)
+	if (!Dtu_fix_damage_save || spell < 0 || spell >= N_SPELL_RULES || Spell_rule[spell].kind != DTU_SK_DAMAGE)
 		return 1;
 	return Spell_rule[spell].save == DTU_SS_HALF;
 }
 
-// The save of the line: none for a line with no save, for a target at or
-// below save_level and, with DTU_SR_SAVE_KIN, for a target of another kin
-static int rule_save(int spell,object *target,int T,int L)
+// ASCENT: the attack roll of a line with DTU_SR_ATTACK_ROLL and its bonus
+// to hit (Minute Meteors +2, 2e), with Dtu_fix_damage_save
+#define METEOR_HIT_BONUS	2
+
+static int rule_attack(int spell)
 {
+	return Dtu_fix_damage_save && spell >= 0 && spell < N_SPELL_RULES && (Spell_rule[spell].flags & DTU_SR_ATTACK_ROLL);
+}
+
+static int rule_attack_bonus(int spell)
+{
+	return spell == 37 ? METEOR_HIT_BONUS : 0;
+}
+
+// The save of the line: none for a line with no save, for a target at or
+// below save_level and, with DTU_SR_SAVE_KIN, for a target of another kin.
+// ASCENT: the verbose combat log shows the roll at once (no damage follows
+// that would show it; the damage of a light starts a new line).
+static int rule_save(int spell,object *target,object *caster,int T,int L)
+{
+	int made;
+
 	if (spell < 0 || spell >= N_SPELL_RULES || Spell_rule[spell].save == DTU_SS_NONE)
 		return 0;
 	if (save_level(spell,L) >= 0 && T <= save_level(spell,L))
 		return 0;
 	if ((Spell_rule[spell].flags & DTU_SR_SAVE_KIN) && !kin_saves(target))
 		return 0;
-	return dtu_spell_save(target,DTU_SAVE_SPELL);
+	dtu_xp_roll_clear();
+	made = dtu_spell_save(target,DTU_SAVE_SPELL);
+	dtu_xp_roll_say(caster,target);		// ASCENT: the verbose combat log (dtuxp.h)
+	return made;
 }
 
 // ASCENT: 1 if the conditions (DTU_SR_) of the line let the spell act on
@@ -2014,7 +2109,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 6:		// Color Spray
 			if (!rule_reaches(spell,target,self,T,L,mf) || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
 				break;
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				break;
 			if (T <= L) {
 				if (fx_set(target,DTU_FX_SLEEP,color_time(0,ROLL))) {
@@ -2035,7 +2130,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			}
 			break;
 		case 7:		// Confusion: L+2 rounds
-			if (!rule_save(spell,target,T,L) && fx_set(target,rule_fx,dur = spell_time(7,L,ROLL)))
+			if (!rule_save(spell,target,caster,T,L) && fx_set(target,rule_fx,dur = spell_time(7,L,ROLL)))
 				say("Confusion cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(dur));
 			break;
 		case 8: case 9:		// Continual Light: blind with no end
@@ -2044,7 +2139,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				break;
 			// ASCENT: 0x8DC4D: a save ends the case (0x90024), so a light
 			// sensitive creature takes the damage only with the blindness
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				return 0;
 			{
 				fix d = spell_time(spell,L,ROLL);
@@ -2093,7 +2188,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			// 0x8F467: Scare has a save only for an elf, a half-elf or a
 			// cleric player, and for a creature with +0xD9 bit 3 or a cleric
 			// level (DTU_SR_SAVE_KIN of its line, kin_saves)
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				break;
 			{
 				fix d = wisdom_cut(target,spell_time(spell,L,ROLL));
@@ -2213,7 +2308,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 22: case 52:	// Hold Person: 2 L rounds, a humanoid or the player
 			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & (rule_fx|DTU_FX_FREE_ACTION)))
 				break;
-			if (!rule_save(spell,target,T,L)) {
+			if (!rule_save(spell,target,caster,T,L)) {
 				fix d = wisdom_cut(target,spell_time(spell,L,ROLL));
 
 				// ASCENT: 0x8E8C5: the counter of the cast must be above 0
@@ -2235,7 +2330,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		case 23:		// Hold Undead: 1d4 + L rounds, undead of level L or less
 			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx))
 				break;
-			if (rule_save(spell,target,T,L))
+			if (rule_save(spell,target,caster,T,L))
 				break;
 			{
 				fix d = spell_time(23,L,ROLL);
@@ -2406,7 +2501,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			break;
 		}
 		case 47:		// Slow: ends Haste, L+3 rounds
-			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx) || rule_save(spell,target,T,L))
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx) || rule_save(spell,target,caster,T,L))
 				break;
 			if (target->dtu.m_88 & DTU_FX_HASTE)
 				fx_end(target,13);
@@ -4258,6 +4353,8 @@ int dtu_spell_rule_check(void)
 		// the window has the sentence "Stops Magic Missile." only (shield_lines)
 		if ((fl & DTU_SR_STOPPED) && (s != 33 || Spell_rule[s].stopped_by != DTU_FX_SHIELD))
 			bad += rule_problem(s,"a stopped spell that the window has no sentence for");
+		if ((fl & DTU_SR_ATTACK_ROLL) && (k != DTU_SK_DAMAGE || Spell_rule[s].save != DTU_SS_NONE))
+			bad += rule_problem(s,"an attack roll needs a damage line with no save");
 		if ((fl & DTU_SR_BURST_BLINDS) && (k != DTU_SK_DAMAGE || !spell_area(s)))
 			bad += rule_problem(s,"the blindness near the point needs an area damage spell");
 		if ((fl & DTU_SR_SPARES_CASTER) && spell_self(s) && !spell_area(s))
@@ -4314,6 +4411,11 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 		f->fx = Spell_rule[spell].fx;
 		f->flags = Spell_rule[spell].flags;
 		f->stopped_by = (f->flags & DTU_SR_STOPPED) ? Spell_rule[spell].stopped_by : 0;
+		if (f->kind == DTU_SK_DAMAGE && rule_half(spell))
+			f->save = DTU_SS_HALF;		// ASCENT: Dtu_fix_damage_save 0
+		if (!rule_attack(spell))
+			f->flags &= ~DTU_SR_ATTACK_ROLL;
+		f->attack_bonus = rule_attack_bonus(spell);
 	}
 	// the conditions of rule_reaches and rule_save
 	f->max_level = (f->flags & DTU_SR_LEVEL_CAP) ? spell_amount(spell,L,HIGH) : -1;
