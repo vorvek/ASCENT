@@ -273,8 +273,11 @@ Dagger, Throwing Axe, Throwing Hammer and their + versions) are PROJECTILE with
 bonus of the worn crossbow (they have no `arrow` flag) to hit and to damage.
 Arrows and bolts get no strength. AD&D 2nd edition gives a bow no strength
 bonus and a thrown weapon the strength bonus to damage (and to hit). The port
-(dtuchar.c, `weapon_attack`, `dtu_char_weapon_damage`) gives a thrown weapon no
-strength damage: a port bug, not corrected here (2026-11-24).
+gave a thrown weapon no strength damage (it did not read `thrown`): corrected
+2026-11-24 (`dtu_item_data.thrown`, `dtu_char_weapon_damage`). The launcher
+bonus of a thrown weapon is a defect (`Dtu_fix_thrown_launcher`), and the
+missing strength bonus to hit differs from 2e (`Dtu_fix_thrown_str_hit`); see
+combat.md, the list of the settings.
 
 ## 6. Equipment and the paper doll
 

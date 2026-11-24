@@ -213,6 +213,7 @@ typedef struct dtu_item_data {
 	int		ac_bonus;				// added to the armor class (negative is better). The tables at 0x145C04, 0x145A04, 0x1458B8
 	// weapons
 	int		melee;					// 1: attack type 1. 0: a missile, or a launcher for missiles
+	int		thrown;					// ASCENT: thrown=1 of the line (Weapon_info+0x0A = 3, the reader 0x21020)
 	int		dice_sides;				// damage_dice=
 	int		dice_n;					// #damage_dice=
 	int		damage_bonus;
@@ -236,6 +237,20 @@ extern int Dtu_fix_thac0_row;
 // ASCENT: THAC0 of a new character. 1 (default): by the table at once. 0
 // (-origchar): 20 until the first level check (0x8BFF5).
 extern int Dtu_fix_new_thac0;
+// ASCENT: a thrown weapon (thrown=1 of the line: the darts, throwing daggers,
+// axes and hammers) is a missile (attack type PROJECTILE), so 0x2A7F3 and
+// 0x2AF5E add to it the bonus of the worn bow or, with no arrow flag, of the
+// worn crossbow (0x2AB0A, 0x2B0C1), to hit and to damage. A defect: a thrown
+// weapon has no launcher. 1 (default): no launcher bonus for a thrown
+// weapon. 0 (-origcombat): the executable.
+extern int Dtu_fix_thrown_launcher;
+// ASCENT: the strength bonus to hit of 0x2A789 goes to attack type 1 only:
+// the test of thrown (0x2AB54) comes after the jump of a missile (0x2AAFE).
+// AD&D 2nd edition gives a thrown weapon the strength bonus to hit. 1
+// (default): a thrown weapon adds it ("+N (STR)"). 0 (-origcombat): the
+// executable. The strength bonus to damage of a thrown weapon is 1.3
+// (0x2B47E) and needs no setting.
+extern int Dtu_fix_thrown_str_hit;
 // The hit points of a new level. 0: as 0xAF8C7, the integer is added to
 // the fixed point hit points (they grow by n / 65536; the maximum grows by
 // n). 1 (default): the hit points grow by n, as the rules say.
@@ -361,6 +376,7 @@ int dtu_char_rest_ready(int segnum);
 typedef struct dtu_attack {
 	int		weapon_id;				// index of Weapon_info, or -1: the empty hand
 	int		melee;					// 0: the weapon in the hand is a missile weapon
+	int		thrown;					// ASCENT: a thrown weapon (dtu_item_data.thrown)
 	int		thac0;
 	int		to_hit_bonus;			// the sum that is added to the roll of 1d20
 	int		dice_n, dice_sides;	// the damage dice
