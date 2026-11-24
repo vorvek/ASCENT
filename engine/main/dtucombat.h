@@ -208,6 +208,12 @@ extern int Dtu_fix_kill_sound;
 // (-origcombat): the place of 1.3.
 extern int Dtu_fix_sword_view;
 
+// The blindness of Fireball within 6.0 of the point (dtu_fireball_blind_deaf):
+// 1.3 blinds also on a made save (0x90E22 jumps to 0x90F73) and blinds a
+// creature of the type `blind`. 1: the save negates it and a `blind`
+// creature is spared. 0 (-origcombat): 1.3.
+extern int Dtu_fix_fireball_blind;
+
 // 0x90CEF for spell 16 (Fireball): the blindness and the deafness of a
 // player or creature at dist from the point (only the fire trap reaches it).
 void dtu_fireball_blind_deaf(object *o, fix dist);

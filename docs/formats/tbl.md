@@ -301,6 +301,21 @@ Stored only, `$SPELL`: `level`, `range`, `level_range`, `cast_time`, `duration`,
 flag words `mage_use`, `cleric_use`, `cast_with_hands`, `cast_with_wand`,
 `cast_in_front`, `self_cast_ok`, `always`, `homing`, `stackable`.
 
+Two of them change the look of a spell missile (verified in the reader 0x242F6, the
+missile setup 0x56FF6 and the missile frame 0x5656C of `DTUGAME.EXE` 1.3, and in the
+`$SPELL` lines of `YPINN.BIN`):
+
+- `weapon_vclip_size` is a decimal number stored as a fix (strtod times 65536.0),
+  1.0 when the line has none (0x242F6 writes 0x10000 first). 0x56FF6 copies it to the
+  blob size of the missile template (`Weapon_info` +0x6C), the size of a missile that
+  is drawn as a vclip. In `YPINN.BIN` only Fireball (3) and Flaming Sphere (3.2) have
+  the word.
+- `vclip_trail` is a vclip number. 0x56FF6 copies it to `Weapon_info` +0xD5 (the
+  `$WEAPON` reader 0x209F3 reads the same word for a weapon line). In 95 of 100 frames
+  0x5656C makes an explosion of that vclip at the missile, with the size of the
+  missile, when the number is above 0. In `YPINN.BIN`: Abjure 99, Fireball 135,
+  Flaming Sphere 42, Melf's Acid Arrows 129, Melf's Minute Meteors 135.
+
 `cast_time` of `$SPELL` (verified in DTUGAME.EXE 1.3 and in the DOS game): the reader
 0x24BEC stores the number (`atoi`, no scale) in the word Spell_info+0x04 (0x1B567A +
 spell * 127). At the end of each table read (call at 0x1C8F9) the fixup 0x1A344 writes

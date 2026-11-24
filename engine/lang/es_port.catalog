@@ -775,6 +775,10 @@ id: port.blinds_each_creature_within_s_of_the_poi
 en: Blinds each creature within %s of the point for up to %s, and deafens it unless it saves.
 tr: Ciega a cada criatura a %s o menos del punto durante hasta %s, y la ensordece si no supera la tirada de salvación.
 
+id: port.blinds_each_creature_within_s_of_the_poi_2
+en: Blinds each creature within %s of the point that fails a save for up to %s, and deafens it unless it saves.
+tr: Ciega a cada criatura a %s o menos del punto que no supere la tirada de salvación durante hasta %s, y la ensordece si no supera la tirada de salvación.
+
 id: port.gives_s
 en: Gives %s.
 tr: Efecto: %s.
@@ -910,6 +914,10 @@ tr: Solo tú
 id: port.one_target
 en: One target
 tr: Un objetivo
+
+id: port.an_arc_of_120_degrees_in_front_of_you
+en: An arc of 120 degrees in front of you
+tr: Un arco de 120 grados delante de ti
 
 id: port.also_hits_you_when_you_are_in_the_area
 en: Also hits you when you are in the area.
