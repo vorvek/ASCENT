@@ -195,7 +195,8 @@ void dtu_inventory_remove(int index, int count)
 // 17): no control, no movement, render type 8, the byte 0x1D5 is the count.
 // The executable puts it at the position of the creature plus half of a
 // size in y. The port puts it on the floor under the point. (guess for y)
-int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos)
+// A size above 0 is the size of the object; 0 takes the size of the table.
+int dtu_create_item_size(int type, int id, int count, int segnum, vms_vector *pos, fix size_wanted)
 {
 	item_info *it = item_table_entry(type,id);
 	int objnum;
@@ -205,7 +206,9 @@ int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos)
 
 	if (it == NULL || segnum < 0 || segnum > Highest_segment_index)
 		return -1;
-	if (it->record >= 0 && bm_tbl_get(it->record,"size",value,sizeof(value)) && atof(value) > 0)
+	if (size_wanted > 0)
+		size = size_wanted;
+	else if (it->record >= 0 && bm_tbl_get(it->record,"size",value,sizeof(value)) && atof(value) > 0)
 		size = fl2f(atof(value));
 
 	objnum = obj_create(type,id,segnum,pos,&vmd_identity_matrix,size,CT_NONE,MT_NONE,RT_ITEM);
@@ -230,6 +233,11 @@ int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos)
 		}
 	}
 	return objnum;
+}
+
+int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos)
+{
+	return dtu_create_item_size(type,id,count,segnum,pos,0);
 }
 
 //------------------------------------------------------------------------

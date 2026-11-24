@@ -843,6 +843,14 @@ Gold is misc id 1 (0x2806B): the message is "You pick up %d gold.", the amount i
 No level file has a gold object (Data). The gold path comes before the pick up delay
 0x31A0E, and it calls 0xB772D(0x10, 1, 0) (0x28089 to 0x28092).
 
+The gold of a dead humanoid (drop_gold 0x6A639, V): object_create_explosion
+(0x3BD4C) with the size 0x38000 (3.5, at 0x6A6AC) and vclip 10, then render
+type 8, type 0x10, id 1, the bitmap of misc 1, `shields` the amount, `lifeleft`
+|300 - amount| seconds, and 0x6B9B0 puts it on the floor. The move query of the
+player touches an item with `size + rad` (0x3ED76). The port gave the gold the
+size of the misc table (2) until 2026-11-25, and a body over the gold on the floor
+missed it by a few hundredths (KOBOLDS). The `lifeleft` is not ported.
+
 ### The pick up sound (0xB772D)
 
 Verified in DTUGAME.EXE. 0xB772D(type, id, flags) is the only sound of a pick up:
