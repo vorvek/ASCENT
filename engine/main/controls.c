@@ -229,6 +229,7 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include "dtudisp.h"		// ASCENT: Dtu_immersive, the key V
 #include "dtulang.h"		// ASCENT: LN(), the Auto Run messages
 #include "dtuchar.h"		// ASCENT: the hand slot for Disarm
+#include "dtulog.h"		// ASCENT: the look lines of the session log
 #include "bm.h"
 #include "key.h"
 #include "joy.h"
@@ -553,6 +554,59 @@ static fix dtu_turn_ramp_integral(fix t)
 	return (fix) (T*n*(n+1)/16 + (n+1)*(t - n*T)/8);
 }
 
+// ASCENT: lines of the session log for a report of look keys or a mouse
+// that do not move the view (a few lines in a session). A look key held
+// for one second: the pitch at the start and now, the sum of the look of
+// the frames, the sensitivity, the control type and the look amounts of
+// the gamepad. The immersive mode: each 5 seconds with mouse motion, the
+// sum of the mouse axes that the game read.
+static void look_diag_keys(int sens, int look)
+{
+	static int held, logged, start_pitch;
+	static int sum;
+	int down = dtu_action_down(DTU_ACT_LOOK_UP) || dtu_action_down(DTU_ACT_LOOK_DOWN);
+
+	if (!down) {
+		held = 0;
+		return;
+	}
+	if (held == 0) {
+		start_pitch = Dtu_look_pitch;
+		sum = 0;
+	}
+	held++;
+	sum += look;
+	if (held == 60 && logged < 4) {
+		logged++;
+		dtulog_event("Look keys: held 60 frames (up %d, down %d), pitch %d to %d, look sum %d, sensitivity %d, control type %d, gamepad look up %d down %d, immersive %d",
+			dtu_action_down(DTU_ACT_LOOK_UP), dtu_action_down(DTU_ACT_LOOK_DOWN), start_pitch, Dtu_look_pitch, sum, sens,
+			Dtu_control_type, dtu_pad_amount(DTU_ACT_LOOK_UP), dtu_pad_amount(DTU_ACT_LOOK_DOWN), Dtu_immersive);
+	}
+}
+
+static void look_diag_mouse(int src, int mouse_look, int a_look, int a_turn)
+{
+	static int frames, logged, sum_look, sum_turn, start_pitch;
+
+	if (!Dtu_immersive || logged >= 4) {
+		frames = 0;
+		return;
+	}
+	if (frames == 0) {
+		sum_look = sum_turn = 0;
+		start_pitch = Dtu_look_pitch;
+	}
+	frames++;
+	sum_look += a_look;
+	sum_turn += a_turn;
+	if (frames >= 300) {
+		dtulog_event("Mouse look: 300 frames, source %d, mouse look %d, mouse axes look %d turn %d, pitch %d to %d, control type %d",
+			src, mouse_look, sum_look, sum_turn, start_pitch, Dtu_look_pitch, Dtu_control_type);
+		logged++;
+		frames = 0;
+	}
+}
+
 // Reads the keyboard, the mouse and the joystick for the movement of the
 // player. The keys come from the key table (kconfig.c, docs/re/controls.md),
 // which the Controls menu changes. The defaults of the port (the owner of
@@ -688,6 +742,8 @@ void dtu_read_controls(void)
 		int a_look, a_turn, a_slide, a_up;
 		int src = dtu_control_axes(&a_look, &a_turn, &a_slide, &a_up);
 
+		look_diag_mouse(src, mouse_look, a_look, a_turn);
+
 		// ASCENT: Joystick/Mouse Sensitivity of F2 (byte 0x13BFEF, 0 to
 		// 8, 8 by default at 0x71580): the executable scales the look and
 		// turn axes of the mouse and the joystick by it / 8 (0x52BCE to
@@ -720,6 +776,8 @@ void dtu_read_controls(void)
 	if (dtu_action_down(DTU_ACT_LOOK_DOWN) || (t & TM_LOOKDOWN))	look += ft * sens / 8;
 	if (dtu_action_down(DTU_ACT_QUICK_UP))		{ look -= ft * sens / 8; glance = 1; }
 	if (dtu_action_down(DTU_ACT_QUICK_DOWN))		{ look += ft * sens / 8; glance = 1; }
+
+	look_diag_keys(sens, look);
 
 	if (look) {
 		int p = Dtu_look_pitch + look;

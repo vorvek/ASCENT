@@ -161,9 +161,16 @@ static void apply_relative_mode(void)
 	windows = SDL_GetWindows(&count);
 	if (windows && count > 0) {
 		int grab = plat_is_fullscreen();		// ASCENT: the borderless full screen form of video.c
-		if (Relative_wanted != Relative_applied
-				&& SDL_SetWindowRelativeMouseMode(windows[0], Relative_wanted != 0))
-			Relative_applied = Relative_wanted;
+		if (Relative_wanted != Relative_applied) {
+			if (SDL_SetWindowRelativeMouseMode(windows[0], Relative_wanted != 0))
+				Relative_applied = Relative_wanted;
+			else {
+				// ASCENT: the session log tells why the immersive mode has no mouse
+				static int logged;
+				if (logged++ < 3)
+					plat_log("Input: relative mouse mode %s failed: %s", Relative_wanted ? "on" : "off", SDL_GetError());
+			}
+		}
 		if (grab != Grab_applied && SDL_SetWindowMouseGrab(windows[0], grab != 0))
 			Grab_applied = grab;
 		Grab_dirty = 0;
@@ -219,8 +226,12 @@ static void joy_open_first(void)
 		if (Pad_started && SDL_IsGamepad(ids[i]))
 			continue;
 		Joy = SDL_OpenJoystick(ids[i]);
-		if (Joy)
+		if (Joy) {
+			const char *name = SDL_GetJoystickName(Joy);
 			Joy_id = ids[i];
+			plat_log("Input: joystick '%s' (vendor %04x product %04x), %d axes", name ? name : "?",
+				SDL_GetJoystickVendor(Joy), SDL_GetJoystickProduct(Joy), SDL_GetNumJoystickAxes(Joy));
+		}
 	}
 	SDL_free(ids);
 }
@@ -311,6 +322,12 @@ static int Pad_test;
 static unsigned char Pad_buttons[PLAT_PAD_BUTTONS];
 static unsigned char Pad_presses[PLAT_PAD_BUTTONS];
 static int Pad_axes[PLAT_PAD_AXES];
+// ASCENT: an axis counts after it was at rest once (near 0) since the pad
+// was opened. A device that SDL takes for a gamepad can hold an axis at an
+// end (a stick that is not there, a sensor): the right stick y looks up or
+// down in each frame, and the look keys and the mouse cannot move the view.
+static unsigned char Pad_axis_rested[PLAT_PAD_AXES];
+#define PAD_REST_LIMIT	8000
 static Uint64 Pad_game_ticks;			// the time of the last game frame
 static int Pad_stick_dir[2];			// the arrow of the left stick in the menus
 
@@ -371,9 +388,14 @@ void plat_input_pad_axis(int axis, int value)
 		Pad_test = 1;
 	if (value < -32768) value = -32768;
 	if (value > 32767) value = 32767;
+	if (!Pad_axis_rested[axis] && value > -PAD_REST_LIMIT && value < PAD_REST_LIMIT) {
+		Pad_axis_rested[axis] = 1;
+		if (Pad)
+			plat_log("Input: gamepad axis %d at rest (%d): it counts from now on", axis, value);
+	}
 	Pad_axes[axis] = value;
 	// The left stick in the menus: an arrow key when it passes one half
-	if (axis == PLAT_PAD_LEFTX || axis == PLAT_PAD_LEFTY) {
+	if ((axis == PLAT_PAD_LEFTX || axis == PLAT_PAD_LEFTY) && (Pad_axis_rested[axis] || !Pad)) {
 		int a = axis - PLAT_PAD_LEFTX;
 		int dir = value > 16384 ? 1 : value < -16384 ? -1 : 0;
 		if (dir != Pad_stick_dir[a]) {
@@ -411,6 +433,21 @@ static void pad_open_first(void)
 			Pad_id = ids[i];
 	}
 	SDL_free(ids);
+	if (Pad) {
+		// ASCENT: the session log names the pad and the axes at the open
+		static const SDL_GamepadAxis axes[PLAT_PAD_AXES] = { SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY,
+			SDL_GAMEPAD_AXIS_RIGHTX, SDL_GAMEPAD_AXIS_RIGHTY, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER };
+		int v[PLAT_PAD_AXES];
+		const char *name = SDL_GetGamepadName(Pad);
+
+		for (i = 0; i < PLAT_PAD_AXES; i++) {
+			v[i] = SDL_GetGamepadAxis(Pad, axes[i]);
+			Pad_axes[i] = v[i];
+			Pad_axis_rested[i] = v[i] > -PAD_REST_LIMIT && v[i] < PAD_REST_LIMIT;
+		}
+		plat_log("Input: gamepad '%s' (vendor %04x product %04x), axes %d %d %d %d %d %d",
+			name ? name : "?", SDL_GetGamepadVendor(Pad), SDL_GetGamepadProduct(Pad), v[0], v[1], v[2], v[3], v[4], v[5]);
+	}
 }
 
 int plat_pad_init(void)
@@ -444,7 +481,10 @@ int plat_pad_button(int button)
 
 int plat_pad_axis(int axis)
 {
-	return axis >= 0 && axis < PLAT_PAD_AXES ? Pad_axes[axis] : 0;
+	if (axis < 0 || axis >= PLAT_PAD_AXES)
+		return 0;
+	// ASCENT: the script of a test (no pad open) sets the axes directly
+	return (Pad_axis_rested[axis] || !Pad) ? Pad_axes[axis] : 0;
 }
 
 int plat_pad_button_presses(int button)
