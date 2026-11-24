@@ -17,6 +17,16 @@
 #include <strings.h>	// strcasecmp, strncasecmp
 #include <ctype.h>
 
+// The rand() of Watcom C and of the C library of Windows gives 0 to
+// 0x7FFF. The code depends on it: rand() * 4 as a fix time, rand() > 0x7400
+// as a chance of 1 in 10, (rand() * n) >> 15 as an index. The rand() of the
+// GNU C library gives 0 to 0x7FFFFFFF. stdlib.h comes first, so that its
+// RAND_MAX does not replace this one.
+#include <stdlib.h>
+#undef RAND_MAX
+#define RAND_MAX 0x7FFF
+#define rand() (rand() & RAND_MAX)
+
 #define stricmp strcasecmp
 #define strnicmp strncasecmp
 #define strcmpi strcasecmp
