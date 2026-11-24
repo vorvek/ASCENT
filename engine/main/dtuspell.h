@@ -101,6 +101,15 @@ extern int Dtu_fix_rary_manual;
 // save and load. 1 (default): the 2nd edition rule. 0: the executable.
 extern int Dtu_fix_melf_acid;
 
+// ASCENT: Burning Hands (spell 4) of the player. 1.3 (0x56FF6, 0x56EB0)
+// fires 6 missiles in a narrow fan that fly 30.0 seconds (3000 units) and
+// each makes the area of the line (radius 10) where it lands; the line's
+// range=20 has no reader. AD&D 2nd edition: flame jets 5 feet long in an
+// arc of 120 degrees in front of the caster, one roll of 1d3 + 2 per level
+// for each creature in it, save for half. 1 (default): the 2nd edition
+// rule. 0 (-origcombat): the executable.
+extern int Dtu_fix_burning_hands;
+
 // ASCENT: the damage of a spell (0x911AA) rolls a saving throw (category
 // 4, 0x91382) for every spell and halves the damage on a made save, so a
 // target saves against Magic Missile (case 33, 0x8EED5). In AD&D 2nd edition
@@ -459,6 +468,7 @@ typedef struct dtu_spell_facts {
 	int	attack_bonus;			// ASCENT: the bonus to hit of an attack roll (DTU_SR_ATTACK_ROLL in flags)
 	int	blind_dist;				// Fireball: blinds and deafens within this many units of the point, 0 none
 	int	blind_seconds;			// the longest blindness of blind_dist
+	int	cone;					// ASCENT: an arc of 120 degrees in front of the caster, range units long (Dtu_fix_burning_hands)
 	int	flags;					// ASCENT: DTU_SR_
 	int	max_level;				// the highest level of a target (DTU_SR_LEVEL_CAP), else -1
 	int	save_level;				// only a target above this level saves, -1 every target

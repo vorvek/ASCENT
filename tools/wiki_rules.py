@@ -615,6 +615,11 @@ FIXES = [
     ("Dtu_fix_melf_acid", "-origcombat", "Melf's Acid Arrows makes an attack roll and burns 2d4 a "
                                          "round for 1 round + 1 per 3 levels, as in AD&D 2nd edition; "
                                          "1.3 does 4 per level in one hit, save for half."),
+    ("Dtu_fix_burning_hands", "-origcombat", "Burning Hands burns each creature within 5 feet in an arc "
+                                             "of 120 degrees in front of you, one roll each, as in AD&D 2nd "
+                                             "edition; 1.3 fires 6 missiles that fly far and burn where they land."),
+    ("Dtu_fix_fireball_blind", "-origcombat", "A made saving throw stops the blindness of Fireball near "
+                                              "the point; in 1.3 the save does not."),
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),
     ("Dtu_fix_ability_saves", "-origcombat", "Dwarves and halflings get their Constitution bonus "
                                              "against Rod/Staff/Wand and Spell, and Wisdom changes the "

@@ -1616,6 +1616,8 @@ static void combat_init(void)
 		Dtu_fix_prayer_flags = 0;
 		Dtu_fix_slow_swing = 0;
 		Dtu_fix_kill_sound = 0;
+		Dtu_fix_fireball_blind = 0;
+		Dtu_fix_burning_hands = 0;
 		Dtu_fix_sword_view = 0;
 	}
 }
@@ -2305,8 +2307,20 @@ void dtu_combat_draw_view(void)
 
 // 0x90DDF to 0x91058, in 0x90CEF after the spell hit 0x8CFFF: only for
 // spell 16 (Fireball) and a player or creature within 6.0 of the point.
-// Every caller of 0x90CEF tests the area flag of the spell, which Fireball
-// does not have, except the fire trap (0xA6F51, 0xA6F61).
+// The callers of 0x90CEF test the area flag of the spell; the table fixup
+// gives Fireball the flags 0x803 (0x1A972, AREA), so the Fireball of the
+// player or of a creature reaches this code, and the fire trap (0xA6F51,
+// 0xA6F61) too.
+//
+// Dtu_fix_fireball_blind: 1.3 rolls the save of the blindness (0xAE596, 4)
+// but a made save only skips the message, the flash and the sound: 0x90E22
+// jumps to 0x90F73, which sets the blindness. The save of the deafness
+// (0x90FB5) negates it. The fix makes the save negate the blindness too,
+// and spares a creature of the type `blind` (Robot_info +0x98 bit 0x0001, MONSTER_F_BLIND),
+// which 1.3 spares from Light and Color Spray (0x8DC1D, 0x8D6D4) but not
+// here. -origcombat clears it.
+int Dtu_fix_fireball_blind = 1;
+
 void dtu_fireball_blind_deaf(object *o, fix dist)
 {
 	int player = (o->type == OBJ_PLAYER);
@@ -2323,12 +2337,16 @@ void dtu_fireball_blind_deaf(object *o, fix dist)
 		if (bm_tbl_get(Player_type_info[0].record, "hard_sound", value, sizeof(value)))
 			sound = atoi(value);
 	}
-	if (!(o->dtu.m_88 & DTU_FX_BLIND)) {
+	if (!(o->dtu.m_88 & DTU_FX_BLIND) &&
+			!(Dtu_fix_fireball_blind && !player && o->id < N_robot_types && (Monster_info[o->id].flags & MONSTER_F_BLIND))) {
+		int saved;
+
 		// 0xAE596(obj, 4): a save skips the message, the flash and the
 		// sound, but not the blindness (0x90E22 jumps to 0x90F73)
 		if (player)
 			dtu_char_save_cause(-1, "the blindness of the fire", NULL);		// ASCENT: the session log
-		if (!dtu_spell_save(o, 4)) {
+		saved = dtu_spell_save(o, 4);
+		if (!saved) {
 			if (player) {
 				// 0x90E32 also sets 0x13D50C, 0x1F3B00, 0x1F3AF8, 0x46C688
 				// and 0x46C68C to 0 (not in the port)
@@ -2340,8 +2358,10 @@ void dtu_fireball_blind_deaf(object *o, fix dist)
 			dtu_char_log("fire trap: obj %d is blind", (int) (o - Objects));
 		}
 		// 0x90F73: blind for 1 to 1800 seconds
-		o->dtu.m_8c[3] = GameTime + i2f(rand() % DTU_FIREBALL_BLIND_SECONDS + 1);
-		o->dtu.m_88 |= DTU_FX_BLIND;
+		if (!saved || !Dtu_fix_fireball_blind) {
+			o->dtu.m_8c[3] = GameTime + i2f(rand() % DTU_FIREBALL_BLIND_SECONDS + 1);
+			o->dtu.m_88 |= DTU_FX_BLIND;
+		}
 	}
 	if (player)
 		dtu_char_save_cause(-1, "the deafness of the fire", NULL);		// ASCENT: the session log

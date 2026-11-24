@@ -173,7 +173,8 @@ window both read it there:
 | Effect bit, save kind, sentence kind | `Spell_rule` | `apply_spell`, `rule_save`, `spell_damage`, `dtu_spell_get_facts` |
 | Caster spared, undead only, no undead, humanoid, level limit, stopped by | `Spell_rule` flags, `stopped_by` | `rule_reaches` (the cases), creature spell choice, the facts |
 | Who saves | `save_level`, `DTU_SR_SAVE_KIN`, `kin_saves` | `rule_save`, the facts (`DTU_SS_SOME`) |
-| Blindness near the point | `DTU_SR_BURST_BLINDS`, `DTU_FIREBALL_BLIND_*` | `dtu_spell_area`, the facts |
+| Blindness near the point | `DTU_SR_BURST_BLINDS`, `DTU_FIREBALL_BLIND_*`, `Dtu_fix_fireball_blind` | `dtu_spell_area`, `dtu_fireball_blind_deaf`, the facts |
+| The arc of Burning Hands | `BURNING_HANDS_REACH`, `Dtu_fix_burning_hands` | `burning_hands_cone`, `dtu_spell_test`, the facts (`cone`) |
 | Duration | `spell_time`, `color_time` | the cases, their messages, `light_object`, the facts |
 | Amount, level limit, targets, acid rounds | `spell_amount` | the cases, `rule_reaches`, the facts |
 | Damage dice, undead die | `spell_damage_args`, `spell_undead_die` | the cases, the facts |

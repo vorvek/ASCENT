@@ -584,8 +584,12 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 				sprintf(a, "1d%d", f->undead_die);
 				line(LT("%s more damage against undead."), a);
 			}
-			// ASCENT: dtu_fireball_blind_deaf: no save against the blindness
-			if (f->blind_dist)
+			// ASCENT: dtu_fireball_blind_deaf: with Dtu_fix_fireball_blind a
+			// save negates the blindness, in 1.3 it does not
+			if (f->blind_dist && Dtu_fix_fireball_blind)
+				line(LT("Blinds each creature within %s of the point that fails a save for up to %s, and deafens it unless it saves."),
+					feet(a, f->blind_dist), time_text(b, f->blind_seconds, f->blind_seconds));
+			else if (f->blind_dist)
 				line(LT("Blinds each creature within %s of the point for up to %s, and deafens it unless it saves."),
 					feet(a, f->blind_dist), time_text(b, f->blind_seconds, f->blind_seconds));
 			break;
@@ -678,7 +682,10 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 		line(LT("Spell, level %d"), f.level);
 	line(LT("Cast time: %s"), time_text(a, f.cast_time, f.cast_time));
 	line(LT("Range: %s"), f.self ? LT("Self") : feet(a, f.range));
-	if (f.area)
+	// ASCENT: Burning Hands with Dtu_fix_burning_hands (dtuspell.c)
+	if (f.cone)
+		line(LT("Area: %s"), LT("An arc of 120 degrees in front of you"));
+	else if (f.area)
 		line(LT("Area: %s"), (sprintf(b, f.self ? LT("%s around you") : LT("%s where it lands"), feet(a, f.radius)), b));
 	else
 		line(LT("Area: %s"), f.self ? LT("Only you") : LT("One target"));

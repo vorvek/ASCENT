@@ -52,6 +52,7 @@ int Dtu_fix_chill_touch = 1;
 int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
+int Dtu_fix_burning_hands = 1;
 int Dtu_fix_damage_save = 1;		// ASCENT: no save against Magic Missile (dtuspell.h)
 int Dtu_fix_spell_hours = 1;
 int Dtu_fix_cure_aid = 1;			// ASCENT: priest spells (dtuspell.h)
@@ -2640,6 +2641,65 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 	return n;
 }
 
+// ASCENT: Burning Hands by the AD&D 2nd edition rule (Dtu_fix_burning_hands,
+// dtuspell.h): flame jets 5 feet long in an arc of 120 degrees in front of
+// the caster. Each creature whose body is within the reach of the body of
+// the caster, in the arc (on the level plane) and seen from the caster
+// takes case 4 once (1d3 + 2 L, save for half). A fallen body that can get
+// up burns as in the area of a spell. The flames: the weapon_vclip of the
+// line at five points of the arc.
+#define BURNING_HANDS_REACH		i2f(10)		// 5 feet (2 units are a foot)
+#define BURNING_HANDS_COS		(F1_0/2)		// cos 60 degrees: half the arc
+
+static void burning_hands_cone(object *caster,int L)
+{
+	vms_vector fwd = caster->orient.fvec, right = caster->orient.rvec;
+	int i, n = 0, vclip = spell_int(4,"weapon_vclip",-1);
+
+	fwd.y = right.y = 0;
+	if (vm_vec_normalize_quick(&fwd) == 0)
+		fwd = caster->orient.fvec;
+	vm_vec_normalize_quick(&right);
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+		vms_vector v;
+		fix d;
+
+		if (o == caster || (o->type != OBJ_ROBOT && o->type != OBJ_PLAYER))
+			continue;
+		if (o->type == OBJ_PLAYER && o != ConsoleObject)
+			continue;
+		if (!dtu_creature_down(o) && (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED|OF_EXPLODING)))
+			continue;
+		vm_vec_sub(&v,&o->pos,&caster->pos);
+		d = vm_vec_mag(&v);
+		if (d - o->size - caster->size > BURNING_HANDS_REACH)
+			continue;
+		v.y = 0;
+		if (vm_vec_normalize_quick(&v) > 0 && vm_vec_dot(&v,&fwd) < BURNING_HANDS_COS)
+			continue;
+		if (!point_sees(&caster->pos,caster->segnum,o))
+			continue;
+		if (dtu_creature_down(o))
+			dtu_creature_down_spell(o,caster,4,L);
+		else
+			apply_spell(4,o,caster,L);
+		n++;
+	}
+	// the flames at -60, -30, 0, 30 and 60 degrees
+	for (i=-2;i<=2;i++) {
+		static const fix sn[5] = { -56756, -32768, 0, 32768, 56756 }, cs[5] = { 32768, 56756, 65536, 56756, 32768 };
+		vms_vector p = caster->pos;
+		int seg;
+
+		vm_vec_scale_add2(&p,&fwd,fixmul(cs[i+2],caster->size + BURNING_HANDS_REACH/2));
+		vm_vec_scale_add2(&p,&right,fixmul(sn[i+2],caster->size + BURNING_HANDS_REACH/2));
+		if ((seg = find_point_seg(&p,caster->segnum)) >= 0)
+			vclip_at(seg,&p,i2f(3),vclip);
+	}
+	dtu_spell_log("spell: Burning Hands of obj %d at level %d reaches %d creatures (Dtu_fix_burning_hands)",(int)(caster-Objects),L,n);
+}
+
 //------------------------------------------------------------------------
 // The missiles of the player: homing and the area at the end
 
@@ -2969,6 +3029,14 @@ static void cast_now(int spell,int source)
 		else
 			apply_spell(spell,player,player,L);
 		vclip_at(player->segnum,&player->pos,i2f(3),spell_int(spell,"cast_vclip",-1));
+		return;
+	}
+
+	if (spell == 4 && Dtu_fix_burning_hands) {
+		// Casting a missile ends Invisibility (0x5705B); so does the cone
+		if (player->dtu.m_88 & DTU_FX_INVISIBLE)
+			fx_end(player,17);
+		burning_hands_cone(player,L);
 		return;
 	}
 
@@ -3977,6 +4045,9 @@ void dtu_spell_test(int spell,int level,int objnum,int trials)
 	object *caster = ConsoleObject, *t, save_obj;
 	static dtu_character save_char;
 	int trial, n_trials = trials < 1 ? 1 : trials, total = 0;
+	// ASCENT: Burning Hands with Dtu_fix_burning_hands is one roll for each
+	// creature in the arc (burning_hands_cone), no missile
+	int cone = (spell == 4 && Dtu_fix_burning_hands);
 
 	if (!caster || !spell_ok(spell)) {
 		dtu_spell_log("spelltest: spell %d is not in the tables",spell);
@@ -3997,12 +4068,14 @@ void dtu_spell_test(int spell,int level,int objnum,int trials)
 
 		save_obj = *t;
 		save_char = Dtu_char;
-		n = missile_count(spell,level);
+		n = cone ? 1 : missile_count(spell,level);
 		dtu_spell_log("spelltest: '%s' (%d) level %d on obj %d %s (level %d), trial %d: %d missiles%s, hit points %d, effects 0x%08x",
 			spell_name(spell),spell,level,(int)(t-Objects),target_name(t),object_level(t,spell),trial,n,
-			spell_area(spell) ? " (area)" : "",hp0,fx0);
+			cone ? " (arc)" : spell_area(spell) ? " (area)" : "",hp0,fx0);
 		for (i=0;i<n;i++) {
-			if (spell_area(spell))
+			if (cone)
+				apply_spell(spell,t,caster,level);
+			else if (spell_area(spell))
 				dtu_spell_area(spell,&t->pos,t->segnum,caster,level);
 			else
 				apply_spell(spell,t,caster,level);
@@ -4404,6 +4477,15 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 		f->range = f2i(fixmul(spell_fix(spell,"speed",i2f(100)),spell_missile_life(spell,L)));
 		f->missiles_lo = missile_count_mode(spell,L,LOW);
 		f->missiles_hi = missile_count_mode(spell,L,HIGH);
+	}
+	// ASCENT: Burning Hands as a cone (burning_hands_cone): no missile, no
+	// area where it lands
+	if (spell == 4 && Dtu_fix_burning_hands && !f->self) {
+		f->area = 0;
+		f->radius = 0;
+		f->cone = 1;
+		f->range = f2i(BURNING_HANDS_REACH);
+		f->missiles_lo = f->missiles_hi = 1;
 	}
 	if (spell < N_SPELL_RULES) {
 		f->kind = Spell_rule[spell].kind;

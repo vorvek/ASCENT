@@ -1166,11 +1166,14 @@ Fireball (16) extra, for the player and creatures within 6.0: if not blind: the
 save 4; a failed save gives the message (player: "You lost your eyesight!", a
 white flash of +254 on each color, 0x13D50C, 0x1F3B00, 0x1F3AF8, 0x46C688 and
 0x46C68C set to 0; the sound P+0x1B0B or Robot_info+0x9A at volume 0x5555). Saved
-or not (0x90E22 jumps to 0x90F73), blind for 1..1800 s (rand % 1800 + 1, timer
+or not (0x90E22 jumps to 0x90F73; `Dtu_fix_fireball_blind` makes a made save negate
+it and spares a `blind` creature), blind for 1..1800 s (rand % 1800 + 1, timer
 0x98, bit 2). Then if not deaf and the save 2 (petrification/polymorph) fails: deaf
 (bit 4, no timer, the player's digital volume becomes rand % 0x1800 via 0x2DF7E,
-"You lost your hearing!", the same sound). Only the fire trap reaches this code
-(every other caller tests the area flag, which Fireball does not have).
+"You lost your hearing!", the same sound). No test of the undead flag. The callers
+test the area flag, and the table fixup gives Fireball the flags 0x803 (0x1A972,
+AREA): the Fireball of the player and of a creature reach this code, and the fire
+trap too.
 
 The fire trap (0xA6D5A to 0xA6F66 of 0xA6ACB): after scenery object 0x29 of level
 0 (YPINN) breaks: a light object (0x68AC8 type 13, control 14, life 3.0, light
@@ -2305,6 +2308,8 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_potion_frame` | dtuchar.c | the intelligence potion rolls 1 in 63 in each frame | one roll for each reference frame (3/64 s) |
 | `Dtu_fix_luck_coin` | dtuchar.c | the Potion of Luck takes the lowest bit of the day clock (frame times) | rand() & 1 |
 | `Dtu_fix_cure_aid` | dtuspell.c | Cure Light and Cure Serious Wounds cut the hit points to the maximum after the addition (0x8DEE2), so they take away the hit points of Aid | a cure never lowers the hit points |
+| `Dtu_fix_fireball_blind` | dtucombat.c | Fireball (0x90CEF) rolls the save of the blindness within 6.0 of the point, but a made save only skips the message (0x90E22 jumps to 0x90F73): every player and creature there is blind for 1 to 1800 s, also a `blind` creature | a made save (4) negates the blindness, as the save of the deafness does, and a creature of the type `blind` is spared, as from Light and Color Spray (0x8DC1D, 0x8D6D4) |
+| `Dtu_fix_burning_hands` | dtuspell.c | Burning Hands (0x56FF6 case 4, 0x56EB0) fires 6 missiles in a narrow fan that fly 30.0 s (3000 units) and each makes the area of the line (radius 10) where it lands; `range=20` has no reader | the AD&D 2nd edition rule, for the cast of the player: flame jets 5 feet (10 units) past the body of the caster in an arc of 120 degrees in front, one roll of 1d3 + 2 L for each creature in it, save for half (`burning_hands_cone`). The cast of a creature (Lich3, fMephit) stays a missile |
 | `Dtu_fix_turn_undead` | dtucombat.c | turn undead clears bit 0x10 of the next undead before the count test (0xADF09), and a T writes 0xFF over the d20 (0xAE1B8) | the bit and the d20 stay (bugs.md T2, T6) |
 | `Dtu_fix_cursed_scroll` | dtuchar.c | the Cursed Scroll does rand() % (hit points as a fix) damage, below half a point (0x38159) | rand() % hit points, whole points |
 | `Dtu_fix_creature_missile` | dtuchar.c, dtuobj.c | a creature missile adds the bow or crossbow bonus of the player and can use up the Potion of Luck of the player (0x2B0AE, 0x2B107) | only the missiles of the player |
