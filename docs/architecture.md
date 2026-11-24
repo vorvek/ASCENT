@@ -260,7 +260,7 @@ boxes.
 | `-checklevel NAME` | Load a level, print a summary, exit. |
 | `-frames N` | Leave the game after N frames. |
 | `-screenshot FILE` | Write the last frame to a PPM file. |
-| `-fixedfps N` | A fixed frame time from the first frame, so that two runs give the same moves. One step of the game for each picture (no fixed step). |
+| `-fixedfps N` | A fixed frame time from the first frame, so that two runs give the same moves. One step of the game for each picture (no fixed step). A test that compares the frames of `-chartest` with the frame numbers of a log needs it: with the fixed step one picture can hold several steps, as many as the time of the picture needs. |
 | `-renderfps N` | Each picture has 1/N second, with the fixed step of 1/60 second (`dtustep.c`). |
 | `-nofixedstep` | One step of the game for each picture with the time of the picture, as the executable. |
 | `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of `dtufe_script.c`. |

@@ -224,7 +224,11 @@ def check_game(args, tmp, run_name, extra):
     cmd = [os.path.abspath(args.exe)]
     for dd in args.datadir:
         cmd += ["-datadir", dd]
-    cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user"), "-level", "YPINN", "-frames", str(s.frame + 20),
+    # -fixedfps: one step of the game for each frame, so the frame numbers of
+    # the logs are the frames of the script (with the fixed step of 1/60
+    # second a frame can hold several steps)
+    cmd += ["-nomovies", "-mute", "-fixedfps", "30", "-userdir", os.path.join(d, "user"), "-level", "YPINN",
+            "-frames", str(s.frame + 20),
             "-chartest", ",".join(s.cmds), "-charlog", char_log, "-objlog", obj_log] + extra
     r = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=600, cwd=d)
     texts = parse_texts(r.stdout)

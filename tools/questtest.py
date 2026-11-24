@@ -122,18 +122,22 @@ TESTS = [
       [r"f600 +obj 28: type 2 id 6 seg 55 ", r"f600 +obj 30: type 2 id 5 seg 143 "], [r"walk: obj"],
       frames=610, extra=["-noattack"]),
     # Script 22 (objects 20, 21, 22, label 400): statement EE runs the
-    # script of the other two, so the three walk at the same time.
+    # script of the other two, so the three walk at the same time. The run
+    # of object 21 sets flag 1 (wary) of object 22, so the run of object 22
+    # makes the charisma roll of start_label (0xAAA32): charisma 20 passes it.
+    # Label 600 of the script sends object 22 to segment 385 or 388 at
+    # random (rand(1..2)).
     T("kobolds_walk3", "KOBOLDS",
-      "10:goobj=20.20,12:resume=20.400,15:talk=20,30:obj=22,200:obj=20,200:obj=21,200:obj=22",
+      "5:cha=20,10:goobj=20.20,12:resume=20.400,15:talk=20,30:obj=22,200:obj=20,200:obj=21,200:obj=22",
       [r"f30 +obj 22: type 2 id \d+ seg 383 .* anim 2", r"f200 +obj 20: type 2 id \d+ seg 386 ",
-       r"f200 +obj 21: type 2 id \d+ seg 389 ", r"f200 +obj 22: type 2 id \d+ seg 388 ",
-       r"end of its path in seg 386", r"end of its path in seg 389", r"end of its path in seg 388"],
+       r"f200 +obj 21: type 2 id \d+ seg 389 ", r"f200 +obj 22: type 2 id \d+ seg 38[58] ",
+       r"end of its path in seg 386", r"end of its path in seg 389", r"walk: obj 22 is at the end of its path in seg 38[58]"],
       frames=210, extra=["-noattack"]),
     # D-125: statement EE (0xAA989) does not give the outer run its mode
     # back; Dtu_fix_script_run_mode does, so the talk counts (1.3: 0).
-    T("script_ee_mode", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+    T("script_ee_mode", "KOBOLDS", "5:cha=20,10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
       [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 1 "], frames=210, extra=["-noattack"]),
-    T("script_ee_mode_orig", "KOBOLDS", "10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
+    T("script_ee_mode_orig", "KOBOLDS", "5:cha=20,10:goobj=20.20,12:resume=20.400,15:talk=20,200:obj=20",
       [r"f200 +obj 20: type 2 id \d+ seg \d+ .* talks 0 "], frames=210, extra=["-noattack", "-origscript"]),
     # The rule of 1.3 (-origscriptwalk): the kobold does not move.
     T("kobolds_walk_orig", "KOBOLDS",
@@ -215,8 +219,10 @@ TESTS = [
       [r"run script 322 of obj 3", r"YOU  HAVE  DESTROYED", END_SEQ, r"end of the game: CREDITV1"], frames=600),
 
     # IBBALAR: the use action on the altar of Cyric (object 2, scenery,
-    # script 294).
-    T("ibbalar_altar", "IBBALAR", "20:goseg=424,22:aim=2,25:activate", [r"run script 294 of obj 2"], frames=120),
+    # script 294). The altar stands under the center of segment 424 and is
+    # solid (Dtu_improved_physics), so the player stands 10.0 away from it.
+    T("ibbalar_altar", "IBBALAR", "20:goseg=424,21:goobjh=2.10,60:aim=2,62:activate", [r"run script 294 of obj 2"],
+      frames=120),
 
     # YPINN: the chairs with old script ids do not talk. The level start
     # clears the script word of all scenery on a fresh level (0xA674A at
