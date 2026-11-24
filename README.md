@@ -39,7 +39,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Bracers of Defense count as armor, so a Ring or Cloak of Protection works with them.
 * Only the highest magic protection bonus counts: armor magic, a ring, a cloak or an amulet. Shields always add in full.
 * Dexterity adds to the attack roll of arrows, bolts, thrown weapons and spells that need an attack roll.
-* Thrown weapons add Strength to hit and damage, and no longer get the bonus of the bow or crossbow you wear.
+* Thrown weapons add Strength to hit, as well as to damage, and no longer get the bonus of the bow or crossbow you wear.
 * One hit roll per swing, whatever the frame rate. Haste makes you attack faster instead of slower.
 * Bows and crossbows wait between shots, and the Short Bow of Speed and the Short Sword of Quickness really are twice as fast.
 * Rats can be hit, and your swing reaches a small creature at your feet when you look down at it.
@@ -88,7 +88,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * The second key of Attack and Cycle Weapon works without the first.
 * The verbose combat log names the attacker and the target, with colors.
 
-Each fix can be turned off with an `-orig` command line option to compare with version 1.3, and [docs/audit/defects-1.3.md](docs/audit/defects-1.3.md) has the full list.
+Each fix can be turned off with an `-orig` command line option to compare with version 1.3 (the pathfinding changes with the Improved pathfinding setting), and [docs/audit/defects-1.3.md](docs/audit/defects-1.3.md) has the full list.
 
 ## Game files
 
