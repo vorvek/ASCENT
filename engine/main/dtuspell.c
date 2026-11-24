@@ -1141,6 +1141,11 @@ static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,
 
 static char Msg_t[48], Msg_c[48];		// 0x3A6584 target, 0x3A6548 caster
 static const char *Msg_are, *Msg_have, *Msg_were;	// 0x3A6528, 0x3A6500, 0x3A6514
+// ASCENT: the subject of a verb ("%s %s" with Msg_are, Msg_have or
+// Msg_were): the name, or "" for the player, whose verb holds the subject
+// ("You are"), so that a language can drop the pronoun ("Estás"). say()
+// skips the space in front.
+static const char *Msg_ts, *Msg_cs;
 static int Msg_show;						// 0x3A65C4
 // ASCENT: the sex of the subject of a message (dtulang.h, the token
 // {sex:MALE|FEMALE}): the player's when the player is the target or the
@@ -1193,7 +1198,9 @@ static int message_rule(object *target,object *caster)
 
 // The names and verbs of 0x8CFFF (0x8D08D to 0x8D1B4): the player is
 // "You" (target "were", caster "are" and "have"), a trap "a trap", a
-// creature or another object its name ("was", "is", "has").
+// creature or another object its name ("was", "is", "has"). ASCENT: the
+// verbs of the player are "You were", "You are" and "You have", with an
+// empty subject (Msg_ts, Msg_cs): the same English text.
 static void msg_setup(object *target,object *caster)
 {
 	const char *t, *c;
@@ -1203,9 +1210,11 @@ static void msg_setup(object *target,object *caster)
 	c = (caster == ConsoleObject) ? LT("You") : (caster == NULL || caster->type == OBJ_LIGHT) ? LT("a trap") : dtu_object_display_name(caster);
 	snprintf(Msg_t,sizeof(Msg_t),"%s",t ? t : "");
 	snprintf(Msg_c,sizeof(Msg_c),"%s",c ? c : "");
-	Msg_were = (target == ConsoleObject) ? LT("were") : LT("was");
-	Msg_are = (caster == ConsoleObject) ? LT("are") : LT("is");
-	Msg_have = (caster == ConsoleObject) ? LT("have") : LT("has");
+	Msg_ts = (target == ConsoleObject) ? "" : Msg_t;
+	Msg_cs = (caster == ConsoleObject) ? "" : Msg_c;
+	Msg_were = (target == ConsoleObject) ? LT("You were") : LT("was");
+	Msg_are = (caster == ConsoleObject) ? LT("You are") : LT("is");
+	Msg_have = (caster == ConsoleObject) ? LT("You have") : LT("has");
 	Msg_show = message_rule(target,caster);
 	// a creature or an item: the gender of its name in the language
 	// (the field gender of the catalog, docs/formats/lang.md)
@@ -1218,7 +1227,7 @@ static void msg_setup(object *target,object *caster)
 
 static void say(const char *format, ...)
 {
-	char buf[200];
+	char buf[200], *s;
 	va_list args;
 
 	va_start(args,format);
@@ -1229,9 +1238,13 @@ static void say(const char *format, ...)
 	vsnprintf(buf,sizeof(buf),dtu_tr_sex(format,Msg_female),args);
 	va_end(args);
 	Msg_female = Msg_t_female;
-	dtu_spell_log("spell: message%s: %s",Msg_show ? "" : " (not shown)",buf);
+	// the empty subject of the player (Msg_ts, Msg_cs) leaves a space
+	s = buf;
+	while (*s == ' ')
+		s++;
+	dtu_spell_log("spell: message%s: %s",Msg_show ? "" : " (not shown)",s);
 	if (Msg_show)
-		HUD_init_message("%s",buf);
+		HUD_init_message("%s",s);
 }
 
 // The pattern of most cases: on the caster himself "<target> <verb> ...
@@ -1243,7 +1256,7 @@ static void say_effect(int self,const char *self_format,int verb,const char *oth
 	else if (verb == V_NONE)
 		say(self_format,Msg_t,n);
 	else
-		say(self_format,Msg_t,verb == V_ARE ? Msg_are : Msg_have,n);
+		say(self_format,Msg_ts,verb == V_ARE ? Msg_are : Msg_have,n);
 }
 
 // The minutes and hours of the texts: the duration in whole seconds
@@ -1960,7 +1973,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			fx_set(target,rule_fx,d);
 			dtu_spell_log("spell: Aid gives obj %d %s %d hit points",(int)(target-Objects),target_name(target),n);
 			if (self)
-				say("%s %s %d aid hit points for %d minutes.",Msg_t,Msg_have,n,MINUTES(d));
+				say("%s %s %d aid hit points for %d minutes.",Msg_ts,Msg_have,n,MINUTES(d));
 			else
 				say("%d aid hit points cast on %s by %s for %d minutes.",n,Msg_t,Msg_c,MINUTES(d));
 			break;
@@ -1975,7 +1988,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			// "%s %s %d armor hit points." (0x12D928) on the caster himself,
 			// else "%d armor hit points cast on %s by %s." (0x12D943)
 			if (self)
-				say("%s %s %d armor hit points.",Msg_t,Msg_have,spell_amount(2,L,ROLL));
+				say("%s %s %d armor hit points.",Msg_ts,Msg_have,spell_amount(2,L,ROLL));
 			else
 				say("%d armor hit points cast on %s by %s.",spell_amount(2,L,ROLL),Msg_t,Msg_c);
 			dtu_spell_log("spell: effect Armor on obj %d %s, pool %d hit points",(int)(target-Objects),target_name(target),spell_amount(2,L,ROLL));
@@ -1993,7 +2006,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			break;
 		case 5:		// Chill Touch: on the caster only, L+3 rounds
 			if (self && fx_set(target,rule_fx,dur = spell_time(5,L,ROLL)))
-				say("%s %s chill touch for %d minutes.",Msg_t,Msg_have,MINUTES(dur));
+				say("%s %s chill touch for %d minutes.",Msg_ts,Msg_have,MINUTES(dur));
 			break;
 		case 6:		// Color Spray
 			if (!rule_reaches(spell,target,self,T,L,mf) || (mf & MONSTER_F_BLIND) || (target->dtu.m_88 & DTU_FX_BLIND))
@@ -2006,16 +2019,16 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 						target->dtu.m_88 |= DTU_FX_BLIND;
 						target->dtu.m_8c[3] = target->dtu.m_e8[0];
 					}
-					say("%s %s struck unconscious by %s.",Msg_t,Msg_were,Msg_c);
+					say("%s %s struck unconscious by %s.",Msg_ts,Msg_were,Msg_c);
 				}
 			}
 			else if (T <= L + 2) {
 				if (fx_set(target,DTU_FX_BLIND,color_time(1,ROLL)))
-					say("%s %s blinded by %s.",Msg_t,Msg_were,Msg_c);
+					say("%s %s blinded by %s.",Msg_ts,Msg_were,Msg_c);
 			}
 			else if (!(target->dtu.m_88 & (DTU_FX_FREE_ACTION|DTU_FX_HOLD))) {
 				if (fx_set(target,DTU_FX_HOLD,wisdom_cut(target,color_time(2,ROLL))))
-					say("%s %s stunned by %s.",Msg_t,Msg_were,Msg_c);
+					say("%s %s stunned by %s.",Msg_ts,Msg_were,Msg_c);
 			}
 			break;
 		case 7:		// Confusion: L+2 rounds
@@ -2035,9 +2048,9 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 
 				if (fx_set(target,rule_fx,d)) {
 					if (d == DTU_FX_NO_END)
-						say("%s %s blinded by %s indefinitely.",Msg_t,Msg_were,Msg_c);
+						say("%s %s blinded by %s indefinitely.",Msg_ts,Msg_were,Msg_c);
 					else
-						say("%s %s blinded by %s for %d minutes.",Msg_t,Msg_were,Msg_c,MINUTES(d));
+						say("%s %s blinded by %s for %d minutes.",Msg_ts,Msg_were,Msg_c,MINUTES(d));
 				}
 			}
 			if (mf & MONSTER_F_LIGHT_SENSITIVE)
@@ -2318,7 +2331,7 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			target->dtu.m_88 |= rule_fx;
 			// the texts give the pool after the cast (+0x82)
 			if (self)
-				say("%s %s %d hit points of Fire Immunity.",Msg_t,Msg_have,target->dtu.m_82);
+				say("%s %s %d hit points of Fire Immunity.",Msg_ts,Msg_have,target->dtu.m_82);
 			else
 				say("%d hit points of Protection From Fire cast on %s by %s.",target->dtu.m_82,Msg_t,Msg_c);
 			break;
@@ -2331,9 +2344,9 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (self) {
 				Msg_female = Msg_c_female;		// ASCENT: the caster is the subject
 				if (target->dtu.m_88 & DTU_FX_DEAF)
-					say("%s %s no longer deaf.",Msg_c,Msg_are);
+					say("%s %s no longer deaf.",Msg_cs,Msg_are);
 				else
-					say("%s %s no longer blind.",Msg_c,Msg_are);
+					say("%s %s no longer blind.",Msg_cs,Msg_are);
 			}
 			else
 				say("Cure Blindness or Deafness cast on %s by %s.",Msg_t,Msg_c);
