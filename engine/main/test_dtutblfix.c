@@ -405,13 +405,14 @@ int main(int argc, char **argv)
 	expect_word('A', 19, "magic", 1);
 	expect_word('A', 27, "magic", 0);
 
-	// The guard: another line at a number, nothing changes
+	// The guard of one table: another weapon line at a number. The weapon
+	// writes are not applied, the writes of the other tables are.
 	setup();
 	mk('W', 28, "Long Bow", "damage_dice=10");
 	n = dtu_tblfix_apply(&Io);
-	expect_int("the fixup on another table", n, -1);
+	expect_int("the fixup with another weapon table", n > 0, 1);
 	expect_key('W', 28, "damage_dice", "10");
-	expect_name('M', 83, "Potion of Agility");
+	expect_name('M', 83, "Potion of Invisibility");
 
 	printf("%s: %d fixup rows, %d failures\n", Fails ? "FAILED" : "ok", dtu_tblfix_n_ops(), Fails);
 	return Fails ? 1 : 0;

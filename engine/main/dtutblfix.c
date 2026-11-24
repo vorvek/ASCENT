@@ -1031,50 +1031,72 @@ static char *line_copy(const char *src, const char *dst, int kind)
 	return b.s;
 }
 
-static int guard_ok(const ctx *c)
+// The guard of one table (M, A, W or S): each line of it that the fixup
+// changes or reads has the name of the mission tables.
+static int guard_ok(const ctx *c, int kind)
 {
 	int i;
 
 	for (i = 0; i < N_GUARD; i++) {
 		const dtu_tblfix_guard *g = &Guard[i];
-		char *name = g->id < c->io->count(g->kind) ? c->io->name(g->kind, g->id) : NULL;
+		char *name;
 		int n;
 
+		if (g->kind != kind)
+			continue;
+		name = g->id < c->io->count(g->kind) ? c->io->name(g->kind, g->id) : NULL;
 		if (!name || !c->io->text(g->kind, g->id)) {
-			logf_(c, "Table fixup: line %d of table %c missing, not applied%s", g->id, g->kind, "");
+			logf_(c, "Table fixup: line %d of table %c missing, the writes of the table are not applied%s", g->id, g->kind, "");
 			return 0;
 		}
 		n = (int) strlen(name);
 		while (n > 0 && name[n - 1] == ' ')
 			n--;
 		if (n != (int) strlen(g->name) || memcmp(name, g->name, n)) {
-			logf_(c, "Table fixup: line %d of table %c is not '%s', not applied", g->id, g->kind, g->name);
+			logf_(c, "Table fixup: line %d of table %c is not '%s', the writes of the table are not applied", g->id, g->kind, g->name);
 			return 0;
 		}
 	}
 	return 1;
 }
 
+static int kind_index(int kind)
+{
+	return kind == M ? 0 : kind == A ? 1 : kind == W ? 2 : kind == S ? 3 : -1;
+}
+
+// The guard is for each table alone: the five older level tables (BASE,
+// MINES1, PRISON1, SPIDER, TRAIN1) have the weapon and spell lines of the
+// mission tables, and other item and armor lines. They get the weapon and
+// spell writes, as in 1.3. A write needs the table that it changes and the
+// table that it reads. Returns -1 when no table passes.
 int dtu_tblfix_apply(const dtu_tblfix_io *io)
 {
+	static const int kinds[4] = { M, A, W, S };
 	ctx c;
-	int i, j;
+	int i, j, ok[4], any = 0;
 	char v[64], num[32];
 
 	c.io = io;
 	c.n = 0;
-	if (!guard_ok(&c))
+	for (i = 0; i < 4; i++)
+		any |= ok[i] = guard_ok(&c, kinds[i]);
+	if (!any)
 		return -1;
 	for (i = 0; i < N_FIXUPS; i++) {
 		const dtu_tblfix_op *o = &Fixups[i];
-		char *t = o->kind ? io->text(o->kind, o->id) : NULL;
-		char *s = NULL;
+		int sk = (o->op == T_COPY && o->val[0]) ? o->val[0] : o->kind;
+		int dk = o->kind ? o->kind : o->op == T_CAST_TIMES ? S : o->op == T_MAGIC_WEAPONS ? W : o->op == T_MAGIC_ARMOR ? A : 0;
+		char *t, *s = NULL;
 
+		if (kind_index(dk) < 0 || !ok[kind_index(dk)])
+			continue;
+		if (o->src >= 0 && (kind_index(sk) < 0 || !ok[kind_index(sk)]))
+			continue;
+		t = o->kind ? io->text(o->kind, o->id) : NULL;
 		if (o->kind && !t)
 			continue;
 		if (o->src >= 0) {
-			int sk = (o->op == T_COPY && o->val[0]) ? o->val[0] : o->kind;
-
 			s = o->src < io->count(sk) ? io->text(sk, o->src) : NULL;
 			if (!s)
 				continue;

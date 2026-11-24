@@ -19,9 +19,12 @@
  *
  * The line numbers are fixed. Seven older tables (BASE, DEMO, MINES1,
  * MOIN1, PRISON1, SPIDER, TRAIN1) have other lines at some numbers, so
- * 1.3 writes onto other items there. The port applies the fixup only when
- * each line that it changes or reads has the name of the 39 mission tables
- * (the list Guard[] in dtutblfix.c). Else the tables stay as they are.
+ * 1.3 writes onto other items there. The port applies the writes of a
+ * table section (items, armor, weapons, spells) only when each line of
+ * the section that the fixup changes or reads has the name of the 39
+ * mission tables (the list Guard[] in dtutblfix.c). Else the section
+ * stays as it is. BASE, MINES1, PRISON1, SPIDER and TRAIN1 have the weapon
+ * and spell lines of the mission tables, so they get those writes.
  *
  * This is 1.3 behavior and always on. The debug option -rawtables skips
  * it (Dtu_raw_tables).

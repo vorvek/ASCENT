@@ -237,21 +237,33 @@ class Lines:
                     recs[i] = wiki_rules.Record(line)
 
 
-def guard_ok(lines, guard):
+def guard_ok(lines, guard, kind=None):
+    """The guard of one table (a letter), or of all tables."""
     for k, i, name in guard:
+        if kind is not None and k != kind:
+            continue
         t = lines.texts[k]
         if i >= len(t) or (name_of(t[i]) or "").rstrip(" ") != name:
             return False
     return True
 
 
+def guard_kinds(lines, guard):
+    """The letters of the tables that pass the guard, in the order MAWS."""
+    return "".join(k for k in "MAWS" if guard_ok(lines, guard, k))
+
+
 def apply_lines(lines, ops=None, guard=None, times=None):
     """Apply the writes to lines (Lines). Returns the set of changed lines
-    (letter, number), or None when the guard fails."""
+    (letter, number), or None when the guard fails for each table. The
+    guard is for each table alone: a write needs the table that it changes
+    and the table that it reads (dtu_tblfix_apply)."""
     if ops is None:
         ops, guard, times = read_source()
-    if not guard_ok(lines, guard):
+    ok = guard_kinds(lines, guard)
+    if not ok:
         return None
+    implied = {"T_CAST_TIMES": "S", "T_MAGIC_WEAPONS": "W", "T_MAGIC_ARMOR": "A"}
     T = lines.texts
     changed = set()
 
@@ -262,12 +274,14 @@ def apply_lines(lines, ops=None, guard=None, times=None):
 
     for o in ops:
         op, k, i, src, key, val = o["op"], o["kind"], o["id"], o["src"], o["key"], o["val"]
+        sk = val if op == "T_COPY" and val else k
+        if (k if k != "0" else implied.get(op, "")) not in ok or (src >= 0 and sk not in ok):
+            continue
         if k != "0" and i >= len(T[k]):
             continue
         t = T[k][i] if k != "0" else None
         s = None
         if src >= 0:
-            sk = val if op == "T_COPY" and val else k
             if src >= len(T[sk]):
                 continue
             s = T[sk][src]

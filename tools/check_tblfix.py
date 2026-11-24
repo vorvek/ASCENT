@@ -9,8 +9,9 @@ TABLE.BIN  a level table of the mission (gamedata/unpacked/YPINN.BIN): for
            (the keys, words and names that differ). --all prints the whole
            text of each changed line.
 --tables   a directory of level tables (*.BIN): which tables the fixup
-           applies to (the guard of dtutblfix.c). The 39 mission tables
-           must pass and the seven older ones must not.
+           applies to (the guard of dtutblfix.c, for each section alone).
+           The 39 mission tables must pass with all sections, five older
+           ones with the weapons and the spells only, and two with none.
 --exe      build/engine/main/test_dtutblfix.exe: the C code of the port is
            applied to the lines of TABLE.BIN too, and its result must be the
            result of tools/tblfix.py.
@@ -31,7 +32,9 @@ sys.dont_write_bytecode = True
 import tblfix  # noqa: E402
 import wiki_rules  # noqa: E402
 
-OLDER = {"BASE.BIN", "DEMO.BIN", "MINES1.BIN", "MOIN1.BIN", "PRISON1.BIN", "SPIDER.BIN", "TRAIN1.BIN"}
+# The older tables: the sections that pass the guard
+OLDER = {"BASE.BIN": "WS", "MINES1.BIN": "WS", "PRISON1.BIN": "WS", "SPIDER.BIN": "WS", "TRAIN1.BIN": "WS",
+         "DEMO.BIN": "", "MOIN1.BIN": ""}
 
 
 def diff(a, b):
@@ -50,7 +53,7 @@ def dump(path, show_all):
     lines.texts = {k: list(v) for k, v in before.items()}
     changed = tblfix.apply_lines(lines)
     if changed is None:
-        print("%s: the guard fails, the fixup is not applied" % path)
+        print("%s: the guard fails for each section, the fixup is not applied" % path)
         return None, None
     print("%s: %d lines changed" % (os.path.basename(path), len(changed)))
     for k, i in sorted(changed, key=lambda x: ("MSWA".index(x[0]), x[1])):
@@ -110,7 +113,8 @@ def main(argv=None):
     elif args.exe:
         check_exe(args.exe, before, after, problems)
     if args.tables:
-        ok, no = [], []
+        ok, no = [], {}
+        guard = tblfix.read_source()[1]
         for path in sorted(glob.glob(os.path.join(args.tables, "*.BIN"))):
             try:
                 tab = wiki_rules.Table(path, fixup=False)
@@ -119,11 +123,16 @@ def main(argv=None):
             if not tab["$SPELL"] and not tab["$WEAPON"]:
                 continue        # a player table
             base = os.path.basename(path)
-            (ok if tblfix.guard_ok(tblfix.Lines(tab), tblfix.read_source()[1]) else no).append(base)
+            kinds = tblfix.guard_kinds(tblfix.Lines(tab), guard)
+            if kinds == "MAWS":
+                ok.append(base)
+            else:
+                no[base] = kinds
         print("%d tables get the fixup: %s" % (len(ok), " ".join(ok)))
-        print("%d tables do not (other lines at the numbers): %s" % (len(no), " ".join(no)))
-        if set(no) != OLDER:
-            problems.append("the tables without the fixup are not the seven older tables")
+        print("%d tables get a part or nothing (other lines at the numbers): %s" %
+              (len(no), " ".join("%s(%s)" % (b, k or "-") for b, k in sorted(no.items()))))
+        if no != OLDER:
+            problems.append("the tables without the whole fixup are not the seven older tables with their sections")
     for p in problems:
         print("ERROR " + p)
     print("%d errors" % len(problems))

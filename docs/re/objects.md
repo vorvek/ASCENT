@@ -382,9 +382,13 @@ bit of the Long Sword +2.
 The record numbers are fixed. The 39 tables of the mission levels have the same lines at
 these numbers. Seven older tables (BASE, DEMO, MINES1, MOIN1, PRISON1, SPIDER, TRAIN1)
 have other lines at some numbers, and 1.3 writes onto those other items there. The port
-applies the fixup only when each line that it changes or reads has the name of the
-mission tables (Guard[] in dtutblfix.c). `tools/check_tblfix.py --tables` checks that
-the 39 tables pass and the seven do not.
+applies the writes of a table section (items, armor, weapons, spells) only when each line
+of the section that the fixup changes or reads has the name of the mission tables (Guard[]
+in dtutblfix.c). A write that copies from another section needs that section too. BASE,
+MINES1, PRISON1, SPIDER and TRAIN1 have the weapon and spell lines of the mission tables,
+so they get the weapon and spell writes; DEMO and MOIN1 get none. `tools/check_tblfix.py
+--tables` checks that the 39 tables pass, the five pass with weapons and spells, and the
+two do not.
 
 Results that a player sees:
 
