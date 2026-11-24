@@ -1704,6 +1704,34 @@ static int use_trigger_at_side(int segnum, int side)
 	return -1;
 }
 
+// ASCENT: Dtu_fix_bane_cyric, not in 1.3. BANE has a shrine of Cyric too
+// (the texture s_cyric on segment 585 side 4), nearer to Shadowmeet than
+// the one of BAT, and BANE.SAY has message 15 for the Banegem there ("You
+// remove the gem from your pack and carefully raise it toward the symbol
+// of Cryric. Nothing out of the ordinary happens."). No trigger of
+// BANE.TIG has that message: trigger 15 of segment 585 names a next
+// trigger 37, and the file has the triggers 0 to 34. 1 (default): the use
+// action on the symbol shows message 15 when the player has the Banegem
+// (MISC 103). The gem stays, and no flag changes. 0 (-origtrig): nothing.
+int Dtu_fix_bane_cyric = 1;
+
+static void bane_cyric_use(int segnum, int side)
+{
+	char *text;
+
+	if (!Dtu_fix_bane_cyric || Level_index != 9 || segnum != 585 || side != 4)
+		return;
+	if (!dtu_hook_player_has_item(Player_num, 16, 103))
+		return;
+	text = dtu_trig_say_text(15);
+	if (!text)
+		return;
+	tlog("use: the symbol of Cyric of BANE with the Banegem: say 15: %s", text);
+	dtu_display_add_trigger_message(text);
+	if (SND_SAY_MESSAGE < MAX_SOUNDS)
+		digi_play_sample(SND_SAY_MESSAGE, F1_0);
+}
+
 void dtu_player_use(void)
 {
 	object *obj = ConsoleObject;
@@ -1751,6 +1779,7 @@ void dtu_player_use(void)
 		// a trigger can load another level
 		if (!seg_ok(hit.hit_seg))
 			return;
+		bane_cyric_use(hit.hit_seg, hit.hit_side);
 		result = dtu_wall_use_door(&Segments[hit.hit_seg], hit.hit_side, obj, 0);
 		if (result != WHP_NOT_SPECIAL) {
 			wall *w = &Walls[Segments[hit.hit_seg].sides[hit.hit_side].wall_num];
@@ -2112,7 +2141,7 @@ static void read_options(void)
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-origtrig"))
-		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = Dtu_fix_trigger_side = 0;
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = Dtu_fix_trigger_side = Dtu_fix_bane_cyric = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }

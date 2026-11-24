@@ -303,6 +303,16 @@ TESTS = [
     T("bat_banegem_use_orig", "BAT", "5:give=16.103,20:goside=85.3,30:activate,50:quest",
       [r"use: seg=85 side=3", r"f50 +quest: "], [r"take: 1 of entry \d+ 'Banegem'"], frames=70,
       extra=["-triglog", "-origtrig"]),
+    # BANE, the symbol of Cyric of seg 585 side 4: Dtu_fix_bane_cyric shows
+    # message 15 of BANE.SAY (no trigger has it) for the use action with
+    # the Banegem. The gem stays.
+    T("bane_cyric_gem", "BANE", "5:give=16.103,20:goside=585.4,30:activate,50:quest",
+      [r"say 15: You remove the gem", r"f50 +quest: [^\n]*\n[^\n]*\n[^\n]*items \[[^\]]*16\.103"], frames=70,
+      extra=["-triglog"]),
+    T("bane_cyric_no_gem", "BANE", "20:goside=585.4,30:activate,50:quest",
+      [r"use: seg=585 side=4"], [r"say 15:"], frames=70, extra=["-triglog"]),
+    T("bane_cyric_gem_orig", "BANE", "5:give=16.103,20:goside=585.4,30:activate,50:quest",
+      [r"use: seg=585 side=4"], [r"say 15:"], frames=70, extra=["-triglog", "-origtrig"]),
     # BAT trigger 10, the skull of seg 39 (no disable_trigger, a warp
     # command line in the segment). Dtu_fix_say_repeat: no message again
     # within 30 seconds after the player left the segment.

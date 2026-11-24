@@ -203,6 +203,10 @@ extern int Dtu_fix_say_repeat;
 // action also fires a trigger whose place is the center of the side that
 // its ray found (dtutrig.c). 0 (-origtrig): only the side number counts.
 extern int Dtu_fix_trigger_side;
+// Not in 1.3: the use action on the symbol of Cyric of BANE (segment 585
+// side 4) shows message 15 of BANE.SAY, which no trigger has, when the
+// player has the Banegem. 1 (default): on. 0 (-origtrig): off.
+extern int Dtu_fix_bane_cyric;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;
