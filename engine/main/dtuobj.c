@@ -160,6 +160,10 @@ int Dtu_fix_corpse_floor = 1;
 // -origfeet clear it.
 int Dtu_fix_creature_feet = 1;
 
+// The bodies of two creatures block each other (dtuobj.h). The options
+// -origobj and -origcrowd clear it.
+int Dtu_fix_creature_crowd = 1;
+
 // The peace of the members of the Shadow Thieves with quest flag 67
 // (dtuobj.h). The options -origobj and -origguildpeace clear it.
 int Dtu_fix_guild_peace = 1;
@@ -992,7 +996,7 @@ void dtu_objects_init(void)
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain = Dtu_fix_ai_init =
 			Dtu_fix_wall_circle = Dtu_fix_hit_keep = Dtu_fix_burst_vclip =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
-			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_scenery_floor = Dtu_fix_corpse_floor = Dtu_fix_creature_feet =
+			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_scenery_floor = Dtu_fix_corpse_floor = Dtu_fix_creature_feet = Dtu_fix_creature_crowd =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
 			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_last =
@@ -1006,6 +1010,8 @@ void dtu_objects_init(void)
 		Dtu_fix_revive = 0;
 	if (FindArg("-origfeet"))
 		Dtu_fix_creature_feet = 0;
+	if (FindArg("-origcrowd"))
+		Dtu_fix_creature_crowd = 0;
 	if (FindArg("-origdrow5"))
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origguildpeace"))

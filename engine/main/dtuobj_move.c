@@ -188,6 +188,109 @@ static void stop_at_player(object *obj)
 		vm_vec_scale_add2(&pi->velocity,&d,toward - allowed);
 }
 
+// Dtu_fix_creature_crowd: a creature with a body that blocks the move of
+// another creature. Not a rat (pass_thru), not a body that dies or lies.
+static int crowd_body(object *o)
+{
+	if (o->type != OBJ_ROBOT || o->id >= N_robot_types || o->render_type != RT_POLYOBJ)
+		return 0;
+	if (o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED|OF_DTU_NOHIT))
+		return 0;
+	if (Monster_info[o->id].flags & MONSTER_F_PASS_THRU)
+		return 0;
+	return DTU_ANIM_STATE(o) != DAS_DIE && o->ctype.ai_info.CURRENT_STATE != DAIS_DEAD;
+}
+
+// The distance between the centers of two bodies that touch is 3/4 of the
+// sum of the radii of their cylinders (the cylinder is around the arms).
+#define CROWD_RADIUS(a,b)	(((a)+(b))/4*3)
+// Two creatures that block each other for this time: the one with the
+// lower object number walks through the other.
+#define CROWD_PASS_TIME		(F1_0*3/2)
+
+// Dtu_fix_creature_crowd (dtuobj.h): a hostile creature does not walk into
+// the body of another creature. The velocity loses its part in x and z
+// toward each body that is near, so the creature slides around the body.
+// With no way between two bodies it stops. A body that is in another body
+// already (a start position, a creature that got up) can move away. The
+// creature and the cylinder of its body (dtu_get_body_cylinder).
+static void crowd_block(object *obj,vms_vector *center,fix rad,fix half)
+{
+	int objnum = obj-Objects, i, pass, hit, blocker = -1, pass_seen = 0;
+	dtu_ai_local *ail = &Ail[objnum];
+	vms_vector *v = &obj->mtype.phys_info.velocity;
+	fix step, blocker_d = 0;
+
+	if (!Dtu_fix_creature_crowd || !is_hostile(obj) || !crowd_body(obj) || ail->script_walk == 1) {
+		ail->crowd_obj = ail->crowd_pass = 0;
+		ail->crowd_time = 0;
+		return;
+	}
+	step = fixmul(fix_sqrt(fixmul(v->x,v->x) + fixmul(v->z,v->z)),FrameTime);
+
+	for (pass = 0; pass < 3; pass++) {
+		hit = 0;
+		for (i = 0; i <= Highest_object_index; i++) {
+			object *o = &Objects[i];
+			vms_vector oc, n;
+			fix orad, ohalf, lim, d, vn;
+
+			if (i == objnum || !crowd_body(o))
+				continue;
+			dtu_get_body_cylinder(o,&oc,&orad,&ohalf);
+			if (abs(center->y - oc.y) >= half + ohalf)
+				continue;
+			n.x = center->x - oc.x;
+			n.y = 0;
+			n.z = center->z - oc.z;
+			lim = CROWD_RADIUS(rad,orad) + step;
+			if (abs(n.x) >= lim || abs(n.z) >= lim)
+				continue;
+			// the same center: no direction away from the body
+			if ((d = vm_vec_normalize(&n)) >= lim || d < 0x100)
+				continue;
+			if (ail->crowd_pass == i+1) {
+				pass_seen = 1;
+				continue;
+			}
+			if ((vn = vm_vec_dot(v,&n)) > -0x80)
+				continue;
+			// a jam of two creatures that block each other
+			if (objnum < i && ail->crowd_obj == i+1 && ail->crowd_time > CROWD_PASS_TIME &&
+				 Ail[i].crowd_obj == objnum+1 && Ail[i].crowd_time > CROWD_PASS_TIME) {
+				dtu_obj_log("obj %d %s: walks through obj %d (a jam, Dtu_fix_creature_crowd)",objnum,dtu_object_name(obj),i);
+				ail->crowd_pass = i+1;
+				pass_seen = 1;
+				continue;
+			}
+			vm_vec_scale_add2(v,&n,-vn);
+			hit = 1;
+			if (pass == 0 && (blocker < 0 || d < blocker_d)) {
+				blocker = i;
+				blocker_d = d;
+			}
+		}
+		if (!hit)
+			break;
+	}
+	// two bodies and no way between them
+	if (pass == 3)
+		v->x = v->z = 0;
+
+	if (!pass_seen)
+		ail->crowd_pass = 0;
+	if (blocker < 0) {
+		ail->crowd_obj = 0;
+		ail->crowd_time = 0;
+	}
+	else if (ail->crowd_obj == blocker+1)
+		ail->crowd_time += FrameTime;
+	else {
+		ail->crowd_obj = blocker+1;
+		ail->crowd_time = 0;
+	}
+}
+
 //------------------------------------------------------------------------
 // Movement of a creature (pmon.c, 0x9F153)
 
@@ -558,6 +661,7 @@ void dtu_creature_physics_sim(object *obj)
 
 	if (DTU_ANIM_STATE(obj) != DAS_DIE)
 		stop_at_player(obj);
+	crowd_block(obj,&center,cyl_radius,cyl_half);
 
 	start_pos = obj->pos;
 	want = fixmul(vm_vec_mag(&pi->velocity),FrameTime);
