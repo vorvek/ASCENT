@@ -32,35 +32,35 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
   <a href="docs/screenshots/khelben_es.png"><img src="docs/screenshots/thumbs/khelben_es.jpg" width="32%" alt="Khelben's first speech in Spanish"></a>
 </p>
 
-## Rules fixes
+## Rules & game fixes
 
 **Combat and armor**
 
 * Bracers of Defense count as armor, so a Ring or Cloak of Protection works with them.
 * Only the highest magic protection bonus counts: armor magic, a ring, a cloak or an amulet. Shields always add in full.
-* Dexterity adds to the attack roll of arrows, bolts, thrown weapons and spells that need an attack roll.
+* Dexterity adds to the attack roll of arrows, bolts, thrown weapons and spells that need an attack roll (Magic Stone, Melf's Minute Meteors...).
 * Thrown weapons add Strength to hit, as well as to damage, and no longer get the bonus of the bow or crossbow you wear.
-* One hit roll per swing, whatever the frame rate. Haste makes you attack faster instead of slower.
+* One hit roll per swing, whatever the frame rate.
 * Bows and crossbows wait between shots, and the Short Bow of Speed and the Short Sword of Quickness really are twice as fast.
-* Rats can be hit, and your swing reaches a small creature at your feet when you look down at it.
 * Backstab works from behind the target, and only someone who can see you stops it.
-* THAC0 is right for a new character and at level 18. A multiclass character gets the better THAC0 of the two classes.
 
 **Spells and saving throws**
 
 * Rings, cloaks and amulets of protection add to saving throws. The statistics screen shows the five saves.
-* Dwarves and halflings get the Constitution bonus to saves against rods, staves, wands and spells. Wisdom adjusts saves against mind-affecting spells.
+* Dwarves and halflings get the Constitution bonus to saves against rods, staves, wands and spells. 
+* Wisdom adjusts saves against mind-affecting spells.
 * Magic Missile has no saving throw.
 * Magical Stone and Melf's Minute Meteors use an attack roll instead of a saving throw.
 * Melf's Acid Arrow uses an attack roll and keeps burning for a few rounds.
-* Stone Skin no longer ends your other spells, and a cure no longer takes away the hit points of Aid. Strength and Infravision no longer end at once when cast at a high level.
-* Turn undead no longer leaves an undead that can never be turned again.
+* Stone Skin no longer ends your other spells, and a cure no longer takes away the hit points of Aid. 
+* Strength and Infravision no longer end at once when cast at a high level.
+* Turn Undead no longer leaves an undead that can never be turned again.
 
 **Items**
 
 * The Potions of Hill Giant Strength and Invulnerability work only for fighters.
 * Picking up more than a full stack leaves the rest on the floor instead of losing it, and endless stacks stay endless.
-* The market uses your Charisma, not that of the last character you created.
+* The market uses your Charisma, not that of the last character you created (a fun bug from the original).
 
 **Quests and levels**
 
@@ -68,25 +68,19 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Devlin's reward for the goblins works, and scripted pauses in conversations can be skipped.
 * A lost message in KOBOLDS and a healing ladder in THIEF1 are back.
 * Mirt adds thief points instead of replacing them.
-* The Shadow Thieves no longer attack you once you are a member of the guild.
-* Traps run on real seconds instead of 5.5 times too fast, and they stop while the game is paused.
+* The Shadow Thieves no longer attack you if you are a member of the guild.
+* Traps run on real seconds instead of depending on the FPS, and they stop while the game is paused.
 * Some triggers that never fired in seven levels work now.
 
 **Creatures**
 
-* Creatures wake when they can see you, so ambushes happen where the levels intend. Noise no longer goes through closed walls.
-* NPCs no longer walk into you after a conversation.
-* Regenerating creatures get back up.
-* Creatures on patrol follow their paths, and archers fire one arrow per attack instead of one per frame.
-* Lava burns, also a creature that stands still in it.
+* Trolls need fire (or a very thorough hacking while down!) to die. Otherwise, they'll keep standing up to fight. The code was already partially in the game.
 * Creatures take fall damage, and long falls always hurt, whatever the frame rate.
 * With Improved pathfinding, humanoid creatures open unlocked doors, and creatures handle corners and ladders better.
 
 **Controls**
 
 * A separate Climb Wall key, so Activate no longer tries to climb a wall when you pull a lever.
-* The second key of Attack and Cycle Weapon works without the first.
-* The verbose combat log names the attacker and the target, with colors.
 
 Each fix can be turned off with an `-orig` command line option to compare with version 1.3 (the pathfinding changes with the Improved pathfinding setting), and [docs/audit/defects-1.3.md](docs/audit/defects-1.3.md) has the full list.
 
