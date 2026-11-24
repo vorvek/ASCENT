@@ -4,6 +4,12 @@ list(FILTER PLATFORM_SOURCES EXCLUDE REGEX "/test_[^/]*\\.c$")
 add_library(d_platform STATIC ${PLATFORM_SOURCES})
 target_include_directories(d_platform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(d_platform PRIVATE SDL3::SDL3)
+# A static SDL3 uses threads. A glibc older than 2.34 has them in
+# libpthread, and the SDL3 target does not name that library.
+if(UNIX)
+  find_package(Threads REQUIRED)
+  target_link_libraries(d_platform PRIVATE Threads::Threads)
+endif()
 
 add_executable(test_window test_window.c)
 target_link_libraries(test_window PRIVATE d_platform d_fix d_common)

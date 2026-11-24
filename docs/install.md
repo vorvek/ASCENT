@@ -187,10 +187,12 @@ ascent-import --source PATH --dest DIR [--patch PATH] [--check]
 ### Install the release
 
 The Linux release is `ascent-dtu-<version>-linux-x86_64.tar.gz`. It needs an x86_64
-system with glibc 2.38 or later (for example Ubuntu 24.04, Debian 13, Fedora 39) and
-X11 or Wayland.
+system with glibc 2.34 or later (for example Ubuntu 22.04, Debian 12, Fedora 35) and
+X11 or Wayland. For an older system, build the game from the source (see below).
 
-The Linux build is new. It was tested in WSL (Debian 13) only: the build of the
+The Linux build is new. The build, the tests of `ctest` and the release script were
+also run in containers of Ubuntu 20.04 and Ubuntu 22.04. The other tests were in WSL
+(Debian 13) only: the build of the
 tarball, `setup.sh` with a copy of the disc (user and root installs, the real content
 server and a local test server, stopped and damaged downloads, the removal), and 200
 frames of a level with `-hidden` and the SDL dummy video and audio drivers, in English
@@ -290,10 +292,15 @@ checkout of the tag in `CMakeLists.txt`, to build without the download).
   (`CMAKE_DISABLE_FIND_PACKAGE_SDL3=ON`, so the FetchContent path of `CMakeLists.txt`
   is used even when the system has SDL3). Ubuntu 24.04 has no SDL3 package, and the
   static SDL3 makes the program independent of the SDL3 of the system. It loads X11, Wayland, ALSA, PulseAudio and PipeWire with
-  `dlopen` when it starts, so the program needs only `libc` and `libm`. The script
+  `dlopen` when it starts, so the program needs only the libraries of glibc (`libc`
+  and `libm`; before glibc 2.34 also `libdl` and `libpthread`). The script
   stops if `ascent` links a shared SDL3.
 - The glibc of the build system is the oldest glibc that the release runs on. The CI
-  job builds on Ubuntu 24.04.
+  job builds on Ubuntu 22.04 (glibc 2.35), and the tarball then needs glibc 2.34. A
+  tarball that is built on a newer system needs a newer glibc: a build on Debian 13
+  needs glibc 2.38. Do not use a system older than Ubuntu 22.04 for the release: it
+  has no libdecor or no PipeWire 0.3 package new enough for SDL3, and SDL3 is then
+  built without them.
 - The build needs the packages of the Linux job of `.github/workflows/build.yml`.
 - The tarball has `ascent`, `ascent-import`, `setup.sh`, `content.ini`, `README.txt`
   (`installer/linux/README.txt`), `LICENSE-PARALLAX.txt` and `LICENSE-SDL3.txt`. It has
@@ -308,8 +315,21 @@ cmake --preset debug               # downloads and builds SDL3 if it is not inst
 cmake --build --preset debug --target ascent ascent-import
 ```
 
+The build needs CMake 3.16 or later, a C compiler (GCC 9 or later is tested) and
+Ninja or Make. The oldest system that the CI builds on is Ubuntu 20.04 (CMake 3.16,
+GCC 9, glibc 2.31; the job `linux-old`). The presets need CMake 3.20. With an older
+CMake, give the options:
+
+```sh
+cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug --target ascent ascent-import
+```
+
 The SDL3 build needs the development packages that `.github/workflows/build.yml`
-installs (Ubuntu names). Make the data folder with `ascent-import` from the disc and the
+installs (Ubuntu names). SDL3 is built without each part that has no package or a
+package that is too old: on Ubuntu 20.04, without libdecor (the window frame on
+Wayland desktops that do not draw one) and without PipeWire (the sound then goes
+through PulseAudio or ALSA). Make the data folder with `ascent-import` from the disc and the
 1.3 patch, then start the game with the folder:
 
 ```sh

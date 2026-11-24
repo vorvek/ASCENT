@@ -8,6 +8,11 @@
 # and ascent-import. Linux builds with GCC and with Clang. ascent-content
 # and the setup program are for Windows only. The GCC job of Linux also
 # builds the Linux release tarball and keeps it as a build artifact.
+#
+# The Linux jobs use Ubuntu 22.04, not the newest release: the glibc of
+# the build system is the oldest glibc that the tarball runs on. The job
+# linux-old builds with the tools of Ubuntu 20.04 (CMake 3.16, GCC 9), the
+# oldest tools that the build supports (docs/install.md).
 name: build
 
 on:
@@ -46,7 +51,7 @@ jobs:
         run: ctest --preset debug
 
   linux:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -94,3 +99,36 @@ jobs:
           name: ascent-dtu-linux-x86_64
           path: build-rel-linux/ascent-dtu-*-linux-x86_64.tar.gz
           if-no-files-found: error
+
+  # The oldest supported tools. CMake 3.16 has no presets, and Ubuntu
+  # 20.04 has no libdecor and no PipeWire 0.3 package: SDL3 builds
+  # without them.
+  linux-old:
+    runs-on: ubuntu-latest
+    container: ubuntu:20.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build git ca-certificates pkg-config python3 \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols \
+            libegl1-mesa-dev libgl1-mesa-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Build
+        run: |
+          cmake --build build-debug
+          cmake --build build-debug --target ascent
+      - name: Test
+        run: cd build-debug && ctest --output-on-failure
