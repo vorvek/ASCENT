@@ -64,6 +64,8 @@ void dtustate_game_started(int level_num);		// StartNewGame (0x4DD5A): level_num
 // ends a picture that is shown (0x7C2BB).
 void dtustate_level_loading(char *level_name);
 void dtustate_loading_end(void);
+// 1 while the loading picture is on the screen (its palette is loaded).
+int dtustate_loading_picture_shown(void);
 
 // The test option -statetest (see dtustate.c). The front end calls it in
 // each frame of the game.

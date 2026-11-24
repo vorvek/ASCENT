@@ -2657,10 +2657,15 @@ static void fe_enter(void)
 		// ASCENT: 0xB88FF: back from a level whose archive is not PORTAL
 		// (0x80F09), the loading picture 12 shows while the tables load
 		// (0x7C1E5(-1), 0x7C2EE: no fade, the next screen replaces it).
-		if (Fe_ready_tables)
-			dtufe_loading_picture(12);
+		int picture = Fe_ready_tables && dtufe_loading_picture(12);
+
 		plat_audio_flush();
 		dtu_load_level_data("ypinn");
+		// ASCENT: no fade (0x7C2EE). Without this the next screen faded
+		// the picture out (fe_load_screen): a second fade out after the
+		// one of the game.
+		if (picture)
+			gr_palette_clear();
 	}
 	Fe_ready_tables = 1;
 	gr_set_current_canvas(&grd_curscreen->sc_canvas);
@@ -3033,8 +3038,11 @@ void dtufe_loading_picture_end(void)
 	else
 		gr_palette_fade_out(Loading_pal, 32, 0);
 	gr_set_current_canvas(&grd_curscreen->sc_canvas);
-	gr_clear_canvas(0);
+	// ASCENT: the darkest color of PALETTE.256 (the black of the Death
+	// Menu). Color 0 of that palette is white, and gr_palette_load shows
+	// the frame: a clear to 0 gave one white frame.
 	dtu_load_palette();
+	gr_clear_canvas(BM_XRGB(0,0,0));
 	gr_palette_load(gr_palette);
 }
 

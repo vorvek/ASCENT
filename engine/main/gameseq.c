@@ -982,8 +982,10 @@ void LoadLevel(int level_num)
 	// ASCENT: the loading picture of the level loader (0x494EB, dtustate.c)
 	dtustate_level_loading(level_name);
 
-	// ASCENT: no message while the fonts are not loaded
-	if (HELP_FONT)
+	// ASCENT: no message while the fonts are not loaded, and none on the
+	// loading picture: the box has the colors of PALETTE.256, and the
+	// screen has the palette of the picture then (the box was garbled)
+	if (HELP_FONT && !dtustate_loading_picture_shown())
 		show_boxed_message(TXT_LOADING);
 
 	// ASCENT: a level that does not load stopped the original at the

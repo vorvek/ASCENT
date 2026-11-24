@@ -1735,6 +1735,11 @@ void dtustate_level_loading(char *level_name)
 	Picture_shown = dtufe_loading_picture(entry);
 }
 
+int dtustate_loading_picture_shown(void)
+{
+	return Picture_shown;
+}
+
 void dtustate_loading_end(void)
 {
 	if (Picture_shown)
