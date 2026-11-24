@@ -101,6 +101,7 @@ typedef struct dtu_ai_local {
 	ubyte		replans;
 	short		stall_tgt;				// the point where the creature was blocked
 	ubyte		body_line;				// the line to the player is free for the body
+	ubyte		keep_off;				// the player is above and out of reach (keep_off_player())
 	// test log of -objlogpos: the hits of the move since the last line
 	short		log_hits[4];			// wall, top, floor, object
 	short		log_hit_seg, log_hit_side;

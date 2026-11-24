@@ -292,7 +292,8 @@ static int ai_to_anim_state(object *obj,int ai_state,fix dist)
 	switch (ai_state) {
 		case DAIS_SRCH:	return station ? DAS_STAND : DAS_WALK;
 		case DAIS_LOCK:
-			if (station)
+			// ASCENT: keep_off_player(), a creature that waits for the player
+			if (station || ail->keep_off == 2)
 				return DAS_STAND;
 			if (dist > i2f(30) && ail->time_player_seen + F1_0/2 >= GameTime)
 				return DAS_RUN;
@@ -1536,6 +1537,54 @@ static void choose_attack_goal(object *obj,fix dist)
 		aip->GOAL_STATE = DAIS_ATAK;
 }
 
+// ASCENT: Dtu_improved_pathfinding. A creature that walks and fights in
+// melee and sees the player above it, out of the reach of its attack (on a
+// ladder, a ledge or a crate, where it cannot walk), backs away out of the
+// reach of the player and waits there, facing the player. The executable
+// has no rule for this: the creature walks under the player and stands
+// there, and the player hits it with no risk. Creatures do not climb in the
+// executable either (the ladder code 0x9EBEB is for the player only).
+// Returns 1 if the rule moved the creature (ail->keep_off 1: it backs away,
+// 2: it waits).
+#define KEEP_OFF_AWAY	(F1_0*4)		// beyond the attack distance
+#define KEEP_OFF_BAND	(F1_0*10)		// the creature waits in this band
+static int keep_off_player(object *obj,fix dist,vms_vector *vec_to_player)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	fix attack, r, hh, hd;
+	vms_vector d;
+
+	if (!improved_paths() || Robot_info[obj->id].attack_type != 1 || is_flying(obj) || ail->script_walk == 1)
+		return 0;
+	// a jump or a fall of the player ends soon
+	if (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_FALLING))
+		return 0;
+	attack = obj->size + ConsoleObject->size + i2f(2);		// choose_attack_goal()
+	if (dist <= attack)
+		return 0;
+	// the feet of the player above the top of the body
+	dtu_get_body_size(obj,&r,&hh);
+	if (ConsoleObject->pos.y - DTU_BODY_HALF_HEIGHT <= obj->pos.y + hh)
+		return 0;
+	vm_vec_sub(&d,&ConsoleObject->pos,&obj->pos);
+	d.y = 0;
+	hd = vm_vec_normalize(&d);
+	if (hd > attack + KEEP_OFF_AWAY + KEEP_OFF_BAND)
+		return 0;
+	if (hd < 0x100)
+		d = obj->orient.fvec;			// right under the player
+	d.y = 0;
+	turn_towards_vector(vec_to_player,obj,Robot_info[obj->id].firing_wait[Difficulty_level]);
+	if (hd < attack + KEEP_OFF_AWAY) {
+		vm_vec_negate(&d);
+		add_move(obj,&d);
+		ail->keep_off = 1;
+	}
+	else
+		ail->keep_off = 2;
+	return 1;
+}
+
 // 0x11018. The animation of an active creature, computed from the game
 // time. Returns 1 if the creature is dead and done.
 static void ai_animation_step(object *obj,fix dist)
@@ -1553,7 +1602,7 @@ static void ai_animation_step(object *obj,fix dist)
 		elapsed = 0;
 
 	// A hostile melee creature that is far from a player that it sees runs.
-	if (is_hostile(obj) && aip->GOAL_STATE != DAIS_DEAD && DTU_ANIM_STATE(obj) != DAS_DIE &&
+	if (is_hostile(obj) && aip->GOAL_STATE != DAIS_DEAD && DTU_ANIM_STATE(obj) != DAS_DIE && !ail->keep_off &&
 		 Robot_info[obj->id].attack_type == 1 && dist > i2f(30) && ail->time_player_seen + F1_0/2 >= GameTime) {
 		if (aip->behavior != DAIB_STATION)
 			DTU_ANIM_STATE(obj) = DAS_RUN;
@@ -1748,7 +1797,7 @@ void dtu_do_ai_frame(object *obj)
 	monster_info *mi;
 	vms_vector vec_to_player, *believed;
 	fix dist;
-	int A, B, visible = -1, dying, blocked, hidden;
+	int A, B, visible = -1, dying, blocked, hidden, keep_off;
 
 	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
 		return;
@@ -1990,6 +2039,9 @@ void dtu_do_ai_frame(object *obj)
 		blocked = blocked_move(obj,dist,&vec_to_player,visible);
 
 	// 0x15074: the mode
+	keep_off = ail->keep_off;
+	if (!blocked)
+		ail->keep_off = 0;
 	if (!blocked)
 	switch (ail->mode) {
 
@@ -2092,7 +2144,7 @@ void dtu_do_ai_frame(object *obj)
 					if (ail->morale >= B && aip->GOAL_STATE != DAIS_FLIN)
 						aip->GOAL_STATE = DAIS_LOCK;
 				}
-				else
+				else if (hidden || !visible || !keep_off_player(obj,dist,&vec_to_player))
 					move_relative_to_player(obj,dist,&vec_to_player,circle,0);
 				if (ail->morale < B) {
 					// "Bad moralle (%d)"
@@ -2117,6 +2169,10 @@ void dtu_do_ai_frame(object *obj)
 				turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
 			break;
 	}
+
+	if (keep_off != ail->keep_off)
+		dtu_obj_log("obj %d %s: %s",objnum,dtu_object_name(obj),ail->keep_off == 1 ? "the player is above and out of reach, backs away" :
+			ail->keep_off == 2 ? "the player is above and out of reach, waits" : "the player is in reach again");
 
 	// do_firing_stuff (0x12916)
 	if (visible && is_hostile(obj) && ail->morale >= B) {
