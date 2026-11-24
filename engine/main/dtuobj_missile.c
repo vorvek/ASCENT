@@ -198,6 +198,26 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 	if (weapon_int(weapon_type,"bounce",0)) bounce = 1;
 	if (weapon_int(weapon_type,"stick",0)) bounce = 2;
 	if (weapon_int(weapon_type,"thrown",0)) bounce = 3;
+	// ASCENT: the cast of a creature or of the player (parent >= 0) goes
+	// through 0x56FF6, which writes 0 to the bounce byte of the template and
+	// 1 for Lightning Bolt (0x571C5); 0x55511 turns byte 1 into the physics
+	// flag 4 (0x55736), so the bolt bounces at a wall (0xA0731). The trap
+	// cast 0x946FA keeps the byte of its template.
+	if (spell >= 0 && parent >= 0)
+		bounce = (spell == 32) ? 1 : 0;
+
+	// ASCENT: Color Spray: 0x56FF6 sets the vclip of the template to
+	// 175 + rand() % 6 once for each cast, so all the missiles of
+	// a cast have one color. The first missile of a cast is the one with
+	// the sound (make_sound). The port took the vclip 180 of the line.
+	if (spell == 6 && parent >= 0 && rtype == RT_WEAPON_VCLIP) {
+		static int spray_vclip = 180;
+
+		if (make_sound)
+			spray_vclip = 175 + rand() % 6;
+		if (spray_vclip < VCLIP_MAXNUM)
+			obj->rtype.vclip_info.vclip_num = spray_vclip;
+	}
 
 	m = &Missile[objnum];
 	memset(m,0,sizeof(*m));
@@ -209,6 +229,12 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 		dtu_spell_template_used(weapon_type);		// 0x571B2: the template is magic
 	m->bounce = bounce;
 	m->pass_obj = -1;
+	// ASCENT: 0x56FF6 writes player_light of the spell (0 when the line has
+	// none, 0x242F6) to lightcast of the template, which 0x577FE adds to
+	// the light of the segment. The port kept the light of the template
+	// (0 for the hands, 1.0 for a wand or a scroll). The template is shared,
+	// so the port keeps the value with the missile.
+	m->light = (spell >= 0 && parent >= 0) ? spell_line_fix(spell,"player_light",0) : -1;
 
 	// The time to live. The port keeps it here: the object code of
 	// Descent 1 would explode a weapon with a damage radius at its end.
@@ -228,10 +254,20 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 	if (make_sound && wi->flash_sound > -1)
 		sound_at(wi->flash_sound,obj->segnum,&obj->pos,F1_0);
 
-	dtu_obj_log("missile: obj %d weapon %d '%s' spell %d from obj %d, render %d size %.2f speed %.1f life %.1f, at %.1f %.1f %.1f",
+	dtu_obj_log("missile: obj %d weapon %d '%s' spell %d from obj %d, render %d size %.2f speed %.1f life %.1f, vclip %d light %.1f bounce %d, at %.1f %.1f %.1f",
 		objnum,weapon_type,Weapon_item_info[weapon_type].name,spell,parent,rtype,f2fl(size),f2fl(speed),f2fl(Missile_life[objnum]),
+		rtype == RT_WEAPON_VCLIP ? obj->rtype.vclip_info.vclip_num : -1,f2fl(dtu_missile_light(obj)),bounce,
 		f2fl(pos->x),f2fl(pos->y),f2fl(pos->z));
 	return objnum;
+}
+
+fix dtu_missile_light(object *obj)
+{
+	int n = obj-Objects;
+
+	if (obj->type == OBJ_WEAPON && Missile[n].signature == obj->signature && Missile[n].light >= 0)
+		return Missile[n].light;
+	return (obj->id < N_weapon_types) ? Weapon_info[obj->id].light : 0;
 }
 
 int dtu_missile_spell(object *obj)
@@ -332,6 +368,24 @@ static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,
 		}
 	}
 
+	// ASCENT: Lightning Bolt (32) at a wall: 0x26DC3 writes -1 to the
+	// parent signature (+0x144, the dword that laser_are_related 0x55369
+	// compares) and leaves before the removal at 0x26FAF, with no sound and
+	// no vclip; 0xA0731 then bounces it (physics flag 4). So the bolt flies
+	// for its 2.0 seconds and can hit its caster after the bounce. At the
+	// scenery 0x2641C keeps it in the same way, after the hit vclip; the
+	// port lets it pass that object. The port removed the bolt.
+	if (m->spell == 32 && m->bounce == 1) {
+		m->unlinked = 1;
+		if (!wallnorm) {
+			if (obj->render_type == RT_POLYOBJ)
+				vclip_at(segnum,point,obj->size*2,f2i(spell_line_fix(32,"wall_hit_vclip",-F1_0)));
+			return;
+		}
+		vm_vec_negate(&obj->mtype.phys_info.velocity);
+		dtu_obj_log("missile: Lightning Bolt obj %d bounces at %.1f %.1f %.1f",(int)(obj-Objects),f2fl(point->x),f2fl(point->y),f2fl(point->z));
+		return;
+	}
 	if (m->bounce == 1 && wallnorm) {
 		// 0xA07D7 negates the velocity of a missile that bounces
 		vm_vec_negate(&obj->mtype.phys_info.velocity);
@@ -339,8 +393,20 @@ static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,
 	}
 	// A missile that is not a model goes away with no sound and no vclip.
 	if (obj->render_type == RT_POLYOBJ) {
-		sound_at(wi->wall_hit_sound,segnum,point,F1_0/2);
-		vclip_at(segnum,point,obj->size*2,wi->wall_hit_vclip);
+		int sound = wi->wall_hit_sound, vclip = wi->wall_hit_vclip;
+
+		// ASCENT: for a missile with a spell 0x26C2F takes the wall_hit_vclip
+		// and the wall_hit_sound of the spell line (0x26EC7 to 0x26EE1;
+		// 0x56FF6 also copies them to the template). The port played those
+		// of the template weapon, which has none: no ring of Magic Missile
+		// (101) and no splash of Melf's Acid Arrows (116).
+		if (m->spell >= 0) {
+			sound = f2i(spell_line_fix(m->spell,"wall_hit_sound",-F1_0));
+			vclip = f2i(spell_line_fix(m->spell,"wall_hit_vclip",-F1_0));
+		}
+		sound_at(sound,segnum,point,F1_0/2);
+		vclip_at(segnum,point,obj->size*2,vclip);
+		dtu_obj_log("missile: obj %d of spell %d at a wall: vclip %d sound %d",(int)(obj-Objects),m->spell,vclip,sound);
 		// 0x26F73, 0x2653C: the alert function 0x160AB(missile, 2) after the
 		// sound of the wall or of the scenery
 		dtu_creature_alert(obj,2);
@@ -377,6 +443,11 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 			}
 		}
 		missile_hit_wall(obj,point,NULL,obj->segnum,-1);
+		// ASCENT: a Lightning Bolt that goes on (0x2641C) passes the object
+		if (!(obj->flags & OF_SHOULD_BE_DEAD)) {
+			m->pass_obj = other-Objects;
+			m->pass_sig = other->signature;
+		}
 		return;
 	}
 	if (m->harmless)
@@ -577,6 +648,8 @@ void missiles_frame(void)
 
 		Missile_life[i] -= FrameTime;
 		if (Missile_life[i] < 0) {
+			if (m->spell >= 0)
+				dtu_obj_log("missile: obj %d of spell %d ends its life",i,m->spell);
 			missile_remove(obj);
 			continue;
 		}
@@ -622,7 +695,9 @@ void missiles_frame(void)
 		fate = find_vector_intersection(&fq,&hit);
 		end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
 
-		best = missile_path_object(obj,&end,step,m->parent,m->parent_sig,m->pass_obj,m->pass_sig,&best_ip);
+		// ASCENT: with the parent signature cleared (m->unlinked) the
+		// missile is no longer related to its parent and can hit it
+		best = missile_path_object(obj,&end,step,m->parent,m->unlinked ? -1 : m->parent_sig,m->pass_obj,m->pass_sig,&best_ip);
 		if (best >= 0) {
 			missile_hit_object(obj,&Objects[best],&best_ip);
 			if (obj->flags & OF_SHOULD_BE_DEAD)

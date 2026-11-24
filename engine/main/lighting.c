@@ -157,7 +157,7 @@ static char rcsid[] = "$Id: lighting.c 2.1 1995/07/24 13:21:56 john Exp $";
 #include "powerup.h"
 #include "bm.h"			// ASCENT: Dressing_info (the light of scenery)
 #include "args.h"			// ASCENT: -origlight
-#include "dtuobj.h"		// ASCENT: dtu_is_water_splash
+#include "dtuobj.h"		// ASCENT: dtu_is_water_splash, dtu_missile_light
 
 //global saying how bright the light beam is
 fix	Beam_brightness = (F1_0/2);
@@ -294,7 +294,9 @@ static fix dtu_object_light(object *obj, int objnum)
 			}
 			break;
 		case OBJ_WEAPON:
-			light = Weapon_info[obj->id].light;
+			// ASCENT: lightcast of the template, which 0x56FF6 sets to
+			// player_light of the spell for a spell missile (dtuobj.h)
+			light = dtu_missile_light(obj);
 			if (obj->id == 1)
 				light += 2 * (min(light, obj->lifeleft) + ((GameTime ^ Obj_light_xlate[objnum&0x0f]) & 0x3fff));
 			break;

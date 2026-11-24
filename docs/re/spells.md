@@ -668,3 +668,37 @@ at a save. Tests `save_cast_runs_on`, `load_cast_goes_on` (tools/questtest.py).
 
 Check: `tools/check_saveload.py` (a cast, two level changes, a save and a load,
 then the exit of the inn, Waterdeep and the Yawning Portal).
+
+## 14. The look of the spell missiles (Code, spell audit group A)
+
+Verified in the bytes of DTUGAME.EXE 1.3 (`dtu13.elf`, objdump), 2026-11-25.
+
+- **Lightning Bolt bounces.** 0x56FF6 writes 0 to the byte +0x12 of the template
+  (`Weapon_info` +0x12 at 0x1E9D12) for each spell and 1 for spell 0x20 (0x571C5),
+  with the life 2.0. Laser_create_new turns that byte into physics flags: 1 to
+  flag 4 (0x55736), 2 to 0x10 (stick), 3 to 0x80 (thrown) (0x5572B to 0x55752).
+  At a wall `collide_weapon_and_wall` writes -1 to the dword +0x144 of the missile
+  and leaves before the removal at 0x26FAF (0x26DC8 to 0x26DD2), with no sound and
+  no vclip; then 0xA0731 negates the velocity (flag 4). +0x144 is the parent
+  signature of the weapon (`read_object` 0x47D90, control type 9: short +0x140,
+  short +0x142, int +0x144), which `laser_are_related` (0x55369) compares with the
+  signature of the parent. So after its first wall the bolt is no longer related to
+  its caster and can hit the caster. At the scenery `collide_weapon_and_dressing`
+  (0x2641C) plays the wall vclip of the spell and keeps the bolt in the same way.
+  A creature or the player ends the bolt: `collide_robot_and_weapon` turns a missile
+  back only with flag 0x80 (0x2775E) and removes a missile that is a model at
+  0x27883; the bolt is a model (ltning.pof). The trap cast 0x946FA does not touch
+  the byte. The port: `dtu_create_missile` and `missile_hit_wall`
+  (`dtuobj_missile.c`). Test: BONES, a level 9 bolt bounces twice and ends 2.03
+  seconds after the cast; cast at a near wall it comes back and hits the caster.
+- **The light of a spell missile.** 0x56FF6 writes `player_light` of the spell (0
+  when the line has none, the reader 0x242F6) to `lightcast` of the template, and
+  `set_dynamic_light` (0x577FE) adds `lightcast` of each weapon object. The table
+  lines have 8.0; the fixup sets Light 20.0, Continual Light 60.0, Dispel Magic 0
+  (`dtutblfix.c`). The port keeps the value with the missile, since the template is
+  shared (`dtu_missile_light`, `lighting.c`).
+- **The wall hit of a model missile with a spell** takes `wall_hit_vclip` and
+  `wall_hit_sound` of the spell line (0x26EC7 to 0x26EE1): Magic Missile 101,
+  Melf's Acid Arrows 116.
+- **Color Spray** (spell 6): 0x56FF6 sets the vclip of the template to 175 +
+  rand() % 6 for each cast, so the missiles of one cast have one color.
