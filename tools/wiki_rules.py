@@ -620,6 +620,12 @@ FIXES = [
     ("Dtu_fix_burning_hands", "-origcombat", "Burning Hands burns each creature within 5 feet in an arc "
                                              "of 120 degrees in front of you, one roll each, as in AD&D 2nd "
                                              "edition; 1.3 fires 6 missiles that fly far and burn where they land."),
+    ("Dtu_fix_haste_friends", "-origcombat", "Haste hastes only you and the creatures that are not "
+                                            "hostile to you; in 1.3 it hastes every creature around you."),
+    ("Dtu_fix_hold_undead_hd", "-origcombat", "Hold Undead holds undead whose levels add up to your "
+                                             "level; in 1.3 each undead of your level or less."),
+    ("Dtu_fix_haste_count", "-origcombat", "A creature that casts Haste hastes up to its level in "
+                                          "creatures; in 1.3 it hastes no one."),
     ("Dtu_fix_fireball_blind", "-origcombat", "A made saving throw stops the blindness of Fireball near "
                                               "the point; in 1.3 the save does not."),
     ("Dtu_fix_wizardry_ring", "-origcombat", "The Ring of Wizardry doubles the slots once."),

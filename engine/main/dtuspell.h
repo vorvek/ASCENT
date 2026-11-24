@@ -506,6 +506,10 @@ typedef struct dtu_spell_facts {
 	int	max_level;				// the highest level of a target (DTU_SR_LEVEL_CAP), else -1
 	int	save_level;				// only a target above this level saves, -1 every target
 	int	stopped_by;				// the effect bit that stops the spell (DTU_SR_STOPPED), else 0
+	int	targets_lo, targets_hi;	// ASCENT: the most targets of a cast (the counters of Haste, Slow, Hold Undead), 0 no limit
+	int	level_total;			// ASCENT: Hold Undead: the levels of the targets add up to max_level or less (Dtu_fix_hold_undead_hd)
+	int	side_only;				// ASCENT: Haste: only you and the creatures that are not hostile (Dtu_fix_haste_friends)
+	int	bounce;					// ASCENT: Lightning Bolt: bounces off walls, ends at the first creature it hits
 } dtu_spell_facts;
 
 // The facts of a spell at caster level L (-1: the level of the player).

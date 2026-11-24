@@ -4875,6 +4875,14 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 	f->save_level = f->save != DTU_SS_NONE ? save_level(spell,L) : -1;
 	if (f->save != DTU_SS_NONE && (f->save_level >= 0 || (f->flags & DTU_SR_SAVE_KIN)))
 		f->save = DTU_SS_SOME;
+	// ASCENT: the counters of the cast (spell_targets), the rules of
+	// Dtu_fix_hold_undead_hd and Dtu_fix_haste_friends, the bounce of
+	// Lightning Bolt (dtuobj_missile.c, 0x571C5)
+	f->targets_lo = spell_targets(spell,L,LOW);
+	f->targets_hi = spell_targets(spell,L,HIGH);
+	f->level_total = (spell == 23 && Dtu_fix_hold_undead_hd);
+	f->side_only = (spell == 21 && Dtu_fix_haste_friends);
+	f->bounce = (spell == 32);
 	f->time_lo = facts_seconds(spell_time(spell,L,LOW));
 	f->time_hi = facts_seconds(spell_time(spell,L,HIGH));
 	f->amount_lo = spell_amount(spell,L,LOW);
