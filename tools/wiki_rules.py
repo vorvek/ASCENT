@@ -597,6 +597,8 @@ FIXES = [
      "spoil the next undead when the count is used up."),
     ("Dtu_fix_spell_hours", "-origcombat", "Strength and Infravision do not end at once at a high caster "
      "level (10 and 8 in 1.3); their time stops at 4 hours 33 minutes."),
+    ("Dtu_fix_rest_effects", "-origcombat", "A rest ends your spell and potion effects. Armor, Stone "
+     "Skin, Rary's Mnemonic Enhancer and the powers of worn items stay; in 1.3 a rest ends nothing."),
     ("Dtu_fix_cure_aid", "-origcombat", "Cure Light Wounds and Cure Serious Wounds keep the extra hit "
      "points of Aid; 1.3 cuts the hit points to the maximum."),
     ("Dtu_fix_haste_attack", "-origcombat", "Haste halves the swing time; 1.3 makes the melee attacks slower."),
