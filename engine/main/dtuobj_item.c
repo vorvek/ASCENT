@@ -196,20 +196,26 @@ void dtu_inventory_remove(int index, int count)
 // The executable puts it at the position of the creature plus half of a
 // size in y. The port puts it on the floor under the point. (guess for y)
 // A size above 0 is the size of the object; 0 takes the size of the table.
+// The size of the table (0x3C55C, 0x3C663, 0x3C700): `size=` of the line
+// as a whole number (atoi, shifted to a fix), else the default of the
+// reader: 5 for a weapon (0x207E7, +0x58), an armor (0x22BB1) and a misc
+// item (0x23780), 3 for a spell (0x242F6). The port had 2 for all, and the
+// move query of the player (size + its radius, 0x3ED76) did not reach a
+// dropped item on the floor (the armor of a kobold).
 int dtu_create_item_size(int type, int id, int count, int segnum, vms_vector *pos, fix size_wanted)
 {
 	item_info *it = item_table_entry(type,id);
 	int objnum;
 	object *obj;
-	fix size = i2f(2);
+	fix size = type == OBJ_SPELL ? i2f(3) : i2f(5);
 	char value[32];
 
 	if (it == NULL || segnum < 0 || segnum > Highest_segment_index)
 		return -1;
 	if (size_wanted > 0)
 		size = size_wanted;
-	else if (it->record >= 0 && bm_tbl_get(it->record,"size",value,sizeof(value)) && atof(value) > 0)
-		size = fl2f(atof(value));
+	else if (it->record >= 0 && bm_tbl_get(it->record,"size",value,sizeof(value)))
+		size = i2f(atoi(value));
 
 	objnum = obj_create(type,id,segnum,pos,&vmd_identity_matrix,size,CT_NONE,MT_NONE,RT_ITEM);
 	if (objnum < 0)
