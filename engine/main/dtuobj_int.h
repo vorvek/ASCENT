@@ -153,7 +153,6 @@ int ai_tick(int objnum,int n);
 fix creature_floor_dist(object *obj,fix radius,fix half_height);
 int ray_is_free(vms_vector *p0,int seg0,vms_vector *p1,int objnum);
 int brain_bit(int a,int b);
-int creature_ray_to(object *obj,vms_vector *to);
 int creature_ray_to_player(object *obj);
 int player_is_visible(object *obj);
 void sound_at(int sound,int segnum,vms_vector *pos,fix volume);

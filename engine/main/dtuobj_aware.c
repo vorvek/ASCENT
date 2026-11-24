@@ -111,20 +111,26 @@ void dtu_creature_wake(object *obj, int make_hostile)
 // The recursion has no visited set (up to 6^5 calls for one event); the port
 // gives the same values with a search by distance.
 //
-// ASCENT: settings of the alert (D-112 to D-114 of docs/audit/defects-1.3.md,
+// ASCENT: settings of the alert (D-112 and D-113 of docs/audit/defects-1.3.md,
 // verified in the bytes). -origobj clears them.
 // Dtu_fix_noise_walls: 0x162A1 follows each child with no wall test, so the
 // noise goes through closed doors and walls. 1 (default): the noise passes
 // only a side that a body can pass or that can be seen through (an open
 // door, a grate); a closed door stops it.
-// Dtu_fix_alert_ray: 0x161CA casts the ray of the wake test to the player
-// (0x10815), also when the caller is a corpse or a hit creature. 1
-// (default): the ray goes to the caller.
+// The ray of the wake test goes to the player (0x161CA calls 0x10815), also
+// when the caller is a corpse or a hit creature. ASCENT: that is the rule
+// of the port (D-114 is not a defect): an active creature that does not see
+// the player rests again at its next look (0x14206), so an alert in 1.3
+// wakes only a creature that can take on the player. The level scripts
+// need it: the trigger of THIEF0 segment 207 makes each goblin hostile
+// (script 50, label 900, the alert of level 4 at 0xA94A1), and the goblins
+// must wait in their camp (the messages 24 and 25 of the triggers of
+// segments 212, 244 and 256). A ray to the caller woke the whole camp, and
+// the paths of the port brought it to the player.
 // Dtu_fix_alert_last: the wake loop ends before Highest_object_index
 // (0x1628D, jl), so the creature in the last slot never wakes. 1 (default):
 // the loop includes it.
 int Dtu_fix_noise_walls = 1;
-int Dtu_fix_alert_ray = 1;
 int Dtu_fix_alert_last = 1;
 
 #define AWARE_MAX_EVENTS	64
@@ -214,8 +220,7 @@ void dtu_creature_alert(object *caller, int level)
 			continue;
 		if (Ail[i].activity == 2 || (obj->dtu.m_1b0 & (DTU_PEACEFUL|DTU_FLEEING)))
 			continue;
-		if (!brain_bit(obj->segnum,caller->segnum) ||
-			 !(Dtu_fix_alert_ray ? creature_ray_to(obj,&caller->pos) : creature_ray_to_player(obj)))
+		if (!brain_bit(obj->segnum,caller->segnum) || !creature_ray_to_player(obj))
 			continue;
 		vm_vec_sub(&v,&caller->pos,&obj->pos);
 		if ((obj->dtu.m_88 & DTU_FX_DEAF) && vm_vec_dot(&v,&obj->orient.fvec) <= 0)

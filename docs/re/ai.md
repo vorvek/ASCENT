@@ -633,13 +633,21 @@ distance. The agitation, the bits of +0x15E and the believed positions
 0x25FB0, 0x265C1 and 0x93294 have no call in the port.
 
 Corrections (verified in the bytes 2026-11-23, docs/audit/defects-1.3.md
-D-112 to D-114; -origobj clears them):
+D-112 and D-113; -origobj clears them):
 
 - `Dtu_fix_noise_walls`: the noise passes only a side that a body can pass
   or that can be seen through (`WALL_IS_DOORWAY` with the fly or the render
   past flag). A closed door stops it.
-- `Dtu_fix_alert_ray`: the ray of the wake test goes from the creature to
-  the caller, not to the player.
+- The ray of the wake test goes to the player, as in 1.3 (D-114 is not a
+  defect, 2026-11-24). An active creature that does not see the player
+  rests again at its next look (0x14206), so the alert of 1.3 wakes only a
+  creature that can take on the player. The scripts need it: the trigger of
+  THIEF0 segment 207 runs script 50 of the guard (object 22) in mode 3, and
+  its label 900 sets the anger of each goblin to 5 (0xA94CE), so each goblin
+  calls 0xA9418 and its alert of level 4. A ray to the caller (the port
+  until 2026-11-24) let the goblins of the camp wake each other, and their
+  paths brought them to the guard before the player reached the camp
+  (messages 24 and 25 of the triggers of segments 212, 244 and 256).
 - `Dtu_fix_alert_last`: the wake loop includes the last object slot.
 - The roll 0x161BC is not in the port (D-040): it always passes in 1.3, and
   AD&D 2nd Edition alerts a creature that notices a fight.
@@ -890,7 +898,7 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_idle_anim` | one idle step (0x14013) per game frame | one step per 3/64 second |
 | `Dtu_fix_ai_ticks` | the tests "(clock + objnum) % N == 0" are true in one game frame of N | true one time in N periods of 3/64 second. The test with 255 for a player behind the creature is a random number |
 | `Dtu_fix_creature_move` | velocity * 0.5 per frame, two steps of 1/64 second at most, lift out of the floor 2.0 per frame, blocked counters per frame | the same per 3/64 second, all steps |
-| `Dtu_fix_brain` | sight by the BRN matrix | sight by a ray (the BRN files of the disc fit no level) |
+| `Dtu_fix_brain` | sight by the BRN matrix | sight by a ray (the BRN files of the disc fit no level). The melee rule of 0x10815 (a blocked ray passes for a melee creature nearer than 100.0) needs the two segments to see each other: the ray of the BRN builder 0x9786A from the center of the segment of the player to the center of the segment of the creature, with each side that has a child open (`seg_sees_seg`, dtuobj.c). Without that test the rule woke the Ghouls of BAT through rock from the corridor above them, at 92.0 to 99.0 |
 | `Dtu_fix_path_follow` | a walking creature on a path walks to the player (0x17CA8) | it walks to the next point of the path. A hostile creature in CHASE_OB that does not see the player takes a path to the player |
 | `Dtu_fix_npc_walk` | a peaceful creature on a path that is not the path of its script walks to the player with the speed of its animation state (0x17CFC). The speed is 0 in STAND, but a script that ends in a walk or sidle state leaves the creature walking: Aleena (YPINN, script 4) sidles into the player after a scroll sale (ANIM 4, ANIM 3), on the random path that the door opener (0x14AF2) gives her | it turns to the player and does not walk; option `-orignpcwalk` |
 | `Dtu_fix_npc_body` | the move of a creature tests the player with one fourth of its radius (0x9F605) against the torso of the player, so a creature that walks to the player stops with its center about 1.0 from the center of the player | a peaceful creature stops where its body radius and the radius of the player (2.5) touch (`stop_at_player`, dtuobj_move.c); option `-orignpcbody` |
@@ -2147,8 +2155,12 @@ Verified (code).
   statement. A monster is a robot with id 0 or with a script without a say
   statement.
 - 0xA9418 makes an object hostile: anger 4, flag 2 set, flag 3 and bit 9
-  cleared, +0x1A2 = 0, `ai +3` = 2, +0x170 = 5, then 0x160AB(object, 4) and
-  the morale function 0x10ADF.
+  cleared, +0x1A2 = 0, the mode `ai +3` = 3 (CHASE_OB), GOAL_STATE +0x143 =
+  2, +0x170 = 5, then 0x160AB(object, 4) and the morale function 0x10ADF.
+  It does not call 0xA6505 and does not write the activity +0x1CC
+  (verified in the bytes 0xA9418 to 0xA94B5, 2026-11-24): a creature that is
+  not active stays inactive until its own wake test sees the player.
+  `dtu_script_make_hostile` woke it until 2026-11-24.
 - The message "Cannot gate in an NPC until you kill one" (0x134A6, function
   0x13407) is the Descent 1 gate limit. It counts robots whose byte at +0x7F
   is -1 and refuses if the count is above `2 * difficulty + 3`. It has
