@@ -970,8 +970,13 @@ static void path_steer(object *obj,vms_vector *goal)
 		else
 			vm_vec_sub(&to_goal,&ConsoleObject->pos,&obj->pos);
 		to_goal.y = 0;
-		if (vm_vec_normalize(&to_goal) > 0x100)
+		if (vm_vec_normalize(&to_goal) > 0x100) {
 			move_towards(obj,&to_goal);
+			// Dtu_fix_npc_walk: a peaceful creature faces the player and
+			// does not walk to the player (dtuobj.h)
+			if (Dtu_fix_npc_walk && !path_fix_applies(obj) && !is_hostile(obj))
+				ail->has_move = 0;
+		}
 		return;
 	}
 

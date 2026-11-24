@@ -147,23 +147,31 @@ fix creature_stop_dist(object *obj)
 }
 
 // A hostile creature that sees the player does not walk nearer to the
-// player than creature_stop_dist(): the part of its velocity toward the player is cut
-// so that it stops there. The test of a hit does not change, and the
-// player can still walk up to the creature.
+// player than creature_stop_dist() (Dtu_improved_pathfinding), and a
+// peaceful creature not nearer than its body radius plus that of the
+// player (Dtu_fix_npc_body, dtuobj.h): the part of its velocity toward the
+// player is cut so that it stops there. The test of a hit does not change,
+// and the player can still walk up to the creature.
 static void stop_at_player(object *obj)
 {
 	physics_info *pi = &obj->mtype.phys_info;
 	vms_vector d;
 	fix stop, dist, toward, allowed, r, hh;
 
-	if (!is_hostile(obj) || ConsoleObject == NULL || Player_is_dead || Dtu_player_dead)
-		return;
-	// only a creature that sees the player (not one behind a door)
-	if (!Ail[obj-Objects].previous_visibility)
-		return;
-	if ((stop = creature_stop_dist(obj)) <= 0)
+	if (ConsoleObject == NULL || Player_is_dead || Dtu_player_dead)
 		return;
 	dtu_get_body_size(obj,&r,&hh);
+	if (is_hostile(obj)) {
+		// only a creature that sees the player (not one behind a door)
+		if (!improved_paths() || !Ail[obj-Objects].previous_visibility)
+			return;
+		if ((stop = creature_stop_dist(obj)) <= 0)
+			return;
+	}
+	else if (Dtu_fix_npc_body)
+		stop = r + DTU_BODY_RAD;
+	else
+		return;
 	if (abs(obj->pos.y - ConsoleObject->pos.y) > hh + DTU_BODY_HALF_HEIGHT)
 		return;
 
@@ -378,7 +386,7 @@ void dtu_creature_physics_sim(object *obj)
 	if (!is_flying(obj))
 		vm_vec_zero(&pi->thrust);
 
-	if (imp && DTU_ANIM_STATE(obj) != DAS_DIE)
+	if (DTU_ANIM_STATE(obj) != DAS_DIE)
 		stop_at_player(obj);
 
 	start_pos = obj->pos;

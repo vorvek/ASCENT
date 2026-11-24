@@ -85,6 +85,8 @@ int Dtu_creatures_attack = 1;
 int Dtu_idle_anim_near = 0;
 int Dtu_player_dead = 0;
 int Dtu_fix_path_follow = 1;
+int Dtu_fix_npc_walk = 1;		// dtuobj.h
+int Dtu_fix_npc_body = 1;		// dtuobj.h
 int Dtu_fix_fire_once = 1;
 
 // The sound of a creature that sees the player (attack_sound of the monster
@@ -928,7 +930,11 @@ void dtu_objects_init(void)
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
 			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_ray = Dtu_fix_alert_last =
-			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = 0;
+			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = Dtu_fix_npc_walk = Dtu_fix_npc_body = 0;
+	if (FindArg("-orignpcwalk"))
+		Dtu_fix_npc_walk = 0;
+	if (FindArg("-orignpcbody"))
+		Dtu_fix_npc_body = 0;
 	if (FindArg("-origrevive"))
 		Dtu_fix_revive = 0;
 	if (FindArg("-origdrow5"))
