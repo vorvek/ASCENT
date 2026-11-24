@@ -292,7 +292,8 @@ static int ai_to_anim_state(object *obj,int ai_state,fix dist)
 	switch (ai_state) {
 		case DAIS_SRCH:	return station ? DAS_STAND : DAS_WALK;
 		case DAIS_LOCK:
-			if (station)
+			// ASCENT: keep_off_player(), a creature that waits for the player
+			if (station || ail->keep_off == 2)
 				return DAS_STAND;
 			if (dist > i2f(30) && ail->time_player_seen + F1_0/2 >= GameTime)
 				return DAS_RUN;
@@ -457,10 +458,53 @@ static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_play
 // with no door bit that walks for its script (Dtu_fix_script_walk)
 static int Script_walk_doors;
 
+// ASCENT: Dtu_improved_pathfinding (a decision of the project). In the
+// executable only a type with the door bit opens doors: door_opening=1 or
+// the word "humanoid" of the monster line (0x1061B), which the tables give
+// to orcs, goblins, kobolds, ogres and liches only. The humans, drow,
+// dwarves, halflings, elves, Banegards and ghouls have no door bit. With
+// the setting a hostile creature whose model is a person (by the model
+// name of the monster line) opens a door as a creature with the door bit
+// does: with no key and no lock (door_is_openable(), 0x25CAA). Animals,
+// skeletons, zombies, spirits and monsters (beholders, dragons, mephits,
+// gargoyles, beetles, spiders) do not. The door opener of the brain code
+// (0x14AF2) stays for the door bit only.
+int dtu_model_is_person(const char *pof)
+{
+	static const char *const prefix[] = {
+		"hum_",		// humans: the thieves of THIEF*, hmfg1, the people of the inn
+		"haf",		// halflings
+		"dwf_",		// dwarves
+		"drw",		// drow men (drw_mfg5, drwmmk7b)
+		"dlf_",		// drow women
+		"elf_",		// elves
+		"orc_", "gob_", "kob",		// door bit in the tables already
+		"ogr", "ognew", "armogr",	// ogres
+		"troll", "armtroll",			// trolls
+		"lic_",		// the lich (door bit already)
+		"min_",		// the mind flayer
+		"ban_",		// Banegards
+		"ghu_", "gha_",				// ghouls and ghasts (intelligent in AD&D 2e)
+		"mum_",		// mummies (the intelligence of ghouls in AD&D 2e)
+		"durnan", "daland", "thashasa", "hal.", "ibba",		// named people
+	};
+	int k;
+
+	for (k=0;k<(int)(sizeof(prefix)/sizeof(*prefix));k++)
+		if (!strnicmp(pof,prefix[k],strlen(prefix[k])))
+			return 1;
+	return 0;
+}
+
+static int person_opens_doors(object *obj)
+{
+	return improved_paths() && obj->type == OBJ_ROBOT && obj->id < N_robot_types && Monster_ext[obj->id].person && is_hostile(obj);
+}
+
 // 1 if the creature can open a door: the door bit, or a walk of its script
 int opens_doors(object *obj)
 {
-	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1;
+	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1 || person_opens_doors(obj);
 }
 
 static int door_is_openable(object *obj,segment *segp,int side)
@@ -495,14 +539,24 @@ static int openable_door_in_segment(object *obj)
 // New in the executable: a segment with special 1 or 2 is never on a
 // path, and a creature with no door bit gets no path through a segment
 // that has a wall on any side (but for the first and the last segment).
+// Dtu_improved_pathfinding changes the last rule for a hostile creature
+// (side_filter below).
 // Returns the number of segments in out[], 0 if there is no path.
 static int find_path(object *obj,int start,int end,short *out,int max_out,int max_depth,int random_flag,int avoid_seg)
 {
 	static ubyte visited[MAX_SEGMENTS];
 	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
 	int head = 0, tail = 0, found = -1, i, n, cur;
-	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors;
+	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors || person_opens_doors(obj);
 	int walker = improved_paths() && obj->type == OBJ_ROBOT && !is_flying(obj);
+	// Dtu_improved_pathfinding: a hostile creature with no door bit keeps
+	// out of the sides that its body cannot pass (a door that is not open,
+	// a closed wall), not out of each segment with a wall. The filter of
+	// the executable leaves out a segment with an open door, an illusion
+	// wall or a closed wall on any side, so in many rooms such a creature
+	// has no path to the player and walks straight into a wall. It still
+	// opens no door.
+	int side_filter = improved_paths() && obj->type == OBJ_ROBOT && is_hostile(obj);
 
 	if (start < 0 || start > Highest_segment_index)
 		return 0;
@@ -527,7 +581,7 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 			continue;
 		if (Segments[i].special == 1 || Segments[i].special == 2)
 			visited[i] = 1;
-		else if (!has_door_bit) {
+		else if (!has_door_bit && !side_filter) {
 			int side;
 
 			for (side=0;side<MAX_SIDES_PER_SEGMENT;side++)
@@ -565,8 +619,17 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 			// up through the top side of a segment (an opening in the
 			// ceiling, side 1 in the levels of the game). The search of the
 			// executable is the one of the ships of Descent 1.
-			if (side == WTOP && walker)
-				continue;
+			// A shallow segment (a pit or a step under the floor, BONES
+			// segment 53) has its top side less than a knee high above its
+			// floor (dtu_knee_high() of physics.c): a body walks out of it.
+			if (side == WTOP && walker) {
+				vms_vector top, bottom;
+
+				compute_center_point_on_side(&top,segp,WTOP);
+				compute_center_point_on_side(&bottom,segp,WBOTTOM);
+				if (top.y - bottom.y > DTU_KNEE_HIGH)
+					continue;
+			}
 			if ((WALL_IS_DOORWAY(segp,side) & WID_FLY_FLAG) || door_is_openable(obj,segp,side)) {
 				visited[child] = 1;
 				parent[child] = cur;
@@ -738,12 +801,18 @@ static int body_line_free(object *obj,vms_vector *p)
 {
 	fvi_query fq;
 	fvi_info hit;
-	fix r = path_body_radius(obj) - F1_0;
+	fix r = path_body_radius(obj) - F1_0, cyl_r, hh;
+	vms_vector c;
 	int fate;
-
-	if (r < 0x1000)
-		r = 0x1000;
 	int k;
+
+	// not less than the radius of the move (dtu_creature_physics_sim(): a
+	// fourth of the cylinder, plus 1.0 for the walls) and a small margin.
+	// For a small body (a rat) the line was free where its move hit the
+	// corner of an opening.
+	dtu_get_body_cylinder(obj,&c,&cyl_r,&hh);
+	if (r < cyl_r/4 + F1_0/4)
+		r = cyl_r/4 + F1_0/4;
 
 	// The line to p, and the line at the height of the center of the body
 	// (the body walks level, a line that goes up a stair can be free where
@@ -1516,6 +1585,54 @@ static void choose_attack_goal(object *obj,fix dist)
 		aip->GOAL_STATE = DAIS_ATAK;
 }
 
+// ASCENT: Dtu_improved_pathfinding. A creature that walks and fights in
+// melee and sees the player above it, out of the reach of its attack (on a
+// ladder, a ledge or a crate, where it cannot walk), backs away out of the
+// reach of the player and waits there, facing the player. The executable
+// has no rule for this: the creature walks under the player and stands
+// there, and the player hits it with no risk. Creatures do not climb in the
+// executable either (the ladder code 0x9EBEB is for the player only).
+// Returns 1 if the rule moved the creature (ail->keep_off 1: it backs away,
+// 2: it waits).
+#define KEEP_OFF_AWAY	(F1_0*4)		// beyond the attack distance
+#define KEEP_OFF_BAND	(F1_0*10)		// the creature waits in this band
+static int keep_off_player(object *obj,fix dist,vms_vector *vec_to_player)
+{
+	dtu_ai_local *ail = &Ail[obj-Objects];
+	fix attack, r, hh, hd;
+	vms_vector d;
+
+	if (!improved_paths() || Robot_info[obj->id].attack_type != 1 || is_flying(obj) || ail->script_walk == 1)
+		return 0;
+	// a jump or a fall of the player ends soon
+	if (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_FALLING))
+		return 0;
+	attack = obj->size + ConsoleObject->size + i2f(2);		// choose_attack_goal()
+	if (dist <= attack)
+		return 0;
+	// the feet of the player above the top of the body
+	dtu_get_body_size(obj,&r,&hh);
+	if (ConsoleObject->pos.y - DTU_BODY_HALF_HEIGHT <= obj->pos.y + hh)
+		return 0;
+	vm_vec_sub(&d,&ConsoleObject->pos,&obj->pos);
+	d.y = 0;
+	hd = vm_vec_normalize(&d);
+	if (hd > attack + KEEP_OFF_AWAY + KEEP_OFF_BAND)
+		return 0;
+	if (hd < 0x100)
+		d = obj->orient.fvec;			// right under the player
+	d.y = 0;
+	turn_towards_vector(vec_to_player,obj,Robot_info[obj->id].firing_wait[Difficulty_level]);
+	if (hd < attack + KEEP_OFF_AWAY) {
+		vm_vec_negate(&d);
+		add_move(obj,&d);
+		ail->keep_off = 1;
+	}
+	else
+		ail->keep_off = 2;
+	return 1;
+}
+
 // 0x11018. The animation of an active creature, computed from the game
 // time. Returns 1 if the creature is dead and done.
 static void ai_animation_step(object *obj,fix dist)
@@ -1533,7 +1650,7 @@ static void ai_animation_step(object *obj,fix dist)
 		elapsed = 0;
 
 	// A hostile melee creature that is far from a player that it sees runs.
-	if (is_hostile(obj) && aip->GOAL_STATE != DAIS_DEAD && DTU_ANIM_STATE(obj) != DAS_DIE &&
+	if (is_hostile(obj) && aip->GOAL_STATE != DAIS_DEAD && DTU_ANIM_STATE(obj) != DAS_DIE && !ail->keep_off &&
 		 Robot_info[obj->id].attack_type == 1 && dist > i2f(30) && ail->time_player_seen + F1_0/2 >= GameTime) {
 		if (aip->behavior != DAIB_STATION)
 			DTU_ANIM_STATE(obj) = DAS_RUN;
@@ -1743,7 +1860,7 @@ void dtu_do_ai_frame(object *obj)
 	monster_info *mi;
 	vms_vector vec_to_player, *believed;
 	fix dist;
-	int A, B, visible = -1, dying, blocked, hidden;
+	int A, B, visible = -1, dying, blocked, hidden, keep_off;
 
 	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
 		return;
@@ -1990,6 +2107,9 @@ void dtu_do_ai_frame(object *obj)
 		blocked = blocked_move(obj,dist,&vec_to_player,visible);
 
 	// 0x15074: the mode
+	keep_off = ail->keep_off;
+	if (!blocked)
+		ail->keep_off = 0;
 	if (!blocked)
 	switch (ail->mode) {
 
@@ -2092,7 +2212,7 @@ void dtu_do_ai_frame(object *obj)
 					if (ail->morale >= B && aip->GOAL_STATE != DAIS_FLIN)
 						aip->GOAL_STATE = DAIS_LOCK;
 				}
-				else
+				else if (hidden || !visible || !keep_off_player(obj,dist,&vec_to_player))
 					move_relative_to_player(obj,dist,&vec_to_player,circle,0);
 				if (ail->morale < B) {
 					// "Bad moralle (%d)"
@@ -2117,6 +2237,10 @@ void dtu_do_ai_frame(object *obj)
 				turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
 			break;
 	}
+
+	if (keep_off != ail->keep_off)
+		dtu_obj_log("obj %d %s: %s",objnum,dtu_object_name(obj),ail->keep_off == 1 ? "the player is above and out of reach, backs away" :
+			ail->keep_off == 2 ? "the player is above and out of reach, waits" : "the player is in reach again");
 
 	// do_firing_stuff (0x12916)
 	if (visible && is_hostile(obj) && ail->morale >= B) {

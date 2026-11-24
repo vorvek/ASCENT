@@ -1101,6 +1101,172 @@ door bit, as in the executable). The armOgre of CRYPTS (height 23) does not
 fit through the opening from seg 87 to seg 83 and walks back and forth. A
 creature without a path still walks straight at a wall.
 
+#### Corners, doors and ladders (2026-11-24)
+
+The rules of the executable (Code):
+
+- Doors: only a type with the door bit opens a door (0x25CAA, 0x1320F), and
+  the bit comes from `door_opening=1` or the flag word `humanoid` of the
+  monster line (0x1061B). **Data**: in the tables of THIEF1, BONES, BAT,
+  CRYPTS, DROW1, KOBOLDS, BANE and MYRKUL only orcs, goblins, kobolds, Ogre2,
+  `gbloser` and `Lich3` have `humanoid`. The human thieves of THIEF1
+  (`shmtd2`, `sfmtd2`, ...), the drow of DROW1 and `hmfg1` of CRYPTS have no
+  door bit, as the skeletons, ghouls, rats and Banegards. The door must have
+  no key (`keys` 1) and the side that the creature passes or hits must not
+  have the lock flag 8 (`WALL_DOOR_LOCKED`); the state is closed for 0x25CAA.
+  A key door, a door with a lock (picked with 0xB3400) and a door that a
+  trap locks (TAP toggle lock) stay closed. The lock flag is on each wall,
+  so a door locked on one side only (THIEF1 wall 23, seg 21 side 4; wall 22
+  on the other side is not locked) opens from the other side, for the
+  player too (wall.c tests the side that the player hits). The port keeps
+  this for the types with the door bit.
+- Ladders: a creature does not climb. The ladder code 0x9EBEB
+  (`pcons_push_fall`) is called from `player_physics` and from the fall
+  damage 0x6C8C8 only for `ConsoleObject`, and the ladder textures
+  (0x13A86B) are read only there and at the setup.
+- A creature that cannot reach the player has no rule of its own: CHASE_OB
+  moves it at the player (0x125B9), the blocked move (0x14BA1) steps to the
+  side, and the paths of 0x150DD are made again. A melee creature under a
+  player on a ladder walks under the player and stands there.
+
+Causes found (`-objlogpos`, `-noattack`, 30 frames per second):
+
+- The slide of the move took the hit point of fvi also when it was behind
+  the start: at the edge of a side (the corner of an opening) fvi gives the
+  point where the sphere first touches the edge, which is behind a body that
+  touches the edge already. The body went back to it and forward again on
+  each frame (BONES, `-testpos -50,-4,320`: the Rat obj 12 at the opening
+  from seg 194 to seg 196, 0.3 back and forth for 16 s). The slide also took
+  the normal of the face, which a body at an edge does not move off.
+- `body_line_free()` tested the walls with the torso radius (1.0 at least),
+  the move with a fourth of the cylinder plus 1.0. For a Rat (cylinder 0.93)
+  the line was 1.06 wide and the move 1.23, so the line was free where the
+  move hit the corner.
+- A hostile creature with no door bit got no path through a segment with an
+  open door, an illusion wall or a closed wall on any side (the filter of
+  0x16999). In BAT, THIEF1 and CRYPTS most rooms have one, so the creature
+  walked straight at a wall (THIEF1 `-testpos -64.3,5.9,542.7`: `shmtd6` obj
+  94 behind the illusion wall of seg 620, 16.5 s at the wall; BAT
+  `-testpos -85,-69,50`: the three Banegards, 12 s each).
+- A body in a shallow pit (BONES seg 53, 2.5 under the floor of seg 43) had
+  no path out (no path goes up through a top side) and no step over the rim
+  (the lift of 0x6C186 is for a floor, the rim is a wall of the pit).
+- A body that walks head on into scenery lost all of its speed in the slide
+  around the scenery, which cleared the retry count, so the blocked move
+  (0x14CA9) did not attack the scenery (CLAN1 `-testpos -200,-4,150`: the
+  Zombie obj 93 at the bench obj 15, 17.5 s).
+
+Changes (all with `Dtu_improved_pathfinding`, none with `-origobj` or
+`-noimprovedpaths`):
+
+- Move: a hit point behind the start keeps the body where it is (the
+  "moved backwards" rule of Descent 1 physics). When the velocity does not
+  go into the face (the body is at an edge of the side), the slide takes
+  the direction from the nearest point of the edges to the body (level for
+  an upright edge), so the body goes around the corner. A move
+  away from a side that the body touches already is not a hit. A side of a
+  segment that is open at the top, with its top edge less than 5.5 above the
+  feet, is the rim of a step: the body goes up onto it, 2.0 at most for each
+  hit. A slide around scenery that leaves less than a fourth of the speed
+  stops the body, as without the setting, so the blocked move attacks or
+  pushes the scenery.
+- `body_line_free()` tests at least a fourth of the cylinder plus 0.25 (the
+  walls add 1.0, as in the move).
+- People open doors (a decision of the project): a hostile creature whose
+  model is a person opens a door as a type with the door bit does, with the
+  same tests (no key, no lock flag on the side), for its paths
+  (`door_is_openable()`) and when it walks into the door (0x25CAA). The door
+  opener of the brain code (0x14AF2) stays for the door bit only, and a
+  creature that is not hostile keeps the rules of the executable. A person
+  is a type whose model name (the `model=` word of its monster line, the
+  name in `Pof_names`) starts with `hum_` (humans: the thieves `shmtd2`,
+  `sfmtd2`, `shmfc3` and the others of THIEF*, `hmfg1`, `hffg1`, `hmft4`,
+  `Jeryth`, the people of the inn), `haf` (halflings: `sfmtf2`, `fmtnpc`),
+  `dwf_` (`dmfw1`), `drw` and `dlf_` (the drow `rmfg5`, `rmfb5`, `rmmk5`,
+  `rffk5`, `rfft6` and the others), `elf_` (`priestes`), `orc_`, `gob_`,
+  `kob` (door bit already), `ogr`, `ognew`, `armogr` (ogres), `troll`,
+  `armtroll`, `lic_` (the lich), `min_` (the mind flayer), `ban_`
+  (Banegards), `ghu_`, `gha_` (ghouls and ghasts, intelligent in AD&D 2e),
+  `mum_` (mummies, the intelligence of ghouls in AD&D 2e), and the named
+  `durnan`, `daland`, `thashasa`, `hal.`, `ibba`. Not people: the animals
+  (rats, bats, spiders, beetles, scarabs), the skeletons (`ske_`, the guards
+  `gua_`), zombies, the spirits (`magesprt`, `prstsprt`), beholders,
+  dragons, mephits, gargoyles and `avatar`. The tables have no intelligence
+  value (`iq` is the sight and morale number), so the list is by the model.
+  The log line "obj N NAME: hp ..." of a level start has "person 0/1" and
+  the model name.
+- Paths: a hostile creature with no door bit takes no path through a side
+  that its body cannot pass (a door that is not open, a closed wall), and is
+  not kept out of a segment because of a wall on another side. It opens no
+  door. A walker may go up through the top side of a segment that is less
+  than 5.5 high (a pit).
+- Out of reach: a hostile melee creature that walks, sees the player, is
+  farther than its attack distance (`choose_attack_goal()`) and has the feet
+  of the player above the top of its body (a ladder, a ledge, a crate),
+  while the player does not jump or fall, backs away to the attack distance
+  plus 4.0 in x and z, and waits (STAND) in a band of 10.0 beyond that,
+  facing the player. It takes this rule only where it would walk straight
+  at the player (no path is taken). When the player comes down, it attacks
+  again. Log: "the player is above and out of reach, backs away" and
+  "waits", "the player is in reach again".
+
+Measured (`-noattack -invulnerability`, 20 s at 30 frames per second, the
+player standing in a segment 4 to 6 segments from a creature, 14 places in
+each of BAT, BONES, THIEF1, CRYPTS, DROW1, MYRKUL, BANE, KOBOLDS and CLAN1
+and 16 more in BAT, BONES and THIEF1; "stuck" is the time that a creature
+farther than 18.0 walks but moves less than 0.5 in 0.5 s while a way with no
+closed door exists to the player; before and after):
+
+| Level | stuck (s) | creatures within 18.0 |
+|---|---|---|
+| BAT | 69.0, 36.5 / 85.0, 59.0 | 46, 49 of 65 / 63, 63 of 82 |
+| BONES | 104.5, 57.5 / 89.5, 51.5 | 50, 68 of 88 / 68, 70 of 120 |
+| THIEF1 | 57.5, 4.0 / 72.5, 23.5 | 10, 18 of 54 / 26, 30 of 79 |
+| CRYPTS | 49.5, 34.0 | 24, 24 of 47 |
+| DROW1 | 113.0, 34.5 | 31, 37 of 67 |
+| MYRKUL | 35.0, 24.0 | 39, 41 of 67 |
+| BANE | 16.0, 18.0 | 39, 39 of 54 |
+| KOBOLDS | 118.5, 80.5 | 38, 37 of 54 |
+| CLAN1 | 62.5, 30.0 | 46, 48 of 80 |
+
+With `-noimprovedpaths` and with `-origobj` the object logs of BONES
+`-testpos -50,-4,320` and of the ladder test below are the same before and
+after the change.
+
+Ladder (BAT `-testpos -85,-68,154,0 -testmove wait:20,use:1,forward:28,...`:
+the player holds the ladder of seg 142 side 5 at y -51.1, 17.0 above the
+gskelpus obj 43 and 44): before, both stand under the player (distance
+17.0, out of their attack distance 14.6) for the rest of the test. After,
+they wait at 31.6 from the player; when the player has climbed up after
+they came (`wait:150` first) they back away from 17.1 to 26.0 and wait; when
+the player climbs down (`back:60` at 11.3 s) they come back at 12.0 s and
+attack at 13.1 and 13.6 s.
+
+Doors: CRYPTS `-testpos -45,5,195,270`, the orc Orcascim (door bit) opens
+the door wall 28 at 8.1 s and the orcs come through, as before. BAT
+`-testpos -25,-29,263,180 -testmove wait:10,use:1,wait:5,slideright:40`:
+the player opens the door of seg 38/39 and steps into seg 40; the Ghoul obj
+27 (no door bit) takes a path of 3 segments through the open door (before:
+no path, it walked straight and got there too in this place). With the
+door closed it stays behind it (no path, as before).
+
+People and doors (25 s each): THIEF1 `-testpos 15.7,-4,482.7`: the thief
+`shmtd2` obj 26 opens the door wall 127 (seg 482 side 4) at 4.7 s, obj 27
+opens wall 110, and obj 20 and 26 stand at 13.1 from the player at the end
+(before: "no way", both at the wall). DROW1 `-testpos 269.7,-4,265.1`: the
+drow `rmfg5` obj 21 opens wall 28 (seg 234 side 5) at 2.3 s and stands at
+4.4 from the player (before: STILL behind the door at 9.2). DROW1
+`-testpos 247,-4,142.5`: the skeletons `ske_axe` obj 76 and 77 open no door
+(76 stays at the closed door wall 16; the Ghoul obj 10 opens wall 20).
+THIEF1 `-testpos 15.6,-4,402.7`: the thieves `sfmtd2` obj 5 and 6 stay in
+seg 21 at the locked side of the door (wall 23), and no creature opens
+wall 23. With `-noimprovedpaths` and with `-origobj` the DROW1 log is the
+same as before (but the new fields of the start line).
+
+Open: the armOgre of CRYPTS still does not fit through the low opening of
+seg 103 (top side) and stands there. A creature with no door bit still
+walks straight at a closed door that is between it and the player.
+
 ## Animation step (0x11018)
 
 Arguments: eax = object, edx = distance, ebx = `vis_vec_pos`, ecx =

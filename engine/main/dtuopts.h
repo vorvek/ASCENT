@@ -30,8 +30,11 @@ extern int Dtu_improved_physics;
 extern int Dtu_improved_jump;
 
 // Paths for creatures of the size of a person: no stop at the openings of
-// corridors, and a larger body so that creatures stay at the distance of
-// their weapon (see docs/re/ai.md, "Improved pathfinding").
+// corridors or at corners, paths through open doors for a creature that
+// cannot open doors, people (humans, drow, Banegards, ghouls) that open
+// doors with no key and no lock, a larger body so that creatures stay at the distance
+// of their weapon, and a melee creature that keeps out of the reach of a
+// player above it (see docs/re/ai.md, "Improved pathfinding").
 extern int Dtu_improved_pathfinding;
 
 // The 3D view is rendered at this multiple of the original view size,

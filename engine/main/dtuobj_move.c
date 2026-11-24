@@ -229,6 +229,84 @@ static void creature_fall_damage(object *obj)
 	ail->falling = 0;
 }
 
+// ASCENT: Dtu_improved_pathfinding. The direction from the nearest point of
+// the edges of a side to p. fvi gives the normal of the face also when the
+// body touches an edge of the side (the corner of an opening, the rim of a
+// step), and a slide along the face does not leave the edge. For a body
+// that walks the normal of an upright edge (a corner) is level. Returns 0
+// if p is on an edge.
+static int side_edge_normal(int segnum,int side,vms_vector *p,int level,vms_vector *n)
+{
+	segment *segp = &Segments[segnum];
+	double px = f2fl(p->x), py = f2fl(p->y), pz = f2fl(p->z), best = -1, bx = 0, by = 0, bz = 0, m;
+	int k, upright = 0;
+
+	for (k=0;k<4;k++) {
+		vms_vector *a = &Vertices[segp->verts[Side_to_verts[side][k]]];
+		vms_vector *b = &Vertices[segp->verts[Side_to_verts[side][(k+1)&3]]];
+		double ax = f2fl(a->x), ay = f2fl(a->y), az = f2fl(a->z);
+		double ex = f2fl(b->x) - ax, ey = f2fl(b->y) - ay, ez = f2fl(b->z) - az;
+		double ll = ex*ex + ey*ey + ez*ez, t = 0, dx, dy, dz, d;
+
+		if (ll > 1e-9)
+			t = ((px-ax)*ex + (py-ay)*ey + (pz-az)*ez) / ll;
+		if (t < 0) t = 0;
+		if (t > 1) t = 1;
+		dx = px - (ax + t*ex); dy = py - (ay + t*ey); dz = pz - (az + t*ez);
+		d = dx*dx + dy*dy + dz*dz;
+		if (best < 0 || d < best) {
+			best = d;
+			bx = dx; by = dy; bz = dz;
+			upright = (ey*ey > 0.5*ll);
+		}
+	}
+	if (best <= 1e-6)
+		return 0;
+	if (level && upright && bx*bx + bz*bz > 1e-6)
+		by = 0;
+	m = sqrt(bx*bx + by*by + bz*bz);
+	n->x = fl2f(bx/m); n->y = fl2f(by/m); n->z = fl2f(bz/m);
+	return 1;
+}
+
+// 1 if the side is the rim of a step for feet at the height "feet": its
+// segment is open at the top and the top edge of the side is above the feet
+// by less than a knee high. *top is the height of the top edge.
+static int step_rim(int segnum,int side,fix feet,fix *top)
+{
+	segment *segp;
+	int k;
+
+	if (segnum < 0 || side < 0 || side == WTOP || side == WBOTTOM)
+		return 0;
+	segp = &Segments[segnum];
+	if (segp->children[WTOP] < 0 || segp->children[side] >= 0)
+		return 0;
+	*top = Vertices[segp->verts[Side_to_verts[side][0]]].y;
+	for (k=1;k<4;k++)
+		if (Vertices[segp->verts[Side_to_verts[side][k]]].y > *top)
+			*top = Vertices[segp->verts[Side_to_verts[side][k]]].y;
+	return *top > feet && *top - feet < DTU_KNEE_HIGH;
+}
+
+// 1 if the hit of a move is behind the start of the body and the move goes
+// away from the side (from its face and from its nearest edge).
+static int moves_off_side(object *obj,vms_vector *frame_vec,fvi_info *hit)
+{
+	vms_vector to_hit, e;
+
+	if (hit->hit_side_seg < 0 || hit->hit_side < 0)
+		return 0;
+	vm_vec_sub(&to_hit,&hit->hit_pnt,&obj->pos);
+	if (vm_vec_dot(&to_hit,frame_vec) > 0)
+		return 0;
+	if (vm_vec_dot(frame_vec,&hit->hit_wallnorm) <= 0)
+		return 0;
+	if (side_edge_normal(hit->hit_side_seg,hit->hit_side,&obj->pos,0,&e) && vm_vec_dot(frame_vec,&e) <= 0)
+		return 0;
+	return 1;
+}
+
 // 0x6C662 for a creature: gravity and the lift out of the floor. Returns
 // the distance of the feet to the floor.
 static fix creature_gravity(object *obj,vms_vector *accel,fix radius,fix half_height)
@@ -546,6 +624,12 @@ void dtu_creature_physics_sim(object *obj)
 
 		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
 			fate = 5;		// the floor
+		// Dtu_improved_pathfinding: a body that is in the radius of a side
+		// already (it gets there at the edge of a side of a segment below
+		// or above it) and moves away from the side: fvi takes the move as
+		// a hit behind the start, and the body did not leave the place.
+		if (imp && fate == HIT_WALL && moves_off_side(obj,&frame_vec,&hit))
+			fate = HIT_NONE;
 		if (fate != HIT_NONE) {
 			int k = (fate == 5) ? 2 : (fate == HIT_OBJECT) ? 3 : (fate == HIT_WALL && hit.hit_side == WTOP) ? 1 : 0;
 
@@ -642,9 +726,30 @@ void dtu_creature_physics_sim(object *obj)
 				// and stops the body for the frame, so a body that walks into
 				// the corner of an opening stays at the corner.
 				fix len = vm_vec_mag(&frame_vec);
-				int seg = find_point_seg(&hit.hit_pnt,obj->segnum);
+				int seg = find_point_seg(&hit.hit_pnt,obj->segnum), back = 0;
+				vms_vector n = hit.hit_wallnorm;
 
 				hits++;
+				// A hit point behind the start (the body touches the edge of
+				// a side already): the body stays where it is, as in the
+				// physics of Descent 1 ("moved backwards"). The port moved it
+				// back to the hit point, and it went back and forth at the
+				// corner of an opening.
+				if (seg >= 0 && len > 0) {
+					vms_vector to_hit;
+
+					vm_vec_sub(&to_hit,&hit.hit_pnt,&obj->pos);
+					if (vm_vec_dot(&to_hit,&frame_vec) <= 0)
+						back = 1;
+				}
+				// The body at the edge of a side (a velocity that does not go
+				// into the face): it slides around the edge, not along the
+				// face.
+				if (d >= 0 && hit.hit_side_seg >= 0 && hit.hit_side >= 0 &&
+					 side_edge_normal(hit.hit_side_seg,hit.hit_side,back ? &obj->pos : &hit.hit_pnt,!is_flying(obj),&n))
+					d = vm_vec_dot(&pi->velocity,&n);
+				if (back)
+					seg = -1;
 				if (seg >= 0 && len > 0) {
 					fix m = vm_vec_dist(&obj->pos,&hit.hit_pnt);
 
@@ -656,8 +761,31 @@ void dtu_creature_physics_sim(object *obj)
 					if (seg != obj->segnum)
 						obj_relink(objnum,seg);
 				}
-				if (d < 0)
-					vm_vec_scale_add2(&pi->velocity,&hit.hit_wallnorm,-d);
+				if (d < 0) {
+					fix top;
+
+					vm_vec_scale_add2(&pi->velocity,&n,-d);
+					// The rim of a step: a side of a segment that is open at the
+					// top, with its top edge less than a knee high above the
+					// feet (a pit under the floor, BONES segment 53). The body
+					// steps up onto the rim, 2.0 at most for each hit (the
+					// lift out of the floor of creature_gravity()).
+					if (!is_flying(obj) && step_rim(hit.hit_side_seg,hit.hit_side,obj->pos.y - half_height,&top)) {
+						vms_vector up = obj->pos;
+						fix lift = top + half_height + F1_0/4 - obj->pos.y;
+
+						if (lift > DTU_PUSH_UP_MAX)
+							lift = DTU_PUSH_UP_MAX;
+						up.y += lift;
+						if (lift > 0 && (seg = find_point_seg(&up,obj->segnum)) >= 0) {
+							obj->pos = up;
+							if (seg != obj->segnum)
+								obj_relink(objnum,seg);
+							if (pi->velocity.y < 0)
+								pi->velocity.y = 0;
+						}
+					}
+				}
 				if (sim_time <= 0)
 					break;
 				continue;
@@ -704,9 +832,16 @@ void dtu_creature_physics_sim(object *obj)
 				vm_vec_sub(&n,&obj->pos,&other->pos);
 				n.y = 0;
 				if (vm_vec_normalize(&n) > 0x100 && (vn = vm_vec_dot(&pi->velocity,&n)) < 0) {
+					fix before = fixmul(pi->velocity.x,pi->velocity.x) + fixmul(pi->velocity.z,pi->velocity.z);
+
 					hits++;
 					vm_vec_scale_add2(&pi->velocity,&n,-vn);
-					continue;
+					// Head on (less than a fourth of the speed is left): the
+					// body stops, so that the blocked move attacks the scenery
+					// (0x14CA9). The slide left it no speed, which cleared the
+					// retry count, and the creature stood at the scenery.
+					if ((fixmul(pi->velocity.x,pi->velocity.x) + fixmul(pi->velocity.z,pi->velocity.z))*16 >= before)
+						continue;
 				}
 			}
 			// The body stops at the player and at scenery.

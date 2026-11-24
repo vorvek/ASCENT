@@ -29,6 +29,7 @@ typedef struct monster_ext {
 	int	weapon_type;			// -1 if the line has none (a natural weapon). Below 0: the spell with the number -weapon_type
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
+	int	person;					// ASCENT: a person by its model (dtu_model_is_person()), opens doors with Dtu_improved_pathfinding
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
 	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), cast by the damage function (0x2A637)
 } monster_ext;
@@ -103,6 +104,7 @@ typedef struct dtu_ai_local {
 	ubyte		replans;
 	short		stall_tgt;				// the point where the creature was blocked
 	ubyte		body_line;				// the line to the player is free for the body
+	ubyte		keep_off;				// the player is above and out of reach (keep_off_player())
 	// test log of -objlogpos: the hits of the move since the last line
 	short		log_hits[4];			// wall, top, floor, object
 	short		log_hit_seg, log_hit_side;
@@ -211,6 +213,7 @@ void missiles_frame(void);
 
 void cloak_reset(void);
 int opens_doors(object *obj);
+int dtu_model_is_person(const char *pof);
 void morale_check(object *obj);
 
 //------------------------------------------------------------------------
