@@ -278,6 +278,36 @@ TESTS = [
     # leaves it on.
     T("kobolds_msg167", "KOBOLDS", "20:goseg=167",
       [r"say 2: This room is strangely quiet"], [r"level rule of the load"], frames=40, extra=["-triglog"]),
+    # THIEF1 trigger 20, the sign of seg 464 side 2 (mask 0xFD). 1.3 fires
+    # it on each frame of a push into the wall (type 8); Dtu_fix_touch_use
+    # leaves it to the use action.
+    T("thief1_sign_push", "THIEF1", "20:goside=464.2",
+      [r"quest: level|f\d+ "], [r"say 15: A sign"], frames=140,
+      extra=["-triglog", "-testmove", "wait:22,forward:100"]),
+    T("thief1_sign_push_orig", "THIEF1", "20:goside=464.2",
+      [r"(say 15: A sign[^\n]*\n[\s\S]*){20}"], frames=140,
+      extra=["-triglog", "-origtrig", "-testmove", "wait:22,forward:100"]),
+    T("thief1_sign_use", "THIEF1", "20:goside=464.2,30:activate",
+      [r"trigger 20 \(on=1 type=1 [^\n]*\n[^\n]*say 15: A sign"], frames=40, extra=["-triglog"]),
+    # THIEF1 trigger 11, the lever of seg 90 side 2: only the use action
+    # runs trap 7.
+    T("thief1_lever_use", "THIEF1", "20:goside=90.2,22:move=7,30:activate",
+      [r"trigger 11 \(on=1 type=1 [^\n]*\n[\s\S]*trap 7 runs"], [r"trigger 11 \(on=1 type=8"], frames=60,
+      extra=["-triglog", "-testmove", "wait:40,forward:20"]),
+    # BAT trigger 10, the skull of seg 39 (no disable_trigger, a warp
+    # command line in the segment). Dtu_fix_say_repeat: no message again
+    # within 30 seconds after the player left the segment.
+    T("bat_say_cooldown", "BAT",
+      "20:goseg=39,40:goseg=42,60:goseg=39,80:goseg=42,100:goseg=39,1300:goseg=42,1320:goseg=39,1340:goseg=42,2400:goseg=39",
+      [r"say 9: The skull[\s\S]*say 10: Two ghouls[\s\S]*no message: shown 0\.7 s ago[\s\S]*no message: shown 0\.7 s ago"
+       r"[\s\S]*no message: shown 0\.7 s ago[\s\S]*say 9: The skull"],
+      [r"(say 9: The skull[\s\S]*){3}", r"(say 10: Two ghouls[\s\S]*){2}"], frames=2420, extra=["-triglog", "-noattack"]),
+    # CLAN3 triggers 1 and 2 (seg 9 and 10) gate three creatures with traps
+    # of one charge. Dtu_fix_say_repeat: no message when the traps are used
+    # up, also after a save and a load.
+    T("clan3_say_spent", "CLAN3", "20:goseg=9,40:goseg=30,1200:goseg=10,1220:goseg=30,1240:save=3,1250:load=3,1280:goseg=9",
+      [r"say 2: Ah, more dead things[\s\S]*no message: the traps are used up[\s\S]*no message: the traps are used up"],
+      [r"(say 2: Ah, more dead things[\s\S]*){2}"], frames=1300, extra=["-triglog", "-noattack"]),
     T("kobolds_msg167_orig", "KOBOLDS", "20:goseg=167",
       [r"level rule of the load \(0x5A855\), level 2", r"trigger 1 \(on=0 type=8"], [r"say 2:"], frames=40,
       extra=["-triglog", "-origtrig"]),

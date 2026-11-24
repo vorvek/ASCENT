@@ -188,6 +188,16 @@ extern int Dtu_fix_thief2_cache;
 // and a level state where the rule switched one off (off, never fired, not
 // found by a thief) gets it back on. 0 (-origtrig): the rule of 1.3.
 extern int Dtu_fix_keep_triggers;
+// 1.3 fires the triggers of a side that the player walks into (type 8) in
+// each frame of the push, and the mask 0xFD of most levers, buttons and
+// signs takes type 8. 1 (default): a wall trigger that the use action
+// fires (mask bit 1) needs the use action. 0 (-origtrig): as 1.3.
+extern int Dtu_fix_touch_use;
+// 1.3 shows the message of a floor trigger at each entry of its segment.
+// 1 (default): a message that the player fires by walking does not show
+// again until 30 seconds after the player left the segment, and not when
+// each trap of the trigger is used up. 0 (-origtrig): as 1.3.
+extern int Dtu_fix_say_repeat;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;

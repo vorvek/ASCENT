@@ -77,7 +77,16 @@ int Dtu_fix_warp_overlap = 1;
 int Dtu_fix_trap_pause = 1;
 int Dtu_fix_thief2_cache = 1;
 int Dtu_fix_keep_triggers = 1;
+int Dtu_fix_touch_use = 1;
+int Dtu_fix_say_repeat = 1;
 int Dtu_trig_log = 0;
+
+// ASCENT: Dtu_fix_say_repeat. The game time of the last message of each
+// trigger that the player fired by entering its segment; it moves on while
+// the player stays in the segment. 0: no message since the level load.
+#define SAY_COOLDOWN	i2f(30)
+static fix Say_time[DTU_MAX_TRIGGERS];
+static int Say_last_seg = -1;		// the segment of the player in the last frame
 
 // The level file record of THIEF2 trigger 46 and the second texture of its
 // side, for a level state that has the copy of trigger 43 (Dtu_fix_thief2_cache)
@@ -687,6 +696,48 @@ static int trig_items_ok(int player_num, dtu_trigger *t)
 	return has_needed && lacks;
 }
 
+// ASCENT: Dtu_fix_say_repeat. 1.3 shows the message of a floor trigger
+// at each entry of its segment, so a fight that goes in and out of the
+// segment fills the message box. The message of a trigger that the player
+// fires by walking (type 8) does not show again within 30 seconds after
+// the player left the segment, and not at all when each trap of the
+// trigger is used up (no charges, no recharge): the event that the
+// message tells of does not happen again. The charges are in the level
+// state, so a save keeps that. A trigger that switches itself off is
+// single use in the level files already.
+static int trig_traps_spent(dtu_trigger *t)
+{
+	int n = t->first_trap, steps;
+
+	if (n < 0 || n >= Dtu_num_traps)
+		return 0;
+	for (steps=0; n >= 0 && n < Dtu_num_traps && steps <= DTU_TRIG_CHAIN_LIMIT; steps++) {
+		dtu_trap *tp = &Dtu_traps[n];
+
+		if (tp->charges != 0 || (tp->flags & DTU_TPF_RECHARGE))
+			return 0;
+		n = tp->next_trap;
+	}
+	return 1;
+}
+
+static int trig_say_allowed(int trigger_num, dtu_trigger *t, int type)
+{
+	if (!Dtu_fix_say_repeat || type != DTU_ACT_PLAYER)
+		return 1;
+	if (trig_traps_spent(t)) {
+		tlog("  no message: the traps are used up (Dtu_fix_say_repeat)");
+		return 0;
+	}
+	if (Say_time[trigger_num] && GameTime - Say_time[trigger_num] >= 0 && GameTime - Say_time[trigger_num] < SAY_COOLDOWN) {
+		tlog("  no message: shown %.1f s ago (Dtu_fix_say_repeat)", f2fl(GameTime - Say_time[trigger_num]));
+		Say_time[trigger_num] = GameTime ? GameTime : 1;
+		return 0;
+	}
+	Say_time[trigger_num] = GameTime ? GameTime : 1;
+	return 1;
+}
+
 // 0x93B29
 void dtu_trig_fire(int trigger_num, int type, object *obj)
 {
@@ -697,6 +748,16 @@ void dtu_trig_fire(int trigger_num, int type, object *obj)
 	if (trigger_num < 0 || trigger_num >= Dtu_num_triggers || !obj)
 		return;
 	t = &Dtu_triggers[trigger_num];
+
+	// ASCENT: Dtu_fix_touch_use. 1.3 fires the triggers of a side that the
+	// player walks into with type 8 (0x9E901 calls 0x29802, which calls
+	// 0x95019) in each frame of the push. Most wall triggers (levers,
+	// buttons, signs) have the mask 0xFD, which takes type 1 and type 8,
+	// so a push into a sign adds its message in each frame. A wall trigger
+	// that the use action fires needs the use action. The push fires only
+	// the wall triggers without type 1 (IBBALAR 14 to 22, THIEF1 34).
+	if (Dtu_fix_touch_use && type == DTU_ACT_PLAYER && t->side != WBOTTOM && (t->activation_mask & DTU_ACT_USE))
+		return;
 
 	tlog("trigger %d (on=%d type=%d mask=%d) seg %d side %d", trigger_num, t->on, type, t->activation_mask, t->seg, t->side);
 
@@ -773,7 +834,7 @@ void dtu_trig_fire(int trigger_num, int type, object *obj)
 		// the three conditions at 0x35, 0x37 and 0x39 call 0x9435D, which
 		// answers 1
 
-		if (t->say_index != -1)
+		if (t->say_index != -1 && trig_say_allowed(trigger_num, t, type))
 			trig_say(t);
 
 		if (t->object_num > 1 && t->object_num <= Highest_object_index) {
@@ -1570,6 +1631,21 @@ void dtu_trig_frame(void)
 	// 0x69BC8: the player is in another segment than in the last frame
 	if (!obj || obj->type != OBJ_PLAYER || !seg_ok(obj->segnum))
 		return;
+
+	// ASCENT: Dtu_fix_say_repeat: the 30 seconds of a message count from
+	// the time the player left the segment of the trigger
+	if (Dtu_fix_say_repeat && obj->segnum == Say_last_seg && obj->segnum < DTU_TRIG_SEG_TABLE) {
+		int n = Dtu_trigger_seg_table[obj->segnum], steps;
+
+		for (steps=0; n >= 0 && n < Dtu_num_triggers && steps <= DTU_TRIG_CHAIN_LIMIT; steps++) {
+			if (Say_time[n] && Dtu_triggers[n].side == WBOTTOM)
+				Say_time[n] = GameTime ? GameTime : 1;
+			if (Dtu_triggers[n].next_in_seg == n)
+				break;
+			n = Dtu_triggers[n].next_in_seg;
+		}
+	}
+	Say_last_seg = obj->segnum;
 	if (obj->segnum != Last_player_seg) {
 		int segnum = obj->segnum, r;
 
@@ -1993,7 +2069,7 @@ static void read_options(void)
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-origtrig"))
-		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = 0;
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }
@@ -2017,6 +2093,8 @@ void dtu_trig_load_level(char *level_name, int level_index)
 	read_options();
 
 	Flame_talk_time = -1;
+	memset(Say_time, 0, sizeof(Say_time));
+	Say_last_seg = -1;
 	// 0x955F5, 0x95459
 	Dtu_num_triggers = 0;
 	Dtu_num_traps = 0;

@@ -71,6 +71,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * The Shadow Thieves no longer attack you if you are a member of the guild.
 * Traps run on real seconds instead of depending on the FPS, and they stop while the game is paused.
 * Some triggers that never fired in seven levels work now.
+* The message of a place does not show again until 30 seconds after you left it, so a fight in and out of a room no longer repeats it, and the message of an event that is over (a trap that ran, creatures that came out) shows only while the event can happen.
 
 **Creatures**
 
@@ -81,6 +82,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 **Controls**
 
 * A separate Climb Wall key, so Activate no longer tries to climb a wall when you pull a lever.
+* Walking into a lever, a button or a sign no longer works it (and no longer fills the log with its message): use Activate.
 
 Each fix can be turned off with an `-orig` command line option to compare with version 1.3 (the pathfinding changes with the Improved pathfinding setting), and [docs/audit/defects-1.3.md](docs/audit/defects-1.3.md) has the full list.
 

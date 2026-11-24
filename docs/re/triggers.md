@@ -70,6 +70,18 @@ The callers and their types (all **V**):
 0x29802 does not call the triggers for an object with flag 0x40 in byte 0x0D or flag 2
 in byte 0x1AE.
 
+**V** The wall touch of the player. When the move of the player hits a wall (fvi
+result 1 in 0x9DC66), 0x9E88D calls 0x29802, and 0x29802 calls 0x95019 with type 8.
+This runs in each frame while the player walks into the wall. **D** The masks of the
+245 wall triggers (side not 3) that take type 8: 0xFD (187), 0xFF (47), 0xF9 (1), 0xFC
+(9) and 0xFA (1). All but 10 take type 1 too: the levers, buttons and signs of the
+levels fire on the use action and on a push. A sign with a message (THIEF1 trigger 20,
+segment 464 side 2, "A sign: "Armory."") adds its message in each frame of a push:
+92 times in a 3 second push in the port with `-origtrig`. Not checked in the running
+original. The 10 wall triggers without type 1 are traps of a touch: IBBALAR 14 to 22
+(mask 0xFC) and THIEF1 34 (0xFA, the heal of the ladder of segment 281). A defect of
+1.3: `Dtu_fix_touch_use` (section 9).
+
 **V** The floor rule of 0x95019: for side 3 the call is dropped unless `seg` is the
 segment of the object. So "the player enters a segment" is a trigger on side 3 with
 type 8. **D** 570 of the 879 triggers are on side 3.
@@ -288,6 +300,28 @@ player from the table at 0x13B970 (player 0: 15, 15, 23, each times 2). 0x34998
 moves the 40 lines up by one and stores the new line with the color in its first
 byte. No test for a repeated text.
 
+**V** A floor trigger fires at each entry of its segment (section 2), so its message
+shows at each entry. The data has one rule for a message that shows once: the
+trigger names itself in `disable_trigger`. **D** Of the 391 floor triggers with a
+message that the player can fire, 191 switch themselves off (BAT trigger 11, segment
+42, "Two ghouls are waiting here"; KOBOLDS trigger 1, segment 167). The other 200
+show their message at each entry: a fight that goes in and out of a segment adds the
+message again and again (BAT trigger 10, segment 39, the skull). The trap charges do
+not stop the message: a trigger whose traps are used up shows its message and runs
+no trap. A defect of 1.3: `Dtu_fix_say_repeat` (section 9).
+
+With `Dtu_fix_say_repeat` (type 8 only, the use action is not changed):
+
+- The message of a trigger does not show again until 30 seconds after the player
+  left its segment. A fight around a segment takes seconds, a return to the place
+  after exploring takes longer. The time is not in the level state: a load shows the
+  message at the next entry.
+- The message does not show when each trap of the chain of the trigger has no
+  charges and no recharge flag: the event that the message tells of is over. The
+  charges are in the level state (TAP), so a save keeps this. **D** 9 triggers:
+  BEHOLDER 13 and 44, CLAN3 1 and 2 (the same traps), DROW2 7, DROW3 14, FLAME 20,
+  IBBALAR 32 (traps of 1 charge) and MULHOR1 42 (2 charges: two times at most).
+
 ## 6. The use action and doors
 
 **V** 0x95050 is called from the key code (0x53D6F keyboard, and 0x52A91 and 0x53094, **G**: joystick button and
@@ -437,6 +471,8 @@ stations of type 4 and 5 (0x5A42C). **G**: the code of the types 4 and 5 does no
 | `Dtu_fix_trap_seconds` | 1 | A trap time of N seconds is 0.182 * N seconds | The time is N seconds |
 | `Dtu_fix_thief2_cache` | 1 | THIEF2: trigger 46 is a copy of trigger 43 and the triggers 43 and 46 open the doors of segments 609 and 607 (section 2). The wall of the cache never opens | With `Dtu_fix_trigger_table` the chain of segment 224 is 43, 44, 45 and these rules are not applied: the symbol of Mask opens the wall of the cache. A level state with the copy (a save of 1.3 or of an older port) gets trigger 46 and the texture of its side of the level file back |
 | `Dtu_fix_keep_triggers` | 1 | 0x5A855 runs at each load of a level (0x49C38) and switches off KOBOLDS trigger 1 (message 2 of segment 167, "This room is strangely quiet") and THIEF1 trigger 34 (the ladder of segment 281 side 4, trap 12: 6 hit points back, `stat_delta` 6). Neither ever fires, and no trigger switches them on again | The rule leaves them on. A level state where the rule switched one off (off, `fire_count` 0, not found by the thief search: byte 0x0F below 0xFE) gets it back on; a trigger that fired (KOBOLDS trigger 1 switches itself off) or that a thief removed stays off |
+| `Dtu_fix_touch_use` | 1 | A push of the player into a side fires its triggers with type 8 in each frame, so a lever, a button or a sign (mask 0xFD) fires on a push and a sign adds its message in each frame (section 2) | A wall trigger (side not 3) that takes type 1 does not fire on type 8: it needs the use action. A push fires only the wall triggers without type 1 (IBBALAR 14 to 22, THIEF1 34) |
+| `Dtu_fix_say_repeat` | 1 | A floor trigger shows its message at each entry of its segment, also when its traps are used up (section 5) | A message of type 8 does not show again until 30 seconds after the player left the segment, and not when each trap of the trigger is used up |
 | `Dtu_trig_log` | 0 | | Prints each trigger and trap event |
 
 Options: `-triglog` sets `Dtu_trig_log`. `-origtrig` clears the fix settings of
