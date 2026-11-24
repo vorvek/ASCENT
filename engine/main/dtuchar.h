@@ -385,6 +385,11 @@ typedef struct dtu_attack {
 } dtu_attack;
 
 void dtu_char_get_attack(dtu_attack *a);
+// ASCENT: the THAC0 of the character with a weapon (-1: the empty hand):
+// the THAC0 minus each bonus that the attack roll always adds with it (the
+// weapon, strength, the bow or crossbow that is worn, dexterity for a
+// missile). Returns 0 when there is no character.
+int dtu_char_weapon_thac0(int weapon, int *thac0);
 
 // The attack roll of the player with a weapon (-1: the empty hand) on a
 // target (0x2A7F3): -1 critical fumble (a 1), 0 miss, 1 hit, 2 critical

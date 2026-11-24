@@ -3012,6 +3012,29 @@ void dtu_char_get_attack(dtu_attack *a)
 	weapon_attack(hand_weapon_id(), a);
 }
 
+// ASCENT: the THAC0 of the character with a weapon: the THAC0 minus the
+// bonus values that dtu_char_attack_roll adds to each roll with this weapon.
+// The bonus values of the target and of the moment (backstab, Bless, Slow,
+// Flame Tongue against undead) are not part of it.
+int dtu_char_weapon_thac0(int weapon, int *thac0)
+{
+	dtu_attack a;
+	int b;
+
+	if (!Dtu_char.created)
+		return 0;
+	weapon_attack(weapon, &a);
+	b = a.to_hit_bonus;
+	if (!a.melee && a.weapon_id >= 0) {
+		if (Dtu_fix_thrown_str_hit && a.thrown)
+			b += str_hit_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra);
+		if (Dtu_fix_dex_missile)
+			b += dtu_dex_missile_adjust();
+	}
+	*thac0 = a.thac0 - b;
+	return 1;
+}
+
 // 0x2A87B and 0x2B107: the Potion of Luck works when the day clock (raw
 // fix) is odd. Then the luck ends (0xAE564: sound 0x8A8). The bit depends
 // on the frame times (at a fixed frame rate with an even frame time it is

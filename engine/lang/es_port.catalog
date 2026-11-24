@@ -595,6 +595,10 @@ id: port.each_use_casts_s
 en: Each use casts %s.
 tr: Cada uso lanza %s.
 
+id: port.thac0_d
+en: THAC0: %d
+tr: GAC0: %d
+
 id: port.damage_s
 en: Damage: %s
 tr: Daño: %s

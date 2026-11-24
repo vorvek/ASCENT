@@ -360,7 +360,7 @@ static void class_line(int mask)
 static void weapon_text(int id, dtu_item_data *d, int count, int r)
 {
 	char buf[256], b2[64] = "";
-	int pc_spell = tbl_int(r, "pc_spell", -1), range, fx, fh;
+	int pc_spell = tbl_int(r, "pc_spell", -1), range, fx, fh, thac0;
 	fix wait;
 
 	if (pc_spell >= 0 && !d->melee) {
@@ -372,6 +372,9 @@ static void weapon_text(int id, dtu_item_data *d, int count, int r)
 		line(LT("Each use casts %s."), dtu_spell_name(pc_spell));
 		return;
 	}
+	// the THAC0 of the character now with this weapon (dtu_char_weapon_thac0)
+	if (dtu_char_weapon_thac0(id, &thac0))
+		line(LT("THAC0: %d"), thac0);
 	// weapon_attack and dtu_char_weapon_damage (dtuchar.c): the dice and
 	// the bonus of the table line; a weapon with 0 sides rolls no dice
 	line(LT("Damage: %s"), dice(buf, d->dice_n, d->dice_sides, d->damage_bonus));

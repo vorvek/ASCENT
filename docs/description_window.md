@@ -62,8 +62,12 @@ The first line is the name as the player sees it (the corrected names of
 `dtuitemfix.c`, in the language). The other lines come in this order. A
 line with no value is left out.
 
-- Weapon: damage dice and bonus (0 sides: only the bonus, as the Flame
-  Tongue), fire dice, to hit, then "Melee weapon" with the time from one
+- Weapon: the THAC0 of the character now with this weapon
+  (`dtu_char_weapon_thac0`: the THAC0 minus the bonus of the weapon, of
+  strength for a melee or thrown weapon, of the worn bow or crossbow and of
+  dexterity for a missile; no line when there is no character), damage dice
+  and bonus (0 sides: only the bonus, as the Flame Tongue), fire dice, to
+  hit, then "Melee weapon" with the time from one
   attack to the next, or thrown or arrow or bolt or missile with the range
   and the time from one shot to the next, the count of a stack, magic or
   not, classes (none for a weapon of the creatures), then the powers: armor
