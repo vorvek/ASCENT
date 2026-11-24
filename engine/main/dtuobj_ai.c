@@ -738,12 +738,18 @@ static int body_line_free(object *obj,vms_vector *p)
 {
 	fvi_query fq;
 	fvi_info hit;
-	fix r = path_body_radius(obj) - F1_0;
+	fix r = path_body_radius(obj) - F1_0, cyl_r, hh;
+	vms_vector c;
 	int fate;
-
-	if (r < 0x1000)
-		r = 0x1000;
 	int k;
+
+	// not less than the radius of the move (dtu_creature_physics_sim(): a
+	// fourth of the cylinder, plus 1.0 for the walls) and a small margin.
+	// For a small body (a rat) the line was free where its move hit the
+	// corner of an opening.
+	dtu_get_body_cylinder(obj,&c,&cyl_r,&hh);
+	if (r < cyl_r/4 + F1_0/4)
+		r = cyl_r/4 + F1_0/4;
 
 	// The line to p, and the line at the height of the center of the body
 	// (the body walks level, a line that goes up a stair can be free where
