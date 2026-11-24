@@ -47,6 +47,7 @@ item. All pass. The `-chartest` commands `fire` and the `dump` line
 | G14 | 0xB6FE3 cuts each stack to its limit before a use. It also makes a count below 1 into 1, so an endless stack goes at its first use. | 0xB6FE3, called by 0xB7084. | Fixed, adc32e8: the cut to the limit. The endless stack stays (a defect, no shipped item has one) |
 | G15 | The drop places the item by a guess (ahead of the player). | 0xB717B calls 0x3C93B: it sets the contains fields of the player object and calls object_create_egg 0x3C4BD, so the item starts at the player. | Open, small. The pick up delay of 5 s (0xB72BA) is in the port |
 | G16 | Find Traps marker object of a found trap. | 0xB3605. | Open, cosmetic (thief area) |
+| G17 | A mage with the Ring of Armoring and Armor: Bracers of Defense AC6 gave AC 6 and AC8 gave AC 5 (with Shield, AC4 gave 4 and AC8 gave 3). The 1 better of the ring goes only to an armor class worse than the cap, so an armor class at the cap stays there. Reported on 2026-11-24 (AC8 replaced by AC6, the armor class got worse). | 0xB05FC (`6 < ac`), 0xB064F (`v < ac`), 0xB067C (`3 < ac`), each followed by 0xAFAD1 (ac - 1 for a mage with the ring). The port copied it in `armoring_ac`. | Fixed (`Dtu_fix_armoring_cap`, -origcombat): the caps are 1 better (Armor 5, Shield 3 and 1, Vestment v - 1), so a better armor never gives a worse armor class. `check_items.py` armoring_bracers |
 
 Checked and found equal: the armor class rules of all places (boot, belt,
 necklace, shield, gauntlet, armor, cloak, rings, lockpicks, hand), the
@@ -212,7 +213,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 13 | Shield +2 | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 14 | Ring of Protection +1 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`), with any armor; the better ring counts (checked) |
 | 15 | Ring of Protection +3 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`), with any armor; the better ring counts (checked) |
-| 16 | Armoring | 0xB0014, 0xAFAD1 | armoring_ac | fixed in a95cbb3: a mage gets 1 better after each cap of Armor, Vestment, Shield (checked) |
+| 16 | Armoring | 0xB0014, 0xAFAD1 | armoring_ac | fixed in a95cbb3: a mage gets 1 better after each cap of Armor, Vestment, Shield (checked); the caps are 1 better with `Dtu_fix_armoring_cap` (G17) |
 | 17 | Ring of Coolness | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |
 | 18 | Ring of Feather Fall | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |
 | 19 | Ring of Flying | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |

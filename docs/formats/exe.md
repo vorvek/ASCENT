@@ -48,6 +48,10 @@ the file.
 Verified: the bytes at 0x145C04 (53 ints), 0x1458B8, 0x13A956, 0x145CD8, 0x1461C8 and
 0x1403D2 read this way are the same as in `dtu_flat.bin`.
 
+Verified (2026-11-24): 0x145C04 is at file offset 0x1A0004 of `DTUGAME.EXE`; its low bytes
+for armor 39 to 42 (Bracers of Defense AC8, AC6, AC4, AC2) are -2, -4, -6, -8, the same as
+the `armor_class_decrement` of these lines (2, 4, 6, 8) in all 46 level tables that have them.
+
 ## Fixups
 
 A pointer in the data has the offset inside its target object in the file; the loader

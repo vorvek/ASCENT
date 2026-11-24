@@ -121,6 +121,7 @@ int Dtu_fix_cursed_scroll = 1;
 int Dtu_fix_potion_class = 1;
 int Dtu_fix_creature_missile = 1;
 int Dtu_fix_bracers_ac = 1;
+int Dtu_fix_armoring_cap = 1;
 int Dtu_fix_ring_magic_armor = 1;
 int Dtu_fix_prot_saves = 1;
 int Dtu_fix_ability_saves = 1;
@@ -264,7 +265,7 @@ static void read_options(void)
 		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
-			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_ring_magic_armor =
+			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_armoring_cap = Dtu_fix_ring_magic_armor =
 			Dtu_fix_prot_saves = Dtu_fix_ability_saves = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
@@ -737,20 +738,25 @@ static void worn_effects(void)
 // of Armor, Magical Vestment and Shield of dtu_spell_player_ac(), each
 // followed by 1 better armor class (0xB05FC, 0xB064F, 0xB067C).
 // ASCENT: missile: the value against missiles (Shield, Dtu_fix_shield_ac).
+// ASCENT: Dtu_fix_armoring_cap: 1.3 gives the 1 only to an armor class
+// worse than the cap, so an armor class at the cap stays there: with Armor,
+// Bracers of Defense AC6 give 6 and AC8 give 5. Corrected: the cap is 1
+// better (Armor 5), so a better armor never gives a worse armor class.
 static int armoring_ac(int ac, int missile)
 {
 	int shield = dtu_spell_shield_ac(missile);
 	int w = (ConsoleObject && ConsoleObject->type == OBJ_PLAYER) ? ConsoleObject->dtu.m_88 : 0;
+	int f = Dtu_fix_armoring_cap ? 1 : 0;
 
-	if ((w & DTU_FX_ARMOR) && ac > 6)
+	if ((w & DTU_FX_ARMOR) && ac > 6 - f)
 		ac = 6 - 1;
 	if (w & DTU_FX_VESTMENT) {
 		int L = dtu_spell_player_level(35), v = 5 - (L - 5) / 3;
 
 		if (v < 1) v = 1;
-		if (v < ac) ac = v - 1;
+		if (v - f < ac) ac = v - 1;
 	}
-	if ((w & DTU_FX_SHIELD) && ac > shield)
+	if ((w & DTU_FX_SHIELD) && ac > shield - f)
 		ac = shield - 1;
 	if (w & DTU_FX_SLOW)
 		ac += 4;

@@ -625,6 +625,9 @@ FIXES = [
                                           "The statistics screen shows the five saves."),
     ("Dtu_fix_bracers_ac", "-origcombat", "Rings and cloaks of protection count with the Bracers of "
                                           "Defense; in 1.3 the bracers are magic armor and they do not."),
+    ("Dtu_fix_armoring_cap", "-origcombat", "With the Ring of Armoring a better armor never gives a mage a "
+                                            "worse armor class under Armor, Magical Vestment or Shield; in "
+                                            "1.3 Bracers of Defense AC6 give AC 6 with Armor and AC8 give AC 5."),
     ("Dtu_fix_ring_magic_armor", "-origcombat", "Only the highest magic protection bonus counts, of the magic "
                                                 "of the armor, a Ring, a Cloak and an Amulet of Protection; "
                                                 "they count with any armor and shield. In 1.3 no ring counts "
