@@ -214,6 +214,65 @@ int plat_is_fullscreen(void)
 	return Borderless;
 }
 
+// ASCENT: SDL3 makes a test context of GLX with no X11 error handler
+// (X11_GL_InitExtensions). If the X server refuses the context (a system
+// without direct rendering), the default handler of Xlib stops the program:
+// the SDL renderer is not tried. While the window is made, this handler
+// counts the errors and the program continues.
+#if defined(__unix__) && !defined(__APPLE__)
+typedef int (*x_error_fn)(void *display, void *event);
+static int X_errors;
+static int X_catching;
+static x_error_fn X_old_handler;
+static x_error_fn (*X_set_handler)(x_error_fn);
+static int (*X_sync)(void *display, int discard);
+
+static int x_count_error(void *display, void *event)
+{
+	(void) display;
+	(void) event;
+	X_errors++;
+	return 0;
+}
+
+static void x_errors_catch(void)
+{
+	const char *driver = SDL_GetCurrentVideoDriver();
+	SDL_SharedObject *lib;
+
+	if (!driver || SDL_strcmp(driver, "x11") != 0)
+		return;
+	lib = SDL_LoadObject("libX11.so.6");	// the library that SDL has open
+	if (!lib)
+		return;
+	X_set_handler = (x_error_fn (*)(x_error_fn)) SDL_LoadFunction(lib, "XSetErrorHandler");
+	X_sync = (int (*)(void *, int)) SDL_LoadFunction(lib, "XSync");
+	if (!X_set_handler || !X_sync)
+		return;
+	X_old_handler = X_set_handler(x_count_error);
+	X_catching = 1;
+}
+
+// Put back the handler of SDL. The errors arrive late: get them first.
+static void x_errors_release(void)
+{
+	if (!X_catching)
+		return;
+	if (Window) {
+		void *display = SDL_GetPointerProperty(SDL_GetWindowProperties(Window),
+			SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+		if (display)
+			X_sync(display, 0);
+	}
+	X_set_handler(X_old_handler);
+	X_catching = 0;
+}
+#else
+static int X_errors;
+#define x_errors_catch()
+#define x_errors_release()
+#endif
+
 // The OpenGL window. Returns 0 if successful.
 static int open_gl_window(const char *title, int ww, int wh)
 {
@@ -270,14 +329,28 @@ int plat_init(const char *title, int w, int h, int scale)
 	Win_w = w * scale;
 	Win_h = (int) (Win_w / plat_frame_aspect(w, h) + 0.5f);	// ASCENT: 960x720 for 320x200 at 4:3
 
+	x_errors_catch();
 	// ASCENT_NO_GL=1: the SDL_Renderer form (a test aid for the systems
 	// without OpenGL 3.3)
-	if (!SDL_getenv("ASCENT_NO_GL") && open_gl_window(title, Win_w, Win_h) == 0) {
-		Use_gl = 1;
-		apply_window_icon();
-		// The game draws its own cursor.
-		SDL_HideCursor();
-		return plat_set_frame_size(w, h);
+	if (!SDL_getenv("ASCENT_NO_GL")) {
+		int ok = open_gl_window(title, Win_w, Win_h) == 0;
+		// ASCENT: X11 refused the context of GLX. Try EGL, which does not
+		// use GLX.
+		if (!ok && X_errors && !SDL_getenv("SDL_VIDEO_FORCE_EGL")) {
+			plat_log("GLX context refused (%d X11 errors, %s): EGL is tried", X_errors, SDL_GetError());
+			SDL_SetHint(SDL_HINT_VIDEO_FORCE_EGL, "1");
+			ok = open_gl_window(title, Win_w, Win_h) == 0;
+			if (!ok)
+				SDL_ResetHint(SDL_HINT_VIDEO_FORCE_EGL);
+		}
+		if (ok) {
+			x_errors_release();
+			Use_gl = 1;
+			apply_window_icon();
+			// The game draws its own cursor.
+			SDL_HideCursor();
+			return plat_set_frame_size(w, h);
+		}
 	}
 
 	// ASCENT: the session log (plat_log.c) tells why the GPU renderer is off
@@ -294,8 +367,11 @@ int plat_init(const char *title, int w, int h, int scale)
 	}
 	if (!SDL_CreateWindowAndRenderer(title, Win_w, Win_h,
 			SDL_WINDOW_RESIZABLE | (Start_hidden ? SDL_WINDOW_HIDDEN : 0),
-			&Window, &Renderer))
+			&Window, &Renderer)) {
+		x_errors_release();
 		return -1;
+	}
+	x_errors_release();
 	if (!Start_hidden && !Start_windowed)
 		enter_borderless();
 	apply_window_icon();
