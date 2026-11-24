@@ -1541,7 +1541,8 @@ static int hint_creature(int objnum,int weapon)
 		return 0;
 	if ((o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) || o->shields < F1_0 || DTU_ANIM_STATE(o) == DAS_DIE)
 		return 0;
-	if (weapon != -2 && (Monster_info[o->id].flags & MONSTER_F_WEAPON_RESISTANT) && !(weapon >= 0 && weapon_flag(weapon,"magic")))
+	if (weapon != -2 && (Monster_info[o->id].flags & MONSTER_F_WEAPON_RESISTANT) && !(weapon >= 0 && weapon_flag(weapon,"magic")) &&
+			!dtu_char_launcher_magic(weapon))
 		return 0;
 	return 1;
 }
@@ -1606,6 +1607,7 @@ static void combat_init(void)
 		Dtu_fix_damage_save = 0;
 		Dtu_fix_dex_missile = 0;
 		Dtu_fix_thrown_launcher = 0;
+		Dtu_fix_launcher_magic = 0;
 		Dtu_fix_thrown_str_hit = 0;
 		Dtu_fix_spell_hours = 0;
 		Dtu_fix_turn_undead = 0;

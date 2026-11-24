@@ -1036,9 +1036,12 @@ fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon
 			return 0;
 		}
 		// 0x29D9D: a creature with weapon_resistant takes no damage from
-		// a natural weapon or from a weapon that is not magic.
+		// a natural weapon or from a weapon that is not magic. ASCENT: a
+		// missile of the player from a magic launcher is magic
+		// (Dtu_fix_launcher_magic, dtuchar.h).
 		if ((Monster_info[creature->id].flags & MONSTER_F_WEAPON_RESISTANT) &&
-			 (weapon < 0 || !bm_tbl_has_flag(Weapon_item_info[weapon].record,"magic"))) {
+			 (weapon < 0 || !bm_tbl_has_flag(Weapon_item_info[weapon].record,"magic")) &&
+			 !(attacker && attacker->type == OBJ_PLAYER && dtu_char_launcher_magic(weapon))) {
 			dtu_obj_log("attack: obj %d %s is weapon resistant",(int)(creature-Objects),dtu_object_name(creature));
 			return 0;
 		}
