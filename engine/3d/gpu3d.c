@@ -713,6 +713,18 @@ int g3_gpu_texture_generation(void)
 // ---------------------------------------------------------------------
 // Polygons
 
+//The light of a point as the software mapper sees it. draw_tmap of 1.3
+//(0xEA4C4) and of ntmap.c shift the fix light left by 5 (times
+//NUM_LIGHTING_LEVELS) in 32 bits, and the scanline selector (0xE906C)
+//clamps the result to 0 .. 0x1F8000. A light of 1024 or more wraps: side 4
+//of segment 204 of THIEF1 has 0x832FD5E8 (-31952) in the level file, which
+//the shift makes 0x65FABD00, the brightest row. The GPU clamps the light
+//itself, so only the wrap is done here.
+static float gpu_light(fix l)
+{
+	return (float) (int32_t) ((uint32_t) l << 5) / (65536.0f * NUM_LIGHTING_LEVELS);
+}
+
 //A projected point (a clipped polygon of the 3d library): the position
 //times the depth (plat_gpu_vertex).
 static void make_vertex(plat_gpu_vertex *o,g3s_point *p)
@@ -725,7 +737,7 @@ static void make_vertex(plat_gpu_vertex *o,g3s_point *p)
 	o->z = z;
 	o->u = p->p3_u / 65536.0f;
 	o->v = p->p3_v / 65536.0f;
-	o->l = p->p3_l / 65536.0f;
+	o->l = gpu_light(p->p3_l);
 	o->lq[0] = -1.0f;
 }
 
@@ -743,7 +755,7 @@ static void make_vertex_3d(plat_gpu_vertex *o,g3s_point *p)
 	o->z = z;
 	o->u = p->p3_u / 65536.0f;
 	o->v = p->p3_v / 65536.0f;
-	o->l = p->p3_l / 65536.0f;
+	o->l = gpu_light(p->p3_l);
 	o->lq[0] = -1.0f;
 }
 
@@ -776,7 +788,7 @@ static void draw_face(int nv,g3s_point **pointlist,plat_gpu_material *m)
 			v[i].s = st[i][0];
 			v[i].t = st[i][1];
 			for (k=0;k<4;k++)
-				v[i].lq[k] = pointlist[k]->p3_l > 0 ? pointlist[k]->p3_l / 65536.0f : 0.0f;
+				v[i].lq[k] = fmaxf(gpu_light(pointlist[k]->p3_l), 0.0f);
 		}
 	plat_gpu_draw(v,nv,m);
 }
