@@ -145,6 +145,9 @@ int N_polygon_models = 0;
 // ASCENT: D-050, see polyobj.h
 int Dtu_fix_model_mapper = 1;
 
+// ASCENT: D21, see polyobj.h
+int Dtu_fix_rat_die = 1;
+
 #define MAX_POLYGON_VECS 1000
 g3s_point robot_points[MAX_POLYGON_VECS];
 
@@ -1290,6 +1293,33 @@ static fixang angle_lerp(fixang a,fixang b,fix frac)
 	return (fixang) (a + fixmul(d,frac));
 }
 
+static int angvec_dist(const vms_angvec *a,const vms_angvec *b)
+{
+	return abs((fixang) (b->p - a->p)) + abs((fixang) (b->b - a->b)) + abs((fixang) (b->h - a->h));
+}
+
+// ASCENT: the joint angles frac of the way from a to b. Each orientation
+// has two angle triples: (p,b,h) and (0x8000-p,b+0x8000,h+0x8000) give the
+// same matrix (vm_angles_2_matrix). Near a pitch of 90 degrees the models
+// switch between the two from one frame to the next (ghu_y.pof sub 15,
+// frames 4 and 5: (-85,0,0) and (-87,-180,-180) degrees, 8 degrees apart).
+// A lerp of each angle would turn bank and heading by 180 degrees on the
+// way (the arm rolls once around). The lerp takes the triple of b that
+// is nearer to a.
+static void angvec_lerp(vms_angvec *out,const vms_angvec *a,const vms_angvec *b,fix frac)
+{
+	vms_angvec alt;
+
+	alt.p = (fixang) (0x8000 - b->p);
+	alt.b = (fixang) (b->b + 0x8000);
+	alt.h = (fixang) (b->h + 0x8000);
+	if (angvec_dist(a,&alt) < angvec_dist(a,b))
+		b = &alt;
+	out->p = angle_lerp(a->p,b->p,frac);
+	out->b = angle_lerp(a->b,b->b,frac);
+	out->h = angle_lerp(a->h,b->h,frac);
+}
+
 void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int next,fix frac,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[])
 {
 	static vms_angvec lerp_angles[MAX_POLYMODEL_SUBMODELS];
@@ -1363,17 +1393,14 @@ void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_
 
 	angles = (frame == -1) ? NULL : po->anim_angles + frame*po->n_models;
 
-	// ASCENT: animation interpolation: each joint angle between the two
-	// frames, the short way around.
+	// ASCENT: animation interpolation: each joint between the two frames,
+	// the short way around.
 	if (next != -1) {
 		vms_angvec *a = po->anim_angles + frame*po->n_models;
 		vms_angvec *b = po->anim_angles + next*po->n_models;
 
-		for (i=0;i<po->n_models;i++) {
-			lerp_angles[i].p = angle_lerp(a[i].p,b[i].p,frac);
-			lerp_angles[i].b = angle_lerp(a[i].b,b[i].b,frac);
-			lerp_angles[i].h = angle_lerp(a[i].h,b[i].h,frac);
-		}
+		for (i=0;i<po->n_models;i++)
+			angvec_lerp(&lerp_angles[i],&a[i],&b[i],frac);
 		angles = lerp_angles;
 	}
 
@@ -1449,6 +1476,81 @@ fix polyobj_anim_track_update(polyobj_anim_track *t,int key,int state,int frame,
 		frac = F1_0;
 	*next = frame + dir;
 	return frac;
+}
+
+// ASCENT: Dtu_fix_rat_die (D21, polyobj.h). The point p turned by 180
+// degrees about the line through o along z.
+static void rat_turn_point(vms_vector *p,const vms_vector *o)
+{
+	p->x = 2*o->x - p->x;
+	p->y = 2*o->y - p->y;
+}
+
+// The turn swaps the low and the high x and y of a box.
+static void rat_turn_box(vms_vector *mn,vms_vector *mx,const vms_vector *o)
+{
+	vms_vector a = *mn, b = *mx;
+
+	rat_turn_point(&a,o);
+	rat_turn_point(&b,o);
+	mn->x = b.x; mx->x = a.x;
+	mn->y = b.y; mx->y = a.y;
+}
+
+static void rat_turn_dir(vms_vector *v)
+{
+	v->x = -v->x;
+	v->y = -v->y;
+}
+
+// The DIE frames of rat_l2.pof (the GiantRat of the tables, the same data
+// in the 8 archives that have it). The body (submodel 1) has the bank
+// -180 in frames 88 to 92, on its back, and 0 in frames 93 to 95, upright,
+// while the legs go on with the kicks of a body on its back. The game holds
+// frame 95 for the corpse (0x11350), so the corpse stands with its legs in
+// the air. The boxes of frames 93 to 95 belong to that upright pose. The
+// fix turns the body of these frames by 180 degrees about the z line through
+// its joint: (p,0,h) becomes (-p,-180,-h), the same as the old pose turned
+// about that line, so the boxes and centers turn with it. Half heights and
+// radii do not change.
+static void fix_rat_die(polymodel *pm,const char *name)
+{
+	vms_angvec *a;
+	vms_vector o;
+	int f, n = pm->n_models;
+
+	if (stricmp(name,"rat_l2.pof") || n != 27 || pm->n_frames != 109 || !pm->anim_angles)
+		return;
+	for (f=88;f<=95;f++) {
+		a = &pm->anim_angles[f*n];
+		if (a[0].p || a[0].b || a[0].h || a[1].b != (fixang) (f <= 92 ? 0x8000 : 0))
+			return;		// not the data of the archives
+	}
+	o = pm->submodel_offsets[1];
+	for (f=93;f<=95;f++) {
+		a = &pm->anim_angles[f*n+1];
+		a->p = -a->p;
+		a->b = (fixang) 0x8000;
+		a->h = -a->h;
+		rat_turn_box(&pm->box1_min[f+1],&pm->box1_max[f+1],&o);
+		if (pm->body_center)
+			rat_turn_point(&pm->body_center[f+1],&o);
+		if (pm->box_flags & DTU_BOX_WEAPON) {
+			rat_turn_box(&pm->box2_min[f],&pm->box2_max[f],&o);
+			if (pm->weapon_center)
+				rat_turn_dir(&pm->weapon_center[f]);
+		}
+		if (pm->box_flags & DTU_BOX_WEAPON2) {
+			rat_turn_box(&pm->box4_min[f],&pm->box4_max[f],&o);
+			if (pm->weapon2_center)
+				rat_turn_dir(&pm->weapon2_center[f]);
+		}
+		if (pm->box_flags & DTU_BOX_TORSO) {
+			rat_turn_box(&pm->box8_min[f],&pm->box8_max[f],&o);
+			if (pm->torso_center)
+				rat_turn_dir(&pm->torso_center[f]);
+		}
+	}
 }
 
 int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_avail)
@@ -1562,6 +1664,11 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 		return -1;
 	}
 
+	memcpy(Pof_names[N_polygon_models],header+0x3D,12);
+	Pof_names[N_polygon_models][12] = 0;
+	if (Dtu_fix_rat_die)
+		fix_rat_die(pm,Pof_names[N_polygon_models]);
+
 	// Until a table line names the model, it draws with the texture slots
 	// that follow slot 0. load_polygon_model() sets the real values.
 	pm->n_textures = pm->dtu_n_textures_file;
@@ -1570,9 +1677,6 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 	pm->first_texture = 0;
 	pm->simpler_model = 0;
 	pm->dtu_bound = 0;
-
-	memcpy(Pof_names[N_polygon_models],header+0x3D,12);
-	Pof_names[N_polygon_models][12] = 0;
 
 	N_polygon_models++;
 

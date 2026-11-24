@@ -250,6 +250,13 @@ void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_
 // it. The GPU renderer is perspective correct in both cases.
 extern int Dtu_fix_model_mapper;
 
+// ASCENT: D21 (bugs.md), a defect of the model data. In rat_l2.pof (the
+// GiantRat) the last three DIE frames (93 to 95) turn the body upright
+// again while the legs kick as on its back, and the corpse keeps frame 95.
+// Corrected (1, default): the loader turns the body of these frames onto
+// its back, with their boxes. -origobj clears it.
+extern int Dtu_fix_rat_die;
+
 // ASCENT: D-054, the texture slots of $WEAPON and $SPELL models (bmread.c).
 // 1: the slots of the table line. 0 (-origobj): the header rule of 1.3.
 extern int Dtu_fix_model_slots;

@@ -644,7 +644,18 @@ make them again.
   `ascent.cfg`, item of the Graphics menu, option `-noaniminterp`):
   `draw_polygon_model_frame_lerp` draws the joint angles (each the short way around,
   as a signed 16-bit difference) and the body center between the frame of the game and
-  the next frame of the state. `polyobj_anim_track_update` gives the next frame and
+  the next frame of the state. Each orientation has two angle triples: `(p, b, h)` and
+  `(0x8000 - p, b + 0x8000, h + 0x8000)` give the same `vm_angles_2_matrix` (checked
+  with `tools/model.py angles_matrix`, 2000 random triples, largest difference 2e-6
+  degrees). Near a pitch of 90 degrees the data switches between the two from one frame
+  to the next: `ghu_y.pof` submodel 15 (an arm), walk frames 4 and 5, is `(-85, 0, 0)`
+  then `(-87, -180, -180)` degrees, 8 degrees apart. A lerp of each angle turns bank and
+  heading by 180 degrees on the way, and the arm rolls once around between two frames.
+  The lerp takes the triple of the next frame that is nearer (sum of the three
+  differences). Over the 461793 in-state frame pairs of the 1217 animated models of the
+  archives, the path of the plain lerp leaves the shortest rotation by more than 20
+  degrees in 1108 pairs, with the nearer triple in 5 (at most 22 degrees, on steps of
+  100 to 154 degrees). `polyobj_anim_track_update` gives the next frame and
   the fraction: it learns the time of one frame from the frame changes that the draw
   sees (the mean since the first change of the state), or takes it from the state time
   where the game counts the frames by time (active creatures 0x11018: `state_time / (n
@@ -655,6 +666,22 @@ make them again.
   leads the frame of the game by up to one frame (it reaches the pose of frame F+1
   when the game frame becomes F+1). Callers: `dtu_draw_polygon_object` (creatures,
   players) and `dtu_combat_draw_view` (the arms).
+- A defect of the data (bugs.md D21): `rat_l2.pof`, the GiantRat (27 submodels, 109
+  frames, the same joint angles in BANE, BEHOLDER, BONES, CLAN, DROW, MULHOR, PRISON and
+  THIEF .EGG). In DIE (frames 84 to 95) the body, submodel 1, is `(15, 0, 0)` degrees in
+  frame 87, `(3, -180, 0)` in frames 88 to 92 (on its back, legs kicking), then `(0, 0,
+  0)`, `(1, 0, 0)`, `(3, 0, 0)` in frames 93 to 95: upright again, while the legs go on
+  with the kicks of a body on its back. Submodel 0 is `(0, 0, 0)` in all these frames.
+  The boxes of frames 93 to 95 are of the upright pose (frame 93: `box1` x -1.565 to
+  2.934, the mirror of frame 88, -2.934 to 1.565). The creature holds frame 95 at the end
+  of DIE (0x11350), so its corpse stands. `rat_s.pof` (the Rat) keeps the bank -180 from
+  frame 88 to 95. `Dtu_fix_rat_die` (polyobj.c, on by default, off with `-origobj`) sets
+  frames 93 to 95 of submodel 1 to `(-p, -180, -h)`: the old pose turned by 180 degrees
+  about the z line through the joint of submodel 1 (offset 0, 0.516, 0.149), so the
+  loader turns `box1`, `box2`, `box8` and `body_center` of these frames with it (x to
+  -x, y to 1.032 - y) and negates x and y of `torso_center` and `weapon_center`. Half
+  heights and radii do not change. The sheet of `tools/model.py` with this change shows
+  the rat on its back to frame 95, the legs drawn in.
 - Not in the port: the magic effect (flag 0x20, effect modes), the special draw 0x673AD,
   the texture pulse, the draw of the viewer (the arms of the player), the model change of
   the player.
