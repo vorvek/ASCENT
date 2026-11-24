@@ -193,6 +193,15 @@ extern int Dtu_fix_corpse_floor;
 // the box of the rest pose. Only the drawing changes.
 extern int Dtu_fix_creature_feet;
 
+// The bodies of two creatures. Original: the move of a creature puts each
+// creature that it hits in the ignore list of its query and moves on
+// (0x9FB1C, monster_physics 0x9F153), so creatures walk through each
+// other, and all creatures of a group stand in one place at the player
+// and hit. Corrected: a hostile creature does not walk into the body of
+// another creature that lives. It slides around the body, or stops when
+// there is no way. Only the move of a creature changes.
+extern int Dtu_fix_creature_crowd;
+
 // The tint of Detect Magic (0x14C4CD, docs/re/spells.md). Original: a
 // magic bitmap or rod object leaves the tint on for the next polygons until
 // a polygon model clears it, and the linear texture mapper tints only the

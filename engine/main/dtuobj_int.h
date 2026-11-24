@@ -105,6 +105,11 @@ typedef struct dtu_ai_local {
 	short		stall_tgt;				// the point where the creature was blocked
 	ubyte		body_line;				// the line to the player is free for the body
 	ubyte		keep_off;				// the player is above and out of reach (keep_off_player())
+	// Dtu_fix_creature_crowd (crowd_block()): the creature that blocks the
+	// move and the time that it did, and the creature that this one walks
+	// through to end a jam. Object number + 1, 0: none. Not in a saved game.
+	short		crowd_obj, crowd_pass;
+	fix		crowd_time;
 	// test log of -objlogpos: the hits of the move since the last line
 	short		log_hits[4];			// wall, top, floor, object
 	short		log_hit_seg, log_hit_side;
