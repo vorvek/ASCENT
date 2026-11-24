@@ -41,6 +41,7 @@ Most important first. "Before" is the port before this audit.
 | Q15 | The floor triggers of the segment of the player fire again when a script teleports the player (0x59EB9 in the warp check). | 0xAA3A5 | Not ported: the same class as `Dtu_fix_trigger_repeat` |
 | Q16 | Condition 98 (the morale, world W15) uses 0 + 500. | No script of GABE 1.3 uses condition 98 | No effect |
 | Q17 | The market stock of the mission rewards (`dtu_hook_market_add_stock`). | scripts.md section 8 | Not checked here (the front end) |
+| Q18 | Straum (BONES script 31) stayed standing after the Ankh quest. Label 910 ends with statement BC, which sets his hit points to 0; the end of the run kills an object below 1.0 hit points, but the kill of the port did damage to a creature only from 1.0 hit points up, so nothing happened. | 0xAC033 to 0xAC045 and 0xAA2EE to 0xAA303 pass 1.0 in ebx; 0xA6B6A stores ebx in the hit points (+0x6C), then 0x29A9C(object, 0, ebx, -1). Statement ED passes the hit points of the object (0xAA97C). Tests `bones_straum_ankh`, `bones_straum_dead_saveload` | Fixed (port bug, `obj_kill` of dtuscript.c). He dies, drops the Ankh, and stays dead after a load. A save made with the bug keeps him standing at 0 hit points (he does not talk) |
 
 ## Script statements (GABE 1.3)
 

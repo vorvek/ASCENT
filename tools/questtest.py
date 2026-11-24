@@ -441,7 +441,18 @@ TESTS = [
       "10:give=16.14,12:kill=106,14:objflag=55.1,15:resume=55.700,20:talkscript=31,40:talkscript=31,60:talkscript=31,"
       "80:talkscript=31,100:talkscript=31,120:talkscript=31,1780:quest,1781:obj=55",
       [r"run script 31 of obj 55 .* at label 2BC", r"take class 16 id 14", r"gold 100 -> 8100", r"experience: \+600 ",
-       r"quest: level 3 .* gold 8100 ", r"obj 55: .* contains 16\.14 x1"],
+       r"quest: level 3 .* gold 8100 ", r"death: obj 55, attacker none, xp -1", r"obj 55: .* hp 0 flags 0x4 .* anim 9"],
+      frames=1800, dlg="1,1,1,5," + ONES),
+    # Label 910 ends with statement BC (ANIM 9): the hit points of Straum
+    # become 0, and the end of the run kills him (0xAC033: 0xA6ACB sets the
+    # hit points to 1.0 and does 1.0 damage). He stays dead after a save
+    # and a load, and the talk does not start again.
+    T("bones_straum_dead_saveload", "BONES",
+      "10:give=16.14,12:kill=106,14:objflag=55.1,15:resume=55.700,20:talkscript=31,40:talkscript=31,60:talkscript=31,"
+      "80:talkscript=31,100:talkscript=31,120:talkscript=31,1700:save=3,1710:load=3,1750:talkscript=31,1780:quest,1781:obj=55",
+      [r"death: obj 55, attacker none, xp -1", r"quest: level 3 .* gold 8100 ",
+       r"f1781 +obj 55: .* hp 0 flags 0x4 .* anim 9"],
+      [r"run script 31 of obj 55 .* in mode 0 at label (?!2BC)"],
       frames=1800, dlg="1,1,1,5," + ONES),
 
     # Area spells hit the caster in the area: 0x90CEF has no test of the

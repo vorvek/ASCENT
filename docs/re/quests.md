@@ -222,7 +222,13 @@ magical item, 720 armor, 730 spells, 740 a weapon, 750 8000 gold, 760 power
 (one chance in four: statement 9F, one level more; else constitution and
 charisma + 1), 770 the Yawning Portal (DB level 0 segment 33), 780 later,
 790 anything, 795 nothing. Label 910 gives 600 experience. At label 900
-Straum leaves (TELEPORT_SELF, then segment 0xFFFF).
+Straum, with the Ankh, rises (TELEPORT_SELF to segments 440, 441 and 442,
+each in four facings) and goes to label 910: the player gets the hit
+points, four spells and the experience; "his formal shell crumbles to the
+floor", then statement BC (ANIM 9) sets his hit points to 0. The end of the
+run (0xAC033) calls 0xA6ACB(Straum, 0, 1.0): the hit points become 1.0
+(0xA6B6A) and 0x29A9C does 1.0 damage with no attacker, so he dies (no
+experience) and drops the Ankh. 1.3 does not leave him standing.
 
 **V** Flag 1 is the "wary" flag of the status code (0xAAA32): while it is
 set, a talk starts only when `rand() % 20 + 1` is not above the charisma;
@@ -234,8 +240,12 @@ the flag `OF_DTU_NOHIT` (`fix_nohit`, dtuobj_setup.c). Test `mulhor1_ankh`: the
 player takes object 33. Test `mulhor1_ankh_flagged`: the six have flag 0x40,
 the player walks into object 91 and does not take it (the build of the port
 without the flag takes it). Test `bones_straum_ankh`: label 700 takes the
-Ankh, reply 5 gives 8000 gold, 600 experience, Straum carries the Ankh and
-leaves.
+Ankh, reply 5 gives 8000 gold, 600 experience, and Straum dies at the end
+of the run (anim 9). Test `bones_straum_dead_saveload`: he is still dead
+after a save and a load, and a talk does not start. The port had left him
+standing at 0 hit points: its kill did damage only to a creature with 1.0
+hit points or more and did not set them to 1.0 first (fixed, `obj_kill` of
+dtuscript.c).
 
 ## 7. What the port does not have
 

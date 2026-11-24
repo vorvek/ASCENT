@@ -771,14 +771,19 @@ static int obj_dead(int n)
 
 static const char *Kill_why;		// ASCENT: the cause of the kill for the session log
 
-// 0xA6ACB: kill an object
-static void obj_kill(object *o)
+// 0xA6ACB: kill an object. For a creature it sets the hit points to hp
+// (+0x6C, 0xA6B6A) and does hp damage with no attacker (0x29A9C, weapon -1).
+// The end of a run passes 1.0 (0xAC040, 0xAA2FE), so a creature that
+// statement BC left at 0 hit points dies (Straum, script 31 label 910).
+// Statement ED passes the hit points of the object (0xAA97C).
+static void obj_kill(object *o, fix hp)
 {
 	if (!o)
 		return;
 	if (o->type == OBJ_ROBOT) {
 		dtu_xp_cause(Kill_why ? Kill_why : "script statement kill (0xA6ACB)");	// ASCENT: the session log (dtuxp.h)
-		dtu_damage_creature_direct(o, NULL, o->shields > 0 ? o->shields + F1_0 : F1_0);
+		o->shields = hp;
+		dtu_damage_creature_direct(o, NULL, hp);
 		dtu_xp_cause(NULL);
 	}
 	else if (o->type == OBJ_PLAYER)
@@ -801,7 +806,7 @@ static void kill_after_run(object *o)
 	if (o && o->shields < F1_0 && (o->type == OBJ_ROBOT || o->type == OBJ_DRESSING) &&
 		 !(o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))) {
 		Kill_why = "script: below 1 hit point at the end of a run (0xAC033)";
-		obj_kill(o);
+		obj_kill(o, F1_0);
 		Kill_why = NULL;
 	}
 }
@@ -2201,7 +2206,8 @@ static int sc_exec(sc_run *r)
 			} else {
 				v = num(r);
 				slog("kill obj %d", v);
-				obj_kill(obj_num(v));
+				if (obj_num(v))
+					obj_kill(obj_num(v), obj_num(v)->shields);
 			}
 			break;
 		case 0xEE: {								// 0xAA989
