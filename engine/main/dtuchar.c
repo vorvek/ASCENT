@@ -50,6 +50,7 @@
 #include "wall.h"			// ASCENT: the test command wall of -chartest
 #include "gameseq.h"		// ASCENT: Current_level_num for the test command quest
 #include "dtuscroll.h"	// ASCENT: the text screen of the Scroll
+#include "dtulog.h"		// ASCENT: the session log line of a save of the player
 #include "dtudesc.h"		// ASCENT: the test commands of the description window
 #include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up, the session log lines
 #include "dtufe.h"		// ASCENT: the class mask of the front end (Dtu_fix_level_thief)
@@ -117,6 +118,10 @@ int Dtu_fix_speed_items = 1;
 int Dtu_fix_cursed_scroll = 1;
 int Dtu_fix_potion_class = 1;
 int Dtu_fix_creature_missile = 1;
+int Dtu_fix_bracers_ac = 1;
+int Dtu_fix_ring_magic_armor = 1;
+int Dtu_fix_prot_saves = 1;
+int Dtu_fix_ability_saves = 1;
 int Dtu_backstab = 0;
 int Dtu_auto_choice = -1;
 static int Dtu_last_attack_roll = 0;
@@ -257,7 +262,8 @@ static void read_options(void)
 		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
-			Dtu_fix_creature_strength = Dtu_fix_shield_ac = 0;
+			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_ring_magic_armor =
+			Dtu_fix_prot_saves = Dtu_fix_ability_saves = 0;
 	if ((t = FindArg("-autochoice")) != 0 && t + 1 < Num_args)
 		Dtu_auto_choice = atoi(Args[t + 1]);
 }
@@ -513,11 +519,30 @@ static int table_ac(dtu_inv_item *e)
 // ASCENT: the numbers that 0xAFB55 tests, as names (dtu_char_update and
 // dtu_char_item_powers use them)
 static int is_shield(dtu_inv_item *e)		{ return armor_is(e, 2, 2) || armor_is(e, 12, 13); }		// 0xAF9CF
-static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || armor_is(e, 39, 42); }		// 0xAF9F3, 0xAF982
+static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || (!Dtu_fix_bracers_ac && armor_is(e, 39, 42)); }		// 0xAF9F3, 0xAF982
 static int is_heavy_armor(dtu_inv_item *e)	{ return armor_is(e, 3, 4) || armor_is(e, 7, 11); }		// 0xB0B0A
 static int is_prot_cloak(dtu_inv_item *e)	{ return armor_is(e, 47, 49); }								// 0xAF930
 static int is_prot_ring(dtu_inv_item *e)	{ return armor_is(e, 0, 0) || armor_is(e, 14, 15); }		// 0xAF9AB
+static int is_prot_amulet(dtu_inv_item *e)	{ return armor_is(e, 28, 32); }								// ASCENT: Amulets of Protection +1 to +5
 #define LATHANDER_SPELL	8		// armor 45: USE casts Continual Light (0x37A6A)
+
+// ASCENT: the armor class that the magic of a magic armor (5 to 11) adds to
+// the same armor without magic (Leather Armor 1, Chain Mail 3, Plate Mail
+// 4): -1 for a +1 armor. Bracers that are magic armor (Dtu_fix_bracers_ac
+// 0): all of their armor class. 0 for other items. Dtu_fix_ring_magic_armor.
+static int magic_armor_bonus(dtu_inv_item *e)
+{
+	static const ubyte base[7] = { 1, 1, 3, 3, 4, 4, 4 };
+	dtu_inv_item b;
+
+	if (!Dtu_fix_bracers_ac && armor_is(e, 39, 42))
+		return table_ac(e);
+	if (!armor_is(e, 5, 11))
+		return 0;
+	b = *e;
+	b.id = base[e->id - 5];
+	return table_ac(e) - table_ac(&b);
+}
 
 // ASCENT: the armor class that an item adds in a slot (DTU_N_SLOTS: the
 // hand), before the rules that need other items (the cloaks and the rings
@@ -801,7 +826,7 @@ void dtu_char_update(void)
 {
 	dtu_player_attr *pa = &Dtu_char.pa, *base = &Dtu_char.base;
 	dtu_inv_item *e;
-	int sum = 0, ring_best = 0;
+	int sum = 0, ring_best = 0, cloak_best = 0, amulet_best = 0, armor_bonus = 0, ring_counts;
 	int shield = 0, magic_armor = 0, heavy_armor = 0, prot_ring = 0;
 	int ac, dex, missile;
 
@@ -836,9 +861,16 @@ void dtu_char_update(void)
 	}
 
 	// necklace. Armor 33 (Amulet of Shield) gives a spell effect only.
+	// ASCENT: Dtu_fix_ring_magic_armor: an Amulet of Protection (28 to 32)
+	// is one more magic protection bonus, of which only the best counts
+	// (below). 1.3 adds it to all.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_NECKLACE]);
-	if (e)
-		sum += slot_ac(e, DTU_SLOT_NECKLACE);
+	if (e) {
+		if (Dtu_fix_ring_magic_armor && is_prot_amulet(e))
+			amulet_best = slot_ac(e, DTU_SLOT_NECKLACE);
+		else
+			sum += slot_ac(e, DTU_SLOT_NECKLACE);
+	}
 
 	// shield. 0xAF9CF: the numbers 2, 12 and 13 are shields.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_SHIELD]);
@@ -870,12 +902,14 @@ void dtu_char_update(void)
 	}
 
 	// armor. 0xAF9F3: the numbers 5 to 11 are magic armor. 0xAF982: 39 to
-	// 42 are the Bracers of Defense. 0xB0B0A: in the numbers 3, 4 and 7 to
-	// 11 (chain mail, plate mail) three thief skills do not work.
+	// 42 are the Bracers of Defense, magic armor too in 1.3 (0xAFEA6, not
+	// with Dtu_fix_bracers_ac). 0xB0B0A: in the numbers 3, 4 and 7 to 11
+	// (chain mail, plate mail) three thief skills do not work.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_ARMOR]);
 	if (e && e->type == OBJ_ARMOR) {
 		sum += slot_ac(e, DTU_SLOT_ARMOR);
 		magic_armor = is_magic_armor(e);
+		armor_bonus = magic_armor_bonus(e);
 		heavy_armor = is_heavy_armor(e);
 		if (heavy_armor) {								// 0xB0B36
 			pa->hide_in_shadows -= DTU_SKILL_LOSS;
@@ -886,10 +920,17 @@ void dtu_char_update(void)
 
 	// cloak. 0xAF930: the numbers 47 to 49 are the Cloaks of Protection.
 	// They do not work with a shield, magic armor or heavy armor.
+	// ASCENT: Dtu_fix_ring_magic_armor: a Cloak of Protection counts with
+	// any armor and shield, as a Ring of Protection, and only the best magic
+	// protection bonus counts (below).
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_CLOAK]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
-			if (!is_prot_cloak(e) || (!shield && !magic_armor && !heavy_armor))
+			if (!is_prot_cloak(e))
+				sum += slot_ac(e, DTU_SLOT_CLOAK);
+			else if (Dtu_fix_ring_magic_armor)
+				cloak_best = slot_ac(e, DTU_SLOT_CLOAK);
+			else if (!shield && !magic_armor && !heavy_armor)
 				sum += slot_ac(e, DTU_SLOT_CLOAK);
 			if (e->id == 43)								// Cloak of Elvenkind
 				pa->hide_in_shadows = DTU_ELVENKIND_HIDE;
@@ -901,14 +942,15 @@ void dtu_char_update(void)
 	// rings. 0xAF9AB: the numbers 0, 14 and 15 are the Rings of Protection.
 	// No ring adds to magic armor. Of two rings of protection the better one
 	// counts. 21 is the Ring of Health, 26 the Ring of Strength.
+	// ASCENT: Dtu_fix_ring_magic_armor: the best ring counts with any armor
+	// (below).
+	ring_counts = !magic_armor || Dtu_fix_ring_magic_armor;
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_RING1]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
 			prot_ring = is_prot_ring(e);
-			if (!magic_armor) {
-				if (prot_ring) ring_best = table_ac(e);
-				else sum += table_ac(e);
-			}
+			if (prot_ring && ring_counts) ring_best = table_ac(e);
+			else if (!prot_ring && !magic_armor) sum += table_ac(e);
 			if (e->id == 21) pa->constitution = DTU_RING_CONSTITUTION;
 			if (e->id == 26) { pa->strength = DTU_RING_STRENGTH; pa->strength_extra = 0; }
 		}
@@ -918,21 +960,29 @@ void dtu_char_update(void)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_RING2]);
 	if (e) {
 		if (e->type == OBJ_ARMOR) {
-			int this_prot = is_prot_ring(e);
 			int v = table_ac(e);
 
-			prot_ring |= this_prot;
-			if (!magic_armor) {
-				if (prot_ring) { if (v < ring_best) ring_best = v; }
-				else if (!this_prot) sum += v;
-			}
+			prot_ring |= is_prot_ring(e);
+			if (prot_ring && ring_counts) { if (v < ring_best) ring_best = v; }
+			else if (!prot_ring && !magic_armor) sum += v;
 			if (e->id == 21) pa->constitution = DTU_RING_CONSTITUTION;
 			if (e->id == 26) { pa->strength = DTU_RING_STRENGTH; pa->strength_extra = 0; }
 		}
 		else
 			sum += table_ac(e);
 	}
-	sum += ring_best;
+	// ASCENT: Dtu_fix_ring_magic_armor: only the best of the magic of the
+	// armor, the ring, the cloak and the amulet counts; they do not add
+	if (Dtu_fix_ring_magic_armor) {
+		int best = armor_bonus;
+
+		if (ring_best < best) best = ring_best;
+		if (cloak_best < best) best = cloak_best;
+		if (amulet_best < best) best = amulet_best;
+		sum += best - armor_bonus;
+	}
+	else if (!magic_armor)
+		sum += ring_best;
 
 	// lockpicks, for a thief (0xB02BE)
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_LOCKPICK]);
@@ -1188,6 +1238,8 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		ADD(DTU_IP_NO_SKILLS, 1, 0);
 	if (slot == DTU_SLOT_CLOAK && is_prot_cloak(&e))
 		ADD(DTU_IP_PROT_CLOAK, 0, 0);
+	if (slot == DTU_SLOT_NECKLACE && is_prot_amulet(&e) && Dtu_fix_ring_magic_armor)
+		ADD(DTU_IP_PROT_AMULET, 0, 0);
 	if (slot == DTU_SLOT_CLOAK && armor_is(&e, 43, 43))
 		ADD(DTU_IP_HIDE, DTU_ELVENKIND_HIDE, 0);
 	if (slot == DTU_SLOT_RING1 && type == OBJ_ARMOR) {
@@ -1204,6 +1256,8 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		if (id == 27)
 			ADD(DTU_IP_WIZARDRY, 0, 0);
 	}
+	if (Dtu_fix_prot_saves && (is_prot_ring(&e) || is_prot_cloak(&e) || is_prot_amulet(&e)) && table_ac(&e))
+		ADD(DTU_IP_PROT_SAVES, -table_ac(&e), 0);
 	if (slot == DTU_SLOT_LOCKPICK && dtu_char_lockpick_bonus(id))
 		ADD(DTU_IP_LOCKS_THIEF, dtu_char_lockpick_bonus(id), 0);
 	if (slot == DTU_N_SLOTS && id == 54)
@@ -1686,6 +1740,127 @@ int dtu_char_armor_class_vs(int missile)
 	if (!missile || !ConsoleObject || !(ConsoleObject->dtu.m_88 & DTU_FX_SHIELD))
 		return Dtu_char.pa.armor_class;
 	return Dtu_char.ac_missile;
+}
+
+//------------------------------------------------------------------------
+// ASCENT: the saving throws of the player (Dtu_fix_prot_saves). 0xAE596
+// reads only the class levels: no item changes a save in 1.3.
+
+static const char *Save_name[5] = {
+	LN("Paralyzation/Poison/Death"), LN("Rod/Staff/Wand"), LN("Petrification/Polymorph"),
+	LN("Breath Weapon"), LN("Spell")
+};
+// the short names of the statistics screen in low resolution
+static const char *Save_short[5] = { LN("Para"), LN("Rod"), LN("Petri"), LN("Breath"), LN("Spell") };
+static char Save_what[80], Save_who[48];
+static int Save_spell = -1;
+
+const char *dtu_char_save_name(int cat, int brief)
+{
+	if (cat < 0 || cat > 4)
+		return "?";
+	return dtu_tr(brief ? Save_short[cat] : Save_name[cat]);
+}
+
+int dtu_char_save_bonus(void)
+{
+	static const int slots[4] = { DTU_SLOT_RING1, DTU_SLOT_RING2, DTU_SLOT_CLOAK, DTU_SLOT_NECKLACE };
+	dtu_inv_item *e;
+	int i, v, best = 0;
+
+	if (!Dtu_fix_prot_saves || !Dtu_char.created)
+		return 0;
+	for (i = 0; i < 4; i++) {
+		e = ref_entry(Dtu_char.slot[slots[i]]);
+		if (e && (is_prot_ring(e) || is_prot_cloak(e) || is_prot_amulet(e))) {
+			v = -table_ac(e);
+			if (v > best)
+				best = v;
+		}
+	}
+	return best;
+}
+
+// ASCENT: Dtu_fix_ability_saves. The Constitution bonus of the dwarves and
+// the halflings (AD&D 2e: +1 for each 3.5 points) against Rod/Staff/Wand
+// and Spell. The game has no gnome (the races of character creation:
+// human, half-elf, elf, drow, dwarf, halfling) and no save against
+// poison: category 0 is also paralyzation and death magic, so it gets no
+// bonus.
+int dtu_char_con_save_bonus(int cat)
+{
+	int c = Dtu_char.pa.constitution;
+
+	if (!Dtu_fix_ability_saves || !Dtu_char.created || (cat != DTU_SAVE_ROD && cat != DTU_SAVE_SPELL) ||
+		 (Dtu_char.pa.race != DTU_RACE_DWARF && Dtu_char.pa.race != DTU_RACE_HALFLING))
+		return 0;
+	return c >= 18 ? 5 : c >= 14 ? 4 : c >= 11 ? 3 : c >= 7 ? 2 : c >= 4 ? 1 : 0;
+}
+
+// ASCENT: Dtu_fix_ability_saves. The magical defense adjustment of Wisdom
+// (AD&D 2e) against the spells that attack the mind. Of the spells with a
+// save: 7 Confusion, 14 Fear, 22 and 52 Hold Person, 44 Scare. (23 Hold
+// Undead holds only undead; 46 Sleep has no save.)
+int dtu_char_wis_save_bonus(int spell)
+{
+	static const signed char adj[19] = { -6, -6, -4, -3, -2, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4 };
+	int w = Dtu_char.pa.wisdom;
+
+	if (!Dtu_fix_ability_saves || !Dtu_char.created)
+		return 0;
+	if (spell != 7 && spell != 14 && spell != 22 && spell != 52 && spell != 44)
+		return 0;
+	if (w < 0) w = 0;
+	if (w > 18) w = 18;
+	return adj[w];
+}
+
+int dtu_char_save_number(int cat)
+{
+	return dtu_spell_player_save_number(cat) - dtu_char_save_bonus() - dtu_char_con_save_bonus(cat);
+}
+
+void dtu_char_save_cause(int spell, const char *what, const char *who)
+{
+	Save_spell = spell;
+	snprintf(Save_what, sizeof(Save_what), "%s", what ? what : "");
+	snprintf(Save_who, sizeof(Save_who), "%s", who ? who : "");
+}
+
+// The abbreviation of an ability of the statistics screen (TEX 655 to 660,
+// "STR:" ...) without the colon, in the language
+static void ability_word(char *out, int size, int n, const char *def)
+{
+	int k;
+
+	snprintf(out, size, "%s", game_text(n, (char *) def));
+	k = (int) strlen(out);
+	while (k > 0 && (out[k - 1] == ':' || out[k - 1] == ' '))
+		out[--k] = 0;
+}
+
+int dtu_char_player_save(int cat, int roll, int need)
+{
+	int prot = dtu_char_save_bonus(), con = dtu_char_con_save_bonus(cat), wis = dtu_char_wis_save_bonus(Save_spell);
+	int n = need - prot - con - wis;
+	char terms[120] = "", w[16];
+
+	if (prot)
+		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (protection)", prot);
+	if (con) {
+		ability_word(w, sizeof(w), 657, "CON");
+		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (%s)", con, w);
+	}
+	if (wis) {
+		ability_word(w, sizeof(w), 659, "WIS");
+		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (%s)", wis, w);
+	}
+	dtulog_event("Save of the player: %s%s%s%s, %s: d20 %d, needs %d (table %d%s): %s",
+		Save_what[0] ? Save_what : "unknown cause", Save_who[0] ? " (" : "", Save_who, Save_who[0] ? ")" : "",
+		(cat >= 0 && cat < 5) ? Save_name[cat] : "?", roll, n, need, terms, roll >= n ? "made" : "failed");
+	Save_what[0] = Save_who[0] = 0;
+	Save_spell = -1;
+	return n;
 }
 
 int dtu_char_thac0(void)
@@ -3711,6 +3886,11 @@ static void run_command(char *cmd, char *value)
 		dtu_char_update();
 		dump_character();
 	}
+	else if (!strcmp(cmd, "con")) {		// ASCENT: test: con=N, the base constitution
+		Dtu_char.base.constitution = a;
+		dtu_char_update();
+	}
+	else if (!strcmp(cmd, "wis"))			Dtu_char.pa.wisdom = Dtu_char.base.wisdom = a;		// ASCENT: test: wis=N
 	else if (!strcmp(cmd, "priestcheck"))	dtu_spell_priest_check();		// ASCENT: test, docs/audit/spells-priest.md
 	else if (!strcmp(cmd, "desc"))		dtu_desc_log_all(a);			// ASCENT: test, desc or desc=CASTER_LEVEL: the texts of the description window (dtudesc.h)
 	else if (!strcmp(cmd, "descitem"))	dtu_desc_open_item(a, b, 1, -1, 0);	// ASCENT: test, descitem=TYPE.ID opens the window

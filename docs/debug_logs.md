@@ -52,6 +52,16 @@ too.
 - Each talk of a thief with Mirt in the inn: `Thief points: Mirt, thief level L, levels paid
   before P, N points to spend`, and after the skill point screen `Thief points: spent, hide
   H, move M, open locks O, traps T, climb C, N points left` (the values without items).
+- Each saving throw of the player: `Save of the player: CAUSE (SOURCE), CATEGORY: d20 R,
+  needs N (table T, +B (protection), +C (CON), +W (WIS)): made` (or `failed`). The cause
+  is a spell (the source is its caster), Chill Touch (the attacker), or the blindness or
+  deafness of the fire (Fireball, the fire trap). N is the number of the class table T
+  minus each bonus; a bonus of 0 is left out. B: the best Ring, Cloak or Amulet of
+  Protection (`Dtu_fix_prot_saves`). C: the Constitution bonus of a dwarf or halfling, W:
+  the Wisdom adjustment against a spell that attacks the mind (`Dtu_fix_ability_saves`);
+  CON and WIS are the abbreviations of the statistics screen in the language (SAB in
+  Spanish). With the verbose combat log on, the message area also shows
+  `Save d20 R vs N: made.`.
 - An object that the restore of a level state kills: after the 1.3 line `STATE: killing
   object N -- illegal segment`, the line `State: object N is an effect (type 1 fireball,
   vclip V, ...)` or `State: object N type T id I NAME has the illegal segment S`.

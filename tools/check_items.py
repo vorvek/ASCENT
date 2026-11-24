@@ -233,12 +233,60 @@ def test_armor_set(t):
     d, _, _ = t.run("armor_set", a + b)
     # Plate Mail +3 -10, Shield +2 -3, Amulet +5 -5, Gauntlets -1; the ring and
     # the cloak do not count with magic armor and a shield; the misc Boots do
-    # not count in the boot place.
-    check(d[0].ac == -9, "plate set: AC %d, expected -9" % d[0].ac)
+    # not count in the boot place: 1.3 -9. Dtu_fix_ring_magic_armor: only
+    # the Amulet +5 of the magic protection bonuses counts: Plate Mail -7,
+    # Shield +2 -3, Amulet -5, Gauntlets -1.
+    check(d[0].ac == -6, "plate set: AC %d, expected -6" % d[0].ac)
     check(d[0].locks == 0 and d[0].traps == 0, "Gauntlets: thief skills %d %d" % (d[0].locks, d[0].traps))
-    # Leather Armor -2, Cloak +3 -3, Rings +3 and +2: -3, Amulet -5, Gauntlets -1
-    check(d[1].ac == -4, "leather set: AC %d, expected -4" % d[1].ac)
-    return "AC -9 and -4"
+    # Leather Armor -2, Cloak +3 -3, Rings +3 and +2: -3, Amulet -5, Gauntlets
+    # -1: 1.3 -4. Only the highest of the cloak, the ring and the amulet counts
+    # (Dtu_fix_ring_magic_armor): Leather Armor -2, Amulet -5, Gauntlets -1.
+    check(d[1].ac == 2, "leather set: AC %d, expected 2" % d[1].ac)
+    return "AC -6 and 2"
+
+
+# ---------------------------------------------------------------------
+# Bracers, magic armor and the protection items; Armor and Shield before
+# the armor (Dtu_fix_bracers_ac, Dtu_fix_ring_magic_armor)
+
+PROTECTION = [
+    "give=15.41.1", "equip=15.41", "give=15.0.1", "equip=15.0", "dump",     # Bracers AC4, Ring of Protection +2
+    "give=15.47.1", "equip=15.47", "dump",                                    # and a Cloak of Protection +1
+    "unequip=6", "dump",                                                      # Bracers AC4 and the cloak +1
+    "unequip=3", "equip=15.0", "dump",                                        # the ring +2 and the cloak +1
+    "give=15.5.1", "equip=15.5", "dump",                                      # and Leather Armor +1
+    "unequip=6", "unequip=1", "give=15.49.1", "equip=15.49", "dump",          # Leather Armor +1, Cloak +3
+    "give=15.2.1", "equip=15.2", "dump", "unequip=5",                         # and a Shield
+    "unequip=3", "give=15.4.1", "equip=15.4", "dump", "unequip=3",            # Plate Mail and the cloak +3
+    "unequip=1", "give=15.1.1", "equip=15.1", "give=15.47.1", "equip=15.47", "give=15.2.1", "equip=15.2", "dump",
+                                                                              # Leather Armor, Shield, Cloak +1
+    "unequip=1", "unequip=5", "unequip=3", "equip=15.5", "give=15.13.1", "equip=15.13", "equip=15.0", "dump",
+                                                                              # Leather Armor +1, Shield +2, Ring +2
+    "unequip=5", "give=15.30.1", "equip=15.30", "dump",                       # Leather Armor +1, Ring +2, Amulet +3
+    "unequip=3", "dump",                                                      # Ring +2 and Amulet +3
+    "unequip=6", "equip=15.5", "unequip=2", "give=15.28.1", "equip=15.28", "dump",   # Leather Armor +1, Amulet +1
+    "unequip=2",
+    "unequip=6", "unequip=5", "unequip=3", "equip=15.49",                     # back to the cloak +3 alone
+    "unequip=1", "cast=2", "dump",                                            # Armor, no armor
+    "equip=15.1", "dump", "unequip=3",                         # and Leather Armor (AC 8)
+    "equip=15.41", "dump", "unequip=3",                                       # and Bracers AC4
+    "give=15.39.1", "equip=15.39", "dump", "unequip=3",                       # and Bracers AC8
+    "cast=45", "equip=15.39", "dump", "unequip=3",                            # Shield and Bracers AC8
+    "equip=15.4", "dump",                                                     # Shield and Plate Mail (AC 3)
+]
+
+
+def test_protection(t):
+    """Only the highest magic protection bonus counts (the magic of the
+    armor, a ring, a cloak and an amulet of protection), with any armor, shield or
+    bracers; a shield adds all of its armor class; the better armor class of the Armor and Shield spells and the
+    worn armor. -origcombat: the rules of 1.3."""
+    d, _, _ = t.run("protection", PROTECTION)
+    o, _, _ = t.run("protection_orig", PROTECTION, ["-origcombat"])
+    acs, orig = [x.ac for x in d], [x.ac for x in o]
+    check(acs == [2, 2, 3, 8, 6, 5, 4, 0, 6, 3, 5, 7, 7, 6, 6, 4, 6, 4, 3], "AC %s" % acs)
+    check(orig == [4, 4, 4, 7, 7, 7, 6, 3, 7, 4, 4, 5, 6, 6, 6, 4, 6, 3, 3], "-origcombat: AC %s" % orig)
+    return "AC %s, 1.3 %s" % (acs, orig)
 
 
 # ---------------------------------------------------------------------
@@ -272,7 +320,46 @@ def test_misc(t):
     return "Cursed Scroll, Gem of Curing, plot item drop"
 
 
-TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_whin, test_misc]
+def save_lines(t, name):
+    """The save lines of the session log of a run (user/logs)."""
+    d = os.path.join(t.tmp, name, "user", "logs")
+    out = []
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        with open(os.path.join(d, f), encoding="utf-8", errors="replace") as fh:
+            out += [l for l in fh.read().split("\n") if "Save of the player:" in l]
+    return out
+
+
+def test_saves(t):
+    """The bonuses of the saves of the player, each with a session log
+    line: the best protection item (Dtu_fix_prot_saves; a Ring of
+    Protection +3 and a Cloak +1: +3), the Constitution of a dwarf or a
+    halfling against Rod/Staff/Wand and Spell, Wisdom against the spells
+    that attack the mind (Dtu_fix_ability_saves). A human fighter of level
+    1 needs 17 against a spell. -origcombat: no bonus."""
+    cmds = ["give=15.15.1", "equip=15.15", "give=15.47.1", "equip=15.47", "castby=7.17",
+            "unequip=6", "unequip=1",
+            "race=1", "con=18", "wis=17", "castby=47.17",       # dwarf, Con 18, Slow: +5 (CON), no WIS
+            "race=4", "con=11", "castby=30.17",                  # halfling, Con 11, Light: +3 (CON)
+            "race=0", "castby=22.17",                             # human, Wis 17, Hold Person: +3 (WIS)
+            "wis=4", "castby=14.17"]                              # Wis 4, Fear: -2 (WIS)
+    t.run("saves", cmds)
+    t.run("saves_orig", cmds, ["-origcombat"])
+    new, orig = save_lines(t, "saves"), save_lines(t, "saves_orig")
+    want = ["Confusion (Aleena), Spell: d20 %d, needs 14 (table 17, +3 (protection))",
+            "Slow (Aleena), Spell: d20 %d, needs 12 (table 17, +5 (CON))",
+            "Light (Mage) (Aleena), Spell: d20 %d, needs 14 (table 17, +3 (CON))",
+            "Hold Person (Aleena), Spell: d20 %d, needs 14 (table 17, +3 (WIS))",
+            "Fear (Aleena), Spell: d20 %d, needs 19 (table 17, -2 (WIS))"]
+    check(len(new) == len(want) and len(orig) == len(want), "save lines: %d and %d" % (len(new), len(orig)))
+    for l, w in zip(new, want):
+        check(re.search(re.escape(w).replace("%d", r"\d+"), l), "line: %s, expected %s" % (l, w))
+    for l in orig:
+        check(re.search(r"needs 17 \(table 17\):", l), "-origcombat line: %s" % l)
+    return "%d lines, e.g. %s" % (len(new), new[1].split("] ", 1)[-1])
+
+
+TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armor_set, test_protection, test_saves, test_whin, test_misc]
 
 
 def main():

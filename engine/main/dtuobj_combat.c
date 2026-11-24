@@ -1249,6 +1249,8 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 		dtu_xp_dmg_end(f2i(damage));
 		// 0x2A49B: Chill Touch of the attacker with a natural or a melee
 		// weapon: 1d4 more unless the player saves (category 4)
+		if (damage > 0 && attacker && (attacker->dtu.m_88 & DTU_FX_CHILL_TOUCH))
+			dtu_char_save_cause(-1,"Chill Touch",dtu_object_name(attacker));		// ASCENT: the session log
 		if (damage > 0 && attacker && (attacker->dtu.m_88 & DTU_FX_CHILL_TOUCH) &&
 			 (weapon < 0 || weapon_is_melee(weapon)) && !dtu_spell_save(player,DTU_SAVE_SPELL)) {
 			int c = rand() % 4 + 1;

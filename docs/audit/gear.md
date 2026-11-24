@@ -196,7 +196,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 
 | Id | Item | Original | Port | Status |
 |---|---|---|---|---|
-| 0 | Ring of Protection +2 | 0xAF9AB | dtu_char_update | same: the better ring counts, none with magic armor (checked) |
+| 0 | Ring of Protection +2 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`), with any armor; the better ring counts (checked) |
 | 1 | Leather Armor | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 2 | Shield | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 3 | Chain Mail | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
@@ -210,8 +210,8 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 11 | Plate Mail +3 | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 12 | Shield +1 | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
 | 13 | Shield +2 | 0xAFB55 | dtu_char_update | same: table 0x145C04; magic 5 to 11, heavy 3, 4, 7 to 11 (checked) |
-| 14 | Ring of Protection +1 | 0xAF9AB | dtu_char_update | same: the better ring counts, none with magic armor (checked) |
-| 15 | Ring of Protection +3 | 0xAF9AB | dtu_char_update | same: the better ring counts, none with magic armor (checked) |
+| 14 | Ring of Protection +1 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`), with any armor; the better ring counts (checked) |
+| 15 | Ring of Protection +3 | 0xAF9AB | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`), with any armor; the better ring counts (checked) |
 | 16 | Armoring | 0xB0014, 0xAFAD1 | armoring_ac | fixed in a95cbb3: a mage gets 1 better after each cap of Armor, Vestment, Shield (checked) |
 | 17 | Ring of Coolness | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |
 | 18 | Ring of Feather Fall | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |
@@ -224,28 +224,28 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 25 | Ring of Quickness | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: effect with no end while worn, ends when taken off (checked) |
 | 26 | Ring of Strength | 0xAFB55 | dtu_char_update | same: strength 18/00 (checked) |
 | 27 | Ring of Warmth | 0xB00A5, 0xB075F | worn_effects | same with `Dtu_fix_wizardry_ring` (slot doubling) |
-| 28 | Amulet of Protection +1 | 0xAFB55 | dtu_char_update | same: table value (checked with +5) |
-| 29 | Amulet of Protection +2 | 0xAFB55 | dtu_char_update | same: table value (checked with +5) |
-| 30 | Amulet of Protection +3 | 0xAFB55 | dtu_char_update | same: table value (checked with +5) |
-| 31 | Amulet of Protection +4 | 0xAFB55 | dtu_char_update | same: table value (checked with +5) |
-| 32 | Amulet of Protection +5 | 0xAFB55 | dtu_char_update | same: table value (checked with +5) |
+| 28 | Amulet of Protection +1 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: the table value always adds (checked) |
+| 29 | Amulet of Protection +2 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: the table value always adds (checked) |
+| 30 | Amulet of Protection +3 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: the table value always adds (checked) |
+| 31 | Amulet of Protection +4 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: the table value always adds (checked) |
+| 32 | Amulet of Protection +5 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: the table value always adds (checked) |
 | 33 | Amulet of Shield | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Shield effect, no armor class |
 | 34 | Winged Boots | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Fly, Feather Fall, Levitate, Haste |
 | 35 | Boots of Feather Falling | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Fly, Feather Fall, Levitate, Haste |
 | 36 | Boots of Levitation | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Fly, Feather Fall, Levitate, Haste |
 | 37 | Boots of Speed | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Fly, Feather Fall, Levitate, Haste |
 | 38 | Girdle of Hill Giant Strength | 0xAFB55 | dtu_char_update | same: strength 19 |
-| 39 | Bracers of Defense AC8 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
-| 40 | Bracers of Defense AC6 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
-| 41 | Bracers of Defense AC4 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
-| 42 | Bracers of Defense AC2 | 0xAFB55 | dtu_char_update | same: magic armor for the rings and cloaks |
+| 39 | Bracers of Defense AC8 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
+| 40 | Bracers of Defense AC6 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
+| 41 | Bracers of Defense AC4 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
+| 42 | Bracers of Defense AC2 | 0xAFB55 | dtu_char_update | fixed (`Dtu_fix_bracers_ac`, -origcombat): no magic armor, the rings and cloaks count (checked) |
 | 43 | Cloak of Elvenkind | 0xAFB55 | dtu_char_update | same: Hide In Shadows 95 |
 | 44 | Chameleon Cloak | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Improved Invisibility |
 | 45 | Cloak of Elvenkind | 0x37A6A, 0xADCB3 | dtu_char_use, dtu_combat_turn_undead | same: USE casts Continual Light; key T turns as a cleric of level 7 |
 | 46 | Elven Cloak | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Invisibility |
-| 47 | Cloak of Protection +1 | 0xAF930 | dtu_char_update | same: only with no shield, magic or heavy armor (checked) |
-| 48 | Cloak of Protection +2 | 0xAF930 | dtu_char_update | same: only with no shield, magic or heavy armor (checked) |
-| 49 | Cloak of Protection +3 | 0xAF930 | dtu_char_update | same: only with no shield, magic or heavy armor (checked) |
+| 47 | Cloak of Protection +1 | 0xAF930 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): with any armor and shield, only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: only with no shield, magic or heavy armor (checked) |
+| 48 | Cloak of Protection +2 | 0xAF930 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): with any armor and shield, only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: only with no shield, magic or heavy armor (checked) |
+| 49 | Cloak of Protection +3 | 0xAF930 | dtu_char_update | fixed (`Dtu_fix_ring_magic_armor`, -origcombat): with any armor and shield, only the highest of the armor magic, the ring, the cloak and the amulet counts; the best one also adds to the saves (`Dtu_fix_prot_saves`); 1.3: only with no shield, magic or heavy armor (checked) |
 | 50 | Gloves of Dexterity | 0xAFB55 | dtu_char_update | same: dexterity table 0x146240, Open Locks |
 | 51 | Glim-Gauntlet | 0xAFB55, 0xB08A8 | worn_item_bits, worn_effects | same: Detect Magic |
 | 52 | Gauntlets of Ogre Power | 0xAFB55 | dtu_char_update | same: strength 18/00 |

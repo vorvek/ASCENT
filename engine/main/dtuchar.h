@@ -393,6 +393,41 @@ int dtu_char_hit_points(void);
 // value of dtu_char_armor_class), 1 a missile. They differ only with Shield
 // (Dtu_fix_shield_ac of dtuspell.h).
 int dtu_char_armor_class_vs(int missile);
+// ASCENT: the saving throws of the player. In 1.3 no item changes a save
+// (0xAE596). A decision of the user (AD&D 2e): the best of the worn Rings,
+// Cloak and Amulet of Protection adds its bonus to the five saves; they do
+// not add together. 1 (default). 0 (-origcombat): 1.3.
+extern int Dtu_fix_prot_saves;
+// The bonus of the protection items (0 with Dtu_fix_prot_saves 0).
+int dtu_char_save_bonus(void);
+// ASCENT: the ability bonuses of the saves (AD&D 2e). 1.3 has none. A
+// decision of the user: dwarves and halflings get the Constitution bonus
+// against Rod/Staff/Wand and Spell, and Wisdom adjusts the saves against
+// the spells that attack the mind. They add to the bonus of the
+// protection items. 1 (default). 0 (-origcombat): 1.3.
+extern int Dtu_fix_ability_saves;
+// The Constitution bonus of a save category (0 for other races).
+int dtu_char_con_save_bonus(int cat);
+// The Wisdom adjustment against a spell (0 for a spell that does not
+// attack the mind, or -1: no spell).
+int dtu_char_wis_save_bonus(int spell);
+// The number the player needs for a save of category 0 to 4 (DTU_SAVE_ of
+// dtuspell.h), with the bonus of the items and of Constitution (the
+// statistics screen; the Wisdom adjustment depends on the spell).
+int dtu_char_save_number(int cat);
+// The name of a save category in the language; brief: the short name of
+// the low resolution statistics screen.
+const char *dtu_char_save_name(int cat, int brief);
+// The cause of the next save of the player for the session log and the
+// Wisdom adjustment: spell (the spell number, or -1), what (a spell,
+// "Chill Touch") and who (the caster or attacker, or NULL). The next save
+// takes it.
+void dtu_char_save_cause(int spell, const char *what, const char *who);
+// dtu_spell_save of the player: need is the number of the class table.
+// Returns the number with the bonuses (items, Constitution, Wisdom) and
+// writes the session log line (cause, category, d20, the number, the
+// table number and each bonus, made or failed).
+int dtu_char_player_save(int cat, int roll, int need);
 int dtu_char_max_hit_points(void);
 // Adds hit points, up to the maximum. Returns the number that was added.
 int dtu_char_heal(int points);
@@ -467,6 +502,22 @@ extern int Dtu_fix_creature_missile;
 // dice sum of weapon (n dice of sides) with the launcher bonus and the
 // Potion of Luck of the player (0x2B0AE to 0x2B158).
 int dtu_char_creature_missile_damage(int weapon, int n, int sides, int sum);
+// ASCENT: 0xAFB55 treats the Bracers of Defense (armor 39 to 42, 0xAF982)
+// as magic armor: no Ring and no Cloak of Protection counts with them. A
+// decision of the user (AD&D 2e): the bracers are a base armor class as a
+// body armor without magic. 1 (default): the rings and the cloaks count
+// with the bracers. 0 (-origcombat): 1.3.
+extern int Dtu_fix_bracers_ac;
+// ASCENT: in 0xAFB55 no Ring of Protection counts with magic armor (5 to
+// 11), a Cloak of Protection counts only with no shield, magic armor or
+// heavy armor, and a ring and a cloak add. A decision of the user: only the
+// highest magic protection bonus counts, of the magic of the armor, the
+// best Ring of Protection, the Cloak of Protection and the Amulet of
+// Protection (1.3 adds the amulet always); the ring and the
+// cloak count with any armor and shield (Leather Armor +1 and a Ring of
+// Protection +2: Leather Armor and 2). 1 (default): the highest one. 0
+// (-origcombat): 1.3.
+extern int Dtu_fix_ring_magic_armor;
 // 1 while the attack of the player is a backstab (0x13A955, dtuthief.c).
 extern int Dtu_backstab;
 // The option -autochoice N: the choice boxes answer N.
@@ -569,6 +620,8 @@ int dtu_char_spider_turn_level(void);
 #define DTU_IP_TURN_UNDEAD	15		// the key of Turn Undead works
 #define DTU_IP_INFRA_HUMAN	16		// the Infravision effect only for a human
 #define DTU_IP_FAST_ATTACK	17		// ASCENT: attacks twice as fast, no Haste (dtu_char_item_fast)
+#define DTU_IP_PROT_AMULET	18		// ASCENT: only the highest magic protection bonus counts (Dtu_fix_ring_magic_armor)
+#define DTU_IP_PROT_SAVES		19		// ASCENT: value better saving throws, the best protection item counts (Dtu_fix_prot_saves)
 typedef struct dtu_item_power {
 	int		kind, value, value2;
 } dtu_item_power;

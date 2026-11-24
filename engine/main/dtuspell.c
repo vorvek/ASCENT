@@ -993,6 +993,7 @@ int dtu_spell_save(object *obj,int cat)
 			int n2 = save_number(pa->class2,level,cat);
 			if (n2 < need) need = n2;
 		}
+		need = dtu_char_player_save(cat,roll,need);		// ASCENT: the protection items, the session log
 	}
 	else if (obj->type == OBJ_ROBOT) {
 		level = creature_level(obj);
@@ -1956,6 +1957,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 
 	// The names, the verbs and 0x8CEAE, before the switch as in 0x8CFFF
 	msg_setup(target,caster);
+	if (target->type == OBJ_PLAYER)		// ASCENT: the session log line of a save (dtuchar.h)
+		dtu_char_save_cause(spell,spell_name(spell),caster && caster != target ? dtu_object_name(caster) : NULL);
 
 	switch (spell) {
 		case 1: {	// Aid (0x8D3F7): 1d8 hit points above the maximum, Bless
