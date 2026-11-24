@@ -215,6 +215,9 @@ for the state bit 0x80.
   is not set.
 - `d == 0`: the fall bit is cleared.
 
+These two clears end a fall with no damage (0x6C871, 0x6C89A). The port can give them the
+damage: `Dtu_fix_fall_land_player` and `Dtu_fix_fall_land`, see 4.7.
+
 So gravity is not a constant. It grows with the distance to the floor, up to
 `3.0 * 8.0 = 24.0` for each FT step (1536 for each second squared) when no floor is
 within 8.0.
@@ -288,6 +291,21 @@ the test sphere of the radius `rad/2` at the center of the body touches it, whic
 The texts are "RLH: Object %d fell %d descent feet." and "You fell %d feet!". A thief
 can take hold of a wall here (0x9EBEB with 20.0). At the end `start_y = pos.y` and the
 fall bit is cleared.
+
+The gravity (0x6C662, 4.3) clears the fall bit with no damage when the feet are less than
+1.0 above the floor at the start of a frame (0x6C871, 0x6C89A); the damage comes only from
+a body in the floor or a hit of the floor in the move. So whether a long fall hurts depends
+on the frame rate and on where the frames fall. Port test with `-origphys` at 60 steps per
+second (`-fixedfps 60`), the player dropped from the center of BONES segments, five start
+frames each: segment 495 (30.0 to the floor of 494, 11 descent feet) gave no damage in 5 of
+5; segments 491 (20 or 21 feet) and 343 (12 feet) took the damage. `Dtu_fix_fall_land_player`
+(physics.c, 1, `-origphys` clears it, the player sibling of `Dtu_fix_fall_land` of the
+creatures, which `-origobj` clears): that end of a fall goes through 0x6C8C8 too, so it takes
+the damage above 10 feet. With it segment 495 took 1 to 5 in 4 of 5 (the fifth fell 10 feet,
+no damage), 491 and 343 in 5 of 5. Stairs and steps give no damage with it: BONES 114 to 93
+(a 2.5 step, 3 feet), DROW1 486 to 481 (steps of 2.3 to 4.9, 2 feet), THIEF1 383 to 381 and
+KOBOLDS from 2, walking and running. The objlog (`-objlog`) has the line "fall: the player
+fell N descent feet" for each end of a fall of 1 foot or more that goes through 0x6C8C8.
 
 For a creature (verified in the bytes, 2026-11-24): `start_y` is the table 0x30E2D4, one
 dword per object, written by add_npc (0xAC764), 0x1038B (0x103F8), the end of each call
