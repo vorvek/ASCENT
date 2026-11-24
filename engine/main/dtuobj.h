@@ -180,6 +180,19 @@ extern int Dtu_fix_attack_sound;
 // floor, also a corpse of a loaded level.
 extern int Dtu_fix_corpse_floor;
 
+// The feet of a standing creature. Original: the drawing takes the center
+// of the body box of the current frame away from the position (0x729C1),
+// and the gravity (0x6C30E) and the place of a creature that is not active
+// (0x13F96) put the position body_half_height[0] (the box of the rest
+// pose, 0x746B3) above the floor. The box of a frame of STAND that raises
+// the arms or a weapon has a higher center, so the model is drawn lower
+// and its feet are in the floor: 1.79 for hum_mtg.pof (Georges of THIEF2),
+// 1.45 for durnan.pof, 0.78 for haf_mmd.pof, 2.7 for the spiders.
+// Corrected: a creature that does not fly and does not die is drawn higher
+// by the depth of the lowest drawn point of its frame below the bottom of
+// the box of the rest pose. Only the drawing changes.
+extern int Dtu_fix_creature_feet;
+
 // The tint of Detect Magic (0x14C4CD, docs/re/spells.md). Original: a
 // magic bitmap or rod object leaves the tint on for the next polygons until
 // a polygon model clears it, and the linear texture mapper tints only the

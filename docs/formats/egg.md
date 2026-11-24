@@ -291,6 +291,15 @@ is drawn 8.59 below its position to 2.69 above it. For `table.pof`, `bench.pof`,
 `bed_rd.pof`, `chest5.pof`, `crate.pof`, `barrel01.pof` and `lantern.pof` the box and
 the drawn points agree to 0.2.
 
+The body center of a frame (entry frame + 1) of a creature model is not the center of
+the rest pose. The rest pose (entry 0) and the STAND frames (frames 0 to 3, entries 1 to 4) differ for some models (body_center y,
+read by the port from the models of THIEF2 and YPINN, `-objlog` "floor" lines):
+`hum_mtg.pof` -0.47 and 1.36 (frame 0), `durnan.pof` and `hum_mfg.pof` -0.38 and 1.09
+(frame 0), `haf_mmd.pof` 0.00 and 0.79 (frame 1). The lowest drawn point is the feet in
+both. A model drawn with the center of the STAND frame and placed by the half height of
+entry 0 has its feet 1.81, 1.45 and 0.78 below the bottom of the box of entry 0 (ai.md,
+"The feet of a standing creature").
+
 ## BIN files
 
 `HMC.BIN`, `HMT.BIN` and `YPINN.BIN` are encoded table files, the Undermountain form of

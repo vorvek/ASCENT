@@ -905,6 +905,7 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_fire_once` | one missile in each frame that the fire frame lasts (0x13A2A) | one missile for each attack animation |
 | `Dtu_fix_attack_sound` | the attack sound of compute_vis_and_vec needs visibility 2, which never comes | the sound plays by the rules of that code |
 | `Dtu_fix_corpse_floor` | the corpse goes to the floor by the torso box (0x6A48B), a flyer has no gravity in DIE | the dying body falls, the corpse lies with its lowest drawn point on the floor, also in a loaded level. See "The corpse" |
+| `Dtu_fix_creature_feet` | the drawing takes the body center of the frame away (0x729C1) and the floor rules use the box of the rest pose (0x13F96, 0x6C30E), so a STAND frame with raised arms is drawn with its feet in the floor | a creature that does not fly and does not die is drawn higher by the depth of its lowest drawn point below the box of the rest pose. See "The feet of a standing creature" |
 | `Dtu_fix_fall_active` | the test each 20 ticks (0x14206) makes a creature that does not see the player inactive (a peaceful one always), and an inactive creature has no physics and stands on the bottom side of its segment (0x13F96), also an open one: a creature that falls through an opened floor stops in the air | a creature that does not fly stays active while its feet are 1.0 or more above the floor |
 | `Dtu_fix_lava` | one time of the last burn for all objects (0x13B1B4), the side is the hit side of the last query of any object (0x30F494), and only a creature that moves burns (0x9FE54) | each object has its time, it burns when the wall or floor that it touches is lava, a creature that does not move burns too. physics.md 4.9 |
 | `Dtu_fix_fall_land` | a fall that ends less than 1.0 above the floor at the start of a frame does no damage (0x6C871), so whether a long fall hurts depends on the frame rate, and an inactive creature never ends its fall | that end of a fall takes the damage of 0x6C8C8 too, also for an inactive creature. The player: `Dtu_fix_fall_land_player` (`-origphys`). physics.md 4.7 |
@@ -1060,6 +1061,67 @@ player each N frames (with 1: only one that hit a wall in the last 0.5 s) and
 logs the corpse height above the floor. The `-objlogpos` lines have the
 animation, sight, blocker and the wall, top, floor and object hits. A dying body has a `dying:` line with the height of its lowest drawn
 point, and a corpse of a loaded level a `loaded dead:` line.
+
+### The feet of a standing creature (Dtu_fix_creature_feet)
+
+An inactive creature stands on the center of the bottom side of its segment
+plus `body_half_height[0]` (0x13F96: 0x746B3 gives the half height of entry 0,
+0x13FCD the center of side 3), and the gravity of an active one (0x6C30E) uses
+the same half height. Entry 0 is the box of the rest pose. The drawing takes
+`body_center` of the current frame away from the position (models.md,
+draw_polygon_object step 7, 0x729C1). In a frame of STAND that raises the arms
+or a weapon the box is taller and its center higher than in the rest pose, so
+the model is drawn lower and its feet are in the floor. 1.3 does the same, so
+the feet are in the floor there too (code, not seen in the executable). A walk
+frame has a center near that of the rest pose, so the feet come out when the
+creature walks.
+
+`-objlog` with `-objlogpos N` has a line "floor (level start)" and "floor
+(frame)" for each creature: the position, the floor under it, the center of the
+bottom side, `body_half_height[0]` and the height of the bottom of that box
+above the floor, the body center of the rest pose and of the frame, the lowest
+drawn point of the rest pose and of the frame against the floor, and the lift
+below. Measured after 150 frames in each level (`-level NAME -frames 160 -objlogpos
+150`), 1.3 rules. The box bottom is on the floor for each creature on a flat floor,
+and the drawn rest pose agrees with it to 0.01. The lowest drawn point of the frame
+shown (mostly STAND):
+
+| Model | Creatures | Center y rest / STAND | Lowest drawn point |
+|---|---|---|---|
+| `all5.pof` | FLAME | | 3.46 below the floor |
+| `gspi_l.pof`, `spi_sm.pof` | spiders of DROW1 to DROW5 | | up to 2.76 below |
+| `hum_mtg.pof` | Georges (THIEF2 obj 93), THIEF2 obj 7, THIEF, BEHOLDER | -0.47 / 1.34 | 1.79 to 1.81 below |
+| `durnan.pof` | Durnan (YPINN obj 1, 16) | -0.38 / 1.09 | 1.45 below |
+| `hum_mfg.pof` | THIEF2 obj 22, THIEF, CRYPTS, PRISON, BEHOLDER | -0.38 / 1.09 | up to 1.45 below |
+| `bee.pof`, `bee_br.pof` | MULHOR1, BANE, CRYPTS, MINE | | 1.05 below |
+| `drw_mfg3.pof`, `drw_mfg5.pof`, `drw_mfg8.pof` | the drow levels, FLAME | | up to 0.95 below |
+| `haf_mmd.pof` | the halfling of YPINN (obj 28) | 0.00 / 0.79 | 0.78 below |
+| `ibba.pof` | IBBALAR | | 0.77 below |
+| `orc_gia.pof`, `orc_nia.pof` | | | up to 0.68 below |
+| `hum_mft.pof`, `hum_mft4.pof`, `daland.pof` | CLAN1 to CLAN3, MYRKUL, IBBALAR | | about 0.6 below |
+| `hum_mtd.pof`, `hum_mfb.pof`, `ske_gg.pof`, `drw_mmk*.pof`, `mum_g.pof`, `orc_nxa.pof` | Mirt, many thieves, skeletons | | 0.10 to 0.31 below |
+| the other models (`hum_mtf.pof`, `elf_p.pof`, `hum_ftk.pof`, `dlf_ffk.pof`, `gob_*`, `rat_*`, `ghu_y.pof`, `zom_n.pof`, ...) | | | on the floor or above it |
+
+Some models stand above the floor by the same rule: `ognew5.pof` and `armogre.pof`
+1.97, `troll.pof` and `armtroll.pof` 1.3 to 1.5, `kobs5.pof` 1.3, `ghu_y.pof` 0.62. The
+port keeps that (it lifts only).
+
+`Dtu_fix_creature_feet` (on; `-origobj` and `-origfeet` clear it): a creature
+that does not fly and is not in DIE is drawn higher by the depth of the lowest
+drawn point of its frame below the bottom of the box of the rest pose
+(`creature_feet_lift`, cached for each frame of each model; with animation
+interpolation the lift goes from that of one frame to the next). Only the
+drawing goes up: the position, the gravity, the sight and the reach stay, so
+no creature moves into a ceiling or out of its segment. A frame whose lowest
+point is above the box bottom is not drawn lower. A flyer (`bat_l.pof`) and a
+dying body (`Dtu_fix_corpse_floor`) keep their drawing.
+
+On a floor that is not flat the inactive rule puts the box bottom on the height
+of the center of the bottom side, not on the floor under the creature: two
+thieves of THIEF1 (obj 51, 64) stand 2.50 above the floor under them, a
+skeleton of BAT (obj 30) 2.00. The other way, the box bottom below the floor under
+the creature, is small in all levels: BEHOLDR2 obj 90 0.13, DROW3 obj 133 0.25. That is
+1.3 and the port keeps it.
 
 Measured (`-noattack`, 30 s at 60 frames per second, time to the attack
 position, off and on):
