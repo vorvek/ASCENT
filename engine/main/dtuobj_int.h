@@ -168,6 +168,7 @@ void blood(object *obj);
 int player_type_sound(char *key);
 void log_corpse_height(object *obj,const char *what);
 fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx);
+int model_points_box(object *obj,int frame,vms_vector *mn,vms_vector *mx);
 int corpse_on_floor(object *obj);
 
 //------------------------------------------------------------------------
@@ -230,6 +231,8 @@ void end_sequence_frame(void);
 int dressing_pushable(object *d);
 void push_dressing(object *mover,object *d,int strength);
 void dressing_move_frame(void);
+void dressing_floor_log(object *d,const char *when);
+void dressing_floor_fix(void);
 
 //------------------------------------------------------------------------
 // dtuobj_aware.c

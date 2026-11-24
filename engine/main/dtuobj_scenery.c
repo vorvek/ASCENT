@@ -463,16 +463,23 @@ static int dressing_other_body(object *o,fix *r,fix *hh)
 	return 0;
 }
 
-// Dtu_fix_push_body: other scenery is the box of its model (box 1 of the
-// rest pose in the x-z plane of the object), not the circle of
-// body_radius[0] around the corners of the box: a chair at a table is
-// already inside of that circle. Only an upright object has a box: a
-// barrel on its side has no box in x-z.
+// Dtu_fix_push_body: other scenery is the box of its model (the box of the
+// drawn points of the rest pose, model_points_box, in the x-z plane of the
+// object), not the circle of body_radius[0] around the corners of the box:
+// a chair at a table is already inside of that circle. Only an upright
+// object has a box: a barrel on its side has no box in x-z. The box is not
+// box 1 of the file: that box of chair.pof is 2.95 above the drawn chair
+// and 2.3 to one side of it.
+static int dressing_box(object *o,vms_vector *mn,vms_vector *mx)
+{
+	return o->orient.uvec.y >= F1_0*9/10 && model_points_box(o,-1,mn,mx);
+}
+
 static int dressing_has_box(object *o)
 {
-	polymodel *po = obj_model(o);
+	vms_vector mn, mx;
 
-	return po && po->box1_min && po->box1_max && o->orient.uvec.y >= F1_0*9/10;
+	return dressing_box(o,&mn,&mx);
 }
 
 // The move mv of the point a against the box of o about the position c,
@@ -481,19 +488,20 @@ static int dressing_has_box(object *o)
 // away from the center.
 static void dressing_box_sweep(object *o,vms_vector *c,vms_vector *a_w,vms_vector *mv,double r,double *t)
 {
-	polymodel *po = obj_model(o);
 	double a[2], m[2], lo[2], hi[2], tin = 0, tout = 1;
-	vms_vector rel;
+	vms_vector rel, mn, mx;
 	int k;
 
+	*t = -1;
+	if (!dressing_box(o,&mn,&mx))
+		return;
 	vm_vec_sub(&rel,a_w,c);
 	a[0] = f2fl(vm_vec_dot(&rel,&o->orient.rvec));
 	a[1] = f2fl(vm_vec_dot(&rel,&o->orient.fvec));
 	m[0] = f2fl(vm_vec_dot(mv,&o->orient.rvec));
 	m[1] = f2fl(vm_vec_dot(mv,&o->orient.fvec));
-	lo[0] = f2fl(po->box1_min[0].x) - r; hi[0] = f2fl(po->box1_max[0].x) + r;
-	lo[1] = f2fl(po->box1_min[0].z) - r; hi[1] = f2fl(po->box1_max[0].z) + r;
-	*t = -1;
+	lo[0] = f2fl(mn.x) - r; hi[0] = f2fl(mx.x) + r;
+	lo[1] = f2fl(mn.z) - r; hi[1] = f2fl(mx.z) + r;
 	if (a[0] > lo[0] && a[0] < hi[0] && a[1] > lo[1] && a[1] < hi[1]) {
 		double c0 = (lo[0]+hi[0])/2 - a[0], c1 = (lo[1]+hi[1])/2 - a[1];
 
@@ -524,17 +532,21 @@ static void dressing_box_sweep(object *o,vms_vector *c,vms_vector *a_w,vms_vecto
 static void dressing_box_points(object *o,vms_vector *c,vms_vector pts[8])
 {
 	static const signed char px[8] = {-1,1,1,-1, 0,1,0,-1}, pz[8] = {-1,-1,1,1, -1,0,1,0};
-	polymodel *po = obj_model(o);
+	vms_vector mn, mx;
 	vms_matrix m;
 	int i;
 
+	if (!dressing_box(o,&mn,&mx)) {
+		vm_vec_zero(&mn);
+		vm_vec_zero(&mx);
+	}
 	vm_copy_transpose_matrix(&m,&o->orient);
 	for (i=0;i<8;i++) {
 		vms_vector local, ofs;
 
-		local.x = px[i] < 0 ? po->box1_min[0].x : px[i] > 0 ? po->box1_max[0].x : (po->box1_min[0].x + po->box1_max[0].x)/2;
-		local.z = pz[i] < 0 ? po->box1_min[0].z : pz[i] > 0 ? po->box1_max[0].z : (po->box1_min[0].z + po->box1_max[0].z)/2;
-		local.y = (po->box1_min[0].y + po->box1_max[0].y)/2;
+		local.x = px[i] < 0 ? mn.x : px[i] > 0 ? mx.x : (mn.x + mx.x)/2;
+		local.z = pz[i] < 0 ? mn.z : pz[i] > 0 ? mx.z : (mn.z + mx.z)/2;
+		local.y = (mn.y + mx.y)/2;
 		vm_vec_rotate(&ofs,&local,&m);
 		vm_vec_add(&pts[i],c,&ofs);
 	}
@@ -645,8 +657,8 @@ static int dressing_hit_object(object *d,vms_vector *p0,vms_vector *p1,fix rad,f
 // center with half of body_radius[0] (rad + 1.0 for a wall), so a table
 // (body_radius 11.2, 10 from the center to an end) goes 3.4 into a wall.
 // The port moves the four corners and the four mid points of the edges of
-// the box of the model (box 1 of the rest pose, at the height of its
-// middle) with the move and stops at
+// the box of the model (the drawn points of the rest pose, at the height
+// of its middle) with the move and stops at
 // the first wall that one of them hits, DTU_PUSH_WALL_GAP before it. A
 // point that is outside of the mine at the start (scenery that the level
 // puts into a wall) is not tested.
@@ -654,14 +666,14 @@ static int dressing_hit_object(object *d,vms_vector *p0,vms_vector *p1,fix rad,f
 
 static fix dressing_wall_frac(object *d,vms_vector *frame_vec)
 {
-	polymodel *po = obj_model(d);
 	fix best = F1_0, len = vm_vec_mag(frame_vec);
+	vms_vector mn, mx;
 	vms_matrix m;
 	int i;
 
 	if (len <= 0)
 		return F1_0;
-	if (!po || !po->box1_min || !po->box1_max) {
+	if (!model_points_box(d,-1,&mn,&mx)) {
 		// no box: a sphere of the size of the object
 		fvi_query fq;
 		fvi_info hit;
@@ -682,9 +694,9 @@ static fix dressing_wall_frac(object *d,vms_vector *frame_vec)
 		fvi_info hit;
 		int seg, fate;
 
-		local.x = px[i] < 0 ? po->box1_min[0].x : px[i] > 0 ? po->box1_max[0].x : (po->box1_min[0].x + po->box1_max[0].x)/2;
-		local.z = pz[i] < 0 ? po->box1_min[0].z : pz[i] > 0 ? po->box1_max[0].z : (po->box1_min[0].z + po->box1_max[0].z)/2;
-		local.y = (po->box1_min[0].y + po->box1_max[0].y)/2;
+		local.x = px[i] < 0 ? mn.x : px[i] > 0 ? mx.x : (mn.x + mx.x)/2;
+		local.z = pz[i] < 0 ? mn.z : pz[i] > 0 ? mx.z : (mn.z + mx.z)/2;
+		local.y = (mn.y + mx.y)/2;
 		vm_vec_rotate(&ofs,&local,&m);
 		vm_vec_add(&p0,&d->pos,&ofs);
 		seg = find_point_seg(&p0,d->segnum);
@@ -752,6 +764,115 @@ void dressing_level_reset(void)
 	memset(Dressing_move_time,0,sizeof(Dressing_move_time));
 	memset(Dressing_snd_hold,0,sizeof(Dressing_snd_hold));
 	memset(Dressing_snd_on,0,sizeof(Dressing_snd_on));
+}
+
+// The lowest drawn point of the scenery d, relative to its position: the
+// lowest corner of the box of the drawn points of its model, turned with
+// the object. Returns 0 if the model has no points.
+static int dressing_drawn_bottom(object *d,fix *bot)
+{
+	vms_vector mn, mx;
+	vms_matrix m;
+	int k;
+
+	if (!model_points_box(d,-1,&mn,&mx))
+		return 0;
+	vm_copy_transpose_matrix(&m,&d->orient);
+	for (k=0;k<8;k++) {
+		vms_vector c, w;
+
+		c.x = (k & 1) ? mx.x : mn.x;
+		c.y = (k & 2) ? mx.y : mn.y;
+		c.z = (k & 4) ? mx.z : mn.z;
+		vm_vec_rotate(&w,&c,&m);
+		if (k == 0 || w.y < *bot)
+			*bot = w.y;
+	}
+	return 1;
+}
+
+// The floor under the position of d (a ray straight down). Returns 0 if
+// there is none.
+static int dressing_floor_under(object *d,fix *floor)
+{
+	fvi_query gq;
+	fvi_info gh;
+	vms_vector down = d->pos;
+
+	down.y -= i2f(200);
+	gq.p0 = &d->pos; gq.p1 = &down; gq.startseg = d->segnum; gq.rad = 0;
+	gq.thisobjnum = d-Objects; gq.ignore_obj_list = NULL; gq.flags = 0;
+	if (find_vector_intersection(&gq,&gh) != HIT_WALL)
+		return 0;
+	*floor = gh.hit_pnt.y;
+	return 1;
+}
+
+// The -objlog line of the height of scenery: the position, the floor under
+// it, the lowest drawn point of the model and the bottom of its solid
+// shape (dtu_solid_get), so that a test can see scenery in the floor.
+void dressing_floor_log(object *d,const char *when)
+{
+	double floor = -9999, drawn = -9999, solid = -9999;
+	fix f, b;
+	dtu_solid s;
+
+	if (!Obj_log || d->type != OBJ_DRESSING || d->render_type != RT_POLYOBJ)
+		return;
+	if (dressing_floor_under(d,&f))
+		floor = f2fl(f);
+	if (dressing_drawn_bottom(d,&b))
+		drawn = f2fl(d->pos.y + b);
+	if (dtu_solid_get(d,&s))
+		solid = s.bot;
+	dtu_obj_log("floor (%s): obj %d %s seg %d pos y %.2f floor %.2f drawn bottom %.2f (%+.2f) solid bottom %.2f (%+.2f) up %.2f",
+		when,(int)(d-Objects),dtu_object_name(d),d->segnum,f2fl(d->pos.y),floor,drawn,drawn-floor,solid,solid-floor,
+		f2fl(d->orient.uvec.y));
+}
+
+// ASCENT: Dtu_fix_scenery_floor. The level files put some scenery partly
+// into the floor, and 1.3 draws it there (it moves no scenery at the
+// load): in YPINN chair 18 is drawn 2.59 and chair 9 2.06 deep in the
+// floor, in THIEF2 table 81 1.10. Saved games of earlier versions of the
+// port also have chairs 2.95 in the floor (the box of chair.pof, see
+// dtu_solid_get). 1 (default): at the setup of a level each upright
+// scenery object whose lowest drawn point is DTU_FLOOR_LIFT_MIN to
+// DTU_FLOOR_LIFT_MAX below the floor under its position goes up onto the
+// floor. Scenery above the floor stays (scenery on a table, a lantern on a
+// wall). 0 (-origobj): the places of the level file.
+int Dtu_fix_scenery_floor = 1;
+#define DTU_FLOOR_LIFT_MIN	(F1_0/16)
+#define DTU_FLOOR_LIFT_MAX	i2f(4)
+
+void dressing_floor_fix(void)
+{
+	int i;
+
+	if (!Dtu_fix_scenery_floor)
+		return;
+	for (i=0;i<=Highest_object_index;i++) {
+		object *d = &Objects[i];
+		fix floor, bot, depth;
+		vms_vector p;
+		int seg;
+
+		if (d->type != OBJ_DRESSING || d->render_type != RT_POLYOBJ || (d->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+			continue;
+		if (d->orient.uvec.y < F1_0*9/10 || !dressing_drawn_bottom(d,&bot) || !dressing_floor_under(d,&floor))
+			continue;
+		depth = floor - (d->pos.y + bot);
+		if (depth < DTU_FLOOR_LIFT_MIN || depth > DTU_FLOOR_LIFT_MAX)
+			continue;
+		p = d->pos;
+		p.y += depth;
+		seg = find_point_seg(&p,d->segnum);
+		if (seg < 0)
+			continue;
+		dtu_obj_log("floor: obj %d %s is %.2f in the floor, up onto it (Dtu_fix_scenery_floor)",i,dtu_object_name(d),f2fl(depth));
+		d->pos = p;
+		if (seg != d->segnum)
+			obj_relink(i,seg);
+	}
 }
 
 // 1 if the scenery of the shape a lies on the scenery of the shape b
@@ -960,6 +1081,8 @@ static void dressing_sound_frame(void)
 		else if (Dressing_snd_hold[i] > 0) {
 			Dressing_snd_hold[i] -= FrameTime;
 			if (Dressing_snd_hold[i] <= 0) {
+				if (i <= Highest_object_index)
+					dressing_floor_log(&Objects[i],"move end");
 				if (Dressing_snd_on[i])
 					digi_kill_sound_linked_to_object(i);
 				Dressing_snd_on[i] = 0;
@@ -1009,6 +1132,10 @@ void dressing_move_frame(void)
 		pi->velocity.z = (pi->velocity.z / 2) >> 2;
 		pi->velocity.y /= 2;
 		// gravity (0x6C662): down to the floor, 3.0 times the distance.
+		// ASCENT: the distance is from the lowest drawn point (the port
+		// took the size of the object, a radius, as the depth of the
+		// bottom). 1.3 takes body_half_height[0] (0x6C30E, the box of
+		// the file) and starts the fall only at a distance above 6.0.
 		// ASCENT: Dtu_improved_physics has its own fall (dressing_settle_frame).
 		if (solid) {
 			pi->velocity.y = 0;
@@ -1023,7 +1150,10 @@ void dressing_move_frame(void)
 			gq.p0 = &d->pos; gq.p1 = &down; gq.startseg = d->segnum; gq.rad = 0;
 			gq.thisobjnum = i; gq.ignore_obj_list = NULL; gq.flags = 0;
 			if (find_vector_intersection(&gq,&gh) == HIT_WALL) {
-				fix fd = d->pos.y - gh.hit_pnt.y - d->size;
+				fix bot = -d->size, fd;
+
+				dressing_drawn_bottom(d,&bot);
+				fd = d->pos.y + bot - gh.hit_pnt.y;
 				if (fd > F1_0/16)
 					pi->velocity.y -= fixmul(fd,i2f(3));
 				else
@@ -1055,8 +1185,10 @@ void dressing_move_frame(void)
 			vm_vec_zero(&pi->velocity);
 			vm_vec_zero(&Dressing_slide[i]);
 			Dressing_fall[i] = 0;
-			if (!solid || Dressing_move_time[i] > 0)
+			if (!solid || Dressing_move_time[i] > 0) {
 				dtu_obj_log("push: obj %d %s stops at %.2f %.2f %.2f",i,dtu_object_name(d),f2fl(d->pos.x),f2fl(d->pos.y),f2fl(d->pos.z));
+				dressing_floor_log(d,"push stop");
+			}
 			continue;
 		}
 		vm_vec_copy_scale(&frame_vec,&pi->velocity,FrameTime);

@@ -980,7 +980,7 @@ void dtu_objects_init(void)
 		Dtu_fix_idle_anim = Dtu_fix_ai_ticks = Dtu_fix_creature_move = Dtu_fix_brain = Dtu_fix_ai_init =
 			Dtu_fix_wall_circle = Dtu_fix_hit_keep = Dtu_fix_burst_vclip =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
-			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_corpse_floor =
+			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_scenery_floor = Dtu_fix_corpse_floor =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
 			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_last =
@@ -1266,6 +1266,9 @@ void dtu_objects_level_setup(void)
 	if (!Level_setup_restore)
 		level_fixes_scenery_shields();
 
+	// ASCENT: Dtu_fix_scenery_floor, scenery in the floor goes up onto it
+	dressing_floor_fix();
+
 	if (Obj_log) {
 		int n[MAX_OBJECT_TYPES];
 
@@ -1289,6 +1292,7 @@ void dtu_objects_level_setup(void)
 					po && po->box1_min ? f2fl(po->box1_min[0].x) : 0.0,po && po->box1_min ? f2fl(po->box1_min[0].y) : 0.0,po && po->box1_min ? f2fl(po->box1_min[0].z) : 0.0,
 					po && po->box1_max ? f2fl(po->box1_max[0].x) : 0.0,po && po->box1_max ? f2fl(po->box1_max[0].y) : 0.0,po && po->box1_max ? f2fl(po->box1_max[0].z) : 0.0,
 					po && po->body_center ? f2fl(po->body_center[0].y) : 0.0,f2fl(Objects[i].orient.uvec.y));
+				dressing_floor_log(&Objects[i],"level start");
 			}
 			else if (Objects[i].type == OBJ_MISC || Objects[i].type == OBJ_ARMOR || Objects[i].type == OBJ_SPELL || Objects[i].type == OBJ_WEAPON)
 				dtu_obj_log("obj %d %s: item type %d id %d seg %d pos %.2f %.2f %.2f render %d size %.2f life %.1f count %d flags 0x%x parent %d/%d",
@@ -1673,22 +1677,36 @@ static int floor_under_point(object *obj,vms_vector *p,fix *floor_y)
 // Returns -1 if the model has no points.
 fix corpse_depth(object *obj,int frame,vms_vector *mn,vms_vector *mx)
 {
-	int n = obj->rtype.pobj_info.model_num;
 	polymodel *po = obj_model(obj);
 
-	if (po == NULL || n < 0 || n >= MAX_POLYGON_MODELS)
+	if (po == NULL)
 		return -1;
 	if (frame < -1 || frame >= po->n_frames)
 		frame = po->n_frames - 1;
+	if (!model_points_box(obj,frame,mn,mx))
+		return -1;
+	return (-mn->y > DTU_CORPSE_LIFT) ? -mn->y : DTU_CORPSE_LIFT;
+}
+
+// The box of the drawn points of the model of obj in a frame (-1: the rest
+// pose), relative to the position of the object, in the space of the model
+// (polyobj_frame_points_box), cached in Model_points. Returns 0 if the
+// model has no points.
+int model_points_box(object *obj,int frame,vms_vector *mn,vms_vector *mx)
+{
+	int n = obj->rtype.pobj_info.model_num;
+
+	if (obj->render_type != RT_POLYOBJ || n < 0 || n >= MAX_POLYGON_MODELS || n >= N_polygon_models)
+		return 0;
 	if (Model_points[n].ok == 0 || Model_points[n].frame != frame) {
 		Model_points[n].frame = frame;
 		Model_points[n].ok = polyobj_frame_points_box(n,frame,&Model_points[n].mn,&Model_points[n].mx) ? 1 : 2;
 	}
 	if (Model_points[n].ok != 1)
-		return -1;
+		return 0;
 	*mn = Model_points[n].mn;
 	*mx = Model_points[n].mx;
-	return (-mn->y > DTU_CORPSE_LIFT) ? -mn->y : DTU_CORPSE_LIFT;
+	return 1;
 }
 
 // Dtu_fix_corpse_floor: the drawing of a dying or dead creature goes down

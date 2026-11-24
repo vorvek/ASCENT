@@ -1006,10 +1006,14 @@ stand on scenery (section 4.5), but its rules do not give a stable one.
 
 The rules with Improved physics on:
 
-- Shape. Upright scenery (the up vector has y of 0.9 or more) with the box of the
-  model is that box, turned with the object: `box1_min[0]` to `box1_max[0]` minus
-  `body_center[0]` (the model is drawn with `body_center` at the position of the
-  object, models.md). Other scenery is the cylinder of `dtu_get_body_cylinder()`.
+- Shape. Upright scenery (the up vector has y of 0.9 or more) is the box of the
+  drawn points of the rest pose of its model, turned with the object
+  (`model_points_box`, relative to the position: the model is drawn with
+  `body_center` at the position of the object, models.md). Not `box1_min[0]` to
+  `box1_max[0]`: that box of `chair.pof` is 2.95 above the drawn chair
+  (formats/egg.md), so a pushed chair fell until that box stood on the floor and
+  stood 2.95 deep in it, with the legs out of sight. Other scenery is the cylinder of
+  `dtu_get_body_cylinder()`.
   Scenery with `pass_thru` is no body.
 - The body of the player for scenery is an upright cylinder: the radius of the move
   query (`rad`, 3.59 for a human), from the feet to the head of the capsule (13.1).

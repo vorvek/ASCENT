@@ -281,6 +281,16 @@ row lists exactly the submodels whose parent is the row number. In a model with 
 submodel the row is not initialized. No model has a SUBCALL opcode: the executable
 walks the submodel tree with arrays 3, 12 and 18 and draws each submodel on its own.
 
+The body box of entry 0 (arrays 10 and 11) is not always the box of the drawn points of
+the rest pose. For `chair.pof` (model 231 of `PORTAL.EGG`, 230 of `THIEF.EGG`) the box
+is y -4.54 to 6.74 and z -2.72 to 2.58, but the points with the submodel offsets
+applied (`tools/model.py obj`, frame -1) are y -7.49 to 3.79 and z -0.40 to 4.90: the
+box is 2.95 higher and 2.3 to one side. x agrees (-2.50 to 2.50). The center of the
+box (array 14, y 1.10) is what the drawing takes away from the position, so the chair
+is drawn 8.59 below its position to 2.69 above it. For `table.pof`, `bench.pof`,
+`bed_rd.pof`, `chest5.pof`, `crate.pof`, `barrel01.pof` and `lantern.pof` the box and
+the drawn points agree to 0.2.
+
 ## BIN files
 
 `HMC.BIN`, `HMT.BIN` and `YPINN.BIN` are encoded table files, the Undermountain form of

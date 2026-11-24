@@ -1300,7 +1300,8 @@ velocity times the frame time and has its own gravity to the floor).
 - `Dtu_fix_push_body`: a body that the scenery starts in does not stop a move
   away from it. The player has the radius of its move query (3.59), so the
   player and the scenery stop at the same distance. Other scenery is the box
-  of its model (box 1 of the rest pose, an upright object only): the corners
+  of its model (the box of the drawn points of the rest pose, an upright
+  object only; box 1 of the file is wrong for `chair.pof`): the corners
   and the mid points of the edges of each box are moved against the other box
   (`dressing_box_hit`), not the circles of `body_radius[0]` (a chair at a
   table is already inside of the circle of the table). Creatures are circles
@@ -1321,6 +1322,42 @@ frames per second the scenery kept the speed of the player for some frames and
 ran ahead, so the push grew with the frame rate. In the corner of segment 20
 of YPINN the center of a chair stopped 0.2 from both walls, and the center of a
 table at a wall stopped at the wall.
+
+The gravity of the port (Improved physics off) takes scenery down until its
+lowest drawn point is on the floor under its position. Before, it took the size
+of the object (a radius) as the depth of the bottom: a pushed chair (size 7.69,
+lowest point 8.59 below the position) went 0.9 into the floor, and a crate pushed
+off a ledge stopped 3.66 above the floor (computed). 1.3 takes `body_half_height[0]` (0x6C30E,
+the box of the file) and starts a fall only when the floor is farther than 6.0;
+that rule is not in the port.
+
+### Scenery in the floor (Dtu_fix_scenery_floor)
+
+1.3 moves no scenery at the load of a level (a resting object falls only when its
+floor is farther than 6.0, see above), so it draws scenery where the level file
+puts it. Some is partly in the floor (`-objlog`, line "floor (level start)": the
+lowest drawn point against the floor straight under the position):
+
+| Level | Object | In the floor |
+|---|---|---|
+| YPINN | chair 18 | 2.59 |
+| YPINN | chair 9 | 2.06 |
+| YPINN | chairs 20, 26 | 0.99, 1.09 |
+| YPINN | other chairs, tables, beds, barrels | 0.09 to 0.59 |
+| THIEF1 | chairs 121, 123, benches 88 to 90, crate 73 | 0.25 to 0.51 |
+| THIEF2 | table 81 | 1.10 |
+| THIEF2 | benches 95, 96, barrels 77 to 79 | 0.25 to 0.46 |
+
+Saved games of the port before this change can also have chairs 2.95 in the floor
+(the shape of Improved physics above): THIEF1 chair 66 of a saved game of the
+stream of 2026-11-23.
+
+`Dtu_fix_scenery_floor` (1, the default): at the setup of a level, also of a loaded
+level, each upright scenery object whose lowest drawn point is 1/16 to 4.0 below the
+floor under its position goes up onto the floor (`dressing_floor_fix`, a line
+"floor: obj N ... up onto it" in the `-objlog` file). Scenery higher than the floor
+stays where it is: scenery on a table, a lantern on a wall. A barrel on its side is
+not upright and stays. `-origobj` sets it to 0: the places of the level file.
 
 With Improved physics on, the player does not push scenery with these rules:
 scenery is a solid body with a top, and the player moves it directly
