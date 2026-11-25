@@ -588,6 +588,11 @@ void dtu_create_burst(int weapon_type, int segnum, vms_vector *pos);
 int dtu_create_item(int type, int id, int count, int segnum, vms_vector *pos);
 int dtu_create_item_size(int type, int id, int count, int segnum, vms_vector *pos, fix size);
 #define DTU_GOLD_SIZE	0x38000		// 3.5: the size of the gold of a dead humanoid (0x6A6AC)
+// ASCENT: Dtu_fix_item_reach (1: the default, 0 with -origcombat). With the
+// capsule of the player (Dtu_improved_physics), the move of the player
+// touches an item on the floor at any height of the capsule (fvi.c). The
+// sphere about the center of the player missed small items on the floor.
+extern int Dtu_fix_item_reach;
 
 // 0x9493A: the floor of the segment opened. Its objects fall.
 void dtu_drop_objects_in_segment(int segnum);

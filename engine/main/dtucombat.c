@@ -1594,6 +1594,7 @@ static void combat_init(void)
 		return;
 	Init_done = 1;
 	if (FindArg("-origcombat")) {
+		Dtu_fix_item_reach = 0;
 		Dtu_fix_one_hit = 0;
 		Dtu_fix_haste_attack = 0;
 		Dtu_fix_missile_rate = 0;

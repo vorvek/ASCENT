@@ -905,6 +905,34 @@ static fix dtu_check_vector_to_object(vms_vector *intp,vms_vector *p0,vms_vector
 	if (obj->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
 		return 0;
 
+	// ASCENT: Dtu_fix_item_reach (dtuobj.h). With the capsule of the player,
+	// an item on the floor is a circle of its size + rad in x and z, and it
+	// is touched at any height of the capsule (plus its size). The sphere
+	// about the center of the player missed small items on the floor: gold
+	// of size 2 from an old save, or gold that is low in the floor.
+	if (Fvi_dtu_capsule && Dtu_fix_item_reach && obj->render_type == RT_ITEM && otherobj->type == OBJ_PLAYER) {
+		f0 = *p0; f1 = *p1; fc = obj->pos;
+		f0.y = f1.y = fc.y = 0;
+		len = vm_vec_dist(&f0,&f1);
+		if (len < 16) {
+			if (vm_vec_dist(&f0,&fc) >= obj->size+rad)
+				return 0;
+			dist = 1;
+			*intp = *p0;
+		}
+		else {
+			dist = check_vector_to_sphere_1(&fi,&f0,&f1,&fc,obj->size+rad);
+			if (dist == 0)
+				return 0;
+			vm_vec_sub(intp,p1,p0);
+			vm_vec_scale(intp,fixdiv(dist,len));
+			vm_vec_add2(intp,p0);
+		}
+		if (obj->pos.y > intp->y + Fvi_dtu_cap_up + obj->size || obj->pos.y < intp->y - Fvi_dtu_cap_down - obj->size)
+			return 0;
+		return dist;
+	}
+
 	if (obj->type != OBJ_PLAYER && obj->type != OBJ_ROBOT && obj->type != OBJ_DRESSING)
 		return check_vector_to_sphere_1(intp,p0,p1,&obj->pos,obj->size+rad);
 

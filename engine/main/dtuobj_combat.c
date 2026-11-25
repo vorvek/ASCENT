@@ -86,6 +86,7 @@ static const signed char Str_to_hit[20] = {
 // (default): the plain bonus of the strength. 0 (-origcombat, dtuchar.c):
 // the rule of the executable.
 int Dtu_fix_creature_strength = 1;
+int Dtu_fix_item_reach = 1;		// ASCENT: dtuobj.h
 
 static int str_bonus(int str)
 {
