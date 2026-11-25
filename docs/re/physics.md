@@ -222,6 +222,9 @@ for the state bit 0x80.
 These two clears end a fall with no damage (0x6C871, 0x6C89A). The port can give them the
 damage: `Dtu_fix_fall_land_player` and `Dtu_fix_fall_land`, see 4.7.
 
+The bit 0x80 of the mask 0x200880 is Feather Fall, so a player with that effect has no
+gravity in 1.3. The port gives the gravity back to it: `Dtu_fix_feather_fall` (section 8).
+
 So gravity is not a constant. It grows with the distance to the floor, up to
 `3.0 * 8.0 = 24.0` for each FT step (1536 for each second squared) when no floor is
 within 8.0.
@@ -562,6 +565,7 @@ setting is 1 (corrected) by default. The option `-origphys` sets all to 0.
 | `Dtu_fix_ladder` | The climb ends below the top of a ladder (section 12), the climb thrust goes into the wall and the wall throws the player back on each frame | Section 13 |
 | `Dtu_fix_wall_slide` | 0.75 of the velocity into a wall comes back, on each frame while the player pushes, and the move of the frame is lost | The velocity into the wall is taken away, the velocity along it stays |
 | `Dtu_fix_wall_overlap` | (port) A body that starts inside the reach of a wall (rad + 1.0) hits it with each move and cannot move any more | The body is moved out of the reach of the wall along its normal (section 13) |
+| `Dtu_fix_feather_fall` | Feather Fall (flag 0x80) stops the gravity of the player (4.3): the player stays at the height where a flight ends or where the floor ends | Feather Fall keeps the gravity. The limit of the velocity down (15.0) and the fall with no damage stay (bugs.md D27) |
 
 Not corrected: the 8 tries of the move loop for each frame.
 

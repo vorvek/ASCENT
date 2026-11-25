@@ -1345,6 +1345,21 @@ int Dtu_fix_fall_sound = 1;
 // of a fall takes the damage too. -origphys clears it.
 int Dtu_fix_fall_land_player = 1;
 
+// Feather Fall and the gravity of the player (0x6C662). 1.3 gives no
+// gravity to an object with a bit of 0x200880, and 0x80 is Feather Fall:
+// a player with the effect does not fall. A player who walks off a ledge
+// or whose flight ends stays at that height, and the head hits the top of
+// the doors. Corrected (1, default): Feather Fall keeps the gravity. The
+// limit of the velocity down (15.0) and the fall with no damage stay.
+// -origphys clears it.
+int Dtu_fix_feather_fall = 1;
+
+// The effect bits that stop the gravity of the player
+static int dtu_no_gravity_bits(void)
+{
+	return Dtu_fix_feather_fall ? (DTU_OF_FLY|DTU_OF_LEVITATE) : DTU_OF_NO_GRAVITY;
+}
+
 // The state of the player (the byte at 0x1AE of the object in the
 // executable) and the values that belong to it.
 ubyte Dtu_player_state = 0;
@@ -1567,7 +1582,7 @@ static void dtu_apply_gravity(object *obj,vms_vector *accel)
 	static fix push_acc = 0;
 	fix d = dtu_get_floor_dist(obj);
 	fix ad = abs(d);
-	int no_gravity = (obj->dtu.m_88 & DTU_OF_NO_GRAVITY) || (Dtu_player_state & DTU_PS_CLIMBING) ||
+	int no_gravity = (obj->dtu.m_88 & dtu_no_gravity_bits()) || (Dtu_player_state & DTU_PS_CLIMBING) ||
 		Dtu_ladder_exit > 0;		// ASCENT: Dtu_fix_ladder, the step from the top of a ladder
 
 	// ASCENT: Dtu_improved_physics. The capsule that stood on the floor in
@@ -2030,7 +2045,7 @@ static void dtu_improved_ladder_grab(object *obj,vms_vector *accel)
 
 	if (Dtu_player_state & (DTU_PS_CLIMBING|DTU_PS_JUMPING))
 		return;
-	if ((obj->dtu.m_88 & DTU_OF_NO_GRAVITY) || Dtu_ladder_exit > 0)
+	if ((obj->dtu.m_88 & dtu_no_gravity_bits()) || Dtu_ladder_exit > 0)
 		return;
 	if (Dtu_floor_dist < F1_0 || !(Dtu_player_state & DTU_PS_FALLING) || Dtu_fall_start_y - obj->pos.y > DTU_FIX_LADDER_GRAB_FALL)
 		return;

@@ -452,7 +452,7 @@ static void dtu_move_init(void)
 		Dtu_fix_physics_steps = Dtu_fix_frame_drag = Dtu_fix_stop_decay =
 			Dtu_fix_floor_push = Dtu_fix_look_return = Dtu_fix_fly_bob = Dtu_fix_turn_ramp = Dtu_fix_jump_exit =
 			Dtu_fix_jump_path = Dtu_fix_ladder = Dtu_fix_wall_slide = Dtu_fix_wall_overlap =
-			Dtu_fix_fall_sound = Dtu_fix_fall_land_player = 0;
+			Dtu_fix_fall_sound = Dtu_fix_fall_land_player = Dtu_fix_feather_fall = 0;
 	if (FindArg("-origphys"))
 		Dtu_turn_scale = F1_0;
 

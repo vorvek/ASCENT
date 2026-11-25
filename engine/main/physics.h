@@ -196,6 +196,7 @@ extern int Dtu_fix_floor_push,Dtu_fix_look_return,Dtu_fix_fly_bob,Dtu_fix_turn_r
 extern int Dtu_fix_jump_path,Dtu_fix_ladder,Dtu_fix_wall_slide,Dtu_fix_wall_overlap;
 extern int Dtu_fix_fall_sound;
 extern int Dtu_fix_fall_land_player;
+extern int Dtu_fix_feather_fall;
 void dtu_move_log_line(char *text);	// controls.c: a line in the log of -movelog
 // ASCENT: the turn keys for Dtu_fix_turn_ramp (controls.c): the direction
 // (-1, 0, 1), the time the key was down at the start of the frame, the
