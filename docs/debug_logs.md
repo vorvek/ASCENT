@@ -72,15 +72,47 @@ too.
   source and destination segments), `Level change: script command teleport PC ...`, or
   the exit of the inn to Waterdeep. A direct start (`-level NAME`) logs its start
   segment (`Level start: segment ...`, see `docs/audit/world.md`, W20).
-- The input devices: `Input: gamepad 'NAME' (vendor V product P), axes LX LY RX RY LT RT`
-  (the axes at the open; an axis away from 0 counts only after `Input: gamepad axis N at
-  rest`), `Input: joystick 'NAME' ...`, and `Input: relative mouse mode on failed: ...`.
-- The look input, for a report of a view that does not look up or down (at most 4
-  lines of each): `Look keys: held 60 frames (up U, down D), pitch A to B, look sum S,
-  sensitivity N, control type T, gamepad look up X down Y, immersive I` (a look sum of 0
-  with a key down: something else looks in the other direction), and in the immersive
-  mode each 300 frames `Mouse look: 300 frames, source S, mouse look M, mouse axes look L
-  turn T, pitch A to B, control type C` (axes 0: the game got no mouse motion).
+- The input lines (for a report of keys or a mouse that do nothing):
+  - At the start, after the video lines: `Input: SDL compiled X, linked Y`, `Input:
+    environment NAME=VALUE` (XDG_SESSION_TYPE, XDG_CURRENT_DESKTOP, DISPLAY,
+    WAYLAND_DISPLAY and others), `Input: hint NAME=VALUE` (the SDL hints of the mouse and
+    the keyboard), on Linux `Input: libXi.so.6 loads`, `Input: X server 'VENDOR', release
+    N` and `Input: X extension XInputExtension present`, `Input: display N bounds ...`,
+    `Input: window flags 0x..., position, size, display scale, pixel density`, and each
+    keyboard and mouse that SDL reports (`Input: keyboard ID 'NAME'`, `Input: mouse ID
+    'NAME'`). A device added or removed later: `Input: keyboard ID added ('NAME')`.
+  - `Input: gamepad 'NAME' (vendor V product P), axes LX LY RX RY LT RT` and `Input:
+    joystick 'NAME' ...` when one is opened. A gamepad axis away from 0 at the open counts
+    only after `Input: gamepad axis N at rest`.
+  - Each change of the mouse mode: `Input: relative mouse mode on: ok (SDL reports 1)` or
+    the error of SDL, `Input: mouse grab on: ...`, `Input: the relative mode was off with
+    the focus: set again`, and the first 20 warps of the pointer to the window center
+    (`Input: warp of the pointer from X,Y to the center ...`).
+  - The window events: `Input window: focus gained` (focus lost, mouse enter, mouse leave,
+    enter full screen, leave full screen, resized, moved), with the relative mode and the
+    grab, at most 300 lines.
+  - The first 200 key events (`Input key down: scancode N (NAME), key 0x..., mod 0x...,
+    repeat R, keyboard ID, game code 0x..`), the first 200 mouse motions (`Input motion:
+    mouse ID, x, y, xrel, yrel, relative R`) and the first 200 mouse buttons. Then one line
+    for each second with input: `Input second: keys N down (R repeats) N up (keyboard ID),
+    mouse N motions (Z with no relative motion) sum xrel X yrel Y (mouse ID), N buttons, N
+    wheel, N warps, relative R, grab G, focus F`.
+  - The control settings at the first frame of the controls and after a change of the
+    control type or the sensitivity: `Controls: control type T, sensitivity S, immersive
+    I, ...`, the two keys of look up, look down, quick up, quick down, turn left, turn
+    right, immersive, slide on and the map, the mouse axes (`Controls: mouse look axis A
+    invert I, turn axis ...`, 0 x, 1 y, 255 none) and the rows `KeyConfig5=` (mouse) and
+    `KeyConfig0=` (keys) as in `ascent.cfg`.
+  - One line for each 60 frames of the controls (one second with the fixed step) with
+    look or turn input: `Controls second: N frames with input (M automap), keys look up U
+    down D turn T frames, look keys K axes A pad P return R, heading keys K axes A pad P,
+    mouse raw look L turn T, source S, mouse look M, immersive I, pitch A to B (last write:
+    look, glance return or none), heading H1 to H2`. The look parts are pitch units (fixang,
+    0x4000 is 90 degrees), the heading parts are the heading time of the frames (fix), the
+    heading is in degrees. Source 1 is the mouse (control type 5 in the immersive mode), 2
+    a joystick, 0 none. Keys down with a look part of 0: the sensitivity is 0 or another
+    input cancels it. Mouse motion in the `Input second` lines with raw look and turn 0:
+    the game did not read the motion.
 - The messages of the data loaders (`dtu_log()`: tables, archives, music, movies, front
   end loads and saves of save games, level states). At most 3000 in one session.
 - `Error()`, `Warning()` and `Int3()` (at most 500 warnings), the messages of SDL, the

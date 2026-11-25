@@ -230,6 +230,7 @@ void dtu_pad_menu(void);							// the Customize Gamepad menu
 #include <stdio.h>
 int dtu_kconfig_cfg_line(const char *name, const char *value);
 void dtu_kconfig_cfg_write(FILE *f);
+void dtu_kconfig_log(void);			// ASCENT: the control settings in the session log
 
 
 #endif

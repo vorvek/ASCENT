@@ -498,6 +498,10 @@ void plat_log_system(void);
 // The video driver, the displays, the window and the OpenGL renderer.
 // Call it after plat_init.
 void plat_log_video(void);
+// ASCENT: the input lines of the session log at the start: SDL, the
+// environment, the hints, the X server, the displays, the window, the
+// keyboards and the mice (input.c).
+void plat_input_log_start(void);
 // Report the OpenGL errors (glGetError) that are pending, with where.
 void plat_log_gl_errors(const char *where);
 // plat_pump calls it: a check of the OpenGL errors every few seconds.
