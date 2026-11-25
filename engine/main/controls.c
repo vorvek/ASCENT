@@ -218,6 +218,7 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 // ASCENT: the controls of the target game, see the end of the file
 #include <stdio.h>
 #include <string.h>
+#include <math.h>		// ASCENT: atan2 for the control lines of the session log
 #include "physics.h"
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtucombat.h"	// ASCENT: the attack of the player
@@ -554,57 +555,55 @@ static fix dtu_turn_ramp_integral(fix t)
 	return (fix) (T*n*(n+1)/16 + (n+1)*(t - n*T)/8);
 }
 
-// ASCENT: lines of the session log for a report of look keys or a mouse
-// that do not move the view (a few lines in a session). A look key held
-// for one second: the pitch at the start and now, the sum of the look of
-// the frames, the sensitivity, the control type and the look amounts of
-// the gamepad. The immersive mode: each 5 seconds with mouse motion, the
-// sum of the mouse axes that the game read.
-static void look_diag_keys(int sens, int look)
-{
-	static int held, logged, start_pitch;
-	static int sum;
-	int down = dtu_action_down(DTU_ACT_LOOK_UP) || dtu_action_down(DTU_ACT_LOOK_DOWN);
+// ASCENT: the control lines of the session log (docs/debug_logs.md). The
+// settings at the first frame and after a change (dtu_kconfig_log). Then
+// one line for each second (60 frames of the controls) with look or turn
+// input: the parts of the look (the pitch change) and of the heading from
+// the keys, the mouse or joystick axes and the gamepad, the raw mouse axes
+// that the game read, the pitch and the heading at the start and the end
+// of the second, and which code wrote the pitch last.
+static struct {
+	int frames, input_frames, automap_frames;
+	int look_keys, look_axes, look_pad, return_steps;
+	int head_keys, head_axes, head_pad;
+	int raw_look, raw_turn, src, mouse_look;
+	int look_up_frames, look_down_frames, turn_frames;
+	int pitch_start;
+	float heading_start;
+	const char *writer;
+} Cdiag;
 
-	if (!down) {
-		held = 0;
-		return;
-	}
-	if (held == 0) {
-		start_pitch = Dtu_look_pitch;
-		sum = 0;
-	}
-	held++;
-	sum += look;
-	if (held == 60 && logged < 4) {
-		logged++;
-		dtulog_event("Look keys: held 60 frames (up %d, down %d), pitch %d to %d, look sum %d, sensitivity %d, control type %d, gamepad look up %d down %d, immersive %d",
-			dtu_action_down(DTU_ACT_LOOK_UP), dtu_action_down(DTU_ACT_LOOK_DOWN), start_pitch, Dtu_look_pitch, sum, sens,
-			Dtu_control_type, dtu_pad_amount(DTU_ACT_LOOK_UP), dtu_pad_amount(DTU_ACT_LOOK_DOWN), Dtu_immersive);
-	}
+static float control_diag_heading(void)
+{
+	object *obj = ConsoleObject;
+
+	return obj ? (float) (atan2(f2fl(obj->orient.fvec.x), f2fl(obj->orient.fvec.z)) * 57.29578) : 0.0f;
 }
 
-static void look_diag_mouse(int src, int mouse_look, int a_look, int a_turn)
+static void control_diag_frame(void)
 {
-	static int frames, logged, sum_look, sum_turn, start_pitch;
+	static int last_type = -1, last_sens = -1, lines;
 
-	if (!Dtu_immersive || logged >= 4) {
-		frames = 0;
+	if (Dtu_control_type != last_type || Config_joystick_sensitivity != last_sens) {
+		last_type = Dtu_control_type;
+		last_sens = Config_joystick_sensitivity;
+		dtu_kconfig_log();
+	}
+	if (Cdiag.frames == 0) {
+		Cdiag.pitch_start = Dtu_look_pitch;
+		Cdiag.heading_start = control_diag_heading();
+	}
+	if (++Cdiag.frames < 60)
 		return;
+	if (Cdiag.input_frames && lines < 4000) {
+		lines++;
+		dtulog_event("Controls second: %d frames with input (%d automap), keys look up %d down %d turn %d frames, look keys %d axes %d pad %d return %d, heading keys %d axes %d pad %d, mouse raw look %d turn %d, source %d, mouse look %d, immersive %d, pitch %d to %d (last write: %s), heading %.1f to %.1f",
+			Cdiag.input_frames, Cdiag.automap_frames, Cdiag.look_up_frames, Cdiag.look_down_frames, Cdiag.turn_frames,
+			Cdiag.look_keys, Cdiag.look_axes, Cdiag.look_pad, Cdiag.return_steps, Cdiag.head_keys, Cdiag.head_axes, Cdiag.head_pad,
+			Cdiag.raw_look, Cdiag.raw_turn, Cdiag.src, Cdiag.mouse_look, Dtu_immersive,
+			Cdiag.pitch_start, Dtu_look_pitch, Cdiag.writer ? Cdiag.writer : "none", Cdiag.heading_start, control_diag_heading());
 	}
-	if (frames == 0) {
-		sum_look = sum_turn = 0;
-		start_pitch = Dtu_look_pitch;
-	}
-	frames++;
-	sum_look += a_look;
-	sum_turn += a_turn;
-	if (frames >= 300) {
-		dtulog_event("Mouse look: 300 frames, source %d, mouse look %d, mouse axes look %d turn %d, pitch %d to %d, control type %d",
-			src, mouse_look, sum_look, sum_turn, start_pitch, Dtu_look_pitch, Dtu_control_type);
-		logged++;
-		frames = 0;
-	}
+	memset(&Cdiag, 0, sizeof(Cdiag));
 }
 
 // Reads the keyboard, the mouse and the joystick for the movement of the
@@ -644,6 +643,9 @@ void dtu_read_controls(void)
 	// gets none (0x40E50)
 	if (dtu_automap_read_controls()) {
 		Dtu_move_mode = 0;
+		Cdiag.automap_frames++;
+		Cdiag.input_frames += dtu_action_down(DTU_ACT_LOOK_UP) || dtu_action_down(DTU_ACT_LOOK_DOWN);
+		control_diag_frame();
 		return;
 	}
 
@@ -742,7 +744,13 @@ void dtu_read_controls(void)
 		int a_look, a_turn, a_slide, a_up;
 		int src = dtu_control_axes(&a_look, &a_turn, &a_slide, &a_up);
 
-		look_diag_mouse(src, mouse_look, a_look, a_turn);
+		Cdiag.raw_look += a_look;
+		Cdiag.raw_turn += a_turn;
+		Cdiag.src = src;
+		Cdiag.mouse_look = mouse_look;
+		{
+		fix h0 = heading;
+		int l0 = look;
 
 		// ASCENT: Joystick/Mouse Sensitivity of F2 (byte 0x13BFEF, 0 to
 		// 8, 8 by default at 0x71580): the executable scales the look and
@@ -762,13 +770,24 @@ void dtu_read_controls(void)
 			if (abs(a_slide) > 16) side += fixmuldiv(ft,a_slide,128);
 			if (abs(a_up) > 16) vert -= fixmuldiv(ft,a_up,128);
 		}
+		Cdiag.head_axes += heading - h0;
+		Cdiag.look_axes += look - l0;
+		}
 	}
 
 	// ASCENT: the gamepad turns with no ramp (as the mouse) and looks. The
 	// whole stick turns at the rate of a turn key, times the speed setting.
 	// ASCENT: the gamepad is a joystick for the sensitivity.
-	heading += fixmul(fixmul(ft,dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT)),Dtu_turn_scale) * sens / 8;
-	look += fixmul(ft,dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP)) * sens / 8;
+	{
+		fix hp = fixmul(fixmul(ft,dtu_pad_amount(DTU_ACT_TURN_RIGHT) - dtu_pad_amount(DTU_ACT_TURN_LEFT)),Dtu_turn_scale) * sens / 8;
+		int lp = fixmul(ft,dtu_pad_amount(DTU_ACT_LOOK_DOWN) - dtu_pad_amount(DTU_ACT_LOOK_UP)) * sens / 8;
+		heading += hp;
+		look += lp;
+		Cdiag.head_pad += hp;
+		Cdiag.look_pad += lp;
+	}
+	{
+	int look_before_keys = look;
 
 	// The look keys: the pitch changes by the key time * sensitivity / 8,
 	// as an angle (0x539E1 and 0x53A8C, the key items 0x1F to 0x21).
@@ -776,8 +795,14 @@ void dtu_read_controls(void)
 	if (dtu_action_down(DTU_ACT_LOOK_DOWN) || (t & TM_LOOKDOWN))	look += ft * sens / 8;
 	if (dtu_action_down(DTU_ACT_QUICK_UP))		{ look -= ft * sens / 8; glance = 1; }
 	if (dtu_action_down(DTU_ACT_QUICK_DOWN))		{ look += ft * sens / 8; glance = 1; }
-
-	look_diag_keys(sens, look);
+	Cdiag.look_keys += look - look_before_keys;
+	}
+	Cdiag.look_up_frames += dtu_action_down(DTU_ACT_LOOK_UP) || dtu_action_down(DTU_ACT_QUICK_UP);
+	Cdiag.look_down_frames += dtu_action_down(DTU_ACT_LOOK_DOWN) || dtu_action_down(DTU_ACT_QUICK_DOWN);
+	Cdiag.turn_frames += turn != 0;
+	Cdiag.head_keys += Turn_other_heading;
+	if (look || turn || Cdiag.raw_look || Cdiag.raw_turn || dtu_action_down(DTU_ACT_LOOK_UP) || dtu_action_down(DTU_ACT_LOOK_DOWN))
+		Cdiag.input_frames++;
 
 	if (look) {
 		int p = Dtu_look_pitch + look;
@@ -787,6 +812,7 @@ void dtu_read_controls(void)
 		Dtu_look_pitch = p;
 		glance_return = glance;
 		return_acc = 0;
+		Cdiag.writer = "look";
 	}
 	else if (glance_return) {
 		// 0x53C9F: the view returns after a glance.
@@ -803,7 +829,10 @@ void dtu_read_controls(void)
 		if (p < 0)	{ p += step; if (p >= 0) { p = 0; glance_return = 0; } }
 		else			{ p -= step; if (p <= 0) { p = 0; glance_return = 0; } }
 		Dtu_look_pitch = p;
+		Cdiag.return_steps++;
+		Cdiag.writer = "glance return";
 	}
+	control_diag_frame();
 
 	// Up and down, only in flight and in levitation
 	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) {

@@ -407,6 +407,7 @@ void plat_log_video(void)
 		}
 		plat_log("GPU renderer available: %s", plat_gpu_available() ? "yes" : "no");
 	}
+	plat_input_log_start();
 }
 
 void plat_log_gl_errors(const char *where)

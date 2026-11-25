@@ -162,17 +162,23 @@ static void apply_relative_mode(void)
 	if (windows && count > 0) {
 		int grab = plat_is_fullscreen();		// ASCENT: the borderless full screen form of video.c
 		if (Relative_wanted != Relative_applied) {
-			if (SDL_SetWindowRelativeMouseMode(windows[0], Relative_wanted != 0))
+			// ASCENT: the session log has each change of the mode (at most 200)
+			static int logged;
+			bool ok = SDL_SetWindowRelativeMouseMode(windows[0], Relative_wanted != 0);
+			if (logged++ < 200)
+				plat_log("Input: relative mouse mode %s: %s (SDL reports %d)", Relative_wanted ? "on" : "off",
+					ok ? "ok" : SDL_GetError(), SDL_GetWindowRelativeMouseMode(windows[0]));
+			if (ok)
 				Relative_applied = Relative_wanted;
-			else {
-				// ASCENT: the session log tells why the immersive mode has no mouse
-				static int logged;
-				if (logged++ < 3)
-					plat_log("Input: relative mouse mode %s failed: %s", Relative_wanted ? "on" : "off", SDL_GetError());
-			}
 		}
-		if (grab != Grab_applied && SDL_SetWindowMouseGrab(windows[0], grab != 0))
-			Grab_applied = grab;
+		if (grab != Grab_applied) {
+			static int logged;
+			bool ok = SDL_SetWindowMouseGrab(windows[0], grab != 0);
+			if (logged++ < 200)
+				plat_log("Input: mouse grab %s: %s", grab ? "on" : "off", ok ? "ok" : SDL_GetError());
+			if (ok)
+				Grab_applied = grab;
+		}
 		Grab_dirty = 0;
 	}
 	SDL_free(windows);
@@ -499,11 +505,229 @@ int plat_pad_button_presses(int button)
 }
 
 // ---------------------------------------------------------------------
+// ASCENT: the input lines of the session log (docs/debug_logs.md, "Input
+// lines"). The first DIAG_FIRST key events and mouse events are written
+// one by one, then one summary line for each second with input.
+
+#define DIAG_FIRST	200
+
+static int Diag_keys, Diag_motions, Diag_buttons;
+static Uint64 Diag_second;
+static struct {
+	int key_down, key_up, repeats, motions, buttons, wheels;
+	float xrel, yrel;
+	int zero_motions;		// motion events with xrel and yrel 0
+	int warps;				// warps of plat_input_hold_pointer
+	SDL_MouseID last_mouse;
+	SDL_KeyboardID last_keyboard;
+} Diag;
+
+static void diag_device_lists(void)
+{
+	SDL_KeyboardID *kb;
+	SDL_MouseID *mice;
+	int n = 0, i;
+
+	kb = SDL_GetKeyboards(&n);
+	plat_log("Input: %d keyboards", n);
+	for (i = 0; kb && i < n; i++)
+		plat_log("Input: keyboard %u '%s'", (unsigned) kb[i], SDL_GetKeyboardNameForID(kb[i]) ? SDL_GetKeyboardNameForID(kb[i]) : "?");
+	SDL_free(kb);
+	n = 0;
+	mice = SDL_GetMice(&n);
+	plat_log("Input: %d mice", n);
+	for (i = 0; mice && i < n; i++)
+		plat_log("Input: mouse %u '%s'", (unsigned) mice[i], SDL_GetMouseNameForID(mice[i]) ? SDL_GetMouseNameForID(mice[i]) : "?");
+	SDL_free(mice);
+}
+
+#if defined(__unix__) && !defined(__APPLE__)
+// The X server: vendor, release, and the XInputExtension (XInput2 is what
+// SDL uses for the relative mouse motion).
+static void diag_x11(void)
+{
+	SDL_Window **windows;
+	void *display = NULL;
+	int n = 0;
+	SDL_SharedObject *lib, *xi;
+
+	windows = SDL_GetWindows(&n);
+	if (windows && n > 0)
+		display = SDL_GetPointerProperty(SDL_GetWindowProperties(windows[0]), SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+	SDL_free(windows);
+	xi = SDL_LoadObject("libXi.so.6");
+	plat_log("Input: libXi.so.6 %s", xi ? "loads" : "does not load (no XInput2: SDL moves the pointer for the relative mode)");
+	if (xi)
+		SDL_UnloadObject(xi);
+	if (!display)
+		return;
+	lib = SDL_LoadObject("libX11.so.6");
+	if (lib) {
+		char *(*server_vendor)(void *) = (char *(*)(void *)) SDL_LoadFunction(lib, "XServerVendor");
+		int (*vendor_release)(void *) = (int (*)(void *)) SDL_LoadFunction(lib, "XVendorRelease");
+		int (*query_ext)(void *, const char *, int *, int *, int *) =
+			(int (*)(void *, const char *, int *, int *, int *)) SDL_LoadFunction(lib, "XQueryExtension");
+		int op = 0, ev = 0, err = 0;
+		if (server_vendor && vendor_release)
+			plat_log("Input: X server '%s', release %d", server_vendor(display), vendor_release(display));
+		if (query_ext)
+			plat_log("Input: X extension XInputExtension %s", query_ext(display, "XInputExtension", &op, &ev, &err) ? "present" : "missing");
+		SDL_UnloadObject(lib);
+	}
+}
+#else
+#define diag_x11()
+#endif
+
+void plat_input_log_start(void)
+{
+	static const char *hints[] = {
+		SDL_HINT_MOUSE_RELATIVE_MODE_CENTER, SDL_HINT_MOUSE_RELATIVE_WARP_MOTION, SDL_HINT_MOUSE_EMULATE_WARP_WITH_RELATIVE,
+		SDL_HINT_MOUSE_RELATIVE_SYSTEM_SCALE, SDL_HINT_MOUSE_RELATIVE_SPEED_SCALE, SDL_HINT_MOUSE_NORMAL_SPEED_SCALE,
+		SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE, SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, SDL_HINT_MOUSE_AUTO_CAPTURE,
+		SDL_HINT_VIDEO_X11_XRANDR, SDL_HINT_VIDEO_DRIVER, SDL_HINT_KEYCODE_OPTIONS,
+		SDL_HINT_X11_FORCE_OVERRIDE_REDIRECT, SDL_HINT_VIDEO_FORCE_EGL };
+	static const char *env[] = { "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP", "DESKTOP_SESSION",
+		"DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEO_DRIVER", "LANG", "XMODIFIERS", "GTK_IM_MODULE" };
+	SDL_Window **windows;
+	SDL_DisplayID *displays;
+	int v = SDL_GetVersion(), n = 0, i;
+
+	plat_log("Input: SDL compiled %d.%d.%d, linked %d.%d.%d (%s)", SDL_MAJOR_VERSION, SDL_MINOR_VERSION, SDL_MICRO_VERSION,
+		SDL_VERSIONNUM_MAJOR(v), SDL_VERSIONNUM_MINOR(v), SDL_VERSIONNUM_MICRO(v), SDL_GetRevision());
+	for (i = 0; i < (int) (sizeof(env) / sizeof(env[0])); i++)
+		plat_log("Input: environment %s=%s", env[i], SDL_getenv(env[i]) ? SDL_getenv(env[i]) : "(not set)");
+	for (i = 0; i < (int) (sizeof(hints) / sizeof(hints[0])); i++)
+		plat_log("Input: hint %s=%s", hints[i], SDL_GetHint(hints[i]) ? SDL_GetHint(hints[i]) : "(default)");
+	diag_x11();
+	displays = SDL_GetDisplays(&n);
+	for (i = 0; displays && i < n; i++) {
+		SDL_Rect b, u;
+		SDL_GetDisplayBounds(displays[i], &b);
+		SDL_GetDisplayUsableBounds(displays[i], &u);
+		plat_log("Input: display %u bounds %d,%d %dx%d, usable %d,%d %dx%d, content scale %.2f", (unsigned) displays[i],
+			b.x, b.y, b.w, b.h, u.x, u.y, u.w, u.h, SDL_GetDisplayContentScale(displays[i]));
+	}
+	SDL_free(displays);
+	n = 0;
+	windows = SDL_GetWindows(&n);
+	if (windows && n > 0) {
+		int x = 0, y = 0, w = 0, h = 0;
+		SDL_GetWindowPosition(windows[0], &x, &y);
+		SDL_GetWindowSize(windows[0], &w, &h);
+		plat_log("Input: window flags 0x%llx, position %d,%d, size %dx%d, display scale %.2f, pixel density %.2f",
+			(unsigned long long) SDL_GetWindowFlags(windows[0]), x, y, w, h,
+			SDL_GetWindowDisplayScale(windows[0]), SDL_GetWindowPixelDensity(windows[0]));
+	}
+	SDL_free(windows);
+	diag_device_lists();
+}
+
+// The summary of one second with input
+static void diag_second(void)
+{
+	Uint64 now = SDL_GetTicks();
+
+	if (now - Diag_second < 1000)
+		return;
+	Diag_second = now;
+	if (Diag.key_down || Diag.key_up || Diag.motions || Diag.buttons || Diag.wheels || Diag.warps)
+		plat_log("Input second: keys %d down (%d repeats) %d up (keyboard %u), mouse %d motions (%d with no relative motion) sum xrel %.1f yrel %.1f (mouse %u), %d buttons, %d wheel, %d warps, relative %d, grab %d, focus %d",
+			Diag.key_down, Diag.repeats, Diag.key_up, (unsigned) Diag.last_keyboard, Diag.motions, Diag.zero_motions,
+			Diag.xrel, Diag.yrel, (unsigned) Diag.last_mouse, Diag.buttons, Diag.wheels, Diag.warps, Relative_applied, Grab_applied,
+			SDL_GetKeyboardFocus() != NULL);
+	SDL_zero(Diag);
+}
+
+static void diag_event(const SDL_Event *ev)
+{
+	switch (ev->type) {
+	case SDL_EVENT_KEY_DOWN:
+	case SDL_EVENT_KEY_UP:
+		if (ev->type == SDL_EVENT_KEY_DOWN) {
+			Diag.key_down++;
+			Diag.repeats += ev->key.repeat != 0;
+		} else
+			Diag.key_up++;
+		Diag.last_keyboard = ev->key.which;
+		if (Diag_keys < DIAG_FIRST) {
+			Diag_keys++;
+			plat_log("Input key %s: scancode %d (%s), key 0x%x, mod 0x%x, repeat %d, keyboard %u, game code 0x%02x",
+				ev->type == SDL_EVENT_KEY_DOWN ? "down" : "up", (int) ev->key.scancode,
+				SDL_GetScancodeName(ev->key.scancode), (unsigned) ev->key.key, (unsigned) ev->key.mod, ev->key.repeat != 0,
+				(unsigned) ev->key.which,
+				ev->key.scancode > 0 && ev->key.scancode < SDL_SCANCODE_COUNT ? Scancode_table[ev->key.scancode] : 0);
+		}
+		break;
+	case SDL_EVENT_MOUSE_MOTION:
+		Diag.motions++;
+		Diag.xrel += ev->motion.xrel;
+		Diag.yrel += ev->motion.yrel;
+		Diag.zero_motions += ev->motion.xrel == 0 && ev->motion.yrel == 0;
+		Diag.last_mouse = ev->motion.which;
+		if (Diag_motions < DIAG_FIRST) {
+			Diag_motions++;
+			plat_log("Input motion: mouse %u, x %.1f y %.1f (frame pixels), xrel %.2f yrel %.2f, relative %d",
+				(unsigned) ev->motion.which, ev->motion.x, ev->motion.y, ev->motion.xrel, ev->motion.yrel, Relative_applied);
+		}
+		break;
+	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+	case SDL_EVENT_MOUSE_BUTTON_UP:
+		Diag.buttons++;
+		if (Diag_buttons < DIAG_FIRST) {
+			Diag_buttons++;
+			plat_log("Input button %s: mouse %u, button %d, x %.1f y %.1f", ev->type == SDL_EVENT_MOUSE_BUTTON_DOWN ? "down" : "up",
+				(unsigned) ev->button.which, ev->button.button, ev->button.x, ev->button.y);
+		}
+		break;
+	case SDL_EVENT_MOUSE_WHEEL:
+		Diag.wheels++;
+		break;
+	case SDL_EVENT_KEYBOARD_ADDED:
+	case SDL_EVENT_KEYBOARD_REMOVED:
+		plat_log("Input: keyboard %u %s ('%s')", (unsigned) ev->kdevice.which,
+			ev->type == SDL_EVENT_KEYBOARD_ADDED ? "added" : "removed",
+			SDL_GetKeyboardNameForID(ev->kdevice.which) ? SDL_GetKeyboardNameForID(ev->kdevice.which) : "?");
+		break;
+	case SDL_EVENT_MOUSE_ADDED:
+	case SDL_EVENT_MOUSE_REMOVED:
+		plat_log("Input: mouse %u %s ('%s')", (unsigned) ev->mdevice.which,
+			ev->type == SDL_EVENT_MOUSE_ADDED ? "added" : "removed",
+			SDL_GetMouseNameForID(ev->mdevice.which) ? SDL_GetMouseNameForID(ev->mdevice.which) : "?");
+		break;
+	case SDL_EVENT_WINDOW_FOCUS_GAINED:
+	case SDL_EVENT_WINDOW_FOCUS_LOST:
+	case SDL_EVENT_WINDOW_MOUSE_ENTER:
+	case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+	case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+	case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+	case SDL_EVENT_WINDOW_RESIZED:
+	case SDL_EVENT_WINDOW_MOVED: {
+		static int count;
+		if (count++ < 300)
+			plat_log("Input window: %s, data %d %d, relative %d, grab %d",
+				ev->type == SDL_EVENT_WINDOW_FOCUS_GAINED ? "focus gained" : ev->type == SDL_EVENT_WINDOW_FOCUS_LOST ? "focus lost" :
+				ev->type == SDL_EVENT_WINDOW_MOUSE_ENTER ? "mouse enter" : ev->type == SDL_EVENT_WINDOW_MOUSE_LEAVE ? "mouse leave" :
+				ev->type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN ? "enter full screen" : ev->type == SDL_EVENT_WINDOW_LEAVE_FULLSCREEN ? "leave full screen" :
+				ev->type == SDL_EVENT_WINDOW_RESIZED ? "resized" : "moved",
+				ev->window.data1, ev->window.data2, Relative_applied, Grab_applied);
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+// ---------------------------------------------------------------------
 // Events from plat_pump
 
 void plat_input_sdl_event(const SDL_Event *ev)
 {
 	apply_relative_mode();
+	if (!Scancode_table_ready)
+		init_scancode_table();
+	diag_event(ev);
+	diag_second();
 
 	switch (ev->type) {
 	case SDL_EVENT_KEY_DOWN:
@@ -646,6 +870,7 @@ void plat_input_hold_pointer(void)
 	float gx, gy, cx, cy;
 	SDL_MouseButtonFlags held;
 
+	diag_second();		// ASCENT: the input summary also in a second with no event
 	if (!Relative_wanted || !SDL_WasInit(SDL_INIT_VIDEO))
 		return;
 	windows = SDL_GetWindows(&count);
@@ -655,7 +880,10 @@ void plat_input_hold_pointer(void)
 	if (!win || !(SDL_GetWindowFlags(win) & SDL_WINDOW_INPUT_FOCUS))
 		return;
 	if (!SDL_GetWindowRelativeMouseMode(win)) {
-		SDL_SetWindowRelativeMouseMode(win, true);
+		static int logged;
+		bool ok = SDL_SetWindowRelativeMouseMode(win, true);
+		if (logged++ < 50)
+			plat_log("Input: the relative mode was off with the focus: set again, %s", ok ? "ok" : SDL_GetError());
 		Relative_applied = 1;
 	}
 	if (SDL_CursorVisible())
@@ -677,8 +905,14 @@ void plat_input_hold_pointer(void)
 	cx = (float) wx + (float) (ww / 2);
 	cy = (float) wy + (float) (wh / 2);
 	inside = gx >= (float) wx && gy >= (float) wy && gx < (float) (wx + ww) && gy < (float) (wy + wh);
-	if ((gx - cx > 2.0f || cx - gx > 2.0f || gy - cy > 2.0f || cy - gy > 2.0f) && (inside || !held))
+	if ((gx - cx > 2.0f || cx - gx > 2.0f || gy - cy > 2.0f || cy - gy > 2.0f) && (inside || !held)) {
+		static int logged;
+		if (logged++ < 20)
+			plat_log("Input: warp of the pointer from %.1f,%.1f to the center %.1f,%.1f (window %d,%d %dx%d, buttons 0x%x)",
+				gx, gy, cx, cy, wx, wy, ww, wh, (unsigned) held);
+		Diag.warps++;
 		SDL_WarpMouseGlobal(cx, cy);
+	}
 }
 
 // ASCENT: video.c calls this after a change between the window and the

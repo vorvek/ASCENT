@@ -2381,6 +2381,7 @@ void kconfig_sense_init()
 #include "dtufile.h"		// dtu_find_file
 #include "dtuopts.h"		// dtu_opts_save
 #include "dtuhdui.h"		// dtu_hdui_save, dtu_hdui_restore
+#include "dtulog.h"		// ASCENT: dtu_kconfig_log
 
 #define DTU_KC_N_KEYS	62
 #define DTU_KC_N_HOT		(2*DTU_N_HOT_ACTIONS)
@@ -3828,4 +3829,37 @@ void dtu_kconfig_args(void)
 			printf("-keyconfig: no action '%.*s'\n", (int) (eq - s), s);
 		s = *end ? end + 1 : end;
 	}
+}
+
+// ASCENT: the control settings in the session log (docs/debug_logs.md):
+// the control type, the sensitivity, the keys of the look, turn and
+// immersive actions, and the mouse row of the key table (the axes and
+// their invert items). The caller writes it at the first frame of the
+// controls and after each change.
+void dtu_kconfig_log(void)
+{
+	static const int acts[] = { DTU_ACT_LOOK_UP, DTU_ACT_LOOK_DOWN, DTU_ACT_QUICK_UP, DTU_ACT_QUICK_DOWN,
+		DTU_ACT_TURN_LEFT, DTU_ACT_TURN_RIGHT, DTU_ACT_IMMERSIVE, DTU_ACT_SLIDE_ON, DTU_ACT_AUTOMAP };
+	static const char *names[] = { "look up", "look down", "quick up", "quick down", "turn left", "turn right",
+		"immersive", "slide on", "automap" };
+	char row[2 * DTU_KC_ROW + 1];
+	int i;
+
+	dtu_kc_init();
+	dtulog_event("Controls: control type %d, sensitivity %d, immersive %d, gamepad present %d, dead zone %d, speed %d, invert look %d",
+		Dtu_control_type, Config_joystick_sensitivity, Dtu_immersive, plat_pad_present(), Dtu_pad_dead_zone, Dtu_pad_speed, Dtu_pad_invert_look);
+	for (i = 0; i < (int) (sizeof(acts) / sizeof(acts[0])); i++) {
+		int k0 = dtu_action_key(acts[i], 0), k1 = dtu_action_key(acts[i], 1);
+		dtulog_event("Controls: %s: keys 0x%02x '%s' and 0x%02x '%s', gamepad %d %d", names[i],
+			k0, dtu_key_name(k0), k1, dtu_key_name(k1), Dtu_pad_settings[acts[i]][0], Dtu_pad_settings[acts[i]][1]);
+	}
+	dtulog_event("Controls: mouse look axis %d invert %d, turn axis %d invert %d, slide axis %d invert %d, up axis %d invert %d (0 x, 1 y, 255 none)",
+		Dtu_kc_settings[5][13], Dtu_kc_settings[5][14], Dtu_kc_settings[5][15], Dtu_kc_settings[5][16],
+		Dtu_kc_settings[5][17], Dtu_kc_settings[5][18], Dtu_kc_settings[5][19], Dtu_kc_settings[5][20]);
+	for (i = 0; i < DTU_KC_ROW; i++)
+		snprintf(row + 2 * i, 3, "%02x", Dtu_kc_settings[5][i]);
+	dtulog_event("Controls: KeyConfig5=%s", row);
+	for (i = 0; i < DTU_KC_ROW; i++)
+		snprintf(row + 2 * i, 3, "%02x", Dtu_kc_settings[0][i]);
+	dtulog_event("Controls: KeyConfig0=%s", row);
 }
