@@ -227,10 +227,15 @@ int dtu_create_item_size(int type, int id, int count, int segnum, vms_vector *po
 	obj->dtu.m_1d5 = count;
 	obj->shields = F1_0;
 
+	// The rod of the item (dtu_draw_item) reaches from the center down by
+	// the size, so the center goes to the floor plus the size. The port
+	// moved the item only down: a drop from a body that lies low (its
+	// center below the floor plus the size of the item) stayed with the
+	// lower part of the rod in the floor. Now it also goes up.
 	{
 		fix d = creature_floor_dist(obj,0,size);
 
-		if (d != DTU_FLOOR_PROBE && d > 0) {
+		if (d != DTU_FLOOR_PROBE && d != 0) {
 			vms_vector p = obj->pos;
 
 			p.y -= d;
