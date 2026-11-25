@@ -3,14 +3,15 @@
 ; Build it with installer/build.sh: the script expects the files of
 ; "cmake --install" in the folder STAGE (default ..\build-rel\stage).
 ;
-; The setup program asks for the game disc (a drive, a copy of the disc or
-; a disc image), copies the program, runs ascent-import to make the data
+; The setup program asks for the game disc (a drive, a copy of the disc, a
+; disc image, or a ZIP archive with one of them), copies the program, runs ascent-import to make the data
 ; folder, downloads the 1.3 patch files from the content server, and
 ; downloads the upscaled content that the user chooses. An installed
 ; Descent to Undermountain is not a source: it has only a part of the files.
 ;
 ; Command line options (also for a silent install):
-;   /SOURCE=path      the game disc (folder, drive, .cue, .bin or .iso)
+;   /SOURCE=path      the game disc (folder, drive, .cue, .bin, .iso, or a .zip
+;                     with the disc or a disc image in it)
 ;   /PATCH=path       a local 1.3 patch archive or folder (no download)
 ;   /CONTENTURL=url   another content server (tests)
 ;   and the standard options: /LANG=, /DIR=, /TASKS=, /SILENT, /VERYSILENT, ...
@@ -133,16 +134,16 @@ english.ShortcutContent=ASCENT-DTU Content
 english.RunPlay=Play ASCENT-DTU
 english.DiscPageTitle=Game disc
 english.DiscPageDesc=ASCENT-DTU needs the disc of Descent to Undermountain.
-english.DiscPageText=Select the location of the game disc. A CD drive, a folder with a copy of the disc, or a disc image (an .iso file, or a .bin and .cue pair) work. Setup copies the game files into the installation folder.
+english.DiscPageText=Select the location of the game disc. A CD drive, a folder with a copy of the disc, a disc image (an .iso file, or a .bin and .cue pair), or a .zip archive with the disc or a disc image in it work. Setup copies the game files into the installation folder.
 english.DiscLabel=Game disc:
 english.ButtonFolder=&Folder...
 english.ButtonImage=&Image...
 english.BrowseFolderPrompt=Select the location of the game disc:
-english.BrowseImageTitle=Choose the disc image
-english.ImageFilter=Disc images (*.cue;*.bin;*.iso)|*.cue;*.bin;*.iso|All files|*.*
+english.BrowseImageTitle=Choose the disc image or the ZIP archive
+english.ImageFilter=Disc images and ZIP archives (*.cue;*.bin;*.iso;*.zip)|*.cue;*.bin;*.iso;*.zip|All files|*.*
 english.ProgressTitle=Installing the game files
 english.ProgressDesc=Please wait while Setup copies the files of Descent to Undermountain.
-english.ErrNoSource=Select the location of the game disc: a CD drive, a copy of the disc, or a disc image.
+english.ErrNoSource=Select the location of the game disc: a CD drive, a copy of the disc, a disc image, or a ZIP archive with the disc.
 english.ErrCannotStart=Cannot start %1.
 english.ErrReadStatus=The game files cannot be read (ascent-import status %1).
 english.ErrNoPatchUrl=The game files do not have the 1.3 patch, and this setup program has no download address for it. Start Setup with /PATCH=<the 1.3 patch archive>.
@@ -172,16 +173,16 @@ spanish.ShortcutContent=Contenido de ASCENT-DTU
 spanish.RunPlay=Jugar a ASCENT-DTU
 spanish.DiscPageTitle=Disco del juego
 spanish.DiscPageDesc=ASCENT-DTU necesita el disco de Descent to Undermountain.
-spanish.DiscPageText=Seleccione la ubicación del disco del juego. Sirve una unidad de CD, una carpeta con una copia del disco o una imagen de disco (un archivo .iso, o un par de archivos .bin y .cue). El programa de instalación copia los archivos del juego en la carpeta de instalación.
+spanish.DiscPageText=Seleccione la ubicación del disco del juego. Sirve una unidad de CD, una carpeta con una copia del disco, una imagen de disco (un archivo .iso, o un par de archivos .bin y .cue) o un archivo .zip que contenga el disco o una imagen de disco. El programa de instalación copia los archivos del juego en la carpeta de instalación.
 spanish.DiscLabel=Disco del juego:
 spanish.ButtonFolder=&Carpeta...
 spanish.ButtonImage=&Imagen...
 spanish.BrowseFolderPrompt=Seleccione la ubicación del disco del juego:
-spanish.BrowseImageTitle=Elija la imagen del disco
-spanish.ImageFilter=Imágenes de disco (*.cue;*.bin;*.iso)|*.cue;*.bin;*.iso|Todos los archivos|*.*
+spanish.BrowseImageTitle=Elija la imagen del disco o el archivo ZIP
+spanish.ImageFilter=Imágenes de disco y archivos ZIP (*.cue;*.bin;*.iso;*.zip)|*.cue;*.bin;*.iso;*.zip|Todos los archivos|*.*
 spanish.ProgressTitle=Instalando los archivos del juego
 spanish.ProgressDesc=Espere mientras el programa de instalación copia los archivos de Descent to Undermountain.
-spanish.ErrNoSource=Seleccione la ubicación del disco del juego: una unidad de CD, una copia del disco o una imagen de disco.
+spanish.ErrNoSource=Seleccione la ubicación del disco del juego: una unidad de CD, una copia del disco, una imagen de disco o un archivo ZIP con el disco.
 spanish.ErrCannotStart=No se puede iniciar %1.
 spanish.ErrReadStatus=No se pueden leer los archivos del juego (estado de ascent-import: %1).
 spanish.ErrNoPatchUrl=Los archivos del juego no tienen el parche 1.3 y este programa de instalación no tiene ninguna dirección para descargarlo. Inicie la instalación con /PATCH=<el archivo del parche 1.3>.
@@ -211,16 +212,16 @@ german.ShortcutContent=ASCENT-DTU Inhalte
 german.RunPlay=ASCENT-DTU spielen
 german.DiscPageTitle=Spiel-CD
 german.DiscPageDesc=ASCENT-DTU benötigt die CD von Descent to Undermountain.
-german.DiscPageText=Wählen Sie den Ort der Spiel-CD. Möglich sind ein CD-Laufwerk, ein Ordner mit einer Kopie der CD oder ein CD-Abbild (eine .iso-Datei oder ein Paar aus .bin- und .cue-Datei). Setup kopiert die Spieldateien in den Installationsordner.
+german.DiscPageText=Wählen Sie den Ort der Spiel-CD. Möglich sind ein CD-Laufwerk, ein Ordner mit einer Kopie der CD, ein CD-Abbild (eine .iso-Datei oder ein Paar aus .bin- und .cue-Datei) oder ein .zip-Archiv, das die CD oder ein CD-Abbild enthält. Setup kopiert die Spieldateien in den Installationsordner.
 german.DiscLabel=Spiel-CD:
 german.ButtonFolder=&Ordner...
 german.ButtonImage=A&bbild...
 german.BrowseFolderPrompt=Wählen Sie den Ort der Spiel-CD:
-german.BrowseImageTitle=CD-Abbild auswählen
-german.ImageFilter=CD-Abbilder (*.cue;*.bin;*.iso)|*.cue;*.bin;*.iso|Alle Dateien|*.*
+german.BrowseImageTitle=CD-Abbild oder ZIP-Archiv auswählen
+german.ImageFilter=CD-Abbilder und ZIP-Archive (*.cue;*.bin;*.iso;*.zip)|*.cue;*.bin;*.iso;*.zip|Alle Dateien|*.*
 german.ProgressTitle=Die Spieldateien werden installiert
 german.ProgressDesc=Bitte warten Sie, während Setup die Dateien von Descent to Undermountain kopiert.
-german.ErrNoSource=Wählen Sie den Ort der Spiel-CD: ein CD-Laufwerk, eine Kopie der CD oder ein CD-Abbild.
+german.ErrNoSource=Wählen Sie den Ort der Spiel-CD: ein CD-Laufwerk, eine Kopie der CD, ein CD-Abbild oder ein ZIP-Archiv mit der CD.
 german.ErrCannotStart=%1 kann nicht gestartet werden.
 german.ErrReadStatus=Die Spieldateien können nicht gelesen werden (Status von ascent-import: %1).
 german.ErrNoPatchUrl=Den Spieldateien fehlt der Patch 1.3, und dieses Setup-Programm hat keine Download-Adresse dafür. Starten Sie Setup mit /PATCH=<Archiv des Patches 1.3>.
@@ -250,16 +251,16 @@ french.ShortcutContent=Contenu ASCENT-DTU
 french.RunPlay=Jouer à ASCENT-DTU
 french.DiscPageTitle=Disque du jeu
 french.DiscPageDesc=ASCENT-DTU a besoin du disque de Descent to Undermountain.
-french.DiscPageText=Sélectionnez l'emplacement du disque du jeu : un lecteur de CD, un dossier contenant une copie du disque, ou une image de disque (un fichier .iso, ou une paire de fichiers .bin et .cue). L'assistant copie les fichiers du jeu dans le dossier d'installation.
+french.DiscPageText=Sélectionnez l'emplacement du disque du jeu : un lecteur de CD, un dossier contenant une copie du disque, une image de disque (un fichier .iso, ou une paire de fichiers .bin et .cue), ou une archive .zip contenant le disque ou une image de disque. L'assistant copie les fichiers du jeu dans le dossier d'installation.
 french.DiscLabel=Disque du jeu :
 french.ButtonFolder=&Dossier...
 french.ButtonImage=&Image...
 french.BrowseFolderPrompt=Sélectionnez l'emplacement du disque du jeu :
-french.BrowseImageTitle=Choisir l'image du disque
-french.ImageFilter=Images de disque (*.cue;*.bin;*.iso)|*.cue;*.bin;*.iso|Tous les fichiers|*.*
+french.BrowseImageTitle=Choisir l'image du disque ou l'archive ZIP
+french.ImageFilter=Images de disque et archives ZIP (*.cue;*.bin;*.iso;*.zip)|*.cue;*.bin;*.iso;*.zip|Tous les fichiers|*.*
 french.ProgressTitle=Installation des fichiers du jeu
 french.ProgressDesc=Veuillez patienter pendant que l'assistant copie les fichiers de Descent to Undermountain.
-french.ErrNoSource=Sélectionnez l'emplacement du disque du jeu : un lecteur de CD, une copie du disque ou une image de disque.
+french.ErrNoSource=Sélectionnez l'emplacement du disque du jeu : un lecteur de CD, une copie du disque, une image de disque ou une archive ZIP contenant le disque.
 french.ErrCannotStart=Impossible de lancer %1.
 french.ErrReadStatus=Impossible de lire les fichiers du jeu (code de sortie d'ascent-import : %1).
 french.ErrNoPatchUrl=Les fichiers du jeu n'ont pas le patch 1.3, et ce programme d'installation n'a pas d'adresse pour le télécharger. Lancez l'installation avec /PATCH=<l'archive du patch 1.3>.
@@ -289,16 +290,16 @@ italian.ShortcutContent=Contenuti ASCENT-DTU
 italian.RunPlay=Gioca ad ASCENT-DTU
 italian.DiscPageTitle=Disco del gioco
 italian.DiscPageDesc=ASCENT-DTU richiede il disco di Descent to Undermountain.
-italian.DiscPageText=Selezionare la posizione del disco del gioco. Vanno bene un'unità CD, una cartella con una copia del disco o un'immagine del disco (un file .iso, oppure una coppia di file .bin e .cue). Il programma di installazione copia i file del gioco nella cartella di installazione.
+italian.DiscPageText=Selezionare la posizione del disco del gioco. Vanno bene un'unità CD, una cartella con una copia del disco, un'immagine del disco (un file .iso, oppure una coppia di file .bin e .cue) o un archivio .zip che contiene il disco o un'immagine del disco. Il programma di installazione copia i file del gioco nella cartella di installazione.
 italian.DiscLabel=Disco del gioco:
 italian.ButtonFolder=&Cartella...
 italian.ButtonImage=&Immagine...
 italian.BrowseFolderPrompt=Selezionare la posizione del disco del gioco:
-italian.BrowseImageTitle=Scegliere l'immagine del disco
-italian.ImageFilter=Immagini disco (*.cue;*.bin;*.iso)|*.cue;*.bin;*.iso|Tutti i file|*.*
+italian.BrowseImageTitle=Scegliere l'immagine del disco o l'archivio ZIP
+italian.ImageFilter=Immagini disco e archivi ZIP (*.cue;*.bin;*.iso;*.zip)|*.cue;*.bin;*.iso;*.zip|Tutti i file|*.*
 italian.ProgressTitle=Installazione dei file del gioco
 italian.ProgressDesc=Attendere mentre il programma di installazione copia i file di Descent to Undermountain.
-italian.ErrNoSource=Selezionare la posizione del disco del gioco: un'unità CD, una copia del disco o un'immagine del disco.
+italian.ErrNoSource=Selezionare la posizione del disco del gioco: un'unità CD, una copia del disco, un'immagine del disco o un archivio ZIP con il disco.
 italian.ErrCannotStart=Impossibile avviare %1.
 italian.ErrReadStatus=Impossibile leggere i file del gioco (stato di ascent-import: %1).
 italian.ErrNoPatchUrl=I file del gioco non hanno la patch 1.3 e questo programma di installazione non ha un indirizzo da cui scaricarla. Avviare l'installazione con /PATCH=<l'archivio della patch 1.3>.

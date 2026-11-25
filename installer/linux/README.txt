@@ -13,8 +13,11 @@ The setup asks for:
 
 - the installation folder (default ~/.local/share/ASCENT-DTU/game; as root
   /opt/ascent-dtu, for all users),
-- the game disc: a mounted CD, a copy of the disc in a folder, or a disc
-  image (.iso, or .cue with .bin). An installed game is not enough,
+- the game disc: a mounted CD, a copy of the disc in a folder, a disc
+  image (.iso, or .cue with .bin), or a .zip archive with the disc or a
+  disc image in it (for example the archive of archive.org; the setup
+  reads it without unpacking it). An installed game is not enough, also
+  not in a .zip archive,
 - the language of the game (English or Spanish) and the optional
   downloads (upscaled textures and interface, upscaled movies, the
   Spanish text, the replacement music).

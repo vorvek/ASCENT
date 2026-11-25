@@ -39,13 +39,14 @@ usage() {
 Usage: ./setup.sh [options]
 
 Install ASCENT-DTU (Descent to Undermountain). The setup needs the game disc:
-a mounted CD, a copy of the disc in a folder, or a disc image (.iso, .cue/.bin).
+a mounted CD, a copy of the disc in a folder, a disc image (.iso, .cue/.bin),
+or a .zip archive with the disc or a disc image in it.
 
 Options (each one answers a question of the setup):
   --prefix DIR       the installation folder
                      (default: ~/.local/share/ASCENT-DTU/game, or
                      /opt/ascent-dtu when run as root)
-  --source PATH      the game disc: a folder or an image
+  --source PATH      the game disc: a folder, an image or a .zip archive
   --lang en|es       the language of the game (es needs the Spanish pack)
   --textures yes|no  the upscaled textures and interface (download)
   --movies yes|no    the upscaled movies (download)
@@ -475,7 +476,8 @@ check_source() {
 
 say ""
 say "The setup needs the game disc of Descent to Undermountain: a mounted CD,"
-say "a copy of the disc in a folder, or a disc image (.iso, or .cue with .bin)."
+say "a copy of the disc in a folder, a disc image (.iso, or .cue with .bin),"
+say "or a .zip archive with the disc or a disc image in it (it is not unpacked)."
 say "An installed game is not enough: it does not have all the files."
 while :; do
 	ask "Game disc" "$OPT_SOURCE"
