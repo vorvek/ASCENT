@@ -50,8 +50,8 @@ data: the other languages (`FETXT?.*`, `GAB?.*`, `DTU?.TEX`), `*.EOI`, `*.THN`,
 
 The installed game in `E:\UNDAMONTAN\DTU` has 266 files: it has no `.COW`, `.DOG` or
 `.HEN` files and reads them from the disc (`CDPath` in `DTU.CFG`). So the import uses
-only the disc: a CD drive, a copy of the disc, or a disc image. It refuses a folder
-without `.COW` files (an installed game). The 1.3 patch files come from the patch
+only the disc: a CD drive, a copy of the disc, a disc image, or a ZIP archive with one
+of them (below). It refuses a folder without `.COW` files (an installed game). The 1.3 patch files come from the patch
 archive (`--patch`), which the setup program downloads.
 
 ## The 1.3 patch
@@ -173,14 +173,73 @@ cmake --install build-rel --prefix build-rel/stage
 ascent-import --source PATH --dest DIR [--patch PATH] [--check]
 ```
 
-- `PATH`: a CD drive, a copy of the disc, its `DTU` folder, or an image (`.cue`,
-  `.bin`, `.iso`; 2048 or 2352-byte sectors). A folder without `.COW` files (an
-  installed game) is an error. The tool does not search the drives.
+- `PATH`: a CD drive, a copy of the disc, its `DTU` folder, an image (`.cue`,
+  `.bin`, `.iso`; 2048 or 2352-byte sectors), or a `.zip` archive with the disc in it
+  (below). A folder without `.COW` files (an installed game) is an error. The tool
+  does not search the drives.
+- Before the copy it checks the free space of `DIR` (the size of the files and 1 MB):
+  "Not enough free space in DIR: N MB needed, M MB free.", status 6.
 - The disc files first, then the patch files. At the end it checks the 9 patch hashes
   and core files.
 - Output: `PROGRESS <percent> <text>`, `SOURCE`, `PATCHED yes|no`, `FILES`,
   `INFO`, `ERROR: <text>`. Exit status: 0 done, 1 usage, 2 no game data, 3 patch
   needed, 4 patch not valid, 5 files missing, 6 write error.
+
+### A ZIP archive as the source
+
+Many players have the game as the ZIP archive of archive.org. Verified against this
+archive:
+
+| | |
+|---|---|
+| File | `Descent_to_Undermountain_1998.zip`, 583,422,066 bytes, 263 entries (688,334,872 bytes unpacked), all deflate (method 8), no ZIP64, comment `TORRENTZIPPED-EE24C92E` |
+| SHA-256 | `1ce0a6240f164b184dde27e63e542eac0afde4b907158216919b4cf87d731ca9` |
+| `desund/` | 258 files: an installed game (no `.COW`, `.DOG` or `.HEN` files), and `desund/SAVE/CSUF.LS` |
+| `desund/cd/dtu.iso` | the disc image: ISO 9660, 2048-byte sectors, 478,353,408 bytes (399,826,303 compressed), SHA-256 `b4456bf69976171ad5c85b1f410cd97e7b4b03aec94ad928a4807ca4a06a28e9` |
+| `dosbox.conf` | the DOSBox settings |
+
+`ascent-import --source FILE.zip` (and so both setup programs) finds the disc in the
+archive, at any depth:
+
+1. A disc image: an `.iso` or `.img` entry, a `.cue` entry with the `.bin` that it
+   names (relative to the folder of the `.cue`, else any entry with that file name),
+   or a `.bin` entry of 16 MB or more (a smaller `.BIN` is a bitmap table of the
+   game). The first image with `DTU\DTU.MSN` and `.COW` files is the source.
+2. Else a copy of the disc: the folder with `DTU.MSN` and the most `.COW` files.
+3. Else an error. A folder with `DTU.MSN` and no `.COW` files is an installed game:
+   "The ZIP archive ... is not the game disc: it has an installed game (...) but no
+   disc image and no copy of the disc." Without `DTU.MSN`: "The ZIP archive ... has
+   no Descent to Undermountain disc (no disc image and no DTU.MSN)." A file that is
+   not a ZIP archive: "... is not a ZIP archive, or it is damaged."
+
+So the archive of archive.org gives the image `desund/cd/dtu.iso`, not the installed
+game next to it. The image is not extracted: the tool reads it from the archive as a
+stream, so the install needs no temporary file and no extra free space. The
+decoder (`inst.c`, inflate after RFC 1951, written for ASCENT) keeps the last 32 KB
+and decodes forward; a read before the current position starts again at the start
+of the entry. The tool copies the files of an image in a ZIP archive in the order of
+the image (their sectors), so that it decodes the entry once; at the end it decodes
+the rest of the entry and checks its CRC-32 ("The disc image ... is damaged (CRC
+error).", status 2). `--check` reads only the start of the image (the directories),
+so it takes a fraction of a second. The import of the archive.org archive took about 3
+seconds on the development computer (Windows, release build).
+
+The ZIP reader takes the methods 0 (stored) and 8 (deflate), ZIP64 (the end record
+and the extra field of the entries, also when an archive has the ZIP64 records but
+does not need them) and a self-extracting program before the archive. It refuses an
+encrypted entry. `ascent-content` (the content packs) and `--patch` use the same
+reader. The test `test_inst` (ctest) checks it with the archive of
+`installer/test/make_test_zip.py`.
+
+Verified: the import of the archive.org archive and of the image extracted from it
+(Python `zipfile`) give the same 483 files with the same SHA-256. So do a ZIP64
+archive with a copy of the disc in a folder (`Some Game/DTU/...`) and a ZIP64
+archive with a `.cue` and a MODE1/2352 `.bin` made from the image, both made with
+Python. A changed byte in the compressed image is found (CRC error). The Linux build of
+`ascent-import` (WSL, Debian 13) gives the same files from the archive.org archive.
+`ascent-content` with the new reader installed and verified the packs `lang_es`,
+`music` and `textures` (60,396 files) from a local test server. Not tested: the two
+setup programs themselves with a ZIP archive (only `ascent-import`, which they run).
 
 ## Linux
 
@@ -214,9 +273,10 @@ order:
 1. The installation folder. The default is `~/.local/share/ASCENT-DTU/game`. Run as
    root, the default is `/opt/ascent-dtu` (an install for all users). The folder must
    be new, empty, or an earlier installation (then the setup updates it).
-2. The game disc: a mounted CD, a copy of the disc in a folder, or an image (`.iso`,
-   or `.cue` with `.bin`). `ascent-import --check` examines it. An installed game
-   is refused, as in the Windows setup program.
+2. The game disc: a mounted CD, a copy of the disc in a folder, an image (`.iso`,
+   or `.cue` with `.bin`), or a `.zip` archive with one of them (read without
+   unpacking). `ascent-import --check` examines it. An installed game is refused,
+   also in a ZIP archive, as in the Windows setup program.
 3. The language of the game: `en` or `es`.
 4. The downloads, with the sizes of `manifest.txt`: the upscaled textures and
    interface (packs `textures` and `ui`, default yes), the upscaled movies (default
@@ -475,8 +535,9 @@ has a translated name.
 
 The pages: language, installation folder (default `%LOCALAPPDATA%\Programs\ASCENT`, no
 administrator rights), game disc (one field with Folder and Image buttons: "Select
-the location of the game disc", a CD drive, a copy of the disc, or an `.iso` file or a
-`.bin` and `.cue` pair; Setup does not search the drives; Next runs `ascent-import --check` and shows its error), tasks (Start menu entry,
+the location of the game disc", a CD drive, a copy of the disc, an `.iso` file or a
+`.bin` and `.cue` pair, or a `.zip` archive with the disc or a disc image in it; the
+Image button shows `*.cue;*.bin;*.iso;*.zip`; Setup does not search the drives; Next runs `ascent-import --check` and shows its error), tasks (Start menu entry,
 checked; desktop shortcut; and, when the setup program has a server address, the
 downloadable content: "Upscaled textures and interface (for the GPU renderer; download,
 about 493 MB)", checked; "Upscaled movies (for the GPU renderer; download, about 463

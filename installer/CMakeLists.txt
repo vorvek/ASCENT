@@ -25,7 +25,7 @@ configure_file(${CMAKE_CURRENT_BINARY_DIR}/patch13_list.h.tmp ${CMAKE_CURRENT_BI
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/patch13.txt)
 
 add_library(ascent_inst STATIC src/inst.c)
-target_include_directories(ascent_inst PUBLIC src ${CMAKE_SOURCE_DIR}/engine/third_party/stb)
+target_include_directories(ascent_inst PUBLIC src)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(ascent_inst PRIVATE -Wall -Wno-unused-function)
 endif()
@@ -35,6 +35,15 @@ endif()
 add_executable(ascent-import src/ascent_import.c)
 target_include_directories(ascent-import PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(ascent-import PRIVATE ascent_inst)
+
+# The test of the ZIP reader (test/make_test_zip.py makes its archive).
+set(TEST_INST_DIR ${CMAKE_CURRENT_BINARY_DIR}/test_inst_tmp)
+file(MAKE_DIRECTORY ${TEST_INST_DIR})
+add_executable(test_inst test/test_inst.c)
+target_include_directories(test_inst PRIVATE test)
+target_link_libraries(test_inst PRIVATE ascent_inst)
+add_test(NAME test_inst COMMAND test_inst ${TEST_INST_DIR})
+
 if(NOT WIN32)
   return()
 endif()

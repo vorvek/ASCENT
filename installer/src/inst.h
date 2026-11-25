@@ -60,11 +60,14 @@ int inst_sha256_file(const char *path, char hex[65]);	// 1 if the file was read
 
 // ---------------------------------------------------------------------
 // ZIP archives (also a ZIP after a self-extracting program). The methods
-// are 0 (stored) and 8 (deflate). No ZIP64.
+// are 0 (stored) and 8 (deflate). ZIP64 archives and entries work. The
+// deflate data is decoded as a stream (inflate in inst.c), so a large
+// entry (a disc image) needs no memory of its size.
 
 typedef struct {
-	char name[260];
-	uint32_t method, crc, csize, usize, local_offset;
+	char name[512];
+	uint32_t method, flags, crc;
+	uint64_t csize, usize, local_offset;
 } inst_zip_entry;
 
 typedef struct {
@@ -81,11 +84,25 @@ int inst_zip_find(inst_zip *z, const char *name);	// case ignored; -1 if not fou
 // if successful (the CRC matches). progress is called with the bytes done.
 int inst_zip_extract(inst_zip *z, int i, const char *to, char hex[65],
 	void (*progress)(int64_t done, void *arg), void *arg);
+// The SHA-256 of an entry, without a file. 1 if successful (the CRC matches).
+int inst_zip_sha256(inst_zip *z, int i, char hex[65]);
 // Read an entry into memory (for the small text entries). free() it.
 char *inst_zip_read(inst_zip *z, int i, uint32_t *size);
 
+// A reader of one entry. It decodes forward; a seek back starts again at
+// the beginning of the entry. The CRC is checked when the data is read to
+// the end from the beginning (inst_zip_reader_finish).
+typedef struct inst_zip_reader inst_zip_reader;
+inst_zip_reader *inst_zip_reader_open(inst_zip *z, int i);	// NULL if not possible
+// Read size bytes at offset. 1 if all of them were read.
+int inst_zip_reader_read_at(inst_zip_reader *r, uint64_t offset, void *buf, size_t size);
+// Read the rest of the entry and check the CRC. 1 if the CRC matches.
+int inst_zip_reader_finish(inst_zip_reader *r);
+void inst_zip_reader_close(inst_zip_reader *r);
+
 // ---------------------------------------------------------------------
-// ISO 9660 images (.iso, .bin with 2048 or 2352-byte sectors, .cue)
+// ISO 9660 images (.iso, .bin with 2048 or 2352-byte sectors, .cue), as
+// a file or as an entry of a ZIP archive
 
 typedef struct {
 	char path[260];		// "DTU/YPINN.DOG"
@@ -94,14 +111,23 @@ typedef struct {
 
 typedef struct {
 	FILE *f;
+	inst_zip_reader *zr;	// the image is an entry of a ZIP archive
 	int sector_size, data_offset;
 	int n, max;
 	inst_iso_file *files;
 } inst_iso;
 
 int inst_iso_open(inst_iso *iso, const char *path, char *err, int err_size);
+// The image is entry i of z. sector_size 0: find the format (2048, or
+// 2352 with the data at 16 or 24). name is for the messages.
+int inst_iso_open_zip(inst_iso *iso, inst_zip *z, int i, int sector_size, int data_offset,
+	const char *name, char *err, int err_size);
 void inst_iso_close(inst_iso *iso);
+// Read size bytes at offset of a file. 1 if successful.
+int inst_iso_read(inst_iso *iso, const inst_iso_file *file, uint32_t offset, void *buf, uint32_t size);
 int inst_iso_extract(inst_iso *iso, const inst_iso_file *file, const char *to,
 	void (*progress)(int64_t done, void *arg), void *arg);
+// The cue sheet text: the name of the FILE and the sector format of track 1.
+int inst_cue_parse(const char *text, char *bin, int bin_size, int *sector_size, int *data_offset);
 
 #endif
