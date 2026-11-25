@@ -1059,6 +1059,7 @@ static int dtu_run_level(char *level_name)
 	plat_set_start_windowed(FindArg("-window") != 0);	// ASCENT: else full screen
 	// ASCENT: an automated run (a test) uses a hidden window.
 	plat_set_start_hidden(FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
+	plat_set_input_log(FindArg("-inputlog") != 0);	// ASCENT: the key and mouse lines of the log
 	// ASCENT: an automated run (a test) has no sound output.
 	plat_audio_set_muted(FindArg("-mute") || FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
 	if (plat_init("ASCENT-DTU", Dtu_hires ? 640 : 320, Dtu_hires ? 480 : 200, Dtu_hires ? 2 : 3) != 0)
@@ -1405,6 +1406,7 @@ int main(int argc,char **argv)
 	plat_set_start_windowed(FindArg("-window") != 0);	// ASCENT: else full screen
 	// ASCENT: an automated run (a test) uses a hidden window.
 	plat_set_start_hidden(FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
+	plat_set_input_log(FindArg("-inputlog") != 0);	// ASCENT: the key and mouse lines of the log
 	// ASCENT: an automated run (a test) has no sound output.
 	plat_audio_set_muted(FindArg("-mute") || FindArg("-hidden") || FindArg("-frames") || FindArg("-fescript") || FindArg("-playmovie"));
 	if (plat_init("ASCENT-DTU", 320, 200, 3) != 0)

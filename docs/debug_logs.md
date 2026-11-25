@@ -88,10 +88,10 @@ too.
     the error of SDL, `Input: mouse grab on: ...`, `Input: the relative mode was off with
     the focus: set again`, and the first 20 warps of the pointer to the window center
     (`Input: warp of the pointer from X,Y to the center ...`).
-  - The window events: `Input window: focus gained` (focus lost, mouse enter, mouse leave,
+  - With `-inputlog` only: the window events: `Input window: focus gained` (focus lost, mouse enter, mouse leave,
     enter full screen, leave full screen, resized, moved), with the relative mode and the
     grab, at most 300 lines.
-  - The first 200 key events (`Input key down: scancode N (NAME), key 0x..., mod 0x...,
+  - With `-inputlog` only: the first 200 key events (`Input key down: scancode N (NAME), key 0x..., mod 0x...,
     repeat R, keyboard ID, game code 0x..`), the first 200 mouse motions (`Input motion:
     mouse ID, x, y, xrel, yrel, relative R`) and the first 200 mouse buttons. Then one line
     for each second with input: `Input second: keys N down (R repeats) N up (keyboard ID),
@@ -103,8 +103,8 @@ too.
     right, immersive, slide on and the map, the mouse axes (`Controls: mouse look axis A
     invert I, turn axis ...`, 0 x, 1 y, 255 none) and the rows `KeyConfig5=` (mouse) and
     `KeyConfig0=` (keys) as in `ascent.cfg`.
-  - One line for each 60 frames of the controls (one second with the fixed step) with
-    look or turn input: `Controls second: N frames with input (M automap), keys look up U
+  - With `-inputlog` only: one line for each 60 frames of the controls (one second with
+    the fixed step) with look or turn input: `Controls second: N frames with input (M automap), keys look up U
     down D turn T frames, look keys K axes A pad P return R, heading keys K axes A pad P,
     mouse raw look L turn T, source S, mouse look M, immersive I, pitch A to B (last write:
     look, glance return or none), heading H1 to H2`. The look parts are pitch units (fixang,

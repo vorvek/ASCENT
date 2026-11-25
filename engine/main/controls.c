@@ -219,6 +219,7 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include <stdio.h>
 #include <string.h>
 #include <math.h>		// ASCENT: atan2 for the control lines of the session log
+#include "platform.h"	// ASCENT: plat_input_log (-inputlog)
 #include "physics.h"
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtucombat.h"	// ASCENT: the attack of the player
@@ -595,7 +596,7 @@ static void control_diag_frame(void)
 	}
 	if (++Cdiag.frames < 60)
 		return;
-	if (Cdiag.input_frames && lines < 4000) {
+	if (Cdiag.input_frames && plat_input_log() && lines < 4000) {
 		lines++;
 		dtulog_event("Controls second: %d frames with input (%d automap), keys look up %d down %d turn %d frames, look keys %d axes %d pad %d return %d, heading keys %d axes %d pad %d, mouse raw look %d turn %d, source %d, mouse look %d, immersive %d, pitch %d to %d (last write: %s), heading %.1f to %.1f",
 			Cdiag.input_frames, Cdiag.automap_frames, Cdiag.look_up_frames, Cdiag.look_down_frames, Cdiag.turn_frames,

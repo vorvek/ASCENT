@@ -506,11 +506,13 @@ int plat_pad_button_presses(int button)
 
 // ---------------------------------------------------------------------
 // ASCENT: the input lines of the session log (docs/debug_logs.md, "Input
-// lines"). The first DIAG_FIRST key events and mouse events are written
-// one by one, then one summary line for each second with input.
+// lines"). The devices are always written. With -inputlog, the first
+// DIAG_FIRST key events and mouse events are written one by one, then one
+// summary line for each second with input.
 
 #define DIAG_FIRST	200
 
+static int Input_log;
 static int Diag_keys, Diag_motions, Diag_buttons;
 static Uint64 Diag_second;
 static struct {
@@ -521,6 +523,16 @@ static struct {
 	SDL_MouseID last_mouse;
 	SDL_KeyboardID last_keyboard;
 } Diag;
+
+void plat_set_input_log(int on)
+{
+	Input_log = (on != 0);
+}
+
+int plat_input_log(void)
+{
+	return Input_log;
+}
 
 static void diag_device_lists(void)
 {
@@ -628,7 +640,7 @@ static void diag_second(void)
 {
 	Uint64 now = SDL_GetTicks();
 
-	if (now - Diag_second < 1000)
+	if (!Input_log || now - Diag_second < 1000)
 		return;
 	Diag_second = now;
 	if (Diag.key_down || Diag.key_up || Diag.motions || Diag.buttons || Diag.wheels || Diag.warps)
@@ -641,6 +653,9 @@ static void diag_second(void)
 
 static void diag_event(const SDL_Event *ev)
 {
+	if (!Input_log && ev->type != SDL_EVENT_KEYBOARD_ADDED && ev->type != SDL_EVENT_KEYBOARD_REMOVED &&
+		ev->type != SDL_EVENT_MOUSE_ADDED && ev->type != SDL_EVENT_MOUSE_REMOVED)
+		return;
 	switch (ev->type) {
 	case SDL_EVENT_KEY_DOWN:
 	case SDL_EVENT_KEY_UP:

@@ -254,6 +254,10 @@ void plat_set_start_windowed(int windowed);
 // A hidden window for automated runs (tests). It is not full screen and
 // does not take the focus. Call it before plat_init.
 void plat_set_start_hidden(int hidden);
+// -inputlog: write each key and mouse event and one summary line for each
+// second with input to the session log (docs/debug_logs.md). Off by default.
+void plat_set_input_log(int on);
+int plat_input_log(void);
 // The window icon: a Windows .ICO file (DTU.ICO of the game disc). NULL or
 // a file that cannot be read: the default icon. Call it before plat_init.
 void plat_set_window_icon_file(const char *path);

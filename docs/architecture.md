@@ -280,7 +280,7 @@ boxes.
 | `-testspell N`, `-testslots N` | Put spell N in the book and hand; give N slots for each spell level. |
 | `-soak SEED` | The soak test: random player actions with a check of all objects after each frame. Prints `SOAK FAIL` and `SOAK CRASH` lines. With `-soakdeath`, `-soakabort`, `-soaklog`. |
 | `-loadshots`, `-movieshot` | Screenshots of the loading pictures and of movie frames. |
-| `-setuplog`, `-objlog`, `-triglog`, `-scriptlog`, `-charlog`, `-musiclog`, `-soundlog`, `-movelog`, `-statelog` | Logs of one system. |
+| `-setuplog`, `-objlog`, `-triglog`, `-scriptlog`, `-charlog`, `-musiclog`, `-soundlog`, `-movelog`, `-statelog`, `-inputlog` | Logs of one system. |
 
 `engine/main/cc.sh` compiles single files of `engine/main` with the flags
 of a build directory.
