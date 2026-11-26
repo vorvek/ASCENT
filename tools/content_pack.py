@@ -8,8 +8,8 @@ Usage:
     python -I tools/content_pack.py [--hd DIR] [--patch ZIP_OR_DIR] [--out DIR]
                                     [--lang DIR] [--version V] [PACK ...]
 
-PACK is one of patch13, textures, ui, movies, lang_es, music (default:
-all but lang_es and music).
+PACK is one of patch13, textures, ui, movies, lang_es, music, models
+(default: all but lang_es, music and models).
 
   patch13   the files of the 1.3 patch that ascent-import needs
             (installer/patch13.txt), from the patch archive dtu1_3.zip or a
@@ -29,6 +29,10 @@ all but lang_es and music).
             (engine/main/dtumusic.c), with README.txt and the notes
             NAME.txt of tools/music_replace.py. Only when named: the
             files are not in the repository.
+
+  models    <hd>/polymodels: the improved character and monster models
+            (*.pom, made by tools/model_zoo.py build; docs/formats/pom.md).
+            Only when named.
 
 The version of a pack is --version, else the number of PACK_VERSION (1 for
 a pack that is not there).
@@ -60,6 +64,7 @@ TITLES = {
     'movies': 'Upscaled movies',
     'lang_es': 'Spanish text and pictures (translation, subtitles, interface pictures)',
     'music': 'Replacement music (for the setting Streaming safe music)',
+    'models': 'Improved character and monster models',
 }
 DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 # 2: lang_es has the pictures of the language
@@ -70,7 +75,10 @@ DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 #    short wand name "Varita de Proyectiles"
 # 6: no subject pronoun "Tú" where the verb shows the person (two lines of
 #    dialogue)
-PACK_VERSION = {'lang_es': '6'}
+# 7: Puerto Calavera for Skullport, Méfit for Mephit, one spelling of
+#    Perrentine
+# models 5: the ogre feet closed (ognew5, armogre; bugs.md D30)
+PACK_VERSION = {'lang_es': '7', 'models': '5'}
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
@@ -255,6 +263,8 @@ def main(argv):
             m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'ui'))
         elif name == 'music':
             m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'music'))
+        elif name == 'models':
+            m = write_pack(out, name, version_of, 'hd', files_of_tree(hd, 'polymodels'))
         elif name.startswith('lang_'):
             m = write_pack(out, name, version_of, 'hd', lang_files(lang, name[5:], hd))
         else:

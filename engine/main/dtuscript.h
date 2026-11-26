@@ -37,6 +37,10 @@ extern int Dtu_fix_script_wait;
 // work Mishad." as its other branches of the same result do (1.3: the run
 // ends and label 800 is never reached). -origscript clears it.
 extern int Dtu_fix_script_devlin;
+// 1 (default): the English scripts spell the name of Tryola Perrentine
+// (MINE, scripts 110 and 111) one way (1.3 has Parrantine and Parrentine
+// too). -origscript clears it.
+extern int Dtu_fix_script_names;
 
 // 1: each statement and each event of the scripts is printed to stdout
 // (option -scriptlog).

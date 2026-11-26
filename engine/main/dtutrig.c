@@ -79,6 +79,7 @@ int Dtu_fix_thief2_cache = 1;
 int Dtu_fix_keep_triggers = 1;
 int Dtu_fix_touch_use = 1;
 int Dtu_fix_say_repeat = 1;
+int Dtu_fix_say_text = 1;
 int Dtu_trig_log = 0;
 
 // ASCENT: Dtu_fix_say_repeat. The game time of the last message of each
@@ -352,6 +353,47 @@ static void active_remove(int trap_num)
 //------------------------------------------------------------------------
 // Messages (0x94D8B)
 
+// ASCENT: Dtu_fix_say_text. A message whose last sentences tell of a thing
+// that 1.3 does not have keeps only its first sentences. CRYPTS.SAY message
+// 6 (trigger 18, segment 398): "Upon entering this room the water in the
+// pool churns for a moment. Slowly, a water elemental rises up and
+// advances on you." DTUE.TEX has no creature named water elemental, and
+// nothing rises from the pool. The cut is made after the lookup of the
+// translation, which is found by the English text of the file, so it works
+// for each language. 1 (default): the first sentence only. 0 (-origtrig):
+// the text of 1.3.
+static const struct {
+	const char	*level;
+	int			say_index;
+	int			sentences;		// the sentences that stay
+} Say_cuts[] = {
+	{ "CRYPTS", 6, 1 },
+};
+
+static char *say_cut(int say_index, char *text)
+{
+	static char out[4096];
+	int i, n;
+	char *p;
+
+	if (!Dtu_fix_say_text || !text)
+		return text;
+	for (i = 0; i < (int) (sizeof(Say_cuts) / sizeof(Say_cuts[0])); i++) {
+		if (Say_cuts[i].say_index != say_index || stricmp(Say_cuts[i].level, Say_level))
+			continue;
+		// the end of a sentence: '.', '!' or '?' and a space
+		for (p = text, n = 0; *p; p++)
+			if ((*p == '.' || *p == '!' || *p == '?') && p[1] == ' ' && ++n == Say_cuts[i].sentences)
+				break;
+		if (!*p || p - text + 1 >= (int) sizeof(out))
+			return text;
+		memcpy(out, text, p - text + 1);
+		out[p - text + 1] = 0;
+		return out;
+	}
+	return text;
+}
+
 char *dtu_trig_say_text(int say_index)
 {
 	uint flag, count, start, end;
@@ -389,7 +431,7 @@ char *dtu_trig_say_text(int say_index)
 		// ASCENT: the translation of the message (dtulang.h): id say.LEVEL.N
 		char id[40];
 		snprintf(id, sizeof(id), "say.%s.%d", Say_level, say_index);
-		return dtu_tr_id(id, Say_text);
+		return say_cut(say_index, dtu_tr_id(id, Say_text));
 	}
 }
 
@@ -2141,7 +2183,7 @@ static void read_options(void)
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-origtrig"))
-		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = Dtu_fix_trigger_side = Dtu_fix_bane_cyric = 0;
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = Dtu_fix_trigger_side = Dtu_fix_bane_cyric = Dtu_fix_say_text = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
 }

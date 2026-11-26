@@ -182,7 +182,9 @@ other limit exists.
 Other functions (**Code**): 0xB6BB3 "has item" (a spell in the spell lists, a
 Khelben key in the key list, any other item in the item list), 0xB6D24 "take
 count items of a type", 0xB6F01 "remove an entry" with the fix of all references
-(0x31C4B), 0xB7084 "use up one item of a reference".
+(0x31C4B), 0xB7084 "use up one item of a reference". 0x31C4B changes only the
+references of list 0: a hot key box with a spell (list 1 or 2) keeps its index
+of the spell list when an item entry goes away.
 
 ## 4. Item data from the tables
 
@@ -403,7 +405,13 @@ Shield, Detect Magic and Sleep of the mage list.
   empty then; the log text is "Selected spell %s as weapon" (0x123CEC), but the
   hand does not change. Else, with an entry in the box, the box acts as its key
   (0x3056E: log "Selected hotkey item %d", 0x43A5A) and the cursor keeps the
-  spell.
+  spell. The click does not change 0x13AD15 (the box that was chosen last).
+  So when the box was chosen last, its key and a click on it are refused
+  (0x43D32, sound 3000) with the new entry in the box, until another box or
+  the empty hand is chosen. The key 1 to 0 with a held entry does not have
+  this defect: 0x31A55 returns 1 for the box of 0x13AD15 and the caller
+  arms the box. The port refuses only while the box holds the hand
+  (`Dtu_fix_hot_key_refresh`, `-origchar` clears it).
 - 0x3533C for a spell entry: spells 39, 40 and 53 always; else the character is
   a caster (0x359F4: cleric 0x35A09 or mage 0x35A2B), the count is 1 or more (or
   -1), and the class bits of byte 3 fit a class of the character (0x352F7).

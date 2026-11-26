@@ -38,6 +38,7 @@
 #include "dtuspell.h"
 #include "dtuatk.h"			// the attack timing rules
 #include "dtucombat.h"		// Dtu_fix_haste_attack, Dtu_fix_missile_rate
+#include "physics.h"		// ASCENT: Dtu_fix_feather_fall, Dtu_fix_jump_spell
 #include "dtudisp.h"		// Dtu_hires, dtu_febgnd_load
 #include "dtufe_int.h"		// Fe_font_s
 #include "dtuhdui.h"		// the upscaled picture
@@ -45,6 +46,7 @@
 #include "dtulang.h"
 #include "dtufile.h"		// dtu_find_file: the font of the front end for the test aid
 #include "dtudesc.h"
+#include "dtuhold.h"		// ASCENT: the Potion of Freedom and a hold
 
 #define TEXT_MAX	2048
 
@@ -279,6 +281,75 @@ static void power_lines(int type, int id)
 
 static void shield_lines(int ac, int ac_missile);
 
+// ASCENT: what each effect of the mask does, one sentence for each, so
+// that a line such as "Gives Fly." does not only repeat the name. The
+// effects with the armor class lines (Armor, Shield, Magical Vestment) and
+// the effects that no spell, potion or item gives have none. The sources:
+// dtuobj_combat.c (Bless, Resist Fire, Protection From Evil, Invulnerability),
+// render.c and dtuobj_item.c (Detect Magic), physics.c and controls.c (Feather
+// Fall, Fly, Jump, Levitate), dtuspell.c (Free Action, Haste, the casts),
+// dtuthief.c (Spider Climb, Find Traps), dtudisp.c (Infravision).
+static void fx_explain(int mask)
+{
+	static const short mind[5] = { 7, 14, 22, 44, 46 };
+	char buf[160];
+
+	if (mask & DTU_FX_BLESS)
+		line(LT("+1 to attack rolls."));
+	if (mask & DTU_FX_CHILL_TOUCH)
+		line(LT("Each melee hit: the target saves or takes 1d4 more damage; undead get Fear."));
+	if (mask & DTU_FX_DETECT_MAGIC)
+		line(LT("Magic items, magic scenery, spell missiles and false walls in view are drawn in blue."));
+	if (mask & DTU_FX_FEATHER_FALL)
+		line(Dtu_fix_feather_fall ? LT("You fall slowly, at most 7.5 ft a second, and a fall does no damage.") :
+			LT("You do not fall: you stay at your height."));
+	if (mask & DTU_FX_RESIST_FIRE)
+		line(LT("Fire damage to you is halved."));
+	if (mask & DTU_FX_FLY)
+		line(LT("You fly where you look and can go up and down; you do not fall."));
+	if (mask & DTU_FX_FREE_ACTION)
+		line(LT("%s, %s and the stun of %s do not work on you, and nothing slows your movement."),
+			dtu_spell_name(22), dtu_spell_name(23), dtu_spell_name(6));
+	if (mask & DTU_FX_HASTE)
+		line(Dtu_fix_haste_attack ? LT("You move twice as fast, a melee swing takes half the time, and shots wait half as long.") :
+			LT("You move twice as fast; a melee attack comes once each 1.5 swing times."));
+	if (mask & DTU_FX_INFRAVISION)
+		line(LT("Lets you turn on infravision. Only a human needs it: the other races have it."));
+	if (mask & DTU_FX_IMP_INVIS)
+		line(LT("Creatures do not see you, even while you attack."));
+	if (mask & DTU_FX_INVISIBLE)
+		line(LT("Creatures do not see you until you make a weapon attack or cast a spell missile."));
+	if (mask & DTU_FX_INVULNERABLE)
+		line(LT("Creatures below level 4 and weapons that are not magic cannot hurt you, spells deal you no damage, and your armor class is 2 better."));
+	if (mask & DTU_FX_JUMP)
+		line(Dtu_fix_jump_spell ? LT("Your jumps go higher and farther.") : LT("Your jumps go farther forward."));
+	if (mask & DTU_FX_FIND_TRAPS)
+		line(LT("You find and remove traps with a chance of 100%%, and the search for traps runs all the time."));
+	if (mask & DTU_FX_LEVITATE)
+		line(LT("You float and move only up and down. You cannot cast spells while you levitate."));
+	if (mask & DTU_FX_PROT_EVIL) {
+		// ASCENT: 0x2AD36 and 0x2AD70 (dtuobj_combat.c); Dtu_fix_prot_evil
+		// adds the saves and the block of the mind spells (dtuspell.c)
+		line(Dtu_fix_prot_evil ? LT("Armor class and saving throws 2 better against creatures.") : LT("Armor class 2 better against creatures."));
+		line(LT("An extraplanar creature always misses you; attacking one ends the spell."));
+		if (Dtu_fix_prot_evil)
+			line(LT("Charm and fear spells of creatures fail: %s."), spell_list(buf, sizeof(buf), mind, 5));
+	}
+	if (mask & DTU_FX_SPIDER_CLIMB)
+		line(LT("You can climb walls, with a chance of 100%%."));
+}
+
+// The number of effect bits of a mask
+static int fx_count(int mask)
+{
+	int b, n = 0;
+
+	for (b = 0; b < 32; b++)
+		if (mask & (1 << b))
+			n++;
+	return n;
+}
+
 static void fx_line(int type, int id, int hand)
 {
 	char buf[256];
@@ -286,6 +357,10 @@ static void fx_line(int type, int id, int hand)
 
 	if (fx)
 		line(hand ? LT("In the hand: %s.") : LT("While worn: %s."), fx_names(buf, sizeof(buf), fx));
+	// ASCENT: what the effects do, for an item with one or two (a longer
+	// list would not fit in the window)
+	if (fx && fx_count(fx) <= 2)
+		fx_explain(fx);
 	// the armor class of the effects Armor, Magical Vestment and Shield
 	if (fx & DTU_FX_SHIELD)
 		shield_lines(dtu_spell_fx_ac(fx), dtu_spell_fx_ac_vs(fx, 1));
@@ -314,8 +389,24 @@ static void use_line(const dtu_misc_use *u)
 			break;
 		case DTU_MU_GIANT:		line(LT("Strength becomes at least %d for %s."), u->lo, t); break;
 		case DTU_MU_INTEL:		line(LT("Intelligence becomes %s for %s."), a, t); break;
-		case DTU_MU_EFFECT:		line(LT("Gives %s for %s."), fx_names(s2, sizeof(s2), u->fx), t); break;
-		case DTU_MU_SPELLS:		line(LT("Casts %s on you."), s); break;
+		case DTU_MU_EFFECT:
+			line(LT("Gives %s for %s."), fx_names(s2, sizeof(s2), u->fx), t);
+			fx_explain(u->fx);		// ASCENT: what the effect does
+			// ASCENT: the Potion of Freedom with Dtu_fix_player_hold (dtuhold.h)
+			if ((u->fx & DTU_FX_FREE_ACTION) && dtu_hold_fix_on())
+				line(LT("You can drink it while you are held, and it ends the hold."));
+			break;
+		case DTU_MU_SPELLS:
+			line(LT("Casts %s on you."), s);
+			// ASCENT: what the effect of a single spell does (the Potions of
+			// Flying and of Jumping)
+			if (u->n_spells == 1) {
+				dtu_spell_facts f;
+
+				if (dtu_spell_get_facts(u->spells[0], -1, &f) && f.kind == DTU_SK_GIVE)
+					fx_explain(f.fx);
+			}
+			break;
 		case DTU_MU_DISPEL:		line(LT("Ends all spell and potion effects on you.")); break;
 		case DTU_MU_LUCK:		line(LT("For %s, one attack roll is a 20 or one damage roll is the highest."), t); break;
 		case DTU_MU_TOUGH:
@@ -599,9 +690,8 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 			// ASCENT: Dtu_fix_haste_friends (case 21 of dtuspell.c)
 			if (f->side_only)
 				line(LT("Only you and the creatures that are not hostile to you."));
-			// 0x29E3D (dtucombat.c): the effect acts in the melee hit of the player
-			if (f->fx == DTU_FX_CHILL_TOUCH)
-				line(LT("Each melee hit: the target saves or takes 1d4 more damage; undead get Fear."));
+			// ASCENT: what the effect does (Chill Touch: 0x29E3D, dtucombat.c)
+			fx_explain(f->fx);
 			break;
 		// DTU_SR_LEVEL_CAP: the highest level of a target (rule_reaches)
 		case DTU_SK_CAUSE:

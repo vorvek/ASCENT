@@ -2383,7 +2383,7 @@ void kconfig_sense_init()
 #include "dtuhdui.h"		// dtu_hdui_save, dtu_hdui_restore
 #include "dtulog.h"		// ASCENT: dtu_kconfig_log
 
-#define DTU_KC_N_KEYS	62
+#define DTU_KC_N_KEYS	64
 #define DTU_KC_N_HOT		(2*DTU_N_HOT_ACTIONS)
 #define DTU_KC_N_JOY		27
 #define DTU_KC_N_MOUSE	29
@@ -2410,8 +2410,8 @@ static kc_item Dtu_kc_keys[DTU_KC_N_KEYS] = {
 	{ 15, 15,109,100, 26, 13, 17, 14, 24, 385, BT_KEY, 255 },
 	{ 16, 15,117, 71, 26, 14, 41, 25, 17, 386, BT_KEY, 255 },
 	{ 17, 15,117,100, 26, 15, 42, 16, 26, 386, BT_KEY, 255 },
-	{ 18,158, 49, 83, 26, 60, 20,  1, 19, 390, BT_KEY, 255 },
-	{ 19,158, 49,112, 26, 61, 21, 18,  2, 390, BT_KEY, 255 },
+	{ 18,158, 49, 83, 26, 62, 20,  1, 19, 390, BT_KEY, 255 },
+	{ 19,158, 49,112, 26, 63, 21, 18,  2, 390, BT_KEY, 255 },
 	// ASCENT: 1.3 has the text 56 "(unused)" in 20 and 21 and does not
 	// draw them (18 down goes to 22, 3 right to 22, 4 left to 19). The
 	// port: Climb Wall (the text number -1 - the action, as the hot key
@@ -2456,8 +2456,12 @@ static kc_item Dtu_kc_keys[DTU_KC_N_KEYS] = {
 	{ 57,158,168,112, 26, 55, 59, 56, 60, 779, BT_KEY, 255 },
 	{ 58,158,176, 83, 26, 56,  0, 61, 59, 780, BT_KEY, 255 },
 	{ 59,158,176,112, 26, 57,  1, 58,  0, 780, BT_KEY, 255 },
-	{ 60, 15,176, 71, 26, 52, 18, 57, 61, 961, BT_KEY, 255 },
-	{ 61, 15,176,100, 26, 53, 19, 60, 58, 961, BT_KEY, 255 },
+	{ 60, 15,176, 71, 26, 52, 62, 57, 61, 961, BT_KEY, 255 },
+	{ 61, 15,176,100, 26, 53, 63, 60, 58, 961, BT_KEY, 255 },
+	// ASCENT: Crouch (port), a row below the items of 1.3: 60 and 61 go
+	// down to it, 18 and 19 up to it
+	{ 62, 15,184, 71, 26, 60, 18, 59, 63, -1-DTU_ACT_CROUCH, BT_KEY, 255 },
+	{ 63, 15,184,100, 26, 61, 19, 62, 58, -1-DTU_ACT_CROUCH, BT_KEY, 255 },
 };
 
 static kc_item Dtu_kc_joy[DTU_KC_N_JOY] = {
@@ -2531,7 +2535,7 @@ static kc_item Dtu_kc_hot[DTU_KC_N_HOT];
 // The gamepad page (port): the 30 actions of the keyboard page, the
 // previous and next hot key and Climb Wall, two bindings each
 #define BT_PAD			6
-#define DTU_PAD_N_ACTS	(DTU_ACT_HOT_KEY_1 + 3)
+#define DTU_PAD_N_ACTS	(DTU_ACT_HOT_KEY_1 + 4)
 static kc_item Dtu_kc_pad[2 * DTU_PAD_N_ACTS];
 static int Pad_page_acts[DTU_PAD_N_ACTS];
 
@@ -2566,13 +2570,15 @@ static const ubyte Dtu_kc_orig_defaults[6][DTU_KC_ROW] = {
 // The keyboard defaults of the port (the owner of the project): W and S
 // forward and back (with the arrows), A and D side steps (the executable:
 // Z and X), E Activate (A), H Disarm (D), P Stats (S), R and Z Rest, Q
-// Climb Wall (a port action in the unused items 20 and 21). The other
-// keys are those of the executable. The keypad 8 and 2 of the executable
-// gave way to W and S (two keys for each action).
+// Climb Wall (a port action in the unused items 20 and 21), Left Ctrl
+// Crouch (a port action, items 62 and 63) and Right Ctrl Attack (the
+// executable: both Ctrl keys). The other keys are those of the
+// executable. The keypad 8 and 2 of the executable gave way to W and S
+// (two keys for each action).
 static const ubyte Dtu_kc_port_keys[DTU_KC_N_KEYS] = {
 	KEY_CAPSLOCK,255,	KEY_SPACEBAR,255,	KEY_LEFT,KEY_PAD4,	KEY_RIGHT,KEY_PAD6,
 	KEY_LALT,KEY_RALT,	KEY_A,KEY_PAD1,		KEY_D,KEY_PAD3,		KEY_INSERT,255,
-	KEY_DELETE,255,		KEY_LCTRL,KEY_RCTRL,	KEY_Q,255,			KEY_V,255,
+	KEY_DELETE,255,		KEY_RCTRL,255,		KEY_Q,255,			KEY_V,255,
 	KEY_W,KEY_UP,			KEY_S,KEY_DOWN,		KEY_C,255,				KEY_PAGEUP,255,
 	KEY_PAGEDOWN,255,		KEY_HOME,255,			KEY_END,255,
 	KEY_TAB,					// 38 Automap
@@ -2581,6 +2587,7 @@ static const ubyte Dtu_kc_port_keys[DTU_KC_N_KEYS] = {
 	255,						// 49 Automap, second key
 	KEY_H,255,				KEY_T,255,				KEY_M,255,				KEY_F,255,
 	KEY_O,255,				KEY_R,KEY_Z,
+	KEY_LCTRL,255,			// 62, 63 Crouch (port)
 };
 
 static const ubyte Dtu_kc_hot_keys[DTU_N_HOT_ACTIONS] = { KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9, KEY_0 };
@@ -2602,12 +2609,14 @@ static const signed char Dtu_act_items[DTU_N_ACTIONS][2] = {
 	{ 45, 46 }, { 47, 48 }, { 50, 51 }, { 52, 53 }, { 54, 55 }, { 56, 57 }, { 58, 59 },
 	{ 60, 61 },
 	// the hot keys: items of the hot key page, after the keyboard items
-	{ 62, 63 }, { 64, 65 }, { 66, 67 }, { 68, 69 }, { 70, 71 }, { 72, 73 }, { 74, 75 },
-	{ 76, 77 }, { 78, 79 }, { 80, 81 },
+	{ 64, 65 }, { 66, 67 }, { 68, 69 }, { 70, 71 }, { 72, 73 }, { 74, 75 }, { 76, 77 },
+	{ 78, 79 }, { 80, 81 }, { 82, 83 },
 	// the previous and the next hot key: no keyboard items, only the gamepad
 	{ -1, -1 }, { -1, -1 },
 	// Climb Wall: the items 20 and 21 ("(unused)" in 1.3)
 	{ 20, 21 },
+	// Crouch: the items 62 and 63 (port)
+	{ 62, 63 },
 };
 
 // The text numbers of the actions (the hot keys have no text)
@@ -2619,7 +2628,7 @@ static const short Dtu_act_text[DTU_N_ACTIONS] = {
 static char *Dtu_hot_names[DTU_N_ACTIONS - DTU_ACT_HOT_KEY_1] = {
 	LN("Hot key 1"), LN("Hot key 2"), LN("Hot key 3"), LN("Hot key 4"), LN("Hot key 5"),
 	LN("Hot key 6"), LN("Hot key 7"), LN("Hot key 8"), LN("Hot key 9"), LN("Hot key 10"),
-	LN("Prev. hot key"), LN("Next hot key"), LN("Climb Wall"),
+	LN("Prev. hot key"), LN("Next hot key"), LN("Climb Wall"), LN("Crouch"),
 };
 
 //------------------------------------------------------------------------
@@ -2875,7 +2884,7 @@ static void dtu_kc_init(void)
 		kc_build_grid(Dtu_kc_hot, acts, DTU_N_HOT_ACTIONS);
 	}
 	// The gamepad page: the actions of the keyboard page, the previous and
-	// next hot key and Climb Wall (DTU_ACT_PREV_HOT_KEY + 2)
+	// next hot key, Climb Wall and Crouch (DTU_ACT_PREV_HOT_KEY + 2 and + 3)
 	for (i = 0; i < DTU_PAD_N_ACTS; i++)
 		Pad_page_acts[i] = i < DTU_ACT_HOT_KEY_1 ? i : DTU_ACT_PREV_HOT_KEY + (i - DTU_ACT_HOT_KEY_1);
 	kc_build_grid(Dtu_kc_pad, Pad_page_acts, DTU_PAD_N_ACTS);
@@ -3620,6 +3629,36 @@ void dtu_pad_menu(void)
 // default key stays, unless the file gives it to another item.
 static int Kc_climb_read;
 
+// Crouch (bytes 62 and 63 of row 0, port) is in "KeyConfigCrouch=", which
+// the port writes before the rows. A file of an earlier version has no
+// such line and has Left Ctrl on Attack (item 18): the key goes to Crouch
+// (the default) and Attack keeps Right Ctrl. A Crouch key that the file
+// gives to another item leaves Crouch.
+static int Kc_crouch_read;
+
+static void kc_crouch_free_key(ubyte *keys, int n, int row0)
+{
+	int i, w;
+
+	if (Kc_crouch_read)
+		return;
+	for (i = 0; i < n; i++)
+		for (w = 62; w <= 63; w++) {
+			if (row0 && (i == 62 || i == 63))
+				continue;
+			if (keys[i] == 255 || keys[i] != Dtu_kc_settings[0][w])
+				continue;
+			if (row0 && (i == 18 || i == 19))
+				keys[i] = 255;		// Attack gives the key to Crouch
+			else
+				Dtu_kc_settings[0][w] = 255;
+		}
+	if (row0 && keys[18] == 255 && keys[19] != 255) {
+		keys[18] = keys[19];
+		keys[19] = 255;
+	}
+}
+
 static void kc_climb_free_key(const ubyte *keys, int n, int row0)
 {
 	int i, w;
@@ -3678,7 +3717,9 @@ int dtu_kconfig_cfg_line(const char *name, const char *value)
 			len = sizeof(pad);
 		if (len >= 2 * DTU_ACT_CLIMB && hex_bytes(value, pad, len)) {
 			memcpy(Dtu_pad_settings, pad, len);
-			if (len < 2 * DTU_N_ACTIONS) {
+			// a file with Climb Wall and no Crouch keeps its Climb Wall;
+			// Crouch keeps its default (no button)
+			if (len < 2 * (DTU_ACT_CLIMB + 1)) {
 				int a, w, r3_other = 0;
 
 				for (w = 0; w < 2; w++)
@@ -3712,6 +3753,15 @@ int dtu_kconfig_cfg_line(const char *name, const char *value)
 		if (strlen(value) >= 2*DTU_KC_N_HOT && hex_bytes(value, row, DTU_KC_N_HOT)) {
 			memcpy(Dtu_kc_hot_settings, row, DTU_KC_N_HOT);
 			kc_climb_free_key(row, DTU_KC_N_HOT, 0);
+			kc_crouch_free_key(row, DTU_KC_N_HOT, 0);
+		}
+		return 1;
+	}
+	if (!strcmp(name, "KeyConfigCrouch")) {
+		if (strlen(value) >= 4 && hex_bytes(value, row, 2)) {
+			Dtu_kc_settings[0][62] = row[0];
+			Dtu_kc_settings[0][63] = row[1];
+			Kc_crouch_read = 1;
 		}
 		return 1;
 	}
@@ -3729,6 +3779,9 @@ int dtu_kconfig_cfg_line(const char *name, const char *value)
 			if (n == 0) {
 				row[20] = Dtu_kc_settings[0][20];
 				row[21] = Dtu_kc_settings[0][21];
+				row[62] = Dtu_kc_settings[0][62];
+				row[63] = Dtu_kc_settings[0][63];
+				kc_crouch_free_key(row, DTU_KC_N_KEYS, 1);
 				memcpy(Dtu_kc_settings[0], row, DTU_KC_ROW);
 				kc_climb_free_key(row, DTU_KC_N_KEYS, 1);
 			} else
@@ -3746,6 +3799,8 @@ void dtu_kconfig_cfg_write(FILE *f)
 	dtu_kc_init();
 	fprintf(f, "ControlType=%d\n", Dtu_control_type);
 	fprintf(f, "Sensitivity=%d\n", Config_joystick_sensitivity);
+	// before the rows: see kc_crouch_free_key
+	fprintf(f, "KeyConfigCrouch=%02x%02x\n", Dtu_kc_settings[0][62], Dtu_kc_settings[0][63]);
 	for (r = 0; r < 6; r++) {
 		fprintf(f, "KeyConfig%d=", r);
 		for (i = 0; i < DTU_KC_ROW; i++)

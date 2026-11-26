@@ -351,6 +351,7 @@ static char rcsid[] = "$Id: render.c 2.5 1995/12/19 15:31:36 john Exp $";
 #include "args.h"			// ASCENT: -lightlog
 #include "tmapfx.h"		// ASCENT: Tmap_fx_row
 #include "dtudlg.h"		// ASCENT: the dark view of the conversation window
+#include "dtuhold.h"		// ASCENT: the gray view of a held player
 #include "effects.h"		// ASCENT: the preload of the upscaled textures
 #include "dtutrig.h"
 #include "gamemine.h"
@@ -2390,6 +2391,9 @@ void render_frame(fix eye_offset)
 		G3_gpu_dim = dim;
 	}
 	infra = dtu_infra_begin_view(gpu_set_options() && Dtu_gpu_renderer && plat_gpu_available());
+	// ASCENT: the gray view of a held player (dtuhold.c), read at the present
+	if (plat_gpu_available())
+		plat_gpu_set_view_desaturate(dtu_hold_view_amount());
 	gpu_view = g3_gpu_begin_view(Dtu_gpu_renderer, Dtu_render_scale,
 		(Dtu_display_active && Dtu_hires) ? 2 : 1, Dtu_improved_occlusion,
 		(Clear_window == 1 && Clear_window_color != -1) ? Clear_window_color : BM_XRGB(0, 0, 0));

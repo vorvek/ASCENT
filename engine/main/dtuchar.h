@@ -277,6 +277,12 @@ extern int Dtu_fix_endless_stack;
 // thief bit of the last character creation of the run, as 1.3. 1
 // (default): the classes of the character. -origchar clears it.
 extern int Dtu_fix_level_thief;
+// ASCENT: the key or the click of the hot key box that was chosen last
+// (0x13AD15). 0: refused with sound 3000 (0x43D32), also after a click put
+// another weapon or spell into the box (0x2FB10 does not reset 0x13AD15),
+// so the new entry needs another box first. 1 (default): refused only while
+// the box holds the item or the spell in the hand. -origchar clears it.
+extern int Dtu_fix_hot_key_refresh;
 
 // ASCENT: D-092, 0xB0C65 (the die of the character creation) with
 // Dtu_fix_creation_luck 0: if the Luck timer of the player is set and the

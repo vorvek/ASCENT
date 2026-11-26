@@ -1000,10 +1000,20 @@ void dtu_objects_init(void)
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
 			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_last =
-			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = Dtu_fix_npc_walk = Dtu_fix_npc_body =
-			Dtu_fix_lava = Dtu_fix_fall_active = Dtu_fix_fall_land = 0;
+			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = Dtu_fix_ogre_legs = Dtu_fix_npc_walk = Dtu_fix_npc_body =
+			Dtu_fix_lava = Dtu_fix_fall_active = Dtu_fix_fall_land = Dtu_fix_door_pair = 0;
+	if (FindArg("-origobj"))
+		Dtu_fix_caster_melee = Dtu_fix_caster_cast = 0;
+	if (FindArg("-origdoorpair"))
+		Dtu_fix_door_pair = 0;
+	if (FindArg("-origcastermelee"))
+		Dtu_fix_caster_melee = 0;
+	if (FindArg("-origcastercast"))
+		Dtu_fix_caster_cast = 0;
 	if (FindArg("-orignpcwalk"))
 		Dtu_fix_npc_walk = 0;
+	if (FindArg("-origogrelegs"))
+		Dtu_fix_ogre_legs = 0;
 	if (FindArg("-orignpcbody"))
 		Dtu_fix_npc_body = 0;
 	if (FindArg("-origrevive"))

@@ -447,6 +447,7 @@ static const char *Comp_fs =
 	"uniform float u_sigma;\n"
 	"uniform vec2 u_vsigma;\n"
 	"uniform int u_vrad;\n"
+	"uniform float u_desat;\n"
 	"out vec4 o_color;\n"
 	"int idx(vec4 c) { return int(c.r * 255.0 + 0.5); }\n"
 	"vec3 pal(int c) { return texelFetch(u_pal, ivec2(c, 0), 0).rgb; }\n"
@@ -498,7 +499,7 @@ static const char *Comp_fs =
 	"	return texelFetch(u_view, t, 0).rgb;\n"
 	"}\n"
 	// the view at the frame position fp
-	"vec3 view_at(vec2 fp) {\n"
+	"vec3 view_at0(vec2 fp) {\n"
 	"	vec2 vp = (fp - u_vrect.xy) / u_vrect.zw * u_vsize;\n"
 	"	int dl = dark(fp);\n"
 	"	if (u_filter == 1)\n"
@@ -533,6 +534,14 @@ static const char *Comp_fs =
 	"		return c;\n"
 	"	if (dl >= 0) c = c * u_rowk[dl];\n"
 	"	return plut(c);\n"
+	"}\n"
+	// ASCENT: the held player (plat_gpu_set_view_desaturate): the view
+	// goes to its luminance and loses up to 15% of its brightness
+	"vec3 view_at(vec2 fp) {\n"
+	"	vec3 c = view_at0(fp);\n"
+	"	if (u_desat <= 0.0) return c;\n"
+	"	float l = dot(c, vec3(0.299, 0.587, 0.114));\n"
+	"	return mix(c, vec3(l), u_desat) * (1.0 - 0.15 * u_desat);\n"
 	"}\n"
 	"bool keyed(ivec2 ip) {\n"
 	"	ip = clamp(ip, ivec2(0), ivec2(u_fsize) - 1);\n"
@@ -812,6 +821,7 @@ static struct {
 	GLint frame, pal, view, fade, plut, vpal, nearc, levels, rowk, dst, fsize, vrect, vsize, key, vrgb;
 	GLint ndark, drect, dlevel, filter, sigma, vsigma, vrad;
 	GLint ui, ref, hd, uplut, upal;		// ASCENT: the upscaled interface pictures
+	GLint desat;								// ASCENT: plat_gpu_set_view_desaturate
 } Cu;
 static GLuint Ui_prog;
 static struct { GLint rect, uv, tex; } Uu;
@@ -836,6 +846,7 @@ static GLuint Near_tex;					// the nearest palette color of each 6-bit color, R8
 static float Row_k[64];					// the average scale of the colors of each fade table row
 static int Light_dirty = 1;
 static int Infra_on;		// plat_gpu_set_infravision
+static float View_desat;	// plat_gpu_set_view_desaturate
 static uint8_t Near_pal[768];
 static int Near_valid_pal;
 static GLuint Plut_tex;					// View_pal to the frame palette, RGBA16F, 256x1
@@ -1116,6 +1127,7 @@ int gpu_init(SDL_Window *window)
 	Cu.hd = qglGetUniformLocation(Comp_prog, "u_hd");
 	Cu.uplut = qglGetUniformLocation(Comp_prog, "u_uplut");
 	Cu.upal = qglGetUniformLocation(Comp_prog, "u_upal");
+	Cu.desat = qglGetUniformLocation(Comp_prog, "u_desat");
 	Ui_prog = link_program(Ui_vs, Ui_fs);
 	if (Ui_prog) {
 		Uu.rect = qglGetUniformLocation(Ui_prog, "u_rect");
@@ -1483,6 +1495,11 @@ static void take_hd_results(void)
 void plat_gpu_set_infravision(int on)
 {
 	Infra_on = on != 0;
+}
+
+void plat_gpu_set_view_desaturate(float amount)
+{
+	View_desat = amount < 0.0f ? 0.0f : amount > 1.0f ? 1.0f : amount;
 }
 
 void plat_gpu_set_fade_table(const uint8_t *table, int levels)
@@ -2712,6 +2729,7 @@ static void compose(int key, int fw, int fh, int x, int y, int w, int h, int med
 	qglUniform1f(Cu.sigma, scale_sigma(base, ky < kx ? ky : kx, SCALE_SIGMA_MAX));
 	qglUniform2f(Cu.vsigma, vsx, vsy);
 	qglUniform1i(Cu.vrad, vrad);
+	qglUniform1f(Cu.desat, key ? View_desat : 0.0f);
 	qglActiveTexture(GL_TEXTURE0);
 	qglBindTexture(GL_TEXTURE_2D, Frame_tex);
 	qglActiveTexture(GL_TEXTURE1);

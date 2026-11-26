@@ -88,6 +88,7 @@ static void creature_cast(object *obj,int spell,vms_vector *dir,vms_vector *fire
 		return;
 	dtu_obj_log("attack: obj %d %s casts spell %d '%s'",(int)(obj-Objects),dtu_object_name(obj),spell,Spell_info[spell].name);
 	dtu_create_missile(dir,fire_point,seg,obj-Objects,5,spell,1);
+	dtu_spell_creature_weapon_cast(obj,1);		// 0x10040: ailp+0x2C = -2 (the creature is active)
 	if (spell == 16)
 		ail->spell_time = GameTime + i2f(180);
 	else
@@ -236,11 +237,15 @@ static void ai_fire_body(object *obj,fix dist)
 		return;
 
 	// A monster with a mage or cleric level does not shoot (0x11DE9). It
-	// touches a target in reach. Its spells come from 0x92D99 and 0x91FDC,
-	// which are not in the port.
-	if (Monster_ext[obj->id].spell_level > 0) {
-		if (dist <= reach)
+	// touches a target in reach. Its spells come from 0x92D99 and 0x91FDC
+	// (dtuspell.c). The levels are Robot_info+0xE2 and +0xE3: the NPC table,
+	// else spell_level= of the line (Monster_ext.spell_level is only the
+	// line, which prstsprt and hatchlng do not have).
+	if (dtu_spell_creature_caster(obj)) {
+		if (dist <= reach) {
+			dtu_obj_log("attack: obj %d %s (a caster) touches the player",objnum,dtu_object_name(obj));
 			melee_hit(target,obj);
+		}
 		return;
 	}
 
@@ -509,13 +514,46 @@ int opens_doors(object *obj)
 	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1 || person_opens_doors(obj);
 }
 
+// ASCENT: Dtu_fix_door_pair (dtuobj.h). The executable tests the lock and
+// the key of the wall on the side of the creature only (0x1320F, 0x132AA,
+// 0x25CAA), and wall_open_door (0x7D77E) opens both walls of the door. In
+// 133 of the 153 locked doors of the 39 level files only one wall has the
+// lock: the cells of PRISON have it on the wall of the corridor (wall 50,
+// seg 347 side 4, opened by trigger 45 with the key, item 16.59), not on
+// the wall of the cell (wall 51, seg 589 side 5). So the goblin of the cell
+// (object 34) opened its locked door. Corrected: a creature does not open
+// a door with a key or a lock on either wall. A creature on the path of
+// its script keeps the rule of 1.3: the script lets it out (PRISON script
+// 103, object 21). -origobj and -origdoorpair clear it.
+int Dtu_fix_door_pair = 1;
+
+// 1 if the wall WN has no key and no lock and, with Dtu_fix_door_pair, the
+// wall on the other side of the door has none either
+int dtu_creature_door_unlocked(object *obj,int segnum,int side)
+{
+	segment *segp = &Segments[segnum];
+	int wn = segp->sides[side].wall_num, child, cside, cwn;
+
+	if (wn < 0 || Walls[wn].keys != KEY_NONE || (Walls[wn].flags & WALL_DOOR_LOCKED))
+		return 0;
+	if (!Dtu_fix_door_pair || Script_walk_doors || (obj->type == OBJ_ROBOT && Ail[obj-Objects].script_walk == 1))
+		return 1;
+	child = segp->children[side];
+	if (child < 0)
+		return 1;
+	cside = find_connect_side(segp,&Segments[child]);
+	if (cside < 0 || (cwn = Segments[child].sides[cside].wall_num) < 0)
+		return 1;
+	return Walls[cwn].keys == KEY_NONE && !(Walls[cwn].flags & WALL_DOOR_LOCKED);
+}
+
 static int door_is_openable(object *obj,segment *segp,int side)
 {
 	int wn = segp->sides[side].wall_num;
 
 	if (wn < 0 || obj->type != OBJ_ROBOT || !opens_doors(obj))
 		return 0;
-	return Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE && !(Walls[wn].flags & WALL_DOOR_LOCKED);
+	return Walls[wn].type == WALL_DOOR && dtu_creature_door_unlocked(obj,segp-Segments,side);
 }
 
 // 0x132AA openable_doors_in_segment: the first side of the segment of the
@@ -527,8 +565,8 @@ static int openable_door_in_segment(object *obj)
 	for (side=0;side<MAX_SIDES_PER_SEGMENT;side++) {
 		int wn = Segments[obj->segnum].sides[side].wall_num;
 
-		if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE &&
-			 Walls[wn].state == WALL_DOOR_CLOSED && !(Walls[wn].flags & WALL_DOOR_LOCKED))
+		if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].state == WALL_DOOR_CLOSED &&
+			 dtu_creature_door_unlocked(obj,obj->segnum,side))
 			return side;
 	}
 	return -1;
@@ -1602,18 +1640,36 @@ void morale_check(object *obj)
 		roll <= mor ? "passed" : "failed");
 }
 
-// The choice of step 25 point 4 of do_ai_frame (docs/re/ai.md): the goal
-// state of a creature that wants to attack.
-static void choose_attack_goal(object *obj,fix dist)
+// ASCENT: Dtu_fix_caster_melee and Dtu_fix_caster_cast (dtuobj.h, the
+// second one is used in dtuspell.c). -origobj, -origcastermelee and
+// -origcastercast clear them.
+int Dtu_fix_caster_melee = 1;
+int Dtu_fix_caster_cast = 1;
+
+// The choice of step 25 point 4 of do_ai_frame (docs/re/ai.md), also of
+// do_firing_stuff (0x12916): the goal state of a creature that wants to
+// attack. A melee creature, or one whose spell choice is -2 (ailp+0x2C: no
+// spell, 0x92FAE and 0x91FDC): ATAK in reach, else LOCK. A creature with a
+// mage or cleric level: ATAK only when it has chosen a spell (ailp+0x2D,
+// cleared here). Any other: ATAK. reco 1: the choice of step 25 point 6
+// (0x15A2A, both states RECO): 1.3 tests only the attack type there
+// (0x15A60) and not -2, so a caster with -2 stays in RECO after its attack.
+static void choose_attack_goal(object *obj,fix dist,int reco)
 {
 	ai_static *aip = &obj->ctype.ai_info;
 
-	if (Robot_info[obj->id].attack_type == 1) {
+	if (Robot_info[obj->id].attack_type == 1 || ((!reco || Dtu_fix_caster_melee) && dtu_spell_creature_melee(obj))) {
 		fix reach = obj->size + ConsoleObject->size + i2f(2);
 
 		aip->GOAL_STATE = (dist <= reach) ? DAIS_ATAK : DAIS_LOCK;
 	}
-	else if (Monster_ext[obj->id].spell_level == 0)
+	else if (dtu_spell_creature_caster(obj)) {
+		if (dtu_spell_creature_take_ready(obj)) {
+			aip->GOAL_STATE = DAIS_ATAK;
+			dtu_obj_log("obj %d %s: has chosen a spell, attacks",(int)(obj-Objects),dtu_object_name(obj));
+		}
+	}
+	else
 		aip->GOAL_STATE = DAIS_ATAK;
 }
 
@@ -2280,7 +2336,7 @@ void dtu_do_ai_frame(object *obj)
 
 		// 0x1293D: or the player is hidden (0x165C4), C20
 		if ((dot >= 3*F1_0/4 || hidden) && aip->GOAL_STATE <= DAIS_ATAK && aip->GOAL_STATE != DAIS_FLIN) {
-			choose_attack_goal(obj,dist);
+			choose_attack_goal(obj,dist,0);
 			if (ail->awareness < 1) {
 				ail->awareness = 1;
 				ail->awareness_time = i2f(3);
@@ -2304,11 +2360,11 @@ void dtu_do_ai_frame(object *obj)
 		if ((obj->dtu.m_88 & 0x100) || ail->morale <= A)
 			ail->mode = DAIM_RUN_FROM;
 		if ((aip->GOAL_STATE == DAIS_REST || aip->GOAL_STATE == DAIS_SRCH || aip->GOAL_STATE == DAIS_LOCK || aip->GOAL_STATE == DAIS_ATAK) && ail->morale >= B)
-			choose_attack_goal(obj,dist);
+			choose_attack_goal(obj,dist,0);
 		if (aip->GOAL_STATE == DAIS_FLIN && aip->CURRENT_STATE == DAIS_FLIN)
 			aip->GOAL_STATE = DAIS_LOCK;
 		if (aip->GOAL_STATE == DAIS_RECO && aip->CURRENT_STATE == DAIS_RECO && ail->morale >= B)
-			choose_attack_goal(obj,dist);
+			choose_attack_goal(obj,dist,1);
 	}
 
 	if (aip->GOAL_STATE == DAIS_FLIN) {
@@ -2327,7 +2383,7 @@ void dtu_do_ai_frame(object *obj)
 		case DAIS_REST:
 			if (aip->GOAL_STATE == DAIS_REST) {
 				if (visible && ail->morale >= B)
-					choose_attack_goal(obj,dist);
+					choose_attack_goal(obj,dist,0);
 				else if (!is_hostile(obj))
 					aip->GOAL_STATE = DAIS_NONE;
 			}

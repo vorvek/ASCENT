@@ -171,6 +171,12 @@ void dtu_player_body(dtu_body *b);
 #define DTU_CAP_SLIDE_SLOPE		0x4000			// 0.25, the bottom slides off an edge where its slope is more
 #define DTU_CAP_SLIDE_GAP		0x10000		// 1.0, and the floor under the axis is lower by more
 #define DTU_IMP_COYOTE_TIME		0x2666		// 0.15 s, a jump is still possible this long after the floor or the ladder is left
+#define DTU_FIX_JUMP_SPELL_HEIGHT	0x3c0000	// 60.0, Dtu_fix_jump_spell: 30 feet of AD&D 2e (1.3 counts 2 units for each foot, 0x6C8C8)
+#define DTU_FIX_JUMP_SPELL_V0	0x9e6455		// 158.39 = sqrt(2 * DTU_FIX_JUMP_GRAVITY * 60.0), air time 1.52 s
+#define DTU_FIX_CLIMB_FLOOR_TIME	0x8000		// 0.5 s, Dtu_fix_climb_floor: the floor does not end a climb this long after its start
+#define DTU_CROUCH_DROP			0x40000		// 4.0, Dtu_crouch: the center goes down this much at most
+#define DTU_CROUCH_TOP_MARGIN	0x10000		// 1.0, Dtu_crouch: the ceiling stops the center this much above the eye at least
+#define DTU_CROUCH_SPEED			0x8000			// 0.5, Dtu_crouch: the walk speed while the player crouches
 
 // Dtu_player_state: the byte at 0x1AE of the object of the executable
 #define DTU_PS_INFRAVISION		0x08		// the key N turned infravision on (0x54632)
@@ -197,6 +203,13 @@ extern int Dtu_fix_jump_path,Dtu_fix_ladder,Dtu_fix_wall_slide,Dtu_fix_wall_over
 extern int Dtu_fix_fall_sound;
 extern int Dtu_fix_fall_land_player;
 extern int Dtu_fix_feather_fall;
+extern int Dtu_fix_jump_spell;
+extern int Dtu_fix_climb_floor;
+// ASCENT: Dtu_crouch (dtuopts.h). The crouch key is down (controls.c), and
+// the player crouches (physics.c: down while the key is down, and while
+// the ceiling has no room for the standing body).
+extern int Dtu_crouch_key;
+extern int Dtu_crouched;
 void dtu_move_log_line(char *text);	// controls.c: a line in the log of -movelog
 // ASCENT: the turn keys for Dtu_fix_turn_ramp (controls.c): the direction
 // (-1, 0, 1), the time the key was down at the start of the frame, the

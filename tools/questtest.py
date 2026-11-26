@@ -114,6 +114,29 @@ TESTS = [
     T("prison_walk103", "PRISON", "5:give=16.59,10:goobj=21.20,15:talk=21,300:obj=21",
       [r"walk to seg 428\s", r"obj 21 hffg1: opens the door seg 607 side 5", r"f300 +obj 21: type 2 id 18 seg (?!607 )\d+ .* anim 2"],
       frames=310, extra=["-noattack", "-objlog", "prison_walk_obj.log"]),
+    # PRISON object 34 (a goblin with the door bit) in its cell (seg 589).
+    # The door is locked on the wall of the corridor only (wall 50, seg 347
+    # side 4; trigger 45 opens it with MISC 59). Dtu_fix_door_pair: the
+    # goblin stays in the cell. -origdoorpair: it opens the door from the
+    # unlocked wall of the cell (wall 51), as 1.3.
+    T("prison_cell_locked", "PRISON", "5:goseg=344,900:obj=34",
+      [r"f900 +obj 34: type 2 id 25 seg 589 "], [r"obj 34 \S+: opens the door"],
+      frames=910, extra=["-noattack", "-objlog", "prison_cell_obj.log"]),
+    T("prison_cell_locked_orig", "PRISON", "5:goseg=344,900:obj=34",
+      [r"obj 34 \S+: opens the door seg 589 side 5"],
+      frames=910, extra=["-noattack", "-origdoorpair", "-objlog", "prison_cell_orig_obj.log"]),
+    # The same goblin attacks the player in the corridor (seg 344) for 10
+    # seconds through the closed door. Dtu_fix_melee_wall: the door stops
+    # each swing and the player takes no damage. -origmeleewall: the sphere
+    # test of 0x6CFF8 starts behind the door and the swing hits, as 1.3.
+    # (-invulnerability of the tests does not protect from the creatures.)
+    T("prison_cell_melee", "PRISON", "5:goseg=344,300:obj=34",
+      [r"obj 34 \S+: a wall or a closed door stops the weapon", r"f300 +obj 34: type 2 id 25 seg 589 "],
+      [r"damage: the player takes", r"obj 34 \S+ swings at the player", r"obj 34 \S+: opens the door"],
+      frames=310, extra=["-objlog", "prison_melee_obj.log"]),
+    T("prison_cell_melee_orig", "PRISON", "5:goseg=344,300:obj=34",
+      [r"attack: obj 34 \S+ swings at the player"], [r"obj 34 \S+: opens the door"],
+      frames=310, extra=["-origmeleewall", "-objlog", "prison_melee_orig_obj.log"]),
     # The NPCs of YPINN stay at their places after a load. The door opener
     # (0x14AF2) can leave objects 28 and 30 in mode 2 with the goal segment
     # 0, which is also their station; that is no walk of a script.

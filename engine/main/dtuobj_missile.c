@@ -651,6 +651,13 @@ void missiles_frame(void)
 			if (m->spell >= 0)
 				dtu_obj_log("missile: obj %d of spell %d ends its life",i,m->spell);
 			missile_remove(obj);
+			// ASCENT: Dtu_fix_spell_range: an area spell takes effect at the
+			// end of its range (AD&D 2e); in 1.3 the missile goes away
+			if (m->spell >= 0 && !m->harmless && dtu_spell_ends_at_range(m->spell)) {
+				object *parent = (m->parent >= 0 && Objects[m->parent].signature == m->parent_sig) ? &Objects[m->parent] : NULL;
+
+				dtu_spell_area(m->spell,&obj->pos,obj->segnum,parent,parent ? dtu_spell_object_level(parent,m->spell) : 1);
+			}
 			continue;
 		}
 

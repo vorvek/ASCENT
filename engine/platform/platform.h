@@ -371,6 +371,10 @@ void plat_gpu_end_view(void);
 // next views by their heat (plat_gpu_material.heat), 0 is the normal view.
 // Read at plat_gpu_begin_view. The 8-bit form ignores it.
 void plat_gpu_set_infravision(int on);
+// ASCENT: the desaturation of the 3D view in the composition of the frame,
+// 0 (none) to 1 (gray, a little darker). The interface pixels keep their
+// color. Read at each present (dtuhold.c, the player under Hold).
+void plat_gpu_set_view_desaturate(float amount);
 // The fade table: levels rows of 256 palette indexes.
 void plat_gpu_set_fade_table(const uint8_t *table, int levels);
 // The palette of the bitmaps of the 3D view (768 bytes, 6 bits for each

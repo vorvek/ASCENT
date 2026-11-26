@@ -177,6 +177,7 @@ typedef struct polymodel {
 	int		n_frames;			// animation frames (header 0x34)
 	ubyte		dtu_flags;			// header 0x3C: optional arrays in the block
 	ubyte		dtu_bound;			// 1 after the table gave this model its textures
+	ubyte		dtu_improved;		// 1 if the data comes from the improved model set (docs/formats/pom.md)
 	ubyte		dtu_textures_used;	// highest texture number in the model data, plus 1
 	ubyte		dtu_n_textures_file;	// n_textures of the header
 	int		dtu_first_texture_file;	// first_texture of the header (not used, see polyobj.c)
@@ -256,6 +257,13 @@ extern int Dtu_fix_model_mapper;
 // Corrected (1, default): the loader turns the body of these frames onto
 // its back, with their boxes. -origobj clears it.
 extern int Dtu_fix_rat_die;
+
+// ASCENT: D30 (bugs.md), a defect of the model data. The ogre model
+// (ognew5.pof, armogre.pof) has no faces where it was cut into submodels at
+// the knees and the ankles. When a joint turns, the view goes into the shin
+// and the foot. Corrected (1, default): the loader closes the openings with
+// polygons. -origobj and -origogrelegs clear it.
+extern int Dtu_fix_ogre_legs;
 
 // ASCENT: D-054, the texture slots of $WEAPON and $SPELL models (bmread.c).
 // 1: the slots of the table line. 0 (-origobj): the header rule of 1.3.

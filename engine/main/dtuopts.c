@@ -25,6 +25,7 @@
 
 int Dtu_improved_physics = 1;
 int Dtu_improved_jump = 1;
+int Dtu_crouch = 1;
 int Dtu_improved_pathfinding = 1;
 int Dtu_render_scale = 3;
 int Dtu_improved_occlusion = 1;
@@ -32,6 +33,7 @@ int Dtu_improved_body = 1;
 int Dtu_gpu_renderer = 1;
 int Dtu_upscaled_textures = 1;
 int Dtu_upscaled_movies = 1;
+int Dtu_improved_models = 1;
 int Dtu_anisotropic = 1;
 int Dtu_shader = DTU_SHADER_SUBTLE;
 int Dtu_safe_music = 0;
@@ -66,6 +68,7 @@ typedef struct {
 static dtu_opt Opts[] = {
 	{ "ImprovedPhysics",     &Dtu_improved_physics,     0, 1 },
 	{ "ImprovedJump",        &Dtu_improved_jump,        0, 1 },
+	{ "Crouch",              &Dtu_crouch,               0, 1 },
 	{ "ImprovedPathfinding", &Dtu_improved_pathfinding, 0, 1 },
 	{ "RenderScale",         &Dtu_render_scale,         DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX },
 	{ "ImprovedOcclusion",   &Dtu_improved_occlusion,   0, 1 },
@@ -73,6 +76,7 @@ static dtu_opt Opts[] = {
 	{ "GpuRenderer",         &Dtu_gpu_renderer,         0, 1 },
 	{ "UpscaledTextures",    &Dtu_upscaled_textures,    0, 1 },
 	{ "UpscaledMovies",      &Dtu_upscaled_movies,      0, 1 },
+	{ "ImprovedModels",      &Dtu_improved_models,      0, 1 },
 	{ "Anisotropic",         &Dtu_anisotropic,          0, 1 },
 	{ "Shader",              &Dtu_shader,               DTU_SHADER_OFF, DTU_SHADER_VGA },
 	{ "SafeMusic",           &Dtu_safe_music,           0, 1 },
@@ -165,7 +169,7 @@ void dtu_opts_load(void)
 		Dtu_language = Arg_language = dtu_lang_from_code(Args[t + 1]);
 	}
 	if (FindArg("-noimprovements")) {
-		Dtu_improved_physics = Dtu_improved_jump = Dtu_improved_pathfinding = 0;
+		Dtu_improved_physics = Dtu_improved_jump = Dtu_improved_pathfinding = Dtu_crouch = 0;
 		Dtu_improved_occlusion = Dtu_improved_body = 0;
 		Dtu_improved_infravision = 0;
 		Dtu_target_hint = 0;

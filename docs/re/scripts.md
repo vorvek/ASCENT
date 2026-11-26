@@ -742,6 +742,16 @@ Settings (globals in dtuscript.c):
   script has no experience award. Tests: questtest
   `thief0_devlin_goblins`, `thief0_devlin_goblins_orig`. `-origscript`
   clears it.
+- `Dtu_fix_script_names` (1): GABE 1.3 spells the name of Tryola
+  Perrentine (MINE) three ways (`tools/script.py dis GABE.RLH 110 111`):
+  "Perrentine" in her own words (script 110, offset 1690) and in the reply
+  at 2025, "Parrantine" in the narration of the award at 96, "Parrentine"
+  in the words of the dwarf (script 111, offset 1749). The older GABF to
+  GABS have "Perrentine" and "Parrentine" too. The port shows
+  "Perrentine" in the English text of the four strings, letter for letter
+  in a copy of the string, after the lookup of the translation (the
+  catalog keeps the English text of 1.3, so the ids still match).
+  `-origscript` clears it.
 
 Since 2026-11-22 (../audit/quests.md): `EB` casts the area spell around the
 object, `9F` sets the level (0x8BA3A), D4 to D7 play and stop linked sounds,

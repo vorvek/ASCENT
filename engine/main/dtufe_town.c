@@ -493,6 +493,14 @@ int Dtu_fix_market_charges = 1;
 // the line loses only the items that were given.
 int Dtu_fix_market_buy_stock = 1;
 
+// ASCENT: Potions of Freedom (misc 78, Free Action against Hold) in the
+// market. 1.3 has none in the first stock (0x13EB6C) and one in the goods
+// of reward 1 (0x13F6A0). This number of potions goes into the first stock
+// and into the goods of each reward of Khelben, after the goods of 1.3, so
+// a market of a saved game gets them at the next reward. 0 (-origfe): 1.3.
+int Dtu_market_freedom = 2;
+#define MK_FREEDOM_ID	78
+
 // The tables at 0x13F2DD (the player sells) and 0x13F32D (the player
 // buys): percent of the value for charisma 0 to 19.
 static short Mk_sell_percent[20] = { 20, 25, 27, 33, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 88, 93, 97, 99, 100 };
@@ -685,8 +693,10 @@ static int mk_equipped(int type, int id, int cond)
 	int refs[1 + DTU_N_HOT_KEYS + DTU_N_SLOTS], n = 0, i, k;
 
 	refs[n++] = Dtu_char.current.n;
+	// A box with a spell (list 1 or 2) holds an index of a spell list, not
+	// of the item list. 0x8622B takes the entry of the list of the box.
 	for (i = 0; i < DTU_N_HOT_KEYS; i++)
-		refs[n++] = Dtu_char.hot_key[i].n;
+		refs[n++] = Dtu_char.hot_key[i].list == 0 ? Dtu_char.hot_key[i].n : -1;
 	for (i = 0; i < DTU_N_SLOTS; i++)
 		refs[n++] = Dtu_char.slot[i].n;
 	for (k = 0; k < n; k++) {
@@ -736,9 +746,12 @@ static void mk_read_stock(void)
 		}
 		fclose(f);
 	}
-	if (!ok)
+	if (!ok) {
 		for (i = 0; i < 21; i++)
 			mk_add_stock(Mk_first_stock[i][0], Mk_first_stock[i][1], Mk_first_stock[i][2], Mk_first_stock[i][3]);
+		if (Dtu_market_freedom > 0)		// ASCENT: Dtu_market_freedom
+			mk_add_stock(Dtu_market_freedom, OBJ_MISC, MK_FREEDOM_ID, 1);
+	}
 }
 
 // 0x86846: the stock goes into geldor.dat: armor, weapons, misc
@@ -806,8 +819,13 @@ static void mk_gold_changed(void)
 // whole entry and keeps the references of the character (inv_remove is
 // static), so this one does it on the public data, as inv_remove does.
 
+// 0x31C4B changes only the references of list 0: a hot key box with a
+// spell (list 1 or 2) keeps its index of the spell list. Without this test
+// each sale of an entry at or below the index moved the box to another
+// spell or emptied it.
 static void mk_ref_removed(dtu_item_ref *ref, int index)
 {
+	if (ref->list != 0) return;
 	if (ref->n == index) ref->n = -1;
 	else if (ref->n > index) ref->n--;
 }
@@ -1464,6 +1482,17 @@ int fe_market_reward(int n)
 		r[4] = (ubyte) Mk_reward_stock[n][i][1];
 		r[5] = (ubyte) Mk_reward_stock[n][i][2];
 		r[6] = (ubyte) w; r[7] = (ubyte) (w >> 8); r[8] = (ubyte) (w >> 16); r[9] = (ubyte) (w >> 24);
+		fwrite(r, 1, 10, f);
+	}
+	// ASCENT: Dtu_market_freedom: a record of Potions of Freedom (count 1)
+	if (Dtu_market_freedom > 0) {
+		ubyte r[10] = { 0 };
+		int v = Dtu_market_freedom;
+
+		r[0] = (ubyte) v; r[1] = (ubyte) (v >> 8); r[2] = (ubyte) (v >> 16); r[3] = (ubyte) (v >> 24);
+		r[4] = OBJ_MISC;
+		r[5] = MK_FREEDOM_ID;
+		r[6] = 1;
 		fwrite(r, 1, 10, f);
 	}
 	fclose(f);

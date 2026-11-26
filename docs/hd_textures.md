@@ -421,6 +421,43 @@ of the reference in the frames after. In the game (THIEF1 `-testpos
 60) the closed door has its own lower band and grain; the reference frame is
 the same in both sets.
 
+## Corrections of single bitmaps (version 6)
+
+Two reports of the stream of quests 6 to 8. Both were faults of the upscale,
+not of the original art or of the engine.
+
+- The flat water (`water`, `$ECLIP` 37, 6 frames of 64 x 64, the same pixels
+  in every level archive) showed one soft frame with no ripples. The original
+  frames are alike: dithered blue blobs. x4plus (the base of the method
+  `detail`) turned the dither of frames 0, 1, 2, 4 and 5 into streaks of foam
+  and smoothed frame 3 into a soft picture. High frequency of the file
+  divided by that of the original (mean absolute step between neighbor
+  pixels): 1.00, 0.78, 0.88, 0.43, 0.91, 0.73. The model is not stable on this
+  texture: a mirror of the input changes the result of a frame from foam to
+  soft (frame 1: 10.5 as it is, 5.3 mirrored top to bottom). A mean of the 8
+  mirrors and turns was soft in all frames and still uneven (3.5 to 5.2). A
+  scan of all wall animations of the level archives for a frame below 0.65 of
+  the median of its animation found only `water` (and frames that are empty
+  or transparent). `NAME_METHOD` gives `water` the model UltraSharp: the
+  dither stays a fine grain, the same in each frame (0.63, 0.59, 0.60, 0.59,
+  0.60, 0.59). The foam of the other frames is gone: it was not in the
+  original.
+- The face of the dwarf (`dwf_mf01` of `PRISON.EGG`, the skin of
+  `dwf_mfw.pof`, the only dwarf creature model) had eyes that did not match.
+  Each eye of the original is three thin creases (palette 161 to 168 on skin
+  176 to 184, rows 20 to 29). x4plus kept the creases of the right eye and made
+  the left one curved fold with a bag below it. UltraSharp keeps the three
+  creases of each eye, with the grain of the dither on the skin.
+  `REGION_FIX` takes the UltraSharp result in the two eye boxes (source pixels
+  13..25 and 39..52 across, 17..31 down), blurred with sigma 1 output pixel,
+  with the mean color of the x4plus result there, blended with a soft edge
+  (sigma 6 output pixels). The rest of the face (nose, beard, helmet) is the
+  x4plus result as before.
+
+The method and the region are in the cache key of these bitmaps; version 6
+marks every archive directory as stale, so a run links every file again and
+upscales only these 7 bitmaps.
+
 ## Making a set of version 5
 
 One run: `python -I tools/textures_hd.py`. Version 5 marks every archive

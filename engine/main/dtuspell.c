@@ -45,6 +45,7 @@
 #include "dtucombat.h"
 #include "dtuspell.h"
 #include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
+#include "dtuhold.h"		// ASCENT: Dtu_fix_player_hold
 
 void make_random_vector(vms_vector *vec);		// ai.c
 
@@ -53,6 +54,10 @@ int Dtu_fix_stoneskin_word = 1;
 int Dtu_fix_rary_manual = 1;
 int Dtu_fix_melf_acid = 1;
 int Dtu_fix_burning_hands = 1;
+int Dtu_fix_creature_burning_hands = 1;		// ASCENT: the cone for a creature too (dtuspell.h)
+int Dtu_fix_color_spray = 1;		// ASCENT: one save for each target and cast (dtuspell.h)
+int Dtu_fix_spell_range = 1;		// ASCENT: the ranges of AD&D 2e (dtuspell.h)
+int Dtu_fix_prot_evil = 1;			// ASCENT: Protection From Evil of AD&D 2e (dtuspell.h)
 int Dtu_fix_damage_save = 1;		// ASCENT: no save against Magic Missile (dtuspell.h)
 int Dtu_fix_spell_hours = 1;
 int Dtu_fix_rest_effects = 1;		// ASCENT: a rest ends the spell effects (dtuspell.h)
@@ -598,6 +603,9 @@ int dtu_spell_select(int spell)
 // The entries of the last loaded record: the save keeps their bytes.
 static ubyte Book_record[2][DTU_SPELL_BOOK_MAX][16];
 static int Book_record_n[2];
+// The spell of each entry of the last loaded record, or -1 for an entry
+// that the reader skipped
+static short Book_record_spell[2][DTU_SPELL_BOOK_MAX];
 
 void dtu_spell_books_from_record(const ubyte *p)
 {
@@ -612,8 +620,11 @@ void dtu_spell_books_from_record(const ubyte *p)
 		Book_record_n[b] = n;
 		for (i=0;i<n;i++) {
 			memcpy(Book_record[b][i],list + 16*i,16);
-			if (list[16*i] == OBJ_SPELL && spell_ok(list[16*i+1]))
+			Book_record_spell[b][i] = -1;
+			if (list[16*i] == OBJ_SPELL && spell_ok(list[16*i+1])) {
 				Dtu_spell_book[b][Dtu_spell_book_n[b]++] = list[16*i+1];
+				Book_record_spell[b][i] = list[16*i+1];
+			}
 		}
 		for (i=0;i<9;i++)
 			Dtu_spell_slots_left[b][i] = i < levels ? p[P_SLOTS_LEFT(b) + i] : 0;
@@ -699,6 +710,13 @@ int dtu_spell_of_ref(int list, int index)
 	if (list < 1 || list > 2 || index < 0 || index >= Dtu_spell_book_n[list-1])
 		return -1;
 	return Dtu_spell_book[list-1][index];
+}
+
+int dtu_spell_of_record_ref(int list, int index)
+{
+	if (list < 1 || list > 2 || index < 0 || index >= Book_record_n[list-1])
+		return -1;
+	return Book_record_spell[list-1][index];
 }
 
 // The icon of a spell (byte 2 of a list entry: icon= of the line, 0xB69AD)
@@ -997,7 +1015,16 @@ int dtu_spell_player_save_number(int cat)
 
 int dtu_spell_save(object *obj,int cat)
 {
-	int need = 20, roll = rand() % 20 + 1, level, resist = 0;
+	return dtu_spell_save_from(obj,cat,NULL);
+}
+
+// ASCENT: Dtu_fix_prot_evil: +2 to the save of a target with Protection
+// From Evil against a spell or an attack of a creature
+#define PROT_EVIL_SAVE	2
+
+int dtu_spell_save_from(object *obj,int cat,object *source)
+{
+	int need = 20, roll = rand() % 20 + 1, level, resist = 0, evil = 0;
 
 	if (Priest_force_save >= 0)
 		return Priest_force_save;
@@ -1032,12 +1059,17 @@ int dtu_spell_save(object *obj,int cat)
 	}
 	else
 		need = 10;		// the default of 0xAE596 for other types (a missile, a light)
-	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d%s: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,
-		resist ? " (magic resistance, the number lowered by level / 3)" : "",roll >= need ? "saved" : "failed");
+	if (Dtu_fix_prot_evil && source && source != obj && source->type == OBJ_ROBOT && (obj->type == OBJ_PLAYER || obj->type == OBJ_ROBOT) &&
+		 (obj->dtu.m_88 & DTU_FX_PROT_EVIL))
+		need -= evil = PROT_EVIL_SAVE;
+	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d%s%s: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,
+		resist ? " (magic resistance, the number lowered by level / 3)" : "",evil ? " (Protection From Evil, 2 lower)" : "",
+		roll >= need ? "saved" : "failed");
 	// ASCENT: the verbose combat log (dtuxp.h). 1.3 has no roll for magic
 	// resistance: the flag lowers the save number, shown as a bonus
 	dtu_xp_save(roll,need,roll >= need);
 	dtu_xp_save_mod(resist,LN("magic resistance"));
+	dtu_xp_save_mod(evil,LN("Protection From Evil"));
 	return roll >= need;
 }
 
@@ -1402,7 +1434,7 @@ static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,
 
 	if (target->type == OBJ_PLAYER && (target->dtu.m_88 & DTU_FX_INVULNERABLE))
 		dmg = 0;		// 0x9178B
-	if (dmg > 0 && save && dtu_spell_save(target,DTU_SAVE_SPELL)) {
+	if (dmg > 0 && save && dtu_spell_save_from(target,DTU_SAVE_SPELL,caster)) {
 		dmg /= 2;
 		dtu_xp_dmg_mult(-2,LN("save for half"));		// ASCENT: the verbose combat log (dtuxp.h)
 	}
@@ -2234,7 +2266,7 @@ static int rule_save(int spell,object *target,object *caster,int T,int L)
 	if ((Spell_rule[spell].flags & DTU_SR_SAVE_KIN) && !kin_saves(target))
 		return 0;
 	dtu_xp_roll_clear();
-	made = dtu_spell_save(target,DTU_SAVE_SPELL);
+	made = dtu_spell_save_from(target,DTU_SAVE_SPELL,caster);
 	dtu_xp_roll_say(caster,target);		// ASCENT: the verbose combat log (dtuxp.h)
 	return made;
 }
@@ -2258,6 +2290,14 @@ static int rule_reaches(int spell,object *target,int self,int T,int L,int mf)
 	if ((fl & DTU_SR_STOPPED) && (target->dtu.m_88 & Spell_rule[spell].stopped_by))
 		return 0;
 	return 1;
+}
+
+// ASCENT: the charm and fear spells of the tables (AD&D 2e: Confusion,
+// Hold Person, Scare and Sleep are enchantment/charm, Fear an illusion of
+// the mind), that Protection From Evil blocks (Dtu_fix_prot_evil)
+int dtu_spell_mind(int spell)
+{
+	return spell == 7 || spell == 14 || spell == 22 || spell == 44 || spell == 46 || spell == 52;
 }
 
 int dtu_spell_stopped_by_fx(int fx)
@@ -2307,6 +2347,15 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 	msg_setup(target,caster);
 	if (target->type == OBJ_PLAYER)		// ASCENT: the session log line of a save (dtuchar.h)
 		dtu_char_save_cause(spell,spell_name(spell),caster && caster != target ? dtu_object_name(caster) : NULL);
+
+	// ASCENT: Dtu_fix_prot_evil: Protection From Evil blocks the mental
+	// control of a creature (AD&D 2e); 1.3 has no such test
+	if (Dtu_fix_prot_evil && !self && caster && caster->type == OBJ_ROBOT && (target->dtu.m_88 & DTU_FX_PROT_EVIL) && dtu_spell_mind(spell)) {
+		dtu_spell_log("spell: Protection From Evil of obj %d %s stops '%s'",(int)(target-Objects),target_name(target),spell_name(spell));
+		if (target->type == OBJ_PLAYER)
+			HUD_init_message(LT("%s stops %s."),dtu_spell_name(39),dtu_spell_name(spell));
+		return 0;
+	}
 
 	switch (spell) {
 		case 1: {	// Aid (0x8D3F7): 1d8 hit points above the maximum, Bless
@@ -2595,6 +2644,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			if (!rule_save(spell,target,caster,T,L)) {
 				fix d = wisdom_cut(target,spell_time(spell,L,ROLL));
 
+				// ASCENT: Dtu_fix_player_hold (dtuhold.h): 6 to 18 seconds on
+				// the player
+				if (target->type == OBJ_PLAYER && dtu_hold_fix_on())
+					d = dtu_hold_player_time();
 				// ASCENT: 0x8E8C5: the counter of the cast must be above 0
 				if (Hold_count[spell == 52] <= 0) {
 					dtu_spell_log("spell: Hold Person counter is 0: no effect");
@@ -2904,6 +2957,50 @@ static void light_object(int spell,vms_vector *pos,int segnum,int L)
 		Objects[objnum].lifeleft == IMMORTAL_TIME ? -1.0 : f2fl(Objects[objnum].lifeleft));
 }
 
+// ASCENT: Dtu_fix_color_spray (dtuspell.h). The cast number of the last
+// Color Spray of each caster, and the cast number that last reached each
+// target.
+static struct { int signature, cast; } Color_cast[MAX_OBJECTS], Color_hit[MAX_OBJECTS];
+static int Color_cast_count;
+static int spell_reach(int spell,int L);
+
+// A cast of Color Spray starts (the player 0x56A0D, a creature 0x91FDC)
+static void color_spray_begin(object *caster)
+{
+	int n;
+
+	if (caster == NULL || !Dtu_fix_color_spray)
+		return;
+	n = caster-Objects;
+	Color_cast[n].signature = caster->signature;
+	Color_cast[n].cast = ++Color_cast_count;
+}
+
+// 1 if the area of the Color Spray of caster at level L may reach o: o is
+// within the 20 feet of the wedge from the caster (the range of
+// Dtu_fix_spell_range) and no other missile of the same cast reached it
+static int color_spray_reaches(object *o,object *caster,int L)
+{
+	int c, t, reach;
+
+	if (!Dtu_fix_color_spray || caster == NULL)
+		return 1;
+	reach = spell_reach(6,L);
+	if (reach > 0 && vm_vec_dist(&o->pos,&caster->pos) - o->size - caster->size > i2f(reach))
+		return 0;
+	c = caster-Objects;
+	t = o-Objects;
+	if (Color_cast[c].signature != caster->signature)
+		return 1;		// a cast that did not start here (a trap): the rule of 1.3
+	if (Color_hit[t].signature == o->signature && Color_hit[t].cast == Color_cast[c].cast) {
+		dtu_spell_log("spell: Color Spray cast %d reached obj %d already (Dtu_fix_color_spray)",Color_cast[c].cast,t);
+		return 0;
+	}
+	Color_hit[t].signature = o->signature;
+	Color_hit[t].cast = Color_cast[c].cast;
+	return 1;
+}
+
 int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level)
 {
 	fix radius = i2f(spell_int(spell,"radius",0) + level * spell_int(spell,"level_radius",0));
@@ -2942,6 +3039,8 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 		// The BRN files fit no level (ai.md): the port tests a ray.
 		if (!point_sees(pos,segnum,o))
 			continue;
+		if (spell == 6 && o != caster && !color_spray_reaches(o,caster,level))
+			continue;
 		apply_spell(spell,o,caster,level);
 		if ((rule_flags(spell) & DTU_SR_BURST_BLINDS) && (o->type == OBJ_PLAYER || o->type == OBJ_ROBOT))		// 0x90DDF: Fireball, the fire trap (dtucombat.c)
 			dtu_fireball_blind_deaf(o,vm_vec_dist(&o->pos,pos));
@@ -2960,14 +3059,20 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 #define BURNING_HANDS_REACH		i2f(10)		// 5 feet (2 units are a foot)
 #define BURNING_HANDS_COS		(F1_0/2)		// cos 60 degrees: half the arc
 
-static void burning_hands_cone(object *caster,int L)
+// dir: the middle of the arc, NULL for the facing of the caster (a creature
+// aims at the player, Dtu_fix_creature_burning_hands)
+static void burning_hands_cone(object *caster,int L,vms_vector *dir)
 {
-	vms_vector fwd = caster->orient.fvec, right = caster->orient.rvec;
+	vms_vector fwd = dir ? *dir : caster->orient.fvec, right = caster->orient.rvec;
 	int i, n = 0, vclip = spell_int(4,"weapon_vclip",-1);
 
 	fwd.y = right.y = 0;
 	if (vm_vec_normalize_quick(&fwd) == 0)
 		fwd = caster->orient.fvec;
+	if (dir) {		// the right vector of the arc: fwd turned by 90 degrees on the level plane
+		right.x = fwd.z;
+		right.z = -fwd.x;
+	}
 	vm_vec_normalize_quick(&right);
 	for (i=0;i<=Highest_object_index;i++) {
 		object *o = &Objects[i];
@@ -2989,10 +3094,11 @@ static void burning_hands_cone(object *caster,int L)
 			continue;
 		if (!point_sees(&caster->pos,caster->segnum,o))
 			continue;
+		// AD&D 2e: 1d3 + 2 per level, at most 1d3 + 20 (level 10)
 		if (dtu_creature_down(o))
-			dtu_creature_down_spell(o,caster,4,L);
+			dtu_creature_down_spell(o,caster,4,L > 10 ? 10 : L);
 		else
-			apply_spell(4,o,caster,L);
+			apply_spell(4,o,caster,L > 10 ? 10 : L);
 		n++;
 	}
 	// the flames at -60, -30, 0, 30 and 60 degrees
@@ -3314,12 +3420,84 @@ static int spell_homes(int spell)
 	return spell_flag(spell,"homing") && (spell != 33 || char_is(DTU_CLASS_MAGE));
 }
 
+// ASCENT: the ranges of the AD&D 2nd edition Player's Handbook (appendices
+// 3 and 4) in feet, for each spell that flies as a missile, and the feet
+// for each caster level (Dtu_fix_spell_range, docs/spell_ranges.md). The
+// yards of the book are 3 feet; 2 units of the game are 1 foot (0x6C8C8:
+// fell = dy >> 17, "You fell %d feet!"). The range= of the lines has the
+// same values in units, except Abjure (120), Color Spray (240), Confusion
+// (240) and the cleric Dispel Magic (720, a copy of the mage line). Color
+// Spray has the range 0 and a wedge 20 feet long: the missile flies the
+// 20 feet. Burning Hands is the arc of Dtu_fix_burning_hands.
+#define SPELL_FOOT_UNITS	2
+
+static const struct { short spell, feet, feet_level; } Spell_range[] = {
+	{ 0, 30, 0 },		// Abjure: 10 yards
+	{ 6, 20, 0 },		// Color Spray: 0, the wedge of 20 feet
+	{ 7, 360, 0 },		// Confusion: 120 yards
+	{ 8, 360, 0 },		// Continual Light (cleric): 120 yards
+	{ 9, 180, 0 },		// Continual Light (mage): 60 yards
+	{ 13, 360, 0 },		// Dispel Magic (mage): 120 yards
+	{ 16, 30, 30 },		// Fireball: 10 yards + 10 yards a level
+	{ 17, 120, 0 },		// Produce Fire: 40 yards
+	{ 22, 360, 0 },		// Hold Person (mage): 120 yards
+	{ 23, 60, 0 },		// Hold Undead: 60 feet
+	{ 28, 180, 0 },		// Knock: 60 yards
+	{ 30, 180, 0 },		// Light (mage): 60 yards
+	{ 31, 360, 0 },		// Light (cleric): 120 yards
+	{ 32, 120, 30 },	// Lightning Bolt: 40 yards + 10 yards a level
+	{ 33, 180, 30 },	// Magic Missile: 60 yards + 10 yards a level
+	{ 34, 90, 0 },		// Magical Stone: thrown 30 yards
+	{ 36, 540, 0 },		// Melf's Acid Arrow: 180 yards
+	{ 37, 210, 30 },	// Melf's Minute Meteors: 70 yards + 10 yards a level
+	{ 44, 90, 30 },		// Scare: 30 yards + 10 yards a level
+	{ 46, 90, 0 },		// Sleep: 30 yards
+	{ 47, 270, 30 },	// Slow: 90 yards + 10 yards a level
+	{ 52, 360, 0 },		// Hold Person (cleric): 120 yards
+	{ 55, 180, 0 },		// Dispel Magic (cleric): 60 yards
+};
+
+// The range in units of a spell missile at caster level L, -1 the range
+// of 1.3 (no entry, or Dtu_fix_spell_range 0)
+static int spell_reach(int spell,int L)
+{
+	int i;
+
+	if (!Dtu_fix_spell_range)
+		return -1;
+	if (L < 1)
+		L = 1;
+	for (i=0;i<(int)(sizeof(Spell_range)/sizeof(Spell_range[0]));i++)
+		if (Spell_range[i].spell == spell)
+			return (Spell_range[i].feet + L*Spell_range[i].feet_level) * SPELL_FOOT_UNITS;
+	return -1;
+}
+
 // 0x56FF6: the life of the missile (W+0xA8): 30.0, Lightning Bolt 2.0,
 // Melf's Acid Arrow (L/3 + 1) rounds. The duration and the range of the
-// line are not used.
+// line are not used. ASCENT: with Dtu_fix_spell_range the life is the
+// range over the speed.
 static fix spell_missile_life(int spell,int L)
 {
+	int reach = spell_reach(spell,L);
+	fix speed = spell_fix(spell,"speed",i2f(100));
+
+	if (reach > 0 && speed > 0)
+		return fixdiv(i2f(reach),speed);
 	return (spell == 32) ? i2f(2) : (spell == 36) ? (L/3 + 1)*MINUTE : i2f(30);
+}
+
+// ASCENT: the distance in units that a spell missile flies
+static int spell_flight(int spell,int L)
+{
+	int reach = spell_reach(spell,L);
+
+	return reach > 0 ? reach : f2i(fixmul(spell_fix(spell,"speed",i2f(100)),spell_missile_life(spell,L)));
+}
+
+int dtu_spell_ends_at_range(int spell)
+{
+	return spell_reach(spell,1) > 0 && spell_area(spell);
 }
 
 static void player_missiles(int spell,int template_w,int L,int homing);
@@ -3364,7 +3542,7 @@ static void cast_now(int spell,int source)
 		// Casting a missile ends Invisibility (0x5705B); so does the cone
 		if (player->dtu.m_88 & DTU_FX_INVISIBLE)
 			fx_end(player,17);
-		burning_hands_cone(player,L);
+		burning_hands_cone(player,L,NULL);
 		return;
 	}
 
@@ -3386,6 +3564,8 @@ static void player_missiles(int spell,int template_w,int L,int homing)
 	// Casting a missile ends Invisibility (0x5705B)
 	if (player->dtu.m_88 & DTU_FX_INVISIBLE)
 		fx_end(player,17);
+	if (spell == 6)
+		color_spray_begin(player);		// ASCENT: Dtu_fix_color_spray
 
 	spell_aim(player,&dir,&pos);
 	if (homing)
@@ -3410,7 +3590,8 @@ static void player_missiles(int spell,int template_w,int L,int homing)
 		vm_vec_copy_scale(&Objects[objnum].mtype.phys_info.velocity,&d,speed);
 		dtu_missile_set_life(objnum,spell_missile_life(spell,L));
 		track_missile(objnum,spell,L,target);
-		dtu_spell_log("spell: missile obj %d of '%s', speed %.0f, target %d",objnum,spell_name(spell),f2fl(speed),target);
+		dtu_spell_log("spell: missile obj %d of '%s', speed %.0f, life %.2f, target %d",objnum,spell_name(spell),f2fl(speed),
+			f2fl(spell_missile_life(spell,L)),target);
 	}
 }
 
@@ -3719,6 +3900,16 @@ fix dtu_spell_cast_on(int spell,object *target,object *caster)
 	return apply_spell(spell,target,caster,L);
 }
 
+// 0x2A67B: the touch spell of a creature is 0x8CFFF(spell, target,
+// creature), the effect on the one target. The area function 0x90CEF is not
+// called, also for a spell of the type AREA.
+fix dtu_spell_touch(int spell,object *target,object *caster)
+{
+	if (!spell_ok(spell) || target == NULL)
+		return 0;
+	return apply_spell(spell,target,caster,object_level(caster,spell));
+}
+
 // 0x9305D
 int dtu_spell_interrupt(object *obj,int hit)
 {
@@ -3809,12 +4000,14 @@ static int robot98_flags(object *obj)
 
 // The spell state of a creature: +0x19E, +0x19F (mage and cleric points),
 // +0x1A8 (the time of the new points), +0x1C0 (the time of the cast),
-// ailp+0x2C (the chosen entry), +0x15E (the condition bits).
+// ailp+0x2C (the chosen entry), ailp+0x2D (a spell was chosen: the next
+// attack goal is ATAK), +0x15E (the condition bits).
 static struct {
 	int		signature;
 	int		points[2];
 	fix		recharge_time, cast_time;
 	int		chosen;
+	int		ready;
 	int		cond;
 } Cspell[MAX_OBJECTS];
 
@@ -3829,7 +4022,8 @@ static int cspell_state(object *obj)
 		Cspell[n].points[1] = creature_points(obj,1);
 		Cspell[n].recharge_time = 0;
 		Cspell[n].cast_time = 0;
-		Cspell[n].chosen = -1;
+		Cspell[n].chosen = -1;		// 0x1038B: ailp+0x2C = 0xFF, ailp+0x2D = 0
+		Cspell[n].ready = 0;
 		Cspell[n].cond = 0;
 	}
 	return n;
@@ -3852,6 +4046,7 @@ void dtu_spell_creature_restore(object *obj)
 	Cspell[n].recharge_time = GameTime;
 	Cspell[n].cast_time = GameTime;
 	Cspell[n].chosen = -1;
+	Cspell[n].ready = 0;		// 0xAE3F2: ailp+0x2D = 0
 	Cspell[n].cond = 0;
 }
 
@@ -3910,6 +4105,41 @@ void dtu_spell_creature_event(object *obj,int bits)
 	if (obj == NULL || obj->type != OBJ_ROBOT)
 		return;
 	Cspell[cspell_state(obj)].cond |= bits;
+}
+
+// The attack goal of the AI (do_firing_stuff 0x12916, step 25 of 0x13BF4)
+// tests Robot_info+0xE2 and +0xE3, ailp+0x2C == -2 and ailp+0x2D.
+int dtu_spell_creature_caster(object *obj)
+{
+	return creature_mage_level(obj) > 0 || creature_cleric_level(obj) > 0;
+}
+
+int dtu_spell_creature_melee(object *obj)
+{
+	if (obj == NULL || obj->type != OBJ_ROBOT)
+		return 0;
+	return Cspell[cspell_state(obj)].chosen == -2;
+}
+
+int dtu_spell_creature_take_ready(object *obj)
+{
+	int n, r;
+
+	if (obj == NULL || obj->type != OBJ_ROBOT)
+		return 0;
+	n = cspell_state(obj);
+	r = Cspell[n].ready;
+	Cspell[n].ready = 0;
+	return r;
+}
+
+// 0x10040 (the spell of a negative weapon type): ailp+0x2C =
+// (activity < 2) - 2
+void dtu_spell_creature_weapon_cast(object *obj,int active)
+{
+	if (obj == NULL || obj->type != OBJ_ROBOT)
+		return;
+	Cspell[cspell_state(obj)].chosen = active ? -2 : -1;
 }
 
 // 0x9305D for a creature: the cast that waits is lost
@@ -4008,7 +4238,12 @@ static int cspell_weight(object *obj,int e,fix dist)
 		case 1:	return 40 + rand_mod(41);
 		case 2:	return AC > 6 ? 32*AC - 192 : -1;
 		case 3:	case 38:	return rand_mod((32 - L) * 4);
-		case 4:	return creature_clear(obj,i2f(30)) ? 50 + ((pw & 0x40600) ? 0 : rand_mod(50)) : -1;
+		case 4:
+			// ASCENT: Dtu_fix_creature_burning_hands: the cone reaches 5 feet
+			// past the bodies, so the player must be that near
+			if (Dtu_fix_creature_burning_hands && dist - obj->size - pl->size > BURNING_HANDS_REACH)
+				return -1;
+			return creature_clear(obj,i2f(30)) ? 50 + ((pw & 0x40600) ? 0 : rand_mod(50)) : -1;
 		case 5:	return dist < i2f(200) ? 100 - D : -1;
 		case 6:	return creature_clear(obj,i2f(30)) ? 25 + ((pw & DTU_FX_BLIND) ? 0 : rand_mod(75)) : -1;
 		case 7:	return (creature_safe(obj) && !(pw & DTU_FX_CONFUSION)) ? 25 + rand_mod(26) : -1;
@@ -4094,12 +4329,24 @@ static void creature_cast(object *obj)
 			apply_spell(s,obj,obj,L);
 		cast_effects(s,obj);		// 0x91FDC: 0x8CAD3
 	}
+	else if (s == 4 && Dtu_fix_creature_burning_hands) {
+		// ASCENT: Burning Hands of a creature as the cone of the player
+		// (Dtu_fix_creature_burning_hands, dtuspell.h), aimed at the player
+		vms_vector dir;
+
+		vm_vec_sub(&dir,&ConsoleObject->pos,&obj->pos);
+		sound_at(spell_int(s,"cast_sound",10),obj->segnum,&obj->pos,F1_0/2);
+		burning_hands_cone(obj,L,&dir);
+	}
 	else {
 		// 0x56FF6(obj, spell, template 3, hand 1): the missile goes from the
 		// creature to the player (guess: the facing of the creature, which
 		// turns to the player in the attack)
 		vms_vector dir, pos = obj->pos;
 		int seg, m, k, count = missile_count(s,L);
+
+		if (s == 6)
+			color_spray_begin(obj);		// ASCENT: Dtu_fix_color_spray
 
 		pos.y += i2f(2);
 		seg = find_point_seg(&pos,obj->segnum);
@@ -4112,15 +4359,21 @@ static void creature_cast(object *obj)
 			if (m < 0)
 				break;
 			vm_vec_copy_scale(&Objects[m].mtype.phys_info.velocity,&dir,spell_fix(s,"speed",i2f(100)));
-			dtu_missile_set_life(m,(s == 32) ? i2f(2) : (s == 36) ? (L/3 + 1)*MINUTE : i2f(30));
+			dtu_missile_set_life(m,spell_missile_life(s,L));		// ASCENT: the same values (Dtu_fix_spell_range)
 		}
 	}
 	b = spell_flag(s,"mage_use") ? 0 : 1;
 	Cspell[n].points[b] -= spell_level(s);
-	Cspell[n].chosen = -2;
+	// 0x92176: -2 (the melee reach test of the attack goal) for a melee
+	// creature that is active, else -1. The caller runs only for an active
+	// creature (dtu_spell_creature_frame, creature_choose).
+	Cspell[n].chosen = (obj->id < N_robot_types && Robot_info[obj->id].attack_type == 1) ? -2 : -1;
 	if (Cspell[n].points[0] < 1 && Cspell[n].points[1] < 1) {
 		Cspell[n].points[0] = Cspell[n].points[1] = 0;
 		Cspell[n].recharge_time = GameTime + (9 - creature_mage_level(obj) - creature_cleric_level(obj)) * MINUTE;
+		// (0x92202: a creature with a mage level also gets ailp+5 |= 0x32,
+		// mode 4 and +0x143 = 1, "moving away". The port does not have it:
+		// the mode CHASE_OB comes back on the next AI frame, 0x1487A.)
 		dtu_spell_log("cspell: obj %d %s has no spell points: new points at %.1f",n,target_name(obj),f2fl(Cspell[n].recharge_time));
 	}
 }
@@ -4152,31 +4405,46 @@ static void creature_choose(object *obj,fix dist)
 			continue;
 		if (rf & Cspell_table[e].flags)
 			continue;
+		// The first entry that passes the tests above ends the scan: 0x9231F
+		// returns 0 for a failed condition, a failed roll and Dispel Magic,
+		// and 0x92F82 then jumps to the end of the scan (0x92FAE).
 		if (s == 13 || s == 55) {
 			// Dispel Magic: at once on itself when the player or the
-			// creature has effects; the scan goes on
+			// creature has effects (ailp+0x2D = 1 before the cast)
 			if ((ConsoleObject->dtu.m_88 & 0xF3FFBECB) || (obj->dtu.m_88 & 0x0C004124)) {
 				Cspell[n].chosen = e;
+				Cspell[n].ready = 1;
 				creature_cast(obj);
 			}
-			continue;
+			break;
 		}
-		w = cspell_weight(obj,e,dist);
-		if (w < 0)
+		// ASCENT: Dtu_fix_spell_range: no missile that ends before the player
+		if (!spell_self(s) && spell_reach(s,creature_level(obj)) > 0 && dist > i2f(spell_reach(s,creature_level(obj))))
 			continue;
+		w = cspell_weight(obj,e,dist);
+		if (w < 0) {
+			dtu_spell_log("cspell: obj %d %s: '%s' (%d) fails its condition",n,target_name(obj),spell_name(s),s);
+			break;
+		}
 		if (w > 100) w = 100;
 		roll = rand() % 100 + 1;
-		if (roll > w)
-			continue;
+		if (roll > w) {
+			dtu_spell_log("cspell: obj %d %s: '%s' (%d) fails its weight %d, roll %d",n,target_name(obj),spell_name(s),s,w,roll);
+			break;
+		}
 		Cspell[n].cond &= ~Cspell_table[e].cond;
 		Cspell[n].chosen = e;
+		Cspell[n].ready = 1;		// 0x9231F: ailp+0x2D = 1, the next attack goal is ATAK
 		Cspell[n].cast_time = GameTime + i2f(spell_cast_time(s));	// 0x9231F reads the same word
 		dtu_spell_log("cspell: obj %d %s chooses '%s' (%d), weight %d, roll %d, cast at %.2f",n,target_name(obj),spell_name(s),s,w,roll,
 			f2fl(Cspell[n].cast_time));
 		return;
 	}
+	// 0x92FAE: ailp+0x2C = (activity < 2) - 2; the caller runs only for an
+	// active creature. -2: the attack goal uses the melee reach test.
 	Cspell[n].cond &= ~Cspell_table[e].cond;
 	Cspell[n].chosen = -2;
+	dtu_spell_log("cspell: obj %d %s chooses no spell: melee (-2)",n,target_name(obj));
 }
 
 void dtu_spell_rest_shuffle(void)
@@ -4223,7 +4491,11 @@ void dtu_spell_creature_frame(object *obj,fix dist,int active)
 	if (creature_mage_level(obj) <= 0 && creature_cleric_level(obj) <= 0)
 		return;
 	n = cspell_state(obj);
-	if (Cspell[n].cond == 0)
+	// 0x14948: no condition bits (+0x15E), no step. The choice clears the
+	// bits of the chosen entry (0x92F97), so in 1.3 the chosen spell waits
+	// for a new bit (a hit, an alert) after its cast time. ASCENT:
+	// Dtu_fix_caster_cast (dtuobj.h): the cast of a chosen spell needs no bit.
+	if (Cspell[n].cond == 0 && !(Dtu_fix_caster_cast && Cspell[n].chosen >= 0))
 		return;
 	if (Cspell[n].chosen < 0) {
 		if (Cspell[n].recharge_time <= GameTime)
@@ -4845,7 +5117,7 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 	if (f->area)
 		f->radius = spell_int(spell,"radius",0) + L * spell_int(spell,"level_radius",0);
 	if (!f->self) {
-		f->range = f2i(fixmul(spell_fix(spell,"speed",i2f(100)),spell_missile_life(spell,L)));
+		f->range = spell_flight(spell,L);
 		f->missiles_lo = missile_count_mode(spell,L,LOW);
 		f->missiles_hi = missile_count_mode(spell,L,HIGH);
 	}

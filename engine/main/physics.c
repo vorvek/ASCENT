@@ -1354,6 +1354,30 @@ int Dtu_fix_fall_land_player = 1;
 // -origphys clears it.
 int Dtu_fix_feather_fall = 1;
 
+// The Jump spell and the Potion of Jumping (effect bit 19, 0x80000). 1.3
+// (0x9E9D8) takes the height of each step of a jump from its table (7.5 at
+// the top) and doubles only the speed forward: the spell gives no height.
+// Corrected (1, default): the rule of AD&D 2nd Edition, a leap of up to 30
+// feet straight up (60.0, 1.3 counts 2 units for each foot at 0x6C8C8),
+// with the gravity of the jump of Dtu_fix_jump_path. The speed forward is
+// that of 1.3 (2 times). Needs Dtu_fix_jump_path. -origphys clears it.
+int Dtu_fix_jump_spell = 1;
+
+// The start of a climb at the floor. 0x6C662 ends a climb when the feet are
+// in the floor (it clears the bit 0x80 after the push up). With Improved physics the
+// capsule that settles on the floor is a little in it in some frames, so a
+// climb that the roll allowed (the Climb Wall key) could end in the next
+// frame with no message. Corrected (1, default): the floor ends a climb only
+// when the player moves down, or after DTU_FIX_CLIMB_FLOOR_TIME from the
+// start of the climb. -origphys clears it.
+int Dtu_fix_climb_floor = 1;
+static fix Dtu_climb_start = 0;		// GameTime of the start of the climb
+static int Dtu_was_climbing = 0;
+
+// ASCENT: Dtu_crouch (dtuopts.h)
+int Dtu_crouch_key = 0;
+int Dtu_crouched = 0;
+
 // The effect bits that stop the gravity of the player
 static int dtu_no_gravity_bits(void)
 {
@@ -1423,6 +1447,7 @@ static void dtu_capsule_get(dtu_body *b,dtu_capsule *c);
 static int dtu_capsule_support(vms_vector *axis,int segnum,dtu_capsule *c,fix feet,fix hi_edge,dtu_cap_support *s);
 static fix dtu_capsule_floor_dist(object *obj);
 static void dtu_relink(object *obj,int seg);
+static int dtu_crouch_stand_up(object *obj);
 static dtu_cap_support Dtu_cap_sup;		// the support of the last dtu_capsule_floor_dist()
 static int Dtu_cap_grounded = 0;		// the capsule stood on the floor at the end of the last gravity step
 static int Dtu_stand_obj = -1;			// the scenery that holds the capsule (dtusolid.c), or -1
@@ -1652,7 +1677,10 @@ static void dtu_apply_gravity(object *obj,vms_vector *accel)
 		if (find_point_seg(&head,obj->segnum) >= 0)
 			obj->pos = new_pos;
 
-		Dtu_player_state &= ~DTU_PS_CLIMBING;
+		// Dtu_fix_climb_floor: not at the start of a climb, not on the way up
+		if (!(Dtu_fix_climb_floor && (Dtu_player_state & DTU_PS_CLIMBING) &&
+				(obj->mtype.phys_info.velocity.y > 0 || abs(GameTime - Dtu_climb_start) < DTU_FIX_CLIMB_FLOOR_TIME)))
+			Dtu_player_state &= ~DTU_PS_CLIMBING;
 
 		if (!no_gravity)
 			dtu_fall_damage(obj);
@@ -1746,6 +1774,11 @@ void dtu_player_jump(object *obj)
 	}
 
 	if ((Dtu_player_state & DTU_PS_JUMPING) || (obj->dtu.m_88 & DTU_OF_FLY))
+		return;
+
+	// ASCENT: Dtu_crouch. The jump stands up first; under a low ceiling
+	// there is no jump.
+	if (Dtu_crouched && !dtu_crouch_stand_up(obj))
 		return;
 
 	// ASCENT: Dtu_fix_jump_path, the jump with a constant gravity. From a
@@ -1894,6 +1927,9 @@ static void dtu_jump_frame_ballistic(object *obj,fix sim_time)
 
 		Dtu_jump_hmax = speed > DTU_FIX_JUMP_HSPEED ? speed : DTU_FIX_JUMP_HSPEED;
 		Dtu_jump_vy = DTU_FIX_JUMP_V0;
+		// Dtu_fix_jump_spell: the leap of 30 feet of the Jump spell
+		if (Dtu_fix_jump_spell && (obj->dtu.m_88 & DTU_OF_JUMP_SPELL))
+			Dtu_jump_vy = DTU_FIX_JUMP_SPELL_V0;
 		Dtu_jump_last_step = -1;
 	}
 	Dtu_jump_time += sim_time;
@@ -2363,7 +2399,147 @@ static polymodel *dtu_body_model(int n)
 	return po;
 }
 
+static void dtu_player_body_stand(dtu_body *b);
+
+// ASCENT: Dtu_crouch (dtuopts.h). How far the center goes down when the
+// player crouches: DTU_CROUCH_DROP at most, and the center stays more than
+// the radius of the walls (rad + 1.0) above the feet, as the capsule needs
+// it (dtu_capsule_get: a round bottom of depth 0). The eye stays at
+// eye_offset above the center, where the arms are drawn (dtucombat.c), so
+// the whole upper body goes down. 2.70 for a human, 1.59 for a dwarf.
+static fix dtu_crouch_drop(const dtu_body *s)
+{
+	fix d = s->floor_height + s->floor_rad/2 - (s->move_rad + F1_0) - DTU_CAP_MARGIN;
+
+	if (d > DTU_CROUCH_DROP)
+		d = DTU_CROUCH_DROP;
+	return d > 0 ? d : 0;
+}
+
+static fix dtu_player_eye_offset(void)
+{
+	if (N_player_types > 0 && Player_type_info[0].eye_offset)
+		return Player_type_info[0].eye_offset;
+	return DTU_EYE_OFFSET_DEFAULT;
+}
+
+// The body of a player who crouches: the feet are nearer to the center by
+// the drop, and the ceiling stops the center DTU_CROUCH_TOP_MARGIN above
+// the eye (the query of the original stops it at rad2 * 1.5, the head
+// sphere of the capsule at half_height).
+static void dtu_crouch_body(dtu_body *b)
+{
+	fix top = dtu_player_eye_offset() + b->eye_y + DTU_CROUCH_TOP_MARGIN;
+	fix rad2 = fixmuldiv(top,2,3);
+
+	b->floor_height -= dtu_crouch_drop(b);
+	if (b->move_rad2 > rad2)
+		b->move_rad2 = rad2;
+	if (b->half_height > top)
+		b->half_height = top;
+}
+
 void dtu_player_body(dtu_body *b)
+{
+	dtu_player_body_stand(b);
+	if (Dtu_crouched && Dtu_player_walk)
+		dtu_crouch_body(b);
+}
+
+// The highest point of a body above its center that a ceiling stops
+static fix dtu_body_top(const dtu_body *b)
+{
+	fix t = fixmul(b->move_rad2,0x18000);
+
+	if (dtu_capsule_on() && b->half_height < t)
+		t = b->half_height;
+	return t;
+}
+
+// 1 if the player who crouches has the room to stand: the standing body,
+// its center the drop higher, is under the ceiling. A sphere of the radius
+// of the move goes up from the center (the walls stop the center at rad +
+// 1.0, so a wall at the side is not in its reach).
+static int dtu_crouch_room(object *obj,int grounded)
+{
+	dtu_body s;
+	fvi_query fq;
+	fvi_info hit;
+	vms_vector p1;
+	fix rise;
+
+	dtu_player_body_stand(&s);
+	rise = (grounded ? dtu_crouch_drop(&s) : 0) + dtu_body_top(&s) - s.move_rad;
+	if (rise <= 0)
+		return 1;
+	p1 = obj->pos;
+	p1.y += rise;
+	fq.p0 = &obj->pos;
+	fq.p1 = &p1;
+	fq.startseg = obj->segnum;
+	fq.rad = s.move_rad;
+	fq.thisobjnum = obj-Objects;
+	fq.ignore_obj_list = NULL;
+	fq.flags = 0;
+	return find_vector_intersection(&fq,&hit) == HIT_NONE;
+}
+
+// The player stands up (when there is the room): on the floor the center
+// goes up by the drop, in the air the feet go down. Returns 1 if the
+// player stands.
+static int dtu_crouch_stand_up(object *obj)
+{
+	int grounded = Dtu_floor_dist <= F1_0 && !(Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_FALLING));
+	dtu_body s;
+	vms_vector p;
+	int seg;
+
+	if (!Dtu_crouched)
+		return 1;
+	if (!dtu_crouch_room(obj,grounded))
+		return 0;
+	dtu_player_body_stand(&s);
+	Dtu_crouched = 0;
+	if (grounded) {
+		p = obj->pos;
+		p.y += dtu_crouch_drop(&s);
+		if ((seg = find_point_seg(&p,obj->segnum)) >= 0) {
+			obj->pos = p;
+			dtu_relink(obj,seg);
+		}
+	}
+	return 1;
+}
+
+// Once in each frame, before the move: the crouch key on the floor makes
+// the player crouch (the center goes down by the drop). Without the key
+// the player stands up when the ceiling has the room.
+static void dtu_crouch_frame(object *obj)
+{
+	int want = Dtu_crouch && Dtu_crouch_key && Dtu_player_walk && !(obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) &&
+		!(Dtu_player_state & DTU_PS_CLIMBING);
+
+	if (want && !Dtu_crouched) {
+		dtu_body s;
+		vms_vector p;
+		int seg;
+
+		if (Dtu_floor_dist > F1_0 || (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_FALLING)))
+			return;
+		dtu_player_body_stand(&s);
+		p = obj->pos;
+		p.y -= dtu_crouch_drop(&s);
+		if ((seg = find_point_seg(&p,obj->segnum)) < 0)
+			return;
+		obj->pos = p;
+		dtu_relink(obj,seg);
+		Dtu_crouched = 1;
+	}
+	else if (!want && Dtu_crouched)
+		dtu_crouch_stand_up(obj);
+}
+
+static void dtu_player_body_stand(dtu_body *b)
 {
 	polymodel *hand = dtu_body_model(dtu_combat_view_model());
 	polymodel *body = dtu_body_model(DTU_PLAYER_BODY_MODEL);
@@ -3259,6 +3435,14 @@ int dtu_player_physics_sim(object *obj)
 
 	if (obj->dtu.m_88 & DTU_OF_HELD)
 		return 1;
+
+	// ASCENT: Dtu_crouch, before the body of the frame is taken
+	dtu_crouch_frame(obj);
+
+	// ASCENT: Dtu_fix_climb_floor, the time of the start of a climb
+	if ((Dtu_player_state & DTU_PS_CLIMBING) && !Dtu_was_climbing)
+		Dtu_climb_start = GameTime;
+	Dtu_was_climbing = (Dtu_player_state & DTU_PS_CLIMBING) != 0;
 
 	dtu_player_body(&body);
 	dtu_capsule_get(&body,&cap);

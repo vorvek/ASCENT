@@ -25,7 +25,8 @@ an input file unless you name it as the output.
 - `check_desc.py`: the texts of the description window and their numbers against the game. See `docs/description_window.md`.
 - `questtest.py`: the quests of the campaign, with a save and a load. See `docs/re/quests.md`.
 - `priestcheck.py`: the priest spells and turn undead. See `docs/audit/spells-priest.md`.
-- `check_saveload.py`: a save and a load with a level change, and the spell slots.
+- `check_saveload.py`: a save and a load with a level change, the spell slots and the hot key boxes.
+- `check_hotkeys.py`: the key of the hot key box that was chosen last after a new weapon or spell goes into it (`Dtu_fix_hot_key_refresh`).
 - `check_itemfix.py`: the item corrections of the port against the level tables.
 - `check_tblfix.py`: the table fixup of 1.3 (0x1A344) against the level tables and `tblfix.py`.
 - `lvlcheck.py`: compare the level loader of the port (`-checklevel`) with `lvl.py`.
@@ -51,6 +52,7 @@ an input file unless you name it as the output.
 - `lang_extract.py`: extract, split, merge and check the text catalogs of the translations. See `docs/formats/lang.md`.
 - `ui_lang.py`: redraw the interface pictures that have English words with the words of a language.
 - `content_pack.py`: build the downloadable content packs and their manifest. See `docs/install.md`.
+- `model_zoo.py`: write the character models for Blender (`extract`) and make the improved model files from the Blender results (`build`). `blender/zoo.py` is the Blender side: the original and the improved copy of each model, the cleanup steps, the zoo file. See `docs/formats/pom.md`.
 - `make_icon.py`: draw the program icon (`installer/res/ascent.ico`).
 
 ## Scripts in other places

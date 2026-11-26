@@ -802,12 +802,13 @@ void dtu_creature_physics_sim(object *obj)
 			// collide_robot_and_wall (0x25CAA): a creature with the door
 			// bit opens a door that it walks into. The door must be closed,
 			// with no key and no lock. This is the only place where a
-			// creature opens a door.
+			// creature opens a door. With Dtu_fix_door_pair the wall on the
+			// other side needs no key and no lock either.
 			if (opens_doors(obj) && hit.hit_side_seg >= 0 && hit.hit_side >= 0) {
 				int wn = Segments[hit.hit_side_seg].sides[hit.hit_side].wall_num;
 
-				if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].keys == KEY_NONE &&
-					 Walls[wn].state == WALL_DOOR_CLOSED && !(Walls[wn].flags & WALL_DOOR_LOCKED)) {
+				if (wn >= 0 && Walls[wn].type == WALL_DOOR && Walls[wn].state == WALL_DOOR_CLOSED &&
+					 dtu_creature_door_unlocked(obj,hit.hit_side_seg,hit.hit_side)) {
 					dtu_obj_log("obj %d %s: opens the door seg %d side %d (wall %d)",objnum,dtu_object_name(obj),
 						hit.hit_side_seg,hit.hit_side,wn);
 					wall_open_door(&Segments[hit.hit_side_seg],hit.hit_side);

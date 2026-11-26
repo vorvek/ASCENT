@@ -1678,6 +1678,7 @@ static void opt_reverse(fe_menu_item *it)
 static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Improved physics"),       &Dtu_improved_physics },
 	{ LN("Improved jump controls"), &Dtu_improved_jump },
+	{ LN("Crouch"),                 &Dtu_crouch },			// physics.c
 	{ LN("Improved pathfinding"),   &Dtu_improved_pathfinding },
 	{ LN("Improved 3D body"),       &Dtu_improved_body },
 	{ LN("Target hint"),            &Dtu_target_hint },		// dtucombat.c
@@ -1761,6 +1762,7 @@ static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[
 	{ LN("Internal resolution"),   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, Gfx_scale },
 	{ LN("Upscaled textures"),     &Dtu_upscaled_textures,  0, 1, Gfx_onoff },
 	{ LN("Upscaled movies"),       &Dtu_upscaled_movies,    0, 1, Gfx_onoff },
+	{ LN("Improved models"),       &Dtu_improved_models,    0, 1, Gfx_onoff },
 	{ LN("Anisotropic filtering"), &Dtu_anisotropic,        0, 1, Gfx_onoff },
 	{ LN("Shader"),                &Dtu_shader,             DTU_SHADER_OFF, DTU_SHADER_VGA, Gfx_shader },
 	{ LN("Improved infravision"),  &Dtu_improved_infravision, 0, 1, Gfx_onoff },
@@ -2633,7 +2635,7 @@ static void fe_orig_options(void)
 	if (FindArg("-origfe"))
 		Dtu_fix_escape_load_waterdeep = Dtu_fix_chargen_abort = Dtu_fix_save_open_text = Dtu_fix_market_charisma = Dtu_fix_market_sell_count = 0;
 	if (FindArg("-origfe"))
-		Dtu_fix_market_charges = Dtu_fix_market_buy_stock = 0;
+		Dtu_fix_market_charges = Dtu_fix_market_buy_stock = Dtu_market_freedom = 0;
 	if (FindArg("-origfe"))
 		Dtu_fix_start_spells = Dtu_fix_chargen_percentile = Dtu_fix_creation_luck = 0;
 }

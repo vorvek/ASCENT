@@ -446,6 +446,11 @@ Table at 0x14530E (15 values): 0x18000, 0x30000, 0x48000, 0x60000, 0x6C000, 0x72
 
 **G** The source of `w` is not known. The port uses 0: 0.5 for each step, 7.5 forward.
 
+**V** The flag 0x80000 (the Jump spell and the Potion of Jumping, effect bit 19) only
+doubles `jump_vec`: the height of each step comes from the table, so a jump with the
+spell is 7.5 high, as a jump without it. `Dtu_fix_jump_spell` (section 13, bugs.md D29)
+gives the spell the leap of 30 feet up of AD&D 2e.
+
 ## 6. Controls
 
 ### 6.1 read_flying_controls (0x2BFAE)
@@ -1132,6 +1137,53 @@ Not done: with Improved physics off the rules of 0x261DB and 0x13A950 (section 4
 are not in the port. A player who comes down on a creature still hangs over it (the
 move stops at a creature). The player does not move with scenery that a creature
 pushes under the player.
+
+`Dtu_fix_jump_spell`: with the flag 0x80000 the jump of `Dtu_fix_jump_path` starts with
+`v0 = sqrt(2 * 209.07 * 60.0) = 158.39`: the top is 60.0 above the start (30 feet of AD&D
+2e; 1.3 counts 2 units for each foot, the fall of 0x6C8C8), the air time 1.52 s. The
+speed forward is that of 1.3 (2 times). Measured (FLAME segment 483, 60 frames per
+second): the ceiling 27.5 above the start stops it, the landing gives no damage.
+
+`Dtu_fix_climb_floor`: the push out of the floor (0x6C662) ends a climb only when the
+player moves down, or 0.5 s after the start of the climb (bugs.md P14).
+
+The climb of a wall by the skill (section 12, combat.md B7) starts with the Climb Wall
+key (default Q, `Dtu_fix_climb_key`; Activate takes hold of a ladder only): the side
+in front (the ray of 20.0) is solid, faces the player, its plane is nearer than 10.0,
+the player is a thief, has Climb Walls above 0, Spider Climb or Levitate, wears no
+metal body armor, and the d100 roll is at most the skill (100 with Spider Climb or
+Levitate). The hand must not hold a weapon (0x951DE: item type 5): with a weapon the
+roll is made and the text is "You cannot get a good grip." (823); a spell in the hand
+(item type 17) does not stop the climb. `Dtu_fix_climb_weapon` (dtuthief.c, off with
+`-origphys`): when the other tests pass, the weapon is put away first, as the Disarm
+key does (not in the attack states 6 and 11), and then the roll is made. Metal armor
+still stops the climb before that, with the text of 1.3 "You cannot perform this
+action while wearing %s." (translated), which names the armor. `Dtu_fix_climb_messages`
+(dtuthief.c, off with `-origphys`): a weapon that stays in the hand (in an attack swing,
+or with `Dtu_fix_climb_weapon` off; the test option `-noclimbputaway` turns only that
+one off) gives "You cannot climb while armed." and no roll; text 823 stays for a failed
+roll. Measured: BANE segment 75 side 0, a thief with
+the weapon of the start in the hand climbs to the ledge of segment 51; with
+`-origphys` the same try gives text 823 and no climb, with `-noclimbputaway` the armed
+text and no climb; Climb Walls 1 gives text 823 after the failed roll. Then the forward key
+climbs at 4.3 for each second (the thrust `>> 3`), with a new roll each 20.0.
+
+Crouch (`Dtu_crouch`, dtuopts.h, port): while the crouch key (default Left Ctrl, the
+keyboard items 62 and 63) is down on the floor, the center goes down by `stand - (rad +
+1.0) - 0.25`, at most 4.0 (2.70 for a human, 1.59 for a dwarf): the capsule keeps a
+round bottom of depth 0, and the eye stays `eye_offset` above the center, where the
+arms are drawn. The ceiling stops the center at `eye_offset + eye_y + 1.0` (rad2 and
+the head of the capsule). The walk has half the speed, with no run. Without the key the
+player stands up when a sphere of the move radius from the center up to the top of
+the standing body hits nothing; a jump stands up first, and there is no jump under a
+low ceiling. Measured (60 frames per second): a human center 2.70 lower, the top of
+the body 10.59 above the feet (13.29 standing); in FLAME segment 230 (12.49 high) the
+player who crouches stands on the floor and stays down when the key is released.
+
+Flight keys (with `Dtu_improved_jump`): in flight and in levitation the jump key goes
+up and the crouch key goes down, as Float up and Float down. The jump key no longer
+ends Levitate (0x546CC); the crouch key ends it when the feet are 3.0 or less above the
+floor, so a player who goes down with it lands.
 
 ## 14. The fixed step (`Dtu_fixed_step`, port)
 

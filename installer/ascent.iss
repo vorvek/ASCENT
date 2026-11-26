@@ -42,6 +42,9 @@
 #ifndef MUSIC_KB
   #define MUSIC_KB "2278"
 #endif
+#ifndef MODELS_KB
+  #define MODELS_KB "803"
+#endif
 ; The content server: the one place is installer/content.ini.
 #define BaseUrl ReadIni(SourcePath + "content.ini", "content", "base_url", "")
 
@@ -92,6 +95,9 @@ Name: "langes"; Description: "{cm:TaskLangEs,{#LANG_ES_KB}}"; GroupDescription: 
 ; The replacement music (pack music) for the setting "Streaming safe music":
 ; checked, because the pack is small. The setting stays off.
 Name: "music"; Description: "{cm:TaskMusic,{#MUSIC_KB}}"; GroupDescription: "{cm:GroupContent}"; Check: HasContentServer
+; The improved character and monster models (pack models, docs/formats/pom.md):
+; checked, the pack is small. The game uses them with the GPU renderer.
+Name: "models"; Description: "{cm:TaskModels,{#MODELS_KB}}"; GroupDescription: "{cm:GroupContent}"; Check: HasContentServer
 
 [Files]
 Source: "{#STAGE}\ascent.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -130,6 +136,7 @@ english.TaskTextures=Upscaled textures and interface (for the GPU renderer; down
 english.TaskMovies=Upscaled movies (for the GPU renderer; download, about %1 MB)
 english.TaskLangEs=Spanish translation of the game text (download, about %1 KB)
 english.TaskMusic=Replacement music for the setting "Streaming safe music" (download, about %1 KB)
+english.TaskModels=Improved character and monster models (for the GPU renderer; download, about %1 KB)
 english.ShortcutContent=ASCENT-DTU Content
 english.RunPlay=Play ASCENT-DTU
 english.DiscPageTitle=Game disc
@@ -157,6 +164,7 @@ english.PackTextures=Upscaled textures and interface
 english.PackMovies=Upscaled movies
 english.PackLangEs=Spanish translation of the game text
 english.PackMusic=Replacement music
+english.PackModels=Improved character and monster models
 english.StepPack=Downloading: %1...
 english.ErrPack=This content cannot be installed now: %1. The game works without it; install it later with ASCENT-DTU Content in the Start menu.
 english.UninstallAsk=Remove your saved games and settings of ASCENT-DTU too?
@@ -169,6 +177,7 @@ spanish.TaskTextures=Texturas e IU en alta resolución (para el renderizador por
 spanish.TaskMovies=Vídeos en alta resolución (para el renderizador por GPU; descarga de unos %1 MB)
 spanish.TaskLangEs=Traducción al español de los textos del juego (descarga de unos %1 KB)
 spanish.TaskMusic=Música de reemplazo para la opción "Música apta para streaming" (descarga de unos %1 KB)
+spanish.TaskModels=Modelos mejorados de personajes y monstruos (para el renderizador por GPU; descarga de unos %1 KB)
 spanish.ShortcutContent=Contenido de ASCENT-DTU
 spanish.RunPlay=Jugar a ASCENT-DTU
 spanish.DiscPageTitle=Disco del juego
@@ -196,6 +205,7 @@ spanish.PackTextures=Texturas e IU en alta resolución
 spanish.PackMovies=Vídeos en alta resolución
 spanish.PackLangEs=Traducción al español de los textos del juego
 spanish.PackMusic=Música de reemplazo
+spanish.PackModels=Modelos mejorados de personajes y monstruos
 spanish.StepPack=Descargando: %1...
 spanish.ErrPack=Este contenido no se puede instalar ahora: %1. El juego funciona sin él; puede instalarlo más tarde con Contenido de ASCENT-DTU en el menú Inicio.
 spanish.UninstallAsk=¿Eliminar también las partidas guardadas y la configuración de ASCENT-DTU?
@@ -208,6 +218,7 @@ german.TaskTextures=Hochskalierte Texturen und Oberfläche (für den GPU-Rendere
 german.TaskMovies=Hochskalierte Videos (für den GPU-Renderer; Download, etwa %1 MB)
 german.TaskLangEs=Spanische Übersetzung der Spieltexte (Download, etwa %1 KB)
 german.TaskMusic=Ersatzmusik für die Einstellung "Streaming safe music" (Download, etwa %1 KB)
+german.TaskModels=Verbesserte Charakter- und Monstermodelle (für den GPU-Renderer; Download, etwa %1 KB)
 german.ShortcutContent=ASCENT-DTU Inhalte
 german.RunPlay=ASCENT-DTU spielen
 german.DiscPageTitle=Spiel-CD
@@ -235,6 +246,7 @@ german.PackTextures=Hochskalierte Texturen und Oberfläche
 german.PackMovies=Hochskalierte Videos
 german.PackLangEs=Spanische Übersetzung der Spieltexte
 german.PackMusic=Ersatzmusik
+german.PackModels=Verbesserte Charakter- und Monstermodelle
 german.StepPack=Download: %1...
 german.ErrPack=Dieser Inhalt kann jetzt nicht installiert werden: %1. Das Spiel funktioniert auch ohne ihn; Sie können ihn später mit ASCENT-DTU Inhalte im Startmenü installieren.
 german.UninstallAsk=Auch die Spielstände und Einstellungen von ASCENT-DTU entfernen?
@@ -247,6 +259,7 @@ french.TaskTextures=Textures et interface en haute résolution (pour le rendu GP
 french.TaskMovies=Vidéos en haute résolution (pour le rendu GPU ; téléchargement d'environ %1 Mo)
 french.TaskLangEs=Traduction espagnole des textes du jeu (téléchargement d'environ %1 Ko)
 french.TaskMusic=Musique de remplacement pour l'option « Streaming safe music » (téléchargement d'environ %1 Ko)
+french.TaskModels=Modèles améliorés des personnages et des monstres (pour le rendu GPU ; téléchargement d'environ %1 Ko)
 french.ShortcutContent=Contenu ASCENT-DTU
 french.RunPlay=Jouer à ASCENT-DTU
 french.DiscPageTitle=Disque du jeu
@@ -274,6 +287,7 @@ french.PackTextures=Textures et interface en haute résolution
 french.PackMovies=Vidéos en haute résolution
 french.PackLangEs=Traduction espagnole des textes du jeu
 french.PackMusic=Musique de remplacement
+french.PackModels=Modèles améliorés des personnages et des monstres
 french.StepPack=Téléchargement : %1...
 french.ErrPack=Ce contenu ne peut pas être installé maintenant : %1. Le jeu fonctionne sans lui ; vous pourrez l'installer plus tard avec Contenu ASCENT-DTU dans le menu Démarrer.
 french.UninstallAsk=Supprimer aussi les parties sauvegardées et les paramètres d'ASCENT-DTU ?
@@ -286,6 +300,7 @@ italian.TaskTextures=Texture e interfaccia ad alta risoluzione (per il renderer 
 italian.TaskMovies=Filmati ad alta risoluzione (per il renderer GPU; download di circa %1 MB)
 italian.TaskLangEs=Traduzione spagnola dei testi del gioco (download di circa %1 KB)
 italian.TaskMusic=Musica sostitutiva per l'opzione "Streaming safe music" (download di circa %1 KB)
+italian.TaskModels=Modelli migliorati di personaggi e mostri (per il renderer GPU; download di circa %1 KB)
 italian.ShortcutContent=Contenuti ASCENT-DTU
 italian.RunPlay=Gioca ad ASCENT-DTU
 italian.DiscPageTitle=Disco del gioco
@@ -313,6 +328,7 @@ italian.PackTextures=Texture e interfaccia ad alta risoluzione
 italian.PackMovies=Filmati ad alta risoluzione
 italian.PackLangEs=Traduzione spagnola dei testi del gioco
 italian.PackMusic=Musica sostitutiva
+italian.PackModels=Modelli migliorati di personaggi e mostri
 italian.StepPack=Download: %1...
 italian.ErrPack=Questo contenuto non può essere installato ora: %1. Il gioco funziona anche senza; è possibile installarlo in seguito con Contenuti ASCENT-DTU nel menu Start.
 italian.UninstallAsk=Rimuovere anche le partite salvate e le impostazioni di ASCENT-DTU?
@@ -587,7 +603,7 @@ begin
     if ExpandConstant('{param:CONTENTURL|}') <> '' then
       SetIniString('content', 'base_url', ExpandConstant('{param:CONTENTURL|}'), ExpandConstant('{app}\content.ini'));
     if WizardIsTaskSelected('hdtextures') or WizardIsTaskSelected('hdmovies') or WizardIsTaskSelected('langes')
-      or WizardIsTaskSelected('music') then begin
+      or WizardIsTaskSelected('music') or WizardIsTaskSelected('models') then begin
       ProgressPage.Show();
       try
         if WizardIsTaskSelected('langes') then
@@ -599,6 +615,8 @@ begin
           InstallPacks('movies', 'PackMovies');
         if WizardIsTaskSelected('music') then
           InstallPacks('music', 'PackMusic');
+        if WizardIsTaskSelected('models') then
+          InstallPacks('models', 'PackModels');
       finally
         ProgressPage.Hide();
       end;

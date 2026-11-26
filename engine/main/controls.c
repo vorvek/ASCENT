@@ -238,6 +238,7 @@ static char rcsid[] = "$Id: controls.c 2.0 1995/02/27 11:27:11 john Exp $";
 #include "gauges.h"
 #include "segment.h"
 #include "automap.h"		// ASCENT: the map of the map screen takes the controls
+#include "dtuhold.h"		// ASCENT: a held player gets no controls
 
 static void dtu_move_init(void);
 static void dtu_read_flying_controls(object *obj);
@@ -356,13 +357,14 @@ static fix Turn_other_heading = 0;
 #define TM_SNEAK		0x10000
 #define TM_DISARM		0x20000		// ASCENT: the key H, the empty hand
 #define TM_CLIMB		0x40000		// ASCENT: Climb Wall (the key Q)
+#define TM_CROUCH		0x80000		// ASCENT: Crouch (Left Ctrl, Dtu_crouch)
 
 static struct { char *name; int mask; } Test_action_names[] = {
 	{"forward",TM_FORWARD}, {"back",TM_BACK}, {"left",TM_LEFT}, {"right",TM_RIGHT},
 	{"slideleft",TM_SLIDELEFT}, {"slideright",TM_SLIDERIGHT}, {"run",TM_RUN},
 	{"jump",TM_JUMP}, {"lookup",TM_LOOKUP}, {"lookdown",TM_LOOKDOWN},
 	{"up",TM_UP}, {"down",TM_DOWN}, {"use",TM_USE}, {"attack",TM_ATTACK},
-	{"picklock",TM_PICKLOCK}, {"search",TM_SEARCH}, {"sneak",TM_SNEAK}, {"disarm",TM_DISARM}, {"climb",TM_CLIMB}, {"wait",0}
+	{"picklock",TM_PICKLOCK}, {"search",TM_SEARCH}, {"sneak",TM_SNEAK}, {"disarm",TM_DISARM}, {"climb",TM_CLIMB}, {"crouch",TM_CROUCH}, {"wait",0}
 };
 
 #define MAX_TEST_STEPS	64
@@ -452,7 +454,11 @@ static void dtu_move_init(void)
 		Dtu_fix_physics_steps = Dtu_fix_frame_drag = Dtu_fix_stop_decay =
 			Dtu_fix_floor_push = Dtu_fix_look_return = Dtu_fix_fly_bob = Dtu_fix_turn_ramp = Dtu_fix_jump_exit =
 			Dtu_fix_jump_path = Dtu_fix_ladder = Dtu_fix_wall_slide = Dtu_fix_wall_overlap =
-			Dtu_fix_fall_sound = Dtu_fix_fall_land_player = Dtu_fix_feather_fall = 0;
+			Dtu_fix_fall_sound = Dtu_fix_fall_land_player = Dtu_fix_feather_fall = Dtu_fix_jump_spell = Dtu_fix_climb_floor =
+			Dtu_fix_climb_weapon = Dtu_fix_climb_messages = 0;
+	// ASCENT: test option: the weapon stays in the hand at a climb (dtuthief.c)
+	if (FindArg("-noclimbputaway"))
+		Dtu_fix_climb_weapon = 0;
 	if (FindArg("-origphys"))
 		Dtu_turn_scale = F1_0;
 
@@ -650,6 +656,25 @@ void dtu_read_controls(void)
 		return;
 	}
 
+	// ASCENT: Dtu_fix_player_hold (dtuhold.h): a held player does not move,
+	// turn, look, jump or use the keys of the actions. The axes are read
+	// and dropped, so that the mouse does not turn the view after the hold.
+	// The attack key goes on to the attack, which refuses (dtucombat.c).
+	if (dtu_hold_blocks_player()) {
+		int a[4];
+
+		dtu_control_axes(&a[0], &a[1], &a[2], &a[3]);
+		dtu_pad_frame();
+		dtu_combat_attack_key(dtu_action_down(DTU_ACT_ATTACK) || (t & TM_ATTACK) || dtu_display_view_attack());
+		dtu_combat_frame();
+		Dtu_move_mode = 0;
+		Turn_other_heading = 0;
+		Controls.pitch_time = Controls.bank_time = Controls.heading_time = 0;
+		Controls.forward_thrust_time = Controls.sideways_thrust_time = Controls.vertical_thrust_time = 0;
+		control_diag_frame();
+		return;
+	}
+
 	// ASCENT: the keys of the key table (kconfig.c, the items of the
 	// executable at 0x13C190), and the buttons of the mouse or joystick.
 	if (dtu_action_down(DTU_ACT_FORWARD) || (t & TM_FORWARD))		fwd += ft;
@@ -835,20 +860,39 @@ void dtu_read_controls(void)
 	}
 	control_diag_frame();
 
-	// Up and down, only in flight and in levitation
+	key = dtu_action_down(DTU_ACT_JUMP) || (t & TM_JUMP);
+	// ASCENT: Crouch (port, Dtu_crouch): the key is read by physics.c
+	Dtu_crouch_key = dtu_action_down(DTU_ACT_CROUCH) || (t & TM_CROUCH);
+
+	// Up and down, only in flight and in levitation. ASCENT: with
+	// Dtu_improved_jump the jump key goes up and the crouch key goes down
+	// too (1.3: the jump key cancels Levitate, and does nothing in flight).
 	if (obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) {
-		if (dtu_action_down(DTU_ACT_FLOAT_UP) || (t & TM_UP))		vert += ft;
-		if (dtu_action_down(DTU_ACT_FLOAT_DOWN) || (t & TM_DOWN))	vert -= ft;
+		int fly_keys = Dtu_improved_jump && Dtu_player_walk;
+
+		if (dtu_action_down(DTU_ACT_FLOAT_UP) || (t & TM_UP) || (fly_keys && key))					vert += ft;
+		if (dtu_action_down(DTU_ACT_FLOAT_DOWN) || (t & TM_DOWN) || (fly_keys && Dtu_crouch_key))	vert -= ft;
 		vert += fixmul(ft,dtu_pad_amount(DTU_ACT_FLOAT_UP) - dtu_pad_amount(DTU_ACT_FLOAT_DOWN));
+
+		// The crouch key at the floor ends Levitate, as the jump key of 1.3
+		// does (0x546CC): the player who goes down with it lands
+		if (fly_keys && Dtu_crouch_key && (obj->dtu.m_88 & DTU_OF_LEVITATE) &&
+				Dtu_floor_dist <= DTU_JUMP_FLOOR_MAX) {
+			obj->dtu.m_88 &= ~DTU_OF_LEVITATE;
+			HUD_init_message("Levitate cancelled.");
+		}
 	}
 	else
 		vert = 0;			// the axis of the mouse or the joystick too
 
-	key = dtu_action_down(DTU_ACT_JUMP) || (t & TM_JUMP);
 	if (key && !space_last) {
 		// 0x546CC: the jump key stops a cast when the player does not
-		// levitate (0x9305D with 0, "Your spell was aborted."); then no jump
-		if (!(obj->dtu.m_88 & DTU_OF_LEVITATE) && dtu_spell_interrupt(obj,0))
+		// levitate (0x9305D with 0, "Your spell was aborted."); then no jump.
+		// ASCENT: with Dtu_improved_jump the jump key in flight and in
+		// levitation only goes up (above).
+		if ((obj->dtu.m_88 & (DTU_OF_FLY|DTU_OF_LEVITATE)) && Dtu_improved_jump && Dtu_player_walk)
+			;
+		else if (!(obj->dtu.m_88 & DTU_OF_LEVITATE) && dtu_spell_interrupt(obj,0))
 			;
 		else
 			dtu_player_jump(obj);
@@ -930,6 +974,13 @@ void dtu_read_controls(void)
 
 	// 0x54033: the move mode. A run is 1.5 times the walk.
 	run = dtu_action_down(DTU_ACT_RUN) || autorun || (t & TM_RUN);
+	// ASCENT: Dtu_crouch. A player who crouches walks at half the speed and
+	// does not run.
+	if (Dtu_crouched) {
+		run = 0;
+		fwd = fixmul(fwd,DTU_CROUCH_SPEED);
+		side = fixmul(side,DTU_CROUCH_SPEED);
+	}
 	Dtu_move_mode = 0;
 	if (fwd && !(Dtu_player_state & (DTU_PS_FALLING|DTU_PS_JUMPING|DTU_PS_CLIMBING))) {
 		Dtu_move_mode = 1;

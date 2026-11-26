@@ -218,7 +218,7 @@ Port before = the port at d9d72f6. "same" = the port follows B3 of combat.md.
 | 19 | Fly | M3, 3 s; 10 (1d6 + L) min | generic text | original text |
 | 20 | Free Action | C4, 7 s; self; 10L min | generic text | original text |
 | 21 | Haste | M3, 3 s; (L+3) min | generic text | original text |
-| 22, 52 | Hold Person | M3, C2, 3 s / 5 s; 2L min, / (wisdom/2) for the player | generic text | original text with seconds below 60 s |
+| 22, 52 | Hold Person | M3, C2, 3 s / 5 s; 2L min, / (wisdom/2) for the player | generic text | original text with seconds below 60 s; `Dtu_fix_player_hold`: 6 to 18 s on the player (bugs.md D28) |
 | 23 | Hold Undead | M3, 5 s; (1d4 + L) min | generic text | original text |
 | 24 | Improved Invisibility | M4, 4 s; (L+4) min | generic text; end "Improved Invisibility expired." | original texts, end sound 161 |
 | 25 | Infravision | M3, 60 s; (6L + 12) * 10 min | generic text in minutes | original text in hours |

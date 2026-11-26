@@ -31,14 +31,17 @@ TEX_MB=520
 MOV_MB=490
 ES_KB=2775
 MUS_KB=2278
+MOD_KB=803
 if [ -f "$CONTENT/manifest.txt" ]; then
   TEX_MB=$(awk -F'\t' '$1=="textures"||$1=="ui" {s+=$5} END {printf "%d", s/1048576+0.5}' "$CONTENT/manifest.txt")
   MOV_MB=$(awk -F'\t' '$1=="movies" {s+=$5} END {printf "%d", s/1048576+0.5}' "$CONTENT/manifest.txt")
   ES_KB=$(awk -F'\t' '$1=="lang_es" {s+=$5} END {printf "%d", s/1024+0.5}' "$CONTENT/manifest.txt")
   MUS_KB=$(awk -F'\t' '$1=="music" {s+=$5} END {printf "%d", s/1024+0.5}' "$CONTENT/manifest.txt")
+  MOD_KB=$(awk -F'\t' '$1=="models" {s+=$5} END {printf "%d", s/1024+0.5}' "$CONTENT/manifest.txt")
+  [ "$MOD_KB" -gt 0 ] || MOD_KB=803
 fi
 
 # MSYS must not change the /D options into paths
-MSYS2_ARG_CONV_EXCL="*" "$ISCC" /Q "/DAPPVERSION=$VERSION" "/DTEXTURES_MB=$TEX_MB" "/DMOVIES_MB=$MOV_MB" "/DLANG_ES_KB=$ES_KB" "/DMUSIC_KB=$MUS_KB" \
+MSYS2_ARG_CONV_EXCL="*" "$ISCC" /Q "/DAPPVERSION=$VERSION" "/DTEXTURES_MB=$TEX_MB" "/DMOVIES_MB=$MOV_MB" "/DLANG_ES_KB=$ES_KB" "/DMUSIC_KB=$MUS_KB" "/DMODELS_KB=$MOD_KB" \
   "/DSTAGE=..\build-rel\stage" "/DOUTDIR=..\build-rel\setup" installer/ascent.iss
 ls -l build-rel/setup

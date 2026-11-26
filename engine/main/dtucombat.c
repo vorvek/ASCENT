@@ -53,6 +53,7 @@
 #include "dtuatk.h"			// ASCENT: the attack timing rules
 #include "dtuxp.h"			// ASCENT: the cause of a kill in the session log
 #include "dtumiss.h"			// ASCENT: the miss sound
+#include "dtuhold.h"			// ASCENT: Dtu_fix_player_hold
 
 int Dtu_fix_one_hit = 1;
 int Dtu_fix_haste_attack = 1;
@@ -1593,8 +1594,15 @@ static void combat_init(void)
 	if (Init_done)
 		return;
 	Init_done = 1;
+	if (FindArg("-origmeleewall"))
+		Dtu_fix_melee_wall = 0;
+	if (FindArg("-origcreatureburn") || FindArg("-origcombat"))
+		Dtu_fix_creature_burning_hands = 0;
+	if (FindArg("-origcolorspray") || FindArg("-origcombat"))
+		Dtu_fix_color_spray = 0;
 	if (FindArg("-origcombat")) {
 		Dtu_fix_item_reach = 0;
+		Dtu_fix_melee_wall = 0;
 		Dtu_fix_one_hit = 0;
 		Dtu_fix_haste_attack = 0;
 		Dtu_fix_missile_rate = 0;
@@ -1622,6 +1630,8 @@ static void combat_init(void)
 		Dtu_fix_kill_sound = 0;
 		Dtu_fix_fireball_blind = 0;
 		Dtu_fix_burning_hands = 0;
+		Dtu_fix_spell_range = 0;
+		Dtu_fix_prot_evil = 0;
 		Dtu_fix_haste_friends = 0;
 		Dtu_fix_hold_undead_hd = 0;
 		Dtu_fix_haste_count = 0;
@@ -1651,6 +1661,11 @@ int dtu_combat_player_attack(void)
 	// 0x2FAF0: a misc item in the hand is used, not swung
 	{
 		dtu_inv_item *e = hand_entry();
+
+		// ASCENT: Dtu_fix_player_hold: no attack, no cast and no item while
+		// held (1.3 has no test here), but the Potion of Freedom
+		if (dtu_hold_refuse_item(e && Dtu_spell_current < 0 ? e->type : -1, e ? e->id : -1))
+			return 0;
 		if (e && e->type == OBJ_MISC && Dtu_spell_current < 0) {
 			dtu_char_use_current();
 			return 1;

@@ -787,6 +787,102 @@ id: port.each_melee_hit_the_target_saves_or_takes
 en: Each melee hit: the target saves or takes 1d4 more damage; undead get Fear.
 tr: Cada golpe: el objetivo salva o recibe 1d4 más de daño; los muertos vivientes, Miedo.
 
+id: port.s_stops_s
+en: %s stops %s.
+tr: %s detiene %s.
+
+id: port.1_to_attack_rolls
+en: +1 to attack rolls.
+tr: +1 a las tiradas de ataque.
+
+id: port.magic_items_magic_scenery_spell_missiles
+en: Magic items, magic scenery, spell missiles and false walls in view are drawn in blue.
+tr: Los objetos mágicos, el decorado mágico, los proyectiles de conjuro y las paredes falsas a la vista se ven en azul.
+
+id: port.you_fall_slowly_at_most_7_5_ft_a_second_
+en: You fall slowly, at most 7.5 ft a second, and a fall does no damage.
+tr: Caes despacio, como mucho 7,5 pies por segundo, y una caída no te hace daño.
+
+id: port.you_do_not_fall_you_stay_at_your_height
+en: You do not fall: you stay at your height.
+tr: No caes: te quedas a la misma altura.
+
+id: port.fire_damage_to_you_is_halved
+en: Fire damage to you is halved.
+tr: Recibes la mitad del daño por fuego.
+
+id: port.you_fly_where_you_look_and_can_go_up_and
+en: You fly where you look and can go up and down; you do not fall.
+tr: Vuelas hacia donde miras y puedes subir y bajar; no caes.
+
+id: port.s_s_and_the_stun_of_s_do_not_work_on_you
+en: %s, %s and the stun of %s do not work on you, and nothing slows your movement.
+tr: %s, %s y el aturdimiento de %s no te afectan, y nada frena tu movimiento.
+
+id: port.you_can_drink_it_while_you_are_held_and_
+en: You can drink it while you are held, and it ends the hold.
+tr: Puedes beberla aunque estés {sex:inmovilizado|inmovilizada}, y acaba con la inmovilización.
+
+id: port.you_move_twice_as_fast_a_melee_swing_tak
+en: You move twice as fast, a melee swing takes half the time, and shots wait half as long.
+tr: Te mueves el doble de rápido, un golpe cuerpo a cuerpo dura la mitad y los disparos esperan la mitad.
+
+id: port.you_move_twice_as_fast_a_melee_attack_co
+en: You move twice as fast; a melee attack comes once each 1.5 swing times.
+tr: Te mueves el doble de rápido; un ataque cuerpo a cuerpo llega una vez cada 1,5 golpes.
+
+id: port.lets_you_turn_on_infravision_only_a_huma
+en: Lets you turn on infravision. Only a human needs it: the other races have it.
+tr: Te permite activar la infravisión. Solo la necesita un humano: las demás razas ya la tienen.
+
+id: port.creatures_do_not_see_you_even_while_you_
+en: Creatures do not see you, even while you attack.
+tr: Las criaturas no te ven, ni siquiera mientras atacas.
+
+id: port.creatures_do_not_see_you_until_you_make_
+en: Creatures do not see you until you make a weapon attack or cast a spell missile.
+tr: Las criaturas no te ven hasta que atacas con un arma o lanzas un proyectil de conjuro.
+
+id: port.creatures_below_level_4_and_weapons_that
+en: Creatures below level 4 and weapons that are not magic cannot hurt you, spells deal you no damage, and your armor class is 2 better.
+tr: Las criaturas de nivel menor que 4 y las armas no mágicas no te hieren, los conjuros no te hacen daño y tu CA mejora en 2.
+
+id: port.your_jumps_go_higher_and_farther
+en: Your jumps go higher and farther.
+tr: Tus saltos llegan más alto y más lejos.
+
+id: port.your_jumps_go_farther_forward
+en: Your jumps go farther forward.
+tr: Tus saltos llegan más lejos hacia delante.
+
+id: port.you_find_and_remove_traps_with_a_chance_
+en: You find and remove traps with a chance of 100%%, and the search for traps runs all the time.
+tr: Encuentras y desactivas trampas con un 100%% de probabilidad, y la búsqueda de trampas está siempre activa.
+
+id: port.you_float_and_move_only_up_and_down_you_
+en: You float and move only up and down. You cannot cast spells while you levitate.
+tr: Flotas y solo te mueves arriba y abajo. No puedes lanzar conjuros mientras levitas.
+
+id: port.armor_class_and_saving_throws_2_better_a
+en: Armor class and saving throws 2 better against creatures.
+tr: CA y tiradas de salvación 2 mejores contra las criaturas.
+
+id: port.armor_class_2_better_against_creatures
+en: Armor class 2 better against creatures.
+tr: CA 2 mejor contra las criaturas.
+
+id: port.an_extraplanar_creature_always_misses_yo
+en: An extraplanar creature always misses you; attacking one ends the spell.
+tr: Una criatura extraplanar siempre te falla; atacar a una termina el conjuro.
+
+id: port.charm_and_fear_spells_of_creatures_fail_
+en: Charm and fear spells of creatures fail: %s.
+tr: Los conjuros de hechizo y miedo de las criaturas fallan: %s.
+
+id: port.you_can_climb_walls_with_a_chance_of_100
+en: You can climb walls, with a chance of 100%%.
+tr: Puedes escalar paredes, con un 100%% de probabilidad.
+
 id: port.causes_s_on_creatures_of_level_d_or_less
 en: Causes %s on creatures of level %d or less. The target may drop its weapon.
 tr: Efecto: %s en criaturas de nivel %d o menos. El objetivo puede soltar su arma.
@@ -1130,6 +1226,10 @@ tr: Texturas reescaladas
 id: port.upscaled_movies
 en: Upscaled movies
 tr: Vídeos reescalados
+
+id: port.improved_models
+en: Improved models
+tr: Modelos mejorados
 
 id: port.anisotropic_filtering
 en: Anisotropic filtering
@@ -1707,6 +1807,10 @@ id: port.s_s_held_for_d_minutes
 en: %s %s held for %d minutes.
 tr: %s %s {sex:inmovilizado|inmovilizada} durante %d minutos.
 
+id: port.you_are_held_and_cannot_act
+en: You are held and cannot act.
+tr: Estás {sex:inmovilizado|inmovilizada} y no puedes actuar.
+
 id: port.hold_person_cast_on_s_by_s_for_d_minutes
 en: Hold Person cast on %s by %s for %d minutes.
 tr: Inmovilizar Persona: objetivo %s, lanzador %s, %d minutos.
@@ -2270,6 +2374,14 @@ tr: Tecla rápida siguiente
 id: port.climb_wall
 en: Climb Wall
 tr: Escalar pared
+
+id: port.crouch
+en: Crouch
+tr: Agacharse
+
+id: port.you_cannot_climb_while_armed
+en: You cannot climb while armed.
+tr: No puedes trepar con un arma en la mano.
 
 id: port.press_a_button_or_move_a_stick
 en: Press a button or move a stick

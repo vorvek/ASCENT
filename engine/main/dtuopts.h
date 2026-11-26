@@ -26,8 +26,17 @@ extern int Dtu_improved_physics;
 
 // Jump control: steering in the air, a jump a short time after the floor
 // is left, and a jump that a wall or the edge of a ledge does not stop, so
-// that it lands on a ledge or the top of a ladder.
+// that it lands on a ledge or the top of a ladder. In flight and in
+// levitation the jump key goes up and the crouch key goes down; the crouch
+// key at the floor ends Levitate (1.3: the jump key ends it).
 extern int Dtu_improved_jump;
+
+// Crouch (port, not in 1.3): while the crouch key (Left Ctrl) is down on
+// the floor the upper body goes down (the view too), the walk has half the
+// speed and there is no run, and the player passes under a lower ceiling.
+// The player stands up when the ceiling has the room. See physics.c,
+// dtu_crouch_frame.
+extern int Dtu_crouch;
 
 // Paths for creatures of the size of a person: no stop at the openings of
 // corridors or at corners, paths through open doors for a creature that
@@ -83,6 +92,11 @@ extern int Dtu_upscaled_textures;
 
 // Movies from the upscaled movie set when it exists. See tools/movies_hd.py.
 extern int Dtu_upscaled_movies;
+
+// Character and monster models from the improved model set when it exists
+// (<hd>/polymodels, docs/formats/pom.md). A change takes effect when the
+// next archive is loaded. -origmodels turns it off.
+extern int Dtu_improved_models;
 
 // Anisotropic filtering of the textures: 0 off, 1 on (8x). The GPU renderer
 // always uses trilinear mipmaps; this setting adds the anisotropy.

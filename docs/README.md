@@ -22,6 +22,7 @@ Build with `cmake --preset debug`, `cmake --build --preset debug --target ascent
 - [install.md](install.md): the installer, the 1.3 patch, the release build, the content packs and the content server.
 - [hd_textures.md](hd_textures.md): how the upscaled textures, interface pictures and animations are made.
 - [debug_logs.md](debug_logs.md): the session log and crash reports, for players and developers.
+- [spell_ranges.md](spell_ranges.md): the ranges of the spell missiles in 1.3 and in the port (`Dtu_fix_spell_range`).
 - [../tools/README.md](../tools/README.md): one line for each tool.
 
 ## File formats (verified against the game files)

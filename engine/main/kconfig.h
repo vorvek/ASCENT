@@ -197,6 +197,9 @@ enum {
 	// 1.3). 1.3 climbs with Activate (0x951DE). At the end, so the
 	// PadConfig of an older ascent.cfg stays valid.
 	DTU_ACT_CLIMB,
+	// the port: Crouch (Dtu_crouch, dtuopts.h), the keyboard items 62 and
+	// 63 (bytes 62 and 63 of the row, unused in 1.3), a row below the page
+	DTU_ACT_CROUCH,
 	DTU_N_ACTIONS
 };
 #define DTU_N_HOT_ACTIONS	10

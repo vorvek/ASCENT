@@ -25,9 +25,13 @@ Related documents: [../formats/egg.md](../formats/egg.md) (file layout),
 - The frame of an active creature and of the player is computed from the game time,
   not counted per game frame. The idle animation of creatures is counted per game
   frame. See "Timing". (code)
-- The interpreter data has no SUBCALL opcode. The executable walks the submodel tree
-  itself, sorts the submodels by depth and calls the Descent 1 interpreter once for
-  each submodel. (code 0x66E13, data: 0 SUBCALL opcodes in 2187 models)
+- The streams of the submodels have no SUBCALL opcode. The executable walks the
+  submodel tree itself, sorts the submodels by depth and calls the Descent 1
+  interpreter once for each submodel. (code 0x66E13, data: 0 SUBCALL opcodes in the
+  submodel streams of 2187 models) The data still holds the Descent 1 tree at offset 0
+  of array 1, with one SUBCALL for each submodel 1 to n - 1 (data: a walk from offset 0
+  of all 1203 models with more than one submodel in the archives). The sorted draw does
+  not use it. A change of the length of array 1 must move its offsets too (egg.md).
 - A weapon in a hand is not an attached object. It is part of the model. The player
   has one model for each weapon class and the game changes the model of the player
   object. (code 0x43EB2)
@@ -682,6 +686,19 @@ make them again.
   -x, y to 1.032 - y) and negates x and y of `torso_center` and `weapon_center`. Half
   heights and radii do not change. The sheet of `tools/model.py` with this change shows
   the rat on its back to frame 95, the legs drawn in.
+- A defect of the data (bugs.md D30): the legs of `ognew5.pof` and `armogre.pof` (26
+  submodels, one data in BEHOLDER and PRISON .EGG) have no faces at the cuts of the
+  knees and the ankles. `Dtu_fix_ogre_legs` (polyobj.c, on by default, off with
+  `-origobj` and `-origogrelegs`) inserts 12 TMAPPOLY records before the top level EOF
+  of submodels 3, 4, 5, 23, 24 and 25, so they draw after the other polygons of the
+  submodel. It adds the length to each SORTNORM and SUBCALL offset that jumps over the
+  place, to the submodel pointers after it and to the offsets of arrays 2 to 19. The
+  fix runs only on the data of the archives (26 submodels, array 1 of 29592 bytes, the
+  submodel pointers of the archives) and not on a model of the improved set.
+  The same kind of open cut between a submodel and its parent is in 102 other models
+  (413 pairs of open edge loops that lie on each other at rest, for example the arms of
+  `hum_ffg.pof`, the legs of `gob_ydsc.pof`). Most of them overlap at the joint and show
+  little; they have no fix.
 - Not in the port: the magic effect (flag 0x20, effect modes), the special draw 0x673AD,
   the texture pulse, the draw of the viewer (the arms of the player), the model change of
   the player.

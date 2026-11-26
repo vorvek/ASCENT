@@ -87,6 +87,7 @@ static const signed char Str_to_hit[20] = {
 // the rule of the executable.
 int Dtu_fix_creature_strength = 1;
 int Dtu_fix_item_reach = 1;		// ASCENT: dtuobj.h
+int Dtu_fix_melee_wall = 1;		// ASCENT: dtuobj.h
 
 static int str_bonus(int str)
 {
@@ -1263,7 +1264,7 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 		if (damage > 0 && attacker && (attacker->dtu.m_88 & DTU_FX_CHILL_TOUCH))
 			dtu_char_save_cause(-1,"Chill Touch",dtu_object_name(attacker));		// ASCENT: the session log
 		if (damage > 0 && attacker && (attacker->dtu.m_88 & DTU_FX_CHILL_TOUCH) &&
-			 (weapon < 0 || weapon_is_melee(weapon)) && !dtu_spell_save(player,DTU_SAVE_SPELL)) {
+			 (weapon < 0 || weapon_is_melee(weapon)) && !dtu_spell_save_from(player,DTU_SAVE_SPELL,attacker)) {
 			int c = rand() % 4 + 1;
 
 			damage += i2f(c);
@@ -1307,7 +1308,8 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 		dtu_obj_log("attack: the touch of %s casts spell %d on the player",dtu_object_name(attacker),Monster_ext[attacker->id].touch_spell);
 		// ASCENT: the counter of Hold Person is 1 (0x2A670)
 		dtu_spell_touch_counter(Monster_ext[attacker->id].touch_spell);
-		dtu_spell_cast_on(Monster_ext[attacker->id].touch_spell,player,attacker);
+		// 0x2A67B calls 0x8CFFF, the player only (no area of radius 40)
+		dtu_spell_touch(Monster_ext[attacker->id].touch_spell,player,attacker);
 	}
 
 	if (hp < F1_0)
@@ -1446,6 +1448,36 @@ static void weapon_sphere_test(object *obj)
 	seg = find_point_seg(&center,obj->segnum);
 	if (seg < 0)
 		return;
+
+	// ASCENT: Dtu_fix_melee_wall (dtuobj.h). 0x6CFF8 starts the query of
+	// the sphere in the segment of its center (find_point_seg_from), with
+	// no test between the body and the center. A center on the other side
+	// of a closed door or a thin wall hits what is there: the goblin of a
+	// PRISON cell (object 34, seg 589) hits the player in the corridor
+	// through its locked door. Corrected: no hit when a wall or a closed
+	// door is between the center of the body and the center of the sphere.
+	if (Dtu_fix_melee_wall) {
+		fq.p0 = &obj->pos;
+		fq.p1 = &center;
+		fq.startseg = obj->segnum;
+		fq.rad = 0;
+		fq.thisobjnum = objnum;
+		fq.ignore_obj_list = NULL;
+		fq.flags = 0;
+		if (find_vector_intersection(&fq,&hit) == HIT_WALL) {
+			static int log_obj = -1;
+			static fix log_time;
+
+			// one line for each object in a second
+			if (Obj_log_frames || log_obj != objnum || GameTime - log_time > F1_0 || GameTime < log_time) {
+				log_obj = objnum;
+				log_time = GameTime;
+				dtu_obj_log("attack: obj %d %s: a wall or a closed door stops the weapon, frame %d (seg %d side %d)",objnum,
+					dtu_object_name(obj),DTU_ANIM_FRAME(obj),hit.hit_side_seg,hit.hit_side);
+			}
+			return;
+		}
+	}
 
 	vm_vec_sub(&dir,&center,&test_pos);
 	vm_vec_normalize_quick(&dir);

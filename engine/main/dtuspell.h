@@ -107,8 +107,56 @@ extern int Dtu_fix_melf_acid;
 // range=20 has no reader. AD&D 2nd edition: flame jets 5 feet long in an
 // arc of 120 degrees in front of the caster, one roll of 1d3 + 2 per level
 // for each creature in it, save for half. 1 (default): the 2nd edition
-// rule. 0 (-origcombat): the executable.
+// rule. 0 (-origcombat): the executable. The cone takes the level 10 at
+// most for the damage (2e: 1d3 + 20 at most).
 extern int Dtu_fix_burning_hands;
+// ASCENT: Burning Hands (spell 4) of a creature (0x91FDC, 0x56FF6, the
+// same 6 missiles; each makes the area of radius 10 where it lands, so a
+// target near the 6 points takes up to 6 rolls of 1d3 + 2 L: the lich of
+// CLAN3 at level 11, 6 hits of 11 to 25 on the player). 1 (default): the
+// cone of Dtu_fix_burning_hands, aimed at the player, one roll for each
+// target, and the creature chooses the spell only with the player in the
+// reach of the cone. 0 (-origcombat, -origcreatureburn): the executable.
+extern int Dtu_fix_creature_burning_hands;
+// ASCENT: Color Spray (spell 6) of the player and of a creature. 1.3
+// (0x56FF6) fires 1d6 missiles, and each makes the area of the line
+// (radius 40) where it lands, so a target near the missiles gets a saving
+// throw for each one until one fails. AD&D 2e: a wedge 20 feet long from
+// the caster, one save for each creature. 1 (default): each target gets
+// the effect (and its save) of one missile of a cast at most, and only
+// within the range of Dtu_fix_spell_range (20 feet) from the caster; the
+// missiles stay. 0 (-origcombat, -origcolorspray): the executable.
+extern int Dtu_fix_color_spray;
+
+// ASCENT: the range of a spell missile. 1.3 gives each spell missile a
+// life of 30.0 seconds at the speed 100.0 (0x56FF6), so it flies 3000
+// units (1500 feet, 2 units are 1 foot: 0x6C8C8). Lightning Bolt flies 2.0
+// seconds and Melf's Acid Arrow (L/3 + 1) minutes. The range= and
+// level_range= of the lines have no reader. 1 (default): the range of the
+// AD&D 2nd edition Player's Handbook, for the player and for the
+// creatures (spell_reach in dtuspell.c, docs/spell_ranges.md); an area
+// spell takes effect where its missile ends, and a creature does not cast
+// a spell whose range does not reach the player. 0 (-origcombat): the
+// executable.
+extern int Dtu_fix_spell_range;
+// 1 if the area of the spell takes effect where its missile ends
+// (Dtu_fix_spell_range: an area spell with a range of the book)
+int dtu_spell_ends_at_range(int spell);
+
+// ASCENT: Protection From Evil (bit 23, spells 39 and 53). 1.3 (0x2AD36,
+// 0x2AD70) gives -2 to the attack roll of each creature that attacks the
+// target, and an extraplanar creature always misses; an attack on an
+// extraplanar creature ends it. The game has no alignment, so each
+// creature counts as evil. AD&D 2nd edition also gives +2 to the saving
+// throws against these attacks and blocks mental control. 1 (default):
+// also +2 to the saving throws against spells and attacks of creatures,
+// and no effect of the charm and fear spells of a creature (Confusion,
+// Fear, Hold Person, Scare, Sleep: dtu_spell_mind). 0 (-origcombat): the
+// executable.
+extern int Dtu_fix_prot_evil;
+// 1 if the spell controls the mind (the spells that Protection From Evil
+// blocks with Dtu_fix_prot_evil)
+int dtu_spell_mind(int spell);
 
 // ASCENT: Haste (spell 21) acts on each player or creature in its area
 // around the caster (0x90CEF has no test of the side), so it hastes
@@ -223,6 +271,9 @@ void dtu_spell_dispel(object *obj);
 // 0x91EC1, a creature: 0xAE3BB). An area spell has its area around the
 // target (0x90CEF).
 fix dtu_spell_cast_on(int spell, object *target, object *caster);
+// 0x2A67B: the touch spell of a creature, on the touched target only
+// (0x8CFFF, no area).
+fix dtu_spell_touch(int spell, object *target, object *caster);
 // 0x2A637: the counter of Hold Person (22, 52) is 1 before a touch spell.
 void dtu_spell_touch_counter(int spell);
 // 0x9305D: a cast of the object stops. hit 1: by a hit (the slot is used,
@@ -243,6 +294,16 @@ void dtu_spell_creature_frame(object *obj, fix dist, int active);
 #define DTU_CSC_SLOWED	0x2000		// slowed in its movement
 #define DTU_CSC_MORALE	0x4000		// a failed morale test
 void dtu_spell_creature_event(object *obj, int bits);
+// The values of the attack goal of a creature (0x12916, 0x13BF4 step 25):
+// 1 if it has a mage or a cleric level (Robot_info+0xE2, +0xE3); 1 if its
+// chosen entry is -2 (ailp+0x2C: no spell, it fights in melee reach); the
+// flag of a chosen spell (ailp+0x2D, set by 0x9231F), which the call clears.
+int dtu_spell_creature_caster(object *obj);
+int dtu_spell_creature_melee(object *obj);
+int dtu_spell_creature_take_ready(object *obj);
+// 0x10040, the spell of a negative weapon type: ailp+0x2C = -2 for an
+// active creature, else -1.
+void dtu_spell_creature_weapon_cast(object *obj, int active);
 // The spell state of a creature of a restored level (0xAE3F2): the points
 // of the type, the times of the restore
 void dtu_spell_creature_restore(object *obj);
@@ -350,6 +411,11 @@ void dtu_spell_books_to_record(ubyte *record);
 int dtu_spell_book_ref(int spell, int *list, int *index);
 // The spell of a reference of the save game, or -1.
 int dtu_spell_of_ref(int list, int index);
+// ASCENT: the spell of a reference of the record that
+// dtu_spell_books_from_record() read (index: the entry of the record list),
+// or -1. The reader skips an entry that is not a known spell, so the index
+// of the record and the index of the book can differ.
+int dtu_spell_of_record_ref(int list, int index);
 // The icon (byte 2 of a list entry), the spell level (word 6) and the name
 // of a spell, for the hot key boxes and the spell lists of the inventory
 // screen (0x329CB, 0xB7487).
@@ -393,6 +459,9 @@ int dtu_spell_area(int spell, vms_vector *pos, int segnum, object *caster, int l
 
 // The saving throw (0xAE596): 1 if the object saves.
 int dtu_spell_save(object *obj, int category);
+// ASCENT: the same against a spell or an attack of source (NULL: none);
+// Protection From Evil adds 2 against a creature (Dtu_fix_prot_evil)
+int dtu_spell_save_from(object *obj, int category, object *source);
 // ASCENT: the save number of the player for a category 0 to 4 (test).
 int dtu_spell_player_save_number(int category);
 

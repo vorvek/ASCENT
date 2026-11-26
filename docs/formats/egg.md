@@ -278,8 +278,14 @@ in memory") and checked with `tools/model.py`: the values of arrays 14 to 17 fol
 from the boxes of arrays 10, 11 and 13 for `durnan.pof`. The row width of array 18 is
 `n_models` in the code (0x67020). For all 1142 models with more than one submodel each
 row lists exactly the submodels whose parent is the row number. In a model with one
-submodel the row is not initialized. No model has a SUBCALL opcode: the executable
-walks the submodel tree with arrays 3, 12 and 18 and draws each submodel on its own.
+submodel the row is not initialized. No submodel stream (the stream at an offset of
+array 2) has a SUBCALL opcode: the executable walks the submodel tree with arrays 3, 12
+and 18 and draws each submodel on its own. The stream at offset 0 of array 1 is the
+Descent 1 tree of the model: SORTNORM records and one SUBCALL (opcode 6, u16 offset at
+byte 16 of the record) for each submodel 1 to n - 1. All 1203 models with more than one
+submodel in the archives have it. `draw_polygon_model` (0x727A5) does not draw it for
+these models (models.md), but the port checks it (`dtu_check_model_data` walks from
+offset 0).
 
 The body box of entry 0 (arrays 10 and 11) is not always the box of the drawn points of
 the rest pose. For `chair.pof` (model 231 of `PORTAL.EGG`, 230 of `THIEF.EGG`) the box

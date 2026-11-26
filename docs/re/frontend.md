@@ -786,6 +786,7 @@ Settings (on by default, each corrects a defect of the executable):
 | `Dtu_fix_market_sell_count` | dtufe_town.c | a sale adds to the stock the items the player had in the line, not the items sold (0x8564F) | the items sold |
 | `Dtu_fix_market_charges` | dtufe_town.c | a bought non-stackable item gets the count of the line; a line of count -1 (the rewards of 0x13F6A0) gives an item of count -1, which 0xB7084 never takes down | the `uses` of the table line (at least 1) |
 | `Dtu_fix_market_buy_stock` | dtufe_town.c | Accept takes the whole quantity from the line of the stock, also the items that the bag did not take (0x85458) | the items given |
+| `Dtu_market_freedom` | dtufe_town.c | no Potion of Freedom (misc 78) in the first stock (0x13EB6C), one in the goods of reward 1 (0x13F6A0) | 2 Potions of Freedom in the first stock and after the goods of each reward (a request of the user, not a defect) |
 | `Dtu_fix_escape_load_waterdeep` | dtufe.c | a save of Waterdeep loaded from the ESC menu gives the character but the game goes on in the level (0x423E1) | the player is in Waterdeep |
 
 ## 14. The words in the pictures (V)

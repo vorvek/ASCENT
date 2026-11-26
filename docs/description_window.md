@@ -109,7 +109,17 @@ takes one random number (`rand() % 22 + 6`, 0x37A6A), and dice ("1d8+1")
 where the code rolls dice. No value is shown as dice that the code does not
 roll as dice.
 
-Distances are feet: 2 units of the game are 1 foot, as in the rules wiki.
+Distances are feet: 2 units of the game are 1 foot, as in the rules wiki
+(and the fall damage of 1.3, 0x6C8C8). The range of a spell missile is the
+range of the book with `Dtu_fix_spell_range` (`spell_flight`,
+[spell_ranges.md](spell_ranges.md)).
+
+An effect line ("Gives Fly.", "Gives Free Action for 50 to 80 minutes.",
+"While worn: Levitate.") is followed by one sentence for each effect that
+says what it does (`fx_explain`): the spells that give an effect, the
+potions, the Potions of Flying and of Jumping (one spell), and a worn item
+with one or two effects (a longer list would not fit). Armor, Shield and
+Magical Vestment have the armor class lines instead.
 Times are game seconds: seconds below a minute, hours for whole hours, else
 minutes.
 

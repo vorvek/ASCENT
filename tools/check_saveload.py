@@ -12,6 +12,8 @@ loads slot 3, then loads the empty slot 4. It checks:
   mem library warning waits for a key with -hidden),
 - -memreport reports no MEM_ error and no block in use at the exit,
 - the character dump after the load is the dump before the save,
+- the hot key boxes after the load are the boxes before the save, with
+  the spell that armspell put into a box,
 - the loaded game plays at difficulty 2,
 - the load of the empty slot fails with a log line,
 - the spell slots (docs/re/spells.md): a level change does not fill them,
@@ -41,7 +43,7 @@ import tempfile
 
 SCRIPT = ("5:class=1,6:give=17.12.1,7:mission=1,10:warp=1.136,30:slots,32:gorest,34:rest,36:slots,"
           "38:armspell=12,40:fire,80:fire,90:slots,92:current=-1,100:warp=0.225,110:slots,115:save=0,"
-          "130:warp=3.376,160:slots,180:dump,190:save=3,220:load=3,340:dump,345:slots,350:load=4,400:dump")
+          "130:warp=3.376,160:slots,180:dump,182:hotkeys,190:save=3,220:load=3,340:dump,342:hotkeys,345:slots,350:load=4,400:dump")
 # current=-1 empties the hand: the dump does not show a spell in the hand.
 # The second run: the front end loads slot 0, chartest frame 30 puts the
 # player on the exit of the inn (DTU.WRP 0,1), Enter answers the question,
@@ -123,6 +125,14 @@ def main():
         if strip(before) != strip(after):
             errors.append("the dump after the load differs:\n  before: %s\n  after:  %s" %
                           ("\n          ".join(before), "\n          ".join(after)))
+        # The hot key boxes: the box of Detect Magic (armspell=12) and the
+        # other boxes are the same after the save and the load.
+        hk_before, hk_after = dump(lines, 182), dump(lines, 342)
+        if not any(re.match(r"hot key \d+: spell 12 ", ln) for ln in hk_before):
+            errors.append("no hot key box with spell 12 before the save: %s" % hk_before)
+        if hk_before != hk_after:
+            errors.append("the hot key boxes after the load differ:\n  before: %s\n  after:  %s" %
+                          ("\n          ".join(hk_before), "\n          ".join(hk_after)))
         if not any(re.match(r"dungeon level 4, difficulty 2,", ln) for ln in after):
             errors.append("the loaded game does not play at difficulty 2")
         if not any("cannot load slot 4" in ln for ln in lines):

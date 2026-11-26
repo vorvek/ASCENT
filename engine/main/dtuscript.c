@@ -156,6 +156,14 @@ int Dtu_fix_script_wait = 1;
 // data of the script as it is.
 int Dtu_fix_script_devlin = 1;
 
+// ASCENT: GABE 1.3 spells the name of Tryola Perrentine (MINE) three ways:
+// "Perrentine" in her own words (script 110, offset 1690) and in the reply
+// at 2025, "Parrantine" in the narration at 96 and "Parrentine" in the words
+// of the dwarf (script 111, offset 1749). 1 (default): the English text
+// says "Perrentine" each time (fix_names). A translation keeps its own
+// text. 0 (-origscript): the text of 1.3.
+int Dtu_fix_script_names = 1;
+
 // The anger byte (ai_local +0x00) and 0xA9418 are in dtuobj.c.
 ubyte *dtu_script_anger(object *obj);
 void dtu_script_make_hostile(object *obj);
@@ -271,7 +279,7 @@ void dtu_script_init(void)
 	if (FindArg("-origscript"))		// ASCENT: the script rules of the executable
 		Dtu_fix_script_new_char = Dtu_fix_script_abilities = Dtu_fix_script_area_seg = Dtu_fix_mirt_points = 0;
 	if (FindArg("-origscript"))
-		Dtu_fix_script_run_mode = Dtu_fix_script_wait = Dtu_fix_script_devlin = 0;
+		Dtu_fix_script_run_mode = Dtu_fix_script_wait = Dtu_fix_script_devlin = Dtu_fix_script_names = 0;
 	// 0xA6467: "gabe.rlh", the fourth letter is the language. The port
 	// has the English text.
 	Gab_rlh = dtu_load_file("GABE.RLH", &Gab_rlh_size);
@@ -1082,6 +1090,26 @@ static void expand(const char *s, char *out)
 	out[n] = 0;
 }
 
+// ASCENT: Dtu_fix_script_names. The two other spellings have the length of
+// "Perrentine", so the text is changed in a copy, letter for letter.
+static const char *fix_names(const char *s, char *buf, int size)
+{
+	static const char *wrong[] = { "Parrantine", "Parrentine" };
+	char *p;
+	int i, n;
+
+	if (!Dtu_fix_script_names || (!strstr(s, wrong[0]) && !strstr(s, wrong[1])))
+		return s;
+	n = (int) strlen(s);
+	if (n >= size)
+		return s;
+	memcpy(buf, s, n + 1);
+	for (i = 0; i < 2; i++)
+		for (p = buf; (p = strstr(p, wrong[i])) != NULL; p += 10)
+			memcpy(p, "Perrentine", 10);
+	return buf;
+}
+
 // 0xA77BE: a text operand, one string chosen at random
 static void text(sc_run *r, char *out)
 {
@@ -1103,9 +1131,13 @@ static void text(sc_run *r, char *out)
 		// ASCENT: the translation of the string (dtulang.h): the id is
 		// gab.SCRIPT.OFFSET, the offset of the string in the record
 		int k = starts[rand() % n];
-		char id[32];
+		char id[32], fixed[SC_TEXT_SIZE];
+		const char *en = (const char *) r->s + k, *t;
 		snprintf(id, sizeof(id), "gab.%d.%d", r->id & SB_SCRIPT, k);
-		expand(dtu_tr_id(id, (const char *) r->s + k), out);
+		t = dtu_tr_id(id, en);
+		if (t == en)		// no translation: the English text (Dtu_fix_script_names)
+			t = fix_names(en, fixed, sizeof(fixed));
+		expand(t, out);
 		dtu_lang_sex_text(out);		// the tokens {sex:} (the lookup resolved those of the catalog)
 	}
 }

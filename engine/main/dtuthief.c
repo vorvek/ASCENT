@@ -39,6 +39,7 @@
 #include "dtuthief.h"
 #include "args.h"
 #include "dtufile.h"		// ASCENT: dtu_log()
+#include "dtucombat.h"		// ASCENT: dtu_combat_view_state (Dtu_fix_climb_weapon)
 
 int Dtu_thief_bits = 0;
 
@@ -1068,6 +1069,31 @@ static int hand_is_weapon(void)
 	return n >= 0 && n < Dtu_n_inventory && Dtu_inventory[n].type == OBJ_WEAPON;
 }
 
+// ASCENT: the weapon in the hand at the start of a climb. 0x951DE makes the
+// roll and then refuses the climb when the item in the hand is a weapon
+// (item type 5; a spell in the hand, type 17, does not stop it), with only
+// the text 823 "You cannot get a good grip.", the text of a failed roll. A
+// player who tries again and again with a sword in the hand never climbs
+// and is not told why. Corrected (1, default): when the other tests of an
+// attempt pass (a solid wall that faces the player within 10.0, the skill
+// or the spell, no metal body armor) the weapon is put away first, as the
+// Disarm key does (0x43A5A with -3: not in the attack states 6 and 11),
+// and then the roll is made. Metal armor still stops the climb with the
+// text of 1.3 ("You cannot perform this action while wearing ..."), before
+// the hand is changed. When the weapon cannot be put away (in an attack
+// swing) the roll and the texts are those of Dtu_fix_climb_messages.
+// -origphys clears it (controls.c).
+int Dtu_fix_climb_weapon = 1;
+
+// ASCENT: the texts of a climb that the hand stops. 1.3 gives the text 823
+// "You cannot get a good grip." of a failed roll also when the roll passed
+// and the weapon in the hand stopped the climb. Corrected (1, default): the
+// weapon gives "You cannot climb while armed." and no roll; text 823 stays
+// for a failed roll. The text of metal armor is that of 1.3 ("You cannot
+// perform this action while wearing %s."), which names the armor.
+// -origphys clears it (controls.c).
+int Dtu_fix_climb_messages = 1;
+
 static int can_climb_by_skill(object *obj)
 {
 	return has_class(DTU_CLASS_THIEF) || Dtu_char.pa.climb_walls != 0 || (obj->dtu.m_88 & (DTU_FX_LEVITATE|DTU_FX_SPIDER_CLIMB));
@@ -1101,6 +1127,19 @@ void dtu_thief_climb_start(object *obj, int segnum, int side, int walls)
 	}
 	if ((armor = metal_armor()) != NULL) {
 		HUD_init_message("You cannot perform this action while wearing %s.", dtu_tr_name(armor->name));
+		dtu_char_log("climb: metal armor '%s'", armor->name);
+		return;
+	}
+	// Dtu_fix_climb_weapon: the weapon goes away before the roll
+	if (Dtu_fix_climb_weapon && hand_is_weapon() && dtu_combat_view_state() != DAS_ATTACK &&
+			dtu_combat_view_state() != DAS_ATTACK3) {
+		dtu_char_log("climb: the weapon is put away (Dtu_fix_climb_weapon)");
+		dtu_char_set_current(-1);
+	}
+	// Dtu_fix_climb_messages: the weapon that stays in the hand
+	if (Dtu_fix_climb_messages && hand_is_weapon()) {
+		HUD_init_message("You cannot climb while armed.");
+		dtu_char_log("climb: a weapon in the hand: 'You cannot climb while armed.'");
 		return;
 	}
 	if (dtu_thief_roll(4, NULL) && !hand_is_weapon()) {

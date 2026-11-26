@@ -60,7 +60,7 @@ MODELS_DIR = None    # --models; else <out>/models, then gamedata/hd/models
 sys.path.insert(0, HERE)
 import egg  # noqa: E402
 
-VERSION = 5          # bump when the processing changes; written to .method, so
+VERSION = 6          # bump when the processing changes; written to .method, so
                      # that a run makes the files of an archive again
                      # 2: wall textures use the "detail" method
                      # 3: tiling textures padded by TILE_PAD (a 3x3 tiling)
@@ -68,6 +68,7 @@ VERSION = 5          # bump when the processing changes; written to .method, so
                      #    a common static part (ANIM_VERSION)
                      # 5: the door clips keep the reference only where the
                      #    pixels are equal (anim_merge)
+                     # 6: NAME_METHOD (water) and REGION_FIX (dwf_mf01)
 CACHE_VERSION = 2    # part of the cache key of every bitmap; the key of a
                      # tiling bitmap also has TILE_PAD, so a change of the
                      # tiling padding does not redo the other bitmaps
@@ -351,9 +352,36 @@ DETAIL_SIGMA = 2.0
 FACE_DETAIL_STRENGTH = 0.15
 
 
-def sub_method(method, wall):
-    """The method for one bitmap. combo: UltraSharp for wall textures, x4plus for the rest."""
+# combo: base names (lower case) that take another method than the rule. The
+# frames of the flat water (`water`, 6 frames, the same pixels in every level
+# archive) are dithered blobs. x4plus turns the dither into foam streaks in
+# frames 0, 1, 2, 4 and 5 and smooths frame 3 into a soft picture with no
+# ripples (high frequency of the file / of the original: 1.00 0.78 0.88 0.43
+# 0.91 0.73), and the result also changes with a mirror of the input, so
+# the animation showed one soft frame. UltraSharp keeps the dither as a fine
+# grain in every frame (0.59 to 0.63, docs/hd_textures.md, "Corrections").
+NAME_METHOD = {"water": "ultrasharp"}
+
+# combo: parts of one bitmap (lower case name) that take the result of
+# another model: (method, blur sigma in output pixels, boxes x0 y0 x1 y1 in
+# source pixels). The blend has a soft edge (REGION_FEATHER output pixels)
+# and the mean color of the x4plus result in the boxes. dwf_mf01 is the
+# face of the dwarf (dwf_mfw.pof of PRISON.EGG): x4plus made the creases
+# of its left eye one curved fold, so the two eyes differ; UltraSharp keeps
+# the three creases of each eye of the original, the blur takes away its
+# grain of the dither.
+REGION_FIX = {
+    "dwf_mf01": ("ultrasharp", 1.0, ((13, 17, 25, 31), (39, 17, 52, 31))),
+}
+REGION_FEATHER = 6.0
+
+
+def sub_method(method, wall, base=None):
+    """The method for one bitmap. combo: UltraSharp for wall textures, x4plus for the rest,
+    NAME_METHOD for the base names of that table."""
     if method == "combo":
+        if base is not None and base.lower() in NAME_METHOD:
+            return NAME_METHOD[base.lower()]
         return COMBO[0] if wall else COMBO[1]
     return method
 
@@ -537,10 +565,11 @@ def smooth_alpha(opaque, tiling):
 
 
 class Job:
-    __slots__ = ("key", "w", "h", "tiling", "rgb", "opaque", "has_alpha", "result", "meth", "idx")
+    __slots__ = ("key", "w", "h", "tiling", "rgb", "opaque", "has_alpha", "result", "meth", "idx", "fix")
 
 
-def make_job(m, pal, tiling, method):
+def make_job(m, pal, tiling, method, fix=None):
+    """fix: an entry of REGION_FIX (only with the method combo) or None."""
     import numpy as np
     idx = np.frombuffer(m.pix, np.uint8).reshape(m.h, m.w)
     rgb = pal[idx]
@@ -568,6 +597,9 @@ def make_job(m, pal, tiling, method):
         # keep their files and cache entries
         h.update(b"effect|")
         h.update(effect.tobytes())
+    if fix:
+        h.update(("region|%r|%g|" % (fix, REGION_FEATHER)).encode())
+    j.fix = fix
     j.key = h.hexdigest()
     j.idx = idx
     j.result = None
@@ -604,6 +636,25 @@ def finish(j, up_rgb, method):
     return out, float(before), float(after)
 
 
+def region_fix(j, up, ups):
+    """Blend the boxes of j.fix from the result of another method into up (the padded
+    result, float 0..1)."""
+    import numpy as np
+    meth, sigma, boxes = j.fix
+    S = SCALE
+    c = pad_of(j.tiling) * S
+    other = ups.run(pad_img(j.rgb.astype(np.float32), j.tiling)[None], meth)[0]
+    if sigma > 0:
+        other = np.stack([gauss_blur(other[..., k], sigma) for k in range(3)], -1)
+    mask = np.zeros(up.shape[:2], np.float32)
+    for x0, y0, x1, y1 in boxes:
+        mask[c + y0 * S:c + y1 * S, c + x0 * S:c + x1 * S] = 1.0
+    mask = gauss_blur(mask, REGION_FEATHER)[..., None]
+    sel = mask[..., 0] > 0.5
+    other = other + (up[sel].mean(0) - other[sel].mean(0))
+    return np.clip(mask * other + (1 - mask) * up, 0.0, 1.0)
+
+
 def upscale_jobs(jobs, ups, progress=None):
     """Upscale the color of jobs in batches of equal padded size."""
     import numpy as np
@@ -619,6 +670,8 @@ def upscale_jobs(jobs, ups, progress=None):
             batch = np.stack([pad_img(j.rgb.astype(np.float32), j.tiling) for j in part])
             up = ups.run(batch, meth)
             for j, u in zip(part, up):
+                if j.fix:
+                    u = region_fix(j, u, ups)
                 j.result = finish(j, u, meth)
             done += len(part)
             if progress:
@@ -784,7 +837,7 @@ def seam_check(seams, pal, walls, outdir, args):
 
     def run(tiling, lst):
         jobs = [make_job(rolled(m, m.h // 2, m.w // 2), pal, tiling,
-                         sub_method(meth, m.base.lower() in walls)) for m, _ in lst]
+                         sub_method(meth, m.base.lower() in walls, m.base)) for m, _ in lst]
         upscale_jobs(jobs, ups)
         out = []
         for (m, up), j in zip(lst, jobs):
@@ -810,7 +863,7 @@ def seam_check(seams, pal, walls, outdir, args):
                                   np.percentile(ratio, 5), np.percentile(ratio, 95), w[4], w[0]))
     ctl = seams[:200]
     # control: files made with mirror padding, compared with the rolled mirror results
-    cjobs = [make_job(m, pal, False, sub_method(meth, m.base.lower() in walls)) for m, _ in ctl]
+    cjobs = [make_job(m, pal, False, sub_method(meth, m.base.lower() in walls, m.base)) for m, _ in ctl]
     upscale_jobs(cjobs, ups)
     cres = run(False, [(m, j.result[0]) for (m, _), j in zip(ctl, cjobs)])
     csd = np.array([x[0] for x in cres])
@@ -894,7 +947,8 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats, clip
     def job_of(m):
         wall = m.base.lower() in walls
         tiling = (m.w == 64 and m.h == 64) or wall
-        return make_job(m, pal, tiling, sub_method(args.method, wall))
+        fix = REGION_FIX.get(m.name.lower()) if args.method == "combo" else None
+        return make_job(m, pal, tiling, sub_method(args.method, wall, m.base), fix)
 
     jobs, pending, linked = {}, [], 0
     anims = {}          # base -> (jobs of all frames, final keys, {frame number: [dst]})
@@ -1147,7 +1201,8 @@ def compare(args):
         for m in sample:
             wall = m.base.lower() in walls
             tiling = (m.w == 64 and m.h == 64) or wall
-            jobs.append(make_job(m, pal, tiling, sub_method(meth, wall)))
+            jobs.append(make_job(m, pal, tiling, sub_method(meth, wall, m.base),
+                                 REGION_FIX.get(m.name.lower()) if meth == "combo" else None))
         t = time.time()
         upscale_jobs(jobs, ups)
         print("%s: %.2f s for %d bitmaps" % (meth, time.time() - t, len(jobs)))

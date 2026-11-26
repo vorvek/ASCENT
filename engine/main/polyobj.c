@@ -108,6 +108,7 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 // ASCENT: io.h (DOS) is removed.
 
 #ifdef DRIVE
@@ -136,6 +137,7 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 #endif
 
 #include "dataio.h"		// ASCENT: little endian field reads
+#include "dtuopts.h"
 #include "dtufile.h"		// ASCENT: dtu_log()
 
 polymodel Polygon_models[MAX_POLYGON_MODELS];	// = {&bot11,&bot17,&robot_s2,&robot_b2,&bot11,&bot17,&robot_s2,&robot_b2};
@@ -147,6 +149,9 @@ int Dtu_fix_model_mapper = 1;
 
 // ASCENT: D21, see polyobj.h
 int Dtu_fix_rat_die = 1;
+
+// ASCENT: D30, see polyobj.h
+int Dtu_fix_ogre_legs = 1;
 
 #define MAX_POLYGON_VECS 1000
 g3s_point robot_points[MAX_POLYGON_VECS];
@@ -1553,12 +1558,328 @@ static void fix_rat_die(polymodel *pm,const char *name)
 	}
 }
 
+// ASCENT: Dtu_fix_ogre_legs (D30, polyobj.h). The ogre model (ognew5.pof and
+// armogre.pof, one data in BEHOLDER.EGG and PRISON.EGG) was cut into
+// submodels at the knees and the ankles, and the cut faces are missing: the
+// bottom of the knee piece (3, 23), both ends of the shin (4, 24) and the
+// back of the heel (5, 25) are open. At rest the openings of two parts lie
+// on each other. When a joint turns, the openings show the inside of the
+// shin (its faces are one-sided: the view goes through it) and of the foot
+// (its faces are two-sided: the dark inner sides show). The fix closes each
+// opening with outward polygons at the end of the stream of the submodel,
+// so they draw after its other polygons. Each part is convex at its cap.
+#define OGRE_CAP_TEX_FOOT	5		// flapfoot (ogr_a06 in armogre.pof)
+#define OGRE_CAP_TEX_SHIN	6		// shintors (ogr_a07)
+#define OGRE_MAX_NODES		256
+
+typedef struct {
+	ubyte sub, tex, nv;
+	ubyte pt[4];		// point numbers of the model, outward order
+	ubyte uv[4];		// index into Ogre_cap_uv
+} ogre_cap;
+
+// u, v of the caps. 0 to 3: the foot texture at the ankle and the heel
+// (the values of points 100, 104, 105, 106 in the foot polygons). 4 to 7:
+// a small patch of the shin texture at the knee (front, -x, back, +x).
+static const int Ogre_cap_uv[8][2] = {
+	{49911,-38633}, {62039,-51426}, {49925,-65041}, {37811,-51426},
+	{11006,-41329}, {6537,-45845}, {11006,-50481}, {15492,-45845},
+};
+
+static const ogre_cap Ogre_caps[] = {
+	// right leg: knee 3, shin 4, foot 5
+	{ 3, OGRE_CAP_TEX_SHIN, 4, {86,87,88,91}, {7,4,5,6} },	// knee, bottom
+	{ 4, OGRE_CAP_TEX_FOOT, 3, {97,98,99},    {1,2,3} },		// shin, bottom
+	{ 4, OGRE_CAP_TEX_FOOT, 3, {92,97,99},    {0,1,3} },		// shin, bottom front
+	{ 4, OGRE_CAP_TEX_SHIN, 4, {96,95,94,93}, {7,6,5,4} },	// shin, top
+	{ 5, OGRE_CAP_TEX_FOOT, 3, {100,105,104}, {0,2,1} },		// foot, heel
+	{ 5, OGRE_CAP_TEX_FOOT, 3, {100,106,105}, {0,3,2} },
+	// left leg: knee 23, shin 24, foot 25
+	{ 23, OGRE_CAP_TEX_SHIN, 4, {42,43,44,47}, {7,4,5,6} },
+	{ 24, OGRE_CAP_TEX_FOOT, 3, {53,54,55},    {1,2,3} },
+	{ 24, OGRE_CAP_TEX_FOOT, 3, {48,53,55},    {0,1,3} },
+	{ 24, OGRE_CAP_TEX_SHIN, 4, {52,51,50,49}, {7,6,5,4} },
+	{ 25, OGRE_CAP_TEX_FOOT, 3, {56,61,60},    {0,2,1} },
+	{ 25, OGRE_CAP_TEX_FOOT, 3, {56,62,61},    {0,3,2} },
+};
+#define N_OGRE_CAPS	((int) (sizeof(Ogre_caps)/sizeof(Ogre_caps[0])))
+
+// The submodels with caps and their stream offsets in the archive data.
+static const int Ogre_cap_subs[6][2] = {
+	{3,8064}, {4,9516}, {5,10200}, {23,3140}, {24,4592}, {25,5276},
+};
+
+static void ogre_put16(ubyte *p,int v) { p[0] = (ubyte) v; p[1] = (ubyte) (v >> 8); }
+static void ogre_put32(ubyte *p,int v) { ogre_put16(p,v); ogre_put16(p+2,v >> 16); }
+
+// Walks the opcode stream at ofs. Adds the offset of each SORTNORM and
+// SUBCALL record to nodes (the stream at offset 0 of the archive models
+// calls the submodels with SUBCALL). *eof gets the offset of the EOF that
+// ends the stream. Returns 0 on data that the fix does not expect.
+static int ogre_walk(const ubyte *d,int size,int ofs,int depth,int *nodes,int *n_nodes,int *eof)
+{
+	int op, nv, e;
+
+	if (depth > 64)
+		return 0;
+	while (ofs >= 0 && ofs + 4 <= size) {
+		op = PTS_LE16(d+ofs);
+		nv = PTS_LE16(d+ofs+2);
+		switch (op) {
+			case 0:		// OP_EOF
+				*eof = ofs;
+				return 1;
+			case 1:		ofs += 4 + 12*nv; break;					// OP_DEFPOINTS
+			case 7:		ofs += 8 + 12*nv; break;					// OP_DEFP_START
+			case 2:		ofs += 30 + ((nv&~1)+1)*2; break;			// OP_FLATPOLY
+			case 3:		ofs += 30 + ((nv&~1)+1)*2 + 12*nv; break;	// OP_TMAPPOLY
+			case 4:		// OP_SORTNORM
+				if (ofs + 32 > size || *n_nodes >= OGRE_MAX_NODES)
+					return 0;
+				nodes[(*n_nodes)++] = ofs;
+				if (!ogre_walk(d,size,ofs + PTS_LE16(d+ofs+28),depth+1,nodes,n_nodes,&e) ||
+					!ogre_walk(d,size,ofs + PTS_LE16(d+ofs+30),depth+1,nodes,n_nodes,&e))
+					return 0;
+				ofs += 32;
+				break;
+			case 5:		ofs += 36; break;							// OP_RODBM
+			case 6:		// OP_SUBCALL
+				if (ofs + 20 > size || *n_nodes >= OGRE_MAX_NODES)
+					return 0;
+				nodes[(*n_nodes)++] = ofs;
+				if (!ogre_walk(d,size,ofs + PTS_LE16(d+ofs+16),depth+1,nodes,n_nodes,&e))
+					return 0;
+				ofs += 20;
+				break;
+			case 8:		ofs += 4; break;							// OP_GLOW
+			default:
+				return 0;
+		}
+	}
+	return 0;
+}
+
+// The point number pt of the DEFP_START record at ofs.
+static int ogre_point(const ubyte *d,int ofs,int pt,vms_vector *v)
+{
+	int nv = PTS_LE16(d+ofs+2), start = PTS_LE16(d+ofs+4);
+	const ubyte *p;
+
+	if (PTS_LE16(d+ofs) != 7 || pt < start || pt >= start + nv)
+		return 0;
+	p = d + ofs + 8 + 12*(pt - start);
+	v->x = PTS_LE32(p); v->y = PTS_LE32(p+4); v->z = PTS_LE32(p+8);
+	return 1;
+}
+
+// One TMAPPOLY record (interp.c) at out. Returns its size, 0 on an error.
+static int ogre_cap_record(const ubyte *d,int pts_ofs,const ogre_cap *c,ubyte *out)
+{
+	vms_vector v[4], n;
+	int i, size = 30 + ((c->nv&~1)+1)*2 + 12*c->nv;
+
+	for (i=0;i<c->nv;i++)
+		if (!ogre_point(d,pts_ofs,c->pt[i],&v[i]))
+			return 0;
+	vm_vec_normal(&n,&v[0],&v[1],&v[2]);
+	memset(out,0,size);
+	ogre_put16(out,3);				// OP_TMAPPOLY
+	ogre_put16(out+2,c->nv);
+	ogre_put32(out+4,v[0].x); ogre_put32(out+8,v[0].y); ogre_put32(out+12,v[0].z);
+	ogre_put32(out+16,n.x); ogre_put32(out+20,n.y); ogre_put32(out+24,n.z);
+	ogre_put16(out+28,c->tex);
+	for (i=0;i<c->nv;i++) {
+		ubyte *uvl = out + 30 + ((c->nv&~1)+1)*2 + 12*i;
+
+		ogre_put16(out+30+2*i,c->pt[i]);
+		ogre_put32(uvl,Ogre_cap_uv[c->uv[i]][0]);
+		ogre_put32(uvl+4,Ogre_cap_uv[c->uv[i]][1]);
+	}
+	return size;
+}
+
+// Called after the arrays are read and before the data is checked. Builds a
+// new data block with the caps in array 1, or leaves the model as it is if
+// it is not the ogre data of the archives.
+static void fix_ogre_legs(polymodel *pm,const char *name)
+{
+	int nodes[OGRE_MAX_NODES], scratch[OGRE_MAX_NODES], ptrs[MAX_POLYMODEL_SUBMODELS];
+	int n_nodes, n_scratch, i, j, k, s, eof, add, size, rest, len;
+	ubyte *d, *blk;
+
+	if ((stricmp(name,"ognew5.pof") && stricmp(name,"armogre.pof")) || pm->dtu_improved ||
+		pm->n_models != 26 || pm->model_data_size != 29592 || pm->dtu_section_ofs[1] != 0)
+		return;
+	for (i=0;i<6;i++)
+		if (pm->submodel_ptrs[Ogre_cap_subs[i][0]] != Ogre_cap_subs[i][1])
+			return;
+
+	add = 0;
+	for (i=0;i<N_OGRE_CAPS;i++)
+		add += 30 + ((Ogre_caps[i].nv&~1)+1)*2 + 12*Ogre_caps[i].nv;
+	size = pm->model_data_size;
+	rest = pm->dtu_block_size - size;
+	blk = (ubyte *) malloc(pm->dtu_block_size + add);
+	if (blk == NULL)
+		return;
+	d = blk;
+	memcpy(d,pm->dtu_block,size);
+	memcpy(ptrs,pm->submodel_ptrs,sizeof(ptrs));
+
+	// One submodel at a time: the caps go before the EOF of its top level
+	// stream. Each SORTNORM offset that jumps over that place grows.
+	for (i=0;i<6;i++) {
+		ubyte rec[4*88];		// the records of this submodel
+		int n_rec = 0;
+
+		s = Ogre_cap_subs[i][0];
+		n_nodes = 0;
+		for (j=-1;j<pm->n_models;j++) {
+			n_scratch = 0;
+			if (!ogre_walk(d,size,j < 0 ? 0 : pm->submodel_ptrs[j],0,scratch,&n_scratch,&eof))
+				goto fail;
+			for (k=0;k<n_scratch;k++) {		// each record once
+				int m;
+
+				for (m=0;m<n_nodes && nodes[m] != scratch[k];m++)
+					;
+				if (m == n_nodes) {
+					if (n_nodes >= OGRE_MAX_NODES)
+						goto fail;
+					nodes[n_nodes++] = scratch[k];
+				}
+			}
+		}
+		n_scratch = 0;
+		if (!ogre_walk(d,size,pm->submodel_ptrs[s],0,scratch,&n_scratch,&eof))
+			goto fail;
+		for (k=0;k<N_OGRE_CAPS;k++)
+			if (Ogre_caps[k].sub == s) {
+				if (n_rec + 88 > (int) sizeof(rec) || (len = ogre_cap_record(d,pm->submodel_ptrs[s],&Ogre_caps[k],rec+n_rec)) == 0)
+					goto fail;
+				n_rec += len;
+			}
+		for (j=0;j<n_nodes;j++) {
+			int q = nodes[j], sortnorm = PTS_LE16(d+q) == 4;
+
+			for (k=0;k<(sortnorm ? 2 : 1);k++) {
+				int f = sortnorm ? 28 + 2*k : 16, off = PTS_LE16(d+q+f);
+
+				if (q < eof && q + off >= eof) {
+					if (off + n_rec > 0xFFFF)
+						goto fail;
+					ogre_put16(d+q+f,off + n_rec);
+				}
+			}
+		}
+		memmove(d + eof + n_rec,d + eof,size - eof);
+		memcpy(d + eof,rec,n_rec);
+		size += n_rec;
+		for (j=0;j<pm->n_models;j++)
+			if (j != s && pm->submodel_ptrs[j] >= eof)
+				pm->submodel_ptrs[j] += n_rec;
+	}
+
+	// array 1 grew by add bytes; the other arrays follow it
+	memcpy(d + size,pm->dtu_block + pm->model_data_size,rest);
+	for (i=2;i<DTU_MODEL_SECTIONS;i++)
+		if (pm->dtu_section_ofs[i] >= 0)
+			pm->dtu_section_ofs[i] += add;
+	for (i=0;i<pm->n_models;i++)
+		ogre_put32(d + pm->dtu_section_ofs[2] + 4*i,pm->submodel_ptrs[i]);
+	pm->dtu_section_size[1] = size;
+	pm->model_data_size = size;
+	pm->dtu_block_size = size + rest;
+	free(pm->dtu_block);
+	pm->dtu_block = blk;
+	pm->model_data = blk;
+	return;
+
+fail:
+	// the archive data did not walk as expected: keep the model as it is
+	memcpy(pm->submodel_ptrs,ptrs,sizeof(ptrs));
+	free(blk);
+	dtu_log( "Model %s: the leg fix does not fit the data\n", name );
+}
+
+// ASCENT: the improved model set (docs/formats/pom.md). A POM file holds new
+// interpreter data and new submodel pointers for one model of an archive. The
+// joints, the animation and the boxes of the model stay those of the archive.
+
+static uint pom_crc32(const ubyte *p,int n)
+{
+	uint c = 0xFFFFFFFFu;
+	int k;
+
+	while (n-- > 0) {
+		c ^= *p++;
+		for (k=0;k<8;k++)
+			c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1)));
+	}
+	return ~c;
+}
+
+#define POM_HEADER_SIZE 20
+#define POM_MAX_DATA	(4*1024*1024)
+
+// Returns a new data block for the model, with the arrays 1 and 2 of the POM
+// file and the other arrays of the archive, or NULL if there is no file for
+// this model. *data_size gets the new size of array 1 and *new_avail the size
+// of the block.
+static ubyte *pom_load(const ubyte *header,const ubyte *block,int block_avail,int n,int old_size,int *data_size,int *new_avail)
+{
+	char name[16], path[600];
+	const char *hd;
+	const ubyte *q;
+	ubyte head[POM_HEADER_SIZE], *out;
+	FILE *f;
+	uint crc;
+	int i, size, rest;
+
+	if (!DTU_GFX(Dtu_improved_models) || FindArg("-origmodels") || (hd = dtu_hd_dir()) == NULL)
+		return NULL;
+	if (old_size + 4*n > block_avail)
+		return NULL;
+
+	for (i=0;i<12 && header[0x3D+i] && header[0x3D+i] != '.';i++)
+		name[i] = (char) tolower(header[0x3D+i]);
+	name[i] = 0;
+	crc = pom_crc32(block,old_size + 4*n);
+	snprintf(path,sizeof(path),"%s/polymodels/%s.%08x.pom",hd,name,crc);
+
+	if ((f = fopen(path,"rb")) == NULL)
+		return NULL;
+	out = NULL;
+	if (fread(head,1,POM_HEADER_SIZE,f) == POM_HEADER_SIZE && memcmp(head,"APOM",4) == 0) {
+		q = head+4;
+		if (dio_get_int(&q) == 1 && (uint) dio_get_int(&q) == crc && dio_get_int(&q) == n) {
+			size = dio_get_int(&q);
+			rest = block_avail - (old_size + 4*n);
+			if (size >= 2 && size <= POM_MAX_DATA && (out = (ubyte *) malloc(size + 4*n + rest)) != NULL) {
+				if (fread(out,1,size + 4*n,f) == (size_t) (size + 4*n)) {
+					memcpy(out + size + 4*n,block + old_size + 4*n,rest);
+					*data_size = size;
+					*new_avail = size + 4*n + rest;
+				} else {
+					free(out);
+					out = NULL;
+				}
+			}
+		}
+	}
+	fclose(f);
+	if (out == NULL)
+		dtu_log( "Improved model file <%s> is not valid\n", path );
+	return out;
+}
+
 int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_avail)
 {
 	polymodel *pm;
 	const ubyte *p;
 	int n, F, flags, i, ofs, highest, n_ops;
 	int size[DTU_MODEL_SECTIONS];
+	ubyte *pom = NULL;
 
 	if (N_polygon_models >= MAX_POLYGON_MODELS) {
 		dtu_log( "Too many polygon models (%d)\n", MAX_POLYGON_MODELS );
@@ -1608,22 +1929,35 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 	size[18] = n*(n+1);
 	size[19] = n;
 
+	// A character model can have a file in the improved model set. It
+	// replaces the arrays 1 and 2.
+	ofs = 0;
+	for (i=1;i<DTU_MODEL_SECTIONS;i++)
+		ofs += size[i];
+	if (F > 0 && ofs <= block_avail && (pom = pom_load(header,block,ofs,n,size[1],&pm->model_data_size,&block_avail)) != NULL) {
+		block = pom;
+		size[1] = pm->model_data_size;
+	}
+
 	ofs = 0;
 	for (i=1;i<DTU_MODEL_SECTIONS;i++) {
 		pm->dtu_section_size[i] = size[i];
 		pm->dtu_section_ofs[i] = size[i] ? ofs : -1;
 		ofs += size[i];
 		if (ofs > block_avail || ofs < 0)
-			return -1;
+			{ if (pom) free(pom); return -1; }
 	}
 	pm->dtu_section_ofs[0] = -1;
 
 	pm->dtu_block_size = ofs;
 	pm->dtu_block = (ubyte *) malloc(ofs);
 	if (pm->dtu_block == NULL)
-		return -1;
+		{ if (pom) free(pom); return -1; }
 	memcpy(pm->dtu_block,block,ofs);
 	memcpy(pm->dtu_header,header,DTU_MODEL_HEADER_SIZE);
+	pm->dtu_improved = pom != NULL;
+	if (pom) free(pom);
+	pom = NULL;
 	pm->model_data = pm->dtu_block;
 
 	p = pm->dtu_block + pm->dtu_section_ofs[2];
@@ -1636,6 +1970,14 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 	for (i=0;i<n;i++) dio_get_vector(&p,&pm->submodel_mins[i]);
 	for (i=0;i<n;i++) dio_get_vector(&p,&pm->submodel_maxs[i]);
 
+	if (Dtu_fix_ogre_legs) {
+		char name[13];
+
+		memcpy(name,header+0x3D,12);
+		name[12] = 0;
+		fix_ogre_legs(pm,name);
+	}
+
 	// Check the opcode stream. The data is not changed: g3_init_polygon_model
 	// is not called, because the flat polygon colors in the archive are
 	// already palette indexes. (Guess from Descent 1, which wrote its models
@@ -1646,14 +1988,14 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 		free(pm->dtu_block);
 		pm->dtu_block = NULL;
 		pm->model_data = NULL;
-		return -1;
+		{ if (pom) free(pom); return -1; }
 	}
 	for (i=0;i<n;i++)
 		if (pm->submodel_ptrs[i] < 0 || pm->submodel_ptrs[i] >= pm->model_data_size) {
 			free(pm->dtu_block);
 			pm->dtu_block = NULL;
 			pm->model_data = NULL;
-			return -1;
+			{ if (pom) free(pom); return -1; }
 		}
 	pm->dtu_textures_used = highest+1;
 
@@ -1661,7 +2003,7 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 		free(pm->dtu_block);
 		pm->dtu_block = NULL;
 		pm->model_data = NULL;
-		return -1;
+		{ if (pom) free(pom); return -1; }
 	}
 
 	memcpy(Pof_names[N_polygon_models],header+0x3D,12);

@@ -54,6 +54,7 @@
 #include "dtudesc.h"		// ASCENT: the test commands of the description window
 #include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up, the session log lines
 #include "dtufe.h"		// ASCENT: the class mask of the front end (Dtu_fix_level_thief)
+#include "dtuhold.h"		// ASCENT: Dtu_fix_player_hold
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -115,6 +116,11 @@ int Dtu_fix_endless_stack = 1;
 // follow the last character created in this run (none: no points). 1
 // (default): the classes of the character. -origchar clears it.
 int Dtu_fix_level_thief = 1;
+// ASCENT: dtuchar.h. 0x43A5A refuses the box that was chosen last
+// (0x13AD15, 0x43D32), and a click that puts a new entry into that box
+// (0x304E1 to 0x30506 in 0x2FB10) leaves 0x13AD15 as it was. -origchar
+// clears it.
+int Dtu_fix_hot_key_refresh = 1;
 int Dtu_fix_potion_frame = 1;
 int Dtu_fix_luck_coin = 1;
 int Dtu_fix_speed_items = 1;
@@ -263,7 +269,7 @@ static void read_options(void)
 		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names =
 			Dtu_fix_thac0_row = Dtu_fix_new_thac0 = 0;
 	if (FindArg("-origchar"))
-		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = 0;
+		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = Dtu_fix_hot_key_refresh = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
 			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_armoring_cap = Dtu_fix_ring_magic_armor =
@@ -1327,6 +1333,8 @@ int dtu_char_equip(int index, int slot)
 
 	if (!entry_data(index, &d) || !(d.wear_mask & slot_wear_bit(slot)))
 		return 0;
+	if (dtu_hold_refuse())		// ASCENT: Dtu_fix_player_hold
+		return 0;
 	if (d.class_mask && !(d.class_mask & class_use_bits())) {
 		HUD_init_message("%s", game_text(Dtu_inventory[index].type == OBJ_ARMOR ? 828 : 825, "You cannot use this object."));
 		return 0;
@@ -1520,7 +1528,8 @@ static int weapon_flag(int n, char *flag)
 // - a box whose entry 0x35863 does not find: sound 3000 (0x43B7D);
 // - arrows without the bow or bolts without the crossbow: "You need a %s to
 //   fire %ss" and sound 3000 (0x43B85 to 0x43CB4);
-// - the box that was chosen last (0x13AD15): sound 3000 (0x43D32).
+// - the box that was chosen last (0x13AD15): sound 3000 (0x43D32). With
+//   Dtu_fix_hot_key_refresh only while the box holds the hand.
 void dtu_char_press_hot_key(int key)
 {
 	int s = dtu_combat_view_state(), n;
@@ -1528,6 +1537,11 @@ void dtu_char_press_hot_key(int key)
 	if (key < 0 || key >= DTU_N_HOT_KEYS)
 		return;
 	if (s == DAS_ATTACK || s == DAS_ATTACK3)
+		return;
+	// ASCENT: Dtu_fix_player_hold: the hand does not change, but it takes
+	// the Potion of Freedom of a box
+	n = dtu_char_hot_key_item(key);
+	if (dtu_hold_refuse_item(n >= 0 ? Dtu_inventory[n].type : -1, n >= 0 ? Dtu_inventory[n].id : -1))
 		return;
 	if (dtu_combat_attack_pending()) {
 		refuse(key, "an attack or a cast waits");
@@ -1556,7 +1570,10 @@ void dtu_char_press_hot_key(int key)
 			return;
 		}
 	}
-	if (key == Last_hot_key) {
+	// ASCENT: Dtu_fix_hot_key_refresh: the box that was chosen last is
+	// refused only while its item or spell is in the hand. A box that got
+	// another entry (a click, the market, a shift of the list) arms it.
+	if (key == Last_hot_key && (!Dtu_fix_hot_key_refresh || dtu_char_hot_key_in_hand(key))) {
 		refuse(key, "the box that was chosen last");
 		return;
 	}
@@ -2319,6 +2336,7 @@ static int use_misc(dtu_inv_item *e)
 			break;
 		case 0x4E:		// Potion of Freedom: Free Action for 50 to 80 rounds
 			effect_on_player(u->fx, use_time(u));
+			dtu_hold_free_player();		// ASCENT: Dtu_fix_player_hold: a hold ends
 			HUD_init_message("You are immune to paralysis for awhile.");
 			break;
 		case 0x4F:		// Potion of Healing: 4 to 10 hit points
@@ -2460,6 +2478,10 @@ int dtu_char_use(int index)
 		return 0;
 	e = &Dtu_inventory[index];
 	if (Dtu_player_dead)
+		return 0;
+	// ASCENT: Dtu_fix_player_hold: no potion, scroll or other item while
+	// held (1.3 has no test: 0x37A6A), but the Potion of Freedom
+	if (dtu_hold_refuse_item(e->type, e->id))
 		return 0;
 
 	dtu_char_log("use: entry %d type %d id %d '%s' count %d", index, e->type, e->id, e->name, e->count);
@@ -3451,7 +3473,7 @@ int dtu_char_load_save(char *filename)
 {
 	FILE *f;
 	ubyte *buf, *p;
-	int size, n, i, spell, map[128];
+	int size, n, i, spell, list, index, map[128];
 
 	f = fopen(filename, "rb");
 	if (!f)
@@ -3508,10 +3530,13 @@ int dtu_char_load_save(char *filename)
 
 		load_ref(&Dtu_char.hot_key[i], h, map, n);
 		// A box with a spell: list 1 (mage) or 2 (cleric) and the index in
-		// that list (0x35863)
-		if (dtu_spell_of_ref(h[0], (byte) h[1]) >= 0) {
-			Dtu_char.hot_key[i].list = h[0];
-			Dtu_char.hot_key[i].n = (byte) h[1];
+		// that list (0x35863). ASCENT: the index of the record becomes the
+		// index of the spell in the book; a spell that no book has leaves
+		// only this box empty.
+		spell = dtu_spell_of_record_ref(h[0], (byte) h[1]);
+		if (spell >= 0 && dtu_spell_book_ref(spell, &list, &index)) {
+			Dtu_char.hot_key[i].list = (ubyte) list;
+			Dtu_char.hot_key[i].n = (byte) index;
 		}
 	}
 	for (i = 0; i < 10; i++)
@@ -3519,7 +3544,7 @@ int dtu_char_load_save(char *filename)
 	load_ref(&Dtu_char.slot[DTU_SLOT_BOW], p + DTU_P_BOW, map, n);
 	load_ref(&Dtu_char.slot[DTU_SLOT_CROSSBOW], p + DTU_P_CROSSBOW, map, n);
 	// A spell in the hand (list 1 or 2)
-	spell = dtu_spell_of_ref(p[DTU_P_CURRENT], (byte) p[DTU_P_CURRENT + 1]);
+	spell = dtu_spell_of_record_ref(p[DTU_P_CURRENT], (byte) p[DTU_P_CURRENT + 1]);
 	if (spell >= 0)
 		dtu_spell_select(spell);
 	free(buf);
@@ -3727,7 +3752,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // The test script of the option -chartest. The text is a list of
 // "frame:command=value" with commas between. Commands: damage=N,
 // heal=N, use=TYPE.ID, usecur, equip=TYPE.ID, unequip=SLOT, drop=TYPE.ID,
-// current=TYPE.ID, hotkey=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
+// current=TYPE.ID, hotkey=KEY, presshot=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
 // spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
@@ -3736,7 +3761,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // gorest (puts the player into the first rest place of the level), mode=N,
 // gold=N, goseg=N (the center of segment N),
 // priestcheck (the checks of the priest spells, dtu_spell_priest_check),
-// dump, rules (the race and class test, rules_test()).
+// dump, hotkeys (the ten boxes), rules (the race and class test, rules_test()).
 
 static void dump_character(void)
 {
@@ -3762,6 +3787,24 @@ static void dump_character(void)
 		dtu_char_log("  entry %d: type %d id %d '%s' count %d%s%s", i, Dtu_inventory[i].type, Dtu_inventory[i].id,
 			Dtu_inventory[i].name, Dtu_inventory[i].count, Dtu_char.current.n == i ? " (in the hand)" : "",
 			dtu_char_slot_of(i) >= 0 ? " (worn)" : "");
+}
+
+// ASCENT: the ten hot key boxes, for the test of a save and a load
+static void dump_hot_keys(void)
+{
+	int i;
+
+	for (i = 0; i < DTU_N_HOT_KEYS; i++) {
+		int spell = dtu_char_hot_key_spell(i), n = dtu_char_hot_key_item(i);
+		char *hand = dtu_char_hot_key_in_hand(i) ? " (in the hand)" : "";
+
+		if (spell >= 0)
+			dtu_char_log("  hot key %d: spell %d '%s'%s", i, spell, dtu_spell_name(spell), hand);
+		else if (n >= 0)
+			dtu_char_log("  hot key %d: entry %d type %d id %d%s", i, n, Dtu_inventory[n].type, Dtu_inventory[n].id, hand);
+		else
+			dtu_char_log("  hot key %d: empty", i);
+	}
 }
 
 // The test "rules": every race and class combination of the character
@@ -3988,6 +4031,7 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "drop"))		dtu_char_drop(index);
 	else if (!strcmp(cmd, "current"))	dtu_char_set_current(index);
 	else if (!strcmp(cmd, "hotkey"))		dtu_char_select_hot_key(a);
+	else if (!strcmp(cmd, "presshot"))	dtu_char_press_hot_key(a);		// ASCENT: test: the key 1 to 0 with its tests (0x43A5A)
 	else if (!strcmp(cmd, "give")) {
 		int c = 1;
 		sscanf(value ? value : "", "%d.%d.%d", &a, &b, &c);
@@ -4328,11 +4372,12 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "mode"))		dtu_display_select_mode(a);
 	else if (!strcmp(cmd, "dump"))		dump_character();
+	else if (!strcmp(cmd, "hotkeys"))	dump_hot_keys();		// ASCENT: test of the boxes (check_saveload.py)
 	else if (!strcmp(cmd, "rules"))		rules_test();		// ASCENT: test, docs/audit/character.md
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);		// test: 0x8BA3A (script statement 9F)
 	else
 		dtu_char_log("script: unknown command");
-	if (strcmp(cmd, "dump"))
+	if (strcmp(cmd, "dump") && strcmp(cmd, "hotkeys"))
 		dtu_char_log("  hit points %d of %d, armor class %d, %d entries", dtu_char_hit_points(), dtu_char_max_hit_points(),
 			dtu_char_armor_class(), Dtu_n_inventory);
 }

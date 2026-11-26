@@ -225,6 +225,9 @@ extern int Dtu_fix_market_charisma;
 extern int Dtu_fix_market_sell_count;
 extern int Dtu_fix_market_charges;
 extern int Dtu_fix_market_buy_stock;
+// ASCENT: the Potions of Freedom of the first stock and of each reward
+// (dtufe_town.c). 0 with -origfe.
+extern int Dtu_market_freedom;
 
 //------------------------------------------------------------------------
 // dtufe.c

@@ -64,6 +64,10 @@ void dtu_thief_frame(void);
 // The use action on a side that is no door (0x951DE): the climb. walls 0:
 // a ladder only (Activate with Dtu_fix_climb_key, kconfig.h).
 void dtu_thief_climb_start(object *obj, int segnum, int side, int walls);
+// ASCENT: the weapon in the hand at a climb (dtuthief.c). -origphys clears it.
+extern int Dtu_fix_climb_weapon;
+// ASCENT: the texts of a climb that the hand stops (dtuthief.c). -origphys clears it.
+extern int Dtu_fix_climb_messages;
 // ASCENT: the Climb Wall key (port): the use ray and the climb of 0x951DE
 void dtu_thief_climb_key(object *obj);
 // The climb in the movement of the player (pcons.c 0x9EBEB with 10.0):

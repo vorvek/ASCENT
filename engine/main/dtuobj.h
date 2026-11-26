@@ -280,6 +280,14 @@ extern int Dtu_fix_break_spread;
 extern int Dtu_fix_noise_walls;
 extern int Dtu_fix_alert_last;
 
+// ASCENT: the doors that a creature opens (0x1320F, 0x132AA, 0x25CAA, see
+// dtuobj_ai.c). Original: only the wall on the side of the creature needs
+// no key and no lock, so a prisoner opens a cell that is locked on the
+// side of the corridor. Corrected: both walls of the door. -origobj and
+// -origdoorpair clear it.
+extern int Dtu_fix_door_pair;
+int dtu_creature_door_unlocked(object *obj,int segnum,int side);
+
 // ASCENT: the strength bonus of a creature (0x2A789 from 0x2ACA7). 1: the
 // plain bonus. 0 (-origcombat): with the 18/xx part when the player is a
 // fighter, as 1.3.
@@ -593,6 +601,12 @@ int dtu_create_item_size(int type, int id, int count, int segnum, vms_vector *po
 // touches an item on the floor at any height of the capsule (fvi.c). The
 // sphere about the center of the player missed small items on the floor.
 extern int Dtu_fix_item_reach;
+// ASCENT: Dtu_fix_melee_wall (1: the default, 0 with -origcombat or
+// -origmeleewall). The weapon test (0x6CFF8) starts in the segment of the
+// center of the weapon sphere, so a swing hits through a closed door or a
+// thin wall. Corrected: no hit of a creature or of the player when a wall
+// or a closed door is between the body and the weapon (dtuobj_combat.c).
+extern int Dtu_fix_melee_wall;
 
 // 0x9493A: the floor of the segment opened. Its objects fall.
 void dtu_drop_objects_in_segment(int segnum);
@@ -617,6 +631,21 @@ extern int Dtu_fix_lava;
 // creature that falls through an opened floor stops in the air. Corrected:
 // it stays active while its feet are 1.0 or more above the floor.
 extern int Dtu_fix_fall_active;
+// A caster (a mage or cleric level) that chose no spell (ailp+0x2C = -2)
+// fights in melee reach (0x12916, step 25 point 4 of 0x13BF4). Original:
+// after its attack both states are RECO, and that choice (0x15A2A) tests
+// only the attack type, so the caster stands until a hit or a spell makes
+// it choose again. Corrected: the RECO choice also tests -2, and the
+// caster attacks again in reach. -origobj and -origcastermelee clear it.
+extern int Dtu_fix_caster_melee;
+// The cast of the spell that a creature chose (0x1490B). Original: the AI
+// step of the spells runs only while the condition word +0x15E is not 0
+// (0x14948), and the choice clears the bits of the chosen entry (0x92F97),
+// so the spell often waits after its cast time until a hit or an alert
+// sets a new bit (against a player who does not attack: never). Corrected:
+// a chosen spell is cast at its cast time; the choice still needs a bit.
+// -origobj and -origcastercast clear it.
+extern int Dtu_fix_caster_cast;
 // The end of the fall of a creature (0x6C662). Original: the damage of the
 // fall (0x6C8C8) comes when the creature is in the floor or hits it in its
 // move; a frame that ends less than 1.0 above the floor ends the fall with

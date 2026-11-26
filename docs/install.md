@@ -414,11 +414,14 @@ files keep their upper case names: the game finds them with any case.
 | `movies` | `hd/*.m1v` | 5 | 5 | 485,625,672 bytes |
 | `lang_es` (version 4) | `gamedata/lang/es.catalog` and `*.es.srt` as `hd/lang/...`, and the pictures of the language `hd/lang/es/` (`tools/ui_lang.py`) (only when named: `content_pack.py lang_es`; the catalog must pass `lang_extract.py check`) | 46 | 45 | 3,502,119 bytes |
 | `music` | `hd/music`: the replacement music `STARTPUB.ogg` (`engine/main/dtumusic.c`), `README.txt` and the notes `STARTPUB.txt` of `tools/music_replace.py` (only when named: `content_pack.py music`; see below) | 3 | 3 | 2,332,194 bytes |
+| `models` | `hd/polymodels`: the improved character and monster models `*.pom` (`tools/model_zoo.py build`, [formats/pom.md](formats/pom.md)) (only when named: `content_pack.py models`) | 851 | 103 | about 0.8 MB |
 
 The language packs hold the Spanish text of the game files, the subtitles and the
 interface pictures with Spanish words (`docs/formats/lang.md`); they are made from the translations that
 `tools/lang_extract.py merge` writes. The translation of the text of the program is
 part of the program.
+
+The pack `models` holds the cleaned character and monster models. The Windows setup program (task `models`) and `setup.sh` (`--models`) offer it, checked by default because it is small. The game uses the files with the GPU renderer and the setting "Improved models".
 
 The pack `music` holds the replacement music that the setting "Streaming safe music"
 (`SafeMusic` in `ascent.cfg`, off by default) plays in place of the original tracks.
