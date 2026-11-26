@@ -717,6 +717,23 @@ void dtu_creature_physics_sim(object *obj)
 		// the floor) cannot enter a corridor that its body fits in.
 		if (imp)
 			Fvi_dtu_rad2 = half_height*2/3;
+		// Dtu_fix_tall_body: a body that is higher than the place where it
+		// stands (an ogre is 23.0 high, the corridors of CRYPTS are 20.0
+		// high) tests the top side at the room that it has, less 0.5. A top
+		// side that goes down by 0.05 in 20.0 stopped the body. A top side
+		// that is lower by more than 0.5 stops it as before.
+		if (imp && Dtu_fix_tall_body && !is_flying(obj)) {
+			side *top = &Segments[obj->segnum].sides[WTOP];
+			vms_vector tc;
+			fix room;
+
+			compute_center_point_on_side(&tc,&Segments[obj->segnum],WTOP);
+			room = vm_dist_to_plane(&obj->pos,&top->normals[0],&tc) - F1_0/2;
+			if (room < 0)
+				room = 0;
+			if (room < half_height)
+				Fvi_dtu_rad2 = room*2/3;
+		}
 		fate = find_vector_intersection(&fq,&hit);
 		Fvi_dtu_body = 0;
 

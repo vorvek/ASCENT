@@ -2123,7 +2123,9 @@ void dtu_do_ai_frame(object *obj)
 	// 0x1498B: a creature that is far away is not processed on each frame.
 	// ASCENT: a creature on a path of its script is (Dtu_fix_script_walk),
 	// else it walks only in the frames of the AI.
-	if (ail->awareness < 3 && ail->script_walk != 1) {
+	// ASCENT: Dtu_fix_far_chase (dtuobj.h): also a hostile creature that is
+	// active (it chases the player) is.
+	if (ail->awareness < 3 && ail->script_walk != 1 && !(Dtu_fix_far_chase && ail->activity == 2 && is_hostile(obj))) {
 		if (dist > i2f(150) && ail->time_since_processed <= F1_0)
 			return;
 		if (dist > i2f(100) && ail->time_since_processed <= F1_0/2)

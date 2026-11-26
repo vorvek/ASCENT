@@ -81,6 +81,8 @@
 int Dtu_fix_idle_anim = 1;
 int Dtu_fix_ai_ticks = 1;
 int Dtu_fix_monster_speed = 1;		// ASCENT: the speeds of the ogres and the trolls (dtuobj.h)
+int Dtu_fix_tall_body = 1;			// ASCENT: a body higher than its corridor walks in it (dtuobj.h)
+int Dtu_fix_far_chase = 1;			// ASCENT: a creature that chases from far away moves on each frame (dtuobj.h)
 int Dtu_fix_chase_run = 1;			// ASCENT: a creature runs on its path to the player (dtuobj.h)
 int Dtu_fix_creature_move = 1;
 int Dtu_creatures_attack = 1;
@@ -1028,7 +1030,7 @@ void dtu_objects_init(void)
 			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = Dtu_fix_ogre_legs = Dtu_fix_npc_walk = Dtu_fix_npc_body =
 			Dtu_fix_lava = Dtu_fix_fall_active = Dtu_fix_fall_land = Dtu_fix_door_pair = 0;
 	if (FindArg("-origobj"))
-		Dtu_fix_caster_melee = Dtu_fix_caster_cast = Dtu_fix_caster_idle = Dtu_fix_monster_speed = Dtu_fix_chase_run = 0;
+		Dtu_fix_caster_melee = Dtu_fix_caster_cast = Dtu_fix_caster_idle = Dtu_fix_monster_speed = Dtu_fix_chase_run = Dtu_fix_tall_body = Dtu_fix_far_chase = 0;
 	if (FindArg("-origdoorpair"))
 		Dtu_fix_door_pair = 0;
 	if (FindArg("-origcastermelee"))
@@ -1041,6 +1043,10 @@ void dtu_objects_init(void)
 		Dtu_fix_monster_speed = 0;
 	if (FindArg("-origchaserun"))
 		Dtu_fix_chase_run = 0;
+	if (FindArg("-origtallbody"))
+		Dtu_fix_tall_body = 0;
+	if (FindArg("-origfarchase"))
+		Dtu_fix_far_chase = 0;
 	if (FindArg("-orignpcwalk"))
 		Dtu_fix_npc_walk = 0;
 	if (FindArg("-origogrelegs"))

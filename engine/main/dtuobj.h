@@ -674,6 +674,24 @@ extern int Dtu_fix_monster_speed;
 // path to the player (round a corner, to a door) at its walk speed.
 // Corrected: it runs on that path too. -origobj and -origchaserun clear it.
 extern int Dtu_fix_chase_run;
+// The top side in the move of a creature, with Dtu_improved_pathfinding
+// (dtu_creature_physics_sim()). The move tests the top side at the top of
+// the body. An ogre is 23.0 high and stands in rooms that are 20.0 high
+// (CRYPTS, segments 73 to 80), so its body is in the top side from the
+// start, and a top side that goes down by 0.05 in 20.0 stopped it: the two
+// ogres of CRYPTS did not come to the door of segment 76. Corrected: a body
+// that is higher than the place where it stands tests the top side at the
+// room that it has, less 0.5. -origobj and -origtallbody clear it.
+extern int Dtu_fix_tall_body;
+// The AI of a creature that is far from the player (0x1498B). Original: a
+// creature with an awareness below 3 that is farther than 100.0 is
+// processed each half second, and farther than 150.0 each second. A
+// creature gets its move only in a processed frame and loses half of its
+// velocity on each reference frame, so a creature that chases the player
+// from farther than 100.0 moves at about 1 unit in a second. Corrected: a
+// hostile creature that is active is processed on each frame.
+// -origobj and -origfarchase clear it.
+extern int Dtu_fix_far_chase;
 // The end of the fall of a creature (0x6C662). Original: the damage of the
 // fall (0x6C8C8) comes when the creature is in the floor or hits it in its
 // move; a frame that ends less than 1.0 above the floor ends the fall with
