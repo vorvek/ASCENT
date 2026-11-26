@@ -108,6 +108,21 @@ extern int Dtu_anisotropic;
 // pictures with no light do not change.
 extern int Dtu_ambient_occlusion;
 
+// Improved lighting: 0 off, 1 on. In 1.3 a light changes in steps. With the
+// setting:
+// - The sparkles of a warp and the fire of a rest place cast a light that
+//   goes down to zero and starts again at the full value in one frame, each
+//   time the game makes the picture again (fuelcen.c). The light goes up
+//   again in the first quarter of each cycle (dtu_object_light in
+//   lighting.c). Both renderers.
+// - The light that each object casts on a vertex goes to a new value in a
+//   short time, not in one frame (smooth_dynamic_light in lighting.c): a
+//   spell light, an explosion, a missile. Both renderers.
+// - The pulse of the effect color 0xCF moves between two rows of the fade
+//   table, not one row each 6 views (render.c). The RGB form of the GPU
+//   renderer only.
+extern int Dtu_improved_lighting;
+
 // Infravision (the key N) shows heat: light sources (torches, lamps,
 // fire) and living creatures and characters are red and visible in the
 // dark, undead (the UNDEAD flag of the creature table) and the rest of the

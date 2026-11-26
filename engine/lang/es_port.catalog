@@ -1227,6 +1227,10 @@ id: port.upscaled_movies
 en: Upscaled movies
 tr: Vídeos reescalados
 
+id: port.improved_lighting
+en: Improved lighting
+tr: Iluminación mejorada
+
 id: port.improved_models
 en: Improved models
 tr: Modelos mejorados

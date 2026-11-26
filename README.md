@@ -25,6 +25,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Target hint: the cursor turns a little red when your attack would reach an enemy.
 * Full screen shaders.
 * Optional ambient occlusion.
+* Improved lighting: the lights of warps, rest places, spells and explosions change smoothly, not in steps.
 * A Spanish translation! (More languages coming soon).
 
 <p align="center">

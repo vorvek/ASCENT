@@ -1758,6 +1758,7 @@ static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[
 	{ LN("Renderer"),              &Dtu_gpu_renderer,       0, 1, Gfx_renderer },
 	{ LN("Animation interpolation"), &Dtu_anim_interp,      0, 1, Gfx_onoff },	// both renderers
 	{ LN("4:3 screen"),            &Dtu_fix_lowres_aspect,  0, 1, Gfx_onoff },	// both renderers (dtuopts.h)
+	{ LN("Improved lighting"),     &Dtu_improved_lighting,  0, 1, Gfx_onoff },	// both renderers (dtuopts.h)
 	{ LN("Improved occlusion"),    &Dtu_improved_occlusion, 0, 1, Gfx_onoff },
 	{ LN("Internal resolution"),   &Dtu_render_scale,       DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX, Gfx_scale },
 	{ LN("Upscaled textures"),     &Dtu_upscaled_textures,  0, 1, Gfx_onoff },
@@ -1769,7 +1770,7 @@ static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[
 	{ LN("Improved infravision"),  &Dtu_improved_infravision, 0, 1, Gfx_onoff },
 };
 #define N_GFX	((int) (sizeof(Gfx_item) / sizeof(Gfx_item[0])))
-#define GFX_FIRST_GPU	3		// the items from here on need the GPU renderer
+#define GFX_FIRST_GPU	4	// the items from here on need the GPU renderer
 // The note with the software renderer. The lines are short: the box of
 // newmenu is no wider than 320 pixels.
 #define GFX_NOTE_1	LN("The software renderer")

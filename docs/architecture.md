@@ -249,6 +249,41 @@ places of the level darker (screen-space ambient occlusion, the comment at
   frame of present 1400 of `-level BONES -testtour -fixedfps 30` is equal
   byte for byte).
 
+`Dtu_improved_lighting` (`dtuopts.c`) is "Improved lighting" in the Graphics
+menu and `ImprovedLighting` in `ascent.cfg`. It is on by default and it
+applies to both renderers.
+
+- The sparkles of a warp (vclip 10) and the fire of a rest place (vclip 91)
+  are fireballs with the object flag 0x40 that `fuelcen.c` makes again when
+  the picture ends. The light of a fireball is `lifeleft / play_time` times
+  the light value of the vclip, so in 1.3 it goes down to zero and starts
+  again at the full value in one frame.
+- With the setting, `dtu_object_light` (`lighting.c`) makes the light go up
+  in the first quarter of each cycle, to the value that 1.3 has at that
+  time. The other three quarters do not change.
+- The light that the objects cast on a vertex (`Dynamic_light`) changes in
+  one frame in 1.3 when a source starts or ends (a spell light, an
+  explosion, a missile), when a dim source goes into another segment, and
+  when a vertex leaves the radius of a source. With the setting,
+  `smooth_dynamic_light` (`lighting.c`) moves the light of each vertex of
+  the render list to its new value with a time constant of 1/12 second of
+  game time. A vertex that was not in the render list of the frame before
+  gets its value at once. The value is limited to `MAX_LIGHT` first. This
+  needs `Dtu_fix_light_stable`; with `-origlight` it does not run.
+- The pulse of the effect color 0xCF (`re/effectcolors.md`) moves one fade
+  table row each 6 views. With the setting, render.c gives the GPU renderer
+  the row between the two steps (`G3_gpu_fx_fine`, `fx_fine` of
+  `plat_gpu_material`) and the shader of the RGB form mixes the two rows.
+  The 8-bit form and the software renderer have palette colors only and do
+  not change. The rate of the pulse stays one step each 6 views.
+- Test: `-level YPINN -fixedfps 30 -chartest 5:goseg=225 -lightlog FILE`
+  (segment 226 is a warp). With the setting off, the mean light of the
+  drawn corners changes by 0.184 in one frame and one corner by 0.617.
+  With the setting on, the values are 0.011 and 0.033 (one light level).
+  With the setting off the log is the same as before the feature.
+- Not tested on screen: the mix of the 0xCF rows. HUB2 has the texture
+  `port04` on side 5 of segment 272 (`-testpos 225.68,-2.93,20,90`).
+
 ## Test aids
 
 ctest runs 16 programs (`test_*.c` in the library directories). None needs

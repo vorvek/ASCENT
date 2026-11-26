@@ -158,6 +158,7 @@ static char rcsid[] = "$Id: lighting.c 2.1 1995/07/24 13:21:56 john Exp $";
 #include "bm.h"			// ASCENT: Dressing_info (the light of scenery)
 #include "args.h"			// ASCENT: -origlight
 #include "dtuobj.h"		// ASCENT: dtu_is_water_splash, dtu_missile_light
+#include "dtuopts.h"		// ASCENT: Dtu_improved_lighting
 
 //global saying how bright the light beam is
 fix	Beam_brightness = (F1_0/2);
@@ -287,9 +288,24 @@ static fix dtu_object_light(object *obj, int objnum)
 			if (dtu_is_water_splash(obj))
 				break;
 			if (obj->id != 0xff) {
-				if (obj->lifeleft < F1_0*4)
-					light = fixmul(fixdiv(obj->lifeleft, Vclip[obj->id].play_time), Vclip[obj->id].light_value);
-				else
+				if (obj->lifeleft < F1_0*4) {
+					fix part = fixdiv(obj->lifeleft, Vclip[obj->id].play_time);
+
+					// ASCENT: Dtu_improved_lighting (dtuopts.h). The game
+					// makes the sparkles of a warp and the fire of a rest
+					// place again when the picture ends (fuelcen.c, the
+					// object flag 0x40), so their light went from zero to
+					// the full value in one frame. Here the light goes up
+					// in the first quarter of the cycle, to the value that
+					// the original has at that time. The other three
+					// quarters do not change.
+					if (Dtu_improved_lighting && (obj->flags & OF_DTU_NOHIT) && part > F1_0*3/4) {
+						part = 3 * (F1_0 - part);
+						if (part < 0)
+							part = 0;
+					}
+					light = fixmul(part, Vclip[obj->id].light_value);
+				} else
 					light = Vclip[obj->id].light_value;
 			}
 			break;
@@ -318,6 +334,49 @@ static fix dtu_object_light(object *obj, int objnum)
 fix dtu_object_light_value(object *obj)
 {
 	return dtu_object_light(obj, obj - Objects);
+}
+
+// ----------------------------------------------------------------------------------------------
+// ASCENT: Dtu_improved_lighting (dtuopts.h). In 1.3 the light of a vertex
+// changes in one frame when a light source starts or ends (a spell light,
+// an explosion, a missile), when a source goes into another segment (a dim
+// source lights the 8 vertices of its segment only) and when a vertex
+// leaves the radius of a source (the light at the radius is 1/64, not
+// zero). Here the light of each vertex of the render list goes to its new
+// value with the time constant 1 / LIGHT_SMOOTH_RATE. A vertex that was not
+// in the render list of the frame before gets its value at once, so a wall
+// that comes into view does not fade in. The value is limited to MAX_LIGHT
+// first (render_face() limits the sum), else a bright source would fill a
+// vertex in one frame.
+#define LIGHT_SMOOTH_RATE	12		// each second
+
+static fix	Light_shown[MAX_VERTICES];
+static int	Light_seen[MAX_VERTICES];		// the number of the last call with the vertex in the render list
+static int	Light_call = 1;
+static fix	Light_time;
+
+static void smooth_dynamic_light(int n_render_vertices, short *render_vertices)
+{
+	fix	dt = GameTime - Light_time, k;
+	int	vv, restart = (dt < 0 || dt > F1_0/2);
+
+	Light_time = GameTime;
+	k = restart ? F1_0 : dt * LIGHT_SMOOTH_RATE;
+	if (k > F1_0)
+		k = F1_0;
+	for (vv=0; vv<n_render_vertices; vv++) {
+		int	vertnum = render_vertices[vv];
+		fix	light = Dynamic_light[vertnum];
+
+		if (light > MAX_LIGHT)
+			light = MAX_LIGHT;
+		if (!restart && Light_seen[vertnum] == Light_call - 1)
+			light = Light_shown[vertnum] + fixmul(light - Light_shown[vertnum], k);
+		Light_shown[vertnum] = light;
+		Light_seen[vertnum] = Light_call;
+		Dynamic_light[vertnum] = light;
+	}
+	Light_call++;
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -387,6 +446,8 @@ void set_dynamic_light(void)
 			if (obj_intensity)
 				apply_light(obj_intensity, obj->segnum, &obj->pos, n_render_vertices, render_vertices);
 		}
+		if (Dtu_improved_lighting)
+			smooth_dynamic_light(n_render_vertices, render_vertices);
 		return;
 	}
 

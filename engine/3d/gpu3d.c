@@ -44,6 +44,7 @@ static int Hd_log;			//ASCENT_GPU_HDLOG=1: print the requests of upscaled textur
 int G3_gpu_heat;			//3d.h
 int G3_gpu_opaque;		//3d.h
 int G3_gpu_fx_row = 25;	//3d.h
+int G3_gpu_fx_fine;		//3d.h
 int G3_gpu_dim;			//3d.h
 int G3_gpu_tint;			//3d.h
 
@@ -858,6 +859,7 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	//under the face (texmap/tmapfx.c); the lit mappers of the original do it
 	m.effects = m.lit && (bm->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;
 	m.fx_row = G3_gpu_fx_row;
+	m.fx_fine = G3_gpu_fx_fine;
 	//the dark view of the conversation window: every lit texture, the
 	//walls and the models (texmap/tmapfx.c, Tmap_dim)
 	m.dim = m.lit ? G3_gpu_dim : 0;

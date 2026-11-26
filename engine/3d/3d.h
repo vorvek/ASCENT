@@ -430,6 +430,9 @@ extern int G3_gpu_opaque;
 //The pulsing fade table row of the effect color 0xCF (Tmap_fx_row of the
 //texture mapper, tmapfx.c). The game sets it at the start of each view.
 extern int G3_gpu_fx_row;
+//ASCENT: 0, or the row between two steps of the pulse: 1 + 256 times the
+//row (plat_gpu_material fx_fine). The RGB form mixes the two rows.
+extern int G3_gpu_fx_fine;
 //The dark view of the conversation window (Tmap_dim of the texture mapper,
 //tmapfx.c): 0 to 15 for the lit textures. The game sets it at the start
 //of each view.

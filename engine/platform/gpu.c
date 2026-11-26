@@ -226,6 +226,7 @@ static const char *Scene_fs =
 	"uniform int u_heat;\n"
 	"uniform int u_fx;\n"
 	"uniform int u_fxrow;\n"
+	"uniform float u_fxrowf;\n"
 	"uniform int u_fxdy;\n"
 	"uniform int u_dim;\n"
 	"uniform int u_tint;\n"
@@ -317,7 +318,8 @@ static const char *Scene_fs =
 	"vec3 fxrgb(int k) {\n"
 	"	vec3 b = texelFetch(u_dest, ivec2(gl_FragCoord.xy), 0).rgb;\n"
 	"	vec3 d = texelFetch(u_dest, fxbelow(), 0).rgb;\n"
-	"	float r = float(fxrow());\n"
+	// ASCENT: u_fxrowf is the row between two steps of the pulse, or -1
+	"	float r = u_fxrowf >= 0.0 ? u_fxrowf : float(fxrow());\n"
 	"	if (k == 1) return light(light(b, r), r);\n"
 	"	if (k == 8) return d;\n"
 	"	return vpal(fxramp(k) | fxstep(k <= 4 ? b : d));\n"
@@ -992,7 +994,7 @@ static SDL_Window *Gpu_window;
 static GLuint Scene_prog, Comp_prog, Down_prog, Blur_prog, Final_prog;
 static struct {
 	GLint canvas, znear, mode, lit, transparent, color, rgb, tex, fade, dest, vpal, nearc, levels, rowk;
-	GLint infra, heat, fx, fxrow, fxdy, dim, tint, noao;
+	GLint infra, heat, fx, fxrow, fxrowf, fxdy, dim, tint, noao;
 } Su;
 static struct {
 	GLint frame, pal, view, fade, plut, vpal, nearc, levels, rowk, dst, fsize, vrect, vsize, key, vrgb;
@@ -1103,7 +1105,7 @@ static int Name_pool_n;
 
 // The batch of polygons
 typedef struct {
-	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, dim, tint, noao;
+	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, fx_fine, dim, tint, noao;
 } draw_state;
 
 typedef struct {
@@ -1292,6 +1294,7 @@ int gpu_init(SDL_Window *window)
 	Su.heat = qglGetUniformLocation(Scene_prog, "u_heat");
 	Su.fx = qglGetUniformLocation(Scene_prog, "u_fx");
 	Su.fxrow = qglGetUniformLocation(Scene_prog, "u_fxrow");
+	Su.fxrowf = qglGetUniformLocation(Scene_prog, "u_fxrowf");
 	Su.fxdy = qglGetUniformLocation(Scene_prog, "u_fxdy");
 	Su.dim = qglGetUniformLocation(Scene_prog, "u_dim");
 	Su.tint = qglGetUniformLocation(Scene_prog, "u_tint");
@@ -2132,6 +2135,8 @@ static void apply_state(const draw_state *st)
 		qglUniform1i(Su.fx, st->fx);
 	if (!Cur_state_valid || st->fx_row != Cur_state.fx_row)
 		qglUniform1i(Su.fxrow, st->fx_row);
+	if (!Cur_state_valid || st->fx_fine != Cur_state.fx_fine)
+		qglUniform1f(Su.fxrowf, st->fx_fine > 0 ? (st->fx_fine - 1) / 256.0f : -1.0f);
 	if (!Cur_state_valid || st->dim != Cur_state.dim)
 		qglUniform1i(Su.dim, st->dim);
 	if (!Cur_state_valid || st->tint != Cur_state.tint)
@@ -2291,6 +2296,7 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 		if (m->effects) {
 			st.fx = 1;
 			st.fx_row = m->fx_row;
+			st.fx_fine = m->fx_fine;
 		}
 		if (st.lit && m->dim > 0)
 			st.dim = m->dim > 15 ? 15 : m->dim;

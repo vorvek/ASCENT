@@ -2316,6 +2316,17 @@ void render_frame(fix eye_offset)
 			dir = -1;
 		Tmap_fx_row = value;
 		G3_gpu_fx_row = value;
+		// ASCENT: Dtu_improved_lighting (dtuopts.h). The row between two
+		// steps: the part of the 6 views that is done, to the next value.
+		// The RGB form of the GPU renderer mixes the colors of the two rows.
+		G3_gpu_fx_fine = 0;
+		if (Dtu_improved_lighting) {
+			int fine = (value - 1) * 256 + dir * (5 - count) * 256 / 6;
+
+			if (fine < 0) fine = 0;
+			if (fine > 31 * 256) fine = 31 * 256;
+			G3_gpu_fx_fine = 1 + fine;
+		}
 	}
 
 	Viewer_eye = Viewer->pos;
