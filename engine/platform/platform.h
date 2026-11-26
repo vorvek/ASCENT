@@ -333,6 +333,9 @@ typedef struct plat_gpu_material {
 						// (fade[max(row - 5, 0)][c] & 15) | 8
 	int tint;			// TEXTURED, lit: the tint of the object (texmap/tmapfx.c, 0x14C4CD). 0x40 (Detect
 						// Magic): a texel c gets the color (c & 15) | 0x20 before the light
+	int no_ao;			// TEXTURED, FLAT: the polygon gives light or is an effect (a flame, a
+						// spell): the ambient occlusion (PLAT_GPU_VIEW_SSAO) does not darken
+						// it, and it does not darken the pixels near it
 } plat_gpu_material;
 
 // The effect colors of the GPU renderer (texmap/tmapfx.c,
@@ -357,6 +360,18 @@ void plat_gpu_fx_mark(uint8_t *rgba, int w, int h, const uint8_t *index, int iw,
 #define PLAT_GPU_VIEW_DEPTH		1	// a depth buffer hides the pixels behind a nearer polygon (else painter's order)
 #define PLAT_GPU_VIEW_RGB		2	// the RGB form (textures of plat_gpu_texture_create_rgba)
 #define PLAT_GPU_VIEW_ANISO		4	// RGB form: mipmaps and 8x anisotropic filtering
+#define PLAT_GPU_VIEW_SSAO		8	// RGB form: ambient occlusion (ASCENT, see below)
+
+// ASCENT: the ambient occlusion (PLAT_GPU_VIEW_SSAO) makes the corners and
+// the narrow places darker. The GPU calculates it from the depth of the
+// pixels of the polygons before plat_gpu_clear_depth (or of all the
+// polygons if the view has no such call) and darkens the image with the
+// fade table. It needs the scale of the view matrix: the x, y and z of a
+// vertex (plat_gpu_vertex, before the multiplication by z) are the view
+// coordinates of the level times sx, sy and sz. Read at
+// plat_gpu_clear_depth and plat_gpu_end_view. The view has no occlusion
+// with the improved infravision.
+void plat_gpu_set_view_scale(float sx, float sy, float sz);
 
 // Start the 3D view. canvas_w and canvas_h give the coordinate space of the
 // vertices. The image is target_w by target_h pixels. flags: PLAT_GPU_VIEW_*.

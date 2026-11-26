@@ -1235,6 +1235,10 @@ id: port.anisotropic_filtering
 en: Anisotropic filtering
 tr: Filtrado anisótropo
 
+id: port.ambient_occlusion
+en: Ambient occlusion
+tr: Oclusión ambiental
+
 id: port.shader
 en: Shader
 tr: Shader

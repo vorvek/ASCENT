@@ -24,6 +24,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Animation interpolation.
 * Target hint: the cursor turns a little red when your attack would reach an enemy.
 * Full screen shaders.
+* Optional ambient occlusion.
 * A Spanish translation! (More languages coming soon).
 
 <p align="center">

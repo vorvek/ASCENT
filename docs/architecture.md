@@ -218,6 +218,37 @@ plain blocks, `test_render_scale_half`). The software renderer always
 draws at x1, and the menu says that it ignores this setting. The values 1
 to 6 keep their meaning, so an older `ascent.cfg` stays valid.
 
+`Dtu_ambient_occlusion` (`dtuopts.c`) is "Ambient occlusion" in the Graphics
+menu and `AmbientOcclusion` in `ascent.cfg`. It is off by default and it is
+not in the original. The GPU renderer makes the corners and the narrow
+places of the level darker (screen-space ambient occlusion, the comment at
+`Ssao_z_fs` in gpu.c). It needs the RGB form of the GPU renderer.
+
+- The steps run at `plat_gpu_clear_depth`, when the level and its objects
+  are drawn. The arms and the weapon of the player are drawn later and do
+  not change.
+- The depth comes from the depth buffer of the view, which is a texture.
+  Without "Improved occlusion" the view writes the depth of the last
+  polygon of each pixel (painter's order), so the option works in both
+  cases.
+- The alpha of the view image is a mask. A polygon with `no_ao`
+  (`plat_gpu_material`: a texture with no light, a picture of
+  `g3_draw_bitmap`, a disk) and a texel of an effect color have the mask 0:
+  they do not get darker and they do not darken the pixels near them.
+- The color goes down the rows of the fade table, as a darkening of the
+  game does, so the dark colors keep the hue of the palette.
+- The occlusion image has no more than 1200 rows: at x3 and more of the
+  640x480 interface it is half or a third of the view, and the last step
+  mixes it by the depth.
+- The view has no occlusion with the improved infravision.
+- `ASCENT_SSAO_TUNE="radius,strength,rows"` sets the radius in level units
+  (default 16, about a third of the height of a character), the strength
+  (1.5) and the fade table rows of the full occlusion (16). With 99 rows
+  the view shows the occlusion itself, white to black.
+- With the option off the image is the same as before the feature (the
+  frame of present 1400 of `-level BONES -testtour -fixedfps 30` is equal
+  byte for byte).
+
 ## Test aids
 
 ctest runs 16 programs (`test_*.c` in the library directories). None needs

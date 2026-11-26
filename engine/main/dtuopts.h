@@ -102,6 +102,12 @@ extern int Dtu_improved_models;
 // always uses trilinear mipmaps; this setting adds the anisotropy.
 extern int Dtu_anisotropic;
 
+// Ambient occlusion: 0 off, 1 on. The corners and the narrow places of the
+// level are darker (screen-space ambient occlusion, platform.h). It is not
+// in the original. The arms of the player, the flames and the other
+// pictures with no light do not change.
+extern int Dtu_ambient_occlusion;
+
 // Infravision (the key N) shows heat: light sources (torches, lamps,
 // fire) and living creatures and characters are red and visible in the
 // dark, undead (the UNDEAD flag of the creature table) and the rest of the

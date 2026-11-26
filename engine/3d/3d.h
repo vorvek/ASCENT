@@ -378,6 +378,7 @@ typedef struct g3_gpu_source {
 typedef struct g3_gpu_options {
 	int rgb;				//the RGB form (else the 8-bit form, platform.h)
 	int anisotropic;		//RGB: mipmaps and 8x anisotropic filtering
+	int ssao;				//RGB: ambient occlusion (ASCENT, platform.h)
 	int upscaled;			//RGB: the textures of the upscaled set when they exist
 	const char *hd_dir;		//the directory of the upscaled files (<hd>/textures/<egg>/<name>.png), or NULL
 	const ubyte *palette;	//the palette of the bitmaps (gr_palette)

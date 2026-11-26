@@ -2033,6 +2033,7 @@ static int gpu_set_options(void)
 	memset(&o, 0, sizeof(o));
 	o.rgb = !(e && e[0] == '1');
 	o.anisotropic = Dtu_anisotropic;
+	o.ssao = Dtu_ambient_occlusion;
 	o.upscaled = Dtu_upscaled_textures;
 	o.hd_dir = Dtu_upscaled_textures ? dtu_hd_dir() : NULL;
 	o.palette = gr_palette;

@@ -1764,6 +1764,7 @@ static struct { char *text; int *value; int min, max; char **labels; } Gfx_item[
 	{ LN("Upscaled movies"),       &Dtu_upscaled_movies,    0, 1, Gfx_onoff },
 	{ LN("Improved models"),       &Dtu_improved_models,    0, 1, Gfx_onoff },
 	{ LN("Anisotropic filtering"), &Dtu_anisotropic,        0, 1, Gfx_onoff },
+	{ LN("Ambient occlusion"),     &Dtu_ambient_occlusion,  0, 1, Gfx_onoff },
 	{ LN("Shader"),                &Dtu_shader,             DTU_SHADER_OFF, DTU_SHADER_VGA, Gfx_shader },
 	{ LN("Improved infravision"),  &Dtu_improved_infravision, 0, 1, Gfx_onoff },
 };

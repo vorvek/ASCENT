@@ -863,6 +863,8 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	m.dim = m.lit ? G3_gpu_dim : 0;
 	//the tint of Detect Magic (texmap/tmapfx.c, Tmap_tint): lit textures
 	m.tint = m.lit ? G3_gpu_tint : 0;
+	//ASCENT: a texture with no light gives light itself (a flame, a lamp)
+	m.no_ao = !m.lit;
 	draw_face(nv,pointlist,&m);
 }
 
@@ -892,6 +894,7 @@ static void gpu_bitmap(g3s_point *pnt,fix w,fix h,grs_bitmap *bm)
 	m.transparent = 1;
 	m.clamp = 1;
 	m.heat = G3_gpu_heat;
+	m.no_ao = 1;		//ASCENT: a flat picture at one depth
 	if (!m.texture)
 		return;
 	memset(v,0,sizeof(v));
@@ -925,6 +928,7 @@ static void gpu_sphere(g3s_point *pnt,fix r)
 	m.mode = PLAT_GPU_FLAT;
 	m.color = grd_curcanv->cv_color & 255;
 	m.heat = G3_gpu_heat;
+	m.no_ao = 1;		//ASCENT: a flat disk at one depth
 	for (i=0;i<24;i++) {
 		float a = i * (6.2831853f / 24), z = pnt->z / 65536.0f;
 		memset(&v[i],0,sizeof(v[i]));
@@ -1003,7 +1007,11 @@ int g3_gpu_begin_view(int enable,int scale,int line_mul,int depth_test,int clear
 	if (scale < 0) scale = 1;
 	if (line_mul < 1) line_mul = 1;
 	flags = (depth_test ? PLAT_GPU_VIEW_DEPTH : 0) | (Opt.rgb ? PLAT_GPU_VIEW_RGB : 0)
-		| (Opt.rgb && Opt.anisotropic ? PLAT_GPU_VIEW_ANISO : 0);
+		| (Opt.rgb && Opt.anisotropic ? PLAT_GPU_VIEW_ANISO : 0)
+		| (Opt.rgb && Opt.ssao ? PLAT_GPU_VIEW_SSAO : 0);
+	//ASCENT: the ambient occlusion finds the points of the level from the
+	//pixels: the scale of the view matrix (g3_set_view_matrix)
+	plat_gpu_set_view_scale(Matrix_scale.x / 65536.0f,Matrix_scale.y / 65536.0f,Matrix_scale.z / 65536.0f);
 	//ASCENT: scale 0 is half the shown size in each direction (the view of
 	//the 640x480 interface at the pixel size of the 320x200 one)
 	if (scale == 0) {

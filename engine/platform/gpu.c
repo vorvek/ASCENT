@@ -109,6 +109,7 @@
 	X(void, Uniform1i, (GLint, GLint)) \
 	X(void, Uniform1f, (GLint, GLfloat)) \
 	X(void, Uniform2f, (GLint, GLfloat, GLfloat)) \
+	X(void, Uniform3f, (GLint, GLfloat, GLfloat, GLfloat)) \
 	X(void, Uniform4f, (GLint, GLfloat, GLfloat, GLfloat, GLfloat)) \
 	X(void, Uniform1iv, (GLint, GLsizei, const GLint *)) \
 	X(void, Uniform4fv, (GLint, GLsizei, const GLfloat *)) \
@@ -124,13 +125,8 @@
 	X(void, GenFramebuffers, (GLsizei, GLuint *)) \
 	X(void, BindFramebuffer, (GLenum, GLuint)) \
 	X(void, FramebufferTexture2D, (GLenum, GLenum, GLenum, GLuint, GLint)) \
-	X(void, FramebufferRenderbuffer, (GLenum, GLenum, GLenum, GLuint)) \
 	X(GLenum, CheckFramebufferStatus, (GLenum)) \
 	X(void, DeleteFramebuffers, (GLsizei, const GLuint *)) \
-	X(void, GenRenderbuffers, (GLsizei, GLuint *)) \
-	X(void, BindRenderbuffer, (GLenum, GLuint)) \
-	X(void, RenderbufferStorage, (GLenum, GLenum, GLsizei, GLsizei)) \
-	X(void, DeleteRenderbuffers, (GLsizei, const GLuint *)) \
 	X(void, GenSamplers, (GLsizei, GLuint *)) \
 	X(void, BindSampler, (GLuint, GLuint)) \
 	X(void, SamplerParameteri, (GLuint, GLenum, GLint)) \
@@ -212,10 +208,15 @@ static const char *Scene_vs =
 // form is that of the software mapper: l * 32 clamped to 31.5, the integer
 // part. The RGB form uses l * 32 - 0.5 (the same average) without the
 // rounding.
+// ASCENT: the alpha of the RGB form is the mask of the ambient occlusion
+// (see the comment at Ssao_*): 1 for a pixel that takes it, 0 for a pixel
+// of a polygon with no_ao (u_noao) or of an effect color. A darkening
+// keeps the alpha of the image under it.
 static const char *Scene_fs =
 	"#version 330 core\n"
 	"uniform int u_mode;\n"
 	"uniform int u_lit;\n"
+	"uniform int u_noao;\n"
 	"uniform int u_transparent;\n"
 	"uniform int u_color;\n"
 	"uniform int u_rgb;\n"
@@ -337,6 +338,7 @@ static const char *Scene_fs =
 	"	float l = v_lq.x >= 0.0 ? mix(mix(v_lq.x, v_lq.y, v_st.x), mix(v_lq.w, v_lq.z, v_st.x), v_st.y) : v_l;\n"
 	"	if (u_rgb != 0) {\n"
 	"		vec3 c, b;\n"
+	"		float am = u_noao != 0 ? 0.0 : 1.0;\n"
 		"		if (u_mode == 0) {\n"
 	"			if (u_fx != 0) {\n"
 	"				ivec2 ts = textureSize(u_tex, 0);\n"
@@ -346,16 +348,16 @@ static const char *Scene_fs =
 	"				if (a > 0 && a < 255 && (255 - a) % 8 == 0 && (255 - a) / 8 <= 8) {\n"
 	"					int fc = fxcolor((255 - a) / 8);\n"
 	"					if (u_dim != 0 && (fc & 15) <= u_dim)\n"
-	"						o_color = vec4(vpal(dimidx(fc, int(clamp(l * 32.0, 0.0, 31.5)))), 1.0);\n"
+	"						o_color = vec4(vpal(dimidx(fc, int(clamp(l * 32.0, 0.0, 31.5)))), 0.0);\n"
 	"					else\n"
-	"						o_color = vec4(fxrgb((255 - a) / 8), 1.0);\n"
+	"						o_color = vec4(fxrgb((255 - a) / 8), 0.0);\n"
 	"					return;\n"
 	"				}\n"
 	"			}\n"
 	"			vec4 t = texture(u_tex, v_uv);\n"
 	"			if (u_transparent != 0 && t.a < 0.5) discard;\n"
 	"			if (u_dim != 0 && (nearidx(t.rgb) & 15) <= u_dim) {\n"
-	"				o_color = vec4(dimrgb(t.rgb, clamp(l * 32.0 - 0.5, 0.0, 31.0)), 1.0);\n"
+	"				o_color = vec4(dimrgb(t.rgb, clamp(l * 32.0 - 0.5, 0.0, 31.0)), am);\n"
 	"				return;\n"
 	"			}\n"
 	"			c = b = t.rgb;\n"
@@ -365,10 +367,12 @@ static const char *Scene_fs =
 	"		} else if (u_mode == 1) {\n"
 	"			c = b = vpal(u_color);\n"
 	"		} else {\n"
-	"			c = b = light(texelFetch(u_dest, ivec2(gl_FragCoord.xy), 0).rgb, float(u_color));\n"
+	"			vec4 d = texelFetch(u_dest, ivec2(gl_FragCoord.xy), 0);\n"
+	"			c = b = light(d.rgb, float(u_color));\n"
+	"			am = d.a;\n"
 	"		}\n"
 	"		if (u_infra != 0 && u_mode != 2) c = infra(c, b);\n"
-	"		o_color = vec4(c, 1.0);\n"
+	"		o_color = vec4(c, am);\n"
 	"		return;\n"
 	"	}\n"
 	"	int c;\n"
@@ -403,6 +407,179 @@ static const char *Full_vs =
 	"void main() {\n"
 	"	vec2 p = vec2(float((gl_VertexID & 1) * 4 - 1), float((gl_VertexID & 2) * 2 - 1));\n"
 	"	gl_Position = vec4(p, 0.0, 1.0);\n"
+	"}\n";
+
+// ASCENT: the ambient occlusion of the RGB form (PLAT_GPU_VIEW_SSAO): the
+// corners and the narrow places of the level are darker, as less light
+// from the room reaches them. It is not in the original. It runs when the
+// level and its objects are drawn, before the arms of the player
+// (plat_gpu_clear_depth), in four steps:
+//
+// Ssao_z_fs: the view depth z of each pixel from the depth buffer (the
+// depth value is 1 - u_znear / z, see Scene_vs), in an image that is the
+// view size divided by u_step. A pixel with no polygon, or with the mask
+// 0 (the alpha of the view, see Scene_fs), gets the depth 1e6: it takes no
+// occlusion and it hides nothing.
+//
+// Ssao_fs: the occlusion of a pixel. u_k is 1 / the scale of the view
+// matrix (plat_gpu_set_view_scale), so the point of a pixel at (u, v) of
+// the image (0 to 1, v from the bottom) with the depth z is
+// ((2u - 1) z k.x, (2v - 1) z k.y, z k.z) in the units of the level. The
+// normal comes from the points of the pixels next to it (on each axis the
+// neighbor with the nearer depth, so that an edge does not bend it). 16
+// points on a spiral in the disk of u_radius around the pixel are read
+// (the sample pattern of "Scalable Ambient Obscurance", McGuire, Mara,
+// Luebke 2012). A point Q in front of the surface adds the cosine of the
+// angle between Q - P and the normal, max(0, (Q - P) . N - bias) /
+// |Q - P|, with the weight (1 - |Q - P|^2 / R^2)^2: the result does not
+// depend on the unit of length. The angle of the spiral changes with the
+// pixel (interleaved gradient noise). The result is r: 1 no occlusion to
+// 0, g: the depth.
+//
+// Ssao_blur_fs: 9 pixels in the direction u_dir with Gaussian weights; a
+// pixel of another depth has less weight, so the edges stay sharp.
+//
+// Ssao_apply_fs: the view from its copy (u_color) with the occlusion. For
+// u_step more than 1 the occlusion is the mix of the 4 nearest pixels of
+// the small image by their place and by their depth. The color goes
+// 31 - (1 - occlusion) * u_rows rows down the fade table, as a darkening
+// of the game does (light), so the dark colors keep the hue of the
+// palette.
+static const char *Ssao_z_fs =
+	"#version 330 core\n"
+	"uniform sampler2D u_depth;\n"
+	"uniform sampler2D u_color;\n"
+	"uniform int u_step;\n"
+	"uniform float u_znear;\n"
+	"out vec4 o_color;\n"
+	"void main() {\n"
+	"	ivec2 p = min(ivec2(gl_FragCoord.xy) * u_step + u_step / 2, textureSize(u_depth, 0) - 1);\n"
+	"	float d = texelFetch(u_depth, p, 0).r;\n"
+	"	float z = d < 1.0 ? min(u_znear / (1.0 - d), 1e6) : 1e6;\n"
+	"	if (texelFetch(u_color, p, 0).a < 0.5) z = 1e6;\n"
+	"	o_color = vec4(z, 0.0, 0.0, 1.0);\n"
+	"}\n";
+
+static const char *Ssao_fs =
+	"#version 330 core\n"
+	"uniform sampler2D u_z;\n"
+	"uniform vec3 u_k;\n"
+	"uniform float u_radius;\n"
+	"uniform float u_power;\n"
+	"out vec4 o_color;\n"
+	"ivec2 Sz;\n"
+	"vec3 pos(ivec2 p) {\n"
+	"	p = clamp(p, ivec2(0), Sz - 1);\n"
+	"	float z = texelFetch(u_z, p, 0).r;\n"
+	"	vec2 uv = (vec2(p) + 0.5) / vec2(Sz);\n"
+	"	return vec3((uv * 2.0 - 1.0) * z * u_k.xy, z * u_k.z);\n"
+	"}\n"
+	// the change of the point along one axis: a is the pixel before, b the
+	// pixel after
+	"vec3 slope(vec3 a, vec3 p, vec3 b, int i, int n) {\n"
+	"	if (i == 0) return b - p;\n"
+	"	if (i == n - 1) return p - a;\n"
+	"	return abs(b.z - p.z) < abs(p.z - a.z) ? b - p : p - a;\n"
+	"}\n"
+	"void main() {\n"
+	"	Sz = textureSize(u_z, 0);\n"
+	"	ivec2 ip = ivec2(gl_FragCoord.xy);\n"
+	"	float z = texelFetch(u_z, ip, 0).r;\n"
+	"	o_color = vec4(1.0, min(z, 60000.0), 0.0, 1.0);\n"
+	"	if (z >= 1e5) return;\n"
+	"	vec3 P = pos(ip);\n"
+	"	vec3 dx = slope(pos(ip - ivec2(1, 0)), P, pos(ip + ivec2(1, 0)), ip.x, Sz.x);\n"
+	"	vec3 dy = slope(pos(ip - ivec2(0, 1)), P, pos(ip + ivec2(0, 1)), ip.y, Sz.y);\n"
+	"	vec3 N = cross(dy, dx);\n"
+	"	float nl = length(N);\n"
+	"	N = nl > 0.0 ? N / nl : vec3(0.0, 0.0, -1.0);\n"
+	// the radius in pixels, no more than 12% of the image
+	"	vec2 ruv = u_radius / (2.0 * u_k.xy * z);\n"
+	"	ruv *= min(1.0, 0.12 / max(ruv.x, ruv.y));\n"
+	"	vec2 rpx = ruv * vec2(Sz);\n"
+	"	float rmin = min(rpx.x, rpx.y);\n"
+	"	if (rmin < 1.0) return;\n"
+	"	float phi = 6.2831853 * fract(52.9829189 * fract(dot(vec2(ip), vec2(0.06711056, 0.00583715))));\n"
+	"	float r2 = u_radius * u_radius;\n"
+	"	float bias = 0.01 * u_radius + 0.002 * P.z;\n"
+	"	float sum = 0.0;\n"
+	"	for (int i = 0; i < 16; i++) {\n"
+	"		float t = (float(i) + 0.5) / 16.0;\n"
+	"		float a = t * 43.982297 + phi;\n"
+	"		ivec2 q = ip + ivec2(floor(vec2(cos(a), sin(a)) * t * rpx + 0.5));\n"
+	"		if (q == ip || q.x < 0 || q.y < 0 || q.x >= Sz.x || q.y >= Sz.y) continue;\n"
+	"		vec3 v = pos(q) - P;\n"
+	"		float vv = dot(v, v);\n"
+	"		float f = max(1.0 - vv / r2, 0.0);\n"
+	"		sum += f * f * max((dot(v, N) - bias) / sqrt(vv + 0.0001 * r2), 0.0);\n"
+	"	}\n"
+	"	float ao = max(0.0, 1.0 - u_power * sum / 8.0);\n"
+	"	o_color.r = mix(1.0, ao, smoothstep(1.0, 4.0, rmin));\n"
+	"}\n";
+
+static const char *Ssao_blur_fs =
+	"#version 330 core\n"
+	"uniform sampler2D u_src;\n"
+	"uniform vec2 u_dir;\n"
+	"out vec4 o_color;\n"
+	"void main() {\n"
+	"	ivec2 sz = textureSize(u_src, 0);\n"
+	"	ivec2 ip = ivec2(gl_FragCoord.xy);\n"
+	"	vec2 c = texelFetch(u_src, ip, 0).rg;\n"
+	"	o_color = vec4(c, 0.0, 1.0);\n"
+	"	if (c.g >= 50000.0) return;\n"
+	"	float sum = c.r, wsum = 1.0;\n"
+	"	for (int i = -4; i <= 4; i++) {\n"
+	"		if (i == 0) continue;\n"
+	"		vec2 s = texelFetch(u_src, clamp(ip + ivec2(u_dir) * i, ivec2(0), sz - 1), 0).rg;\n"
+	"		float w = exp(-float(i * i) / 12.5) * clamp(1.0 - abs(s.g - c.g) / (0.05 * c.g + 0.05), 0.0, 1.0);\n"
+	"		sum += w * s.r;\n"
+	"		wsum += w;\n"
+	"	}\n"
+	"	o_color.r = sum / wsum;\n"
+	"}\n";
+
+static const char *Ssao_apply_fs =
+	"#version 330 core\n"
+	"uniform sampler2D u_color;\n"
+	"uniform sampler2D u_ao;\n"
+	"uniform sampler2D u_depth;\n"
+	"uniform int u_step;\n"
+	"uniform float u_znear;\n"
+	"uniform float u_rows;\n"
+	LIGHT_GLSL
+	"out vec4 o_color;\n"
+	"void main() {\n"
+	"	ivec2 ip = ivec2(gl_FragCoord.xy);\n"
+	"	vec4 c = texelFetch(u_color, ip, 0);\n"
+	"	o_color = c;\n"
+	"	if (c.a < 0.5) return;\n"
+	"	float d = texelFetch(u_depth, ip, 0).r;\n"
+	"	if (d >= 1.0) return;\n"
+	"	float ao;\n"
+	"	if (u_step == 1)\n"
+	"		ao = texelFetch(u_ao, ip, 0).r;\n"
+	"	else {\n"
+	"		float z = min(u_znear / (1.0 - d), 60000.0);\n"
+	"		ivec2 sz = textureSize(u_ao, 0);\n"
+	"		vec2 s = (vec2(ip) + 0.5) / float(u_step) - 0.5;\n"
+	"		ivec2 b = ivec2(floor(s));\n"
+	"		vec2 f = s - vec2(b);\n"
+	"		float sum = 0.0, wsum = 0.0;\n"
+	"		for (int j = 0; j < 2; j++)\n"
+	"			for (int i = 0; i < 2; i++) {\n"
+	"				vec2 t = texelFetch(u_ao, clamp(b + ivec2(i, j), ivec2(0), sz - 1), 0).rg;\n"
+	"				float w = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);\n"
+	"				w *= 0.001 + clamp(1.0 - abs(t.g - z) / (0.05 * z + 0.05), 0.0, 1.0);\n"
+	"				sum += w * t.r;\n"
+	"				wsum += w;\n"
+	"			}\n"
+	"		ao = sum / max(wsum, 1e-6);\n"
+	"	}\n"
+	"	if (u_rows > 31.0) { o_color = vec4(vec3(ao), c.a); return; }\n"
+	"	if (ao >= 0.999) return;\n"
+	"	vec3 k = light(c.rgb, 31.0 - (1.0 - ao) * u_rows) - light(c.rgb, 31.0);\n"
+	"	o_color = vec4(max(c.rgb + k, 0.0), c.a);\n"
 	"}\n";
 
 // The frame. u_dst: the viewport (x, y, w, h in pixels of the target, y from
@@ -815,7 +992,7 @@ static SDL_Window *Gpu_window;
 static GLuint Scene_prog, Comp_prog, Down_prog, Blur_prog, Final_prog;
 static struct {
 	GLint canvas, znear, mode, lit, transparent, color, rgb, tex, fade, dest, vpal, nearc, levels, rowk;
-	GLint infra, heat, fx, fxrow, fxdy, dim, tint;
+	GLint infra, heat, fx, fxrow, fxdy, dim, tint, noao;
 } Su;
 static struct {
 	GLint frame, pal, view, fade, plut, vpal, nearc, levels, rowk, dst, fsize, vrect, vsize, key, vrgb;
@@ -829,6 +1006,13 @@ static void ui_shutdown(void);
 static struct { GLint src, texel, thresh, knee; } Du;
 static struct { GLint src, dir, sigma; } Bu;
 static struct { GLint src, bloom, dst, fsize, mode, bloom_k, beam, gamma, scan, mask, gain; } Fu;
+
+// ASCENT: the ambient occlusion (see the comment at Ssao_*)
+static GLuint Ssao_z_prog, Ssao_prog, Ssao_blur_prog, Ssao_apply_prog;
+static struct { GLint step, znear; } Zu;
+static struct { GLint k, radius, power; } Au;
+static struct { GLint dir; } Abu;
+static struct { GLint step, znear, rows, levels, rowk; } Apu;
 
 static GLuint Scene_vao, Scene_vbo, Comp_vao;
 static GLuint Sampler_repeat, Sampler_clamp;	// the 8-bit textures: nearest
@@ -861,6 +1045,17 @@ static float Canvas_w, Canvas_h;		// coordinate space of the vertices
 static int In_view;
 static int View_flags;
 static int View_exists;					// an image was drawn
+
+// ASCENT: the ambient occlusion. The textures of the units 5 and 6 are
+// bound only for its steps; the view uses the units 0 to 4.
+static GLuint Apply_fbo;				// View_tex with no depth buffer
+static GLuint Ssao_z_fbo, Ssao_z_tex;	// the view depth, R32F
+static GLuint Ssao_fbo[2], Ssao_tex[2];	// the occlusion and the depth, RG16F
+static int Ssao_w, Ssao_h;
+static int Ssao_pending;				// the view gets the occlusion (set at plat_gpu_begin_view)
+static int View_depth_test;				// the depth test of the view is enabled
+static float View_scale[3] = { 1.0f, 1.0f, 1.0f };	// plat_gpu_set_view_scale
+#define VIEW_ZNEAR	(1.0f / 16.0f)
 
 // Where the frame shows the view image
 static int Dest_x, Dest_y, Dest_w, Dest_h;
@@ -908,7 +1103,7 @@ static int Name_pool_n;
 
 // The batch of polygons
 typedef struct {
-	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, dim, tint;
+	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, dim, tint, noao;
 } draw_state;
 
 typedef struct {
@@ -1100,6 +1295,7 @@ int gpu_init(SDL_Window *window)
 	Su.fxdy = qglGetUniformLocation(Scene_prog, "u_fxdy");
 	Su.dim = qglGetUniformLocation(Scene_prog, "u_dim");
 	Su.tint = qglGetUniformLocation(Scene_prog, "u_tint");
+	Su.noao = qglGetUniformLocation(Scene_prog, "u_noao");
 	Cu.frame = qglGetUniformLocation(Comp_prog, "u_frame");
 	Cu.pal = qglGetUniformLocation(Comp_prog, "u_pal");
 	Cu.view = qglGetUniformLocation(Comp_prog, "u_view");
@@ -1154,6 +1350,41 @@ int gpu_init(SDL_Window *window)
 		Fu.mask = qglGetUniformLocation(Final_prog, "u_mask");
 		Fu.gain = qglGetUniformLocation(Final_prog, "u_gain");
 	}
+	// ASCENT: the ambient occlusion. Without one of the programs the view
+	// has none. The texture units do not change (see Ssao_pending).
+	Ssao_z_prog = link_program(Full_vs, Ssao_z_fs);
+	Ssao_prog = link_program(Full_vs, Ssao_fs);
+	Ssao_blur_prog = link_program(Full_vs, Ssao_blur_fs);
+	Ssao_apply_prog = link_program(Full_vs, Ssao_apply_fs);
+	if (Ssao_z_prog && Ssao_prog && Ssao_blur_prog && Ssao_apply_prog) {
+		qglUseProgram(Ssao_z_prog);
+		qglUniform1i(qglGetUniformLocation(Ssao_z_prog, "u_depth"), 6);
+		qglUniform1i(qglGetUniformLocation(Ssao_z_prog, "u_color"), 2);
+		Zu.step = qglGetUniformLocation(Ssao_z_prog, "u_step");
+		Zu.znear = qglGetUniformLocation(Ssao_z_prog, "u_znear");
+		qglUseProgram(Ssao_prog);
+		qglUniform1i(qglGetUniformLocation(Ssao_prog, "u_z"), 5);
+		Au.k = qglGetUniformLocation(Ssao_prog, "u_k");
+		Au.radius = qglGetUniformLocation(Ssao_prog, "u_radius");
+		Au.power = qglGetUniformLocation(Ssao_prog, "u_power");
+		qglUseProgram(Ssao_blur_prog);
+		qglUniform1i(qglGetUniformLocation(Ssao_blur_prog, "u_src"), 5);
+		Abu.dir = qglGetUniformLocation(Ssao_blur_prog, "u_dir");
+		qglUseProgram(Ssao_apply_prog);
+		qglUniform1i(qglGetUniformLocation(Ssao_apply_prog, "u_color"), 2);
+		qglUniform1i(qglGetUniformLocation(Ssao_apply_prog, "u_ao"), 5);
+		qglUniform1i(qglGetUniformLocation(Ssao_apply_prog, "u_depth"), 6);
+		qglUniform1i(qglGetUniformLocation(Ssao_apply_prog, "u_fade"), 1);
+		qglUniform1i(qglGetUniformLocation(Ssao_apply_prog, "u_vpal"), 3);
+		qglUniform1i(qglGetUniformLocation(Ssao_apply_prog, "u_near"), 4);
+		Apu.step = qglGetUniformLocation(Ssao_apply_prog, "u_step");
+		Apu.znear = qglGetUniformLocation(Ssao_apply_prog, "u_znear");
+		Apu.rows = qglGetUniformLocation(Ssao_apply_prog, "u_rows");
+		Apu.levels = qglGetUniformLocation(Ssao_apply_prog, "u_levels");
+		Apu.rowk = qglGetUniformLocation(Ssao_apply_prog, "u_rowk");
+		qglUseProgram(0);
+	} else
+		plat_log_error("GPU: no ambient occlusion\n");
 
 	qglGenVertexArrays(1, &Scene_vao);
 	qglGenBuffers(1, &Scene_vbo);
@@ -1210,13 +1441,30 @@ int gpu_init(SDL_Window *window)
 	return 0;
 }
 
+static void delete_ssao_targets(void)
+{
+	int i;
+
+	if (Ssao_z_fbo) qglDeleteFramebuffers(1, &Ssao_z_fbo);
+	if (Ssao_z_tex) qglDeleteTextures(1, &Ssao_z_tex);
+	for (i = 0; i < 2; i++) {
+		if (Ssao_fbo[i]) qglDeleteFramebuffers(1, &Ssao_fbo[i]);
+		if (Ssao_tex[i]) qglDeleteTextures(1, &Ssao_tex[i]);
+		Ssao_fbo[i] = Ssao_tex[i] = 0;
+	}
+	Ssao_z_fbo = Ssao_z_tex = 0;
+	Ssao_w = Ssao_h = 0;
+}
+
 static void delete_view_target(void)
 {
+	delete_ssao_targets();
 	if (View_fbo) qglDeleteFramebuffers(1, &View_fbo);
+	if (Apply_fbo) qglDeleteFramebuffers(1, &Apply_fbo);
 	if (View_tex) qglDeleteTextures(1, &View_tex);
 	if (Dest_tex) qglDeleteTextures(1, &Dest_tex);
-	if (View_depth) qglDeleteRenderbuffers(1, &View_depth);
-	View_fbo = View_tex = Dest_tex = View_depth = 0;
+	if (View_depth) qglDeleteTextures(1, &View_depth);
+	View_fbo = Apply_fbo = View_tex = Dest_tex = View_depth = 0;
 	View_w = View_h = 0;
 	View_exists = 0;
 }
@@ -1302,6 +1550,11 @@ void gpu_shutdown(void)
 	if (Down_prog) qglDeleteProgram(Down_prog);
 	if (Blur_prog) qglDeleteProgram(Blur_prog);
 	if (Final_prog) qglDeleteProgram(Final_prog);
+	if (Ssao_z_prog) qglDeleteProgram(Ssao_z_prog);
+	if (Ssao_prog) qglDeleteProgram(Ssao_prog);
+	if (Ssao_blur_prog) qglDeleteProgram(Ssao_blur_prog);
+	if (Ssao_apply_prog) qglDeleteProgram(Ssao_apply_prog);
+	Ssao_z_prog = Ssao_prog = Ssao_blur_prog = Ssao_apply_prog = 0;
 	ui_shutdown();
 	free(Verts);
 	free(Cmds);
@@ -1675,17 +1928,28 @@ static int make_view_target(int w, int h, int rgb)
 		View_tex = make_r8_texture(w, h, NULL);
 		Dest_tex = make_r8_texture(w, h, NULL);
 	}
-	qglGenRenderbuffers(1, &View_depth);
-	qglBindRenderbuffer(GL_RENDERBUFFER, View_depth);
-	qglRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h);
+	// ASCENT: the depth buffer is a texture, so that the ambient occlusion
+	// can read it
+	View_depth = make_texture(GL_DEPTH_COMPONENT24, w, h, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, NULL, 0);
 	qglGenFramebuffers(1, &View_fbo);
 	qglBindFramebuffer(GL_FRAMEBUFFER, View_fbo);
 	qglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, View_tex, 0);
-	qglFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, View_depth);
+	qglFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, View_depth, 0);
 	if (qglCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		qglBindFramebuffer(GL_FRAMEBUFFER, 0);
 		delete_view_target();
 		return -1;
+	}
+	// ASCENT: the target of the last step of the ambient occlusion, which
+	// reads the depth buffer. Without it the view has no occlusion.
+	if (rgb) {
+		qglGenFramebuffers(1, &Apply_fbo);
+		qglBindFramebuffer(GL_FRAMEBUFFER, Apply_fbo);
+		qglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, View_tex, 0);
+		if (qglCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			qglDeleteFramebuffers(1, &Apply_fbo);
+			Apply_fbo = 0;
+		}
 	}
 	View_w = w;
 	View_h = h;
@@ -1693,8 +1957,155 @@ static int make_view_target(int w, int h, int rgb)
 	return 0;
 }
 
+// A render target with a texture of the format ifmt. Returns the
+// framebuffer, or 0.
+static GLuint make_target_of(GLuint *tex, GLint ifmt, GLenum fmt, GLenum type, int w, int h, int linear)
+{
+	GLuint fbo;
+
+	*tex = make_texture(ifmt, w, h, fmt, type, NULL, linear);
+	qglGenFramebuffers(1, &fbo);
+	qglBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	qglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *tex, 0);
+	if (qglCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		qglDeleteFramebuffers(1, &fbo);
+		qglDeleteTextures(1, tex);
+		*tex = 0;
+		return 0;
+	}
+	return fbo;
+}
+
 static draw_state Cur_state;
 static int Cur_state_valid;
+
+// ---------------------------------------------------------------------
+// ASCENT: the ambient occlusion (see the comment at Ssao_*)
+
+void plat_gpu_set_view_scale(float sx, float sy, float sz)
+{
+	View_scale[0] = sx > 0 ? sx : 1.0f;
+	View_scale[1] = sy > 0 ? sy : 1.0f;
+	View_scale[2] = sz > 0 ? sz : 1.0f;
+}
+
+static int make_ssao_targets(int w, int h)
+{
+	int i;
+
+	if (Ssao_z_fbo && w == Ssao_w && h == Ssao_h)
+		return 0;
+	delete_ssao_targets();
+	Ssao_z_fbo = make_target_of(&Ssao_z_tex, GL_R32F, GL_RED, GL_FLOAT, w, h, 0);
+	for (i = 0; i < 2; i++)
+		Ssao_fbo[i] = make_target_of(&Ssao_tex[i], GL_RG16F, GL_RG, GL_FLOAT, w, h, 0);
+	if (!Ssao_z_fbo || !Ssao_fbo[0] || !Ssao_fbo[1]) {
+		delete_ssao_targets();
+		return -1;
+	}
+	Ssao_w = w;
+	Ssao_h = h;
+	return 0;
+}
+
+static void draw_full(GLuint prog);
+
+// The values of the occlusion: the radius in the units of the level, the
+// strength of the estimator, and the rows of the fade table of the full
+// occlusion. A test aid: ASCENT_SSAO_TUNE="radius,strength,rows"; with 99
+// rows the view shows the occlusion itself, white to black.
+// The radius is about a third of the height of a character.
+static float Ssao_radius = 16.0f, Ssao_power = 1.5f, Ssao_rows = 16.0f;
+
+// Darken the view image with the occlusion of the polygons that are drawn.
+// The batch is empty. The steps change the framebuffer, the program and the
+// units 2, 5 and 6: the state of the view is set again.
+static void ssao_run(void)
+{
+	static int tuned;
+	// the occlusion image has no more than 1200 rows
+	int step = (View_h + 1199) / 1200;
+	int w = (View_w + step - 1) / step, h = (View_h + step - 1) / step;
+
+	if (!Ssao_pending)
+		return;
+	Ssao_pending = 0;
+	if (!tuned) {
+		const char *e = SDL_getenv("ASCENT_SSAO_TUNE");
+		float r, p, n;
+		if (e && sscanf(e, "%f,%f,%f", &r, &p, &n) == 3 && r > 0 && p >= 0 && n >= 0 && (n <= 31 || n == 99)) {
+			Ssao_radius = r;
+			Ssao_power = p;
+			Ssao_rows = n;
+		}
+		tuned = 1;
+	}
+
+	if (make_ssao_targets(w, h) == 0) {
+		qglDisable(GL_DEPTH_TEST);
+
+		// the copy of the view: the mask (alpha), and the colors for the
+		// last step
+		qglBindFramebuffer(GL_FRAMEBUFFER, View_fbo);
+		qglActiveTexture(GL_TEXTURE2);
+		qglBindTexture(GL_TEXTURE_2D, Dest_tex);
+		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, View_w, View_h);
+		qglActiveTexture(GL_TEXTURE6);
+		qglBindTexture(GL_TEXTURE_2D, View_depth);
+		qglActiveTexture(GL_TEXTURE5);
+
+		qglViewport(0, 0, w, h);
+		qglBindFramebuffer(GL_FRAMEBUFFER, Ssao_z_fbo);
+		qglUseProgram(Ssao_z_prog);
+		qglUniform1i(Zu.step, step);
+		qglUniform1f(Zu.znear, VIEW_ZNEAR);
+		draw_full(Ssao_z_prog);
+
+		qglBindFramebuffer(GL_FRAMEBUFFER, Ssao_fbo[0]);
+		qglBindTexture(GL_TEXTURE_2D, Ssao_z_tex);
+		qglUseProgram(Ssao_prog);
+		qglUniform3f(Au.k, 1.0f / View_scale[0], 1.0f / View_scale[1], 1.0f / View_scale[2]);
+		qglUniform1f(Au.radius, Ssao_radius);
+		qglUniform1f(Au.power, Ssao_power);
+		draw_full(Ssao_prog);
+
+		qglUseProgram(Ssao_blur_prog);
+		qglBindFramebuffer(GL_FRAMEBUFFER, Ssao_fbo[1]);
+		qglBindTexture(GL_TEXTURE_2D, Ssao_tex[0]);
+		qglUniform2f(Abu.dir, 1, 0);
+		draw_full(Ssao_blur_prog);
+		qglBindFramebuffer(GL_FRAMEBUFFER, Ssao_fbo[0]);
+		qglBindTexture(GL_TEXTURE_2D, Ssao_tex[1]);
+		qglUniform2f(Abu.dir, 0, 1);
+		draw_full(Ssao_blur_prog);
+
+		qglViewport(0, 0, View_w, View_h);
+		qglBindFramebuffer(GL_FRAMEBUFFER, Apply_fbo);
+		qglBindTexture(GL_TEXTURE_2D, Ssao_tex[0]);
+		qglUseProgram(Ssao_apply_prog);
+		qglUniform1i(Apu.step, step);
+		qglUniform1f(Apu.znear, VIEW_ZNEAR);
+		qglUniform1f(Apu.rows, Ssao_rows);
+		qglUniform1i(Apu.levels, Fade_levels);
+		qglUniform1fv(Apu.rowk, 64, Row_k);
+		draw_full(Ssao_apply_prog);
+
+		// the depth buffer is an attachment of the view again: no unit
+		// keeps it
+		qglBindTexture(GL_TEXTURE_2D, 0);
+		qglActiveTexture(GL_TEXTURE6);
+		qglBindTexture(GL_TEXTURE_2D, 0);
+	}
+
+	qglActiveTexture(GL_TEXTURE0);
+	qglBindFramebuffer(GL_FRAMEBUFFER, View_fbo);
+	qglViewport(0, 0, View_w, View_h);
+	if (View_depth_test)
+		qglEnable(GL_DEPTH_TEST);
+	qglUseProgram(Scene_prog);
+	qglBindVertexArray(Scene_vao);
+	Cur_state_valid = 0;
+}
 
 static GLuint sampler_for(const draw_state *st)
 {
@@ -1725,6 +2136,8 @@ static void apply_state(const draw_state *st)
 		qglUniform1i(Su.dim, st->dim);
 	if (!Cur_state_valid || st->tint != Cur_state.tint)
 		qglUniform1i(Su.tint, st->tint);
+	if (!Cur_state_valid || st->noao != Cur_state.noao)
+		qglUniform1i(Su.noao, st->noao);
 	if (st->mode == PLAT_GPU_TEXTURED && (!Cur_state_valid || st->texture != Cur_state.texture)) {
 		qglActiveTexture(GL_TEXTURE0);
 		qglBindTexture(GL_TEXTURE_2D, (GLuint) st->texture);
@@ -1802,15 +2215,27 @@ void plat_gpu_begin_view(int canvas_w, int canvas_h, int target_w, int target_h,
 		qglClearColor((clear_color & 255) / 255.0f, 0, 0, 1);
 	qglClearDepth(1.0);
 	qglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	// ASCENT: the ambient occlusion: the RGB form, not with the heat colors
+	// of the improved infravision (they are not the light of the level)
+	Ssao_pending = (flags & PLAT_GPU_VIEW_SSAO) && rgb && !Infra_on && Apply_fbo
+		&& Ssao_z_prog && Ssao_prog && Ssao_blur_prog && Ssao_apply_prog;
+	View_depth_test = 1;
 	if (flags & PLAT_GPU_VIEW_DEPTH) {
 		qglEnable(GL_DEPTH_TEST);
 		qglDepthFunc(GL_LEQUAL);
-	} else
+	} else if (Ssao_pending) {
+		// painter's order with the depth of the last polygon of each pixel
+		// for the occlusion
+		qglEnable(GL_DEPTH_TEST);
+		qglDepthFunc(GL_ALWAYS);
+	} else {
 		qglDisable(GL_DEPTH_TEST);
+		View_depth_test = 0;
+	}
 
 	qglUseProgram(Scene_prog);
 	qglUniform2f(Su.canvas, Canvas_w, Canvas_h);
-	qglUniform1f(Su.znear, 1.0f / 16.0f);
+	qglUniform1f(Su.znear, VIEW_ZNEAR);
 	qglUniform1i(Su.rgb, rgb);
 	qglUniform1i(Su.infra, rgb && Infra_on);
 	qglUniform1i(Su.tex, 0);
@@ -1849,6 +2274,7 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 	st.mode = m->mode;
 	st.heat = (View_rgb && Infra_on) ? m->heat : 0;
 	st.depth_write = (m->mode != PLAT_GPU_DARKEN);
+	st.noao = View_rgb && m->no_ao && m->mode != PLAT_GPU_DARKEN;
 	if (m->mode == PLAT_GPU_TEXTURED) {
 		tex_info *ti;
 		if (m->texture <= 0)
@@ -1988,6 +2414,7 @@ void plat_gpu_clear_depth(void)
 	if (!In_view)
 		return;
 	flush();
+	ssao_run();		// ASCENT: the later polygons get no ambient occlusion
 	qglDepthMask(GL_TRUE);
 	Cur_state_valid = 0;
 	qglClear(GL_DEPTH_BUFFER_BIT);
@@ -1998,6 +2425,7 @@ void plat_gpu_end_view(void)
 	if (!In_view)
 		return;
 	flush();
+	ssao_run();		// ASCENT: a view with no plat_gpu_clear_depth
 	qglDepthMask(GL_TRUE);
 	qglDisable(GL_DEPTH_TEST);
 	qglDisable(GL_DEPTH_CLAMP);
@@ -2766,19 +3194,7 @@ static void compose(int key, int fw, int fh, int x, int y, int w, int h, int med
 
 static GLuint make_target(GLuint *tex, int w, int h)
 {
-	GLuint fbo;
-
-	*tex = make_texture(GL_RGBA8, w, h, GL_RGBA, GL_UNSIGNED_BYTE, NULL, 1);
-	qglGenFramebuffers(1, &fbo);
-	qglBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	qglFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *tex, 0);
-	if (qglCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-		qglDeleteFramebuffers(1, &fbo);
-		qglDeleteTextures(1, tex);
-		*tex = 0;
-		return 0;
-	}
-	return fbo;
+	return make_target_of(tex, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, w, h, 1);
 }
 
 static int make_post_targets(int w, int h)

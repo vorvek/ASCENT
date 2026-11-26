@@ -35,6 +35,7 @@ int Dtu_upscaled_textures = 1;
 int Dtu_upscaled_movies = 1;
 int Dtu_improved_models = 1;
 int Dtu_anisotropic = 1;
+int Dtu_ambient_occlusion = 0;
 int Dtu_shader = DTU_SHADER_SUBTLE;
 int Dtu_safe_music = 0;
 int Dtu_anim_interp = 1;
@@ -78,6 +79,7 @@ static dtu_opt Opts[] = {
 	{ "UpscaledMovies",      &Dtu_upscaled_movies,      0, 1 },
 	{ "ImprovedModels",      &Dtu_improved_models,      0, 1 },
 	{ "Anisotropic",         &Dtu_anisotropic,          0, 1 },
+	{ "AmbientOcclusion",    &Dtu_ambient_occlusion,    0, 1 },
 	{ "Shader",              &Dtu_shader,               DTU_SHADER_OFF, DTU_SHADER_VGA },
 	{ "SafeMusic",           &Dtu_safe_music,           0, 1 },
 	{ "AnimInterpolation",   &Dtu_anim_interp,          0, 1 },
