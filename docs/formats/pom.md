@@ -102,11 +102,47 @@ default) and the option `-origmodels`. The files are read when an archive is loa
 so a change of the setting shows after the next level load. The software renderer
 does not use the files (`DTU_GFX`).
 
+## Smooth light
+
+The game gives one light value to each texture polygon of a model: 1/4 plus 3/4 of
+the dot product of the polygon normal and the view direction, times the light of
+the object (`calc_face_light` in `interp.c`). A model of the archives draws that
+way.
+
+A model from a POM file gets a normal for each corner of each texture polygon when
+it loads (`polyobj_make_smooth` in `polyobj.c`), and `op_tmappoly` computes the
+light of each corner from that normal with the same formula. The renderer
+interpolates the light across the face.
+
+- The normal of a corner is the sum of the normals of the faces of the submodel at
+  that point, each times the area of its face.
+- A face whose normal is 90 degrees or more away from the normal of the polygon is
+  left out (`SMOOTH_ANGLE_COS`). That edge stays sharp. The back face of a sheet is
+  such a face.
+- A corner normal that points away from the viewer gives the base light (1/4).
+- The points of two submodels are not connected, so the light has a step at a joint.
+- A polygon with the glow override keeps its one light value.
+- No file has the normals. The setting of the files (`ImprovedModels`) is the only
+  switch.
+
+Verified in YPINN with `elf_p` and `durnan`: the faces of the head show a gradient
+in place of one value for each face.
+
 ## How the files are made
 
 1. `python -I tools/model_zoo.py extract` writes one record for each mesh to
    `gamedata/models/orig` (127 meshes for 1006 model names in 57 archives) and the
    textures to `gamedata/models/tex`.
+   The texture list of a model comes from its line in the table of the level
+   (tbl.md), as `line_models_load` of `bmread.c` reads it: the words after
+   `model=NAME` up to the next `model=` or the end of the line. A word with `=` is
+   a value and does not end the list (`model=all5.pof iq=200 HEADTEX2.bbm ...` in
+   FLAME, `... b_a01.bbm moola=20 arrow.bbm` in BEHOLDER). A bitmap name of the
+   archive without an extension is a texture (`g_a01` in PRISON). `%N` is the
+   bitmap of effect clip N, from the line after `$ECLIP clip_num=N ...
+   obj_eclip=1`: `%23` is `beh_be01` and `%24` is `beh_sp01` in BEHOLDER, six
+   frames each, and the record has frame 0. 25 meshes have no list: those of
+   DMM.EGG and FMM.EGG, whose tables have 0 bytes.
 2. In Blender, `tools/blender/zoo.py`: `zoo.batch()` makes
    `gamedata/models/blend/<mesh>.blend` for each mesh, with the original
    (`<mesh>.orig`) and the improved copy (`<mesh>.new`) side by side, and

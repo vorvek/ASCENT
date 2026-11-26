@@ -78,7 +78,7 @@ DEFAULT_PACKS = ('patch13', 'textures', 'ui', 'movies')
 # 7: Puerto Calavera for Skullport, Méfit for Mephit, one spelling of
 #    Perrentine
 # models 5: the ogre feet closed (ognew5, armogre; bugs.md D30)
-PACK_VERSION = {'lang_es': '7', 'models': '5'}
+PACK_VERSION = {'lang_es': '7', 'models': '11'}
 STORED = ('.png', '.m1v', '.zip', '.ogg')
 
 
