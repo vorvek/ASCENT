@@ -57,30 +57,62 @@ def orig_crc(pm):
 # ---- tables -------------------------------------------------------------------
 
 def table_textures(bin_path):
-    """Return (egg name, {model name: [bitmap names]}) of a BIN table."""
+    """Return (egg name, {model name: [words]}, {clip number: bitmap name}) of
+    a BIN table.
+
+    The words of a model are the words of its table line after "model=NAME",
+    up to the next "model=" or "simple_model=" or the end of the line, without
+    the words that have "=" (the game reads those as values: bmread.c,
+    line_models_load). A word is a bitmap name with ".bbm" or ".abm", a
+    bitmap name of the archive without an extension, "%N" (the bitmap of
+    effect clip N) or a flag word. model_textures() picks the bitmaps.
+
+    The clips are those of the "$ECLIP ... obj_eclip=1" lines: the bitmap is
+    the first word of the next line with a name."""
     with open(bin_path, "rb") as f:
         egg_name, body = egglib.decode_bin(f.read())
-    out = {}
-    tokens = body.decode("latin1").replace("\t", " ").split()
-    i = 0
-    while i < len(tokens):
-        t = tokens[i]
-        i += 1
-        if not t.lower().startswith("model=") and not t.lower().startswith("simple_model="):
+    out, clips = {}, {}
+    clip = None
+    for line in body.decode("latin1").replace("	", " ").splitlines():
+        tokens = line.split()
+        if not tokens:
             continue
-        name = t.split("=", 1)[1].lower()
-        tex = []
-        while i < len(tokens):
-            low = tokens[i].lower()
-            if low.endswith(".bbm") or low.endswith(".abm"):
-                tex.append(low[:-4])
-            elif low.startswith("%"):
-                tex.append(low)
-            elif tex or "=" in low or low[0] in "$@;":
-                break                    # flag words can stand before the list
-            i += 1
-        out.setdefault(name, tex)
-    return egg_name, out
+        head = tokens[0].lower().lstrip("@")
+        if head.startswith("$"):
+            clip = None
+        if head == "$eclip":
+            num = [t.split("=", 1)[1] for t in tokens if t.lower().startswith("clip_num=")]
+            if num and any(t.lower() == "obj_eclip=1" for t in tokens):
+                clip = int(num[0])
+        elif clip is not None and not head.startswith("$"):
+            low = tokens[0].lower()
+            if low.endswith(".abm") or low.endswith(".bbm"):
+                clips.setdefault(clip, low[:-4])
+            clip = None
+        name = None
+        for t in tokens:
+            low = t.lower()
+            if low.startswith("model=") or low.startswith("simple_model="):
+                name = low.split("=", 1)[1]
+                out.setdefault(name, [])
+                first = not out[name]
+            elif name is not None and "=" not in low and first:
+                out[name].append(low)
+    return egg_name, out, clips
+
+
+def model_textures(words, clips, bitmaps):
+    """The bitmap names of a model, in the order of the texture numbers, from
+    the words of its table line. bitmaps: the bitmap names of the archive."""
+    tex = []
+    for w in words:
+        if w.endswith(".bbm") or w.endswith(".abm"):
+            tex.append(w[:-4])
+        elif w.startswith("%") and w[1:].isdigit():
+            tex.append(clips.get(int(w[1:]), w))
+        elif w in bitmaps:
+            tex.append(w)
+    return tex
 
 
 # ---- extract ------------------------------------------------------------------
@@ -128,12 +160,12 @@ def cmd_extract(args):
         if not os.path.exists(b):
             continue
         try:
-            egg_name, t = table_textures(b)
+            egg_name, t, clips = table_textures(b)
         except Exception:
             continue
         d = tex_of.setdefault(egg_name.lower(), {})
         for k, v in t.items():
-            d.setdefault(k, v)
+            d.setdefault(k, (v, clips))
 
     meshes = {}
     for path in eggs:
@@ -157,6 +189,8 @@ def cmd_extract(args):
             h = mesh_hash(pm)
             name = m.name.lower()
             tex = tex_of.get(base.lower(), {}).get(name)
+            if tex is not None:
+                tex = model_textures(tex[0], tex[1], bitmaps)
             if h not in meshes:
                 rec = model_record(pm)
                 rec.update({"mesh": name[:-4], "hash": h, "names": [], "egg": base,

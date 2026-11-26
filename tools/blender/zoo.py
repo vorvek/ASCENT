@@ -937,7 +937,10 @@ def _fan_starts(bm, uvl):
         for t in tris.get(f, []):
             s = set(t)
             common = s if common is None else common & s
-        out[f] = next(iter(common)) if common else False
+        # a quad has two such loops: take the first one of the face, so that
+        # each export gives the same file (a set has no fixed order)
+        ls = list(f.loops)
+        out[f] = min(common, key=ls.index) if common else False
     return out
 
 
