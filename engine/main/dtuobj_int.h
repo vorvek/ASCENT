@@ -115,6 +115,7 @@ typedef struct dtu_ai_local {
 	short		log_hit_seg, log_hit_side;
 	fix		log_wall_time;			// the game time of the last wall hit (-testkill N,1)
 	short		log_hit_obj;			// the object of the last object hit
+	fix		chase_path_time;		// ASCENT: Dtu_fix_chase_run, the last time on a path to the player
 } dtu_ai_local;
 
 // A missile (object type OBJ_WEAPON that flies). The entry belongs to the

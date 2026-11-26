@@ -646,6 +646,34 @@ extern int Dtu_fix_caster_melee;
 // a chosen spell is cast at its cast time; the choice still needs a bit.
 // -origobj and -origcastercast clear it.
 extern int Dtu_fix_caster_cast;
+// The choice of a spell by a creature (0x92D99). Original: the choice runs
+// only when an event sets a bit of the condition word +0x15E (the wake, a
+// hit, an alert), it tries only the first entry of the table that the
+// tests let pass (0x92F82), and it clears the bits. A caster that the
+// player does not hit chooses one time at its wake (DROW1: each priestess
+// cast one spell in 80 seconds). Corrected: a failed condition or roll
+// goes to the next entry, and a hostile caster with no chosen spell gets
+// the bit of the alert level 2 after 0 to 10 seconds plus 4 seconds for
+// each level of its last spell (the rule of the weapon spell, 0x10040).
+// -origobj and -origcasteridle clear it.
+extern int Dtu_fix_caster_idle;
+// The speeds of the ogres and the trolls (0x74AA7, speeds= of the monster
+// table and of the model). Original: "Ogre2", "armOgre", "Troll" and
+// "armTroll" walk at 8.0 and run at 15.0, the values of the zombie; a
+// skeleton has 15.0 and 30.0, an orc 10.0 and 20.0, the player walks at
+// 49.3. Their run animation takes 1.0 second as for all creatures, so they
+// show a run and move at the walk speed of a skeleton. Corrected: the
+// speeds follow the movement rates of AD&D 2e with the skeleton (rate 12,
+// 15.0 and 30.0) as the reference: an ogre (rate 9) 11.0 and 22.0, a troll
+// (rate 12) 15.0 and 30.0. -origobj and -origmonsterspeed clear it.
+extern int Dtu_fix_monster_speed;
+// The animation state of a creature that chases (0x10148, 0x11018).
+// Original: a hostile melee creature farther than 30.0 runs only when it
+// saw the player in the last 0.5 second, else it walks. With
+// Dtu_fix_path_follow a creature that does not see the player walks on a
+// path to the player (round a corner, to a door) at its walk speed.
+// Corrected: it runs on that path too. -origobj and -origchaserun clear it.
+extern int Dtu_fix_chase_run;
 // The end of the fall of a creature (0x6C662). Original: the damage of the
 // fall (0x6C8C8) comes when the creature is in the floor or hits it in its
 // move; a frame that ends less than 1.0 above the floor ends the fall with

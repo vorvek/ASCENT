@@ -4009,7 +4009,16 @@ static struct {
 	int		chosen;
 	int		ready;
 	int		cond;
+	fix		idle_time;		// ASCENT: Dtu_fix_caster_idle, the time of the next choice with no event
 } Cspell[MAX_OBJECTS];
+
+// ASCENT: Dtu_fix_caster_idle (dtuobj.h): the time to the next choice of a
+// creature with no event, the rule of the weapon spell of 1.3 (0x10040):
+// 0 to 10 seconds plus 4 seconds for each level of the spell
+static void cspell_idle_wait(int n,int level)
+{
+	Cspell[n].idle_time = GameTime + (rand() % 11) * F1_0 + level * 4 * F1_0;
+}
 
 static int cspell_state(object *obj)
 {
@@ -4025,6 +4034,7 @@ static int cspell_state(object *obj)
 		Cspell[n].chosen = -1;		// 0x1038B: ailp+0x2C = 0xFF, ailp+0x2D = 0
 		Cspell[n].ready = 0;
 		Cspell[n].cond = 0;
+		Cspell[n].idle_time = 0;
 	}
 	return n;
 }
@@ -4048,6 +4058,7 @@ void dtu_spell_creature_restore(object *obj)
 	Cspell[n].chosen = -1;
 	Cspell[n].ready = 0;		// 0xAE3F2: ailp+0x2D = 0
 	Cspell[n].cond = 0;
+	Cspell[n].idle_time = GameTime;
 }
 
 // ASCENT: the cast timer for the state file (dtuspell.h)
@@ -4364,6 +4375,7 @@ static void creature_cast(object *obj)
 	}
 	b = spell_flag(s,"mage_use") ? 0 : 1;
 	Cspell[n].points[b] -= spell_level(s);
+	cspell_idle_wait(n,spell_level(s));		// ASCENT: Dtu_fix_caster_idle
 	// 0x92176: -2 (the melee reach test of the attack goal) for a melee
 	// creature that is active, else -1. The caller runs only for an active
 	// creature (dtu_spell_creature_frame, creature_choose).
@@ -4408,6 +4420,8 @@ static void creature_choose(object *obj,fix dist)
 		// The first entry that passes the tests above ends the scan: 0x9231F
 		// returns 0 for a failed condition, a failed roll and Dispel Magic,
 		// and 0x92F82 then jumps to the end of the scan (0x92FAE).
+		// ASCENT: Dtu_fix_caster_idle: a failed condition or roll goes to
+		// the next entry.
 		if (s == 13 || s == 55) {
 			// Dispel Magic: at once on itself when the player or the
 			// creature has effects (ailp+0x2D = 1 before the cast)
@@ -4424,12 +4438,16 @@ static void creature_choose(object *obj,fix dist)
 		w = cspell_weight(obj,e,dist);
 		if (w < 0) {
 			dtu_spell_log("cspell: obj %d %s: '%s' (%d) fails its condition",n,target_name(obj),spell_name(s),s);
+			if (Dtu_fix_caster_idle)
+				continue;
 			break;
 		}
 		if (w > 100) w = 100;
 		roll = rand() % 100 + 1;
 		if (roll > w) {
 			dtu_spell_log("cspell: obj %d %s: '%s' (%d) fails its weight %d, roll %d",n,target_name(obj),spell_name(s),s,w,roll);
+			if (Dtu_fix_caster_idle)
+				continue;
 			break;
 		}
 		Cspell[n].cond &= ~Cspell_table[e].cond;
@@ -4443,6 +4461,12 @@ static void creature_choose(object *obj,fix dist)
 	// 0x92FAE: ailp+0x2C = (activity < 2) - 2; the caller runs only for an
 	// active creature. -2: the attack goal uses the melee reach test.
 	Cspell[n].cond &= ~Cspell_table[e].cond;
+	if (Dtu_fix_caster_idle) {
+		// ASCENT: the scan tried all entries: no new scan before an event
+		// or the wait
+		Cspell[n].cond = 0;
+		cspell_idle_wait(n,1);
+	}
 	Cspell[n].chosen = -2;
 	dtu_spell_log("cspell: obj %d %s chooses no spell: melee (-2)",n,target_name(obj));
 }
@@ -4491,6 +4515,17 @@ void dtu_spell_creature_frame(object *obj,fix dist,int active)
 	if (creature_mage_level(obj) <= 0 && creature_cleric_level(obj) <= 0)
 		return;
 	n = cspell_state(obj);
+	// ASCENT: Dtu_fix_caster_idle (dtuobj.h): a hostile creature with no
+	// chosen spell and no condition bit gets the bit of the alert level 2
+	// (0x16262) after its wait. The attack spells of the table 0x142084
+	// answer this bit; the spells that help the creature keep their events.
+	if (Dtu_fix_caster_idle && Cspell[n].cond == 0 && Cspell[n].chosen < 0 && Cspell[n].idle_time <= GameTime &&
+		 dtu_creature_is_hostile(obj)) {
+		if (Cspell[n].idle_time == 0)
+			cspell_idle_wait(n,1);		// a creature that has not chosen yet: the wake event comes first
+		else
+			Cspell[n].cond |= 0x04;
+	}
 	// 0x14948: no condition bits (+0x15E), no step. The choice clears the
 	// bits of the chosen entry (0x92F97), so in 1.3 the chosen spell waits
 	// for a new bit (a hit, an alert) after its cast time. ASCENT:

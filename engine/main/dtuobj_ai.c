@@ -288,6 +288,13 @@ static int anim_to_ai_state(object *obj)
 	return DAIS_NONE;
 }
 
+// ASCENT: Dtu_fix_chase_run (dtuobj.h): 1 if the creature walked on a path
+// to the player (chase_by_path()) in the last 0.5 second
+static int chase_runs(dtu_ai_local *ail)
+{
+	return Dtu_fix_chase_run && ail->chase_path_time && ail->chase_path_time + F1_0/2 >= GameTime;
+}
+
 // 0x10148. The animation state that belongs to an AI state.
 static int ai_to_anim_state(object *obj,int ai_state,fix dist)
 {
@@ -300,7 +307,7 @@ static int ai_to_anim_state(object *obj,int ai_state,fix dist)
 			// ASCENT: keep_off_player(), a creature that waits for the player
 			if (station || ail->keep_off == 2)
 				return DAS_STAND;
-			if (dist > i2f(30) && ail->time_player_seen + F1_0/2 >= GameTime)
+			if (dist > i2f(30) && (ail->time_player_seen + F1_0/2 >= GameTime || chase_runs(ail)))
 				return DAS_RUN;
 			return DAS_WALK;
 		case DAIS_FLIN:	return DAS_FLINCH;
@@ -1302,6 +1309,7 @@ static int chase_by_path(object *obj)
 	if (!path_advance(obj,&goal))
 		return 0;
 	path_steer(obj,&goal);
+	ail->chase_path_time = GameTime ? GameTime : 1;		// ASCENT: Dtu_fix_chase_run
 	return 1;
 }
 
@@ -1640,11 +1648,13 @@ void morale_check(object *obj)
 		roll <= mor ? "passed" : "failed");
 }
 
-// ASCENT: Dtu_fix_caster_melee and Dtu_fix_caster_cast (dtuobj.h, the
-// second one is used in dtuspell.c). -origobj, -origcastermelee and
-// -origcastercast clear them.
+// ASCENT: Dtu_fix_caster_melee, Dtu_fix_caster_cast and
+// Dtu_fix_caster_idle (dtuobj.h, the last two are used in dtuspell.c).
+// -origobj, -origcastermelee, -origcastercast and -origcasteridle clear
+// them.
 int Dtu_fix_caster_melee = 1;
 int Dtu_fix_caster_cast = 1;
+int Dtu_fix_caster_idle = 1;
 
 // The choice of step 25 point 4 of do_ai_frame (docs/re/ai.md), also of
 // do_firing_stuff (0x12916): the goal state of a creature that wants to
@@ -1739,7 +1749,7 @@ static void ai_animation_step(object *obj,fix dist)
 
 	// A hostile melee creature that is far from a player that it sees runs.
 	if (is_hostile(obj) && aip->GOAL_STATE != DAIS_DEAD && DTU_ANIM_STATE(obj) != DAS_DIE && !ail->keep_off &&
-		 Robot_info[obj->id].attack_type == 1 && dist > i2f(30) && ail->time_player_seen + F1_0/2 >= GameTime) {
+		 Robot_info[obj->id].attack_type == 1 && dist > i2f(30) && (ail->time_player_seen + F1_0/2 >= GameTime || chase_runs(ail))) {
 		if (aip->behavior != DAIB_STATION)
 			DTU_ANIM_STATE(obj) = DAS_RUN;
 		aip->GOAL_STATE = DAIS_LOCK;

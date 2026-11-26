@@ -80,6 +80,8 @@
 
 int Dtu_fix_idle_anim = 1;
 int Dtu_fix_ai_ticks = 1;
+int Dtu_fix_monster_speed = 1;		// ASCENT: the speeds of the ogres and the trolls (dtuobj.h)
+int Dtu_fix_chase_run = 1;			// ASCENT: a creature runs on its path to the player (dtuobj.h)
 int Dtu_fix_creature_move = 1;
 int Dtu_creatures_attack = 1;
 int Dtu_idle_anim_near = 0;
@@ -672,20 +674,43 @@ fix state_time(polymodel *po,int state)
 	return po->state_times[state];
 }
 
+// ASCENT: Dtu_fix_monster_speed (dtuobj.h): the walk and the run speed of
+// an ogre or a troll. Returns 0 for all other creatures.
+static int corrected_speeds(object *obj,fix *walk,fix *run)
+{
+	const char *name;
+
+	if (!Dtu_fix_monster_speed || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+		return 0;
+	name = Monster_info[obj->id].name;
+	if (!stricmp(name,"Ogre2") || !stricmp(name,"armOgre")) {
+		*walk = i2f(11); *run = i2f(22);
+		return 1;
+	}
+	if (!stricmp(name,"Troll") || !stricmp(name,"armTroll")) {
+		*walk = i2f(15); *run = i2f(30);
+		return 1;
+	}
+	return 0;
+}
+
 // 0x74AA7. The speed of the movement of an animation state.
 fix anim_speed(object *obj,int state)
 {
 	polymodel *po = obj_model(obj);
-	fix v;
+	fix v, walk, run;
 
 	if (po == NULL)
 		return 0;
 	if (state == -1)
 		state = DTU_ANIM_STATE(obj);
+	walk = po->speeds[0];
+	run = po->speeds[2];
+	corrected_speeds(obj,&walk,&run);
 	if (state >= DAS_WALK && state <= DAS_SIDLE_L)
-		v = po->speeds[0];
+		v = walk;
 	else if (state == DAS_RUN)
-		v = po->speeds[2];
+		v = run;
 	else if (state >= 13 && state <= 18)
 		v = po->speeds[state-10];
 	else
@@ -1003,13 +1028,19 @@ void dtu_objects_init(void)
 			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = Dtu_fix_ogre_legs = Dtu_fix_npc_walk = Dtu_fix_npc_body =
 			Dtu_fix_lava = Dtu_fix_fall_active = Dtu_fix_fall_land = Dtu_fix_door_pair = 0;
 	if (FindArg("-origobj"))
-		Dtu_fix_caster_melee = Dtu_fix_caster_cast = 0;
+		Dtu_fix_caster_melee = Dtu_fix_caster_cast = Dtu_fix_caster_idle = Dtu_fix_monster_speed = Dtu_fix_chase_run = 0;
 	if (FindArg("-origdoorpair"))
 		Dtu_fix_door_pair = 0;
 	if (FindArg("-origcastermelee"))
 		Dtu_fix_caster_melee = 0;
 	if (FindArg("-origcastercast"))
 		Dtu_fix_caster_cast = 0;
+	if (FindArg("-origcasteridle"))
+		Dtu_fix_caster_idle = 0;
+	if (FindArg("-origmonsterspeed"))
+		Dtu_fix_monster_speed = 0;
+	if (FindArg("-origchaserun"))
+		Dtu_fix_chase_run = 0;
 	if (FindArg("-orignpcwalk"))
 		Dtu_fix_npc_walk = 0;
 	if (FindArg("-origogrelegs"))

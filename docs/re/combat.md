@@ -1883,8 +1883,9 @@ message test is one d20 per cast.
   caster touch in reach and never shoot. The AI step of the spells needs
   +0x15E != 0 (0x14948, `cmp dword [aip+0x1E], 0`) also for the cast of a
   chosen spell. The port: `choose_attack_goal` (dtuobj_ai.c),
-  `dtu_spell_creature_frame` (dtuspell.c), with `Dtu_fix_caster_melee` and
-  `Dtu_fix_caster_cast` (dtuobj.h).
+  `dtu_spell_creature_frame` (dtuspell.c), with `Dtu_fix_caster_melee`,
+  `Dtu_fix_caster_cast` and `Dtu_fix_caster_idle` (dtuobj.h, ai.md
+  "Settings").
 - 0x9231F (jump table 0x92243): a condition per spell and a weight, clamped
   to 0 to 100; the spell is chosen when `rand() % 100 + 1 <= weight`. Then
   ailp+0x2C = index, ailp+0x2D = 1, +0x1C0 = GameTime + cast time (+0x04, integer
