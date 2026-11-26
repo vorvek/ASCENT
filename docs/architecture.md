@@ -136,7 +136,7 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg`, `mirt_points`, `script_run_mode` | `dtuscript.c` |
 | `-origscriptwalk` | `script_walk` | `dtuscript.c` |
 | `-origprison` | `prison_items` | `dtuscript.c` |
-| `-origdrow5`, `-origguildpeace` | one each: `drow5_shields`, `guild_peace` | `dtuobj.c` |
+| `-origdrow5`, `-origguildpeace`, `-origtamaramagil` | one each: `drow5_shields`, `guild_peace`, `tamaramagil` | `dtuobj.c` |
 | `-origsound` | `foot_pan`, `creature_steps` | `dtufoot.c` |
 | `-origmusic` | `start_music`, `wrp_sound` | `dtumusic.c` |
 | `-origlight` | `light_stable` | `lighting.c` |

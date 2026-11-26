@@ -721,8 +721,35 @@ void dtu_creature_drop_contents(object *obj)
 
 		if (type == OBJ_ROBOT)
 			n = dtu_gate_in_creature(id,obj->segnum);
-		else if (!(type == OBJ_WEAPON && (id == 10 || id == 0x1c || id == 0x28 || id == 0x4a || id == 0x4b)))
-			n = dtu_create_item(type,id,count,obj->segnum,&obj->pos);
+		else if (!(type == OBJ_WEAPON && (id == 10 || id == 0x1c || id == 0x28 || id == 0x4a || id == 0x4b))) {
+			vms_vector pos = obj->pos;
+			int seg = obj->segnum;
+
+			// ASCENT, Dtu_fix_tamaramagil: the center of the dragon of
+			// DROW2 is 24.7 above the floor, out of the reach of the
+			// player, and her body lies on it. Her key drops 5.0 above the
+			// floor, 60.0 in front of her.
+			if (Dtu_fix_tamaramagil && Dtu_script_level == 21 && (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) == 210) {
+				fix r, hh;
+				vms_vector p;
+				int s2;
+
+				dtu_get_body_size(obj,&r,&hh);
+				pos.y -= hh - i2f(5);
+				p = pos;
+				vm_vec_scale_add2(&p,&obj->orient.fvec,i2f(60));
+				p.y = pos.y;
+				if ((s2 = find_point_seg(&p,obj->segnum)) >= 0) {
+					pos = p;
+					seg = s2;
+				}
+				else if ((s2 = find_point_seg(&pos,obj->segnum)) >= 0)
+					seg = s2;
+				else
+					pos = obj->pos;
+			}
+			n = dtu_create_item(type,id,count,seg,&pos);
+		}
 		dtu_obj_log("drop: obj %d %s leaves type %d id %d count %d (obj %d) at %.2f %.2f %.2f",(int)(obj-Objects),dtu_object_name(obj),type,id,count,n,
 			f2fl(n >= 0 ? Objects[n].pos.x : 0),f2fl(n >= 0 ? Objects[n].pos.y : 0),f2fl(n >= 0 ? Objects[n].pos.z : 0));
 		obj->contains_type = obj->contains_id = -1;

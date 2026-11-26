@@ -677,6 +677,117 @@ void level_fixes_objects(int has_state)
 	}
 }
 
+// ASCENT, Dtu_fix_tamaramagil (dtuobj.h): the adult red dragon of DROW2.
+// The level file has no object for her. This makes her at the center of
+// the arena and moves the four hatchlings to the east room. It runs once
+// for a level: a level that has an object with script 210 stays as it is,
+// so a saved level from before the setting gets her at its restore.
+#define TAM_LEVEL		21
+#define TAM_SCRIPT	210		// GABx record 210, Tamaramagil Swiftclaw
+#define TAM_KEY		42			// the Dragon Key of trigger 27 (class 16)
+
+void dtu_restore_tamaramagil(int has_state)
+{
+	static const short hatch[4] = { 48, 49, 61, 63 };		// the objects that script 213 sends away
+	static const short hatch_pos[4][2] = { { 135, -88 }, { 165, -88 }, { 135, -117 }, { 165, -117 } };
+	int i, type = -1, seg, objnum, pass;
+	vms_vector pos;
+	object *obj;
+
+	if (!Dtu_fix_tamaramagil || Dtu_script_level != TAM_LEVEL)
+		return;
+	// With a saved state the restore follows and replaces the objects. She
+	// is made here also, so the setup by name of her type (the weapon of a
+	// spell type, 0xAC7B2) runs as for a creature of the level file.
+	(void) has_state;
+	for (i=0;i<N_robot_types;i++)
+		if (!stricmp(Monster_info[i].name,"dragon"))
+			type = i;
+	if (type < 0)
+		return;
+
+	// The body cylinder of dragn2.pof has radius 0 in the rest frame (and
+	// 107 to 179 in the frames that have one: the wings, as wide as the
+	// arena). With 0 the player walks through her and no use ray or weapon
+	// finds her. Half of the radius of the torso (70.8) is about the circle
+	// of her feet.
+	i = Robot_info[type].model_num;
+	if (i >= 0 && i < N_polygon_models) {
+		polymodel *po = &Polygon_models[i];
+
+		if (po->dtu_block && (po->box_flags & DTU_BOX_BODY) && po->body_radius && po->torso_radius && po->n_frames > 0
+				&& po->body_radius[0] == 0) {
+			int k, die = Dtu_anim_first[DAS_DIE];
+
+			po->body_radius[0] = po->torso_radius[0] / 2;
+			// The cylinder of a model with the torso box has the half
+			// height of the torso (13.9), which ends 10.8 above the floor:
+			// the player walks below it. The half height of the body
+			// (24.7) goes down to her feet. The frames of the death keep
+			// their height.
+			if ((po->box_flags & DTU_BOX_TORSO) && po->torso_half_height && po->body_half_height)
+				for (k=0;k<po->n_frames && k<die;k++)
+					if (po->torso_half_height[k] < po->body_half_height[0])
+						po->torso_half_height[k] = po->body_half_height[0];
+			dtu_obj_log("Dtu_fix_tamaramagil: model %d body radius 0 -> %.2f, half height %.2f",i,f2fl(po->body_radius[0]),
+				f2fl(po->body_half_height[0]));
+		}
+	}
+
+	for (i=1;i<=Highest_object_index;i++)
+		if (Objects[i].type == OBJ_ROBOT && (Objects[i].dtu.m_1b0 & DTU_SCRIPT_MASK) == TAM_SCRIPT)
+			return;
+
+	// the center of the arena, below the wall that the lever opens
+	// (segment 445 side 1). The floor is at -110.
+	pos.x = 0;
+	pos.y = i2f(-100);
+	pos.z = fl2f(-102.5);
+	seg = find_point_seg(&pos,-1);
+	if (seg < 0)
+		return;
+	objnum = obj_create(OBJ_ROBOT,type,seg,&pos,&vmd_identity_matrix,i2f(4),CT_AI,MT_PHYSICS,RT_POLYOBJ);
+	if (objnum < 0)
+		return;
+	obj = &Objects[objnum];
+	obj->shields = i2f(Monster_info[type].max_hit_points > 0 ? Monster_info[type].max_hit_points : 1);
+	obj->ctype.ai_info.behavior = DAIB_WANDER;
+	obj->ctype.ai_info.hide_segment = seg;
+	// message 17: "It does not attack, but instead watches you intently."
+	obj->dtu.m_1b0 = TAM_SCRIPT | DTU_PEACEFUL;
+	// No object of the game has the key of the door of her hoard and her
+	// script gives none. She carries it.
+	obj->contains_type = OBJ_MISC;
+	obj->contains_id = TAM_KEY;
+	obj->contains_count = 1;
+	pass = Level_setup_pass;
+	Level_setup_pass = 1;		// add_npc comes with level_start_npcs
+	setup_creature(obj);
+	Level_setup_pass = pass;
+	dtu_obj_log("Dtu_fix_tamaramagil: obj %d %s (type %d) script %d in segment %d, hp %d",objnum,dtu_object_name(obj),type,
+		TAM_SCRIPT,seg,f2i(obj->shields));
+
+	// message 19 (trigger 25, segment 790): "Uh oh, baby dragons."
+	for (i=0;i<4;i++) {
+		object *o = fix_obj(hatch[i],OBJ_ROBOT,-1);
+
+		if (!o || o->control_type != CT_AI || o->id >= N_robot_types || stricmp(Monster_info[o->id].name,"hatchlng")
+				|| (o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)) || o->shields <= 0)
+			continue;
+		pos.x = i2f(hatch_pos[i][0]);
+		pos.y = i2f(-100);
+		pos.z = i2f(hatch_pos[i][1]);
+		seg = find_point_seg(&pos,-1);
+		if (seg < 0)
+			continue;
+		o->pos = pos;
+		obj_relink(hatch[i],seg);
+		o->ctype.ai_info.hide_segment = seg;
+		Ail[hatch[i]].fall_start_y = pos.y;
+		dtu_obj_log("Dtu_fix_tamaramagil: obj %d %s to segment %d",hatch[i],dtu_object_name(o),seg);
+	}
+}
+
 // The hit points of scenery: the setup of the port gives each piece of
 // scenery 1.0 (as setup_object does before level_start), so the fixes of
 // the scenery hit points come after it.

@@ -176,6 +176,10 @@ int Dtu_fix_guild_peace = 1;
 // (dtuobj.h). The options -origobj and -origdrow5 clear it.
 int Dtu_fix_drow5_shields = 1;
 
+// ASCENT: the adult red dragon of DROW2 (dtuobj.h). The options -origobj
+// and -origtamaramagil clear it.
+int Dtu_fix_tamaramagil = 1;
+
 // ASCENT: a pick up of a stack that does not fit (dtuobj.h). -origobj
 // clears it.
 int Dtu_fix_partial_stack = 1;
@@ -1024,7 +1028,7 @@ void dtu_objects_init(void)
 			Dtu_fix_wall_circle = Dtu_fix_hit_keep = Dtu_fix_burst_vclip =
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_scenery_floor = Dtu_fix_corpse_floor = Dtu_fix_creature_feet = Dtu_fix_creature_crowd =
-			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields =
+			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields = Dtu_fix_tamaramagil =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
 			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_last =
 			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = Dtu_fix_ogre_legs = Dtu_fix_npc_walk = Dtu_fix_npc_body =
@@ -1061,6 +1065,8 @@ void dtu_objects_init(void)
 		Dtu_fix_creature_crowd = 0;
 	if (FindArg("-origdrow5"))
 		Dtu_fix_drow5_shields = 0;
+	if (FindArg("-origtamaramagil"))
+		Dtu_fix_tamaramagil = 0;
 	if (FindArg("-origguildpeace"))
 		Dtu_fix_guild_peace = 0;
 	if (FindArg("-setuplog"))
@@ -1318,6 +1324,8 @@ void dtu_objects_level_setup(void)
 		lava_textures_lookup();		// 0xAD744
 		dtu_thief_level_textures();	// 0xAD744: the rest of 0xA6F89
 	}
+
+	dtu_restore_tamaramagil(has_state);		// ASCENT: Dtu_fix_tamaramagil
 
 	// level_start 0xAD5BF: the creature setup by name and add_npc
 	dtu_script_test_flags();

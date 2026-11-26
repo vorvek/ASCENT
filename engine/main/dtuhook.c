@@ -611,8 +611,15 @@ int dtu_use_object(object *player)
 		// guess) found the altar first.
 		if (o->type == OBJ_DRESSING)
 			d = dtu_body_query_test(&ip,&player->pos,&p1,0,0,o);
-		else
+		else {
 			d = dtu_object_hit_test(&ip,&player->pos,&p1,F1_0/4,o,player);
+			// ASCENT, Dtu_fix_tamaramagil: the torso of the dragon of DROW2
+			// is above the head of the player, so the test above misses
+			// her. The body cylinder of the query (her legs) is the second
+			// test.
+			if (d == 0 && Dtu_fix_tamaramagil && (o->dtu.m_1b0 & DTU_SCRIPT_MASK) == 210 && Current_level_num == 22)
+				d = dtu_body_query_test(&ip,&player->pos,&p1,0,0,o);
+		}
 		if (d > 0 && d < best_d) {
 			best_d = d;
 			best = i;

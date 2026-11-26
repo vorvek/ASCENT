@@ -665,6 +665,37 @@ past the table: a word that is 0 in each run, recovered/level_fixes.md), so
 the hatchling starts with 0 hit points. `Dtu_fix_drow5_shields` (on;
 `-origobj` and `-origdrow5` clear it) gives it the 100 hit points of its type.
 
+DROW2, Tamaramagil Swiftclaw (**V**, checked in the files). 1.3 has the adult
+red dragon in its data but not in the level. The creature type `Dragon`
+(type 1, `dragn2.pof` of `DROW.EGG`, 120 hit points) is in the tables of the
+five drow levels. Record 210 of the script file is her dialogue. Message 17
+of `DROW2.SAY` (trigger 23, the entrance of the arena) is "An adult red dragon
+gazes at you with surprise in its eyes. It does not attack", message 19
+(trigger 25, segment 790, the east room) is "Uh oh, baby dragons", message 16
+is the sign "Take care when feeding Tam". Trigger 20 (the lever) has
+`object_num` 1 in the level file, and object 1 is a barrel. No level file has
+an object of the type or an object with script 210, and no code makes one.
+The four hatchlings (objects 48, 49, 61, 63) stand in the arena. Trigger 27
+(the door of the hoard, segment 448) takes item 42 of class 16, the Dragon
+Key: no object of the game has it and no script gives it.
+
+`Dtu_fix_tamaramagil` (on; `-origobj` and `-origtamaramagil` clear it),
+`dtu_restore_tamaramagil` in `dtuobj_setup.c`. These are choices of the port,
+not rules of 1.3:
+
+- She stands at the center of the arena (0, -100, -102.5), peaceful, with
+  script 210. A saved level with no object with script 210 gets her at its
+  restore.
+- She carries the Dragon Key. It drops 5.0 above the floor, 60.0 in front
+  of her (`dtu_creature_drop_contents`).
+- The hatchlings that live start in the east room.
+- The body cylinder of `dragn2.pof` has radius 0 in the rest frame, and the
+  cylinder of the torso is above the head of the player. The setting gives
+  the model the radius 35.4 (half of the torso radius) and the half height
+  of the body (24.7) for the frames before the death. The use action tests
+  that cylinder when the torso test misses (`dtuhook.c`). The player walks
+  below her torso, as the data of the model has it.
+
 **Object flag 0x40** (verified, code). The object loop of `fvi_sub` skips an object with flag 2 or flag 0x40
 (0x3F380 to 0x3F392: `test dh,2`, `test dh,0x40`), before any shape test
 and for each query. The player move, the creature move, the shot flight

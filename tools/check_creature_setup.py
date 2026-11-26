@@ -93,6 +93,8 @@ def run_level(args, level, work):
     if args.hddir:
         cmd += ["-hddir", args.hddir]
     cmd += ["-nomovies", "-mute", "-hidden", "-userdir", user, "-level", level, "-frames", "20", "-setuplog"]
+    # The reference is the setup of 1.3: no dragon of the port in DROW2
+    cmd += ["-origtamaramagil"]
     if args.flag67:
         cmd += ["-scriptflags", "67"]
     if args.orig:
