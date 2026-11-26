@@ -339,6 +339,11 @@ void g3_set_special_render(g3_tmap_drawer_func *tmap_drawer,g3_flat_drawer_func 
 //gives the interpreter an array of points to use
 void g3_set_interp_points(g3s_point *pointlist);
 
+//ASCENT: gives the interpreter the corner normals of a model (polyobj.c,
+//polyobj_make_smooth), or NULL for the light of the faces. data is the
+//start of the model data.
+void g3_set_interp_smooth(ubyte *data,ubyte *smooth);
+
 //calls the object interpreter to render an object.  The object renderer
 //is really a seperate pipeline. returns true if drew
 bool g3_draw_polygon_model(void *model_ptr,grs_bitmap **model_bitmaps,vms_angvec *anim_angles,fix light,fix *glow_values);

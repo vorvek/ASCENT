@@ -64,6 +64,10 @@ static fix model_light;
 //ptr to array of points
 static g3s_point *Interp_point_list;
 
+//ASCENT: the corner normals of the current model, or NULL (3d.h)
+static ubyte *Interp_smooth_data;
+static ubyte *Interp_smooth;
+
 #define MAX_POINTS_PER_POLY 25
 
 //ASCENT: the assembly had a list of MAX_POINTS_PER_POLY pointers, and only
@@ -160,6 +164,29 @@ static fix calc_face_light(ubyte *normp)
 	return fixmul(light,model_light);
 }
 
+//ASCENT: the light value for a corner of a face, from the normal of the
+//corner. A normal that points away from the viewer gives the base light.
+static fix calc_corner_light(ubyte *normp)
+{
+	vms_vector norm;
+	fix light;
+
+	light = g3_neg(vm_vec_dotprod(&View_matrix.fvec,get_vec(&norm,normp)));
+	if (light < 0)
+		light = 0;
+
+	light = (fix) (light + light + light) >> 2;
+	light += f1_0/4;
+
+	return fixmul(light,model_light);
+}
+
+void g3_set_interp_smooth(ubyte *data,ubyte *smooth)
+{
+	Interp_smooth_data = data;
+	Interp_smooth = smooth;
+}
+
 //takes count, ptr to point number list
 static void draw_outline(int nv,ubyte *pointnums)
 {
@@ -212,7 +239,7 @@ static void op_tmappoly(ubyte *p)
 	grs_bitmap *bm;
 	ubyte *uvlp;
 	fix light;
-	int i;
+	int i,smooth = 0;
 
 	if (nv <= 0 || nv > MAX_POINTS_IN_POLY)
 		return;
@@ -235,8 +262,10 @@ static void op_tmappoly(ubyte *p)
 		light = glow_values[glow_num];
 		glow_num = -1;
 	}
-	else
+	else {
 		light = calc_face_light(p+16);
+		smooth = Interp_smooth != NULL;
+	}
 
 	//now poke light into l values. The assembly wrote the value into the
 	//model data and gave the uvl list in the model data to g3_draw_tmap().
@@ -249,6 +278,11 @@ static void op_tmappoly(ubyte *p)
 		uvl_copy[i].v = get_fix(uvlp+i*12+4);
 		uvl_copy[i].l = light;
 	}
+
+	//ASCENT: an improved model has a normal for each corner
+	if (smooth)
+		for (i=0;i<nv;i++)
+			uvl_copy[i].l = calc_corner_light(Interp_smooth + (uvlp - Interp_smooth_data) + i*12);
 
 	//now draw it
 

@@ -181,6 +181,7 @@ typedef struct polymodel {
 	ubyte		dtu_textures_used;	// highest texture number in the model data, plus 1
 	ubyte		dtu_n_textures_file;	// n_textures of the header
 	int		dtu_first_texture_file;	// first_texture of the header (not used, see polyobj.c)
+	ubyte		*dtu_smooth;		// improved models: a normal for each corner of each texture polygon (polyobj_make_smooth), or NULL
 	ubyte		*dtu_block;			// copy of the data block. model_data points to its start
 	int		dtu_block_size;
 	int		dtu_section_ofs[DTU_MODEL_SECTIONS];	// offset of each array in dtu_block, -1 if absent

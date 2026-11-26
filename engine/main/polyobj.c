@@ -108,6 +108,7 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <ctype.h>
 // ASCENT: io.h (DOS) is removed.
 
@@ -577,6 +578,9 @@ free_model(polymodel *po)
 		free(po->model_data);
 	po->dtu_block = NULL;
 	po->model_data = NULL;
+	if (po->dtu_smooth)
+		free(po->dtu_smooth);
+	po->dtu_smooth = NULL;
 	if (po->dtu_arrays)
 		free(po->dtu_arrays);
 	po->dtu_arrays = NULL;
@@ -653,6 +657,7 @@ void draw_polygon_model(vms_vector *pos,vms_matrix *orient,vms_angvec *anim_angl
 	g3_start_instance_matrix(pos,orient);
 
 	g3_set_interp_points(robot_points);
+	g3_set_interp_smooth(po->model_data,po->dtu_smooth);
 
 	if (flags == 0)		//draw entire object
 
@@ -1395,6 +1400,7 @@ void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_
 	g3_start_instance_matrix(&draw_pos,orient);
 
 	g3_set_interp_points(robot_points);
+	g3_set_interp_smooth(po->model_data,po->dtu_smooth);
 
 	angles = (frame == -1) ? NULL : po->anim_angles + frame*po->n_models;
 
@@ -1873,6 +1879,186 @@ static ubyte *pom_load(const ubyte *header,const ubyte *block,int block_avail,in
 	return out;
 }
 
+// ASCENT: smooth shading of the improved models (docs/formats/pom.md).
+//
+// dtu_smooth has the size of the model data. For corner i of the texture
+// polygon whose UVL list is at offset u of the model data, the 12 bytes at
+// u + i*12 are the normal of the corner (3 fix). The interpreter computes
+// the light of the corner from that normal (interp.c, op_tmappoly).
+//
+// The normal of a corner is the sum of the normals of the faces of the
+// submodel at that point, each times the area of its face. A face whose
+// normal is SMOOTH_ANGLE_COS or more away from the normal of the polygon
+// is left out: the edge stays sharp.
+
+#define SMOOTH_ANGLE_COS	0.0		// 90 degrees
+#define SMOOTH_MAX_POLYS	2048
+
+typedef struct smooth_poly {
+	int ofs;			// offset of the record
+	int nv;
+	double n[3];	// the normal of the record
+	double area;
+} smooth_poly;
+
+static int sm_w(const ubyte *p) { return p[0] | (p[1] << 8); }
+static double sm_f(const ubyte *p) { return (int) ((unsigned) p[0] | ((unsigned) p[1] << 8) | ((unsigned) p[2] << 16) | ((unsigned) p[3] << 24)) / 65536.0; }
+
+// Collects the texture polygons of a submodel stream. Returns 0 if the
+// stream has a record that this code does not know.
+static int smooth_collect(const ubyte *data,int size,int ofs,int depth,smooth_poly *polys,int *n_polys,int *points_ofs,int *n_points)
+{
+	if (depth > 64)
+		return 0;
+	for (;;) {
+		int op,nv,len;
+
+		if (ofs < 0 || ofs + 4 > size)
+			return 0;
+		op = sm_w(data+ofs);
+		nv = sm_w(data+ofs+2);
+		switch (op) {
+			case 0:
+				return 1;
+			case 1:
+				if (*points_ofs >= 0)
+					return 0;		// two point lists: not a stream of the model tool
+				len = 4 + nv*12;
+				if (ofs + len > size)
+					return 0;
+				*points_ofs = ofs + 4;
+				*n_points = nv;
+				ofs += len;
+				break;
+			case 2:
+				len = 30 + ((nv & ~1) + 1)*2;
+				ofs += len;
+				break;
+			case 3: {
+				smooth_poly *sp;
+
+				len = 30 + ((nv & ~1) + 1)*2 + nv*12;
+				if (nv < 3 || ofs + len > size || *n_polys >= SMOOTH_MAX_POLYS)
+					return 0;
+				sp = &polys[(*n_polys)++];
+				sp->ofs = ofs;
+				sp->nv = nv;
+				sp->n[0] = sm_f(data+ofs+16);
+				sp->n[1] = sm_f(data+ofs+20);
+				sp->n[2] = sm_f(data+ofs+24);
+				ofs += len;
+				break;
+			}
+			case 4:
+				if (ofs + 32 > size)
+					return 0;
+				if (!smooth_collect(data,size,ofs + sm_w(data+ofs+28),depth+1,polys,n_polys,points_ofs,n_points))
+					return 0;
+				if (!smooth_collect(data,size,ofs + sm_w(data+ofs+30),depth+1,polys,n_polys,points_ofs,n_points))
+					return 0;
+				ofs += 32;
+				break;
+			default:
+				return 0;
+		}
+	}
+}
+
+static void polyobj_make_smooth(polymodel *pm,int n_sub)
+{
+	smooth_poly *polys;
+	ubyte *out;
+	const ubyte *data = pm->model_data;
+	int size = pm->model_data_size;
+	int s,a,b,i,j,k;
+
+	polys = (smooth_poly *) malloc(SMOOTH_MAX_POLYS * sizeof(smooth_poly));
+	out = (ubyte *) malloc(size);
+	if (polys == NULL || out == NULL) {
+		if (polys) free(polys);
+		if (out) free(out);
+		return;
+	}
+	memset(out,0,size);
+
+	for (s=0;s<n_sub;s++) {
+		int n_polys = 0,points_ofs = -1,n_points = 0;
+
+		if (!smooth_collect(data,size,pm->submodel_ptrs[s],0,polys,&n_polys,&points_ofs,&n_points)) {
+			free(polys);
+			free(out);
+			return;
+		}
+
+		// the area of each polygon, and a check of its point numbers
+		for (a=0;a<n_polys;a++) {
+			const ubyte *pn = data + polys[a].ofs + 30;
+			double sum[3] = {0,0,0};
+			double p0[3],p1[3],p2[3];
+
+			for (i=0;i<polys[a].nv;i++)
+				if (points_ofs < 0 || sm_w(pn+i*2) >= n_points) {
+					free(polys);
+					free(out);
+					return;
+				}
+			for (k=0;k<3;k++)
+				p0[k] = sm_f(data + points_ofs + sm_w(pn)*12 + k*4);
+			for (i=1;i<polys[a].nv-1;i++) {
+				for (k=0;k<3;k++) {
+					p1[k] = sm_f(data + points_ofs + sm_w(pn+i*2)*12 + k*4) - p0[k];
+					p2[k] = sm_f(data + points_ofs + sm_w(pn+i*2+2)*12 + k*4) - p0[k];
+				}
+				sum[0] += p1[1]*p2[2] - p1[2]*p2[1];
+				sum[1] += p1[2]*p2[0] - p1[0]*p2[2];
+				sum[2] += p1[0]*p2[1] - p1[1]*p2[0];
+			}
+			polys[a].area = sqrt(sum[0]*sum[0] + sum[1]*sum[1] + sum[2]*sum[2]) / 2;
+		}
+
+		for (a=0;a<n_polys;a++) {
+			const ubyte *pa = data + polys[a].ofs + 30;
+			int uvl = polys[a].ofs + 30 + ((polys[a].nv & ~1) + 1)*2;
+
+			for (i=0;i<polys[a].nv;i++) {
+				int pt = sm_w(pa+i*2);
+				double sum[3],len;
+
+				for (k=0;k<3;k++)
+					sum[k] = polys[a].n[k] * polys[a].area;
+				for (b=0;b<n_polys;b++) {
+					const ubyte *pb = data + polys[b].ofs + 30;
+
+					if (b == a)
+						continue;
+					if (polys[a].n[0]*polys[b].n[0] + polys[a].n[1]*polys[b].n[1] + polys[a].n[2]*polys[b].n[2] <= SMOOTH_ANGLE_COS)
+						continue;
+					for (j=0;j<polys[b].nv;j++)
+						if (sm_w(pb+j*2) == pt) {
+							for (k=0;k<3;k++)
+								sum[k] += polys[b].n[k] * polys[b].area;
+							break;
+						}
+				}
+				len = sqrt(sum[0]*sum[0] + sum[1]*sum[1] + sum[2]*sum[2]);
+				for (k=0;k<3;k++) {
+					double v = len > 1e-9 ? sum[k]/len : polys[a].n[k];
+					int f = (int) (v * 65536.0 + (v < 0 ? -0.5 : 0.5));
+					ubyte *d = out + uvl + i*12 + k*4;
+
+					d[0] = f & 255;
+					d[1] = (f >> 8) & 255;
+					d[2] = (f >> 16) & 255;
+					d[3] = (f >> 24) & 255;
+				}
+			}
+		}
+	}
+
+	free(polys);
+	pm->dtu_smooth = out;
+}
+
 int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_avail)
 {
 	polymodel *pm;
@@ -1956,6 +2142,7 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 	memcpy(pm->dtu_block,block,ofs);
 	memcpy(pm->dtu_header,header,DTU_MODEL_HEADER_SIZE);
 	pm->dtu_improved = pom != NULL;
+	pm->dtu_smooth = NULL;
 	if (pom) free(pom);
 	pom = NULL;
 	pm->model_data = pm->dtu_block;
@@ -2005,6 +2192,9 @@ int polyobj_load_dtu_model(const ubyte *header, const ubyte *block, int block_av
 		pm->model_data = NULL;
 		{ if (pom) free(pom); return -1; }
 	}
+
+	if (pm->dtu_improved)
+		polyobj_make_smooth(pm,n);
 
 	memcpy(Pof_names[N_polygon_models],header+0x3D,12);
 	Pof_names[N_polygon_models][12] = 0;
