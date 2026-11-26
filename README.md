@@ -11,7 +11,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 <p align="center">
   <a href="docs/screenshots/drow.png"><img src="docs/screenshots/thumbs/drow.jpg" width="32%" alt="A drow priestess in the Yawning Portal"></a>
   <a href="docs/screenshots/skeletons.png"><img src="docs/screenshots/thumbs/skeletons.jpg" width="32%" alt="A mage fights skeletons with a wand of magic missiles"></a>
-  <a href="docs/screenshots/troll.png"><img src="docs/screenshots/thumbs/troll.jpg" width="32%" alt="A dwarf fights a troll with an axe"></a>
+  <a href="docs/screenshots/orc.png"><img src="docs/screenshots/thumbs/orc.jpg" width="32%" alt="An orc, a goblin and giant rats attack the player"></a>
 </p>
 
 ## New features
