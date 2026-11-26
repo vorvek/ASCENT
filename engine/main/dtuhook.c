@@ -580,7 +580,11 @@ int dtu_use_object(object *player)
 	fq.rad = 0;
 	fq.thisobjnum = player-Objects;
 	fq.ignore_obj_list = NULL;
-	fq.flags = 0;
+	// 0xB30FD gets the flags 7 from 0xAC1A0: the ray goes through a
+	// transparent wall (the wall of type 5 at the front of the bar of
+	// YPINN, walls 68 and 69, between the player and Durnan). The port tests
+	// the objects below, so the object flag is not set here.
+	fq.flags = FQ_TRANSWALL | FQ_TRANSPOINT;
 	fate = find_vector_intersection(&fq,&hit);
 	if (fate == HIT_WALL)
 		p1 = hit.hit_pnt;
