@@ -139,7 +139,10 @@ on. Copy the files of a slot together. Upper and lower case names both work. A s
 of the port copies back to the DOS game the same way. The saves of earlier builds of
 the port still load.
 
-Screenshots of `save_screen_shot` (game.c) still go to the current folder. The
+Screenshots of `save_screen_shot` (game.c) still go to the current folder. The key is
+the key left of 1 (backquote). The file is `screenNN.pcx` (the interface size, 256
+colors) with the software renderer and `screenNN.bmp` (the composed image at the
+resolution of the view, 24 bits) with the GPU renderer. The
 shortcuts start the game in the installation folder, which is writable for a per-user
 install.
 

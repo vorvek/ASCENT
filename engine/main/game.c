@@ -2073,7 +2073,17 @@ void save_screen_shot(int automap_flag)
 	t1 = timer_get_fixed_seconds() + F1_0;
 
 	gr_palette_read(pal);		//get actual palette from the hardware
-	pcx_write_bitmap(savename,&temp_canv->cv_bitmap,pal);
+	// ASCENT: with the GPU renderer the file is the composed image, as a
+	// BMP file (dtugame.c). The message above has the PCX name of the
+	// executable.
+	{
+		char bmpname[13];
+		int dtu_write_screenshot_bmp(char *filename, grs_bitmap *bm);
+
+		sprintf(bmpname,"screen%02d.bmp",savenum-1);
+		if (!dtu_write_screenshot_bmp(bmpname,&temp_canv->cv_bitmap))
+			pcx_write_bitmap(savename,&temp_canv->cv_bitmap,pal);
+	}
 
 	// ASCENT: show the message. The wait sleeps and does not spin.
 	gr_present();

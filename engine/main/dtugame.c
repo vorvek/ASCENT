@@ -219,6 +219,51 @@ int dtu_write_screenshot(char *filename)
 	return 1;
 }
 
+// ASCENT: the screenshot key with the GPU renderer. The screen canvas has
+// the interface only (the view is black in it), so the PCX file of
+// save_screen_shot (game.c) had no view. This writes the composed image of
+// the GPU renderer, at its resolution, as a BMP file with 24 bits. Returns
+// 0 when the frame has no GPU image: the caller then writes the PCX file.
+int dtu_write_screenshot_bmp(char *filename, grs_bitmap *bm)
+{
+	uint8_t *rgb, *row, hdr[54];
+	int w, h, x, y, pitch;
+	unsigned size;
+	FILE *f;
+
+	if (!bm->bm_data || bm->bm_type != BM_LINEAR)
+		return 0;
+	rgb = plat_gpu_screenshot(bm->bm_data, bm->bm_w, bm->bm_h, bm->bm_rowsize, (uint8_t *) gr_palette, &w, &h);
+	if (!rgb)
+		return 0;
+	pitch = (w*3 + 3) & ~3;
+	size = 54 + (unsigned) pitch * h;
+	row = calloc(1, pitch);
+	f = row ? fopen(filename, "wb") : NULL;
+	if (f) {
+		memset(hdr, 0, sizeof(hdr));
+		hdr[0] = 'B'; hdr[1] = 'M';
+		hdr[2] = size & 255; hdr[3] = (size >> 8) & 255; hdr[4] = (size >> 16) & 255; hdr[5] = size >> 24;
+		hdr[10] = 54; hdr[14] = 40;
+		hdr[18] = w & 255; hdr[19] = (w >> 8) & 255;
+		hdr[22] = h & 255; hdr[23] = (h >> 8) & 255;
+		hdr[26] = 1; hdr[28] = 24;
+		fwrite(hdr, 1, 54, f);
+		for (y=h-1; y>=0; y--) {		// bottom row first, blue first
+			for (x=0; x<w; x++) {
+				row[x*3] = rgb[(y*w+x)*3+2];
+				row[x*3+1] = rgb[(y*w+x)*3+1];
+				row[x*3+2] = rgb[(y*w+x)*3];
+			}
+			fwrite(row, 1, pitch, f);
+		}
+		fclose(f);
+	}
+	free(row);
+	free(rgb);
+	return f != NULL;
+}
+
 // ASCENT: 1 after the frame limit of -frames was reached. The start code
 // with the front end reads it (inferno.c).
 int Dtu_frames_done = 0;
