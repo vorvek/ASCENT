@@ -158,6 +158,33 @@ def test_sensitivity_menu(t):
     assert saved_sensitivity(d) == 1, "the slider at the left was saved as %s" % saved_sensitivity(d)
 
 
+def test_options_no_plr(t):
+    """The F2 options menu writes the configuration (ascent.cfg) when it
+    closes, and no Descent 1 player file (<callsign>.plr) into the current
+    directory: nothing of the target game reads it."""
+    _, d = t.run("options_no_plr", ["gamekeys", "wait 20", "key f2", "wait 5", "key esc", "wait 10"],
+                 extra=["-fixedfps", "30"])
+    plr = [f for _, _, files in os.walk(d) for f in files if f.lower().endswith(".plr")]
+    assert not plr, "player files were written: %s" % plr
+    assert saved_sensitivity(d) is not None, "no ascent.cfg with the sensitivity was written"
+
+
+def test_save_cause_names(t):
+    """The session log names the cause of a save of the player: the lava of
+    DROW1 (segment 529, a lavaflo/lava floor) and the fire trap of YPINN
+    (object 41, Fireball cast by a light object). A spell with no save
+    (Protection From Evil on the player, frames before) does not name a
+    later save."""
+    _, d = t.run("save_cause_lava", ["gamekeys", "wait 120"], level="DROW1",
+                 extra=["-fixedfps", "30", "-invulnerability", "-noattack", "-chartest", "20:cast=39,30:goseg=529"])
+    saves = re.findall(r"Save of the player: ([^,]*),", session_log(d))
+    assert saves and set(saves) == {"lava"}, "lava saves: %s" % saves
+    _, d = t.run("save_cause_fire", ["gamekeys", "wait 80"],
+                 extra=["-fixedfps", "30", "-invulnerability", "-chartest", "20:cast=39,30:goobj=41.10,40:break=41"])
+    saves = re.findall(r"Save of the player: ([^,]*),", session_log(d))
+    assert saves and set(saves) == {"Fireball (trap)"}, "fire saves: %s" % saves
+
+
 def test_alt_f2_f3(t):
     """Alt+F2 opens the Save Game slot menu, Alt+F3 the restore slot menu
     (0x432B8, 0x432C2), and Alt+F3 does not change the screen as F3 does."""
