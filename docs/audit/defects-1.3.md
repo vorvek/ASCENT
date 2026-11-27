@@ -241,3 +241,21 @@ Later (2026-11-24): D-114 is not a defect, the setting `alert_ray` is gone.
 | D-184 | A clipped rectangle starts at 0, not at the window origin | 0x80851 | second pass | not applicable |  | Menus use the Descent 1 newmenu code, no menu_clip_rect. |
 | D-185 | A bought item of count -1 has charges with no limit | 0x873EE, 0xB65BB, 0xB7084 | bytes (2026-11-24) | corrected | `market_charges` (-origfe) | 0x8741B: a stock line of a non-stackable item keeps its count (the rewards of 0x13F6A0 have -1); 0xB65BB refuses only count 0; 0xB7084 skips count -1. 0x86C5A prices -1 as all charges. dtufe_town.c mk_buy_count gives the `uses` of the table line. The port refused the item (dtu_inventory_add takes no count below 1): a Wand of Magic Missiles line went away and nothing was given. |
 | D-186 | A purchase removes from the stock the items that the bag did not take | 0x85458 | bytes (2026-11-24) | corrected | `market_buy_stock` (-origfe) | 0x85458 calls 0x86B80 with the whole quantity before the loop of 0xB6315; the gold is taken only for an item given. dtufe_town.c mk_accept takes from the line only the items given. |
+
+## Rules of 1.3 that the Improved AI setting replaces (2026-11-27)
+
+These are not rows of the list of DTU-Decomp. They are rules of 1.3 that the
+user decided to change on 2026-11-27 after play. The setting "Improved AI"
+(`Dtu_improved_ai`, on by default; `-origobj` or `-noimprovedai` gives 1.3)
+replaces them. `docs/re/ai.md`, "Improved AI: senses, alarms, doors, attacks
+and groups" has the rules, the addresses and the measurements.
+
+| Rule of 1.3 | Address | With the setting |
+|---|---|---|
+| A melee creature nearer than 100.0 notices the player through a closed door or a wall that a trigger opens (the brain bits are built with all doors open) | 0x10815, 0x9786A | sight along a free line, hearing along an open path of at most 100.0 |
+| An alert wakes each creature with that ray | 0x160AB | only along an open path of at most 150.0 from the caller |
+| Each active creature with the door bit is sent to the doors, also a peaceful one | 0x14AF2 | only a hostile creature that fights the player opens a door |
+| A melee creature at the player walks away or around, starts its attack at the end of its walk state and stays in RECO with the awareness 0 | 0x125B9, 0x12000, 0x11018, 0x15876 | it stands in the reach of its weapon, attacks at once and faces the player |
+| The weapon sphere and a missile hit a body at the other side of a closed door | 0x6CFF8, 0xA03A8 | a wall or a door that is not open between the two bodies stops the hit |
+| A creature with a script that only makes it hostile is peaceful until the talk | 0xAC431 | it joins the fight of its group that it sees |
+| The spiders have the speeds of an orc | `speeds=` of the tables | the web rates of AD&D 2e |

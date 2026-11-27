@@ -1071,6 +1071,223 @@ logs the corpse height above the floor. The `-objlogpos` lines have the
 animation, sight, blocker and the wall, top, floor and object hits. A dying body has a `dying:` line with the height of its lowest drawn
 point, and a corpse of a loaded level a `loaded dead:` line.
 
+### Improved AI: senses, alarms, doors, attacks and groups (2026-11-27)
+
+The setting was "Improved pathfinding" until 2026-11-27 (the key
+`ImprovedPathfinding` of `ascent.cfg` is still read; the key is `ImprovedAI`
+now, the test option `-noimprovedai`, and `-noimprovedpaths` still works).
+The user played DROW1, DROW2 and CLAN1 on 2026-11-26 and found that creatures
+left the rooms of their encounters, noticed the player through walls, walked
+into the walls of their closets, walked back and forth in front of the
+player and watched fights. The rules below are decisions of the user. With
+the setting off, the object log of a run is the same byte for byte as before
+them (12 runs of 600 to 900 frames in BANE, BONES, CLAN1, CRYPTS, DROW1,
+DROW2, DROW4, MYRKUL and THIEF0, with fights, a trigger and a swing at a
+door). The code is in `dtuobj_aware.c` and `dtuobj_ai.c`.
+
+**Senses.** 1.3: the wake test (0x13CE0, 0x14230) needs the brain bit of the
+two segments and the ray 0x10815, and for a creature with a melee attack and
+no spell level that is nearer than 100.0 a blocked ray counts as free. The
+BRN builder (0x9786A) casts its rays with all doors open and all traps
+switched, and the port does the same for `Dtu_fix_brain`. So a melee
+creature notices the player through a closed door, and through a wall that
+a trigger opens later. With the setting (`creature_senses_player()`):
+
+- Sight: the ray from the eyes (5.0 above the center of a creature that
+  walks) to the center of the player hits no wall and no door that is not
+  open. An illusion wall does not stop it (fvi passes it).
+- Hearing, for the same creatures as the melee rule: a path from the segment
+  of the player to the segment of the creature through sides that a body can
+  pass (`WID_FLY_FLAG`: no wall, an open door, an illusion wall), with the
+  sum of the distances between the centers of its segments at most 100.0.
+  The map of these lengths is made one time for each frame.
+- The rest of the wake test stays: the player behind the creature is
+  noticed with the chance of `iq`, not with Move Silently, not by a deaf
+  creature.
+- A creature that noticed the player (the wake test, the sight of step 21,
+  a hit, an alarm, a script) in the last 30.0 seconds fights
+  (`creature_in_combat()`). Only a creature that fights keeps its path to
+  the segment of the player when the look of 0x14206 fails, so it follows
+  the player through a door that closes behind the player, and gives up 30
+  seconds after it noticed the player last.
+
+**Alarms.** The alert of the levels 3 to 5 (0x160AB) wakes a creature only
+when an open path of at most 150.0 goes from the segment of the caller to
+its segment, and when the creature sees or hears the player by the rules
+above (1.3 and the port before: the ray 0x10815 with the melee rule, D-114).
+A closed door is a wall for it and an illusion wall is not. The noise of the
+awareness events (0x162A1) had its wall test already (`Dtu_fix_noise_walls`).
+
+**Doors.** A creature opens a door only when its type can and when it
+fights the player (`opens_doors()`): the type has the door bit of 1.3
+(`door_opening=1` or the word HUMANOID: orcs, goblins, kobolds, Ogre2, the
+lich) or its model is a person (`dtu_model_is_person()`, the list of
+2026-11-24); the creature is hostile or flees, and it noticed the player in
+the last 30.0 seconds. The tables of 1.3 have no intelligence value (`iq` is
+the number of the sight and the morale), so the door bit and the model are
+the data used. The door opener 0x14AF2, which in 1.3 sends each active
+creature with the door bit to the doors (also a peaceful one), runs only for
+a hostile creature that fights. A creature never opens a door with a key or
+a lock on either wall (`Dtu_fix_door_pair`), so a prisoner stays in its
+cell. A creature on the path of its script opens doors as before.
+
+**The attack decision.** Causes in 1.3, for a melee creature at the player:
+
+- 0x125B9: nearer than the circle distance (the size of the player, 4.5) the
+  creature walks away, nearer than two times that it walks across the line
+  to the player or turns its back and walks (0x12000). The stop distance of
+  the port (the reach of the weapon less 1.0) is in that range for most
+  creatures.
+- 0x11018: the goal state ATAK starts the attack only at the end of the
+  animation state, up to one walk cycle later; the creature walks on in that
+  time, and an attack that starts after the walk of 0x12000 swings with the
+  back to the player.
+- 0x15876: the goal state is chosen only while the awareness is above 0. It
+  goes down by 1 each 2.0 seconds and only a noise of the player raises it:
+  a melee creature in front of a player that does nothing stays in RECO and
+  looks at the player (DROW1, the Ghoul obj 10 at 4.7 from the player: no
+  attack after 10.1 s).
+- 0x12916: the attack starts at the size of the creature plus the size of
+  the player plus 2.0, farther than most weapons reach.
+
+With the setting, for a hostile creature that walks, has a melee attack and
+no mage or cleric level (`melee_fighter()`; the casters, the flyers and the
+dragon keep the rules of 1.3): it walks straight to a player that it sees
+and stands when the player is in the reach of its weapon less 0.5
+(`melee_in_reach()`, `model_weapon_reach()`); the goal ATAK ends a walk or
+stand state at once; at the start of an attack it turns to the player; and
+its awareness is 1 at least while it sees the player. The time between two
+attacks stays the ATTACK state plus the RECO state.
+
+Measured (DROW1, the player 6.0 in front of the fighter rmfg5 obj 1, healed
+each 0.2 s, 25 s at 30 frames per second, before and after): the first
+attack of obj 1 after it sees the player 2.70 s and 0.53 s; of obj 2 after
+it is in reach 1.53 s and 0.87 s; obj 1 walks or sidles 1.8 s and 0.0 s at
+the player; 8 attacks of 2 creatures in 47.5 s near the player, and 29
+attacks of 5 creatures in 59.0 s; the time between two attacks of one
+creature 2.17 s in both (rmfg5) and 1.67 s (gorcaaxe). The orcs of
+`-testpos 139.8,21,219.4`: the first attack 1.07 s and 0.07 to 0.10 s after
+they stand.
+
+**Attacks at a wall.** 1.3 takes the bodies that the weapon sphere touches
+with no wall test (0x6CFF8), and the missile query takes the bodies near its
+line up to the wall. A body is thicker than a door, so the sword of the
+player and an arrow reach a creature that stands at the other side of a
+closed door, and the weapon of a creature reaches the player.
+`Dtu_fix_melee_wall` tests only the way from the body to the center of the
+weapon. With the setting (`attack_wall_between()`): a body is not hit when
+the level line from the body of the attacker (the swing of the player), from
+the center of the weapon (the weapon of a creature) or from the hit point (a
+missile) to the axis of the body of the target, at the height of the start
+limited to the height of the body, hits a wall or a door that is not open.
+The area of a spell tests a ray already (`point_sees()`, dtuspell.c).
+Measured (DROW1, the skeleton obj 76 in segment 192 behind the closed door
+of wall 20, the player in segment 187 at 3.8, 8 swings with a long sword):
+before, the player hits and kills it; after, 8 swings at the air. 4 arrows
+of a short bow: before 1 arrow reaches the hit roll, after 4 arrows hit the
+wall.
+
+**Groups.** 1.3 makes a creature peaceful when its script has a "say"
+statement or its record has bit 9 (add_npc, 0xAC431) and runs a script only
+for a talk, a trigger, the end of a path or a call. A creature whose script
+only says its battle cry watches the fight of its room until the player
+talks to it. With the setting (`creature_join_fight()`), each half second: a
+creature that is not hostile and not fleeing (flag 3), whose script has a
+statement that sets flag 2 of its own object (`C5 02` with no object prefix:
+it turns hostile, `dtu_script_sets_hostile()`), turns hostile as its script
+would make it (0xA9418) when it sees the player and sees a creature of its
+group that is hostile, active and fights the player (free lines, at most
+150.0). A creature whose script never makes it hostile (a shop keeper, a
+quest giver, an ally) never joins. The group:
+
+- the statement is the first one of the first block of the script (the talk
+  makes it hostile with no choice): each hostile creature;
+- else: the creatures of its type (the same `$MONSTER` line) that have a
+  script too. With no other such creature in the level it never joins.
+
+The tables and the level files have no faction or allegiance value, and the
+group field of the segments is -1 in all level files, so the type, the
+script and the sight are the group. The creatures that the rule can change
+(the line `join: obj N NAME (script S, seg G) can join the fight of ...` of
+the object log at the level start):
+
+| Level | Creatures | Group |
+|---|---|---|
+| DROW1 | obj 55 rffk5, script 201 (the priestess of the meeting, with the wizard obj 56 and the orcs obj 57 and 58) | each hostile creature |
+| DROW2 | obj 43 rffk8b, script 212 | each hostile creature |
+| THIEF0 | obj 22 (the guard, script 50), 28 (script 51), 29 to 39 (script 52), all gbloser | the goblins with a script |
+| DROW3 | obj 59 flayer, script 221 | its type with a script |
+| DROW5 | obj 47 and 50 rffk8b, scripts 271 and 272 | its type with a script |
+| THIEF1 | obj 25 shmtd2 (script 62), obj 95 sfmtd2 (script 60) | its type with a script |
+| THIEF2 | obj 1 to 3 gbloser, script 71 | its type with a script |
+| KOBOLDS | obj 8 kob_swrd, script 21 | its type with a script |
+| BONES | obj 50 ske_swd, script 33 | its type with a script |
+| BEHOLDER | obj 2 Spectatr, script 252 | each hostile creature |
+| IBBALAR | obj 20 thashasa, script 295 | its type with a script |
+
+The quest givers of DROW1 (obj 59, script 200) and DROW2 (Kiyanda, obj 17,
+script 211), the wizard of DROW1 (obj 81) and the spider witch (obj 90,
+script 203, whose talk has a choice) do not join. The guard of THIEF0: label
+30 of script 50 makes it hostile (label 700), and label 900, which the
+trigger of segment 207 runs, makes the other goblins hostile (ANGER_NPCS
+critter 20 = 5) and clears flag 2 of the guard, so in 1.3 the guard stands
+while its camp fights.
+
+Measured: DROW1, the player 10.0 in front of the wizard obj 56: the
+priestess obj 55 joins after 0.57 s (before: never, she stays peaceful).
+THIEF0, the trigger of segment 207 side 3 and the goblin obj 31 next to the
+guard: the guard joins 0.43 s after the goblin sees the player and attacks
+10 times in 18 s (before: no attack).
+
+**Ambush.** DROW2, the hall of the four orcs gorcasci obj 8 to 11 in the
+closets of segments 752, 87, 97 and 462 behind the closed walls 4, 6, 2 and
+0: `-testpos 0,1,150,0`, the player walks forward. Before: obj 8 and 11 see
+the player at 0.03 s and obj 9 and 10 at 1.23 s, through the walls. After:
+obj 9 and 10 see the player at 2.27 s, when their walls open, and obj 8 and
+11, whose walls stay closed on this way, never.
+
+**Spiders.** "gSpider" and "sSpider" have `speeds=10.0 3 20.0`, the values of
+an orc, with a body of radius 27.0. With the setting `anim_speed()` gives
+the web rates of AD&D 2e by the method of `Dtu_fix_monster_speed` (rate 12
+is 15.0 and 30.0): the giant spider (Wb 12) 15.0 and 30.0, the large spider
+(Wb 15) 18.75 and 37.5. The ground rate of the giant spider is 3, which
+would be slower than the table. Measured (DROW1, gSpider obj 89, 30 frames
+per second): the run 16.5 before and 24.9 after.
+
+The walk and run speeds of the creatures (the model, then `anim_speed()`;
+the player walks at 49.3):
+
+| Creature | Body radius | Table | Before | After |
+|---|---|---|---|---|
+| gSpider | 27.0 | 10 / 20 | 10 / 20 | 15 / 30 |
+| sSpider | 27.0 | 10 / 20 | 10 / 20 | 18.75 / 37.5 |
+| Ogre2, armOgre | 8.6 | 8 / 15 | 11 / 22 (`Dtu_fix_monster_speed`) | same |
+| Troll, armTroll | 7.8 | 8 / 15 | 15 / 30 (`Dtu_fix_monster_speed`) | same |
+| Beetle, Scarab | 11.8 | 10 / 20 | 10 / 20 | same |
+| Dragon | 35.4 | 10 / 20 | 10 / 20 | same |
+| hatchlng (flies) | 20.3 | 20 / 40 | 20 / 40 | same |
+| avatar | 27.5 | 30 / 60 | 30 / 60 | same |
+| flayer, Lich3 | 4.5, 2.7 | 10 / 20 | 10 / 20 | same |
+| orcs (all) | 6.1 to 7.8 | 10 / 20 | 10 / 20 | same |
+| Zombie | 2.7 | 8 / 15 | 8 / 15 | same |
+| Ghoul, Ghast, Mummy | 2.7 | 15 / 25, 15 / 30, 15 / 30 | same as the table | same |
+| drow, humans, skeletons | 2.3 to 9.6 | 15 / 30 | 15 / 30 | same |
+| Banegard, Beholder | 2.8, 6.7 | 20 / 40 | 20 / 40 | same |
+| Gargoyle, gbscthxe | 8.1, 2.8 | 20 / 30 | 20 / 30 | same |
+| gskelpus, gskelsci | 4.8, 3.8 | 20 / 35 | 20 / 35 | same |
+| kobolds | 9.1 to 9.9 | 25 / 50 (kobaswrd 30 / 50) | same as the table | same |
+| goblins gbloser, gbscsswd, gobascim | 3.6 to 4.5 | 40 / 60 | 40 / 60 | same |
+
+The beetles, the dragon, the mind flayer and the orcs keep the values of the
+tables: the mind flayer (AD&D 2e rate 12) and the orcs (rate 9) would be
+15.0 / 30.0 and 11.25 / 22.5 by the same method. Not changed, not asked.
+
+Not changed: the choice and the cast of spells of the casters
+(`dtuspell.c`), the dragon Tamaramagil. The hooks for them: `melee_fighter()`
+leaves out each creature with a mage or cleric level and each creature with
+a ranged attack, and `creature_in_combat()` and `creature_senses_player()`
+tell a caster whether it fights and whether it sees the player.
+
 ### The feet of a standing creature (Dtu_fix_creature_feet)
 
 An inactive creature stands on the center of the bottom side of its segment
@@ -1243,7 +1460,9 @@ Changes (all with `Dtu_improved_ai`, none with `-origobj` or
   pushes the scenery.
 - `body_line_free()` tests at least a fourth of the cylinder plus 0.25 (the
   walls add 1.0, as in the move).
-- People open doors (a decision of the project): a hostile creature whose
+- People open doors (a decision of the project; since 2026-11-27 only
+  while the creature fights the player, see "Improved AI: senses, alarms,
+  doors, attacks and groups"): a hostile creature whose
   model is a person opens a door as a type with the door bit does, with the
   same tests (no key, no lock flag on the side), for its paths
   (`door_is_openable()`) and when it walks into the door (0x25CAA). The door
