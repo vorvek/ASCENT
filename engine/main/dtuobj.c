@@ -74,6 +74,7 @@
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
 #include "dtudragon.h"
+#include "dtulich.h"
 #include "dtuobj_int.h"	// ASCENT: the shared declarations of the object files
 #include "dtugear.h"		// ASCENT: the new gear
 
@@ -1378,6 +1379,7 @@ void dtu_objects_level_setup(void)
 
 	dtu_dragon_level_setup(has_state);		// ASCENT: the dragon of DROW2 (dtudragon.c)
 	dtu_gear_place_flame_tongue(has_state,Level_setup_restore);		// ASCENT: the new gear (dtugear.h)
+	dtu_lich_level_setup(has_state,Level_setup_restore);		// ASCENT: the phylactery of the lich of CLAN3 (dtulich.h)
 
 	// level_start 0xAD5BF: the creature setup by name and add_npc
 	dtu_script_test_flags();

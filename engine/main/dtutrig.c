@@ -42,6 +42,7 @@
 #include "dtudisp.h"
 #include "dtuobj.h"
 #include "dtudragon.h"
+#include "dtulich.h"
 #include "dtutrig.h"
 #include "dtustate.h"
 #include "dtulog.h"		// ASCENT: the session log
@@ -460,6 +461,12 @@ char *dtu_trig_say_text(int say_index)
 			&& !strncmp(Say_text, "You come upon a lone mind flayer", strlen("You come upon a lone mind flayer")))
 		return LT("You come upon a lone mind flayer reading a scroll. Upon seeing you he hides the scroll and attacks.");
 
+	{
+		const char *ph = dtu_lich_say_text(Say_level, say_index);		// ASCENT: the phylactery of the lich (dtulich.h)
+
+		if (ph)
+			return say_cut(say_index, (char *) ph);
+	}
 	{
 		// ASCENT: the translation of the message (dtulang.h): id say.LEVEL.N
 		char id[40];

@@ -207,6 +207,12 @@ extern int Dtu_miss_sound;
 // "The dragon Tamaramagil": the encounter with the adult red dragon of
 // DROW2 (dtudragon.h, docs/re/dragon.md).
 extern int Dtu_restored_dragon;
+// "The phylactery of the lich": the altar of Velsharoon in the east crypts
+// of CLAN3; when it breaks, the lich Morik Stormhand fights without his
+// contingency (dtulich.h, docs/re/lich.md). LichPhylactery of ascent.cfg;
+// -origobj and -nophylactery clear it for one run. The variable is in
+// dtulich.c.
+extern int Dtu_lich_phylactery;
 
 // Rulebook items: the values and the class limits of some item lines take
 // the value of the AD&D 2nd edition rulebooks (the table of dtuitemfix.c,

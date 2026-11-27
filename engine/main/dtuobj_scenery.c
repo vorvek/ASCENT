@@ -71,6 +71,7 @@
 #include "dtusolid.h"	// ASCENT: Dtu_improved_physics, scenery as solid bodies
 #include "physics.h"		// ASCENT: Dtu_player_walk, DTU_FIX_JUMP_GRAVITY
 #include "digi.h"
+#include "dtulich.h"
 #include <math.h>
 
 // Scenery that moves (movement type 1 of the executable): pushed scenery
@@ -354,6 +355,7 @@ void dtu_break_dressing(object *d,object *by,int explode)
 		memset(Dressing_awake,1,sizeof(Dressing_awake));
 	}
 	d->flags |= OF_SHOULD_BE_DEAD;
+	dtu_lich_dressing_broken(d,by);		// ASCENT: the phylactery of the lich of CLAN3 (dtulich.h)
 	if (!explode) {
 		dtu_creature_drop_contents(d);
 		dtu_fire_trap(d);		// 0xA6D5A: level 0 object 0x29 (dtucombat.c)

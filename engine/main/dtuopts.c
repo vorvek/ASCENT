@@ -102,6 +102,7 @@ static dtu_opt Opts[] = {
 	{ "MaxHpOnLevelUp",      &Dtu_max_hp_level_up,      0, 1 },		// dtuxp.h
 	{ "VerboseCombatLog",    &Dtu_verbose_combat,       0, 1 },		// dtuxp.h
 	{ "RestoredDragon",      &Dtu_restored_dragon,      0, 1 },		// dtudragon.h
+	{ "LichPhylactery",      &Dtu_lich_phylactery,      0, 1 },		// dtulich.h
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
@@ -193,6 +194,7 @@ void dtu_opts_load(void)
 		Dtu_new_gear = 0;		// ASCENT: dtugear.h
 		Dtu_kill_xp_message = 0;		// ASCENT: dtuxp.h
 		Dtu_restored_dragon = 0;		// ASCENT: dtudragon.h
+		Dtu_lich_phylactery = 0;		// ASCENT: dtulich.h
 	}
 	// ASCENT: dtuxp.h. -killxpmessage and -nokillxpmessage set the kill line
 	// with the experience for one run, -maxhplevelup and -nomaxhplevelup
