@@ -3773,7 +3773,8 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // current=TYPE.ID, hotkey=KEY, presshot=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
-// spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
+// spelltest=SPELL.LEVEL.OBJ.TRIALS, activate, alone=OBJ[.OBJ2] (removes the
+// other creatures),
 // str=STRENGTH.PERCENT, dex=DEXTERITY, cha=CHARISMA,
 // attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
@@ -4028,6 +4029,13 @@ static void run_command(char *cmd, char *value)
 			dtu_damage_creature_direct(&Objects[a], ConsoleObject, i2f(10000));
 		else if (a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_DRESSING)	// scenery breaks (tools/questtest.py)
 			dtu_break_dressing(&Objects[a], NULL, 0);
+	}
+	else if (!strcmp(cmd, "alone")) {		// ASCENT: test: alone=OBJ[.OBJ2], each other creature of the level is removed (tools/check_caster_ai.py)
+		int i;
+
+		for (i = 1; i <= Highest_object_index; i++)
+			if (i != a && !(b > 0 && i == b) && Objects[i].type == OBJ_ROBOT)
+				dtu_creature_remove(&Objects[i], "the test command alone");
 	}
 	else if (!strcmp(cmd, "dropcontents") && a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
 		// ASCENT: test: dropcontents=OBJNUM, the creature leaves what it carries as at its death

@@ -5429,7 +5429,8 @@ static void caster_frame(object *obj,int row,fix dist)
 
 	cspell_state(obj);
 	n = cai_state(obj);
-	if (!dtu_creature_is_hostile(obj) || (obj->dtu.m_1b0 & DTU_FLEEING))
+	// (the test option -noattack: no creature attacks, so no cast)
+	if (!Dtu_creatures_attack || !dtu_creature_is_hostile(obj) || (obj->dtu.m_1b0 & DTU_FLEEING))
 		return;
 	if (Cai[n].fight && dtu_time_past(Cai[n].fight_seen + CAI_FIGHT_END)) {
 		Cai[n].fight = 0;
