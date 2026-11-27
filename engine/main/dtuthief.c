@@ -703,13 +703,80 @@ static int side_has(segment *segp, int side, const int *tex, int n)
 	return 0;
 }
 
+static const char *water_names[6] = { "water", "water1", "water2", "wfal01", "wfal02", "wfal04" };		// 0x3CE0E4
+static const char *lava_names[4] = { "lava02", "lava", "lavaflo", "magma" };		// 0x3CE0D4
+static const char *wood_names[22] = { "wood1", "wood2", "wood3", "wood4", "wood5", "wood6", "wood7", "wood8", "wood9",
+	"wood11", "wood12", "wood13", "wood14", "wood15", "wood16", "wood21", "wood22", "wood91", "wood92", "wood93",
+	"wood94", "wood95" };		// 0x3CE07C
+
+// ASCENT: Dtu_fix_lava_sides (dtuthief.h). The side flags & 3 of 0xA6F89
+// are a field (1 water, 2 wood, 3 lava), but the code sets them with OR:
+// a side with a water texture and a wood texture gets 1 | 2 = 3, lava.
+// The lava test also takes a side that joins two segments with no wall
+// (wall_is_doorway 5), which is not drawn. Verified in the decompilation
+// of 0xA6F89 and with tools/lvl.py: HUB3 segment 241 side 3 (the top
+// floor, wood16 with the waterfall wfal04, next to the floor trigger 2 of
+// segment 245, message 4) burns the player who walks on it. DROW3: the
+// open sides 566.3 to 593.3 under the grates of segments 575 and 122
+// carry the texture lava, and the pit below has a water floor (segments
+// 449 to 484); the lava test of 0x3D2BD takes side 3 of the segment below
+// the player, so the grate of segment 575 (over segment 568) burns. 19
+// sides of 5 levels have water and wood, 125 open sides of 11 levels have
+// a lava texture. 1: a side with water and wood is water, and lava needs a
+// drawn side. Run after 0xA6F89 and after the restore of a level state
+// (the state keeps the side flags). -origobj and -origlavasides clear it.
+int Dtu_fix_lava_sides = 1;
+
+// a name that the tables do not have matches no side
+static void lookup_names(const char **names, int *tex, int n)
+{
+	int k;
+
+	for (k = 0; k < n; k++)
+		if (!(tex[k] = texture_by_name(names[k])))
+			tex[k] = -1;
+}
+
+void dtu_thief_side_flags_fix(void)
+{
+	int water[6], lava[4], wood[22], seg, side, n_water = 0, n_lava = 0;
+
+	if (FindArg("-origobj") || FindArg("-origlavasides"))
+		Dtu_fix_lava_sides = 0;
+	if (!Dtu_fix_lava_sides)
+		return;
+	lookup_names(water_names, water, 6);
+	lookup_names(lava_names, lava, 4);
+	lookup_names(wood_names, wood, 22);
+	for (seg = 0; seg <= Highest_segment_index; seg++) {
+		segment *segp = &Segments[seg];
+
+		for (side = 0; side < 6; side++) {
+			ubyte *pad = &segp->sides[side].pad;
+
+			if ((*pad & 3) != 3)
+				continue;
+			if (side_has(segp, side, lava, 4) && (WALL_IS_DOORWAY(segp, side) & WID_RENDER_FLAG))
+				continue;
+			*pad &= ~3;
+			if (side_has(segp, side, water, 6)) {
+				*pad |= 1;
+				n_water++;
+			}
+			else {
+				if (side_has(segp, side, wood, 22))
+					*pad |= 2;
+				n_lava++;
+			}
+		}
+	}
+	if (n_water || n_lava)
+		dtu_log("Level textures (Dtu_fix_lava_sides): %d sides with water and wood are water, %d lava sides that are not drawn are not lava\n",
+			n_water, n_lava);
+}
+
 void dtu_thief_level_textures(void)
 {
-	static const char *water_names[6] = { "water", "water1", "water2", "wfal01", "wfal02", "wfal04" };		// 0x3CE0E4
-	static const char *lava_names[4] = { "lava02", "lava", "lavaflo", "magma" };		// 0x3CE0D4
-	static const char *wood_names[22] = { "wood1", "wood2", "wood3", "wood4", "wood5", "wood6", "wood7", "wood8", "wood9",
-		"wood11", "wood12", "wood13", "wood14", "wood15", "wood16", "wood21", "wood22", "wood91", "wood92", "wood93",
-		"wood94", "wood95" };		// 0x3CE07C
 	static const char *door_names[29] = { "wald1#0", "wald2#0", "wald3#0", "wald4#0", "gdown111#0", "dleft11#0",
 		"dleft31#0", "dorsk11#0", "down111#0", "drght11#0", "dup1t11#0", "gdown11#0", "shelfup1#0", "stadnup1#0",
 		"stadn2p1#0", "stadn3p1#0", "trapdor1#0", "up1pdor1#0", "wald1or1#0", "wald2or1#0", "wald3or1#0", "wald4or1#0",
@@ -768,6 +835,7 @@ void dtu_thief_level_textures(void)
 	}
 	dtu_log("Level textures (0xA6F89): %d of 61 names not found, sides: %d water, %d lava, %d wood; %d secret doors\n", missing,
 		n_water, n_lava, n_wood, n_secret);
+	dtu_thief_side_flags_fix();
 	{
 		char list[400] = "";
 

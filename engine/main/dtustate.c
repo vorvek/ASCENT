@@ -50,6 +50,7 @@
 #include "dtustate.h"
 #include "dtuchar.h"		// ASCENT: dtu_char_update() after a restore
 #include "dtuspell.h"		// ASCENT: the spell points of a creature (D-134)
+#include "dtuthief.h"		// ASCENT: dtu_thief_side_flags_fix (Dtu_fix_lava_sides)
 #include "args.h"
 
 // The messages of the state code go to the log and to stdout
@@ -1493,6 +1494,8 @@ static int restore_files(char names[3][32], int level_index)
 	// port does it for all objects of the level with the function of the
 	// level start.
 	dtu_objects_level_setup_restore();
+	// ASCENT: Dtu_fix_lava_sides, the side flags that the state keeps
+	dtu_thief_side_flags_fix();
 	// the AI state of the creatures of a file of the executable
 	ai_restore();
 	return 1;

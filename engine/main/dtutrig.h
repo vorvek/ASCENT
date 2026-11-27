@@ -143,8 +143,11 @@ extern int Dtu_fix_trigger_table;
 
 // The executable multiplies the trap times of the TAP file (seconds) by
 // 18.2 and compares the result with a clock that counts 1/100 second. A
-// time of 10 seconds is 1.82 seconds in the game. 0 (-origtrig): this rule.
-// 1 (default): the times are seconds.
+// time of 10 seconds is 1.82 seconds in the game. The levels were made and
+// tested with these times: DROW3 trap 11 (delay 15) opens the grate of
+// segment 122 2.7 seconds after message 14 "Suddenly the grate gives way
+// under your weight", 15 seconds with the literal reading. 0 (default):
+// the rule of 1.3. 1 (option -trapseconds): the times are seconds.
 extern int Dtu_fix_trap_seconds;
 
 // The trap action "close door" of the executable passes a wall number to
@@ -211,6 +214,26 @@ extern int Dtu_fix_trigger_side;
 // side 4) shows message 15 of BANE.SAY, which no trigger has, when the
 // player has the Banegem. 1 (default): on. 0 (-origtrig): off.
 extern int Dtu_fix_bane_cyric;
+// The lock action of a trap (flag 8) takes the lock off on its first run and
+// then turns it over on each run (0x94B27, flag 0x200). A trigger that needs
+// a key and keeps it (HUB3 triggers 10, 11, 12, DROW1 trigger 15, traps
+// with unlimited charges) locks its door again on each second use: the
+// door of the temple of Clangeddin (HUB3 seg 29 side 4, trigger 11, MISC
+// 111, trap 2) says "This door is locked." and opens on the next use. 1
+// (default): the lock action of the traps of a trigger that needs an item
+// and does not take it only takes the lock off. 0 (-origtrig): as 1.3.
+extern int Dtu_fix_key_lock;
+// DROW3 has two rows of cells whose doors are opened by traps: the trolls
+// 105 to 108 (traps 7 to 10, trigger 8 of seg 393 side 1, fired by the
+// script 221 of the mind flayer 59 at the first talk) and the ghouls and
+// ghasts 92 to 95 (traps 14 to 17, the floor trigger 20 of seg 475). The
+// doors have no key and no lock. In 1.3 neither type has the door bit, so
+// they stay in the cells until the trap opens them; the port lets a person
+// (troll, ghoul) open a door. 1 (default): the wall of each cell door on
+// the side of the cell gets the key value 4 (KEY_RED, as the key doors of
+// the levels), so no creature opens it; the player and the traps open it
+// as before. 0 (-origobj, -origcelldoors): the walls of the level file.
+extern int Dtu_fix_cell_doors;
 
 // 1: each trigger and trap event is printed to stdout (option -triglog).
 extern int Dtu_trig_log;

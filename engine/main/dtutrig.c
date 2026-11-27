@@ -69,7 +69,7 @@ dtu_trap		Dtu_traps[DTU_MAX_TRAPS];
 int			Dtu_num_traps = 0;
 
 int Dtu_fix_trigger_table = 1;
-int Dtu_fix_trap_seconds = 1;
+int Dtu_fix_trap_seconds = 0;
 int Dtu_fix_trap_close_door = 1;
 int Dtu_fix_trigger_repeat = 1;
 int Dtu_fix_disable_trap = 1;
@@ -80,6 +80,8 @@ int Dtu_fix_keep_triggers = 1;
 int Dtu_fix_touch_use = 1;
 int Dtu_fix_say_repeat = 1;
 int Dtu_fix_say_text = 1;
+int Dtu_fix_key_lock = 1;
+int Dtu_fix_cell_doors = 1;
 int Dtu_trig_log = 0;
 
 // ASCENT: Dtu_fix_say_repeat. The game time of the last message of each
@@ -97,6 +99,9 @@ static short Thief2_t46_tex = -1;
 static short	Active_traps[DTU_MAX_ACTIVE_TRAPS];		// 0x3A7CD0
 static int		Num_active_traps = 0;						// 0x14221C
 static int		Trap_chain_stop = 0;							// 0x142248
+// ASCENT: Dtu_fix_key_lock. 1 while the traps of a trigger run that needs
+// an item and does not take it (a key that the player keeps).
+static int		Key_trigger_runs = 0;
 
 static ubyte	*Say_data = NULL;
 static int		Say_size = 0;
@@ -604,7 +609,9 @@ static void trap_do_flags(dtu_trap *tp)
 
 	if (tp->flags & DTU_TPF_TOGGLE_LOCK) {
 		if (wall_num >= 0) {
-			if (tp->flags & DTU_TPF_STATE)
+			// Dtu_fix_key_lock: the key of a trigger that keeps it takes
+			// the lock off and never puts it on again
+			if ((tp->flags & DTU_TPF_STATE) && !(Dtu_fix_key_lock && Key_trigger_runs))
 				Walls[wall_num].flags ^= WALL_DOOR_LOCKED;
 			else
 				Walls[wall_num].flags &= ~WALL_DOOR_LOCKED;
@@ -989,8 +996,11 @@ void dtu_trig_fire(int trigger_num, int type, object *obj)
 		tlog("  trap %d off", t->disable_trap);
 	}
 
-	if (t->first_trap != -1)
+	if (t->first_trap != -1) {
+		Key_trigger_runs = t->need_item_class >= 0 && t->need_item_id >= 0 && !t->take_item;
 		dtu_trap_run(t->first_trap, obj);
+		Key_trigger_runs = 0;
+	}
 }
 
 // 0x7DBF5, the end of wall_open_door: in level 32 (flame) the door of
@@ -1144,6 +1154,35 @@ static void trig_level_rules(int last_trigger)
 	trap_open_door(door_seg, WFRONT);
 }
 
+// ASCENT: Dtu_fix_cell_doors (dtutrig.h). The cells of DROW3: the wall of
+// each door on the side of the cell. The traps 7, 8, 9, 10 (trigger 8) open
+// the doors of the trolls 108, 107, 105, 106, the traps 14, 15, 16, 17
+// (trigger 20) those of the ghast 92, the ghouls 95 and 94 and the ghast 93.
+static const short Drow3_cells[8][2] = {
+	{ 408, WFRONT },	{ 401, WRIGHT },	{ 399, WFRONT },	{ 394, WFRONT },
+	{ 490, WFRONT },	{ 492, WFRONT },	{ 493, WFRONT },	{ 495, WFRONT },
+};
+
+static void cell_doors_rule(int level_index)
+{
+	int i, n = 0;
+
+	if (!Dtu_fix_cell_doors || level_index != 22)
+		return;
+	for (i=0; i<8; i++) {
+		int seg = Drow3_cells[i][0], side = Drow3_cells[i][1], wn;
+
+		if (!side_ok(seg, side) || (wn = get_side(seg, side)->wall_num) < 0 || wn >= Num_walls)
+			continue;
+		if (Walls[wn].type != WALL_DOOR || Walls[wn].keys != KEY_NONE)
+			continue;
+		Walls[wn].keys = KEY_RED;
+		n++;
+	}
+	if (n)
+		tlog("level rule of drow3: %d cell doors open only by their traps", n);
+}
+
 // 0x5A855: fixed changes of the triggers of five levels, after each load of
 // a level (0x494EB at 0x49C38, argument 1) and after the restore of a level
 // state (0x5AA75 at 0x5AB53, argument 0). level_index is the index in
@@ -1167,6 +1206,7 @@ void dtu_trig_state_rules(int level_index, int restore)
 {
 	dtu_trigger *a, *b;
 
+	cell_doors_rule(level_index);
 	switch (level_index) {
 		case 2:
 			if (Dtu_num_triggers <= 1)
@@ -1945,8 +1985,8 @@ static int trig_table_check(int repair);
 
 // ASCENT: the time units of a trap. The executable keeps the times of a
 // trap as seconds * 18.2 (0x9596F) and stores them so in the state files.
-// With Dtu_fix_trap_seconds the port counts seconds * 100; the state files
-// keep the unit of the executable.
+// With Dtu_fix_trap_seconds (off by default) the port counts seconds * 100;
+// the state files keep the unit of the executable.
 static ushort trap_time_from_state(ushort v)
 {
 	int t;
@@ -2191,9 +2231,11 @@ static void read_options(void)
 	if (FindArg("-origtrig"))		// the rules of the executable
 		Dtu_fix_trigger_table = Dtu_fix_trap_seconds = Dtu_fix_trap_close_door = Dtu_fix_trigger_repeat = Dtu_fix_disable_trap = 0;
 	if (FindArg("-origtrig"))
-		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = Dtu_fix_trigger_side = Dtu_fix_bane_cyric = Dtu_fix_say_text = 0;
+		Dtu_fix_warp_overlap = Dtu_fix_trap_pause = Dtu_fix_thief2_cache = Dtu_fix_keep_triggers = Dtu_fix_touch_use = Dtu_fix_say_repeat = Dtu_fix_trigger_side = Dtu_fix_bane_cyric = Dtu_fix_say_text = Dtu_fix_key_lock = 0;
 	if (FindArg("-trapseconds"))
 		Dtu_fix_trap_seconds = 1;
+	if (FindArg("-origobj") || FindArg("-origcelldoors"))
+		Dtu_fix_cell_doors = 0;
 }
 
 static void make_name(char *dest, char *level_name, char *ext)
