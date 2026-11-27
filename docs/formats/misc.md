@@ -115,6 +115,39 @@ Verified: 21 records, classes 15, 5 and 16. `THESTORE.1` decodes to
 the port writes for the first stock is equal to `GELDOR.DAT`. Tool:
 `sidefiles.py store`. The market is in `docs/re/frontend.md` (section 6a).
 
+Class 17 (a spell, the scroll of the spell) is also a stock line: 0x873EE
+puts it into the misc list, and the market writes it back.
+
+### The ASCENT trailer (the port only)
+
+The port (2026-11-27, `Dtu_fix_market_reward`) ends `GELDOR.DAT` and
+`THESTORE.<n>` with 8 bytes after the last record. They are not a record and
+are not coded by 0x87BB7:
+
+| Offset | Type | Meaning |
+|---|---|---|
+| 0 | 4 bytes | `ASRW` |
+| 4 | u16 | the rewards of Khelben (0x13F6A0) that the stock holds: bit n for reward n, 0 to 8 |
+| 6 | u16 | 0 |
+
+So the size of a file of the port is 10 x records + 8, and the size of a 1.3
+file is 10 x records. A file of no trailer (1.3, or the port before
+2026-11-27) holds the rewards of its mission if it has a record of count -1
+(only the rewards have one), else none: that is the rule of the port for
+such a file (dtufe_town.c fe_market_check_rewards).
+
+1.3 reads a file of the port: 0x872C1 reads 10-byte records while the EOF
+flag (0x10) of the stream is clear; the short read of the 8 bytes returns 0
+records, and the fill of the buffer (0xF3104) sets the EOF flag when the
+read returns 0 bytes (0xD82DD sets it too), so the stock stays and the
+trailer is not read. 0x879A7 seeks to `size - size % 10` and writes its
+records over the trailer; the market of 1.3 (0x86846) and the save copy
+(0x87BB7) write records only. Read in the pseudocode of these functions;
+not run in 1.3. Verified in the port: a stock with the trailer goes through
+a save (`THESTORE.<n>`) and a load with it (tools/uitest.py
+`test_market_reward_repair`, `test_market_reward_khelben`). Tools:
+`sidefiles.py store` and `jrg.py list` print the trailer.
+
 ## SG0.SG: save game
 
 Magic `DGSS`, written by the state code derived from Descent 1 `state.c`

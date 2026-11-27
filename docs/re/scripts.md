@@ -761,9 +761,10 @@ points (the Flamesword), the use action runs the script of scenery, and the
 talk with WEAPON 13 sets global flag 0x81.
 
 Not in the port: the walk of `E5` (see above), the step turn of the
-speaker, the scroll arrows of the window, the market stock of the rewards
-(weak hook `dtu_hook_market_add_stock`), and condition 98 (the morale; no
-script of GABE 1.3 uses it).
+speaker, the scroll arrows of the window, and condition 98 (the morale; no
+script of GABE 1.3 uses it). The market stock of the rewards
+(`dtu_hook_market_add_stock`) is in the port since 2026-11-27: the strong
+hook of dtufe_town.c calls `fe_market_reward` (docs/re/frontend.md, 6a).
 
 Port additions to the window (not in the executable): the keys 1 to 9 and
 the keypad digits choose the reply with that number at once, and the mouse

@@ -591,9 +591,12 @@ static void give_misc(int id)
 	slog("Khelben gives MISC %d (%s)", id, dtu_item_get(OBJ_MISC, id, &d) ? d.name : "?");
 }
 
+// 0x879A7(n): the goods of reward n go into the stock of the market. The
+// strong hook calls fe_market_reward (dtufe_town.c); this one is for a
+// build with no front end.
 DTU_WEAK void dtu_hook_market_add_stock(int n)
 {
-	dtu_log("Khelben: market stock %d is added (not in the port)\n", n);
+	dtu_log("Khelben: market stock %d (no market in this build)\n", n);
 }
 
 // 0x844ED: the rewards of mission m

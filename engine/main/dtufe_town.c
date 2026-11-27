@@ -501,6 +501,23 @@ int Dtu_fix_market_buy_stock = 1;
 int Dtu_market_freedom = 2;
 #define MK_FREEDOM_ID	78
 
+// D-149. 0 (the executable): a reward of Khelben adds its goods only when
+// geldor.dat exists (0x879A7 opens it "rb+"), so the rewards before the
+// first visit to the market, or after a load of a slot that has no
+// TheStore.<S>, are lost. 1 (default): the stock file is made from the
+// first stock (0x13EB6C) when it is missing, and the stock gets the goods
+// of each reward that the mission of Khelben has passed and that it does
+// not hold yet (fe_market_check_rewards: a loaded game, the market, the
+// visit of Khelben). The goods that the stock holds are in the ASCENT
+// trailer of the file (docs/formats/misc.md).
+int Dtu_fix_market_reward = 1;
+
+// ASCENT: a scroll that is bought and that goes into a spell list
+// (0xB660C) is not an item of the player. 0 (the executable): 0x85458 adds
+// a sale line for it anyway (0x876ED), and its sale gives no gold (0xB6E01
+// finds no item) but puts the scroll into the stock. 1 (default): no line.
+int Dtu_fix_market_spell_line = 1;
+
 // The tables at 0x13F2DD (the player sells) and 0x13F32D (the player
 // buys): percent of the value for charisma 0 to 19.
 static short Mk_sell_percent[20] = { 20, 25, 27, 33, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 88, 93, 97, 99, 100 };
@@ -516,8 +533,13 @@ static int Mk_first_stock[21][4] = {
 	{ 3, 5, 27, 1 } };
 
 // The goods that the rewards of Khelben put into the market (0x879A7, the
-// tables at 0x13F6A0): quantity, class, number, count (-1).
-static int Mk_reward_stock[9][12][4] = {
+// tables at 0x13F6A0): quantity, class, number, count (-1). A row of class
+// 0 ends a table. Classes: 5 weapon, 15 armor, 16 misc, 17 spell (a scroll).
+// To add goods to a reward, add rows at the end of its table (and make
+// the second size larger); mk_append_reward writes them.
+#define MK_REWARDS			9
+#define MK_REWARD_ROWS		12
+static int Mk_reward_stock[MK_REWARDS][MK_REWARD_ROWS][4] = {
 	{ {1,15,39,-1}, {1,15,4,-1}, {1,15,14,-1}, {1,16,82,-1}, {1,16,85,-1}, {1,5,55,-1} },
 	{ {1,15,12,-1}, {1,16,72,-1}, {1,16,78,-1}, {1,16,88,-1}, {1,5,43,-1}, {1,5,55,-1} },
 	{ {1,16,86,-1}, {1,16,76,-1}, {1,16,11,-1}, {6,5,47,1}, {1,5,34,-1}, {1,5,40,-1}, {2,5,55,-1}, {1,5,58,-1} },
@@ -528,6 +550,21 @@ static int Mk_reward_stock[9][12][4] = {
 	{ {1,15,41,-1}, {1,15,26,-1}, {1,15,27,-1}, {1,16,2,-1}, {1,16,80,-1}, {1,16,93,-1}, {1,5,33,-1}, {1,5,39,-1},
 	  {4,16,75,-1}, {6,5,58,-1}, {6,5,59,-1}, {4,16,88,-1} },
 	{ {1,15,10,-1}, {1,15,52,-1}, {1,16,95,-1}, {1,5,69,-1}, {6,5,59,-1}, {4,16,75,-1}, {4,16,77,-1}, {4,16,88,-1}, {1,5,58,-1} } };
+
+// The first mission of each reward of the market (0x844ED: missions 1, 3
+// or 4, 7 or 8, 10, 11, 14, 16, 20 or 21, 29). The switch 0x83EF5 passes
+// each of them on the way to a higher mission, so a mission at or above
+// the number has had the reward.
+static const int Mk_reward_mission[MK_REWARDS] = { 1, 3, 7, 10, 11, 14, 16, 20, 29 };
+
+// ASCENT: the trailer of geldor.dat and TheStore.<S>: "ASRW", u16 the
+// rewards that the stock holds (bit n: reward n), u16 0. Eight bytes, less
+// than a record: 1.3 reads records until a short read and the EOF flag
+// (0x872C1, 0xD82DD), so it ignores the trailer; 0x879A7 writes its records
+// from the last whole record, over the trailer.
+#define MK_TRAILER_SIZE	8
+static const char Mk_trailer_id[4] = { 'A', 'S', 'R', 'W' };
+static int Mk_stock_rewards = -1;		// the trailer of the stock that the market read, -1: none
 
 // ASCENT: the files of the market are in the directory of the user
 // (dtu_user_path), with any case of the letters (dtu_user_find: the DOS
@@ -543,6 +580,108 @@ static const char *mk_user_file(const char *name)
 	return path[i];
 }
 #define MK_STORE_FILE	mk_user_file("GELDOR.DAT")		// "geldor.dat" 0x12CE53, in the current directory
+
+// A record of the stock file: s32 quantity, u8 class, u8 number, s32 count
+static void mk_record(ubyte *r, int qty, int type, int id, int count)
+{
+	r[0] = (ubyte) qty; r[1] = (ubyte) (qty >> 8); r[2] = (ubyte) (qty >> 16); r[3] = (ubyte) (qty >> 24);
+	r[4] = (ubyte) type;
+	r[5] = (ubyte) id;
+	r[6] = (ubyte) count; r[7] = (ubyte) (count >> 8); r[8] = (ubyte) (count >> 16); r[9] = (ubyte) (count >> 24);
+}
+
+static void mk_write_trailer(FILE *f, int mask)
+{
+	ubyte t[MK_TRAILER_SIZE];
+
+	memcpy(t, Mk_trailer_id, 4);
+	t[4] = (ubyte) mask;
+	t[5] = (ubyte) (mask >> 8);
+	t[6] = t[7] = 0;
+	fwrite(t, 1, MK_TRAILER_SIZE, f);
+}
+
+// The rewards of a trailer of n bytes, -1 if it is not one
+static int mk_trailer_mask(const ubyte *t, int n)
+{
+	if (n != MK_TRAILER_SIZE || memcmp(t, Mk_trailer_id, 4))
+		return -1;
+	return t[4] | (t[5] << 8);
+}
+
+// The rewards that the trailer of an open stock file names, -1: no
+// trailer. *end: the end of the last whole record.
+static int mk_file_rewards(FILE *f, long *end)
+{
+	ubyte t[10];
+	long size;
+	int n;
+
+	fseek(f, 0, SEEK_END);
+	size = ftell(f);
+	if (size < 0)
+		size = 0;
+	*end = size - size % 10;
+	fseek(f, *end, SEEK_SET);
+	n = (int) fread(t, 1, sizeof(t), f);
+	return mk_trailer_mask(t, n);
+}
+
+// A stock file with no trailer holds goods of a reward if it has a line of
+// count -1: only the rewards of 0x13F6A0 have it (a 1.3 stock, or one of a
+// port that wrote no trailer; the port before 2026-11-27 gave no rewards).
+static int mk_file_has_reward_goods(FILE *f)
+{
+	ubyte r[10];
+
+	fseek(f, 0, SEEK_SET);
+	while (fread(r, 1, 10, f) == 10)
+		if (r[6] == 0xff && r[7] == 0xff && r[8] == 0xff && r[9] == 0xff)
+			return 1;
+	return 0;
+}
+
+// The goods of reward n at the position of the file. A row of class 0
+// ends the table.
+static void mk_append_reward(FILE *f, int n)
+{
+	ubyte r[10];
+	int i;
+
+	for (i = 0; i < MK_REWARD_ROWS && Mk_reward_stock[n][i][1]; i++) {
+		mk_record(r, Mk_reward_stock[n][i][0], Mk_reward_stock[n][i][1], Mk_reward_stock[n][i][2], Mk_reward_stock[n][i][3]);
+		fwrite(r, 1, 10, f);
+	}
+	// ASCENT: Dtu_market_freedom: a record of Potions of Freedom (count 1)
+	if (Dtu_market_freedom > 0) {
+		mk_record(r, Dtu_market_freedom, OBJ_MISC, MK_FREEDOM_ID, 1);
+		fwrite(r, 1, 10, f);
+	}
+}
+
+// Dtu_fix_market_reward: geldor.dat from the first stock (0x13EB6C) with
+// a trailer of no rewards, as the market writes it at its first exit.
+static int mk_store_create(void)
+{
+	FILE *f = fopen(MK_STORE_FILE, "wb");
+	ubyte r[10];
+	int i;
+
+	if (!f)
+		return 0;
+	for (i = 0; i < 21; i++) {
+		mk_record(r, Mk_first_stock[i][0], Mk_first_stock[i][1], Mk_first_stock[i][2], Mk_first_stock[i][3]);
+		fwrite(r, 1, 10, f);
+	}
+	if (Dtu_market_freedom > 0) {
+		mk_record(r, Dtu_market_freedom, OBJ_MISC, MK_FREEDOM_ID, 1);
+		fwrite(r, 1, 10, f);
+	}
+	mk_write_trailer(f, 0);
+	fclose(f);
+	dtu_log("Market: geldor.dat made from the first stock (Dtu_fix_market_reward)\n");
+	return 1;
+}
 
 // The global flag 107 of the player (bit array at P+0x1A33, 0xADAFE)
 // doubles the prices (0x86F5A): dtu_script_gflag of dtuscript.c.
@@ -560,9 +699,11 @@ static item_info *mk_item(int type, int id)
 	return NULL;
 }
 
+// The list of a class: 0x873EE (the stock) and 0x876ED (the player) put a
+// spell (class 17, a scroll) into the misc list (0x8770C: cmp al,0x11).
 static int mk_category(int type)
 {
-	return type == OBJ_WEAPON ? 0 : type == OBJ_ARMOR ? 1 : type == OBJ_MISC ? 2 : -1;
+	return type == OBJ_WEAPON ? 0 : type == OBJ_ARMOR ? 1 : (type == OBJ_MISC || type == OBJ_SPELL) ? 2 : -1;
 }
 
 static int mk_tbl_int(item_info *it, char *key, int def)
@@ -735,15 +876,17 @@ static void mk_read_stock(void)
 {
 	FILE *f = fopen(MK_STORE_FILE, "rb");
 	ubyte r[10];
-	int i, ok = 0;
+	int i, k, ok = 0;
 
+	Mk_stock_rewards = 0;		// the first stock holds no reward
 	if (f) {
 		ok = 1;
-		while (fread(r, 1, 10, f) == 10) {
+		while ((k = (int) fread(r, 1, 10, f)) == 10) {
 			int qty = (int) ((uint) r[0] | ((uint) r[1] << 8) | ((uint) r[2] << 16) | ((uint) r[3] << 24));
 			int count = (int) ((uint) r[6] | ((uint) r[7] << 8) | ((uint) r[8] << 16) | ((uint) r[9] << 24));
 			mk_add_stock(qty, r[4], r[5], count);		// 0x87393
 		}
+		Mk_stock_rewards = mk_trailer_mask(r, k);		// ASCENT: the trailer
 		fclose(f);
 	}
 	if (!ok) {
@@ -776,6 +919,8 @@ static void mk_write_stock(void)
 			fwrite(r, 1, 10, f);
 		}
 	}
+	if (Mk_stock_rewards >= 0)			// ASCENT: the trailer stays
+		mk_write_trailer(f, Mk_stock_rewards);
 	fclose(f);
 }
 
@@ -1287,9 +1432,16 @@ static void mk_accept(fe_screen *s, int id)
 			// 0xB6315 to 0xB65BB: only a count of 0 is refused, so a line
 			// of count -1 gives an item of count -1. dtu_inventory_add
 			// refuses a count below 1; a non-stackable item is appended.
-			if ((count < 0 ? dtu_inventory_append(w.type, w.id, count) : dtu_inventory_add(w.type, w.id, count)) < 0)
+			int got = count < 0 ? dtu_inventory_append(w.type, w.id, count) : dtu_inventory_add(w.type, w.id, count);
+
+			if (got < 0)
 				continue;
-			mk_add_player(w.type, w.id, count);				// 0x876ED
+			// ASCENT: Dtu_fix_market_spell_line: a scroll that went into a
+			// spell list is not an item, so it gets no sale line
+			if (got != DTU_INV_SPELL_LIST || !Dtu_fix_market_spell_line)
+				mk_add_player(w.type, w.id, count);			// 0x876ED
+			else
+				dtu_log("Market: the bought scroll %d goes into a spell list\n", w.id);
 			Dtu_gold -= Mk_trans_price;
 			n++;
 		}
@@ -1405,6 +1557,7 @@ void fe_market(void)
 		Mk_charisma = Fe_market_charisma;
 	else
 		Mk_charisma = Dtu_char.pa.charisma;
+	fe_market_check_rewards();		// ASCENT: Dtu_fix_market_reward
 	mk_build_lists();
 	Mk_mode = Mk_sell = 0;
 	mk_popup_close(&Mk);
@@ -1434,6 +1587,7 @@ void fe_market_store(int s, int write)
 	char name[20];
 	FILE *in, *out;
 	ubyte r[10];
+	int k;
 
 	if (s < 0) s = 0;
 	if (s > 999) s = 999;
@@ -1448,10 +1602,12 @@ void fe_market_store(int s, int write)
 		fclose(in);
 		return;
 	}
-	while (fread(r, 1, 10, in) == 10) {
+	while ((k = (int) fread(r, 1, 10, in)) == 10) {
 		mk_swap_record(r);
 		fwrite(r, 1, 10, out);
 	}
+	if (mk_trailer_mask(r, k) >= 0)		// ASCENT: the trailer, as it is
+		fwrite(r, 1, MK_TRAILER_SIZE, out);
 	fclose(in);
 	fclose(out);
 }
@@ -1462,39 +1618,95 @@ void fe_market_new_character(void)
 	Fe_market_charisma = Dtu_char.base.charisma;	// 0x87E82: 0x13E38C = the new record
 }
 
-// 0x879A7: a reward of Khelben (0 to 8) adds goods to geldor.dat. Nothing
-// is added when the file does not exist. Returns 1 if it was written.
+// The rewards that the mission of Khelben has passed (bit n: reward n)
+static int mk_rewards_due(void)
+{
+	int n, due = 0;
+
+	for (n = 0; n < MK_REWARDS; n++)
+		if (Fe_khelben_mission >= Mk_reward_mission[n])
+			due |= 1 << n;
+	return due;
+}
+
+// ASCENT: Dtu_fix_market_reward. The stock gets the goods of each reward
+// that the mission has passed and that its trailer does not name. A stock
+// with no trailer (1.3, or the port before the trailer) holds them all if
+// it has a line of count -1, else none: the port did not add the rewards
+// before, and 1.3 lost them without geldor.dat. Missing geldor.dat is made
+// from the first stock. Then the trailer names the rewards.
+void fe_market_check_rewards(void)
+{
+	FILE *f;
+	long end;
+	int due, mask, n;
+
+	if (!Dtu_fix_market_reward)
+		return;
+	due = mk_rewards_due();
+	if ((f = fopen(MK_STORE_FILE, "rb+")) == NULL) {
+		if (!due || !mk_store_create() || (f = fopen(MK_STORE_FILE, "rb+")) == NULL)
+			return;
+	}
+	mask = mk_file_rewards(f, &end);
+	if (mask < 0) {
+		mask = mk_file_has_reward_goods(f) ? due : 0;
+		dtu_log("Market: the stock has no trailer: it holds %s (mission %d, rewards 0x%03X)\n",
+			mask ? "the rewards of the mission" : "no reward", Fe_khelben_mission, due);
+	}
+	fseek(f, end, SEEK_SET);
+	for (n = 0; n < MK_REWARDS; n++)
+		if ((due & ~mask) & (1 << n)) {
+			mk_append_reward(f, n);
+			mask |= 1 << n;
+			dtu_log("Market: stock of reward %d (mission %d) is added for mission %d (Dtu_fix_market_reward)\n",
+				n, Mk_reward_mission[n], Fe_khelben_mission);
+		}
+	mk_write_trailer(f, mask);
+	fclose(f);
+}
+
+// 0x879A7: a reward of Khelben (0 to 8) adds goods to geldor.dat. 1.3 adds
+// nothing when the file does not exist (D-149). Dtu_fix_market_reward: the
+// rewards before it first (fe_market_check_rewards), the file from the
+// first stock when it is missing, and a reward that the trailer names is
+// not added again. Returns 1 if the stock has the goods.
 int fe_market_reward(int n)
 {
 	FILE *f;
-	long size;
-	int i;
+	long end;
+	int mask;
 
-	if (n < 0 || n > 8 || (f = fopen(MK_STORE_FILE, "rb+")) == NULL)
+	if (n < 0 || n >= MK_REWARDS)
 		return 0;
-	fseek(f, 0, SEEK_END);
-	size = ftell(f);
-	fseek(f, size - size % 10, SEEK_SET);
-	for (i = 0; i < 12 && Mk_reward_stock[n][i][1]; i++) {
-		ubyte r[10];
-		int v = Mk_reward_stock[n][i][0], w = Mk_reward_stock[n][i][3];
-		r[0] = (ubyte) v; r[1] = (ubyte) (v >> 8); r[2] = (ubyte) (v >> 16); r[3] = (ubyte) (v >> 24);
-		r[4] = (ubyte) Mk_reward_stock[n][i][1];
-		r[5] = (ubyte) Mk_reward_stock[n][i][2];
-		r[6] = (ubyte) w; r[7] = (ubyte) (w >> 8); r[8] = (ubyte) (w >> 16); r[9] = (ubyte) (w >> 24);
-		fwrite(r, 1, 10, f);
+	if (Dtu_fix_market_reward) {
+		fe_market_check_rewards();
+		if ((f = fopen(MK_STORE_FILE, "rb")) != NULL)
+			fclose(f);
+		else if (!mk_store_create())
+			return 0;
 	}
-	// ASCENT: Dtu_market_freedom: a record of Potions of Freedom (count 1)
-	if (Dtu_market_freedom > 0) {
-		ubyte r[10] = { 0 };
-		int v = Dtu_market_freedom;
-
-		r[0] = (ubyte) v; r[1] = (ubyte) (v >> 8); r[2] = (ubyte) (v >> 16); r[3] = (ubyte) (v >> 24);
-		r[4] = OBJ_MISC;
-		r[5] = MK_FREEDOM_ID;
-		r[6] = 1;
-		fwrite(r, 1, 10, f);
+	if ((f = fopen(MK_STORE_FILE, "rb+")) == NULL) {
+		dtu_log("Market: stock of reward %d is lost: no geldor.dat (0x879A7, D-149)\n", n);
+		return 0;
 	}
+	mask = mk_file_rewards(f, &end);
+	if (Dtu_fix_market_reward && mask >= 0 && (mask & (1 << n))) {
+		fclose(f);
+		dtu_log("Market: the stock holds reward %d already\n", n);
+		return 1;
+	}
+	fseek(f, end, SEEK_SET);
+	mk_append_reward(f, n);
+	if (mask >= 0 || Dtu_fix_market_reward)
+		mk_write_trailer(f, (mask < 0 ? 0 : mask) | (1 << n));
 	fclose(f);
+	dtu_log("Market: stock of reward %d is added\n", n);
 	return 1;
+}
+
+// The strong hook of dtuscript.c (0x844ED calls 0x879A7)
+void dtu_hook_market_add_stock(int n)
+{
+	fe_market_reward(n);
 }

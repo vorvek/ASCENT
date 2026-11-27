@@ -331,7 +331,9 @@ function.
 
 Verified in the code (0x872C1 reads, 0x86846 writes): the stock of the
 market. The market is in `docs/re/frontend.md` (section 6a), the coded copy
-`THESTORE.<n>` in `misc.md`.
+`THESTORE.<n>` in `misc.md`. A file of the port ends with an 8-byte trailer
+after the records (the rewards that the stock holds, `misc.md`); 1.3 does
+not read it.
 
 ## KCONFIG.DAT
 

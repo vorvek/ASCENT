@@ -4104,6 +4104,12 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
+	else if (!strcmp(cmd, "khelben")) {	// ASCENT: test: the mission advance of a visit of Khelben (0x83E36), no screen
+		int blurb = 1;
+
+		Fe_khelben_mission = dtu_mission_advance(Fe_khelben_mission, &blurb);
+		dtu_char_log("script: Khelben: mission %d", Fe_khelben_mission);
+	}
 	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
 	else if (!strcmp(cmd, "class"))		Dtu_char.pa.class1 = Dtu_char.base.class1 = a;	// test: class=N, the first class
 	else if (!strcmp(cmd, "class2"))	Dtu_char.pa.class2 = Dtu_char.base.class2 = a;	// ASCENT: test: class2=N, the second class (-1: none)
