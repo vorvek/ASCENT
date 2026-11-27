@@ -60,7 +60,7 @@ MODELS_DIR = None    # --models; else <out>/models, then gamedata/hd/models
 sys.path.insert(0, HERE)
 import egg  # noqa: E402
 
-VERSION = 6          # bump when the processing changes; written to .method, so
+VERSION = 7          # bump when the processing changes; written to .method, so
                      # that a run makes the files of an archive again
                      # 2: wall textures use the "detail" method
                      # 3: tiling textures padded by TILE_PAD (a 3x3 tiling)
@@ -69,6 +69,7 @@ VERSION = 6          # bump when the processing changes; written to .method, so
                      # 5: the door clips keep the reference only where the
                      #    pixels are equal (anim_merge)
                      # 6: NAME_METHOD (water) and REGION_FIX (dwf_mf01)
+                     # 7: NAME_METHOD for all water flipbooks
 CACHE_VERSION = 2    # part of the cache key of every bitmap; the key of a
                      # tiling bitmap also has TILE_PAD, so a change of the
                      # tiling padding does not redo the other bitmaps
@@ -360,7 +361,14 @@ FACE_DETAIL_STRENGTH = 0.15
 # 0.91 0.73), and the result also changes with a mirror of the input, so
 # the animation showed one soft frame. UltraSharp keeps the dither as a fine
 # grain in every frame (0.59 to 0.63, docs/hd_textures.md, "Corrections").
-NAME_METHOD = {"water": "ultrasharp"}
+# The other water flipbooks (version 7) take the same model: the running
+# water `wfal01` (the overlay of the streams), the waterfalls `wfal02` and
+# `wfal04`, the see-through water `water2` and the brown water `water1`.
+# x4plus made foam streaks in `wfal01` that are not in the original (high
+# frequency 0.99 to 1.14 of the original by frame, 0.84 to 0.88 with
+# UltraSharp). The lava flipbooks (`lava`, `lava02`, `lavaflo`, `magma`) keep
+# the rule: UltraSharp gives `lava02` stair steps along its smooth bands.
+NAME_METHOD = {n: "ultrasharp" for n in ("water", "water1", "water2", "wfal01", "wfal02", "wfal04")}
 
 # combo: parts of one bitmap (lower case name) that take the result of
 # another model: (method, blur sigma in output pixels, boxes x0 y0 x1 y1 in
