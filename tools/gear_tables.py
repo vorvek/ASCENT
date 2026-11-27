@@ -107,9 +107,29 @@ def read():
     rname = re.search(r'#define\s+DTU_GEAR_ROD_NAME\s+"([^"]*)"', h).group(1)
     rlvl = int(re.search(r"#define\s+ROD_LEVEL\s+(\d+)", s).group(1))
     g["rod"] = (rname, g["d"]["DTU_GEAR_ROD_SPELL"], g["d"]["DTU_GEAR_ROD_LEVEL"], g["d"]["DTU_GEAR_ROD_VALUE"], rlvl)
-    for k in ("lines", "armor_ac", "wands", "values", "market", "dragon", "no_gold"):
-        if not g[k]:
-            raise SystemExit("gear_tables: no rows for %s in dtugear.c" % k)
+    # the class gear: the table lines (Class_lines), the Poisoned Arrow
+    # (Class_arrow) and the sales of the script blocks of dtuclassgear.c
+    g["class_lines"] = [s.replace('\\"', '"') for s in re.findall(r'^\s*"(\$(?:ARMOR|OBJECT) (?:[^"\\]|\\.)*)",?\s*$',
+                                                                  _block(c, "Class_lines[]"), re.M)]
+    m = re.search(r'Class_arrow\s*=\s*\{\s*(\w+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\s*\}', c)
+    g["class_arrow"] = (num(m.group(1)), m.group(2), m.group(3), int(m.group(4)))
+    k = _read("dtuclassgear.c")
+    kinds = {"WEAPON": 5, "ARMOR": 15, "MISC": 16, "SPELL": 17}
+
+    def expr(tok):
+        # DTU_GEAR_PEARL_POWER + 2 and the like
+        return sum(num(t) for t in tok.split("+"))
+    # sale(e, label, price, short label, class, number, count, flag, next)
+    g["class_sales"] = [(int(p), kinds[cl], expr(i), int(n)) for p, cl, i, n in re.findall(
+        r"\bsale\(e,\s*\w+,\s*(\d+),\s*\w+,\s*(WEAPON|ARMOR|MISC|SPELL),\s*([\w\s+]+?),\s*(\d+),", k)]
+    # each price that a block takes, and each mission that a block tests
+    g["class_gold"] = sorted(set(int(x) for x in re.findall(r"\btake_gold\(e,\s*(\d+)\)", k))
+                             | set(p for p, _, _, _ in g["class_sales"]))
+    g["class_missions"] = sorted(set(int(x) for x in re.findall(r"\b(?:t_mission|reply_if|if_mission_not|set_if_mission)"
+                                                                r"\(e,\s*(\d+)", k)))
+    for k2 in ("lines", "armor_ac", "wands", "values", "market", "dragon", "no_gold", "class_lines", "class_sales"):
+        if not g[k2]:
+            raise SystemExit("gear_tables: no rows for %s in dtugear.c or dtuclassgear.c" % k2)
     return g
 
 
