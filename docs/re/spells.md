@@ -685,12 +685,36 @@ Verified in the bytes of DTUGAME.EXE 1.3 (`dtu13.elf`, objdump), 2026-11-25.
   signature of the parent. So after its first wall the bolt is no longer related to
   its caster and can hit the caster. At the scenery `collide_weapon_and_dressing`
   (0x2641C) plays the wall vclip of the spell and keeps the bolt in the same way.
-  A creature or the player ends the bolt: `collide_robot_and_weapon` turns a missile
+  In 1.3 a creature or the player ends the bolt: `collide_robot_and_weapon` turns a missile
   back only with flag 0x80 (0x2775E) and removes a missile that is a model at
   0x27883; the bolt is a model (ltning.pof). The trap cast 0x946FA does not touch
   the byte. The port: `dtu_create_missile` and `missile_hit_wall`
   (`dtuobj_missile.c`). Test: BONES, a level 9 bolt bounces twice and ends 2.03
   seconds after the cast; cast at a near wall it comes back and hits the caster.
+- **The bolt goes on through the bodies (ASCENT, D-195, `Dtu_fix_bolt_pass`,
+  `-origcombat` clears it).** A decision of the user, by the AD&D 2e text: the bolt
+  crosses each creature and the player on its line and ends only when its life
+  ends (with `Dtu_fix_spell_range` 40 yards + 10 yards a level, 7.8 seconds at
+  level 9). The rebound at a wall stays the one of 1.3: the velocity is negated, so
+  the bolt goes back along its line toward the caster (the 2e base rule; the
+  mirror angle is an optional rule of 2e). Each body takes the spell once on each
+  leg (a leg ends at a wall or at a Mirror Shield), with its own save for half. A
+  body that the bolt crosses again on a later leg rolls a new save when it made
+  all its earlier saves, and a failed one deals the other half of the first roll;
+  a body that failed a save takes nothing more (2e: full damage when one save
+  fails, half when all are made). The caster is not hit while the bolt leaves; after
+  a wall it can be (also a creature caster: the caster AI rule that spares the
+  allies does not spare the caster itself). A closed door is a wall. A creature in
+  a Minor Globe is not harmed and the bolt goes on; the magic resistance of the
+  dragon is rolled at its first crossing only. The bolt of a creature passes its
+  allies with no harm (Dtu_caster_ai). A Mirror Shield sends a creature bolt back
+  to its source as a bolt of the player: it crosses each body again on the way
+  back, the allies of the source too; it can come back from a wall and hit the
+  player, and the shield does not turn it again (it has no creature source any
+  more). The caster AI casts no Lightning Bolt when a wall at most 160.0 away on
+  the line to the player would send the bolt back to the body of the caster
+  within its flight (`caster_bolt_returns`). Tests: `tools/questtest.py --only
+  bolt_`, `tools/check_caster_ai.py --only bolt`.
 - **The light of a spell missile.** 0x56FF6 writes `player_light` of the spell (0
   when the line has none, the reader 0x242F6) to `lightcast` of the template, and
   `set_dynamic_light` (0x577FE) adds `lightcast` of each weapon object. The table

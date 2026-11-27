@@ -681,6 +681,71 @@ TESTS = [
       "5:class=1,6:setlevel=9,7:give=17.16.1,8:armspell=16,9:heal=100,20:goobj=11.80,22:aim=11,25:fire,118:aim=11,120:fire",
       [r"area of 'Fireball'", r"'Fireball' level 9 on obj 11 Zombie: damage"], [r"'Fireball' level 9 on obj 0 you"],
       frames=160, extra=["-testslots", "9", "-objlog", "fireball_far_obj.log"]),
+    # Lightning Bolt goes on through each body on its line until its life ends
+    # (Dtu_fix_bolt_pass, D-195; AD&D 2e). BONES: three zombies 20, 40 and 60
+    # in front of the player (the test command objfront) take one level 9
+    # bolt of the player, each once with its own save. 1.3 (-origcombat): the
+    # first zombie ends it (0x272DD).
+    T("bolt_line_three", "BONES",
+      "2:seed=1,5:class=1,6:setlevel=9,7:give=17.32.1,8:armspell=32,9:heal=100,20:fire,"
+      "198:objfront=4.20,198:objfront=11.40,198:objfront=23.60,200:fire",
+      [r"save: obj 4 Zombie, category 4[\s\S]*'Lightning Bolt' level 9 on obj 4 Zombie: damage",
+       r"save: obj 11 Zombie, category 4[\s\S]*'Lightning Bolt' level 9 on obj 11 Zombie: damage",
+       r"save: obj 23 Zombie, category 4[\s\S]*'Lightning Bolt' level 9 on obj 23 Zombie: damage",
+       r"crosses obj 4 Zombie \(leg 0\)", r"crosses obj 11 Zombie \(leg 0\)", r"crosses obj 23 Zombie \(leg 0\)"],
+      [r"on obj (4|11|23) Zombie: damage[\s\S]*on obj \1 Zombie: damage"],
+      frames=260, extra=["-testslots", "9", "-noattack", "-objlog", "bolt_line_obj.log"]),
+    T("bolt_line_three_orig", "BONES",
+      "2:seed=1,5:class=1,6:setlevel=9,7:give=17.32.1,8:armspell=32,9:heal=100,20:fire,"
+      "198:objfront=4.20,198:objfront=11.40,198:objfront=23.60,200:fire",
+      [r"'Lightning Bolt' level 9 on obj 4 Zombie: damage"],
+      [r"on obj (11|23) Zombie: damage", r"Lightning Bolt obj \d+ crosses"],
+      frames=260, extra=["-origcombat", "-testslots", "9", "-noattack", "-objlog", "bolt_line_orig_obj.log"]),
+    # The same bolt flies on: it comes back from the wall and crosses the
+    # player, who makes the save (half); after the wall behind the player it
+    # crosses the player again: a new save, which fails, gives the other half
+    # (AD&D 2e: full damage when one save fails).
+    T("bolt_cross_again", "BONES",
+      "2:seed=1,5:class=1,6:setlevel=9,7:give=17.32.1,8:armspell=32,9:heal=100,20:fire,"
+      "198:objfront=4.20,198:objfront=11.40,198:objfront=23.60,200:fire",
+      [r"crosses obj 0 player \(leg 1\): damage roll (\d+), save made[\s\S]*'Lightning Bolt' crosses obj 0 you again: "
+       r"the save fails, the other \d+ of the roll \1"],
+      frames=500, invuln=False, extra=["-testslots", "9", "-noattack", "-objlog", "bolt_again_obj.log"]),
+    # The bolt of the player into the ceiling of BONES segment 48 (15 units
+    # away) comes back and hits the player, with the save and the damage; the
+    # same with the Wand of Lightning Bolts (weapon 59).
+    T("bolt_near_wall_self", "BONES",
+      "2:seed=1,5:class=1,6:setlevel=9,7:give=17.32.1,8:armspell=32,9:heal=100,20:goside=48.1,22:fire,130:fire",
+      [r"Lightning Bolt obj \d+ bounces", r"'Lightning Bolt' \(32\) level 9 on obj 0 you", r"save: obj 0 you, category 4",
+       r"damage: the player takes \d+ from player", r"crosses obj 0 player \(leg [1-9]\)"],
+      frames=200, invuln=False, extra=["-testslots", "9", "-noattack", "-objlog", "bolt_wall_obj.log"]),
+    T("bolt_wand_near_wall_self", "BONES",
+      "2:seed=1,5:class=1,6:setlevel=9,7:give=5.59.5,8:current=5.59,9:heal=100,20:goside=48.1,22:fire",
+      [r"casts 'Lightning Bolt' \(32\) at level 9, source 2", r"Lightning Bolt obj \d+ bounces",
+       r"save: obj 0 you, category 4", r"damage: the player takes \d+ from player", r"crosses obj 0 player \(leg [1-9]\)"],
+      frames=120, invuln=False, extra=["-noattack", "-objlog", "bolt_wand_obj.log"]),
+    # A Lightning Bolt of the zombie obj 11 (40 in front of the player) at the
+    # player passes its ally obj 4 (20 in front) with no harm (Dtu_caster_ai),
+    # hits the player, comes back from the wall behind the player and hits
+    # its caster. With a Minor Globe the player is not harmed and the bolt
+    # goes on.
+    T("bolt_creature_ally", "BONES", "2:seed=1,9:heal=100,20:objfront=4.20,20:objfront=11.40,22:spellby=32.11",
+      [r"crosses obj 0 player \(leg 0\)", r"damage: the player takes \d+ from Zombie",
+       r"Lightning Bolt obj \d+ bounces", r"'Lightning Bolt' level 2 on obj 11 Zombie: damage"],
+      [r"'Lightning Bolt' level 2 on obj 4 Zombie: damage"],
+      frames=200, invuln=False, extra=["-noattack", "-objlog", "bolt_ally_obj.log"]),
+    T("bolt_creature_globe", "BONES", "2:seed=1,9:heal=100,10:cast=57,20:objfront=4.20,20:objfront=11.40,22:spellby=32.11",
+      [r"Minor Globe of Invulnerability of obj 0 you stops 'Lightning Bolt'", r"'Lightning Bolt' level 2 on obj 11 Zombie: damage"],
+      [r"damage: the player takes \d+ from Zombie"],
+      frames=200, invuln=False, extra=["-testslots", "9", "-noattack", "-objlog", "bolt_globe_obj.log"]),
+    # The Mirror Shield (armor 53) sends the bolt of the zombie back: it is a
+    # bolt of the player now and crosses the ally obj 4 and the caster.
+    T("bolt_creature_mirror", "BONES",
+      "2:seed=1,9:heal=100,10:give=15.53.1,11:equip=15.53,20:objfront=4.20,20:objfront=11.40,21:face=11,22:spellby=32.11",
+      [r"Mirror Shield sends obj \d+ \(weapon \d+ spell 32\) back to obj 11", r"crosses obj 4 Zombie \(leg 1\)",
+       r"'Lightning Bolt' level 2 on obj 11 Zombie: damage"],
+      frames=60, invuln=False, extra=["-noattack", "-objlog", "bolt_mirror_obj.log"]),
+
     # Statement EB (script 291 of IBBALAR, label 23): the area spells go off
     # at the segments that the statement names (D-075, Dtu_fix_script_area_seg).
     T("script_area_segment", "IBBALAR", "10:resume=82.23,15:talkscript=291",

@@ -806,7 +806,7 @@ int dtu_desc_spell_text(int spell, int L, char *out, int size)
 	else if (f.area)
 		line(LT("Area: %s"), (sprintf(b, f.self ? LT("%s around you") : LT("%s where it lands"), feet(a, f.radius)), b));
 	else if (f.bounce)
-		line(LT("Area: %s"), LT("The first creature it hits"));		// ASCENT: Lightning Bolt (dtuobj_missile.c)
+		line(LT("Area: %s"), Dtu_fix_bolt_pass ? LT("Each creature on its line") : LT("The first creature it hits"));		// ASCENT: Lightning Bolt (dtuobj_missile.c, Dtu_fix_bolt_pass)
 	else
 		line(LT("Area: %s"), f.self ? LT("Only you") : LT("One target"));
 	// ASCENT: the object loop of 0x90CEF has no test of the caster (0x90D54

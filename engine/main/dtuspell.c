@@ -1665,6 +1665,7 @@ static void top_vclip(int spell,object *t,fix duration)
 // into the table before the roll (Fireball, Lightning Bolt, Melf's Acid
 // Arrows).
 static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,int save);
+int Dtu_spell_deal_full = -1, Dtu_spell_deal_saved;		// ASCENT: Dtu_fix_bolt_pass (dtuspell.h)
 static int rule_half(int spell);		// ASCENT: the save for half of the line of the spell
 static int rule_attack(int spell);		// ASCENT: the attack roll of the line (Dtu_fix_damage_save)
 static int rule_attack_bonus(int spell,int L);
@@ -1781,7 +1782,9 @@ static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,
 
 	if (target->type == OBJ_PLAYER && (target->dtu.m_88 & DTU_FX_INVULNERABLE))
 		dmg = 0;		// 0x9178B
+	Dtu_spell_deal_full = dmg;		// ASCENT: Dtu_fix_bolt_pass (dtuspell.h)
 	if (dmg > 0 && save && dtu_spell_save_from(target,DTU_SAVE_SPELL,caster)) {
+		Dtu_spell_deal_saved = 1;
 		dmg /= 2;
 		dtu_xp_dmg_mult(-2,LN("save for half"));		// ASCENT: the verbose combat log (dtuxp.h)
 	}
@@ -3740,6 +3743,39 @@ fix dtu_spell_hit_level(int spell, object *target, object *caster, int level)
 	return apply_spell(spell,target,caster,level);
 }
 
+// ASCENT: Dtu_fix_bolt_pass (dtuspell.h). AD&D 2e, Lightning Bolt: "A
+// creature crossed more than once by the bolt must roll a saving throw for
+// every time it is crossed": full damage when one save fails, half when all
+// are made. The earlier crossings dealt full / 2; a failed save now deals
+// the rest of the roll of the first crossing. The tests of apply_spell (the
+// allies, the Minor Globe, the magic resistance) were passed at the first
+// crossing.
+fix dtu_spell_bolt_again(int spell, object *target, object *caster, int level, int full)
+{
+	int rest = full - full/2;
+
+	Dtu_spell_deal_saved = 0;
+	if (!spell_ok(spell) || target == NULL || rest <= 0 || (target->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+		return 0;
+	if (target->type == OBJ_ROBOT ? (target->shields < F1_0 || DTU_ANIM_STATE(target) == DAS_DIE) :
+		 target->type != OBJ_PLAYER || Player_is_dead || Dtu_player_dead)
+		return 0;
+	if (target->type == OBJ_PLAYER)		// the session log line of the save (dtuchar.h)
+		dtu_char_save_cause(spell,spell_name(spell),caster && caster != target ? dtu_object_name(caster) : NULL);
+	dtu_xp_roll_clear();
+	if (dtu_spell_save_from(target,DTU_SAVE_SPELL,caster)) {
+		Dtu_spell_deal_saved = 1;
+		dtu_spell_log("spell: '%s' crosses obj %d %s again: the save is made again, no more damage (Dtu_fix_bolt_pass)",spell_name(spell),
+			(int)(target-Objects),target_name(target));
+		dtu_xp_roll_say(caster,target);
+		return 0;
+	}
+	dtu_spell_log("spell: '%s' crosses obj %d %s again: the save fails, the other %d of the roll %d (Dtu_fix_bolt_pass)",spell_name(spell),
+		(int)(target-Objects),target_name(target),rest,full);
+	dtu_xp_dmg_start(0,0,rest);
+	return spell_deal(spell,target,caster,level,rest,0);
+}
+
 //------------------------------------------------------------------------
 // The cast of the player (0x41A4D, 0x56A0D, 0x56FF6)
 
@@ -4883,6 +4919,44 @@ static int cspell_weight(object *obj,int e,fix dist)
 // back at a bed), -1 none: its missiles pass it.
 #define CAI_WAY_STEP	F1_0		// the pieces of the test: finer than the way of a missile in one frame (3.3), so that a body just in front of the player counts
 
+// ASCENT: Dtu_fix_bolt_pass (dtucombat.h): 1 if the Lightning Bolt of the
+// creature, which goes on through the player, would meet a wall and come
+// back to the body of the caster within its flight (AD&D 2e: the bolt
+// rebounds toward its caster for the rest of its length). Only a near wall
+// counts: one at most 160.0 away (80 feet, the length of the bolt of AD&D 2e
+// and the free facing of the 1.3 test 0xB30FD); a bolt that comes back from
+// farther takes 3 seconds or more, and the caster has moved.
+#define CAI_BOLT_WALL	i2f(160)
+
+static int caster_bolt_returns(object *obj,int L)
+{
+	vms_vector pos = obj->pos, dir, p1;
+	fvi_query fq;
+	fvi_info hit;
+	fix flight, wall;
+	int seg;
+
+	if (!Dtu_fix_bolt_pass || !ConsoleObject)
+		return 0;
+	pos.y += i2f(2);		// as caster_missile_free
+	seg = find_point_seg(&pos,obj->segnum);
+	if (seg < 0) { pos = obj->pos; seg = obj->segnum; }
+	vm_vec_sub(&dir,&ConsoleObject->pos,&pos);
+	vm_vec_normalize_quick(&dir);
+	flight = i2f(spell_flight(32,L));
+	vm_vec_scale_add(&p1,&pos,&dir,flight);
+	fq.p0 = &pos; fq.p1 = &p1; fq.startseg = seg; fq.rad = F1_0;
+	fq.thisobjnum = obj-Objects; fq.ignore_obj_list = NULL; fq.flags = 0;
+	if (find_vector_intersection(&fq,&hit) != HIT_WALL)
+		return 0;
+	wall = vm_vec_dist(&pos,&hit.hit_pnt);
+	if (wall > CAI_BOLT_WALL || flight - wall <= wall - obj->size)
+		return 0;
+	dtu_spell_log("caster: obj %d %s: its Lightning Bolt would come back from the wall %.0f away (flight %.0f)",(int)(obj-Objects),
+		target_name(obj),f2fl(wall),f2fl(flight));
+	return 1;
+}
+
 static int caster_missile_free(object *obj,int s,int *pass)
 {
 	vms_vector pos = obj->pos, dir;
@@ -5310,6 +5384,10 @@ static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int se
 			break;
 		case 33:		// Magic Missile: Shield stops it
 			if (pw & Spell_rule[33].stopped_by)
+				return 0;
+			break;
+		case 32:		// ASCENT: Lightning Bolt: not when it would come back to the caster
+			if (caster_bolt_returns(obj,L))
 				return 0;
 			break;
 		case 22: case 52:		// Hold Person

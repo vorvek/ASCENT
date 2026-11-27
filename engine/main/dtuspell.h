@@ -586,6 +586,15 @@ void dtu_spell_compute_slots(void);
 // Returns the damage that was done.
 fix dtu_spell_hit(int spell, object *target, object *caster, int level);
 fix dtu_spell_hit_level(int spell, object *target, object *caster, int level);		// ASCENT: at this level (dtugear.h)
+// ASCENT: Dtu_fix_bolt_pass (dtucombat.h): the damage roll of the last hit
+// of a damage spell before its save (-1: no roll, the spell did not reach
+// the target) and 1 when the target made its save for half. The missile
+// code clears them before the hit.
+extern int Dtu_spell_deal_full, Dtu_spell_deal_saved;
+// ASCENT: Dtu_fix_bolt_pass: Lightning Bolt crosses again a target that
+// made its save at the earlier crossings, whose damage roll was full: a new
+// save; a failed one deals the other half. Sets Dtu_spell_deal_saved.
+fix dtu_spell_bolt_again(int spell, object *target, object *caster, int level, int full);
 
 // The area effect of a spell (0x90CEF): each player or creature in the
 // radius that the point sees. Returns the number of objects.
@@ -715,7 +724,7 @@ typedef struct dtu_spell_facts {
 	int	targets_lo, targets_hi;	// ASCENT: the most targets of a cast (the counters of Haste, Slow, Hold Undead), 0 no limit
 	int	level_total;			// ASCENT: Hold Undead: the levels of the targets add up to max_level or less (Dtu_fix_hold_undead_hd)
 	int	side_only;				// ASCENT: Haste: only you and the creatures that are not hostile (Dtu_fix_haste_friends)
-	int	bounce;					// ASCENT: Lightning Bolt: bounces off walls, ends at the first creature it hits
+	int	bounce;					// ASCENT: Lightning Bolt: bounces off walls, ends at the first creature it hits (goes on with Dtu_fix_bolt_pass)
 } dtu_spell_facts;
 
 // The facts of a spell at caster level L (-1: the level of the player).
