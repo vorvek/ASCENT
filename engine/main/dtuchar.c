@@ -1938,7 +1938,7 @@ int dtu_char_thac0(void)
 
 int dtu_char_pickup_allowed(void)
 {
-	return GameTime >= Dtu_char.no_pickup_until;
+	return !dtu_time_waits(Dtu_char.no_pickup_until,i2f(5));		// ASCENT: Dtu_fix_time_wrap
 }
 
 //------------------------------------------------------------------------
@@ -2689,7 +2689,7 @@ int dtu_char_rest(void)
 		return 0;
 	seg = player->segnum;
 	special = Segments[seg].special;
-	if ((special != 2 && special != 6) || Rest_time[seg] > GameTime) {
+	if ((special != 2 && special != 6) || dtu_time_waits(Rest_time[seg],i2f(300))) {		// ASCENT: Dtu_fix_time_wrap
 		HUD_init_message("You can not rest here");
 		dtu_char_log("rest: not here (segment %d, special %d)", seg, special);
 		return 0;
@@ -2735,7 +2735,7 @@ int dtu_char_rest_ready(int segnum)
 {
 	if (segnum < 0 || segnum >= MAX_SEGMENTS)
 		return 0;
-	return Rest_time[segnum] <= GameTime;
+	return !dtu_time_waits(Rest_time[segnum],i2f(300));		// ASCENT: Dtu_fix_time_wrap
 }
 
 //------------------------------------------------------------------------
@@ -4395,8 +4395,23 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);		// test: 0x8BA3A (script statement 9F)
 	else if (!strcmp(cmd, "spellat"))		dtu_spell_test_missile_at(a, b);	// ASCENT: test: spellat=SPELL.OBJ, a missile of the spell at object OBJ
 	else if (!strcmp(cmd, "gametime"))	GameTime = i2f(a);		// ASCENT: test: gametime=S, the game time (Dtu_fix_time_wrap)
-	else if (!strcmp(cmd, "fxstate"))		// ASCENT: test: the effect bits of the player
+	else if (!strcmp(cmd, "fxstate")) {		// ASCENT: test: the effect bits of the player
 		dtu_char_log("fx: bits 0x%08x, game time %.1f", (unsigned) ConsoleObject->dtu.m_88, f2fl(GameTime));
+		dtu_spell_log_timers(ConsoleObject);
+	}
+	else if (!strcmp(cmd, "fxobj") && a >= 0 && a <= Highest_object_index) {		// ASCENT: test: fxobj=N, the effects of object N
+		dtu_char_log("fx: obj %d bits 0x%08x, game time %.1f", a, (unsigned) Objects[a].dtu.m_88, f2fl(GameTime));
+		dtu_spell_log_timers(&Objects[a]);
+	}
+	else if (!strcmp(cmd, "fxset") && a >= 0 && a <= Highest_object_index && b >= 0 && b < 31)	// ASCENT: test: fxset=N.BIT, effect BIT on object N for 600 seconds
+		dtu_spell_set_effect(&Objects[a], 1 << b, i2f(600), 0, 1);
+	else if (!strcmp(cmd, "fxall")) {		// ASCENT: test: the effects of all objects (spell log)
+		int i;
+
+		for (i = 0; i <= Highest_object_index; i++)
+			if (Objects[i].type != OBJ_NONE)
+				dtu_spell_log_timers(&Objects[i]);
+	}
 	else if (!strcmp(cmd, "books")) {		// ASCENT: test: the spell lists (Dtu_fix_learn_class)
 		int bk, i;
 

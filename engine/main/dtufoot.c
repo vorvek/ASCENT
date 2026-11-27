@@ -37,6 +37,7 @@
 #include "digi.h"
 #include "dtuobj.h"
 #include "dtufoot.h"
+#include "dtuspell.h"	// ASCENT: Dtu_fix_time_wrap
 
 // 1: the player has footstep sounds, as in the original. 0: none.
 int Dtu_footsteps = 1;
@@ -112,10 +113,12 @@ void dtufoot_frame(void)
 
 	// ASCENT: the game time starts again at 0 with a new level. The
 	// original does not reset the time of the next step.
-	if ( Next_step_time > GameTime + FOOT_TIME_WALK )
-		Next_step_time = 0;
+	// ASCENT: Dtu_fix_time_wrap: the compares across the wrap, and "now",
+	// not 0, at a negative clock
+	if ( dtu_time_cmp( Next_step_time, GameTime + FOOT_TIME_WALK ) > 0 )
+		Next_step_time = Dtu_fix_time_wrap ? GameTime : 0;
 
-	if ( GameTime <= Next_step_time )
+	if ( dtu_time_cmp( GameTime, Next_step_time ) <= 0 )
 		return;
 
 	if ( Controls.forward_thrust_time != 0 ) {

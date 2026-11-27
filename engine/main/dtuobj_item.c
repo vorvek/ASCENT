@@ -469,7 +469,7 @@ void pick_up_item(object *player,object *item)
 	else {
 		static fix last_message = 0;
 
-		if (GameTime - last_message > F1_0*2 || GameTime < last_message) {
+		if (GameTime - last_message > F1_0*2 || dtu_time_cmp(GameTime,last_message) < 0) {		// ASCENT: Dtu_fix_time_wrap
 			HUD_init_message("You cannot carry %s.",dtu_tr_name(dtu_item_shown_name(item->type,item->id,it->name)));
 			last_message = GameTime;
 		}

@@ -340,7 +340,35 @@ back (V for the code, G for the effect: not run).
   was not read from such a file gets 0x13A6C0 = 1, the last value 6.0, no
   path points, and path_length 0 for each creature.
 - The save game (SG file) sets `GameTime` from its offset 49 as 0xBBA2F,
-  so the times of the level files count from the same clock.
+  so the times of the level files count from the same clock. 0xBB780
+  reads the value with no test. P: the port read it only above 0, so a
+  save written after the wrap of the clock (a negative time, 9 h 6 min of
+  play; the stream save SG1.SG has -31474 s) kept the clock of the session
+  and every stored end time of its level state was wrong (an effect ended
+  at once). The port now skips only 0. The writer of +0x1A8 keeps a
+  negative time as it is (it wrote 1 for it).
+- The clock wrap (D-190, `Dtu_fix_time_wrap`): the times in a state file
+  are absolute times of the clock of the write. With the fix the game code
+  compares two times by their difference (modulo 2^32), which is right
+  while the two are less than 32768 s apart. A level that the player left
+  more than 32768 s of play ago has times that look like times ahead.
+  The since-times (time_player_seen, the attack sound, the chase) count as
+  old, because a time ahead is never recent. A deadline with a known
+  longest wait (rest place 300 s, pick up 5 s, creature cast 180 s, attack
+  sound 8 s) counts as passed when it is further ahead than that wait. An
+  effect end time further ahead than DTU_FX_NO_END (4 h 33 min, the
+  longest timer) has passed: the restore sets it to the clock and the
+  effect ends in the first frame (`dtu_spell_restore_timers`). The
+  animation start of a creature that is ahead goes to the clock. Not
+  corrected: when the gap modulo 65536 s (18 h 12 min) is between
+  49152 s and 65536 s, an effect end can look like a real time left below
+  4 h 33 min (the end minus the gap plus 65536 s), and the effect lasts
+  that long again. The first such gap is 13 h 39 min. The state file has
+  no time of the write and the save has no clock wider than 32 bits, so
+  the restore cannot tell.
+  Test (YPINN, Find Traps on Mirt for 600 s, warp to HUB1, clock +40000 s,
+  warp back): the effect ends at the restore; with `-origcombat` it lasts
+  26134 s more.
 - P: the port takes a door out of the list of moving doors when it is
   open (Descent 1 `do_door_open`). To give the result of the executable,
   the warp closes every door wall that is not closed (state, flag 2 and

@@ -1073,10 +1073,10 @@ static int fire_missile_weapon(int w)
 	}
 
 	// The fire timer of the hand (Descent 1 style)
-	if (Fire_last + 2*FrameTime < GameTime)
+	if (!dtu_time_within(Fire_last,2*FrameTime))		// ASCENT: Dtu_fix_time_wrap
 		Fire_next = GameTime;
 	Fire_last = GameTime;
-	while (Fire_next <= GameTime) {
+	while (dtu_time_cmp(Fire_next,GameTime) <= 0) {
 		vms_vector dir, pos;
 		int seg, objnum;
 
@@ -1703,7 +1703,7 @@ void dtu_combat_frame(void)
 	// time went back (a load by another path): the times of the swing and
 	// of the attack count from the game time
 	if (last_level != Current_level_num || View_model < 0 || Reset_pending ||
-			GameTime < View_anim_start || GameTime < Swing_started) {
+			dtu_time_cmp(GameTime,View_anim_start) < 0 || dtu_time_cmp(GameTime,Swing_started) < 0) {		// ASCENT: Dtu_fix_time_wrap
 		if (Reset_pending || last_level == Current_level_num)
 			dtu_obj_log("combat: the arms start again at %.3f (a load)",f2fl(GameTime));
 		last_level = Current_level_num;
@@ -2481,7 +2481,9 @@ void dtu_fear_view_start(object *player, fix duration)
 	v->dtu.m_1b0 = 0;
 	Viewer = v;
 	dtu_spell_set_effect(v, DTU_FX_FEAR, duration, 0, 0);
-	v->lifeleft = GameTime + duration;
+	// ASCENT: Dtu_fix_time_wrap: at a negative clock "GameTime + duration" is
+	// below 0 and the creature goes in the next frame, before the Fear ends
+	v->lifeleft = (Dtu_fix_time_wrap && GameTime + duration < duration) ? duration + F1_0 : GameTime + duration;
 	dtu_creature_wake(v, 0);
 	v->render_type = RT_NONE;
 	Fear_viewer = objnum;
@@ -2640,7 +2642,7 @@ static void tour_frame(void)
 		return;
 	}
 	// 0x17: each creature is the viewer for 1.0 + rand() % 2.0 seconds
-	if (Tour_end && GameTime < Tour_end)
+	if (Tour_end && dtu_time_waits(Tour_end,i2f(3)))		// ASCENT: Dtu_fix_time_wrap
 		return;
 	if (Tour_end)
 		Tour_index++;

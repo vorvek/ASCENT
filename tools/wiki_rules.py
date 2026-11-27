@@ -615,8 +615,10 @@ FIXES = [
     ("Dtu_fix_learn_class", "-origchar", "A character learns a spell only when its classes can cast it: "
      "a mage keeps Protection From Fire (a priest spell) as a scroll; 1.3 puts it into the mage list, "
      "where it cannot be cast."),
-    ("Dtu_fix_time_wrap", "-origcombat", "Spells and potions last their full time after 9 hours of play; "
-     "in 1.3 an effect that ends past that point ends at once."),
+    ("Dtu_fix_time_wrap", "-origcombat", "The timers work after 9 hours of play, when the game clock turns "
+     "negative: spells and potions last their full time, rest places, item pick up, foot steps and traps "
+     "work. In 1.3 an effect that ends past that point ends at once, and after it no rest place works and "
+     "no item can be picked up until one is dropped."),
     ("Dtu_fix_sleep_wake", "-origcombat", "Any damage wakes a sleeping character, as in AD&D 2nd edition; "
      "in 1.3 only a melee hit does."),
     ("Dtu_sleep_view", "-origcombat or -nosleepview", "While the character sleeps the view is black with "

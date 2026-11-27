@@ -460,9 +460,9 @@ int damage_dice(object *attacker,object *target,int weapon)
 	if (target && target->type == OBJ_PLAYER) {
 		static fix next_hurt_sound = 0;
 
-		if (next_hurt_sound > GameTime + F1_0)
+		if (dtu_time_cmp(next_hurt_sound,GameTime + F1_0) > 0)		// ASCENT: Dtu_fix_time_wrap
 			next_hurt_sound = 0;
-		if (next_hurt_sound < GameTime) {
+		if (dtu_time_due(next_hurt_sound,F1_0)) {		// ASCENT: Dtu_fix_time_wrap: 0 at a negative clock
 			next_hurt_sound = GameTime + F1_0/4;
 			sound_at(player_type_sound(i2f(sum) > f2i(dtu_player_max_hit_points()) / 16 ? "hard_sound" : "hit_sound"),
 				target->segnum,&target->pos,0x5555);
@@ -1203,7 +1203,7 @@ int dtu_player_death_frame(void)
 	if (!Dtu_objects_enabled || !Dtu_player_dead || Player_death_stage == 0)
 		return 0;
 
-	if (GameTime < Player_death_time)
+	if (dtu_time_cmp(GameTime,Player_death_time) < 0)		// ASCENT: Dtu_fix_time_wrap
 		Player_death_time = GameTime;
 
 	if (Player_death_stage == 1) {

@@ -1007,6 +1007,65 @@ fix dtu_time_left(fix t)
 	return (fix) (int) ((unsigned int) t - (unsigned int) GameTime);
 }
 
+int dtu_time_cmp(fix a, fix b)
+{
+	if (!Dtu_fix_time_wrap)
+		return a < b ? -1 : a > b;
+	return (int) ((unsigned int) a - (unsigned int) b);
+}
+
+int dtu_time_waits(fix t, fix most)
+{
+	unsigned int left = (unsigned int) t - (unsigned int) GameTime;
+
+	if (!Dtu_fix_time_wrap)
+		return t > GameTime;
+	return left != 0 && left <= (unsigned int) most;
+}
+
+int dtu_time_due(fix t, fix most)
+{
+	if (!Dtu_fix_time_wrap)
+		return t < GameTime;
+	return (unsigned int) t - (unsigned int) GameTime > (unsigned int) most;
+}
+
+int dtu_time_within(fix t, fix span)
+{
+	if (!Dtu_fix_time_wrap)
+		return t + span >= GameTime;
+	return (unsigned int) GameTime - (unsigned int) t <= (unsigned int) span;
+}
+
+void dtu_spell_restore_timers(object *obj)
+{
+	int b;
+
+	if (!Dtu_fix_time_wrap || obj->dtu.m_88 == 0)
+		return;
+	for (b = 0; b < 32; b++)
+		if (Fx_timer[b] && (obj->dtu.m_88 & (b == 31 ? DTU_FX_VESTMENT : (1 << b)))) {
+			fix *t = timer_ref(obj,Fx_timer[b]);
+
+			if (*t != DTU_FX_NO_END && *t != 0 && dtu_time_left(*t) > DTU_FX_NO_END)
+				*t = GameTime;
+		}
+}
+
+// ASCENT: test (fxstate, fxobj=N): the time left of each effect of obj
+void dtu_spell_log_timers(object *obj)
+{
+	int b;
+
+	for (b = 0; b < 32; b++)
+		if (Fx_timer[b] && (obj->dtu.m_88 & (b == 31 ? DTU_FX_VESTMENT : (1 << b)))) {
+			fix t = *timer_ref(obj,Fx_timer[b]);
+
+			dtu_spell_log("spell: obj %d %s effect %s: %s %.1f seconds left",(int)(obj-Objects),target_name(obj),Fx_name[b],
+				t == DTU_FX_NO_END ? "no end," : "",t == DTU_FX_NO_END ? 0.0 : f2fl(dtu_time_left(t)));
+		}
+}
+
 // 0x9002C: the timers of one object. force: all effects end (Dispel Magic).
 static void fx_expire(object *obj,int force)
 {
@@ -1325,9 +1384,9 @@ void dtu_spell_view_confusion(vms_matrix *m)
 
 	if (ConsoleObject == NULL || !(ConsoleObject->dtu.m_88 & DTU_FX_CONFUSION))
 		return;
-	if (next > GameTime + F1_0 || next < GameTime - F1_0)
+	if (dtu_time_cmp(next,GameTime + F1_0) > 0 || dtu_time_cmp(next,GameTime - F1_0) < 0)		// ASCENT: Dtu_fix_time_wrap
 		next = GameTime;
-	while (next <= GameTime) {
+	while (dtu_time_cmp(next,GameTime) <= 0) {
 		next += DTU_REF_FRAMETIME;
 		turn += turn_dir;
 		if (turn < -4) turn_dir = 1;
@@ -2007,7 +2066,7 @@ static void acid_frame(void)
 		if (!a->used)
 			continue;
 		t = &Objects[a->obj];
-		if (t->signature != a->obj_sig || acid_target_gone(t) || GameTime < a->start) {
+		if (t->signature != a->obj_sig || acid_target_gone(t) || dtu_time_cmp(GameTime,a->start) < 0) {		// ASCENT: Dtu_fix_time_wrap
 			dtu_spell_log("spell: '%s': the acid on obj %d ends after round %d of %d (the target is gone)",spell_name(a->spell),
 				a->obj,a->round,a->rounds);
 			a->used = 0;
