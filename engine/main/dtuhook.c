@@ -132,6 +132,37 @@ int dtu_script_has_say(int id)
 	return found;
 }
 
+// ASCENT: Dtu_improved_ai (creature_join_fight(), dtuobj_aware.c). The
+// statement C5 02 with no object prefix (15) sets flag 2 of the object of
+// the script, which makes it hostile (0xA8DB2, 0xA9418). 1 if the script has
+// one, 2 if it is the first statement of the first block (CB, the label as
+// a string of hex digits, 00): the talk makes the object hostile with no
+// choice of the player (DROW1 script 201, DROW2 212, BEHOLDER 252). 0 for
+// none, -1 if there is no script.
+int dtu_script_sets_hostile(int id)
+{
+	int size, i, found = 0;
+	ubyte *p = gab_record(id,&size);
+
+	if (p == NULL)
+		return -1;
+	// (the record has two bytes 0 after its end)
+	for (i=0;i+1<size;i++)
+		if (p[i] == 0xC5 && p[i+1] == 2 && p[i+2] != 0x15) {
+			found = 1;
+			break;
+		}
+	if (found && p[0] == 0xCB) {
+		for (i=1;i<size && p[i];i++)
+			;
+		i++;
+		if (i+1 < size && p[i] == 0xC5 && p[i+1] == 2 && p[i+2] != 0x15)
+			found = 2;
+	}
+	free(p);
+	return found;
+}
+
 // The state of the interpreter (0xAAE3E) for one run
 typedef struct script_run {
 	ubyte		*s;

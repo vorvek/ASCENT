@@ -70,6 +70,7 @@
 #include "dtuobj_int.h"
 
 static void creature_wake(object *obj, int make_hostile, int sound);
+void dtu_script_make_hostile(object *obj);		// dtuobj_ai.c
 
 // 0xA6505 (not read in full): makes a creature active, as the wake up of
 // do_ai_frame does (0x13D80).
@@ -361,6 +362,98 @@ int attack_wall_between(vms_vector *p,int seg,object *target,int thisobjnum)
 	if (q.y < target->pos.y - hh)
 		q.y = target->pos.y - hh;
 	return !ray_is_free(p,seg,&q,thisobjnum);
+}
+
+// ASCENT: Dtu_improved_ai (a decision of the user, 2026-11-27): a creature
+// joins the fight of its group. 1.3 makes a creature peaceful when its
+// script has a "say" statement (add_npc, 0xAC431) and runs a script only for
+// a talk, a trigger, the end of a path or a call. So a creature whose script
+// only says its battle cry stands and watches the fight of its room until
+// the player talks to it: the priestess of DROW1 (object 55, script 201:
+// label 1 sets flag 2 and ends) next to her wizard and her orcs, and the
+// priestess of DROW2 (object 43, script 212). The goblin guard of THIEF0
+// (object 22, script 50) loses flag 2 again in label 900, which the trigger
+// of segment 207 runs when it makes the other goblins hostile.
+// The rule: a creature that is not hostile and not fleeing (flag 3), and
+// whose script has a statement that makes its own object hostile (the
+// peaceful bit 9 of the level file does not tell: the priestess of DROW1
+// has it; dtu_script_sets_hostile:
+// a creature whose script never does that, a shop keeper, a quest giver or
+// an ally, is a friend by design and never joins), becomes hostile as its
+// script would make it (0xA9418, dtu_script_make_hostile) when
+// - it sees the player (a free line, at most DTU_JOIN_DIST), and
+// - it sees a creature of its group (a free line, at most DTU_JOIN_DIST)
+//   that is hostile, active and noticed the player in the last
+//   DTU_COMBAT_TIME seconds.
+// Its group: the creatures of its own type (the same $MONSTER line) that
+// have a script too, as the goblins of the camp of THIEF0 (scripts 50, 51
+// and 52). A creature with a talk and a choice (the spider witch of DROW1,
+// object 90, script 203) does not join the plain creatures of its type, so
+// its talk is not lost. For a creature whose talk makes it hostile with no
+// choice (the statement is the first of the first block of its script) the
+// group is each hostile creature. The
+// tables and the level files have no faction or allegiance value and the
+// segment groups of the level files are not used (all -1), so the type and
+// the sight are the group.
+#define DTU_JOIN_DIST	i2f(150)
+#define DTU_JOIN_PERIOD	(F1_0/2)
+
+void creature_join_fight(object *obj)
+{
+	int objnum = obj-Objects, i;
+	dtu_ai_local *ail = &Ail[objnum];
+
+	if (!improved_ai() || ConsoleObject == NULL || Player_is_dead || Dtu_player_dead || ail->join_kind == 1)
+		return;
+	if (obj->control_type != CT_AI || (obj->dtu.m_1b0 & (DTU_HOSTILE|DTU_FLEEING)))
+		return;
+	if (DTU_ANIM_STATE(obj) == DAS_DIE || obj->shields < F1_0 || (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+		return;
+	if (GameTime < ail->join_time && ail->join_time - GameTime <= DTU_JOIN_PERIOD)
+		return;
+	ail->join_time = GameTime + DTU_JOIN_PERIOD;
+	if (ail->join_kind == 0) {
+		int id = obj->dtu.m_1b0 & DTU_SCRIPT_MASK, k = id ? dtu_script_sets_hostile(id) : 0;
+
+		ail->join_kind = (k == 2) ? 3 : (k == 1) ? 2 : 1;
+		if (ail->join_kind == 2) {
+			// no other creature of its type with a script: it never joins
+			int n = 0;
+
+			for (i=1;i<=Highest_object_index;i++)
+				if (i != objnum && Objects[i].type == OBJ_ROBOT && Objects[i].id == obj->id && (Objects[i].dtu.m_1b0 & DTU_SCRIPT_MASK))
+					n++;
+			if (n == 0)
+				ail->join_kind = 1;
+		}
+		if (ail->join_kind != 1)
+			dtu_obj_log("join: obj %d %s (script %d, seg %d) can join the fight of %s",objnum,dtu_object_name(obj),id,obj->segnum,
+				ail->join_kind == 3 ? "each hostile creature that it sees" : "a creature of its type with a script that it sees");
+		if (ail->join_kind == 1)
+			return;
+	}
+	if ((obj->dtu.m_88 & DTU_OF_HELD) || dtu_thief_hidden_from(obj))
+		return;
+	if (vm_vec_dist_quick(&obj->pos,&ConsoleObject->pos) > DTU_JOIN_DIST ||
+		 !ray_is_free(&obj->pos,obj->segnum,&ConsoleObject->pos,objnum))
+		return;
+	for (i=1;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+
+		if (o == obj || o->type != OBJ_ROBOT || o->control_type != CT_AI || o->id >= N_robot_types)
+			continue;
+		if (ail->join_kind == 2 && (o->id != obj->id || !(o->dtu.m_1b0 & DTU_SCRIPT_MASK)))
+			continue;
+		if (!is_hostile(o) || Ail[i].activity != 2 || !creature_in_combat(o) || DTU_ANIM_STATE(o) == DAS_DIE ||
+			 (o->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
+			continue;
+		if (vm_vec_dist_quick(&o->pos,&obj->pos) > DTU_JOIN_DIST || !ray_is_free(&obj->pos,obj->segnum,&o->pos,objnum))
+			continue;
+		dtu_obj_log("join: obj %d %s joins the fight of obj %d %s",objnum,dtu_object_name(obj),i,dtu_object_name(o));
+		dtu_script_make_hostile(obj);
+		creature_wake(obj,0,1);
+		return;
+	}
 }
 
 int dtu_attack_wall_between(vms_vector *p,object *from,object *target)

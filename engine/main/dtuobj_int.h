@@ -30,7 +30,6 @@ typedef struct monster_ext {
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
 	int	person;					// ASCENT: a person by its model (dtu_model_is_person()), opens doors with Dtu_improved_ai
-	int	family;					// ASCENT: the kind of the creature by its model (dtu_model_family()), for creature_join_fight()
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
 	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), cast by the damage function (0x2A637)
 } monster_ext;
@@ -122,6 +121,7 @@ typedef struct dtu_ai_local {
 	// a saved game.
 	fix		combat_time;
 	fix		join_time;				// the next test of creature_join_fight()
+	ubyte		join_kind;				// 0 not known, 1 never joins, 2 joins its kind, 3 joins any hostile creature
 } dtu_ai_local;
 
 // A missile (object type OBJ_WEAPON that flies). The entry belongs to the

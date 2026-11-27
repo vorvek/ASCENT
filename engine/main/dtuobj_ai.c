@@ -2054,6 +2054,9 @@ void dtu_do_ai_frame(object *obj)
 	// ASCENT: 0x13C8B, object flag 0x40 (FLAME object 35)
 	if (dtu_creature_frozen(obj))
 		return;
+	// Dtu_improved_ai: a creature joins the fight of its group
+	if (!is_hostile(obj))
+		creature_join_fight(obj);
 	ri = &Robot_info[obj->id];
 	mi = &Monster_info[obj->id];
 	A = mi->ai_values[0][Difficulty_level];
