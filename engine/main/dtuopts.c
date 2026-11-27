@@ -27,6 +27,7 @@ int Dtu_improved_physics = 1;
 int Dtu_improved_jump = 1;
 int Dtu_crouch = 1;
 int Dtu_improved_ai = 1;
+int Dtu_caster_ai = 1;
 int Dtu_render_scale = 3;
 int Dtu_improved_occlusion = 1;
 int Dtu_improved_body = 1;
@@ -72,6 +73,7 @@ static dtu_opt Opts[] = {
 	{ "ImprovedJump",        &Dtu_improved_jump,        0, 1 },
 	{ "Crouch",              &Dtu_crouch,               0, 1 },
 	{ "ImprovedAI",          &Dtu_improved_ai,          0, 1 },
+	{ "CasterAI",            &Dtu_caster_ai,            0, 1 },
 	{ "RenderScale",         &Dtu_render_scale,         DTU_RENDER_SCALE_MIN, DTU_RENDER_SCALE_MAX },
 	{ "ImprovedOcclusion",   &Dtu_improved_occlusion,   0, 1 },
 	{ "ImprovedBody",        &Dtu_improved_body,        0, 1 },
@@ -177,7 +179,7 @@ void dtu_opts_load(void)
 		Dtu_language = Arg_language = dtu_lang_from_code(Args[t + 1]);
 	}
 	if (FindArg("-noimprovements")) {
-		Dtu_improved_physics = Dtu_improved_jump = Dtu_improved_ai = Dtu_crouch = 0;
+		Dtu_improved_physics = Dtu_improved_jump = Dtu_improved_ai = Dtu_caster_ai = Dtu_crouch = 0;
 		Dtu_improved_occlusion = Dtu_improved_body = 0;
 		Dtu_improved_infravision = 0;
 		Dtu_target_hint = 0;

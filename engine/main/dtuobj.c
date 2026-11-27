@@ -213,6 +213,15 @@ int improved_ai(void)
 	return Dtu_improved_ai && !Orig_obj;
 }
 
+// ASCENT: Dtu_caster_ai (dtuopts.h). -origobj and -origcasterai: the
+// casters of 1.3, also with the setting.
+static int Orig_caster_ai = 0;
+
+int dtu_caster_ai(void)
+{
+	return Dtu_caster_ai && !Orig_obj && !Orig_caster_ai;
+}
+
 // The reach of the weapon of each model, see model_weapon_reach(). 0: not
 // computed, -1: no weapon box. Cleared at the setup of a level.
 fix Model_reach[MAX_POLYGON_MODELS];
@@ -1105,6 +1114,8 @@ void dtu_objects_init(void)
 	// -origobj: the rules of the executable, also with Dtu_improved_ai
 	if (FindArg("-origobj") || FindArg("-noimprovedai") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
+	if (FindArg("-origcasterai"))
+		Orig_caster_ai = 1;
 	if (FindArg("-noattack"))
 		Dtu_creatures_attack = 0;
 	if (FindArg("-idleanim"))

@@ -690,6 +690,9 @@ extern int Dtu_fix_caster_cast;
 // each level of its last spell (the rule of the weapon spell, 0x10040).
 // -origobj and -origcasteridle clear it.
 extern int Dtu_fix_caster_idle;
+// ASCENT: 1 when the setting Dtu_caster_ai (dtuopts.h) is in effect: on,
+// and none of -origobj and -origcasterai
+int dtu_caster_ai(void);
 // The speeds of the ogres and the trolls (0x74AA7, speeds= of the monster
 // table and of the model). Original: "Ogre2", "armOgre", "Troll" and
 // "armTroll" walk at 8.0 and run at 15.0, the values of the zombie; a
