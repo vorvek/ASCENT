@@ -345,7 +345,10 @@ static int Load_entries;
 static void add_entry(const char *id, const char *en_raw, const char *tr_raw, const char *gender_raw, const char *plural_raw)
 {
 	static char en[8192], tr[8192], tr_f[8192], key[8200], plural[512];
-	int tokens = !strncmp(id, "gab.", 4), sex, gender = 0, name;
+	// ASCENT: the port strings read the script tokens too ({sir} and the
+	// others): the new lines of the class gear (dtuclassgear.c) have them.
+	// No other port string has such a word.
+	int tokens = !strncmp(id, "gab.", 4) || !strncmp(id, "port.", 5), sex, gender = 0, name;
 
 	if (!id[0] || !tr_raw || (!tr_raw[0] && en_raw && en_raw[0]))
 		return;		// an empty translation: no translation

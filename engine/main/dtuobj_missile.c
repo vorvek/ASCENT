@@ -664,6 +664,8 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
 		Hit_by_missile = 0;
+		if (dealt > 0 && m->spell < 0)
+			dtu_gear_missile_hit(other,parent,weapon);		// ASCENT: the Poisoned Arrow of the class gear (dtugear.h)
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);

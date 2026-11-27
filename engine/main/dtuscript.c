@@ -68,6 +68,7 @@
 #include "dtulog.h"		// ASCENT: the session log
 #include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
 #include "dtugear.h"		// ASCENT: the new gear
+#include "dtuclassgear.h"	// ASCENT: the script patches of the class gear
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 
 #define DTU_WEAK __attribute__((weak))
@@ -373,22 +374,56 @@ static ubyte *patch_aleena(int id, ubyte *p, int *size)
 	const int n = *size, add = (int) sizeof(blocks) - 1;
 	ubyte *q;
 
-	if (!dtu_caster_ai() || id != 4 || n != 16710 || p[n - 1] != 0xCC || memcmp(p + 0x28A4, go205, sizeof(go205)) ||
-		 memcmp(p + 0x2C2A, go950, sizeof(go950)) || memcmp(p + 0x3718, go405, sizeof(go405)) || memcmp(p + 0x3B23, go950, sizeof(go950)))
+	if (id != 4 || n != 16710 || p[n - 1] != 0xCC)
 		return p;
-	if ((q = malloc(n + add + 1)) == NULL)
-		return p;
-	memcpy(q, p, n);
-	memcpy(q + 0x28A4, go250, sizeof(go250));
-	memcpy(q + 0x2C2A, go951, sizeof(go951));
-	memcpy(q + 0x3718, go406, sizeof(go406));
-	memcpy(q + 0x3B23, go952, sizeof(go952));
-	memcpy(q + n, blocks, add);
-	*size = n + add;
-	q[*size] = 0;
-	free(p);
-	slog("script 4: Aleena Paladinstar also sells Mirror Image (level 2) and Minor Globe of Invulnerability (level 4) (Dtu_caster_ai)");
-	return q;
+	if (dtu_caster_ai() && !memcmp(p + 0x28A4, go205, sizeof(go205)) && !memcmp(p + 0x2C2A, go950, sizeof(go950)) &&
+			!memcmp(p + 0x3718, go405, sizeof(go405)) && !memcmp(p + 0x3B23, go950, sizeof(go950)) && (q = malloc(n + add + 1)) != NULL) {
+		memcpy(q, p, n);
+		memcpy(q + 0x28A4, go250, sizeof(go250));
+		memcpy(q + 0x2C2A, go951, sizeof(go951));
+		memcpy(q + 0x3718, go406, sizeof(go406));
+		memcpy(q + 0x3B23, go952, sizeof(go952));
+		memcpy(q + n, blocks, add);
+		*size = n + add;
+		q[*size] = 0;
+		free(p);
+		p = q;
+		slog("script 4: Aleena Paladinstar also sells Mirror Image (level 2) and Minor Globe of Invulnerability (level 4) (Dtu_caster_ai)");
+	}
+	// ASCENT: the class gear (Dtu_class_gear, dtuclassgear.c): her offers to a
+	// single class mage, with their own setting test. They change other bytes
+	// of the record of 1.3 and add their blocks after the ones above.
+	return dtu_class_gear_aleena(p, size, n);
+}
+
+// ASCENT: the settings that the patches of a record read (Dtu_caster_ai, the
+// class gear). A record that was decoded with other values is decoded again
+// when no script runs (a change in the menu, the class gear lines of
+// another level).
+static int N_run;
+static int Rec_key[SC_MAX_RECORDS];
+
+static int patch_key(int id)
+{
+	if (id != 2 && id != 4 && id != 5)
+		return 0;
+	return (dtu_caster_ai() ? 1 : 0) | (dtu_class_gear_key() << 1);
+}
+
+// ASCENT: -scriptdump writes the decoded records 2, 4 and 5 (with the
+// patches) to gab_ID.bin in the current directory, for tools/script.py
+static void dump_record(int id, const ubyte *p, int n)
+{
+	char name[32];
+	FILE *f;
+
+	if ((id != 2 && id != 4 && id != 5) || !FindArg("-scriptdump"))
+		return;
+	snprintf(name, sizeof(name), "gab_%d.bin", id);
+	if ((f = fopen(name, "wb")) != NULL) {
+		fwrite(p, 1, n, f);
+		fclose(f);
+	}
 }
 
 // 0xAB9C9: the record of a script id, decoded (0xA74F8)
@@ -398,6 +433,11 @@ static ubyte *script_data(int id, int *size)
 
 	dtu_script_init();
 	id &= SB_SCRIPT;
+	if (Rec_data[id] && Rec_key[id] != patch_key(id) && N_run == 0) {
+		slog("script %d: decoded again for the settings of now", id);
+		free(Rec_data[id]);
+		Rec_data[id] = NULL;
+	}
 	if (Rec_data[id]) {
 		*size = Rec_size[id];
 		return Rec_data[id];
@@ -418,9 +458,12 @@ static ubyte *script_data(int id, int *size)
 				p[k] = Gab_dat[ofs + k] ^ Gab_key[k % 70] ^ Gab_key[(0xFFFFFFFFu - k) % 70];
 			p[sz] = 0;
 			p = patch_devlin(id, p, &sz);
-			p = patch_aleena(id, p, &sz);		// ASCENT: Dtu_caster_ai
+			p = patch_aleena(id, p, &sz);		// ASCENT: Dtu_caster_ai, the class gear
+			p = dtu_class_gear_patch(id, p, &sz);	// ASCENT: the class gear (dtuclassgear.c)
 			Rec_data[id] = p;
 			Rec_size[id] = sz;
+			Rec_key[id] = patch_key(id);
+			dump_record(id, p, sz);
 			*size = sz;
 			return p;
 		}
@@ -1455,6 +1498,14 @@ static int sc_term(sc_run *r)
 		case 0xF0: {
 			int seg = num(r);
 			v = seg <= Highest_segment_index ? Automap_visited[seg] != 0 : 0;
+			break;
+		}
+		case 0xFE: {
+			// ASCENT: a term of the port (no record of GABE has it): a spell
+			// book of the character has the spell. The blocks of the class
+			// gear (dtuclassgear.c) use it.
+			int n = num(r), list, index;
+			v = dtu_spell_book_ref(n, &list, &index);
 			break;
 		}
 		case 0xF1: {

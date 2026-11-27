@@ -42,6 +42,7 @@
 #include "dtutrig.h"
 #include "dtuscript.h"
 #include "kconfig.h"		// ASCENT: Dtu_fix_climb_key
+#include "dtugear.h"		// ASCENT: the Poisoned Arrow of the class gear
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -784,6 +785,8 @@ void dtu_hook_trap_spawn_object(int item_num, int segnum, int side, vms_vector *
 		int last = N_weapon_types-1;
 
 		if (last > 0 && last == dtu_spell_hammer_weapon())
+			last--;
+		if (last > 0 && dtu_gear_poison_arrow(last))		// ASCENT: nor the Poisoned Arrow of the class gear (dtugear.h)
 			last--;
 		dtu_create_missile(&dir,&p,seg,-1,last,item_num,1);
 	}

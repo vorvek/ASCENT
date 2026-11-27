@@ -31,9 +31,14 @@
 #include "dtugear.h"
 #include "gauges.h"		// HUD_init_message
 #include "dtulang.h"		// LN, LT
+#include "args.h"			// FindArg
+#include "dtuscript.h"		// dtu_script_gflag
 
 int Dtu_new_gear = 1;
 int Dtu_gear_loaded = 0;
+int Dtu_class_gear = 1;			// the menu line (dtugear.h)
+int Dtu_class_gear_loaded = 0;
+static int Class_gear_arg = -1;	// -noclassgear and the others: 0 for this run
 int Dtu_gear_mirror_worn = 0;
 int Dtu_gear_displace_worn = 0;
 int Dtu_gear_sash_worn = 0;
@@ -191,6 +196,42 @@ static const char *Gear_no_gold[] = {
 #define N_NO_GOLD	((int) (sizeof(Gear_no_gold) / sizeof(Gear_no_gold[0])))
 
 //------------------------------------------------------------------------
+// The class gear (Dtu_class_gear, dtugear.h). The lines after the new gear:
+// armor 62 and 63, misc 131 to 133 (the reader of the tables) and weapon 90 (a copy
+// of the Arrow, below). The value of each line is the price of the seller,
+// so that a sale to Geldor gives back at most what the player paid. The
+// Pearls have their own icon (203, tools/spell_icons.py), not the one of the
+// gem Pearl (129), and the picture of the Gem of Curing.
+static const char *Class_lines[] = {
+	"$ARMOR name=\"Boots of Elvenkind\" picture=genboots.bbm icon=157 value=5000 weight=.5 boot magic magic_ok thief_ok stackable stack_limit=10 all_use",
+	"$ARMOR name=\"Bracers of Archery\" picture=genbracr.bbm icon=152 value=7500 weight=.5 gauntlet magic magic_ok thief_ok stackable stack_limit=10 fighter_use thief_use",
+	"$OBJECT name=\"Pearl of Power I\" mass=5 value=2500 mage_use icon=203 picture=gengem.bbm stackable stack_limit=10",
+	"$OBJECT name=\"Pearl of Power II\" mass=5 value=6000 mage_use icon=203 picture=gengem.bbm stackable stack_limit=10",
+	"$OBJECT name=\"Pearl of Power III\" mass=5 value=12000 mage_use icon=203 picture=gengem.bbm stackable stack_limit=10",
+};
+#define N_CLASS_LINES	((int) (sizeof(Class_lines) / sizeof(Class_lines[0])))
+
+// The Poisoned Arrow: the Arrow (7) with this name and value (the price of
+// Nalbas, 160 gold for 8)
+static const struct { int id, from; const char *from13, *name; int value; } Class_arrow = {
+	DTU_GEAR_POISON_ARROW, DTU_GEAR_ARROW_FROM, "Arrow", "Poisoned Arrow", 20 };
+
+// The goods of the market that the class gear adds (as Gear_market): any
+// mage can buy them
+static const short Class_market[][5] = {
+	{ 2, 1, 5, 61, -1 },				// Wand of Paralyzation
+	{ 4, 1, 5, 59, -1 },				// Wand of Lightning Bolts
+};
+#define N_CLASS_MARKET	((int) (sizeof(Class_market) / sizeof(Class_market[0])))
+
+int dtu_class_gear_on(void)
+{
+	if (Class_gear_arg < 0)
+		Class_gear_arg = !FindArg("-noclassgear") && !FindArg("-noimprovements") && !FindArg("-origitems") && !FindArg("-origscript");
+	return Dtu_class_gear && Class_gear_arg;
+}
+
+//------------------------------------------------------------------------
 // The tables
 
 static void put_text(const dtu_tblfix_io *io, int kind, int id, char *text)
@@ -224,12 +265,15 @@ static int weapon_named(const dtu_tblfix_io *io, int id, const char *name)
 	return io->name(DTU_TK_WEAPON, id) && !strcmp(io->name(DTU_TK_WEAPON, id), name);
 }
 
+static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text));
+
 void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 {
 	char buf[64];
 	int i;
 
 	Dtu_gear_loaded = 0;
+	Dtu_class_gear_loaded = 0;
 	if (!Dtu_new_gear)
 		return;
 	// the mission tables: 53 armor lines, 128 misc lines, the generic wands
@@ -376,6 +420,58 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 	Dtu_gear_loaded = 1;
 	if (io->log)
 		io->log("New gear: armor 53 to 61, misc 128 to 130, wands 63 to 67, the Frost Brand 68");
+	class_tables(io, parse);
+}
+
+// The lines of the class gear, after the lines of the new gear
+static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
+{
+	char buf[64], *u, *line, *name;
+	int i;
+
+	if (!dtu_class_gear_on() || !weapon_named(io, Class_arrow.from, Class_arrow.from13))
+		return;
+	// the Poisoned Arrow: a new line at the end of the weapon table (as the
+	// Dagger of Venom), then the decoded fields, the text and the name
+	snprintf(buf, sizeof(buf), "\"%s\"", Class_arrow.name);
+	if ((u = dtu_tblfix_set(io->text(DTU_TK_WEAPON, Class_arrow.from), "weapon_name", buf)) == NULL)
+		return;
+	u = chain(u, dtu_tblfix_set(u, "name", buf));
+	snprintf(buf, sizeof(buf), "%d", Class_arrow.value);
+	u = chain(u, dtu_tblfix_set(u, "value", buf));
+	if ((line = malloc(strlen(u) + 12)) != NULL) {
+		sprintf(line, "$WEAPON %s\n", u);
+		parse(line);
+		free(line);
+	}
+	if (io->count(DTU_TK_WEAPON) != Class_arrow.id + 1) {
+		dtu_tblfix_free(u);
+		if (io->log)
+			io->log("Class gear: the line of the Poisoned Arrow did not go in");
+		return;
+	}
+	io->copy_line(DTU_TK_WEAPON, Class_arrow.id, Class_arrow.from);
+	put_text(io, DTU_TK_WEAPON, Class_arrow.id, u);
+	name = io->name(DTU_TK_WEAPON, Class_arrow.id);
+	if (name && io->name_size > 0) {
+		strncpy(name, Class_arrow.name, io->name_size - 1);
+		name[io->name_size - 1] = 0;
+	}
+	for (i = 0; i < N_CLASS_LINES; i++) {
+		if ((line = malloc(strlen(Class_lines[i]) + 2)) == NULL)
+			return;
+		sprintf(line, "%s\n", Class_lines[i]);
+		parse(line);
+		free(line);
+	}
+	if (io->count(DTU_TK_ARMOR) != DTU_GEAR_BRACERS_ARCHERY + 1 || io->count(DTU_TK_MISC) != DTU_GEAR_PEARL_POWER + DTU_GEAR_N_PEARLS) {
+		if (io->log)
+			io->log("Class gear: the new lines did not go in");
+		return;
+	}
+	Dtu_class_gear_loaded = 1;
+	if (io->log)
+		io->log("Class gear: weapon 90 (Poisoned Arrow), armor 62 (Boots of Elvenkind), armor 63 (Bracers of Archery), misc 131 to 133 (Pearls of Power)");
 }
 
 int dtu_gear_armor_ac(int id)
@@ -458,6 +554,14 @@ int dtu_gear_market_stock(int stage, void (*f)(int quantity, int type, int id, i
 				f(Gear_market[i][1], Gear_market[i][2], Gear_market[i][3], Gear_market[i][4]);
 			n++;
 		}
+	// ASCENT: the class gear (Dtu_class_gear)
+	if (dtu_class_gear_on())
+		for (i = 0; i < N_CLASS_MARKET; i++)
+			if (Class_market[i][0] == stage) {
+				if (f)
+					f(Class_market[i][1], Class_market[i][2], Class_market[i][3], Class_market[i][4]);
+				n++;
+			}
 	return n;
 }
 
@@ -599,7 +703,12 @@ void dtu_gear_displace_frame(void)
 
 int dtu_gear_venom(int weapon)
 {
-	return Dtu_gear_loaded && weapon == DTU_GEAR_VENOM;
+	return Dtu_gear_loaded && (weapon == DTU_GEAR_VENOM || dtu_gear_poison_arrow(weapon));
+}
+
+int dtu_gear_poison_arrow(int weapon)
+{
+	return Dtu_class_gear_loaded && weapon == DTU_GEAR_POISON_ARROW;
 }
 
 int dtu_gear_assassin(int weapon)
@@ -630,7 +739,8 @@ void dtu_gear_poison_hit(object *creature, object *attacker, int weapon)
 		return;
 	n = creature - Objects;
 	if (dtu_gear_poison_immune(creature->id)) {
-		dtu_obj_log("new gear: obj %d %s is immune to the poison of the Dagger of Venom", n, dtu_object_name(creature));
+		dtu_obj_log("new gear: obj %d %s is immune to the poison of %s", n, dtu_object_name(creature),
+			dtu_gear_poison_arrow(weapon) ? "the Poisoned Arrow" : "the Dagger of Venom");
 		return;
 	}
 	if (Poison[n].sig == creature->signature && Poison[n].left > 0) {
@@ -675,4 +785,75 @@ void dtu_gear_poison_frame(void)
 		dtu_damage_creature_direct(o, ConsoleObject, F1_0);
 		Dtu_damage_quiet = 0;
 	}
+}
+
+//------------------------------------------------------------------------
+// The class gear (Dtu_class_gear): the Poisoned Arrow and the Pearls of
+// Power
+
+void dtu_gear_missile_hit(object *creature, object *attacker, int weapon)
+{
+	if (dtu_gear_poison_arrow(weapon))
+		dtu_gear_poison_hit(creature, attacker, weapon);
+}
+
+int dtu_gear_pearl_level(int misc)
+{
+	if (!Dtu_class_gear_loaded || misc < DTU_GEAR_PEARL_POWER || misc >= DTU_GEAR_PEARL_POWER + DTU_GEAR_N_PEARLS)
+		return 0;
+	return misc - DTU_GEAR_PEARL_POWER + 1;
+}
+
+// AD&D 2e (DMG, Pearl of Power): the pearl brings back one spell of its
+// level that the wizard has cast, once a day. The game has no days: once in
+// each dungeon level, and again after a rest.
+int dtu_gear_pearl_use(int misc)
+{
+	int lv = dtu_gear_pearl_level(misc), k;
+
+	if (lv <= 0)
+		return 0;
+	k = lv - 1;
+	if (dtu_script_gflag(DTU_GEAR_GF_PEARL_USED + k)) {
+		HUD_init_message(LN("The Pearl of Power is dull. It glows again in the next level or after a rest."));
+		dtu_char_log("use: Pearl of Power %d refused: used in this level", lv);
+		return 1;
+	}
+	if (Dtu_spell_slots_max[0][k] <= 0 || Dtu_spell_slots_left[0][k] >= Dtu_spell_slots_max[0][k]) {
+		HUD_init_message(LN("You have no spent spell of level %d for the pearl to bring back."), lv);
+		dtu_char_log("use: Pearl of Power %d: no spent mage slot of level %d (%d of %d left)", lv, lv,
+			Dtu_spell_slots_left[0][k], Dtu_spell_slots_max[0][k]);
+		return 1;
+	}
+	Dtu_spell_slots_left[0][k]++;
+	dtu_script_set_gflag(DTU_GEAR_GF_PEARL_USED + k, 1);
+	HUD_init_message(LN("The Pearl of Power glows: a spent spell of level %d comes back to you."), lv);
+	dtu_char_log("use: Pearl of Power %d: mage slot of level %d back, %d of %d left", lv, lv,
+		Dtu_spell_slots_left[0][k], Dtu_spell_slots_max[0][k]);
+	return 1;
+}
+
+// 1 after the load of a game in a level, until the start of that level
+static int Pearl_keep = 0;
+
+void dtu_gear_pearl_keep(void)
+{
+	Pearl_keep = 1;
+}
+
+void dtu_gear_pearl_recharge(const char *why)
+{
+	int k, used = 0;
+
+	if (why && !strcmp(why, "level start") && Pearl_keep) {
+		Pearl_keep = 0;
+		return;
+	}
+	Pearl_keep = 0;
+	for (k = 0; k < DTU_GEAR_N_PEARLS; k++) {
+		used |= dtu_script_gflag(DTU_GEAR_GF_PEARL_USED + k) << k;
+		dtu_script_set_gflag(DTU_GEAR_GF_PEARL_USED + k, 0);
+	}
+	if (used)
+		dtu_char_log("Pearls of Power ready again (%s), used 0x%x", why ? why : "", used);
 }

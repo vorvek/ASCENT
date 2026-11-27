@@ -3,7 +3,8 @@
 
 The spells 56 to 58 of the port (Mirror Image, Minor Globe of
 Invulnerability, Spiritual Hammer; engine/main/dtuspell.h) have the icons
-200 to 202. The icon sheets of the game (FEBGND 23, 16x16, and 24, 32x32)
+200 to 202, the Pearls of Power of the class gear (engine/main/dtugear.h)
+the icon 203. The icon sheets of the game (FEBGND 23, 16x16, and 24, 32x32)
 have 200 cells and no free one, so the game adds a row to the loaded sheet
 and copies these icons into it (engine/main/dtudisp.c).
 
@@ -35,7 +36,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 S = 128            # the drawing size, 4 times the large icon
-NAMES = ("mirror_image", "minor_globe", "spiritual_hammer")
+NAMES = ("mirror_image", "minor_globe", "spiritual_hammer", "pearl_of_power")
 
 
 def gamedata_dir():
@@ -180,6 +181,41 @@ def icon_spiritual_hammer():
     return base
 
 
+def icon_pearl_of_power():
+    """The Pearls of Power of the class gear (engine/main/dtugear.h): a
+    white pearl in a violet glow with a rune of four rays, on a small gold
+    cup, so that it does not look like the gem Pearl (icon 129)."""
+    base = layer()
+    cx, cy, R = S // 2, S // 2 - 8, 34
+    # the cup
+    d = ImageDraw.Draw(base)
+    d.polygon([(cx - 30, cy + 28), (cx + 30, cy + 28), (cx + 16, cy + 50), (cx - 16, cy + 50)], fill=(200, 150, 40, 255))
+    d.rectangle([cx - 22, cy + 50, cx + 22, cy + 58], fill=(150, 100, 20, 255))
+    p = layer()
+    px = p.load()
+    for y in range(S):
+        for x in range(S):
+            dist = math.hypot(x - cx, y - cy) / R
+            if dist > 1.0:
+                continue
+            hx, hy = (x - (cx - 12)) / 16.0, (y - (cy - 14)) / 12.0
+            spec = max(0.0, 1.0 - (hx * hx + hy * hy))
+            shade_k = 1.0 - 0.45 * dist ** 2
+            r = 200 * shade_k + 55 * spec
+            g = 196 * shade_k + 59 * spec
+            b = 225 * shade_k + 30 * spec
+            px[x, y] = (min(255, int(r)), min(255, int(g)), min(255, int(b)), 255)
+    base.alpha_composite(glow(p, (170, 70, 255), 12, 2.2))
+    base.alpha_composite(p)
+    # the rune: four short rays of light from the pearl
+    d = ImageDraw.Draw(base)
+    for (x0, y0, x1, y1) in ((cx, cy - R - 4, cx, cy - R - 22), (cx - R - 4, cy, cx - R - 20, cy),
+                             (cx + R + 4, cy, cx + R + 20, cy)):
+        d.line([(x0, y0), (x1, y1)], fill=(220, 160, 255, 255), width=6)
+    d.ellipse([cx - 5, cy - 5, cx + 5, cy + 5], fill=(150, 60, 230, 255))
+    return base
+
+
 def nearest_table(pal):
     cache = {}
 
@@ -236,7 +272,7 @@ def main():
     raw = open(a.palette, "rb").read()[:768]
     pal = [(min(255, raw[3 * i] * 4), min(255, raw[3 * i + 1] * 4), min(255, raw[3 * i + 2] * 4)) for i in range(256)]
     find = nearest_table(pal)
-    art = [icon_mirror_image(), icon_minor_globe(), icon_spiritual_hammer()]
+    art = [icon_mirror_image(), icon_minor_globe(), icon_spiritual_hammer(), icon_pearl_of_power()]
     hi = [quantize(im, 32, find) for im in art]
     lo = [quantize(im, 16, find) for im in art]
 
@@ -244,7 +280,8 @@ def main():
         "/*",
         " * ASCENT: new file, written by tools/spell_icons.py. Do not edit it.",
         " * The icons 200 to 202 of the spells of the port (Mirror Image, Minor",
-        " * Globe of Invulnerability, Spiritual Hammer; dtuspell.h) as color",
+        " * Globe of Invulnerability, Spiritual Hammer; dtuspell.h) and 203 of the",
+        " * Pearls of Power of the class gear (dtugear.h) as color",
         " * numbers of the game palette, 32x32 for the sheet FEBGND 24 and 16x16",
         " * for the sheet FEBGND 23. New art, drawn by the script from shapes.",
         " */",

@@ -3025,3 +3025,323 @@ id: port.you_hold_it_now_d_minutes_and_d_seconds
 en: You hold it now: %d minutes and %d seconds are left.
 tr: Lo empuñas ahora: quedan %d minutos y %d segundos.
 
+
+id: port.ahh_a_fellow_student_of_the_art_for_you_
+en: Ahh, a fellow student of the Art! For you, {name}, I keep a few things besides my scrolls. Can I interest you in any of them?
+tr: ¡Ah, {sex:un colega|una colega} en el Arte! Para ti, {name}, guardo algunas cosas además de mis pergaminos. ¿Puedo interesarte en alguna?
+
+id: port.i_d_like_to_see_your_scrolls
+en: I'd like to see your scrolls.
+tr: Me gustaría ver tus pergaminos.
+
+id: port.have_you_any_wands_to_spare
+en: Have you any wands to spare?
+tr: ¿Tienes alguna varita de sobra?
+
+id: port.scrolls_of_spells_i_already_know_perchan
+en: Scrolls of spells I already know, perchance?
+tr: ¿Pergaminos de conjuros que ya conozco, quizá?
+
+id: port.what_is_that_pearl_you_wear
+en: What is that pearl you wear?
+tr: ¿Qué es esa perla que llevas?
+
+id: port.those_bracers_on_your_wrists
+en: Those bracers on your wrists...
+tr: Esos brazales de tus muñecas...
+
+id: port.nothing_today
+en: Nothing today.
+tr: Hoy nada.
+
+id: port.a_true_wizard_with_no_sword_arm_to_lean_
+en: A true wizard, with no sword arm to lean on: just like me! We spellcasters should look after each other. I can let you have this wand for half of what they ask in the Marketplace.
+tr: ¡{sex:Un auténtico mago|Una auténtica maga}, sin un brazo armado en el que apoyarte: igual que yo! Los lanzadores de conjuros debemos cuidarnos entre nosotros. Puedo dejarte esta varita por la mitad de lo que piden en el Mercado.
+
+id: port.these_are_the_wands_i_can_spare_each_one
+en: These are the wands I can spare. Each one is fully charged; I checked them myself.
+tr: Estas son las varitas de las que puedo prescindir. Todas tienen sus cargas completas; las he comprobado yo misma.
+
+id: port.the_wand_of_magic_missiles_for_750_gold
+en: The Wand of Magic Missiles, for 750 gold.
+tr: La Varita de Proyectiles, por 750 de oro.
+
+id: port.the_wand_of_paralyzation_for_1000_gold
+en: The Wand of Paralyzation, for 1000 gold.
+tr: La Varita de parálisis, por 1000 de oro.
+
+id: port.the_wand_of_fireballs_for_1500_gold
+en: The Wand of Fireballs, for 1500 gold.
+tr: La Varita de Bolas de Fuego, por 1500 de oro.
+
+id: port.something_else
+en: Something else.
+tr: Otra cosa.
+
+id: port.copies_of_spells_you_already_know_i_pen_
+en: Copies of spells you already know. I pen them myself, so they work flawlessly, every time! Read one, and your memory stays just as it was.
+tr: Copias de conjuros que ya conoces. Las escribo yo misma, así que funcionan sin fallo, ¡siempre! Lees una, y tu memoria se queda tal como estaba.
+
+id: port.five_magic_missile_scrolls_for_250_gold
+en: Five Magic Missile scrolls, for 250 gold.
+tr: Cinco pergaminos de Proyectil Mágico, por 250 de oro.
+
+id: port.three_lightning_bolt_scrolls_for_1500_go
+en: Three Lightning Bolt scrolls, for 1500 gold.
+tr: Tres pergaminos de Rayo Relampagueante, por 1500 de oro.
+
+id: port.this_is_a_pearl_of_power_hold_it_think_o
+en: This is a Pearl of Power. Hold it, think of a spell you have already cast, and it comes back to you! But only once each time you go below, I'm afraid.
+tr: Es una Perla de poder. Sostenla, piensa en un conjuro que ya hayas lanzado, ¡y vuelve a ti! Pero solo una vez cada vez que bajas, me temo.
+
+id: port.a_pearl_of_the_first_circle_for_2500_gol
+en: A pearl of the first circle, for 2500 gold.
+tr: Una perla del primer círculo, por 2500 de oro.
+
+id: port.a_pearl_of_the_second_circle_for_6000_go
+en: A pearl of the second circle, for 6000 gold.
+tr: Una perla del segundo círculo, por 6000 de oro.
+
+id: port.a_pearl_of_the_third_circle_for_12000_go
+en: A pearl of the third circle, for 12000 gold.
+tr: Una perla del tercer círculo, por 12000 de oro.
+
+id: port.my_bracers_of_defense_father_had_a_pair_
+en: My Bracers of Defense. Father had a pair made so I would be safe in the city, and then a second pair, just in case. They turn a blade as well as any mail, and they never get in the way of a spell. Five thousand gold.
+tr: Mis Brazales de defensa. Padre mandó hacer un par para que estuviera a salvo en la ciudad, y luego otro par, por si acaso. Desvían una hoja tan bien como cualquier cota de malla, y nunca estorban a un conjuro. Cinco mil de oro.
+
+id: port.i_ll_take_them
+en: I'll take them.
+tr: Me los llevo.
+
+id: port.keep_it_close_it_grows_warm_when_it_is_r
+en: Keep it close. It grows warm when it is ready again.
+tr: Tenla cerca. Se calienta cuando vuelve a estar lista.
+
+id: port.there_you_are_use_it_well_and_come_back_
+en: There you are! Use it well, and come back and tell me all about it. I envy you, {sir}.
+tr: ¡Aquí tienes! Úsalo bien, y vuelve a contármelo todo. Te envidio, {sir}.
+
+id: port.i_m_afraid_you_don_t_have_enough_currenc
+en: I'm afraid you don't have enough currency. I can't go any lower, not even for a fellow wizard.
+tr: Me temo que no tienes suficiente dinero. No puedo bajar más el precio, ni siquiera para {sex:un colega mago|una colega maga}.
+
+id: port.what_else_do_you_have
+en: What else do you have?
+tr: ¿Qué más tienes?
+
+id: port.i_ll_be_back
+en: I'll be back.
+tr: Volveré.
+
+id: port.ah_a_professional_i_can_always_tell_i_wa
+en: Ah, a professional! I can always tell; I was one myself, once. For a rogue of your obvious refinement, I have a little bow and sixteen arrows dipped in something unkind. Three hundred gold, and I never saw you.
+tr: ¡Ah, {sex:un profesional|una profesional}! Siempre lo noto; yo también lo fui, en su día. Para {sex:un pícaro|una pícara} de tu evidente refinamiento, tengo un arquito y dieciséis flechas mojadas en algo poco amable. Trescientas de oro, y nunca te he visto.
+
+id: port.i_ll_take_the_bow_and_the_arrows
+en: I'll take the bow and the arrows.
+tr: Me llevo el arco y las flechas.
+
+id: port.no_thanks
+en: No thanks.
+tr: No, gracias.
+
+id: port.hullo_friend_i_hope_you_are_profiting_fr
+en: Hullo, friend. I hope you are profiting from your adventures. Might a professional need anything from my little stock?
+tr: Hola, {sex:amigo|amiga}. Espero que tus aventuras te estén dando beneficios. ¿Necesitará {sex:un profesional|una profesional} algo de mis pequeñas existencias?
+
+id: port.about_that_bow_and_the_arrows
+en: About that bow and the arrows...
+tr: Sobre ese arco y las flechas...
+
+id: port.more_of_those_arrows
+en: More of those arrows.
+tr: Más de esas flechas.
+
+id: port.have_you_any_potions_of_invisibility
+en: Have you any potions of invisibility?
+tr: ¿Tienes pociones de invisibilidad?
+
+id: port.just_saying_hello
+en: Just saying hello.
+tr: Solo pasaba a saludar.
+
+id: port.more_arrows_eight_for_one_hundred_sixty_
+en: More arrows? Eight for one hundred sixty. The recipe is an Oddpepper family secret, and the family is not proud of it.
+tr: ¿Más flechas? Ocho por ciento sesenta. La receta es un secreto de la familia Oddpepper, y la familia no está orgullosa de ella.
+
+id: port.eight_more_then
+en: Eight more, then.
+tr: Ocho más, entonces.
+
+id: port.potions_of_invisibility_i_put_three_by_f
+en: Potions of invisibility. I put three by for a rainy day, but you seem to have more rainy days than I. Four hundred gold each.
+tr: Pociones de invisibilidad. Guardé tres para un día de lluvia, pero tú pareces tener más días de lluvia que yo. Cuatrocientas de oro cada una.
+
+id: port.one_please
+en: One, please.
+tr: Una, por favor.
+
+id: port.the_bargain_is_sealed_aim_for_the_soft_p
+en: The bargain is sealed! Aim for the soft parts, and whatever you do, do not lick your fingers.
+tr: ¡Trato cerrado! Apunta a las partes blandas y, hagas lo que hagas, no te chupes los dedos.
+
+id: port.eight_more_freshly_dipped_mind_the_tips
+en: Eight more, freshly dipped. Mind the tips.
+tr: Ocho más, recién mojadas. Cuidado con las puntas.
+
+id: port.one_potion_of_invisibility_if_anyone_ask
+en: One potion of invisibility. If anyone asks, you never saw me either.
+tr: Una poción de invisibilidad. Si alguien pregunta, tú tampoco me has visto.
+
+id: port.alas_your_purse_is_lighter_than_your_fin
+en: Alas, your purse is lighter than your fingers, friend. Come back when it has caught up with them.
+tr: Ay, tu bolsa es más ligera que tus dedos, {sex:amigo|amiga}. Vuelve cuando se hayan puesto a la par.
+
+id: port.so_you_work_alone_boy_no_spells_no_sword
+en: So you work alone, {boy}. No spells, no sword-brother at your back. I remember that life, before I repented. I kept a few things from my guild days. They aren't free, mind you; I'm a merchant now.
+tr: Así que trabajas {sex:solo|sola}, {boy}. Sin conjuros, sin un hermano de armas que te cubra la espalda. Recuerdo esa vida, antes de arrepentirme. Guardé algunas cosas de mis días en el gremio. No son gratis, ojo; ahora soy mercader.
+
+id: port.here_s_what_i_kept_have_a_look_and_keep_
+en: Here's what I kept. Have a look, and keep your voice down; Durnan has big ears.
+tr: Esto es lo que guardé. Echa un vistazo, y habla bajo; Durnan tiene buen oído.
+
+id: port.the_leather_armor
+en: The leather armor.
+tr: La armadura de cuero.
+
+id: port.the_lockpicks
+en: The lockpicks.
+tr: Las ganzúas.
+
+id: port.the_boots
+en: The boots.
+tr: Las botas.
+
+id: port.the_bracers
+en: The bracers.
+tr: Los brazales.
+
+id: port.the_short_sword
+en: The short sword.
+tr: La espada corta.
+
+id: port.the_girdle
+en: The girdle.
+tr: El cinturón.
+
+id: port.any_news_mirt
+en: Any news, Mirt?
+tr: ¿Alguna novedad, Mirt?
+
+id: port.farewell_mirt
+en: Farewell, Mirt.
+tr: Adiós, Mirt.
+
+id: port.leather_armor_enchanted_twice_over_it_cr
+en: Leather armor, enchanted twice over. It creaks less than you'd think, and in our line of work that matters. Two thousand gold.
+tr: Armadura de cuero, encantada dos veces. Cruje menos de lo que crees, y en nuestro oficio eso importa. Dos mil de oro.
+
+id: port.my_old_picks_they_opened_every_lock_in_t
+en: My old picks. They opened every lock in the Dock Ward once, and a few in the Castle Ward. Six hundred gold, and don't tell the Lords where you got them.
+tr: Mis viejas ganzúas. En su día abrieron todas las cerraduras del Barrio del Puerto, y unas cuantas del Barrio del Castillo. Seiscientas de oro, y no les digas a los Señores de dónde las sacaste.
+
+id: port.elven_boots_walk_where_you_like_nobody_h
+en: Elven boots. Walk where you like; nobody hears a thing. I'd wear them still if I could fit into them. Five thousand gold.
+tr: Botas élficas. Camina por donde quieras; nadie oye nada. Aún las llevaría si me cupieran. Cinco mil de oro.
+
+id: port.bracers_of_archery_the_drow_are_fond_of_
+en: Bracers of Archery. The drow are fond of bowmen in the shadows; with these you can answer them in kind. Seven thousand five hundred gold.
+tr: Brazales de arquería. A los drow les gustan los arqueros en las sombras; con estos puedes responderles con la misma moneda. Siete mil quinientas de oro.
+
+id: port.the_short_sword_of_quickness_it_strikes_
+en: The Short Sword of Quickness. It strikes twice before the other fellow blinks. Four thousand five hundred gold.
+tr: La Espada corta de rapidez. Golpea dos veces antes de que el otro parpadee. Cuatro mil quinientas de oro.
+
+id: port.a_girdle_of_hill_giant_strength_it_never
+en: A Girdle of Hill Giant Strength. It never did much for my waist, but it puts an ogre's arm on a slip of a thief. Six thousand gold.
+tr: Un Cinturón de fuerza de gigante de las colinas. Nunca hizo mucho por mi cintura, pero le pone el brazo de un ogro a un ladronzuelo. Seis mil de oro.
+
+id: port.i_accept_your_bargain
+en: I accept your bargain.
+tr: Acepto tu trato.
+
+id: port.let_me_see_the_rest
+en: Let me see the rest.
+tr: Déjame ver lo demás.
+
+id: port.very_good_if_khelben_asks_you_found_it_i
+en: Very good. If Khelben asks, you found it in the dungeon. Let me know if I can help you further.
+tr: Muy bien. Si Khelben pregunta, lo encontraste en la mazmorra. Avísame si puedo ayudarte en algo más.
+
+id: port.you_re_short_boy_i_gave_up_charity_when_
+en: You're short, {boy}. I gave up charity when I gave up the guild.
+tr: No te llega, {boy}. Dejé la caridad cuando dejé el gremio.
+
+id: port.the_pearl_of_power_is_dull_it_glows_agai
+en: The Pearl of Power is dull. It glows again in the next level or after a rest.
+tr: La Perla de poder está apagada. Vuelve a brillar en el siguiente nivel o tras un descanso.
+
+id: port.you_have_no_spent_spell_of_level_d_for_t
+en: You have no spent spell of level %d for the pearl to bring back.
+tr: No tienes ningún conjuro de nivel %d gastado que la perla pueda devolverte.
+
+id: port.the_pearl_of_power_glows_a_spent_spell_o
+en: The Pearl of Power glows: a spent spell of level %d comes back to you.
+tr: La Perla de poder brilla: vuelve a ti un conjuro gastado de nivel %d.
+
+id: port.arrows_and_bolts_get_d_to_hit
+en: Arrows and bolts get +%d to hit.
+tr: Flechas y virotes: +%d al ataque.
+
+id: port.sets_move_silently_to_d
+en: Sets Move Silently to %d%%.
+tr: Sigilo: %d%%.
+
+id: port.use_gives_back_one_spent_mage_spell_slot
+en: Use: gives back one spent mage spell slot of spell level %d.
+tr: Uso: devuelve un espacio de conjuro de mago gastado de nivel %d.
+
+id: port.once_in_each_dungeon_level_ready_again_a
+en: Once in each dungeon level; ready again at the next level and after a rest.
+tr: Una vez en cada nivel de la mazmorra; lista otra vez en el siguiente nivel y tras un descanso.
+
+id: port.gear_for_single_class_mages_and_thieves
+en: Gear for single class mages and thieves
+tr: Equipo para magos y ladrones de una clase
+
+id: tbl.fix.poisoned_arrow
+en: Poisoned Arrow
+tr: Flecha envenenada
+gender: f
+plural: Flechas envenenadas
+
+id: tbl.fix.boots_of_elvenkind
+en: Boots of Elvenkind
+tr: Botas de los elfos
+gender: f
+plural: Botas de los elfos
+
+id: tbl.fix.bracers_of_archery
+en: Bracers of Archery
+tr: Brazales de arquería
+gender: m
+plural: Brazales de arquería
+
+id: tbl.fix.pearl_of_power_i
+en: Pearl of Power I
+tr: Perla de poder I
+gender: f
+plural: Perlas de poder I
+
+id: tbl.fix.pearl_of_power_ii
+en: Pearl of Power II
+tr: Perla de poder II
+gender: f
+plural: Perlas de poder II
+
+id: tbl.fix.pearl_of_power_iii
+en: Pearl of Power III
+tr: Perla de poder III
+gender: f
+plural: Perlas de poder III
