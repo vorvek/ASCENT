@@ -1381,6 +1381,7 @@ void dtu_objects_level_setup(void)
 	dtu_gear_place_flame_tongue(has_state,Level_setup_restore);		// ASCENT: the new gear (dtugear.h)
 	dtu_lich_level_setup(has_state,Level_setup_restore);		// ASCENT: the phylactery of the lich of CLAN3 (dtulich.h)
 	dtu_gear_place_venom(has_state,Level_setup_restore);		// ASCENT: the new gear (dtugear.h)
+	dtu_gear_place_rod(has_state,Level_setup_restore);		// ASCENT: the new gear, the Rod of Kelemvor (dtugear.h)
 
 	// level_start 0xAD5BF: the creature setup by name and add_npc
 	dtu_script_test_flags();

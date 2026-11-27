@@ -2517,9 +2517,13 @@ static int start_run(object *obj, int id, int mode, int temp)
 		// ASCENT: Dtu_fix_dispel_peace (dtuspell.h): a hold with no end (the
 		// level fix 0xAD129, Daland of MYRKUL) points to Dispel Magic
 		if (Dtu_fix_dispel_peace && obj->dtu.m_c0[0] == DTU_FX_NO_END) {
-			HUD_init_message(LN("Some magic seems to hold %s completely paralyzed. Perhaps it can be dispelled."),
-				dtu_object_display_name(obj));
-			slog("obj %d: held with no end, the hint of Dispel Magic", objnum);
+			char *hint = LN("Some magic seems to hold %s completely paralyzed. Perhaps it can be dispelled.");
+
+			// the Rod of Kelemvor of the new gear (dtugear.h) in the inventory
+			if (dtu_gear_rod_carried())
+				hint = LN("Some magic seems to hold %s completely paralyzed. Perhaps your Rod of Kelemvor can dispel it.");
+			HUD_init_message(hint, dtu_object_display_name(obj));
+			slog("obj %d: held with no end, the hint of Dispel Magic%s", objnum, dtu_gear_rod_carried() ? " (the Rod of Kelemvor)" : "");
 		}
 		return 0;
 	}

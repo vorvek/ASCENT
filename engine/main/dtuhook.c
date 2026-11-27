@@ -39,6 +39,7 @@
 #include "dtudragon.h"
 #include "dtuobj.h"
 #include "dtuspell.h"	// ASCENT: dtu_spell_hammer_weapon()
+#include "dtugear.h"	// ASCENT: dtu_gear_rod()
 #include "dtutrig.h"
 #include "dtuscript.h"
 #include "kconfig.h"		// ASCENT: Dtu_fix_climb_key
@@ -780,10 +781,11 @@ void dtu_hook_trap_spawn_object(int item_num, int segnum, int side, vms_vector *
 	dtu_obj_log("trap: spell %d '%s' from seg %d side %d",item_num,Spell_info[item_num].name,segnum,side);
 	{
 		// ASCENT: the last line of the table, not the Spiritual Hammer line
-		// that the port adds after it (dtuspell.h)
+		// that the port adds after it (dtuspell.h), nor the line of the Rod of
+		// Kelemvor of the new gear (dtugear.h)
 		int last = N_weapon_types-1;
 
-		if (last > 0 && last == dtu_spell_hammer_weapon())
+		while (last > 0 && (last == dtu_spell_hammer_weapon() || dtu_gear_rod(last)))
 			last--;
 		dtu_create_missile(&dir,&p,seg,-1,last,item_num,1);
 	}

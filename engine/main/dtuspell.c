@@ -48,6 +48,7 @@
 #include "dtuspell.h"
 #include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
 #include "dtuhold.h"		// ASCENT: Dtu_fix_player_hold
+#include "dtugear.h"		// ASCENT: the Rod of Kelemvor of the new gear
 
 void make_random_vector(vms_vector *vec);		// ai.c
 
@@ -120,6 +121,7 @@ int Dtu_spell_slots_left[2][9];
 
 static fix Cast_timer = DTU_FX_NO_END;	// 0x153EBC
 static int Cast_spell = -1;
+static int Cast_fixed_level = 0;		// ASCENT: the caster level of the Rod of Kelemvor (dtugear.h), 0: none
 static fix Cast_loaded = DTU_FX_NO_END;	// ASCENT: the cast of a loaded save, for the level start
 static int Hand_ref = -2;				// Dtu_char.current.n when the spell was taken in the hand
 static int Screen_sel = 0;
@@ -4248,7 +4250,7 @@ void dtu_spell_piece_missile(int spell)
 static void cast_now(int spell,int source)
 {
 	object *player = ConsoleObject;
-	int L = dtu_spell_player_level(spell), template_w;
+	int L = Cast_fixed_level > 0 ? Cast_fixed_level : dtu_spell_player_level(spell), template_w;
 
 	// ASCENT: a cast on the caster plays the sound in cast_effects (0x8CAD3)
 	if (!spell_self(spell))
@@ -4323,6 +4325,8 @@ static void player_missiles(int spell,int template_w,int L,int homing)
 			break;
 		vm_vec_copy_scale(&Objects[objnum].mtype.phys_info.velocity,&d,speed);
 		dtu_missile_set_life(objnum,spell_missile_life(spell,L));
+		if (Cast_fixed_level > 0)
+			dtu_missile_set_level(objnum,Cast_fixed_level);		// ASCENT: the Rod of Kelemvor (dtugear.h)
 		track_missile(objnum,spell,L,target);
 		dtu_spell_log("spell: missile obj %d of '%s', speed %.0f, life %.2f, target %d",objnum,spell_name(spell),f2fl(speed),
 			f2fl(spell_missile_life(spell,L)),target);
@@ -4423,6 +4427,21 @@ int dtu_spell_fire(void)
 		return 1;
 	}
 
+	// ASCENT: the Rod of Kelemvor of the new gear (dtugear.h): its one charge
+	// at a fixed caster level, and it is never used up
+	if (source == 2) {
+		int fixed = dtu_gear_rod_fire(Dtu_inventory[Dtu_char.current.n].id);
+
+		if (fixed == 0)
+			return 1;
+		if (fixed > 0) {
+			Cast_fixed_level = fixed;
+			cast_now(spell,source);
+			Cast_fixed_level = 0;
+			dtu_gear_rod_spend();
+			return 1;
+		}
+	}
 	// A scroll or a wand: no cast time and no slot. One item or charge.
 	cast_now(spell,source);
 	dtu_char_use_up(Dtu_char.current.n);
