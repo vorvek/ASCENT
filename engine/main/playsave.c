@@ -246,6 +246,7 @@ static char rcsid[] = "$Id: playsave.c 2.3 1995/05/26 16:16:23 john Exp $";
 #include "text.h"
 #include "mono.h"
 #include "state.h"
+#include "dtugame.h"		// ASCENT: Dtu_direct_start
 
 // ASCENT: the value of the Watcom constant 'DPLR', written without a
 // multi-character constant. The file starts with the bytes R,L,P,D.
@@ -774,6 +775,15 @@ int write_player_file()
 	ubyte info_buf[SAVE_INFO_DISK_SIZE];
 
 	errno_ret = WriteConfigFile();
+
+	// ASCENT: the run of the target game (dtu_run_level, Dtu_direct_start)
+	// never reads the player file: RegisterPlayer, get_game_list and
+	// set_highest_level are Descent 1 paths, and the keys of the target
+	// game are in ascent.cfg (kconfig.c, dtuopts.c). Only the configuration
+	// file is written, so no "<callsign>.plr" goes into the current
+	// directory.
+	if (Dtu_direct_start)
+		return errno_ret;
 
 	info.id = SAVE_FILE_ID;
 	info.saved_game_version = SAVED_GAME_VERSION;
