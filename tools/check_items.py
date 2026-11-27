@@ -492,8 +492,31 @@ def test_gear_drops(t):
 GEAR_SEED = 1
 
 
+def test_gear_market_items(t):
+    """The magic items of 1.3 that the new gear sells (dtugear.c
+    Gear_market) and that no other check wears: each one worn alone gives
+    its rule. The rings 17, 20, 22, 25 (test_rings), the wands 56 and 60
+    (test_wands) and the potions 73, 81, 83 (test_potions) are checked
+    there."""
+    cmds = []
+    for item, slot in ((15, 3), (30, 2), (31, 2), (36, 9), (43, 1), (44, 1), (46, 1), (51, 4)):
+        cmds += ["give=15.%d.1" % item, "equip=15.%d" % item, "dump", "unequip=%d" % slot]
+    cmds += ["give=16.99.1", "equip=16.99", "dump"]
+    d, _, log = t.run("gear_market_items", cmds)
+    ring3, am3, am4, lev, elvenkind, cham, elven, glim, xbow = d
+    check(ring3.ac == 7, "Ring of Protection +3: armor class %d" % ring3.ac)
+    check(am3.ac == 7 and am4.ac == 6, "Amulets of Protection +3 and +4: armor class %d and %d" % (am3.ac, am4.ac))
+    check(lev.has("levitate"), "Boots of Levitation: effects 0x%x" % lev.fx)
+    check(elvenkind.hide > 0, "Cloak of Elvenkind: Hide In Shadows %d" % elvenkind.hide)
+    check(cham.has("imp_invis") and elven.has("invisible"), "Chameleon Cloak and Elven Cloak")
+    check(glim.has("detect_magic"), "Glim-Gauntlet: effects 0x%x" % glim.fx)
+    check(re.search(r"equip: entry \d+ 'Crossbow \+3' in slot 11", log), "Crossbow +3 is not in the crossbow slot")
+    return "8 armor items and the Crossbow +3"
+
+
 TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc,
-         test_gear_worn, test_gear_mirror, test_gear_archer, test_gear_regen, test_gear_wands, test_gear_drops]
+         test_gear_worn, test_gear_mirror, test_gear_archer, test_gear_regen, test_gear_wands, test_gear_drops,
+         test_gear_market_items]
 
 
 def main():
