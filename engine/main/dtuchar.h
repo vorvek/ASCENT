@@ -464,7 +464,8 @@ const char *dtu_char_save_name(int cat, int brief);
 // The cause of the next save of the player for the session log and the
 // Wisdom adjustment: spell (the spell number, or -1), what (a spell,
 // "Chill Touch") and who (the caster or attacker, or NULL). The next save
-// takes it.
+// of the player in the same frame takes it; a save of a later frame has no
+// cause ("unknown cause").
 void dtu_char_save_cause(int spell, const char *what, const char *who);
 // dtu_spell_save of the player: need is the number of the class table.
 // Returns the number with the bonuses (items, Constitution, Wisdom) and

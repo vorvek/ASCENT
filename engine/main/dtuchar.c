@@ -1822,6 +1822,12 @@ static const char *Save_name[5] = {
 static const char *Save_short[5] = { LN("Para"), LN("Rod"), LN("Petri"), LN("Breath"), LN("Spell") };
 static char Save_what[80], Save_who[48];
 static int Save_spell = -1;
+// ASCENT: the frame of dtu_char_save_cause. A spell on the player sets the
+// cause even when it makes no save (Protection From Evil, Stoneskin, a
+// spell that a protection stops), and a later save (the lava, a trap) took
+// that name and its Wisdom adjustment. The cause holds for the frame in
+// which it was set only.
+static int Save_frame = -1;
 
 const char *dtu_char_save_name(int cat, int brief)
 {
@@ -1891,6 +1897,7 @@ int dtu_char_save_number(int cat)
 void dtu_char_save_cause(int spell, const char *what, const char *who)
 {
 	Save_spell = spell;
+	Save_frame = FrameCount;
 	snprintf(Save_what, sizeof(Save_what), "%s", what ? what : "");
 	snprintf(Save_who, sizeof(Save_who), "%s", who ? who : "");
 }
@@ -1909,9 +1916,17 @@ static void ability_word(char *out, int size, int n, const char *def)
 
 int dtu_char_player_save(int cat, int roll, int need)
 {
-	int prot = dtu_char_save_bonus(), con = dtu_char_con_save_bonus(cat), wis = dtu_char_wis_save_bonus(Save_spell);
-	int n = need - prot - con - wis;
+	int prot, con, wis, n;
 	char terms[120] = "", w[16];
+
+	if (Save_frame != FrameCount) {		// a cause of an earlier frame
+		Save_what[0] = Save_who[0] = 0;
+		Save_spell = -1;
+	}
+	prot = dtu_char_save_bonus();
+	con = dtu_char_con_save_bonus(cat);
+	wis = dtu_char_wis_save_bonus(Save_spell);
+	n = need - prot - con - wis;
 
 	if (prot)
 		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (protection)", prot);
