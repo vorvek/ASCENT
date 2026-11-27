@@ -60,6 +60,9 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * A character learns a spell only when its classes can cast it: a mage no longer learns Protection From Fire, a priest spell, from a scroll.
 * Spells and potions keep their full time after nine hours of play; in 1.3 an effect that ends past that point ends at once (a Potion of Freedom showed "Free Action expired." right away).
 * Any damage wakes a sleeping character, not only a melee hit. While asleep, the view is black with "zzz" and the character cannot move, look around or act.
+* Lightning Bolt goes on through each creature on its line and comes back from walls, as in AD&D 2nd edition; in 1.3 the first body ends it.
+* Stone Skin uses up a hit only when the attack roll hits, and every attack on a held target hits, as in AD&D 2nd edition.
+* Dispel Magic is no attack: a creature at peace stays at peace, so Daland of the Temple of Myrkul can be freed for his quest.
 
 **Items**
 
@@ -101,6 +104,10 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * A thief: Nalbas Oddpepper sells a short bow with poisoned arrows and a few Potions of Invisibility. Mirt the Merchant opens his old guild things from mission 3: Leather Armor +2, Master Lockpicks, Boots of Elvenkind (Move Silently 95), Bracers of Archery (+2 to hit with arrows and bolts), the Short Sword of Quickness and a Girdle of Hill Giant Strength.
 * The market of Waterdeep also gets a Wand of Paralyzation and a Wand of Lightning Bolts. The new items need the New gear setting too. See [docs/re/scripts.md](docs/re/scripts.md), "The class gear".
 
+**The dragon Tamaramagil** (on by default)
+
+* The red dragon of the Temple of the Drow (DROW2), which 1.3 has in its files but never places, rests in her hall and asks you for a favor. Her fire breath comes with a warning and can be dodged, her hatchlings join two at a time, and her hoard is one of the best treasures of the game. See [docs/re/dragon.md](docs/re/dragon.md).
+
 **The phylactery of the lich** (on by default)
 
 * Morik Stormhand, the lich of the Crypts of Clangeddin, protects himself with four spells the moment he sees you, and only a Dispel Magic takes them away. His phylactery is hidden in the crypts before his room. Break it and he fights without them; break it during the fight and they end at once. Barander and the dust of the crypts give hints. See [docs/re/lich.md](docs/re/lich.md).
@@ -109,6 +116,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 * A separate Climb Wall key, so Activate no longer tries to climb a wall when you pull a lever.
 * Walking into a lever, a button or a sign no longer works it (and no longer fills the log with its message): use Activate.
+* Typed names follow the keyboard layout of the system: dead keys, AltGr and accented letters work.
 
 Each fix can be turned off with an `-orig` command line option to compare with version 1.3 (the AI changes with the Improved AI setting), and [docs/audit/defects-1.3.md](docs/audit/defects-1.3.md) has the full list.
 
