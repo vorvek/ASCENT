@@ -240,20 +240,60 @@ TESTS = [
        r"dragon: the lever \(trigger 20, fired 1\): the hatchery \(seg 398 side 4\) is open, 4 hatchlings, the dragon attacks",
        r"message \"A heavy door grinds open far down the hall, and a deep laugh rolls through the corridor: \"Little fool!",
        r"dragon: obj 64 is hostile: the lever", r"obj 48 hatchlng: walks a path of \d+ segments to seg 430 for its script \(walk\)",
-       r"f40 +wall 398\.4: type 2 flags 0x2 state", r"f42 +quest: level 21 .* gflags \[ (\d+ )*241 242 \]", r"f43 +obj 48: type 2 id 2 seg \d+ hp 50 ",
-       r"f200 +wall 398\.4: type 2 flags 0x2 state", r"f201 +quest: level 21 .* gflags \[ (\d+ )*241 242 \]",
+       r"f40 +wall 398\.4: type 2 flags 0x2 state", r"f42 +quest: level 21 .* gflags \[ (\d+ )*241 242 243 244 \]", r"f43 +obj 48: type 2 id 2 seg \d+ hp 50 ",
+       r"f200 +wall 398\.4: type 2 flags 0x2 state", r"f201 +quest: level 21 .* gflags \[ (\d+ )*241 242 243 244 \]",
        r" 202 dragon: test 4: obj 64 Dragon hp 90 .* hostile 1 peaceful 0", r"f203 +obj 48: type 2 id 2 seg \d+ hp 50 "],
       [r"gflags \[[^\]]* 107 ", r"flapping of wings"], frames=220, extra=["-noattack", "-objlog", "dragon_lever_obj.log"]),
     # While she lives two hatchlings fight at one time: objects 48 and 49
     # leave the hatchery, 61 comes when 48 is dead, and all come when she
     # is dead.
     T("dragon_hatchlings", "DROW2", "6:goside=482.2,8:activate,60:obj=61,100:kill=48,160:obj=61,200:kill=64,260:obj=63",
-      [r" (\d+) dragon: obj 48 hatchlng leaves the hatchery \(0 before it, the dragon lives\)",
-       r"dragon: obj 49 hatchlng leaves the hatchery \(1 before it, the dragon lives\)",
-       r"f60 +obj 61: type 2 id 2 seg 792 [\s\S]* 10\d dragon: obj 61 hatchlng leaves the hatchery \(1 before it, the dragon lives\)",
-       r" 20\d dragon: obj 63 hatchlng leaves the hatchery \(2 before it, the dragon is dead\)",
+      [r" (\d+) dragon: obj 48 hatchlng leaves the hatchery \(0 in the fight, the dragon lives\)",
+       r"dragon: obj 49 hatchlng leaves the hatchery \(1 in the fight, the dragon lives\)",
+       r"f60 +obj 61: type 2 id 2 seg 792 [\s\S]* 10\d dragon: obj 61 hatchlng leaves the hatchery \(1 in the fight, the dragon lives\)",
+       r" 20\d dragon: obj 63 hatchlng leaves the hatchery \(2 in the fight, the dragon is dead\)",
        r"obj 63 hatchlng: walks a path of \d+ segments to seg 391 for its script \(walk\)"],
       frames=270, extra=["-noattack", "-objlog", "dragon_hatchlings_obj.log"]),
+    # The hatchery before the lever (door wall 138, seg 398 side 4): the use
+    # action finds it locked, no thief skill opens it (keys 4), and a
+    # Fireball at the door from her room hurts no hatchling behind it. She
+    # stays at peace.
+    T("dragon_hatchery_shut", "DROW2", "5:class=3,6:skill=2.200,10:goside=398.4,12:activate,30:picklock,100:goseg=397,101:spellat=16.48,"
+      "200:obj=48,201:obj=61,202:dragon=4,203:wall=398.4",
+      [r"use: door wall 138 clip \d+ flags 0x18 keys 4 state 0: locked", r"thief: message 932 'Strong magic prevents you from picking this lock\.'",
+       r"area of 'Fireball' at ", r"f200 +obj 48: type 2 id 2 seg 791 hp 50 ", r"f201 +obj 61: type 2 id 2 seg 792 hp 50 ",
+       r" 202 dragon: test 4: obj 64 Dragon hp 90 .* hostile 0 peaceful 1", r"f203 +wall 398\.4: type 2 flags 0x18 state 0"],
+      [r"leaves the hatchery", r"a hatchling is hurt"], frames=220, extra=["-noattack", "-triglog", "-objlog", "dragon_hatchery_shut_obj.log"]),
+    # She fights already (no lever), then the lever: the same event.
+    T("dragon_lever_in_fight", "DROW2", "10:dragon=5,30:goside=482.2,32:activate,100:quest",
+      [r"dragon: obj 64 is hostile: test", r"dragon: the lever \(trigger 20, fired 1\): the hatchery \(seg 398 side 4\) is open, 4 hatchlings, the dragon attacks",
+       r"dragon: obj 48 hatchlng leaves the hatchery \(0 in the fight, the dragon lives\)",
+       r"dragon: obj 49 hatchlng leaves the hatchery \(1 in the fight, the dragon lives\)",
+       r"f100 +quest: level 21 .* gflags \[ (\d+ )*241 242 243 244 \]"],
+      [r"obj 61 hatchlng leaves", r"obj 63 hatchlng leaves"], frames=120, extra=["-noattack", "-objlog", "dragon_lever_in_fight_obj.log"]),
+    # A hatchling that waits is not helpless. The player comes into the
+    # hatchery: the two that wait join the fight (the flags 245 and 246).
+    # After a save and a load the four flags are set and no hatchling leaves
+    # a second time.
+    T("dragon_hatchling_near", "DROW2", "6:goside=482.2,8:activate,60:quest,100:goseg=792,130:quest,140:save=3,170:load=3,260:quest",
+      [r"f60 +quest: level 21 .* gflags \[ (\d+ )*241 242 243 244 \]",
+       r"dragon: obj 61 hatchlng leaves the hatchery \(2 in the fight, the dragon lives, the player is near\)",
+       r"dragon: obj 63 hatchlng leaves the hatchery \(3 in the fight, the dragon lives, the player is near\)",
+       r"f130 +quest: level 21 .* gflags \[ (\d+ )*241 242 243 244 245 246 \]", r"f260 +quest: level 21 .* gflags \[ (\d+ )*241 242 243 244 245 246 \]"],
+      [r" (1[7-9]\d|2\d\d) dragon: obj \d+ hatchlng leaves the hatchery"], frames=270, extra=["-noattack", "-objlog", "dragon_hatchling_near_obj.log"]),
+    # A hatchling that waits and is hurt (an area spell into the hatchery)
+    # joins the fight.
+    T("dragon_hatchling_hurt", "DROW2", "6:goside=482.2,8:activate,60:obj=61,61:dragon=7,100:quest",
+      [r"f60 +obj 61: type 2 id 2 seg 792 hp 50 ", r"dragon: obj 61 hatchlng leaves the hatchery \(2 in the fight, the dragon lives, it is hurt\)",
+       r"f100 +quest: level 21 .* gflags \[ (\d+ )*241 242 243 244 245 \]"],
+      [r"obj 63 hatchlng leaves"], frames=120, extra=["-noattack", "-objlog", "dragon_hatchling_hurt_obj.log"]),
+    # A hatchling that is hurt behind the closed door before the lever: the
+    # hatchery opens and she attacks.
+    T("dragon_hatchery_breach", "DROW2", "30:dragon=7,80:wall=398.4,81:dragon=4,82:quest",
+      [r"dragon: a hatchling is hurt behind the door of the hatchery: the hatchery is open, the dragon attacks",
+       r"message \"Tamaramagil's roar shakes the hall: \"MY CHILDREN!", r"f80 +wall 398\.4: type 2 flags 0x2 state",
+       r" 81 dragon: test 4: obj 64 Dragon .* hostile 1 peaceful 0", r"f82 +quest: level 21 .* gflags \[ (\d+ )*241 242 245 246 \]"],
+      frames=100, extra=["-noattack", "-objlog", "dragon_hatchery_breach_obj.log"]),
     # Her attacks, with the fixed seed. Claws: two attack rolls, 1d10
     # each. Bite: one roll, 3d10. The reach is measured from the weapon box
     # of the hit frame (the claw) and from the tip of her snout (the bite).

@@ -68,7 +68,8 @@ const char *dtu_dragon_script_text(int script, int offset);
 int dtu_dragon_drop_place(object *obj, vms_vector *pos, int *seg);
 
 // Test (-chartest, command "dragon"): 1 claws, 2 bite, 3 breath as her
-// next action, 4 the log line of her state, 5 hostile now
+// next action, 4 the log line of her state, 5 hostile now, 7 the third
+// hatchling loses one hit point
 void dtu_dragon_test(int what);
 
 #endif

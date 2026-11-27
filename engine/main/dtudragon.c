@@ -60,6 +60,7 @@
 // The global flags of the port (the scripts of 1.3 use 1 to 160)
 #define DR_GF_PLACED		241		// the key and the treasure are in the level
 #define DR_GF_LEVER		242		// the lever is thrown: the hatchery is open
+#define DR_GF_HATCH		243		// 243 to 246: the hatchling 0 to 3 has left the hatchery (it fights)
 
 // The room: x -90 to 90, z -197.5 to -7.5, floor -110, ceiling -45
 #define DR_FLOOR			i2f(-110)
@@ -88,7 +89,10 @@ static const short Dr_hatch_goal[4] = { 430, 436, 471, 391 };
 // come when she is dead. Each casts Fireball at level 6 (6d6, radius 40):
 // four of them and her breath at one time leave no way to live.
 #define DR_HATCH_AT_ONCE	2
-static ubyte Dr_released[4];
+// A hatchling that waits is not helpless: it joins the fight at once, over
+// the number, when it is hurt or when the player comes this near with a
+// free line to it.
+#define DR_HATCH_NEAR	i2f(70)
 
 // The key of the alcove: on the floor of cell 407 (x 10 to 30, z -247.5 to
 // -227.5), in the corner that is far from the door of the cell room
@@ -483,7 +487,6 @@ void dtu_dragon_level_setup(int has_state)
 
 	memset(&D,0,sizeof(D));
 	D.objnum = -1;
-	memset(Dr_released,0,sizeof(Dr_released));
 	for (i=0;i<128;i++)
 		Dr_lift[i] = -1;
 	Polyobj_scale_model = -1;
@@ -717,6 +720,8 @@ void dtu_dragon_level_rules(int restore)
 		// a new level: its objects and walls are those of the level file
 		dtu_script_set_gflag(DR_GF_PLACED,0);
 		dtu_script_set_gflag(DR_GF_LEVER,0);
+		for (i=0;i<4;i++)
+			dtu_script_set_gflag(DR_GF_HATCH + i,0);
 	}
 	if (dtu_script_gflag(DR_GF_LEVER))
 		open_hatchery();
@@ -1388,9 +1393,11 @@ static void dragon_ai(object *obj)
 	}
 }
 
+static void hatchery_breached(void);
+
 int dtu_dragon_ai_frame(object *obj)
 {
-	int k;
+	int k, hurt;
 
 	if (!in_level() || !dtu_dragon_on() || Dr_type < 0 || obj->type != OBJ_ROBOT)
 		return 0;
@@ -1411,33 +1418,46 @@ int dtu_dragon_ai_frame(object *obj)
 	// it does not sense the player and casts no spell through the door.
 	// (-dragonhatchai, test: the AI of the game runs for them, to see what
 	// its senses do behind the door)
+	hurt = obj->shields < i2f(Monster_info[obj->id].max_hit_points);
 	if (!dtu_script_gflag(DR_GF_LEVER)) {
-		if (door_locked(Dr_hatchery) && !FindArg("-dragonhatchai")) {
+		// Hurt behind the closed door (an area spell at the door): the
+		// hatchery opens as by the lever, and she attacks.
+		if (hurt && door_locked(Dr_hatchery))
+			hatchery_breached();		// and it leaves the hatchery, below
+		else if (door_locked(Dr_hatchery) && !FindArg("-dragonhatchai")) {
 			Ail[obj-Objects].activity = 0;
 			return 1;
 		}
-		return 0;
+		else
+			return 0;
 	}
-	// After the lever: DR_HATCH_AT_ONCE of them at one time while she lives
-	if (!Dr_released[k]) {
-		object *dr = dragon_object();
-		int i, n = 0;
+	// After the lever: DR_HATCH_AT_ONCE of them at one time while she
+	// lives. The global flags DR_GF_HATCH keep who has left, so a save and
+	// a load in the fight change nothing.
+	if (!dtu_script_gflag(DR_GF_HATCH + k)) {
+		object *dr = dragon_object(), *p = ConsoleObject;
+		int i, n = 0, near;
 
-		for (i=0;i<k;i++)
-			if (hatchling(i))
+		for (i=0;i<4;i++)
+			if (i != k && hatchling(i) && dtu_script_gflag(DR_GF_HATCH + i))
 				n++;
-		if (dragon_alive(dr) && n >= DR_HATCH_AT_ONCE) {
+		near = p && p->type == OBJ_PLAYER && vm_vec_dist(&obj->pos,&p->pos) < DR_HATCH_NEAR &&
+			ray_is_free(&obj->pos,obj->segnum,&p->pos,obj-Objects);
+		if (dragon_alive(dr) && n >= DR_HATCH_AT_ONCE && !hurt && !near) {
 			Ail[obj-Objects].activity = 0;
 			return 1;
 		}
-		Dr_released[k] = 1;
-		dtu_obj_log("dragon: obj %d %s leaves the hatchery (%d before it, the dragon %s)",(int)(obj-Objects),dtu_object_name(obj),n,
-			dragon_alive(dr) ? "lives" : "is dead");
+		dtu_script_set_gflag(DR_GF_HATCH + k,1);
+		dtu_obj_log("dragon: obj %d %s leaves the hatchery (%d in the fight, the dragon %s%s%s)",(int)(obj-Objects),dtu_object_name(obj),n,
+			dragon_alive(dr) ? "lives" : "is dead",hurt ? ", it is hurt" : "",near ? ", the player is near" : "");
 		dtu_creature_wake(obj,1);
 		// into her room, by the path of a script walk (statement E5): the
-		// AI of the game takes over at its end, or when it senses the player
-		dtu_script_walk_segment(obj,Dr_hatch_goal[k]);
-		dtu_script_walk_start(obj,1);
+		// AI of the game takes over at its end, or when it senses the
+		// player. Not for one that the player has come to: it fights there.
+		if (!hurt && !near) {
+			dtu_script_walk_segment(obj,Dr_hatch_goal[k]);
+			dtu_script_walk_start(obj,1);
+		}
 	}
 	return 0;
 }
@@ -1550,6 +1570,21 @@ static void lever_thrown(void)
 		say(LT("A heavy door grinds open far down the hall."));
 }
 
+// A hatchling is hurt before the lever: as the lever, with another line
+static void hatchery_breached(void)
+{
+	object *dr = dragon_object();
+
+	dtu_script_set_gflag(DR_GF_LEVER,1);
+	open_hatchery();
+	dtu_obj_log("dragon: a hatchling is hurt behind the door of the hatchery: the hatchery is open, the dragon %s",
+		dragon_alive(dr) ? "attacks" : "is dead");
+	if (dragon_alive(dr)) {
+		say(LT("Tamaramagil's roar shakes the hall: \"MY CHILDREN! You dare lay hands on my brood? Come out, little ones, and feed!\""));
+		become_hostile(dr,"a hatchling is hurt");
+	}
+}
+
 void dtu_dragon_frame(void)
 {
 	object *p = ConsoleObject, *dr;
@@ -1617,6 +1652,8 @@ void dtu_dragon_test(int what)
 	}
 	else if (what == 5)
 		become_hostile(dr,"test");
+	else if (what == 7 && hatchling(2))
+		hatchling(2)->shields -= F1_0;		// the third hatchling is hurt
 	dtu_obj_log("dragon: test %d: obj %d %s hp %d ac %d thac0 %d xp %d seg %d pos %.2f %.2f %.2f heading %d mode %s hostile %d peaceful %d frame %d",
 		what,(int)(dr-Objects),dtu_object_name(dr),f2i(dr->shields),Monster_info[dr->id].armor_class,Monster_info[dr->id].thaco,
 		Robot_info[dr->id].score_value,dr->segnum,f2fl(dr->pos.x),f2fl(dr->pos.y),f2fl(dr->pos.z),(int)(unsigned short)D.heading,

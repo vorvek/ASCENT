@@ -224,15 +224,30 @@ death of the game.
 - Her dialogue names the key: three strings of script 210 are replaced
   (`dtu_dragon_script_text`; the port catalog has the Spanish text).
 - The lever: the door of the hatchery opens and stays open (no automatic
-  close; the port opens it again if it is closed). The hatchlings fly to the
-  four segments of her room where the level file has them and attack: two of
-  them at one time while she lives (`DR_HATCH_AT_ONCE`), the next one when
-  one dies, all of them when she is dead. A hatchling casts Fireball at
-  level 6 (6d6, radius 40; 25 in a test); four of them and her breath at one
-  time would leave no way to live. She
-  laughs at the player (a message of the level) and is hostile. She does not
-  give the key. Global flag 107 is not set: the dragons do not leave, and
-  the market keeps its prices. Script 213 does not run.
+  close; the port opens it again if it is closed). She laughs at the player
+  (a message of the level) and is hostile. She does not give the key. Global
+  flag 107 is not set: the dragons do not leave, and the market keeps its
+  prices. Script 213 does not run. The same happens when she fights already.
+- The hatchlings fly to the four segments of her room where the level file
+  has them and attack: two of them at one time while she lives
+  (`DR_HATCH_AT_ONCE`), the next one when one dies, all of them when she is
+  dead. A hatchling casts Fireball at level 6 (6d6, radius 40; 25 in a
+  test); four of them and her breath at one time would leave no way to live.
+- How the two are held to two:
+  - Before the lever nothing reaches a hatchling. The door of the hatchery
+    is locked with a lock that no thief skill and no spell opens (keys 4),
+    no creature opens a locked door, a closed door stops sight, missiles and
+    the area of a spell (a Fireball at the door hurts none of them), and the
+    AI of the game does not run for them. If one is hurt all the same, the
+    hatchery opens as by the lever and she attacks, with a line of her own.
+  - After the lever the AI of the game does not run for a hatchling that
+    waits. It is not helpless: when it is hurt, or when the player comes
+    within 70 of it with a free line, it joins the fight at once, over the
+    two. So the player who runs into the hatchery fights the two that wait
+    as well.
+  - The global flags 243 to 246 say which hatchling has left the hatchery.
+    They are in the save game, so a save and a load, or a way out of the
+    level and back, in the middle of the fight change nothing.
 - The hatch of the ceiling stays closed. In 1.3 it is the way out for the
   hatchlings. Here they do not leave, the room above it has no other way
   out, and a flying caster in it would be out of the reach of a melee
