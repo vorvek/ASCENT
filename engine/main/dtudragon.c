@@ -974,7 +974,27 @@ static int fire_vclip(void)
 	return vclip_ok(DR_FLAME_VCLIP) ? DR_FLAME_VCLIP : ball_vclip();
 }
 
-// One flame at r along dir from a point, spread sideways by spread. A
+// The offset of a flame from the axis of the stream, each component -1 to
+// 1, more often near 0: a random point of the cube (the three rand() calls
+// of make_random_vector, so the rolls after the breath stay the same), each
+// component squared with its sign. The first version put each flame at a
+// unit vector, on a sphere of radius spread around the axis: from the front
+// the stream was a ring of separate bursts with no fire in the middle.
+static void flame_offset(vms_vector *j)
+{
+	int c[3], i;
+
+	c[0] = rand() - 16384;
+	c[1] = rand() - 16384;
+	c[2] = rand() - 16384;
+	for (i = 0; i < 3; i++)
+		c[i] = (c[i] < 0 ? -c[i] : c[i]) * c[i] / 4096;		// fix, |c| <= 1.0
+	j->x = c[0];
+	j->y = c[1];
+	j->z = c[2];
+}
+
+// One flame at r along dir from a point, spread sideways by up to spread. A
 // flame that a wall stops burns in front of the wall.
 static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r, fix spread, fix size, int v)
 {
@@ -985,7 +1005,7 @@ static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r
 
 	if (!vclip_ok(v) || seg < 0)
 		return;
-	make_random_vector(&j);
+	flame_offset(&j);
 	vm_vec_scale_add(&p,from,dir,r);
 	vm_vec_scale_add2(&p,&j,spread);
 	fq.p0 = from;

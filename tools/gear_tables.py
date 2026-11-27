@@ -55,6 +55,7 @@ def read():
     daland:   (script, misc number of the potion, weapon number)
     flame:    (level line of DTU.MSN, weapon number, (x, y, z))
     venom:    (level line of DTU.MSN, (x, y, z)) of the Dagger of Venom
+    rod:      (name, spell, caster level, value, level line of DTU.MSN) of the Rod of Kelemvor
     """
     c, h = _read("dtugear.c"), _read("dtugear.h")
     g = {"d": defines(h)}
@@ -102,6 +103,10 @@ def read():
     m = re.search(r"Venom_pos\s*=\s*\{\s*([^}]*)\}", s)
     vpos = tuple(float(eval(part.replace("F1_0", "1.0"), {"__builtins__": {}})) for part in m.group(1).split(","))
     g["venom"] = (vlvl, vpos)
+    # the Rod of Kelemvor: its name, spell, caster level, value, level line
+    rname = re.search(r'#define\s+DTU_GEAR_ROD_NAME\s+"([^"]*)"', h).group(1)
+    rlvl = int(re.search(r"#define\s+ROD_LEVEL\s+(\d+)", s).group(1))
+    g["rod"] = (rname, g["d"]["DTU_GEAR_ROD_SPELL"], g["d"]["DTU_GEAR_ROD_LEVEL"], g["d"]["DTU_GEAR_ROD_VALUE"], rlvl)
     for k in ("lines", "armor_ac", "wands", "values", "market", "dragon", "no_gold"):
         if not g[k]:
             raise SystemExit("gear_tables: no rows for %s in dtugear.c" % k)

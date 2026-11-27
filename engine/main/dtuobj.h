@@ -808,6 +808,9 @@ void dtu_break_dressing(object *d, object *by, int explode);
 int dtu_missile_spell(object *obj);
 // The life of a missile (Weapon_info+0xA8 that 0x56FF6 writes).
 void dtu_missile_set_life(int objnum, fix life);
+// ASCENT: the caster level of the spell of a missile (the Rod of Kelemvor,
+// dtugear.h). 0, the default: the level of the parent at the hit.
+void dtu_missile_set_level(int objnum, int level);
 // The light of a weapon object (0x577FE: Weapon_info.lightcast, which
 // 0x56FF6 sets to player_light of the spell for a spell missile).
 fix dtu_missile_light(object *obj);

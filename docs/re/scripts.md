@@ -814,14 +814,14 @@ goes to the menu 0x31 or to label 30 of 1.3. Label 0 of record 5 tests
 one): at the first talk a single class thief gets the offer 0x20 and then
 label 15 of 1.3, at a later talk the menu 0x21 with the reply "Just saying
 hello." to label 4. Label 0 of record 2 goes to the menu 0x40 when a good
-is for sale (scratch flag 250) and the character is a single class thief,
+is for sale (scratch flag 171) and the character is a single class thief,
 else to label 6 of 1.3.
 
 The blocks use one term of the port: `FE n` is true when a spell book of
 the character has spell n (`sc_term`); no record of the game has it. The
-one-time sales set global flags 210 to 239 and 249 to 254 (the list is in
-dtugear.h, `DTU_GEAR_GF_`); flags 229, 230, 250 to 253 are scratch flags of
-a talk. A `GIVE SPELL n` of a known spell gives a scroll of it in the item
+one-time sales set global flags 170 to 175 and 210 to 239 (the list is in
+dtugear.h, `DTU_GEAR_GF_`); flags 171 to 174, 229 and 230 are scratch flags
+of a talk. A `GIVE SPELL n` of a known spell gives a scroll of it in the item
 list (dtu_spell_learn returns 2; checked in the game: five GIVE of spell 33
 give one entry "Magic Missile" of count 5).
 

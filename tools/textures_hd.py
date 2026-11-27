@@ -7,7 +7,8 @@ the bitmap name of the EGG in lower case with '#' replaced by '_'. Alpha is
 255 for a bitmap without the transparent flag; with it, the mask of color 255
 upscaled with smooth edges (0 outside, 255 inside, a ramp of about one pixel
 between). <hd>/textures/<egg>/index.txt has one "name w h" line per file
-(the EGG name with '#', the original size). The default <hd> is gamedata/hd,
+(the EGG name with '#', the original size), with " soft" after it for a file
+of SOFT_SPRITES (a soft alpha that the game blends). The default <hd> is gamedata/hd,
 which git ignores. Never commit the output: it is derived from the game data.
 
   python -I tools/textures_hd.py [--setup] [--only portal,bane] [--method NAME]
@@ -60,7 +61,7 @@ MODELS_DIR = None    # --models; else <out>/models, then gamedata/hd/models
 sys.path.insert(0, HERE)
 import egg  # noqa: E402
 
-VERSION = 7          # bump when the processing changes; written to .method, so
+VERSION = 8          # bump when the processing changes; written to .method, so
                      # that a run makes the files of an archive again
                      # 2: wall textures use the "detail" method
                      # 3: tiling textures padded by TILE_PAD (a 3x3 tiling)
@@ -70,6 +71,7 @@ VERSION = 7          # bump when the processing changes; written to .method, so
                      #    pixels are equal (anim_merge)
                      # 6: NAME_METHOD (water) and REGION_FIX (dwf_mf01)
                      # 7: NAME_METHOD for all water flipbooks
+                     # 8: SOFT_SPRITES (the fire flipbooks), "soft" in index.txt
 CACHE_VERSION = 2    # part of the cache key of every bitmap; the key of a
                      # tiling bitmap also has TILE_PAD, so a change of the
                      # tiling padding does not redo the other bitmaps
@@ -383,6 +385,29 @@ REGION_FIX = {
 }
 REGION_FEATHER = 6.0
 
+# combo: the fire flipbooks that the game draws as sprites with a soft edge
+# (version 8, docs/hd_textures.md "The fire flipbooks"): base name -> (method,
+# alpha rule of fire_alpha). They are upscaled as single pictures (mirror
+# padding), not as tiling textures (a 64x64 bitmap otherwise is one), and
+# index.txt marks their files "soft": the GPU renderer keeps the alpha of the
+# file and blends the sprite (engine/3d/gpu3d.c). The fire burst of a fire hit
+# (vclip 11, the breath of the dragon, Burning Hands) and the Fireball missile
+# (vclips 12 and 14, Fireball and Flame Strike) take x4plus with the glow edge;
+# the Fireball hit (vclip 111) and the smoke trail of the Fireball and
+# Melf's Minute Meteors (vclip 135) are clouds with a dithered smoke, which
+# x4plus turns into glassy facets and the coverage alpha turns into a
+# translucent smoke.
+SOFT_SPRITES = {
+    "flame-hi": ("x4plus", "glow"),
+    "firbal1": ("x4plus", "glow"),
+    "fbxpld": ("animevideov3", "cover"),
+    "smoke1": ("animevideov3", "cover"),
+}
+GLOW_DILATE = 2.0    # output pixels
+GLOW_SIGMA = 2.0     # output pixels
+COVER_SIGMA = 1.0    # source pixels
+COVER_FULL = 0.8     # the coverage from which the alpha is 1
+
 
 def sub_method(method, wall, base=None):
     """The method for one bitmap. combo: UltraSharp for wall textures, x4plus for the rest,
@@ -573,11 +598,40 @@ def smooth_alpha(opaque, tiling):
 
 
 class Job:
-    __slots__ = ("key", "w", "h", "tiling", "rgb", "opaque", "has_alpha", "result", "meth", "idx", "fix")
+    __slots__ = ("key", "w", "h", "tiling", "rgb", "opaque", "has_alpha", "result", "meth", "idx", "fix", "soft")
 
 
-def make_job(m, pal, tiling, method, fix=None):
-    """fix: an entry of REGION_FIX (only with the method combo) or None."""
+def fire_alpha(rule, opaque, hard):
+    """The soft alpha of a fire flipbook (SOFT_SPRITES), float 0..1 at SCALE times the size.
+    hard: the alpha of smooth_alpha. "glow": hard, dilated by GLOW_DILATE and blurred
+    with GLOW_SIGMA output pixels (an edge ramp of about 1.5 source pixels; a spark
+    of one source pixel stays a bright dot with a soft rim). "cover": the coverage of
+    the mask (blurred with COVER_SIGMA source pixels, upscaled bicubic, smoothstep from
+    0 to COVER_FULL), so a dither of opaque and transparent pixels (smoke) is a
+    translucent area."""
+    import numpy as np
+    import torch
+    if rule == "glow":
+        r = int(GLOW_DILATE)
+        p = np.pad(hard, r)
+        d = hard.copy()
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                if dx * dx + dy * dy <= GLOW_DILATE * GLOW_DILATE + 0.01:
+                    d = np.maximum(d, p[r + dy:r + dy + hard.shape[0], r + dx:r + dx + hard.shape[1]])
+        return np.clip(gauss_blur(d.astype(np.float32), GLOW_SIGMA), 0.0, 1.0)
+    h, w = opaque.shape
+    b = gauss_blur(pad_img(opaque.astype(np.float32), False), COVER_SIGMA)
+    f = torch.nn.functional.interpolate(torch.from_numpy(np.ascontiguousarray(b))[None, None],
+                                        scale_factor=SCALE, mode="bicubic", align_corners=False)[0, 0].numpy()
+    c = PAD * SCALE
+    t = np.clip(f[c:c + h * SCALE, c:c + w * SCALE] / COVER_FULL, 0.0, 1.0)
+    return t * t * (3 - 2 * t)
+
+
+def make_job(m, pal, tiling, method, fix=None, soft=None):
+    """fix: an entry of REGION_FIX (only with the method combo) or None. soft: the
+    alpha rule of SOFT_SPRITES or None."""
     import numpy as np
     idx = np.frombuffer(m.pix, np.uint8).reshape(m.h, m.w)
     rgb = pal[idx]
@@ -607,6 +661,9 @@ def make_job(m, pal, tiling, method, fix=None):
         h.update(effect.tobytes())
     if fix:
         h.update(("region|%r|%g|" % (fix, REGION_FEATHER)).encode())
+    if soft and j.has_alpha:
+        h.update(("soft|%s|%g|%g|%g|%g|" % (soft, GLOW_DILATE, GLOW_SIGMA, COVER_SIGMA, COVER_FULL)).encode())
+    j.soft = soft if j.has_alpha else None
     j.fix = fix
     j.key = h.hexdigest()
     j.idx = idx
@@ -631,6 +688,8 @@ def finish(j, up_rgb, method):
     else:
         soft = np.ones((H, W), np.float32)
     a = soft >= 0.5
+    if j.soft and method != "nearest":
+        soft = fire_alpha(j.soft, j.opaque, soft)
     orig = j.rgb[j.opaque] * 255.0
     mo = orig.mean(0) if len(orig) else np.zeros(3)
     sel = rgb[a] if a.any() else rgb.reshape(-1, 3)
@@ -956,6 +1015,9 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats, clip
         wall = m.base.lower() in walls
         tiling = (m.w == 64 and m.h == 64) or wall
         fix = REGION_FIX.get(m.name.lower()) if args.method == "combo" else None
+        sprite = SOFT_SPRITES.get(m.base.lower()) if args.method == "combo" and not wall else None
+        if sprite:
+            return make_job(m, pal, False, sprite[0], soft=sprite[1])
         return make_job(m, pal, tiling, sub_method(args.method, wall, m.base), fix)
 
     jobs, pending, linked = {}, [], 0
@@ -1029,7 +1091,9 @@ def process_archive(eggname, path, args, ups, pal, walls, cache_dir, stats, clip
             report.append((eggname, os.path.basename(dsts[0]), r[1], r[2]))
     with open(os.path.join(outdir, "index.txt"), "w", newline="\n") as f:
         for m, dst in index:
-            f.write("%s %d %d\n" % (m.name, m.w, m.h))
+            soft = (args.method == "combo" and m.base.lower() in SOFT_SPRITES and m.base.lower() not in walls
+                    and m.flags & egg.BM_TRANSPARENT)
+            f.write("%s %d %d%s\n" % (m.name, m.w, m.h, " soft" if soft else ""))
     if args.names is None:      # a run of some names leaves the other files as they are
         with open(mfile, "w") as f:
             f.write("%s %d\n" % (args.method, VERSION))

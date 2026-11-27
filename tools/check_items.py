@@ -625,9 +625,9 @@ def test_gear_assassin(t):
 # The class gear (Dtu_class_gear, dtugear.h)
 
 def arrow_run(t, name, level, obj, seed, dist, shots=10, extra=()):
-    """Poisoned Arrows (weapon 90) from a Short Bow at object obj, a fighter
+    """Poisoned Arrows (weapon 91) from a Short Bow at object obj, a fighter
     of level 9 (THAC0 12)."""
-    cmds = ["setlevel=9", "give=16.89.1", "equip=16.89", "give=5.90.40", "current=5.90", "goobj=%d.%d" % (obj, dist),
+    cmds = ["setlevel=9", "give=16.89.1", "equip=16.89", "give=5.91.40", "current=5.91", "goobj=%d.%d" % (obj, dist),
             "face=%d" % obj, "heal=99", "seed=%d" % seed, "aim=%d" % obj]
     _, obj_log, log = t.run(name, cmds, level=level, more_frames=40 + 20 * shots + 520,
                             extra=["-noattack", "-testmove", "wait:40" + ",attack:1,wait:20" * shots] + list(extra))
@@ -635,7 +635,7 @@ def arrow_run(t, name, level, obj, seed, dist, shots=10, extra=()):
 
 
 def test_class_arrow(t):
-    """The Poisoned Arrow (weapon 90) of Nalbas: an arrow that hits the troll
+    """The Poisoned Arrow (weapon 91) of Nalbas: an arrow that hits the troll
     of MINE (object 1) poisons it unless it saves against poison, 1 hit
     point each second, the damage of the player (the poison of the Dagger of
     Venom); a skeleton of BAT (object 43, undead) is immune. With
@@ -660,8 +660,8 @@ def test_class_arrow(t):
             break
     check(re.search(r"obj 43 \S+ is immune to the poison of the Poisoned Arrow", obj_log), "the skeleton is not immune")
     check(not re.search(r"obj 43 \S+ is poisoned", obj_log), "the skeleton is poisoned")
-    _, _, log = t.run("class_arrow_off", ["give=5.90.10", "dump"], extra=["-noclassgear"])
-    check(not re.search(r"type 5 id 90 ", log), "-noclassgear: the line is there")
+    _, _, log = t.run("class_arrow_off", ["give=5.91.10", "dump"], extra=["-noclassgear"])
+    check(not re.search(r"type 5 id 91 ", log), "-noclassgear: the line is there")
     return "seed %d: %d poison points; seed %d: saved; skeleton immune" % (seed, len(ticks), seen["saved"][0])
 
 

@@ -751,6 +751,31 @@ TESTS = [
       [r"Mirror Shield sends obj \d+ \(weapon \d+ spell 32\) back to obj 11", r"crosses obj 4 Zombie \(leg 1\)",
        r"'Lightning Bolt' level 2 on obj 11 Zombie: damage"],
       frames=60, invuln=False, extra=["-noattack", "-objlog", "bolt_mirror_obj.log"]),
+    # The bolt that the shield sent back crosses the zombies, comes back from
+    # the wall behind them, and the shield turns it again (a bolt of the
+    # player now: straight back the way it came). The player is not hit.
+    T("bolt_creature_mirror_again", "BONES",
+      "2:seed=1,9:heal=100,10:give=15.53.1,11:equip=15.53,20:objfront=4.20,20:objfront=11.40,21:face=11,22:spellby=32.11",
+      [r"Mirror Shield sends obj (\d+) \(weapon \d+ spell 32\) back to obj 11[\s\S]*Lightning Bolt obj \1 bounces[\s\S]*"
+       r"Mirror Shield sends obj \1 \(weapon \d+ spell 32\) of the player back the way it came"],
+      [r"damage: the player takes \d+ from", r"crosses obj 0 player"],
+      frames=160, invuln=False, extra=["-noattack", "-objlog", "bolt_mirror_again_obj.log"]),
+    # The bolt of the player into the ceiling of BONES segment 48 with the
+    # shield (a mage/fighter): each time it comes back the shield turns it,
+    # until its life ends; it never hits the player
+    T("bolt_near_wall_mirror", "BONES",
+      "2:seed=1,5:class=1,5:class2=2,6:setlevel=9,7:give=17.32.1,8:armspell=32,9:heal=100,10:give=15.53.1,11:equip=15.53,"
+      "20:goside=48.1,22:fire,130:fire",
+      [r"Lightning Bolt obj (\d+) bounces[\s\S]*Mirror Shield sends obj \1 \(weapon \d+ spell 32\) of the player back the way it came"
+       r"[\s\S]*Lightning Bolt obj \1 bounces[\s\S]*Mirror Shield sends obj \1 \(weapon \d+ spell 32\) of the player back"],
+      [r"'Lightning Bolt' \(32\) level \d+ on obj 0 you", r"damage: the player takes \d+ from player", r"crosses obj 0 player"],
+      frames=260, invuln=False, extra=["-testslots", "9", "-noattack", "-objlog", "bolt_wall_mirror_obj.log"]),
+    # From behind (the zombie 40 behind the player): the shield does not turn
+    # the bolt, the player is hit
+    T("bolt_creature_mirror_behind", "BONES",
+      "2:seed=1,9:heal=100,10:give=15.53.1,11:equip=15.53,20:objfront=11.-40,22:spellby=32.11",
+      [r"crosses obj 0 player \(leg 0\)", r"damage: the player takes \d+ from Zombie"], [r"Mirror Shield sends"],
+      frames=60, invuln=False, extra=["-noattack", "-objlog", "bolt_mirror_behind_obj.log"]),
 
     # Statement EB (script 291 of IBBALAR, label 23): the area spells go off
     # at the segments that the statement names (D-075, Dtu_fix_script_area_seg).
@@ -879,6 +904,17 @@ TESTS = [
     T("lich_dispel_scroll_thief", "CLAN3", "1:class=3," + LICH_FIGHT + ",40:give=17.55.1,42:sethot=3.17.55,44:presshot=3,50:fire,80:fxobj=10",
       [LICH_FULL, r"the player casts 'Dispel Magic' \(55\)", r"'Dispel Magic' \(55\) level \d+ on obj 10 Lich3", r"f80 +fx: obj 10 bits 0x00000000"],
       frames=90, extra=["-objlog", "lich_scroll_thief_obj.log"]),
+    # The Rod of Kelemvor (dtugear.h) of a fighter, with no charge (flag 250,
+    # spent on Daland): the rest place of CLAN3 (segment 273, before the
+    # lich) charges it again, and its Dispel Magic takes the contingency of
+    # the lich away
+    T("lich_kelemvor_rod", "CLAN3", "1:rod=2,1:gflag=250,2:rod=0,3:gorest,3:rest,4:rod=0," + LICH_FIGHT +
+      ",40:rod=1,50:fire,52:rod=0,80:fxobj=10",
+      [r"\s2 new gear: rod test 0: weapon \d+, entry \d+, charged 0", r"rest place in segment 273",
+       r"the rest charges the Rod of Kelemvor again", r"\s4 new gear: rod test 0: weapon \d+, entry \d+, charged 1", LICH_FULL,
+       r"casts 'Dispel Magic' \(13\) at level 12, source 2", r"'Dispel Magic' \(13\) level 12 on obj 10 Lich3",
+       r"\s52 new gear: rod test 0: weapon \d+, entry \d+, charged 0", r"f80 +fx: obj 10 bits 0x00000000"],
+      frames=90, extra=["-objlog", "lich_kelemvor_rod_obj.log"]),
     # The texts: Barander (CLAN1 object 141, script 170) tells of the
     # phylactery in his answer to "How can he be stopped?" (label 12; the
     # replies 4, 1, 1 after his greeting); CLAN3 message 1 (trigger 0, seg
@@ -901,6 +937,25 @@ TESTS = [
       [r"obj 3 daland: woken, hostile 1", r"obj 3: status 3EA"],
       frames=200, extra=["-noattack", "-objlog", "myrkul_daland_rod_obj.log", "-testmove", "wait:30,attack:1,wait:100"],
       known=MYRKUL_INT3),
+    # The Rod of Kelemvor of the new gear (dtugear.h): it lies at the feet of
+    # Daland in segment 326. A fighter (the default character) walks over it,
+    # talks to Daland (the hint names the rod), fires it at him (Dispel Magic
+    # at level 12): the Hold ends and he talks. The rod has no charge then
+    # ("rod=0" logs the state, "rod=1" puts it into the hand), a save and a
+    # load keep it so (global flags 249 placed, 250 spent), and no second
+    # rod is placed. MYRKUL has no rest place (the rest is in the CLAN3 test).
+    T("myrkul_daland_kelemvor_rod", "MYRKUL",
+      "20:talk=3,40:rod=1,42:aim=3,44:fire,100:talk=3,102:talk=3,140:rod=0,142:fire,150:save=3,170:load=3,200:rod=0,202:quest",
+      [r"new gear: the Rod of Kelemvor \(weapon \d+\) is obj \d+ in segment 326",
+       r"pickup: obj \d+ type 5 id \d+ 'Rod of Kelemvor'", r"held with no end, the hint of Dispel Magic \(the Rod of Kelemvor\)",
+       r"casts 'Dispel Magic' \(13\) at level 12, source 2", r"effect Hold Person of obj 3 daland ends",
+       r"Hail, wanderer of these fell halls", r"\s140 new gear: rod test 0: weapon \d+, entry \d+, charged 0",
+       r"Rod of Kelemvor has no charge", r"\s200 new gear: rod test 0: weapon \d+, entry \d+, charged 0, placed 1",
+       r"f202 +quest: level 16 .* gflags \[ (\d+ )*249 250 \]"],
+      [r"obj 3 daland: woken, hostile 1", r"obj 3: status 3EA", r"(?s)is obj \d+ in segment 326.*is obj \d+ in segment 326",
+       r"\s200 new gear: rod test 0: weapon \d+, entry -1"],
+      frames=210, extra=["-noattack", "-objlog", "myrkul_kelemvor_rod_obj.log", "-testpos", "109.5,26,562,0,0",
+                         "-testmove", "wait:5,forward:20,wait:200"], known=MYRKUL_INT3),
     # -origcombat (Dtu_fix_dispel_peace 0): the Dispel Magic makes him
     # hostile, and he does not talk
     T("myrkul_daland_orig", "MYRKUL", "8:goobj=3.20,10:face=3,12:talk=3,14:area=13.3,20:talk=3",
@@ -942,18 +997,18 @@ TESTS = [
     # reply 1 (label 1), then his offer (label 0x20): the Short Bow and 16
     # Poisoned Arrows for 300, then his Potion of Healing of 1.3 (label 15).
     T("class_nalbas_thief", "YPINN", "5:class=3,6:gold=1000,10:talkscript=5,250:dump",
-      [r"script: goto 0\s+script: goto 20", r"gold 1000 -> 700\s+script: give class 16 id 89 E4[^\n]*(\s+script: give class 5 id 90 E4[^\n]*){16}",
+      [r"script: goto 0\s+script: goto 20", r"gold 1000 -> 700\s+script: give class 16 id 89 E4[^\n]*(\s+script: give class 5 id 91 E4[^\n]*){16}",
        r"script: goto F\s+dlg: speech \"Wait, a minute, friend!", r"entry \d+: type 16 id 89 'Short Bow' count 1",
-       r"entry \d+: type 5 id 90 'Poisoned Arrow' count 16"], frames=270, dlg="1,1,1,1,1,2,esc,esc"),
+       r"entry \d+: type 5 id 91 'Poisoned Arrow' count 16"], frames=270, dlg="1,1,1,1,1,2,esc,esc"),
     # A later talk (the bow is sold, mission 7): 8 arrows for 160, then the
     # three Potions of Invisibility (400 each); a fourth is not offered.
     T("class_nalbas_later", "YPINN", "5:class=3,6:gold=5000,7:mission=7,8:gflag=231,10:talk=28,100:talkscript=5,600:dump",
-      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 21", r"gold 5000 -> 4840(\s+script: give class 5 id 90 E4[^\n]*){8}",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 21", r"gold 5000 -> 4840(\s+script: give class 5 id 91 E4[^\n]*){8}",
        r"gold 4840 -> 4440\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 232",
        r"gold 4440 -> 4040\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 233",
        r"gold 4040 -> 3640\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 234",
        r"set global flag 234[\s\S]*my little stock\?\"\s+dlg: reply 1\) \"More of those arrows.\"\s+dlg: reply 2\) \"Just saying hello.\"\s",
-       r"entry \d+: type 5 id 90 'Poisoned Arrow' count 8"],
+       r"entry \d+: type 5 id 91 'Poisoned Arrow' count 8"],
       frames=620, dlg="esc,1,1,1,2,1,1,2,1,1,2,1,1,esc,esc"),
     T("class_nalbas_short", "YPINN", "5:class=3,6:gold=100,10:talkscript=5",
       [r"dlg: speech \"Alas, your purse is lighter"], [r"take class 168"], frames=200, dlg="1,1,1,1,esc,esc"),
@@ -965,14 +1020,14 @@ TESTS = [
     # at his second talk: his first line, then the six goods (the Bracers of
     # Archery and the Girdle of Hill Giant Strength from mission 10 and 14).
     T("class_mirt_thief", "YPINN", "5:class=3,6:gold=30000,7:mission=14,10:talkscript=2,100:talkscript=2,700:dump",
-      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 40\s+script: set global flag 249\s+script: goto 41\s+dlg: speech \"So you work alone,",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 40\s+script: set global flag 170\s+script: goto 41\s+dlg: speech \"So you work alone,",
        r"gold 30000 -> 28000\s+script: give class 15 id 6 E4[^\n]*\s+script: set global flag 235",
        r"gold 28000 -> 27400\s+script: give class 16 id 12 E4[^\n]*\s+script: set global flag 236",
        r"gold 27400 -> 22400\s+script: give class 15 id 62 E4[^\n]*\s+script: set global flag 237",
        r"gold 22400 -> 14900\s+script: give class 15 id 63 E4[^\n]*\s+script: set global flag 238",
        r"gold 14900 -> 10400\s+script: give class 5 id 69 E4[^\n]*\s+script: set global flag 239",
-       r"gold 10400 -> 4400\s+script: give class 15 id 38 E4[^\n]*\s+script: set global flag 254",
-       r"set global flag 254[\s\S]*script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 6\s",
+       r"gold 10400 -> 4400\s+script: give class 15 id 38 E4[^\n]*\s+script: set global flag 175",
+       r"set global flag 175[\s\S]*script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 6\s",
        r"entry \d+: type 15 id 63 'Bracers of Archery'", r"entry \d+: type 15 id 38 'Girdle of Hill Giant Strength'",
        r"entry \d+: type 15 id 62 'Boots of Elvenkind'", r"entry \d+: type 5 id 69 'Short Sword of Quickness'"],
       frames=720, dlg="esc,esc,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,esc,esc,esc"),

@@ -355,6 +355,9 @@ typedef struct plat_gpu_material {
 	int no_ao;			// TEXTURED, FLAT: the polygon gives light or is an effect (a flame, a
 						// spell): the ambient occlusion (PLAT_GPU_VIEW_SSAO) does not darken
 						// it, and it does not darken the pixels near it
+	int blend;			// ASCENT: TEXTURED, RGB form: the texel is blended over the image with the
+						// alpha of the texture (a soft edge, plat_gpu_hd_job.soft), and the polygon
+						// does not write the depth. The 8-bit form tests color 255 as before
 } plat_gpu_material;
 
 // The effect colors of the GPU renderer (texmap/tmapfx.c,
@@ -431,7 +434,9 @@ void plat_gpu_texture_delete(int texture);
 // size, or, if path is NULL or not valid, the original pixels (rgba). The
 // alpha of the result is 0 or 255: the alpha of the file cut at 128 (the
 // mask upscaled with smooth edges), or the alpha of the original pixels;
-// the top is blended over the base with the alpha of its file.
+// the top is blended over the base with the alpha of its file. A job with
+// soft keeps the alpha of the file (a sprite drawn with
+// plat_gpu_material.blend).
 typedef struct plat_gpu_hd_layer {
 	const char *path;		// the PNG file, or NULL
 	int w, h;				// the original size
@@ -447,6 +452,8 @@ typedef struct plat_gpu_hd_job {
 	int max_size;			// the largest width or height on the GPU (an image is halved until it fits)
 	const uint8_t *fx_index;	// the 8-bit pixels of a bitmap with BM_FLAG_DTU_EFFECTS for plat_gpu_fx_mark, or NULL
 	int fx_w, fx_h;
+	int soft;				// ASCENT: the file of the base (no top) has a soft alpha (the 4th
+							// field "soft" of index.txt): the texture keeps it, not cut at 128
 } plat_gpu_hd_job;
 void plat_gpu_texture_load_hd(int texture, const plat_gpu_hd_job *job);
 // The number of upscaled texture loads that are not finished.

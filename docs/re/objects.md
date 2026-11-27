@@ -1595,6 +1595,58 @@ Rod of Dispel Magic (13): `PC_spell`, the mage class, value 3000, 6
 charges. The table values of the Mace of Disruption (70, 17500 in 1.3) and
 the Flame Tongue (71, 4500) become 4500 and 6000.
 
+The Rod of Kelemvor (Spanish "Vara de Kelemvor") is a new weapon line at the
+end of the weapon table, after the Dagger of Venom (90 in the build of
+2026-11-27; the code finds it by its name, `dtu_gear_rod_weapon`): a copy of
+the Rod of Dispel Magic (67) with `uses=1`, value 50, `all_use` and no
+`mage_use`. The two names differ on purpose: the Rod of Dispel Magic (mage
+only, 6 charges, used up, sold at stage 7) and the Rod of Kelemvor (all
+classes, one charge for each rest, never used up, not sold).
+
+### The Rod of Kelemvor
+
+A decision of the user of 2026-11-27: a rod of dispelling that any class
+can use, so that a fighter or a thief can free Daland of MYRKUL and take
+away the contingency of the lich of CLAN3 without a scroll in a hot key box.
+
+- Each use casts Dispel Magic (13) at caster level 12 (`DTU_GEAR_ROD_LEVEL`;
+  `dtu_gear_rod_fire` in the wand path of `dtu_spell_fire`, the level goes
+  to the missile with `dtu_missile_set_level`). Dispel Magic on a creature
+  ends all its effects with no save and no comparison of levels (0x8CFFF,
+  the case of spells 13 and 55; `apply_spell` calls `fx_expire(target, 1)`,
+  which also ends Mirror Image, the Minor Globe and the Spiritual Hammer of
+  the port). So the hold with no end of Daland (level fix 0xAD129) and the
+  contingency of Lich3 (caster level 12, `dtucaster.h`: Stone Skin, Shield,
+  Minor Globe, Mirror Image) end at any level. The level counts for a
+  potion on the floor (d20 against 23 - level: 11 or more at level 12) and
+  for the range (spell 13: 360 feet at each level).
+- One charge. The use sets global flag 250 of the player record
+  (`DTU_GEAR_FLAG_ROD_SPENT`, saved with the game); a rest that fills the
+  spell slots (`dtu_char_rest`, the rest places) clears it. A level start
+  does not. The item keeps the count 1, so a drop, a pick up, a sale or a
+  save do not charge it. With no charge the use shows "The Rod of Kelemvor
+  has no power left. A rest will renew it." and casts nothing.
+- The place: MYRKUL, the floor of the hidden crypts at the feet of Daland
+  (109.5, 19, 579, segment 326, 11 units in front of him; he faces the way
+  in from segment 17), `dtu_gear_place_rod` (dtuobj_setup.c), once in a game
+  (global flag 249, `DTU_GEAR_FLAG_ROD`). His own rod, out of his reach:
+  each player who finds him finds the means to free him, by any way through
+  the temple. The other place that was looked at, the altar of Kelemvor of
+  the living quarters (object 23, segment 308, message 11), is as far from
+  the start as the crypts and a player can miss it.
+- The rest places on the way: MYRKUL, CLAN1 and CLAN2 have none (segments
+  with the special value 2 or 6); HUB3 has segment 96; CLAN3 has segment 273
+  (center 75, 12.5, 405), 17 segments from the start and on the way to the
+  lich (segment 443, 29 segments from the start). So the rod is found
+  charged, frees Daland, and is charged again at the rest of HUB3 or of
+  CLAN3 before the lich.
+- With the rod in the inventory the talk to the held Daland says "Some magic
+  seems to hold Daland completely paralyzed. Perhaps your Rod of Kelemvor
+  can dispel it." (without it: "... Perhaps it can be dispelled.").
+- A trap spell takes the template of the last weapon line of the table
+  (`dtu_hook_trap_spawn_object`); the rod line, like the Spiritual Hammer line, is
+  skipped there.
+
 ### Drops
 
 `gear_drops` (dtuobj_combat.c) replaces the gold rule of 0x6A639 (a
@@ -1666,6 +1718,21 @@ sent back. The eye rays of a beholder in 1.3 are its spell missiles: a
 beholder has a spell level and does not fire its weapon 81 (0x11DE9), and
 the setup by name gives the spectator weapon 0, so no creature fires the
 weapons 81 to 88.
+
+A decision of the user of 2026-11-27: the shield turns a spell missile that
+hits the front whoever owns it at that moment. A Lightning Bolt goes on
+through bodies and comes back from walls (`Dtu_fix_bolt_pass`, spells.md
+section 14), so the shield also turns the bolt of the player that came
+back from a wall, and a bolt that it turned before and that a wall sent
+back again: as often as the life of the bolt allows. A missile of the
+player goes straight back the way it came (its velocity reversed) and keeps
+its caster level; a missile of a creature still flies at the creature.
+Each turn starts a new leg of the bolt (it can cross each body again), and
+the move of the missile ends in that frame (it does not reach the wall or
+the other bodies of the old way). A missile whose source is gone (a trap, a
+dead caster) is not turned. From behind the shield turns nothing. Tests:
+`bolt_creature_mirror_again`, `bolt_near_wall_mirror`,
+`bolt_creature_mirror_behind` (tools/questtest.py).
 
 ### Places and market
 

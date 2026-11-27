@@ -422,7 +422,7 @@ static const int Nb_goto_f[3] = { 0x254, 0x3B1, 0x57B };		// labels 1, 2, 3: GOT
 
 static void nalbas_blocks(em *e)
 {
-	int loaded = Dtu_class_gear_loaded;
+	int loaded = Dtu_class_gear_loaded && dtu_gear_poison_arrow_line() >= 0;
 
 	// 0: the way in
 	label(e, 0);
@@ -503,7 +503,7 @@ static void nalbas_blocks(em *e)
 		if_(e); t_gold(e, 300, 1); then(e); go(e, 0x2F); endif(e);
 		take_gold(e, 300);
 		give(e, MISC, 89, 1);
-		give(e, WEAPON, DTU_GEAR_POISON_ARROW, 16);
+		give(e, WEAPON, dtu_gear_poison_arrow_line(), 16);
 		set_gf(e, DTU_GEAR_GF_BOW);
 		say(e, LN("The bargain is sealed! Aim for the soft parts, and whatever you do, do not lick your fingers."));
 		wait_reply(e);
@@ -513,7 +513,7 @@ static void nalbas_blocks(em *e)
 		label(e, 0x28);
 		if_(e); t_gold(e, 160, 1); then(e); go(e, 0x2F); endif(e);
 		take_gold(e, 160);
-		give(e, WEAPON, DTU_GEAR_POISON_ARROW, 8);
+		give(e, WEAPON, dtu_gear_poison_arrow_line(), 8);
 		say(e, LN("Eight more, freshly dipped. Mind the tips."));
 		wait_reply(e);
 		go(e, 0x21);

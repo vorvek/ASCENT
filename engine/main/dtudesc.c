@@ -48,6 +48,7 @@
 #include "dtudesc.h"
 #include "dtugear.h"		// ASCENT: the Pearls of Power of the class gear
 #include "dtuhold.h"		// ASCENT: the Potion of Freedom and a hold
+#include "dtugear.h"		// ASCENT: the Rod of Kelemvor
 
 #define TEXT_MAX	2048
 
@@ -482,6 +483,16 @@ static void weapon_text(int id, dtu_item_data *d, int count, int r)
 	int pc_spell = tbl_int(r, "pc_spell", -1), range, fx, fh, thac0;
 	fix wait;
 
+	if (pc_spell >= 0 && !d->melee && dtu_gear_rod(id)) {
+		// ASCENT: the Rod of Kelemvor of the new gear (dtugear.h): one charge
+		// for each rest, a fixed caster level, never used up
+		line(LT("Charges: %d of 1"), dtu_gear_rod_charged());
+		if (d->class_mask & 0xff)
+			class_line(d->class_mask);
+		line(LT("Each use casts %s at caster level %d."), dtu_spell_name(pc_spell), DTU_GEAR_ROD_LEVEL);
+		line(LT("It is never used up: a rest charges it again."));
+		return;
+	}
 	if (pc_spell >= 0 && !d->melee) {
 		// a wand: the usable item layout (0x56A0D casts pc_spell, one charge)
 		if (count >= 0)

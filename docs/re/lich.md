@@ -138,6 +138,11 @@ adds a phylactery that the player can find and break before the fight.
   (tests `lich_dispel_scroll_fighter`, `lich_dispel_scroll_thief`); a
   cleric or a mage who picks up the scroll of the own class gets it in the
   spell list. The port places 55, as object 30.
+- **The Rod of Kelemvor** of the new gear (objects.md, "The Rod of Kelemvor"):
+  a fighter or a thief who freed Daland of MYRKUL with it charges it again at
+  the rest place of CLAN3 (segment 273, 17 segments from the start, before
+  the lich at segment 443) or of HUB3; its Dispel Magic (level 12) ends the
+  contingency as the scroll does (test `lich_kelemvor_rod`).
 - **The test command** `phylactery=N` of `-chartest`: 0 breaks the altar (as
   a blow of the player), 1 logs its state, 2 puts the player at the door of
   the cell.

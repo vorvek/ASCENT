@@ -197,7 +197,7 @@ static const char *Gear_no_gold[] = {
 
 //------------------------------------------------------------------------
 // The class gear (Dtu_class_gear, dtugear.h). The lines after the new gear:
-// armor 62 and 63, misc 131 to 133 (the reader of the tables) and weapon 90 (a copy
+// armor 62 and 63, misc 131 to 133 (the reader of the tables) and the next free weapon line (a copy
 // of the Arrow, below). The value of each line is the price of the seller,
 // so that a sale to Geldor gives back at most what the player paid. The
 // Pearls have their own icon (203, tools/spell_icons.py), not the one of the
@@ -213,8 +213,8 @@ static const char *Class_lines[] = {
 
 // The Poisoned Arrow: the Arrow (7) with this name and value (the price of
 // Nalbas, 160 gold for 8)
-static const struct { int id, from; const char *from13, *name; int value; } Class_arrow = {
-	DTU_GEAR_POISON_ARROW, DTU_GEAR_ARROW_FROM, "Arrow", "Poisoned Arrow", 20 };
+static const struct { int from; const char *from13, *name; int value; } Class_arrow = {
+	DTU_GEAR_ARROW_FROM, "Arrow", "Poisoned Arrow", 20 };
 
 // The goods of the market that the class gear adds (as Gear_market): any
 // mage can buy them
@@ -267,6 +267,56 @@ static int weapon_named(const dtu_tblfix_io *io, int id, const char *name)
 
 static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text));
 
+// The weapon line of the Rod of Kelemvor in the tables of the level, -1:
+// none (dtugear.h)
+static int Rod_weapon = -1;
+// The weapon line of the Poisoned Arrow of the class gear, -1: none
+static int Arrow_weapon = -1;
+
+// The Rod of Kelemvor: a new line at the end of the weapon table, a copy of
+// the Rod of Dispel Magic (the last wand, after its writes) with its name,
+// its value, one charge and all classes. As the Dagger of Venom: the line
+// goes through the reader of the tables, then the decoded fields of the
+// copy, the text and the name.
+static void rod_line(const dtu_tblfix_io *io, void (*parse)(char *text))
+{
+	int from = Gear_wands[DTU_GEAR_N_WANDS - 1].id, id = io->count(DTU_TK_WEAPON);
+	char buf[64], *u, *line, *name;
+
+	snprintf(buf, sizeof(buf), "\"%s\"", DTU_GEAR_ROD_NAME);
+	u = dtu_tblfix_set(io->text(DTU_TK_WEAPON, from), "weapon_name", buf);
+	if (!u)
+		return;
+	snprintf(buf, sizeof(buf), "%d", DTU_GEAR_ROD_VALUE);
+	u = chain(u, dtu_tblfix_set(u, "value", buf));
+	u = chain(u, dtu_tblfix_set(u, "uses", "1"));
+	u = chain(u, dtu_tblfix_word(u, "mage_use", 0));
+	u = chain(u, dtu_tblfix_word(u, "all_use", 1));
+	line = malloc(strlen(u) + 12);
+	if (line) {
+		sprintf(line, "$WEAPON %s\n", u);
+		parse(line);
+		free(line);
+	}
+	if (io->count(DTU_TK_WEAPON) == id + 1) {
+		io->copy_line(DTU_TK_WEAPON, id, from);
+		put_text(io, DTU_TK_WEAPON, id, u);
+		u = NULL;
+		name = io->name(DTU_TK_WEAPON, id);
+		if (name && io->name_size > 0) {
+			strncpy(name, DTU_GEAR_ROD_NAME, io->name_size - 1);
+			name[io->name_size - 1] = 0;
+		}
+		Rod_weapon = id;
+		if (io->log) {
+			snprintf(buf, sizeof(buf), "New gear: the %s is weapon %d", DTU_GEAR_ROD_NAME, id);
+			io->log(buf);
+		}
+	}
+	if (u)
+		dtu_tblfix_free(u);
+}
+
 void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 {
 	char buf[64];
@@ -274,6 +324,8 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 
 	Dtu_gear_loaded = 0;
 	Dtu_class_gear_loaded = 0;
+	Arrow_weapon = -1;
+	Rod_weapon = -1;
 	if (!Dtu_new_gear)
 		return;
 	// the mission tables: 53 armor lines, 128 misc lines, the generic wands
@@ -420,19 +472,22 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 	Dtu_gear_loaded = 1;
 	if (io->log)
 		io->log("New gear: armor 53 to 61, misc 128 to 130, wands 63 to 67, the Frost Brand 68");
-	class_tables(io, parse);
+	rod_line(io, parse);
+	class_tables(io, parse);		// ASCENT: the class gear: the next free lines
 }
 
 // The lines of the class gear, after the lines of the new gear
 static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 {
 	char buf[64], *u, *line, *name;
-	int i;
+	int i, id;
 
 	if (!dtu_class_gear_on() || !weapon_named(io, Class_arrow.from, Class_arrow.from13))
 		return;
 	// the Poisoned Arrow: a new line at the end of the weapon table (as the
-	// Dagger of Venom), then the decoded fields, the text and the name
+	// Dagger of Venom and the Rod of Kelemvor), its number the next free one,
+	// then the decoded fields, the text and the name
+	id = io->count(DTU_TK_WEAPON);
 	snprintf(buf, sizeof(buf), "\"%s\"", Class_arrow.name);
 	if ((u = dtu_tblfix_set(io->text(DTU_TK_WEAPON, Class_arrow.from), "weapon_name", buf)) == NULL)
 		return;
@@ -444,19 +499,20 @@ static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 		parse(line);
 		free(line);
 	}
-	if (io->count(DTU_TK_WEAPON) != Class_arrow.id + 1) {
+	if (io->count(DTU_TK_WEAPON) != id + 1) {
 		dtu_tblfix_free(u);
 		if (io->log)
 			io->log("Class gear: the line of the Poisoned Arrow did not go in");
 		return;
 	}
-	io->copy_line(DTU_TK_WEAPON, Class_arrow.id, Class_arrow.from);
-	put_text(io, DTU_TK_WEAPON, Class_arrow.id, u);
-	name = io->name(DTU_TK_WEAPON, Class_arrow.id);
+	io->copy_line(DTU_TK_WEAPON, id, Class_arrow.from);
+	put_text(io, DTU_TK_WEAPON, id, u);
+	name = io->name(DTU_TK_WEAPON, id);
 	if (name && io->name_size > 0) {
 		strncpy(name, Class_arrow.name, io->name_size - 1);
 		name[io->name_size - 1] = 0;
 	}
+	Arrow_weapon = id;
 	for (i = 0; i < N_CLASS_LINES; i++) {
 		if ((line = malloc(strlen(Class_lines[i]) + 2)) == NULL)
 			return;
@@ -470,8 +526,10 @@ static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 		return;
 	}
 	Dtu_class_gear_loaded = 1;
-	if (io->log)
-		io->log("Class gear: weapon 90 (Poisoned Arrow), armor 62 (Boots of Elvenkind), armor 63 (Bracers of Archery), misc 131 to 133 (Pearls of Power)");
+	if (io->log) {
+		snprintf(buf, sizeof(buf), "Class gear: weapon %d (Poisoned Arrow), armor 62 and 63, misc 131 to 133", id);
+		io->log(buf);
+	}
 }
 
 int dtu_gear_armor_ac(int id)
@@ -615,14 +673,23 @@ void dtu_gear_script_give(int script, int type, int id)
 // has no single way back), and the eye rays of the beholders and the
 // spectators (weapons 81 to 88, missiles with no spell). Arrows, bolts,
 // thrown weapons, the breath and the missiles of traps (no source) hit as
-// before. The missile flies at its source at its own speed.
+// before. A missile of a creature flies at its source at its own speed.
+//
+// The user's decision of 2026-11-27: the shield turns a spell missile
+// whoever owns it when it hits, so also the Lightning Bolt of the player
+// that came back from a wall and a bolt that the shield turned before and
+// that a wall sent back again (Dtu_fix_bolt_pass): it turns it as often as
+// the life of the bolt allows. A missile of the player goes straight back
+// the way it came. A missile whose source is gone (a trap, a dead caster)
+// still hits.
 
 int dtu_gear_mirror(object *missile, object *player, int spell, int weapon, object *source)
 {
 	vms_vector back, to;
 	fix speed;
 
-	if (!Dtu_gear_mirror_worn || !source || source->type != OBJ_ROBOT || !player || player->type != OBJ_PLAYER)
+	if (!Dtu_gear_mirror_worn || !source || (source->type != OBJ_ROBOT && source->type != OBJ_PLAYER) || !player ||
+			player->type != OBJ_PLAYER)
 		return 0;
 	if (spell >= 0 ? dtu_spell_is_area(spell) : !(weapon >= 81 && weapon <= 88))
 		return 0;
@@ -633,14 +700,93 @@ int dtu_gear_mirror(object *missile, object *player, int spell, int weapon, obje
 	vm_vec_negate(&back);
 	if (vm_vec_dot(&back, &player->orient.fvec) < F1_0 / 2)
 		return 0;
-	vm_vec_sub(&to, &source->pos, &missile->pos);
-	if (vm_vec_normalize_quick(&to) <= 0)
+	if (source->type == OBJ_ROBOT) {
+		vm_vec_sub(&to, &source->pos, &missile->pos);
+		if (vm_vec_normalize_quick(&to) <= 0)
+			to = back;
+	}
+	else
 		to = back;
 	vm_vec_copy_scale(&missile->mtype.phys_info.velocity, &to, speed);
-	dtu_obj_log("new gear: the Mirror Shield sends obj %d (weapon %d spell %d) back to obj %d %s", (int) (missile - Objects), weapon, spell,
-		(int) (source - Objects), dtu_object_name(source));
+	if (source->type == OBJ_ROBOT)
+		dtu_obj_log("new gear: the Mirror Shield sends obj %d (weapon %d spell %d) back to obj %d %s", (int) (missile - Objects), weapon, spell,
+			(int) (source - Objects), dtu_object_name(source));
+	else
+		dtu_obj_log("new gear: the Mirror Shield sends obj %d (weapon %d spell %d) of the player back the way it came", (int) (missile - Objects),
+			weapon, spell);
 	return 1;
 }
+
+//------------------------------------------------------------------------
+// The Rod of Kelemvor (dtugear.h). The charge is a global flag of the player
+// record, so a save keeps it and a drop and a pick up do not charge it.
+
+int dtu_gear_rod_weapon(void)
+{
+	return (Dtu_gear_loaded && Rod_weapon >= 0 && Rod_weapon < N_weapon_types) ? Rod_weapon : -1;
+}
+
+int dtu_gear_rod(int weapon)
+{
+	return weapon >= 0 && weapon == dtu_gear_rod_weapon();
+}
+
+int dtu_gear_rod_charged(void)
+{
+	return !dtu_script_gflag(DTU_GEAR_FLAG_ROD_SPENT);
+}
+
+int dtu_gear_rod_fire(int weapon)
+{
+	if (!dtu_gear_rod(weapon))
+		return -1;
+	if (!dtu_gear_rod_charged()) {
+		HUD_init_message(LN("The Rod of Kelemvor has no power left. A rest will renew it."));
+		dtu_obj_log("new gear: the Rod of Kelemvor has no charge");
+		return 0;
+	}
+	return DTU_GEAR_ROD_LEVEL;
+}
+
+void dtu_gear_rod_spend(void)
+{
+	dtu_script_set_gflag(DTU_GEAR_FLAG_ROD_SPENT, 1);
+	dtu_obj_log("new gear: the Rod of Kelemvor casts Dispel Magic at level %d, no charge until a rest", DTU_GEAR_ROD_LEVEL);
+}
+
+void dtu_gear_rod_rest(void)
+{
+	if (!dtu_script_gflag(DTU_GEAR_FLAG_ROD_SPENT))
+		return;
+	dtu_script_set_gflag(DTU_GEAR_FLAG_ROD_SPENT, 0);
+	dtu_obj_log("new gear: the rest charges the Rod of Kelemvor again");
+	if (dtu_gear_rod_carried())
+		HUD_init_message(LN("The Rod of Kelemvor is charged again."));
+}
+
+static int rod_entry(void)
+{
+	int i, w = dtu_gear_rod_weapon();
+
+	for (i = 0; w >= 0 && i < Dtu_n_inventory; i++)
+		if (Dtu_inventory[i].type == OBJ_WEAPON && Dtu_inventory[i].id == w)
+			return i;
+	return -1;
+}
+
+int dtu_gear_rod_carried(void)
+{
+	return rod_entry() >= 0;
+}
+
+void dtu_gear_rod_test(int what)
+{
+	if (what == 1 && rod_entry() >= 0)
+		dtu_char_set_current(rod_entry());
+	else if (what == 2 && dtu_gear_rod_weapon() >= 0)
+		dtu_inventory_add(OBJ_WEAPON, dtu_gear_rod_weapon(), 1);
+	dtu_obj_log("new gear: rod test %d: weapon %d, entry %d, charged %d, placed %d", what, dtu_gear_rod_weapon(), rod_entry(),
+		dtu_gear_rod_charged(), dtu_script_gflag(DTU_GEAR_FLAG_ROD));}
 
 //------------------------------------------------------------------------
 // The treasury items of Tamaramagil: the Frost Brand and the Cloak of
@@ -708,7 +854,12 @@ int dtu_gear_venom(int weapon)
 
 int dtu_gear_poison_arrow(int weapon)
 {
-	return Dtu_class_gear_loaded && weapon == DTU_GEAR_POISON_ARROW;
+	return Dtu_class_gear_loaded && weapon >= 0 && weapon == Arrow_weapon;
+}
+
+int dtu_gear_poison_arrow_line(void)
+{
+	return Dtu_class_gear_loaded ? Arrow_weapon : -1;
 }
 
 int dtu_gear_assassin(int weapon)

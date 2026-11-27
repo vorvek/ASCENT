@@ -101,7 +101,27 @@ extern int Dtu_gear_loaded;
 // the Flame Tongue of the dungeon is placed (dtu_gear_place_flame_tongue).
 // The scripts use flags up to 128, the port up to 0xA0.
 #define DTU_GEAR_FLAG_FLAME		0xF0
-#define DTU_GEAR_FLAG_VENOM		0xF8		// the Dagger of Venom of DROW5 is placed
+#define DTU_GEAR_FLAG_VENOM		251			// the Dagger of Venom of DROW5 is placed (248 is DTU_LICH_GF_PLACED)
+#define DTU_GEAR_FLAG_ROD		249			// the Rod of Kelemvor of MYRKUL is placed
+#define DTU_GEAR_FLAG_ROD_SPENT	250			// the Rod of Kelemvor has no charge until the next rest
+
+// The Rod of Kelemvor, a decision of the user of 2026-11-27: a rod of
+// dispelling that each class can use (all_use), so that a fighter or a
+// thief can free Daland of MYRKUL (Dtu_fix_dispel_peace) and take away the
+// contingency of the lich of CLAN3. A new weapon line at the end of the
+// table (found by its name, DTU_GEAR_ROD_NAME), a copy of the Rod of Dispel
+// Magic (67) with one charge: each use casts Dispel Magic (13) at caster
+// level DTU_GEAR_ROD_LEVEL. It is never used up: a use spends the charge
+// (global flag DTU_GEAR_FLAG_ROD_SPENT of the player record, saved with
+// the game), and a rest that fills the spell slots (dtu_char_rest) charges
+// it again. A level start does not. One lies at the feet of Daland
+// (dtu_gear_place_rod). Its value is small (DTU_GEAR_ROD_VALUE), so it is
+// no source of gold, and the market does not sell it. The Rod of Dispel
+// Magic (67, mage only, 6 charges, used up) stays.
+#define DTU_GEAR_ROD_NAME		"Rod of Kelemvor"
+#define DTU_GEAR_ROD_SPELL		13
+#define DTU_GEAR_ROD_LEVEL		12
+#define DTU_GEAR_ROD_VALUE		50
 
 //------------------------------------------------------------------------
 // ASCENT: the class gear, the setting "Gear for single class mages and
@@ -115,7 +135,10 @@ extern int Dtu_gear_loaded;
 // (the script patches of dtuclassgear.c). No class power: only gear that
 // the other characters cannot buy, at a price. The new lines go in after
 // the other new lines when the new gear is loaded too:
-#define DTU_GEAR_POISON_ARROW	90		// weapon 90: Poisoned Arrow, a copy of the Arrow (7), the poison of the Dagger of Venom
+// The Poisoned Arrow: a new weapon line, the next free number after the
+// lines of the new gear (91 with the Rod of Kelemvor at 90;
+// dtu_gear_poison_arrow_line), a copy of the Arrow (7) with the poison of
+// the Dagger of Venom
 #define DTU_GEAR_ARROW_FROM		7
 #define DTU_GEAR_BOOTS_ELVEN	62		// armor 62: Boots of Elvenkind, Move Silently 95 while worn
 #define DTU_GEAR_ELVEN_MOVE		95
@@ -146,11 +169,14 @@ void dtu_gear_pearl_recharge(const char *why);
 void dtu_gear_pearl_keep(void);
 // 1 if weapon is the Poisoned Arrow (the tables have the class gear lines)
 int dtu_gear_poison_arrow(int weapon);
+// The weapon line of the Poisoned Arrow, -1 when the tables have none
+int dtu_gear_poison_arrow_line(void);
 // dtuobj_missile.c: a missile of the player hit a creature and did damage
 void dtu_gear_missile_hit(struct object *creature, struct object *attacker, int weapon);
 
-// The global flags of the class gear (dtu_script_gflag). The scripts use
-// flags up to 128 and 200, the port 129 to 160 and 240 to 248.
+// The global flags of the class gear (dtu_script_gflag): 170 to 175 and 210
+// to 239. The scripts use flags up to 128 and 200, the port 129 to 160 and
+// 240 to 251.
 #define DTU_GEAR_GF_MM_WAND		210		// 210 to 218: the Wand of Magic Missiles of stage 0 to 8 is sold
 #define DTU_GEAR_GF_PARALYZE	219		// the Wand of Paralyzation of Aleena is sold
 #define DTU_GEAR_GF_FIREBALLS	220
@@ -167,12 +193,12 @@ void dtu_gear_missile_hit(struct object *creature, struct object *attacker, int 
 #define DTU_GEAR_GF_BOOTS		237		// Boots of Elvenkind,
 #define DTU_GEAR_GF_ARCHERY		238		// Bracers of Archery,
 #define DTU_GEAR_GF_SWORD		239		// Short Sword of Quickness
-#define DTU_GEAR_GF_MIRT		249		// Mirt has said his first line of the class gear
-#define DTU_GEAR_GF_TMP_MIRT	250		// scratch: Mirt has a good for sale
-#define DTU_GEAR_GF_TMP_WAND	251		// scratch: Aleena has a wand for sale
-#define DTU_GEAR_GF_TMP_SCROLL	252		// scratch: Aleena has a scroll bundle for sale
-#define DTU_GEAR_GF_TMP_NALBAS	253		// scratch: Nalbas has a good for sale
-#define DTU_GEAR_GF_GIRDLE		254		// the Girdle of Hill Giant Strength of Mirt is sold
+#define DTU_GEAR_GF_MIRT		170		// Mirt has said his first line of the class gear
+#define DTU_GEAR_GF_TMP_MIRT	171		// scratch: Mirt has a good for sale
+#define DTU_GEAR_GF_TMP_WAND	172		// scratch: Aleena has a wand for sale
+#define DTU_GEAR_GF_TMP_SCROLL	173		// scratch: Aleena has a scroll bundle for sale
+#define DTU_GEAR_GF_TMP_NALBAS	174		// scratch: Nalbas has a good for sale
+#define DTU_GEAR_GF_GIRDLE		175		// the Girdle of Hill Giant Strength of Mirt is sold
 
 // bmread.c, after the table fixup of 1.3: the wands and the values of the
 // weapon lines, and the text of the new lines, which bmread.c reads with
@@ -220,9 +246,11 @@ int dtu_gear_dragon_treasure(void (*f)(int type, int id, int count));
 void dtu_gear_script_give(int script, int type, int id);
 
 // dtuobj_missile.c: a missile hits the player. 1 if a worn Mirror Shield
-// sends it back: the velocity of the missile is turned to its source.
-// spell: the spell of the missile or -1, weapon: its weapon line, source:
-// the creature that sent it or NULL.
+// sends it back: the velocity of the missile is turned to its source (a
+// creature), or reversed (a missile of the player: his Lightning Bolt back
+// from a wall, or one that the shield turned before). spell: the spell of
+// the missile or -1, weapon: its weapon line, source: its owner now (a
+// creature or the player) or NULL (a trap, a lost parent: not turned).
 int dtu_gear_mirror(struct object *missile, struct object *player, int spell, int weapon, struct object *source);
 
 // dtuchar.c: the Mirror Shield is in the shield place. Set by dtu_char_update.
@@ -268,5 +296,28 @@ void dtu_gear_place_venom(int has_state, int restore);
 // Flame Tongue of the dungeon (dtuobj_setup.c). restore: the setup after
 // the read of a saved level state.
 void dtu_gear_place_flame_tongue(int has_state, int restore);
+
+// The Rod of Kelemvor (DTU_GEAR_ROD_NAME above). The weapon line of the rod
+// in the tables of the level, -1: none.
+int dtu_gear_rod_weapon(void);
+// 1 if weapon is the rod
+int dtu_gear_rod(int weapon);
+// 1 if the rod has its charge
+int dtu_gear_rod_charged(void);
+// dtuspell.c, the fire of a wand in the hand: -1 if weapon is not the rod;
+// 0 if the rod has no charge (the message is shown, no cast); else the
+// caster level of the cast. dtu_gear_rod_spend after the cast.
+int dtu_gear_rod_fire(int weapon);
+void dtu_gear_rod_spend(void);
+// dtuchar.c, a rest that fills the spell slots: the rod is charged again
+void dtu_gear_rod_rest(void);
+// 1 if the rod is in the inventory
+int dtu_gear_rod_carried(void);
+// dtuobj.c, the setup of a level: the rod of MYRKUL, once in a game
+// (DTU_GEAR_FLAG_ROD), as the Flame Tongue (dtuobj_setup.c)
+void dtu_gear_place_rod(int has_state, int restore);
+// test command rod=N (dtuchar.c): 0 logs the state, 1 puts the rod of the
+// inventory into the hand, 2 adds a rod to the inventory
+void dtu_gear_rod_test(int what);
 
 #endif

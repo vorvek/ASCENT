@@ -108,6 +108,10 @@ typedef struct bolt_list {
 
 static bolt_list Bolt[BOLT_LISTS];
 
+// ASCENT: the count of the turns of the Mirror Shield (dtugear.h): the move
+// of a missile ends in the frame in which the shield turns it
+static int Mirror_turns;
+
 // 1 for a Lightning Bolt that goes on through the bodies
 static int bolt_passes(object *obj)
 {
@@ -371,6 +375,14 @@ void dtu_missile_set_life(int objnum, fix life)
 		Missile_life[objnum] = life;
 }
 
+// ASCENT: the caster level of the spell of the missile (the Rod of
+// Kelemvor, dtugear.h), 0: that of the parent at the hit
+void dtu_missile_set_level(int objnum, int level)
+{
+	if (objnum >= 0 && objnum < MAX_OBJECTS && Missile[objnum].signature == Objects[objnum].signature)
+		Missile[objnum].level = (short) level;
+}
+
 // ASCENT: Dtu_caster_ai: the missile passes the object (the scenery at the
 // body of its caster)
 void dtu_missile_set_pass(int objnum, int pass)
@@ -587,12 +599,16 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	// ASCENT: the Mirror Shield of the new gear (dtugear.h) turns the missile
 	// to its source. It is a missile of the player now (the player is its
 	// parent: it passes the player, and a kill gives experience), with the
-	// caster level of the source.
+	// caster level of the source. A missile of the player (his bolt back from
+	// a wall, or one that the shield turned before) keeps its level. Each
+	// turn starts a new leg of a bolt.
 	if (other->type == OBJ_PLAYER && dtu_gear_mirror(obj,other,m->spell,weapon,parent)) {
-		m->level = (m->spell >= 0) ? dtu_spell_object_level(parent,m->spell) : 0;
+		if (parent->type == OBJ_ROBOT)
+			m->level = (m->spell >= 0) ? dtu_spell_object_level(parent,m->spell) : 0;
 		m->parent = other-Objects;
 		m->parent_sig = other->signature;
 		m->unlinked = 0;
+		Mirror_turns++;
 		if (bolt)
 			bolt->leg++;		// ASCENT: Dtu_fix_bolt_pass: the bolt can cross each body again
 		return;
@@ -952,16 +968,21 @@ void missiles_frame(void)
 		best = missile_path_object(obj,&end,step,m->parent,m->unlinked ? -1 : m->parent_sig,m->pass_obj,m->pass_sig,
 			m->harmless ? -1 : m->spell,&best_ip);
 		if (best >= 0) {
-			int k = 0, from = m->parent;
+			int k = 0, turns = Mirror_turns;
 
 			missile_hit_object(obj,&Objects[best],&best_ip);
 			// ASCENT: Dtu_fix_bolt_pass: the bolt goes on to the next body on
 			// the way of this frame (not after a Mirror Shield turned it)
-			while (!(obj->flags & OF_SHOULD_BE_DEAD) && bolt_passes(obj) && m->parent == from && ++k < BOLT_HITS &&
+			while (!(obj->flags & OF_SHOULD_BE_DEAD) && bolt_passes(obj) && Mirror_turns == turns && ++k < BOLT_HITS &&
 					(best = missile_path_object(obj,&end,step,m->parent,m->unlinked ? -1 : m->parent_sig,m->pass_obj,m->pass_sig,
 						m->harmless ? -1 : m->spell,&best_ip)) >= 0)
 				missile_hit_object(obj,&Objects[best],&best_ip);
 			if (obj->flags & OF_SHOULD_BE_DEAD)
+				continue;
+			// ASCENT: the Mirror Shield turned it: it stays before the shield
+			// and flies back from the next frame (the wall or the end of the
+			// old way of this frame is not reached)
+			if (Mirror_turns != turns)
 				continue;
 		}
 

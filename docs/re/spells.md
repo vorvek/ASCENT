@@ -709,9 +709,10 @@ Verified in the bytes of DTUGAME.EXE 1.3 (`dtu13.elf`, objdump), 2026-11-25.
   dragon is rolled at its first crossing only. The bolt of a creature passes its
   allies with no harm (Dtu_caster_ai). A Mirror Shield sends a creature bolt back
   to its source as a bolt of the player: it crosses each body again on the way
-  back, the allies of the source too; it can come back from a wall and hit the
-  player, and the shield does not turn it again (it has no creature source any
-  more). The caster AI casts no Lightning Bolt when a wall at most 160.0 away on
+  back, the allies of the source too; when it comes back from a wall to the front
+  of the player the shield turns it again, straight back the way it came, as often
+  as its life allows (a decision of the user of 2026-11-27, objects.md, "The
+  Mirror Shield"); the same for the own bolt of the player. From behind it hits. The caster AI casts no Lightning Bolt when a wall at most 160.0 away on
   the line to the player would send the bolt back to the body of the caster
   within its flight (`caster_bolt_returns`). Tests: `tools/questtest.py --only
   bolt_`, `tools/check_caster_ai.py --only bolt`.

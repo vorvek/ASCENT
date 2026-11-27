@@ -43,7 +43,8 @@ detected by the name of the first model header. Skipped: the 149 interface bitma
 `gamedata/hd/textures/<egg>/<name>.png`: `<egg>` is the archive base name in lower
 case, `<name>` the EGG bitmap name in lower case with `#` replaced by `_`. RGBA 8-bit,
 4 times the original width and height. `index.txt` in each directory has one line
-`name w h` per file (EGG name with `#`, original size). No two bitmaps of one archive
+`name w h` per file (EGG name with `#`, original size), and `name w h soft` for a
+file of the fire flipbooks with a soft alpha (version 8, see The fire flipbooks). No two bitmaps of one archive
 map to the same file name (checked for all 57 archives).
 
 Alpha is 255 for a bitmap without the transparent flag (0x01). With the flag it is
@@ -308,7 +309,7 @@ The engine (gputex.c):
   source pixels, as before; the software renderer does not change.
 - A layer that is not an overlay (a sprite, a grate) cuts the alpha of its file
   at 128 (0 or 255 for the alpha test), instead of using the mask of the
-  original pixels.
+  original pixels. A soft file (version 8, the fire flipbooks) keeps its alpha.
 
 A set of version 3 still works with the new engine: its alpha is 0 or 255, and the
 blend of `merge_top` then gives the merge of before. The new holes and effect
@@ -515,6 +516,94 @@ grain and specks as the water around them. Test: HUB3 `-testpos
 `-hddir` at the set of the content pack and at the new set; the mean
 difference in the floor area is 2.9 of 255. The content pack `textures` still
 has version 6 until it is made again and uploaded.
+
+## The fire flipbooks (version 8)
+
+The report: the breath of the dragon Tamaramagil (DROW2, `dtudragon.c`) is a
+stream of small flames; in the GPU renderer, from the front and near the
+camera, they had hard edges and blocks. The set always had files for the
+sprites of the explosions (every bitmap of every archive), and the loader
+finds them by name like any other bitmap (render.c `gpu_bitmap_source`: the
+address of the pixels in `GameBitmaps`, then the archive and the name;
+gpu3d.c `hd_path` in `index.txt`). Three things made the edges hard:
+
+- A 64 x 64 bitmap counts as a tiling texture: the flipbooks were upscaled
+  as the middle of a 3 x 3 tiling of themselves, not as single pictures.
+- The alpha of the file is the mask with a ramp of one output pixel
+  (`smooth_alpha`), and a single pixel (a spark) is kept as a disk or a
+  square of one source pixel.
+- The engine cut that alpha at 128 (gputex.c `load_layer`) and the shader
+  draws a sprite with an alpha test at 0.5 (`gpu_bitmap` in gpu3d.c: a
+  quad with `transparent`, `clamp`, no light, no blend).
+
+`SOFT_SPRITES` gives these flipbooks a model, no tiling (mirror padding of
+16 pixels) and a soft alpha (`fire_alpha`):
+
+| Flipbook | Frames | Vclip, use | Before | After |
+|---|---|---|---|---|
+| `flame-hi` | 6 | 11: the fire burst of a fire hit (Burning Hands on a creature), the flames of the breath | x4plus, tiling, alpha cut | x4plus, glow |
+| `firbal1` | 10 | 12 and 14: the Fireball missile, the column of Flame Strike, one flame in 8 of the breath | x4plus, tiling, alpha cut | x4plus, glow |
+| `fbxpld` | 12 | 111: the hit of Fireball and of Flame Strike | x4plus, tiling, alpha cut | animevideov3, cover |
+| `smoke1` | 10 | 135: the smoke trail of Fireball and of Melf's Minute Meteors | x4plus, tiling, alpha cut | animevideov3, cover |
+
+Each is in the 16 to 18 archives of the levels and `PORTAL.EGG`, 64 x 64,
+transparent (flag 0x01), with no effect color except two texels 0xCF of
+`smoke1`. None is a wall texture or an animation of `anim_merge`.
+
+- glow: the alpha of `smooth_alpha`, dilated by 2 output pixels
+  (`GLOW_DILATE`) and blurred with sigma 2 output pixels (`GLOW_SIGMA`): an
+  edge ramp of about 1.5 source pixels; a spark stays a bright dot with a
+  soft rim. A blur of the mask alone (no dilation) made the sparks of
+  `flame-hi` frames 2 to 5 faint and olive on a dark wall; a coverage alpha
+  removed them.
+- cover: the mask blurred with sigma 1 source pixel (`COVER_SIGMA`),
+  upscaled bicubic, smoothstep from 0 to 0.8 (`COVER_FULL`): the dithered
+  smoke of the last frames (opaque and transparent pixels mixed) becomes a
+  translucent smoke instead of a pattern of dots.
+
+The models, chosen on sheets of the frames (original at 4x, each model, each
+alpha, on a dark and a light background): on `flame-hi` x4plus gives clean
+flame tongues; UltraSharp keeps the palette dither as a grain;
+animevideov3 is a little softer than x4plus. On `firbal1` (a ball of rock
+with glowing cracks) x4plus is clean and animevideov3 puts blue patches in
+the cracks. On `fbxpld` and `smoke1` (photographic clouds) x4plus makes
+glassy facets that are not in the original, UltraSharp a grain of the
+dither, and animevideov3 smooth clouds.
+
+`index.txt` has a 4th field `soft` on the lines of these files. The engine:
+
+- gpu3d.c reads the field (`hd_name.soft`); a job of a single bitmap with a
+  soft file (`plat_gpu_hd_job.soft`) keeps the alpha of the file (gputex.c
+  `load_layer`), not cut at 128. A bitmap with effect colors in the alpha
+  (`BM_FLAG_DTU_EFFECTS`) and a merged texture never are soft.
+- `gpu_bitmap` (the sprites of `g3_draw_bitmap`) sets
+  `plat_gpu_material.blend` for such a texture. gpu.c draws it with the
+  blend `SRC_ALPHA, ONE_MINUS_SRC_ALPHA` for the color and `ZERO,
+  ONE_MINUS_SRC_ALPHA` for the alpha of the image (the mask of the ambient
+  occlusion goes to 0 under the fire), without writing the depth, and
+  discards texels with alpha 0. render.c draws the segments from far to
+  near and sorts the objects of a segment by distance (`sort_func`), so the
+  flames blend in that order; a later polygon of the level still hides a
+  flame by the depth test.
+- A polygon of a model with such a texture keeps the alpha test at 0.5.
+  The 8-bit form, the software renderer and a set without `soft` (version 7
+  and before) draw as before.
+
+Test sheets: `--out DIR --only drow --names flame-hi,firbal1,fbxpld` in a
+scratch directory (28 files, 4 s). In the game (GPU renderer, 1920 x 1440,
+DROW2, the player at 60 and at 34 units in front of the dragon and to her
+side, `dragon=3`, the screenshot 15 frames into the stream; BONES, a level 9
+Fireball at a zombie) the flames have soft edges and no blocks, the sparks
+are soft dots, and the trail and the hit of Fireball are clouds with no
+hard outline. The set of version 7 was kept in a scratch copy for the
+pictures before.
+
+The run that made version 8 from a set of version 7: 2 min 37 s for all 57
+archives (all files linked again, 38 bitmaps upscaled: the 28 frames of
+the first three flipbooks and the 10 of `smoke1`). Changed files in
+`gamedata/hd/textures`: 705 of 60396 (the 630 archive files of the four
+flipbooks, 70.5 MB counted as separate files, 38 distinct PNG files; 18
+`index.txt` files; 57 `.method` files).
 
 ## Making a set of version 5
 
