@@ -77,6 +77,23 @@ typedef void (*plat_key_handler)(int scancode, int down);
 void plat_set_key_handler(plat_key_handler handler);
 void plat_input_key(int scancode, int down);
 
+// ASCENT: text input. While it is on, the system makes characters from
+// the key presses with the keyboard layout of the user (dead keys, AltGr,
+// an input method), and the handler gets each character as a Unicode code
+// point. The key events go on as before, so the controls stay on the scan
+// codes. plat_input_text calls the handler for each character of a UTF-8
+// string (plat_pump calls it for each text event of the system).
+typedef void (*plat_text_handler)(uint32_t codepoint);
+void plat_set_text_handler(plat_text_handler handler);
+void plat_input_text(const char *utf8);
+void plat_text_input(int on);
+
+// ASCENT: the character of a key (a PC scan code as above) in the keyboard
+// layout of the user, with no modifier, as a Unicode code point (a letter
+// in the small form); 0 if the key gives no character or there is no
+// keyboard layout (no window).
+uint32_t plat_key_layout_char(int scancode);
+
 // Mouse. button is 0 for left, 1 for right, 2 for middle.
 // dx and dy are the relative motion in device units (not scaled to the frame).
 // x and y are the position in frame pixels.

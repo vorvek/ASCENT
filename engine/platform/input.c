@@ -103,6 +103,82 @@ void plat_input_key(int scancode, int down)
 		Key_handler(scancode, down != 0);
 }
 
+// ASCENT: text input (platform.h)
+static plat_text_handler Text_handler;
+static int Text_wanted, Text_applied;
+
+void plat_set_text_handler(plat_text_handler handler)
+{
+	Text_handler = handler;
+}
+
+void plat_input_text(const char *utf8)
+{
+	const unsigned char *s = (const unsigned char *) utf8;
+
+	while (s && *s) {
+		uint32_t cp;
+		int n, i;
+		if (*s < 0x80) { cp = *s; n = 1; }
+		else if ((*s & 0xE0) == 0xC0) { cp = *s & 0x1F; n = 2; }
+		else if ((*s & 0xF0) == 0xE0) { cp = *s & 0x0F; n = 3; }
+		else if ((*s & 0xF8) == 0xF0) { cp = *s & 0x07; n = 4; }
+		else { s++; continue; }				// not a lead byte
+		for (i = 1; i < n; i++) {
+			if ((s[i] & 0xC0) != 0x80)
+				break;
+			cp = (cp << 6) | (s[i] & 0x3F);
+		}
+		s += i;
+		if (i == n && Text_handler)
+			Text_handler(cp);
+	}
+}
+
+// The text input of SDL belongs to a window: it starts when there is one.
+static void apply_text_input(void)
+{
+	SDL_Window **windows;
+	int count = 0;
+
+	if (Text_wanted == Text_applied || !SDL_WasInit(SDL_INIT_VIDEO))
+		return;
+	windows = SDL_GetWindows(&count);
+	if (windows && count > 0) {
+		static int logged;
+		bool ok = Text_wanted ? SDL_StartTextInput(windows[0]) : SDL_StopTextInput(windows[0]);
+		if (logged++ < 100)
+			plat_log("Input: text input %s: %s", Text_wanted ? "on" : "off", ok ? "ok" : SDL_GetError());
+		Text_applied = Text_wanted;
+	}
+	SDL_free(windows);
+}
+
+void plat_text_input(int on)
+{
+	Text_wanted = (on != 0);
+	apply_text_input();
+}
+
+uint32_t plat_key_layout_char(int scancode)
+{
+	int sc;
+
+	if (!SDL_WasInit(SDL_INIT_VIDEO) || scancode <= 0 || scancode > 255)
+		return 0;
+	if (!Scancode_table_ready)
+		init_scancode_table();
+	for (sc = 1; sc < SDL_SCANCODE_COUNT; sc++)
+		if (Scancode_table[sc] == scancode) {
+			SDL_Keycode k = SDL_GetKeyFromScancode((SDL_Scancode) sc, SDL_KMOD_NONE, false);
+			// A keycode with SDLK_SCANCODE_MASK is a key with no character
+			if (k >= 32 && !(k & SDLK_SCANCODE_MASK) && k != SDLK_DELETE)
+				return (uint32_t) k;
+			return 0;
+		}
+	return 0;
+}
+
 // ---------------------------------------------------------------------
 // Mouse
 
@@ -698,6 +774,18 @@ static void diag_event(const SDL_Event *ev)
 	case SDL_EVENT_MOUSE_WHEEL:
 		Diag.wheels++;
 		break;
+	case SDL_EVENT_TEXT_INPUT:			// ASCENT
+		if (Diag_keys < DIAG_FIRST) {
+			const unsigned char *t = (const unsigned char *) ev->text.text;
+			char hex[64];
+			int n = 0;
+			hex[0] = 0;
+			while (t && *t && n < (int) sizeof(hex) - 4)
+				n += SDL_snprintf(hex + n, sizeof(hex) - n, " %02x", *t++);
+			Diag_keys++;
+			plat_log("Input text: UTF-8%s, text input %d", hex, Text_applied);
+		}
+		break;
 	case SDL_EVENT_KEYBOARD_ADDED:
 	case SDL_EVENT_KEYBOARD_REMOVED:
 		plat_log("Input: keyboard %u %s ('%s')", (unsigned) ev->kdevice.which,
@@ -739,6 +827,7 @@ static void diag_event(const SDL_Event *ev)
 void plat_input_sdl_event(const SDL_Event *ev)
 {
 	apply_relative_mode();
+	apply_text_input();
 	if (!Scancode_table_ready)
 		init_scancode_table();
 	diag_event(ev);
@@ -751,6 +840,11 @@ void plat_input_sdl_event(const SDL_Event *ev)
 			init_scancode_table();
 		if (ev->key.scancode > 0 && ev->key.scancode < SDL_SCANCODE_COUNT)
 			plat_input_key(Scancode_table[ev->key.scancode], ev->type == SDL_EVENT_KEY_DOWN);
+		break;
+
+	case SDL_EVENT_TEXT_INPUT:			// ASCENT: the characters of the layout of the user
+		if (Text_applied)
+			plat_input_text(ev->text.text);
 		break;
 
 	case SDL_EVENT_MOUSE_BUTTON_DOWN:

@@ -205,6 +205,9 @@ extern char key_to_ascii(int keycode )
 {
 	int shifted;
 
+	if (keycode & KEY_TEXT)		// ASCENT: a typed character is not a key
+		return 255;
+
 	shifted = keycode & KEY_SHIFTED;
 	keycode &= 0xFF;
 
@@ -480,6 +483,64 @@ void key_handler(int scancode_in, int down)
 	}
 }
 
+// ASCENT: the text mode (key.h). The platform gives Unicode code points;
+// the game text is Latin-1, so a code point from 0xA0 to 0xFF is its own
+// code. The controls and C0 and C1 codes are dropped.
+static int Text_mode;
+
+static void key_text_handler(uint32_t cp)
+{
+	unsigned char temp;
+
+	if (!Text_mode || cp < 32 || cp == 127 || (cp >= 128 && cp < 0xA0) || cp > 0xFF)
+		return;
+	temp = key_data.keytail+1;
+	if ( temp >= KEY_BUFFER_SIZE ) temp=0;
+	if (temp!=key_data.keyhead)	{
+		key_data.keybuffer[key_data.keytail] = (unsigned short) (KEY_TEXT | cp);
+		key_data.time_pressed[key_data.keytail] = timer_get_fixed_secondsX();
+		key_data.keytail = temp;
+	}
+}
+
+void key_text_mode(int on)
+{
+	on = on != 0;
+	if (on == Text_mode)
+		return;
+	Text_mode = on;
+	plat_text_input(on);
+	if (!on) {
+		// The characters that no field took leave the buffer: the code
+		// that reads the keys next knows no KEY_TEXT.
+		unsigned int i = key_data.keyhead, n = key_data.keyhead;
+		while (i != key_data.keytail) {
+			if (!(key_data.keybuffer[i] & KEY_TEXT)) {
+				key_data.keybuffer[n] = key_data.keybuffer[i];
+				key_data.time_pressed[n] = key_data.time_pressed[i];
+				n = add_one(n);
+			}
+			i = add_one(i);
+		}
+		key_data.keytail = n;
+	}
+}
+
+int key_text_active(void)
+{
+	return Text_mode;
+}
+
+int key_typed_char(int keycode)
+{
+	int c;
+
+	if (Text_mode)
+		return (keycode & KEY_TEXT) ? (keycode & 0xFF) : 0;
+	c = (unsigned char) key_to_ascii(keycode);
+	return c == 255 ? 0 : c;
+}
+
 void key_init()
 {
 	// Initialize queue
@@ -496,6 +557,7 @@ void key_init()
 
 	// ASCENT: the platform layer calls key_handler for each key event.
 	plat_set_key_handler( key_handler );
+	plat_set_text_handler( key_text_handler );		// ASCENT
 
 	atexit( key_close );
 }
@@ -506,4 +568,6 @@ void key_close()
 	Installed = 0;
 
 	plat_set_key_handler( NULL );
+	plat_set_text_handler( NULL );
+	key_text_mode( 0 );
 }

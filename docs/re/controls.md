@@ -188,6 +188,62 @@ executable. Changes:
   (`dtu_display_view_again` in `dtudisp.c`): `gpu.c` ends the view rectangle when a
   screen covers it.
 
+### Typed text (port)
+
+1.3 reads the scan codes of the keyboard (its own INT 9 handler) and makes a
+character with the US table of Descent 1 (`key_to_ascii`), whatever the layout of
+the user. The port did the same, so a Spanish keyboard typed `;` for N tilde and had
+no dead keys or AltGr. This was a port defect (the port runs on a system with a
+keyboard layout), fixed with no setting:
+
+- A text field turns on the text mode of the keys (`key_text_mode`, `engine/bios/key.c`)
+  while the player types: an input box (`fe_menu`, `dtufe.c`), an input menu item that
+  is edited (`newmenu.c`). The platform starts the text input of the system
+  (`SDL_StartTextInput`, `engine/platform/input.c`), which makes the characters with the
+  layout of the user: dead keys (`´` then `a` gives `á`), AltGr (`AltGr+2` gives `@` on
+  a Spanish layout), an input method. Each character goes into the key buffer as
+  `KEY_TEXT` plus its Latin-1 code, after the key code of the press. The field takes
+  the characters from these codes only (`key_typed_char`); Backspace, Enter, Esc and
+  the arrows stay key codes. The controls of the game never see the text mode: they
+  read the scan codes as before.
+- The game text is Latin-1 (`docs/formats/lang.md`). A character outside Latin-1 (the
+  euro sign) is dropped. A Latin-1 character is typed only if the fonts draw it
+  (`gr_latin1_drawn`, the 32 letters and marks of `docs/formats/lang.md`, "Fonts"):
+  a e i o u with acute, grave, circumflex and diaeresis, n tilde, A E I O U with
+  acute, U diaeresis, N tilde, c and C cedilla, the inverted `!` and `?`.
+- The allowed sets of 1.3 stay (as `Newmenu_allowed_chars`, `nm_char_allowed` in
+  `newmenu.c`): the character name `azAZ09--__  ""` (0x13CD1B), the quantity of the
+  market `09` (0x13F37D), the save descriptions any character but `&` (0x63EE0 refuses
+  `&` always). A set that has the small letters also takes the accented letters, not
+  the inverted marks; the save descriptions take all 32. The front end had its own
+  test (letters, digits, `-`, `_`, space) for all its fields; it now uses the set of
+  each field as 1.3 does.
+- Decision on the files: the name (16 bytes at +0 of the player record, 15
+  characters) and the save description (20 bytes at offset 8 of `SGn.SG`, 19
+  characters) are fixed fields of bytes, so a Latin-1 letter takes one byte and the
+  lengths do not change. 1.3 itself can never write such a byte (its key table has
+  none); its fonts have no glyph for it, so 1.3 would draw another glyph or none for
+  a name or a description that the port wrote. The saves are `SG0.SG` to `SG9.SG`.
+  The first 8 bytes of the name are also the callsign of Descent 1, and the options
+  menu of the game writes `<callsign>.plr` in the current directory
+  (`write_player_file`, `playsave.c`, from `menu.c`): with an accented letter that
+  name has a byte above 127, which Windows reads in the ANSI code page of the system
+  (cp1252 gives the right letter) and Linux takes as raw bytes. The file is only read
+  back under the same name, so the game works; the name of the file can look wrong.
+- The key names of the key screen and of the hot keys (`dtu_key_label`, `kconfig.c`):
+  a key whose US name is one character shows the character of the layout of the user
+  (`plat_key_layout_char`, `SDL_GetKeyFromScancode`), in the capital form, when the
+  fonts draw it: on a Spanish layout `;` shows `Ñ`, `]` shows `+`, `\` shows `Ç`, `=`
+  shows `¡`. A dead key (`´`, `` ` ``) or a character the fonts lack (`º`) keeps the US
+  name. `ascent.cfg` and `-keyconfig` keep the US names. The key left of Z of an ISO
+  keyboard (scan code 0x56, `<` on a Spanish layout) has no name in the table of 1.3
+  and cannot be set, as in 1.3.
+- The cheat codes (`dtucheat.c`) stay scan code sequences, as in 1.3: on a layout
+  that moves the letters (AZERTY) they are typed at the US places.
+- The script command `text` of `-fescript` takes UTF-8 and, in a text field, sends
+  each character through `plat_input_text`, the function of the text events of the
+  system (`tools/uitest.py`, `test_text_input_*`).
+
 ### Gamepad (port)
 
 SDL_Gamepad through `engine/platform/input.c` (`plat_pad_*`). Each action has two

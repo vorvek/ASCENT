@@ -124,7 +124,7 @@ Magic `DGSS`, written by the state code derived from Descent 1 `state.c`
 |---|---|---|---|
 | 0 | 4 | `DGSS` | verified |
 | 4 | 4 | u32 version, 12 | verified |
-| 8 | 20 | description, NUL terminated ("Empezamos") | verified |
+| 8 | 20 | description, NUL terminated ("Empezamos"), at most 19 characters (the menu item of 0xBA486). 1.3 can type only the ASCII characters of its US key table but `&`; the port also writes the Latin-1 letters of the fonts, one byte each (`docs/re/controls.md`, "Typed text"; checked in a save of the port: `Pe F1 ED scola`) | verified |
 | 28 | 4 | u32 "between levels": 1 = saved in Waterdeep, 0 = saved in a level (the loader 0xBB780 goes to Waterdeep or starts the level) | value verified, meaning read in the loader |
 | 32 | 9 | mission name, "DTU" | verified |
 | 41 | 4 | u32 Current_level_num (0x13B91C), 1 = YPINN | value verified |

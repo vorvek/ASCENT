@@ -299,8 +299,11 @@ rows (TEX[718]) inside the limits (TEX[719]); leaving stores the record
 ### Screen 4: name, portrait, alignment (record 0x141B68, screen 9, FEBGND 5)
 
 Help bar (109,414)-(529,461), default TEX[709]. Name box (46,112)-(192,158)
-key N: Descent input box, title TEX[422], 15 characters of "a-z A-Z 0-9 - _
-space" (0x13CD1B); Esc or empty keeps the old name; drawn centered with the
+key N: Descent input box (menu_input_name 0x592E8), title TEX[422], 15
+characters of the ranges at 0x13CD1B, `azAZ09--__  ""` (checked in
+`DTUGAME.EXE`): a-z, A-Z, 0-9, `-`, `_`, space and `"`; Esc or empty keeps the
+old name (the port also takes the accented letters, see
+[controls.md](controls.md), "Typed text"); drawn centered with the
 medium font, hue 7. Portrait (226,124)-(372,281): FESEQ 21 (male, 18 frames)
 or 22 (female, 14 frames), 108x120 at (245,145); arrows (229,300)-(288,363)
 key Left and (308,300)-(371,363) key Right; the new picture slides in by
@@ -645,7 +648,11 @@ menu, anything else shows the menu again.
   and the first slot as the current item (0xBA7FF). No valid slot: TEX[797] "No saved games were found" with TEX[34]
   "Ok". Subtitle TEX[798] "Select Game to Restore".
 - Save slot menu 0xBA486: ten input menu items (type 6, 19 characters),
-  subtitle TEX[796] "Save Game". An error gives TEX[800].
+  subtitle TEX[796] "Save Game". An error gives TEX[800]. No allowed set
+  (0xBA486 does not write 0x13D30E): any character of the key table but `&`
+  (char_allowed 0x63EE0). The port took only letters, digits, `-`, `_` and
+  space in the save menu of the front end before 2026-11-27 (a port bug).
+  The typed characters: [controls.md](controls.md), "Typed text".
 - Load 0xBB780: 0x141BBB = 1; the level files and the market are restored;
   the player record and the attribute block are read; "between levels" 1 =
   Function_mode 4 (Waterdeep), 0 = the level is started (0x4E33D) and the

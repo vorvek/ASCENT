@@ -117,6 +117,22 @@ extern int key_peekkey();   // Same as inkey, but doesn't remove key from buffer
 
 extern char key_to_ascii(int keycode );
 
+// ASCENT: typed text in the keyboard layout of the user. While the text
+// mode is on, the platform makes characters from the key presses (dead
+// keys and AltGr included), and each character goes into the key buffer
+// as KEY_TEXT plus its Latin-1 code (the code of the game text,
+// docs/formats/lang.md), after the key code of its press. A character
+// outside Latin-1 is dropped. The key codes go on as before, so the
+// controls do not change. The text fields turn the mode on while the
+// player types (newmenu.c, dtufe.c).
+#define KEY_TEXT        0x1000
+extern void key_text_mode(int on);
+extern int key_text_active(void);
+// The character that a key code types in a text field, or 0: in the text
+// mode the Latin-1 code of a KEY_TEXT code (a key code types nothing),
+// else key_to_ascii of the US table of the original.
+extern int key_typed_char(int keycode);
+
 extern void key_debug();    // Does an INT3
 
 //==========================================================================

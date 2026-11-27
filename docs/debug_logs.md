@@ -88,6 +88,11 @@ too.
     the error of SDL, `Input: mouse grab on: ...`, `Input: the relative mode was off with
     the focus: set again`, and the first 20 warps of the pointer to the window center
     (`Input: warp of the pointer from X,Y to the center ...`).
+  - The start and the end of the text input of the system for a text field (at most
+    100): `Input: text input on: ok` (or the error of SDL), `Input: text input off: ok`
+    (`docs/re/controls.md`, "Typed text").
+  - With `-inputlog` only: the text events among the first 200 key events, as the UTF-8
+    bytes (`Input text: UTF-8 c3 b1, text input 1`), not as the characters.
   - With `-inputlog` only: the window events: `Input window: focus gained` (focus lost, mouse enter, mouse leave,
     enter full screen, leave full screen, resized, moved), with the relative mode and the
     grab, at most 300 lines.

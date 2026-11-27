@@ -200,6 +200,9 @@ int newmenu_get_filename( char * title, char * filespec, char * filename, int al
 extern int Max_linear_depth_objects;
 
 extern char *Newmenu_allowed_chars;
+// ASCENT: 1 if c may be typed in an input item with the allowed ranges p
+// (pairs of first and last character, NULL: any), as char_allowed
+int nm_char_allowed(const char *p, int c);
 
 // Example listbox callback function...
 // int lb_callback( int * citem, int *nitems, char * items[], int *keypress )
