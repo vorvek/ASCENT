@@ -36,6 +36,7 @@
 #include "dtuchar.h"
 #include "dtudesc.h"		// ASCENT: the description window of the market
 #include "dtugear.h"		// ASCENT: the new gear of the rewards
+#include "dtuspell.h"	// ASCENT: dtu_spell_hammer_weapon()
 
 
 int Fe_khelben_mission;			// MsnNum (0x13E588)
@@ -709,7 +710,9 @@ static item_info *mk_item(int type, int id)
 	if (id < 0)
 		return NULL;
 	switch (type) {
-	case OBJ_WEAPON:	return id < N_weapon_types ? &Weapon_item_info[id] : NULL;
+	// ASCENT: the weapon line of Spiritual Hammer is no good of the market
+	// (dtuobj_item.c dtu_inventory_append has the reason)
+	case OBJ_WEAPON:	return id < N_weapon_types && id != dtu_spell_hammer_weapon() ? &Weapon_item_info[id] : NULL;
 	case OBJ_ARMOR:	return id < N_armor_types ? &Armor_info[id] : NULL;
 	case OBJ_MISC:		return id < N_misc_types ? &Misc_info[id] : NULL;
 	case OBJ_SPELL:	return id < N_spell_types ? &Spell_info[id] : NULL;
