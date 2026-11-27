@@ -24,6 +24,7 @@
 
 grs_canvas	*grd_curcanv;
 ubyte	gr_fade_table[256*GR_FADE_LEVELS];
+ubyte	gr_palette[256*3];		// tmapfx.c tmap_fx_solid_bitmap
 int	Gr_scanline_darkening_level = GR_FADE_LEVELS;
 int	Window_clip_left, Window_clip_top, Window_clip_right, Window_clip_bot;
 
