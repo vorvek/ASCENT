@@ -55,6 +55,7 @@
 #include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up, the session log lines
 #include "dtufe.h"		// ASCENT: the class mask of the front end (Dtu_fix_level_thief)
 #include "dtuhold.h"		// ASCENT: Dtu_fix_player_hold
+#include "dtugear.h"		// ASCENT: the new gear
 
 #define DTU_WEAK __attribute__((weak))
 
@@ -388,6 +389,8 @@ int dtu_item_get(int type, int id, dtu_item_data *d)
 	else if (type == OBJ_ARMOR) {
 		if (id < 53)
 			d->ac_bonus = Armor_ac[id];
+		else
+			d->ac_bonus = dtu_gear_armor_ac(id);		// ASCENT: the new gear (dtugear.h)
 		d->hot_key_ok = 0;
 	}
 	else if (type == OBJ_WEAPON) {
@@ -532,9 +535,12 @@ static int table_ac(dtu_inv_item *e)
 
 // ASCENT: the numbers that 0xAFB55 tests, as names (dtu_char_update and
 // dtu_char_item_powers use them)
-static int is_shield(dtu_inv_item *e)		{ return armor_is(e, 2, 2) || armor_is(e, 12, 13); }		// 0xAF9CF
-static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || (!Dtu_fix_bracers_ac && armor_is(e, 39, 42)); }		// 0xAF9F3, 0xAF982
-static int is_heavy_armor(dtu_inv_item *e)	{ return armor_is(e, 3, 4) || armor_is(e, 7, 11); }		// 0xB0B0A
+// ASCENT: the new gear (dtugear.h): the Mirror Shield (53) is a shield, the
+// Plate Mail of Fire Resistance (59) a magic heavy armor, as the Plate Mail +2.
+// The numbers exist only when the tables have the new lines.
+static int is_shield(dtu_inv_item *e)		{ return armor_is(e, 2, 2) || armor_is(e, 12, 13) || armor_is(e, DTU_GEAR_MIRROR_SHIELD, DTU_GEAR_MIRROR_SHIELD); }		// 0xAF9CF
+static int is_magic_armor(dtu_inv_item *e)	{ return armor_is(e, 5, 11) || (!Dtu_fix_bracers_ac && armor_is(e, 39, 42)) || armor_is(e, DTU_GEAR_PLATE_FIRE, DTU_GEAR_PLATE_FIRE); }		// 0xAF9F3, 0xAF982
+static int is_heavy_armor(dtu_inv_item *e)	{ return armor_is(e, 3, 4) || armor_is(e, 7, 11) || armor_is(e, DTU_GEAR_PLATE_FIRE, DTU_GEAR_PLATE_FIRE); }		// 0xB0B0A
 static int is_prot_cloak(dtu_inv_item *e)	{ return armor_is(e, 47, 49); }								// 0xAF930
 static int is_prot_ring(dtu_inv_item *e)	{ return armor_is(e, 0, 0) || armor_is(e, 14, 15); }		// 0xAF9AB
 static int is_prot_amulet(dtu_inv_item *e)	{ return armor_is(e, 28, 32); }								// ASCENT: Amulets of Protection +1 to +5
@@ -551,10 +557,10 @@ static int magic_armor_bonus(dtu_inv_item *e)
 
 	if (!Dtu_fix_bracers_ac && armor_is(e, 39, 42))
 		return table_ac(e);
-	if (!armor_is(e, 5, 11))
+	if (!armor_is(e, 5, 11) && !armor_is(e, DTU_GEAR_PLATE_FIRE, DTU_GEAR_PLATE_FIRE))
 		return 0;
 	b = *e;
-	b.id = base[e->id - 5];
+	b.id = e->id == DTU_GEAR_PLATE_FIRE ? 4 : base[e->id - 5];		// ASCENT: the new gear: Plate Mail
 	return table_ac(e) - table_ac(&b);
 }
 
@@ -591,11 +597,14 @@ int dtu_char_lockpick_bonus(int id)
 }
 
 // The effect bits of the worn items (0xAFB55 collects them in edx). Item
-// bit n gives the effect of Worn_fx[n] (0xB08A8, 0xB0A98).
-static const int Worn_fx[15] = {
+// bit n gives the effect of Worn_fx[n] (0xB08A8, 0xB0A98). ASCENT: bit 15
+// (Regeneration) is the Ring of Regeneration of the new gear (dtugear.h);
+// 1.3 has 15 bits.
+#define N_WORN_FX	16
+static const int Worn_fx[N_WORN_FX] = {
 	DTU_FX_CHILL_TOUCH, DTU_FX_RESIST_FIRE, 0, DTU_FX_FEATHER_FALL, DTU_FX_FLY, DTU_FX_FREE_ACTION, DTU_FX_INFRAVISION,
 	DTU_FX_JUMP, DTU_FX_DETECT_MAGIC, DTU_FX_HASTE, DTU_FX_SHIELD, DTU_FX_LEVITATE, DTU_FX_IMP_INVIS, DTU_FX_INVISIBLE,
-	DTU_FX_PROT_EVIL
+	DTU_FX_PROT_EVIL, DTU_FX_REGENERATE
 };
 
 static int armor_id(dtu_item_ref ref)
@@ -621,6 +630,7 @@ static int item_bits(int type, int id, int slot, int any_race)
 					case 35: bits |= 1 << 3; break;		// Boots of Feather Falling
 					case 36: bits |= 1 << 11; break;		// Boots of Levitation
 					case 37: bits |= 1 << 9; break;		// Boots of Speed: Haste
+					case DTU_GEAR_BOOTS_FREE: bits |= 1 << 5; break;		// ASCENT: the new gear: Free Action
 				}
 			break;
 		case DTU_SLOT_NECKLACE:		// 33: Amulet of Shield (0xAFCBA tests the number only)
@@ -634,6 +644,17 @@ static int item_bits(int type, int id, int slot, int any_race)
 		case DTU_SLOT_CLOAK:			// 44: Chameleon Cloak, Improved Invisibility; 46: Elven Cloak, Invisibility (0xAFF54)
 			if (type == OBJ_ARMOR && id == 44) bits |= 1 << 12;
 			if (type == OBJ_ARMOR && id == 46) bits |= 1 << 13;
+			if (type == OBJ_ARMOR && id == DTU_GEAR_CLOAK_FIRE) bits |= 1 << 1;		// ASCENT: the new gear: Resist Fire
+			break;
+		// ASCENT: the new gear (dtugear.h). 1.3 reads no effect of the belt
+		// and of the armor.
+		case DTU_SLOT_BELT:			// the Belt of Dwarvenkind: Infravision (only a human needs it)
+			if (type == OBJ_ARMOR && id == DTU_GEAR_BELT_DWARF && (any_race || Dtu_char.pa.race <= 0))
+				bits |= 1 << 6;
+			break;
+		case DTU_SLOT_ARMOR:		// the Plate Mail of Fire Resistance: Resist Fire
+			if (type == OBJ_ARMOR && id == DTU_GEAR_PLATE_FIRE)
+				bits |= 1 << 1;
 			break;
 		case DTU_SLOT_RING1:			// rings (jump tables 0xAFAF5 and 0xAFB25). Ring 16
 		case DTU_SLOT_RING2:			// (Armoring) sets no effect bit: see armoring_ac().
@@ -647,6 +668,7 @@ static int item_bits(int type, int id, int slot, int any_race)
 					case 23: bits |= 1 << 7; break;		// Jumping
 					case 24: bits |= 1 << 8; break;		// Magic Detection
 					case 25: bits |= 1 << 9; break;		// Quickness: Haste
+					case DTU_GEAR_RING_REGEN: bits |= 1 << 15; break;		// ASCENT: the new gear: Regeneration
 				}
 			break;
 		case DTU_N_SLOTS:
@@ -685,12 +707,14 @@ int dtu_char_item_fast(int type, int id)
 
 static int worn_item_bits(void)
 {
-	static const int slots[7] = { DTU_SLOT_BOOT, DTU_SLOT_NECKLACE, DTU_SLOT_GAUNTLET, DTU_SLOT_CLOAK,
-		DTU_SLOT_RING1, DTU_SLOT_RING2, DTU_SLOT_BOW };
+	// ASCENT: the belt and the armor for the new gear (item_bits gives no
+	// bit for the items of 1.3 there)
+	static const int slots[9] = { DTU_SLOT_BOOT, DTU_SLOT_NECKLACE, DTU_SLOT_GAUNTLET, DTU_SLOT_CLOAK,
+		DTU_SLOT_RING1, DTU_SLOT_RING2, DTU_SLOT_BOW, DTU_SLOT_BELT, DTU_SLOT_ARMOR };
 	int bits = 0, i;
 	dtu_inv_item *e;
 
-	for (i = 0; i < 7; i++) {
+	for (i = 0; i < 9; i++) {
 		e = ref_entry(Dtu_char.slot[slots[i]]);
 		if (e)
 			bits |= item_bits(e->type, e->id, slots[i], 0);
@@ -711,7 +735,7 @@ static void worn_effects(void)
 	bits = worn_item_bits();
 	gone = Worn_bits & ~bits;
 	// 0xB03FC: an item that is taken off ends its effect (0xB0A98 with 1)
-	for (i = 0; i < 15; i++)
+	for (i = 0; i < N_WORN_FX; i++)
 		if ((gone & (1 << i)) && Worn_fx[i])
 			dtu_spell_clear_effect(p, Worn_fx[i]);
 	if (bits != Worn_bits)
@@ -719,7 +743,7 @@ static void worn_effects(void)
 	Worn_bits = bits;
 	// 0xB08A8: the effects of the worn items, with no end. Infravision only
 	// for a human (0xB0968).
-	for (i = 0; i < 15; i++)
+	for (i = 0; i < N_WORN_FX; i++)
 		if ((bits & (1 << i)) && Worn_fx[i] && !(i == 6 && Dtu_char.pa.race != 0)) {
 			if (!(p->dtu.m_88 & Worn_fx[i]))
 				dtu_spell_set_effect(p, Worn_fx[i], DTU_FX_NO_END, 0, 0);
@@ -877,6 +901,8 @@ void dtu_char_update(void)
 			pa->strength = DTU_GIRDLE_STRENGTH;
 			pa->strength_extra = 0;
 		}
+		if (armor_is(e, DTU_GEAR_BELT_DWARF, DTU_GEAR_BELT_DWARF))		// ASCENT: the new gear
+			pa->constitution = DTU_GEAR_DWARF_CON;
 	}
 
 	// necklace. Armor 33 (Amulet of Shield) gives a spell effect only.
@@ -893,6 +919,7 @@ void dtu_char_update(void)
 
 	// shield. 0xAF9CF: the numbers 2, 12 and 13 are shields.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_SHIELD]);
+	Dtu_gear_mirror_worn = armor_is(e, DTU_GEAR_MIRROR_SHIELD, DTU_GEAR_MIRROR_SHIELD);		// ASCENT: dtugear.h
 	if (e) {
 		shield = is_shield(e);
 		sum += slot_ac(e, DTU_SLOT_SHIELD);
@@ -1260,7 +1287,7 @@ int dtu_char_item_fx(int type, int id)
 	if (slot < 0)
 		return 0;
 	bits = item_bits(type, id, slot, 1);
-	for (i = 0; i < 15; i++)
+	for (i = 0; i < N_WORN_FX; i++)
 		if (bits & (1 << i))
 			fx |= Worn_fx[i];
 	return fx;
@@ -1278,6 +1305,15 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 	// the values of dtu_char_update, in its order
 	if (slot == DTU_SLOT_BELT && armor_is(&e, 38, 38))
 		ADD(DTU_IP_STRENGTH, DTU_GIRDLE_STRENGTH, 0);
+	// ASCENT: the new gear (dtugear.h)
+	if (slot == DTU_SLOT_BELT && armor_is(&e, DTU_GEAR_BELT_DWARF, DTU_GEAR_BELT_DWARF))
+		ADD(DTU_IP_CONSTITUTION, DTU_GEAR_DWARF_CON, 0);
+	if (slot == DTU_SLOT_SHIELD && armor_is(&e, DTU_GEAR_MIRROR_SHIELD, DTU_GEAR_MIRROR_SHIELD))
+		ADD(DTU_IP_MIRROR, 0, 0);
+	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, DTU_GEAR_ARCHER, DTU_GEAR_ARCHER))
+		ADD(DTU_IP_ARCHER, DTU_GEAR_ARCHER_HIT, DTU_GEAR_ARCHER_DAMAGE);
+	if (slot == DTU_SLOT_RING1 && armor_is(&e, DTU_GEAR_RING_REGEN, DTU_GEAR_RING_REGEN))
+		ADD(DTU_IP_REGEN, DTU_GEAR_REGEN_TIME, 0);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 52, 52))
 		ADD(DTU_IP_STRENGTH, DTU_OGRE_STRENGTH, 100);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 50, 50)) {
@@ -2701,7 +2737,7 @@ int dtu_char_rest(void)
 	if (Dtu_fix_rest_effects) {
 		int keep = 0, i;
 
-		for (i = 0; i < 15; i++)
+		for (i = 0; i < N_WORN_FX; i++)
 			if ((Worn_bits & (1 << i)) && Worn_fx[i])
 				keep |= Worn_fx[i];
 		dtu_spell_rest_effects(player, keep);
@@ -3010,6 +3046,22 @@ static int missile_launcher_bonus(int weapon, int thrown)
 	return (thrown && Dtu_fix_thrown_launcher) ? 0 : launcher_bonus(weapon);
 }
 
+// ASCENT: the Gloves of the Archer of the new gear (dtugear.h): an arrow or
+// a bolt (not a thrown weapon) gets 1 to hit (damage 0) or 2 damage
+// (damage 1) while the gloves are worn
+static int archer_bonus(int weapon, int thrown, int damage)
+{
+	dtu_inv_item *g = ref_entry(Dtu_char.slot[DTU_SLOT_GAUNTLET]);
+	int r;
+
+	if (thrown || !armor_is(g, DTU_GEAR_ARCHER, DTU_GEAR_ARCHER) || weapon < 0 || weapon >= N_weapon_types)
+		return 0;
+	r = Weapon_item_info[weapon].record;
+	if (!bm_tbl_has_flag(r, "arrow") && !bm_tbl_has_flag(r, "bolt"))
+		return 0;
+	return damage ? DTU_GEAR_ARCHER_DAMAGE : DTU_GEAR_ARCHER_HIT;
+}
+
 // ASCENT: Dtu_fix_launcher_magic (dtuchar.h)
 int dtu_char_launcher_magic(int weapon)
 {
@@ -3062,6 +3114,9 @@ static void weapon_attack(int weapon, dtu_attack *a)
 			// bow or the crossbow, for the attack and for the damage.
 			a->to_hit_bonus += missile_launcher_bonus(weapon, a->thrown);
 			a->damage_bonus += missile_launcher_bonus(weapon, a->thrown);
+			// ASCENT: the Gloves of the Archer (dtugear.h)
+			a->to_hit_bonus += archer_bonus(weapon, a->thrown, 0);
+			a->damage_bonus += archer_bonus(weapon, a->thrown, 1);
 		}
 	}
 	else {
@@ -3192,10 +3247,12 @@ int dtu_char_attack_roll(object *target, int weapon)
 		// crossbow of a missile, apart from the bonus of the weapon
 		int sh = (a.melee && Dtu_char.created) ? str_hit_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : 0;
 		int lh = (!a.melee && a.weapon_id >= 0) ? missile_launcher_bonus(weapon, a.thrown) : 0;
+		int gh = (!a.melee && a.weapon_id >= 0) ? archer_bonus(weapon, a.thrown, 0) : 0;		// ASCENT: dtugear.h
 
-		dtu_xp_hit_mod(a.to_hit_bonus - sh - lh, LN("bonus"));
+		dtu_xp_hit_mod(a.to_hit_bonus - sh - lh - gh, LN("bonus"));
 		dtu_xp_hit_mod(sh, dtu_xp_ability_tag(DTU_XP_TEX_STR));
 		dtu_xp_hit_mod(lh, LN("launcher"));
+		dtu_xp_hit_mod(gh, LN("gloves"));
 		// 0x2AB66: a backstab adds 4 (melee and thrown weapons)
 		if (Dtu_backstab && a.melee) {
 			r += 4;
@@ -3255,6 +3312,12 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		if (!a.melee) {
 			sum += missile_launcher_bonus(weapon, a.thrown);
 			dtu_xp_dmg_mod(missile_launcher_bonus(weapon, a.thrown), LN("launcher"));
+			// ASCENT: the Gloves of the Archer (dtugear.h)
+			if (archer_bonus(weapon, a.thrown, 1)) {
+				sum += archer_bonus(weapon, a.thrown, 1);
+				dtu_xp_dmg_mod(archer_bonus(weapon, a.thrown, 1), LN("gloves"));
+				dtu_char_log("damage roll: the Gloves of the Archer add %d", archer_bonus(weapon, a.thrown, 1));
+			}
 		}
 		// 0x2B107: the Potion of Luck: the highest number of the dice
 		if (luck_now()) {
@@ -3283,8 +3346,8 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		}
 		// 0x2B1D6: the damage bonus of the weapon (the strength bonus of a
 		// melee weapon is added last, 0x2B456)
-		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown));
-		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown)), LN("weapon"));
+		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown) + archer_bonus(weapon, a.thrown, 1));
+		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown) + archer_bonus(weapon, a.thrown, 1)), LN("weapon"));
 		{
 			int s0 = sum;
 
@@ -4394,6 +4457,20 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "rules"))		rules_test();		// ASCENT: test, docs/audit/character.md
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);		// test: 0x8BA3A (script statement 9F)
 	else if (!strcmp(cmd, "spellat"))		dtu_spell_test_missile_at(a, b);	// ASCENT: test: spellat=SPELL.OBJ, a missile of the spell at object OBJ
+	// ASCENT: test (the Mirror Shield, dtugear.h): spellby=SPELL.OBJ, a missile
+	// of the spell from creature OBJ at the player; weaponby=WEAPON.OBJ, a
+	// missile of the weapon line (81: the eye ray of a beholder) from OBJ at
+	// the player
+	else if (!strcmp(cmd, "spellby") && ConsoleObject)	dtu_spell_test_missile_from(a, b, ConsoleObject - Objects);
+	else if (!strcmp(cmd, "weaponby") && ConsoleObject && b >= 0 && b <= Highest_object_index) {
+		vms_vector d;
+		int o;
+
+		vm_vec_sub(&d, &ConsoleObject->pos, &Objects[b].pos);
+		vm_vec_normalize_quick(&d);
+		o = dtu_create_missile(&d, &Objects[b].pos, Objects[b].segnum, b, a, -1, 1);
+		dtu_char_log("test: weapon %d missile obj %d from obj %d at the player", a, o, b);
+	}
 	else if (!strcmp(cmd, "gametime"))	GameTime = i2f(a);		// ASCENT: test: gametime=S, the game time (Dtu_fix_time_wrap)
 	else if (!strcmp(cmd, "fxstate")) {		// ASCENT: test: the effect bits of the player
 		dtu_char_log("fx: bits 0x%08x, game time %.1f", (unsigned) ConsoleObject->dtu.m_88, f2fl(GameTime));
@@ -4405,6 +4482,8 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "fxset") && a >= 0 && a <= Highest_object_index && b >= 0 && b < 31)	// ASCENT: test: fxset=N.BIT, effect BIT on object N for 600 seconds
 		dtu_spell_set_effect(&Objects[a], 1 << b, i2f(600), 0, 1);
+	else if (!strcmp(cmd, "fxclear") && a >= 0 && a <= Highest_object_index && b >= 0 && b < 31)	// ASCENT: test: fxclear=N.BIT, effect BIT of object N ends (the Hold of Daland in MYRKUL)
+		dtu_spell_clear_effect(&Objects[a], 1 << b);
 	else if (!strcmp(cmd, "fxall")) {		// ASCENT: test: the effects of all objects (spell log)
 		int i;
 
@@ -4538,6 +4617,28 @@ void dtu_char_level_start(void)
 	dtu_char_log("level start: '%s', %d of %d hit points", Dtu_char.name, Dtu_char.pa.hit_points, Dtu_char.pa.max_hit_points);
 }
 
+// ASCENT: the Ring of Regeneration of the new gear (dtugear.h): 1 hit point
+// each DTU_GEAR_REGEN_TIME seconds of game time while it is worn and the
+// player lives, up to the maximum. The time counts only while the ring is
+// on (it starts again at 0 when the ring goes on).
+static fix Regen_time;
+
+static void regen_frame(void)
+{
+	if (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) != DTU_GEAR_RING_REGEN && armor_id(Dtu_char.slot[DTU_SLOT_RING2]) != DTU_GEAR_RING_REGEN) {
+		Regen_time = 0;
+		return;
+	}
+	if (Dtu_player_dead || dtu_char_hit_points() <= 0)
+		return;
+	Regen_time += FrameTime;
+	if (Regen_time < i2f(DTU_GEAR_REGEN_TIME))
+		return;
+	Regen_time -= i2f(DTU_GEAR_REGEN_TIME);
+	if (dtu_char_heal(1))
+		dtu_char_log("Ring of Regeneration: 1 hit point, %d of %d", dtu_char_hit_points(), dtu_char_max_hit_points());
+}
+
 void dtu_char_frame(void)
 {
 	fix max;
@@ -4552,6 +4653,7 @@ void dtu_char_frame(void)
 	if (Players[Player_num].shields > max && !(ConsoleObject && (ConsoleObject->dtu.m_88 & DTU_FX_BLESS)))
 		set_hit_points(Dtu_char.pa.max_hit_points);
 	dtu_char_potions_end(0);		// 0x396B2 from the frame 0x435A6
+	regen_frame();				// ASCENT: the Ring of Regeneration (dtugear.h)
 	dtu_thief_frame();
 	Dtu_char.pa.hit_points = dtu_char_hit_points();
 	Dtu_char.pa.gold = Dtu_gold;

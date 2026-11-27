@@ -69,6 +69,7 @@
 #include "screens.h"
 #include "dtuopts.h"
 #include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items
+#include "dtugear.h"		// ASCENT: Dtu_new_gear
 #include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up
 #include "dtuhdui.h"		// ASCENT: the upscaled pictures
 #include "dtulang.h"		// ASCENT: the language of the text
@@ -1692,6 +1693,7 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Improved jump controls"), &Dtu_improved_jump },
 	{ LN("Crouch"),                 &Dtu_crouch },			// physics.c
 	{ LN("Improved AI"),            &Dtu_improved_ai },
+	{ LN("New gear"),               &Dtu_new_gear },		// dtugear.h: the next level
 	{ LN("Improved 3D body"),       &Dtu_improved_body },
 	{ LN("Target hint"),            &Dtu_target_hint },		// dtucombat.c
 	{ LN("Streaming safe music"),   &Dtu_safe_music },		// dtumusic.c

@@ -137,6 +137,7 @@ typedef struct dtu_missile {
 	int		pass_obj, pass_sig;	// ASCENT: Dtu_fix_hit_keep, the creature that a kept missile passes. -1: none
 	fix		light;					// ASCENT: lightcast of the missile (player_light of the spell, 0x56FF6), or -1: that of the weapon
 	ubyte		unlinked;				// ASCENT: +0x144 cleared (Lightning Bolt after a wall): the parent can be hit
+	short		level;					// ASCENT: the new gear (dtugear.h): the caster level of a missile that a Mirror Shield sent back, 0: that of the parent
 } dtu_missile;
 
 //------------------------------------------------------------------------

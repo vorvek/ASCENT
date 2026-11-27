@@ -13,7 +13,7 @@ set(MAIN_SOURCES
   aipath.c wall.c switch.c fuelcen.c cntrlcen.c hostage.c morph.c
   lighting.c render.c dtugame.c dtudisp.c dtuinfra.c dtuobj.c dtuobj_test.c dtuobj_item.c dtuobj_setup.c dtuobj_combat.c dtuobj_missile.c dtuobj_move.c dtuobj_scenery.c dtusolid.c dtustep.c dtuobj_aware.c dtuobj_ai.c dtutrig.c dtuchar.c dtuhook.c dtucombat.c dtuatk.c dtuspell.c dtuthief.c
   dtufe.c dtufe_script.c dtufe_char.c dtufe_town.c dtustate.c dtuscript.c dtudlg.c dtuscroll.c dtudesc.c dtuthiefpts.c dtucheat.c dtuopts.c
-  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c dtuitemfix.c dtutblfix.c dtuxp.c dtuhold.c)
+  dtumovie.c mvedec.c dtusoak.c dtuhdui.c dtulog.c dtulang.c dtulangart.c dtuitemfix.c dtutblfix.c dtuxp.c dtuhold.c dtugear.c)
 
 # ASCENT: the translations of the text of the code (dtulang.c,
 # docs/formats/lang.md) are part of the program: each

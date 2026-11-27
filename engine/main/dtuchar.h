@@ -676,6 +676,9 @@ int dtu_char_spider_turn_level(void);
 #define DTU_IP_FAST_ATTACK	17		// ASCENT: attacks twice as fast, no Haste (dtu_char_item_fast)
 #define DTU_IP_PROT_AMULET	18		// ASCENT: only the highest magic protection bonus counts (Dtu_fix_ring_magic_armor)
 #define DTU_IP_PROT_SAVES		19		// ASCENT: value better saving throws, the best protection item counts (Dtu_fix_prot_saves)
+#define DTU_IP_MIRROR			20		// ASCENT: the Mirror Shield sends spell missiles and eye rays back (dtugear.h)
+#define DTU_IP_ARCHER			21		// ASCENT: value to hit and value2 damage with bows and crossbows (dtugear.h)
+#define DTU_IP_REGEN			22		// ASCENT: 1 hit point each value seconds (dtugear.h)
 typedef struct dtu_item_power {
 	int		kind, value, value2;
 } dtu_item_power;

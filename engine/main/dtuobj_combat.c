@@ -70,6 +70,7 @@
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
 #include "dtuobj_int.h"
+#include "dtugear.h"		// ASCENT: the new gear
 
 static void player_dies(object *player,object *attacker);
 
@@ -564,6 +565,36 @@ static void flame_lolth_dead(void)
 	dtu_hook_trigger_object(3,0);
 }
 
+// ASCENT: the drops of the new gear (dtugear.h): gold in 6 of 10 deaths
+// (moola + 1d(2 x moola)) for each type with a moola but the named people,
+// and a gem in 1 of 2 deaths of an undead or intelligent type, by its
+// experience. The gem lies 3.0 to the right of the gold (the right of the
+// body), on the floor that dtu_create_item finds. Both have the size of the
+// gold of 1.3 (DTU_GOLD_SIZE), so that the player reaches them under the
+// body.
+static void gear_drops(object *obj,monster_info *mi)
+{
+	int amount = dtu_gear_gold(mi->moola,mi->name), gem = dtu_gear_gem(dtu_gear_gem_class(obj->id),Robot_info[obj->id].score_value), n;
+
+	if (amount > 0 && (n = dtu_create_item_size(OBJ_MISC,1,1,obj->segnum,&obj->pos,DTU_GOLD_SIZE)) >= 0) {
+		Objects[n].shields = i2f(amount);
+		dtu_obj_log("drop: obj %d %s leaves %d gold (obj %d) at %.2f %.2f %.2f (new gear)",(int)(obj-Objects),dtu_object_name(obj),amount,n,
+			f2fl(Objects[n].pos.x),f2fl(Objects[n].pos.y),f2fl(Objects[n].pos.z));
+	}
+	if (gem >= 0 && gem < N_misc_types) {
+		vms_vector p = obj->pos;
+		int seg;
+
+		vm_vec_scale_add2(&p,&obj->orient.rvec,i2f(3));
+		if ((seg = find_point_seg(&p,obj->segnum)) < 0) {
+			p = obj->pos;
+			seg = obj->segnum;
+		}
+		n = dtu_create_item_size(OBJ_MISC,gem,1,seg,&p,DTU_GOLD_SIZE);
+		dtu_obj_log("drop: obj %d %s leaves misc %d '%s' (obj %d, new gear)",(int)(obj-Objects),dtu_object_name(obj),gem,Misc_info[gem].name,n);
+	}
+}
+
 void creature_is_corpse(object *obj)
 {
 	polymodel *po = obj_model(obj);
@@ -592,7 +623,13 @@ void creature_is_corpse(object *obj)
 	// here a random number): 1 to moola / 4 pieces, a misc object with
 	// the id 1 and the amount as its hit points.
 	// Dtu_fix_revive: one time only for a creature that gets up again
-	if ((mi->flags & MONSTER_F_HUMANOID) && (mi->moola >> 2) > 0 && !Ail[obj-Objects].gold_done) {
+	// ASCENT: the new gear (Dtu_new_gear, dtugear.h): each type with a moola
+	// leaves gold, and the undead and intelligent types gems
+	if (Dtu_new_gear && Dtu_gear_loaded) {
+		if (!Ail[obj-Objects].gold_done)
+			gear_drops(obj,mi);
+	}
+	else if ((mi->flags & MONSTER_F_HUMANOID) && (mi->moola >> 2) > 0 && !Ail[obj-Objects].gold_done) {
 		int r = Dtu_fix_ai_ticks ? (rand() % 10) : (int)((uint)Dtu_clock % 10);
 
 		if (r >= 6) {
