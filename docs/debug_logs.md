@@ -57,8 +57,12 @@ too.
   H, move M, open locks O, traps T, climb C, N points left` (the values without items).
 - Each saving throw of the player: `Save of the player: CAUSE (SOURCE), CATEGORY: d20 R,
   needs N (table T, +B (protection), +C (CON), +W (WIS)): made` (or `failed`). The cause
-  is a spell (the source is its caster), Chill Touch (the attacker), or the blindness or
-  deafness of the fire (Fireball, the fire trap). N is the number of the class table T
+  is a spell (the source is its caster; `trap` for the light object of a trap or of a
+  script run by a trigger), Chill Touch (the attacker), lava, or the blindness or
+  deafness of the fire (Fireball, the fire trap). A cause holds only in the frame in which
+  it was set: a save in a later frame is `unknown cause` (before 2026-11-27 it took the
+  name of the last spell on the player, also one with no save, such as Protection From
+  Evil, and its Wisdom adjustment). N is the number of the class table T
   minus each bonus; a bonus of 0 is left out. B: the best Ring, Cloak or Amulet of
   Protection (`Dtu_fix_prot_saves`). C: the Constitution bonus of a dwarf or halfling, W:
   the Wisdom adjustment against a spell that attacks the mind (`Dtu_fix_ability_saves`);

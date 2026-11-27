@@ -348,6 +348,7 @@ char *dtu_object_name(object *obj)
 		case OBJ_SPELL:		if (obj->id < N_spell_types) return Spell_info[obj->id].name; break;
 		case OBJ_WEAPON:		if (obj->id < N_weapon_types) return Weapon_item_info[obj->id].name; break;
 		case OBJ_PLAYER:		return "player";
+		case OBJ_LIGHT:		return "trap";		// ASCENT: the caster of a trap spell (dtu_fire_trap, the scripts)
 	}
 	return unknown;
 }

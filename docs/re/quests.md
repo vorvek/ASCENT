@@ -391,6 +391,12 @@ script, and the next talk goes past the reward. So more copies give no second
 reward (the extra copies of 1.3 stay in the bag, docs/re/objects.md, the byte at
 0x1D5). Script 6 label 16 ("Actually, I have something right here.") ends the
 talk with no reward, no take and no flag; only label 17 (from label 9) gives it.
+Label 16 is never reached (checked 2026-11-27): its reply is in label 12,
+which only label 9 reaches when object flag 4 is clear, and label 999 (the
+first label, where each talk starts: the script sets no resume label) sets
+flag 4 at the first talk. So label 9 always takes the document and goes to
+label 17 (a run with `resume=30.9` after a first talk: `goto 11`, 2000 gold,
+take misc 126). No setting: the branch has no effect for a player.
 
 ## 10. The scripts: flags, items and teleports
 

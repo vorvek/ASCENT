@@ -1822,6 +1822,12 @@ static const char *Save_name[5] = {
 static const char *Save_short[5] = { LN("Para"), LN("Rod"), LN("Petri"), LN("Breath"), LN("Spell") };
 static char Save_what[80], Save_who[48];
 static int Save_spell = -1;
+// ASCENT: the frame of dtu_char_save_cause. A spell on the player sets the
+// cause even when it makes no save (Protection From Evil, Stoneskin, a
+// spell that a protection stops), and a later save (the lava, a trap) took
+// that name and its Wisdom adjustment. The cause holds for the frame in
+// which it was set only.
+static int Save_frame = -1;
 
 const char *dtu_char_save_name(int cat, int brief)
 {
@@ -1891,6 +1897,7 @@ int dtu_char_save_number(int cat)
 void dtu_char_save_cause(int spell, const char *what, const char *who)
 {
 	Save_spell = spell;
+	Save_frame = FrameCount;
 	snprintf(Save_what, sizeof(Save_what), "%s", what ? what : "");
 	snprintf(Save_who, sizeof(Save_who), "%s", who ? who : "");
 }
@@ -1909,9 +1916,17 @@ static void ability_word(char *out, int size, int n, const char *def)
 
 int dtu_char_player_save(int cat, int roll, int need)
 {
-	int prot = dtu_char_save_bonus(), con = dtu_char_con_save_bonus(cat), wis = dtu_char_wis_save_bonus(Save_spell);
-	int n = need - prot - con - wis;
+	int prot, con, wis, n;
 	char terms[120] = "", w[16];
+
+	if (Save_frame != FrameCount) {		// a cause of an earlier frame
+		Save_what[0] = Save_who[0] = 0;
+		Save_spell = -1;
+	}
+	prot = dtu_char_save_bonus();
+	con = dtu_char_con_save_bonus(cat);
+	wis = dtu_char_wis_save_bonus(Save_spell);
+	n = need - prot - con - wis;
 
 	if (prot)
 		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (protection)", prot);
@@ -4104,6 +4119,12 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
+	else if (!strcmp(cmd, "khelben")) {	// ASCENT: test: the mission advance of a visit of Khelben (0x83E36), no screen
+		int blurb = 1;
+
+		Fe_khelben_mission = dtu_mission_advance(Fe_khelben_mission, &blurb);
+		dtu_char_log("script: Khelben: mission %d", Fe_khelben_mission);
+	}
 	else if (!strcmp(cmd, "race"))		Dtu_char.pa.race = Dtu_char.base.race = a;		// test: race=N
 	else if (!strcmp(cmd, "class"))		Dtu_char.pa.class1 = Dtu_char.base.class1 = a;	// test: class=N, the first class
 	else if (!strcmp(cmd, "class2"))	Dtu_char.pa.class2 = Dtu_char.base.class2 = a;	// ASCENT: test: class2=N, the second class (-1: none)

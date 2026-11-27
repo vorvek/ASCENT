@@ -223,12 +223,18 @@ void fe_market_store(int s, int write);
 void fe_market_new_character(void);
 // 0x879A7: reward n (0 to 8) of Khelben adds its goods to geldor.dat.
 int fe_market_reward(int n);
+// ASCENT: Dtu_fix_market_reward: the stock gets the goods of the rewards
+// that the mission has passed and that it does not hold (a loaded game,
+// the market). docs/formats/misc.md has the trailer of the stock file.
+void fe_market_check_rewards(void);
 // Settings of the market (dtufe_town.c, docs/re/frontend.md): D-081 and
 // D-082, D-185, D-186. -origfe clears them (dtufe.c).
 extern int Dtu_fix_market_charisma;
 extern int Dtu_fix_market_sell_count;
 extern int Dtu_fix_market_charges;
 extern int Dtu_fix_market_buy_stock;
+extern int Dtu_fix_market_reward;		// D-149
+extern int Dtu_fix_market_spell_line;
 // ASCENT: the Potions of Freedom of the first stock and of each reward
 // (dtufe_town.c). 0 with -origfe.
 extern int Dtu_market_freedom;

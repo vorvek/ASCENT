@@ -2353,6 +2353,7 @@ int fe_load_game(int in_game)
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
 	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
 	dtu_mission_read_save(path);			// ASCENT: the mission and global flags (dtuscript.c)
+	fe_market_check_rewards();			// ASCENT: the stock of the rewards (Dtu_fix_market_reward)
 	// 0xBBCF2: a save in a level has three lists after 7374 (the Descent 1
 	// triggers, the matcens and the fuel centers); the level start applies
 	// them before the level state.
@@ -2655,6 +2656,8 @@ static void fe_orig_options(void)
 	if (FindArg("-origfe"))
 		Dtu_fix_market_charges = Dtu_fix_market_buy_stock = Dtu_market_freedom = 0;
 	if (FindArg("-origfe"))
+		Dtu_fix_market_reward = Dtu_fix_market_spell_line = 0;
+	if (FindArg("-origfe"))
 		Dtu_fix_start_spells = Dtu_fix_chargen_percentile = Dtu_fix_creation_luck = 0;
 }
 
@@ -2774,6 +2777,14 @@ int dtufe_run(void)
 		// -testmarketgold N: the gold of the player
 		if ((t = FindArg("-testmarketgold")) != 0 && t + 1 < Num_args)
 			Dtu_gold = Dtu_char.pa.gold = atoi(Args[t + 1]);
+		// -testmarketitem CLASS.NUMBER.COUNT: an item of the inventory (a
+		// scroll stays an item: no spell list takes it)
+		if ((t = FindArg("-testmarketitem")) != 0 && t + 1 < Num_args) {
+			int c = 0, n = 0, k = 1;
+
+			sscanf(Args[t + 1], "%d.%d.%d", &c, &n, &k);
+			dtu_inventory_append(c, n, k);
+		}
 	}
 	if (FindArg("-testblackstaff")) {		// ASCENT: test option, the front end starts at Khelben (the first visit)
 		int t;

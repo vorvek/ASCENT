@@ -351,11 +351,19 @@ def dump_say(b):
 
 # ------------------------------------------------------------------- store
 
+def store_trailer(b):
+    """The rewards of the ASCENT trailer of a stock file ("ASRW", u16 mask,
+    u16 0; docs/formats/misc.md), or None."""
+    if len(b) % 10 == 8 and b[len(b) - 8:len(b) - 4] == b'ASRW':
+        return struct.unpack_from('<H', b, len(b) - 4)[0]
+    return None
+
+
 def parse_store(b):
-    if len(b) % 10:
+    if len(b) % 10 and store_trailer(b) is None:
         raise FormatError('THESTORE size %d is not a multiple of 10' % len(b))
     items = []
-    for o in range(0, len(b), 10):
+    for o in range(0, len(b) - len(b) % 10, 10):
         tail, item_id, item_class, quantity = struct.unpack_from('<IBBi', b, o)
         # The game swaps bytes 0..3 with 6..9 and byte 4 with byte 5 to get its
         # in-memory record: s32 quantity, u8 class, u8 id, u32 tail.
@@ -366,6 +374,8 @@ def parse_store(b):
 def dump_store(b):
     for i, (c, n, q, tail) in enumerate(parse_store(b)):
         print('%2d: class %d id %d quantity %s tail %d' % (i, c, n, 'unlimited' if q == -1 else q, tail))
+    if store_trailer(b) is not None:
+        print('ASCENT trailer: rewards 0x%03X' % store_trailer(b))
 
 
 # --------------------------------------------------------------------- FNT

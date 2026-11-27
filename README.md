@@ -67,6 +67,8 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Picking up more than a full stack leaves the rest on the floor instead of losing it, and endless stacks stay endless.
 * The Scroll of the Illithids and the Ruldegost Document are one item each, not 18 and 21 copies.
 * The market uses your Charisma, not that of the last character you created (a fun bug from the original).
+* The rewards of Khelben add their goods to the market even before your first visit there; a saved game gets the goods of the rewards it missed.
+* Scrolls you cannot learn, and spare copies of spells you know, can be sold at the market, as in the original.
 
 **Quests and levels**
 

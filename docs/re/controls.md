@@ -224,12 +224,12 @@ keyboard layout), fixed with no setting:
   lengths do not change. 1.3 itself can never write such a byte (its key table has
   none); its fonts have no glyph for it, so 1.3 would draw another glyph or none for
   a name or a description that the port wrote. The saves are `SG0.SG` to `SG9.SG`.
-  The first 8 bytes of the name are also the callsign of Descent 1, and the options
-  menu of the game writes `<callsign>.plr` in the current directory
-  (`write_player_file`, `playsave.c`, from `menu.c`): with an accented letter that
-  name has a byte above 127, which Windows reads in the ANSI code page of the system
-  (cp1252 gives the right letter) and Linux takes as raw bytes. The file is only read
-  back under the same name, so the game works; the name of the file can look wrong.
+  The first 8 bytes of the name are also the callsign of Descent 1. Until 2026-11-27
+  the options menu of the game wrote `<callsign>.plr` in the current directory
+  (`write_player_file`, `playsave.c`, from `menu.c`); nothing of the target game reads
+  that file (RegisterPlayer, get_game_list and set_highest_level are Descent 1 paths,
+  and the keys are in `ascent.cfg`), so a run of the target game (`Dtu_direct_start`)
+  now writes only the configuration file.
 - The key names of the key screen and of the hot keys (`dtu_key_label`, `kconfig.c`):
   a key whose US name is one character shows the character of the layout of the user
   (`plat_key_layout_char`, `SDL_GetKeyFromScancode`), in the capital form, when the

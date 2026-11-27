@@ -452,13 +452,26 @@ class, u8 number, u32 count), read to the end of the file; with no file, the
 21 records at 0x13EB6C (the same goods as the GELDOR.DAT of the install, in
 another order). 0x873EE builds the item record from the item tables; for a
 stackable type the count is 1, else the count of the record. Classes: 5
-weapon, 15 armor, 16 misc, 17 spell (no spell is listed: the stock has none
-and the spells of the player are in other lists).
+weapon, 15 armor, 16 misc, 17 spell; a spell (a scroll) goes into the misc
+list (0x873EE takes class 0x11 with misc).
 
 The goods of the player: each entry of the item list (P+0x103, P+0xF3
 entries) that is not a plot item (`plot_item=` of the table, record +0x0A).
 A stackable entry gives one line with the stack as the quantity and count
-1, another entry a line of quantity 1 with its count (charges).
+1, another entry a line of quantity 1 with its count (charges). A scroll of
+the item list (class 17) is a line of the misc list (0x8770C `cmp al,0x11;
+je 0x878F7`, then 0x87948 takes the value of the spell line). The scrolls of
+the item list are the spells that no list of the character takes (another
+class, `Dtu_fix_learn_class`) and the copies of a spell that its list holds
+already (0xB660C, result 2); a scroll that a list takes is a spell, not an
+item, and is not sold. The `$SPELL` lines have the flag `stackable`, so
+copies of one spell are one line and the price does not depend on the count:
+`value=` of the spell times the percent of the charisma (Fireball, value 600,
+charisma 13: 480). Until 2026-11-27 the port listed no scroll (a port bug).
+1.3 has no other way to sell a scroll: a script gives and takes items by
+class and number only, so a "sell scrolls" reply of Aleena Paladinstar
+(YPINN) would need one reply and one TAKE for each of the 56 spells, or a
+new statement.
 
 ### Price (0x86C5A) (V)
 
@@ -561,7 +574,34 @@ and the lists are freed.
   (0x87C05(S, 0)).
 - Rewards of Khelben (0x879A7(n), n 0 to 8, table 0x13F6A0): the records of
   the reward are added at the end of `geldor.dat`; nothing if the file does
-  not exist.
+  not exist (D-149). The rewards of the market come with missions 1 (table 0),
+  3 or 4 (1), 7 or 8 (2), 10 (3), 11 (4), 14 (5), 16 (6), 20 or 21 (7) and 29
+  (8) (0x844ED); the switch 0x83EF5 passes each of these on the way to a
+  higher mission. `Dtu_fix_market_reward`: the port makes `geldor.dat` from
+  the first stock when it is missing, and at a load, at the market and at a
+  reward it adds the goods of each reward that the mission has passed and
+  that the stock does not hold, by the trailer of the stock file
+  (docs/formats/misc.md). Until 2026-11-27 the port added no reward goods
+  (a stub hook); that rule gives them to a save of the port.
+
+The goods of the tables (0x13F6A0, read in the bytes of DTUGAME.EXE; the
+names of the level table of YPINN). Each line has count -1, except the Bolts
++1 (count 1):
+
+| Table | Mission | Goods |
+|---|---|---|
+| 0 | 1 | Bracers of Defense AC8 (armor 39), Plate Mail (armor 4), Ring of Protection +1 (armor 14), Potion of Infravision (misc 82), Potion of Jumping (misc 85), Wand of Magic Missiles (weapon 55) |
+| 1 | 3, 4 | Shield +1 (armor 12), Potion of Agility (misc 72), Potion of Freedom (misc 78), Potion of Toughening (misc 88), Dagger +1 (weapon 43), Wand of Magic Missiles |
+| 2 | 7, 8 | Potion of Luck (misc 86), Potion of Fire Resistance (misc 76), Journeyman Lockpicks (misc 11), 6 Bolts +1 (weapon 47), Short Sword +1 (weapon 34), Warhammer +1 (weapon 40), 2 Wands of Magic Missiles, Wand of Fireballs (weapon 58) |
+| 3 | 10 | Amulet of Protection +1 (armor 28), Ring of Feather Fall (armor 18), Ring of Jumping (armor 23), Long Sword +1 (weapon 32), 4 Wands of Fireballs, Mace +1 (weapon 38) |
+| 4 | 11 | Bracers of Defense AC6 (armor 40), Chain Mail +1 (armor 7), Leather Armor +1 (armor 5), Ring of Health (armor 21), Crossbow +1 (misc 97), Wand of Fireballs, 3 Wands of Magic Missiles, Short Bow +1 (misc 92) |
+| 5 | 14 | Boots of Feather Falling (armor 35), Ring of Magic Detection (armor 24), Cloak of Elvenkind (armor 45), Long Bow +1 (misc 94), Potion of Extra-Healing (misc 75), 4 Potions of Flying (misc 77), 2 Wands of Fireballs, Wand of Lightning Bolts (weapon 59), Flame Tongue (weapon 71) |
+| 6 | 16 | Amulet of Protection +2 (armor 29), Chain Mail +2 (armor 8), Leather Armor +2 (armor 6), Plate Mail +1 (armor 9), Potion of Dragon's Blood (misc 74), Potion of Speed (misc 87), 7 Wands of Magic Missiles |
+| 7 | 20, 21 | Bracers of Defense AC4 (armor 41), Ring of Strength (armor 26), Ring of Warmth (armor 27), Gem of Curing (misc 2), Potion of Hill Giant Strength (misc 80), Short Bow +2 (misc 93), Long Sword +2 (weapon 33), Mace +2 (weapon 39), 4 Potions of Extra-Healing, 6 Wands of Fireballs, 6 Wands of Lightning Bolts, 4 Potions of Toughening |
+| 8 | 29 | Plate Mail +2 (armor 10), Gauntlets of Ogre Power (armor 52), Long Bow +2 (misc 95), Short Sword of Quickness (weapon 69), 6 Wands of Lightning Bolts, 4 Potions of Extra-Healing, 4 Potions of Flying, 4 Potions of Toughening, Wand of Fireballs |
+
+A good with no number is one item. `Dtu_market_freedom` adds 2 Potions of
+Freedom (misc 78) after each table.
 
 `THESTORE.1` of the install decodes to `GELDOR.DAT` of the install (V).
 
@@ -793,6 +833,8 @@ Settings (on by default, each corrects a defect of the executable):
 | `Dtu_fix_market_sell_count` | dtufe_town.c | a sale adds to the stock the items the player had in the line, not the items sold (0x8564F) | the items sold |
 | `Dtu_fix_market_charges` | dtufe_town.c | a bought non-stackable item gets the count of the line; a line of count -1 (the rewards of 0x13F6A0) gives an item of count -1, which 0xB7084 never takes down | the `uses` of the table line (at least 1) |
 | `Dtu_fix_market_buy_stock` | dtufe_town.c | Accept takes the whole quantity from the line of the stock, also the items that the bag did not take (0x85458) | the items given |
+| `Dtu_fix_market_reward` | dtufe_town.c | a reward of Khelben adds no goods when `geldor.dat` does not exist (0x879A7, D-149) | the file is made from the first stock; a load, the market and a reward add the goods of each reward that the mission passed and that the stock does not hold (the trailer, docs/formats/misc.md) |
+| `Dtu_fix_market_spell_line` | dtufe_town.c | a bought scroll that goes into a spell list gets a sale line (0x85458, D-194) | no line |
 | `Dtu_market_freedom` | dtufe_town.c | no Potion of Freedom (misc 78) in the first stock (0x13EB6C), one in the goods of reward 1 (0x13F6A0) | 2 Potions of Freedom in the first stock and after the goods of each reward (a request of the user, not a defect) |
 | `Dtu_fix_escape_load_waterdeep` | dtufe.c | a save of Waterdeep loaded from the ESC menu gives the character but the game goes on in the level (0x423E1) | the player is in Waterdeep |
 

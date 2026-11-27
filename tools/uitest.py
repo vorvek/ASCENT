@@ -158,6 +158,33 @@ def test_sensitivity_menu(t):
     assert saved_sensitivity(d) == 1, "the slider at the left was saved as %s" % saved_sensitivity(d)
 
 
+def test_options_no_plr(t):
+    """The F2 options menu writes the configuration (ascent.cfg) when it
+    closes, and no Descent 1 player file (<callsign>.plr) into the current
+    directory: nothing of the target game reads it."""
+    _, d = t.run("options_no_plr", ["gamekeys", "wait 20", "key f2", "wait 5", "key esc", "wait 10"],
+                 extra=["-fixedfps", "30"])
+    plr = [f for _, _, files in os.walk(d) for f in files if f.lower().endswith(".plr")]
+    assert not plr, "player files were written: %s" % plr
+    assert saved_sensitivity(d) is not None, "no ascent.cfg with the sensitivity was written"
+
+
+def test_save_cause_names(t):
+    """The session log names the cause of a save of the player: the lava of
+    DROW1 (segment 529, a lavaflo/lava floor) and the fire trap of YPINN
+    (object 41, Fireball cast by a light object). A spell with no save
+    (Protection From Evil on the player, frames before) does not name a
+    later save."""
+    _, d = t.run("save_cause_lava", ["gamekeys", "wait 120"], level="DROW1",
+                 extra=["-fixedfps", "30", "-invulnerability", "-noattack", "-chartest", "20:cast=39,30:goseg=529"])
+    saves = re.findall(r"Save of the player: ([^,]*),", session_log(d))
+    assert saves and set(saves) == {"lava"}, "lava saves: %s" % saves
+    _, d = t.run("save_cause_fire", ["gamekeys", "wait 80"],
+                 extra=["-fixedfps", "30", "-invulnerability", "-chartest", "20:cast=39,30:goobj=41.10,40:break=41"])
+    saves = re.findall(r"Save of the player: ([^,]*),", session_log(d))
+    assert saves and set(saves) == {"Fireball (trap)"}, "fire saves: %s" % saves
+
+
 def test_alt_f2_f3(t):
     """Alt+F2 opens the Save Game slot menu, Alt+F3 the restore slot menu
     (0x432B8, 0x432C2), and Alt+F3 does not change the screen as F3 does."""
@@ -980,6 +1007,86 @@ def test_market_buy_charges(t):
     line, stock, out = market_buy_wands(t, "mk_buy_none_orig", ["-origfe"], 0)
     assert "bought 0 x" in line and "gold 5000 -> 5000" in line, line
     assert not [r for r in stock if r[1] == 5 and r[2] == 55], "1.3 keeps the line: %s" % stock
+
+
+def read_store(path, swapped=False):
+    """The records of a stock file (GELDOR.DAT, or THESTORE.<S> with
+    swapped=True: 0x87BB7) as (quantity, class, number, count), and the
+    rewards of its ASCENT trailer ("ASRW", u16), or None."""
+    with open(path, "rb") as f:
+        data = f.read()
+    recs = []
+    for i in range(0, len(data) - len(data) % 10, 10):
+        if swapped:
+            count, num, cls, qty = struct.unpack("<iBBi", data[i:i + 10])
+        else:
+            qty, cls, num, count = struct.unpack("<iBBi", data[i:i + 10])
+        recs.append((qty, cls, num, count))
+    tail = data[len(data) - len(data) % 10:]
+    mask = struct.unpack("<H", tail[4:6])[0] if len(tail) == 8 and tail[:4] == b"ASRW" else None
+    return recs, mask
+
+
+# The goods of reward 0 of 0x13F6A0 (dtufe_town.c Mk_reward_stock)
+REWARD0 = [(1, 15, 39, -1), (1, 15, 4, -1), (1, 15, 14, -1), (1, 16, 82, -1), (1, 16, 85, -1), (1, 5, 55, -1)]
+
+
+def test_market_reward_khelben(t):
+    """A reward of Khelben (mission 0 to 1, reward 0) adds its goods to the
+    stock, and the stock goes into the save (THESTORE.<S>) with its trailer.
+    With no geldor.dat the stock is made from the first stock first
+    (Dtu_fix_market_reward, D-149); 1.3 (-origfe) loses the reward."""
+    script = "20:mflag=1,30:khelben,40:save=3"
+    _, d = t.run("mk_reward", ["gamekeys", "wait 80"], extra=["-fixedfps", "30", "-chartest", script])
+    text = session_log(d)
+    assert "geldor.dat made from the first stock" in text, "no stock file was made"
+    assert "Market: stock of reward 0 is added" in text, "reward 0 was not added"
+    recs, mask = read_store(os.path.join(d, "user", "THESTORE.4"), swapped=True)
+    assert mask == 1, "the trailer of THESTORE.4 is %r" % mask
+    assert all(r in recs for r in REWARD0), "THESTORE.4 lacks the goods of reward 0: %s" % recs
+    assert len(recs) == 21 + 1 + len(REWARD0) + 1, "THESTORE.4 has %d records" % len(recs)
+    _, d = t.run("mk_reward_orig", ["gamekeys", "wait 80"], extra=["-fixedfps", "30", "-origfe", "-chartest", script])
+    assert "is lost: no geldor.dat" in session_log(d), "-origfe: the reward is not lost"
+    assert not os.path.exists(os.path.join(d, "user", "THESTORE.4")), "-origfe: a stock was written"
+
+
+def test_market_reward_repair(t):
+    """A save at mission 17 with a stock of no rewards and no trailer (a
+    save of the port before the rewards): the load adds the goods of
+    rewards 0 to 6 (missions 1 to 16) and writes the trailer. A save and
+    a load of that game add nothing more."""
+    user = os.path.join(t.tmp, "mk_repair", "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
+        f.write(struct.pack("<iBBi", -1, 16, 79, 1) + struct.pack("<iBBi", 2, 15, 0, 1))
+    script = "20:mission=17,30:save=3,60:load=3,200:save=4,230:load=4,300:save=5"
+    _, d = t.run("mk_repair", ["gamekeys", "wait 330"], extra=["-fixedfps", "30", "-chartest", script])
+    text = session_log(d)
+    added = re.findall(r"Market: stock of reward (\d) \(mission \d+\) is added for mission 17", text)
+    assert added == [str(n) for n in range(7)], "rewards added: %s" % added
+    assert "the stock has no trailer: it holds no reward" in text, "the stock without a trailer was not read as empty"
+    recs, mask = read_store(os.path.join(user, "THESTORE.6"), swapped=True)
+    assert mask == 0x7F, "the trailer of THESTORE.6 is %r" % mask
+    # 2 records, the goods of rewards 0 to 6 (50) and 7 records of Potions of Freedom
+    assert len(recs) == 2 + 50 + 7, "THESTORE.6 has %d records" % len(recs)
+
+
+def test_market_sell_scroll(t):
+    """A scroll of the item list (class 17) is in the misc list of the sale
+    (0x8770C) at the value= of its spell line (Fireball, 600) times the
+    percent of the charisma (13: 80, 0x13F2DD), and the sold scroll goes
+    into the stock (0x873EE)."""
+    user = os.path.join(t.tmp, "mk_scroll", "user")
+    os.makedirs(user, exist_ok=True)
+    _, d = t.run("mk_scroll", ["wait 60", "key s", "wait 3", "key m", "wait 5", "click 120 53", "wait 5",
+                               "click %d %d" % (MK_POPUP[0] + 120, MK_POPUP[1] + 285), "wait 5",
+                               "key escape", "wait 20"],
+                 extra=["-testmarket", "-testmarketgold", "1000", "-testmarketcha", "13", "-testmarketitem", "17.16.2"],
+                 level="")
+    m = re.search(r"Market: sold .*", session_log(d))
+    assert m and "sold 1 x" in m.group(0) and " at 480: gold 1000 -> 1480" in m.group(0), m and m.group(0)
+    recs, _ = read_store(os.path.join(user, "GELDOR.DAT"))
+    assert (1, 17, 16, 1) in recs, "the stock has no scroll: %s" % recs
 
 
 def save_png(img, path):

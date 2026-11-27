@@ -1082,5 +1082,7 @@ void dtu_lava_frame(object *obj,int hit_seg,int hit_side,int on_floor)
 	*last = now;
 	dtu_obj_log("lava: obj %d %s burns in seg %d (0x3D2BD)",(int)(obj-Objects),
 		obj->type == OBJ_PLAYER ? "player" : dtu_object_name(obj),obj->segnum);
+	if (obj->type == OBJ_PLAYER)		// ASCENT: the session log line of the save (dtuchar.h)
+		dtu_char_save_cause(-1,"lava",NULL);
 	dtu_spell_lava(obj);
 }

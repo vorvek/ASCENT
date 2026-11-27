@@ -480,9 +480,12 @@ class Archive:
 
     def _open_geldor(self):
         d = self.data
-        if len(d) % 10:
+        trailer = len(d) % 10 == 8 and d[len(d) - 8:len(d) - 4] == b"ASRW"
+        if len(d) % 10 and not trailer:
             self.problems.append("size %d is not a multiple of 10" % len(d))
         self.header = "%d records of 10 bytes" % (len(d) // 10)
+        if trailer:     # the ASCENT trailer (docs/formats/misc.md): the rewards held
+            self.header += ", ASCENT trailer: rewards 0x%03X" % struct.unpack_from("<H", d, len(d) - 4)[0]
         for i in range(len(d) // 10):
             a, b, c, e = struct.unpack_from("<iBBi", d, 10 * i)
             self.entries.append({"desc": "i32 %d, u8 %d, u8 %d, i32 %d" % (a, b, c, e)})
