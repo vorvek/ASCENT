@@ -1063,8 +1063,7 @@ def test_market_reward_repair(t):
     with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
         f.write(struct.pack("<iBBi", -1, 16, 79, 1) + struct.pack("<iBBi", 2, 15, 0, 1))
     script = "20:mission=17,30:save=3,60:load=3,200:save=4,230:load=4,300:save=5"
-    # -nonewgear: the goods of 1.3 only (test_market_reward_gear has the new gear)
-    _, d = t.run("mk_repair", ["gamekeys", "wait 330"], extra=["-fixedfps", "30", "-nonewgear", "-chartest", script])
+    _, d = t.run("mk_repair", ["gamekeys", "wait 330"], extra=["-fixedfps", "30", "-chartest", script])
     text = session_log(d)
     added = re.findall(r"Market: stock of reward (\d) \(mission \d+\) is added for mission 17", text)
     assert added == [str(n) for n in range(7)], "rewards added: %s" % added
