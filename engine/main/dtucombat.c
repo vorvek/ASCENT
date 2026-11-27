@@ -45,6 +45,7 @@
 #include "kconfig.h"		// ASCENT: the key table
 #include "dtucombat.h"
 #include "dtuspell.h"
+#include "dtugear.h"		// ASCENT: the Dagger of Venom
 #include "dtuopts.h"
 #include "dtuthief.h"
 #include "text.h"
@@ -575,6 +576,8 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 		dealt = dtu_damage_creature_direct(creature,player,i2f(damage));
 	}
 	alive = creature->shields >= F1_0 && !(creature->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED));
+	if (alive && dealt > 0)
+		dtu_gear_poison_hit(creature,player,weapon);		// ASCENT: the Dagger of Venom (dtugear.h)
 
 	dtu_obj_log("combat: player %s obj %d %s: result %d against AC %d, damage %d, hp %d -> %d%s",
 		roll > 0 ? "hits" : "misses",(int)(creature-Objects),dtu_object_name(creature),roll,ac,damage,
@@ -1646,6 +1649,7 @@ static void combat_init(void)
 		Dtu_fix_spell_range = 0;
 		Dtu_fix_prot_evil = 0;
 		Dtu_fix_haste_friends = 0;
+		Dtu_fix_dispel_peace = 0;		// ASCENT: dtuspell.h
 		Dtu_fix_hold_undead_hd = 0;
 		Dtu_fix_haste_count = 0;
 		Dtu_fix_sword_view = 0;

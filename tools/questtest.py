@@ -223,6 +223,8 @@ TESTS = [
        r"reply 2 -> label A\b", r"speech \"Excellent! I pledge you the friendship of dragons",
        r" 280 dragon: test 4: obj 64 Dragon hp 90 ac -5 thac0 7 xp 15000 .* mode rest hostile 0 peaceful 1"],
       frames=300, dlg="1,2,1,1,2,1,1,1", extra=["-objlog", "dragon_talk_obj.log"]),
+    # (Global flag 240 in the quest lines: the Flame Tongue of the new gear
+    # is placed in DROW2, dtugear.h.)
     # The key lies in cell 407. The door of the alcove of the lever (wall
     # 133, seg 481 side 0) is locked and no thief skill opens it (keys 4);
     # with the key (MISC 43) the player opens it from the end of the
@@ -352,7 +354,7 @@ TESTS = [
     # after a save and a load (a level state has them).
     T("dragon_treasure_once", "DROW2", "30:items=784,31:items=409,32:items=407,40:save=3,60:load=3,150:items=784,151:items=409,152:items=407",
       [r"dragon: the key and the treasure are placed \(a new level\)",
-       r"f30 +items in seg 784: (.*16\.3 .*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
+       r"f30 +items in seg 784: (.*5\.68.*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
        r"f32 +items in seg 407: (16\.43 )\n[\s\S]*f152 +items in seg 407: \1\n"],
       [r"placed \(a level state without them\)"], frames=170, extra=["-noattack", "-objlog", "dragon_treasure_once_obj.log"]),
     # With the setting off (-origtamaramagil, or the line of the
@@ -805,12 +807,20 @@ TESTS = [
     # gives the Potion of Extra-Healing (misc 75), 600 experience, and with
     # the setting the Mace of Disruption (weapon 70). -nonewgear: no mace.
     # The level fix 0xAD129 holds Daland with no end, and a held creature
-    # cannot talk (0xABBE5 tests +0x89 bit 0x40): fxclear ends the Hold. The
-    # second talk gives the quest and misc 74 (talks counts from 0).
-    T("myrkul_daland_mace", "MYRKUL", "5:fxclear=3.14,10:goobj=3.20,12:face=3,14:talk=3,150:talk=3,300:goseg=460,330:goobj=3.20,332:face=3,334:talk=3,680:dump",
-      [r"give class 16 id 75", r"entry \d+: type 5 id 70 'Mace of Disruption'", r"new gear: script 160 gives weapon 70"],
+    # cannot talk (0xABBE5 tests +0x89 bit 0x40): the talk shows the hint of
+    # Dispel Magic, a Dispel Magic of the player (area=13.3, the spell of the
+    # player at Daland) ends the Hold and leaves him peaceful
+    # (Dtu_fix_dispel_peace). The first talk after it: "You did not have
+    # time"; the second gives the quest and misc 74 (talks counts from 0).
+    T("myrkul_daland_mace", "MYRKUL", "8:goobj=3.20,10:face=3,12:talk=3,14:area=13.3,20:talk=3,150:talk=3,300:goseg=460,"
+      "330:goobj=3.20,332:face=3,334:talk=3,680:dump",
+      [r"obj 3: held with no end, the hint of Dispel Magic", r"effect Hold Person of obj 3 daland ends",
+       r"run script 160 of obj 3", r"give class 16 id 75", r"You receive 600 xp",
+       r"entry \d+: type 5 id 70 'Mace of Disruption'", r"new gear: script 160 gives weapon 70"],
+      [r"obj 3 daland: woken, hostile 1", r"obj 3: status 3EA"],
       frames=700, dlg=DALAND_DLG, extra=["-noattack", "-objlog", "myrkul_daland_obj.log"], known=MYRKUL_INT3),
-    T("myrkul_daland_no_mace", "MYRKUL", "5:fxclear=3.14,10:goobj=3.20,12:face=3,14:talk=3,150:talk=3,300:goseg=460,330:goobj=3.20,332:face=3,334:talk=3,680:dump",
+    T("myrkul_daland_no_mace", "MYRKUL", "8:goobj=3.20,10:face=3,12:talk=3,14:area=13.3,20:talk=3,150:talk=3,300:goseg=460,"
+      "330:goobj=3.20,332:face=3,334:talk=3,680:dump",
       [r"give class 16 id 75"], [r"type 5 id 70 "], frames=700, dlg=DALAND_DLG, extra=["-noattack", "-nonewgear"], known=MYRKUL_INT3),
 
     # ASCENT: the phylactery of the lich of CLAN3 (Dtu_lich_phylactery,
@@ -883,6 +893,19 @@ TESTS = [
     T("lich_talk_after_break", "CLAN3", "6:phylactery=0,20:talkscript=190",
       [r"reply 3 -> label 4\b", r"dlg: speech \"So you found my altar and broke it"],
       frames=300, dlg="3,1,1"),
+    # The Rod of Dispel Magic of the new gear (weapon 67), fired at Daland
+    # with the attack key: its missile frees him and he stays peaceful.
+    T("myrkul_daland_rod", "MYRKUL", "5:class=1,6:give=5.67.6,7:current=5.67,8:goobj=3.20,10:aim=3,80:talk=3,82:talk=3",
+      [r"casts 'Dispel Magic' \(13\) at level \d+, source 2", r"effect Hold Person of obj 3 daland ends",
+       r"Hail, wanderer of these fell halls"],
+      [r"obj 3 daland: woken, hostile 1", r"obj 3: status 3EA"],
+      frames=200, extra=["-noattack", "-objlog", "myrkul_daland_rod_obj.log", "-testmove", "wait:30,attack:1,wait:100"],
+      known=MYRKUL_INT3),
+    # -origcombat (Dtu_fix_dispel_peace 0): the Dispel Magic makes him
+    # hostile, and he does not talk
+    T("myrkul_daland_orig", "MYRKUL", "8:goobj=3.20,10:face=3,12:talk=3,14:area=13.3,20:talk=3",
+      [r"obj 3: status 3EA"], [r"held with no end, the hint", r"run script 160"],
+      frames=60, dlg=DALAND_DLG, extra=["-noattack", "-origcombat"], known=MYRKUL_INT3),
 ]
 
 DIE = {0: 8, 1: 4, 2: 10, 3: 6}       # 0x13FDF3: cleric, mage, fighter, thief

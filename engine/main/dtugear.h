@@ -5,9 +5,10 @@
  * clear it). It is not in DTUGAME.EXE 1.3. See docs/re/objects.md, "New
  * gear".
  *
- * With the setting the item tables of a level get seven new $ARMOR lines
- * (53 to 59) and three new $OBJECT lines (the gems 128 to 130), the unused
- * wand lines 63 to 67 of $WEAPON cast a spell, and the creatures leave more
+ * With the setting the item tables of a level get nine new $ARMOR lines
+ * (53 to 61) and three new $OBJECT lines (the gems 128 to 130), the unused
+ * wand lines 63 to 67 of $WEAPON cast a spell, line 68 is the Frost Brand,
+ * and the creatures leave more
  * gold and gems. The setting is read when the tables of a level are loaded
  * (bm_load_level_tables): a change takes effect at the next level. With the
  * setting off the tables, the drops and the market are those of 1.3 (with
@@ -40,7 +41,35 @@ extern int Dtu_gear_loaded;
 #define DTU_GEAR_BELT_DWARF		57		// Belt of Dwarvenkind: Constitution 18, infravision
 #define DTU_GEAR_RING_REGEN		58		// Ring of Regeneration: 1 hit point each 60 seconds
 #define DTU_GEAR_PLATE_FIRE		59		// Plate Mail of Fire Resistance: Plate Mail +2, Resist Fire
-#define DTU_GEAR_N_ARMOR		7
+#define DTU_GEAR_CLOAK_DISPLACE	60		// Cloak of Displacement: one attack that hits misses, each 30 seconds
+#define DTU_GEAR_SASH_MAGI		61		// Sash of the Magi: a mage slot more at each level, +2 saves against spells
+#define DTU_GEAR_N_ARMOR		9
+
+// The Frost Brand: weapon line 68 (the last "Rod of Genericness" of 1.3)
+// becomes a copy of the Longsword +3 (14) with this name: +3, and 3 more
+// to hit and damage against a fire creature (dtu_gear_fire_creature),
+// Resist Fire while it is in the hand
+#define DTU_GEAR_FROST_BRAND	68
+#define DTU_GEAR_FROST_FROM		14
+#define DTU_GEAR_FROST_BONUS	3
+
+// The daggers for thieves. The Dagger of Venom +2: a new weapon line 89 (the
+// last place of the weapon table, 90 lines), a copy of the Dagger +2 (44)
+// with its name. A hit poisons a creature that is not immune (undead and
+// extraplanar types) and fails a save against poison (category 0): 1 hit
+// point each second for 15 seconds, the damage of the player; a hit while
+// the poison runs starts the 15 seconds again. The Assassin's Dagger +3:
+// line 76 ("Temp" of 1.3, a test line that nothing uses) as a copy of the
+// Dagger +2 with +3 and thieves only; a backstab with it multiplies by one
+// more.
+#define DTU_GEAR_VENOM			89
+#define DTU_GEAR_ASSASSIN		76
+#define DTU_GEAR_DAGGER_FROM	44
+#define DTU_GEAR_POISON_TIME	15		// seconds, 1 hit point each second
+#define DTU_GEAR_ASSASSIN_STEP	1		// the backstab multiplier: one more
+#define DTU_GEAR_DISPLACE_TIME	30		// seconds until the Cloak of Displacement is ready again
+#define DTU_GEAR_SASH_SLOTS		1		// mage slots more at each spell level that the wearer casts
+#define DTU_GEAR_SASH_SAVE		2		// saving throws against spells
 
 #define DTU_GEAR_FIRST_MISC		128
 #define DTU_GEAR_BLOODSTONE		128
@@ -72,6 +101,7 @@ extern int Dtu_gear_loaded;
 // the Flame Tongue of the dungeon is placed (dtu_gear_place_flame_tongue).
 // The scripts use flags up to 128, the port up to 0xA0.
 #define DTU_GEAR_FLAG_FLAME		0xF0
+#define DTU_GEAR_FLAG_VENOM		0xF8		// the Dagger of Venom of DROW5 is placed
 
 // bmread.c, after the table fixup of 1.3: the wands and the values of the
 // weapon lines, and the text of the new lines, which bmread.c reads with
@@ -126,6 +156,41 @@ int dtu_gear_mirror(struct object *missile, struct object *player, int spell, in
 
 // dtuchar.c: the Mirror Shield is in the shield place. Set by dtu_char_update.
 extern int Dtu_gear_mirror_worn;
+
+// dtuchar.c: the Cloak of Displacement is in the cloak place, and the Sash
+// of the Magi in the belt place. Set by dtu_char_update.
+extern int Dtu_gear_displace_worn, Dtu_gear_sash_worn;
+
+// 1 if weapon is the Frost Brand (the tables have the new lines)
+int dtu_gear_frost_brand(int weapon);
+
+// 1 if the creature type is a fire creature for the Frost Brand: fire
+// immune or fire resistant, or its weapon is a fire spell (Burning Hands,
+// Fireball, Produce Fire, Melf's Minute Meteors): the dragon, the
+// hatchlings, the fire mephits.
+int dtu_gear_fire_creature(int type);
+
+// dtuobj_combat.c, damage_player_w: an attack of attacker that hits the
+// player. 1 if the Cloak of Displacement makes it miss (once each
+// DTU_GEAR_DISPLACE_TIME seconds; a message). Spell missiles have no
+// attack roll and do not come here.
+int dtu_gear_displace(struct object *player, struct object *attacker);
+// dtuchar.c, each frame: the message when the cloak is ready again
+void dtu_gear_displace_frame(void);
+
+// 1 if weapon is the Dagger of Venom, the Assassin's Dagger
+int dtu_gear_venom(int weapon);
+int dtu_gear_assassin(int weapon);
+// 1 if the creature type cannot be poisoned (undead, extraplanar)
+int dtu_gear_poison_immune(int type);
+// dtucombat.c, the melee hit of the player that did damage. The
+// Dagger of Venom of the player poisons the creature (a save).
+void dtu_gear_poison_hit(struct object *creature, struct object *attacker, int weapon);
+// dtuchar.c, each frame: the poison damage. The state is per object (its
+// signature) and not saved: a load or a level change ends the poison.
+void dtu_gear_poison_frame(void);
+// dtuobj.c, the setup of a level: the Dagger of Venom of DROW5
+void dtu_gear_place_venom(int has_state, int restore);
 
 // dtuobj.c, the setup of a level (next to dtu_restore_tamaramagil): the
 // Flame Tongue of the dungeon (dtuobj_setup.c). restore: the setup after

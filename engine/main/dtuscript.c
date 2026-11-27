@@ -2514,6 +2514,13 @@ static int start_run(object *obj, int id, int mode, int temp)
 	// 0xABF24: silenced (bit 0x40 of the byte +0x89)
 	if (obj->dtu.m_88 & 0x4000) {
 		HUD_init_message("%s tries to speak, but nothing happens.", dtu_object_display_name(obj));
+		// ASCENT: Dtu_fix_dispel_peace (dtuspell.h): a hold with no end (the
+		// level fix 0xAD129, Daland of MYRKUL) points to Dispel Magic
+		if (Dtu_fix_dispel_peace && obj->dtu.m_c0[0] == DTU_FX_NO_END) {
+			HUD_init_message(LN("Some magic seems to hold %s completely paralyzed. Perhaps it can be dispelled."),
+				dtu_object_display_name(obj));
+			slog("obj %d: held with no end, the hint of Dispel Magic", objnum);
+		}
 		return 0;
 	}
 	// 0xABF58: Mirt and a thief in YPINN

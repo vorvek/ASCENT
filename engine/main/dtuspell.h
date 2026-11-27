@@ -165,6 +165,26 @@ int dtu_spell_mind(int spell);
 // that are not hostile, or the hostile creatures for a hostile caster),
 // and a friend stays a friend. 0 (-origcombat): the executable.
 extern int Dtu_fix_haste_friends;
+
+// ASCENT: a spell of the player on a creature wakes it and makes it hostile
+// (0x8CFFF: 0xA6505, then 0x12AD9 with 5), also Dispel Magic (13, 55) on a
+// peaceful creature. Daland of MYRKUL is held by the level fix 0xAD129 with
+// no end, and a held creature cannot talk (0xABBE5): Dispel Magic frees him
+// but makes him hostile, so his quest cannot be completed. 1 (default): a
+// Dispel Magic of the player is not an attack on a creature that is not
+// hostile already: it wakes no creature, makes none hostile and calls no
+// alert (dtu_spell_peace). A hostile creature stays hostile. 0
+// (-origcombat): the executable.
+extern int Dtu_fix_dispel_peace;
+// 1 if the spell of the caster on the target is the Dispel Magic of the
+// player on a creature that is not hostile (Dtu_fix_dispel_peace)
+int dtu_spell_peace(int spell, object *target, object *caster);
+
+// ASCENT: the Sash of the Magi of the new gear (dtugear.h): n more mage
+// slots at each spell level that the mage casts (its slot table has a slot
+// there), after the doublings of the Ring of Wizardry. 0: none. The slots
+// left are cut to the new maximum when it comes off, as with the ring.
+void dtu_spell_set_sash(int n);
 // ASCENT: Hold Undead (spell 23) lowers a budget of L levels for each held
 // undead (Spell_info+0x46) and never tests it: each undead of level L or
 // less can be held. 1 (default): the AD&D 2nd edition rule, the levels of

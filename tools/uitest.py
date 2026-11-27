@@ -19,6 +19,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gear_tables  # noqa: E402  (the market goods of the new gear, engine/main/dtugear.c)
+
 LEVEL = "YPINN"
 SCALE = 3
 
@@ -1068,8 +1071,13 @@ def test_market_reward_repair(t):
     assert "the stock has no trailer: it holds no reward" in text, "the stock without a trailer was not read as empty"
     recs, mask = read_store(os.path.join(user, "THESTORE.6"), swapped=True)
     assert mask == 0x7F, "the trailer of THESTORE.6 is %r" % mask
-    # 2 records, the goods of rewards 0 to 6 (50) and 7 records of Potions of Freedom
-    assert len(recs) == 2 + 50 + 7, "THESTORE.6 has %d records" % len(recs)
+    # 2 records, the goods of rewards 0 to 6 (50) and 7 records of Potions of
+    # Freedom; with the setting New gear (on by default) the goods of the
+    # stages 0 to 6 of engine/main/dtugear.c (Gear_market) less the goods that
+    # it takes out of them (Gear_market_removed)
+    g = gear_tables.read()
+    gear = sum(1 for r in g["market"] if r[0] <= 6) - sum(1 for r in g["removed"] if r[0] <= 6)
+    assert len(recs) == 2 + 50 + 7 + gear, "THESTORE.6 has %d records, expected %d" % (len(recs), 2 + 50 + 7 + gear)
 
 
 def gear_market_rows():
@@ -1099,6 +1107,25 @@ def test_market_reward_gear(t):
     assert new > 0, "no rows of Gear_market for the rewards 0 to 6"
     # test_market_reward_repair has 2 + 50 + 7 records; one less (the Flame Tongue) and the new goods
     assert len(recs) == 2 + 50 + 7 - 1 + new, "THESTORE.5 has %d records, %d new goods" % (len(recs), new)
+
+
+def test_market_buy_dispel_scroll(t):
+    """The scrolls of Dispel Magic of the new gear (stock class 17, spell 13,
+    rewards 4 and 6) are in the misc list of the market and a fighter (the
+    character of a test start, no caster) buys one at 600 times the percent
+    of the charisma (13: 120, 720 gold). The scroll goes to the item list: a
+    fighter cannot read it (0x3533C needs a caster class)."""
+    user = os.path.join(t.tmp, "mk_dispel", "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
+        f.write(struct.pack("<iBBi", 3, 17, 13, 1))
+    _, d = t.run("mk_dispel", ["wait 60", "key m", "wait 5", "click 120 53", "wait 5", "shot popup",
+                               "click %d %d" % (MK_POPUP[0] + 120, MK_POPUP[1] + 285), "wait 5", "key escape", "wait 20"],
+                 extra=["-testmarket", "-testmarketgold", "5000", "-testmarketcha", "13"], level="")
+    m = re.search(r"Market: bought .*", session_log(d))
+    assert m and "bought 1 x" in m.group(0) and "gold 5000 -> 4280" in m.group(0), m and m.group(0)
+    recs, _ = read_store(os.path.join(user, "GELDOR.DAT"))
+    assert (2, 17, 13, 1) in recs, "the stock does not have 2 scrolls left: %s" % recs
 
 
 def test_market_sell_scroll(t):

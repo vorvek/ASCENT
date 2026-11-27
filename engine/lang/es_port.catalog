@@ -2515,6 +2515,92 @@ id: port.strong_magic_prevents_you_from_unlocking
 en: Strong magic prevents you from unlocking this door.
 tr: Una magia poderosa te impide abrir esta puerta.
 
+id: port.some_magic_seems_to_hold_s_completely_pa
+en: Some magic seems to hold %s completely paralyzed. Perhaps it can be dispelled.
+tr: Parece que alguna magia mantiene a %s completamente paralizado. Quizá se pueda disipar.
+
+id: port.your_cloak_of_displacement_fools_s_the_b
+en: Your Cloak of Displacement fools %s: the blow misses.
+tr: Tu Capa de Desplazamiento engaña a %s: el golpe falla.
+
+id: port.your_cloak_of_displacement_shimmers_agai
+en: Your Cloak of Displacement shimmers again.
+tr: Tu Capa de Desplazamiento vuelve a titilar.
+
+id: port.the_attack
+en: the attack
+tr: el ataque
+
+id: port.you_seem_to_stand_beside_your_true_place
+en: You seem to stand beside your true place: the first weapon attack that would hit you misses.
+tr: Pareces estar junto a tu lugar real: el primer ataque con arma que te alcanzaría falla.
+
+id: port.ready_again_d_seconds_later_spells_are_n
+en: Ready again %d seconds later. Spells are not fooled.
+tr: De nuevo lista %d segundos después. Los conjuros no se dejan engañar.
+
+id: port.d_more_mage_spell_slot_at_each_spell_lev
+en: %d more mage spell slot at each spell level that you can cast.
+tr: %d espacio de conjuro de mago más en cada nivel de conjuro que puedes lanzar.
+
+id: port.saving_throws_against_spells_d_better
+en: Saving throws against spells %d better.
+tr: Tiradas de salvación contra conjuros %d mejores.
+
+id: port.d_more_to_hit_and_damage_against_fire_cr
+en: %d more to hit and damage against fire creatures.
+tr: %d más al ataque y al daño contra criaturas de fuego.
+
+id: port.frost_brand
+en: Frost Brand
+tr: Marca de Escarcha
+
+id: tbl.fix.frost_brand
+en: Frost Brand
+tr: Marca de Escarcha
+gender: f
+plural: Marcas de Escarcha
+
+id: tbl.fix.cloak_of_displacement
+en: Cloak of Displacement
+tr: Capa de Desplazamiento
+gender: f
+plural: Capas de Desplazamiento
+
+id: tbl.fix.sash_of_the_magi
+en: Sash of the Magi
+tr: Fajín de los Magos
+gender: m
+plural: Fajines de los Magos
+
+id: port.s_is_poisoned
+en: %s is poisoned.
+tr: %s está envenenado.
+
+id: port.a_hit_poisons_the_creature_unless_it_sav
+en: A hit poisons the creature unless it saves against poison: 1 hit point each second for %d seconds.
+tr: Un golpe envenena a la criatura si no salva contra veneno: 1 punto de golpe cada segundo durante %d segundos.
+
+id: port.undead_and_extraplanar_creatures_are_imm
+en: Undead and extraplanar creatures are immune. A new hit starts the time again.
+tr: Los muertos vivientes y las criaturas extraplanares son inmunes. Un golpe nuevo vuelve a empezar el tiempo.
+
+id: port.a_backstab_with_it_multiplies_the_damage
+en: A backstab with it multiplies the damage by %d more.
+tr: Una puñalada por la espalda con ella multiplica el daño por %d más.
+
+id: tbl.fix.dagger_of_venom_2
+en: Dagger of Venom +2
+tr: Daga de Veneno +2
+gender: f
+plural: Dagas de Veneno +2
+
+id: tbl.fix.assassin_s_dagger_3
+en: Assassin's Dagger +3
+tr: Daga del Asesino +3
+gender: f
+plural: Dagas del Asesino +3
+
 # ASCENT: the new gear (engine/main/dtugear.c, Dtu_new_gear): the texts and the names of the new items
 id: port.new_gear
 en: New gear

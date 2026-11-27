@@ -1980,6 +1980,11 @@ class Pages:
             ac = gd.g["armor_ac"][i - d["DTU_GEAR_FIRST_ARMOR"]]
             rows.append(self.icon_row([r.name(), gear_effect(i, d), signed(-ac) if ac else "0", classes_of(r),
                                        r.num("value", 0), gd.where(15, i)], r))
+        fr = gd.frost
+        rows.append(self.icon_row([fr.name(), frost_effect(d), "0", classes_of(fr), fr.num("value", 0), gd.where(5, gd.frost_id)], fr))
+        for did, dr in sorted(gd.daggers.items(), key=lambda x: x[0] != gd.venom_id):
+            rows.append(self.icon_row([dr.name(), dagger_effect(d, did == gd.venom_id), "0", classes_of(dr), dr.num("value", 0),
+                                       gd.where(5, did)], dr))
         out += ["## New magic items", "",
                 "- AC bonus: how much the item lowers your armor class.",
                 "- F/T/M/C: the classes that may wear it ([[Classes]]).",
@@ -2003,8 +2008,12 @@ class Pages:
         removed = ["the %s %s" % (gd.item(c, i).name(), GEAR_STAGES[s]) for s, c, i in gd.g["removed"]]
         out += ["## Items of the original game", "",
                 "- %s: Daland of %s gives it with the %s when the altar of Kelemvor is consecrated. "
-                "Value %d with the setting." % (mrow.name(), GEAR_LEVEL_TEXT.get(16, "the temple"),
-                                                 self.O[potion].name(), gd.value(5, mace)),
+                "Value %d with the setting. How: Daland stands in hidden crypts, held by a curse that also "
+                "keeps him from talking. Cast Dispel Magic on him (the spell, a scroll, or a wand or rod "
+                "of it): he stays your friend and can talk. The tombs of Mulhorand have a scroll of the "
+                "spell for a mage. Hear his tale and take his flask of Dragon's Blood, pour it on the altar "
+                "of Kelemvor in the living quarters of the temple, then talk to him again."
+                % (mrow.name(), GEAR_LEVEL_TEXT.get(16, "the temple"), self.O[potion].name(), gd.value(5, mace)),
                 "- %s: one lies in %s, in a prison cell of the troll wing, at the far end of the "
                 "corridors from their entry. Its fire stops the regeneration of a troll. Value %d with the "
                 "setting. The market sells another one %s." % (frow.name(), GEAR_LEVEL_TEXT.get(lvl, "a drow level"),
@@ -2013,11 +2022,13 @@ class Pages:
                 "does not: the market sells it later (above). A market that already has it keeps it.", ""]
         old = [(row, gd.item(row[2], row[3])) for row in gd.g["market"]
                if not (row[2] == 15 and row[3] in gd.armor) and not (row[2] == 5 and row[3] in gd.wands)
-               and not (row[2] == 5 and row[3] == ft)]
+               and not (row[2] == 5 and row[3] == ft) and not (row[2] == 5 and row[3] in gd.daggers)]
         orows = [self.icon_row([r.name(), GEAR_STAGES[row[0]], str(row[1]), gd.value(row[2], row[3])], r) for row, r in old]
         out += ["The original game has rules for these magic items but never gives them to you. The market "
                 "sells them, weaker ones first. Their rules are on the other pages.", "",
-                md_table(self.icon_head(["Item", "In the market", "Quantity", "Value"]), orows), ""]
+                md_table(self.icon_head(["Item", "In the market", "Quantity", "Value"]), orows), "",
+                "A scroll is read by a character of its class: the Scroll of Dispel Magic by a mage. It frees "
+                "Daland and ends the protections of a spellcaster.", ""]
         # the market by stage
         srows = []
         for s in sorted(set(row[0] for row in gd.g["market"])):
@@ -2051,7 +2062,8 @@ class Pages:
         # the place for the spells of the caster branch
         out += new_gear_spells_section(gd)
         # the treasury
-        trows = [self.icon_row([gd.item(c, i).name(), gear_effect(i, d) if c == 15 else "", count], gd.item(c, i))
+        trows = [self.icon_row([gd.item(c, i).name(), gear_effect(i, d) if c == 15 else frost_effect(d) if i == gd.frost_id else "",
+                                count], gd.item(c, i))
                  for c, i, count in gd.g["dragon"]]
         out += ["## The treasury of the red dragon", "",
                 "> **Heavier spoiler.** This section names the treasure of the dragon of the drow city.", "",
@@ -2314,6 +2326,7 @@ GEAR_STAGES = {
 GEAR_LEVEL_TEXT = {
     16: "the temple of Myrkul",
     21: "the second level of the drow city",
+    27: "the drow stronghold of the Crystal Rose",
 }
 
 
@@ -2322,7 +2335,8 @@ def gear_effect(name, d):
     dtugear.h (the defines named for the line number)."""
     ids = dict((v, k) for k, v in d.items() if k in (
         "DTU_GEAR_MIRROR_SHIELD", "DTU_GEAR_BOOTS_FREE", "DTU_GEAR_ARCHER", "DTU_GEAR_CLOAK_FIRE",
-        "DTU_GEAR_BELT_DWARF", "DTU_GEAR_RING_REGEN", "DTU_GEAR_PLATE_FIRE"))
+        "DTU_GEAR_BELT_DWARF", "DTU_GEAR_RING_REGEN", "DTU_GEAR_PLATE_FIRE", "DTU_GEAR_CLOAK_DISPLACE",
+        "DTU_GEAR_SASH_MAGI"))
     return {
         "DTU_GEAR_MIRROR_SHIELD": "A shield +1. A spell missile of a creature that hits you from the front (up to "
                                   "60 degrees from where you look) flies back to the creature with the power of its "
@@ -2338,7 +2352,21 @@ def gear_effect(name, d):
                                "it)." % d["DTU_GEAR_DWARF_CON"],
         "DTU_GEAR_RING_REGEN": "Heals 1 hit point each %d seconds while worn." % d["DTU_GEAR_REGEN_TIME"],
         "DTU_GEAR_PLATE_FIRE": "Plate mail +2 (magic heavy armor) with Resist Fire: fire damage to you is halved.",
+        "DTU_GEAR_CLOAK_DISPLACE": "You seem to stand beside your true place: the first weapon attack that would hit "
+                                   "you misses (arrows and bolts too, not spells). The cloak is ready again %d seconds "
+                                   "later and shimmers to tell you." % d["DTU_GEAR_DISPLACE_TIME"],
+        "DTU_GEAR_SASH_MAGI": "For a mage: %d more spell slot at each spell level that you can cast (after the "
+                              "doubling of a Ring of Wizardry), and saving throws against spells %d better."
+                              % (d["DTU_GEAR_SASH_SLOTS"], d["DTU_GEAR_SASH_SAVE"]),
     }.get(ids.get(name), "")
+
+
+class ScrollRecord(Record):
+    """A spell line as a scroll of the market (the name "Scroll of ...")."""
+
+    def __init__(self, rec):
+        Record.__init__(self, rec.line)
+        self.shown = "Scroll of " + rec.name()
 
 
 class GearData:
@@ -2368,6 +2396,29 @@ class GearData:
             line = re.sub(r"\bvalue=\d+", "value=3000", line)
             self.wands[i] = (Record(line + " pc_spell=%d" % spell), spell)
         self.values = {i: v for i, _, v in g["values"]}
+        # the Frost Brand: the line it copies, with its name and value
+        fid, _, src, src13, fname, fvalue = g["frost"]
+        r = tab["$WEAPON"][src]
+        if r.name13() != src13:
+            raise SystemExit("dtugear.c: weapon %d is %r, not %r" % (src, r.name13(), src13))
+        line = re.sub(r'weapon_name="[^"]*"', 'weapon_name="%s"' % fname, r.line)
+        line = re.sub(r"\bvalue=\d+", "value=%d" % fvalue, line)
+        self.frost_id = fid
+        self.frost = Record(line)
+        # the daggers: copies of the Dagger +2 with their name, value and bonus
+        self.daggers = {}
+        for did, _, src, src13, dname, dvalue, bonus, thief in g["daggers"]:
+            r = tab["$WEAPON"][src]
+            if r.name13() != src13:
+                raise SystemExit("dtugear.c: weapon %d is %r, not %r" % (src, r.name13(), src13))
+            line = re.sub(r'weapon_name="[^"]*"', 'weapon_name="%s"' % dname, r.line)
+            line = re.sub(r"\bvalue=\d+", "value=%d" % dvalue, line)
+            line = re.sub(r"\bto_hit_bonus=\d+", "to_hit_bonus=%d" % bonus, line)
+            line = re.sub(r"\bdamage_bonus=\d+", "damage_bonus=%d" % bonus, line)
+            if thief:
+                line = re.sub(r"\b(Fighter_use|mage_use)\b", "", line, flags=re.I)
+            self.daggers[did] = Record(line)
+        self.venom_id = g["d"]["DTU_GEAR_VENOM"]
 
     def item(self, cls, i):
         """The record of class 5, 15 or 16 number i, new or of 1.3."""
@@ -2375,8 +2426,14 @@ class GearData:
             return self.armor[i]
         if cls == 16 and i in self.misc:
             return self.misc[i]
+        if cls == 5 and i == self.frost_id:
+            return self.frost
+        if cls == 5 and i in self.daggers:
+            return self.daggers[i]
         if cls == 5 and i in self.wands:
             return self.wands[i][0]
+        if cls == 17:       # a spell scroll of the market
+            return ScrollRecord(self.tab["$SPELL"][i])
         return self.tab[{5: "$WEAPON", 15: "$ARMOR", 16: "$OBJECT"}[cls]][i]
 
     def value(self, cls, i):
@@ -2397,6 +2454,9 @@ class GearData:
             out.append("Daland gives it in %s when the altar of Kelemvor is consecrated" % GEAR_LEVEL_TEXT.get(16, "the temple"))
         if cls == 5 and i == ft:
             out.append("found in %s, in a prison cell of the troll wing" % GEAR_LEVEL_TEXT.get(lvl, "a drow level"))
+        if cls == 5 and i == self.venom_id:
+            out.append("found in %s, in a locked closet: a thief picks the lock, a Knock spell or the Gloves of "
+                       "Dexterity open it for the other classes" % GEAR_LEVEL_TEXT.get(self.g["venom"][0], "a drow level"))
         if any(row[0] == cls and row[1] == i for row in self.g["dragon"]):
             out.append("a treasure (the last section of this page)")
         for s in self.stages_of(cls, i):
@@ -2404,6 +2464,20 @@ class GearData:
         if cls == 16 and i in self.misc:
             out.append("left by slain creatures (below)")
         return "; ".join(out) if out else "-"
+
+
+def frost_effect(d):
+    return ("A long sword +3. Against fire creatures (the red dragon, her hatchlings, fire mephits) +%d to hit "
+            "and damage. While in your hand fire damage to you is halved." % (3 + d["DTU_GEAR_FROST_BONUS"]))
+
+
+def dagger_effect(d, venom):
+    if venom:
+        return ("A dagger +2. A hit poisons the creature unless it saves against poison: 1 hit point each second for "
+                "%d seconds (a new hit starts the time again). Undead and extraplanar creatures are immune; the poison "
+                "does not stop the regeneration of a troll." % d["DTU_GEAR_POISON_TIME"])
+    return ("A dagger +3 for thieves. A backstab with it multiplies the damage by %d more (a thief of level 1: times 3 "
+            "instead of 2)." % d["DTU_GEAR_ASSASSIN_STEP"])
 
 
 def new_gear_spells_section(gd):

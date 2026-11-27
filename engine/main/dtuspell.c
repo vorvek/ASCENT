@@ -79,6 +79,7 @@ static int Prayer_written;		// the player cast Prayer since the table read
 static int Rary_bonus[3];
 static int Rary_rest = 0;
 static int Wizardry_n = 0;			// doublings of the Ring of Wizardry
+static int Sash_n = 0;				// ASCENT: the slots of the Sash of the Magi (dtu_spell_set_sash)
 // Spell_info[46]+0x49: the pool of Sleep. 0x56FF6 sets it to
 // 4 + 2 (rand() % 7) (4 to 16, even) at each cast of a Sleep missile
 // (0x5742C), the player's or a creature's; 0x8F89E takes the cost of each
@@ -98,6 +99,7 @@ static int Slow_count = 0;
 static int Hold_undead_count = 0;
 static int Hold_undead_hd = 0;
 int Dtu_fix_haste_friends = 1;		// ASCENT: dtuspell.h
+int Dtu_fix_dispel_peace = 1;		// ASCENT: dtuspell.h
 int Dtu_fix_hold_undead_hd = 1;
 int Dtu_fix_haste_count = 1;
 
@@ -529,6 +531,11 @@ void dtu_spell_compute_slots(void)
 			Dtu_spell_slots_max[0][i] *= 2;
 		Dtu_spell_slots_max[0][i] += Rary_bonus[i];
 	}
+	// ASCENT: the Sash of the Magi (dtugear.h): each level of the slot table
+	if (Sash_n > 0 && m >= 0)
+		for (i=0;i<9;i++)
+			if (Mage_slots[m][i] > 0)
+				Dtu_spell_slots_max[0][i] += Sash_n;
 	for (i=0;i<9;i++) {
 		if (Dtu_spell_slots_left[0][i] > Dtu_spell_slots_max[0][i]) Dtu_spell_slots_left[0][i] = Dtu_spell_slots_max[0][i];
 		if (Dtu_spell_slots_left[1][i] > Dtu_spell_slots_max[1][i]) Dtu_spell_slots_left[1][i] = Dtu_spell_slots_max[1][i];
@@ -2688,6 +2695,13 @@ int dtu_spell_stopped_by_fx(int fx)
 }
 
 //------------------------------------------------------------------------
+// ASCENT: Dtu_fix_dispel_peace (dtuspell.h)
+int dtu_spell_peace(int spell,object *target,object *caster)
+{
+	return Dtu_fix_dispel_peace && (spell == 13 || spell == 55) && target && target->type == OBJ_ROBOT &&
+		caster && caster->type == OBJ_PLAYER && !(target->dtu.m_1b0 & DTU_HOSTILE);
+}
+
 // The effect of a spell on one target (0x8CFFF, jump table 0x8CF1F)
 
 // ASCENT: above 0 while an area (0x90CEF, the cones, the column of Flame
@@ -2748,7 +2762,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 	// A creature that is the target of the player wakes and is hostile
 	// (0xA6505 with 1, then 0x12AD9)
 	// ASCENT: Dtu_fix_haste_friends: a friend that Haste reaches stays a friend
-	if (target->type == OBJ_ROBOT && !self && caster && caster->type == OBJ_PLAYER && !(spell == 21 && Dtu_fix_haste_friends))
+	if (target->type == OBJ_ROBOT && !self && caster && caster->type == OBJ_PLAYER && !(spell == 21 && Dtu_fix_haste_friends)
+			&& !dtu_spell_peace(spell,target,caster))		// ASCENT: Dtu_fix_dispel_peace
 		dtu_creature_wake(target,1);
 
 	dtu_spell_log("spell: '%s' (%d) level %d on obj %d %s (level %d)",spell_name(spell),spell,L,(int)(target-Objects),target_name(target),T);
@@ -4548,6 +4563,16 @@ static void rary_apply(int c)
 	dtu_spell_log("spell: Rary's Mnemonic Enhancer, choice %d: extra mage slots %d %d %d, maximum %d %d %d, left %d %d %d",c,
 		Rary_bonus[0],Rary_bonus[1],Rary_bonus[2],Dtu_spell_slots_max[0][0],Dtu_spell_slots_max[0][1],Dtu_spell_slots_max[0][2],
 		Dtu_spell_slots_left[0][0],Dtu_spell_slots_left[0][1],Dtu_spell_slots_left[0][2]);
+}
+
+void dtu_spell_set_sash(int n)
+{
+	if (n == Sash_n)
+		return;
+	Sash_n = n;
+	dtu_spell_compute_slots();
+	dtu_spell_log("spell: Sash of the Magi: %d more, mage maximum %d %d %d %d",n,
+		Dtu_spell_slots_max[0][0],Dtu_spell_slots_max[0][1],Dtu_spell_slots_max[0][2],Dtu_spell_slots_max[0][3]);
 }
 
 void dtu_spell_set_wizardry(int n)

@@ -112,7 +112,7 @@ static const short Dr_hatch_goal[4] = { 430, 436, 471, 391 };
 #define DR_GOLD_ID		1			// MISC 1: gold, the amount is in the hit points
 
 static const struct { short type, id, count, x, z; } Dr_treasure[] = {
-	{ -1, 0, 0, -134, -126 },					// free (the Flame Tongue of the level lies in the cell block, dtugear.h)
+	{ -1, 0, 0, -134, -126 },					// free: the new gear (dtu_gear_dragon_treasure fills the free places in order)
 	{ OBJ_ARMOR,  11, 1, -146, -126 },		// Plate Mail +3
 	{ OBJ_ARMOR,  38, 1, -166, -126 },		// Girdle of Hill Giant Strength
 	{ OBJ_ARMOR,  17, 1, -174, -108 },		// Ring of Coolness
@@ -121,9 +121,11 @@ static const struct { short type, id, count, x, z; } Dr_treasure[] = {
 	{ OBJ_MISC,    3, 3, -146,  -79 },		// Diamond
 	{ OBJ_MISC, DR_GOLD_ID, 4000, -134, -79 },	// gold
 	{ OBJ_MISC, DR_GOLD_ID, 3000, -154, -108 },	// gold
-	{ -1, 0, 0, -154,  -96 },					// free: a ring of regeneration
-	{ -1, 0, 0, -140,  -96 },					// free: a belt of dwarvenkind
-	{ -1, 0, 0, -140, -108 },					// free: plate mail of fire resistance
+	{ -1, 0, 0, -154,  -96 },					// free
+	{ -1, 0, 0, -140,  -96 },					// free
+	{ -1, 0, 0, -140, -108 },					// free
+	{ -1, 0, 0, -126, -108 },					// free (the new gear has six items)
+	{ -1, 0, 0, -126,  -96 },					// free
 };
 #define DR_N_TREASURE	((int) (sizeof(Dr_treasure) / sizeof(Dr_treasure[0])))
 

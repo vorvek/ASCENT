@@ -29,10 +29,14 @@
 #include "dtuspell.h"
 #include "dtutblfix.h"
 #include "dtugear.h"
+#include "gauges.h"		// HUD_init_message
+#include "dtulang.h"		// LN, LT
 
 int Dtu_new_gear = 1;
 int Dtu_gear_loaded = 0;
 int Dtu_gear_mirror_worn = 0;
+int Dtu_gear_displace_worn = 0;
+int Dtu_gear_sash_worn = 0;
 
 //------------------------------------------------------------------------
 // The table lines. The pictures and the icons are those of the items of the
@@ -51,6 +55,8 @@ static const char *Gear_lines[] = {
 	"$ARMOR name=\"Belt of Dwarvenkind\" picture=genbelt.bbm icon=155 value=7500 set_constitution=18 weight=.5 belt magic magic_ok thief_ok cleric_use fighter_use thief_use stackable stack_limit=10",
 	"$ARMOR name=\"Ring of Regeneration\" picture=genring.bbm icon=138 value=15000 weight=.5 ring magic magic_ok thief_ok stackable stack_limit=10 all_use",
 	"$ARMOR name=\"Plate Mail of Fire Resistance\" picture=genpmail.bbm icon=6 value=7500 armor_class_decrement=9 weight=15 armor magic stackable stack_limit=10 fighter_use cleric_use",
+	"$ARMOR name=\"Cloak of Displacement\" picture=gencloak.bbm icon=151 value=18000 weight=.5 cloak magic magic_ok thief_ok stackable stack_limit=10 all_use",
+	"$ARMOR name=\"Sash of the Magi\" picture=genbelt.bbm icon=153 value=22000 weight=.5 belt magic magic_ok stackable stack_limit=10 mage_use",
 	"$OBJECT name=\"Bloodstone\" mass=5 value=50 all_use icon=131 picture=gengem2.bbm stackable stack_limit=10 non_hotkey_item",
 	"$OBJECT name=\"Pearl\" mass=5 value=100 all_use icon=129 picture=gengem3.bbm stackable stack_limit=10 non_hotkey_item",
 	"$OBJECT name=\"Star Sapphire\" mass=5 value=5000 all_use icon=130 picture=gengem.bbm stackable stack_limit=10 non_hotkey_item",
@@ -58,7 +64,21 @@ static const char *Gear_lines[] = {
 #define N_GEAR_LINES	((int) (sizeof(Gear_lines) / sizeof(Gear_lines[0])))
 
 // The armor class of the new armor lines 53 to 59 (as Armor_ac of dtuchar.c)
-static const signed char Gear_armor_ac[DTU_GEAR_N_ARMOR] = { -2, 0, 0, 0, 0, 0, -9 };
+static const signed char Gear_armor_ac[DTU_GEAR_N_ARMOR] = { -2, 0, 0, 0, 0, 0, -9, 0, 0 };
+
+// The Frost Brand: the line of 1.3 (its name there), the line it copies
+// (the Longsword +3: picture, model, sounds, dice, classes), the new name
+// and the value
+static const struct { int id; const char *name13; int from; const char *from13, *name; int value; } Gear_frost = {
+	DTU_GEAR_FROST_BRAND, "Rod of Genericness", DTU_GEAR_FROST_FROM, "Longsword +3", "Frost Brand", 20000 };
+
+// The daggers: the line (-1 for Venom: a new line at the end of the table),
+// its name in 1.3, the line they copy, the new name, the value, the bonus,
+// thieves only
+static const struct { int id; const char *name13; int from; const char *from13, *name; int value, bonus, thief; } Gear_daggers[2] = {
+	{ DTU_GEAR_VENOM, "", DTU_GEAR_DAGGER_FROM, "Dagger +2", "Dagger of Venom +2", 9000, 2, 0 },
+	{ DTU_GEAR_ASSASSIN, "Temp", DTU_GEAR_DAGGER_FROM, "Dagger +2", "Assassin's Dagger +3", 15000, 3, 1 },
+};
 
 // The wands: weapons 63 to 67 are "Wand of Genericness" (63 to 65) and
 // "Rod of Genericness" (66, 67) in each mission table, with no spell
@@ -82,8 +102,8 @@ static const struct { int id; const char *name13; int value; } Gear_values[] = {
 
 //------------------------------------------------------------------------
 // The market: the goods that a reward of Khelben adds (stage 0 to 8, as
-// Mk_reward_stock of dtufe_town.c): stage, quantity, class, number, count
-// of one item (-1: the uses of the line). The stages: 1 missions 3 and 4,
+// Mk_reward_stock of dtufe_town.c): stage, quantity, class (17: a spell
+// scroll), number, count of one item (-1: the uses of the line). The stages: 1 missions 3 and 4,
 // 2 missions 7 and 8, 3 missions 9 and 10, 4 mission 11, 5 mission 14,
 // 6 mission 16, 7 missions 20 and 21, 8 mission 29 (docs/re/scripts.md,
 // section 8).
@@ -117,6 +137,7 @@ static const short Gear_market[][5] = {
 	{ 4, 1, 5, 65, -1 },				// Wand of Hold Undead
 	{ 4, 1, 15, 25, -1 },				// Ring of Quickness
 	{ 4, 1, 5, 56, -1 },				// Wand of Confusion
+	{ 4, 3, 17, 13, 1 },				// scrolls of Dispel Magic (the hold of Daland, the protections of the lich of CLAN3)
 	// stage 5
 	{ 5, 1, 15, 20, -1 },				// Ring of Free Action
 	{ 5, 1, 15, 30, -1 },				// Amulet of Protection +3
@@ -126,12 +147,14 @@ static const short Gear_market[][5] = {
 	{ 6, 1, 5, 66, -1 },				// Rod of Minute Meteors
 	{ 6, 1, 15, 15, -1 },				// Ring of Protection +3
 	{ 6, 1, 16, 99, -1 },				// Crossbow +3
+	{ 6, 3, 17, 13, 1 },				// scrolls of Dispel Magic
 	// stage 7
 	{ 7, 1, 5, 67, -1 },				// Rod of Dispel Magic
 	{ 7, 1, 5, 71, -1 },				// Flame Tongue (stage 5 in 1.3, Gear_market_removed)
 	{ 7, 1, 15, 31, -1 },				// Amulet of Protection +4
 	{ 7, 1, 15, 43, -1 },				// Cloak of Elvenkind
 	{ 7, 1, 15, 46, -1 },				// Elven Cloak
+	{ 7, 1, 5, DTU_GEAR_ASSASSIN, -1 },	// Assassin's Dagger +3
 	// stage 8
 	{ 8, 1, 15, DTU_GEAR_RING_REGEN, -1 },
 	{ 8, 1, 15, 36, -1 },				// Boots of Levitation
@@ -149,6 +172,9 @@ static const short Gear_market_removed[][3] = {
 
 // The treasury of Tamaramagil (DROW2): class, number, count
 static const short Gear_dragon[][3] = {
+	{ 5, DTU_GEAR_FROST_BRAND, 1 },
+	{ 15, DTU_GEAR_CLOAK_DISPLACE, 1 },
+	{ 15, DTU_GEAR_SASH_MAGI, 1 },
 	{ 15, DTU_GEAR_BELT_DWARF, 1 },
 	{ 15, DTU_GEAR_RING_REGEN, 1 },
 	{ 15, DTU_GEAR_PLATE_FIRE, 1 },
@@ -174,6 +200,16 @@ static void put_text(const dtu_tblfix_io *io, int kind, int id, char *text)
 		if (io->sync)
 			io->sync(kind, id);
 	}
+}
+
+// The next text of a chain of writes: the new text, or the old one when the
+// write changed nothing (NULL)
+static char *chain(char *old, char *new_text)
+{
+	if (!new_text)
+		return old;
+	dtu_tblfix_free(old);
+	return new_text;
 }
 
 // The weapon name of a line (weapon_name=, or the name buffer)
@@ -210,6 +246,89 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 				io->log("New gear: not this table (the generic wands)");
 			return;
 		}
+	if (Gear_frost.id >= io->count(DTU_TK_WEAPON) || !weapon_named(io, Gear_frost.id, Gear_frost.name13) ||
+			!weapon_named(io, Gear_frost.from, Gear_frost.from13) || io->count(DTU_TK_WEAPON) != DTU_GEAR_VENOM ||
+			!weapon_named(io, DTU_GEAR_ASSASSIN, Gear_daggers[1].name13) || !weapon_named(io, DTU_GEAR_DAGGER_FROM, Gear_daggers[0].from13)) {
+		if (io->log)
+			io->log("New gear: not this table (the lines of the Frost Brand)");
+		return;
+	}
+
+	// The Frost Brand: all decoded fields of the Longsword +3 (copy_line
+	// keeps the record and the name), then its text with the new name and
+	// value
+	{
+		char *name = io->name(DTU_TK_WEAPON, Gear_frost.id), *t;
+
+		io->copy_line(DTU_TK_WEAPON, Gear_frost.id, Gear_frost.from);
+		snprintf(buf, sizeof(buf), "\"%s\"", Gear_frost.name);
+		t = dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_frost.from), "weapon_name", buf);
+		put_text(io, DTU_TK_WEAPON, Gear_frost.id, t);
+		snprintf(buf, sizeof(buf), "%d", Gear_frost.value);
+		put_text(io, DTU_TK_WEAPON, Gear_frost.id, dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_frost.id), "value", buf));
+		if (name && io->name_size > 0) {
+			strncpy(name, Gear_frost.name, io->name_size - 1);
+			name[io->name_size - 1] = 0;
+		}
+	}
+
+	// The daggers: copies of the Dagger +2 with a name, a value and a bonus.
+	// The Assassin's Dagger takes the place of "Temp" (copy_line), the
+	// Dagger of Venom is a new line at the end of the table (the reader of
+	// the tables).
+	for (i = 0; i < 2; i++) {
+		char *t, *u;
+
+		snprintf(buf, sizeof(buf), "\"%s\"", Gear_daggers[i].name);
+		// each write gives a new text, or NULL when nothing changes (chain)
+		u = dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_daggers[i].from), "weapon_name", buf);
+		if (!u)
+			continue;
+		snprintf(buf, sizeof(buf), "%d", Gear_daggers[i].value);
+		u = chain(u, dtu_tblfix_set(u, "value", buf));
+		snprintf(buf, sizeof(buf), "%d", Gear_daggers[i].bonus);
+		u = chain(u, dtu_tblfix_set(u, "to_hit_bonus", buf));
+		u = chain(u, dtu_tblfix_set(u, "damage_bonus", buf));
+		if (Gear_daggers[i].thief) {
+			u = chain(u, dtu_tblfix_word(u, "Fighter_use", 0));
+			u = chain(u, dtu_tblfix_word(u, "mage_use", 0));
+		}
+		if (Gear_daggers[i].id == DTU_GEAR_VENOM) {
+			char *line = malloc(strlen(u) + 12);
+
+			if (line) {
+				sprintf(line, "$WEAPON %s\n", u);
+				parse(line);
+				free(line);
+			}
+			// the decoded fields of the Dagger +2 (the picture on the floor of
+			// a $WEAPON line read here is another one), the text and the name
+			if (io->count(DTU_TK_WEAPON) == DTU_GEAR_VENOM + 1) {
+				char *name;
+
+				io->copy_line(DTU_TK_WEAPON, DTU_GEAR_VENOM, Gear_daggers[i].from);
+				put_text(io, DTU_TK_WEAPON, DTU_GEAR_VENOM, u);
+				u = NULL;
+				name = io->name(DTU_TK_WEAPON, DTU_GEAR_VENOM);
+				if (name && io->name_size > 0) {
+					strncpy(name, Gear_daggers[i].name, io->name_size - 1);
+					name[io->name_size - 1] = 0;
+				}
+			}
+			if (u)
+				dtu_tblfix_free(u);
+		}
+		else {
+			char *name = io->name(DTU_TK_WEAPON, Gear_daggers[i].id);
+
+			io->copy_line(DTU_TK_WEAPON, Gear_daggers[i].id, Gear_daggers[i].from);
+			put_text(io, DTU_TK_WEAPON, Gear_daggers[i].id, u);
+			if (name && io->name_size > 0) {
+				strncpy(name, Gear_daggers[i].name, io->name_size - 1);
+				name[io->name_size - 1] = 0;
+			}
+		}
+	}
 
 	// Each write gives a new text or NULL (no change), as the writes of the
 	// fixup (dtutblfix.h).
@@ -248,14 +367,15 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 		parse(line);
 		free(line);
 	}
-	if (io->count(DTU_TK_ARMOR) != DTU_GEAR_FIRST_ARMOR + DTU_GEAR_N_ARMOR || io->count(DTU_TK_MISC) != DTU_GEAR_FIRST_MISC + DTU_GEAR_N_MISC) {
+	if (io->count(DTU_TK_ARMOR) != DTU_GEAR_FIRST_ARMOR + DTU_GEAR_N_ARMOR || io->count(DTU_TK_MISC) != DTU_GEAR_FIRST_MISC + DTU_GEAR_N_MISC ||
+			io->count(DTU_TK_WEAPON) != DTU_GEAR_VENOM + 1) {
 		if (io->log)
 			io->log("New gear: the new lines did not go in");
 		return;
 	}
 	Dtu_gear_loaded = 1;
 	if (io->log)
-		io->log("New gear: armor 53 to 59, misc 128 to 130, wands 63 to 67");
+		io->log("New gear: armor 53 to 61, misc 128 to 130, wands 63 to 67, the Frost Brand 68");
 }
 
 int dtu_gear_armor_ac(int id)
@@ -416,4 +536,143 @@ int dtu_gear_mirror(object *missile, object *player, int spell, int weapon, obje
 	dtu_obj_log("new gear: the Mirror Shield sends obj %d (weapon %d spell %d) back to obj %d %s", (int) (missile - Objects), weapon, spell,
 		(int) (source - Objects), dtu_object_name(source));
 	return 1;
+}
+
+//------------------------------------------------------------------------
+// The treasury items of Tamaramagil: the Frost Brand and the Cloak of
+// Displacement (the Sash of the Magi is in dtuchar.c and dtuspell.c)
+
+int dtu_gear_frost_brand(int weapon)
+{
+	return Dtu_gear_loaded && weapon == DTU_GEAR_FROST_BRAND;
+}
+
+int dtu_gear_fire_creature(int type)
+{
+	int rec, wt;
+	char v[32];
+
+	if (type < 0 || type >= N_robot_types)
+		return 0;
+	if (Monster_info[type].flags & (MONSTER_F_FIRE_IMMUNE | MONSTER_F_FIRE_RESISTANT))
+		return 1;
+	// a fire spell as the weapon: Burning Hands (4), Fireball (16), Produce
+	// Fire (17), Melf's Minute Meteors (37)
+	rec = Monster_info[type].record;
+	wt = (rec >= 0 && bm_tbl_get(rec, "weapon_type", v, sizeof(v))) ? atoi(v) : 0;
+	return wt == -4 || wt == -16 || wt == -17 || wt == -37;
+}
+
+// The time when the Cloak of Displacement is ready again (0: ready). It is
+// not saved: a loaded game starts with the cloak ready.
+static fix Displace_ready;
+static int Displace_waiting;
+
+int dtu_gear_displace(object *player, object *attacker)
+{
+	if (!Dtu_gear_loaded || !Dtu_gear_displace_worn || !player || player->type != OBJ_PLAYER)
+		return 0;
+	if (Displace_waiting && !dtu_time_past(Displace_ready))
+		return 0;
+	Displace_ready = GameTime + i2f(DTU_GEAR_DISPLACE_TIME);
+	Displace_waiting = 1;
+	HUD_init_message(LN("Your Cloak of Displacement fools %s: the blow misses."), attacker ? dtu_object_display_name(attacker) : LT("the attack"));
+	dtu_obj_log("new gear: the Cloak of Displacement makes the attack of %s miss, ready again at %.1f",
+		attacker ? dtu_object_name(attacker) : "a missile", f2fl(Displace_ready));
+	dtu_char_log("Cloak of Displacement: the attack of %s misses", attacker ? dtu_object_name(attacker) : "a missile");
+	return 1;
+}
+
+void dtu_gear_displace_frame(void)
+{
+	if (!Displace_waiting || !dtu_time_past(Displace_ready))
+		return;
+	Displace_waiting = 0;
+	if (Dtu_gear_displace_worn) {
+		HUD_init_message(LN("Your Cloak of Displacement shimmers again."));
+		dtu_char_log("Cloak of Displacement: ready again");
+	}
+}
+
+//------------------------------------------------------------------------
+// The daggers for thieves
+
+int dtu_gear_venom(int weapon)
+{
+	return Dtu_gear_loaded && weapon == DTU_GEAR_VENOM;
+}
+
+int dtu_gear_assassin(int weapon)
+{
+	return Dtu_gear_loaded && weapon == DTU_GEAR_ASSASSIN;
+}
+
+int dtu_gear_poison_immune(int type)
+{
+	// The data has no poison flag. AD&D 2e: undead are immune to poison; the
+	// extraplanar types of the tables are the summoned guardians, undead too.
+	if (type < 0 || type >= N_robot_types)
+		return 1;
+	return (Monster_info[type].flags & (MONSTER_F_UNDEAD | MONSTER_F_EXTRAPLANAR)) != 0;
+}
+
+// The poison of each object: its signature, the seconds left, the time of
+// the next point
+static struct { int sig, left; fix next; } Poison[MAX_OBJECTS];
+
+void dtu_gear_poison_hit(object *creature, object *attacker, int weapon)
+{
+	int n;
+
+	if (!dtu_gear_venom(weapon) || !creature || creature->type != OBJ_ROBOT || !attacker || attacker->type != OBJ_PLAYER)
+		return;
+	if (creature->shields < F1_0 || (creature->flags & (OF_EXPLODING | OF_SHOULD_BE_DEAD | OF_DESTROYED)))
+		return;
+	n = creature - Objects;
+	if (dtu_gear_poison_immune(creature->id)) {
+		dtu_obj_log("new gear: obj %d %s is immune to the poison of the Dagger of Venom", n, dtu_object_name(creature));
+		return;
+	}
+	if (Poison[n].sig == creature->signature && Poison[n].left > 0) {
+		// a second hit: the 15 seconds start again, no second poison
+		Poison[n].left = DTU_GEAR_POISON_TIME;
+		dtu_obj_log("new gear: the poison of obj %d %s starts again", n, dtu_object_name(creature));
+		return;
+	}
+	if (dtu_spell_save_from(creature, DTU_SAVE_PARALYZE, attacker)) {
+		dtu_obj_log("new gear: obj %d %s saves against the poison", n, dtu_object_name(creature));
+		return;
+	}
+	Poison[n].sig = creature->signature;
+	Poison[n].left = DTU_GEAR_POISON_TIME;
+	Poison[n].next = GameTime + F1_0;
+	HUD_init_message(LN("%s is poisoned."), dtu_object_display_name(creature));
+	dtu_obj_log("new gear: obj %d %s is poisoned for %d seconds", n, dtu_object_name(creature), DTU_GEAR_POISON_TIME);
+}
+
+void dtu_gear_poison_frame(void)
+{
+	int i;
+
+	for (i = 0; i <= Highest_object_index; i++) {
+		object *o = &Objects[i];
+
+		if (Poison[i].left <= 0)
+			continue;
+		if (o->type != OBJ_ROBOT || o->signature != Poison[i].sig || o->shields < F1_0 ||
+				(o->flags & (OF_EXPLODING | OF_SHOULD_BE_DEAD | OF_DESTROYED))) {
+			Poison[i].left = 0;
+			continue;
+		}
+		if (!dtu_time_past(Poison[i].next))
+			continue;
+		Poison[i].next += F1_0;
+		Poison[i].left--;
+		dtu_obj_log("new gear: the poison takes 1 hit point of obj %d %s, %d seconds left", i, dtu_object_name(o), Poison[i].left);
+		// the damage of the player (a kill gives the experience), with no
+		// line "You hit" for each point
+		Dtu_damage_quiet = 1;
+		dtu_damage_creature_direct(o, ConsoleObject, F1_0);
+		Dtu_damage_quiet = 0;
+	}
 }

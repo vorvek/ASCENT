@@ -466,6 +466,7 @@ void dtu_damage_creature(object *creature, object *attacker, fix damage);
 // creature gets hostile, the player gets the message, and the experience
 // if the creature dies. The creature flinches, and dies below 1.0 (drops,
 // sound, corpse). Returns the damage that was done (0 for a dead target).
+extern int Dtu_damage_quiet;		// ASCENT: dtuobj_combat.c, the poison of the Dagger of Venom
 fix dtu_damage_creature_direct(object *creature, object *attacker, fix damage);
 fix dtu_damage_player_direct(object *player, object *attacker, fix damage);
 

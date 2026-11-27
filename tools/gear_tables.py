@@ -53,6 +53,7 @@ def read():
     no_gold:  [names]
     daland:   (script, misc number of the potion, weapon number)
     flame:    (level line of DTU.MSN, weapon number, (x, y, z))
+    venom:    (level line of DTU.MSN, (x, y, z)) of the Dagger of Venom
     """
     c, h = _read("dtugear.c"), _read("dtugear.h")
     g = {"d": defines(h)}
@@ -61,6 +62,13 @@ def read():
     g["armor_ac"] = [int(v) for v in re.findall(r"-?\d+", _block(c, "Gear_armor_ac[DTU_GEAR_N_ARMOR]"))]
     g["wands"] = [(int(a), b, n, int(s)) for a, b, n, s in
                   re.findall(r'\{\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\s*\}', _block(c, "Gear_wands[DTU_GEAR_N_WANDS]"))]
+    m = re.search(r'Gear_frost\s*=\s*\{\s*(\w+),\s*"([^"]*)",\s*(\w+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\s*\}', c)
+    g["frost"] = (g["d"].get(m.group(1)) or int(m.group(1)), m.group(2),
+                  g["d"].get(m.group(3)) or int(m.group(3)), m.group(4), m.group(5), int(m.group(6)))
+    g["daggers"] = [(g["d"].get(i) or int(i), n13, g["d"].get(f) or int(f), f13, n, int(v), int(b), int(th))
+                    for i, n13, f, f13, n, v, b, th in re.findall(
+                        r'\{\s*(\w+),\s*"([^"]*)",\s*(\w+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+),\s*(\d+),\s*(\d+)\s*\}',
+                        _block(c, "Gear_daggers[2]"))]
     g["values"] = [(int(a), b, int(v)) for a, b, v in
                    re.findall(r'\{\s*(\d+),\s*"([^"]*)",\s*(\d+)\s*\}', _block(c, "Gear_values[]"))]
 
@@ -85,6 +93,10 @@ def read():
         # "-172 * F1_0 - F1_0 / 2" and the like: F1_0 is 1.0
         pos.append(float(eval(part.replace("F1_0", "1.0"), {"__builtins__": {}})))
     g["flame"] = (lvl, wpn, tuple(pos))
+    vlvl = int(re.search(r"#define\s+VENOM_LEVEL\s+(\d+)", s).group(1))
+    m = re.search(r"Venom_pos\s*=\s*\{\s*([^}]*)\}", s)
+    vpos = tuple(float(eval(part.replace("F1_0", "1.0"), {"__builtins__": {}})) for part in m.group(1).split(","))
+    g["venom"] = (vlvl, vpos)
     for k in ("lines", "armor_ac", "wands", "values", "market", "dragon", "no_gold"):
         if not g[k]:
             raise SystemExit("gear_tables: no rows for %s in dtugear.c" % k)

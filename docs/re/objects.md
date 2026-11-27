@@ -1714,6 +1714,85 @@ weapons 81 to 88.
   Intelligence, Crossbow +3. The Arrows +1 and +2 are left out: their lines
   have no value.
 
+### The treasury of Tamaramagil
+
+`Gear_dragon` (dtugear.c) gives six items to the free places of
+`Dr_treasure` (dtudragon.c fills them in order; two free places were added
+at -126, -108 and -126, -96): the Frost Brand, the Cloak of Displacement,
+the Sash of the Magi, the Belt of Dwarvenkind, the Ring of Regeneration and
+the Plate Mail of Fire Resistance. The user's design: she is an optional
+challenge, and a player who wins early keeps these for the whole game.
+
+- Frost Brand (weapon 68, value 20000): the last "Rod of Genericness" line
+  of 1.3 becomes a copy of the Longsword +3 (line 14, `copy_line` of the
+  table fixup: picture, model, sounds, 1d8 +3, +3 to hit, fighter and
+  thief, as the long swords of the game) with the new name. Against a fire
+  creature (`dtu_gear_fire_creature`: fire immune or fire resistant, or a
+  fire spell as its weapon: the red dragon, the hatchlings, the fire
+  mephits) 3 more to hit and damage (+6 in all). Resist Fire while it is in
+  the hand (item bit 1 of the hand). Checked: the roll bonus against a
+  hatchling is 3 more than with the Longsword +3.
+- Cloak of Displacement (armor 60, value 18000, all classes): the user's
+  rule, not the one of AD&D 2e: the first weapon attack (melee, an arrow, a
+  bolt, a thrown weapon) whose attack roll hits the wearer misses
+  (`dtu_gear_displace`, called by `damage_player_w` after the roll), with a
+  message; the cloak is ready again 30 seconds later (`dtu_time_past`) and
+  says so ("Your Cloak of Displacement shimmers again."). Spell missiles
+  have no attack roll and are not fooled. The timer is not saved: a loaded
+  game starts with the cloak ready.
+- Sash of the Magi (armor 61, a belt, value 22000, mage only): one more
+  mage slot at each spell level that the slot table of the mage level has
+  (`dtu_spell_set_sash`, after the doublings of the Ring of Wizardry and
+  the bonus of Rary's Mnemonic Enhancer) and saving throws against spells 2
+  better (the save line "+2 (Sash of the Magi)"). As with the ring, the
+  slots left are cut to the new maximum when it comes off (a memorized
+  spell over the maximum is lost). The mage maximum of levels 1 to 3 for a
+  mage of level 5 (table 4 2 1; checked):
+
+| Worn | Levels 1 2 3 |
+|---|---|
+| none | 4 2 1 |
+| Sash | 5 3 2 |
+| Ring of Wizardry | 8 4 2 |
+| both | 9 5 3 |
+
+### The daggers for thieves
+
+The weapon table holds 90 lines (MAX_WEAPON_TYPES); the mission tables have
+89. Free or unused: line 89 (the last place), 68 (the last "Rod of
+Genericness", now the Frost Brand) and 76 ("Temp", value 4500, a test line:
+no creature type has it as weapon_type, no level file places it, and no
+code reads it). Line 10 ("DO NOT USE") stays: KOBOLDS and THIEF2 creatures
+carry it in their `contains`.
+
+- Dagger of Venom +2 (line 89, a new line, value 9000; classes of the
+  Dagger: fighter, thief, mage): a copy of the Dagger +2 (44: the line is
+  read by the table reader, then `copy_line` gives it the picture and the
+  fields of 44). A melee hit of the player that does damage
+  (`dtu_gear_poison_hit`, from the hit of dtucombat.c) poisons the
+  creature unless it is immune or saves against poison (category 0,
+  paralyzation, poison and death; `dtu_spell_save_from`): 1 hit point each
+  second for 15 seconds (`dtu_gear_poison_frame`, the clock helpers), the
+  damage of the player with no "You hit" line (`Dtu_damage_quiet`), so a
+  kill gives the experience; the first hit already made the creature
+  hostile, so the poison wakes nothing more. A hit while it runs starts the
+  15 seconds again (no second poison). Immune: undead and extraplanar types
+  (the data has no poison flag; AD&D 2e: undead; the extraplanar types of
+  the tables are undead too): Banegard, Ghast, Ghoul, gskelpus, gskelsci,
+  Lich3, Mummy, prstsprt, the skeletons, Zombie. The game has no golems,
+  elementals or oozes. Poison does not stop the regeneration of a troll
+  (only fire and acid do, 0x2B5D4). The state is per object and not saved:
+  a load or a level change ends the poison. Place: DROW5, the closet of
+  segment 676 (-90, 0, 347.5) behind the locked door of segment 675 side 4
+  (wall 95, flags 0x8, no key): a thief opens it with Open Locks (the key
+  O), the other classes with Knock or the Gloves of Dexterity (Open Locks
+  for other classes). The closet holds a glowing ankh of the level. Once in
+  a game (global flag 0xF8).
+- Assassin's Dagger +3 (line 76, value 15000, thieves only): a copy of the
+  Dagger +2 with +3. A backstab multiplies the damage by one more: (thief
+  level + 7) / 4 + 1 (a thief of level 1: 3 instead of 2). In the market at
+  reward stage 7 (the beholder caves).
+
 ### Saves
 
 An item is a type and a number in the save (16 byte entry,

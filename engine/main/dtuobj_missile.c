@@ -654,9 +654,13 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	else if (other->type == OBJ_ROBOT) {
 		// 0x274B7: a missile of the player calls the alert function
 		// 0x160AB(creature, 3) before the activity
-		if (parent && parent == ConsoleObject)
-			dtu_creature_alert(other,3);
-		Ail[other-Objects].activity = 2;
+		// ASCENT: Dtu_fix_dispel_peace: a Dispel Magic of the player on a
+		// creature that is not hostile calls no alert and wakes nothing
+		if (!dtu_spell_peace(m->spell,other,parent)) {
+			if (parent && parent == ConsoleObject)
+				dtu_creature_alert(other,3);
+			Ail[other-Objects].activity = 2;
+		}
 		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
 		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
 		Hit_by_missile = 0;

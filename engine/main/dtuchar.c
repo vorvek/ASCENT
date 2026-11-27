@@ -682,6 +682,9 @@ static int item_bits(int type, int id, int slot, int any_race)
 				if (human)
 					bits |= 0x40;
 			}
+			// ASCENT: the Frost Brand of the new gear (dtugear.h): Resist Fire
+			if (type == OBJ_WEAPON && dtu_gear_frost_brand(id))
+				bits |= 1 << 1;
 			break;
 	}
 	return bits;
@@ -923,6 +926,10 @@ void dtu_char_update(void)
 	// shield. 0xAF9CF: the numbers 2, 12 and 13 are shields.
 	e = ref_entry(Dtu_char.slot[DTU_SLOT_SHIELD]);
 	Dtu_gear_mirror_worn = armor_is(e, DTU_GEAR_MIRROR_SHIELD, DTU_GEAR_MIRROR_SHIELD);		// ASCENT: dtugear.h
+	// ASCENT: the Cloak of Displacement and the Sash of the Magi (dtugear.h)
+	Dtu_gear_displace_worn = armor_id(Dtu_char.slot[DTU_SLOT_CLOAK]) == DTU_GEAR_CLOAK_DISPLACE;
+	Dtu_gear_sash_worn = armor_id(Dtu_char.slot[DTU_SLOT_BELT]) == DTU_GEAR_SASH_MAGI && has_class(DTU_CLASS_MAGE);
+	dtu_spell_set_sash(Dtu_gear_sash_worn ? DTU_GEAR_SASH_SLOTS : 0);
 	if (e) {
 		shield = is_shield(e);
 		sum += slot_ac(e, DTU_SLOT_SHIELD);
@@ -1317,6 +1324,16 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		ADD(DTU_IP_ARCHER, DTU_GEAR_ARCHER_HIT, DTU_GEAR_ARCHER_DAMAGE);
 	if (slot == DTU_SLOT_RING1 && armor_is(&e, DTU_GEAR_RING_REGEN, DTU_GEAR_RING_REGEN))
 		ADD(DTU_IP_REGEN, DTU_GEAR_REGEN_TIME, 0);
+	if (slot == DTU_SLOT_CLOAK && armor_is(&e, DTU_GEAR_CLOAK_DISPLACE, DTU_GEAR_CLOAK_DISPLACE))
+		ADD(DTU_IP_DISPLACE, DTU_GEAR_DISPLACE_TIME, 0);
+	if (slot == DTU_SLOT_BELT && armor_is(&e, DTU_GEAR_SASH_MAGI, DTU_GEAR_SASH_MAGI))
+		ADD(DTU_IP_SASH, DTU_GEAR_SASH_SLOTS, DTU_GEAR_SASH_SAVE);
+	if (slot == DTU_N_SLOTS && type == OBJ_WEAPON && dtu_gear_frost_brand(id))
+		ADD(DTU_IP_FROST, DTU_GEAR_FROST_BONUS, 0);
+	if (slot == DTU_N_SLOTS && type == OBJ_WEAPON && dtu_gear_venom(id))
+		ADD(DTU_IP_VENOM, DTU_GEAR_POISON_TIME, 0);
+	if (slot == DTU_N_SLOTS && type == OBJ_WEAPON && dtu_gear_assassin(id))
+		ADD(DTU_IP_ASSASSIN, DTU_GEAR_ASSASSIN_STEP, 0);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 52, 52))
 		ADD(DTU_IP_STRENGTH, DTU_OGRE_STRENGTH, 100);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 50, 50)) {
@@ -1928,9 +1945,16 @@ int dtu_char_wis_save_bonus(int spell)
 	return adj[w];
 }
 
+// ASCENT: the Sash of the Magi of the new gear (dtugear.h): saving throws
+// against spells
+static int sash_save_bonus(int cat)
+{
+	return (Dtu_gear_sash_worn && cat == DTU_SAVE_SPELL) ? DTU_GEAR_SASH_SAVE : 0;
+}
+
 int dtu_char_save_number(int cat)
 {
-	return dtu_spell_player_save_number(cat) - dtu_char_save_bonus() - dtu_char_con_save_bonus(cat);
+	return dtu_spell_player_save_number(cat) - dtu_char_save_bonus() - dtu_char_con_save_bonus(cat) - sash_save_bonus(cat);
 }
 
 void dtu_char_save_cause(int spell, const char *what, const char *who)
@@ -1955,7 +1979,7 @@ static void ability_word(char *out, int size, int n, const char *def)
 
 int dtu_char_player_save(int cat, int roll, int need)
 {
-	int prot, con, wis, n;
+	int prot, con, wis, sash, n;
 	char terms[120] = "", w[16];
 
 	if (Save_frame != FrameCount) {		// a cause of an earlier frame
@@ -1965,7 +1989,8 @@ int dtu_char_player_save(int cat, int roll, int need)
 	prot = dtu_char_save_bonus();
 	con = dtu_char_con_save_bonus(cat);
 	wis = dtu_char_wis_save_bonus(Save_spell);
-	n = need - prot - con - wis;
+	sash = sash_save_bonus(cat);		// ASCENT: dtugear.h
+	n = need - prot - con - wis - sash;
 
 	if (prot)
 		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (protection)", prot);
@@ -1977,6 +2002,8 @@ int dtu_char_player_save(int cat, int roll, int need)
 		ability_word(w, sizeof(w), 659, "WIS");
 		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (%s)", wis, w);
 	}
+	if (sash)
+		snprintf(terms + strlen(terms), sizeof(terms) - strlen(terms), ", %+d (Sash of the Magi)", sash);
 	dtulog_event("Save of the player: %s%s%s%s, %s: d20 %d, needs %d (table %d%s): %s",
 		Save_what[0] ? Save_what : "unknown cause", Save_who[0] ? " (" : "", Save_who, Save_who[0] ? ")" : "",
 		(cat >= 0 && cat < 5) ? Save_name[cat] : "?", roll, n, need, terms, roll >= n ? "made" : "failed");
@@ -3302,6 +3329,11 @@ int dtu_char_attack_roll(object *target, int weapon)
 				dtu_xp_hit_mod(4, LN("Flame Tongue"));
 			}
 		}
+		// ASCENT: the Frost Brand of the new gear against a fire creature
+		if (dtu_gear_frost_brand(a.weapon_id) && target && target->type == OBJ_ROBOT && dtu_gear_fire_creature(target->id)) {
+			r += DTU_GEAR_FROST_BONUS;
+			dtu_xp_hit_mod(DTU_GEAR_FROST_BONUS, LN("Frost Brand"));
+		}
 		// ASCENT: a weapon missile (arrow, bolt, thrown weapon) meets the
 		// armor class against missiles (Dtu_fix_shield_ac)
 		result = target ? dtu_hit_test_vs(target, ConsoleObject, r, a.thac0, &ac, dtu_hit_by_missile()) : (a.thac0 - 10 > r ? 0 : 1);
@@ -3349,6 +3381,10 @@ int dtu_char_weapon_damage(int weapon, object *target)
 			int lvl = (Dtu_char.pa.class1 == DTU_CLASS_THIEF) ? Dtu_char.pa.class1_level : Dtu_char.pa.class2_level;
 			int mult = (lvl + 1 + 7) >> 2;
 
+			// ASCENT: the Assassin's Dagger of the new gear (dtugear.h)
+			if (dtu_gear_assassin(a.weapon_id))
+				mult += DTU_GEAR_ASSASSIN_STEP;
+
 			sum *= mult;
 			dtu_xp_dmg_mult(mult, LN("backstab"));
 			if (a.weapon_id == 45 && Dtu_last_attack_roll >= 19) {
@@ -3366,6 +3402,12 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		// melee weapon is added last, 0x2B456)
 		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown) + archer_bonus(weapon, a.thrown, 1));
 		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown) + archer_bonus(weapon, a.thrown, 1)), LN("weapon"));
+		// ASCENT: the Frost Brand of the new gear against a fire creature
+		if (dtu_gear_frost_brand(a.weapon_id) && target && target->type == OBJ_ROBOT && dtu_gear_fire_creature(target->id)) {
+			sum += DTU_GEAR_FROST_BONUS;
+			dtu_xp_dmg_mod(DTU_GEAR_FROST_BONUS, LN("Frost Brand"));
+			dtu_char_log("damage roll: the Frost Brand adds %d against a fire creature", DTU_GEAR_FROST_BONUS);
+		}
 		{
 			int s0 = sum;
 
@@ -4448,6 +4490,11 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "dragon"))		dtu_dragon_test(a);		// test: dragon=N (dtudragon.h)
 	else if (!strcmp(cmd, "phylactery"))	dtu_lich_test(a);		// test: phylactery=N (dtulich.h)
 	else if (!strcmp(cmd, "picklock"))	dtu_thief_open_locks();	// ASCENT: test: the Open Locks key
+	else if (!strcmp(cmd, "backstabroll")) {	// ASCENT: test: backstabroll=W, the damage roll of a backstab with weapon W (the Assassin's Dagger, dtugear.h)
+		Dtu_backstab = 1;
+		dtu_char_weapon_damage(a, NULL);
+		Dtu_backstab = 0;
+	}
 	else if (!strcmp(cmd, "gflag"))		dtu_script_set_gflag(a, value && strchr(value, '.') ? b : 1);		// test: gflag=N[.VALUE]
 	else if (!strcmp(cmd, "mflag"))		dtu_mission_set_flag(a, value && strchr(value, '.') ? b : 1);		// test: mflag=K[.VALUE]
 	else if (!strcmp(cmd, "talk") && a > 0 && a <= Highest_object_index)		// test: talk=N, the use action on object N
@@ -4771,6 +4818,8 @@ void dtu_char_frame(void)
 		set_hit_points(Dtu_char.pa.max_hit_points);
 	dtu_char_potions_end(0);		// 0x396B2 from the frame 0x435A6
 	regen_frame();				// ASCENT: the Ring of Regeneration (dtugear.h)
+	dtu_gear_displace_frame();	// ASCENT: the Cloak of Displacement (dtugear.h)
+	dtu_gear_poison_frame();		// ASCENT: the Dagger of Venom (dtugear.h)
 	if (Gear_lost)
 		gear_lost_effects();		// ASCENT: dtugear.h
 	dtu_thief_frame();

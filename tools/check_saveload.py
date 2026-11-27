@@ -57,9 +57,10 @@ SCRIPT3 = "5:give=16.72,10:use=16.72,12:cpoints=19.1,22:save=3,60:cpoints=19.2,8
 # leaves the items out (dtu_inventory_append), their effects end at the
 # first frame (gear_lost_effects, dtuchar.c) and the game goes on.
 SCRIPT4 = ("5:give=15.53.1,6:give=15.58.1,7:give=15.59.1,8:give=16.129.3,9:give=5.63.6,10:equip=15.58,"
-           "11:equip=15.59,12:equip=15.53,20:dump,30:save=3,40:load=3,90:dump")
+           "11:equip=15.59,12:equip=15.53,13:give=5.68.1,14:give=15.60.1,15:equip=15.60,16:give=15.61.1,17:give=5.89.1,18:give=5.76.1,"
+           "20:dump,30:save=3,40:load=3,90:dump")
 SCRIPT5 = "20:load=3,60:dump"
-NEW_ITEMS = ("type 15 id 53 ", "type 15 id 58 ", "type 15 id 59 ", "type 16 id 129 ")
+NEW_ITEMS = ("type 15 id 53 ", "type 15 id 58 ", "type 15 id 59 ", "type 16 id 129 ", "type 15 id 60 ", "type 15 id 61 ", "type 5 id 89 ")
 SG_PLAYER = 141         # the player record in a save of the port (DTU_SG_PLAYER_OFFSET)
 
 
