@@ -305,6 +305,34 @@ in 1.3 was not found; the port puts them at the player at each level start.
 The bit 0x80 of the player +0x1AE has no place in the port. Test:
 `check_creature_setup.py --abilities` (CLAN3, the ghast).
 
+## Caster AI (`Dtu_caster_ai`, 2026-11-27)
+
+A decision of the user, not a correction of a defect: the casters of 1.3 are
+passive (the table "Abilities" above has their rules, which the port keeps with
+`-origcasterai`). With the setting (on by default, "Caster AI" of the
+Improvements menu) the creature types of `engine/main/dtucaster.h` cast by the
+loop of the port: a spell list and an AD&D 2e caster level for each type, a
+contingency of protections at the first notice of the player, one cast in each
+round of 6 seconds, a choice by the situation, spell points for each fight, a
+distance that the caster keeps, melee with no points, no spell on an ally, and
+the new spells Mirror Image, Minor Globe of Invulnerability, Spiritual Hammer,
+Flame Strike and Mind Blast. The rules, the lists and the measures of each type
+before and after are in `docs/re/ai.md`, "Caster AI"; the spells are in
+`docs/re/spells.md`, section 15.
+
+| Creature | With the setting | 1.3 |
+|---|---|---|
+| Lich | Stone Skin, Shield, Minor Globe, Mirror Image at the first notice; Fireball, Lightning Bolt, Hold Person, Magic Missile, Slow at level 12 | the table of 44 entries at level 11 (88 hit points / 8) |
+| Drow mages (rmm*) | Shield, Mirror Image (Minor Globe at level 9); Magic Missile, Burning Hands, Melf's Acid Arrows, Hold Person (Lightning Bolt, Fireball at level 9), at the level of the type name | the same table at hit points / 8: rmmk5 level 2, rmmk9 level 4 |
+| Drow priestesses (rff*, rmf*) | Protection From Evil, Prayer; Spiritual Hammer, Hold Person, Magical Stone; Flame Strike for rffk8, rffk8b, rffk9, rfft9, drowfem and priestes; the model with a mace (dlf_fft.pof) when NETHER.EGG is there | the same table; the models dlf_ffk.pof and dlf_ffk5.pof, which have no fire frame, so no touch |
+| Illithid (flayer) | Mind Blast (a cone of 60 feet, a save against wands at -4 or a stun), Hold Person, then its touch of 2d4; it walks to the player | the weapon spell Hold Person (weapon -22, 0xAC7B2) at its fire frames |
+| Human clerics (hmft*, hfft*) | Bless at the first notice, Hold Person, a cure on themselves below half of their hit points, melee as a fighter of Improved AI | the same table; melee only in the reach test of 0x12916 |
+| Beholder, Xabash | Slow, Fear, Hold Person, and the weapon (Beholder Burn) between the casts | the same table; a caster never fires its weapon (0x11DE9) |
+| Halaster, Ibbalar, Aleena, the avatar, Thashasa, the spirits, the kobold shaman | a list of the same rules (ai.md) | the same table |
+| Dragon, hatchlng | not in the lists: 1.3 | 1.3 |
+
+Test: `python -I tools/check_caster_ai.py --exe EXE --datadir ... --table`.
+
 ## Tests
 
 - `python -I tools/check_creature_setup.py --exe EXE --datadir ... --work

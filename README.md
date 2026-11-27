@@ -83,6 +83,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 * Trolls need fire (or a very thorough hacking while down!) to die. Otherwise, they'll keep standing up to fight. The code was already partially in the game. Your spells hit a troll that is down: fire and acid (Fireball, Melf's Acid Arrow) end it for good.
 * Creatures take fall damage, and long falls always hurt, whatever the frame rate.
+* With Caster AI, the liches, illithids, drow mages, drow priestesses and clerics are dangerous: each kind has its own spells, they protect themselves the moment they notice you, they keep their distance and cast every few seconds, and they fight hand to hand when their magic runs out. They do not hit their own allies with a hold. New spells come with it: Mirror Image, Minor Globe of Invulnerability and Spiritual Hammer for you and them, Flame Strike for the high priestesses and the Mind Blast of the illithids. A hit while a caster casts ruins its spell.
 * With Improved AI (the setting that was Improved pathfinding), creatures handle corners and ladders better, and they notice you only along an open way: a wall or a closed door hides you, and an alarm stops at a closed door. Humanoid creatures open unlocked doors, but only once they fight you. A closed door stops blows in both directions. Creatures that would attack after a talk join their friends when a fight starts in front of them.
 
 **Controls**

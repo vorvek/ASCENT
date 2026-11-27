@@ -1298,6 +1298,205 @@ leaves out each creature with a mage or cleric level and each creature with
 a ranged attack, and `creature_in_combat()` and `creature_senses_player()`
 tell a caster whether it fights and whether it sees the player.
 
+### Caster AI (Dtu_caster_ai, 2026-11-27)
+
+A decision of the user: the casters of 1.3 stand and let the player kill them, so
+the port moves away from the caster AI of 1.3. The setting is "Caster AI" of the
+Improvements menu (`CasterAI` in `ascent.cfg`, on by default). `-origcasterai`,
+`-origobj` and `-noimprovements` turn it off: then the casts are those of 1.3
+(0x92D99, 0x9231F, 0x91FDC with the `Dtu_fix_caster_*` corrections), and the
+object log of a run is the same as before the setting (checked: DROW1, the mage
+obj 13, 80 seconds, the log of the build before the change and of this build with
+`-origcasterai` are equal byte for byte).
+
+Why the casters of 1.3 are passive (Code, `dtuspell.c`):
+
+- No creature has a spell list. All casters choose from one table of 44 entries
+  (0x142084) by weights (0x9231F). The weights favor Light, Continual Light and
+  the spells on the caster itself; a damage spell must pass a strict test (a ray
+  of radius 30 to the player for Burning Hands, Color Spray, Magical Stone and the
+  meteors, 160 units of free facing for Lightning Bolt, no other hostile creature
+  in the segment of the player for Fireball and Confusion).
+- After a cast a ranged caster has the choice -1, and the attack goal (0x12916)
+  becomes ATAK only for a chosen spell: it does not attack between two casts. The
+  models of the drow casters (`dlf_ffk.pof`, `dlf_ffk5.pof`, `drw_mmk5.pof`,
+  `drw_mmk7.pof`) have no fire frame in their attack states, so they never reach
+  `ai_fire` (0x11B06): no touch and no weapon spell (the weapon type below 0).
+- The points are few (rmmk5: 11) and come back (9 - levels) minutes after the
+  last cast. Bless and Magical Vestment take 60 seconds of cast time.
+- A ranged caster circles the player at its circle distance (0x125B9), about the
+  size of the player.
+
+The rules of the setting (`dtuspell.c`: `caster_frame` and the functions around
+it; `dtucaster.h`: the lists; `dtuobj_ai.c`: `caster_move`, `choose_attack_goal`,
+`ai_fire_body`):
+
+1. **Lists.** Each caster type has a spell list and a caster level
+   (`Caster_types` of `dtucaster.h`, by the name of the `$MONSTER` line). The
+   level is the level of AD&D 2e for the type (the number of the type name for
+   the drow and the humans, 12 for a lich, 18 for Halaster); 1.3 takes max hit
+   points / 8 (0xAE3BB: rmmk9 with 36 hit points casts at level 4). A caster has
+   a spell of spell level s from caster level 2 s - 1 on, or from the level of
+   its entry. The lists:
+
+   | List | Types | Contingency | Attacks |
+   |---|---|---|---|
+   | drow mage | rmme1, rmmf1, rmmq1, rmmk1, rmmf3, rmmk3, rmmk5, rmmk7, rmmk9, rmmk9b | Shield, Mirror Image, Minor Globe (level 9) | Magic Missile, Burning Hands (in its reach), Melf's Acid Arrows, Hold Person, Lightning Bolt and Fireball (level 9) |
+   | drow priestess | rffk1, rffk5, rfft1, rfft4, rfft6, rmft1, rmfk1, rmfk4, rmfk5, rmfk9, prstsprt | Protection From Evil, Prayer | Spiritual Hammer, Hold Person, Magical Stone |
+   | drow high priestess | rffk8, rffk8b, rffk9, rfft9, drowfem, priestes | Protection From Evil, Prayer | the same and Flame Strike (level 8) |
+   | lich | lich1, lich2, lich3 | Stone Skin, Shield, Minor Globe, Mirror Image | Fireball, Lightning Bolt, Hold Person, Magic Missile, Slow |
+   | archmage | halaster, ibbalar, Aleena, hmmnpc | as the lich | as the lich and Melf's Acid Arrows |
+   | mage | kob_spel, hmmk1, hfmk1, Daspel, Mage Spirit | Shield, Mirror Image | Magic Missile, Burning Hands, Melf's Acid Arrows, Hold Person, Lightning Bolt |
+   | human cleric | hffk1, hfft1, hfft4, hfft9, hmct1, hmfk1, hmft4, hmft7 | Bless | Hold Person; Cure Light Wounds (Cure Serious Wounds from level 7) on itself below half of its hit points; then melee |
+   | illithid | flayer | none | Mind Blast (a power: no points, 18 seconds between two), Hold Person (the weapon spell of the type in 1.3, 0xAC7B2); it walks to the player and touches (2d4) |
+   | beholder | Beholder, xabash | none | Slow, Fear, Hold Person, Magic Missile, Lightning Bolt: its eyes as the spells that the tables have (AD&D 2e: slow, fear, charm or sleep, cause serious wounds, disintegrate) |
+   | Thashasa | thashasa | Shield, Mirror Image, Protection From Evil | Magic Missile, Melf's Acid Arrows, Hold Person, Spiritual Hammer, Lightning Bolt; Cure Light Wounds on itself |
+   | avatar of Lolth | avatar | Stone Skin, Minor Globe, Protection From Evil | Hold Person, Flame Strike, Lightning Bolt, Slow; it fights in melee |
+
+   The dragon ("Dragon") and its hatchlings ("hatchlng") have no list: their casts
+   are those of 1.3. The priestess types of about 1000 experience points and more
+   (rffk8b 975, rffk9 1400; drowfem 2000 and priestes 1400 of the inn) have Flame
+   Strike, in each level where they are (the list goes by the type name).
+   Protection From Evil on a creature also gives -2 to the attack rolls against
+   it and +2 to its saves against the player (for the drow it is the reverse of
+   the spell, Protection From Good); 1.3 has the effect only against creatures
+   (0x2AD36).
+
+2. **Senses.** The loop does nothing before the creature is hostile, active and
+   in a fight (`dtu_creature_in_fight`): with Improved AI it has seen or heard the
+   player along an open path in the last 30 seconds (`creature_in_combat`), or the
+   player attacked it. A caster behind a closed door gets no protection and casts
+   nothing. A cast needs a free line from the eye of the caster to the player (a
+   plain ray, no hidden player, no blind caster); a cast whose line is gone at the
+   cast time does not happen and keeps its points.
+
+3. **The fight and the contingency.** A fight starts at the first notice and ends
+   when the creature has not been in a fight for 120 seconds. At its start the
+   creature gets the protections of its list at once, with no cast time and no
+   points (the contingency), and its spell points: the points of the NPC table
+   (0xA504A), and 4 for each caster level at least (rmmk5: 20 in place of 11).
+   The points do not come back in a fight; a new fight has all of them. 1.3
+   refills them (9 - levels) minutes after the last cast.
+
+4. **The casts.** One cast in each round of 6.0 seconds: a choice, the cast time
+   of the spell (the table of 0x13A8DB, 6 seconds at most), the cast; the next
+   choice 6.0 seconds after the choice and 2.0 seconds after the cast at least. A
+   ranged type starts its attack animation 1.0 second before the cast and casts
+   at the fire frame of the model, or at the middle of the attack state of a
+   model with no fire frame, or at the cast time. A ranged caster stands in its
+   cast time. A hit that takes hit points in the cast time stops the cast and
+   takes its points (0x9305D); the next choice is 3.0 seconds later. A cast whose
+   line or whose missile way is not free at the cast time does not happen and
+   keeps its points. The test option `-noattack` stops the loop.
+
+5. **The choice** (`caster_weight`): among the spells of the list that the points
+   pay for, by weight, without: a spell whose range (docs/spell_ranges.md) does
+   not reach the player; a missile that does not meet the player first (a wall,
+   scenery or a creature of the other side on its way, tested in pieces of 1.0 as
+   the flight tests them; the missiles pass the allies of the caster and a piece
+   of scenery that touches its body); Burning
+   Hands out of its reach; Fireball when the caster or an ally is in its radius at
+   the player; Magic Missile against Shield; Hold Person against a hold, Free
+   Action or Protection From Evil, and in the 30 seconds after the last one of
+   this caster; Slow against a slowed player, Fear against a player in fear; each
+   spell that a Minor Globe of the player stops. Fire spells have a third of
+   their weight against Resist Fire and Protection From Fire. Damage has two
+   times its weight against a held player, and the spells that the images of the
+   player do not fool against a player with images. With a free line, points and
+   no free way for a missile for two choices the caster steps to the side for 2.0
+   seconds. When a Minor Globe of the player stops each spell that the caster
+   could cast, it fights in melee while the globe lasts.
+
+6. **Allies.** A harmful spell of a creature does not act on a creature of its
+   side, and its missile passes them. The area of a damage spell does act on them
+   (Fireball, Burning Hands), so the caster does not choose Fireball with an ally
+   in the radius. 1.3: the area of Hold Person (radius 40 after the table fixup)
+   held the priestess next to the player.
+
+7. **The move** of a ranged caster that sees the player (`caster_move`): with
+   spells it backs away from a player nearer than 40.0 (20 feet) with its face to
+   the player while the 8.0 behind its body are free of walls, it walks to a
+   player farther away than 80.0, and between the two it holds its place. With no
+   points for a spell of its list it walks to the player, up to the reach of its
+   touch. A caster with a melee attack (the human clerics, the avatar) moves as a
+   melee creature of Improved AI. The illithid always walks to the player. The
+   beholders fly and keep the move of 1.3. No caster fires a weapon (0x11DE9, as
+   1.3): the weapon of the beholders in the tables (Beholder Burn) has the
+   lifetime -1.
+
+8. **Between two casts** a ranged caster attacks a player in the reach of its
+   touch (the radius of its body, the radius of the body of the player and 2.0,
+   as 0x11B06): the goal state is ATAK in reach and LOCK out of it, not RECO.
+   The touch is the melee hit of the creature (its dice of the setup by name: the
+   drow casters 4d4, the illithid 2d4, with its touch spell if it has one). A
+   beholder does not touch between its casts: its touch in the tables is its
+   weapon Beholder Burn (13 to 24 hit points from 10 feet, measured), which 1.3
+   gives it only in the attack state of a cast.
+
+9. **The model of the drow priestesses.** The data has the drow woman with free
+   hands (`dlf_ffk.pof`, `dlf_ffk5.pof`) in DROW.EGG, FLAME.EGG, NETHER.EGG and
+   PORTAL.EGG, and with a mace in the right hand (`dlf_fft.pof`, the model of the
+   type rfft6 of NETHER.BIN) only in NETHER.EGG, an archive that no level of 1.3
+   loads. The disc has it (NETHER.COW); the installed game of 1.3 does not copy
+   it. With the setting and the archive in a data folder the priestess types of
+   the two lists get `dlf_fft.pof` (`bm_port_priestess` of `bmread.c`,
+   `piggy_load_egg_model` of `piggy.c`); without the archive they keep their
+   model. Its attack state is the swing of the mace, which the cast and the touch
+   now show.
+
+The measures of `tools/check_caster_ai.py --table` (the player is a fighter of
+level 8 with armor class 10 who stands in front of the caster for 60 seconds and
+does not fight; seed 1; "before" is `-origcasterai`; damage for each round of 6
+seconds from the first notice):
+
+| Type | Before: casts | attacks | damage per round | After: contingency | casts | attacks | seconds between attacks | damage per round |
+|---|---|---|---|---|---|---|---|---|
+| lich | 4 | 4 | 3.3 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 10 | 10 | 5.8 | 14.9 |
+| drow mage 5 (rmmk5) | 6 | 6 | 0.2 | Shield, Mirror Image | 10 | 10 | 6.0 | 9.2 |
+| drow mage 7 (rmmk7) | 5 | 5 | 0.0 | Shield, Mirror Image | 10 | 10 | 6.0 | 13.0 |
+| drow mage 9 (rmmk9) | 4 | 4 | 1.5 | Shield, Mirror Image, Minor Globe of Invulnerability | 10 | 10 | 6.0 | 11.2 |
+| drow priestess 5 (rffk5) | 2 | 2 | 0.0 | Protection From Evil, Prayer | 9 | 9 | 6.7 | 3.6 |
+| drow priestess 8 (rffk8b) | 3 | 3 | 0.0 | Protection From Evil, Prayer | 8 | 8 | 7.5 | 10.8 |
+| illithid (flayer) | 0 | 2 | 0.0 | none | 5 | 38 | 1.5 | 15.9 |
+| human cleric 4 (hmft4) | 4 | 9 | 15.6 | Bless | 2 | 36 | 1.6 | 23.4 |
+| human cleric 7 (hmft7) | 0 | 5 | 2.0 | Bless | 2 | 37 | 1.6 | 14.7 |
+| kobold shaman (kob_spel) | 0 | 0 | 0.0 | Shield | 8 | 8 | 6.0 | 4.2 |
+| Ibbalar | 3 | 4 | 0.0 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 10 | 38 | 1.5 | 29.6 |
+| Halaster | 0 | 0 | 0.0 | none | 0 | 0 | - | 0.0 |
+| Thashasa | 0 | 0 | 0.0 | Shield, Mirror Image, Protection From Evil | 0 | 0 | - | 0.0 |
+| Xabash | 4 | 4 | 0.8 | none | 10 | 35 | 1.7 | 64.2 |
+| beholder | 0 | 0 | 0.0 | none | 9 | 10 | 5.5 | 11.6 |
+| avatar of Lolth | 4 | 38 | 24.5 | Stone Skin, Minor Globe of Invulnerability, Protection From Evil | 8 | 43 | 1.3 | 32.6 |
+| priest spirit (prstsprt) | 2 | 2 | 0.0 | Protection From Evil, Prayer | 9 | 9 | 6.4 | 3.4 |
+| Mage Spirit | 4 | 4 | 4.7 | Shield, Mirror Image | 10 | 10 | 6.3 | 12.3 |
+| Aleena Paladinstar | 5 | 5 | 2.2 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 6 | 6 | 5.8 | 8.1 |
+| drow priestess of the inn (drowfem) | 3 | 3 | 0.0 | Protection From Evil, Prayer | 7 | 8 | 7.2 | 9.0 |
+| priestess of the inn (priestes) | 4 | 4 | 0.4 | Protection From Evil, Prayer | 7 | 7 | 8.1 | 15.3 |
+| dragon hatchling (hatchlng), not in the list | 2 | 3 | 0.1 | none | 2 | 3 | 7.5 | 1.8 |
+
+The damage of the bosses with a touch (Ibbalar, the avatar) is mostly their touch
+(a Long Sword +2 by the creature setup), which they now use in each attack cycle
+in reach. Halaster is not an AI object before his script starts him, and Thashasa
+loses the player at once in this setup: both are not measured. The hatchling is
+not in the lists; its numbers differ only by the random numbers (a drow mage near
+the start casts before the test removes it).
+
+The balance (a decision of the user: a character of level 6 to 8 wins against one
+drow mage and one priestess with care, and fears the lich): a fighter of level 7
+has about 70 hit points. The mage and the priestess of level 5 together deal 13
+hit points in a round to a character with armor class 10 who only stands there
+(before: 0.2), so they need 5 to 6 rounds. The mage has 20 hit points and 2 to 5
+images, the priestess 40 hit points; a hit in the cast time stops a cast, and the
+points of the mage are gone after about 12 casts. Hold Person (6 to 18 seconds on
+the player) is the danger. The lich deals 15 in a round (before: 3.3) behind
+Stone Skin (7 to 10 hits), 5 to 8 images and a Minor Globe: a fighter needs about
+25 hits, 9 rounds or more, and takes about 135 hit points in that time. Dispel
+Magic (a scroll lies in CLAN3, object 30) ends the protections.
+
+Not verified: a fight of a whole group played by hand; the casters of the levels
+that the check does not start (the list goes by the type name, so they use the
+same code).
+
 ### The feet of a standing creature (Dtu_fix_creature_feet)
 
 An inactive creature stands on the center of the bottom side of its segment
