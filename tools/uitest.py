@@ -1109,6 +1109,25 @@ def test_market_reward_gear(t):
     assert len(recs) == 2 + 50 + 7 - 1 + new, "THESTORE.5 has %d records, %d new goods" % (len(recs), new)
 
 
+def test_market_buy_dispel_scroll(t):
+    """The scrolls of Dispel Magic of the new gear (stock class 17, spell 13,
+    rewards 4 and 6) are in the misc list of the market and a fighter (the
+    character of a test start, no caster) buys one at 600 times the percent
+    of the charisma (13: 120, 720 gold). The scroll goes to the item list: a
+    fighter cannot read it (0x3533C needs a caster class)."""
+    user = os.path.join(t.tmp, "mk_dispel", "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
+        f.write(struct.pack("<iBBi", 3, 17, 13, 1))
+    _, d = t.run("mk_dispel", ["wait 60", "key m", "wait 5", "click 120 53", "wait 5", "shot popup",
+                               "click %d %d" % (MK_POPUP[0] + 120, MK_POPUP[1] + 285), "wait 5", "key escape", "wait 20"],
+                 extra=["-testmarket", "-testmarketgold", "5000", "-testmarketcha", "13"], level="")
+    m = re.search(r"Market: bought .*", session_log(d))
+    assert m and "bought 1 x" in m.group(0) and "gold 5000 -> 4280" in m.group(0), m and m.group(0)
+    recs, _ = read_store(os.path.join(user, "GELDOR.DAT"))
+    assert (2, 17, 13, 1) in recs, "the stock does not have 2 scrolls left: %s" % recs
+
+
 def test_market_sell_scroll(t):
     """A scroll of the item list (class 17) is in the misc list of the sale
     (0x8770C) at the value= of its spell line (Fireball, 600) times the

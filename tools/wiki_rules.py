@@ -2341,6 +2341,14 @@ def gear_effect(name, d):
     }.get(ids.get(name), "")
 
 
+class ScrollRecord(Record):
+    """A spell line as a scroll of the market (the name "Scroll of ...")."""
+
+    def __init__(self, rec):
+        Record.__init__(self, rec.line)
+        self.shown = "Scroll of " + rec.name()
+
+
 class GearData:
     """The new gear as the pages need it."""
 
@@ -2388,6 +2396,8 @@ class GearData:
             return self.frost
         if cls == 5 and i in self.wands:
             return self.wands[i][0]
+        if cls == 17:       # a spell scroll of the market
+            return ScrollRecord(self.tab["$SPELL"][i])
         return self.tab[{5: "$WEAPON", 15: "$ARMOR", 16: "$OBJECT"}[cls]][i]
 
     def value(self, cls, i):

@@ -94,8 +94,8 @@ static const struct { int id; const char *name13; int value; } Gear_values[] = {
 
 //------------------------------------------------------------------------
 // The market: the goods that a reward of Khelben adds (stage 0 to 8, as
-// Mk_reward_stock of dtufe_town.c): stage, quantity, class, number, count
-// of one item (-1: the uses of the line). The stages: 1 missions 3 and 4,
+// Mk_reward_stock of dtufe_town.c): stage, quantity, class (17: a spell
+// scroll), number, count of one item (-1: the uses of the line). The stages: 1 missions 3 and 4,
 // 2 missions 7 and 8, 3 missions 9 and 10, 4 mission 11, 5 mission 14,
 // 6 mission 16, 7 missions 20 and 21, 8 mission 29 (docs/re/scripts.md,
 // section 8).
@@ -129,6 +129,7 @@ static const short Gear_market[][5] = {
 	{ 4, 1, 5, 65, -1 },				// Wand of Hold Undead
 	{ 4, 1, 15, 25, -1 },				// Ring of Quickness
 	{ 4, 1, 5, 56, -1 },				// Wand of Confusion
+	{ 4, 3, 17, 13, 1 },				// scrolls of Dispel Magic (the hold of Daland, the protections of the lich of CLAN3)
 	// stage 5
 	{ 5, 1, 15, 20, -1 },				// Ring of Free Action
 	{ 5, 1, 15, 30, -1 },				// Amulet of Protection +3
@@ -138,6 +139,7 @@ static const short Gear_market[][5] = {
 	{ 6, 1, 5, 66, -1 },				// Rod of Minute Meteors
 	{ 6, 1, 15, 15, -1 },				// Ring of Protection +3
 	{ 6, 1, 16, 99, -1 },				// Crossbow +3
+	{ 6, 3, 17, 13, 1 },				// scrolls of Dispel Magic
 	// stage 7
 	{ 7, 1, 5, 67, -1 },				// Rod of Dispel Magic
 	{ 7, 1, 5, 71, -1 },				// Flame Tongue (stage 5 in 1.3, Gear_market_removed)
