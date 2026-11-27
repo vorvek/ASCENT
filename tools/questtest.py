@@ -219,6 +219,8 @@ TESTS = [
        r"reply 2 -> label A\b", r"speech \"Excellent! I pledge you the friendship of dragons",
        r" 280 dragon: test 4: obj 64 Dragon hp 90 ac -5 thac0 7 xp 15000 .* mode rest hostile 0 peaceful 1"],
       frames=300, dlg="1,2,1,1,2,1,1,1", extra=["-objlog", "dragon_talk_obj.log"]),
+    # (Global flag 240 in the quest lines: the Flame Tongue of the new gear
+    # is placed in DROW2, dtugear.h.)
     # The key lies in cell 407. The door of the alcove of the lever (wall
     # 133, seg 481 side 0) is locked and no thief skill opens it (keys 4);
     # with the key (MISC 43) the player opens it from the end of the
@@ -308,7 +310,7 @@ TESTS = [
     # after a save and a load (a level state has them).
     T("dragon_treasure_once", "DROW2", "30:items=784,31:items=409,32:items=407,40:save=3,60:load=3,150:items=784,151:items=409,152:items=407",
       [r"dragon: the key and the treasure are placed \(a new level\)",
-       r"f30 +items in seg 784: (.*5\.71.*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
+       r"f30 +items in seg 784: (.*15\.57.*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
        r"f32 +items in seg 407: (16\.43 )\n[\s\S]*f152 +items in seg 407: \1\n"],
       [r"placed \(a level state without them\)"], frames=170, extra=["-noattack", "-objlog", "dragon_treasure_once_obj.log"]),
     # With the setting off (-origtamaramagil, or the line of the
@@ -317,7 +319,7 @@ TESTS = [
     # script 213 (they leave, global flag 107).
     T("dragon_off", "DROW2", "30:dragon=4,31:wall=481.0,32:items=407,33:obj=48,40:goside=482.2,42:activate,100:quest",
       [r"dragon: test 4: no dragon", r"f31 +wall 481\.0: type 2 flags 0x10 state 0", r"f32 +items in seg 407: \n",
-       r"f33 +obj 48: type 2 id 2 seg 430 ", r"flapping of wings", r"f100 +quest: level 21 .* gflags \[ 107 \]"],
+       r"f33 +obj 48: type 2 id 2 seg 430 ", r"flapping of wings", r"f100 +quest: level 21 .* gflags \[ 107( 240)? \]"],
       [r"Jailer", r"dragon: obj 64"], frames=120, extra=["-noattack", "-origtamaramagil", "-objlog", "dragon_off_obj.log"]),
     # DROW3: command 14 at 285, command 7 (script 222) at 311.
     T("drow3_flag14", "DROW3", "40:goseg=285,60:quest", [r"quest: mflags \[ 14 \]"], frames=90),
