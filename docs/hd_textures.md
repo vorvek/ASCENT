@@ -494,9 +494,27 @@ five flipbooks again (the test run of DROW with `water` and the lava: 83 files i
 
 Test sheets (frame 0, the original at 4 times next to the file, before and
 after) were made in a scratch directory with `--out DIR --only drow --names
-...`; the set in `gamedata/hd` was made again with one run. Not checked: a
-side by side in the game of the stream before and after (the old files
-were replaced).
+...`; the set in `gamedata/hd` was made again with one run.
+
+The place of the report (a screenshot of the user with the set of the content
+pack, version 6): HUB3, the room of the waterfall `wfal04` (segments 212
+and 213, side 5) and the sign of the temple of Clangeddin. The floor had two
+styles. The rapids, the sloped and flat floor faces where the water runs
+(segments 213, 214, 215, 217, 227, 228, 230, side 3: base `water`,
+overlay `wfal01`, an opaque eclip that covers the base), had sharp bright
+streaks: the merged texture takes the upscaled file of `wfal01`
+(`ASCENT_GPU_HDLOG=1` lists `merge portal/water_N + wfal01_N`), made with
+the method `detail` in version 6. The rest of the floor (base `water` with
+no overlay or with the transparent overlay `empty`) is the file of `water`,
+UltraSharp since version 6: soft dark blotches. The small green specks are
+in both originals: palette 55 to 59, a dark green ramp (RGB 1 13 9 to 7 25
+19 of 63), 78 texels in `water#0` and 89 in `wfal01#0`. With version 7 both
+are UltraSharp: the rapids keep their streaks along the flow, with the same
+grain and specks as the water around them. Test: HUB3 `-testpos
+-62.5,-30,5,180,15`, frame 200 (after the upscaled loads), GPU renderer with
+`-hddir` at the set of the content pack and at the new set; the mean
+difference in the floor area is 2.9 of 255. The content pack `textures` still
+has version 6 until it is made again and uploaded.
 
 ## Making a set of version 5
 
