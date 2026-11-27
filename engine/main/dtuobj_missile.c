@@ -286,6 +286,16 @@ void dtu_missile_set_life(int objnum, fix life)
 		Missile_life[objnum] = life;
 }
 
+// ASCENT: Dtu_caster_ai: the missile passes the object (the scenery at the
+// body of its caster)
+void dtu_missile_set_pass(int objnum, int pass)
+{
+	if (objnum >= 0 && objnum < MAX_OBJECTS && pass >= 0 && pass <= Highest_object_index) {
+		Missile[objnum].pass_obj = pass;
+		Missile[objnum].pass_sig = Objects[pass].signature;
+	}
+}
+
 // 0x93294: the burst of a weapon with a min_speed (the bomb of a trap):
 // "magnitude" fragments that are drawn as the vclip, with a size of 8.0 to
 // 17.0, in random directions. They bounce.
@@ -581,6 +591,13 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 			continue;
 		if (j == pass && o->signature == pass_sig)		// Dtu_fix_hit_keep
 			continue;
+		// ASCENT: Dtu_caster_ai (dtuopts.h): the spell missile of a creature
+		// passes the creatures of its side (its spell does not act on them,
+		// apply_spell of dtuspell.c)
+		if (spell >= 0 && o->type == OBJ_ROBOT && parent > 0 && parent <= Highest_object_index && Objects[parent].type == OBJ_ROBOT &&
+			 Objects[parent].signature == parent_sig && dtu_caster_ai() &&
+			 !dtu_creature_is_hostile(&Objects[parent]) == !dtu_creature_is_hostile(o))
+			continue;
 		// ASCENT: Dtu_fix_revive: a spell missile of the player hits the
 		// fallen body of a creature that can get up (dtu_creature_down_spell),
 		// as the area of a spell and the swing do. The port let it fly through
@@ -631,6 +648,23 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 // line up to the wall.
 int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range)
 {
+	return dtu_missile_path_target_pass(pos,segnum,dir,weapon_type,spell,parent,range,-1);
+}
+
+// ASCENT: the same with an object that the missile passes (pass, -1: none),
+// for Dtu_caster_ai: the scenery at the body of a caster. step above 0: the
+// bodies are tested in pieces of this length, as the flight tests them in
+// each frame. One long piece can miss a body that the missile grazes (a
+// missile that comes down over a table: the test of the whole line takes
+// the height at the edge of the body, the flight is inside its radius
+// later, at the height of its top).
+int dtu_missile_path_target_pass(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range, int pass)
+{
+	return dtu_missile_path_target_step(pos,segnum,dir,weapon_type,spell,parent,range,pass,0);
+}
+
+int dtu_missile_path_target_step(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range, int pass, fix step)
+{
 	static object stand_in;
 	int rtype, model, vclip, fate;
 	vms_vector p1, end, ip;
@@ -662,7 +696,26 @@ int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int we
 	if (fate != HIT_NONE && fate != HIT_WALL)
 		return -1;
 	end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
-	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,-1,0,spell,&ip);
+	if (step > 0) {
+		fix len = vm_vec_dist(pos,&end), done = 0;
+
+		while (done < len) {
+			fix piece = len - done < step ? len - done : step;
+			vms_vector e;
+			int best, seg;
+
+			vm_vec_scale_add(&e,&stand_in.pos,dir,piece);
+			best = missile_path_object(&stand_in,&e,piece,parent,Objects[parent].signature,pass,pass >= 0 ? Objects[pass].signature : 0,spell,&ip);
+			if (best >= 0)
+				return best;
+			stand_in.pos = e;
+			if ((seg = find_point_seg(&e,stand_in.segnum)) >= 0)
+				stand_in.segnum = seg;
+			done += piece;
+		}
+		return -1;
+	}
+	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,pass,pass >= 0 ? Objects[pass].signature : 0,spell,&ip);
 }
 
 // The range of a missile weapon: its speed for its life.

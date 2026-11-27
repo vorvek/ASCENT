@@ -65,7 +65,9 @@ comments.
 | `dtuobj_test.c` | The test aids that place the player and the objects: `-testpos`, `-testobjpos`, `-testtour`. | |
 | `dtuchar.c` | The player character: attributes, equipment, item use, rest, experience, levels, choice boxes. Replaces the ship values. | `re/character.md` |
 | `dtucombat.c` | The weapon attack of the player, missile and thrown weapons, the arms in the view, Turn Undead. | `re/combat.md` part A |
-| `dtuspell.c` | Spell books, slots, casting, spell effects, area effects, durations, saving throws, scrolls, wands. | `re/combat.md` part B, `re/spells.md` |
+| `dtuspell.c` | Spell books, slots, casting, spell effects, area effects, durations, saving throws, scrolls, wands, the spells of the creatures and the loop of the Caster AI setting. | `re/combat.md` part B, `re/spells.md`, `re/ai.md` |
+| `dtucaster.h` | The spell lists and the caster levels of the creature types for the Caster AI setting (included by `dtuspell.c`). New in the port. | `re/ai.md`, "Caster AI" |
+| `dtuspellicons.h` | The icons of the spells of the port as color numbers, written by `tools/spell_icons.py`. | `re/spells.md` section 15 |
 | `dtuthief.c` | Thief skills: Open Locks, Find/Remove Traps, Move Silently, Hide In Shadows, Climb Walls, backstab. | `re/combat.md` B7 |
 | `dtuthiefpts.c` | The thief skill point screen. | `re/combat.md` B7 |
 | `dtutrig.c` | Triggers, traps, level messages, the use action and the warps of DTU.WRP. Replaces the triggers of `switch.c`. | `re/triggers.md` |
@@ -169,7 +171,7 @@ To add a correction:
 
 Changes that go beyond the original are not corrections. They are the
 Improvements settings of `dtuopts.h` (`Dtu_improved_physics`,
-`Dtu_improved_jump`, `Dtu_improved_ai`, the GPU and upscale
+`Dtu_improved_jump`, `Dtu_improved_ai`, `Dtu_caster_ai`, the GPU and upscale
 settings, and others). They are in `ascent.cfg`, the menus change them, and
 `-noimprovements` turns them all off. To add one, add the variable to
 `dtuopts.c` and `dtuopts.h` and a line to the table `Opts[]` of

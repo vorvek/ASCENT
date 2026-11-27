@@ -176,6 +176,11 @@ int dtu_hit_test_vs(object *target,object *attacker,int roll,int thac0,int *ac_o
 		dtu_xp_hit_end(roll,thac0 - ac,0);
 		return 0;
 	}
+	// ASCENT: Mirror Image (dtuspell.h): an image takes the hit
+	if (dtu_spell_mirror_takes(target,attacker)) {
+		dtu_xp_hit_end(roll,thac0 - ac,0);
+		return 0;
+	}
 	// 0x2AE44: Stone Skin takes the hit
 	if (tw & DTU_FX_STONESKIN) {
 		target->dtu.m_80--;

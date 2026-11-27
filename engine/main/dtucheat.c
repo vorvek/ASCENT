@@ -178,8 +178,11 @@ void dtu_cheat_key(int key)
 	// the class levels 4 (P+0xAF, P+0xB1) and the byte P+0x9C 4 in the four
 	// player records
 	if (step(Mesmart, sizeof(Mesmart), &Mesmart_i, key, 0)) {
+		// ASCENT: not the two spells of the port that only creatures cast
+		// (dtuspell.h: Flame Strike, Mind Blast)
 		for (i = 0; i < N_spell_types; i++)
-			give(OBJ_SPELL, i);
+			if (i != DTU_SPELL_FLAME_STRIKE && i != DTU_SPELL_MIND_BLAST)
+				give(OBJ_SPELL, i);
 		for (i = 0; i < 2; i++)
 			for (j = 0; j < (i ? 7 : 9); j++)
 				Dtu_spell_slots_max[i][j] = Dtu_spell_slots_left[i][j] = 100;

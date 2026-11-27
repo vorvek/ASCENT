@@ -702,3 +702,126 @@ Verified in the bytes of DTUGAME.EXE 1.3 (`dtu13.elf`, objdump), 2026-11-25.
   Melf's Acid Arrows 116.
 - **Color Spray** (spell 6): 0x56FF6 sets the vclip of the template to 175 +
   rand() % 6 for each cast, so the missiles of one cast have one color.
+
+## 15. The spells of the port (`Dtu_caster_ai`, 2026-11-27)
+
+A decision of the user. 1.3 has the spell lines 0 to 55 (44 tables) or 0 to 51
+(DEMO, MOIN1). The port adds five lines after the table fixup of each table read
+(`bm_load_level_tables`, `dtu_spell_port_line` of `dtuspell.c`). They are not in
+1.3 and follow AD&D 2nd edition. The lines are always there, so that a save with a
+new spell works with the setting off; the setting `Dtu_caster_ai`
+(`dtuopts.h`) brings them into the game: the scrolls of section 15.4, the sets of
+Aleena Paladinstar and the spell lists of the creatures (ai.md, "Caster AI").
+
+| Line | Spell | Class, level | Cast time | Rule |
+|---|---|---|---|---|
+| 56 | Mirror Image | mage 2 | 2 s | On the caster. 1d4 images and one for each 3 caster levels, 8 at most, for 3 rounds (minutes) a level. An attack that would hit the caster, or a spell aimed at the caster alone, takes an image with the chance images / (images + 1); the image is gone. A miss removes no image. An area is not fooled (Fireball, Burning Hands, Flame Strike, Mind Blast, Lightning Bolt). |
+| 57 | Minor Globe of Invulnerability | mage 4 | 4 s | On the caster, 1 round a level. No spell of level 1 to 3 acts on the one inside. A spell that it casts on itself works; its own damage spell is stopped. Dispel Magic ends the globe. Mind Blast is not a spell and is not stopped. |
+| 58 | Spiritual Hammer | cleric 2 | 5 s | A hammer of force flies to the target (the model of the Throwing Hammer, `y_a.pof`): an attack roll with the THAC0 of the caster against the armor class against missiles, 1d4 + 1 damage, and +1 to hit and to the damage for each 6 caster levels (+3 at most). No save. Range 10 yards a level. |
+| 59 | Flame Strike | priest 5, creatures only | 8 s (a creature: 6 s) | A column of fire on the target: 6d8 fire damage, a save for half. The fire dice of 0x91BC3: Resist Fire halves, Protection From Fire takes it from its pool, the fire resistance of items applies. |
+| 60 | Mind Blast | the illithids only | 1 s | A cone 60 feet (120 units) long, about 21 degrees to each side. Each creature of the other side in it saves against wands (category 1) at -4, or is stunned. |
+
+### 15.1 The paths of the globe and the images
+
+All spell effects on a player or a creature go through `apply_spell` (0x8CFFF): a
+missile that hits a body (`dtu_spell_hit`), the area of a missile at a wall or a
+body (`dtu_spell_area`, 0x90CEF), the cone of Burning Hands, the touch spell of a
+creature (`dtu_spell_touch`), a potion or an item (`dtu_spell_cast_on`), a wand, a
+scroll and a trap (their missiles carry the spell number). The test of the globe is
+at the start of `apply_spell`, so each of these paths has it. The burst of Fireball
+that blinds and deafens (0x90DDF) tests the globe too. Not through `apply_spell`,
+and not stopped: the lava (`dtu_spell_lava`, the dice of Fireball with no spell) and
+the later rounds of an acid arrow that hit before the globe.
+
+The images are asked in two places: in the hit test of an attack roll
+(`dtu_hit_test_vs`, before Stone Skin: a melee attack, a weapon missile, the spells
+with an attack roll: Magical Stone, Minute Meteors, Spiritual Hammer, the acid
+arrow) and in `apply_spell` for a spell without an attack roll that spares its
+caster (`DTU_SR_SPARES_CASTER`: Magic Missile and the like) when no area applies
+it. Hold Person is an area in 1.3 (radius 40 after the table fixup), so the images
+do not take it.
+
+The effect word of an object (+0x88) has no free bit, so the two effects are kept
+in `dtuspell.c` by object number and signature (`Xfx`). They are not in a save game
+and end at a level change, at a rest and by Dispel Magic. The player sees the count
+of the images in the message box ("A mirror image takes the attack. Images left:
+2."). On a creature the images are more draws of its model to its right and its
+left, four at most (`mirror_images_draw`, `dtuobj.c`).
+
+### 15.2 The stun of the Mind Blast
+
+Monstrous Manual: a cone 60 feet long, 5 feet wide at the illithid and 20 feet at
+its end; all in it save against wands at -4 or are stunned for 3d4 rounds. The port:
+the stun is the Hold effect (bit 14) with the view of the stun of Color Spray (the
+Confusion bit, 0x8CFFF case 6). On the player with `Dtu_fix_player_hold` it lasts
+3d4 seconds (the scale of the hold of the port, 6 to 18 seconds for Hold Person)
+and blocks what a hold blocks (dtuhold.h). Without the setting it is 3d4 rounds cut
+by the wisdom, as the holds of 1.3. Free Action does not prevent it (a decision:
+AD&D 2e gives Free Action against hold, paralysis, web and slow magic, and the
+blast is a psionic stun). The Potion of Freedom ends it, as it ends each hold of
+the port. Protection From Evil gives its +2 to the save.
+
+### 15.3 The player
+
+- The lines 56 and 57 have `mage_use`, the line 58 `cleric_use`: a mage learns the
+  first two from a scroll (0xB69AD), a cleric gets Spiritual Hammer with the spells
+  of spell level 2 (0xB75A8: at a new level and at the first level start after a
+  load, `Dtu_fix_spell_save_repair`). The lines 59 and 60 have no class word: no
+  book takes them.
+- The icons 200 to 202 are new art, drawn by `tools/spell_icons.py` from shapes
+  and stored as color numbers in `dtuspellicons.h`. The icon sheets of the game
+  (FEBGND 23 and 24) have 200 cells and no free one: the loaded sheet gets one more
+  row (`port_icons_add`, `dtudisp.c`).
+- The texts are in the catalog of the port (`engine/lang/es_port.catalog`). The
+  five spell names are name entries (`tbl.fix.spell_*`, written by hand as the
+  item names of `dtuitemfix.c`, which `tools/lang_extract.py merge` keeps).
+- Save games: an entry of a spell list has the spell number in one byte and the
+  icon in one byte (16 bytes for each entry), so the record does not change. The
+  DOS game has no line 56 to 60: a save with one of the spells in a book, in the
+  inventory or in a hot key box is for the port only. With the lines missing (a
+  future build without them) the reader skips the entry and the writer keeps its
+  bytes.
+
+### 15.4 The scrolls in the levels
+
+The levels of 1.3 have a spell object of Fireball in six levels and of Melf's Acid
+Arrows three times; no other mage spell lies more than three times (counted over
+the 35 level files with `tools/lvl.py` and `tools/objcheck.py`). With the setting,
+in a level with no saved state (`level_fixes_port_scrolls`, `dtuobj_setup.c`):
+
+| Level | Object | Spell of 1.3 | New spell |
+|---|---|---|---|
+| MINE (11) | 76, segment 309 | Fireball | Mirror Image |
+| MULHOR1 (13) | 69, segment 684 | Melf's Acid Arrows (the second one, object 36, stays) | Mirror Image |
+| MULHOR2 (14) | 43, segment 411 | Fireball | Minor Globe of Invulnerability |
+| CLAN1 (17) | 137, segment 657 | Fireball | Minor Globe of Invulnerability |
+
+Fireball stays in BANE, MULHOR1 and THIEF1. The levels of the last hub have no
+repeated mage scroll.
+
+Aleena Paladinstar (YPINN, script 4 of GABE 1.3) sells Mirror Image with her
+spells of level 2 (1000 gold) and Minor Globe of Invulnerability with those of
+level 4 (5000 gold): `patch_aleena` of `dtuscript.c` (four GOTO statements get a
+new label of the same length, six new blocks at the end of the record, no string
+moves). The record of the disc of version 1.0 (16699 bytes) is not patched.
+
+### 15.5 Candidates for more spells of level 1 to 4
+
+Not built. AD&D 2e spells that the code could take at a low cost:
+
+| Spell | Class, level | What it needs |
+|---|---|---|
+| Blur | mage 2 | -4 to the first attack roll against the caster and -2 to the next ones: one entry of `Xfx` and a line in `dtu_hit_test_vs`. Low. |
+| Stinking Cloud | mage 2 | An area that holds (the Hold bit) for 1d4+1 rounds, a save negates: the area of 0x90CEF and the stun of Mind Blast. Low. |
+| Web | mage 2 | The same as an area that holds until a strength roll: the hold and a new end test. Low to medium (the picture of the web). |
+| Ice Storm | mage 4 | 3d10 in an area, no save: a damage line with the cold dice (the reader has `cold_damage_dice`, 0x91BC3 does not add it). Low. |
+| Flame Arrow | mage 3 | One arrow of fire for each 5 levels, 4d6 each, an attack roll: the missiles of Magic Missile with the fire dice. Low. |
+| Vampiric Touch | mage 3 | A touch of 1d6 for each 2 levels that heals the caster: the touch of Chill Touch and `heal`. Low. |
+| Hold Monster | mage 5 | Outside of the levels 1 to 4. |
+| Cause Light Wounds, Cause Serious Wounds | cleric 1 and 4 | The reverse of the cures as a touch with an attack roll: the cure dice and the touch. Low. |
+| Chant | cleric 2 | Bless with the penalty of -1 for the foes in an area: one more effect entry. Low. |
+| Silence 15' Radius | cleric 2 | No cast in an area: a test in the cast of the player and in the loop of the casters, and an object for the area. Medium. |
+| Heat Metal | cleric 2 | Fire damage each round on a target in metal armor: the acid rounds of Melf's Acid Arrows. Medium. |
+| Call Lightning | cleric 3 | Outdoors only: no place in Undermountain. |
+| Neutralize Poison, Slow Poison | cleric 4 and 2 | The game has no poison state. |
+| Cure Critical Wounds | cleric 5 | Outside of the levels 1 to 4. |

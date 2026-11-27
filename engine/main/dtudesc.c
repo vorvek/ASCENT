@@ -751,6 +751,18 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 				line(LT("An attack roll; a hit deals %s acid damage."), dice(a, f->dice_n[2], f->dice_sides[2], 0));
 			break;
 		case DTU_SK_HOLD:		line(LT("Holds up to %s humanoids."), a); break;
+		// ASCENT: the spells of the port (dtuspell.h)
+		case DTU_SK_MIRROR:
+			line(LT("Makes %s images of you."), a);
+			line(LT("An attack that would hit you, or a spell aimed at you alone, may take an image in your place. The image is gone then."));
+			line(LT("A spell with an area is not fooled."));
+			break;
+		case DTU_SK_GLOBE:
+			line(LT("No spell of level 1 to 3 has an effect on you, from any source."));
+			line(LT("The spells that you cast on yourself work."));
+			line(LT("Dispel Magic ends it."));
+			break;
+		case DTU_SK_STUN:		line(LT("Stuns each creature in a cone in front of the caster.")); break;
 		default:					line(LT("It has no effect in this game.")); break;
 	}
 }

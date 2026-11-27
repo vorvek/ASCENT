@@ -60,6 +60,28 @@ extern int Dtu_crouch;
 //   group when it sees the player fight it.
 extern int Dtu_improved_ai;
 
+// The AI of the creatures that cast spells, beyond 1.3 (the menu line
+// "Caster AI", a decision of the user of 2026-11-27; docs/re/ai.md, "Caster
+// AI"). Off (the options -origcasterai, -origobj and -noimprovements): the
+// spell choice of 1.3 (0x92D99) with its Dtu_fix_caster_* corrections. On:
+// - Each caster type has a spell list and a role (dtucaster.h), in place of
+//   the one table of 44 entries for all casters (0x142084), and the caster
+//   level of AD&D 2e for its type.
+// - A contingency: at the first notice of the player the caster gets its
+//   protection spells at once.
+// - It keeps its distance while it has spells and closes in when it has
+//   none; between two casts it attacks a player in its reach.
+// - It chooses its attack by the range, the free line, the allies near the
+//   target and the protections of the player; one cast each round (6.0
+//   seconds) plus the cast time.
+// - Its spells do not act on its allies, but an area does.
+// - The spells Mirror Image, Minor Globe of Invulnerability, Spiritual
+//   Hammer, Flame Strike and Mind Blast (dtuspell.h) come into the levels:
+//   the scrolls that replace repeated mage scrolls, the spell sets of Aleena
+//   Paladinstar, and the lists of the creatures.
+// - The drow priestesses use their model with a weapon.
+extern int Dtu_caster_ai;
+
 // The 3D view is rendered at this multiple of the original view size,
 // from 1 to 6. The interface is not scaled by it. Default 3. ASCENT: 0 is
 // "x1/2": half the shown size in each direction (320x240 for the full

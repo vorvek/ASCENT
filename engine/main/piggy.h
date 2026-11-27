@@ -127,6 +127,9 @@ void piggy_read_sounds();
 // character before the archive of the level.
 // piggy_free_all() releases all archives and empties the tables.
 int piggy_load_egg( char * filename );
+// ASCENT: one polygon model of an archive that is not loaded (Dtu_caster_ai:
+// the drow priestess with a mace). Returns the model number or -1.
+int piggy_load_egg_model( char * filename, char * model_name );
 void piggy_free_all();
 int piggy_get_num_eggs();
 extern int Piggy_generation;	// ASCENT: changes when the tables change

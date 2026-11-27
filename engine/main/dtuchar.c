@@ -3858,7 +3858,8 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // current=TYPE.ID, hotkey=KEY, presshot=KEY, sethot=KEY.TYPE.ID, sethotspell=KEY.SPELL,
 // armspell=SPELL, give=TYPE.ID, xp=N, rest, mission=N, race=N, search,
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
-// spelltest=SPELL.LEVEL.OBJ.TRIALS, activate,
+// spelltest=SPELL.LEVEL.OBJ.TRIALS, activate, alone=OBJ[.OBJ2] (removes the
+// other creatures), goobjsee=OBJ.D (a place with a free line to the object),
 // str=STRENGTH.PERCENT, dex=DEXTERITY, cha=CHARISMA,
 // attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
@@ -4114,6 +4115,13 @@ static void run_command(char *cmd, char *value)
 		else if (a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_DRESSING)	// scenery breaks (tools/questtest.py)
 			dtu_break_dressing(&Objects[a], NULL, 0);
 	}
+	else if (!strcmp(cmd, "alone")) {		// ASCENT: test: alone=OBJ[.OBJ2], each other creature of the level is removed (tools/check_caster_ai.py)
+		int i;
+
+		for (i = 1; i <= Highest_object_index; i++)
+			if (i != a && !(b > 0 && i == b) && Objects[i].type == OBJ_ROBOT)
+				dtu_creature_remove(&Objects[i], "the test command alone");
+	}
 	else if (!strcmp(cmd, "dropcontents") && a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
 		// ASCENT: test: dropcontents=OBJNUM, the creature leaves what it carries as at its death
 		// (0x3C4BD). Repairs a save of a build that left a dead creature with its contents.
@@ -4254,6 +4262,40 @@ static void run_command(char *cmd, char *value)
 		vm_vec_scale_add(&ConsoleObject->pos, &o->pos, &to, -i2f(b > 0 ? b : 4));
 		vm_vector_2_matrix(&ConsoleObject->orient, &to, NULL, NULL);
 		obj_relink(ConsoleObject - Objects, find_point_seg(&ConsoleObject->pos, o->segnum) >= 0 ? find_point_seg(&ConsoleObject->pos, o->segnum) : o->segnum);
+	}
+	else if (!strcmp(cmd, "goobjsee") && a >= 0 && a <= Highest_object_index) {		// ASCENT: test: goobjsee=N.D, a place about D (default 20.0) from object N at its height with a free line to it (tools/check_caster_ai.py)
+		object *o = &Objects[a];
+		int k, s, done = 0;
+
+		for (s = 0; s < 3 && !done; s++)
+			for (k = 0; k < 16 && !done; k++) {
+				fix d = i2f(b > 0 ? b : 20) * (4 - s) / 4;
+				vms_vector p = o->pos, mid;
+				fvi_query fq;
+				fvi_info hit;
+				fix sn, cs;
+				int seg;
+
+				fix_sincos(k * 4096, &sn, &cs);
+				p.x += fixmul(sn, d);
+				p.z += fixmul(cs, d);
+				if ((seg = find_point_seg(&p, o->segnum)) < 0)
+					continue;
+				// the line and a body of the width of the player on it
+				fq.p0 = &o->pos; fq.p1 = &p; fq.startseg = o->segnum; fq.rad = i2f(3);
+				fq.thisobjnum = a; fq.ignore_obj_list = NULL; fq.flags = 0;
+				if (find_vector_intersection(&fq, &hit) != HIT_NONE)
+					continue;
+				ConsoleObject->pos = p;
+				vm_vec_sub(&mid, &o->pos, &p);
+				vm_vec_normalize(&mid);
+				vm_vector_2_matrix(&ConsoleObject->orient, &mid, NULL, NULL);
+				obj_relink(ConsoleObject - Objects, seg);
+				dtu_char_log("goobjsee: %.1f from obj %d, direction %d, segment %d", f2fl(d), a, k, seg);
+				done = 1;
+			}
+		if (!done)
+			dtu_char_log("goobjsee: no place with a free line to obj %d", a);
 	}
 	else if (!strcmp(cmd, "swingat"))	dtu_combat_test_swing(a);		// ASCENT: test: swingat=N, a swing of the player that touches creature N
 	else if (!strcmp(cmd, "reach"))		dtu_combat_reach_test(a, b);	// test: reach=N.M, the attacks that reach creature N (tools/check_reach.py)
