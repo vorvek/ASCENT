@@ -42,6 +42,13 @@ void dtu_thief_level_loaded(void);
 // the side flags and the secret door flag 0x40 of the doors, from the
 // textures.
 void dtu_thief_level_textures(void);
+// 1 (default): a side with a water and a wood texture is water (0xA6F89
+// gives it 1 | 2 = 3, lava), and a lava texture on a side that is not
+// drawn (two segments with no wall) is not lava. dtu_thief_side_flags_fix
+// runs after 0xA6F89 and after the restore of a level state. 0
+// (-origobj, -origlavasides): as 1.3.
+extern int Dtu_fix_lava_sides;
+void dtu_thief_side_flags_fix(void);
 // 1 (default): a texture name of 0xA6F89 that the tables do not have
 // matches no side. 23 of the 29 door names are in no table of 1.3
 // ("dleft11#0" and so on; the tables have "dleft1#0"), so 0x1B2B1 gives

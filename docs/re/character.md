@@ -849,3 +849,24 @@ race and class combination at levels 1, 5 and 10 (docs/audit/character.md).
   IBBALAR, YPINN, KOBOLDS).
 - All 32 water, lava and wood names exist. In the port the side flags & 3
   were 0 before this change.
+- **Defect** (decompilation of 0xA6F89, `tools/lvl.py`): the bits are a
+  field (1 water, 2 wood, 3 lava) but the code sets them with OR, so a side
+  with a water and a wood texture is lava (1 | 2). 19 sides of CRYPTS,
+  HUB3, MYRKUL and PRISON have a wood texture with the waterfall `wfal04`;
+  HUB3 segment 241 side 3 is the floor of the top floor next to the floor
+  trigger 2 of segment 245 (message 4, "The inhabitants of this place must
+  enjoy picking off unsuspecting adventurers from up here."), and the lava
+  0x3D2BD burns the player there. The lava test also takes a side with no
+  wall between two segments (wall_is_doorway 5), which is not drawn: 125
+  such sides of 11 levels have a lava texture. DROW3 segments 566 to 570,
+  574 and 593 (a layer 2.5 high, y -77.5 to -75) have the lava texture on
+  their open bottom sides, and the pit below them (segments 449 to 484) has
+  a water floor; 0x3D2BD takes side 3 of the segment below the player, so
+  the grates of segment 575 (over 568) and of segment 122 burn the player.
+  The port: `Dtu_fix_lava_sides` (dtuthief.c, `-origobj`,
+  `-origlavasides`): a side with water and wood is water, and lava needs a
+  drawn side (`WID_RENDER_FLAG`). It runs after 0xA6F89 and after the
+  restore of a level state, whose side flags the port reads from the file.
+  Test: `-level DROW3 -testpos 260,-70,22.5,0 -frames 200 -fixedfps 30
+  -objlog F -noattack`: 4 burns of the player in segment 575 with
+  `-origlavasides`, none without; HUB3 `-testpos -142.5,37,20,0`: 6 and 0.

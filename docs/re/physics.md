@@ -398,6 +398,10 @@ more from the time at 0x13B1B4, the time is set, the fire die count of Fireball
 (0x1B5EA4) becomes 1 and `0x911AA(object, object, 16, 1)` burns the object: 1d6 of fire,
 a save for half. The time at 0x13B1B4 is one for all objects.
 
+The lava bits of a side can be wrong (docs/re/character.md, "Level textures:
+0xA6F89"): a side with water and wood, and an open side with a lava texture, burn
+in 1.3. `Dtu_fix_lava_sides` (dtuthief.c) corrects the bits.
+
 A creature runs its move only while it is active (0x9F196), so an inactive creature in
 the lava does not burn. The trap that drops the objects of a floor (0x9493A) sets bit
 0x20 (0x94984) and wakes each creature with 0xA6505(creature, 1) (0x949CB). The 1 is the
