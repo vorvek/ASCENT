@@ -1282,6 +1282,10 @@ The beetles, the dragon, the mind flayer and the orcs keep the values of the
 tables: the mind flayer (AD&D 2e rate 12) and the orcs (rate 9) would be
 15.0 / 30.0 and 11.25 / 22.5 by the same method. Not changed, not asked.
 
+`tools/check_improved_ai.py` runs six of these cases with the setting on and
+with `-noimprovedai` (the ambush, the orc behind the door, the blow at the
+door, the attack, the priestess and the guard).
+
 Not changed: the choice and the cast of spells of the casters
 (`dtuspell.c`), the dragon Tamaramagil. The hooks for them: `melee_fighter()`
 leaves out each creature with a mage or cleric level and each creature with
