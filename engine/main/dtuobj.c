@@ -73,6 +73,7 @@
 #include "dtulog.h"		// ASCENT: the session log
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
+#include "dtudragon.h"
 #include "dtuobj_int.h"	// ASCENT: the shared declarations of the object files
 
 //------------------------------------------------------------------------
@@ -1356,7 +1357,7 @@ void dtu_objects_level_setup(void)
 		dtu_thief_level_textures();	// 0xAD744: the rest of 0xA6F89
 	}
 
-	dtu_restore_tamaramagil(has_state);		// ASCENT: Dtu_fix_tamaramagil
+	dtu_dragon_level_setup(has_state);		// ASCENT: the dragon of DROW2 (dtudragon.c)
 
 	// level_start 0xAD5BF: the creature setup by name and add_npc
 	dtu_script_test_flags();
@@ -1463,6 +1464,8 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 
 	if (obj->type != OBJ_ROBOT && obj->type != OBJ_PLAYER)
 		frame = -1;
+	else if (obj->type == OBJ_ROBOT)
+		frame = dtu_dragon_draw_frame(obj,frame);		// ASCENT: she rests in the rest pose (dtudragon.c)
 
 	// Dtu_fix_corpse_floor: a body that lies lower than its position can
 	// go (in the floor) is drawn lower.
@@ -2070,6 +2073,7 @@ void dtu_objects_frame(void)
 	end_sequence_frame();			// ASCENT: the end of the game (0xA6786)
 	corpse_regen_frame();
 	awareness_events_frame();		// 0x16366 of the game frame (0x438AC)
+	dtu_dragon_frame();				// ASCENT: the events of the dragon of DROW2 (dtudragon.c)
 
 	// The option -testkill N (test): each N frames the active creature that
 	// is nearest to the player dies, for the test of the corpses.

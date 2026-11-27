@@ -122,6 +122,7 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 
 #include "vecmat.h"
 #include "3d.h"
+#include "globvars.h"		// ASCENT: the view of an instance (the draw scale of a model)
 #include "error.h"
 #include "mono.h"
 #include "mem.h"
@@ -1182,6 +1183,10 @@ static int pts_box_submodel(pts_box_state *st,int s,const vms_angvec *angles,con
 	return 1;
 }
 
+// ASCENT: the draw scale of one model (polyobj.h)
+int Polyobj_scale_model = -1;
+fix Polyobj_scale = F1_0;
+
 int polyobj_frame_points_box(int model_num,int frame,vms_vector *mn,vms_vector *mx)
 {
 	pts_box_state st;
@@ -1212,6 +1217,12 @@ int polyobj_frame_points_box(int model_num,int frame,vms_vector *mn,vms_vector *
 	}
 	if (st.n == 0)
 		return 0;
+	// ASCENT: the draw scale of the model (polyobj.h). The body center is
+	// in the arrays of the model, which the owner of the scale has scaled.
+	if (model_num == Polyobj_scale_model && Polyobj_scale > 0 && Polyobj_scale != F1_0) {
+		vm_vec_scale(&st.mn,Polyobj_scale);
+		vm_vec_scale(&st.mx,Polyobj_scale);
+	}
 	polyobj_get_body_center(model_num,frame,&c);
 	vm_vec_sub(mn,&st.mn,&c);
 	vm_vec_sub(mx,&st.mx,&c);
@@ -1398,6 +1409,20 @@ void draw_polygon_model_frame_lerp(vms_vector *pos,vms_matrix *orient,int model_
 	}
 
 	g3_start_instance_matrix(&draw_pos,orient);
+
+	// ASCENT: the draw scale of a model (polyobj.h). A point p of the
+	// model is at s * p: the view matrix of the instance is s times as
+	// long, and the eye is at 1/s of its place in the space of the model.
+	if (model_num == Polyobj_scale_model && Polyobj_scale > 0 && Polyobj_scale != F1_0) {
+		fix sc = Polyobj_scale;
+
+		View_position.x = fixdiv(View_position.x,sc);
+		View_position.y = fixdiv(View_position.y,sc);
+		View_position.z = fixdiv(View_position.z,sc);
+		vm_vec_scale(&View_matrix.rvec,sc);
+		vm_vec_scale(&View_matrix.uvec,sc);
+		vm_vec_scale(&View_matrix.fvec,sc);
+	}
 
 	g3_set_interp_points(robot_points);
 	g3_set_interp_smooth(po->model_data,po->dtu_smooth);

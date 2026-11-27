@@ -36,6 +36,7 @@
 #include "dtusolid.h"	// ASCENT: the test command onobj
 #include "dtudisp.h"
 #include "dtutrig.h"
+#include "dtudragon.h"
 #include "dtuchar.h"
 #include "dtuspell.h"	// ASCENT: the spell effects of the armor class and the slots of a rest
 #include "dtuthief.h"
@@ -4311,6 +4312,8 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "prison"))		dtu_script_test_prison();		// test: the prison sequence 0xAA3F3
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);			// test: setlevel=N, statement 9F
 	else if (!strcmp(cmd, "seed"))		srand(a);						// ASCENT: test: seed=N, the random numbers from here on
+	else if (!strcmp(cmd, "dragon"))		dtu_dragon_test(a);		// test: dragon=N (dtudragon.h)
+	else if (!strcmp(cmd, "picklock"))	dtu_thief_open_locks();	// ASCENT: test: the Open Locks key
 	else if (!strcmp(cmd, "gflag"))		dtu_script_set_gflag(a, value && strchr(value, '.') ? b : 1);		// test: gflag=N[.VALUE]
 	else if (!strcmp(cmd, "mflag"))		dtu_mission_set_flag(a, value && strchr(value, '.') ? b : 1);		// test: mflag=K[.VALUE]
 	else if (!strcmp(cmd, "talk") && a > 0 && a <= Highest_object_index)		// test: talk=N, the use action on object N

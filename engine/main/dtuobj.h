@@ -243,17 +243,14 @@ extern int Dtu_fix_revive;
 // (100, set by the same fix). -origobj and -origdrow5 clear it.
 extern int Dtu_fix_drow5_shields;
 
-// ASCENT: Tamaramagil Swiftclaw, the adult red dragon of DROW2. 1.3 has
-// her type ("Dragon", dragn2.pof), her dialogue (script 210) and the
-// messages 16 to 19 of the level ("An adult red dragon gazes at you",
-// "Uh oh, baby dragons" in the east room), but the level file has no
-// object for her and puts the four hatchlings in the arena. 1 (default):
-// she stands at the center of the arena, peaceful, with script 210 and the
-// Dragon Key (item 42) of the door of her hoard, and the hatchlings start
-// in the east room (segment 790). Her place and the key are choices of the
-// port. 0: the objects of the level file.
+// ASCENT: Tamaramagil Swiftclaw, the adult red dragon of DROW2
+// (dtudragon.h, docs/re/dragon.md). 1.3 has her type ("Dragon",
+// dragn2.pof), her dialogue (script 210) and the messages 16 to 19 of the
+// level, but the level file has no object for her. 1 (default): the
+// encounter of dtudragon.c, if the setting "The dragon Tamaramagil" of the
+// Improvements menu is on too (Dtu_restored_dragon). 0 (-origobj,
+// -origtamaramagil): the objects of the level file.
 extern int Dtu_fix_tamaramagil;
-void dtu_restore_tamaramagil(int has_state);
 
 // ASCENT: the pick up of a stack that does not fit (0xB65BB, 0xB67D3 to
 // 0xB68C1). Original: the count is added and cut to stack_limit, the
