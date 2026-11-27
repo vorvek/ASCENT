@@ -315,7 +315,7 @@ TESTS = [
       [r"dragon: obj 64: idle -> breath wind-up", r"dragon: the aim of the breath is fixed at", r"save: obj 0 you, category 3: d20 \d+ against \d+: failed",
        r"dragon: breath on the player: 12d10\+6 = \d+, save against breath failed: \d+, after the fire protections: \d+"],
       frames=125, extra=["-objlog", "dragon_breath_failed_obj.log"]),
-    T("dragon_breath_made", "DROW2", "5:seed=2,6:goseg=470,7:goobj=64.55,8:face=64,10:dragon=3",
+    T("dragon_breath_made", "DROW2", "5:seed=12,6:goseg=470,7:goobj=64.55,8:face=64,10:dragon=3",
       [r"save: obj 0 you, category 3: d20 \d+ against \d+: saved",
        r"dragon: breath on the player: 12d10\+6 = \d+, save against breath made: \d+, after the fire protections: \d+"],
       frames=125, extra=["-objlog", "dragon_breath_made_obj.log"]),
