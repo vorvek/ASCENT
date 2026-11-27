@@ -331,7 +331,7 @@ boxes.
 | `-nofixedstep` | One step of the game for each picture with the time of the picture, as the executable. |
 | `-fescript FILE` | Drive the front end and, after `gamekeys`, the game with a script: keys, clicks, gamepad, waits, screenshots (`shot`). The command list is at the top of `dtufe_script.c`. |
 | `-testmove ACTIONS` | Press movement keys for a time: `forward+run:2000ms,left:30,jump:1`. |
-| `-testpos X,Y,Z[,H]` | Put the player at a position at the first frame. |
+| `-testpos X,Y,Z[,H[,P]]` | Put the player at a position at the first frame, with heading H and look pitch P in degrees (positive down). |
 | `-testobjpos N,X,Y,Z[,H];...` | Put objects at positions at the first frame (pushed scenery tests). |
 | `-testtour [FRAMES]` | Visit the center of each segment with 4 headings (texture coverage). |
 | `-testkill N[,W]` | Every N frames the nearest active creature dies. |

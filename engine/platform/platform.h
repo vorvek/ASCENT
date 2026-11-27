@@ -327,9 +327,6 @@ typedef struct plat_gpu_material {
 	int heat;			// TEXTURED, FLAT: PLAT_GPU_HEAT_* (only with plat_gpu_set_infravision)
 	int effects;		// TEXTURED: the texels of the effect colors (see plat_gpu_fx_mark) take
 						// their color from the image under the polygon (texmap/tmapfx.c)
-	int fx_solid;		// ASCENT: TEXTURED, RGB form: the texels of the effect colors take the rule
-						// with their own (filled) color and are lit as the other texels
-						// (Dtu_fix_solid_effects, texmap/tmapfx.c tmap_fx_solid_bitmap)
 	int fx_row;			// TEXTURED with effects: the fade table row of effect color 0xCF
 	int fx_fine;		// ASCENT: RGB form: 0, or the row of effect color 0xCF between two rows:
 						// 1 + 256 times the row. The colors of the two rows are mixed
