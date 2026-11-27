@@ -45,4 +45,10 @@ void tmap_fx_span_begin(tmap_fx_span *s, ubyte *dest, int y);
 int tmap_fx_next_below(tmap_fx_span *s);
 void tmap_fx_fix_span(ubyte *dest, const ubyte *raw, int n, const ubyte *saved, int n_saved, int y);
 
+struct _grs_bitmap;
+// The solid form of a bitmap with effect colors (Dtu_fix_solid_effects): a
+// copy with a fixed color in each effect texel and no BM_FLAG_DTU_EFFECTS.
+// The copy stays valid until 16 other bitmaps have asked for one.
+struct _grs_bitmap *tmap_fx_solid_bitmap(struct _grs_bitmap *bp);
+
 #endif

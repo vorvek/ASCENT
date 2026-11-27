@@ -54,6 +54,9 @@ int texmerge_get_sources( grs_bitmap *bm, grs_bitmap **bottom, grs_bitmap **top,
 // ASCENT: Dtu_fix_wall_effects: the effect colors of a wall texture without
 // an overlay (texmerge.c). -origfx clears it.
 extern int Dtu_fix_wall_effects;
+// ASCENT: Dtu_fix_solid_effects: the effect colors of a face that the view
+// does not see past (texmerge.c, render.c). -origfx clears it.
+extern int Dtu_fix_solid_effects;
 void texmerge_mark_wall_effects(void);
 
 

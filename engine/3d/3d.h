@@ -427,6 +427,11 @@ extern int G3_gpu_heat;
 //GPU draws its transparent texels opaque (they look into the void; 1.3
 //shows the frames before there, the GPU showed black).
 extern int G3_gpu_opaque;
+//1 while the game draws a face that the view does not see past, with
+//Dtu_fix_solid_effects: the effect texels of its texture take the rule
+//with their own (filled) color, not the image under the face, and are lit
+//as the other texels (plat_gpu_material fx_solid, texmap/tmapfx.c).
+extern int G3_gpu_fx_solid;
 //The pulsing fade table row of the effect color 0xCF (Tmap_fx_row of the
 //texture mapper, tmapfx.c). The game sets it at the start of each view.
 extern int G3_gpu_fx_row;

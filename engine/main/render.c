@@ -397,6 +397,7 @@ int	Detriangulation_on = 1;					// 1 = allow rendering of triangulated side as a
 // floors and ceilings moved and flattened when the view went past the
 // distance rule.
 static int Render_gpu_view = 0;
+static int Render_gpu_rgb = 0;		// ASCENT: the GPU view has the RGB form
 
 #ifdef EDITOR
 int	Render_only_bottom=0;
@@ -777,9 +778,23 @@ void render_face(int segnum, int sidenum, int nv, short *vp, int tmap1, int tmap
 		// ASCENT: the holes of a side with no segment behind it look into
 		// the void; the GPU draws them opaque (G3_gpu_opaque, 3d.h)
 		G3_gpu_opaque = !IS_CHILD(Segments[segnum].children[sidenum]);
+		// ASCENT: Dtu_fix_solid_effects (texmerge.c): the effect colors of a
+		// face that the view does not see past take the colors of the
+		// texels around them, not the screen of an earlier frame. The RGB
+		// form of the GPU renderer does it in its shader (it keeps the
+		// upscaled texture); the software renderer and the 8-bit form draw
+		// the solid form of the bitmap.
+		if (Dtu_fix_solid_effects && (bm->bm_flags & BM_FLAG_DTU_EFFECTS)
+				&& !(WALL_IS_DOORWAY(&Segments[segnum], sidenum) & WID_RENDPAST_FLAG)) {
+			if (Render_gpu_view && Render_gpu_rgb)
+				G3_gpu_fx_solid = 1;
+			else
+				bm = tmap_fx_solid_bitmap(bm);
+		}
 		g3_draw_tmap(nv,pointlist,(g3s_uvl *) uvl_copy,bm);
 		G3_gpu_heat = 0;
 		G3_gpu_opaque = 0;
+		G3_gpu_fx_solid = 0;
 	}
 
 	#ifndef NDEBUG
@@ -2402,7 +2417,8 @@ void render_frame(fix eye_offset)
 		tmap_dim_set_view(dim);
 		G3_gpu_dim = dim;
 	}
-	infra = dtu_infra_begin_view(gpu_set_options() && Dtu_gpu_renderer && plat_gpu_available());
+	Render_gpu_rgb = gpu_set_options();
+	infra = dtu_infra_begin_view(Render_gpu_rgb && Dtu_gpu_renderer && plat_gpu_available());
 	// ASCENT: the gray view of a held player (dtuhold.c), read at the present
 	if (plat_gpu_available())
 		plat_gpu_set_view_desaturate(dtu_hold_view_amount());

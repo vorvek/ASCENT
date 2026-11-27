@@ -342,12 +342,23 @@ static const char *Scene_fs =
 	"		vec3 c, b;\n"
 	"		float am = u_noao != 0 ? 0.0 : 1.0;\n"
 		"		if (u_mode == 0) {\n"
+	"			vec4 t;\n"
+	"			bool fs = false;\n"
 	"			if (u_fx != 0) {\n"
 	"				ivec2 ts = textureSize(u_tex, 0);\n"
 	"				ivec2 tc = ivec2(floor(v_uv * vec2(ts)));\n"
 	"				tc = ((tc % ts) + ts) % ts;\n"
 	"				int a = int(texelFetch(u_tex, tc, 0).a * 255.0 + 0.5);\n"
-	"				if (a > 0 && a < 255 && (255 - a) % 8 == 0 && (255 - a) / 8 <= 8) {\n"
+	"				if (u_fx == 2 && a > 0 && a < 255 && (255 - a) % 8 == 0 && (255 - a) / 8 <= 8) {\n"
+	// ASCENT: the solid form (Dtu_fix_solid_effects, texmap/tmapfx.c
+	// tmap_fx_solid_bitmap): the texel holds the color filled from the
+	// texels around it (plat_gpu_fx_mark); it takes the rule with that
+	// color as the screen pixel and is lit as the other texels
+	"					int k = (255 - a) / 8;\n"
+	"					vec3 f = texelFetch(u_tex, tc, 0).rgb;\n"
+	"					t = vec4((k == 1 || k == 8) ? f : vpal(fxramp(k) | fxstep(f)), 1.0);\n"
+	"					fs = true;\n"
+	"				} else if (u_fx == 1 && a > 0 && a < 255 && (255 - a) % 8 == 0 && (255 - a) / 8 <= 8) {\n"
 	"					int fc = fxcolor((255 - a) / 8);\n"
 	"					if (u_dim != 0 && (fc & 15) <= u_dim)\n"
 	"						o_color = vec4(vpal(dimidx(fc, int(clamp(l * 32.0, 0.0, 31.5)))), 0.0);\n"
@@ -356,7 +367,7 @@ static const char *Scene_fs =
 	"					return;\n"
 	"				}\n"
 	"			}\n"
-	"			vec4 t = texture(u_tex, v_uv);\n"
+	"			if (!fs) t = texture(u_tex, v_uv);\n"
 	"			if (u_transparent != 0 && t.a < 0.5) discard;\n"
 	"			if (u_dim != 0 && (nearidx(t.rgb) & 15) <= u_dim) {\n"
 	"				o_color = vec4(dimrgb(t.rgb, clamp(l * 32.0 - 0.5, 0.0, 31.0)), am);\n"
@@ -385,7 +396,7 @@ static const char *Scene_fs =
 	"			o_color = vec4(float(dimidx(c, int(clamp(l * 32.0, 0.0, 31.5)))) / 255.0, 0.0, 0.0, 1.0);\n"
 	"			return;\n"
 	"		}\n"
-	"		if (u_fx != 0 && fxcode(c) != 0) {\n"
+	"		if (u_fx == 1 && fxcode(c) != 0) {\n"
 	"			o_color = vec4(float(fxidx(fxcode(c))) / 255.0, 0.0, 0.0, 1.0);\n"
 	"			return;\n"
 	"		}\n"
@@ -2297,7 +2308,8 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 			st.fx = 1;
 			st.fx_row = m->fx_row;
 			st.fx_fine = m->fx_fine;
-		}
+		} else if (m->fx_solid && View_rgb)
+			st.fx = 2;		// ASCENT: Dtu_fix_solid_effects (texmap/tmapfx.c)
 		if (st.lit && m->dim > 0)
 			st.dim = m->dim > 15 ? 15 : m->dim;
 		st.tint = st.lit && m->tint == 0x40;
@@ -2338,7 +2350,7 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 		qglActiveTexture(GL_TEXTURE0);
 	}
 
-	if (st.fx) {
+	if (st.fx == 1) {
 		// The effect colors read the image under the face (and one canvas
 		// row below it): draw the batch, then copy the bounding box of the
 		// face, or the whole view when a corner is near or behind the eye.

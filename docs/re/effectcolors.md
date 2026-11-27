@@ -128,6 +128,42 @@ and red edges on the water.
   rims around the drops in every renderer and texture set; after, the rims show
   the room behind in the blue ramp; `-origfx` gives the rule of 1.3 again (the
   palette color through the light, dark in a dim light and red in a bright one).
+- `Dtu_fix_solid_effects` (texmerge.c, render.c, tmapfx.c `tmap_fx_solid_bitmap`,
+  the shader of gpu.c with `u_fx` 2; `-origfx` clears it). The report of the
+  stream of 2026-11-26: round red mirrors with a strange reflection in the
+  software renderer and nothing in the GPU renderer. They are the glass `glas02`
+  (64 x 64, flags 0x09, 845 texels of 0x6D in a disk of about 30 texels, in a
+  brass ring), the overlay of closed walls (wall type 2, no door clip): DROW1
+  segment 679 side 2 and 683 side 0, DROW2 205 side 2, DROW4 94 side 2 and 208
+  side 0, CLAN1 717 side 4 (no segment behind). `miror01` and `miror02` (the
+  same 0x6D, 317 and 663 texels) are not on a rendered side of the levels of
+  the stream. 0x6D takes the warm ramp at the brightness step of the pixel
+  `below`. Behind a closed wall the frame draws nothing before the face, so
+  that pixel (and `behind`) holds the picture of an earlier frame: with the
+  rule of 1.3 (the software renderer) the disk shows a warm, moving smear of
+  the view (the pointer walk reads the next row from the left edge of the
+  view, stretched 2 times). **G**: the DOS game shows the same; the port was
+  not compared with it. The GPU renderer has no image under the face (the
+  view of the frame starts empty) and showed the darkest step of the ramp, a
+  dark red disk. The correction is the
+  intent of the rule, a glass that shows what is around it, with a source
+  that exists: on a face whose side the view does not see past (no
+  `WID_RENDPAST_FLAG`), each effect texel takes the rule with the color filled
+  from the texels around it (the mean of the filled 8 neighbors, ring after
+  ring, as `fill_colors` of gputex.c and step 1 of `textures_hd.py`) as the
+  screen pixel: `ramp | (f & 15)`, f the nearest palette color, for the six
+  ramp colors, f itself for 0x4E and 0xCF (no pulse). The texel is then lit
+  as the other texels. The software renderer draws a copy of the bitmap with
+  these colors and without the rule; the GPU renderer finds the same color in
+  its shader from the filled color of the texture (the 8-bit expansion or the
+  upscaled file) and lights it. The 8-bit form of the GPU renderer
+  (`ASCENT_GPU_8BIT=1`) draws the copy of the software renderer. The disk of
+  `glas02` is a dark copper glass with the light of the wall and a faint cross
+  from the fill. The glass doors, waterfalls and effect walls that the view
+  sees past do not change (BONES `-testpos 0,0,-296,180`, the door `glasdr1`:
+  the same screenshot with and without `-origfx` in both renderers). Tests
+  (`-testpos` at frame 60, both renderers, before with `-origfx`): DROW1
+  `380,-3.5,1097.1,90`, CLAN1 `-137.8,0,700,0`.
 - The upscaled textures: `tools/textures_hd.py` fills the effect texels with the
   colors around them before the upscale (`../hd_textures.md`). A set made before
   this has red around the effect texels; the game cannot remove that.

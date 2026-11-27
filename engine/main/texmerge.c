@@ -466,6 +466,20 @@ void merge_textures_super_xparent( int type, grs_bitmap * bottom_bmp, grs_bitmap
 // port03) have only 1 to 4 such texels. -origfx gives the rule of 1.3.
 int Dtu_fix_wall_effects = 1;
 
+// ASCENT: Dtu_fix_solid_effects. The rule reads the screen under the face
+// (behind) and pixels of the next screen row (below). On a face that the
+// view does not see past (a closed wall, a side with no segment behind
+// it) the frame draws nothing there before the face, so DTUGAME.EXE shows
+// the picture of an earlier frame in the color of the ramp: the round
+// glass glas02 on the closed walls of DROW1, DROW2, DROW4 and CLAN1 shows a
+// warm, moving smear of the view (the software renderer), and the GPU
+// renderer, which clears the view, showed the darkest step of the ramp.
+// With the correction render.c draws such a face with the solid form of
+// its bitmap (texmap/tmapfx.c tmap_fx_solid_bitmap, the shader of the GPU
+// renderer): each effect texel takes the rule with the color of the
+// texels around it. -origfx gives the rule of 1.3.
+int Dtu_fix_solid_effects = 1;
+
 // 1 if the bitmap has an effect color other than 0xCF
 static int bitmap_has_red_effect(grs_bitmap *bm)
 {
@@ -517,7 +531,7 @@ void texmerge_mark_wall_effects(void)
 	int i, j;
 
 	if (FindArg("-origfx"))
-		Dtu_fix_wall_effects = 0;
+		Dtu_fix_wall_effects = Dtu_fix_solid_effects = 0;
 	for (i=0; i<NumTextures; i++)
 		mark_wall_bitmap(&GameBitmaps[Textures[i].index]);
 	for (i=0; i<MAX_EFFECTS; i++)

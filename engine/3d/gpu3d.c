@@ -43,6 +43,7 @@ static int Rgb_gen = 1;		//changes when the RGB textures must be made again
 static int Hd_log;			//ASCENT_GPU_HDLOG=1: print the requests of upscaled textures
 int G3_gpu_heat;			//3d.h
 int G3_gpu_opaque;		//3d.h
+int G3_gpu_fx_solid;	//3d.h
 int G3_gpu_fx_row = 25;	//3d.h
 int G3_gpu_fx_fine;		//3d.h
 int G3_gpu_dim;			//3d.h
@@ -858,6 +859,12 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	//the effect colors of a merged bitmap take the colors of the image
 	//under the face (texmap/tmapfx.c); the lit mappers of the original do it
 	m.effects = m.lit && (bm->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;
+	//ASCENT: a face that the view does not see past (Dtu_fix_solid_effects,
+	//render.c): no image under it to read
+	if (G3_gpu_fx_solid && (bm->bm_flags & BM_FLAG_DTU_EFFECTS)) {
+		m.effects = 0;
+		m.fx_solid = 1;
+	}
 	m.fx_row = G3_gpu_fx_row;
 	m.fx_fine = G3_gpu_fx_fine;
 	//the dark view of the conversation window: every lit texture, the
