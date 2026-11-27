@@ -14,7 +14,8 @@ the table values; the market pays 75 percent of them at Charisma 12.
 --classes lists the creature types of each gem class (undead, intelligent,
 none) and the types that leave no gold (the named people).
 
-This tool reads only. Keep the rule here the same as dtugear.c.
+This tool reads only. The numbers of the rule come from dtugear.h and
+dtugear.c (tools/gear_tables.py); the gem classes follow dtu_gear_gem_class.
 """
 import collections
 import os
@@ -25,6 +26,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.dont_write_bytecode = True
 import lvl  # noqa: E402
 import objcheck  # noqa: E402
+import gear_tables  # noqa: E402  (the numbers of engine/main/dtugear.c and dtugear.h)
+
+G = gear_tables.read()
+D = G["d"]
 
 DEFAULT_DIR = r"D:/dev/ASCENT/gamedata/unpacked"
 
@@ -40,15 +45,18 @@ GROUPS = [
 ]
 
 # The named people: no gold (dtugear.c Gear_no_gold, by the name= of the line)
-NAMED = {"durnan", "mirt", "aleena", "drowfem", "flaynpc", "fmtnpc", "priestes", "daland", "thashasa",
-         "halaster", "ibbalar", "jeryth", "avatar"}
+NAMED = set(n.lower() for n in G["no_gold"])
 
 # The person models of Improved AI (dtuobj_ai.c dtu_model_is_person)
 PERSON = ("hum_", "haf", "dwf_", "drw", "dlf_", "elf_", "orc_", "gob_", "kob", "ogr", "ognew", "armogr",
           "troll", "armtroll", "lic_", "min_", "ban_", "ghu_", "gha_", "mum_", "gar_",
           "durnan", "daland", "thashasa", "hal.", "ibba")
 
-GEM_VALUE = {"Bloodstone": 50, "Pearl": 100, "Ruby": 500, "Diamond": 1000, "Star Sapphire": 5000}
+# The gems: the new lines of dtugear.c, the Ruby and the Diamond of 1.3
+GEM_VALUE = {"Ruby": 500, "Diamond": 1000}
+for _l in G["lines"]:
+    if _l.startswith("$OBJECT"):
+        GEM_VALUE[objcheck.value(_l, "name")] = int(objcheck.value(_l, "value"))
 
 
 def flags_of(line):
@@ -81,17 +89,22 @@ def gem_class(line):
 
 def gem_expect(xp):
     """The expected table value of the gem of one gem roll (dtugear.c)."""
-    if xp < 100:
+    if xp < D["DTU_GEAR_GEM_XP_PEARL"]:
         return GEM_VALUE["Bloodstone"]
-    if xp < 500:
-        return 0.75 * GEM_VALUE["Pearl"] + 0.25 * GEM_VALUE["Ruby"]
-    if xp < 2000:
-        return 2.0 / 3 * GEM_VALUE["Ruby"] + 1.0 / 3 * GEM_VALUE["Diamond"]
-    return 0.9 * GEM_VALUE["Diamond"] + 0.1 * GEM_VALUE["Star Sapphire"]
+    if xp < D["DTU_GEAR_GEM_XP_RUBY"]:
+        p = D["DTU_GEAR_PEARL_IN_4"] / 4.0
+        return p * GEM_VALUE["Pearl"] + (1 - p) * GEM_VALUE["Ruby"]
+    if xp < D["DTU_GEAR_GEM_XP_DIAMOND"]:
+        p = D["DTU_GEAR_RUBY_IN_3"] / 3.0
+        return p * GEM_VALUE["Ruby"] + (1 - p) * GEM_VALUE["Diamond"]
+    p = 1.0 / D["DTU_GEAR_SAPPHIRE_ONE_IN"]
+    return (1 - p) * GEM_VALUE["Diamond"] + p * GEM_VALUE["Star Sapphire"]
 
 
-GEM_CHANCE = 0.5       # 1 in 2 (the approved table had 1 in 4; changed to reach the target)
-GOLD_CHANCE = 0.6
+# The approved table had gold moola/2 + 1d(moola) and gems in 1 of 4; the
+# dice of dtugear.h are the ones that reach the target
+GEM_CHANCE = 1.0 / D["DTU_GEAR_GEM_ONE_IN"]
+GOLD_CHANCE = D["DTU_GEAR_GOLD_IN_10"] / 10.0
 
 
 def old_gold(moola, f):
@@ -101,11 +114,10 @@ def old_gold(moola, f):
 
 
 def new_gold(moola, name):
-    # moola + 1d(2 x moola), 6 in 10 (the approved table had moola/2 +
-    # 1d(moola); changed to reach the target)
+    # moola + 1d(GOLD_DICE x moola) in GOLD_IN_10 of 10 deaths
     if moola <= 0 or name.lower() in NAMED:
         return 0.0
-    return GOLD_CHANCE * (moola + (2 * moola + 1) / 2.0)
+    return GOLD_CHANCE * (moola + (D["DTU_GEAR_GOLD_DICE"] * moola + 1) / 2.0)
 
 
 def main(argv):

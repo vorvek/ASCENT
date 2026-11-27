@@ -284,23 +284,23 @@ int dtu_gear_gold(int moola, const char *name)
 		if (name && !stricmp(name, Gear_no_gold[i]))
 			return 0;
 	// 6 in 10: moola + 1d(2 x moola)
-	if (roll(10) >= 6)
+	if (roll(10) >= DTU_GEAR_GOLD_IN_10)
 		return 0;
-	return moola + roll(2 * moola) + 1;
+	return moola + roll(DTU_GEAR_GOLD_DICE * moola) + 1;
 }
 
 int dtu_gear_gem(int gem_class, int xp)
 {
 	// 1 in 2
-	if (!gem_class || roll(2) != 0)
+	if (!gem_class || roll(DTU_GEAR_GEM_ONE_IN) != 0)
 		return -1;
-	if (xp < 100)
+	if (xp < DTU_GEAR_GEM_XP_PEARL)
 		return DTU_GEAR_BLOODSTONE;
-	if (xp < 500)
-		return roll(4) < 3 ? DTU_GEAR_PEARL : 4;			// 4: Ruby
-	if (xp < 2000)
-		return roll(3) < 2 ? 4 : 3;							// 3: Diamond
-	return roll(10) == 0 ? DTU_GEAR_STAR_SAPPHIRE : 3;
+	if (xp < DTU_GEAR_GEM_XP_RUBY)
+		return roll(4) < DTU_GEAR_PEARL_IN_4 ? DTU_GEAR_PEARL : 4;			// 4: Ruby
+	if (xp < DTU_GEAR_GEM_XP_DIAMOND)
+		return roll(3) < DTU_GEAR_RUBY_IN_3 ? 4 : 3;							// 3: Diamond
+	return roll(DTU_GEAR_SAPPHIRE_ONE_IN) == 0 ? DTU_GEAR_STAR_SAPPHIRE : 3;
 }
 
 int dtu_gear_gem_class(int type)

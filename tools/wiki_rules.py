@@ -55,6 +55,7 @@ import egg  # noqa: E402
 import jrg  # noqa: E402  (FEBGND.DAT, the icon sheet)
 import check_itemfix  # noqa: E402  (the tables of engine/main/dtuitemfix.c)
 import tblfix  # noqa: E402  (the table fixup of 1.3, engine/main/dtutblfix.c)
+import gear_tables  # noqa: E402  (the new gear of ASCENT-DTU, engine/main/dtugear.c)
 
 
 # ---------------------------------------------------------------------
@@ -826,7 +827,7 @@ def pages_note():
 # Pages
 
 class Pages:
-    def __init__(self, tab, ct, check=None, mission=(), icon_count=0):
+    def __init__(self, tab, ct, check=None, mission=(), icon_count=0, gear=None):
         self.t = tab
         self.c = ct
         self.W = tab["$WEAPON"]
@@ -840,6 +841,7 @@ class Pages:
         self.icon_count = icon_count
         self.icons = icon_count > 0
         self.used_icons = set()
+        self.gear = gear        # GearData: the new gear of ASCENT-DTU
         self.item_fixes()
 
     # -- icons ----------------------------------------------------------
@@ -952,6 +954,7 @@ class Pages:
             "- [[Scrolls]]",
             "- [[Wizard Spells|Wizard-Spells]]",
             "- [[Priest Spells|Priest-Spells]]",
+            "- [[New gear and loot|New-Gear]]: the new items, wands and loot of ASCENT-DTU (spoilers)",
             "- [[Sources]]: where each number comes from",
             "",
             "## Units",
@@ -987,6 +990,7 @@ class Pages:
             "- [[Scrolls]]",
             "- [[Wizard Spells|Wizard-Spells]]",
             "- [[Priest Spells|Priest-Spells]]",
+            "- [[New gear and loot|New-Gear]]",
             "- [[Sources]]",
             "",
         ])
@@ -1482,6 +1486,13 @@ class Pages:
             "",
             md_table(self.icon_head(["Launcher", "Kind", "To hit and damage", "F/T/M/C", "Value", "Notes"]), launch),
             "",
+            "## New in ASCENT-DTU",
+            "",
+            "With the setting \"%s\": the %s is the gift of Daland at the altar of Kelemvor, a %s lies in "
+            "the drow city, the market sells the magic weapons that the original game never gives, "
+            "and five new wands cast spells ([[Wands]]). See [[New gear and loot|New-Gear]]."
+            % (NEW_GEAR_SETTING, self.gear.item(5, self.gear.g["daland"][2]).name(), self.gear.item(5, self.gear.g["flame"][1]).name()),
+            "",
             "## Differs from the manual",
             "",
             "- The manual gives thieves daggers, short swords, long swords, scimitars, clubs, darts, "
@@ -1525,6 +1536,7 @@ class Pages:
                 note = "Boot place. No armor class: the boot place counts only magic boots."
             rows.append(self.icon_row([r.name(), "boots" if i == 8 else "gauntlets", signed(-ac) if ac else "0",
                                        str(10 + ac), classes_of(r), r.num("value", 0), note], r))
+        rows += self.gear_rows_armor()      # ASCENT-DTU: the new gear
         self.count("Armor", len(rows))
         return "\n".join([
             "# Armor",
@@ -1596,6 +1608,8 @@ class Pages:
                     ac = 0
                 eff = " ".join(x for x in (eff or "AC only.", r.note()) if x)
                 rows.append(self.icon_row([r.name(), signed(-ac) if ac else "0", classes_of(r), r.num("value", 0), eff], r))
+            if title != "Bracers":
+                rows += self.gear_rows_magic(flags)      # ASCENT-DTU: the new gear
             if title == "Amulets":
                 rows.append(self.icon_row([self.O[5].name(), "0", classes_of(self.O[5]), "-",
                                            "Quest item. No other effect."], self.O[5]))
@@ -1744,6 +1758,10 @@ class Pages:
                 note = "Cast on you."
             note = " ".join(x for x in (note, r.note()) if x)
             rows.append(self.icon_row([r.name(), self.S[s].name(), r.num("uses", 1), classes_of(r), value_of(r), note], r))
+        # ASCENT-DTU: the new gear gives five lines of the game files a spell
+        for i, (r, s) in sorted(self.gear.wands.items()):
+            rows.append(self.icon_row([r.name(), self.S[s].name(), r.num("uses", 1), classes_of(r), value_of(r),
+                                       NEW_GEAR_LINK], r))
         self.count("Wands", len(rows))
         return "\n".join([
             "# Wands",
@@ -1932,6 +1950,168 @@ class Pages:
         ]
 
     # -- Sources --------------------------------------------------------
+    # -- New gear (ASCENT-DTU) -------------------------------------------
+    def new_gear(self):
+        gd = self.gear
+        d = gd.d
+        out = ["# New gear and loot (ASCENT-DTU)", "",
+               "> **Spoiler warning.** This page gives the places of items and the content of treasures. "
+               "Read it only if you want to know them before you find them.", "",
+               "Everything on this page belongs to the setting \"%s\" of the Improvements menu (on by "
+               "default). It is not in the original game, version 1.3. With the setting off the game has "
+               "the items, the market and the loot of 1.3. The setting takes effect at the next level." % NEW_GEAR_SETTING, ""]
+        # the new items
+        rows = []
+        for i, r in sorted(gd.armor.items()):
+            ac = gd.g["armor_ac"][i - d["DTU_GEAR_FIRST_ARMOR"]]
+            rows.append(self.icon_row([r.name(), gear_effect(i, d), signed(-ac) if ac else "0", classes_of(r),
+                                       r.num("value", 0), gd.where(15, i)], r))
+        out += ["## New magic items", "",
+                "- AC bonus: how much the item lowers your armor class.",
+                "- F/T/M/C: the classes that may wear it ([[Classes]]).",
+                "- Value: the base price in gold. The market sells at about 1.35 times the value (Charisma 12) "
+                "and buys at 75 percent of it.", "",
+                md_table(self.icon_head(["Item", "Effect", "AC bonus", "F/T/M/C", "Value", "Where"]), rows), ""]
+        # the wands
+        wrows = []
+        for i, (r, spell) in sorted(gd.wands.items()):
+            wrows.append(self.icon_row([r.name(), self.S[spell].name(), r.num("uses", 1), classes_of(r),
+                                        r.num("value", 0), gd.where(5, i)], r))
+        out += ["## New wands", "",
+                "Five wands of the game files that had no spell now cast one. They work as the other "
+                "[[Wands]].", "",
+                md_table(self.icon_head(["Wand", "Spell", "Charges", "F/T/M/C", "Value", "Where"]), wrows), ""]
+        # the items of 1.3
+        script, potion, mace = gd.g["daland"]
+        lvl, ft, _ = gd.g["flame"]
+        mrow = gd.item(5, mace)
+        frow = gd.item(5, ft)
+        removed = ["the %s %s" % (gd.item(c, i).name(), GEAR_STAGES[s]) for s, c, i in gd.g["removed"]]
+        out += ["## Items of the original game", "",
+                "- %s: Daland of %s gives it with the %s when the altar of Kelemvor is consecrated. "
+                "Value %d with the setting." % (mrow.name(), GEAR_LEVEL_TEXT.get(16, "the temple"),
+                                                 self.O[potion].name(), gd.value(5, mace)),
+                "- %s: one lies in %s, in a prison cell of the troll wing, at the far end of the "
+                "corridors from their entry. Its fire stops the regeneration of a troll. Value %d with the "
+                "setting. The market sells another one %s." % (frow.name(), GEAR_LEVEL_TEXT.get(lvl, "a drow level"),
+                                                              gd.value(5, ft), " and ".join(GEAR_STAGES[s] for s in gd.stages_of(5, ft))),
+                "- The market of the original game sells " + "; ".join(removed) + ". With the setting it "
+                "does not: the market sells it later (above). A market that already has it keeps it.", ""]
+        old = [(row, gd.item(row[2], row[3])) for row in gd.g["market"]
+               if not (row[2] == 15 and row[3] in gd.armor) and not (row[2] == 5 and row[3] in gd.wands)
+               and not (row[2] == 5 and row[3] == ft)]
+        orows = [self.icon_row([r.name(), GEAR_STAGES[row[0]], str(row[1]), gd.value(row[2], row[3])], r) for row, r in old]
+        out += ["The original game has rules for these magic items but never gives them to you. The market "
+                "sells them, weaker ones first. Their rules are on the other pages.", "",
+                md_table(self.icon_head(["Item", "In the market", "Quantity", "Value"]), orows), ""]
+        # the market by stage
+        srows = []
+        for s in sorted(set(row[0] for row in gd.g["market"])):
+            srows.append([GEAR_STAGES[s], ", ".join(gd.item(row[2], row[3]).name() for row in gd.g["market"] if row[0] == s)])
+        out += ["## The market of Waterdeep", "",
+                "Each reward of Khelben adds goods to the market. The setting adds these to the goods of "
+                "the original game.", "",
+                md_table(["When", "New goods"], srows), ""]
+        # gold and gems
+        gems = [(r.name(), r.num("value", 0)) for i, r in sorted(gd.misc.items())]
+        grows = [self.icon_row([r.name(), r.num("value", 0)], r) for i, r in sorted(gd.misc.items())]
+        p4, r3, s1 = d["DTU_GEAR_PEARL_IN_4"], d["DTU_GEAR_RUBY_IN_3"], d["DTU_GEAR_SAPPHIRE_ONE_IN"]
+        out += ["## Gold and gems", "",
+                "- Gold: a slain creature that carries money leaves gold %d times in 10: its money plus 1 to "
+                "%d times its money. The people you talk to (Durnan, Mirt and the others) leave none. In the "
+                "original game only a humanoid leaves gold, 4 times in 10, and much less." % (d["DTU_GEAR_GOLD_IN_10"],
+                                                                                             d["DTU_GEAR_GOLD_DICE"]),
+                "- Gems: an undead or intelligent creature leaves a gem 1 time in %d. The gem follows the "
+                "experience the creature gives: below %d a %s; below %d a %s %d times in 4, else a Ruby; below "
+                "%d a Ruby %d times in 3, else a Diamond; from %d a Diamond, and 1 time in %d a %s."
+                % (d["DTU_GEAR_GEM_ONE_IN"], d["DTU_GEAR_GEM_XP_PEARL"], gems[0][0], d["DTU_GEAR_GEM_XP_RUBY"], gems[1][0],
+                   p4, d["DTU_GEAR_GEM_XP_DIAMOND"], r3, d["DTU_GEAR_GEM_XP_DIAMOND"], s1, gems[2][0]),
+                "- Undead: skeletons, zombies, ghouls, ghasts, mummies, Banegards, the lich and the spirits "
+                "of the undead.",
+                "- Intelligent: the people (humans, drow, dwarves, halflings, kobolds, goblins, orcs, ogres, "
+                "trolls, ghouls, mind flayers), gargoyles, and every creature that casts spells (mephits, "
+                "beholders, spectators, dragons).",
+                "- No gems: animals and vermin (rats, bats, beetles, scarabs, spiders) and the Mage Spirit.",
+                "- The market buys a gem at 75 percent of its value (Charisma 12).", "",
+                md_table(self.icon_head(["Gem", "Value"]), grows), ""]
+        # the place for the spells of the caster branch
+        out += new_gear_spells_section(gd)
+        # the treasury
+        trows = [self.icon_row([gd.item(c, i).name(), gear_effect(i, d) if c == 15 else "", count], gd.item(c, i))
+                 for c, i, count in gd.g["dragon"]]
+        out += ["## The treasury of the red dragon", "",
+                "> **Heavier spoiler.** This section names the treasure of the dragon of the drow city.", "",
+                "<details><summary>Show the treasure</summary>", "",
+                md_table(self.icon_head(["Item", "Effect", "Count"]), trows), "",
+                "</details>", ""]
+        # the place for the dragon encounter of the dragon branch
+        out += new_gear_dragon_section(gd)
+        out += ["## Saved games", "",
+                "A game saved with new items loads again with the setting. With the setting off, the new "
+                "items of the save are gone and their effects end; the five new wands are the plain wands "
+                "of the original game again. Do not load such a save in the original game.", "",
+                pages_note(), ""]
+        self.count("New-Gear", len(rows) + len(wrows) + len(orows) + len(srows) + len(grows) + len(trows))
+        return "\n".join(out)
+
+    def gear_rows_armor(self):
+        """The new body armor and shield lines for Armor.md."""
+        gd = self.gear
+        rows = []
+        for i, r in sorted(gd.armor.items()):
+            if not (r.has("armor") or r.has("shield")):
+                continue
+            ac = gd.g["armor_ac"][i - gd.d["DTU_GEAR_FIRST_ARMOR"]]
+            note = " ".join(x for x in (gear_effect(i, gd.d), NEW_GEAR_LINK) if x)
+            rows.append(self.icon_row([r.name(), "shield" if r.has("shield") else "body", signed(-ac) if ac else "0",
+                                       str(10 + ac), classes_of(r), r.num("value", 0), note], r))
+        return rows
+
+    def gear_rows_magic(self, flags):
+        """The new worn items with one of the flags, for Magic-Items.md."""
+        gd = self.gear
+        rows = []
+        for i, r in sorted(gd.armor.items()):
+            if r.has("armor") or r.has("shield") or not any(r.has(f) for f in flags):
+                continue
+            ac = gd.g["armor_ac"][i - gd.d["DTU_GEAR_FIRST_ARMOR"]]
+            rows.append(self.icon_row([r.name(), signed(-ac) if ac else "0", classes_of(r), r.num("value", 0),
+                                       gear_effect(i, gd.d) + " " + NEW_GEAR_LINK], r))
+        return rows
+
+    def gear_sources(self):
+        """The evidence of [[New-Gear]] (the section of Sources.md)."""
+        gd = self.gear
+        lvl, ft, pos = gd.g["flame"]
+        script, potion, mace = gd.g["daland"]
+        return ["## New gear (ASCENT-DTU)", "",
+                "The page [[New-Gear]] is the setting \"%s\" of ASCENT (`Dtu_new_gear`, `engine/main/dtugear.c` "
+                "and `dtugear.h`; docs/re/objects.md, \"New gear\"). The tool reads the tables of the code "
+                "with `tools/gear_tables.py`:" % NEW_GEAR_SETTING, "",
+                "- The new item lines: `Gear_lines` (read after the table fixup by the table reader, armor %d "
+                "and up, misc %d and up), their armor class `Gear_armor_ac`; the effects by number in "
+                "`dtuchar.c` (`item_bits`: boot bit 5, cloak and armor bit 1, belt bit 6, ring bit 15; "
+                "`archer_bonus`, `regen_frame`, the constitution of the belt) and the Mirror Shield in "
+                "`dtu_gear_mirror` (called from `missile_hit_object`, `dtuobj_missile.c`)."
+                % (gd.d["DTU_GEAR_FIRST_ARMOR"], gd.d["DTU_GEAR_FIRST_MISC"]),
+                "- The wands: `Gear_wands` (the lines 63 to 67 of 1.3 have `enemy_spell=-1` and no `PC_spell`); "
+                "the values of the Mace of Disruption and the Flame Tongue: `Gear_values`.",
+                "- The market: `Gear_market` (stage, quantity, class, number, count), `Gear_market_removed`; "
+                "the stages are the rewards 0x879A7 of the missions (docs/re/scripts.md, section 8).",
+                "- The Mace of Disruption: script %d gives misc %d (`dtu_gear_script_give`, from the GIVE "
+                "statement 0xA8F77 of `dtuscript.c`). Daland is held by the level fix 0xAD129 and cannot "
+                "talk while held (0xABBE5)." % (script, potion),
+                "- The Flame Tongue: `dtu_gear_place_flame_tongue` (`dtuobj_setup.c`), level %d of DTU.MSN at "
+                "%.1f %.1f %.1f, once in a game (global flag 0x%X)." % (lvl, pos[0], pos[1], pos[2],
+                                                                         gd.d["DTU_GEAR_FLAG_FLAME"]),
+                "- The drops: `gear_drops` (`dtuobj_combat.c`) with `dtu_gear_gold`, `dtu_gear_gem` and "
+                "`dtu_gear_gem_class` (the door bit, a person model of Improved AI, a spell level, a spell as "
+                "the weapon, the weapons 81 to 88); the rule of 1.3 is 0x6A639. The named people: `Gear_no_gold`.",
+                "- The treasury of the dragon: `Gear_dragon` (`dtu_gear_dragon_treasure`).",
+                "- The checks: `tools/check_items.py` (gear_*), `tools/questtest.py` (myrkul_daland_*), "
+                "`tools/check_saveload.py` (the fourth and fifth run), `tools/gear_income.py` (the gold and gems "
+                "of the levels).", ""]
+
     def sources(self):
         c = self.c
         out = ["# Sources", "",
@@ -2084,11 +2264,146 @@ class Pages:
         out += ["## Other weapon lines", "",
                 "Lines for spells, traps and creatures, and lines that the tables mark as unused.", "",
                 md_table(["Line", "Name", "Use"], wlines), ""]
+        out += self.gear_sources()
         out += ["## Item line values the game does not use", "",
                 "\n".join("- " + x for x in UNUSED_ITEM_VALUES), ""]
         self.count("Sources", len(EXE_TABLES) + len(srows) + len(SOURCES_FINDINGS) + len(FIXES)
                    + len(unused) + len(olines) + len(wlines) + len(RULE_SOURCES) + 22)
         return "\n".join(out)
+
+
+# ---------------------------------------------------------------------
+# The new gear of ASCENT-DTU (the setting "New gear", engine/main/dtugear.c).
+# The items, the values, the classes, the market goods, the places, the
+# treasury and the numbers of the drop rule come from the code tables
+# (tools/gear_tables.py). The words for the effects are here, with the
+# numbers of dtugear.h in them.
+
+NEW_GEAR_LINK = "New in ASCENT-DTU: [[New-Gear]]."
+NEW_GEAR_SETTING = "New gear"
+
+# The market stages: the reward of Khelben that adds the goods (the mission
+# that the player gets, docs/re/scripts.md, section 8), in game terms
+GEAR_STAGES = {
+    0: "when Khelben sends you to the crypts of the Ghoulmaster (after the kobold chief)",
+    1: "when Khelben sends you after the Shadow Thieves (after the Spider Piece of the crypts)",
+    2: "when Khelben sends you to the tombs of Mulhorand (after the Shadow Thieves)",
+    3: "when Khelben sends you to the mine (after the Scarab Beetle of the tombs)",
+    4: "when Khelben sends you to the temple of Myrkul (after the Spider Piece of the mine)",
+    5: "when Khelben sends you to the drow city (after the temple of Clangeddin)",
+    6: "when Khelben sends you after the Spider Piece of the drow (after the first drow mission)",
+    7: "when Khelben sends you to the beholder caves (after the illithids)",
+    8: "when Khelben sends you to Ibbalar (after the Crystal Rose and the Madlands)",
+}
+
+# The places in game terms (the levels of the code tables)
+GEAR_LEVEL_TEXT = {
+    16: "the temple of Myrkul",
+    21: "the second level of the drow city",
+}
+
+
+def gear_effect(name, d):
+    """The effect of a new armor line in words, with the numbers of
+    dtugear.h (the defines named for the line number)."""
+    ids = dict((v, k) for k, v in d.items() if k in (
+        "DTU_GEAR_MIRROR_SHIELD", "DTU_GEAR_BOOTS_FREE", "DTU_GEAR_ARCHER", "DTU_GEAR_CLOAK_FIRE",
+        "DTU_GEAR_BELT_DWARF", "DTU_GEAR_RING_REGEN", "DTU_GEAR_PLATE_FIRE"))
+    return {
+        "DTU_GEAR_MIRROR_SHIELD": "A shield +1. A spell missile of a creature that hits you from the front (up to "
+                                  "60 degrees from where you look) flies back to the creature with the power of its "
+                                  "caster, and a kill is yours. The eye rays of a beholder are spell missiles. Area "
+                                  "spells such as Fireball burst at the shield; arrows, bolts, thrown weapons and "
+                                  "traps hit you as before.",
+        "DTU_GEAR_BOOTS_FREE": "Free Action while worn: Hold Person, Hold Undead and the stun of Color Spray "
+                               "do not work on you, and nothing slows your movement.",
+        "DTU_GEAR_ARCHER": "Arrows and bolts get +%d to hit and +%d damage." % (d["DTU_GEAR_ARCHER_HIT"],
+                                                                            d["DTU_GEAR_ARCHER_DAMAGE"]),
+        "DTU_GEAR_CLOAK_FIRE": "Resist Fire while worn: fire damage to you is halved.",
+        "DTU_GEAR_BELT_DWARF": "Your Constitution becomes %d, and a human gets infravision (the other races have "
+                               "it)." % d["DTU_GEAR_DWARF_CON"],
+        "DTU_GEAR_RING_REGEN": "Heals 1 hit point each %d seconds while worn." % d["DTU_GEAR_REGEN_TIME"],
+        "DTU_GEAR_PLATE_FIRE": "Plate mail +2 (magic heavy armor) with Resist Fire: fire damage to you is halved.",
+    }.get(ids.get(name), "")
+
+
+class GearData:
+    """The new gear as the pages need it."""
+
+    def __init__(self, g, tab):
+        self.g = g
+        self.d = g["d"]
+        self.armor, self.misc = {}, {}
+        na, nm = self.d["DTU_GEAR_FIRST_ARMOR"], self.d["DTU_GEAR_FIRST_MISC"]
+        for line in g["lines"]:
+            if line.startswith("$ARMOR"):
+                self.armor[na] = Record(line)
+                na += 1
+            else:
+                self.misc[nm] = Record(line)
+                nm += 1
+        self.tab = tab
+        # the wand lines with the new text (a copy of the line with the keys of the code)
+        self.wands = {}
+        for i, name13, name, spell in g["wands"]:
+            r = tab["$WEAPON"][i]
+            if r.name13() != name13:
+                raise SystemExit("dtugear.c: weapon %d is %r, not %r" % (i, r.name13(), name13))
+            line = re.sub(r'weapon_name="[^"]*"', 'weapon_name="%s"' % name, r.line)
+            line = re.sub(r"\ball_use\b", "mage_use", line)
+            line = re.sub(r"\bvalue=\d+", "value=3000", line)
+            self.wands[i] = (Record(line + " pc_spell=%d" % spell), spell)
+        self.values = {i: v for i, _, v in g["values"]}
+
+    def item(self, cls, i):
+        """The record of class 5, 15 or 16 number i, new or of 1.3."""
+        if cls == 15 and i in self.armor:
+            return self.armor[i]
+        if cls == 16 and i in self.misc:
+            return self.misc[i]
+        if cls == 5 and i in self.wands:
+            return self.wands[i][0]
+        return self.tab[{5: "$WEAPON", 15: "$ARMOR", 16: "$OBJECT"}[cls]][i]
+
+    def value(self, cls, i):
+        if cls == 5 and i in self.values:
+            return self.values[i]
+        return self.item(cls, i).num("value", 0)
+
+    def stages_of(self, cls, i):
+        return sorted(set(row[0] for row in self.g["market"] if row[2] == cls and row[3] == i))
+
+    def where(self, cls, i):
+        """Where the setting gives item (cls, i): market stages, the Mace,
+        the Flame Tongue, the treasury, the drops."""
+        out = []
+        script, potion, mace = self.g["daland"]
+        lvl, ft, _ = self.g["flame"]
+        if cls == 5 and i == mace:
+            out.append("Daland gives it in %s when the altar of Kelemvor is consecrated" % GEAR_LEVEL_TEXT.get(16, "the temple"))
+        if cls == 5 and i == ft:
+            out.append("found in %s, in a prison cell of the troll wing" % GEAR_LEVEL_TEXT.get(lvl, "a drow level"))
+        if any(row[0] == cls and row[1] == i for row in self.g["dragon"]):
+            out.append("a treasure (the last section of this page)")
+        for s in self.stages_of(cls, i):
+            out.append("the market of Waterdeep " + GEAR_STAGES[s])
+        if cls == 16 and i in self.misc:
+            out.append("left by slain creatures (below)")
+        return "; ".join(out) if out else "-"
+
+
+def new_gear_spells_section(gd):
+    """The place for the new spells and their scrolls (the main session adds
+    this section after the merge of the caster branch). Returns the lines
+    of the section, or [] while there is none."""
+    return []
+
+
+def new_gear_dragon_section(gd):
+    """The place for the dragon encounter (the main session adds this
+    section after the merge of the dragon branch). Returns the lines of the
+    section, or [] while there is none."""
+    return []
 
 
 # Spell lines that are not real player spells (Sources.md).
@@ -2388,12 +2703,14 @@ def main(argv=None):
     if os.path.exists(msn):
         with open(msn, "rb") as f:
             mission = re.findall(r"(\w+)\.lvl", f.read().decode("latin-1").lower())
-    p = Pages(tab, ct, check, mission, sheet.count if sheet else 0)
+    gear = GearData(gear_tables.read(), tab)
+    p = Pages(tab, ct, check, mission, sheet.count if sheet else 0, gear)
     pages = {
         "Home.md": p.home(), "_Sidebar.md": p.sidebar(), "Races.md": p.races(), "Classes.md": p.classes(),
         "Weapons.md": p.weapons(), "Armor.md": p.armor(), "Magic-Items.md": p.magic_items(),
         "Potions.md": p.potions(), "Wands.md": p.wands(), "Scrolls.md": p.scrolls(),
         "Wizard-Spells.md": p.spell_page("m"), "Priest-Spells.md": p.spell_page("c"),
+        "New-Gear.md": p.new_gear(),
         "Sources.md": p.sources(),
     }
     # Player pages carry no code detail: no addresses and no table keywords

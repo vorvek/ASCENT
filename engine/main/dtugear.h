@@ -51,6 +51,18 @@ extern int Dtu_gear_loaded;
 #define DTU_GEAR_FIRST_WAND		63		// weapons 63 to 67
 #define DTU_GEAR_N_WANDS		5
 
+// The drops (dtu_gear_gold, dtu_gear_gem). tools/gear_tables.py reads these
+// numbers for tools/gear_income.py and the wiki (tools/wiki_rules.py).
+#define DTU_GEAR_GOLD_IN_10		6		// gold in 6 of 10 deaths: moola + 1d(GOLD_DICE x moola)
+#define DTU_GEAR_GOLD_DICE		2
+#define DTU_GEAR_GEM_ONE_IN		2		// a gem in 1 of 2 deaths of an undead or intelligent type
+#define DTU_GEAR_GEM_XP_PEARL	100		// experience below: a Bloodstone
+#define DTU_GEAR_GEM_XP_RUBY	500		// below: a Pearl PEARL_IN_4 times in 4, else a Ruby
+#define DTU_GEAR_GEM_XP_DIAMOND	2000	// below: a Ruby RUBY_IN_3 times in 3, else a Diamond; above: a Diamond, a Star Sapphire 1 in SAPPHIRE_ONE_IN
+#define DTU_GEAR_PEARL_IN_4		3
+#define DTU_GEAR_RUBY_IN_3		2
+#define DTU_GEAR_SAPPHIRE_ONE_IN	10
+
 #define DTU_GEAR_ARCHER_HIT		1
 #define DTU_GEAR_ARCHER_DAMAGE	2
 #define DTU_GEAR_REGEN_TIME		60		// seconds for one hit point
