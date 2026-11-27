@@ -65,8 +65,8 @@
 #define DR_FLOOR			i2f(-110)
 #define DR_CENTER_X		0
 #define DR_CENTER_Z		fl2f(-102.5)
-#define DR_LEASH_X		i2f(18)		// her position stays this near to the middle
-#define DR_LEASH_Z		i2f(24)
+#define DR_LEASH_X		i2f(8)		// her position stays this near to the middle
+#define DR_LEASH_Z		i2f(14)
 
 #define DR_LEVER_TRIGGER	20
 #define DR_LEVER_TRAP		12			// opens the ceiling hatch (segment 445 side 1)
@@ -140,10 +140,11 @@ static const struct { short type, id, count, x, z; } Dr_treasure[] = {
 #define DR_BREATH_BONUS	6
 
 // The model
-#define DR_SCALE			0x6666		// 0.4
-#define DR_CYL_RADIUS	i2f(21)		// her collision cylinder: from the hips to the tip of the snout
-#define DR_CYL_HALF		i2f(12)		// from the floor to 24 above it
-#define DR_CYL_AHEAD		i2f(11)		// its axis and her position, in front of the origin of the model
+#define DR_SCALE			0x8CCD		// 0.55
+#define DR_S(x)			fixmul(fl2f(x),DR_SCALE)	// a length of the model file at her size
+#define DR_CYL_RADIUS	DR_S(53.5)	// her collision cylinder: from the hips to the tip of the snout (29.4)
+#define DR_CYL_HALF		DR_S(30.0)	// from the floor to 33 above it
+#define DR_CYL_AHEAD		DR_S(27.5)	// its axis and her position, in front of the origin of the model (15.1)
 
 // The frames of the model (Dtu_anim_first: ATTACK 44 to 59, the swipe of
 // the right front claw, hit frame 56; ATTACK2 60 to 75, she rears and
@@ -166,19 +167,22 @@ static const struct { short type, id, count, x, z; } Dr_treasure[] = {
 #define DR_TURN_PEACE	0x1000		// fixang in a second: 22.5 degrees
 #define DR_TURN_FIGHT	0x5000		// 112.5 degrees
 #define DR_TURN_AIM		0x3000		// 67.5 degrees
-#define DR_WALK_SPEED	i2f(12)
+#define DR_WALK_SPEED	DR_S(30.0)	// 16.5 in a second
 
 // The reach of an attack, from the weapon box of the hit frame to the
 // axis of the body of the player: the radius of the box, the radius of the
 // player and this margin
-#define DR_CLAW_MARGIN	i2f(20)
-#define DR_BITE_MARGIN	i2f(10)
-#define DR_BITE_RADIUS	i2f(6)
+#define DR_CLAW_MARGIN	DR_S(50.0)
+#define DR_BITE_MARGIN	DR_S(25.0)
+#define DR_BITE_RADIUS	DR_S(15.0)
 
 // The breath: a cone from her jaws
 #define DR_BREATH_RANGE	i2f(120)
 #define DR_BREATH_TAN	0x5D00		// the half angle, 20 degrees (tan 0.364)
 #define DR_BREATH_MIN	i2f(8)
+#define DR_FLAMES			240		// flames of the stream in a second
+#define DR_FLAME_VCLIP	11			// a flame of the stream (the fire burst of a fire hit)
+#define DR_BALL_EACH		8			// one more flame in this many is a fire ball
 
 #define DM_REST		0		// peaceful
 #define DM_IDLE		1		// hostile: turns, walks, chooses
@@ -928,34 +932,55 @@ static void breath_hit(object *obj, object *p)
 		HUD_init_message(LT("Your protection from fire takes the flames."));
 }
 
-// The flames of the stream: explosions of the vclip of Burning Hands
-// (spell 4, weapon_vclip) between her jaws and the end of the cone
-static int fire_vclip(void)
+// The flames of the stream: explosions between her jaws and the end of
+// the cone. Most are the fire burst of a fire hit (vclip 11, the
+// monster_hit_vclip of Burning Hands: a bright flame with a ragged,
+// transparent rim); one in DR_BALL_EACH is the fire ball of the Fireball
+// missile (spell 16, weapon_vclip 14). The weapon_vclip of Burning Hands
+// (108) is not a sprite: it is the texture of the model burn.pof and fills
+// its whole square, so a blob of it is a square of fire (the first
+// version of the breath).
+static int vclip_ok(int v)
 {
-	item_info *it = item_table_entry(OBJ_SPELL,4);
-	int v = it ? it->vclip_num : -1;
-
-	if (v < 0 || v >= VCLIP_MAXNUM || Vclip[v].num_frames <= 0 || Vclip[v].play_time <= 0) {
-		it = item_table_entry(OBJ_SPELL,16);		// Fireball
-		v = it ? it->vclip_num : -1;
-	}
-	if (v < 0 || v >= VCLIP_MAXNUM || Vclip[v].num_frames <= 0 || Vclip[v].play_time <= 0)
-		return -1;
-	return v;
+	return v >= 0 && v < VCLIP_MAXNUM && Vclip[v].num_frames > 0 && Vclip[v].play_time > 0 && !(Vclip[v].flags & VF_ROD);
 }
 
-static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r, fix size)
+static int ball_vclip(void)
+{
+	item_info *it = item_table_entry(OBJ_SPELL,16);
+	int v = it ? it->vclip_num : -1;
+
+	if (!vclip_ok(v)) {
+		it = item_table_entry(OBJ_SPELL,37);		// Melf's Minute Meteors, the weapon of her table line
+		v = it ? it->vclip_num : -1;
+	}
+	return vclip_ok(v) ? v : -1;
+}
+
+static int fire_vclip(void)
+{
+	int t;
+
+	// -dragonvclip N (test): another vclip
+	if ((t = FindArg("-dragonvclip")) != 0 && t + 1 < Num_args)
+		return atoi(Args[t + 1]);
+	return vclip_ok(DR_FLAME_VCLIP) ? DR_FLAME_VCLIP : ball_vclip();
+}
+
+// One flame at r along dir from a point, spread sideways by spread. A
+// flame that a wall stops burns in front of the wall.
+static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r, fix spread, fix size, int v)
 {
 	vms_vector p, j;
 	fvi_query fq;
 	fvi_info hit;
-	int v = fire_vclip();
+	int fate;
 
-	if (v < 0 || seg < 0)
+	if (!vclip_ok(v) || seg < 0)
 		return;
 	make_random_vector(&j);
 	vm_vec_scale_add(&p,from,dir,r);
-	vm_vec_scale_add2(&p,&j,fixmul(r,DR_BREATH_TAN) * 2 / 3);
+	vm_vec_scale_add2(&p,&j,spread);
 	fq.p0 = from;
 	fq.p1 = &p;
 	fq.startseg = seg;
@@ -963,9 +988,30 @@ static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r
 	fq.thisobjnum = obj-Objects;
 	fq.ignore_obj_list = NULL;
 	fq.flags = 0;
-	if (find_vector_intersection(&fq,&hit) != HIT_NONE || hit.hit_seg < 0)
+	fate = find_vector_intersection(&fq,&hit);
+	if (hit.hit_seg < 0)
 		return;
+	if (fate != HIT_NONE) {
+		vms_vector back;
+
+		vm_vec_sub(&back,from,&hit.hit_pnt);
+		if (vm_vec_normalize(&back) < F1_0)
+			return;
+		vm_vec_scale_add(&p,&hit.hit_pnt,&back,size / 2 + F1_0);
+		if ((hit.hit_seg = find_point_seg(&p,hit.hit_seg)) < 0)
+			return;
+	}
 	object_create_explosion(hit.hit_seg,&p,size,v);
+}
+
+// The size of a flame where the cone is wide across: small at her jaws,
+// at most 6.0, so that the stream is many flames that overlap and not a
+// few large pictures
+static fix flame_size(fix wide)
+{
+	fix size = i2f(3)/2 + wide / 5;
+
+	return size > i2f(6) ? i2f(6) : size;
 }
 
 static int spell_sound(int spell, char *key)
@@ -1171,7 +1217,8 @@ static void dragon_ai(object *obj)
 	}
 
 	if (!hostile) {
-		// She rests (the rest pose of the model, dtu_dragon_draw_frame) and
+		// She stands still (the first frame of STAND, her head at the eyes
+		// of the player) and
 		// follows the player with a slow turn.
 		if (D.mode != DM_REST)
 			set_mode(obj,DM_REST);
@@ -1265,7 +1312,7 @@ static void dragon_ai(object *obj)
 
 				D.puff_acc = 0;
 				mouth_point(obj,frame,&m);
-				flame(obj,&m,find_point_seg(&m,obj->segnum),&up,F1_0,i2f(1) + t);
+				flame(obj,&m,find_point_seg(&m,obj->segnum),&up,F1_0,F1_0,i2f(1) + t,fire_vclip());
 			}
 			if (t >= DR_WIND_TIME) {
 				mouth_point(obj,DR_REAR_TOP,&D.mouth);
@@ -1287,12 +1334,18 @@ static void dragon_ai(object *obj)
 
 			set_frame(obj,DAS_ATTACK2,DR_REAR_TOP);
 			D.puff_acc += FrameTime;
-			while (D.puff_acc >= F1_0/40) {
+			// The stream: DR_FLAMES small flames in a second, each at a random
+			// place of the cone up to its front. A flame is as large as half
+			// of the cone there, so the flames overlap from her jaws to the
+			// front.
+			while (D.puff_acc >= F1_0/DR_FLAMES) {
 				fix r = fixmul(front,(rand() & 0x7fff) * 2);
+				fix wide = fixmul(r,DR_BREATH_TAN);
 
-				D.puff_acc -= F1_0/40;
-				if (r < DR_BREATH_MIN/2) r = DR_BREATH_MIN/2;
-				flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,i2f(2) + r / 16);
+				D.puff_acc -= F1_0/DR_FLAMES;
+				flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,wide * 6 / 10,flame_size(wide),fire_vclip());
+				if (rand() % DR_BALL_EACH == 0)
+					flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,wide * 6 / 10,flame_size(wide) * 2 / 3,ball_vclip());
 			}
 			// the fire reaches the player one time for a breath
 			if (!D.hit_done && p && D.mouth_seg >= 0 && in_breath(obj,p)) {
@@ -1396,8 +1449,11 @@ int dtu_dragon_no_physics(object *obj)
 
 int dtu_dragon_draw_frame(object *obj, int frame)
 {
-	if (frame >= 0 && dtu_dragon_is(obj) && Dr_type >= 0 && dragon_alive(obj) && !is_hostile(obj))
-		return -1;
+	// At peace she stands still in the first frame of STAND (dragon_ai):
+	// her head is at the height of the eyes of the player. The rest pose of
+	// the model (frame -1) has the head 27 above the floor, over the view of
+	// a player who stands in front of her.
+	(void) obj;
 	return frame;
 }
 
@@ -1409,8 +1465,8 @@ int dtu_dragon_drop_place(object *obj, vms_vector *pos, int *seg)
 	if (!dtu_dragon_is(obj))
 		return 0;
 	p = obj->pos;
-	p.x += fixmul(obj->orient.fvec.x,i2f(30));
-	p.z += fixmul(obj->orient.fvec.z,i2f(30));
+	p.x += fixmul(obj->orient.fvec.x,DR_S(100.0));
+	p.z += fixmul(obj->orient.fvec.z,DR_S(100.0));
 	p.y = DR_FLOOR + i2f(5);
 	if ((s = find_point_seg(&p,obj->segnum)) < 0) {
 		p = obj->pos;

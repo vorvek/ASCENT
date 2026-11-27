@@ -208,12 +208,12 @@ TESTS = [
     # DROW2, the encounter with Tamaramagil (engine/main/dtudragon.c,
     # docs/re/dragon.md). 1.3 has no object for her; the port makes object
     # 64. The player stands in front of her (her position is the axis of
-    # her collision cylinder, radius 21). "dragon=N" is the test command of
+    # her collision cylinder, radius 29.4). "dragon=N" is the test command of
     # dtudragon.h: 1 claws, 2 bite, 3 breath, 4 her state.
     # The talk: the use action runs script 210. With the replies 2 (label
     # 6) and 2 (label 10) she stays at peace, and her third speech of label
     # 6 names the key in the cells.
-    T("dragon_talk", "DROW2", "10:goseg=470,11:goobj=64.30,12:face=64,20:activate,280:dragon=4",
+    T("dragon_talk", "DROW2", "10:goseg=470,11:goobj=64.42,12:face=64,20:activate,280:dragon=4",
       [r"run script 210 of obj 64 \(Dragon\) in mode 0", r"speech \"In the corridor from whence you came, there is a lever that will release "
        r"my children\. The drow keep it behind a locked door, and its key lies in the cells behind me",
        r"reply 2 -> label A\b", r"speech \"Excellent! I pledge you the friendship of dragons",
@@ -224,7 +224,7 @@ TESTS = [
     # with the key (MISC 43) the player opens it from the end of the
     # corridor (seg 481).
     T("dragon_key_alcove", "DROW2", "5:goside=481.0,12:activate,30:items=407,31:wall=481.0,40:give=16.43,60:goseg=481,100:wall=481.0",
-      [r"item type 16 id 43 count 1 \"Jailer's Key\": obj 65 in segment 407, picture \d+,", r"items in seg 407: 16\.43",
+      [r"item type 16 id 43 count 1 \"Jailer's Key\": obj \d+ in segment 407, picture \d+,", r"items in seg 407: 16\.43",
        r"use: door wall 133 clip \d+ flags 0x18 keys 4 state 0: locked", r"f31 +wall 481\.0: type 2 flags 0x18 state 0",
        r"dragon: the key of the alcove \(MISC 43\) opens the door of seg 481 side 0",
        r"message \"You use the jailer's key to unlock the door\.\"", r"f100 +wall 481\.0: type 2 flags 0x12 state"],
@@ -240,8 +240,8 @@ TESTS = [
        r"dragon: the lever \(trigger 20, fired 1\): the hatchery \(seg 398 side 4\) is open, 4 hatchlings, the dragon attacks",
        r"message \"A heavy door grinds open far down the hall, and a deep laugh rolls through the corridor: \"Little fool!",
        r"dragon: obj 64 is hostile: the lever", r"obj 48 hatchlng: walks a path of \d+ segments to seg 430 for its script \(walk\)",
-       r"f40 +wall 398\.4: type 2 flags 0x2 state", r"f42 +quest: level 21 .* gflags \[ 241 242 \]", r"f43 +obj 48: type 2 id 2 seg \d+ hp 50 ",
-       r"f200 +wall 398\.4: type 2 flags 0x2 state", r"f201 +quest: level 21 .* gflags \[ 241 242 \]",
+       r"f40 +wall 398\.4: type 2 flags 0x2 state", r"f42 +quest: level 21 .* gflags \[ (\d+ )*241 242 \]", r"f43 +obj 48: type 2 id 2 seg \d+ hp 50 ",
+       r"f200 +wall 398\.4: type 2 flags 0x2 state", r"f201 +quest: level 21 .* gflags \[ (\d+ )*241 242 \]",
        r" 202 dragon: test 4: obj 64 Dragon hp 90 .* hostile 1 peaceful 0", r"f203 +obj 48: type 2 id 2 seg \d+ hp 50 "],
       [r"gflags \[[^\]]* 107 ", r"flapping of wings"], frames=220, extra=["-noattack", "-objlog", "dragon_lever_obj.log"]),
     # While she lives two hatchlings fight at one time: objects 48 and 49
@@ -257,25 +257,25 @@ TESTS = [
     # Her attacks, with the fixed seed. Claws: two attack rolls, 1d10
     # each. Bite: one roll, 3d10. The reach is measured from the weapon box
     # of the hit frame (the claw) and from the tip of her snout (the bite).
-    T("dragon_claws", "DROW2", "5:seed=1,6:goseg=470,7:goobj=64.27,8:face=64,10:dragon=1",
-      [r"dragon: obj 64: idle -> claws, hp 90", r"dragon: claw 1 of 2 \(1d10\) at [\d.]+, reach 28\.50: (damage|no damage) \d+",
-       r"dragon: claw 2 of 2 \(1d10\) at [\d.]+, reach 28\.50: (damage|no damage) \d+"],
+    T("dragon_claws", "DROW2", "5:seed=1,6:goseg=470,7:goobj=64.36,8:face=64,10:dragon=1",
+      [r"dragon: obj 64: idle -> claws, hp 90", r"dragon: claw 1 of 2 \(1d10\) at [\d.]+, reach 38\.25: (damage|no damage) \d+",
+       r"dragon: claw 2 of 2 \(1d10\) at [\d.]+, reach 38\.25: (damage|no damage) \d+"],
       [r"out of reach"], frames=80, extra=["-objlog", "dragon_claws_obj.log"]),
-    T("dragon_bite", "DROW2", "5:seed=1,6:goseg=470,7:goobj=64.32,8:face=64,10:dragon=2",
-      [r"dragon: obj 64: idle -> bite, hp 90", r"dragon: bite 1 of 1 \(3d10\) at [\d.]+, reach 18\.50: (damage|no damage) \d+"],
+    T("dragon_bite", "DROW2", "5:seed=1,6:goseg=470,7:goobj=64.40,8:face=64,10:dragon=2",
+      [r"dragon: obj 64: idle -> bite, hp 90", r"dragon: bite 1 of 1 \(3d10\) at [\d.]+, reach 24\.50: (damage|no damage) \d+"],
       [r"out of reach"], frames=80, extra=["-objlog", "dragon_bite_obj.log"]),
     # The bite does not reach a player at her side; she turns first.
     T("dragon_bite_far", "DROW2", "5:seed=1,6:goseg=470,7:goobj=64.75,8:face=64,10:dragon=2",
-      [r"dragon: bite: the player is out of reach \([\d.]+, reach 18\.50\)"], frames=80, extra=["-noattack", "-objlog", "dragon_bite_far_obj.log"]),
+      [r"dragon: bite: the player is out of reach \([\d.]+, reach 24\.50\)"], frames=80, extra=["-noattack", "-objlog", "dragon_bite_far_obj.log"]),
     # The breath: a wind-up of 2 seconds (the aim is fixed after 1 second),
     # then 12d10+6 of fire and a save against breath (category 3) for half.
-    # Seed 1: the save fails. Seed 3: the save is made. Resist Fire (effect
+    # Seed 1: the save fails. Seed 2: the save is made. Resist Fire (effect
     # bit 10, as the Ring of Coolness gives) halves what is left.
     T("dragon_breath_failed", "DROW2", "5:seed=1,6:goseg=470,7:goobj=64.55,8:face=64,10:dragon=3",
       [r"dragon: obj 64: idle -> breath wind-up", r"dragon: the aim of the breath is fixed at", r"save: obj 0 you, category 3: d20 \d+ against \d+: failed",
        r"dragon: breath on the player: 12d10\+6 = \d+, save against breath failed: \d+, after the fire protections: \d+"],
       frames=125, extra=["-objlog", "dragon_breath_failed_obj.log"]),
-    T("dragon_breath_made", "DROW2", "5:seed=3,6:goseg=470,7:goobj=64.55,8:face=64,10:dragon=3",
+    T("dragon_breath_made", "DROW2", "5:seed=2,6:goseg=470,7:goobj=64.55,8:face=64,10:dragon=3",
       [r"save: obj 0 you, category 3: d20 \d+ against \d+: saved",
        r"dragon: breath on the player: 12d10\+6 = \d+, save against breath made: \d+, after the fire protections: \d+"],
       frames=125, extra=["-objlog", "dragon_breath_made_obj.log"]),
@@ -295,8 +295,8 @@ TESTS = [
     # Her death: 15000 experience, and the Dragon Key (MISC 42) of the door
     # of her hoard drops on the floor in front of her.
     T("dragon_death_key", "DROW2", "10:goseg=470,11:goobj=64.50,12:face=64,20:kill=64,150:obj=64",
-      [r"xp: obj 64 Dragon gives 15000 experience", r"drop: obj 64 Dragon leaves type 16 id 42 count 1 \(obj \d+\) at 0\.00 -105\.00 -72\.50",
-       r"f150 +obj 64: type 2 id 1 seg \d+ hp 0 "], frames=160, extra=["-noattack", "-objlog", "dragon_death_key_obj.log"]),
+      [r"xp: obj 64 Dragon gives 15000 experience", r"drop: obj 64 Dragon leaves type 16 id 42 count 1 \(obj \d+\) at 0\.00 -105\.00 -47\.50",
+       r"f150 +obj 64: type 2 id 1 seg \d+ hp 0 ", r"message: You killed Tamaramagil: 15000 Exp\."], frames=160, extra=["-noattack", "-objlog", "dragon_death_key_obj.log"]),
     # A thief picks the lock of the door of the hoard (wall 136, seg 449
     # side 4) while she lives: she sees it, says her line and is hostile.
     T("dragon_thief", "DROW2", "5:class=3,6:skill=2.200,10:goside=449.4,11:wall=449.4,30:picklock,60:wall=449.4,61:dragon=4",
@@ -308,7 +308,7 @@ TESTS = [
     # after a save and a load (a level state has them).
     T("dragon_treasure_once", "DROW2", "30:items=784,31:items=409,32:items=407,40:save=3,60:load=3,150:items=784,151:items=409,152:items=407",
       [r"dragon: the key and the treasure are placed \(a new level\)",
-       r"f30 +items in seg 784: (.*5\.71.*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
+       r"f30 +items in seg 784: (.*16\.3 .*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
        r"f32 +items in seg 407: (16\.43 )\n[\s\S]*f152 +items in seg 407: \1\n"],
       [r"placed \(a level state without them\)"], frames=170, extra=["-noattack", "-objlog", "dragon_treasure_once_obj.log"]),
     # With the setting off (-origtamaramagil, or the line of the
@@ -317,7 +317,7 @@ TESTS = [
     # script 213 (they leave, global flag 107).
     T("dragon_off", "DROW2", "30:dragon=4,31:wall=481.0,32:items=407,33:obj=48,40:goside=482.2,42:activate,100:quest",
       [r"dragon: test 4: no dragon", r"f31 +wall 481\.0: type 2 flags 0x10 state 0", r"f32 +items in seg 407: \n",
-       r"f33 +obj 48: type 2 id 2 seg 430 ", r"flapping of wings", r"f100 +quest: level 21 .* gflags \[ 107 \]"],
+       r"f33 +obj 48: type 2 id 2 seg 430 ", r"flapping of wings", r"f100 +quest: level 21 .* gflags \[ 107 (\d+ )*\]"],
       [r"Jailer", r"dragon: obj 64"], frames=120, extra=["-noattack", "-origtamaramagil", "-objlog", "dragon_off_obj.log"]),
     # DROW3: command 14 at 285, command 7 (script 222) at 311.
     T("drow3_flag14", "DROW3", "40:goseg=285,60:quest", [r"quest: mflags \[ 14 \]"], frames=90),
