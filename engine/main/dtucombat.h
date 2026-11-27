@@ -130,6 +130,7 @@ int dtu_combat_priest_turn_bits(object *obj);
 // or button is down (Left Ctrl, Right Ctrl, the -testmove action
 // "attack"). The attack starts on the key down (0x2FB10).
 void dtu_combat_attack_key(int held);
+extern int Dtu_combat_test_key;		// ASCENT: test: the attack key is down (autofight of -chartest)
 
 // ASCENT: an attack key or button that is down now does not start an
 // attack until it is released (dtudlg.c: the click that ends a

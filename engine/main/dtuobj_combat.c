@@ -281,6 +281,7 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 			b = tbl_int(Weapon_item_info[weapon].record,"to_hit_bonus",0);
 		else
 			b = Monster_ext[attacker->id].to_hit_bonus;
+		b += dtu_spell_hammer_bonus(attacker,weapon);		// ASCENT: Spiritual Hammer (dtuspell.h)
 		roll += b;
 		dtu_xp_hit_mod(b,LN("weapon"));
 		roll += str_bonus(Monster_info[attacker->id].str);
@@ -456,7 +457,7 @@ int damage_dice(object *attacker,object *target,int weapon)
 	if (weapon >= 0 && weapon < N_weapon_types && Weapon_item_info[weapon].record >= 0) {
 		n = weapon_int(weapon,"#damage_dice",1);
 		sides = weapon_int(weapon,"damage_dice",6);
-		bonus = weapon_int(weapon,"damage_bonus",0);
+		bonus = weapon_int(weapon,"damage_bonus",0) + dtu_spell_hammer_bonus(attacker,weapon);		// ASCENT: Spiritual Hammer
 	}
 	else if (attacker && attacker->type == OBJ_ROBOT) {
 		n = Monster_ext[attacker->id].n_damage_dice;
@@ -1356,7 +1357,7 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 			PALETTE_FLASH_ADD(245,126,10);
 			HUD_init_message("You are protected by StoneSkin Spell.");
 			player->dtu.m_80--;
-			dtu_obj_log("attack: the stone skin of the player takes the hit of %s (roll %d), %d left",dtu_object_name(attacker),roll,player->dtu.m_80);
+			dtu_obj_log("attack: the stone skin of the player takes the hit of %s (roll %d, result %d), %d left",dtu_object_name(attacker),roll,hit,player->dtu.m_80);
 			return 0;
 		}
 		// 0x2A45F: a hit stops the cast of the player (0x9305D)

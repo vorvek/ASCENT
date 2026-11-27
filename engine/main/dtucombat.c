@@ -172,6 +172,10 @@ static int hand_weapon(void)
 {
 	dtu_inv_item *e = hand_entry();
 
+	// ASCENT: the conjured hammer of Spiritual Hammer takes the place of
+	// the item in the hand (dtuspell.h)
+	if (dtu_spell_hammer_held())
+		return dtu_spell_hammer_weapon();
 	if (e && e->type == OBJ_WEAPON && e->id < N_weapon_types)
 		return e->id;
 	return -1;
@@ -440,7 +444,7 @@ static void view_animation(void)
 	// 0x44653 to 0x446DF: a thrown weapon that is used up: the empty hand
 	if (is_attack_state(s) && is_thrown(hand_weapon())) {
 		dtu_inv_item *e = hand_entry();
-		if (e && e->count == 0)
+		if (e && e->count == 0 && !dtu_spell_hammer_held())		// ASCENT: the conjured hammer has no count
 			autoarm();
 	}
 
@@ -1102,7 +1106,7 @@ static int fire_missile_weapon(int w)
 		return 0;
 	Missile_last = GameTime;		// ASCENT: Dtu_fix_missile_rate
 	// 0xB7084: one item of the stack in the hand
-	if (e && e->count > 0)
+	if (e && e->count > 0 && !dtu_spell_hammer_held())		// ASCENT: the conjured hammer is in the hand again
 		dtu_char_use_up(Dtu_char.current.n);
 	View_goal = DAS_FIDGET;
 	return 1;
@@ -1657,9 +1661,13 @@ static void combat_init(void)
 	}
 }
 
+int Dtu_combat_test_key = 0;		// ASCENT: test (autofight of -chartest): the attack key is down
+
 void dtu_combat_attack_key(int held)
 {
 	combat_init();
+	if (Dtu_combat_test_key)
+		held = 1;
 	Key_held = held;
 	// 0x2FCBE: a request on the key down only
 	if (held && !Key_last)
@@ -1684,7 +1692,7 @@ int dtu_combat_player_attack(void)
 		// held (1.3 has no test here), but the Potion of Freedom
 		if (dtu_hold_refuse_item(e && Dtu_spell_current < 0 ? e->type : -1, e ? e->id : -1))
 			return 0;
-		if (e && e->type == OBJ_MISC && Dtu_spell_current < 0) {
+		if (e && e->type == OBJ_MISC && Dtu_spell_current < 0 && !dtu_spell_hammer_held()) {
 			dtu_char_use_current();
 			return 1;
 		}
@@ -2321,6 +2329,8 @@ void dtu_combat_draw_view(void)
 	}
 
 	light = compute_object_light(obj,NULL);
+	// ASCENT: the conjured hammer in the hand has the blue of the tint 0x40
+	Polyobj_hidden_tint = dtu_spell_hammer_held() ? 0x40 : 0;
 
 	// ASCENT: animation interpolation (Dtu_anim_interp, polyobj.h). The
 	// frame of the swing rules (View_frame) stays. view_animation() counts
@@ -2335,10 +2345,12 @@ void dtu_combat_draw_view(void)
 			est = st / (end - first);
 		frac = polyobj_anim_track_update(&track,View_model+1,View_state,View_frame,first,end,est,1,GameTime,&next);
 		draw_polygon_model_frame_lerp(&pos,&orient,View_model,View_frame,next,frac,show_hidden,light,glow,NULL);
+		Polyobj_hidden_tint = 0;
 		return;
 	}
 
 	draw_polygon_model_frame(&pos,&orient,View_model,View_frame < po->n_frames ? View_frame : -1,show_hidden,light,glow,NULL);
+	Polyobj_hidden_tint = 0;
 }
 
 //------------------------------------------------------------------------

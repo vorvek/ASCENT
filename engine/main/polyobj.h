@@ -245,6 +245,9 @@ void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,i
 // the model (boxes, centers, radii, gun points) itself. -1: no model.
 extern int Polyobj_scale_model;
 extern fix Polyobj_scale;
+// ASCENT: the tint of the submodels "the missile in the hand" of the next
+// model (polyobj.c)
+extern int Polyobj_hidden_tint;
 
 // ASCENT: animation interpolation (Dtu_anim_interp, dtuopts.h). The same
 // draw with the joint angles and the body center between the frames

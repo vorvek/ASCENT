@@ -17,6 +17,7 @@
 #define CS_CLOSE		0x02		// only on a player in the reach of the spell at the caster (Burning Hands)
 #define CS_HEAL		0x04		// on the caster itself, below half of its hit points
 #define CS_FREE		0x08		// no spell points: a power of the creature with a recharge (Mind Blast)
+#define CS_SELF		0x10		// on the caster itself, when it does not have it (Spiritual Hammer: then it throws the hammer)
 
 typedef struct {
 	unsigned char	spell;			// the spell line
@@ -40,12 +41,12 @@ static const caster_spell Caster_lists[CL_COUNT][CASTER_LIST_MAX] = {
 	  { 33, 0, 40, 0 }, { 4, 0, 90, CS_CLOSE }, { 36, 0, 30, 0 }, { 22, 0, 25, 0 }, { 32, 9, 30, 0 }, { 16, 9, 30, 0 }, { 255 } },
 	// CL_DROW_PRIEST: the drow priestesses and priests
 	{ { 53, 0, 0, CS_BUFF }, { 38, 0, 0, CS_BUFF },
-	  { 58, 0, 40, 0 }, { 52, 0, 25, 0 }, { 34, 0, 30, 0 }, { 255 } },
+	  { 58, 0, 80, CS_SELF }, { 52, 0, 25, 0 }, { 34, 0, 30, 0 }, { 255 } },
 	// CL_DROW_HIGH_PRIEST: the priestesses of about 1000 experience points
 	// and more (rffk8b 975, rffk9 1400, and the two of the inn): also Flame
 	// Strike
 	{ { 53, 0, 0, CS_BUFF }, { 38, 0, 0, CS_BUFF },
-	  { 58, 0, 35, 0 }, { 52, 0, 25, 0 }, { 34, 0, 20, 0 }, { 59, 8, 35, 0 }, { 255 } },
+	  { 58, 0, 80, CS_SELF }, { 52, 0, 25, 0 }, { 34, 0, 20, 0 }, { 59, 8, 35, 0 }, { 255 } },
 	// CL_LICH
 	{ { 49, 0, 0, CS_BUFF }, { 45, 0, 0, CS_BUFF }, { 57, 0, 0, CS_BUFF }, { 56, 0, 0, CS_BUFF },
 	  { 16, 0, 30, 0 }, { 32, 0, 30, 0 }, { 22, 0, 25, 0 }, { 33, 0, 30, 0 }, { 47, 0, 15, 0 }, { 255 } },
@@ -71,7 +72,7 @@ static const caster_spell Caster_lists[CL_COUNT][CASTER_LIST_MAX] = {
 	{ { 47, 1, 25, 0 }, { 14, 1, 20, 0 }, { 22, 1, 25, 0 }, { 33, 1, 35, 0 }, { 32, 1, 20, 0 }, { 255 } },
 	// CL_MAGE_PRIEST: Thashasa (a mage and a priestess)
 	{ { 45, 0, 0, CS_BUFF }, { 56, 0, 0, CS_BUFF }, { 53, 0, 0, CS_BUFF },
-	  { 33, 0, 35, 0 }, { 36, 0, 25, 0 }, { 22, 0, 25, 0 }, { 58, 0, 25, 0 }, { 32, 0, 25, 0 }, { 10, 0, 60, CS_HEAL }, { 255 } },
+	  { 33, 0, 35, 0 }, { 36, 0, 25, 0 }, { 22, 0, 25, 0 }, { 58, 0, 60, CS_SELF }, { 32, 0, 25, 0 }, { 10, 0, 60, CS_HEAL }, { 255 } },
 	// CL_AVATAR: the avatar of Lolth. It fights in melee.
 	{ { 49, 0, 0, CS_BUFF }, { 57, 0, 0, CS_BUFF }, { 53, 0, 0, CS_BUFF },
 	  { 52, 0, 25, 0 }, { 59, 0, 35, 0 }, { 32, 0, 30, 0 }, { 47, 0, 15, 0 }, { 255 } },
@@ -117,4 +118,19 @@ static const struct { const char *name; unsigned char list, level, flags; } Cast
 	{ "avatar", CL_AVATAR, 16, 0 },
 	{ "beholder", CL_BEHOLDER, 8, CF_MOVE13 }, { "xabash", CL_BEHOLDER, 12, CF_MOVE13 },
 	{ "flayer", CL_ILLITHID, 8, CF_POWER|CF_MELEE },
+};
+
+// The spells that a type casts at a lower level than its caster level. The
+// lich of CLAN3 (Lich3, missions 12 and 13) is a boss of the middle of the
+// game (a decision of the user of 2026-11-27): a character of level 6 has
+// about 60 hit points, and Lightning Bolt at level 12 (10d6, 35) kills it
+// with two casts. His damage spells have the dice of level 5 (Fireball and
+// Lightning Bolt 5d6, Magic Missile 3 missiles). The other spells keep
+// level 12: the protections of his contingency (Stone Skin 1d4 + 6 hits,
+// Mirror Image 1d4 + 4 images, the Minor Globe), which Dispel Magic or the
+// phylactery takes away, the holds and Slow. lich1 and lich2 (no level
+// places them before the end of the game) keep level 12 for all.
+// tools/caster_balance.py lich measures the fight.
+static const struct { const char *name; unsigned char spell, level; } Caster_limits[] = {
+	{ "lich3", 16, 5 }, { "lich3", 32, 5 }, { "lich3", 33, 5 },
 };

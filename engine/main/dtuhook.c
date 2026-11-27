@@ -38,6 +38,7 @@
 #include "dtuthief.h"
 #include "dtudragon.h"
 #include "dtuobj.h"
+#include "dtuspell.h"	// ASCENT: dtu_spell_hammer_weapon()
 #include "dtutrig.h"
 #include "dtuscript.h"
 #include "kconfig.h"		// ASCENT: Dtu_fix_climb_key
@@ -777,7 +778,15 @@ void dtu_hook_trap_spawn_object(int item_num, int segnum, int side, vms_vector *
 			seg = segnum;
 	}
 	dtu_obj_log("trap: spell %d '%s' from seg %d side %d",item_num,Spell_info[item_num].name,segnum,side);
-	dtu_create_missile(&dir,&p,seg,-1,N_weapon_types-1,item_num,1);
+	{
+		// ASCENT: the last line of the table, not the Spiritual Hammer line
+		// that the port adds after it (dtuspell.h)
+		int last = N_weapon_types-1;
+
+		if (last > 0 && last == dtu_spell_hammer_weapon())
+			last--;
+		dtu_create_missile(&dir,&p,seg,-1,last,item_num,1);
+	}
 }
 
 // 0x94D61. With an argument below 4 the executable calls a function that

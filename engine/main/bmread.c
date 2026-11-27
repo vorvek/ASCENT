@@ -985,6 +985,14 @@ int bm_load_level_tables( char * level_name, char * player_name )
 		}
 	}
 	dtu_lich_tables( level_name, N_dressing_types, bm_parse_line );	// ASCENT: the phylactery of the lich of CLAN3 (dtulich.h)
+	// ASCENT: the weapon of Spiritual Hammer (dtuspell.h), the last line
+	if (N_weapon_types > 0 && N_weapon_types < MAX_WEAPON_TYPES) {
+		char buf[1024];
+
+		strncpy(buf, dtu_spell_port_weapon_line(), sizeof(buf) - 1);
+		buf[sizeof(buf) - 1] = 0;
+		bm_parse_line(buf);
+	}
 	bm_port_priestess();		// ASCENT: Dtu_caster_ai: the drow priestesses with a weapon
 	dtu_spell_table_read();		// ASCENT: the writes of the casts into the spell records end (D-104, D-105)
 

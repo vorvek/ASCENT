@@ -322,9 +322,23 @@ int dtu_spell_priest_check(void);
 //    level 1 to 3 acts on the one inside, from any source (a creature, the
 //    player, a wand, a scroll, a trap, an area). The spells that the one
 //    inside casts on itself work, and Dispel Magic ends the globe.
-// 58 Spiritual Hammer (priest 2): a hammer of force flies to the target: an
-//    attack roll with the THAC0 of the caster, 1d4 + 1 damage, and +1 to
-//    hit and to the damage for each 6 levels (+3 at most). No save.
+// 58 Spiritual Hammer (priest 2), a decision of the user of 2026-11-27: a
+//    conjured weapon, as in Baldur's Gate. The cast puts a hammer of force
+//    into the hand of the caster for 1 minute a caster level (AD&D 2e: 3
+//    rounds + 1 a level; the fights are longer here). It is a throwing
+//    hammer (the line "Spiritual Hammer" that the port adds to the weapon
+//    table: the Throwing Hammer line with the word magic): the normal
+//    attack throws it, 1d4 + 1, at the rate of the Throwing Hammer, with
+//    no count, and it is in the hand again for the next throw. It is a
+//    magic weapon (it hurts a creature with weapon_resistant, 0x29D9D) with
+//    +1 to hit and to the damage for each 6 caster levels, +3 at most. The
+//    player: the hammer takes the place of the item in the hand, which
+//    stays in the inventory and is in the hand again when the spell ends:
+//    at its time, at Dispel Magic, a rest, a level change, a load (it is
+//    not in a save game), a fumble that drops the weapon, and when the
+//    player takes another item or a spell into the hand. It is no item: it
+//    cannot be dropped, sold or put into a hot key box. A creature with the
+//    spell throws it at the player between its casts (dtu_caster_throw).
 // 59 Flame Strike (priest 5, creatures only): a column of fire on the
 //    target, 6d8 fire damage, a save for half. Resist Fire, Protection From
 //    Fire and the fire resistance of items apply (the fire dice of 0x91BC3).
@@ -355,6 +369,21 @@ int dtu_spell_globe(object *obj);
 // An attack would hit target: 1 if an image of Mirror Image takes it (the
 // image is gone)
 int dtu_spell_mirror_takes(object *target, object *attacker);
+// Spiritual Hammer (58). The weapon type of the line "Spiritual Hammer" of
+// the port, -1 if the table has none; its line for the table reader; 1 if
+// the object has the spell; 1 if the player holds the hammer (it is the
+// weapon in the hand); the seconds left; the bonus of the level for an
+// attack of the object with the weapon (0 for another weapon); 1 if the
+// object is a flying or lying hammer of force (the blue tint); the end of
+// the spell of the player (a fumble).
+int dtu_spell_hammer_weapon(void);
+const char *dtu_spell_port_weapon_line(void);
+int dtu_spell_hammer_on(object *obj);
+int dtu_spell_hammer_held(void);
+int dtu_spell_hammer_seconds(object *obj);
+int dtu_spell_hammer_bonus(object *attacker, int weapon);
+int dtu_spell_hammer_object(object *obj);
+void dtu_spell_hammer_end(void);
 
 //------------------------------------------------------------------------
 // Calls for the items, the creatures and the combat code
@@ -409,6 +438,22 @@ int dtu_caster_profile(object *obj);
 // The fire frame of the attack animation of the creature: the cast that is
 // due. Returns 1 if the creature cast (it does not attack in this frame).
 int dtu_caster_fire(object *obj, fix dist);
+// The contingency (the protections that a caster of the lists has from the
+// start of its fight). One test point, caster_contingency() in dtuspell.c:
+// a function set here that returns 1 for the creature switches its
+// contingency off (the phylactery of the lich, dtulich.c: test the type
+// there). NULL: none. dtu_caster_contingency_end() ends at once all the
+// spell effects of the creature, as Dispel Magic does (the phylactery is
+// destroyed during the fight).
+extern int (*Dtu_caster_contingency_off)(object *obj);
+void dtu_caster_contingency_end(object *obj);
+void dtu_caster_test_contingency(int on);		// test: contingency=0 of -chartest
+void dtu_caster_test_hold_rules(int on);		// test: holdrules=0 of -chartest: the hold cap, the hold rest and Caster_limits of the caster AI off
+void dtu_spell_test_save_fail(int on);		// test: savefail=1 of -chartest: the saves of the player fail until it is held
+// Spiritual Hammer of a creature: 1 if it has the hammer and its next throw
+// is due (the attack goal), and the throw at the fire frame (1 if thrown)
+int dtu_caster_throws(object *obj);
+int dtu_caster_throw(object *obj, fix dist);
 // 1 if the caster touches a player in its reach between two casts. Not a
 // beholder: its touch in the tables is its weapon Beholder Burn (4d6 from
 // 10 feet with its wide body), which 1.3 gives it only in the attack state
@@ -702,6 +747,7 @@ void dtu_spell_log(char *format, ...);
 #define DTU_SK_MIRROR		24		// ASCENT: amount images of Mirror Image
 #define DTU_SK_GLOBE			25		// ASCENT: Minor Globe of Invulnerability
 #define DTU_SK_STUN			26		// ASCENT: Mind Blast: stuns the targets in a cone
+#define DTU_SK_HAMMER		27		// ASCENT: Spiritual Hammer: a conjured throwing hammer, attack_bonus by the level
 
 // ASCENT: the conditions of a spell line (Spell_rule of dtuspell.c). The
 // cases of the effect function test them through one predicate, and the
