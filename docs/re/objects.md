@@ -1768,9 +1768,8 @@ dead caster) is not turned. From behind the shield turns nothing. Tests:
   `Dtu_fix_*` or rulebook setting.
 - The market goods by reward stage (`dtu_gear_market_stock`), the 1.3 good
   that the setting moves (the Flame Tongue of stage 5 goes to stage 7,
-  `dtu_gear_market_removed`) and the treasury of Tamaramagil (Belt of
-  Dwarvenkind, Ring of Regeneration, Plate Mail of Fire Resistance,
-  `dtu_gear_dragon_treasure`) are tables of dtugear.c that the market and
+  `dtu_gear_market_removed`) and the treasury of Tamaramagil (six items,
+  below; `dtu_gear_dragon_treasure`) are tables of dtugear.c that the market and
   the dragon code read. A stock file that took reward 5 before keeps its
   Flame Tongue. The 1.3 magic items with rules but no place in 1.3 that
   the market sells: Club +1, Darts +1 and +2, Bolts +2, Wands of Confusion
