@@ -127,11 +127,11 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 | Option | Corrections that it clears | Where |
 |---|---|---|
 | `-origphys` | `physics_steps`, `frame_drag`, `stop_decay`, `floor_push`, `look_return`, `fly_bob`, `turn_ramp`, `jump_exit`, `jump_path`, `ladder`, `wall_slide`, `wall_overlap`, `feather_fall`, `jump_spell`, `climb_floor` (all in `physics.c`) | `controls.c` |
-| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `npc_walk`, `npc_body`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `scenery_floor`, `corpse_floor`, `creature_feet`, `creature_crowd`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive`, `break_spread`, `noise_walls`, `alert_last`, `door_pair` (also `-origdoorpair`), `caster_melee` (also `-origcastermelee`, dtuobj_ai.c), `caster_cast`, `caster_idle`, `monster_speed`, `chase_run`, `tall_body`, `far_chase` (also `-origcastercast`, dtuspell.c), `restore_spells`, `save_cast`, `rat_die`, `ogre_legs` (also `-origogrelegs`) (polyobj.c) | `dtuobj.c` |
+| `-origobj` | `idle_anim`, `ai_ticks`, `creature_move`, `brain`, `path_follow`, `npc_walk`, `npc_body`, `fire_once`, `attack_sound`, `cant_break`, `push_body`, `push_wall`, `push_rate`, `scenery_floor`, `corpse_floor`, `creature_feet`, `creature_crowd`, `magic_tint`, `guild_peace`, `drow5_shields`, `kobold_weapon`, `scenery_restore`, `bane_texture`, `partial_stack`, `revive`, `break_spread`, `noise_walls`, `alert_last`, `door_pair` (also `-origdoorpair`), `caster_melee` (also `-origcastermelee`, dtuobj_ai.c), `caster_cast`, `caster_idle`, `monster_speed`, `chase_run`, `tall_body`, `far_chase` (also `-origcastercast`, dtuspell.c), `restore_spells`, `save_cast`, `rat_die`, `ogre_legs` (also `-origogrelegs`) (polyobj.c), `lava_sides` (also `-origlavasides`, dtuthief.c), `cell_doors` (also `-origcelldoors`, dtutrig.c) | `dtuobj.c` |
 | `-origrevive`, `-origdrow5`, `-origguildpeace`, `-orignpcwalk`, `-orignpcbody`, `-origfeet`, `-origcrowd` | one each: `revive`, `drow5_shields`, `guild_peace`, `npc_walk`, `npc_body`, `creature_feet`, `creature_crowd` | `dtuobj.c` |
 | `-origcombat` | `melee_wall` (also `-origmeleewall`, `dtuobj_combat.c`), `one_hit`, `haste_attack`, `missile_rate`, `rat_hit`, `body_ray`, `turn_undead` (`dtucombat.c`); `stoneskin_word`, `rary_manual`, `melf_acid`, `spell_hours`, `rest_effects`, `cure_aid`, `creature_burning_hands` (also `-origcreatureburn`), `color_spray` (also `-origcolorspray`) (`dtuspell.c`); `wizardry_ring`, `potion_frame`, `luck_coin`, `speed_items`, `cursed_scroll`, `creature_missile`, `potion_class`, `chill_touch`, `slow_swing`, `kill_sound`, `backstab` (`dtuthief.c`), `creature_strength` (`dtuobj_combat.c`), `shield_ac` (`dtuchar.c`), `swing_pitch`, `attack_commit` (`dtucombat.c`, `dtuobj_combat.c`), `sword_view` (`dtucombat.c`), `spell_dice` (`dtuobj_combat.c`), `prayer_flags`, `spell_range`, `prot_evil` (`dtuspell.c`) | `dtucombat.c`, `dtuchar.c` |
 | `-origchar` | `multiclass_thac0`, `spell_save_repair`, `level_hit_points`, `endless_stack`, `level_thief`, `hot_key_refresh` (`dtuchar.c`); `secret_door_names`, `thac0_row`, `new_thac0`, `find_traps_skill` (`dtuthief.c`), `save_seconds` | `dtuchar.c`, `dtuthief.c` |
-| `-origtrig` | `trigger_table`, `trap_seconds`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap`, `trap_pause`, `thief2_cache`, `keep_triggers`, `touch_use`, `say_repeat`, `trigger_side`, `bane_cyric` | `dtutrig.c` |
+| `-origtrig` | `trigger_table`, `trap_close_door`, `trigger_repeat`, `disable_trap`, `warp_overlap`, `trap_pause`, `thief2_cache`, `keep_triggers`, `touch_use`, `say_repeat`, `trigger_side`, `bane_cyric`, `say_text`, `key_lock` | `dtutrig.c` |
 | `-origui` | `automap_reveal` (`automap.c`); `msg_scroll`, `view_aspect`, `button_hold` (`dtudisp.c`); `cheat_index` (`dtucheat.c`); `sensitivity_menu` (`menu.c`); `key_pair`, `mouse_float`, `climb_key` (`kconfig.c`) | `automap.c`, `dtudisp.c`, `dtucheat.c`, `menu.c`, `kconfig.c` |
 | `-origscript` | `script_new_char`, `script_abilities`, `script_area_seg`, `mirt_points`, `script_run_mode` | `dtuscript.c` |
 | `-origscriptwalk` | `script_walk` | `dtuscript.c` |
@@ -145,9 +145,11 @@ in every normal run. The options give the exact 1.3 rules for a compare:
 
 The table was checked against the code on 2026-11-23: each `Dtu_fix_*` that
 is defined with the value 1 is in one row. `chill_touch` (`dtuspell.c`) has
-no option yet. `Dtu_fix_trap_seconds` is on by default as the others
-(`-origtrig` clears it); the state files keep the trap timers in the unit of
-the original. `Dtu_fix_lowres_aspect` is not a correction of a defect: it is
+no option yet. `Dtu_fix_trap_seconds` is off by default (the levels were
+tested with the trap times of 1.3; `-trapseconds` sets it); the state files
+keep the trap timers in the unit of the original. `Dtu_fix_lava_sides`
+(`dtuthief.c`) and `Dtu_fix_cell_doors` (`dtutrig.c`) are cleared by
+`-origobj` in their own files. `Dtu_fix_lowres_aspect` is not a correction of a defect: it is
 off by default (see below).
 
 To add a correction:

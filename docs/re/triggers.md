@@ -238,7 +238,16 @@ All **V**. A trap that is off is skipped (the chain goes on).
      then runs in each frame (with its interval and charges) until its charges end
      or the last player leaves (section 3, step 2)
    - 0x008 lock: with 0x200 set the lock flag of the wall is inverted, else it is
-     cleared. So the first run takes the lock off, the second puts it on
+     cleared. So the first run takes the lock off, the second puts it on. **D** A key
+     door whose trigger keeps the item and whose trap has unlimited charges locks
+     again on each second use: HUB3 triggers 10, 11 and 12 (MISC 112, 111, 116, traps
+     1, 2, 0) and DROW1 trigger 15 (MISC 114, trap 6). The door of the temple of
+     Clangeddin (HUB3 segment 29 side 4, wall 84, trigger 11, trap 2) says "This door
+     is locked." on the second use and opens on the third (the use action fires the
+     trigger before the door function 0x7E859, decompilation of 0x95050). The other
+     key doors that keep the item have traps of one charge (HUB2 traps 0 and 1, HUB4
+     traps 0 to 2, DROW1 traps 7 and 8, DROW2 trap 15), so they open once and stay
+     open. A defect of 1.3: `Dtu_fix_key_lock` (section 9)
    - at the end 0x200 is inverted, for each trap with a flag
 9. `robot_type != -1`: `gate_in_robot(type, seg, 1)` at 0x1374D, or 0xAC141 if
    `robot_arg < 4`. **D** 49 traps.
@@ -275,7 +284,12 @@ of the C library: real time in 1/100 second.
 
 Result: the trap timers count real time, not frames. They do not depend on the frame
 rate. But the units do not agree: a time of N seconds in the file is `N * 18.2`
-hundredths, so 0.182 * N seconds. **D** The files have intervals of 5, 10, 15 and 50
+hundredths, so 0.182 * N seconds. The levels were made and tested with these times,
+and the texts agree with them: DROW3 trigger 14 (the floor of segment 122, message 14
+"Looking through the grate you can see an underground chamber of some sort. Suddenly
+the grate gives way under your weight.") starts trap 11 (delay 15, wall open on side 3,
+the grate): 2.73 seconds in 1.3, 15 seconds when the file is read as seconds. So the
+port keeps the times of 1.3 (`Dtu_fix_trap_seconds` 0, section 9). **D** The files have intervals of 5, 10, 15 and 50
 and delays of 1 to 25: 10 seconds in the file is 1.82 seconds in the game. The DOS
 clock steps in units of about 5.5 hundredths, so the times have that grain.
 The stamp of a trap that never ran is -1, and the tests are unsigned, so the first
@@ -468,7 +482,9 @@ stations of type 4 and 5 (0x5A42C). **G**: the code of the types 4 and 5 does no
 | `Dtu_fix_trigger_repeat` | 1 | The floor triggers of a segment with a warp command line fire in each frame while the player is in the segment | They fire one time for each entry of the segment |
 | `Dtu_fix_trap_close_door` | 1 | Trap flag 2 calls `wall_close_door` with a wall number | The door of the trap starts to close. Off: no action |
 | `Dtu_fix_disable_trap` | 1 | `disable_trap` clears the side flags 0x28 of the trap with the number of the firing trigger (0x94231) | The side of the trap that is switched off |
-| `Dtu_fix_trap_seconds` | 1 | A trap time of N seconds is 0.182 * N seconds | The time is N seconds |
+| `Dtu_fix_trap_seconds` | 0 | A trap time of N seconds is 0.182 * N seconds | The time is N seconds. Off by default: the levels were tested with the times of 1.3 (section 4, DROW3 trap 11). Option `-trapseconds`. Test: DROW3 `-testpos 260,-28,30,180 -testmove forward:45,wait:950 -noattack -triglog`: the delay is 273 clock units, 1500 with `-trapseconds` |
+| `Dtu_fix_key_lock` | 1 | The lock action of a trap (flag 8) puts the lock on again on each second run, so a key door whose trigger keeps the key (HUB3 triggers 10 to 12, DROW1 trigger 15) is locked on each second use (section 4) | The lock action of the traps of a trigger that needs an item and does not take it only takes the lock off. A door that a save left locked opens at the next use with the key. Test: HUB3 `-testpos 58,0,80,90 -chartest 5:give=16.111 -testmove wait:30,use:1,wait:400,use:1,wait:400,use:1 -triglog`: opens three times; with `-origtrig`: opens, locked, opens |
+| `Dtu_fix_cell_doors` | 1 | DROW3 has two rows of cells with doors that traps open: the trolls 105 to 108 (segments 399, 394, 401, 408; traps 9, 10, 8, 7; trigger 8 of segment 393 side 1, mask 0xF2, which the TRIGGER statement of script 221 of the mind flayer 59 fires at the first talk: "Are you worthy to treat with me? Let us test the issue.") and the ghasts and ghouls 92 to 95 (segments 490, 495, 493, 492; traps 14, 17, 16, 15; the floor trigger 20 of segment 475). The doors have no key and no lock. The trolls, ghouls and ghasts have no door bit in 1.3 and stay in their cells | The port lets a hostile person (troll, ghoul) open a door (docs/re/ai.md). The wall of each cell door on the side of the cell (walls 52, 34, 20, 30, 76, 80, 72, 68) gets the key value 4, as the key doors of the levels, so no creature opens it; the player and the traps open it as before. Options `-origobj`, `-origcelldoors`. Test: DROW3 `-testpos -100,-25,-35,0 -noattack -objlog F`: no troll opens a door in 30 s; with `-origcelldoors` the four trolls open their doors in 2.1 s |
 | `Dtu_fix_thief2_cache` | 1 | THIEF2: trigger 46 is a copy of trigger 43 and the triggers 43 and 46 open the doors of segments 609 and 607 (section 2). The wall of the cache never opens | With `Dtu_fix_trigger_table` the chain of segment 224 is 43, 44, 45 and these rules are not applied: the symbol of Mask opens the wall of the cache. A level state with the copy (a save of 1.3 or of an older port) gets trigger 46 and the texture of its side of the level file back |
 | `Dtu_fix_keep_triggers` | 1 | 0x5A855 runs at each load of a level (0x49C38) and switches off KOBOLDS trigger 1 (message 2 of segment 167, "This room is strangely quiet") and THIEF1 trigger 34 (the ladder of segment 281 side 4, trap 12: 6 hit points back, `stat_delta` 6). Neither ever fires, and no trigger switches them on again | The rule leaves them on. A level state where the rule switched one off (off, `fire_count` 0, not found by the thief search: byte 0x0F below 0xFE) gets it back on; a trigger that fired (KOBOLDS trigger 1 switches itself off) or that a thief removed stays off |
 | `Dtu_fix_touch_use` | 1 | A push of the player into a side fires its triggers with type 8 in each frame, so a lever, a button or a sign (mask 0xFD) fires on a push and a sign adds its message in each frame (section 2) | A wall trigger (side not 3) that takes type 1 does not fire on type 8: it needs the use action. A push fires only the wall triggers without type 1 (IBBALAR 14 to 22, THIEF1 34) |
@@ -479,12 +495,14 @@ stations of type 4 and 5 (0x5A42C). **G**: the code of the types 4 and 5 does no
 | `Dtu_trig_log` | 0 | | Prints each trigger and trap event |
 
 Options: `-triglog` sets `Dtu_trig_log`. `-origtrig` clears the fix settings of
-this table and `Dtu_fix_warp_overlap`, `Dtu_fix_trap_pause`. `-trapseconds` sets `Dtu_fix_trap_seconds`.
+this table (but `Dtu_fix_cell_doors`, which `-origobj` clears) and
+`Dtu_fix_warp_overlap`, `Dtu_fix_trap_pause`. `-trapseconds` sets `Dtu_fix_trap_seconds`.
 
-`Dtu_fix_trap_seconds` is on: the loader of the executable scales seconds by 18.2
+`Dtu_fix_trap_seconds` is off: the loader of the executable scales seconds by 18.2
 but its clock counts 1/100 second, so a trap time of N seconds lasts 0.182 * N
-seconds. This is a unit defect. The shipped levels were
-tested with the short times, so `-origtrig` restores them.
+seconds. This is a unit defect of the code, but the shipped levels were made and
+tested with the short times, so the port keeps them. `-trapseconds` reads the times
+as seconds.
 
 ## 10. Not known
 
