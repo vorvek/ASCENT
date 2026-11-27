@@ -2391,6 +2391,10 @@ id: port.you_cannot_climb_while_armed
 en: You cannot climb while armed.
 tr: No puedes trepar con un arma en la mano.
 
+id: port.you_come_upon_a_lone_mind_flayer_reading
+en: You come upon a lone mind flayer reading a scroll. Upon seeing you he hides the scroll and attacks.
+tr: Te encuentras con un azotamentes solo que lee un pergamino. Al verte, lo esconde y te ataca.
+
 id: port.press_a_button_or_move_a_stick
 en: Press a button or move a stick
 tr: Pulsa un botón o mueve una palanca

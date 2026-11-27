@@ -443,6 +443,15 @@ void pick_up_item(object *player,object *item)
 	if (count <= 0)
 		count = 1;
 
+	// ASCENT, Dtu_fix_plot_count: the byte of a plot item is the number of
+	// a scroll text (dtuobj.h), not a count. The Scroll (misc 102) keeps it.
+	if (Dtu_fix_plot_count && count > 1 && item->type == OBJ_MISC && item->id != 102
+			&& tbl_int(it->record,"plot_item",0) != 0) {
+		dtu_obj_log("pickup: obj %d misc %d '%s': plot item, count %d of the level file -> 1 (Dtu_fix_plot_count)",
+			(int)(item-Objects),item->id,it->name,count);
+		count = 1;
+	}
+
 	index = dtu_inventory_add(item->type,item->id,count);
 	if (index >= 0) {
 		int flag_10 = pickup_flag_10(item->type,it);

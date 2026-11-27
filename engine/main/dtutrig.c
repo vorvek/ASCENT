@@ -427,6 +427,14 @@ char *dtu_trig_say_text(int say_index)
 		for (i=0; Say_text[i]; i++)
 			Say_text[i] = (char)(((ubyte)Say_text[i] >> 4) | ((ubyte)Say_text[i] << 4));
 
+	// ASCENT, Dtu_fix_illithid_scroll (dtuobj.h): the mind flayer of DROW3
+	// keeps the scroll, so message 16 says that he hides it. The text of 1.3:
+	// "You come upon a lone mind flayer reading a scroll. Upon seeing you he
+	// drops the scroll and attacks."
+	if (Dtu_fix_illithid_scroll && say_index == 16 && !stricmp(Say_level, "DROW3")
+			&& !strncmp(Say_text, "You come upon a lone mind flayer", strlen("You come upon a lone mind flayer")))
+		return LT("You come upon a lone mind flayer reading a scroll. Upon seeing you he hides the scroll and attacks.");
+
 	{
 		// ASCENT: the translation of the message (dtulang.h): id say.LEVEL.N
 		char id[40];

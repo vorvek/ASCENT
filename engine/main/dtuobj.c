@@ -184,6 +184,12 @@ int Dtu_fix_tamaramagil = 1;
 // clears it.
 int Dtu_fix_partial_stack = 1;
 int Dtu_inventory_left = 0;
+// ASCENT: one plot item from a floor record with a text number in its count
+// byte (dtuobj.h). -origobj and -origplotcount clear it.
+int Dtu_fix_plot_count = 1;
+// ASCENT: the mind flayer of DROW3 carries the Scroll of the Illithids
+// (dtuobj.h). -origobj and -origillithidscroll clear it.
+int Dtu_fix_illithid_scroll = 1;
 // A dead creature that regenerates gets up again (dtuobj.h). The options
 // -origobj and -origrevive clear it.
 int Dtu_fix_revive = 1;
@@ -1049,6 +1055,7 @@ void dtu_objects_init(void)
 			Dtu_fix_path_follow = Dtu_fix_fire_once = Dtu_fix_attack_sound = Dtu_fix_cant_break =
 			Dtu_fix_push_body = Dtu_fix_push_wall = Dtu_fix_push_rate = Dtu_fix_scenery_floor = Dtu_fix_corpse_floor = Dtu_fix_creature_feet = Dtu_fix_creature_crowd =
 			Dtu_fix_magic_tint = Dtu_fix_guild_peace = Dtu_fix_drow5_shields = Dtu_fix_tamaramagil =
+			Dtu_fix_plot_count = Dtu_fix_illithid_scroll =
 			Dtu_fix_kobold_weapon = Dtu_fix_scenery_restore = Dtu_fix_bane_texture = Dtu_fix_partial_stack = Dtu_fix_revive =
 			Dtu_fix_break_spread = Dtu_fix_noise_walls = Dtu_fix_alert_last =
 			Dtu_fix_water_splash = Dtu_fix_model_mapper = Dtu_fix_rat_die = Dtu_fix_ogre_legs = Dtu_fix_npc_walk = Dtu_fix_npc_body =
@@ -1087,6 +1094,10 @@ void dtu_objects_init(void)
 		Dtu_fix_drow5_shields = 0;
 	if (FindArg("-origtamaramagil"))
 		Dtu_fix_tamaramagil = 0;
+	if (FindArg("-origplotcount"))
+		Dtu_fix_plot_count = 0;
+	if (FindArg("-origillithidscroll"))
+		Dtu_fix_illithid_scroll = 0;
 	if (FindArg("-origguildpeace"))
 		Dtu_fix_guild_peace = 0;
 	if (FindArg("-setuplog"))

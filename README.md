@@ -62,6 +62,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 * The Potions of Hill Giant Strength and Invulnerability work only for fighters.
 * Picking up more than a full stack leaves the rest on the floor instead of losing it, and endless stacks stay endless.
+* The Scroll of the Illithids and the Ruldegost Document are one item each, not 18 and 21 copies.
 * The market uses your Charisma, not that of the last character you created (a fun bug from the original).
 
 **Quests and levels**
@@ -70,6 +71,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Devlin's reward for the goblins works, and scripted pauses in conversations can be skipped.
 * Some cutting room floor items found throughout the original code; a few messages, mostly. Also, a *healing ladder*.
 * The Shadow Thieves no longer attack you if you are a member of the guild.
+* The lone mind flayer of the Drow Stronghold hides the Scroll of the Illithids and drops it when it dies.
 * Traps run on real seconds instead of depending on the FPS, and they stop while the game is paused.
 * Some triggers that never fired in seven levels work now.
 * The message of a place does not show again until 30 seconds after you left it, so a fight in and out of a cell no longer repeats it, and the message of an event that is over (a trap that ran, creatures that came out) shows only while the event can happen.

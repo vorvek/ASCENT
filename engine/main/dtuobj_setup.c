@@ -593,6 +593,25 @@ void level_fixes_objects(int has_state)
 			if ((o = fix_obj(42,OBJ_DRESSING,-1)) != NULL)
 				fix_script(o,42,0xD5);
 			break;
+		case 22:	// drow3: no level fix in 1.3
+			// ASCENT, Dtu_fix_illithid_scroll (dtuobj.h): the lone mind
+			// flayer (object 128, "flayer") carries the Scroll of the
+			// Illithids that lies next to it (object 129, misc 126). Only
+			// with no state: a saved level keeps its objects.
+			if (Dtu_fix_illithid_scroll && !has_state) {
+				object *s = fix_obj(129,OBJ_MISC,126);
+
+				o = fix_obj(128,OBJ_ROBOT,-1);
+				if (o && s && o->segnum == s->segnum && o->contains_type <= 0 && o->id < N_robot_types
+						&& !stricmp(Monster_info[o->id].name,"flayer")) {
+					o->contains_type = OBJ_MISC;
+					o->contains_id = 126;
+					o->contains_count = 1;
+					fix_log(128,"contains misc 126 (Dtu_fix_illithid_scroll)");
+					fix_delete(129,OBJ_MISC,126);
+				}
+			}
+			break;
 		case 25:	// beholder (0xAD1B4)
 			if ((o = fix_obj(109,OBJ_ROBOT,-1)) != NULL) {
 				fix_script(o,109,0xFF);

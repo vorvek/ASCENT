@@ -960,6 +960,34 @@ Fear effect for a creature, so the editor used the same field for two things).
   and for 26 misc records: 24 with id 102 (`Scroll`), one `Ruldegost Document` and one
   `Scroll of the Illithids` (Data). The 24 scrolls have 24 different values from 2
   to 27. Guess: for a scroll the value is the number of its text.
+- The two plot items have the number of a scroll text too (Data: the text of
+  scroll number n is FETXTE entry 13 + n - 2 in the high resolution, 0x9CEA3).
+  DROW3 object 129, the `Scroll of the Illithids` (misc 126), has 18: FETXTE 29,
+  the letter of Kauzelhoon about the Pool of the Elders. DROW5 object 176, the
+  `Ruldegost Document` (misc 104), has 21: FETXTE 32, the letter to Severa. Only
+  misc 102 and misc 127 show a text on use (0x9DC42), so 1.3 never shows these.
+  The pick up 0x2805B reads the byte as the count for every misc id but 1
+  (gold), so 1.3 gives 18 and 21 copies (`(byte) 0x1D5`, the `>> 0x18` of the
+  dword at 0x1D2), and the inventory shows the count. The scripts that take the
+  two items (Sangalor, YPINN script 6, label 17; Mirt, YPINN script 1, label 16)
+  take one and set a local flag (flag5) that ends the turn-in, so the other
+  copies stay in the bag and give nothing.
+  Port (P): `Dtu_fix_plot_count` (on; `-origobj` and `-origplotcount` clear it)
+  in `pick_up_item` (`dtuobj_item.c`): a misc item with `plot_item` from a
+  record with a count above 1 gives one copy (misc 102 keeps its count). Test:
+  `questtest.py --only drow3_illithid_scroll` (DROW3), and a pick up of DROW5
+  object 176 (log line "count 21 of the level file -> 1").
+- The lone mind flayer of DROW3 (object 128, type `flayer`, segment 712) stands
+  next to object 129, and message 16 (triggers 27 and 28, segments 711 and 713)
+  says "You come upon a lone mind flayer reading a scroll. Upon seeing you he
+  drops the scroll and attacks." (Data). New in the port, a request of the
+  user: `Dtu_fix_illithid_scroll` (on; `-origobj` and `-origillithidscroll` clear
+  it). At the first load of DROW3 (no saved state) object 128 contains misc 126,
+  count 1, and object 129 is removed (`level_fixes_objects`, `dtuobj_setup.c`).
+  The creature drops the scroll when it dies. Message 16 says "... Upon seeing
+  you he hides the scroll and attacks." (`dtu_trig_say_text`, `dtutrig.c`;
+  Spanish: "Te encuentras con un azotamentes solo que lee un pergamino. Al verte,
+  lo esconde y te ataca."). A level with a saved state keeps its objects.
 - `object_create_egg` (0x3C4BD) makes the items that a creature or dressing object
   contains. It creates the object with `obj_create` (0x68AC8: type, id, segment,
   position, then identity matrix 0x148B82, size of the table entry, control 0,

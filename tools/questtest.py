@@ -200,6 +200,25 @@ TESTS = [
     T("drow3_flag14", "DROW3", "40:goseg=285,60:quest", [r"quest: mflags \[ 14 \]"], frames=90),
     T("drow3_flag7", "DROW3", "20:killscript=222,40:goseg=311,60:quest",
       [r"quest: mflags \[ 7 \]"], frames=90),
+    # DROW3: the lone mind flayer (object 128) carries the Scroll of the
+    # Illithids and drops one at its death (Dtu_fix_illithid_scroll);
+    # message 16 of trigger 27 (segment 711) says that he hides it.
+    # -origillithidscroll: the scroll lies on the floor (object 129) with
+    # the text number 18 in its count byte; Dtu_fix_plot_count gives one
+    # copy, -origplotcount the 18 copies of 1.3.
+    T("drow3_illithid_scroll", "DROW3", "10:goseg=711,60:kill=128,100:goobj=129,101:face=129,160:quest",
+      [r"TRIG: say 16: .*he hides the scroll and attacks", r"drop: obj 128 flayer leaves type 16 id 126 count 1",
+       r"pickup: obj 129 type 16 id 126 '[^']*' count 1,", r"quest: items \[ .*16\.126"],
+      [r"drops the scroll"], frames=170,
+      extra=["-noattack", "-triglog", "-testmove", "wait:102,forward:40", "-objlog", "drow3_scroll_obj.log"]),
+    T("drow3_illithid_scroll_floor", "DROW3", "10:goseg=711,60:kill=128,100:goobj=129,101:face=129,160:quest",
+      [r"TRIG: say 16: .*he drops the scroll and attacks", r"count 18 of the level file -> 1 \(Dtu_fix_plot_count\)",
+       r"pickup: obj 129 type 16 id 126 '[^']*' count 1,"],
+      [r"drop: obj 128 flayer leaves type 16"], frames=170,
+      extra=["-noattack", "-triglog", "-origillithidscroll", "-testmove", "wait:102,forward:40", "-objlog", "drow3_scroll_floor_obj.log"]),
+    T("drow3_illithid_scroll_orig", "DROW3", "10:goseg=711,60:kill=128,100:goobj=129,101:face=129,160:quest",
+      [r"pickup: obj 129 type 16 id 126 '[^']*' count 18,"], [r"Dtu_fix_plot_count"], frames=170,
+      extra=["-noattack", "-origillithidscroll", "-origplotcount", "-testmove", "wait:102,forward:40", "-objlog", "drow3_scroll_orig_obj.log"]),
     # BEHOLDER: command 8 (script 252) at 160, command 9 (script 254) at 472.
     T("beholder_flag8", "BEHOLDER", "20:killscript=252,40:goseg=160,60:quest",
       [r"quest: mflags \[ 8 \]"], frames=90),
