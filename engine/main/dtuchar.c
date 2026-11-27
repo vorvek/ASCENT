@@ -601,6 +601,7 @@ int dtu_char_lockpick_bonus(int id)
 // (Regeneration) is the Ring of Regeneration of the new gear (dtugear.h);
 // 1.3 has 15 bits.
 #define N_WORN_FX	16
+static int Gear_lost;		// ASCENT: gear_lost_effects (dtugear.h)
 static const int Worn_fx[N_WORN_FX] = {
 	DTU_FX_CHILL_TOUCH, DTU_FX_RESIST_FIRE, 0, DTU_FX_FEATHER_FALL, DTU_FX_FLY, DTU_FX_FREE_ACTION, DTU_FX_INFRAVISION,
 	DTU_FX_JUMP, DTU_FX_DETECT_MAGIC, DTU_FX_HASTE, DTU_FX_SHIELD, DTU_FX_LEVITATE, DTU_FX_IMP_INVIS, DTU_FX_INVISIBLE,
@@ -3539,6 +3540,11 @@ static int load_list(ubyte *p, int count_off, int list_off, int max, int *map)
 			map[i] = e;
 		if (e < 0) {
 			dtu_char_log("save game: entry %d (type %d id %d) does not fit the inventory", i, rec.type, rec.id);
+			// ASCENT: an armor of the new gear in a save loaded without the
+			// setting (dtugear.h): its effects stay on the player object of
+			// the level state (gear_lost_effects)
+			if (rec.type == OBJ_ARMOR && rec.id >= DTU_GEAR_FIRST_ARMOR && rec.id < DTU_GEAR_FIRST_ARMOR + DTU_GEAR_N_ARMOR)
+				Gear_lost = 1;
 			continue;
 		}
 		Dtu_inventory[e].level = rec.level;
@@ -4623,6 +4629,32 @@ void dtu_char_level_start(void)
 // on (it starts again at 0 when the ring goes on).
 static fix Regen_time;
 
+// ASCENT: a save with new gear loaded without the setting (dtugear.h): the
+// player object of the level state has the effects of the worn new items
+// with no end, but the items are gone. The first frame of the game ends the
+// effects that only these items give (Free Action, Resist Fire,
+// Infravision, Regeneration) unless a worn item gives them. A potion effect
+// of the same kind ends too.
+
+static void gear_lost_effects(void)
+{
+	object *p = ConsoleObject;
+	int mask = DTU_FX_FREE_ACTION | DTU_FX_RESIST_FIRE | DTU_FX_INFRAVISION | DTU_FX_REGENERATE, i;
+
+	Gear_lost = 0;
+	if (!p || p->type != OBJ_PLAYER)
+		return;
+	for (i = 0; i < N_WORN_FX; i++)
+		if (Worn_bits & (1 << i))
+			mask &= ~Worn_fx[i];
+	if (p->dtu.m_88 & mask) {
+		dtu_char_log("save game: the effects 0x%08x of the new gear end (the setting is off)", p->dtu.m_88 & mask);
+		for (i = 0; i < 32; i++)
+			if (p->dtu.m_88 & mask & (1 << i))
+				dtu_spell_clear_effect(p, 1 << i);
+	}
+}
+
 static void regen_frame(void)
 {
 	if (armor_id(Dtu_char.slot[DTU_SLOT_RING1]) != DTU_GEAR_RING_REGEN && armor_id(Dtu_char.slot[DTU_SLOT_RING2]) != DTU_GEAR_RING_REGEN) {
@@ -4654,6 +4686,8 @@ void dtu_char_frame(void)
 		set_hit_points(Dtu_char.pa.max_hit_points);
 	dtu_char_potions_end(0);		// 0x396B2 from the frame 0x435A6
 	regen_frame();				// ASCENT: the Ring of Regeneration (dtugear.h)
+	if (Gear_lost)
+		gear_lost_effects();		// ASCENT: dtugear.h
 	dtu_thief_frame();
 	Dtu_char.pa.hit_points = dtu_char_hit_points();
 	Dtu_char.pa.gold = Dtu_gold;

@@ -211,24 +211,25 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 			return;
 		}
 
+	// Each write gives a new text or NULL (no change), as the writes of the
+	// fixup (dtutblfix.h).
 	for (i = 0; i < DTU_GEAR_N_WANDS; i++) {
 		int id = Gear_wands[i].id;
-		char *t, *u;
+		char *name = io->name(DTU_TK_WEAPON, id);
 
 		snprintf(buf, sizeof(buf), "\"%s\"", Gear_wands[i].name);
-		t = dtu_tblfix_set(io->text(DTU_TK_WEAPON, id), "weapon_name", buf);
+		put_text(io, DTU_TK_WEAPON, id, dtu_tblfix_set(io->text(DTU_TK_WEAPON, id), "weapon_name", buf));
 		snprintf(buf, sizeof(buf), "%d", Gear_wands[i].spell);
-		u = dtu_tblfix_set(t, "PC_spell", buf);
-		dtu_tblfix_free(t);
-		t = dtu_tblfix_set(u, "enemy_spell", NULL);
-		dtu_tblfix_free(u);
-		u = dtu_tblfix_word(t, "all_use", 0);
-		dtu_tblfix_free(t);
-		t = dtu_tblfix_word(u, "mage_use", 1);
-		dtu_tblfix_free(u);
-		u = dtu_tblfix_set(t, "value", "3000");
-		dtu_tblfix_free(t);
-		put_text(io, DTU_TK_WEAPON, id, u);
+		put_text(io, DTU_TK_WEAPON, id, dtu_tblfix_set(io->text(DTU_TK_WEAPON, id), "PC_spell", buf));
+		put_text(io, DTU_TK_WEAPON, id, dtu_tblfix_set(io->text(DTU_TK_WEAPON, id), "enemy_spell", NULL));
+		put_text(io, DTU_TK_WEAPON, id, dtu_tblfix_word(io->text(DTU_TK_WEAPON, id), "all_use", 0));
+		put_text(io, DTU_TK_WEAPON, id, dtu_tblfix_word(io->text(DTU_TK_WEAPON, id), "mage_use", 1));
+		put_text(io, DTU_TK_WEAPON, id, dtu_tblfix_set(io->text(DTU_TK_WEAPON, id), "value", "3000"));
+		// the name buffer of the line (the reader keeps weapon_name there)
+		if (name && io->name_size > 0) {
+			strncpy(name, Gear_wands[i].name, io->name_size - 1);
+			name[io->name_size - 1] = 0;
+		}
 	}
 	for (i = 0; i < N_GEAR_VALUES; i++)
 		if (Gear_values[i].id < io->count(DTU_TK_WEAPON) && weapon_named(io, Gear_values[i].id, Gear_values[i].name13)) {

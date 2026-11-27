@@ -811,8 +811,14 @@ void dtu_restore_tamaramagil(int has_state)
 // ASCENT, the new gear (Dtu_new_gear, dtugear.h): the Flame Tongue of the
 // dungeon. The user's design: the player meets the first trolls of the
 // DROW levels with no fire weapon, then finds the sword, which stops their
-// regeneration, before the next trolls. It lies at FT_POS in level FT_LEVEL
-// (docs/re/objects.md, "New gear"). It is made once in a game: the global
+// regeneration, before the next trolls. The first troll fight of the DROW
+// levels is the cell block of DROW2 (y -60, x -85 to -260, z 347 to 458): a
+// ring of corridors with 18 cells behind doors and three trolls (objects
+// 32, 33 and 35; DROW1 and DROW4 have none, DROW3 has eight more). The
+// sword lies in the cell of segment 167, the dead end of the ring that is
+// farthest from its entry (segment 125, 58 segments from the start), so the
+// player passes a troll before it (docs/re/objects.md, "New gear"). It is
+// made once in a game: the global
 // flag DTU_GEAR_FLAG_FLAME of the player record (saved with the game) says
 // that it was made. A level with a saved state from before the setting gets
 // it at its restore (the state replaces the objects, so it is made after
@@ -820,7 +826,7 @@ void dtu_restore_tamaramagil(int has_state)
 // nothing.
 #define FT_LEVEL		21			// DROW2 (Dtu_script_level, the line of DTU.MSN)
 #define FT_WEAPON		71			// Flame Tongue
-static const vms_vector Ft_pos = { 0, 0, 0 };		// set below (FT_POS)
+static const vms_vector Ft_pos = { -172 * F1_0 - F1_0 / 2, -60 * F1_0, 435 * F1_0 };		// the center of segment 167
 
 void dtu_gear_place_flame_tongue(int has_state, int restore)
 {

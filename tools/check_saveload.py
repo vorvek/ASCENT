@@ -51,6 +51,15 @@ SCRIPT = ("5:class=1,6:give=17.12.1,7:mission=1,10:warp=1.136,30:slots,32:gorest
 SCRIPT2 = "20:slots,30:goseg=1,100:slots,300:slots"
 FESCRIPT2 = "wait 60\nkey enter\nwait 10\nkey enter\nwait 10\ngamekeys\nwait 120\nkey enter\nwait 300\nkey y\nwait 400\nquit\n"
 SCRIPT3 = "5:give=16.72,10:use=16.72,12:cpoints=19.1,22:save=3,60:cpoints=19.2,80:load=3,180:cpoints=19"
+# The fourth run (the new gear, engine/main/dtugear.h): the new items, a
+# gem and a wand worn and carried, a save to slot 3 and a load. The fifth
+# run loads that save with -nonewgear: the new lines do not exist, the load
+# leaves the items out (dtu_inventory_append), their effects end at the
+# first frame (gear_lost_effects, dtuchar.c) and the game goes on.
+SCRIPT4 = ("5:give=15.53.1,6:give=15.58.1,7:give=15.59.1,8:give=16.129.3,9:give=5.63.6,10:equip=15.58,"
+           "11:equip=15.59,12:equip=15.53,20:dump,30:save=3,40:load=3,90:dump")
+SCRIPT5 = "20:load=3,60:dump"
+NEW_ITEMS = ("type 15 id 53 ", "type 15 id 58 ", "type 15 id 59 ", "type 16 id 129 ")
 SG_PLAYER = 141         # the player record in a save of the port (DTU_SG_PLAYER_OFFSET)
 
 
@@ -200,6 +209,26 @@ def main():
         if not pts or "mage 1 cleric 0" not in pts[0]:
             errors.append("third run: the spellcaster after the load: %s, expected mage 1 cleric 0" %
                           (pts[0].strip() if pts else "no line"))
+        # The fourth and the fifth run (the new gear)
+        for f in ("SG3.SG",):
+            if os.path.exists(os.path.join(tmp, f)):
+                os.remove(os.path.join(tmp, f))
+        log4, log5 = os.path.join(tmp, "char4.log"), os.path.join(tmp, "char5.log")
+        run(base + ["-level", "KOBOLDS", "-frames", "120", "-charlog", log4, "-chartest", SCRIPT4, "-newgear"],
+            tmp, errors, "fourth run")
+        lines = open(log4, encoding="latin-1").read().splitlines() if os.path.exists(log4) else []
+        before, after = dump(lines, 20), dump(lines, 90)
+        if not all(any(n in ln for ln in before) for n in NEW_ITEMS):
+            errors.append("fourth run: the new items are not in the dump: %s" % before)
+        if strip(before) != strip(after):
+            errors.append("fourth run: the dump after the load differs:\n  before: %s\n  after:  %s" %
+                          ("\n          ".join(before), "\n          ".join(after)))
+        run(base + ["-level", "KOBOLDS", "-frames", "80", "-charlog", log5, "-chartest", SCRIPT5, "-nonewgear"],
+            tmp, errors, "fifth run")
+        lines = open(log5, encoding="latin-1").read().splitlines() if os.path.exists(log5) else []
+        after = dump(lines, 60)
+        if not after or any(n in ln for ln in after for n in NEW_ITEMS) or not any("effects 0x00000000," in ln for ln in after):
+            errors.append("fifth run (-nonewgear): the new items after the load: %s" % after)
     finally:
         if a.keep:
             print("check_saveload: files in %s" % tmp)
