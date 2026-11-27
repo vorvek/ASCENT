@@ -22,6 +22,7 @@
 #include "dtulang.h"		// ASCENT: the language (Language=en)
 #include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items, Dtu_fix_item_names
 #include "dtuxp.h"		// ASCENT: Dtu_kill_xp_message, Dtu_max_hp_level_up
+#include "dtugear.h"		// ASCENT: Dtu_new_gear
 
 int Dtu_improved_physics = 1;
 int Dtu_improved_jump = 1;
@@ -57,6 +58,7 @@ static int File_gpu_renderer = -1, File_render_scale = -1;
 static int Arg_gpu_renderer = -1, Arg_render_scale = -1;
 static int File_language = -1, Arg_language = -1;
 static int File_rulebook = -1, Arg_rulebook = -1;
+static int File_new_gear = -1, Arg_new_gear = -1;
 static int File_lowres_aspect = -1, Arg_lowres_aspect = -1;
 static int File_kill_xp = -1, Arg_kill_xp = -1;
 static int File_max_hp = -1, Arg_max_hp = -1;
@@ -90,6 +92,7 @@ static dtu_opt Opts[] = {
 	{ "TargetHint",          &Dtu_target_hint,          0, 1 },
 	{ "MissSound",           &Dtu_miss_sound,           0, 1 },
 	{ "RulebookItems",       &Dtu_rulebook_items,       0, 1 },		// dtuitemfix.h
+	{ "NewGear",             &Dtu_new_gear,             0, 1 },		// dtugear.h
 	// ASCENT: a new key: LowresAspect=1 (the default of one day) is ignored,
 	// so a file of that time gets square pixels
 	{ "Lowres43",            &Dtu_fix_lowres_aspect,    0, 1 },
@@ -185,6 +188,7 @@ void dtu_opts_load(void)
 		Dtu_target_hint = 0;
 		Dtu_miss_sound = 0;
 		Dtu_rulebook_items = 0;
+		Dtu_new_gear = 0;		// ASCENT: dtugear.h
 		Dtu_kill_xp_message = 0;		// ASCENT: dtuxp.h
 		Dtu_restored_dragon = 0;		// ASCENT: dtudragon.h
 	}
@@ -210,6 +214,12 @@ void dtu_opts_load(void)
 	if (FindArg("-rulebookitems") || FindArg("-norulebookitems") || FindArg("-origitems")) {
 		File_rulebook = Dtu_rulebook_items;
 		Dtu_rulebook_items = Arg_rulebook = FindArg("-rulebookitems") && !FindArg("-norulebookitems") && !FindArg("-origitems");
+	}
+	// ASCENT: the new gear (dtugear.h). -newgear and -nonewgear set "New
+	// gear" for one run; -origitems clears it too.
+	if (FindArg("-newgear") || FindArg("-nonewgear") || FindArg("-origitems")) {
+		File_new_gear = Dtu_new_gear;
+		Dtu_new_gear = Arg_new_gear = FindArg("-newgear") && !FindArg("-nonewgear") && !FindArg("-origitems");
 	}
 	if (FindArg("-origitems"))
 		Dtu_fix_item_names = 0;
@@ -243,6 +253,8 @@ void dtu_opts_save(void)
 			v = File_render_scale;
 		if (Opts[i].value == &Dtu_rulebook_items && File_rulebook >= 0 && v == Arg_rulebook)
 			v = File_rulebook;
+		if (Opts[i].value == &Dtu_new_gear && File_new_gear >= 0 && v == Arg_new_gear)
+			v = File_new_gear;
 		if (Opts[i].value == &Dtu_fix_lowres_aspect && File_lowres_aspect >= 0 && v == Arg_lowres_aspect)
 			v = File_lowres_aspect;
 		if (Opts[i].value == &Dtu_kill_xp_message && File_kill_xp >= 0 && v == Arg_kill_xp)

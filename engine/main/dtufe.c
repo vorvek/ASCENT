@@ -69,6 +69,7 @@
 #include "screens.h"
 #include "dtuopts.h"
 #include "dtuitemfix.h"	// ASCENT: Dtu_rulebook_items
+#include "dtugear.h"		// ASCENT: Dtu_new_gear
 #include "dtuxp.h"		// ASCENT: Dtu_max_hp_level_up
 #include "dtuhdui.h"		// ASCENT: the upscaled pictures
 #include "dtulang.h"		// ASCENT: the language of the text
@@ -1704,6 +1705,7 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ "",                           NULL },
 	{ LN("Restored and new content"), NULL },				// the group of content that 1.3 does not have
 	{ LN("The dragon Tamaramagil"), &Dtu_restored_dragon },	// dtudragon.h: DROW2, at the next load of the level
+	{ LN("New gear"),               &Dtu_new_gear },		// dtugear.h: the next level
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
 

@@ -2507,6 +2507,121 @@ id: port.strong_magic_prevents_you_from_unlocking
 en: Strong magic prevents you from unlocking this door.
 tr: Una magia poderosa te impide abrir esta puerta.
 
+# ASCENT: the new gear (engine/main/dtugear.c, Dtu_new_gear): the texts and the names of the new items
+id: port.new_gear
+en: New gear
+tr: Equipo nuevo
+
+id: port.a_spell_missile_or_an_eye_ray_of_a_creat
+en: A spell missile or an eye ray of a creature that hits you from the front (up to 60 degrees from where you look) flies back to the creature.
+tr: Un proyectil de conjuro o un rayo ocular de una criatura que te alcanza de frente (hasta 60 grados de donde miras) vuelve a la criatura.
+
+id: port.area_spells_arrows_bolts_and_thrown_weap
+en: Area spells, arrows, bolts and thrown weapons hit you as before.
+tr: Los conjuros de área, las flechas, los virotes y las armas arrojadizas te alcanzan como siempre.
+
+id: port.arrows_and_bolts_get_d_to_hit_and_d_dama
+en: Arrows and bolts get +%d to hit and +%d damage.
+tr: Las flechas y los virotes tienen +%d al ataque y +%d al daño.
+
+id: port.heals_1_hit_point_each_d_seconds
+en: Heals 1 hit point each %d seconds.
+tr: Cura 1 punto de golpe cada %d segundos.
+
+id: port.gloves
+en: gloves
+tr: guantes
+
+id: tbl.fix.mirror_shield
+en: Mirror Shield
+tr: Escudo espejo
+gender: m
+plural: Escudos espejo
+
+id: tbl.fix.boots_of_free_action
+en: Boots of Free Action
+tr: Botas de Libertad de Acción
+gender: f
+plural: Botas de Libertad de Acción
+
+id: tbl.fix.gloves_of_the_archer
+en: Gloves of the Archer
+tr: Guantes del arquero
+gender: m
+plural: Guantes del arquero
+
+id: tbl.fix.cloak_of_fire_resistance
+en: Cloak of Fire Resistance
+tr: Capa de resistencia al fuego
+gender: f
+plural: Capas de resistencia al fuego
+
+id: tbl.fix.belt_of_dwarvenkind
+en: Belt of Dwarvenkind
+tr: Cinto de los enanos
+gender: m
+plural: Cintos de los enanos
+
+id: tbl.fix.ring_of_regeneration
+en: Ring of Regeneration
+tr: Anillo de regeneración
+gender: m
+plural: Anillos de regeneración
+
+id: tbl.fix.plate_mail_of_fire_resistance
+en: Plate Mail of Fire Resistance
+tr: Armadura de placas de resistencia al fuego
+gender: f
+plural: Armaduras de placas de resistencia al fuego
+
+id: tbl.fix.bloodstone
+en: Bloodstone
+tr: Heliotropo
+gender: m
+plural: Heliotropos
+
+id: tbl.fix.pearl
+en: Pearl
+tr: Perla
+gender: f
+plural: Perlas
+
+id: tbl.fix.star_sapphire
+en: Star Sapphire
+tr: Zafiro estrella
+gender: m
+plural: Zafiros estrella
+
+id: tbl.fix.wand_of_sleep
+en: Wand of Sleep
+tr: Varita de Dormir
+gender: f
+plural: Varitas de Dormir
+
+id: tbl.fix.wand_of_slow
+en: Wand of Slow
+tr: Varita de Ralentizar
+gender: f
+plural: Varitas de Ralentizar
+
+id: tbl.fix.wand_of_hold_undead
+en: Wand of Hold Undead
+tr: Varita de Inmovilizar Muerto Viviente
+gender: f
+plural: Varitas de Inmovilizar Muerto Viviente
+
+id: tbl.fix.rod_of_minute_meteors
+en: Rod of Minute Meteors
+tr: Vara de meteoritos
+gender: f
+plural: Varas de meteoritos
+
+id: tbl.fix.rod_of_dispel_magic
+en: Rod of Dispel Magic
+tr: Vara de Disipar Magia
+gender: f
+plural: Varas de Disipar Magia
+
 id: tbl.fix.cloak_of_lathander
 en: Cloak of Lathander
 tr: Capa de Lathander

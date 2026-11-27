@@ -77,6 +77,7 @@ comments.
 | `dtudesc.c` | The description window of items and spells (right click). New in the port. | `description_window.md` |
 | `dtudragon.c` | The encounter with the dragon Tamaramagil of DROW2: the scale of her model, her AI and attacks, the lever, the keys and the treasure. New in the port. | `re/dragon.md` |
 | `dtuxp.c` | The experience of the player: the kill line, the next level window, the verbose combat log, the session log lines of deaths, awards and levels. New in the port. | `debug_logs.md` |
+| `dtugear.c` | The new gear (`Dtu_new_gear`): the new item lines, the wands 63 to 67, the gold and gem drops, the Mirror Shield, the market goods by reward stage, the treasury of Tamaramagil, the Mace of Daland. New in the port. | `re/objects.md` ("New gear") |
 | `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
 | `dtufe.c` | The front end: frame, input, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
 | `dtufe_script.c` | The script of the option `-fescript` (split from `dtufe.c`). | `re/frontend.md` |

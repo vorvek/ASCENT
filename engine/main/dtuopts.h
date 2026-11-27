@@ -193,6 +193,13 @@ extern int Dtu_restored_dragon;
 // -norulebookitems change it for one run. The variable Dtu_rulebook_items
 // is declared in dtuitemfix.h.
 
+// New gear: new armor and gems in the item tables, wands 63 to 67, more
+// gold and gems from the creatures, new market goods (dtugear.h). On by
+// default. NewGear of ascent.cfg; -newgear and -nonewgear change it for one
+// run, -noimprovements and -origitems clear it. It takes effect when the
+// tables of the next level are loaded. The variable Dtu_new_gear is
+// declared in dtugear.h.
+
 // The directory of the upscaled files (movies <hd>/NAME.m1v, textures
 // <hd>/textures/...), without a separator at the end, or NULL if there is
 // none. The first that exists: the argument of -hddir, "hd" in the current

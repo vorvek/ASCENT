@@ -3361,6 +3361,15 @@ fix dtu_spell_hit(int spell, object *target, object *caster, int level)
 	// 0x91EC1, a creature 0xAE3BB (max hit points / 8)
 	if (caster && (caster->type == OBJ_PLAYER || caster->type == OBJ_ROBOT))
 		level = object_level(caster,spell);
+	return dtu_spell_hit_level(spell,target,caster,level);
+}
+
+// ASCENT: dtu_spell_hit at the given caster level (a missile that a Mirror
+// Shield sent back keeps the level of its first caster, dtugear.h)
+fix dtu_spell_hit_level(int spell, object *target, object *caster, int level)
+{
+	if (!spell_ok(spell) || target == NULL)
+		return 0;
 	if (spell_area(spell)) {
 		fix hp = (target->type == OBJ_ROBOT) ? target->shields : 0;
 
@@ -3728,10 +3737,17 @@ static void player_missiles(int spell,int template_w,int L,int homing)
 
 // ASCENT: test (-chartest spellat=SPELL.OBJ): one missile of the spell from
 // the player straight at the center of object OBJ, at the level of the
-// player (Dtu_fix_revive, the fallen body)
+// player (Dtu_fix_revive, the fallen body). spellby=SPELL.OBJ: from creature
+// OBJ at the player, at the level of the creature (the Mirror Shield,
+// dtugear.h).
 void dtu_spell_test_missile_at(int spell,int objnum)
 {
-	object *player = ConsoleObject;
+	dtu_spell_test_missile_from(spell,ConsoleObject ? ConsoleObject-Objects : -1,objnum);
+}
+
+void dtu_spell_test_missile_from(int spell,int from,int objnum)
+{
+	object *player = (from >= 0 && from <= Highest_object_index) ? &Objects[from] : NULL;
 	int L, o;
 	vms_vector d;
 
@@ -3739,7 +3755,7 @@ void dtu_spell_test_missile_at(int spell,int objnum)
 		dtu_spell_log("spell: test missile of spell %d at obj %d: no such spell or object",spell,objnum);
 		return;
 	}
-	L = dtu_spell_player_level(spell);
+	L = player == ConsoleObject ? dtu_spell_player_level(spell) : dtu_spell_object_level(player,spell);
 	vm_vec_sub(&d,&Objects[objnum].pos,&player->pos);
 	vm_vec_normalize_quick(&d);
 	o = find_point_seg(&player->pos,player->segnum);

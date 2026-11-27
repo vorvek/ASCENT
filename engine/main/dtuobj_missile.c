@@ -67,6 +67,7 @@
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
 #include "dtuobj_int.h"
+#include "dtugear.h"		// ASCENT: the new gear
 
 //------------------------------------------------------------------------
 // Missiles (laser.c 0x55511, pweapon.c 0xA03A8, collide.c 0x284E0, 0x272DD,
@@ -470,6 +471,18 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	if (m->harmless)
 		return;
 
+	// ASCENT: the Mirror Shield of the new gear (dtugear.h) turns the missile
+	// to its source. It is a missile of the player now (the player is its
+	// parent: it passes the player, and a kill gives experience), with the
+	// caster level of the source.
+	if (other->type == OBJ_PLAYER && dtu_gear_mirror(obj,other,m->spell,weapon,parent)) {
+		m->level = (m->spell >= 0) ? dtu_spell_object_level(parent,m->spell) : 0;
+		m->parent = other-Objects;
+		m->parent_sig = other->signature;
+		m->unlinked = 0;
+		return;
+	}
+
 	// A spell missile does the damage of the spell (dtu_spell_hit). A
 	// weapon with enemy_spell does the effect of the spell and the damage
 	// of the weapon.
@@ -477,7 +490,7 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	// ASCENT: the cause of a death for the session log (dtuxp.h)
 	if (other->type == OBJ_ROBOT)
 		dtu_xp_cause(!parent ? "missile with no source (a trap or a lost parent)" : parent->type == OBJ_ROBOT ? "creature missile" : "missile of the player");
-	spell_dealt = (spell >= 0) ? spell_hit(spell,other,parent) : 0;
+	spell_dealt = (spell >= 0) ? (m->level > 0 ? dtu_spell_hit_level(spell,other,parent,m->level) : spell_hit(spell,other,parent)) : 0;
 
 	if (other->type == OBJ_PLAYER) {
 		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac

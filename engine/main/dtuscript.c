@@ -66,6 +66,7 @@
 #include "dtumovie.h"
 #include "dtulog.h"		// ASCENT: the session log
 #include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
+#include "dtugear.h"		// ASCENT: the new gear
 #include "mem.h"		// ASCENT: dtu_load_file() allocates with mem_malloc, so free() must be mem_free()
 
 #define DTU_WEAK __attribute__((weak))
@@ -1465,6 +1466,7 @@ static void give_take(sc_run *r, int give)
 				if (dtu_item_get(t, id, &d) && !d.stackable && d.uses > 0)
 					count = d.uses;
 				dtu_inventory_add(t, id, count);			// 0xB6390
+				dtu_gear_script_give(r->id, t, id);		// ASCENT: the new gear (Daland)
 				return;
 			}
 			if (seg > Highest_segment_index)

@@ -68,6 +68,7 @@
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
 #include "dtuobj_int.h"
+#include "dtugear.h"		// ASCENT: the new gear
 
 // init_ai_object (0x1038B) for a creature of a level, with the values that
 // place_creatures (0x6A6FB) and add_npc (0xAC431) set.
@@ -694,6 +695,50 @@ void level_fixes_objects(int has_state)
 			fix_nohit(35,OBJ_ROBOT);
 			break;
 	}
+}
+
+// ASCENT, the new gear (Dtu_new_gear, dtugear.h): the Flame Tongue of the
+// dungeon. The user's design: the player meets the first trolls of the
+// DROW levels with no fire weapon, then finds the sword, which stops their
+// regeneration, before the next trolls. The first troll fight of the DROW
+// levels is the cell block of DROW2 (y -60, x -85 to -260, z 347 to 458): a
+// ring of corridors with 18 cells behind doors and three trolls (objects
+// 32, 33 and 35; DROW1 and DROW4 have none, DROW3 has eight more). The
+// sword lies in the cell of segment 167, the dead end of the ring that is
+// farthest from its entry (segment 125, 58 segments from the start), so the
+// player passes a troll before it (docs/re/objects.md, "New gear"). It is
+// made once in a game: the global
+// flag DTU_GEAR_FLAG_FLAME of the player record (saved with the game) says
+// that it was made. A level with a saved state from before the setting gets
+// it at its restore (the state replaces the objects, so it is made after
+// the read: restore 1). With a saved state the first setup (restore 0) makes
+// nothing.
+#define FT_LEVEL		21			// DROW2 (Dtu_script_level, the line of DTU.MSN)
+#define FT_WEAPON		71			// Flame Tongue
+static const vms_vector Ft_pos = { -172 * F1_0 - F1_0 / 2, -60 * F1_0, 435 * F1_0 };		// the center of segment 167
+
+void dtu_gear_place_flame_tongue(int has_state, int restore)
+{
+	vms_vector pos = Ft_pos;
+	int seg, n;
+
+	if (!Dtu_new_gear || !Dtu_gear_loaded || Dtu_script_level != FT_LEVEL || FT_WEAPON >= N_weapon_types)
+		return;
+	if (has_state && !restore)
+		return;
+	if (dtu_script_gflag(DTU_GEAR_FLAG_FLAME))
+		return;
+	seg = find_point_seg(&pos,-1);
+	if (seg < 0) {
+		dtu_obj_log("new gear: no segment at the place of the Flame Tongue");
+		return;
+	}
+	n = dtu_create_item(OBJ_WEAPON,FT_WEAPON,1,seg,&pos);
+	if (n < 0)
+		return;
+	dtu_script_set_gflag(DTU_GEAR_FLAG_FLAME,1);
+	dtu_obj_log("new gear: the Flame Tongue is obj %d in segment %d at %.2f %.2f %.2f",n,seg,
+		f2fl(Objects[n].pos.x),f2fl(Objects[n].pos.y),f2fl(Objects[n].pos.z));
 }
 
 // The hit points of scenery: the setup of the port gives each piece of

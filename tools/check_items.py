@@ -62,22 +62,27 @@ class Runner:
         self.args = args
         self.tmp = tempfile.mkdtemp(prefix="itemtest_")
 
-    def run(self, name, commands, extra=()):
+    def run(self, name, commands, extra=(), level=None, more_frames=0):
         """commands: a list of -chartest commands, one each second frame
-        from frame 5. Returns the dumps (in order) and the -objlog text."""
+        from frame 5; "N:cmd" runs at frame N. level: the level (default
+        YPINN). more_frames: frames after the last command. Returns the
+        dumps (in order) and the -objlog text."""
         d = os.path.join(self.tmp, name)
         os.makedirs(os.path.join(d, "user"), exist_ok=True)
         script = os.path.join(d, "script.txt")
-        frames = 5 + 2 * len(commands) + 10
+        plain = [c for c in commands if not re.match(r"\d+:", c)]
+        timed = [c for c in commands if re.match(r"\d+:", c)]
+        last = max([5 + 2 * len(plain)] + [int(c.split(":")[0]) for c in timed])
+        frames = last + 10 + more_frames
         with open(script, "w") as f:
             f.write("wait %d\nquit\n" % frames)
-        chartest = ",".join("%d:%s" % (5 + 2 * i, c) for i, c in enumerate(commands))
+        chartest = ",".join(["%d:%s" % (5 + 2 * i, c) for i, c in enumerate(plain)] + timed)
         charlog = os.path.join(d, "char.log")
         objlog = os.path.join(d, "obj.log")
         cmd = [os.path.abspath(self.args.exe)]
         for dd in self.args.datadir:
             cmd += ["-datadir", dd]
-        cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user"), "-level", LEVEL,
+        cmd += ["-nomovies", "-mute", "-userdir", os.path.join(d, "user"), "-level", level or LEVEL,
                 "-fescript", script, "-fixedfps", "30", "-chartest", chartest,
                 "-charlog", charlog, "-objlog", objlog] + list(extra)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd=d)
@@ -377,7 +382,141 @@ def test_saves(t):
     return "%d lines, e.g. %s" % (len(new), new[1].split("] ", 1)[-1])
 
 
-TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc]
+# ---------------------------------------------------------------------
+# The new gear (Dtu_new_gear, engine/main/dtugear.h)
+
+def test_gear_worn(t):
+    """Each new armor (53 to 59) worn, then taken off: the armor class, the
+    constitution of the Belt of Dwarvenkind and the effects Free Action,
+    Resist Fire, Infravision and Regeneration, logged as worn item bits.
+    -nonewgear: the lines do not exist, the give does nothing."""
+    cmds = ["dump"] + ["give=15.%d.1" % i for i in range(53, 60)] + ["dump"]
+    cmds += ["equip=15.59", "equip=15.53", "dump", "equip=15.54", "dump", "equip=15.56", "equip=15.57", "dump",
+             "equip=15.58", "equip=15.55", "dump",
+             "unequip=3", "unequip=5", "unequip=9", "unequip=1", "unequip=8", "unequip=6", "unequip=4", "dump"]
+    d, _, log = t.run("gear_worn", cmds)
+    base, plate, boots, belt, ring, off = d[0], d[2], d[3], d[4], d[5], d[6]
+    for i in range(53, 60):
+        check(d[1].count(15, i) == 1, "armor %d was not given" % i)
+    check(plate.ac == 10 - 9 - 2, "Plate Mail of Fire Resistance and Mirror Shield: armor class %d" % plate.ac)
+    check(plate.has("resist_fire"), "Plate Mail of Fire Resistance: no Resist Fire")
+    check(boots.has("free_action"), "Boots of Free Action: no Free Action")
+    check(belt.con == 18 and belt.has("infravision"), "Belt of Dwarvenkind: con %d, effects 0x%x" % (belt.con, belt.fx))
+    check(ring.fx & (1 << 24), "Ring of Regeneration: no Regeneration effect")
+    check(off.fx == 0 and off.worn == 0 and off.con == base.con and off.ac == base.ac,
+          "after the items came off: effects 0x%x worn 0x%x con %d ac %d" % (off.fx, off.worn, off.con, off.ac))
+    check(re.search(r"worn items: effect bits 0x8062", log), "no log line of the worn item bits")
+    d, _, _ = t.run("gear_worn_off", ["give=15.53.1", "give=16.128.1", "dump"], ["-nonewgear"])
+    check(d[0].count(15, 53) == 0 and d[0].count(16, 128) == 0, "-nonewgear: the new items exist")
+    return "AC %d, effects 0x%x, con %d" % (ring.ac, ring.fx, ring.con)
+
+
+def test_gear_mirror(t):
+    """The Mirror Shield at BEHOLDER: a Magic Missile of Xabash (object
+    106, a beholder: its eye rays are its spell missiles) that hits the
+    shield from the front flies back and hurts Xabash at its caster level;
+    from behind it hurts the player."""
+    cmds = ["heal=200", "give=15.53.1", "equip=15.53", "goobj=106.40", "face=106", "spellby=33.106"] + ["dump"] * 15 + \
+           ["face=2", "spellby=33.106"] + ["dump"] * 15
+    _, obj, _ = t.run("gear_mirror", cmds, level="BEHOLDER")
+    check(re.search(r"Mirror Shield sends obj \d+ \(weapon \d+ spell 33\) back to obj 106 xabash", obj), "no reflection")
+    check(re.search(r"'Magic Missile' \(33\) level 12 on obj 106 xabash", obj), "the reflected missile did not hit Xabash at level 12")
+    check(re.search(r"damage: obj 106 xabash takes \d+ from player", obj), "Xabash took no damage")
+    check(len(re.findall(r"Mirror Shield sends", obj)) == 1, "the missile from behind was sent back")
+    check(re.search(r"damage: the player takes \d+ from xabash", obj), "the missile from behind did not hit the player")
+    return "a missile from the front goes back, one from behind hits"
+
+
+def test_gear_archer(t):
+    """The Gloves of the Archer at BAT: arrows from a short bow at a
+    skeleton (object 43) get +1 to the roll and +2 damage."""
+    def shots(name, gloves):
+        cmds = ["give=16.89.1", "equip=16.89", "give=5.7.99", "current=5.7", "goobj=43.15", "face=43", "heal=99"]
+        if gloves:
+            cmds += ["give=15.55.1", "equip=15.55"]
+        cmds += ["aim=43"]
+        # the attack key (-testmove) after frame 40, each 20 frames
+        _, _, log = t.run(name, cmds, level="BAT", more_frames=260,
+                          extra=["-noattack", "-testmove", "wait:40" + ",attack:1,wait:20" * 12])
+        rolls = [int(b) - int(a) for a, b in re.findall(r"attack roll: d20 (\d+), roll (-?\d+) against", log)]
+        return rolls, log
+    a, _ = shots("gear_archer_no", False)
+    b, log = shots("gear_archer", True)
+    check(a and b, "no attack rolls (%d, %d)" % (len(a), len(b)))
+    check(set(b) == {a[0] + 1}, "roll bonus %s without, %s with the gloves" % (sorted(set(a)), sorted(set(b))))
+    check(re.search(r"damage roll: the Gloves of the Archer add 2", log), "no damage bonus line")
+    return "roll bonus %d -> %d, damage +2" % (a[0], b[0])
+
+
+def test_gear_regen(t):
+    """The Ring of Regeneration: 1 hit point each 60 seconds; none after it
+    is taken off."""
+    cmds = ["damage=6", "give=15.58.1", "equip=15.58", "dump", "1830:dump", "1850:unequip=6", "3700:dump"]
+    d, _, log = t.run("gear_regen", cmds)
+    check(len(d) == 3, "%d dumps" % len(d))
+    check(d[1].hp == d[0].hp + 1, "after 60 s: %d hit points, %d before" % (d[1].hp, d[0].hp))
+    check(d[2].hp == d[1].hp, "the ring was off: %d hit points, %d before" % (d[2].hp, d[1].hp))
+    check(re.search(r"Ring of Regeneration: 1 hit point", log), "no log line")
+    return "%d -> %d hit points in 60 s" % (d[0].hp, d[1].hp)
+
+
+GEAR_WANDS = {63: 46, 64: 47, 65: 23, 66: 37, 67: 13}
+
+
+def test_gear_wands(t):
+    """The wands 63 to 67 cast Sleep, Slow, Hold Undead, Melf's Minute
+    Meteors and Dispel Magic and use one charge each."""
+    cmds = ["class=1"]
+    for w in GEAR_WANDS:
+        cmds += ["give=5.%d.6" % w, "current=5.%d" % w, "fire", "dump"]
+    d, obj, _ = t.run("gear_wands", cmds)
+    for i, (w, spell) in enumerate(GEAR_WANDS.items()):
+        check(d[i].count(5, w) == 5, "wand %d: %d charges after one cast" % (w, d[i].count(5, w)))
+        check(re.search(r"casts '.*?' \(%d\) at level \d+, source 2" % spell, obj), "wand %d did not cast spell %d" % (w, spell))
+    return "%d wands" % len(GEAR_WANDS)
+
+
+def test_gear_drops(t):
+    """With the seed 1 the Banegard of BAT (object 31: moola 100, undead,
+    270 experience) leaves gold and a gem (a Pearl or a Ruby). -nonewgear:
+    the rule of 1.3 (only a HUMANOID type leaves gold)."""
+    d, obj, _ = t.run("gear_drops", ["seed=%d" % GEAR_SEED, "kill=31", "dump"], level="BAT", more_frames=400)
+    m = re.search(r"obj 31 Banegard leaves (\d+) gold \(obj \d+\) .*\(new gear\)", obj)
+    check(m and 100 < int(m.group(1)) <= 300, "no gold of the new rule: %s" % (m.group(0) if m else None))
+    check(re.search(r"obj 31 Banegard leaves misc (129|4) ", obj), "no Pearl or Ruby")
+    _, obj2, _ = t.run("gear_drops_off", ["seed=%d" % GEAR_SEED, "kill=31", "dump"], ["-nonewgear"], level="BAT", more_frames=400)
+    check(not re.search(r"obj 31 Banegard leaves", obj2), "-nonewgear: the Banegard left something")
+    return "%s gold and %s" % (m.group(1), re.search(r"leaves misc \d+ '[^']*'", obj).group(0))
+
+
+GEAR_SEED = 1
+
+
+def test_gear_market_items(t):
+    """The magic items of 1.3 that the new gear sells (dtugear.c
+    Gear_market) and that no other check wears: each one worn alone gives
+    its rule. The rings 17, 20, 22, 25 (test_rings), the wands 56 and 60
+    (test_wands) and the potions 73, 81, 83 (test_potions) are checked
+    there."""
+    cmds = []
+    for item, slot in ((15, 3), (30, 2), (31, 2), (36, 9), (43, 1), (44, 1), (46, 1), (51, 4)):
+        cmds += ["give=15.%d.1" % item, "equip=15.%d" % item, "dump", "unequip=%d" % slot]
+    cmds += ["give=16.99.1", "equip=16.99", "dump"]
+    d, _, log = t.run("gear_market_items", cmds)
+    ring3, am3, am4, lev, elvenkind, cham, elven, glim, xbow = d
+    check(ring3.ac == 7, "Ring of Protection +3: armor class %d" % ring3.ac)
+    check(am3.ac == 7 and am4.ac == 6, "Amulets of Protection +3 and +4: armor class %d and %d" % (am3.ac, am4.ac))
+    check(lev.has("levitate"), "Boots of Levitation: effects 0x%x" % lev.fx)
+    check(elvenkind.hide > 0, "Cloak of Elvenkind: Hide In Shadows %d" % elvenkind.hide)
+    check(cham.has("imp_invis") and elven.has("invisible"), "Chameleon Cloak and Elven Cloak")
+    check(glim.has("detect_magic"), "Glim-Gauntlet: effects 0x%x" % glim.fx)
+    check(re.search(r"equip: entry \d+ 'Crossbow \+3' in slot 11", log), "Crossbow +3 is not in the crossbow slot")
+    return "8 armor items and the Crossbow +3"
+
+
+TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc,
+         test_gear_worn, test_gear_mirror, test_gear_archer, test_gear_regen, test_gear_wands, test_gear_drops,
+         test_gear_market_items]
 
 
 def main():

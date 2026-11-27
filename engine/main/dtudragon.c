@@ -45,6 +45,7 @@
 #include "dtuxp.h"
 #include "dtulog.h"
 #include "dtudragon.h"
+#include "dtugear.h"
 
 //------------------------------------------------------------------------
 // The facts of the level (DROW2.LVL, DROW2.TIG, DROW2.TAP, checked with
@@ -107,7 +108,7 @@ static ubyte Dr_released[4];
 #define DR_GOLD_ID		1			// MISC 1: gold, the amount is in the hit points
 
 static const struct { short type, id, count, x, z; } Dr_treasure[] = {
-	{ OBJ_WEAPON, 71, 1, -134, -126 },		// Flame Tongue
+	{ -1, 0, 0, -134, -126 },					// free (the Flame Tongue of the level lies in the cell block, dtugear.h)
 	{ OBJ_ARMOR,  11, 1, -146, -126 },		// Plate Mail +3
 	{ OBJ_ARMOR,  38, 1, -166, -126 },		// Girdle of Hill Giant Strength
 	{ OBJ_ARMOR,  17, 1, -174, -108 },		// Ring of Coolness
@@ -657,6 +658,20 @@ static int place_item(int type, int id, int count, fix x, fix z)
 	return n;
 }
 
+// The new gear (dtugear.h): one item of its table goes to the next free
+// place of Dr_treasure.
+static int Dr_gear_place;
+
+static void dr_gear_item(int type, int id, int count)
+{
+	while (Dr_gear_place < DR_N_TREASURE && Dr_treasure[Dr_gear_place].type >= 0)
+		Dr_gear_place++;
+	if (Dr_gear_place >= DR_N_TREASURE)
+		return;
+	place_item(type,id,count,i2f(Dr_treasure[Dr_gear_place].x),i2f(Dr_treasure[Dr_gear_place].z));
+	Dr_gear_place++;
+}
+
 void dtu_dragon_level_rules(int restore)
 {
 	int on = dtu_dragon_on(), i;
@@ -727,6 +742,9 @@ void dtu_dragon_level_rules(int restore)
 	for (i=0;i<DR_N_TREASURE;i++)
 		if (Dr_treasure[i].type >= 0)
 			place_item(Dr_treasure[i].type,Dr_treasure[i].id,Dr_treasure[i].count,i2f(Dr_treasure[i].x),i2f(Dr_treasure[i].z));
+	// the new gear (dtugear.h) fills the free places
+	Dr_gear_place = 0;
+	dtu_gear_dragon_treasure(dr_gear_item);
 	dtu_obj_log("dragon: the key and the treasure are placed (%s)",restore ? "a level state without them" : "a new level");
 }
 

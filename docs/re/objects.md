@@ -1546,3 +1546,184 @@ to 8; the audit of each item id is [gear.md](../audit/gear.md). (Code)
   and uses one charge (0x56A0D).
 - There is no identification, no weight rule and no cursed item other than
   the Cursed Scroll.
+
+## New gear (ASCENT, not in 1.3)
+
+The setting "New gear" (`Dtu_new_gear`, on by default; `NewGear` of
+ascent.cfg; `-newgear`, `-nonewgear`; `-noimprovements` and `-origitems`
+clear it) adds items, wands and loot that DTUGAME.EXE 1.3 does not have. The
+code is `engine/main/dtugear.c` (the tables) with small hooks in the item,
+drop, missile and script code. With the setting off the tables, the drops,
+the market goods and the object log of a run are those of 1.3 (with the
+`Dtu_fix_*` corrections): four runs with a fixed seed (BAT with four kills,
+KOBOLDS, DROW2 and THIEF1 with `-testkill`) give the same `-objlog` bytes as
+the build before the change. The setting is read when the tables of a level
+are loaded, so a change takes effect at the next level.
+
+### The table lines
+
+After the table fixup of 1.3 (`dtu_gear_tables`, called by
+`bm_load_level_tables`) and only for the mission tables (53 `$ARMOR` lines,
+128 `$OBJECT` lines and the five generic wands, checked for each table):
+
+| Line | Item | Effect (code) | Value | Classes |
+|---|---|---|---|---|
+| armor 53 | Mirror Shield | Shield +1 (armor class 2 better); sends spell missiles back (`dtu_gear_mirror`) | 9000 | as Shield +1: fighter, thief, cleric |
+| armor 54 | Boots of Free Action | Free Action while worn (boot slot bit 5) | 3500 | all |
+| armor 55 | Gloves of the Archer | +1 to hit, +2 damage for arrows and bolts (`archer_bonus`) | 3500 | all |
+| armor 56 | Cloak of Fire Resistance | Resist Fire while worn (cloak bit 1): fire damage halved | 3000 | all |
+| armor 57 | Belt of Dwarvenkind | Constitution 18, Infravision for a human (belt bit 6) | 7500 | as the Girdle: fighter, thief, cleric |
+| armor 58 | Ring of Regeneration | 1 hit point each 60 seconds of game time (`regen_frame`), the effect Regeneration in the effect list (worn bit 15) | 15000 | all |
+| armor 59 | Plate Mail of Fire Resistance | armor class 1 as Plate Mail +2, magic and heavy armor, Resist Fire (armor slot bit 1) | 7500 | fighter, cleric |
+| misc 128 | Bloodstone | gem | 50 | all |
+| misc 129 | Pearl | gem | 100 | all |
+| misc 130 | Star Sapphire | gem | 5000 | all |
+
+The pictures and the icons are those of the items of the same kind, which
+each mission archive has (checked with `tools/egg.py list` on the mission
+archives: gensheld, genboots, genguant, gencloak, genbelt, genring,
+genpmail, gengem, gengem2, gengem3). The gems: Bloodstone gengem2 with icon
+131, Pearl gengem3 with icon 129, Star Sapphire gengem with icon 130. The
+three gem pictures of the archives are the same red gem. 1.3 reads no item
+effect of the belt or the armor slot (0xAFB55); the port reads both for
+these numbers only.
+
+Weapons 63 to 67 ("Wand of Genericness" 63 to 65, "Rod of Genericness" 66
+and 67, with `enemy_spell=-1` and no spell) become the Wand of Sleep (46),
+Wand of Slow (47), Wand of Hold Undead (23), Rod of Minute Meteors (37) and
+Rod of Dispel Magic (13): `PC_spell`, the mage class, value 3000, 6
+charges. The table values of the Mace of Disruption (70, 17500 in 1.3) and
+the Flame Tongue (71, 4500) become 4500 and 6000.
+
+### Drops
+
+`gear_drops` (dtuobj_combat.c) replaces the gold rule of 0x6A639 (a
+HUMANOID type in 4 of 10 deaths, 1 to moola / 4):
+
+- Gold: each type with a `moola` above 0, except the named people
+  (Durnan, Mirt, Aleena and the other people of YPINN, Daland, Thashasa,
+  Halaster, Ibbalar, Jeryth, the avatar), in 6 of 10 deaths: moola + 1d(2 x
+  moola).
+- Gems: an undead or intelligent type in 1 of 2 deaths, by the experience
+  of the type: under 100 a Bloodstone; 100 to 499 a Pearl 3 times in 4, else
+  a Ruby; 500 to 1999 a Ruby 2 times in 3, else a Diamond; 2000 and more a
+  Diamond, 1 time in 10 a Star Sapphire. The gem lies 3.0 to the right of
+  the body.
+
+Intelligent (`dtu_gear_gem_class`): the door bit (door_opening=1 or
+HUMANOID), a person model of Improved AI (`dtu_model_is_person`), or a
+spell caster (spell_level, a negative weapon_type, the eye ray weapons 81
+to 88). `iq` is the number of the sight and the morale (ai.md), not the
+intelligence. The types of the level files by class (`tools/gear_income.py
+--classes`):
+
+- Undead: Banegard, Ghast, Ghoul, gskelpus, gskelsci, Lich3, Mummy,
+  prstsprt, ske_axe, ske_bow, ske_sci, ske_swd, Zombie.
+- Intelligent: armOgre, armTroll, Beholder, dmfw1, flayer, fMephit,
+  Gargoyle, the goblins (gbloser, gbscsswd, gbscthxe, gobascim), the orcs
+  (gorc_axe, gorcaaxe, gorcasci, gorcatax, Orc_axe, Orc_taxe, Orcascim,
+  Orcataxe), hatchlng, the humans (hffg1, hmfg1, hmft4, hmft7, the shadow
+  thieves sfmtd2 to shmtf6, shdleadf, shdleadg), the kobolds (kob_bow,
+  kob_spel, kob_swrd, kobaswrd), Ogre2, the drow (rffk5, rffk8b, rffk9,
+  rmfb3, rmfb5, rmfb9, rmfg3, rmfg5, rmfg9, rmmk5, rmmk9, rmmk9b),
+  Spectatr, Troll, xabash.
+- None: Beetle, blackbat, GiantBat, GiantRat, gSpider, Mage Spirit, Rat,
+  Scarab, sSpider.
+
+The approved rule was gold moola/2 + 1d(moola) and gems in 1 of 4. It gave
+64000 in all (table values), about half of the target (one item of 8000 to
+13000 for each two or three missions), so the dice are the ones above. The
+income of the creatures that the level files place (`tools/gear_income.py`;
+the makers, the summons and the `contains` items are not in it; "as gold"
+counts the gems at the 75 percent that the market pays at Charisma 12):
+
+| Missions | Kills | Gold 1.3 | Gold new | Gems new | Total | As gold |
+|---|---|---|---|---|---|---|
+| 0-2 | 57 | 16 | 373 | 1150 | 1523 | 1236 |
+| 3-6 | 136 | 10 | 3412 | 6783 | 10195 | 8499 |
+| 7-11 | 251 | 71 | 5167 | 13625 | 18792 | 15385 |
+| 12-19 | 299 | 63 | 12025 | 26183 | 38208 | 31662 |
+| 20-23 | 96 | 10 | 6562 | 17825 | 24387 | 19931 |
+| 24-31 | 110 | 19 | 6457 | 27892 | 34349 | 27376 |
+| all | 949 | 189 | 33995 | 93458 | 127453 | 104089 |
+
+The first missions stay below the target: their creatures are kobolds,
+rats and skeletons with a small moola and little experience.
+
+### The Mirror Shield
+
+`dtu_gear_mirror` (from `missile_hit_object`, dtuobj_missile.c): a missile
+of a creature that hits the player who wears the shield goes back to the
+creature when it carries a spell that is not an area spell, or is an eye
+ray weapon (81 to 88), and it comes from the front: at most 60 degrees from
+the view direction (the cosine 0.5). The missile flies at the center of its
+source at its own speed; the player becomes its parent (it passes the
+player, and a kill gives experience), and the spell keeps the caster level
+of the source (`dtu_spell_hit_level`). Area spells (Fireball and the
+others) burst at the shield as before: their area has no single way back.
+Arrows, bolts, thrown weapons and the missiles of traps (no source) are not
+sent back. The eye rays of a beholder in 1.3 are its spell missiles: a
+beholder has a spell level and does not fire its weapon 81 (0x11DE9), and
+the setup by name gives the spectator weapon 0, so no creature fires the
+weapons 81 to 88.
+
+### Places and market
+
+- The Mace of Disruption: Daland (MYRKUL object 3, script 160) gives it
+  with the Potion of Extra-Healing after the consecration of the altar of
+  Kelemvor (trigger 31, segment 460), `dtu_gear_script_give`. In 1.3 the
+  level fix 0xAD129 holds Daland with no end, and a held creature cannot
+  talk (0xABBE5 tests +0x89 bit 0x40: "tries to speak, but nothing
+  happens"); a Dispel Magic of the player frees him but makes him hostile.
+  That is a defect of the quest group, not of the new gear.
+- The Flame Tongue of the dungeon: DROW2, the cell of segment 167 (-172.5,
+  -60, 435), the dead end of the cell block farthest from its entry
+  (`dtu_gear_place_flame_tongue`, dtuobj_setup.c). The cell block (18 cells
+  behind doors) has the three trolls of DROW2 (objects 32, 33, 35); DROW1
+  and DROW4 have none, DROW3 has eight more. MINE has one troll (mission
+  10). The sword is made once in a game: global flag 0xF0 of the player
+  record. A saved state of DROW2 from before gets it at its restore.
+  The rule of the sword is the one of 1.3, unchanged: after the table
+  fixup the line has 0d0, damage_bonus 1, to_hit_bonus 1 and 1d8 fire;
+  0x2AB9F adds 2 to the roll against a target with the regeneration bit
+  (24) and 4 against an undead type; 0x2B1FA adds 2 fire against the
+  regeneration bit and 4 against undead, the fire dice go through the fire
+  resistance of the target (`fire_part`), and fire damage above 0 clears
+  the regeneration bit (0x2B5D4), so a troll that the sword burns does not
+  get up again. So against a troll: the first hit +3 to hit and 1 + 1d8 + 2
+  fire, then +1 and 1 + 1d8 (the bit is gone). Against other creatures:
+  +1 to hit, 1 + 1d8 fire, plus Strength. AD&D 2e (DMG): a sword +1 (1d8
+  for a long sword), +2 against regenerating creatures, +3 against
+  cold-using, inflammable or avian creatures, +4 against undead, to hit and
+  damage. The 2e rule would need the sword die in place of the fire die
+  (the fixup line), the bonuses on the damage instead of as fire, a list of
+  the cold-using, inflammable and avian types of the tables, and a
+  `Dtu_fix_*` or rulebook setting.
+- The market goods by reward stage (`dtu_gear_market_stock`), the 1.3 good
+  that the setting moves (the Flame Tongue of stage 5 goes to stage 7,
+  `dtu_gear_market_removed`) and the treasury of Tamaramagil (Belt of
+  Dwarvenkind, Ring of Regeneration, Plate Mail of Fire Resistance,
+  `dtu_gear_dragon_treasure`) are tables of dtugear.c that the market and
+  the dragon code read. A stock file that took reward 5 before keeps its
+  Flame Tongue. The 1.3 magic items with rules but no place in 1.3 that
+  the market sells: Club +1, Darts +1 and +2, Bolts +2, Wands of Confusion
+  and of Magic Detection, Rings of Protection +3, Coolness, Free Action,
+  Infravision and Quickness, Amulets of Protection +3 and +4, Boots of
+  Levitation, Cloak of Elvenkind, Chameleon Cloak, Elven Cloak,
+  Glim-Gauntlet, the Potions of Anti-Magic, Invisibility and Hill Giant
+  Intelligence, Crossbow +3. The Arrows +1 and +2 are left out: their lines
+  have no value.
+
+### Saves
+
+An item is a type and a number in the save (16 byte entry,
+docs/formats/misc.md) and in the stock files (10 byte record, the number in
+one byte). With the setting a save with new items loads
+(`tools/check_saveload.py`, fourth run). Without the setting the load leaves
+each new item out ("does not fit the inventory", `dtu_inventory_append`),
+the effects that the worn new items had on the player object of the level
+state end at the first frame (`gear_lost_effects`), the wands 63 to 67 are
+the generic wands again, and the market leaves a new item out of its stock
+(`mk_insert`) and out of the next write of geldor.dat. Not verified: the
+study says that DOS 1.3 asserts on an item number above the count of its
+table, so a save with a new item would not load in 1.3.

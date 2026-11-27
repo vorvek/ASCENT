@@ -87,6 +87,12 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Creatures take fall damage, and long falls always hurt, whatever the frame rate.
 * With Improved AI (the setting that was Improved pathfinding), creatures handle corners and ladders better, and they notice you only along an open way: a wall or a closed door hides you, and an alarm stops at a closed door. Humanoid creatures open unlocked doors, but only once they fight you. A closed door stops blows in both directions. Creatures that would attack after a talk join their friends when a fight starts in front of them.
 
+**New gear** (the New gear setting, on by default)
+
+* Seven new magic items (Mirror Shield, Boots of Free Action, Gloves of the Archer, Cloak of Fire Resistance, Belt of Dwarvenkind, Ring of Regeneration, Plate Mail of Fire Resistance), five new wands, and the magic items that 1.3 has rules for but never gives you, in the market of Waterdeep as the missions go on, in the dungeon and in a treasure.
+* Creatures leave more gold, and undead and intelligent creatures leave gems (Bloodstone, Pearl, Ruby, Diamond, Star Sapphire) that the market buys.
+* Daland gives the Mace of Disruption for the altar of Kelemvor, and a Flame Tongue waits in DROW2 for the troll fights. See [docs/re/objects.md](docs/re/objects.md), "New gear".
+
 **Controls**
 
 * A separate Climb Wall key, so Activate no longer tries to climb a wall when you pull a lever.

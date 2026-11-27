@@ -35,6 +35,7 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 #include "dtudesc.h"		// ASCENT: the description window of the market
+#include "dtugear.h"		// ASCENT: the new gear of the rewards
 
 
 int Fe_khelben_mission;			// MsnNum (0x13E588)
@@ -641,6 +642,17 @@ static int mk_file_has_reward_goods(FILE *f)
 	return 0;
 }
 
+// ASCENT: the new gear (Dtu_new_gear, dtugear.h): one good of a reward
+static FILE *Mk_gear_file;
+
+static void mk_gear_record(int quantity, int type, int id, int count)
+{
+	ubyte r[10];
+
+	mk_record(r, quantity, type, id, count);
+	fwrite(r, 1, 10, Mk_gear_file);
+}
+
 // The goods of reward n at the position of the file. A row of class 0
 // ends the table.
 static void mk_append_reward(FILE *f, int n)
@@ -649,9 +661,15 @@ static void mk_append_reward(FILE *f, int n)
 	int i;
 
 	for (i = 0; i < MK_REWARD_ROWS && Mk_reward_stock[n][i][1]; i++) {
+		// ASCENT: the new gear moves a good of 1.3 to a later reward
+		if (dtu_gear_market_removed(n, Mk_reward_stock[n][i][1], Mk_reward_stock[n][i][2]))
+			continue;
 		mk_record(r, Mk_reward_stock[n][i][0], Mk_reward_stock[n][i][1], Mk_reward_stock[n][i][2], Mk_reward_stock[n][i][3]);
 		fwrite(r, 1, 10, f);
 	}
+	// ASCENT: the goods that the new gear adds to this reward
+	Mk_gear_file = f;
+	dtu_gear_market_stock(n, mk_gear_record);
 	// ASCENT: Dtu_market_freedom: a record of Potions of Freedom (count 1)
 	if (Dtu_market_freedom > 0) {
 		mk_record(r, Dtu_market_freedom, OBJ_MISC, MK_FREEDOM_ID, 1);

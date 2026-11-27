@@ -306,6 +306,7 @@ void dtu_spell_clear_effect(object *obj, int mask);
 void dtu_spell_wake(object *obj);
 // ASCENT: test: one missile of the spell from the player at object objnum
 void dtu_spell_test_missile_at(int spell, int objnum);
+void dtu_spell_test_missile_from(int spell, int from, int objnum);		// ASCENT: spellby=SPELL.OBJ (dtugear.h)
 // 0x9002C with force: all effects of the object end (Dispel Magic, Potion
 // of Anti-Magic).
 void dtu_spell_dispel(object *obj);
@@ -507,6 +508,7 @@ void dtu_spell_compute_slots(void);
 // of the function of dtuobj.h. "level" is the level of the caster.
 // Returns the damage that was done.
 fix dtu_spell_hit(int spell, object *target, object *caster, int level);
+fix dtu_spell_hit_level(int spell, object *target, object *caster, int level);		// ASCENT: at this level (dtugear.h)
 
 // The area effect of a spell (0x90CEF): each player or creature in the
 // radius that the point sees. Returns the number of objects.

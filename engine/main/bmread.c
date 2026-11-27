@@ -97,6 +97,7 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 #include <ctype.h>
 #include "dtufile.h"		// ASCENT: the game data files
 #include "dtuitemfix.h"	// ASCENT: the rulebook values of the item lines
+#include "dtugear.h"		// ASCENT: the new gear (Dtu_new_gear)
 #include "dtutblfix.h"	// ASCENT: the table fixup of 1.3 (0x1A344)
 #include "dtuspell.h"	// ASCENT: dtu_spell_table_read
 #include "texmerge.h"	// ASCENT: texmerge_mark_wall_effects
@@ -896,10 +897,16 @@ int bm_load_level_tables( char * level_name, char * player_name )
 	// ASCENT: the table fixup of 1.3 (0x1A344, the end of bm_read_all
 	// 0x1C8F9), after both tables. -rawtables keeps the table text.
 	Dtu_raw_tables = FindArg( "-rawtables" ) != 0;
-	if ( !Dtu_raw_tables )
+	if ( !Dtu_raw_tables ) {
 		dtu_tblfix_apply( &Tblfix_io );
-	else
+		// ASCENT: the new gear (Dtu_new_gear, dtugear.h): the wands, two
+		// values and the new item lines, after the fixup
+		dtu_gear_tables( &Tblfix_io, bm_parse_text );
+	}
+	else {
 		dtu_log( "Table fixup of 1.3 not applied (-rawtables)\n" );
+		Dtu_gear_loaded = 0;
+	}
 	dtu_spell_table_read();		// ASCENT: the writes of the casts into the spell records end (D-104, D-105)
 
 	NumTextures = texture_count;

@@ -276,6 +276,13 @@ static void power_lines(int type, int id)
 			case DTU_IP_FAST_ATTACK:	line(LT("Attacks twice as fast. Does not add to Haste.")); break;
 			case DTU_IP_PROT_SAVES:	line(LT("Saving throws: %d better. Of several protection items only the best one counts."), p[i].value); break;
 			case DTU_IP_PROT_AMULET:	line(LT("Only the highest magic protection bonus counts. An Amulet of Protection +1 does not improve a +2 armor and does not add to a Ring or Cloak of Protection.")); break;
+			// ASCENT: the new gear (dtugear.h)
+			case DTU_IP_MIRROR:
+				line(LT("A spell missile or an eye ray of a creature that hits you from the front (up to 60 degrees from where you look) flies back to the creature."));
+				line(LT("Area spells, arrows, bolts and thrown weapons hit you as before."));
+				break;
+			case DTU_IP_ARCHER:		line(LT("Arrows and bolts get +%d to hit and +%d damage."), p[i].value, p[i].value2); break;
+			case DTU_IP_REGEN:		line(LT("Heals 1 hit point each %d seconds."), p[i].value); break;
 		}
 }
 

@@ -75,6 +75,7 @@
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
 #include "dtudragon.h"
 #include "dtuobj_int.h"	// ASCENT: the shared declarations of the object files
+#include "dtugear.h"		// ASCENT: the new gear
 
 //------------------------------------------------------------------------
 // Settings
@@ -1359,6 +1360,7 @@ void dtu_objects_level_setup(void)
 	}
 
 	dtu_dragon_level_setup(has_state);		// ASCENT: the dragon of DROW2 (dtudragon.c)
+	dtu_gear_place_flame_tongue(has_state,Level_setup_restore);		// ASCENT: the new gear (dtugear.h)
 
 	// level_start 0xAD5BF: the creature setup by name and add_npc
 	dtu_script_test_flags();
