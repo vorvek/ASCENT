@@ -18,6 +18,11 @@ DTUGAME.EXE 1.3. The reverse engineering notes are docs/re/combat.md
 The player pages are written in game terms. Addresses, table keywords and
 the evidence of each rule go to Sources.md only.
 
+The pages of the content of the port (New-Gear, Encounters, Monster-Behavior
+and the new spells of the spell pages) read the tables of the port code with
+tools/gear_tables.py and tools/port_tables.py; their rules in words are in
+the marked tables below (PORT_SPELLS, CLASS_GEAR, CASTER_KINDS and others).
+
 The item corrections of ASCENT come from engine/main/dtuitemfix.c (read by
 tools/check_itemfix.py): an item has its corrected name with the name of 1.3
 in its notes, and each value that the setting "Rulebook items" changes is
@@ -56,6 +61,7 @@ import jrg  # noqa: E402  (FEBGND.DAT, the icon sheet)
 import check_itemfix  # noqa: E402  (the tables of engine/main/dtuitemfix.c)
 import tblfix  # noqa: E402  (the table fixup of 1.3, engine/main/dtutblfix.c)
 import gear_tables  # noqa: E402  (the new gear of ASCENT-DTU, engine/main/dtugear.c)
+import port_tables  # noqa: E402  (the spells, icons, casters and dragon of the port)
 
 
 # ---------------------------------------------------------------------
@@ -336,7 +342,7 @@ SPELLS = {
              eff="Each creature in the area loses all its spell effects, with no save. It also acts "
                  "on things: a spell missile is destroyed unless it saves (d20 >= 10), a potion on the "
                  "floor breaks on d20 >= 23 - your level, magic scenery breaks unless it saves, and a "
-                 "spell light goes out unless it saves.",
+                 "spell light goes out unless it saves. DISPEL_PEACE",
              tech="The table fixup (0x1A8ED) writes flags 0x803: AREA, and +0x37 bit 3, with which "
                   "0x90CEF also takes objects that are not creatures. The table line had "
                   "cast_in_front (a cast on the caster); the fixup removes it."),
@@ -375,7 +381,12 @@ SPELLS = {
     22: dict(src="0x8E85A, 0x56FF6", dur="2 minutes per level", save="Negates", target="The creature the missile hits",
              eff="Only humanoid creatures and players; not undead, not with Free Action. The target "
                  "cannot move. Each cast holds at most 1d4 targets; a target that saves does not count. "
-                 "On a player the time is divided by half the Wisdom.",
+                 "HELD_HIT On you the hold lasts 6 to 18 seconds (with Caster AI a hold that a creature "
+                 "casts lasts CASTER_HOLD_MAX seconds at most, and no creature holds you again until "
+                 "CASTER_HOLD_REST seconds after a hold ends, [[Monster-Behavior]]), and you "
+                 "cannot move, turn, look up or down, attack, cast or use an item, except a Potion of "
+                 "Freedom, which ends it. The original 1.3 game holds you for 2 minutes per level "
+                 "divided by half your Wisdom and lets you attack and cast; ASCENT corrects this.",
              tech="The counter Spell_info+0x49 is 1d4 at each cast (0x56FF6); the case needs it above 0 "
                   "and takes 1 for each hold (0x8E8C5)."),
     23: dict(src="0x8EA21", dur="1d4 minutes + 1 per level", save="Only a target above level 2",
@@ -477,8 +488,10 @@ SPELLS = {
              eff="Only targets of level 3 or lower; not undead or creatures immune to sleep. Each cast "
                  "has a pool of 4 to 16 (an even number). A creature costs a quarter of its maximum hit "
                  "points, a player 2 per level; if the pool is too small, the target stays awake. An "
-                 "elf resists 9 times in 10, a half-elf 3 times in 10, people 9 times in 10. A sleeping "
-                 "player is also blind. A melee hit wakes the sleeper and always hits."),
+                 "elf resists 9 times in 10, a half-elf 3 times in 10, people 9 times in 10. A melee hit "
+                 "on a sleeper always hits. Any damage wakes the sleeper (in the original 1.3 game only a "
+                 "melee hit). While you sleep the view is black with \"zzz\", and you cannot move, look "
+                 "around or act; in the original 1.3 game nothing shows the sleep."),
     47: dict(src="0x8FAD8", dur="3 minutes + 1 per level", save="Negates", target="The creature the missile hits",
              eff="Ends Haste. Armor class +4 (at most 10), -4 to hit, half move speed, each swing "
                  "takes twice as long, and arrows, bolts and thrown weapons wait twice as long between "
@@ -486,8 +499,10 @@ SPELLS = {
     48: dict(src="0x8FBEE, 0xB3038", dur="3 minutes + 1 per level", save="None", target="You",
              eff="Climb Walls counts as 100%."),
     49: dict(src="0x8FC7A, 0x2AE44", dur="1d4 hits + 1 per 2 levels", save="None", target="You",
-             eff="Each melee hit on you does no damage until the hits are used up. The original 1.3 "
-                 "game also ends all your other spell effects when you cast it; ASCENT corrects this."),
+             eff="Each weapon attack on you that hits does no damage and uses up one of the hits. The attack "
+                 "roll comes first: a miss uses up nothing. The original 1.3 game uses up a hit for each "
+                 "attack of a creature on you, also for a miss, and ends all your other spell effects "
+                 "when you cast it; ASCENT corrects both."),
     50: dict(src="0x8FCFA", dur="1 hour per level, at most 4 hours 33 minutes", save="None", target="You",
              eff="Strength +1d8 for a fighter (above 18 each point adds 10 percent, up to 18/00); "
                  "+1d6 for a thief or cleric and +1d4 for a mage, at most 18. From caster level 5 on "
@@ -509,8 +524,78 @@ SPELLS = {
              eff="The target loses all its spell effects, with no save. It also acts on things: a spell "
                  "missile is destroyed unless it saves (d20 >= 10), a potion on the floor breaks on "
                  "d20 >= 23 - your level, magic scenery breaks unless it saves, and a spell light goes "
-                 "out unless it saves."),
+                 "out unless it saves. DISPEL_PEACE"),
 }
+DISPEL_PEACE = ("It is no attack: a creature that is not hostile is not woken and stays at peace, and its "
+                "friends are not alerted. The original 1.3 game makes it hostile; ASCENT corrects this.")
+HELD_HIT = ("Each attack on a held target hits with no attack roll; the hold stays. The original 1.3 game "
+            "rolls; ASCENT follows AD&D 2nd edition.")
+
+# The spells of the port (engine/main/dtuspell.c, docs/re/spells.md section
+# 15). The lines and the cast times come from the code (tools/port_tables.py);
+# the rules in words are here. Lines 59 and 60 are creature spells: the page
+# Monster-Behavior has them.
+PORT_SPELLS = {
+    56: dict(src="dtuspell.c: spell_amount (1d4 + L/3, at most 8), dtu_spell_mirror_takes; dtuobj_combat.c dtu_hit_test_vs",
+             dur="3 minutes per level", save="None", target="You",
+             eff="1d4 images of you, +1 for each 3 levels, at most 8. Each attack that would hit you, and "
+                 "each spell missile with no attack roll aimed at you alone (Magic Missile and the like), "
+                 "takes an image instead, with the chance images / (images + 1): the image is gone, and the "
+                 "message box says how many are left. A miss takes no image. Area spells are not fooled: "
+                 "Fireball, Burning Hands, Lightning Bolt, and the Flame Strike and Mind Blast of "
+                 "creatures. Hold Person is an area spell in this game, so the images do not take it."),
+    57: dict(src="dtuspell.c: dtu_spell_globe, globe_stops (in apply_spell, so each path of a spell)",
+             dur="1 minute per level", save="None", target="You",
+             eff="No spell of level 1 to 3 acts on you: Magic Missile, Hold Person, Fireball, Lightning "
+                 "Bolt and the others stop at the globe. Your own Fireball does not burn you, and a spell "
+                 "that you cast on yourself works. Spells of level 4 and up pass. The Mind Blast of a mind "
+                 "flayer is no spell and is not stopped. Dispel Magic ends the globe."),
+    58: dict(src="dtuspell.c: hammer_bonus (L/6, at most 3), dtu_spell_port_weapon_line; dtucombat.c hand_weapon",
+             dur="1 minute per level", save="None", target="You",
+             eff="A blue throwing hammer of force is the weapon in your hand while the spell lasts. Your "
+                 "attack throws it: 1d4 + 1 damage at the rate of the Throwing Hammer, and +1 to hit and "
+                 "damage for each 6 levels (at most +3). It never runs out and is a magic weapon, so it "
+                 "hurts the creatures that only magic weapons hurt. The weapon that you held stays in your "
+                 "inventory and is in your hand again when the spell ends. The spell ends when you take "
+                 "another item or a spell into your hand, and at a fumble that would drop the weapon. The "
+                 "hammer is no item: it cannot be dropped, sold or put into a hot key box. AD&D 2nd edition "
+                 "has a hammer that the priest directs at a distance for 3 rounds + 1 per level; ASCENT "
+                 "follows Baldur's Gate."),
+}
+PORT_SPELL_END = ("These spell effects end at a rest, at a level change and by Dispel Magic, and a saved game "
+                  "does not keep them.")
+CASTER_AI_SETTING = "Caster AI"
+IMPROVED_AI_SETTING = "Improved AI"
+
+# The caster kinds of the lists of engine/main/dtucaster.h in game terms (no
+# place names). Each list of the code needs a line here.
+CASTER_KINDS = {
+    "CL_DROW_MAGE": "Drow mages",
+    "CL_DROW_PRIEST": "Drow priestesses and priests, priest spirits",
+    "CL_DROW_HIGH_PRIEST": "Drow high priestesses (the strongest priestesses)",
+    "CL_LICH": "Liches",
+    "CL_ARCHMAGE": "Archmages (the great wizards of the story)",
+    "CL_MAGE": "Other mages (the kobold shaman, human mages, the Mage Spirit)",
+    "CL_HUMAN_CLERIC": "Human clerics (then they fight hand to hand)",
+    "CL_ILLITHID": "Mind flayers (they walk at you and touch, 2d4)",
+    "CL_BEHOLDER": "Beholders (their eye rays as spells)",
+    "CL_MAGE_PRIEST": "A drow who is both a mage and a priestess",
+    "CL_AVATAR": "An avatar of a goddess (she fights hand to hand)",
+}
+
+# The hoard of the dragon of DROW2 in the level file of 1.3 (objects 50 to
+# 60, docs/re/dragon.md section 1): (class, number, count)
+# The gems of the original game that the drops of the new gear give (misc 4
+# and 3 of the tables)
+GEM_RUBY, GEM_DIAMOND = 4, 3
+
+DRAGON_HOARD_13 = [(16, 3, 3), (15, 10, 1), (15, 8, 1), (15, 41, 1), (15, 6, 1), (5, 37, 1), (5, 39, 1),
+                   (5, 44, 1), (5, 42, 1)]
+
+# The lich of CLAN3: Lich3 of the CLAN3 table, 88 hit points (docs/re/lich.md
+# section 1)
+LICH_HIT_POINTS = 88
+
 SPELLS[9] = dict(SPELLS[8])
 SPELLS[31] = dict(SPELLS[30], dur="60 minutes + 10 per level")
 SPELLS[52] = dict(SPELLS[22])
@@ -639,7 +724,18 @@ FIXES = [
     ("Dtu_fix_bolt_pass", "-origcombat", "Lightning Bolt goes on through each creature on its line, and "
                                          "comes back from a wall, until its range ends, as in AD&D 2nd "
                                          "edition; in 1.3 the first creature or the player ends it."),
-    ("Dtu_fix_burning_hands", "-origcombat", "Burning Hands burns each creature within 5 feet in an arc "
+    ("Dtu_fix_stoneskin_hit", "-origcombat", "Stone Skin takes a hit of a creature only after its attack "
+                                             "roll hits; in 1.3 a miss uses one up too (D-197)."),
+    ("Dtu_fix_hold_hit", "-origcombat", "An attack on a held target (Hold Person, Hold Undead, the stun of "
+                                        "Mind Blast) hits with no roll, as in AD&D 2nd edition; 1.3 rolls "
+                                        "(D-198)."),
+    ("Dtu_fix_player_hold", "-origcombat", "Hold Person holds you for 6 to 18 seconds and blocks each action "
+                                           "but the Potion of Freedom; 1.3 holds for 2 minutes per level "
+                                           "divided by half the Wisdom and lets you attack and cast."),
+    ("Dtu_fix_dispel_peace", "-origcombat", "Your Dispel Magic is no attack on a creature that is not "
+                                            "hostile: it does not wake it, make it hostile or alert its "
+                                            "friends, so Daland of the Temple of Myrkul can be freed (D-196)."),
+    ("Dtu_fix_burning_hands", "-origcombat","Burning Hands burns each creature within 5 feet in an arc "
                                              "of 120 degrees in front of you, one roll each, as in AD&D 2nd "
                                              "edition; 1.3 fires 6 missiles that fly far and burn where they land."),
     ("Dtu_fix_haste_friends", "-origcombat", "Haste hastes only you and the creatures that are not "
@@ -684,7 +780,23 @@ FIXES = [
                                                        "hit points; 1.3 reads a wrong table entry."),
     ("Dtu_fix_scenery_restore", "-origobj", "Breakable scenery keeps its hit points on a return visit; "
                                             "1.3 sets it to 1."),
-    ("Dtu_lich_phylactery", "-origobj or -nophylactery", "New content: an altar of Velsharoon in the east "
+    ("Dtu_improved_ai (Improved AI)", "-origobj, -noimprovedai or -noimprovements", "Creatures notice you only along an open "
+     "way (a wall or a closed door hides you), an alarm stops at a closed door, only humanoid creatures that "
+     "fight you open doors, a blow or a missile stops at a wall or a closed door, melee creatures walk up "
+     "and attack at once, and a creature that would turn hostile after a talk joins the fight of its group "
+     "([[Monster-Behavior]]). In 1.3 a melee creature notices you through a closed door."),
+    ("Dtu_caster_ai (Caster AI)", "-origcasterai, -origobj or -noimprovements", "Each kind of caster has "
+     "its own spells, protects itself when it notices you, keeps its distance and casts each round; new "
+     "spells Mirror Image, Minor Globe of Invulnerability, Spiritual Hammer, Flame Strike and Mind Blast "
+     "([[Monster-Behavior]], the spell pages). In 1.3 every caster picks from one table and rarely attacks."),
+    ("Dtu_new_gear (New gear)", "-nonewgear, -origitems or -noimprovements", "New content: new magic items, "
+     "wands and loot, more gold and gems ([[New-Gear]])."),
+    ("Dtu_class_gear (Gear for single class mages and thieves)", "-noclassgear, -origitems, -origscript or "
+     "-noimprovements", "New content: offers of Aleena Paladinstar, Nalbas Oddpepper and Mirt for a "
+     "character with one class, a mage or a thief ([[New-Gear]])."),
+    ("Dtu_restored_dragon (The dragon Tamaramagil)", "-origobj, -origtamaramagil or -noimprovements", "New content: the red "
+     "dragon of the Temple of the Drow that the files of 1.3 have but no level places ([[Encounters]])."),
+    ("Dtu_lich_phylactery (The phylactery of the lich)", "-origobj, -nophylactery or -noimprovements", "New content: an altar of Velsharoon in the east "
      "crypts of the Crypts of Clangeddin is the phylactery of the lich Morik Stormhand. Break it and he "
      "fights without Stone Skin, Shield, Minor Globe of Invulnerability and Mirror Image; break it during "
      "the fight and they end at once."),
@@ -706,6 +818,16 @@ FIXES = [
      "kind; 1.3 gives it charges with no limit."),
     ("Dtu_fix_market_buy_stock", "-origfe", "Items that your bag cannot take stay in the market; 1.3 removes "
      "them from the stock."),
+    ("Dtu_fix_market_reward", "-origfe", "Each reward of Khelben adds its goods to the market, also before "
+     "your first visit there, and a saved game gets the goods of the rewards it missed; 1.3 loses the goods "
+     "of a reward before the first visit, and the port had no reward goods before 2026-11-27 (D-149)."),
+    ("Dtu_fix_market_spell_line", "-origfe", "A bought scroll that goes into a spell book gets no sale line; "
+     "in 1.3 that line sells for no gold (D-194)."),
+    ("(port correction)", "none", "The market buys the scrolls of the item list, as 1.3 does (0x8770C); the "
+     "port did not offer them before 2026-11-27."),
+    ("(port correction)", "none", "Typed names (the character, a saved game) follow the keyboard layout of "
+     "the system: dead keys, AltGr and the letters of the fonts work; the keys of the controls stay where "
+     "they are."),
     ("Dtu_fix_item_names", "-origitems", "Items with a wrong name show the right one: the Cloak of Lathander "
                                          "(1.3: Lathandar), the Ring of Armoring and three more."),
     ("Dtu_rulebook_items (off by default)", "-rulebookitems turns it on; -norulebookitems, -origitems "
@@ -749,6 +871,11 @@ class IconSheet:
             raise SystemExit("FEBGND entry %d: the picture does not decode" % ICON_ENTRY)
         self.w = e["w"]
         self.count = 8 * (e["h"] // ICON_CELL)
+        # The icons of the port (200 and up: the new spells, the Pearls of
+        # Power), new art of tools/spell_icons.py in engine/main/dtuspellicons.h.
+        # The game adds them to the loaded sheet (port_icons_add, dtudisp.c).
+        self.port = port_tables.icons()
+        self.count = max([self.count] + [n + 1 for n in self.port])
         self.palette = egg.load_palette(os.path.join(game_dir, "PALETTE.256"))
 
     def write(self, n, path):
@@ -756,8 +883,12 @@ class IconSheet:
         x0, y0 = (n & 7) * c, (n // 8) * c
         out = bytearray()
         for y in range(c * s):
-            p = (y0 + y // s) * self.w + x0
-            out += bytes(v for v in self.pix[p:p + c] for _ in range(s))
+            if n in self.port:
+                row = self.port[n][(y // s) * c:(y // s) * c + c]
+            else:
+                p = (y0 + y // s) * self.w + x0
+                row = self.pix[p:p + c]
+            out += bytes(v for v in row for _ in range(s))
         egg.write_png(path, c * s, c * s, out, self.palette, transparent=(ICON_TRANSPARENT,))
 
 
@@ -856,7 +987,22 @@ class Pages:
         self.icons = icon_count > 0
         self.used_icons = set()
         self.gear = gear        # GearData: the new gear of ASCENT-DTU
+        # the spell lines of the port (56 and up) and their cast times
+        self.port_spells, self.port_cast = {}, {}
+        for n, (line, ct) in port_tables.spells().items():
+            self.port_spells[n] = Record(line)
+            self.port_cast[n] = ct
+        # the scrolls of Caster AI: {spell: [(level, the spell of 1.3)]}
+        self.port_scrolls = {n: [(lvl, self.S[old].name()) for lvl, _, old in rows]
+                             for n, rows in port_tables.port_scrolls().items()}
+        self.casters = port_tables.casters()
+        self.dragon = port_tables.dragon()
+        self.ai = port_tables.improved_ai()
         self.item_fixes()
+
+    def spell_rec(self, s):
+        """The line of spell s: of the table, or of the port (56 and up)."""
+        return self.S[s] if s < len(self.S) else self.port_spells[s]
 
     # -- icons ----------------------------------------------------------
     def icon_cell(self, *recs):
@@ -932,11 +1078,11 @@ class Pages:
 
     def spell_self(self, s):
         # 0x56D36: +0x37 bit 0, set by self_cast_ok and by cast_in_front (0x253C7)
-        r = self.S[s]
+        r = self.spell_rec(s)
         return r.has("self_cast_ok") or r.has("cast_in_front")
 
     def spell_area(self, s):
-        return (self.S[s].get("type") or "").upper() == "AREA"
+        return (self.spell_rec(s).get("type") or "").upper() == "AREA"
 
     def count(self, page, n):
         self.counts[page] = self.counts.get(page, 0) + n
@@ -969,7 +1115,46 @@ class Pages:
             "- [[Wizard Spells|Wizard-Spells]]",
             "- [[Priest Spells|Priest-Spells]]",
             "- [[New gear and loot|New-Gear]]: the new items, wands and loot of ASCENT-DTU (spoilers)",
+            "- [[Encounters]]: the dragon Tamaramagil and the lich Morik Stormhand (spoilers)",
+            "- [[Monster behavior|Monster-Behavior]]: how creatures notice you, open doors, join fights "
+            "and cast spells",
             "- [[Sources]]: where each number comes from",
+            "",
+            "## Settings of ASCENT",
+            "",
+            "The Improvements menu (in the options of the main menu and of the game menu) has these "
+            "settings that change the rules. Each is on by default unless the line says otherwise.",
+            "",
+            "- Rulebook items (off by default): some item values and class limits of the AD&D 2nd edition "
+            "rulebooks ([[Magic Items|Magic-Items]]).",
+            "- Maximum HP on level up (off by default): a new level gives the full hit die.",
+            "- Improved AI: creatures notice you only along an open way, open doors only in a fight, stop "
+            "their blows at walls and doors, attack at once in reach, and join the fight of their group "
+            "([[Monster-Behavior]]).",
+            "- Caster AI: each kind of spellcaster has its own spells, protects itself the moment it "
+            "notices you, keeps its distance and casts each round; it brings the new spells Mirror Image, "
+            "Minor Globe of Invulnerability and Spiritual Hammer ([[Monster-Behavior]], "
+            "[[Wizard Spells|Wizard-Spells]], [[Priest Spells|Priest-Spells]]).",
+            "- New gear: new magic items, wands, the Rod of Kelemvor, more gold and gems, and magic items "
+            "of the original game in the market ([[New-Gear]]).",
+            "- Gear for single class mages and thieves: offers for a character with one class, a mage or "
+            "a thief ([[New-Gear]]).",
+            "- The dragon Tamaramagil: the red dragon of the drow temple and her hatchlings "
+            "([[Encounters]]).",
+            "- The phylactery of the lich: the wards of the lich Morik Stormhand are bound to an altar that "
+            "you can break ([[Encounters]]).",
+            "",
+            "Some corrections of ASCENT that a player notices (all of them: [[Sources]]):",
+            "",
+            "- The game clock no longer breaks after about 9 hours of play: in the original 1.3 game spell "
+            "and potion effects then end at once, the rest places stop working and nothing can be picked "
+            "up.",
+            "- The market grows with Khelben's rewards, also before your first visit, and a saved game "
+            "gets the goods of the rewards it missed.",
+            "- The market buys scrolls: spells that you cannot learn and spare copies ([[Scrolls]]).",
+            "- Typed names follow the keyboard layout of your system (dead keys, AltGr, accented letters).",
+            "- Stone Skin, Hold Person, Sleep, Dispel Magic and Lightning Bolt follow AD&D 2nd edition "
+            "more closely (the spell pages).",
             "",
             "## Units",
             "",
@@ -1005,6 +1190,8 @@ class Pages:
             "- [[Wizard Spells|Wizard-Spells]]",
             "- [[Priest Spells|Priest-Spells]]",
             "- [[New gear and loot|New-Gear]]",
+            "- [[Encounters]]",
+            "- [[Monster behavior|Monster-Behavior]]",
             "- [[Sources]]",
             "",
         ])
@@ -1810,10 +1997,17 @@ class Pages:
             "## Spell scrolls",
             "",
             "A spell in the world is an item. When you pick it up, a mage learns a mage spell and a "
-            "cleric learns a cleric spell; it goes into the spell book. A spell that none of your "
-            "books takes stays in the item list. With it in the hand, an attack casts it as a scroll: "
-            "no cast time, no spell slot, and the scroll is used up. The caster level is that of a "
-            "wand ([[Wands]]).",
+            "cleric learns a cleric spell; it goes into the spell book. A spell goes only into the book "
+            "of the class that can cast it: Protection From Fire, a cleric spell that also has the mark "
+            "of a mage, goes into the book of a cleric, and a mage keeps it as a scroll. (The original "
+            "1.3 game puts it into the mage book, where it cannot be cast; ASCENT corrects this.) A "
+            "spell that none of your books takes stays in the item list. With it in the hand, an attack "
+            "casts it as a scroll: no cast time, no spell slot, and the scroll is used up. The caster "
+            "level is that of a wand ([[Wands]]).",
+            "",
+            "The market buys the scrolls of the item list: the spells that you cannot learn and the "
+            "spare copies of spells that you know. A scroll that you buy and that goes into a book "
+            "leaves no line in your sale list.",
             "",
             "Only a mage or a cleric can put a spell item in a hot key box, and its class must fit. "
             "Protection From Evil and Protection From Fire are the exceptions: anyone can use them.",
@@ -1845,7 +2039,7 @@ class Pages:
         # The dwords read at Spell_info+6 and +0xA, shifted by 16, are the
         # words radius (+8, default 20 of the reader 0x242F6) and
         # level_radius (+0xC).
-        r = self.S[s]
+        r = self.spell_rec(s)
         text = "%s ft" % feet(r.num("radius", 20))
         lr = r.num("level_radius", 0)
         if lr:
@@ -1853,12 +2047,18 @@ class Pages:
         return text
 
     def spell_effect(self, s):
+        if s in PORT_SPELLS:
+            e = "**New in ASCENT-DTU.** " + PORT_SPELLS[s]["eff"] + " " + PORT_SPELL_END
+            return e
         e = SPELLS[s]["eff"]
         if e == "DETECT_MAGIC":
             return DETECT_MAGIC
         if e == "VESTMENT":
             return vestment_text()
-        return e
+        d = self.casters["d"]
+        return (e.replace("DISPEL_PEACE", DISPEL_PEACE).replace("HELD_HIT", HELD_HIT)
+                .replace("CASTER_HOLD_MAX", "%g" % d["CASTER_HOLD_MAX"])
+                .replace("CASTER_HOLD_REST", "%g" % d["CASTER_HOLD_REST"]))
 
     def spell_page(self, cls):
         flag = "mage_use" if cls == "m" else "cleric_use"
@@ -1866,9 +2066,17 @@ class Pages:
         # 1.3 casts a spell with both class bits as a cleric spell (0x35683)
         nums = [i for i, r in enumerate(self.S) if r.has(flag) and i not in OTHER_SPELL_LINES
                 and not (cls == "m" and r.has("cleric_use"))]
+        # the spells of the port with the class word (Mirror Image, Minor
+        # Globe of Invulnerability, Spiritual Hammer)
+        new = [i for i, r in sorted(self.port_spells.items()) if r.has(flag)]
+        for i in new:
+            if i not in PORT_SPELLS:
+                raise SystemExit("dtuspell.c: spell line %d %r has no rule text (PORT_SPELLS)"
+                                 % (i, self.port_spells[i].name()))
+        nums += new
         by_level = collections.defaultdict(list)
         for i in nums:
-            by_level[self.S[i].num("level", 1)].append(i)
+            by_level[self.spell_rec(i).num("level", 1)].append(i)
         out = ["# " + title, "",
                ("Mage spells (the manual says wizard)." if cls == "m" else "Cleric spells (the manual says priest).")
                + " Each row has all the rules of one spell. \"Level\" in a row means your %s level."
@@ -1897,9 +2105,9 @@ class Pages:
             rows = []
             spells = sorted(by_level[lvl], key=lambda s: (self.spell_name(s), s))
             for s in spells:
-                r = self.S[s]
-                rule = SPELLS[s]
-                ct = self.c["cast_time"][s]
+                r = self.spell_rec(s)
+                rule = PORT_SPELLS[s] if s in PORT_SPELLS else SPELLS[s]
+                ct = self.port_cast[s] if s in self.port_cast else self.c["cast_time"][s]
                 target = rule["target"]
                 # The area of the flags after the table fixup (dtutblfix.c)
                 if self.spell_area(s) and (target in ("You", "The creature the missile hits",
@@ -1917,6 +2125,7 @@ class Pages:
                                            self.spell_effect(s)], r))
             rows_total += len(rows)
             out += [md_table(self.icon_head(["Spell", "Cast", "Target", "Duration", "Save", "Effect"]), rows), ""]
+        out += self.new_spells_where(cls, new)
         out += ["## Differs from the manual", ""]
         out += self.spell_manual_notes(cls)
         out += ["", pages_note(), ""]
@@ -1924,7 +2133,35 @@ class Pages:
         return "\n".join(out)
 
     def spell_name(self, s):
-        return self.S[s].name()
+        return self.spell_rec(s).name()
+
+    def new_spells_where(self, cls, new):
+        """Where the player gets the spells of the port of the class."""
+        if not new:
+            return []
+        names = " and ".join(self.spell_name(s) for s in new)
+        out = ["## New spells of ASCENT-DTU", "",
+               "%s %s new in ASCENT-DTU: the original game, version 1.3, does not have %s." % (
+                   names, "are" if len(new) > 1 else "is", "them" if len(new) > 1 else "it"), ""]
+        if cls == "m":
+            lv = dict((s, self.spell_rec(s).num("level", 1)) for s in new)
+            out += ["With the setting \"%s\" of the Improvements menu (on by default):" % CASTER_AI_SETTING, "",
+                    "- Aleena Paladinstar in the Yawning Portal sells each with her scroll sets: %s." % "; ".join(
+                        "%s with the spells of level %d (%s gold)" % (self.spell_name(s), lv[s], ALEENA_PRICE[s])
+                        for s in new),
+                    "- Scrolls of them lie in the dungeon, each in place of a scroll that the original game "
+                    "has more than once (spoilers): %s. A level that your saved game has visited "
+                    "already keeps its old scroll." % "; ".join(
+                        "%s in %s" % (self.spell_name(s), " and ".join(
+                            "%s (for %s)" % (LEVEL_NAMES[lvl], old) for lvl, old in self.port_scrolls.get(s, ())))
+                        for s in new),
+                    "- The creature casters of Caster AI cast them too ([[Monster-Behavior]]).", ""]
+        else:
+            out += ["A cleric gets %s with the other cleric spells of its level, at the level up that "
+                    "gives the first slot of that level; a saved game of a cleric who has that level gets it "
+                    "at the next level start. No scroll of it lies in the dungeon. The drow priestesses of "
+                    "Caster AI cast it too ([[Monster-Behavior]])." % names, ""]
+        return out
 
     def spell_manual_notes(self, cls):
         if cls == "m":
@@ -1959,9 +2196,314 @@ class Pages:
             "- The manual lists Silence, 15' Radius (level 2). There is no such spell.",
             "- Produce Fire (a new spell of the 1.3 readme) is a level 4 spell that bursts like a small "
             "Fireball; the manual gives a fire in the hand.",
-            "- Protection From Fire also has the mage bit: a mage can learn it from a scroll but "
-            "cannot cast it (the cast check tests the cleric bit first).",
+            "- Protection From Fire also has the mark of a mage. In the original 1.3 game a mage learns "
+            "it from a scroll but cannot cast it; in ASCENT a mage keeps it as a scroll ([[Scrolls]]).",
         ]
+
+    # -- Monster behavior (Improved AI, Caster AI) -----------------------
+    def caster_rows(self):
+        """The rows of the caster kinds, from the lists of dtucaster.h."""
+        ca = self.casters
+        f = ca["flags"]
+        levels = collections.defaultdict(list)
+        for name, lst, lvl, fl in ca["types"]:
+            levels[lst].append(lvl)
+        rows = []
+        for lst, entries in ca["lists"].items():
+            if lst not in CASTER_KINDS:
+                raise SystemExit("dtucaster.h: the list %s has no text (CASTER_KINDS)" % lst)
+            buff, other = [], []
+            for spell, min_level, weight, fl in entries:
+                text = self.spell_name(spell)
+                notes = []
+                if min_level > 1:
+                    notes.append("from caster level %d" % min_level)
+                if fl & f["CS_CLOSE"]:
+                    notes.append("when you are in its reach")
+                if fl & f["CS_HEAL"]:
+                    notes.append("on itself below half of its hit points")
+                if fl & f["CS_FREE"]:
+                    notes.append("a power: no spell points, every %g seconds" % ca["d"]["CAI_POWER_WAIT"])
+                if fl & f["CS_SELF"]:
+                    notes.append("on itself, then it throws the hammer")
+                if notes:
+                    text += " (%s)" % ", ".join(notes)
+                (buff if fl & f["CS_BUFF"] else other).append(text)
+            lv = levels.get(lst) or [0]
+            lvt = ("%d" % lv[0]) if min(lv) == max(lv) else ("%d to %d" % (min(lv), max(lv)))
+            rows.append([CASTER_KINDS[lst], lvt, ", ".join(buff) or "none", ", ".join(other)])
+        return rows
+
+    def monster_behavior(self):
+        ai, ca = self.ai, self.casters
+        d = ca["d"]
+        rows = self.caster_rows()
+        out = ["# Monster behavior (ASCENT-DTU)", "",
+               "Two settings of the Improvements menu change how the creatures act: \"%s\" and \"%s\". "
+               "Both are on by default. With both off the creatures act as in the original game, version "
+               "1.3. This page names no places." % (IMPROVED_AI_SETTING, CASTER_AI_SETTING), "",
+               "## %s" % IMPROVED_AI_SETTING, "",
+               "In the original game a creature that fights hand to hand notices you through a closed door "
+               "or a wall when you are near, every creature that can open doors walks to the doors, also a "
+               "peaceful one, and a sword or an arrow reaches through a closed door. %s changes this:"
+               % IMPROVED_AI_SETTING, "",
+               "- **Sight.** A creature sees you along a straight line from its eyes with no wall and no "
+               "closed door in the way. An illusory wall does not stop the sight. A creature that faces away "
+               "from you notices you only now and then.",
+               "- **Hearing.** A creature that fights hand to hand and casts no spells also hears you along a "
+               "way that a body can pass (open doors, no walls) of at most %s ft." % feet(ai["DTU_HEAR_DIST"]),
+               "- **In a fight.** A creature that noticed you (by sight, hearing, a hit, an alarm or a "
+               "script) in the last %g seconds fights. It follows you through a door that closes behind you, "
+               "and gives up %g seconds after it noticed you last." % (ai["DTU_COMBAT_TIME"], ai["DTU_COMBAT_TIME"]),
+               "- **Alarms.** A call for help wakes a creature only along an open way of at most %s ft, and "
+               "only when that creature sees or hears you itself. A closed door stops an alarm."
+               % feet(ai["DTU_ALARM_DIST"]),
+               "- **Doors.** Only a creature that can open doors (the humanoids: orcs, goblins, kobolds, "
+               "ogres, people, liches) opens one, and only while it fights you or flees. No creature opens a "
+               "door with a lock or a key, so a prisoner stays in its cell. A creature on a walk of the story "
+               "still opens the doors on its way.",
+               "- **Walls stop blows.** A blow, an arrow, a bolt or a thrown weapon does not pass a wall or a "
+               "closed door: yours do not, and theirs do not.",
+               "- **Melee.** A creature that fights hand to hand walks straight at you, stops when you are in "
+               "the reach of its weapon, turns to you and attacks at once. In the original game it sidles "
+               "around you and may swing with its back to you.",
+               "- **Groups.** A creature that a talk would make hostile (a guard, a member of a band) joins "
+               "the fight when it sees you and sees a creature of its group fight you (within %s ft, checked "
+               "each %g seconds). Its group is every hostile creature when its talk starts with the attack, "
+               "else the creatures of its own kind that also talk. A shop keeper, a quest giver or an ally "
+               "never joins." % (feet(ai["DTU_JOIN_DIST"]), ai["DTU_JOIN_PERIOD"]),
+               "- **Spiders.** Giant and large spiders run faster, at the web speeds of AD&D 2nd edition.",
+               "- **Paths.** Creatures go around corners, through doorways and up ladders better, slide "
+               "along walls and walk around furniture.", "",
+               "## %s" % CASTER_AI_SETTING, "",
+               "In the original game every spellcaster picks from one list that favors light spells and "
+               "spells on itself, stands while it casts, has few spell points, and rarely attacks. With %s:"
+               % CASTER_AI_SETTING, "",
+               "- **Its own spells.** Each kind of caster has a list of AD&D 2nd edition spells and a caster "
+               "level (the table below). A caster has a spell of spell level s from caster level 2 s - 1 on, "
+               "unless the table says another level.",
+               "- **Protections at once.** When the fight starts (the first time it notices you) the caster "
+               "gets the protections of its list at once, with no cast time and no spell points: a "
+               "contingency. Dispel Magic takes them away.",
+               "- **Spell points.** At least %d for each caster level. They do not come back during a "
+               "fight; a fight ends when the caster has not been in a fight for %g seconds, and a new fight "
+               "has all its points again." % (d["CAI_POOL_LEVEL"], d["CAI_FIGHT_END"]),
+               "- **One cast each round.** A choice each %g seconds, then the cast time of the spell (at most "
+               "%d seconds). A hit that hurts the caster while it casts ruins the spell; it tries again %g "
+               "seconds later. A caster needs a free line to you: behind a closed door it casts nothing and "
+               "gets no protections." % (d["CAI_ROUND"], d["CAI_CAST_MAX"], d["CAI_INTERRUPT"]),
+               "- **A sensible choice.** It does not cast a spell that cannot reach you, a missile that a "
+               "wall or a creature would stop, Burning Hands out of reach, a Fireball with itself or an ally "
+               "in the blast, Magic Missile against Shield, Hold Person against Free Action, Protection From "
+               "Evil or a hold, the same Hold Person within %g seconds of its last one, Slow or Fear on you "
+               "twice, or a spell that your Minor Globe of Invulnerability stops. Fire spells are less "
+               "likely against Resist Fire and Protection From Fire. Damage is more likely while you are "
+               "held, and spells that your mirror images do not fool are more likely while you have them. "
+               "If your globe stops all its spells, it fights hand to hand." % d["CAI_HOLD_WAIT"],
+               "- **Allies.** Its harmful spells do not act on the creatures of its side, and its missiles "
+               "fly past them. Fireball and Burning Hands still burn them.",
+               "- **Distance.** A caster with spells backs away when you come nearer than %s ft, walks to "
+               "you when you are farther than %s ft, and holds its place between. With no points left it "
+               "walks up and fights hand to hand. Between two casts it strikes when you are in its reach. "
+               "Mind flayers always walk at you; beholders float as before." % (
+                   feet(d["DTU_CASTER_KEEP_NEAR"]), feet(d["DTU_CASTER_KEEP_FAR"])),
+               "- **Holds.** A hold that a creature casts on you lasts %g seconds at most, and no creature "
+               "holds you again until %g seconds after a hold ends. Each attack on a held target hits with no "
+               "roll." % (d["CASTER_HOLD_MAX"], d["CASTER_HOLD_REST"]),
+               "- **Protection From Evil** on a creature gives -2 to your attack rolls against it and +2 to "
+               "its saves against your spells.",
+               "- **Spiritual Hammer.** A priestess casts it once on herself, then throws the hammer at you "
+               "between her casts, at most one throw each %g seconds." % d["CAI_THROW"],
+               "- **Mirror Image** on a creature shows as copies of it at its sides (four at most).",
+               "- The dragon hatchlings keep the spells of the original game, and the dragon Tamaramagil "
+               "fights in her own way ([[Encounters]], spoilers).", "",
+               md_table(["Caster", "Caster level", "Protections at the start of a fight", "Spells"], rows), "",
+               "### Spells that only creatures cast", ""]
+        fs, mb = self.port_spells.get(59), self.port_spells.get(60)
+        if fs is None or mb is None:
+            raise SystemExit("dtuspell.c: no spell lines 59 and 60 (Flame Strike, Mind Blast)")
+        out += ["- **%s** (priest spell of level %d, cast time %d seconds; a creature casts it in %d): a "
+                "column of fire on you, %dd%d fire damage, a save for half. Resist Fire halves it, Protection "
+                "From Fire takes it from its pool, and the fire protection of items works as against any "
+                "fire." % (fs.name(), fs.num("level", 5), self.port_cast[59], min(self.port_cast[59], d["CAI_CAST_MAX"]),
+                           fs.num("#fire_damage_dice", 6), fs.num("fire_damage_dice", 8)),
+                "- **%s** (the mind flayers): a cone %s ft long and about 21 degrees to each side. Each "
+                "creature of the other side in it saves against wands at -4 or is stunned for 3d4 seconds, as "
+                "held. Free Action does not prevent it, a Potion of Freedom ends it, and Protection From Evil "
+                "gives +2 to the save. It is a power, not a spell: no points, once each %g seconds, and the "
+                "Minor Globe of Invulnerability does not stop it." % (mb.name(), feet(mb.num("range", 120)),
+                                                                       d["CAI_POWER_WAIT"]), "",
+                pages_note(), ""]
+        self.count("Monster-Behavior", len(rows))
+        return "\n".join(out)
+
+    # -- Encounters (the dragon, the lich) ------------------------------
+    def item_names(self, items):
+        """Names with counts: [(class 5/15/16, number, count)] -> "a, b and 3 Diamonds"."""
+        parts = []
+        for c, i, n in items:
+            if c == 16 and i == 1:
+                parts.append("%d gold" % n)
+                continue
+            name = self.gear.item(c, i).name() if self.gear else self.t[{5: "$WEAPON", 15: "$ARMOR", 16: "$OBJECT"}[c]][i].name()
+            parts.append(name if n == 1 else "%d x %s" % (n, name))
+        return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else "".join(parts)
+
+    def encounters(self):
+        dd = self.dragon["d"]
+        gd = self.gear
+        tr = list(self.dragon["treasure"])
+        gold = sum(n for c, i, n in tr if c == 16 and i == 1)
+        tr = [x for x in tr if not (x[0] == 16 and x[1] == 1)]
+        diamonds = sum(n for c, i, n in tr if (c, i) == (16, 3)) + 3
+        tr13 = [x for x in DRAGON_HOARD_13 if (x[0], x[1]) != (16, 3)]
+        tr = [x for x in tr if (x[0], x[1]) != (16, 3)]
+        lich_list = self.casters["lists"]["CL_LICH"]
+        lich_level = dict((t, lv) for t, _, lv, _ in self.casters["types"]).get("lich3", 12)
+        lim = [(s, lv) for t, s, lv in self.casters["limits"] if t == "lich3"]
+        dmg_level = lim[0][1] if lim else lich_level
+        missiles = 1 + sum(1 for x in (2, 4, 6, 8) if dmg_level >= x)
+        wards = [self.spell_name(s) for s, _, _, fl in lich_list if fl & self.casters["flags"]["CS_BUFF"]]
+        attacks = [self.spell_name(s) for s, _, _, fl in lich_list if not fl & self.casters["flags"]["CS_BUFF"]]
+        rname, rspell, rlevel, rvalue, rlvl = gd.g["rod"]
+        script, potion, mace = gd.g["daland"]
+        breath_avg = dd["DR_BREATH_DICE"] * (dd["DR_BREATH_SIDES"] + 1) / 2 + dd["DR_BREATH_BONUS"]
+        out = ["# Encounters (ASCENT-DTU)", "",
+               "> **Spoiler warning.** This page tells how two fights of the middle of the game go. Each "
+               "section starts with a short summary; the details are hidden under a second warning.", "",
+               "Both encounters are new in ASCENT-DTU. Each is a setting of the group \"Restored and new "
+               "content\" of the Improvements menu, on by default, and takes effect at the next load of its "
+               "level.", "",
+               "## The dragon Tamaramagil", "",
+               "Setting: \"The dragon Tamaramagil\". The files of the original game have a red dragon for "
+               "%s, the second drow level, with her dialogue, her hatchlings and her hoard, but no level "
+               "places her. ASCENT puts her in her hall." % LEVEL_NAMES[21], "",
+               "In short: she talks before she fights, and she asks a favor. The fight is optional and hard: "
+               "her fire breath can kill a character of the middle of the game in one go, but it comes with a "
+               "warning and can be dodged. Her hoard holds some of the best items of the game.", "",
+               "<details><summary>Show the details of the encounter (heavier spoilers)</summary>", "",
+               "### How it goes", "",
+               "- She rests in the middle of her hall and asks you to pull a lever in the corridor that you "
+               "came from, to free her children, for the key of her hoard.",
+               "- The lever is behind a locked door in an alcove at the end of that corridor. No thief skill "
+               "and no spell opens that door: its key, the Jailer's Key, lies in the cells behind her hall.",
+               "- The lever was no cage: it opens her hatchery. She laughs at you, turns hostile and keeps "
+               "her key. Her hatchlings fly into the hall.",
+               "- The hatchlings come %d at a time while she lives; the next one comes when one dies, and all "
+               "of them when she is dead. A waiting hatchling joins at once when it is hurt or when you come "
+               "within %s ft of it, so the one who runs into the hatchery fights them all. A hatchling has "
+               "about 50 hit points, armor class 0 and THAC0 7, gives 7000 experience, flies, and casts mage "
+               "spells: Fireball (6d6), Lightning Bolt, Magic Missile, Melf's Acid Arrows, Hold Person, Fear "
+               "and others." % (dd["DR_HATCH_AT_ONCE"], feet(dd["DR_HATCH_NEAR"])),
+               "- An attack on her starts the fight too, and so does a hatchling that is hurt in the "
+               "hatchery: the hatchery opens as by the lever.",
+               "- Her hoard is behind the locked door of the west side of her hall. The Dragon Key drops "
+               "in front of her when she dies, and a thief can pick the lock. If the door opens while she "
+               "is at peace and sees it, she calls you a thief and attacks.",
+               "",
+               "### Her values", "",
+               "- A red dragon of AD&D 2nd edition: %d hit points, armor class %d, THAC0 %d, %d experience."
+               % (dd["DR_HIT_POINTS"], dd["DR_ARMOR_CLASS"], dd["DR_THAC0"], dd["DR_EXPERIENCE"]),
+               "- Immune to fire. Magic resistance %d percent: each spell cast on her fails on a d100 roll of "
+               "%d or less (\"Tamaramagil resists ...\")." % (dd["DR_MAGIC_RESIST"], dd["DR_MAGIC_RESIST"]),
+               "- In reach: two claws, 1d%d each, or a bite of %dd%d (%d percent of the time when both "
+               "reach). One attack each %g seconds, each with its own attack roll. The claws reach a player "
+               "who touches her front half; the bite reaches a bit farther in front of her."
+               % (dd["DR_CLAW_SIDES"], dd["DR_BITE_DICE"], dd["DR_BITE_SIDES"], dd["DR_BITE_CHANCE"],
+                  dd["DR_MELEE_TIME"] + dd["DR_RECOVER_TIME"]),
+               "- She cannot leave the middle of her hall, and she turns fast.",
+               "",
+               "### The breath, and how to live through it", "",
+               "- %dd%d + %d fire damage (%d on average) in a cone %s ft long from her jaws, about 20 degrees "
+               "to each side. A save against breath halves it, then your fire protections work: Resist Fire "
+               "(the spell, the Ring of Coolness, the Potion of Fire Resistance, the Cloak of Fire "
+               "Resistance) halves it again, Protection From Fire takes it from its pool."
+               % (dd["DR_BREATH_DICE"], dd["DR_BREATH_SIDES"], dd["DR_BREATH_BONUS"], breath_avg,
+                  feet(dd["DR_BREATH_RANGE"])),
+               "- The first breath comes %g seconds after the fight starts, the next ones %g seconds after "
+               "the end of the last." % (dd["DR_BREATH_FIRST"], dd["DR_BREATH_PAUSE"]),
+               "- The warning: she roars, rears up, flames show at her jaws, and the message box says "
+               "\"Tamaramagil rears and draws a deep breath.\" For the first %g second she turns with you; "
+               "then her aim is fixed, and you have %g second to step out of the cone or out of her sight. "
+               "The stream lasts %g second and hurts once." % (dd["DR_AIM_TIME"], dd["DR_WIND_TIME"] - dd["DR_AIM_TIME"],
+                                                              dd["DR_FIRE_TIME"]),
+               "- A wall stops it: the frames of the four doorways of her hall are cover. Beyond %s ft of her "
+               "jaws, in the corridor, the breath does not reach, and she cannot follow." % feet(dd["DR_BREATH_RANGE"]),
+               "",
+               "### The reward", "",
+               "- %d experience for her, 7000 for each hatchling." % dd["DR_EXPERIENCE"],
+               "- The hoard of the original game: %s." % self.item_names([(16, 3, 3)] + tr13),
+               "- ASCENT adds: %s, %d more diamonds and %d gold." % (self.item_names(tr), diamonds - 3, gold),
+               "- With the setting \"New gear\": %s ([[New-Gear]])." % self.item_names(gd.g["dragon"]),
+               "- In the original game the lever sets the hatchlings free: they leave, the red dragons burn "
+               "the Castle Ward of Waterdeep, and the market doubles its prices. With the setting the "
+               "hatchlings stay, and the market keeps its prices.",
+               "",
+               "</details>", "",
+               "With the setting off the level is as the original game ships it: no dragon, and the lever "
+               "opens a hatch in the ceiling of her hall.", "",
+               "## The lich Morik Stormhand", "",
+               "Setting: \"The phylactery of the lich\" (it needs \"%s\" for his protections). In %s, the "
+               "lich Morik Stormhand waits in his room behind two grills." % (CASTER_AI_SETTING, LEVEL_NAMES[19]), "",
+               "In short: with %s he protects himself with %s the moment he sees you. Dispel Magic takes "
+               "them away, and a phylactery hidden in the crypts can break them for good. Barander of %s "
+               "tells you about it." % (CASTER_AI_SETTING, self.and_list(wards), LEVEL_NAMES[17]), "",
+               "<details><summary>Show the details of the encounter (heavier spoilers)</summary>", "",
+               "### His protections and spells", "",
+               "- Caster level %d. His protections: %s. Stone Skin takes 1d4 + %d hits, Mirror Image gives "
+               "1d4 + %d images, the globe stops every spell of level 1 to 3, and Shield stops Magic Missile."
+               % (lich_level, self.and_list(wards), lich_level // 2, lich_level // 3),
+               "- His spells: %s. His damage spells have the dice of caster level %d: Fireball and Lightning "
+               "Bolt %dd6, Magic Missile %d missiles. He has %d hit points." % (
+                   self.and_list(attacks), dmg_level, min(dmg_level, 10), missiles, LICH_HIT_POINTS),
+               "- Two Banegards guard the alcoves behind the grills. A lever behind an illusory wall of the "
+               "corridor before his room opens the grills. He does not come out for you.",
+               "",
+               "### How to break his protections", "",
+               "- **Dispel Magic** on him ends all his protections, with no save: the spell, a scroll, a Rod "
+               "of Dispel Magic, or the %s (below). A scroll of it lies in a crypt cell of the west wing of the "
+               "upper level." % rname,
+               "- **The altar of Velsharoon.** Morik was a priest of Velsharoon, and his phylactery is an "
+               "altar of his god in an empty crypt cell of the east wing of the upper level. A thief picks "
+               "the lock of the wing; the others open it when they bring the %s of the level to the shield "
+               "at its door. One blow of a weapon breaks the altar, and so do Fireball, Lightning Bolt and Dispel "
+               "Magic. Broken before the fight, he fights without his protections; broken during the fight, "
+               "they end at once. Another scroll of Dispel Magic lies in that cell." % self.W[72].name(),
+               "- **How much it matters.** In the test fights of the port (a character who walks up and "
+               "fights, with a few healing potions) a fighter of level 6 won 3 of 10 fights without help and "
+               "10 of 10 with Dispel Magic or the broken altar; a cleric of level 6 won 3, 5 and 9 of 10; a "
+               "thief/mage of level 5/5 won none without help and 9 or 10 of 10 with it.",
+               "- The hints: Barander, a priest of Lathander in %s, speaks of the phylactery when you ask how "
+               "the lich can be stopped, and at your arrival in the crypts you see tracks of bare bone that "
+               "lead again and again to the east crypts." % LEVEL_NAMES[17],
+               "- The altar is there once in a game, and not if the lich is dead already.",
+               "",
+               "</details>", "",
+               "## The %s and Daland" % rname, "",
+               "Setting: \"New gear\" for the rod. In %s, Daland stands in hidden "
+               "crypts, held by a curse that also keeps him from talking." % LEVEL_NAMES[16], "",
+               "<details><summary>Show how to free him (spoilers)</summary>", "",
+               "- The %s lies at his feet. Every class can use it: each use casts %s at caster level %d. It "
+               "has one charge, and a rest at a rest place charges it again; it is never used up. The market "
+               "does not sell it." % (rname, self.spell_name(rspell), rlevel),
+               "- Use it on him (or any Dispel Magic: the spell, a scroll, a wand or rod of it). He stays "
+               "your friend, because your Dispel Magic is no attack, and he can talk. With the rod in your "
+               "pack, the talk to the held Daland hints at it.",
+               "- Hear his tale and take his flask of Dragon's Blood, pour it on the altar of Kelemvor in the "
+               "living quarters of the temple, then talk to him again. He gives the %s and a %s." % (
+                   gd.item(5, mace).name(), self.O[potion].name()),
+               "- Later, the rest place of %s or the one of %s charges the rod again before the lich, and "
+               "its Dispel Magic ends his protections." % (LEVEL_NAMES[15], LEVEL_NAMES[19]),
+               "",
+               "</details>", "",
+               pages_note(), ""]
+        self.count("Encounters", 0)
+        return "\n".join(out)
+
+    @staticmethod
+    def and_list(xs):
+        xs = list(xs)
+        return ", ".join(xs[:-1]) + " and " + xs[-1] if len(xs) > 1 else "".join(xs)
 
     # -- Sources --------------------------------------------------------
     # -- New gear (ASCENT-DTU) -------------------------------------------
@@ -2041,8 +2583,11 @@ class Pages:
                 "Daland and ends the protections of a spellcaster.", ""]
         # the market by stage
         srows = []
-        for s in sorted(set(row[0] for row in gd.g["market"])):
-            srows.append([GEAR_STAGES[s], ", ".join(gd.item(row[2], row[3]).name() for row in gd.g["market"] if row[0] == s)])
+        for s in sorted(set(row[0] for row in gd.g["market"] + gd.g["class_market"])):
+            goods = [gd.item(row[2], row[3]).name() for row in gd.g["market"] if row[0] == s]
+            goods += ["%s (with the class gear, below)" % gd.item(row[2], row[3]).name()
+                      for row in gd.g["class_market"] if row[0] == s]
+            srows.append([GEAR_STAGES[s], ", ".join(goods)])
         out += ["## The market of Waterdeep", "",
                 "Each reward of Khelben adds goods to the market. The setting adds these to the goods of "
                 "the original game.", "",
@@ -2050,6 +2595,11 @@ class Pages:
         # gold and gems
         gems = [(r.name(), r.num("value", 0)) for i, r in sorted(gd.misc.items())]
         grows = [self.icon_row([r.name(), r.num("value", 0)], r) for i, r in sorted(gd.misc.items())]
+        # the Ruby and the Diamond of the original game
+        for i in (GEM_RUBY, GEM_DIAMOND):
+            grows.append(self.icon_row(["%s (also in the original game)" % self.O[i].name(), self.O[i].num("value", 0)],
+                                       self.O[i]))
+        grows.sort(key=lambda row: int(row[-1]))
         p4, r3, s1 = d["DTU_GEAR_PEARL_IN_4"], d["DTU_GEAR_RUBY_IN_3"], d["DTU_GEAR_SAPPHIRE_ONE_IN"]
         out += ["## Gold and gems", "",
                 "- Gold: a slain creature that carries money leaves gold %d times in 10: its money plus 1 to "
@@ -2070,7 +2620,7 @@ class Pages:
                 "- The market buys a gem at 75 percent of its value (Charisma 12).", "",
                 md_table(self.icon_head(["Gem", "Value"]), grows), ""]
         # the place for the spells of the caster branch
-        out += new_gear_spells_section(gd)
+        out += self.new_gear_spells()
         # the treasury
         trows = [self.icon_row([gd.item(c, i).name(), gear_effect(i, d) if c == 15 else frost_effect(d) if i == gd.frost_id else "",
                                 count], gd.item(c, i))
@@ -2081,8 +2631,8 @@ class Pages:
                 md_table(self.icon_head(["Item", "Effect", "Count"]), trows), "",
                 "</details>", ""]
         # the place for the dragon encounter of the dragon branch
-        out += new_gear_dragon_section(gd)
-        out += class_gear_section()
+        out += self.new_gear_dragon()
+        out += self.class_gear_section()
         out += ["## Saved games", "",
                 "A game saved with new items loads again with the setting. With the setting off, the new "
                 "items of the save are gone and their effects end; the five new wands are the plain wands "
@@ -2090,6 +2640,140 @@ class Pages:
                 pages_note(), ""]
         self.count("New-Gear", len(rows) + len(wrows) + len(orows) + len(srows) + len(grows) + len(trows))
         return "\n".join(out)
+
+    def new_gear_spells(self):
+        """The new spells and their scrolls on [[New-Gear]] (the setting
+        Caster AI brings them, not New gear)."""
+        rows = []
+        for s, rec in sorted(self.port_spells.items()):
+            if s not in PORT_SPELLS:
+                continue
+            where = []
+            if s in ALEENA_PRICE:
+                where.append("Aleena Paladinstar (the Yawning Portal) sells it with her spells of level %d for %d "
+                             "gold" % (rec.num("level", 1), ALEENA_PRICE[s]))
+            for lvl, old in self.port_scrolls.get(s, ()):
+                where.append("a scroll in %s, in place of a scroll of %s" % (LEVEL_NAMES[lvl], old))
+            if rec.has("cleric_use"):
+                where.append("a cleric gets it with the cleric spells of level %d" % rec.num("level", 1))
+            rows.append(self.icon_row([rec.name(), "%s %d" % ("cleric" if rec.has("cleric_use") else "mage",
+                                                               rec.num("level", 1)), "; ".join(where)], rec))
+        return ["## New spells and their scrolls", "",
+                "The setting \"%s\" (Improvements menu, on by default) brings three new spells for the "
+                "player. Their rules are on the pages [[Wizard Spells|Wizard-Spells]] and [[Priest "
+                "Spells|Priest-Spells]]. The scrolls are placed when a level is loaded with no saved state, "
+                "so a level that your game has visited keeps its old scroll." % CASTER_AI_SETTING, "",
+                md_table(self.icon_head(["Spell", "Class, level", "Where"]), rows), ""]
+
+    def new_gear_dragon(self):
+        """The encounter of the dragon: a link to [[Encounters]]."""
+        return ["The hoard of the dragon has more than these %d items, and the encounter has its own "
+                "page: [[Encounters]]." % len(self.gear.g["dragon"]), ""]
+
+    def check_class_gear(self):
+        """CLASS_GEAR against the blocks of dtuclassgear.c: each price and
+        each mission of the table is in the blocks and the other way round,
+        and each sale of the blocks has its row."""
+        g = self.gear.g
+        prices = set(p for row in CLASS_GEAR for p in row[3])
+        missions = set(m for row in CLASS_GEAR for m in (row[4] or ()))
+        if prices != set(g["class_gold"]):
+            raise SystemExit("CLASS_GEAR: the prices %s, dtuclassgear.c %s" % (sorted(prices), g["class_gold"]))
+        if missions != set(g["class_missions"]):
+            raise SystemExit("CLASS_GEAR: the missions %s, dtuclassgear.c %s" % (sorted(missions), g["class_missions"]))
+        for price, cls, i, n in g["class_sales"]:
+            name = self.spell_name(i) if cls == 17 else self.gear.item(cls, i).name()
+            name = re.sub(r" I+$", "", name)      # the Pearls of Power I to III share a row
+            if not any(price in row[3] and name in row[2] for row in CLASS_GEAR):
+                raise SystemExit("CLASS_GEAR: no row for the sale of %s for %d gold (dtuclassgear.c)" % (name, price))
+        for m in missions:
+            if m not in MISSION_STAGE:
+                raise SystemExit("CLASS_GEAR: mission %d is no reward stage (MISSION_STAGE)" % m)
+
+    def class_gear_section(self):
+        """The class offers on the page [[New-Gear]] (under its spoiler warning)."""
+        self.check_class_gear()
+        gd = self.gear
+        d = gd.d
+        rows = []
+        for cls, who, item, prices, missions, when in CLASS_GEAR:
+            if missions:
+                when = "; ".join(("%s: " % roman if len(missions) > 1 else "") + GEAR_STAGES[MISSION_STAGE[m]]
+                                 for roman, m in zip(("I", "II", "III"), missions))
+            rows.append([who, item, ", ".join(str(p) for p in prices), when])
+        arrow = gd.g["class_arrow"]
+        market = []
+        for stage, qty, c, i, count in gd.g["class_market"]:
+            market.append("a %s %s" % (gd.item(c, i).name(), GEAR_STAGES[stage]))
+        boots = gd.item(15, d["DTU_GEAR_BOOTS_ELVEN"]).name()
+        bracers = gd.item(15, d["DTU_GEAR_BRACERS_ARCHERY"]).name()
+        return ["## Gear for single class mages and thieves", "",
+                "The setting \"%s\" (Improvements menu, on by default) gives a character with one class, a "
+                "mage or a thief, offers that the other characters do not get. No new class power: only gear, "
+                "and it costs gold. A character with two classes, a fighter or a cleric sees none of them. "
+                "Each item is sold once; the arrows and the scrolls can be bought again, the potions three times. "
+                "The new items need the setting \"%s\" too. The gold is the price; the market buys these "
+                "items back for less." % (CLASS_GEAR_SETTING, NEW_GEAR_SETTING), "",
+                "- A mage: talk to Aleena Paladinstar in the Yawning Portal and ask for her scrolls. Her "
+                "first menu has the new reply lines.",
+                "- A thief: Nalbas Oddpepper makes his offer at the first talk, and has his little stock at "
+                "each later talk. Mirt the Merchant opens his old guild things at a talk after the first.", "",
+                md_table(["Seller", "Item", "Gold", "From"], rows), "",
+                "- %s: an %s (1d6) whose hit poisons a creature that fails a save against poison: 1 hit point "
+                "each second for %d seconds. Undead and extraplanar creatures are immune." % (
+                    arrow[2], arrow[1], d["DTU_GEAR_POISON_TIME"]),
+                "- Pearl of Power I to III: use it (the item list or a hot key) to get back one spent mage spell "
+                "slot of spell level 1, 2 or 3. Once in each dungeon level; it is ready again at the next "
+                "level and after a rest. A saved game keeps its state.",
+                "- %s: Move Silently %d while worn." % (boots, d["DTU_GEAR_ELVEN_MOVE"]),
+                "- %s: +%d to hit with arrows and bolts. They take the gauntlet place, so they never add to the "
+                "Gloves of the Archer." % (bracers, d["DTU_GEAR_BRACERS_HIT"]),
+                "- The market adds, for any mage: %s." % "; ".join(market), ""]
+
+    def port_sources(self):
+        """The evidence of the spells of the port, [[Monster-Behavior]] and
+        [[Encounters]] (sections of Sources.md). None of it is in DTUGAME.EXE."""
+        srows = [[self.port_spells[s].name(), str(s), "%d s" % self.port_cast[s],
+                  PORT_SPELLS[s]["src"] if s in PORT_SPELLS else "creature spell ([[Monster-Behavior]])"]
+                 for s in sorted(self.port_spells)]
+        return ["## Spells of the port (ASCENT-DTU)", "",
+                "The spell lines 56 and up are added by the port after the table fixup of each table "
+                "(`dtu_spell_port_line`, `engine/main/dtuspell.c`); their cast times are `port_cast_time`. "
+                "The tool reads both with `tools/port_tables.py`. The icons 200 and up are new art of "
+                "`tools/spell_icons.py`, stored as color numbers in `engine/main/dtuspellicons.h` and read "
+                "from there. The scrolls of Caster AI are the table `Port_scrolls` of `dtuobj_setup.c`; the "
+                "prices of Aleena Paladinstar are in `patch_aleena` of `dtuscript.c`. docs/re/spells.md, "
+                "section 15.", "",
+                md_table(["Spell", "Line", "Cast", "Code"], srows), "",
+                "Corrected rules of 1.3 spells on the spell pages: Lightning Bolt (D-195, `Dtu_fix_bolt_pass`), "
+                "Dispel Magic (D-196, `Dtu_fix_dispel_peace`), Stone Skin (D-197, `Dtu_fix_stoneskin_hit`), "
+                "Hold Person and held targets (D-198, `Dtu_fix_hold_hit`; `Dtu_fix_player_hold`, "
+                "`engine/main/dtuhold.h`), Sleep (D-191, `Dtu_fix_sleep_wake`; `Dtu_sleep_view`), the "
+                "spell books of scrolls (D-189, `Dtu_fix_learn_class`). The D numbers are the rows of "
+                "docs/audit/defects-1.3.md.", "",
+                "## Monster behavior and encounters (ASCENT-DTU)", "",
+                "- [[Monster-Behavior]], Improved AI: `Dtu_improved_ai`, `engine/main/dtuobj_aware.c` "
+                "(`creature_senses_player`, `creature_in_combat`, `creature_join_fight`, "
+                "`attack_wall_between`; the distances `DTU_HEAR_DIST`, `DTU_ALARM_DIST`, `DTU_JOIN_DIST` "
+                "and the time `DTU_COMBAT_TIME`, read by the tool) and `dtuobj_ai.c` (`opens_doors`, "
+                "`melee_fighter`); "
+                "docs/re/ai.md, \"Improved AI\".",
+                "- [[Monster-Behavior]], Caster AI: `Dtu_caster_ai`; the lists `Caster_lists`, the types "
+                "`Caster_types` and `Caster_limits` of `engine/main/dtucaster.h` (the table of the page is "
+                "made from them); the numbers `CAI_` and `CASTER_HOLD_` of `dtuspell.c` and "
+                "`DTU_CASTER_KEEP_` of `dtuspell.h`; docs/re/ai.md, \"Caster AI\".",
+                "- [[Encounters]], the dragon: `Dtu_restored_dragon` and `Dtu_fix_tamaramagil`, "
+                "`engine/main/dtudragon.c` (the `DR_` numbers and the table `Dr_treasure`, read by the tool); "
+                "the hoard of 1.3 is objects 50 to 60 of DROW2; docs/re/dragon.md.",
+                "- [[Encounters]], the lich: `Dtu_lich_phylactery`, `engine/main/dtulich.c`; his list and "
+                "`Caster_limits` (`lich3`) of `dtucaster.h`; the test fights of `tools/caster_balance.py lich` "
+                "(docs/re/ai.md, \"The lich and the holds, measured\"); docs/re/lich.md.",
+                "- [[Encounters]], the Rod of Kelemvor: `dtu_gear_rod_*` of `engine/main/dtugear.c`, "
+                "`dtu_gear_place_rod` of `dtuobj_setup.c`; docs/re/objects.md, \"The Rod of Kelemvor\".",
+                "- The class gear on [[New-Gear]]: the table of the tool is checked against the sales, the "
+                "prices and the missions of the blocks of `engine/main/dtuclassgear.c` and the lines "
+                "`Class_lines`, `Class_arrow`, `Class_market` of `dtugear.c` (`tools/gear_tables.py`); "
+                "docs/re/scripts.md, section 10.", ""]
 
     def gear_rows_armor(self):
         """The new body armor and shield lines for Armor.md."""
@@ -2302,6 +2986,7 @@ class Pages:
                 "Lines for spells, traps and creatures, and lines that the tables mark as unused.", "",
                 md_table(["Line", "Name", "Use"], wlines), ""]
         out += self.gear_sources()
+        out += self.port_sources()
         out += ["## Item line values the game does not use", "",
                 "\n".join("- " + x for x in UNUSED_ITEM_VALUES), ""]
         self.count("Sources", len(EXE_TABLES) + len(srows) + len(SOURCES_FINDINGS) + len(FIXES)
@@ -2320,54 +3005,36 @@ NEW_GEAR_LINK = "New in ASCENT-DTU: [[New-Gear]]."
 NEW_GEAR_SETTING = "New gear"
 
 # The class gear (the setting "Gear for single class mages and thieves",
-# engine/main/dtuclassgear.c and dtugear.h): who sells what, the price and
-# the first mission. Keep it the same as the blocks of dtuclassgear.c.
+# engine/main/dtuclassgear.c and dtugear.h): who sells what, the prices and
+# the first mission (the mission number that the blocks test, None: no
+# test). Pages.check_class_gear() compares the prices and the missions with
+# the blocks of dtuclassgear.c and the goods with its sales.
 CLASS_GEAR_SETTING = "Gear for single class mages and thieves"
 CLASS_GEAR = [
-    ("mage", "Aleena Paladinstar", "Wand of Magic Missiles", "750", "the first visit; one more at each reward stage of Khelben"),
-    ("mage", "Aleena Paladinstar", "Wand of Paralyzation", "1000", "mission 7"),
-    ("mage", "Aleena Paladinstar", "Wand of Fireballs", "1500", "mission 10"),
-    ("mage", "Aleena Paladinstar", "5 scrolls of Magic Missile (if you know the spell)", "250", "any time"),
-    ("mage", "Aleena Paladinstar", "3 scrolls of Lightning Bolt (if you know the spell)", "1500", "mission 10"),
-    ("mage", "Aleena Paladinstar", "Pearl of Power I, II, III", "2500, 6000, 12000", "missions 3, 10, 16"),
-    ("mage", "Aleena Paladinstar", "Bracers of Defense AC2", "5000", "mission 10"),
-    ("thief", "Nalbas Oddpepper", "Short Bow and 16 Poisoned Arrows", "300", "the first talk"),
-    ("thief", "Nalbas Oddpepper", "8 more Poisoned Arrows", "160", "after the bow"),
-    ("thief", "Nalbas Oddpepper", "Potion of Invisibility (three in all)", "400 each", "mission 7"),
-    ("thief", "Mirt the Merchant", "Leather Armor +2", "2000", "mission 3"),
-    ("thief", "Mirt the Merchant", "Master Lockpicks", "600", "mission 3"),
-    ("thief", "Mirt the Merchant", "Boots of Elvenkind", "5000", "mission 7"),
-    ("thief", "Mirt the Merchant", "Bracers of Archery", "7500", "mission 10"),
-    ("thief", "Mirt the Merchant", "Short Sword of Quickness", "4500", "mission 14"),
-    ("thief", "Mirt the Merchant", "Girdle of Hill Giant Strength", "6000", "mission 14"),
+    ("mage", "Aleena Paladinstar", "Wand of Magic Missiles", [750], None,
+     "the first visit; one more at each reward of Khelben that adds goods to the market"),
+    ("mage", "Aleena Paladinstar", "Wand of Paralyzation", [1000], [7], None),
+    ("mage", "Aleena Paladinstar", "Wand of Fireballs", [1500], [10], None),
+    ("mage", "Aleena Paladinstar", "5 scrolls of Magic Missile (if you know the spell)", [250], None, "any time"),
+    ("mage", "Aleena Paladinstar", "3 scrolls of Lightning Bolt (if you know the spell)", [1500], [10], None),
+    ("mage", "Aleena Paladinstar", "Pearl of Power I, II, III", [2500, 6000, 12000], [3, 10, 16], None),
+    ("mage", "Aleena Paladinstar", "Bracers of Defense AC2", [5000], [10], None),
+    ("thief", "Nalbas Oddpepper", "Short Bow and 16 Poisoned Arrows", [300], None, "the first talk"),
+    ("thief", "Nalbas Oddpepper", "8 more Poisoned Arrows", [160], None, "after the bow"),
+    ("thief", "Nalbas Oddpepper", "Potion of Invisibility (three in all, each)", [400], [7], None),
+    ("thief", "Mirt the Merchant", "Leather Armor +2", [2000], [3], None),
+    ("thief", "Mirt the Merchant", "Master Lockpicks", [600], [3], None),
+    ("thief", "Mirt the Merchant", "Boots of Elvenkind", [5000], [7], None),
+    ("thief", "Mirt the Merchant", "Bracers of Archery", [7500], [10], None),
+    ("thief", "Mirt the Merchant", "Short Sword of Quickness", [4500], [14], None),
+    ("thief", "Mirt the Merchant", "Girdle of Hill Giant Strength", [6000], [14], None),
 ]
 
-
-def class_gear_section():
-    """The class offers on the page [[New-Gear]] (under its spoiler warning)."""
-    rows = [[who, item, price, when] for cls, who, item, price, when in CLASS_GEAR]
-    return ["## Gear for single class mages and thieves", "",
-            "The setting \"%s\" (Improvements menu, on by default) gives a character with one class, a "
-            "mage or a thief, offers that the other characters do not get. No new class power: only gear, "
-            "and it costs gold. A character with two classes, a fighter or a cleric sees none of them. "
-            "Each item is sold once; the arrows and the scrolls can be bought again, the potions three times. "
-            "The new items need the setting \"%s\" too." % (CLASS_GEAR_SETTING, NEW_GEAR_SETTING), "",
-            "- A mage: talk to Aleena Paladinstar in the Yawning Portal and ask for her scrolls. Her "
-            "first menu has the new reply lines.",
-            "- A thief: Nalbas Oddpepper makes his offer at the first talk, and has his little stock at "
-            "each later talk. Mirt the Merchant opens his old guild things at a talk after the first, "
-            "from mission 3.", "",
-            md_table(["Seller", "Item", "Gold", "From"], rows), "",
-            "- Poisoned Arrow: an Arrow (1d6) whose hit poisons a creature that fails a save against "
-            "poison: 1 hit point each second for 15 seconds. Undead and extraplanar creatures are immune.",
-            "- Pearl of Power I to III: use it (the item list or a hot key) to get back one spent mage spell "
-            "slot of spell level 1, 2 or 3. Once in each dungeon level; it is ready again at the next "
-            "level and after a rest. A saved game keeps its state.",
-            "- Boots of Elvenkind: Move Silently 95 while worn.",
-            "- Bracers of Archery: +2 to hit with arrows and bolts. They take the gauntlet place, so they "
-            "never add to the Gloves of the Archer.",
-            "- The market adds a Wand of Paralyzation (missions 7 and 8) and a Wand of Lightning Bolts "
-            "(mission 11) for any mage.", ""]
+# The mission of a reward of Khelben and its stage of the market
+# (dtugear.c: stage 1 missions 3 and 4, 2 missions 7 and 8, 3 missions 9 and
+# 10, 4 mission 11, 5 mission 14, 6 mission 16, 7 missions 20 and 21, 8
+# mission 29; docs/re/scripts.md section 8)
+MISSION_STAGE = {3: 1, 7: 2, 10: 3, 11: 4, 14: 5, 16: 6, 20: 7, 29: 8}
 
 # The market stages: the reward of Khelben that adds the goods (the mission
 # that the player gets, docs/re/scripts.md, section 8), in game terms
@@ -2383,12 +3050,32 @@ GEAR_STAGES = {
     8: "when Khelben sends you to Ibbalar (after the Crystal Rose and the Madlands)",
 }
 
+# The names of the levels (the line of DTU.MSN), as the level files name
+# them (the level name of tools/lvl.py on the unpacked .LVL files, checked
+# 2026-11-27)
+LEVEL_NAMES = {
+    11: "the Dwarven Mine",
+    13: "the Tomb of Ankh-Kephra",
+    14: "the Pyramid",
+    15: "the Third Tier Hub",
+    16: "the Temple of Myrkul",
+    17: "the Temple of Clangeddin",
+    19: "the Crypts of Clangeddin",
+    21: "the Temple of the Drow",
+    27: "the Garden of The Drow",
+}
+
 # The places in game terms (the levels of the code tables)
 GEAR_LEVEL_TEXT = {
-    16: "the temple of Myrkul",
-    21: "the second level of the drow city",
-    27: "the drow stronghold of the Crystal Rose",
+    16: LEVEL_NAMES[16],
+    21: LEVEL_NAMES[21] + " (the second drow level)",
+    27: LEVEL_NAMES[27],
 }
+
+# The prices of Aleena Paladinstar for the scroll sets with the spells of the
+# port (patch_aleena of engine/main/dtuscript.c, docs/re/spells.md 15.4)
+ALEENA_PRICE = {56: 1000, 57: 5000}
+
 
 
 def gear_effect(name, d):
@@ -2481,6 +3168,20 @@ class GearData:
                 line = re.sub(r"\b(Fighter_use|mage_use)\b", "", line, flags=re.I)
             self.daggers[did] = Record(line)
         self.venom_id = g["d"]["DTU_GEAR_VENOM"]
+        # the lines of the class gear after the new gear (armor 62 and up,
+        # misc 131 and up, the reader of the tables in the same order)
+        na, nm = self.d["DTU_GEAR_FIRST_ARMOR"] + len(self.armor), self.d["DTU_GEAR_FIRST_MISC"] + len(self.misc)
+        self.armor_class_gear, self.misc_class_gear = {}, {}
+        for line in g["class_lines"]:
+            if line.startswith("$ARMOR"):
+                self.armor_class_gear[na] = Record(line)
+                na += 1
+            else:
+                self.misc_class_gear[nm] = Record(line)
+                nm += 1
+        if self.d["DTU_GEAR_BOOTS_ELVEN"] not in self.armor_class_gear or \
+                self.d["DTU_GEAR_PEARL_POWER"] not in self.misc_class_gear:
+            raise SystemExit("dtugear.c: the class gear lines are not at the numbers of dtugear.h")
 
     def item(self, cls, i):
         """The record of class 5, 15 or 16 number i, new or of 1.3."""
@@ -2488,6 +3189,10 @@ class GearData:
             return self.armor[i]
         if cls == 16 and i in self.misc:
             return self.misc[i]
+        if cls == 15 and i in self.armor_class_gear:
+            return self.armor_class_gear[i]
+        if cls == 16 and i in self.misc_class_gear:
+            return self.misc_class_gear[i]
         if cls == 5 and i == self.frost_id:
             return self.frost
         if cls == 5 and i in self.daggers:
@@ -2520,7 +3225,7 @@ class GearData:
             out.append("found in %s, in a locked closet: a thief picks the lock, a Knock spell or the Gloves of "
                        "Dexterity open it for the other classes" % GEAR_LEVEL_TEXT.get(self.g["venom"][0], "a drow level"))
         if any(row[0] == cls and row[1] == i for row in self.g["dragon"]):
-            out.append("a treasure (the last section of this page)")
+            out.append("a treasure of the red dragon (below)")
         for s in self.stages_of(cls, i):
             out.append("the market of Waterdeep " + GEAR_STAGES[s])
         if cls == 16 and i in self.misc:
@@ -2540,20 +3245,6 @@ def dagger_effect(d, venom):
                 "does not stop the regeneration of a troll." % d["DTU_GEAR_POISON_TIME"])
     return ("A dagger +3 for thieves. A backstab with it multiplies the damage by %d more (a thief of level 1: times 3 "
             "instead of 2)." % d["DTU_GEAR_ASSASSIN_STEP"])
-
-
-def new_gear_spells_section(gd):
-    """The place for the new spells and their scrolls (the main session adds
-    this section after the merge of the caster branch). Returns the lines
-    of the section, or [] while there is none."""
-    return []
-
-
-def new_gear_dragon_section(gd):
-    """The place for the dragon encounter (the main session adds this
-    section after the merge of the dragon branch). Returns the lines of the
-    section, or [] while there is none."""
-    return []
 
 
 # Spell lines that are not real player spells (Sources.md).
@@ -2861,6 +3552,7 @@ def main(argv=None):
         "Potions.md": p.potions(), "Wands.md": p.wands(), "Scrolls.md": p.scrolls(),
         "Wizard-Spells.md": p.spell_page("m"), "Priest-Spells.md": p.spell_page("c"),
         "New-Gear.md": p.new_gear(),
+        "Encounters.md": p.encounters(), "Monster-Behavior.md": p.monster_behavior(),
         "Sources.md": p.sources(),
     }
     # Player pages carry no code detail: no addresses and no table keywords

@@ -264,11 +264,16 @@ death of the game.
 - The door of her hoard: if it is not locked or it opens while she lives, is
   at peace and has a free line to the player, she says a line about the
   theft and is hostile.
-- The treasure: one table in `dtudragon.c` (`Dr_treasure`) adds a Flame
-  Tongue, Plate Mail +3, a Girdle of Hill Giant Strength, a Ring of Coolness,
-  2 Potions of Fire Resistance, 7 diamonds and 7000 gold to the hoard. Three
-  lines of the table are free for the items of a later task (a ring of
-  regeneration, a belt of dwarvenkind, plate mail of fire resistance).
+- The treasure: one table in `dtudragon.c` (`Dr_treasure`) adds Plate Mail
+  +3, a Girdle of Hill Giant Strength, a Ring of Coolness, 2 Potions of Fire
+  Resistance, 7 diamonds and 7000 gold to the hoard. Six places of the table
+  are free: with the setting "New gear" `dtu_gear_dragon_treasure` fills them
+  in order with the six items of `Gear_dragon` (dtugear.c: the Frost Brand,
+  the Cloak of Displacement, the Sash of the Magi, the Belt of Dwarvenkind,
+  the Ring of Regeneration, the Plate Mail of Fire Resistance;
+  docs/re/objects.md, "The treasury of Tamaramagil"). The Flame Tongue of
+  the first version of the table is gone: one lies in a cell of the troll
+  wing of DROW2 (objects.md, "Places and market").
 - The key and the treasure are placed one time: at the load of a new level,
   or at the restore of a level state when global flag 241 is not set (a
   state of 1.3 or of an older port). Global flag 242: the lever is thrown.
