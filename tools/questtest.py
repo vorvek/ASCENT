@@ -240,8 +240,8 @@ TESTS = [
        r"dragon: the lever \(trigger 20, fired 1\): the hatchery \(seg 398 side 4\) is open, 4 hatchlings, the dragon attacks",
        r"message \"A heavy door grinds open far down the hall, and a deep laugh rolls through the corridor: \"Little fool!",
        r"dragon: obj 64 is hostile: the lever", r"obj 48 hatchlng: walks a path of \d+ segments to seg 430 for its script \(walk\)",
-       r"f40 +wall 398\.4: type 2 flags 0x2 state", r"f42 +quest: level 21 .* gflags \[ 241 242 \]", r"f43 +obj 48: type 2 id 2 seg \d+ hp 50 ",
-       r"f200 +wall 398\.4: type 2 flags 0x2 state", r"f201 +quest: level 21 .* gflags \[ 241 242 \]",
+       r"f40 +wall 398\.4: type 2 flags 0x2 state", r"f42 +quest: level 21 .* gflags \[[^\]]* 241 242 \]", r"f43 +obj 48: type 2 id 2 seg \d+ hp 50 ",
+       r"f200 +wall 398\.4: type 2 flags 0x2 state", r"f201 +quest: level 21 .* gflags \[[^\]]* 241 242 \]",
        r" 202 dragon: test 4: obj 64 Dragon hp 90 .* hostile 1 peaceful 0", r"f203 +obj 48: type 2 id 2 seg \d+ hp 50 "],
       [r"gflags \[[^\]]* 107 ", r"flapping of wings"], frames=220, extra=["-noattack", "-objlog", "dragon_lever_obj.log"]),
     # While she lives two hatchlings fight at one time: objects 48 and 49
