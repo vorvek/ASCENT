@@ -1694,6 +1694,22 @@ weapons 81 to 88.
   and DROW4 have none, DROW3 has eight more. MINE has one troll (mission
   10). The sword is made once in a game: global flag 0xF0 of the player
   record. A saved state of DROW2 from before gets it at its restore.
+  The rule of the sword is the one of 1.3, unchanged: after the table
+  fixup the line has 0d0, damage_bonus 1, to_hit_bonus 1 and 1d8 fire;
+  0x2AB9F adds 2 to the roll against a target with the regeneration bit
+  (24) and 4 against an undead type; 0x2B1FA adds 2 fire against the
+  regeneration bit and 4 against undead, the fire dice go through the fire
+  resistance of the target (`fire_part`), and fire damage above 0 clears
+  the regeneration bit (0x2B5D4), so a troll that the sword burns does not
+  get up again. So against a troll: the first hit +3 to hit and 1 + 1d8 + 2
+  fire, then +1 and 1 + 1d8 (the bit is gone). Against other creatures:
+  +1 to hit, 1 + 1d8 fire, plus Strength. AD&D 2e (DMG): a sword +1 (1d8
+  for a long sword), +2 against regenerating creatures, +3 against
+  cold-using, inflammable or avian creatures, +4 against undead, to hit and
+  damage. The 2e rule would need the sword die in place of the fire die
+  (the fixup line), the bonuses on the damage instead of as fire, a list of
+  the cold-using, inflammable and avian types of the tables, and a
+  `Dtu_fix_*` or rulebook setting.
 - The market goods by reward stage (`dtu_gear_market_stock`), the 1.3 good
   that the setting moves (the Flame Tongue of stage 5 goes to stage 7,
   `dtu_gear_market_removed`) and the treasury of Tamaramagil (Belt of
