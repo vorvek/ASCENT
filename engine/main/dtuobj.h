@@ -264,6 +264,27 @@ void dtu_restore_tamaramagil(int has_state);
 extern int Dtu_fix_partial_stack;
 extern int Dtu_inventory_left;
 
+// ASCENT: the count of a plot item on the floor. The pick up 0x2805B takes
+// the count from the byte 0x1D5 of the object (the low byte of 0xAC of the
+// level file). The editor put the number of a scroll text there for two
+// plot items that cannot be read: DROW3 object 129, the Scroll of the
+// Illithids (misc 126), has 18 (the text of Kauzelhoon, FETXTE 29), and
+// DROW5 object 176, the Ruldegost Document (misc 104), has 21 (the letter
+// to Severa, FETXTE 32). 1.3 gives 18 and 21 copies. 1 (default): a misc
+// item with plot_item gives one copy. 0 (-origobj, -origplotcount): the
+// count of the byte.
+extern int Dtu_fix_plot_count;
+
+// ASCENT: the Scroll of the Illithids of DROW3. The level file puts the
+// scroll (object 129) on the floor next to the lone mind flayer (object
+// 128, segment 712), and message 16 says "he drops the scroll and attacks".
+// 1 (default, a request of the user): the mind flayer carries the scroll
+// (contains misc 126, count 1) and drops it when it dies; object 129 is
+// removed at the first load of the level, and message 16 says that he hides
+// the scroll. A level with a saved state keeps its objects. 0 (-origobj,
+// -origillithidscroll): the objects and the text of 1.3.
+extern int Dtu_fix_illithid_scroll;
+
 // The spellcaster of KOBOLDS (object 19). Original: the level fix 0xACF23
 // gives its type weapon 18 only on a level with no saved state, so after
 // the player comes back the creature setup makes the spell weapon -33 of

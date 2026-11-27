@@ -373,6 +373,25 @@ the use action or touched.
 | FLAME | 30 | 291.4 | 1 | MISC 25 |  |  | trap 26 (291.4: opens the door, lock) |
 | FLAME | 31 | 292.4 | 1 | MISC 25 |  |  | trap 27 (292.4: opens the door, lock) |
 
+The Violet Gem Keys (Data, the tables and the saves of 2026-11-26): misc 107 to
+124 all have the name `Violet Gem Key`, and each one opens its own lock (the
+table above: 109 and 110 in HUB2, 111 and 112 in HUB3, 114 in DROW1, 115 in
+DROW2, 116 to 118 and 121 later). Khelben gives them with his missions (the
+log of the port: misc 113 with mission 16, 114 and 115 with mission 17), and no
+trigger takes them. The key list holds each number once (0xB65BB, code 7). So a
+player in the middle of the game has several keys with the same name, each
+needed for its door: the user's save after mission 17 has the seven keys 109 to
+115, one of each. The level-file key misc 71 (also named `Violet Gem Key`) goes
+to the item list, and HUB1 trigger 7, DROW1 trigger 22 and DROW4 triggers 5 and 9
+take it.
+
+The turn-in of a plot item (YPINN script 6 label 17, Sangalor: `TAKE MISC 126`;
+script 1 label 16, Mirt: `TAKE MISC 104`) takes one copy and sets flag5 of the
+script, and the next talk goes past the reward. So more copies give no second
+reward (the extra copies of 1.3 stay in the bag, docs/re/objects.md, the byte at
+0x1D5). Script 6 label 16 ("Actually, I have something right here.") ends the
+talk with no reward, no take and no flag; only label 17 (from label 9) gives it.
+
 ## 10. The scripts: flags, items and teleports
 
 Scripts with none of these are left out. The number in brackets is the

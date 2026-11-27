@@ -173,6 +173,8 @@ The 256 global flags of the scripts are in the player record at P+0x1A33 (file o
 
 Unexplained ranges: the fields of the player record that `character.md` does not list, 7218..7361 and the records after 7374.
 
+`tools/save_fix.py` lists and edits the item list (count P+0xF3, entries P+0x103) and the key item list (count P+0xFF, entries P+0x18D3). A removal moves the later entries up and changes the references to list 0 (P+0x1AB9, P+0x1ABB, the hot keys P+0x1AC1, the hand P+0x1AD7, the paper doll P+0x1AD9). Verified: the save of 2026-11-26 (`SG1.SG`, 81 entries in the port) without misc 126 loads in the port with 80 entries, the same hot keys, the same worn items (the Ring of Wizardry moved from entry 72 to 71 with its paper doll reference) and the same armor class.
+
 A file with "between levels" 1 ends at 7374. The port writes such a file for the saves of the main menu and of Waterdeep (`engine/main/dtufe.c`) and reads both kinds (docs/re/frontend.md). The port writes the format of the executable: it starts from the bytes of the file that was loaded (so the fields that it does not decode stay) and writes the fields that it has, the three lists included. Verified: a load of the 1.3 save and a save in the port at once give a file that differs from the original only in the description, the game time and the spell slots that the level start fills again.
 
 Correction: an earlier version of this table put the player record at 53. The writer stores 6967 bytes, but the record starts at 141.

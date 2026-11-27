@@ -48,6 +48,7 @@ item. All pass. The `-chartest` commands `fire` and the `dump` line
 | G15 | The drop places the item by a guess (ahead of the player). | 0xB717B calls 0x3C93B: it sets the contains fields of the player object and calls object_create_egg 0x3C4BD, so the item starts at the player. | Open, small. The pick up delay of 5 s (0xB72BA) is in the port |
 | G16 | Find Traps marker object of a found trap. | 0xB3605. | Open, cosmetic (thief area) |
 | G17 | A mage with the Ring of Armoring and Armor: Bracers of Defense AC6 gave AC 6 and AC8 gave AC 5 (with Shield, AC4 gave 4 and AC8 gave 3). The 1 better of the ring goes only to an armor class worse than the cap, so an armor class at the cap stays there. Reported on 2026-11-24 (AC8 replaced by AC6, the armor class got worse). | 0xB05FC (`6 < ac`), 0xB064F (`v < ac`), 0xB067C (`3 < ac`), each followed by 0xAFAD1 (ac - 1 for a mage with the ring). The port copied it in `armoring_ac`. | Fixed (`Dtu_fix_armoring_cap`, -origcombat): the caps are 1 better (Armor 5, Shield 3 and 1, Vestment v - 1), so a better armor never gives a worse armor class. `check_items.py` armoring_bracers |
+| G18 | The Scroll of the Illithids (DROW3) came as 18 copies and the Ruldegost Document (DROW5) as 21. Reported on 2026-11-26 (18 scrolls, 17 after the turn-in). | 0x2805B takes the count from the object byte 0x1D5, which the level file fills from 0xAC; the editor wrote the number of a scroll text there (18: FETXTE 29, 21: FETXTE 32), docs/re/objects.md. | Fixed (`Dtu_fix_plot_count`, `-origobj`, `-origplotcount`): a plot misc item gives one copy. `tools/save_fix.py` corrects a save. `questtest.py` drow3_illithid_scroll |
 
 Checked and found equal: the armor class rules of all places (boot, belt,
 necklace, shield, gauntlet, armor, cloak, rings, lockpicks, hand), the
@@ -168,7 +169,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 101 | Orb of Insight | 0x37A6A | use_misc | same: script event 0x1FE |
 | 102 | Scroll | 0x9DC42 | use_misc, dtu_scroll_show | same: scroll text of the count, not used up |
 | 103 | Banegem | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8 |
-| 104 | Ruldegost Document | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8 |
+| 104 | Ruldegost Document | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8. DROW5 gave 21 copies: G18 |
 | 105 | Kossuth Ruby | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8 |
 | 106 | Cursed Scroll | 0x37A6A (0x3817F) | use_misc | fixed in a95cbb3: not used up; damage below half a point in 1.3, `Dtu_fix_cursed_scroll` |
 | 107 | Violet Gem Key | none | - | same: key item (key list, doors: world audit) |
@@ -190,7 +191,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 123 | Violet Gem Key | none | - | same: key item (key list, doors: world audit) |
 | 124 | Violet Gem Key | none | - | same: key item (key list, doors: world audit) |
 | 125 | Flamesword | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8 |
-| 126 | Scroll of the Illithids | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8 |
+| 126 | Scroll of the Illithids | none | - | same: plot item, no use; drop refused (0xB611C), fixed in adc32e8. DROW3 gave 18 copies: G18 |
 | 127 | thief scroll | 0x9DC42 | use_misc | same: scroll text 1 |
 
 ### armor (type 15)
