@@ -113,6 +113,34 @@ static int febgnd_open(void)
 
 // Loads one picture. The palette of the entry (768 bytes) is skipped: the
 // interface pictures have the game palette. Returns NULL if not available.
+// ASCENT: the icons of the spells of the port (dtuspell.h, the icons 200 to
+// 202). The icon sheets (FEBGND 23: 16x16, 24: 32x32) have 8 icons in a row
+// and 25 rows, all used. The loaded sheet gets one more row with the icons
+// of dtuspellicons.h (new art of tools/spell_icons.py); 255 is the
+// transparent color of the sheet. A sheet of another size stays as it is.
+#include "dtuspellicons.h"
+
+static grs_bitmap *port_icons_add(grs_bitmap *bm, int hi)
+{
+	int cell = hi ? 32 : 16, k, y;
+	grs_bitmap *nb;
+
+	if (!bm || !bm->bm_data || bm->bm_w != 8 * cell || bm->bm_h != (DTU_PORT_ICON_FIRST / 8) * cell || bm->bm_rowsize != bm->bm_w)
+		return bm;
+	nb = gr_create_bitmap(bm->bm_w, bm->bm_h + cell);
+	if (!nb || !nb->bm_data)
+		return bm;
+	memcpy(nb->bm_data, bm->bm_data, bm->bm_w * bm->bm_h);
+	memset(nb->bm_data + bm->bm_w * bm->bm_h, 255, bm->bm_w * cell);
+	for (k = 0; k < DTU_PORT_ICON_COUNT && k < 8; k++)
+		for (y = 0; y < cell; y++)
+			memcpy(nb->bm_data + (bm->bm_h + y) * nb->bm_rowsize + k * cell,
+				(hi ? Dtu_port_icons_hi[k] : Dtu_port_icons_lo[k]) + y * cell, cell);
+	nb->bm_flags = bm->bm_flags;
+	gr_free_bitmap(bm);
+	return nb;
+}
+
 static grs_bitmap *febgnd_load(int n)
 {
 	FILE *f;
@@ -175,6 +203,8 @@ static grs_bitmap *febgnd_load(int n)
 		bit++;
 	}
 	free(src);
+	if (n == 23 || n == 24)
+		bm = port_icons_add(bm, n == 24);		// ASCENT: the icons of the spells of the port
 	dtu_lang_art_febgnd(bm, n);		// ASCENT: the picture of the language (dtulangart.h)
 	dtu_hdui_loaded(bm, n);		// ASCENT: the reference of the upscaled picture
 	return bm;

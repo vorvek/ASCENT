@@ -265,6 +265,55 @@ int dtu_spell_priest_check(void);
 // handler (0xF72AB): x % 0 is 0. This is kept. No setting.
 
 //------------------------------------------------------------------------
+// ASCENT: the spells of the port (a decision of the user of 2026-11-27,
+// with Dtu_caster_ai of dtuopts.h; docs/re/spells.md, "The spells of the
+// port"). 1.3 has the lines 0 to 55. The port adds five lines after the
+// table fixup of each table read (bmread.c, dtu_spell_port_line), with the
+// rules of AD&D 2nd edition:
+// 56 Mirror Image (mage 2): 1d4 images and one more for each 3 levels, 8 at
+//    most, for 3 rounds a level. An attack that would hit the caster, or a
+//    spell aimed at the caster alone, takes an image in place of the caster
+//    with the chance images / (images + 1), and the image is gone. An area
+//    is not fooled.
+// 57 Minor Globe of Invulnerability (mage 4): 1 round a level. No spell of
+//    level 1 to 3 acts on the one inside, from any source (a creature, the
+//    player, a wand, a scroll, a trap, an area). The spells that the one
+//    inside casts on itself work, and Dispel Magic ends the globe.
+// 58 Spiritual Hammer (priest 2): a hammer of force flies to the target: an
+//    attack roll with the THAC0 of the caster, 1d4 + 1 damage, and +1 to
+//    hit and to the damage for each 6 levels (+3 at most). No save.
+// 59 Flame Strike (priest 5, creatures only): a column of fire on the
+//    target, 6d8 fire damage, a save for half. Resist Fire, Protection From
+//    Fire and the fire resistance of items apply (the fire dice of 0x91BC3).
+// 60 Mind Blast (the illithids only, not a spell: no globe stops it): a
+//    cone 60 feet long. A target in it saves against wands at -4 or is
+//    stunned: on the player 3d4 seconds of the hold of Dtu_fix_player_hold
+//    (dtuhold.h) with the view of the stun of Color Spray. Free Action does
+//    not prevent it (AD&D 2e: Free Action is for hold, web and slow magic,
+//    the blast is psionic); the Potion of Freedom ends it as it ends each
+//    hold of the port.
+// The lines are always there (a save with a new spell works with the
+// setting off). The setting brings them into the game: scrolls in the
+// levels, the sets of Aleena Paladinstar, the lists of the creatures.
+// Mirror Image and the globe are kept outside of the effect word (it has
+// no free bit): they are not in a save game and end at a level change.
+#define DTU_SPELL_MIRROR_IMAGE		56
+#define DTU_SPELL_MINOR_GLOBE		57
+#define DTU_SPELL_SPIRITUAL_HAMMER	58
+#define DTU_SPELL_FLAME_STRIKE		59
+#define DTU_SPELL_MIND_BLAST		60
+// The text of the line k (0 to 4) of the port for the table reader, NULL
+// after the last one
+const char *dtu_spell_port_line(int k);
+// The images of Mirror Image that an object has left, and 1 if it is in a
+// Minor Globe of Invulnerability
+int dtu_spell_images(object *obj);
+int dtu_spell_globe(object *obj);
+// An attack would hit target: 1 if an image of Mirror Image takes it (the
+// image is gone)
+int dtu_spell_mirror_takes(object *target, object *attacker);
+
+//------------------------------------------------------------------------
 // Calls for the items, the creatures and the combat code
 
 // Sets an effect bit with a timer (the potions of 0x37A6A, the worn items
@@ -565,6 +614,9 @@ void dtu_spell_log(char *format, ...);
 #define DTU_SK_FEAR			21		// fear; the target may drop its weapon
 #define DTU_SK_ACID			22		// the dice now and in each of amount later rounds
 #define DTU_SK_HOLD			23		// holds up to amount humanoids
+#define DTU_SK_MIRROR		24		// ASCENT: amount images of Mirror Image
+#define DTU_SK_GLOBE			25		// ASCENT: Minor Globe of Invulnerability
+#define DTU_SK_STUN			26		// ASCENT: Mind Blast: stuns the targets in a cone
 
 // ASCENT: the conditions of a spell line (Spell_rule of dtuspell.c). The
 // cases of the effect function test them through one predicate, and the

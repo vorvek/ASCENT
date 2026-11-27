@@ -900,6 +900,24 @@ int bm_load_level_tables( char * level_name, char * player_name )
 		dtu_tblfix_apply( &Tblfix_io );
 	else
 		dtu_log( "Table fixup of 1.3 not applied (-rawtables)\n" );
+	// ASCENT: the spells of the port (dtuspell.h): five lines after the 56
+	// of 1.3, read as lines of the table. A table that has a line at these
+	// numbers keeps it.
+	{
+		const char *l;
+		int k;
+
+		for (k = 0; (l = dtu_spell_port_line(k)) != NULL; k++) {
+			char buf[1024];
+			int n = atoi(l + 7);
+
+			if (n < N_spell_types && Spell_info[n].record >= 0)
+				continue;
+			strncpy(buf, l, sizeof(buf) - 1);
+			buf[sizeof(buf) - 1] = 0;
+			bm_parse_line(buf);
+		}
+	}
 	dtu_spell_table_read();		// ASCENT: the writes of the casts into the spell records end (D-104, D-105)
 
 	NumTextures = texture_count;

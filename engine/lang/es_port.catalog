@@ -1143,6 +1143,10 @@ id: port.improved_ai
 en: Improved AI
 tr: IA mejorada
 
+id: port.caster_ai
+en: Caster AI
+tr: IA de conjuradores
+
 id: port.improved_3d_body
 en: Improved 3D body
 tr: Cuerpo 3D mejorado
@@ -2600,4 +2604,76 @@ plural: Capas de Lathandar
 id: port.d_d
 en: %d.%d
 tr: %d,%d
+
+id: port.mirror_image
+en: Mirror Image
+tr: Imagen Múltiple
+
+id: port.minor_globe_of_invulnerability
+en: Minor Globe of Invulnerability
+tr: Globo Menor de Invulnerabilidad
+
+id: port.spiritual_hammer
+en: Spiritual Hammer
+tr: Martillo Espiritual
+
+id: port.flame_strike
+en: Flame Strike
+tr: Columna de Llamas
+
+id: port.mind_blast
+en: Mind Blast
+tr: Descarga Mental
+
+id: port.a_mirror_image_takes_the_attack_images_l
+en: A mirror image takes the attack. Images left: %d.
+tr: Una imagen recibe el ataque. Imágenes restantes: %d.
+
+id: port.you_hit_a_mirror_image_of_s_images_left
+en: You hit a mirror image of %s. Images left: %d.
+tr: Golpeas una imagen de %s. Imágenes restantes: %d.
+
+id: port.s_s_d_mirror_images_for_d_minutes
+en: %s %s %d mirror images for %d minutes.
+tr: %s %s %d imágenes durante %d minutos.
+
+id: port.s_s_a_minor_globe_of_invulnerability_for
+en: %s %s a Minor Globe of Invulnerability for %d minutes.
+tr: %s %s un Globo Menor de Invulnerabilidad durante %d minutos.
+
+id: port.you_resist_s
+en: You resist %s.
+tr: Resistes %s.
+
+id: port.penalty
+en: penalty
+tr: penalizador
+
+id: port.makes_s_images_of_you
+en: Makes %s images of you.
+tr: Crea %s imágenes tuyas.
+
+id: port.an_attack_that_would_hit_you_or_a_spell
+en: An attack that would hit you, or a spell aimed at you alone, may take an image in your place. The image is gone then.
+tr: Un ataque que te alcanzaría, o un conjuro dirigido solo a ti, puede recaer en una imagen en tu lugar. Esa imagen desaparece.
+
+id: port.a_spell_with_an_area_is_not_fooled
+en: A spell with an area is not fooled.
+tr: Un conjuro de área no se deja engañar.
+
+id: port.no_spell_of_level_1_to_3_has_an_effect_o
+en: No spell of level 1 to 3 has an effect on you, from any source.
+tr: Ningún conjuro de nivel 1 a 3 te afecta, venga de donde venga.
+
+id: port.the_spells_that_you_cast_on_yourself_wor
+en: The spells that you cast on yourself work.
+tr: Los conjuros que lanzas sobre ti funcionan.
+
+id: port.dispel_magic_ends_it
+en: Dispel Magic ends it.
+tr: Disipar Magia lo termina.
+
+id: port.stuns_each_creature_in_a_cone_in_front_o
+en: Stuns each creature in a cone in front of the caster.
+tr: Aturde a cada criatura en un cono frente al lanzador.
 

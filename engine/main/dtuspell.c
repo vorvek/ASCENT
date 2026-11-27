@@ -104,6 +104,7 @@ static int creature_cleric_level(object *obj);
 static int creature_rf_name(object *obj);
 static int creature_interrupt(object *obj,int hit);
 static void rary_apply(int choice);
+static void image_vclip(object *obj);		// ASCENT: Mirror Image
 
 int Dtu_spell_current = -1;
 int Dtu_spell_book_n[2];
@@ -163,8 +164,51 @@ static const short Cast_time_13[56] = {
 	600, 5, 5, 4, 60, 6,				// 50 to 55
 };
 
+// ASCENT: the cast times of the spells of the port (dtuspell.h), the
+// casting times of AD&D 2nd edition as the table above has them
+static int port_cast_time(int spell)
+{
+	switch (spell) {
+		case DTU_SPELL_MIRROR_IMAGE:		return 2;
+		case DTU_SPELL_MINOR_GLOBE:			return 4;
+		case DTU_SPELL_SPIRITUAL_HAMMER:	return 5;
+		case DTU_SPELL_FLAME_STRIKE:		return 8;
+		case DTU_SPELL_MIND_BLAST:			return 1;
+	}
+	return -1;
+}
+
+// ASCENT: the lines of the spells of the port (dtuspell.h). The keys are
+// those of the table lines; the vclips and the sounds are those of spells
+// of the tables: Invisibility (123, 2147), Stone Skin (121, 2126), Magical
+// Stone (2132, 101), Fireball (14, 2115, 111), Hold Person (24, 2104, 133).
+// The hammer is the model of the Throwing Hammer (y_a.pof), which each
+// level archive has. The icons 200 to 202 are new art (dtuspellicons.h).
+const char *dtu_spell_port_line(int k)
+{
+	static const char *lines[] = {
+		"$SPELL 56 name=\"Mirror Image\" picture=genscrol.bbm level=2 mage_use range=0 type=TARGET icon=200 uses=1 radius=16 "
+			"weapon_vclip=123 value=300 player_light=8 size=3 modifier=1.0 cast_sound=2147 stackable stack_limit=10 cast_with_hands "
+			"self_cast_ok inv_icon=143",
+		"$SPELL 57 name=\"Minor Globe of Invulnerability\" picture=genscrol.bbm level=4 mage_use range=0 type=TARGET icon=201 uses=1 "
+			"radius=16 weapon_vclip=121 value=1200 player_light=8 size=3 modifier=1.0 cast_sound=2126 stackable stack_limit=10 "
+			"cast_with_hands self_cast_ok inv_icon=143",
+		"$SPELL 58 name=\"Spiritual Hammer\" picture=genscrol.bbm level=2 cleric_use range=180 type=TARGET icon=202 uses=1 radius=0 "
+			"weapon_pof=y_a.pof y_a01.bbm x_a01.bbm value=300 damage_dice=4 #damage_dice=1 player_light=8 size=3 modifier=1.0 "
+			"monster_hit_vclip=101 wall_hit_vclip=101 cast_sound=2132 stackable stack_limit=10 cast_with_hands inv_icon=142",
+		"$SPELL 59 name=\"Flame Strike\" level=5 range=360 type=TARGET radius=0 weapon_vclip=14 weapon_vclip_size=3 "
+			"fire_damage_dice=8 #fire_damage_dice=6 cast_sound=2115 monster_hit_vclip=111 size=3 modifier=1.0",
+		"$SPELL 60 name=\"Mind Blast\" level=4 range=120 type=TARGET radius=0 weapon_vclip=24 cast_sound=2104 cast_on_top=133 "
+			"size=3 modifier=1.0",
+	};
+
+	return (k >= 0 && k < (int)(sizeof(lines) / sizeof(lines[0]))) ? lines[k] : NULL;
+}
+
 static int spell_cast_time(int spell)
 {
+	if (port_cast_time(spell) >= 0)
+		return port_cast_time(spell);
 	if (spell >= 0 && spell < (int)(sizeof(Cast_time_13) / sizeof(Cast_time_13[0])) && spell < N_spell_types)
 		return Cast_time_13[spell];
 	return spell_int(spell,"cast_time",0);
@@ -1008,10 +1052,110 @@ fix dtu_time_left(fix t)
 }
 
 // 0x9002C: the timers of one object. force: all effects end (Dispel Magic).
+//------------------------------------------------------------------------
+// ASCENT: Mirror Image and Minor Globe of Invulnerability (dtuspell.h). The
+// effect word of an object has no free bit, so the two effects are kept
+// here by the object number and its signature.
+static struct { int signature; int images; fix images_end, globe_end; } Xfx[MAX_OBJECTS];
+
+static int xfx_n(object *obj)
+{
+	int n;
+
+	if (obj == NULL || obj < Objects || obj >= Objects + MAX_OBJECTS)
+		return -1;
+	n = obj-Objects;
+	if (Xfx[n].signature != obj->signature) {
+		memset(&Xfx[n],0,sizeof(Xfx[n]));
+		Xfx[n].signature = obj->signature;
+	}
+	return n;
+}
+
+int dtu_spell_images(object *obj)
+{
+	int n = xfx_n(obj);
+
+	return n < 0 ? 0 : Xfx[n].images;
+}
+
+int dtu_spell_globe(object *obj)
+{
+	int n = xfx_n(obj);
+
+	return n >= 0 && Xfx[n].globe_end != 0;
+}
+
+// The end of the images (what & 1) and of the globe (what & 2)
+static void xfx_end(object *obj,int what,int message)
+{
+	int n = xfx_n(obj);
+
+	if (n < 0)
+		return;
+	if ((what & 1) && Xfx[n].images > 0) {
+		Xfx[n].images = 0;
+		Xfx[n].images_end = 0;
+		dtu_spell_log("spell: Mirror Image of obj %d %s ends",n,target_name(obj));
+		if (message && obj->type == OBJ_PLAYER)
+			HUD_init_message("%s expired.",dtu_tr(LN("Mirror Image")));
+	}
+	if ((what & 2) && Xfx[n].globe_end != 0) {
+		Xfx[n].globe_end = 0;
+		dtu_spell_log("spell: Minor Globe of Invulnerability of obj %d %s ends",n,target_name(obj));
+		if (message && obj->type == OBJ_PLAYER)
+			HUD_init_message("%s expired.",dtu_tr(LN("Minor Globe of Invulnerability")));
+	}
+}
+
+int dtu_spell_mirror_takes(object *target,object *attacker)
+{
+	int n = xfx_n(target), k;
+
+	if (n < 0 || Xfx[n].images <= 0 || target == attacker)
+		return 0;
+	k = Xfx[n].images;
+	if (rand() % (k + 1) == 0) {
+		dtu_spell_log("spell: Mirror Image of obj %d %s: the attack finds the caster among %d images",n,target_name(target),k);
+		return 0;
+	}
+	Xfx[n].images = k - 1;
+	dtu_spell_log("spell: Mirror Image of obj %d %s: an image takes the attack, %d left",n,target_name(target),k - 1);
+	if (target->type == OBJ_PLAYER) {
+		HUD_init_message("A mirror image takes the attack. Images left: %d.",k - 1);
+		PALETTE_FLASH_ADD(0,0,12);
+	}
+	else if (attacker && attacker->type == OBJ_PLAYER)
+		HUD_init_message("You hit a mirror image of %s. Images left: %d.",dtu_object_display_name(target),k - 1);
+	image_vclip(target);
+	if (k - 1 == 0)
+		xfx_end(target,1,0);
+	return 1;
+}
+
+// One time in each frame: the two effects end at their time
+static void xfx_frame(void)
+{
+	int i;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+
+		if (Xfx[i].signature != o->signature || (o->type != OBJ_PLAYER && o->type != OBJ_ROBOT))
+			continue;
+		if (Xfx[i].images > 0 && dtu_time_past(Xfx[i].images_end))
+			xfx_end(o,1,1);
+		if (Xfx[i].globe_end != 0 && dtu_time_past(Xfx[i].globe_end))
+			xfx_end(o,2,1);
+	}
+}
+
 static void fx_expire(object *obj,int force)
 {
 	int b, w = obj->dtu.m_88;
 
+	if (force)
+		xfx_end(obj,3,1);		// ASCENT: Dispel Magic ends Mirror Image and the globe
 	if (w == 0)
 		return;
 	for (b=0;b<32;b++) {
@@ -1089,6 +1233,10 @@ int dtu_spell_save(object *obj,int cat)
 // From Evil against a spell or an attack of a creature
 #define PROT_EVIL_SAVE	2
 
+// ASCENT: a penalty to the next saves (added to the number): the caller
+// sets it around its save
+static int Save_mod = 0;
+
 int dtu_spell_save_from(object *obj,int cat,object *source)
 {
 	int need = 20, roll = rand() % 20 + 1, level, resist = 0, evil = 0;
@@ -1129,6 +1277,11 @@ int dtu_spell_save_from(object *obj,int cat,object *source)
 	if (Dtu_fix_prot_evil && source && source != obj && source->type == OBJ_ROBOT && (obj->type == OBJ_PLAYER || obj->type == OBJ_ROBOT) &&
 		 (obj->dtu.m_88 & DTU_FX_PROT_EVIL))
 		need -= evil = PROT_EVIL_SAVE;
+	// ASCENT: the penalty of the attack (Mind Blast: -4, Save_mod)
+	if (Save_mod) {
+		need += Save_mod;
+		dtu_spell_log("save: the number is %d higher (the penalty of the attack)",Save_mod);
+	}
 	dtu_spell_log("save: obj %d %s, category %d: d20 %d against %d%s%s: %s",(int)(obj-Objects),target_name(obj),cat,roll,need,
 		resist ? " (magic resistance, the number lowered by level / 3)" : "",evil ? " (Protection From Evil, 2 lower)" : "",
 		roll >= need ? "saved" : "failed");
@@ -1137,6 +1290,7 @@ int dtu_spell_save_from(object *obj,int cat,object *source)
 	dtu_xp_save(roll,need,roll >= need);
 	dtu_xp_save_mod(resist,LN("magic resistance"));
 	dtu_xp_save_mod(evil,LN("Protection From Evil"));
+	dtu_xp_save_mod(-Save_mod,LN("penalty"));
 	return roll >= need;
 }
 
@@ -1352,6 +1506,13 @@ void dtu_spell_view_confusion(vms_matrix *m)
 // 0x8CCED: the cast_on_top vclip of the line 8.0 above the target, size/4
 // large, until GameTime plus the duration of the effect. The common end
 // of 0x8CFFF calls it; the port calls it when the case sets its effect.
+// ASCENT: Mirror Image: the vclip of the spell at the caster when an image
+// goes
+static void image_vclip(object *obj)
+{
+	vclip_at(obj->segnum,&obj->pos,obj->size,spell_int(DTU_SPELL_MIRROR_IMAGE,"weapon_vclip",-1));
+}
+
 static void top_vclip(int spell,object *t,fix duration)
 {
 	int vclip = spell_int(spell,"cast_on_top",-1), seg;
@@ -1387,7 +1548,7 @@ static void top_vclip(int spell,object *t,fix duration)
 static fix spell_deal(int spell,object *target,object *caster,int level,int dmg,int save);
 static int rule_half(int spell);		// ASCENT: the save for half of the line of the spell
 static int rule_attack(int spell);		// ASCENT: the attack roll of the line (Dtu_fix_damage_save)
-static int rule_attack_bonus(int spell);
+static int rule_attack_bonus(int spell,int L);
 static int rnd(int n);
 
 // ASCENT: the THAC0 of the caster of a spell attack roll: the player, a
@@ -1483,12 +1644,12 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 	// ASCENT: the attack roll of the line (Dtu_fix_damage_save); a hit shows
 	// its roll in the line of the damage (verbose combat log)
 	if (rule_attack(spell)) {
-		if (!spell_attack_hit(spell,target,caster,caster_thac0(caster),rule_attack_bonus(spell),1,""))
+		if (!spell_attack_hit(spell,target,caster,caster_thac0(caster),rule_attack_bonus(spell,level),1,""))
 			return 0;
 		dtu_xp_hit_keep();
 	}
 	dmg = (group >= 0 ? dtu_spell_damage_roll_count(spell,target,level,group,count) : dtu_spell_damage_roll(spell,target,level)) + extra;
-	dtu_xp_dmg_mod(extra,LN("undead"));		// ASCENT: the die of Magical Stone against undead (verbose combat log)
+	dtu_xp_dmg_mod(extra,spell == DTU_SPELL_SPIRITUAL_HAMMER ? LN("spell") : LN("undead"));		// ASCENT: the die of Magical Stone against undead (verbose combat log)
 	return spell_deal(spell,target,caster,level,dmg,rule_half(spell));
 }
 
@@ -2096,6 +2257,11 @@ static fix spell_time(int spell,int L,int mode)
 		case 48:	return (L+3)*MINUTE;					// Spider Climb
 		case 50:	return Dtu_fix_spell_hours ? long_duration(L*3600) : (fix)((unsigned)L * 3600u * (unsigned)F1_0);	// Strength
 		case 51:	return i2f(1800);						// Find Traps: 30 rounds
+		// ASCENT: the spells of the port (dtuspell.h)
+		case DTU_SPELL_MIRROR_IMAGE:	return 3*L*MINUTE;		// 3 rounds a level
+		case DTU_SPELL_MINOR_GLOBE:		return L*MINUTE;		// 1 round a level
+		case DTU_SPELL_MIND_BLAST:		// the stun: 3d4, in seconds on the player (mind_blast_time)
+			return i2f(mode == LOW ? 3 : mode == HIGH ? 12 : die(4,ROLL) + die(4,ROLL) + die(4,ROLL));
 	}
 	return 0;
 }
@@ -2123,6 +2289,10 @@ static int spell_amount(int spell,int L,int mode)
 		case 36:	return L/3;							// Melf's Acid Arrows: the later rounds (melf_acid_hit)
 		case 44:	return SCARE_LEVEL;					// Scare
 		case 46:	return SLEEP_LEVEL;					// Sleep
+		case DTU_SPELL_MIRROR_IMAGE: {				// ASCENT: 1d4 and one for each 3 levels, 8 at most
+			int k = die(4,mode) + L/3;
+			return k > 8 ? 8 : k;
+		}
 		case 50:	return char_is(DTU_CLASS_FIGHTER) ? die(8,mode) :
 						(char_is(DTU_CLASS_THIEF) || char_is(DTU_CLASS_CLERIC)) ? die(6,mode) : die(4,mode);
 	}
@@ -2191,7 +2361,7 @@ static void spell_damage_args(int spell,int L,int *group,int *count,int *level)
 // functions spell_time, spell_amount and spell_damage_args, which both
 // read too. dtu_spell_rule_check tests that the kind of each line fits its
 // other values.
-#define N_SPELL_RULES	56
+#define N_SPELL_RULES	61		// ASCENT: 56 lines of 1.3 and the 5 of the port (dtuspell.h)
 
 #define SR_OTHERS	DTU_SR_SPARES_CASTER
 
@@ -2252,6 +2422,12 @@ static const struct { ubyte kind, save; ushort flags; int fx, stopped_by; } Spel
 	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_PROT_EVIL },			// 53 Protection From Evil
 	{ DTU_SK_GIVE, DTU_SS_NONE, 0, DTU_FX_DETECT_MAGIC },		// 54 Detect Magic
 	{ DTU_SK_DISPEL, DTU_SS_NONE, 0, 0 },						// 55 Dispel Magic
+	// ASCENT: the spells of the port (dtuspell.h)
+	{ DTU_SK_MIRROR, DTU_SS_NONE, 0, 0 },						// 56 Mirror Image
+	{ DTU_SK_GLOBE, DTU_SS_NONE, 0, 0 },						// 57 Minor Globe of Invulnerability
+	{ DTU_SK_DAMAGE, DTU_SS_NONE, SR_OTHERS|DTU_SR_ATTACK_ROLL, 0 },	// 58 Spiritual Hammer: an attack roll, no save
+	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 59 Flame Strike
+	{ DTU_SK_STUN, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_HOLD },	// 60 Mind Blast: a save against wands at -4
 };
 
 static int rule_flags(int spell)
@@ -2313,8 +2489,19 @@ static int rule_attack(int spell)
 	return Dtu_fix_damage_save && spell >= 0 && spell < N_SPELL_RULES && (Spell_rule[spell].flags & DTU_SR_ATTACK_ROLL);
 }
 
-static int rule_attack_bonus(int spell)
+// ASCENT: Spiritual Hammer (dtuspell.h): +1 to hit and to the damage for
+// each 6 levels of the caster, +3 at most (AD&D 2e)
+static int hammer_bonus(int L)
 {
+	return L / 6 > 3 ? 3 : L / 6;
+}
+
+#define HAMMER_DAMAGE_ADD	1		// 1d4 + 1
+
+static int rule_attack_bonus(int spell,int L)
+{
+	if (spell == DTU_SPELL_SPIRITUAL_HAMMER)
+		return hammer_bonus(L);
 	return spell == 37 ? METEOR_HIT_BONUS : 0;
 }
 
@@ -2380,6 +2567,27 @@ int dtu_spell_stopped_by_fx(int fx)
 //------------------------------------------------------------------------
 // The effect of a spell on one target (0x8CFFF, jump table 0x8CF1F)
 
+// ASCENT: above 0 while an area (0x90CEF, the cones, the column of Flame
+// Strike) applies its spell: Mirror Image does not fool an area
+static int Area_depth = 0;
+
+// ASCENT: 1 if the Minor Globe of Invulnerability of the target stops the
+// spell (dtuspell.h): level 1 to 3, but not a spell that the one inside
+// casts on itself (a damage spell of its own is stopped: its Fireball does
+// not come in), not Dispel Magic (it ends the globe), not the Mind Blast
+static int globe_stops(int spell,int self)
+{
+	if (spell == 13 || spell == 55 || spell == DTU_SPELL_MIND_BLAST || spell < 0 || spell >= N_SPELL_RULES)
+		return 0;
+	if (spell_level(spell) > 3)
+		return 0;
+	if (self && Spell_rule[spell].kind != DTU_SK_DAMAGE)
+		return 0;
+	return 1;
+}
+
+#define MIND_BLAST_SAVE		4		// the save against wands at -4 (Monstrous Manual)
+
 static fix apply_spell(int spell,object *target,object *caster,int L)
 {
 	int T, self = (target == caster), mf;
@@ -2423,6 +2631,22 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 			HUD_init_message(LT("%s stops %s."),dtu_spell_name(39),dtu_spell_name(spell));
 		return 0;
 	}
+
+	// ASCENT: Minor Globe of Invulnerability (dtuspell.h): no spell of level
+	// 1 to 3 acts on the one inside
+	if (dtu_spell_globe(target) && globe_stops(spell,self)) {
+		dtu_spell_log("spell: the Minor Globe of Invulnerability of obj %d %s stops '%s' (level %d)",(int)(target-Objects),
+			target_name(target),spell_name(spell),spell_level(spell));
+		if (target->type == OBJ_PLAYER || (caster && caster->type == OBJ_PLAYER))
+			HUD_init_message(LT("%s stops %s."),dtu_spell_name(DTU_SPELL_MINOR_GLOBE),dtu_spell_name(spell));
+		vclip_at(target->segnum,&target->pos,target->size,spell_int(DTU_SPELL_MINOR_GLOBE,"weapon_vclip",-1));
+		return 0;
+	}
+	// ASCENT: Mirror Image (dtuspell.h): a spell aimed at the target alone
+	// that has no attack roll (the attack roll asks in dtu_hit_test_vs)
+	if (!self && !Area_depth && dtu_spell_images(target) && (rule_flags(spell) & DTU_SR_SPARES_CASTER) && !rule_attack(spell) &&
+		 !(spell == 36 && Dtu_fix_melf_acid) && dtu_spell_mirror_takes(target,caster))
+		return 0;
 
 	switch (spell) {
 		case 1: {	// Aid (0x8D3F7): 1d8 hit points above the maximum, Bless
@@ -2976,6 +3200,66 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 					say("Find Traps cast on %s by %s for %d minutes.",Msg_t,Msg_c,MINUTES(dur));
 			}
 			break;
+		// ASCENT: the spells of the port (dtuspell.h)
+		case DTU_SPELL_MIRROR_IMAGE:
+			if (self && xfx_n(target) >= 0) {
+				int k = spell_amount(spell,L,ROLL);
+
+				dur = spell_time(spell,L,ROLL);
+				Xfx[xfx_n(target)].images = k;
+				Xfx[xfx_n(target)].images_end = GameTime + dur;
+				say("%s %s %d mirror images for %d minutes.",Msg_ts,Msg_have,k,MINUTES(dur));
+				dtu_spell_log("spell: Mirror Image on obj %d %s: %d images until %.1f",(int)(target-Objects),target_name(target),k,
+					f2fl(GameTime + dur));
+			}
+			break;
+		case DTU_SPELL_MINOR_GLOBE:
+			if (self && xfx_n(target) >= 0) {
+				dur = spell_time(spell,L,ROLL);
+				Xfx[xfx_n(target)].globe_end = GameTime + dur;
+				say("%s %s a Minor Globe of Invulnerability for %d minutes.",Msg_ts,Msg_have,MINUTES(dur));
+				dtu_spell_log("spell: Minor Globe of Invulnerability on obj %d %s until %.1f",(int)(target-Objects),target_name(target),
+					f2fl(GameTime + dur));
+			}
+			break;
+		case DTU_SPELL_SPIRITUAL_HAMMER:		// 1d4 + 1 and the bonus of the level, an attack roll
+			if (rule_reaches(spell,target,self,T,L,mf))
+				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,HAMMER_DAMAGE_ADD + hammer_bonus(L));
+			break;
+		case DTU_SPELL_FLAME_STRIKE:			// 6d8 fire, a save for half
+			if (rule_reaches(spell,target,self,T,L,mf))
+				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,0);
+			break;
+		case DTU_SPELL_MIND_BLAST: {			// a save against wands at -4, else the stun
+			int made;
+			fix d;
+
+			if (!rule_reaches(spell,target,self,T,L,mf) || (target->dtu.m_88 & rule_fx))
+				break;
+			dtu_xp_roll_clear();
+			Save_mod = MIND_BLAST_SAVE;
+			made = dtu_spell_save_from(target,DTU_SAVE_ROD,caster);
+			Save_mod = 0;
+			dtu_xp_roll_say(caster,target);
+			if (made) {
+				if (target->type == OBJ_PLAYER)
+					HUD_init_message("You resist %s.",spell_name(spell));
+				break;
+			}
+			// 3d4 rounds; on the player 3d4 seconds, the scale of the hold of
+			// Dtu_fix_player_hold (dtuhold.h)
+			d = spell_time(spell,L,ROLL);
+			if (!(target->type == OBJ_PLAYER && dtu_hold_fix_on()))
+				d = wisdom_cut(target,f2i(d)*MINUTE);
+			if (fx_set(target,rule_fx,d)) {
+				// the view of the stun of Color Spray (0x8CFFF case 6)
+				if (target == ConsoleObject)
+					fx_set(target,DTU_FX_CONFUSION,d);
+				say("%s %s stunned by %s.",Msg_ts,Msg_were,Msg_c);
+				top_vclip(spell,target,d);
+			}
+			break;
+		}
 		default:
 			dtu_spell_log("spell: '%s' (%d) is not in the port",spell_name(spell),spell);
 			if (caster && caster->type == OBJ_PLAYER)
@@ -3108,8 +3392,11 @@ int dtu_spell_area(int spell,vms_vector *pos,int segnum,object *caster,int level
 			continue;
 		if (spell == 6 && o != caster && !color_spray_reaches(o,caster,level))
 			continue;
+		Area_depth++;		// ASCENT: Mirror Image does not fool an area
 		apply_spell(spell,o,caster,level);
-		if ((rule_flags(spell) & DTU_SR_BURST_BLINDS) && (o->type == OBJ_PLAYER || o->type == OBJ_ROBOT))		// 0x90DDF: Fireball, the fire trap (dtucombat.c)
+		Area_depth--;
+		if ((rule_flags(spell) & DTU_SR_BURST_BLINDS) && (o->type == OBJ_PLAYER || o->type == OBJ_ROBOT) &&
+			 !(dtu_spell_globe(o) && globe_stops(spell,o == caster)))		// 0x90DDF: Fireball, the fire trap (dtucombat.c); ASCENT: not through a globe
 			dtu_fireball_blind_deaf(o,vm_vec_dist(&o->pos,pos));
 		n++;
 	}
@@ -3164,8 +3451,11 @@ static void burning_hands_cone(object *caster,int L,vms_vector *dir)
 		// AD&D 2e: 1d3 + 2 per level, at most 1d3 + 20 (level 10)
 		if (dtu_creature_down(o))
 			dtu_creature_down_spell(o,caster,4,L > 10 ? 10 : L);
-		else
+		else {
+			Area_depth++;		// ASCENT: Mirror Image does not fool an area
 			apply_spell(4,o,caster,L > 10 ? 10 : L);
+			Area_depth--;
+		}
 		n++;
 	}
 	// the flames at -60, -30, 0, 30 and 60 degrees
@@ -3522,6 +3812,7 @@ static const struct { short spell, feet, feet_level; } Spell_range[] = {
 	{ 47, 270, 30 },	// Slow: 90 yards + 10 yards a level
 	{ 52, 360, 0 },		// Hold Person (cleric): 120 yards
 	{ 55, 180, 0 },		// Dispel Magic (cleric): 60 yards
+	{ DTU_SPELL_SPIRITUAL_HAMMER, 0, 30 },	// ASCENT: Spiritual Hammer: 10 yards a level
 };
 
 // The range in units of a spell missile at caster level L, -1 the range
@@ -3959,6 +4250,7 @@ void dtu_spell_rest_effects(object *obj,int keep)
 
 	if (!Dtu_fix_rest_effects || obj == NULL)
 		return;
+	xfx_end(obj,3,0);		// ASCENT: Mirror Image and the globe
 	for (b=0;b<32;b++) {
 		int mask = (b == 31) ? DTU_FX_VESTMENT : (1 << b), end = 0;
 
@@ -4712,6 +5004,7 @@ void dtu_spell_frame(void)
 		memset(Tracked,0,sizeof(Tracked));
 		memset(Attached,0,sizeof(Attached));
 		acid_clear();
+		memset(Xfx,0,sizeof(Xfx));		// ASCENT: Mirror Image and the globe end with the level
 		// Test options: -testslots N gives N slots for each spell level,
 		// -testspell N puts spell N into the book and into the hand.
 		if ((t = FindArg("-testslots")) != 0 && t+1 < Num_args) {
@@ -4737,6 +5030,7 @@ void dtu_spell_frame(void)
 			fx_expire(o,0);
 	}
 	acid_frame();
+	xfx_frame();		// ASCENT: Mirror Image and the globe (dtuspell.h)
 
 	tracked_frame();
 	attached_frame();		// ASCENT: the vclips that follow an object
@@ -5165,11 +5459,12 @@ int dtu_spell_rule_check(void)
 		int k = Spell_rule[s].kind, fl = Spell_rule[s].flags, fx = Spell_rule[s].fx, g;
 		int needs_fx = k == DTU_SK_GIVE || k == DTU_SK_CAUSE || k == DTU_SK_AC || k == DTU_SK_ARMOR || k == DTU_SK_AID ||
 			k == DTU_SK_BLIND || k == DTU_SK_HOLD || k == DTU_SK_HOLD_UNDEAD || k == DTU_SK_FEAR || k == DTU_SK_FIRE_POOL ||
-			k == DTU_SK_RARY || k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH;
+			k == DTU_SK_RARY || k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH || k == DTU_SK_STUN;
 		int timed = k == DTU_SK_GIVE || k == DTU_SK_CAUSE || k == DTU_SK_AC || k == DTU_SK_BLIND || k == DTU_SK_HOLD ||
-			k == DTU_SK_HOLD_UNDEAD || k == DTU_SK_FEAR || k == DTU_SK_AID || k == DTU_SK_COLOR;
+			k == DTU_SK_HOLD_UNDEAD || k == DTU_SK_FEAR || k == DTU_SK_AID || k == DTU_SK_COLOR || k == DTU_SK_MIRROR ||
+			k == DTU_SK_GLOBE || k == DTU_SK_STUN;
 		int amount = k == DTU_SK_HEAL || k == DTU_SK_AID || k == DTU_SK_ARMOR || k == DTU_SK_FIRE_POOL ||
-			k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH || k == DTU_SK_HOLD;
+			k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH || k == DTU_SK_HOLD || k == DTU_SK_MIRROR;
 		dtu_spell_facts f;
 
 		if (!spell_ok(s))
@@ -5278,7 +5573,7 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 			f->save = DTU_SS_HALF;		// ASCENT: Dtu_fix_damage_save 0
 		if (!rule_attack(spell))
 			f->flags &= ~DTU_SR_ATTACK_ROLL;
-		f->attack_bonus = rule_attack_bonus(spell);
+		f->attack_bonus = rule_attack_bonus(spell,L);
 	}
 	// the conditions of rule_reaches and rule_save
 	f->max_level = (f->flags & DTU_SR_LEVEL_CAP) ? spell_amount(spell,L,HIGH) : -1;
@@ -5318,6 +5613,8 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 			f->dice_n[g] = (g == group) ? count : spell_int(spell,keys[g][1],0);
 			f->dice_add[g] = spell_int(spell,keys[g][2],0) * level;
 		}
+		if (spell == DTU_SPELL_SPIRITUAL_HAMMER)		// ASCENT: 1d4 + 1 and the bonus of the level
+			f->dice_add[0] += HAMMER_DAMAGE_ADD + hammer_bonus(L);
 		f->undead_die = spell_undead_die(spell);
 		// the area of Fireball (dtu_spell_area, dtu_fireball_blind_deaf)
 		if ((f->flags & DTU_SR_BURST_BLINDS) && f->area) {
