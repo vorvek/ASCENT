@@ -1129,7 +1129,13 @@ the data used. The door opener 0x14AF2, which in 1.3 sends each active
 creature with the door bit to the doors (also a peaceful one), runs only for
 a hostile creature that fights. A creature never opens a door with a key or
 a lock on either wall (`Dtu_fix_door_pair`), so a prisoner stays in its
-cell. A creature on the path of its script opens doors as before.
+cell. A creature on the path of its script opens doors as before, and the
+path of a script is planned through doors as in 1.3 (`create_script_path()`;
+KOBOLDS, the kobold obj 8 of script 21). The cases of `tools/questtest.py`
+that need the goblin of the PRISON cell (obj 34) to notice the player
+through its closed door (`Dtu_fix_door_pair`, `Dtu_fix_melee_wall`) run with
+`-noimprovedai`; the case `prison_cell_unaware` checks that it does not
+notice the player with the setting.
 
 **The attack decision.** Causes in 1.3, for a melee creature at the player:
 
