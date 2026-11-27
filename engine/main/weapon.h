@@ -194,9 +194,11 @@ typedef struct weapon_info {
 #define WEAPON_TYPE_CANNON_BALL	2
 #define WEAPON_TYPE_MISSILE		3
 // ASCENT: was 30. 90 is the constant of the MAX_WEAPON_TYPES asserts in DTUGAME.EXE.
-// 96: the tables of 1.3 have 89 lines; the new gear (dtugear.h) takes line 89 and the
-// weapon of Spiritual Hammer (dtuspell.h) is one more line after it.
-#define MAX_WEAPON_TYPES 			96
+// 104: the tables of 1.3 have 89 lines; the new gear (dtugear.h) takes lines 89 to 94,
+// the class gear line 95, and the weapon of Spiritual Hammer (dtuspell.h) is one more
+// line after them (96). The rest is room. Weapon_info and Weapon_item_info are the only
+// arrays of this size; a save keeps an item as its type and number (docs/formats/misc.md).
+#define MAX_WEAPON_TYPES 			104
 
 #define WEAPON_RENDER_NONE			-1
 #define WEAPON_RENDER_LASER		0

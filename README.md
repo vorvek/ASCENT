@@ -95,13 +95,14 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 * Seven new magic items (Mirror Shield, Boots of Free Action, Gloves of the Archer, Cloak of Fire Resistance, Belt of Dwarvenkind, Ring of Regeneration, Plate Mail of Fire Resistance), five new wands, the Rod of Kelemvor (Dispel Magic for every class, charged again at each rest), and the magic items that 1.3 has rules for but never gives you, in the market of Waterdeep as the missions go on, in the dungeon and in a treasure.
 * Creatures leave more gold, and undead and intelligent creatures leave gems (Bloodstone, Pearl, Ruby, Diamond, Star Sapphire) that the market buys.
+* Bows and arrows: the bonuses to hit of the bow and the arrow add, and for the damage the larger of the two counts. The market sells Arrows +1, +2 and +3, Fire, Acid and Dispelling Arrows as the missions go on; each tier comes in a number and the one before it then has no limit. See [docs/re/combat.md](docs/re/combat.md), "Bows and arrows of the new gear".
 * Daland gives the Mace of Disruption for the altar of Kelemvor, a Flame Tongue waits in DROW2 for the troll fights, a Dagger of Venom waits behind a lock in DROW5, and the red dragon guards a treasure. See [docs/re/objects.md](docs/re/objects.md), "New gear".
 
 **Gear for single class mages and thieves** (on by default)
 
 * A character with one class gets offers that nobody else gets. No new powers, only gear, and it is not free.
 * A mage: Aleena Paladinstar sells wands (one more Wand of Magic Missiles at each reward of Khelben), bundles of scrolls of spells you know, the Bracers of Defense AC2 and three Pearls of Power. A Pearl of Power gives back one spent spell slot of its level, once in each dungeon level and again after a rest.
-* A thief: Nalbas Oddpepper sells a short bow with poisoned arrows and a few Potions of Invisibility. Mirt the Merchant opens his old guild things from mission 3: Leather Armor +2, Master Lockpicks, Boots of Elvenkind (Move Silently 95), Bracers of Archery (+2 to hit with arrows and bolts), the Short Sword of Quickness and a Girdle of Hill Giant Strength.
+* A thief: Nalbas Oddpepper sells a short bow with Venom Arrows and a few Potions of Invisibility. Mirt the Merchant opens his old guild things from mission 3: Leather Armor +2, Master Lockpicks, Boots of Elvenkind (Move Silently 95), Bracers of Archery (+2 to hit with arrows and bolts), the Short Sword of Quickness, a Girdle of Hill Giant Strength, Venom Arrows, and after the beholder caves the Short Bow of Lightning +3 (+3 to hit, electric damage with each arrow).
 * The market of Waterdeep also gets a Wand of Paralyzation and a Wand of Lightning Bolts. The new items need the New gear setting too. See [docs/re/scripts.md](docs/re/scripts.md), "The class gear".
 
 **The dragon Tamaramagil** (on by default)

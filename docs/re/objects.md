@@ -1777,8 +1777,16 @@ dead caster) is not turned. From behind the shield turns nothing. Tests:
   Infravision and Quickness, Amulets of Protection +3 and +4, Boots of
   Levitation, Cloak of Elvenkind, Chameleon Cloak, Elven Cloak,
   Glim-Gauntlet, the Potions of Anti-Magic, Invisibility and Hill Giant
-  Intelligence, Crossbow +3. The Arrows +1 and +2 are left out: their lines
-  have no value.
+  Intelligence, Crossbow +3. The arrows (2026-11-27, docs/re/combat.md "Bows
+  and arrows of the new gear"): Arrows +1 (50, reward 2; many from reward 4),
+  Fire Arrows (20, reward 3; many from 5), Arrows +2 (50, reward 4; many from
+  6), Acid Arrows (20, reward 5; many from 7), Arrows +3 (50, reward 6; many
+  from 8), Dispelling Arrows (10 at reward 7 and 10 at reward 8, never many);
+  Bolt +1 many from reward 4, Bolts +2 many from 6. The Arrows +1 and +2 get
+  a value (25, 60): 1.3 gives them none. A "many" row is a record of
+  quantity -1 of a good that the stock has: the market adds the quantities
+  of two records of one good (0x870A0, -1 stays -1), so the reward changes
+  no earlier record and the trailer of the file keeps it from coming twice.
 
 ### The treasury of Tamaramagil
 

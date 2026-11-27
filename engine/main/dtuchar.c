@@ -3109,6 +3109,45 @@ static int missile_launcher_bonus(int weapon, int thrown)
 	return (thrown && Dtu_fix_thrown_launcher) ? 0 : launcher_bonus(weapon);
 }
 
+// ASCENT: the bows and arrows of the new gear (dtugear.h): 1 for an arrow
+// or a bolt of the player (not a thrown weapon) under the rule
+static int launcher_rule(int weapon, int thrown)
+{
+	int r;
+
+	if (thrown || !dtu_gear_launcher_rule() || weapon < 0 || weapon >= N_weapon_types)
+		return 0;
+	r = Weapon_item_info[weapon].record;
+	return bm_tbl_has_flag(r, "arrow") || bm_tbl_has_flag(r, "bolt");
+}
+
+// The misc number in the launcher slot of a missile weapon, -1: none
+static int launcher_misc(int weapon)
+{
+	dtu_inv_item *l = ref_entry(Dtu_char.slot[bm_tbl_has_flag(Weapon_item_info[weapon].record, "arrow") ? DTU_SLOT_BOW : DTU_SLOT_CROSSBOW]);
+
+	return (l && l->type == OBJ_MISC) ? l->id : -1;
+}
+
+// The part of the damage bonus that the bow or the crossbow adds to a
+// missile whose own damage bonus is arrow. 1.3 (0x2B0AE): the to_hit_bonus
+// of the launcher. The rule of the new gear: the larger of the damage bonus
+// of the launcher (its key damage_bonus, else its to_hit_bonus) and of the
+// missile counts, so the launcher adds what it has above the missile.
+static int launcher_damage(int weapon, int thrown, int arrow)
+{
+	int l;
+	char v[16];
+
+	if (!launcher_rule(weapon, thrown))
+		return missile_launcher_bonus(weapon, thrown);
+	l = launcher_misc(weapon);
+	if (l < 0 || l >= N_misc_types || Misc_info[l].record < 0)
+		return 0;
+	l = bm_tbl_get(Misc_info[l].record, "damage_bonus", v, sizeof(v)) ? atoi(v) : launcher_bonus(weapon);
+	return l > arrow ? l - arrow : 0;
+}
+
 // ASCENT: the Gloves of the Archer of the new gear (dtugear.h): an arrow or
 // a bolt (not a thrown weapon) gets 1 to hit (damage 0) or 2 damage
 // (damage 1) while the gloves are worn
@@ -3181,8 +3220,10 @@ static void weapon_attack(int weapon, dtu_attack *a)
 		else {
 			// 0x2AB00 and 0x2B0B7: a missile gets the to_hit_bonus of the
 			// bow or the crossbow, for the attack and for the damage.
+			// ASCENT: the new gear: for the damage the larger bonus of the
+			// launcher and of the arrow (launcher_damage)
 			a->to_hit_bonus += missile_launcher_bonus(weapon, a->thrown);
-			a->damage_bonus += missile_launcher_bonus(weapon, a->thrown);
+			a->damage_bonus += launcher_damage(weapon, a->thrown, d.damage_bonus);
 			// ASCENT: the Gloves of the Archer (dtugear.h)
 			a->to_hit_bonus += archer_bonus(weapon, a->thrown, 0);
 			a->damage_bonus += archer_bonus(weapon, a->thrown, 1);
@@ -3382,9 +3423,13 @@ int dtu_char_attack_roll(object *target, int weapon)
 int dtu_char_weapon_damage(int weapon, object *target)
 {
 	dtu_attack a;
-	int i, sum = 0, fire = 0;
+	dtu_item_data wd;
+	int i, sum = 0, fire = 0, ld = 0, acid = 0, elec = 0;
 
 	weapon_attack(weapon, &a);
+	// the part of the bow or the crossbow in a.damage_bonus (weapon_attack)
+	if (a.weapon_id >= 0 && !a.melee)
+		ld = launcher_damage(weapon, a.thrown, dtu_item_get(OBJ_WEAPON, weapon, &wd) ? wd.damage_bonus : 0);
 	for (i = 0; i < a.dice_n; i++)
 		if (a.dice_sides > 0)
 			sum += rand() % a.dice_sides + 1;
@@ -3392,8 +3437,8 @@ int dtu_char_weapon_damage(int weapon, object *target)
 	if (a.weapon_id >= 0) {
 		// 0x2B0AE: the bow or the crossbow of a missile
 		if (!a.melee) {
-			sum += missile_launcher_bonus(weapon, a.thrown);
-			dtu_xp_dmg_mod(missile_launcher_bonus(weapon, a.thrown), LN("launcher"));
+			sum += ld;
+			dtu_xp_dmg_mod(ld, LN("launcher"));
 			// ASCENT: the Gloves of the Archer (dtugear.h)
 			if (archer_bonus(weapon, a.thrown, 1)) {
 				sum += archer_bonus(weapon, a.thrown, 1);
@@ -3432,8 +3477,8 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		}
 		// 0x2B1D6: the damage bonus of the weapon (the strength bonus of a
 		// melee weapon is added last, 0x2B456)
-		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown) + archer_bonus(weapon, a.thrown, 1));
-		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : missile_launcher_bonus(weapon, a.thrown) + archer_bonus(weapon, a.thrown, 1)), LN("weapon"));
+		sum += a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : ld + archer_bonus(weapon, a.thrown, 1));
+		dtu_xp_dmg_mod(a.damage_bonus - (a.melee ? str_damage_bonus(Dtu_char.pa.strength, Dtu_char.pa.strength_extra) : ld + archer_bonus(weapon, a.thrown, 1)), LN("weapon"));
 		// ASCENT: the Frost Brand of the new gear against a fire creature
 		if (dtu_gear_frost_brand(a.weapon_id) && target && target->type == OBJ_ROBOT && dtu_gear_fire_creature(target->id)) {
 			sum += DTU_GEAR_FROST_BONUS;
@@ -3461,9 +3506,21 @@ int dtu_char_weapon_damage(int weapon, object *target)
 		sum += a.damage_bonus;		// 0x2AFB4: the empty hand
 		dtu_xp_dmg_mod(a.damage_bonus, NULL);
 	}
-	dtu_char_log("damage roll: %dd%d + %d: %d, fire %d", a.dice_n, a.dice_sides, a.damage_bonus, sum, fire);
+	// ASCENT: the acid of the Acid Arrows and the lightning of the Short Bow
+	// of Lightning (the new gear, dtugear.h)
+	if (a.weapon_id >= 0 && !a.melee && !a.thrown)
+		dtu_gear_missile_extra(target, weapon, launcher_misc(weapon), &acid, &elec);
+	if (launcher_rule(weapon, a.thrown))
+		dtu_char_log("damage roll: %dd%d + %d: %d, fire %d, acid %d, electric %d (launcher %d, missile %d, gloves %d)", a.dice_n,
+			a.dice_sides, a.damage_bonus, sum, fire, acid, elec, ld, a.damage_bonus - ld - archer_bonus(weapon, a.thrown, 1),
+			archer_bonus(weapon, a.thrown, 1));
+	else
+		dtu_char_log("damage roll: %dd%d + %d: %d, fire %d", a.dice_n, a.dice_sides, a.damage_bonus, sum, fire);
 	sum += fire;
 	dtu_xp_dmg_mod(fire, LN("fire"));
+	sum += acid + elec;
+	dtu_xp_dmg_mod(acid, LN("acid"));
+	dtu_xp_dmg_mod(elec, LN("electric"));
 	dtu_xp_dmg_end(sum > 0 ? sum : 0);
 	return sum > 0 ? sum : 0;
 }

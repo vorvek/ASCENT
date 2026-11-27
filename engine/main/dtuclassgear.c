@@ -498,7 +498,7 @@ static void nalbas_blocks(em *e)
 	wait_reply(e);
 	endblock(e);
 
-	// 0x27: the bow (misc 89) and 16 Poisoned Arrows, then label 15 at the
+	// 0x27: the bow (misc 89) and 16 Venom Arrows, then label 15 at the
 	// first talk
 	if (loaded) {
 		label(e, 0x27);
@@ -580,9 +580,17 @@ static ubyte *patch_nalbas(ubyte *p, int *size)
 #define MI_GOTO6	0x1D8		// label 999: GOTO 6
 #define MI_BYE		0x1C		// label 28: "Then good day to you, {sir}."
 
+// The bows and arrows of 2026-11-27 (dtugear.h): from mission 3 Mirt sells
+// the Venom Arrows (20 for 400 gold, as Nalbas: 20 each, as often as the
+// player likes), from mission 20 (after the beholder caves, reward stage 7
+// of the market) the Short Bow of Lightning +3 for 15000 gold, once. Labels
+// 0x52 to 0x55. (The missions are numbers in the calls: tools/gear_tables.py
+// reads them.)
+
 static void mirt_blocks(em *e)
 {
 	int loaded = Dtu_class_gear_loaded;
+	int venom = loaded && dtu_gear_poison_arrow_line() == DTU_GEAR_VENOM_ARROWS;
 
 	label(e, 0);
 	clear_gf(e, DTU_GEAR_GF_TMP_MIRT);
@@ -594,6 +602,11 @@ static void mirt_blocks(em *e)
 		avail(e, 10, DTU_GEAR_GF_ARCHERY, DTU_GEAR_GF_TMP_MIRT);
 	avail(e, 14, DTU_GEAR_GF_SWORD, DTU_GEAR_GF_TMP_MIRT);
 	avail(e, 14, DTU_GEAR_GF_GIRDLE, DTU_GEAR_GF_TMP_MIRT);
+	if (venom) {
+		if_(e); t_mission(e, 3); then(e); set_gf(e, DTU_GEAR_GF_TMP_MIRT); endif(e);
+	}
+	if (loaded)
+		avail(e, 20, DTU_GEAR_GF_LIGHTNING, DTU_GEAR_GF_TMP_MIRT);
 	if_(e);
 	t_single(e, THIEF);
 	and_(e);
@@ -629,6 +642,11 @@ static void mirt_blocks(em *e)
 		reply_if(e, 10, DTU_GEAR_GF_ARCHERY, 0x46, LN("The bracers."));
 	reply_if(e, 14, DTU_GEAR_GF_SWORD, 0x47, LN("The short sword."));
 	reply_if(e, 14, DTU_GEAR_GF_GIRDLE, 0x50, LN("The girdle."));
+	if (venom) {
+		if_(e); t_mission(e, 3); then(e); reply(e, 0x52, LN("The arrows with the dark tips.")); endif(e);
+	}
+	if (loaded)
+		reply_if(e, 20, DTU_GEAR_GF_LIGHTNING, 0x54, LN("The bow that hums."));
 	reply(e, 6, LN("Any news, Mirt?"));
 	reply(e, MI_BYE, LN("Farewell, Mirt."));
 	wait_reply(e);
@@ -664,6 +682,27 @@ static void mirt_blocks(em *e)
 		sale(e, 0x4B, 7500, 0x4F, ARMOR, DTU_GEAR_BRACERS_ARCHERY, 1, DTU_GEAR_GF_ARCHERY, 0x4E);
 	sale(e, 0x4C, 4500, 0x4F, WEAPON, 69, 1, DTU_GEAR_GF_SWORD, 0x4E);		// Short Sword of Quickness
 	sale(e, 0x51, 6000, 0x4F, ARMOR, 38, 1, DTU_GEAR_GF_GIRDLE, 0x4E);		// Girdle of Hill Giant Strength
+
+	// 0x52 and 0x53: the Venom Arrows, 0x54 and 0x55: the Short Bow of
+	// Lightning +3 (dtugear.h)
+	if (venom) {
+		label(e, 0x52);
+		say(e, LN("Venom arrows. The Shadow Thieves buy them from the same drow they swear they never deal with. I buy them from the same Shadow Thieves. Twenty for four hundred gold, and wash your hands after."));
+		reply(e, 0x53, LN("I accept your bargain."));
+		reply(e, 0x42, LN("Let me see the rest."));
+		wait_reply(e);
+		endblock(e);
+		sale(e, 0x53, 400, 0x4F, WEAPON, DTU_GEAR_VENOM_ARROWS, 20, -1, 0x4E);		// 20 Venom Arrows
+	}
+	if (loaded) {
+		label(e, 0x54);
+		say(e, LN("You came back from the beholder caves, so you've earned a look at this. A storm wizard of Luskan paid a gambling debt with it. Every arrow you loose from it carries a bit of the storm. Fifteen thousand gold, and that's the price between friends."));
+		reply(e, 0x55, LN("I accept your bargain."));
+		reply(e, 0x42, LN("Let me see the rest."));
+		wait_reply(e);
+		endblock(e);
+		sale(e, 0x55, 15000, 0x4F, MISC, DTU_GEAR_BOW_LIGHTNING, 1, DTU_GEAR_GF_LIGHTNING, 0x4E);	// Short Bow of Lightning +3
+	}
 
 	// 0x4E: after a sale (then label 0: the menu, or the news when he has
 	// nothing left), 0x4F: not enough gold
