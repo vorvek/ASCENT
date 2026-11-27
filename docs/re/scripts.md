@@ -787,6 +787,48 @@ table of YPINN: 0x26 "Skull Key", 0x6B to 0x79 "Violet Gem Key", 0x12 to
 0x1A "Spider Piece", 0x10 "Scarab Beetle", 0x11 "Crystal Rose", 0x0F
 "Mykrul's Wand", 0x7F "thief scroll".
 
+### The class gear (port, not in 1.3)
+
+The setting "Gear for single class mages and thieves" (`Dtu_class_gear`,
+engine/main/dtugear.h; the blocks in engine/main/dtuclassgear.c) patches
+three records of GABE 1.3 when they are decoded, as `patch_devlin` and
+`patch_aleena` do: the size and the changed bytes are checked, a GOTO or a
+REPLY gets a label of the same length, and the new blocks go at the end of
+the record. No string moves. A record decoded under other settings (the
+setting, Caster AI, the class gear lines of the level) is decoded again when
+no script runs. `-scriptdump` writes the patched records 2, 4 and 5 to
+`gab_ID.bin`; `tools/script.py disraw FILE` disassembles them.
+
+| Record | Size | Changed bytes (verified) | New labels |
+|---|---|---|---|
+| 4, Aleena | 16710 | 0x20C0 `C7 "1e"` (label 25: GOTO 30), 0x3BC8 and 0x3CE2 `CF "1e"` (labels 950 and 960: REPLY -> 30) now go to 0x30 | 0x30 to 0x48 |
+| 5, Nalbas | 6055 | 0x254, 0x3B1, 0x57B `C7 "f"` (labels 1, 2, 3: GOTO 15) and 0x141 `C7 "4"` (label 999: GOTO 4) now go to 0 | 0, 0x20 to 0x2F |
+| 2, Mirt | 10877 | 0x1D8 `C7 "6"` (label 999: GOTO 6) now goes to 0 | 0, 0x40 to 0x51 |
+
+Label 0 is free in records 2 and 5 and is a valid target of `sc_goto` (the
+hex number 0). Label 0x30 of record 4 tests "mage AND NOT cleric AND NOT
+fighter AND NOT thief" (each class test 8B to 8E is true when either class
+of the character matches; a single class character has class 2 = -1) and
+goes to the menu 0x31 or to label 30 of 1.3. Label 0 of record 5 tests
+`talks == 0` (the counter grows after the talk, so it is 0 during the first
+one): at the first talk a single class thief gets the offer 0x20 and then
+label 15 of 1.3, at a later talk the menu 0x21 with the reply "Just saying
+hello." to label 4. Label 0 of record 2 goes to the menu 0x40 when a good
+is for sale (scratch flag 250) and the character is a single class thief,
+else to label 6 of 1.3.
+
+The blocks use one term of the port: `FE n` is true when a spell book of
+the character has spell n (`sc_term`); no record of the game has it. The
+one-time sales set global flags 210 to 239 and 249 to 254 (the list is in
+dtugear.h, `DTU_GEAR_GF_`); flags 229, 230, 250 to 253 are scratch flags of
+a talk. A `GIVE SPELL n` of a known spell gives a scroll of it in the item
+list (dtu_spell_learn returns 2; checked in the game: five GIVE of spell 33
+give one entry "Magic Missile" of count 5).
+
+The new strings have no `gab.N.OFFSET` entry: `text()` translates them by
+the English text (engine/lang/es_port.catalog). The port strings read the
+script tokens (`{sir}`, `{boy}`, `{name}`) since this change (dtulang.c).
+
 ## 11. Open questions
 
 1. The window draws: the scroll of long texts (which replies 0x3D498C and

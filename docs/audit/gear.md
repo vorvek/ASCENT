@@ -345,3 +345,35 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 86 | Spectator Burn | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 87 | Spectator Burn | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 88 | Spectator Burn | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
+
+## The class gear of the port (not in 1.3)
+
+The setting "Gear for single class mages and thieves" (`Dtu_class_gear`,
+engine/main/dtugear.h, the sellers in engine/main/dtuclassgear.c and
+docs/re/scripts.md section 10). The new lines go in after the lines of the
+new gear; with the setting off the tables and the scripts are those of
+main (checked: the `-objlog`, `-charlog` and stdout of a run in YPINN with
+talks to Aleena, Nalbas and Mirt, and of a fight in KOBOLDS, are equal to
+the ones of main).
+
+| Type | Id | Name | Effect | Code | Test |
+|---|---|---|---|---|---|
+| weapon | 90 | Poisoned Arrow | a copy of the Arrow (7, 1d6) with value 20; a hit that does damage poisons a creature that fails a save against poison (category 0): 1 hit point each second for 15 seconds, as the Dagger of Venom; undead and extraplanar types are immune | `dtu_gear_venom`, `dtu_gear_missile_hit` (dtuobj_missile.c, after `damage_creature_w`) | check_items.py class_arrow |
+| armor | 62 | Boots of Elvenkind | boot place, Move Silently 95 while worn (as Hide In Shadows 95 of the Cloak of Elvenkind, 43) | `dtu_char_update`, `DTU_IP_MOVE` | check_items.py class_boots |
+| armor | 63 | Bracers of Archery | gauntlet place, +2 to hit with arrows and bolts, no damage bonus; the place of the Gloves of the Archer (55), so the two never add up | `archer_bonus` | check_items.py class_archery |
+| misc | 131 to 133 | Pearl of Power I to III | use: one spent mage slot of spell level 1 to 3 comes back; once in each dungeon level (global flags 225 to 227, saved with the game), ready again at a level start (not the start of the level of a loaded game) and at a rest; not used up; icon 203 (tools/spell_icons.py) | `dtu_gear_pearl_use`, `dtu_gear_pearl_recharge` | check_items.py class_pearl |
+
+The Spiritual Hammer line comes after weapon 90 now (it is found by name).
+The trap missile of 0x94D61 (`dtu_hook_trap_spell`, the last line of the
+weapon table) skips the Poisoned Arrow as it skips the hammer line.
+
+Open, for the user: the sale value of three wands of Aleena is above her
+price (the market buys at 75 percent of the value at Charisma 12 and up to
+100 percent at 19): Wand of Magic Missiles value 1500 for 750, Wand of
+Paralyzation 2000 for 1000, Wand of Fireballs 3000 for 1500. A mage can buy
+and sell for a profit (at most nine wands of Magic Missiles). The new lines
+have the price of the seller as their value, so they give no profit.
+Found, not fixed (another group): with the new gear on, the last line of the
+weapon table is the Dagger of Venom (89), so a trap of 0x94D61 fires the
+Dagger of Venom as its missile, where 1.3 fires line 88 (Spectator Burn).
+This is read from the code (`dtu_hook_trap_spell`), not seen in the game.
