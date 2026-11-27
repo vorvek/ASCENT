@@ -101,7 +101,7 @@ extern int Dtu_gear_loaded;
 // the Flame Tongue of the dungeon is placed (dtu_gear_place_flame_tongue).
 // The scripts use flags up to 128, the port up to 0xA0.
 #define DTU_GEAR_FLAG_FLAME		0xF0
-#define DTU_GEAR_FLAG_VENOM		0xF8		// the Dagger of Venom of DROW5 is placed
+#define DTU_GEAR_FLAG_VENOM		251			// the Dagger of Venom of DROW5 is placed (248 is DTU_LICH_GF_PLACED)
 #define DTU_GEAR_FLAG_ROD		249			// the Rod of Kelemvor of MYRKUL is placed
 #define DTU_GEAR_FLAG_ROD_SPENT	250			// the Rod of Kelemvor has no charge until the next rest
 
