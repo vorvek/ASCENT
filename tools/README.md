@@ -17,6 +17,7 @@ an input file unless you name it as the output.
 - `sidefiles.py`: dump the small level files (BRN, TIG, TAP, SAY, THESTORE, FNT) as text.
 - `model.py`: read a polygon model of an EGG archive, pose it with an animation frame, write OBJ or a PNG sheet. See `docs/re/models.md`.
 - `script.py`: disassemble the dialogue scripts of GABx.DAT. Its listing is the reference for `engine/main/dtuscript.c`.
+- `save_fix.py`: list the item lists of a save game (`SGn.SG`) and correct them: the count of an item, the removal of an item (the hot key boxes and the paper doll follow), and `--plot-counts` for the plot items that 1.3 gave as many copies (`Dtu_fix_plot_count`, `docs/re/objects.md`). Writes `--out FILE`, or the save itself with `--in-place` after a copy to `FILE.bak`.
 
 ## Checks of the port against the data
 
