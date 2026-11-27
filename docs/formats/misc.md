@@ -118,6 +118,13 @@ the port writes for the first stock is equal to `GELDOR.DAT`. Tool:
 Class 17 (a spell, the scroll of the spell) is also a stock line: 0x873EE
 puts it into the misc list, and the market writes it back.
 
+Two records of the same good (class, id, and for a stackable type any
+count) become one line of the market: 0x870A0 adds the quantities, and a
+quantity of -1 (no limit, shown as "many") stays -1. Verified in the port
+(tools/uitest.py market_arrow_stock: a stock with the records 50 and -1 of
+the Arrows +1 is written back by the market as one record -1). The new gear
+uses this to make a good "many" at a later reward.
+
 ### The ASCENT trailer (the port only)
 
 The port (2026-11-27, `Dtu_fix_market_reward`) ends `GELDOR.DAT` and

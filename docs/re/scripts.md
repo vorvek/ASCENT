@@ -803,7 +803,7 @@ no script runs. `-scriptdump` writes the patched records 2, 4 and 5 to
 |---|---|---|---|
 | 4, Aleena | 16710 | 0x20C0 `C7 "1e"` (label 25: GOTO 30), 0x3BC8 and 0x3CE2 `CF "1e"` (labels 950 and 960: REPLY -> 30) now go to 0x30 | 0x30 to 0x48 |
 | 5, Nalbas | 6055 | 0x254, 0x3B1, 0x57B `C7 "f"` (labels 1, 2, 3: GOTO 15) and 0x141 `C7 "4"` (label 999: GOTO 4) now go to 0 | 0, 0x20 to 0x2F |
-| 2, Mirt | 10877 | 0x1D8 `C7 "6"` (label 999: GOTO 6) now goes to 0 | 0, 0x40 to 0x51 |
+| 2, Mirt | 10877 | 0x1D8 `C7 "6"` (label 999: GOTO 6) now goes to 0 | 0, 0x40 to 0x55 |
 
 Aleena sells her wands (Magic Missiles 750, Paralyzation 1000, Fireballs
 1500) below the price that the market pays for them (75 percent of the value
@@ -823,7 +823,11 @@ one): at the first talk a single class thief gets the offer 0x20 and then
 label 15 of 1.3, at a later talk the menu 0x21 with the reply "Just saying
 hello." to label 4. Label 0 of record 2 goes to the menu 0x40 when a good
 is for sale (scratch flag 171) and the character is a single class thief,
-else to label 6 of 1.3.
+else to label 6 of 1.3. Since 2026-11-27 Mirt also sells the Venom Arrows
+(labels 0x52 and 0x53: 20 for 400 gold, from mission 3, as often as the
+player likes, so from mission 3 his menu always opens for a single class
+thief) and the Short Bow of Lightning +3 (labels 0x54 and 0x55: 15000 gold,
+from mission 20, once, global flag 176).
 
 The blocks use one term of the port: `FE n` is true when a spell book of
 the character has spell n (`sc_term`); no record of the game has it. The

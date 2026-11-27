@@ -77,6 +77,18 @@ def read():
     def num(tok):
         tok = tok.strip()
         return g["d"][tok] if tok in g["d"] else int(tok)
+    # the bows and arrows: the to_hit_bonus of the Arrows +1 and +2, and the
+    # new arrow lines (id, name, line copied, its name in 1.3, value, to hit,
+    # damage, icon, fire dice sides, the plus it counts as)
+    g["arrow_hits"] = [(num(i), n, int(h)) for i, n, h in
+                       re.findall(r'\{\s*(\w+),\s*"([^"]*)",\s*(\d+)\s*\}', _block(c, "Gear_arrow_hits[]"))]
+    # the tinted icons DTU_GEAR_ICON_ARROWS3 and on: the icon copied and the
+    # tint (red, green, blue 0 to 63), as port_icons_add of dtudisp.c makes them
+    g["icon_tints"] = [tuple(int(x) for x in m) for m in re.findall(r"\{\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\s*\}",
+                                                                     _block(c, "Gear_icon_tints[DTU_GEAR_N_ICONS][4]"))]
+    g["arrows"] = [(num(i), n, int(f), f13, int(v), int(h), int(dm), num(ic), int(fi), int(pl)) for i, n, f, f13, v, h, dm, ic, fi, pl in
+                   re.findall(r'\{\s*(\w+),\s*"([^"]*)",\s*(\d+),\s*"([^"]*)",\s*(\d+),\s*(\d+),\s*(\d+),\s*(\w+),\s*(\d+),\s*(\d+)\s*\}',
+                              _block(c, "Gear_arrows[DTU_GEAR_N_ARROWS]"))]
     g["market"] = [tuple(num(t) for t in m.group(1).split(","))
                    for m in re.finditer(r"\{([^{}]*)\}", _block(c, "Gear_market[][5]"))]
     # the market rows of the class gear (the setting "Gear for single class
@@ -127,7 +139,8 @@ def read():
                              | set(p for p, _, _, _ in g["class_sales"]))
     g["class_missions"] = sorted(set(int(x) for x in re.findall(r"\b(?:t_mission|reply_if|if_mission_not|set_if_mission)"
                                                                 r"\(e,\s*(\d+)", k)))
-    for k2 in ("lines", "armor_ac", "wands", "values", "market", "dragon", "no_gold", "class_lines", "class_sales"):
+    for k2 in ("lines", "armor_ac", "wands", "values", "market", "dragon", "no_gold", "class_lines", "class_sales", "arrows",
+               "arrow_hits"):
         if not g[k2]:
             raise SystemExit("gear_tables: no rows for %s in dtugear.c or dtuclassgear.c" % k2)
     return g

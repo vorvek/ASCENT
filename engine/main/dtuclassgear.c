@@ -584,9 +584,8 @@ static ubyte *patch_nalbas(ubyte *p, int *size)
 // the Venom Arrows (20 for 400 gold, as Nalbas: 20 each, as often as the
 // player likes), from mission 20 (after the beholder caves, reward stage 7
 // of the market) the Short Bow of Lightning +3 for 15000 gold, once. Labels
-// 0x52 to 0x55.
-#define MI_VENOM_MISSION	3
-#define MI_BOW_MISSION		20
+// 0x52 to 0x55. (The missions are numbers in the calls: tools/gear_tables.py
+// reads them.)
 
 static void mirt_blocks(em *e)
 {
@@ -604,10 +603,10 @@ static void mirt_blocks(em *e)
 	avail(e, 14, DTU_GEAR_GF_SWORD, DTU_GEAR_GF_TMP_MIRT);
 	avail(e, 14, DTU_GEAR_GF_GIRDLE, DTU_GEAR_GF_TMP_MIRT);
 	if (venom) {
-		if_(e); t_mission(e, MI_VENOM_MISSION); then(e); set_gf(e, DTU_GEAR_GF_TMP_MIRT); endif(e);
+		if_(e); t_mission(e, 3); then(e); set_gf(e, DTU_GEAR_GF_TMP_MIRT); endif(e);
 	}
 	if (loaded)
-		avail(e, MI_BOW_MISSION, DTU_GEAR_GF_LIGHTNING, DTU_GEAR_GF_TMP_MIRT);
+		avail(e, 20, DTU_GEAR_GF_LIGHTNING, DTU_GEAR_GF_TMP_MIRT);
 	if_(e);
 	t_single(e, THIEF);
 	and_(e);
@@ -644,10 +643,10 @@ static void mirt_blocks(em *e)
 	reply_if(e, 14, DTU_GEAR_GF_SWORD, 0x47, LN("The short sword."));
 	reply_if(e, 14, DTU_GEAR_GF_GIRDLE, 0x50, LN("The girdle."));
 	if (venom) {
-		if_(e); t_mission(e, MI_VENOM_MISSION); then(e); reply(e, 0x52, LN("The arrows with the dark tips.")); endif(e);
+		if_(e); t_mission(e, 3); then(e); reply(e, 0x52, LN("The arrows with the dark tips.")); endif(e);
 	}
 	if (loaded)
-		reply_if(e, MI_BOW_MISSION, DTU_GEAR_GF_LIGHTNING, 0x54, LN("The bow that hums."));
+		reply_if(e, 20, DTU_GEAR_GF_LIGHTNING, 0x54, LN("The bow that hums."));
 	reply(e, 6, LN("Any news, Mirt?"));
 	reply(e, MI_BYE, LN("Farewell, Mirt."));
 	wait_reply(e);

@@ -263,12 +263,12 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 4 | Magic Scroll | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 5 | Magic Bow | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 6 | Long Sword | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
-| 7 | Arrow | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
+| 7 | Arrow | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8); new gear: to hit adds, the larger damage bonus of the launcher and the missile counts (`launcher_damage`, docs/re/combat.md "Bows and arrows of the new gear") |
 | 8 | Flame Arrow | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 9 | Scimitar | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
 | 10 | DO NOT USE | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
 | 11 | Throwing Axe | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same; the backstab of a thrown weapon is audit C18 (open) |
-| 12 | Magic Arrow | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
+| 12 | Magic Arrow | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8); new gear: to hit adds, the larger damage bonus of the launcher and the missile counts (`launcher_damage`, docs/re/combat.md "Bows and arrows of the new gear") |
 | 13 | Wand of Lightning Bolts | 0x37B58, 0xB7197, 0x59D2D | dtu_char_use, dtu_char_drop | fixed in a95cbb3 (use: flags 0x86, 0x91, 0xA0) and adc32e8 (drop roll); the warp check is world W7 (open) |
 | 14 | Black Lightning | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 15 | Bomb | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
@@ -287,7 +287,7 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 28 | Warhammer | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
 | 29 | Club | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
 | 30 | Hand Axe | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
-| 31 | Bolt | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
+| 31 | Bolt | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8); new gear: to hit adds, the larger damage bonus of the launcher and the missile counts (`launcher_damage`, docs/re/combat.md "Bows and arrows of the new gear") |
 | 32 | Long Sword +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
 | 33 | Long Sword +2 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
 | 34 | Short Sword +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
@@ -303,8 +303,8 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 44 | Dagger +2 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
 | 45 | Dagger of Impaling | 0x2B15B | dtu_char_weapon_damage | same: backstab +3 to 6 on a roll of 19 or 20 |
 | 46 | Hand Axe +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
-| 47 | Bolt +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
-| 48 | Bolt +2 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
+| 47 | Bolt +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8); new gear: to hit adds, the larger damage bonus of the launcher and the missile counts (`launcher_damage`, docs/re/combat.md "Bows and arrows of the new gear") |
+| 48 | Bolt +2 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8); new gear: to hit adds, the larger damage bonus of the launcher and the missile counts (`launcher_damage`, docs/re/combat.md "Bows and arrows of the new gear") |
 | 49 | Bolts of Lightning | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: bolt, 5d6 |
 | 50 | Dart +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same; the backstab of a thrown weapon is audit C18 (open) |
 | 51 | Dart +2 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same; the backstab of a thrown weapon is audit C18 (open) |
@@ -330,8 +330,8 @@ names them, and `weight` is a table keyword for the mass of the physics.
 | 71 | Flame Tongue | 0x2AB9F, 0x2B1F2 | dtu_weapon_extra_damage | same: +2/+4 and fire (audit C5) |
 | 72 | Dwarven Sword | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
 | 73 | Scimitar | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: dice and bonus of the table (0x2B077, 0x2AAE7, 0x2B1E7) |
-| 74 | Arrows +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
-| 75 | Arrows +2 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8) |
+| 74 | Arrows +1 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8); new gear: to hit adds, the larger damage bonus of the launcher and the missile counts (`launcher_damage`, docs/re/combat.md "Bows and arrows of the new gear"); the new gear writes to_hit_bonus 1 and a value (`Gear_arrow_hits`, `Gear_values`) and sells them (`Gear_market`) |
+| 75 | Arrows +2 | 0x2A7F3, 0x2AF5E | weapon_attack, dtu_char_weapon_damage | same: launcher bonus by the flag arrow (audit C8); new gear: to hit adds, the larger damage bonus of the launcher and the missile counts (`launcher_damage`, docs/re/combat.md "Bows and arrows of the new gear"); the new gear writes to_hit_bonus 2 and a value (`Gear_arrow_hits`, `Gear_values`) and sells them (`Gear_market`) |
 | 76 | Temp | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 77 | Wand | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
 | 78 | Acid Spittle | none | - | not an item of the player: spell or creature missile template; creature missiles: `Dtu_fix_creature_missile`, fixed in a95cbb3 |
@@ -358,14 +358,16 @@ the ones of main).
 
 | Type | Id | Name | Effect | Code | Test |
 |---|---|---|---|---|---|
-| weapon | 91 | Poisoned Arrow | a copy of the Arrow (7, 1d6) with value 20; a hit that does damage poisons a creature that fails a save against poison (category 0): 1 hit point each second for 15 seconds, as the Dagger of Venom; undead and extraplanar types are immune | `dtu_gear_venom`, `dtu_gear_missile_hit` (dtuobj_missile.c, after `damage_creature_w`) | check_items.py class_arrow |
+| weapon | 95 | Venom Arrows (Poisoned Arrow before 2026-11-27, weapon 91 then) | a copy of the Arrow (7, 1d6) with value 20, the word magic (counts as +1) and icon 208; a hit that does damage poisons a creature that fails a save against poison (category 0): 1 hit point each second for 15 seconds, as the Dagger of Venom; undead and extraplanar types are immune | `dtu_gear_venom`, `dtu_gear_missile_hit` (dtuobj_missile.c, after `damage_creature_w`) | check_items.py class_arrow |
 | armor | 62 | Boots of Elvenkind | boot place, Move Silently 95 while worn (as Hide In Shadows 95 of the Cloak of Elvenkind, 43) | `dtu_char_update`, `DTU_IP_MOVE` | check_items.py class_boots |
 | armor | 63 | Bracers of Archery | gauntlet place, +2 to hit with arrows and bolts, no damage bonus; the place of the Gloves of the Archer (55), so the two never add up | `archer_bonus` | check_items.py class_archery |
 | misc | 131 to 133 | Pearl of Power I to III | use: one spent mage slot of spell level 1 to 3 comes back; once in each dungeon level (global flags 225 to 227, saved with the game), ready again at a level start (not the start of the level of a loaded game) and at a rest; not used up; icon 203 (tools/spell_icons.py) | `dtu_gear_pearl_use`, `dtu_gear_pearl_recharge` | check_items.py class_pearl |
+| misc | 134 | Short Bow of Lightning +3 | bow place, +3 to hit, damage_bonus=0 (an arrow does its own damage bonus), each arrow from it 2d4 electric damage more on a hit (none with electricity_immune); Mirt sells it from mission 20 for 15000 | `launcher_damage`, `dtu_gear_missile_extra` | check_items.py arrow_rule, questtest.py class_mirt_bow |
 
-The Poisoned Arrow takes the next free weapon line after the new gear (91,
-after the Rod of Kelemvor at 90); the Spiritual Hammer line comes after it
-(it is found by name). The trap missile of 0x94D61 uses line 88, as 1.3.
+The Venom Arrows take the next free weapon line after the new gear (95,
+after the arrows 91 to 94 of the new gear); the Spiritual Hammer line comes
+after it (it is found by name). A save of the class gear from before
+2026-11-27 with Poisoned Arrows (then weapon 91) loads them as Arrows +3. The trap missile of 0x94D61 uses line 88, as 1.3.
 
 Open, for the user: the sale value of three wands of Aleena is above her
 price (the market buys at 75 percent of the value at Charisma 12 and up to
@@ -373,3 +375,36 @@ price (the market buys at 75 percent of the value at Charisma 12 and up to
 Paralyzation 2000 for 1000, Wand of Fireballs 3000 for 1500. A mage can buy
 and sell for a profit (at most nine wands of Magic Missiles). The new lines
 have the price of the seller as their value, so they give no profit.
+
+## The bows and arrows of the new gear (port, not in 1.3)
+
+The rule of the user of 2026-11-27 (`Dtu_new_gear`, dtugear.h; the rule and
+the verified facts of 1.3 are in docs/re/combat.md, "Bows and arrows of the
+new gear"). With the setting off the tables, the rules and the -objlog and
+-charlog of a fight are those of main (checked with the build of main).
+
+| Type | Id | Name | Effect | Code | Test |
+|---|---|---|---|---|---|
+| weapon | 74, 75 | Arrows +1, +2 (1.3) | to_hit_bonus 1 and 2, value 25 and 60 | `Gear_arrow_hits`, `Gear_values` | check_items.py arrow_rulebook |
+| weapon | 91 | Arrows +3 | +3 to hit, +3 damage, value 150, icon 204 | `Gear_arrows` | check_items.py arrow_rule |
+| weapon | 92 | Fire Arrows | 1d6 and 1d6 fire (fire_damage_dice), counts as +1, value 60, icon 205 | `Gear_arrows`, `dtu_weapon_extra_damage` | check_items.py arrow_fire_acid |
+| weapon | 93 | Acid Arrows | 1d6 and 1d6 acid, ends the regeneration, counts as +1, value 80, icon 206 | `dtu_gear_missile_extra` | check_items.py arrow_fire_acid |
+| weapon | 94 | Dispelling Arrows | 1d6, a hit casts the rule of Dispel Magic on the creature, counts as +3, value 500, icon 207 | `dtu_gear_missile_hit` | check_items.py arrow_dispel |
+
+Changes for a player of the items that exist (with the setting on):
+
+- Every bow and crossbow: the damage bonus no longer adds to that of a magic
+  arrow or bolt; the larger counts. A Short Bow +2 with Arrows +2 did 1d6+4,
+  now 1d6+2 (and +4 to hit, not +2); a Crossbow +3 with Bolts +2 did 1d4+5,
+  now 1d4+3.
+- Arrows +1 and +2: +1 and +2 to hit (as "Rulebook items" gives them), a
+  value of 25 and 60 (1.3: none, so they sold for 1 gold).
+- The Poisoned Arrow is the Venom Arrows: the word magic (it now hurts a
+  creature that needs a magic weapon), its own icon, weapon 95 (was 91).
+- Bolt +1 and Bolts +2: the market has no limit of them from reward 4 and 6.
+- The market sheet of icons (FEBGND 22) gets the row of the port icons, so
+  the market now shows the icons 200 to 209 (the Pearls of Power, the scrolls
+  of the port spells and the new arrows had none there).
+- Mirt: from mission 3 he always has the Venom Arrows for a single class
+  thief, so his menu stays open after his one-time goods are sold (before:
+  the news of 1.3, label 6).

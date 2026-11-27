@@ -2146,6 +2146,89 @@ swing the picture is that of 1.3. The hit test and the swing time do not
 use the drawn place. `tools/check_sword_view.py` reads the measure in the
 log.
 
+### Bows and arrows of the new gear (port, not in 1.3)
+
+1.3 (verified in the decompilation and in the port): the attack roll of an
+arrow or a bolt adds the `to_hit_bonus` of the misc item in the bow slot
+(`arrow` flag) or the crossbow slot (else), at 0x2AB36 (0x2AB0A to
+0x2AB4D, `launcher_bonus` of dtuchar.c), and the `to_hit_bonus` of the
+missile line (W+0x36, 0x2AAE7). The damage roll adds the same
+`to_hit_bonus` of the launcher at 0x2B0EE (0x2B0AE: `Misc_info[id].to_hit_bonus`;
+a misc line has no damage bonus for a launcher) and the `damage_bonus` of
+the missile line (W+0x38, 0x2B1E7). So the two add: a Short Bow +2 with
+Arrows +2 does +2 to hit and 1d6 + 4. The Arrows +1 and +2 (weapon 74, 75)
+have `damage_bonus` and no `to_hit_bonus`; the setting "Rulebook items"
+(dtuitemfix.c) gives them `to_hit_bonus` 1 and 2 at the lookup (DMG p. 189).
+Dexterity adds its missile adjustment (`Dtu_fix_dex_missile`, 18: +2), the
+Gloves of the Archer +1 to hit and +2 damage, the Bracers of Archery +2 to
+hit (the same gauntlet place, `archer_bonus`). "A magic weapon is needed"
+(`weapon_resistant`, 0x29D9D) tests only the word `magic` of the missile
+line (W+0x3E bit 0x10, 0x29DC1) and, with `Dtu_fix_launcher_magic`, a
+launcher bonus above 0: there is no rule by plus. The Arrows +1, +2 and the
+Magic Arrow (12) have the word; the Arrow (7) and line 10 do not.
+
+The rule of the user of 2026-11-27 (`Dtu_new_gear`, dtugear.h):
+
+- To hit: as 1.3, the launcher and the missile add. The new gear writes
+  `to_hit_bonus` 1 and 2 into the text of the Arrows +1 and +2
+  (`Gear_arrow_hits`). With "Rulebook items" on too, `bm_tbl_get` returns
+  the value of the rule (the same 1 and 2) instead of the text, so the bonus
+  is read once and never added twice.
+- Damage: the larger of the damage bonus of the launcher and of the missile
+  counts (`launcher_damage`): the launcher adds what it has above the
+  missile. The damage bonus of a launcher is its key `damage_bonus` when the
+  line has one (the Short Bow of Lightning +3: 0), else its `to_hit_bonus`.
+  A thrown weapon keeps the rule of 1.3. The crossbow and the bolts the same
+  way: a Crossbow +3 with Bolts +2 does +5 to hit and +3 damage (1.3: +5).
+- Magic: each arrow but the plain Arrow has the word `magic`; the plus it
+  counts as (`dtu_gear_arrow_plus`) is shown in the description window only.
+- New lines (weapon 91 to 94, after the Rod of Kelemvor; the Venom Arrows of
+  the class gear 95; the Spiritual Hammer 96; `MAX_WEAPON_TYPES` 104): Arrows
+  +3 (+3/+3, a copy of the Arrows +2), Fire Arrows (1d6 and 1d6 fire:
+  `fire_damage_dice`, so the fire resistances and immunity of 0x2B327 apply and
+  the fire ends the regeneration, 0x2B5D4), Acid Arrows (1d6 and 1d6 acid, no
+  resistance in the game; the acid ends the regeneration as the acid of a
+  spell does, 0x91BC3), Dispelling Arrows (1d6; a hit that does damage casts
+  the rule of Dispel Magic on the creature, `dtu_spell_dispel`: all its
+  effects end, no save, the regeneration bit stays; the hit is an attack, so
+  the alert of the missile makes the creature hostile before it). Fire, Acid
+  and Venom count as +1, Dispelling as +3, none with a bonus.
+- The Short Bow of Lightning +3 (misc 134, class gear): +3 to hit, damage 0,
+  and each arrow from it does `DTU_GEAR_LIGHTNING_N`d`DTU_GEAR_LIGHTNING_SIDES`
+  (2d4, waiting for the confirmation of the user) electric damage more on a
+  hit; a creature with `electricity_immune` takes none of it (the electric
+  rule of 0x91BC3). No hit effect is drawn.
+
+The -charlog damage line of a missile under the rule names the parts:
+`damage roll: 1d6 + 3: 9, fire 0, acid 0, electric 0 (launcher 0, missile 3,
+gloves 0)`. Tests: `tools/check_items.py` arrow_rule, arrow_rulebook,
+arrow_fire_acid, arrow_dispel, arrow_lines, class_arrow. With `-nonewgear`
+the -charlog and -objlog of a fight with the Short Bow of Speed and Arrows
++2, the Crossbow +3 and Bolts +2, and a Short Bow with Arrows +1 (also with
+`-rulebookitems`) are equal to those of main.
+
+Damage for each round of 6 seconds (expected values: d20 against armor
+class -4, a natural 20 a second damage roll, a 1 a miss; Dexterity 18 +2;
+the time of a shot `max(fire_wait / speed, 1.0) + 0.07` s from the measures
+of A8; the Arrow has `fire_wait` 2.0, the Fire Arrows 1.5, the Arrows +3
+1.0). A thief of level 11 (THAC0 15) with the Bracers of Archery, a fighter
+of level 11 (THAC0 9) with the Gloves of the Archer:
+
+| Character | Bow | Arrows | To hit | Damage of a hit | Hit chance | s per shot | Per round |
+|---|---|---|---|---|---|---|---|
+| thief 11 | Short Bow of Speed +2 | Arrow | +6 | 5.5 | 40% | 1.07 | 13.9 |
+| thief 11 | Short Bow of Speed +2 | Arrows +3 | +9 | 6.5 | 55% | 1.07 | 21.9 |
+| thief 11 | Short Bow of Speed +2 | Fire Arrows | +6 | 9.0 | 40% | 1.07 | 22.7 |
+| thief 11 | Short Bow of Lightning +3 | Arrow | +7 | 8.5 | 45% | 2.07 | 12.3 |
+| thief 11 | Short Bow of Lightning +3 | Arrows +3 | +10 | 11.5 | 60% | 1.07 | 41.9 |
+| thief 11 | Short Bow of Lightning +3 | Fire Arrows | +7 | 12.0 | 45% | 1.57 | 22.9 |
+| fighter 11 | Short Bow of Speed +2 | Arrow | +5 | 7.5 | 65% | 1.07 | 29.4 |
+| fighter 11 | Short Bow of Speed +2 | Arrows +3 | +8 | 8.5 | 80% | 1.07 | 40.5 |
+| fighter 11 | Short Bow of Speed +2 | Fire Arrows | +5 | 11.0 | 65% | 1.07 | 43.2 |
+| fighter 11 | Long Bow +3 | Arrow | +6 | 8.5 | 70% | 2.07 | 18.5 |
+| fighter 11 | Long Bow +3 | Arrows +3 | +9 | 8.5 | 85% | 1.07 | 42.9 |
+| fighter 11 | Long Bow +3 | Fire Arrows | +6 | 12.0 | 70% | 1.57 | 34.4 |
+
 ## C2. Spells
 
 - Books: the two spell lists of a save game of the original (`-char FILE`). New spells

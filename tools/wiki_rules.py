@@ -875,8 +875,29 @@ class IconSheet:
         # Power), new art of tools/spell_icons.py in engine/main/dtuspellicons.h.
         # The game adds them to the loaded sheet (port_icons_add, dtudisp.c).
         self.port = port_tables.icons()
-        self.count = max([self.count] + [n + 1 for n in self.port])
         self.palette = egg.load_palette(os.path.join(game_dir, "PALETTE.256"))
+        # The tinted icons of the bows and arrows of the new gear (204 and up):
+        # copies of icons of the sheet in the colors of a tint, the rule of
+        # tint_icons of dtudisp.c with the palette of the entry
+        pal = arc.data[e["off"]:e["off"] + 768]
+        g = gear_tables.read()
+        first = g["d"]["DTU_GEAR_ICON_ARROWS3"]
+        for k, (src, r, gr, b) in enumerate(g["icon_tints"]):
+            cmap = []
+            for c in range(256):
+                lum = (pal[c * 3] * 30 + pal[c * 3 + 1] * 59 + pal[c * 3 + 2] * 11) // 100
+                lv = min(63, lum * 3 // 2)
+                want = (r * lv // 63, gr * lv // 63, b * lv // 63)
+                best = min(range(254), key=lambda j: sum((want[x] - pal[j * 3 + x]) ** 2 for x in range(3)))
+                cmap.append(best)
+            cmap[255] = 255
+            x0, y0 = (src & 7) * ICON_CELL, (src // 8) * ICON_CELL
+            cell = []
+            for y in range(ICON_CELL):
+                p = (y0 + y) * self.w + x0
+                cell += [cmap[v] for v in self.pix[p:p + ICON_CELL]]
+            self.port[first + k] = bytes(cell)
+        self.count = max([self.count] + [n + 1 for n in self.port])
 
     def write(self, n, path):
         c, s = ICON_CELL, ICON_SCALE
@@ -1649,10 +1670,12 @@ class Pages:
             "# Weapons",
             "",
             "- Damage: the dice plus the bonus. Melee and thrown weapons add the Strength damage. "
-            "Arrows and bolts add the bonus of the bow or crossbow to the attack and the damage. A "
+            "Arrows and bolts add the bonus of the bow or crossbow to the attack and the damage. "
+            "ASCENT-DTU, with the setting \"%s\": the bonuses to hit of the bow and the arrow add, and "
+            "for the damage only the larger of the two counts ([[New gear|New-Gear#bows-and-arrows]]). A "
             "critical hit (20) rolls the damage twice. A backstab multiplies it ([[Classes]]). The "
             "game has no slashing, piercing or bludgeoning damage and no weapon sizes. Some weapons "
-            "add fire dice, which fire resistance halves.",
+            "add fire dice, which fire resistance halves." % NEW_GEAR_SETTING,
             "- Speed: the time of a melee swing. Every swing lasts at least 1.0 s, so a faster weapon "
             "swings at 1.0 s. For a thrown or missile weapon it is the wait from one shot to the "
             "next (the original 1.3 game has no wait: each key press fires; ASCENT corrects this). "
@@ -1683,7 +1706,10 @@ class Pages:
             "## Bows and crossbows",
             "",
             "Worn in the bow or crossbow place of the paper doll. The bonus is added to the attack "
-            "and the damage of the missile.",
+            "and the damage of the missile. ASCENT-DTU, with the setting \"%s\": the bonus adds to the "
+            "attack; for the damage the larger of the bonus of the bow and of the arrow counts. The "
+            "Arrows +1 and +2 then have +1 and +2 to hit too, and the market sells magic arrows "
+            "([[New gear|New-Gear#bows-and-arrows]])." % NEW_GEAR_SETTING,
             "",
             md_table(self.icon_head(["Launcher", "Kind", "To hit and damage", "F/T/M/C", "Value", "Notes"]), launch),
             "",
@@ -2574,8 +2600,10 @@ class Pages:
                 "does not: the market sells it later (above). A market that already has it keeps it.", ""]
         old = [(row, gd.item(row[2], row[3])) for row in gd.g["market"]
                if not (row[2] == 15 and row[3] in gd.armor) and not (row[2] == 5 and row[3] in gd.wands)
-               and not (row[2] == 5 and row[3] == ft) and not (row[2] == 5 and row[3] in gd.daggers)]
-        orows = [self.icon_row([r.name(), GEAR_STAGES[row[0]], str(row[1]), gd.value(row[2], row[3])], r) for row, r in old]
+               and not (row[2] == 5 and row[3] == ft) and not (row[2] == 5 and row[3] in gd.daggers)
+               and not (row[2] == 5 and row[3] in gd.arrow_lines)]
+        orows = [self.icon_row([r.name(), GEAR_STAGES[row[0]], "many" if row[1] < 0 else str(row[1]),
+                                gd.value(row[2], row[3])], r) for row, r in old]
         out += ["The original game has rules for these magic items but never gives them to you. The market "
                 "sells them, weaker ones first. Their rules are on the other pages.", "",
                 md_table(self.icon_head(["Item", "In the market", "Quantity", "Value"]), orows), "",
@@ -2584,14 +2612,16 @@ class Pages:
         # the market by stage
         srows = []
         for s in sorted(set(row[0] for row in gd.g["market"] + gd.g["class_market"])):
-            goods = [gd.item(row[2], row[3]).name() for row in gd.g["market"] if row[0] == s]
+            goods = [gd.item(row[2], row[3]).name() + (" (now many: no limit)" if row[1] < 0 else "")
+                     for row in gd.g["market"] if row[0] == s]
             goods += ["%s (with the class gear, below)" % gd.item(row[2], row[3]).name()
                       for row in gd.g["class_market"] if row[0] == s]
             srows.append([GEAR_STAGES[s], ", ".join(goods)])
         out += ["## The market of Waterdeep", "",
                 "Each reward of Khelben adds goods to the market. The setting adds these to the goods of "
-                "the original game.", "",
+                "the original game. \"Many\": the market has no limit of that good from then on.", "",
                 md_table(["When", "New goods"], srows), ""]
+        out += self.bows_and_arrows()
         # gold and gems
         gems = [(r.name(), r.num("value", 0)) for i, r in sorted(gd.misc.items())]
         grows = [self.icon_row([r.name(), r.num("value", 0)], r) for i, r in sorted(gd.misc.items())]
@@ -2665,6 +2695,57 @@ class Pages:
                 "so a level that your game has visited keeps its old scroll." % CASTER_AI_SETTING, "",
                 md_table(self.icon_head(["Spell", "Class, level", "Where"]), rows), ""]
 
+    def bows_and_arrows(self):
+        """The rule of the bows and arrows of the new gear and the arrows of
+        the market by stage (dtugear.h, dtugear.c Gear_arrows, Gear_market)."""
+        gd = self.gear
+        d = gd.d
+        rows = []
+        effect = {d["DTU_GEAR_ARROWS3"]: "+%d to hit and damage" % 3,
+                  d["DTU_GEAR_ARROW_FIRE"]: "1d6 and 1d6 fire. Fire resistance halves the fire, and the fire stops "
+                                            "the regeneration of a troll",
+                  d["DTU_GEAR_ARROW_ACID"]: "1d6 and 1d%d acid. The acid stops the regeneration of a troll"
+                                            % d["DTU_GEAR_ACID_DICE"],
+                  d["DTU_GEAR_ARROW_DISPEL"]: "1d6. A hit casts Dispel Magic on the creature: all its spell effects "
+                                              "end, with no save. The arrow is an attack: the creature turns hostile"}
+        for i in sorted(gd.arrow_lines):
+            r = gd.arrow_lines[i]
+            if i == gd.venom_arrows_id:
+                continue
+            if i in effect:
+                what = effect[i]
+            else:
+                what = "+%d to hit and damage" % r.num("damage_bonus", 0)
+            stages = []
+            for row in gd.g["market"]:
+                if row[2] == 5 and row[3] == i:
+                    stages.append(("many" if row[1] < 0 else "%d" % row[1]) + " " + GEAR_STAGES[row[0]])
+            rows.append(self.icon_row([r.name(), what, "+%d" % gd.arrow_plus[i], gd.value(5, i), "; ".join(stages)], r))
+        venom = gd.arrow_lines[gd.venom_arrows_id]
+        bow = gd.item(16, d["DTU_GEAR_BOW_LIGHTNING"])
+        return ["## Bows and arrows", "",
+                "With the setting the bows and arrows have the rule of ASCENT-DTU:", "",
+                "- To hit: the bonus of the bow and the bonus of the arrow add. The Arrows +1 and +2 of the "
+                "original game get their +1 and +2 to hit (the original game gives them none; the setting "
+                "\"Rulebook items\" gives the same values, and they never add twice).",
+                "- Damage: the larger of the damage bonus of the bow and the damage bonus of the arrow counts; "
+                "they do not add. A Short Bow of Speed (+2) with plain arrows: +2 to hit, +2 damage. With "
+                "Arrows +3: +5 to hit, +3 damage.",
+                "- Crossbows and bolts the same way. A thrown weapon keeps the rule of the original game.",
+                "- Magic: every arrow but the plain Arrow is magic and hurts a creature that only magic weapons "
+                "hurt. The game knows only magic or not; the plus in the table is what the arrow counts as.",
+                "- The original game adds the bonus of the bow to the attack and the damage, and the damage "
+                "bonus of the arrow too (a Short Bow +2 with Arrows +2: +2 to hit and +4 damage).", "",
+                "In the market a tier comes in a number; when the next tier comes, the one before has no limit "
+                "(\"many\"). The Dispelling Arrows never do.", "",
+                md_table(self.icon_head(["Arrows", "Damage and effect", "Counts as", "Value", "In the market"]), rows), "",
+                "- The %s (single class thieves, [[New gear|New-Gear#gear-for-single-class-mages-and-thieves]]): "
+                "a plain arrow whose hit poisons; magic, counts as +1, no bonus." % venom.name(),
+                "- The %s (single class thieves, Mirt): +%d to hit and no damage bonus of its own, so an arrow "
+                "does its own damage bonus; each arrow shot from it deals %dd%d electric damage more on a hit (none "
+                "to a creature immune to electricity)." % (bow.name(), bow.num("to_hit_bonus", 0),
+                                                           d["DTU_GEAR_LIGHTNING_N"], d["DTU_GEAR_LIGHTNING_SIDES"]), ""]
+
     def new_gear_dragon(self):
         """The encounter of the dragon: a link to [[Encounters]]."""
         return ["The hoard of the dragon has more than these %d items, and the encounter has its own "
@@ -2720,8 +2801,15 @@ class Pages:
                 "each later talk. Mirt the Merchant opens his old guild things at a talk after the first.", "",
                 md_table(["Seller", "Item", "Gold", "From"], rows), "",
                 "- %s: an %s (1d6) whose hit poisons a creature that fails a save against poison: 1 hit point "
-                "each second for %d seconds. Undead and extraplanar creatures are immune." % (
+                "each second for %d seconds. Undead and extraplanar creatures are immune. Magic: it hurts what "
+                "a +1 weapon hurts, with no bonus. Nalbas and Mirt sell them." % (
                     arrow[2], arrow[1], d["DTU_GEAR_POISON_TIME"]),
+                "- %s: +%d to hit and no damage bonus of its own; each arrow shot from it deals %dd%d electric "
+                "damage more on a hit ([[New gear|New-Gear#bows-and-arrows]])." % (
+                    gd.item(16, d["DTU_GEAR_BOW_LIGHTNING"]).name(), gd.item(16, d["DTU_GEAR_BOW_LIGHTNING"]).num("to_hit_bonus", 0),
+                    d["DTU_GEAR_LIGHTNING_N"], d["DTU_GEAR_LIGHTNING_SIDES"]),
+                "- Only a single class thief gets the %s, the %s and the %s. The magic arrows of the market "
+                "are for every character." % (gd.item(16, d["DTU_GEAR_BOW_LIGHTNING"]).name(), arrow[2], bracers),
                 "- Pearl of Power I to III: use it (the item list or a hot key) to get back one spent mage spell "
                 "slot of spell level 1, 2 or 3. Once in each dungeon level; it is ready again at the next "
                 "level and after a rest. A saved game keeps its state.",
@@ -3019,8 +3107,8 @@ CLASS_GEAR = [
     ("mage", "Aleena Paladinstar", "3 scrolls of Lightning Bolt (if you know the spell)", [1500], [10], None),
     ("mage", "Aleena Paladinstar", "Pearl of Power I, II, III", [2500, 6000, 12000], [3, 10, 16], None),
     ("mage", "Aleena Paladinstar", "Bracers of Defense AC2", [5000], [10], None),
-    ("thief", "Nalbas Oddpepper", "Short Bow and 16 Poisoned Arrows", [300], None, "the first talk"),
-    ("thief", "Nalbas Oddpepper", "8 more Poisoned Arrows", [160], None, "after the bow"),
+    ("thief", "Nalbas Oddpepper", "Short Bow and 16 Venom Arrows", [300], None, "the first talk"),
+    ("thief", "Nalbas Oddpepper", "8 more Venom Arrows", [160], None, "after the bow"),
     ("thief", "Nalbas Oddpepper", "Potion of Invisibility (three in all, each)", [400], [7], None),
     ("thief", "Mirt the Merchant", "Leather Armor +2", [2000], [3], None),
     ("thief", "Mirt the Merchant", "Master Lockpicks", [600], [3], None),
@@ -3028,6 +3116,8 @@ CLASS_GEAR = [
     ("thief", "Mirt the Merchant", "Bracers of Archery", [7500], [10], None),
     ("thief", "Mirt the Merchant", "Short Sword of Quickness", [4500], [14], None),
     ("thief", "Mirt the Merchant", "Girdle of Hill Giant Strength", [6000], [14], None),
+    ("thief", "Mirt the Merchant", "20 Venom Arrows (as often as you like)", [400], [3], None),
+    ("thief", "Mirt the Merchant", "Short Bow of Lightning +3", [15000], [20], None),
 ]
 
 # The mission of a reward of Khelben and its stage of the market
@@ -3168,6 +3258,41 @@ class GearData:
                 line = re.sub(r"\b(Fighter_use|mage_use)\b", "", line, flags=re.I)
             self.daggers[did] = Record(line)
         self.venom_id = g["d"]["DTU_GEAR_VENOM"]
+        # the bows and arrows: the Arrows +1 and +2 with their to-hit bonus
+        # and value, and the new arrow lines (copies of them)
+        self.arrow_plus = {}
+        self.arrow_lines = {}
+        hits = {i: (n13, h) for i, n13, h in g["arrow_hits"]}
+
+        def arrow_line(src, name, value, hit, damage, icon=None, fire=0):
+            line = tab["$WEAPON"][src].line
+            line = re.sub(r'weapon_name="[^"]*"', 'weapon_name="%s"' % name, line)
+            line = re.sub(r'(?<![\w#])name="[^"]*"', 'name="%s"' % name, line)
+            line = re.sub(r"\s(value|to_hit_bonus|damage_bonus)=\S+", " ", line)
+            line += " value=%d to_hit_bonus=%d damage_bonus=%d" % (value, hit, damage)
+            if icon is not None:
+                line = re.sub(r"\sicon=\S+", " ", line) + " icon=%d" % icon
+            if fire:
+                line += " fire_damage_dice=%d #fire_damage_dice=1" % fire
+            if " magic" not in line:
+                line += " magic"
+            return Record(line)
+        for i, (n13, h) in hits.items():
+            r = tab["$WEAPON"][i]
+            if r.name13() != n13:
+                raise SystemExit("dtugear.c: weapon %d is %r, not %r" % (i, r.name13(), n13))
+            self.arrow_lines[i] = arrow_line(i, n13, self.values.get(i, 0), h, r.num("damage_bonus", 0))
+            self.arrow_plus[i] = h
+        for aid, name, src, src13, value, hit, damage, icon, fire, plus in g["arrows"]:
+            if tab["$WEAPON"][src].name13() != src13:
+                raise SystemExit("dtugear.c: weapon %d is %r, not %r" % (src, tab["$WEAPON"][src].name13(), src13))
+            self.arrow_lines[aid] = arrow_line(src, name, value, hit, damage, icon, fire)
+            self.arrow_plus[aid] = plus
+        # the Venom Arrows of the class gear (a copy of the Arrow, magic)
+        afrom, a13, aname, avalue = g["class_arrow"]
+        self.venom_arrows_id = self.d["DTU_GEAR_VENOM_ARROWS"]
+        self.arrow_lines[self.venom_arrows_id] = arrow_line(afrom, aname, avalue, 0, 0, self.d["DTU_GEAR_ICON_VENOM"])
+        self.arrow_plus[self.venom_arrows_id] = 1
         # the lines of the class gear after the new gear (armor 62 and up,
         # misc 131 and up, the reader of the tables in the same order)
         na, nm = self.d["DTU_GEAR_FIRST_ARMOR"] + len(self.armor), self.d["DTU_GEAR_FIRST_MISC"] + len(self.misc)
@@ -3199,6 +3324,8 @@ class GearData:
             return self.daggers[i]
         if cls == 5 and i in self.wands:
             return self.wands[i][0]
+        if cls == 5 and i in self.arrow_lines:
+            return self.arrow_lines[i]
         if cls == 17:       # a spell scroll of the market
             return ScrollRecord(self.tab["$SPELL"][i])
         return self.tab[{5: "$WEAPON", 15: "$ARMOR", 16: "$OBJECT"}[cls]][i]
