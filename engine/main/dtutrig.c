@@ -37,6 +37,7 @@
 #include "mem.h"
 #include "timer.h"		// ASCENT: the real clock of Dtu_fix_trap_pause 0
 #include "dtufile.h"
+#include "dtuspell.h"	// ASCENT: Dtu_fix_time_wrap
 #include "dtugame.h"
 #include "dtudisp.h"
 #include "dtuobj.h"
@@ -329,6 +330,24 @@ uint dtu_trap_clock(void)
 	if (!Dtu_fix_trap_pause)
 		return (uint)(((int64_t)timer_get_fixed_seconds() * 100) >> 16);
 	return (uint)(((int64_t)GameTime * 100) >> 16) + 360000;
+}
+
+// ASCENT: Dtu_fix_time_wrap: the clock units from the stamp ts to now. The
+// clock of Dtu_fix_trap_pause counts the game time, which goes back by
+// 65536 seconds (6553600 units) at its wrap: a delay that runs at the wrap
+// ended at once, and an interval passed. The difference is taken modulo
+// 6553600. A stamp 0xFFFFFFFF (the trap never ran) gives the difference of
+// 1.3, which passes the first interval.
+static uint trap_since(uint now, uint ts)
+{
+	int d;
+
+	if (!Dtu_fix_time_wrap || !Dtu_fix_trap_pause || ts == 0xffffffff)
+		return now - ts;
+	d = (int) now - (int) ts;
+	if (d < 0)
+		d += 6553600;
+	return (uint) d;
 }
 
 //------------------------------------------------------------------------
@@ -668,20 +687,21 @@ void dtu_trap_run(int trap_num, object *obj)
 				tp->flags |= DTU_TPF_DELAY_RUNS;
 				active_add(tp->id);
 				tp->timestamp = now;
-				tlog("trap %d: delay of %d clock units starts", trap_num, tp->delay);
+				tlog("trap %d: delay of %d clock units starts at %.2f", trap_num, tp->delay, f2fl(GameTime));
 				goto next;
 			}
-			if (now - tp->timestamp <= tp->delay) {
+			if (trap_since(now, tp->timestamp) <= tp->delay) {
 				Trap_chain_stop = 1;
 				goto next;
 			}
+			tlog("trap %d: the delay ends at %.2f", trap_num, f2fl(GameTime));
 			active_remove(tp->id);
 			tp->delay = tp->delay_init;
 			tp->flags &= ~DTU_TPF_DELAY_RUNS;
 			Trap_chain_stop = 1;
 			tp->timestamp = now;
 		}
-		else if (now - tp->timestamp < tp->interval)
+		else if (trap_since(now, tp->timestamp) < tp->interval)
 			goto next;
 
 		tp->timestamp = now;
@@ -910,7 +930,7 @@ void dtu_trig_fire(int trigger_num, int type, object *obj)
 		if (t->flags & DTU_TGF_TOGGLE_TEX) {
 			if (t->first_trap != -1 && t->first_trap < Dtu_num_traps) {
 				tp = &Dtu_traps[t->first_trap];
-				if (dtu_trap_clock() - tp->timestamp < tp->interval)
+				if (trap_since(dtu_trap_clock(), tp->timestamp) < tp->interval)
 					return;
 			}
 			if (side_ok(t->seg, t->side)) {
@@ -1036,7 +1056,7 @@ void dtu_trig_door_opened(int segnum, int side)
 
 static void flame_talk_frame(void)
 {
-	if (Flame_talk_time < 0 || GameTime < Flame_talk_time)
+	if ((Dtu_fix_time_wrap ? Flame_talk_time == -1 : Flame_talk_time < 0) || dtu_time_cmp(GameTime,Flame_talk_time) < 0)		// ASCENT: Dtu_fix_time_wrap: -1 is "none"
 		return;
 	Flame_talk_time = -1;
 	if (Level_index == 32)

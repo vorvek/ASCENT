@@ -2336,7 +2336,11 @@ int fe_load_game(int in_game)
 	fe_market_store(choice + 1, 0);
 	// 0xBBA2F: the game time of the save (the times in the level state
 	// files count from it)
-	if ((int) get_u32(b + SG_GAME_TIME) > 0)
+	// ASCENT: 1.3 reads it with no test (0xBB780). The port read it only
+	// above 0, so a save written after the wrap of the clock (a negative
+	// time, Dtu_fix_time_wrap) kept the clock of the session and each end
+	// time of its level state was wrong. The port skips only 0 (no time).
+	if ((int) get_u32(b + SG_GAME_TIME) != 0)
 		GameTime = (fix) get_u32(b + SG_GAME_TIME);
 	// ASCENT: the game has no difficulty menu, so each game plays at the 2
 	// of a new game (0x5851A). The value of the save (offset 7362 into

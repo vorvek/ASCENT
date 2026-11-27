@@ -220,12 +220,35 @@ extern int Dtu_fix_spell_hours;
 // last 80 minutes before the wrap shows "Free Action expired." in the next
 // frame. 1 (default): the tests of the effects, the potions, the casts and
 // the acid rounds compare the time left (end - GameTime, modulo 2^32), so a
-// time below 9 hours lasts in full across the wrap. 0 (-origcombat): 1.3.
+// time below 9 hours lasts in full across the wrap, and the other timers
+// use the tests below. 0 (-origcombat): 1.3 (docs/audit D-190).
 extern int Dtu_fix_time_wrap;
 // 1 when the game time has passed t (GameTime > t, Dtu_fix_time_wrap).
 int dtu_time_past(fix t);
 // The time left until t (t - GameTime, Dtu_fix_time_wrap).
 fix dtu_time_left(fix t);
+// ASCENT: the other timer tests of the game code. With Dtu_fix_time_wrap
+// they work on the difference of the times (modulo 2^32), so a test
+// crosses the wrap and works at a negative clock (a save written after
+// the wrap). A timer that the game set to "now + at most `most`" and that
+// is further ahead than that was set more than 9 hours ago, or is 0 (not
+// set) at a negative clock: it counts as passed. A time 0 that means "not
+// set" is tested apart at the caller. 0 (-origcombat): the compare of 1.3,
+// given after each name.
+// The sign of a - b (a < b, a > b).
+int dtu_time_cmp(fix a, fix b);
+// 1 while the clock has not reached t, t at most `most` ahead (t > GameTime).
+int dtu_time_waits(fix t, fix most);
+// 1 when the clock has passed t, or t is more than `most` ahead (t < GameTime).
+int dtu_time_due(fix t, fix most);
+// 1 when t is in the last `span` seconds, t not ahead (t + span >= GameTime).
+int dtu_time_within(fix t, fix span);
+// The effect timers of an object from a level state file that the player
+// left more than 9 hours ago: an end time more than DTU_FX_NO_END ahead has
+// passed (dtustate.c, at the restore).
+void dtu_spell_restore_timers(object *obj);
+// Test (fxstate, fxobj=N): the time left of each effect of obj (spell log).
+void dtu_spell_log_timers(object *obj);
 // A rest (0x360D5, 0x3E1F6) fills the hit points and the slots and ends no
 // effect: a buff cast before a rest lasts through it. The rule of the
 // port (2e: a rest is hours long): the rest ends the effects of the spells

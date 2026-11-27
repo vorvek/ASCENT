@@ -506,6 +506,7 @@ static void obj_from_image(object *o, const ubyte *b)
 	for (i = 0; i < 6; i++) o->dtu.m_c8[i] = gs32(b + 0xC8 + 4 * i);
 	for (i = 0; i < 2; i++) o->dtu.m_e0[i] = gs32(b + 0xE0 + 4 * i);
 	for (i = 0; i < 5; i++) o->dtu.m_e8[i] = gs32(b + 0xE8 + 4 * i);
+	dtu_spell_restore_timers(o);		// ASCENT: Dtu_fix_time_wrap: a level left 9 hours ago
 	o->dtu.m_1b0 = gs32(b + 0x1B0);
 	o->dtu.m_1d5 = b[0x1D5];
 
@@ -690,7 +691,7 @@ static void obj_to_image(int objnum, ubyte *b)
 		dtu_spell_creature_points(o, &mage, &cleric);
 		b[0x19E] = (ubyte) mage;
 		b[0x19F] = (ubyte) cleric;
-		put32(b + 0x1A8, GameTime > 0 ? GameTime : 1);
+		put32(b + 0x1A8, GameTime ? GameTime : 1);		// ASCENT: a negative time as it is
 	}
 
 	// scenery: movement type 1 as in the executable (see obj_from_image)

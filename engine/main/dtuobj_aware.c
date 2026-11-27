@@ -332,7 +332,7 @@ int creature_in_combat(object *obj)
 {
 	fix t = Ail[obj-Objects].combat_time;
 
-	return t != 0 && GameTime >= t && GameTime - t <= DTU_COMBAT_TIME;
+	return t != 0 && dtu_time_cmp(GameTime,t) >= 0 && GameTime - t <= DTU_COMBAT_TIME;		// ASCENT: Dtu_fix_time_wrap
 }
 
 // ASCENT: Dtu_improved_ai (a decision of the user, 2026-11-27): a wall or a
@@ -409,7 +409,7 @@ void creature_join_fight(object *obj)
 		return;
 	if (DTU_ANIM_STATE(obj) == DAS_DIE || obj->shields < F1_0 || (obj->flags & (OF_EXPLODING|OF_SHOULD_BE_DEAD|OF_DESTROYED)))
 		return;
-	if (GameTime < ail->join_time && ail->join_time - GameTime <= DTU_JOIN_PERIOD)
+	if (dtu_time_cmp(GameTime,ail->join_time) < 0 && ail->join_time - GameTime <= DTU_JOIN_PERIOD)		// ASCENT: Dtu_fix_time_wrap
 		return;
 	ail->join_time = GameTime + DTU_JOIN_PERIOD;
 	if (ail->join_kind == 0) {

@@ -79,7 +79,7 @@ static void creature_cast(object *obj,int spell,vms_vector *dir,vms_vector *fire
 	dtu_ai_local *ail = &Ail[obj-Objects];
 	int seg;
 
-	if (!is_hostile(obj) || ail->spell_time > GameTime || ail->activity != 2)
+	if (!is_hostile(obj) || dtu_time_waits(ail->spell_time,i2f(180)) || ail->activity != 2)		// ASCENT: Dtu_fix_time_wrap
 		return;
 	if (spell < 0 || spell >= N_spell_types)
 		return;
@@ -292,7 +292,7 @@ static int anim_to_ai_state(object *obj)
 // to the player (chase_by_path()) in the last 0.5 second
 static int chase_runs(dtu_ai_local *ail)
 {
-	return Dtu_fix_chase_run && ail->chase_path_time && ail->chase_path_time + F1_0/2 >= GameTime;
+	return Dtu_fix_chase_run && ail->chase_path_time && dtu_time_within(ail->chase_path_time,F1_0/2);		// ASCENT: Dtu_fix_time_wrap
 }
 
 // 0x10148. The animation state that belongs to an AI state.
@@ -307,7 +307,7 @@ static int ai_to_anim_state(object *obj,int ai_state,fix dist)
 			// ASCENT: keep_off_player(), a creature that waits for the player
 			if (station || ail->keep_off == 2)
 				return DAS_STAND;
-			if (dist > i2f(30) && (ail->time_player_seen + F1_0/2 >= GameTime || chase_runs(ail)))
+			if (dist > i2f(30) && (dtu_time_within(ail->time_player_seen,F1_0/2) || chase_runs(ail)))		// ASCENT: Dtu_fix_time_wrap
 				return DAS_RUN;
 			return DAS_WALK;
 		case DAIS_FLIN:	return DAS_FLINCH;
@@ -1309,7 +1309,7 @@ static int chase_by_path(object *obj)
 				need = 0;
 	}
 	if (need) {
-		if (ail->path_fail_time && GameTime >= ail->path_fail_time && GameTime - ail->path_fail_time < F1_0)
+		if (ail->path_fail_time && dtu_time_cmp(GameTime,ail->path_fail_time) >= 0 && GameTime - ail->path_fail_time < F1_0)		// ASCENT: Dtu_fix_time_wrap
 			return 0;
 		len = find_path(obj,obj->segnum,pseg,ail->path,DTU_PATH_MAX,-1,0,-1);
 		if (len < 2 || ail->path[len-1] != pseg) {
@@ -1545,17 +1545,17 @@ static void creature_sight_sound(object *obj,int visible,vms_vector *vec_to_play
 
 	if (in_fov && !ail->prev_fov) {
 		if (!ail->previous_visibility) {
-			if (ail->time_player_seen + F1_0/2 < GameTime) {
+			if (!dtu_time_within(ail->time_player_seen,F1_0/2)) {		// ASCENT: Dtu_fix_time_wrap
 				ail->time_attack_sound = GameTime;
 				ail->next_misc_sound = GameTime + F1_0 + rand()*4;
 			}
 		}
-		else if (ail->time_attack_sound + F1_0/4 < GameTime) {
+		else if (!dtu_time_within(ail->time_attack_sound,F1_0/4)) {		// ASCENT: Dtu_fix_time_wrap
 			sound_at(ri->attack_sound,obj->segnum,&obj->pos,F1_0);
 			ail->time_attack_sound = GameTime;
 		}
 	}
-	if (in_fov && ail->next_misc_sound < GameTime) {
+	if (in_fov && dtu_time_due(ail->next_misc_sound,i2f(8))) {		// ASCENT: Dtu_fix_time_wrap
 		ail->next_misc_sound = GameTime + (7 - Difficulty_level) * (rand() + F1_0) / 2;
 		sound_at(ri->attack_sound,obj->segnum,&obj->pos,F1_0);
 		dtu_obj_log("sound: obj %d %s attack sound %d",(int)(obj-Objects),dtu_object_name(obj),ri->attack_sound);
@@ -1821,7 +1821,7 @@ static void ai_animation_step(object *obj,fix dist)
 
 	// A hostile melee creature that is far from a player that it sees runs.
 	if (is_hostile(obj) && aip->GOAL_STATE != DAIS_DEAD && DTU_ANIM_STATE(obj) != DAS_DIE && !ail->keep_off &&
-		 Robot_info[obj->id].attack_type == 1 && dist > i2f(30) && (ail->time_player_seen + F1_0/2 >= GameTime || chase_runs(ail))) {
+		 Robot_info[obj->id].attack_type == 1 && dist > i2f(30) && (dtu_time_within(ail->time_player_seen,F1_0/2) || chase_runs(ail))) {		// ASCENT: Dtu_fix_time_wrap
 		if (aip->behavior != DAIB_STATION)
 			DTU_ANIM_STATE(obj) = DAS_RUN;
 		aip->GOAL_STATE = DAIS_LOCK;
@@ -2162,7 +2162,7 @@ void dtu_do_ai_frame(object *obj)
 	// when the creature dies (0x2A1D0), so the part of this code that lets
 	// a dead creature get up never runs for a creature that was killed.
 	if (Monster_ext[obj->id].regeneration > 0 && (obj->dtu.m_88 & 0x01000000) && !dying) {
-		if (GameTime < ail->regen_time)
+		if (dtu_time_cmp(GameTime,ail->regen_time) < 0)		// ASCENT: Dtu_fix_time_wrap
 			ail->regen_time = GameTime;
 		if (GameTime - ail->regen_time >= i2f(Monster_ext[obj->id].regeneration)) {
 			ail->regen_time = GameTime;
@@ -2400,7 +2400,7 @@ void dtu_do_ai_frame(object *obj)
 			}
 			else if (aip->CURRENT_STATE == DAIS_REST && aip->GOAL_STATE == DAIS_REST && visible && ail->morale >= B)
 				aip->GOAL_STATE = DAIS_SRCH;
-			else if (!hidden && GameTime - ail->time_player_seen > i2f(8)) {
+			else if (!hidden && (Dtu_fix_time_wrap ? !dtu_time_within(ail->time_player_seen,i2f(8)) : GameTime - ail->time_player_seen > i2f(8))) {		// ASCENT: Dtu_fix_time_wrap
 				if (ail->morale >= B)
 					create_path_to_player(obj,10);
 			}
@@ -2791,6 +2791,8 @@ void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img)
 	ail->next_misc_sound = img_s32(al+0x1C);
 	ail->time_since_processed = img_s32(al+0x20);
 	ail->anim_start = img_s32(al+0x24);
+	if (Dtu_fix_time_wrap && GameTime - ail->anim_start < -F1_0)		// ASCENT: Dtu_fix_time_wrap: a level left 9 hours ago
+		ail->anim_start = GameTime;
 	ail->morale = img_s32(al+0x28);
 	// The port keeps the path in its own list, not in Point_segs: a
 	// creature that walked a path plans a new one.

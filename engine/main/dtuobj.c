@@ -1994,7 +1994,7 @@ static void corpse_regen_frame(void)
 		if (regen <= 0 || max <= 0)
 			continue;
 
-		if (GameTime < ail->regen_time)
+		if (dtu_time_cmp(GameTime,ail->regen_time) < 0)		// ASCENT: Dtu_fix_time_wrap
 			ail->regen_time = GameTime;
 		if (GameTime - ail->regen_time < i2f(regen))
 			continue;
