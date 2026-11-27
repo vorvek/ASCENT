@@ -684,6 +684,10 @@ FIXES = [
                                                        "hit points; 1.3 reads a wrong table entry."),
     ("Dtu_fix_scenery_restore", "-origobj", "Breakable scenery keeps its hit points on a return visit; "
                                             "1.3 sets it to 1."),
+    ("Dtu_lich_phylactery", "-origobj or -nophylactery", "New content: an altar of Velsharoon in the east "
+     "crypts of the Crypts of Clangeddin is the phylactery of the lich Morik Stormhand. Break it and he "
+     "fights without Stone Skin, Shield, Minor Globe of Invulnerability and Mirror Image; break it during "
+     "the fight and they end at once."),
     ("Dtu_fix_bane_texture", "-origobj", "Two spinning objects in Bane's level get their own texture; 1.3 "
                                          "takes it from the level played before."),
     ("Dtu_fix_revive", "-origobj or -origrevive", "A killed troll (a regenerating creature) gets up again "

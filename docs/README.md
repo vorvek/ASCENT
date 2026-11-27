@@ -49,6 +49,7 @@ Build with `cmake --preset debug`, `cmake --build --preset debug --target ascent
 - [re/ai.md](re/ai.md): creature behavior, brains and dialogue starts.
 - [re/models.md](re/models.md): polygon models and animation.
 - [re/dragon.md](re/dragon.md): the encounter with the dragon of DROW2 (new in the port).
+- [re/lich.md](re/lich.md): the phylactery of the lich of CLAN3 (new in the port).
 - [re/physics.md](re/physics.md): player movement.
 - [re/character.md](re/character.md): the player character and the inventory.
 - [re/combat.md](re/combat.md): combat and magic of the player.

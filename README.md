@@ -94,6 +94,10 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Creatures leave more gold, and undead and intelligent creatures leave gems (Bloodstone, Pearl, Ruby, Diamond, Star Sapphire) that the market buys.
 * Daland gives the Mace of Disruption for the altar of Kelemvor, and a Flame Tongue waits in DROW2 for the troll fights. See [docs/re/objects.md](docs/re/objects.md), "New gear".
 
+**The phylactery of the lich** (on by default)
+
+* Morik Stormhand, the lich of the Crypts of Clangeddin, protects himself with four spells the moment he sees you, and only a Dispel Magic takes them away. His phylactery is hidden in the crypts before his room. Break it and he fights without them; break it during the fight and they end at once. Barander and the dust of the crypts give hints. See [docs/re/lich.md](docs/re/lich.md).
+
 **Controls**
 
 * A separate Climb Wall key, so Activate no longer tries to climb a wall when you pull a lever.

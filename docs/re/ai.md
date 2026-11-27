@@ -1377,7 +1377,10 @@ it; `dtucaster.h`: the lists; `dtuobj_ai.c`: `caster_move`, `choose_attack_goal`
    points (the contingency), and its spell points: the points of the NPC table
    (0xA504A), and 4 for each caster level at least (rmmk5: 20 in place of 11).
    The points do not come back in a fight; a new fight has all of them. 1.3
-   refills them (9 - levels) minutes after the last cast.
+   refills them (9 - levels) minutes after the last cast. The lich of CLAN3
+   gets no contingency when his phylactery is broken, and a break during a
+   fight ends it (`dtu_lich_no_contingency`, `dtu_spell_end_contingency`;
+   [lich.md](lich.md)).
 
 4. **The casts.** One cast in each round of 6.0 seconds: a choice, the cast time
    of the spell (the table of 0x13A8DB, 6 seconds at most), the cast; the next

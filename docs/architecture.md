@@ -78,6 +78,7 @@ comments.
 | `dtuscroll.c` | The text screen of the Scroll. | `re/ingame-ui.md` |
 | `dtudesc.c` | The description window of items and spells (right click). New in the port. | `description_window.md` |
 | `dtudragon.c` | The encounter with the dragon Tamaramagil of DROW2: the scale of her model, her AI and attacks, the lever, the keys and the treasure. New in the port. | `re/dragon.md` |
+| `dtulich.c` | The phylactery of the lich of CLAN3: the altar of Velsharoon in the east crypts, its scenery line, its break, the end of the contingency of the lich, the texts of the hints. New in the port. | `re/lich.md` |
 | `dtuxp.c` | The experience of the player: the kill line, the next level window, the verbose combat log, the session log lines of deaths, awards and levels. New in the port. | `debug_logs.md` |
 | `dtugear.c` | The new gear (`Dtu_new_gear`): the new item lines, the wands 63 to 67, the gold and gem drops, the Mirror Shield, the market goods by reward stage, the treasury of Tamaramagil, the Mace of Daland. New in the port. | `re/objects.md` ("New gear") |
 | `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
@@ -182,7 +183,9 @@ is in the group "Restored and new content" of the Improvements menu
 (`Impr_switch` of `dtufe.c`: a line with no value is the heading of a
 group). Each line is a setting of `dtuopts.h`, on by default, and with the
 line off the level is as 1.3 ships it. The first one is "The dragon
-Tamaramagil" (`Dtu_restored_dragon`, `dtudragon.c`, `re/dragon.md`).
+Tamaramagil" (`Dtu_restored_dragon`, `dtudragon.c`, `re/dragon.md`), then
+"New gear" (`Dtu_new_gear`, `dtugear.c`) and "The phylactery of the lich"
+(`Dtu_lich_phylactery`, `dtulich.c`, `re/lich.md`).
 
 The experience and combat log improvements (`dtuxp.h`):
 
