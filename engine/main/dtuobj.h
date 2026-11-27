@@ -322,6 +322,9 @@ int dtu_creature_door_unlocked(object *obj,int segnum,int side);
 // plain bonus. 0 (-origcombat): with the 18/xx part when the player is a
 // fighter, as 1.3.
 extern int Dtu_fix_creature_strength;
+extern int Dtu_fix_stoneskin_hit;
+extern int Dtu_fix_hold_hit;
+int dtu_target_held(object *target);		// 1 if an attack hits the target with no roll
 // ASCENT: D-104, a spell roll that reads the die count of the table line.
 // 1: the count of the line. 0 (-origcombat): the count that the last cast
 // of Fireball, Lightning Bolt or Melf's Acid Arrows wrote into the record

@@ -514,6 +514,11 @@ static void player_hits_creature(object *creature,int weapon,vms_vector *hit_pnt
 		dtu_xp_roll_clear();		// ASCENT: no roll (dtuxp.h)
 		dtu_obj_log("combat: obj %d %s sleeps: hit, it wakes",(int)(creature-Objects),dtu_object_name(creature));
 	}
+	else if (dtu_target_held(creature)) {		// ASCENT: Dtu_fix_hold_hit
+		roll = 1;
+		dtu_xp_roll_clear();
+		dtu_obj_log("combat: obj %d %s is held: hit with no roll",(int)(creature-Objects),dtu_object_name(creature));
+	}
 	else
 		roll = dtu_char_attack_roll(creature,weapon);
 
@@ -1624,6 +1629,8 @@ static void combat_init(void)
 		Dtu_fix_thrown_str_hit = 0;
 		Dtu_fix_spell_hours = 0;
 		Dtu_fix_time_wrap = 0;
+		Dtu_fix_stoneskin_hit = 0;
+		Dtu_fix_hold_hit = 0;
 		Dtu_fix_rest_effects = 0;
 		Dtu_fix_turn_undead = 0;
 		Dtu_fix_npc_list = 0;

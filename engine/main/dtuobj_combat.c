@@ -89,6 +89,23 @@ static const signed char Str_to_hit[20] = {
 // (default): the plain bonus of the strength. 0 (-origcombat, dtuchar.c):
 // the rule of the executable.
 int Dtu_fix_creature_strength = 1;
+// ASCENT, Dtu_fix_stoneskin_hit: 0x2A29A takes a hit of the Stone Skin of
+// the player before the attack roll of the creature, so a miss uses one
+// up too. The attack of the player on a creature takes one only after
+// the roll (0x2AE44). Corrected: the roll comes first for the player too
+// (to_hit_roll takes the hit of the Stone Skin).
+int Dtu_fix_stoneskin_hit = 1;
+// ASCENT, Dtu_fix_hold_hit: 1.3 hits a sleeping target with no roll
+// (0x2A839) but rolls against a held one. AD&D 2e: a held or paralyzed
+// target is hit automatically. Corrected: an attack on a target with the
+// Hold effect (Hold Person, Hold Undead, the stun of Mind Blast) hits with
+// no roll. The hold stays.
+int Dtu_fix_hold_hit = 1;
+
+int dtu_target_held(object *target)
+{
+	return Dtu_fix_hold_hit && target != NULL && (target->dtu.m_88 & DTU_FX_HOLD) != 0;
+}
 int Dtu_fix_item_reach = 1;		// ASCENT: dtuobj.h
 int Dtu_fix_melee_wall = 1;		// ASCENT: dtuobj.h
 
@@ -211,6 +228,13 @@ static int to_hit_roll(object *target,object *attacker,int weapon,int *roll_out)
 		target->dtu.m_e8[0] = 0;
 		*roll_out = 0;
 		dtu_xp_roll_clear();		// ASCENT: no roll (dtuxp.h)
+		return 1;
+	}
+	// ASCENT: Dtu_fix_hold_hit: a held target is hit
+	if (dtu_target_held(target)) {
+		*roll_out = 0;
+		dtu_xp_roll_clear();
+		dtu_obj_log("attack: obj %d %s is held: hit with no roll",(int)(target-Objects),dtu_object_name(target));
 		return 1;
 	}
 	// The roll of the player (0x2AAB5): the character code
@@ -1279,7 +1303,7 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 		return 0;
 
 	if (weapon != DTU_DIRECT && ((attacker && attacker != player) || weapon >= 0)) {
-		int roll, hit, invulnerable = 0;
+		int roll, hit, invulnerable = 0, skin;
 
 		// 0x2A270: Invulnerability keeps off the attacks of a creature of a
 		// level below 4 and the weapons that are not magic
@@ -1287,7 +1311,7 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 			 (creature_level(attacker) < 4 || (weapon >= 0 && weapon < N_weapon_types && !bm_tbl_has_flag(Weapon_item_info[weapon].record,"magic"))))
 			invulnerable = 1;
 		// 0x2A29A: Stone Skin takes the attack of an attacker
-		if ((player->dtu.m_88 & DTU_FX_STONESKIN) && attacker && attacker != player) {
+		if (!Dtu_fix_stoneskin_hit && (player->dtu.m_88 & DTU_FX_STONESKIN) && attacker && attacker != player) {
 			PALETTE_FLASH_ADD(245,126,10);
 			HUD_init_message("You are protected by StoneSkin Spell.");
 			player->dtu.m_80--;
@@ -1301,7 +1325,14 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 			return 0;
 		}
 
+		// ASCENT: Dtu_fix_stoneskin_hit: the roll first, without the Stone
+		// Skin (dtu_hit_test_vs would take a hit of it, but not for a 20)
+		skin = Dtu_fix_stoneskin_hit && (player->dtu.m_88 & DTU_FX_STONESKIN) && attacker && attacker != player;
+		if (skin)
+			player->dtu.m_88 &= ~DTU_FX_STONESKIN;
 		hit = to_hit_roll(player,attacker,weapon,&roll);
+		if (skin)
+			player->dtu.m_88 |= DTU_FX_STONESKIN;
 		if (hit <= 0) {
 			dtu_obj_log("attack: %s misses the player (roll %d, result %d)",
 				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);
@@ -1309,6 +1340,14 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 			// ASCENT: the miss sound of a melee attack (dtumiss.c)
 			if (attacker && attacker->type == OBJ_ROBOT && (weapon < 0 || weapon_is_melee(weapon)))
 				dtu_miss_sound_creature(attacker,weapon >= 0 && weapon < N_weapon_types ? weapon : -1);
+			return 0;
+		}
+		// ASCENT: Dtu_fix_stoneskin_hit: the Stone Skin takes the hit
+		if (skin) {
+			PALETTE_FLASH_ADD(245,126,10);
+			HUD_init_message("You are protected by StoneSkin Spell.");
+			player->dtu.m_80--;
+			dtu_obj_log("attack: the stone skin of the player takes the hit of %s (roll %d), %d left",dtu_object_name(attacker),roll,player->dtu.m_80);
 			return 0;
 		}
 		// 0x2A45F: a hit stops the cast of the player (0x9305D)
