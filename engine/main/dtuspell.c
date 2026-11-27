@@ -4801,6 +4801,8 @@ static int cspell_weight(object *obj,int e,fix dist)
 // the allies of its caster). *pass: a piece of scenery that touches the
 // body of the caster and that the missile would start in (a caster with its
 // back at a bed), -1 none: its missiles pass it.
+#define CAI_WAY_STEP	F1_0		// the pieces of the test: finer than the way of a missile in one frame (3.3), so that a body just in front of the player counts
+
 static int caster_missile_free(object *obj,int s,int *pass)
 {
 	vms_vector pos = obj->pos, dir;
@@ -4813,10 +4815,10 @@ static int caster_missile_free(object *obj,int s,int *pass)
 	if (seg < 0) { pos = obj->pos; seg = obj->segnum; }
 	vm_vec_sub(&dir,&ConsoleObject->pos,&pos);
 	range = vm_vec_normalize_quick(&dir) + ConsoleObject->size;
-	t = dtu_missile_path_target_pass(&pos,seg,&dir,3 < N_weapon_types ? 3 : 0,s,n,range,-1);
+	t = dtu_missile_path_target_step(&pos,seg,&dir,3 < N_weapon_types ? 3 : 0,s,n,range,-1,CAI_WAY_STEP);
 	if (t >= 0 && Objects[t].type == OBJ_DRESSING && vm_vec_dist(&Objects[t].pos,&obj->pos) < obj->size + Objects[t].size) {
 		*pass = t;
-		t = dtu_missile_path_target_pass(&pos,seg,&dir,3 < N_weapon_types ? 3 : 0,s,n,range,t);
+		t = dtu_missile_path_target_step(&pos,seg,&dir,3 < N_weapon_types ? 3 : 0,s,n,range,t,CAI_WAY_STEP);
 	}
 	return ConsoleObject != NULL && t == ConsoleObject-Objects;
 }
@@ -5045,7 +5047,8 @@ static struct {
 	int		empty;			// no points for a spell of the list
 	fix		hold_time, power_time;
 	fix		last_cast;
-	int		blocked;		// choices in a row with a line to the player and no usable spell
+	int		blocked;		// choices in a row with a line to the player and no free way for a missile
+	int		globed;			// a Minor Globe of the player stops each spell that the caster could cast
 	fix		shift_end;		// it steps to the side until this time
 } Cai[MAX_OBJECTS];
 
@@ -5168,6 +5171,11 @@ static void caster_fight_start(object *obj,int row,int L)
 		f2fl(GameTime),L,Cai[n].pool[0],Cai[n].pool[1],names[0] ? names : "none");
 }
 
+// Why caster_weight() gave 0 in the choice that runs: the way of a missile
+// is not free (the caster steps to the side), a Minor Globe of the player
+// stops the spell (with nothing else to cast the caster fights in melee)
+static int Weight_way, Weight_globe;
+
 // The weight of an entry for the choice, 0: not now. dist: the distance to
 // the player, sees: a free line to the player.
 static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int sees)
@@ -5187,12 +5195,18 @@ static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int se
 	}
 	if (!sees)
 		return 0;
-	if (dtu_spell_globe(pl) && globe_stops(s,0))
+	if (dtu_spell_globe(pl) && globe_stops(s,0)) {
+		Weight_globe = 1;
 		return 0;
+	}
 	reach = (s == DTU_SPELL_MIND_BLAST) ? f2i(MIND_BLAST_REACH) : (s == DTU_SPELL_FLAME_STRIKE) ? spell_int(s,"range",360) : spell_reach(s,L);
 	if (reach > 0 && gap > i2f(reach))
 		return 0;
 	if ((e->flags & CS_CLOSE) && gap > BURNING_HANDS_REACH)
+		return 0;
+	// an area around the caster (Fear, radius 90 after the table fixup): the
+	// player must be in it
+	if (spell_self(s) && spell_area(s) && dist > i2f(spell_int(s,"radius",0) + L * spell_int(s,"level_radius",0)))
 		return 0;
 	switch (s) {
 		case 16: {		// Fireball: not on itself, not on an ally
@@ -5240,8 +5254,10 @@ static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int se
 	if (!(e->flags & CS_CLOSE) && s != DTU_SPELL_MIND_BLAST && s != DTU_SPELL_FLAME_STRIKE && !spell_self(s)) {
 		int pass;
 
-		if (!caster_missile_free(obj,s,&pass))
+		if (!caster_missile_free(obj,s,&pass)) {
+			Weight_way = 1;
 			return 0;
+		}
 	}
 	// a held player cannot dodge: damage first
 	if ((pw & DTU_FX_HOLD) && s < N_SPELL_RULES && Spell_rule[s].kind == DTU_SK_DAMAGE)
@@ -5258,17 +5274,30 @@ static void caster_choose(object *obj,int row,int L,fix dist,int sees)
 	int n = obj-Objects, total = 0, r, t;
 
 	Cai[n].empty = caster_empty(obj,row,L);
+	Weight_way = Weight_globe = 0;
 	for (e=list;e->spell != 255;e++)
 		if (!(e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell) && caster_cost(e) <= Cai[n].pool[caster_book(e->spell)])
 			total += caster_weight(obj,e,L,dist,sees);
+	// a Minor Globe of the player stops the spells of the caster and it has
+	// no other: it fights in melee while the globe lasts
+	if (total <= 0 && Weight_globe && !Cai[n].empty) {
+		if (!Cai[n].globed)
+			dtu_spell_log("caster: obj %d %s: the Minor Globe of the player stops its spells: it fights in melee",n,target_name(obj));
+		Cai[n].globed = 1;
+	}
+	else {
+		if (Cai[n].globed)
+			dtu_spell_log("caster: obj %d %s casts again",n,target_name(obj));
+		Cai[n].globed = 0;
+	}
 	if (total <= 0) {
 		Cai[n].next = GameTime + CAI_RETRY;
-		// a free line and points, but no spell reaches the player (scenery or
-		// a creature in the way of each missile): a step to the side
-		if (sees && !Cai[n].empty && ++Cai[n].blocked >= 2) {
+		// a free line and points, but scenery or a creature is in the way of
+		// each missile: a step to the side
+		if (sees && !Cai[n].empty && Weight_way && ++Cai[n].blocked >= 2) {
 			Cai[n].blocked = 0;
 			Cai[n].shift_end = GameTime + CAI_SHIFT;
-			dtu_spell_log("caster: obj %d %s has no spell that reaches the player: it steps to the side",n,target_name(obj));
+			dtu_spell_log("caster: obj %d %s has no free way for a missile to the player: it steps to the side",n,target_name(obj));
 		}
 		return;
 	}
@@ -5378,6 +5407,17 @@ static void caster_cast(object *obj,fix dist,int sees)
 		dtu_spell_log("caster: obj %d %s does not cast '%s': no free line to the player",n,target_name(obj),spell_name(s));
 		return;
 	}
+	// the same for a missile whose way is not free any more (the player or
+	// the caster moved in the cast time)
+	if (!(flags & (CS_HEAL|CS_CLOSE)) && s != DTU_SPELL_MIND_BLAST && s != DTU_SPELL_FLAME_STRIKE && !spell_self(s)) {
+		int pass;
+
+		if (!caster_missile_free(obj,s,&pass)) {
+			Cai[n].next = GameTime + CAI_RETRY;
+			dtu_spell_log("caster: obj %d %s does not cast '%s': the way of its missile is not free",n,target_name(obj),spell_name(s));
+			return;
+		}
+	}
 	Cai[n].pool[book] -= cost;
 	Cai[n].next = Cai[n].chosen_at + CAI_ROUND;
 	if (dtu_time_left(Cai[n].next) < CAI_REST)
@@ -5467,13 +5507,6 @@ int dtu_caster_profile(object *obj)
 	return caster_row(obj) >= 0;
 }
 
-int dtu_caster_weapon(object *obj)
-{
-	int r = caster_row(obj);
-
-	return r >= 0 && (Caster_types[r].flags & CF_WEAPON) != 0;
-}
-
 int dtu_caster_fire(object *obj,fix dist)
 {
 	int n;
@@ -5491,13 +5524,17 @@ int dtu_caster_move(object *obj)
 {
 	int r = caster_row(obj), n;
 
-	if (r < 0 || (Caster_types[r].flags & CF_WEAPON) || Robot_info[obj->id].attack_type == 1)
+	if (r < 0 || (Caster_types[r].flags & CF_MOVE13) || Robot_info[obj->id].attack_type == 1)
 		return 0;
 	n = cai_state(obj);
+	if (!Cai[n].fight && (Caster_types[r].flags & CF_MELEE) && dtu_creature_in_fight(obj))
+		return 2;
 	if (!Cai[n].fight)
 		return 0;
-	if (Cai[n].empty)
+	if (Cai[n].empty || Cai[n].globed || (Caster_types[r].flags & CF_MELEE))
 		return 2;
+	if (Cai[n].spell >= 0)
+		return 4;
 	return (Cai[n].shift_end && dtu_time_left(Cai[n].shift_end) > 0) ? 3 : 1;
 }
 

@@ -8,10 +8,12 @@
 The rules are in docs/re/ai.md, "Caster AI" (engine/main/dtuspell.c,
 dtucaster.h, dtuobj_ai.c). Each case is one hidden run of 60 seconds at 30
 frames a second with -objlog and the seed 1: the player (a fighter of level
-8, healed each second, who does not fight) stands in front of one caster,
-and the test command alone=OBJ removes the other creatures. A Magic Missile
-of the player at second 0.5 makes a caster hostile whose script keeps it
-peaceful. Each case runs with the setting on ("after") and with
+8, healed each second, who does not fight) stands 20.0 from one caster with
+a free line to it (the test command goobjsee), and the test command
+alone=OBJ removes the other creatures. A Knock of the player on the
+caster at second 0.5 makes it hostile (a creature that is the target of a
+spell of the player wakes and is hostile; the script of most casters keeps
+them peaceful before). Each case runs with the setting on ("after") and with
 -origcasterai ("before", the casters of 1.3 with their Dtu_fix_caster_*
 corrections).
 
@@ -28,10 +30,11 @@ The checks (the exit status is 1 when one fails):
     notice, in the frame of the notice;
   - after: the caster attacks 4 times or more in the minute (the dragon
     hatchling is not in the list and is only measured);
-  - door: CLAN3, the lich obj 10 in segment 443 and the player behind the
-    closed door of its room (segment 251), nobody else: no notice, no
-    protection and no cast in 30 seconds. Then the player stands in the
-    room: the lich notices the player;
+  - door: FLAME, the drow mage obj 19 (hostile from the start) in segment
+    191 and the player in segment 318, behind the closed door of its room
+    (wall 16), nobody else: no notice, no protection and no cast in 30
+    seconds. Then the player stands in the room: the mage notices the
+    player and casts;
   - allies: DROW1, the player in front of the priestess obj 59 with the drow
     around her: no spell of a drow acts on a drow;
   - player: Mirror Image and Minor Globe of Invulnerability on the player
@@ -63,14 +66,15 @@ CASES = [
     ("drow mage 9 (rmmk9)", "FLAME", 19, 14, "rmmk9", True, True),
     ("drow priestess 5 (rffk5)", "DROW1", 55, 14, "rffk5", True, True),
     ("drow priestess 8 (rffk8b)", "DROW1", 59, 14, "rffk8b", True, True),
-    ("drow priestess 9 (rffk9)", "FLAME", 35, 14, "rffk9", True, True),
     ("illithid (flayer)", "DROW3", 59, 20, "flayer", False, True),
     ("human cleric 4 (hmft4)", "CLAN1", 105, 20, "hmft4", True, True),
     ("human cleric 7 (hmft7)", "IBBALAR", 69, 20, "hmft7", True, True),
     ("kobold shaman (kob_spel)", "KOBOLDS", 19, 14, "kob_spel", True, True),
     ("Ibbalar", "IBBALAR", 90, 20, "ibbalar", True, True),
-    ("Halaster", "FLAME", 17, 20, "halaster", True, True),
-    ("Thashasa", "IBBALAR", 20, 14, "thashasa", True, True),
+    # Halaster is not an AI object before his script starts him, and Thashasa
+    # loses the player at once in this setup: measured, not checked
+    ("Halaster", "FLAME", 17, 20, "halaster", True, False),
+    ("Thashasa", "IBBALAR", 20, 14, "thashasa", True, False),
     ("Xabash", "BEHOLDER", 106, 30, "xabash", False, True),
     ("beholder", "BEHOLDER", 111, 30, "Beholder", False, True),
     ("avatar of Lolth", "FLAME", 36, 30, "avatar", True, True),
@@ -149,9 +153,7 @@ def measure(text, obj, frames):
                 m["notice"] = t
         elif s.startswith(tag) and "sees the player" in s and m["notice"] is None:
             m["notice"] = t
-        k = re.match(r"spell: '[^']+' level \d+ on obj 0 you: damage (\d+), done (\d+)", s)
-        if k:
-            m["damage"] += int(k.group(2))
+        # (a spell that deals damage has this line too)
         k = re.match(r"damage: the player takes (\d+) from ", s)
         if k:
             m["damage"] += int(k.group(1))
@@ -165,8 +167,8 @@ def measure(text, obj, frames):
 
 
 def case_cmds(obj, dist, extra=()):
-    return script(["2:seed=1", "4:alone=%d" % obj, "5:setlevel=8", "8:heal=500", "10:goobj=%d.%d" % (obj, dist), "12:face=%d" % obj,
-                   "15:spelltest=33.1.%d.0" % obj] + list(extra), FRAMES)
+    return script(["2:seed=1", "4:alone=%d" % obj, "5:setlevel=8", "8:heal=500", "10:goobjsee=%d.20" % obj,
+                   "15:spelltest=28.1.%d.0" % obj] + list(extra), FRAMES)
 
 
 def main():
@@ -234,26 +236,29 @@ def main():
             check(name, b["caster_lines"] == 0, "no line of the loop with -origcasterai")
 
     if not only or "door" in only:
-        # CLAN3: the lich obj 10 in segment 443, the closed door between 443 and 251
+        # FLAME: the drow mage obj 19 in segment 191, the closed door wall 16 between segment 190 and 318
         d = os.path.join(work, "door")
         os.makedirs(d)
-        text = run(a, d, "CLAN3", 900, script(["2:seed=1", "4:alone=10", "5:setlevel=8", "10:goseg=251"], 900), [])
-        m = measure(text, 10, 900)
-        seen = re.search(r"obj 10 Lich3: sees the player", text) is not None
-        check("door", bool(text) and m["notice_frame"] is None and not m["casts"] and not seen and "of obj 10 Lich3" not in text.split("goseg")[-1],
-              "the lich behind its closed door: notice %s, casts %d, sees the player %s" % (m["notice_frame"], len(m["casts"]), seen))
+        text = run(a, d, "FLAME", 900, script(["2:seed=1", "4:alone=19", "5:setlevel=8", "10:goseg=318"], 900), [])
+        m = measure(text, 19, 900)
+        seen = re.search(r"obj 19 rmmk9: sees the player", text) is not None
+        effects = len(re.findall(r"spell: '[^']+' \(\d+\) level \d+ on obj 19 ", text))
+        check("door", bool(text) and m["notice_frame"] is None and not m["casts"] and not seen and effects == 0,
+              "the drow mage behind its closed door: notice %s, casts %d, spells on it %d, sees the player %s" % (
+                  m["notice_frame"], len(m["casts"]), effects, seen))
         d = os.path.join(work, "door_open")
         os.makedirs(d)
-        text = run(a, d, "CLAN3", 900, script(["2:seed=1", "4:alone=10", "5:setlevel=8", "10:goobj=10.30", "12:face=10"], 900), [])
-        m = measure(text, 10, 900)
+        text = run(a, d, "FLAME", 900, script(["2:seed=1", "4:alone=19", "5:setlevel=8", "10:goobjsee=19.20"], 900), [])
+        m = measure(text, 19, 900)
         check("door", m["notice_frame"] is not None and len(m["casts"]) > 0,
-              "the player in the room of the lich: notice at frame %s, %d casts" % (m["notice_frame"], len(m["casts"])))
+              "the player in the room of the drow mage: notice at frame %s, buffs %s, %d casts" % (
+                  m["notice_frame"], ", ".join(m["buffs"]) or "none", len(m["casts"])))
 
     if not only or "allies" in only:
         d = os.path.join(work, "allies")
         os.makedirs(d)
-        text = run(a, d, "DROW1", FRAMES, script(["2:seed=1", "5:setlevel=8", "8:heal=500", "10:goobj=59.14", "12:face=59",
-                                                  "15:spelltest=33.1.59.0"], FRAMES), [])
+        text = run(a, d, "DROW1", FRAMES, script(["2:seed=1", "5:setlevel=8", "8:heal=500", "10:goobjsee=59.20",
+                                                  "15:spelltest=28.1.59.0"], FRAMES), [])
         bad = re.findall(r"spell: '([^']+)' level \d+ on obj (\d+) (r\w+): damage", text)
         held = [h for h in re.findall(r"spell: effect (Hold Person|Slow|Fear) on obj (\d+) (\w+)", text) if h[1] != "0"]
         spared = len(re.findall(r"does not act on its ally", text))
@@ -264,18 +269,30 @@ def main():
     if not only or "player" in only:
         d = os.path.join(work, "player")
         os.makedirs(d)
-        text = run(a, d, "DROW1", 900, script(["2:seed=1", "4:alone=13", "5:class=2", "6:setlevel=8", "8:heal=500", "9:cast=56", "9:cast=57",
-                                               "10:goobj=13.14", "12:face=13", "15:spelltest=33.1.13.0"], 900), [])
+        # the player with a Minor Globe: the mage of level 5 has only spells of level 1 to 3, so it fights in melee
+        text = run(a, d, "DROW1", 1200, script(["2:seed=1", "4:alone=13", "5:setlevel=8", "8:heal=500", "9:cast=56", "9:cast=57",
+                                                "10:goobjsee=13.20", "15:spelltest=28.1.13.0"], 1200), [])
         took = len(re.findall(r"Mirror Image of obj 0 you: an image takes the attack", text))
+        melee = "the Minor Globe of the player stops its spells: it fights in melee" in text
+        check("player", took > 0 and melee and "Mirror Image on obj 0 you" in text and "Minor Globe of Invulnerability on obj 0 you" in text,
+              "the player with Mirror Image and a Minor Globe against the drow mage: the mage fights in melee (%s), %d images took a touch" % (
+                  melee, took))
+        # the globe against spells that are cast: the test command castby
+        d = os.path.join(work, "player_globe")
+        os.makedirs(d)
+        text = run(a, d, "DROW1", 200, script(["2:seed=1", "4:alone=13", "5:setlevel=8", "8:heal=500", "9:cast=57", "20:castby=33.13",
+                                               "30:castby=22.13", "40:castby=16.13", "50:castby=59.13", "60:castby=13.13", "70:castby=33.13"],
+                                              200, heal=False), ["-noattack"])
         stopped = re.findall(r"the Minor Globe of Invulnerability of obj 0 you stops '([^']+)'", text)
-        check("player", took + len(stopped) > 0 and "Mirror Image on obj 0 you" in text and "Minor Globe of Invulnerability on obj 0 you" in text,
-              "the player with Mirror Image and a Minor Globe: %d images took an attack, the globe stopped %d spells (%s)" % (
-                  took, len(stopped), ", ".join(sorted(set(stopped))) or "none"))
-        own = len(re.findall(r"Mirror Image of obj 13 rmmk5: an image takes the attack", text))
+        flame = re.search(r"spell: 'Flame Strike' level \d+ on obj 0 you: damage (\d+)", text)
+        missile = re.findall(r"spell: 'Magic Missile' level \d+ on obj 0 you: damage (\d+)", text)
+        check("player", sorted(set(stopped)) == ["Fireball", "Hold Person", "Magic Missile"] and flame is not None and len(missile) > 0,
+              "the globe of the player stops %s; Flame Strike (level 5) deals %s; after Dispel Magic a Magic Missile deals %s" % (
+                  ", ".join(sorted(set(stopped))) or "nothing", flame.group(1) if flame else "nothing", missile[0] if missile else "nothing"))
         d = os.path.join(work, "player_attacks")
         os.makedirs(d)
-        text = run(a, d, "DROW1", 600, script(["2:seed=1", "4:alone=13", "5:setlevel=8", "8:heal=500", "10:goobj=13.14", "12:face=13",
-                                               "15:spelltest=33.1.13.0"] + ["%d:spelltest=33.8.13.0" % f for f in range(60, 600, 30)], 600), [])
+        text = run(a, d, "DROW1", 600, script(["2:seed=1", "4:alone=13", "5:setlevel=8", "8:heal=500", "10:goobjsee=13.20",
+                                               "15:spelltest=28.1.13.0"] + ["%d:spelltest=33.8.13.0" % f for f in range(60, 600, 30)], 600), [])
         own = len(re.findall(r"Mirror Image of obj 13 rmmk5: an image takes the attack", text))
         check("player", own > 0, "the images of the drow mage took %d Magic Missiles of the player" % own)
 

@@ -226,18 +226,16 @@ static void ai_fire_body(object *obj,fix dist)
 	// ASCENT: Dtu_caster_ai (dtuspell.h): at its fire frame a caster with a
 	// spell list casts the spell that is due; else it touches a player in its
 	// reach. The weapon spell of 1.3 (a weapon type below 0, 0x10040) is not
-	// cast: the list has its spells. A type that fires its weapon between its
-	// casts (a beholder, an illithid) goes on to its weapon.
+	// cast: the list has its spells. It fires no weapon, as a caster of 1.3
+	// (0x11DE9).
 	if (dtu_caster_profile(obj)) {
 		if (dtu_caster_fire(obj,dist))
 			return;
-		if (!dtu_caster_weapon(obj) || w < 0) {
-			if (dist <= reach && !Dtu_player_dead && !Player_is_dead) {
-				dtu_obj_log("attack: obj %d %s (a caster) touches the player",objnum,dtu_object_name(obj));
-				melee_hit(target,obj);
-			}
-			return;
+		if (dist <= reach && !Dtu_player_dead && !Player_is_dead) {
+			dtu_obj_log("attack: obj %d %s (a caster) touches the player",objnum,dtu_object_name(obj));
+			melee_hit(target,obj);
 		}
+		return;
 	}
 
 	if (w < 0) {
@@ -258,7 +256,7 @@ static void ai_fire_body(object *obj,fix dist)
 	// (dtuspell.c). The levels are Robot_info+0xE2 and +0xE3: the NPC table,
 	// else spell_level= of the line (Monster_ext.spell_level is only the
 	// line, which prstsprt and hatchlng do not have).
-	if (dtu_spell_creature_caster(obj) && !dtu_caster_weapon(obj)) {
+	if (dtu_spell_creature_caster(obj)) {
 		if (dist <= reach) {
 			dtu_obj_log("attack: obj %d %s (a caster) touches the player",objnum,dtu_object_name(obj));
 			melee_hit(target,obj);
@@ -1752,25 +1750,24 @@ static int melee_in_reach(object *obj,fix dist)
 // cleared here). Any other: ATAK. reco 1: the choice of step 25 point 6
 // (0x15A2A, both states RECO): 1.3 tests only the attack type there
 // (0x15A60) and not -2, so a caster with -2 stays in RECO after its attack.
+static fix caster_touch_reach(object *obj);		// ASCENT: Dtu_caster_ai, below
+
 static void choose_attack_goal(object *obj,fix dist,int reco)
 {
 	ai_static *aip = &obj->ctype.ai_info;
 
 	// ASCENT: Dtu_caster_ai (dtuspell.h): a ranged type with a spell list.
-	// ATAK for the attack animation of the cast that is due (ailp+0x2D) and
-	// for a type that fires its weapon between its casts; else ATAK in the
-	// reach of its touch (it attacks between two casts and when it has no
-	// spell points), and LOCK out of it: it walks or holds its place
-	// (caster_move()), it does not stand in RECO.
+	// ATAK for the attack animation of the cast that is due (ailp+0x2D);
+	// else ATAK in the reach of its touch (it attacks between two casts and
+	// when it has no spell points), and LOCK out of it: it walks or holds
+	// its place (caster_move()), it does not stand in RECO.
 	if (Robot_info[obj->id].attack_type != 1 && dtu_caster_profile(obj)) {
 		if (dtu_spell_creature_take_ready(obj)) {
 			aip->GOAL_STATE = DAIS_ATAK;
 			dtu_obj_log("obj %d %s: the cast is due, attacks",(int)(obj-Objects),dtu_object_name(obj));
 		}
-		else if (dtu_caster_weapon(obj))
-			aip->GOAL_STATE = DAIS_ATAK;
 		else
-			aip->GOAL_STATE = (dist <= obj->size + ConsoleObject->size + i2f(2)) ? DAIS_ATAK : DAIS_LOCK;
+			aip->GOAL_STATE = (dist <= caster_touch_reach(obj)) ? DAIS_ATAK : DAIS_LOCK;
 		return;
 	}
 
@@ -1790,6 +1787,18 @@ static void choose_attack_goal(object *obj,fix dist,int reco)
 	}
 	else
 		aip->GOAL_STATE = DAIS_ATAK;
+}
+
+// ASCENT: Dtu_caster_ai: the reach of the touch of a ranged caster, as
+// ai_fire tests it (0x11B06): the radius of its body, the radius of the
+// body of the player and 2.0
+static fix caster_touch_reach(object *obj)
+{
+	fix r1, h1, r2, h2;
+
+	dtu_get_body_size(obj,&r1,&h1);
+	dtu_get_body_size(ConsoleObject,&r2,&h2);
+	return r1 + r2 + i2f(2);
 }
 
 // ASCENT: Dtu_caster_ai (dtuspell.h): the senses of a caster. In a fight:
@@ -1832,7 +1841,8 @@ int dtu_creature_sees_player(object *obj)
 // casts), it walks to a player farther away than DTU_CASTER_KEEP_FAR, and
 // between the two it holds its place. Mode 2, no spell points: it walks to
 // the player up to the reach of its touch. Mode 3, no spell of it reaches
-// the player from its place: it steps to the side for CAI_SHIFT.
+// the player from its place: it steps to the side for CAI_SHIFT. Mode 4, in
+// the cast time of its spell: it stands.
 #define CASTER_RETREAT_PROBE	i2f(8)		// the free way behind the body that a step back needs
 #define CASTER_RETREAT_MORE	i2f(12)		// a retreat goes on to this much past the near distance
 
@@ -1861,8 +1871,10 @@ static void caster_move(object *obj,fix dist,vms_vector *vec_to_player,int mode)
 			}
 		}
 	}
+	else if (mode == 4)
+		walk = 0;		// its cast runs: it stands
 	else if (mode == 2)
-		walk = dist > obj->size + ConsoleObject->size + F1_0;
+		walk = dist > caster_touch_reach(obj) - F1_0;
 	else if (dist < DTU_CASTER_KEEP_NEAR + ((ail->flags & AILF_AWAY) ? CASTER_RETREAT_MORE : 0)) {
 		vms_vector p;
 
@@ -1887,7 +1899,7 @@ static void caster_move(object *obj,fix dist,vms_vector *vec_to_player,int mode)
 		if (step != ail->caster_step) {
 			ail->caster_step = (ubyte) step;
 			dtu_obj_log("caster: obj %d %s %s, distance %.1f%s",(int)(obj-Objects),dtu_object_name(obj),names[step],f2fl(dist),
-				mode == 2 ? " (no spell points)" : "");
+				mode == 2 ? " (it closes in)" : mode == 4 ? " (its cast runs)" : "");
 		}
 	}
 	if (aip->CURRENT_STATE == DAIS_ATAK)

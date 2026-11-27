@@ -59,13 +59,16 @@ static const caster_spell Caster_lists[CL_COUNT][CASTER_LIST_MAX] = {
 	// then melee
 	{ { 3, 0, 0, CS_BUFF },
 	  { 52, 0, 30, 0 }, { 10, 0, 60, CS_HEAL }, { 11, 0, 60, CS_HEAL }, { 255 } },
-	// CL_ILLITHID: the Mind Blast (a power, no points), then Hold Person;
-	// its weapon between the two
+	// CL_ILLITHID: the Mind Blast (a power, no points), then Hold Person
+	// (the weapon spell of the type in 1.3, 0xAC7B2). It walks to the player
+	// and touches (2d4, the dice of the creature setup).
 	{ { 60, 1, 100, CS_FREE }, { 22, 1, 30, 0 }, { 255 } },
 	// CL_BEHOLDER: the eyes of a beholder as the spells that the tables
-	// have (AD&D 2e: slow, fear, and charm or sleep as Hold Person); its
-	// weapon between the casts
-	{ { 47, 1, 30, 0 }, { 14, 1, 20, 0 }, { 22, 1, 30, 0 }, { 255 } },
+	// have (AD&D 2e: slow, fear, charm or sleep as Hold Person, cause
+	// serious wounds as Magic Missile, disintegrate as Lightning Bolt). It
+	// keeps the move of 1.3 (it flies). Its weapon of the tables (Beholder
+	// Burn) has the lifetime -1 and is not fired, as in 1.3.
+	{ { 47, 1, 25, 0 }, { 14, 1, 20, 0 }, { 22, 1, 25, 0 }, { 33, 1, 35, 0 }, { 32, 1, 20, 0 }, { 255 } },
 	// CL_MAGE_PRIEST: Thashasa (a mage and a priestess)
 	{ { 45, 0, 0, CS_BUFF }, { 56, 0, 0, CS_BUFF }, { 53, 0, 0, CS_BUFF },
 	  { 33, 0, 35, 0 }, { 36, 0, 25, 0 }, { 22, 0, 25, 0 }, { 58, 0, 25, 0 }, { 32, 0, 25, 0 }, { 10, 0, 60, CS_HEAL }, { 255 } },
@@ -75,8 +78,9 @@ static const caster_spell Caster_lists[CL_COUNT][CASTER_LIST_MAX] = {
 };
 
 // The flags of a type
-#define CF_WEAPON	0x01		// it fires its weapon between the casts (1.3: a caster never fires)
 #define CF_POWER		0x02		// not a caster of 1.3 (no mage or cleric level): its list is a power of the creature
+#define CF_MELEE		0x04		// it walks to the player also with spells: the blast and the hold on its way, then its touch
+#define CF_MOVE13	0x08		// it keeps the move of 1.3 (a creature that flies)
 
 // The types by the name of the $MONSTER line. level: the caster level (AD&D
 // 2e, the number of the type name for the drow and the humans); 0: the
@@ -111,6 +115,6 @@ static const struct { const char *name; unsigned char list, level, flags; } Cast
 	{ "prstsprt", CL_DROW_PRIEST, 6, 0 },
 	{ "thashasa", CL_MAGE_PRIEST, 7, 0 },
 	{ "avatar", CL_AVATAR, 16, 0 },
-	{ "beholder", CL_BEHOLDER, 8, CF_WEAPON }, { "xabash", CL_BEHOLDER, 12, CF_WEAPON },
-	{ "flayer", CL_ILLITHID, 8, CF_WEAPON|CF_POWER },
+	{ "beholder", CL_BEHOLDER, 8, CF_MOVE13 }, { "xabash", CL_BEHOLDER, 12, CF_MOVE13 },
+	{ "flayer", CL_ILLITHID, 8, CF_POWER|CF_MELEE },
 };

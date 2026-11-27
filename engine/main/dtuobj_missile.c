@@ -639,8 +639,18 @@ int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int we
 }
 
 // ASCENT: the same with an object that the missile passes (pass, -1: none),
-// for Dtu_caster_ai: the scenery at the body of a caster
+// for Dtu_caster_ai: the scenery at the body of a caster. step above 0: the
+// bodies are tested in pieces of this length, as the flight tests them in
+// each frame. One long piece can miss a body that the missile grazes (a
+// missile that comes down over a table: the test of the whole line takes
+// the height at the edge of the body, the flight is inside its radius
+// later, at the height of its top).
 int dtu_missile_path_target_pass(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range, int pass)
+{
+	return dtu_missile_path_target_step(pos,segnum,dir,weapon_type,spell,parent,range,pass,0);
+}
+
+int dtu_missile_path_target_step(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range, int pass, fix step)
 {
 	static object stand_in;
 	int rtype, model, vclip, fate;
@@ -673,6 +683,25 @@ int dtu_missile_path_target_pass(vms_vector *pos, int segnum, vms_vector *dir, i
 	if (fate != HIT_NONE && fate != HIT_WALL)
 		return -1;
 	end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
+	if (step > 0) {
+		fix len = vm_vec_dist(pos,&end), done = 0;
+
+		while (done < len) {
+			fix piece = len - done < step ? len - done : step;
+			vms_vector e;
+			int best, seg;
+
+			vm_vec_scale_add(&e,&stand_in.pos,dir,piece);
+			best = missile_path_object(&stand_in,&e,piece,parent,Objects[parent].signature,pass,pass >= 0 ? Objects[pass].signature : 0,spell,&ip);
+			if (best >= 0)
+				return best;
+			stand_in.pos = e;
+			if ((seg = find_point_seg(&e,stand_in.segnum)) >= 0)
+				stand_in.segnum = seg;
+			done += piece;
+		}
+		return -1;
+	}
 	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,pass,pass >= 0 ? Objects[pass].signature : 0,spell,&ip);
 }
 

@@ -359,15 +359,13 @@ void dtu_spell_creature_frame(object *obj, fix dist, int active);
 // by the situation, a pool of spell points for each fight.
 // 1 if the setting is in effect and the type of the creature has a list
 int dtu_caster_profile(object *obj);
-// 1 if the type fires its weapon between its casts (a beholder, an
-// illithid); the other casters touch a player in their reach
-int dtu_caster_weapon(object *obj);
 // The fire frame of the attack animation of the creature: the cast that is
 // due. Returns 1 if the creature cast (it does not attack in this frame).
 int dtu_caster_fire(object *obj, fix dist);
 // How a caster that does not fight in melee moves: 0 as in 1.3, 1 it keeps
-// its distance (it has spells), 2 it closes in (no spell points left), 3 it
-// steps to the side (no spell of it reaches the player from its place)
+// its distance (it has spells), 2 it closes in (no spell points left, or a
+// type that fights in melee), 3 it steps to the side (no spell of it
+// reaches the player from its place), 4 it stands (its cast runs)
 int dtu_caster_move(object *obj);
 // The distances of mode 1 in units: it backs away from a player that is
 // nearer than the first and walks to a player farther away than the second

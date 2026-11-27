@@ -619,6 +619,9 @@ int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int we
 // ASCENT: Dtu_caster_ai: the same with an object that the missile passes (-1:
 // none), and the call that makes a missile pass an object
 int dtu_missile_path_target_pass(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range, int pass);
+// The same with the bodies tested in pieces of the length step, as the
+// flight of the missile tests them in each frame
+int dtu_missile_path_target_step(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range, int pass, fix step);
 void dtu_missile_set_pass(int objnum, int pass);
 // The length of the flight of a missile weapon: its speed for its life.
 fix dtu_missile_weapon_range(int weapon_type);
