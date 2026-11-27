@@ -2511,6 +2511,10 @@ id: port.strong_magic_prevents_you_from_unlocking
 en: Strong magic prevents you from unlocking this door.
 tr: Una magia poderosa te impide abrir esta puerta.
 
+id: port.some_magic_seems_to_hold_s_completely_pa
+en: Some magic seems to hold %s completely paralyzed. Perhaps it can be dispelled.
+tr: Parece que alguna magia mantiene a %s completamente paralizado. Quizá se pueda disipar.
+
 # ASCENT: the new gear (engine/main/dtugear.c, Dtu_new_gear): the texts and the names of the new items
 id: port.new_gear
 en: New gear

@@ -97,6 +97,7 @@ static int Slow_count = 0;
 static int Hold_undead_count = 0;
 static int Hold_undead_hd = 0;
 int Dtu_fix_haste_friends = 1;		// ASCENT: dtuspell.h
+int Dtu_fix_dispel_peace = 1;		// ASCENT: dtuspell.h
 int Dtu_fix_hold_undead_hd = 1;
 int Dtu_fix_haste_count = 1;
 
@@ -2684,6 +2685,13 @@ int dtu_spell_stopped_by_fx(int fx)
 }
 
 //------------------------------------------------------------------------
+// ASCENT: Dtu_fix_dispel_peace (dtuspell.h)
+int dtu_spell_peace(int spell,object *target,object *caster)
+{
+	return Dtu_fix_dispel_peace && (spell == 13 || spell == 55) && target && target->type == OBJ_ROBOT &&
+		caster && caster->type == OBJ_PLAYER && !(target->dtu.m_1b0 & DTU_HOSTILE);
+}
+
 // The effect of a spell on one target (0x8CFFF, jump table 0x8CF1F)
 
 // ASCENT: above 0 while an area (0x90CEF, the cones, the column of Flame
@@ -2744,7 +2752,8 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 	// A creature that is the target of the player wakes and is hostile
 	// (0xA6505 with 1, then 0x12AD9)
 	// ASCENT: Dtu_fix_haste_friends: a friend that Haste reaches stays a friend
-	if (target->type == OBJ_ROBOT && !self && caster && caster->type == OBJ_PLAYER && !(spell == 21 && Dtu_fix_haste_friends))
+	if (target->type == OBJ_ROBOT && !self && caster && caster->type == OBJ_PLAYER && !(spell == 21 && Dtu_fix_haste_friends)
+			&& !dtu_spell_peace(spell,target,caster))		// ASCENT: Dtu_fix_dispel_peace
 		dtu_creature_wake(target,1);
 
 	dtu_spell_log("spell: '%s' (%d) level %d on obj %d %s (level %d)",spell_name(spell),spell,L,(int)(target-Objects),target_name(target),T);

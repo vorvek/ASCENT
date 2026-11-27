@@ -1645,6 +1645,7 @@ static void combat_init(void)
 		Dtu_fix_spell_range = 0;
 		Dtu_fix_prot_evil = 0;
 		Dtu_fix_haste_friends = 0;
+		Dtu_fix_dispel_peace = 0;		// ASCENT: dtuspell.h
 		Dtu_fix_hold_undead_hd = 0;
 		Dtu_fix_haste_count = 0;
 		Dtu_fix_sword_view = 0;

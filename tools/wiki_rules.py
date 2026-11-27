@@ -1989,8 +1989,12 @@ class Pages:
         removed = ["the %s %s" % (gd.item(c, i).name(), GEAR_STAGES[s]) for s, c, i in gd.g["removed"]]
         out += ["## Items of the original game", "",
                 "- %s: Daland of %s gives it with the %s when the altar of Kelemvor is consecrated. "
-                "Value %d with the setting." % (mrow.name(), GEAR_LEVEL_TEXT.get(16, "the temple"),
-                                                 self.O[potion].name(), gd.value(5, mace)),
+                "Value %d with the setting. How: Daland stands in hidden crypts, held by a curse that also "
+                "keeps him from talking. Cast Dispel Magic on him (the spell, a scroll, or a wand or rod "
+                "of it): he stays your friend and can talk. The tombs of Mulhorand have a scroll of the "
+                "spell for a mage. Hear his tale and take his flask of Dragon's Blood, pour it on the altar "
+                "of Kelemvor in the living quarters of the temple, then talk to him again."
+                % (mrow.name(), GEAR_LEVEL_TEXT.get(16, "the temple"), self.O[potion].name(), gd.value(5, mace)),
                 "- %s: one lies in %s, in a prison cell of the troll wing, at the far end of the "
                 "corridors from their entry. Its fire stops the regeneration of a troll. Value %d with the "
                 "setting. The market sells another one %s." % (frow.name(), GEAR_LEVEL_TEXT.get(lvl, "a drow level"),
