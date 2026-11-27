@@ -230,6 +230,7 @@ static const char *Scene_fs =
 	"uniform int u_fxdy;\n"
 	"uniform int u_dim;\n"
 	"uniform int u_tint;\n"
+	"uniform int u_blend;\n"
 	LIGHT_GLSL
 	// The improved infravision (plat_gpu_set_infravision): c is the lit
 	// color, b the color without light. A cold polygon is a dark blue of
@@ -357,7 +358,10 @@ static const char *Scene_fs =
 	"				}\n"
 	"			}\n"
 	"			vec4 t = texture(u_tex, v_uv);\n"
-	"			if (u_transparent != 0 && t.a < 0.5) discard;\n"
+	// ASCENT: a soft sprite (u_blend): the alpha of the texel is the
+	// coverage, blended by the GPU; the alpha written is that coverage
+	"			if (u_blend != 0) { if (t.a < 1.0 / 255.0) discard; am = t.a; }\n"
+	"			else if (u_transparent != 0 && t.a < 0.5) discard;\n"
 	"			if (u_dim != 0 && (nearidx(t.rgb) & 15) <= u_dim) {\n"
 	"				o_color = vec4(dimrgb(t.rgb, clamp(l * 32.0 - 0.5, 0.0, 31.0)), am);\n"
 	"				return;\n"
@@ -994,7 +998,7 @@ static SDL_Window *Gpu_window;
 static GLuint Scene_prog, Comp_prog, Down_prog, Blur_prog, Final_prog;
 static struct {
 	GLint canvas, znear, mode, lit, transparent, color, rgb, tex, fade, dest, vpal, nearc, levels, rowk;
-	GLint infra, heat, fx, fxrow, fxrowf, fxdy, dim, tint, noao;
+	GLint infra, heat, fx, fxrow, fxrowf, fxdy, dim, tint, noao, blend;
 } Su;
 static struct {
 	GLint frame, pal, view, fade, plut, vpal, nearc, levels, rowk, dst, fsize, vrect, vsize, key, vrgb;
@@ -1105,7 +1109,7 @@ static int Name_pool_n;
 
 // The batch of polygons
 typedef struct {
-	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, fx_fine, dim, tint, noao;
+	int mode, texture, lit, transparent, clamp, color, depth_write, smooth, heat, fx, fx_row, fx_fine, dim, tint, noao, blend;
 } draw_state;
 
 typedef struct {
@@ -1299,6 +1303,7 @@ int gpu_init(SDL_Window *window)
 	Su.dim = qglGetUniformLocation(Scene_prog, "u_dim");
 	Su.tint = qglGetUniformLocation(Scene_prog, "u_tint");
 	Su.noao = qglGetUniformLocation(Scene_prog, "u_noao");
+	Su.blend = qglGetUniformLocation(Scene_prog, "u_blend");
 	Cu.frame = qglGetUniformLocation(Comp_prog, "u_frame");
 	Cu.pal = qglGetUniformLocation(Comp_prog, "u_pal");
 	Cu.view = qglGetUniformLocation(Comp_prog, "u_view");
@@ -2143,6 +2148,18 @@ static void apply_state(const draw_state *st)
 		qglUniform1i(Su.tint, st->tint);
 	if (!Cur_state_valid || st->noao != Cur_state.noao)
 		qglUniform1i(Su.noao, st->noao);
+	// ASCENT: a soft sprite (plat_gpu_material.blend): the color is blended
+	// with the alpha of the texel; the alpha of the image (the mask of the
+	// ambient occlusion) is kept where the sprite is clear and goes to 0
+	// where it covers the image
+	if (!Cur_state_valid || st->blend != Cur_state.blend) {
+		qglUniform1i(Su.blend, st->blend);
+		if (st->blend) {
+			qglEnable(GL_BLEND);
+			qglBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+		} else
+			qglDisable(GL_BLEND);
+	}
 	if (st->mode == PLAT_GPU_TEXTURED && (!Cur_state_valid || st->texture != Cur_state.texture)) {
 		qglActiveTexture(GL_TEXTURE0);
 		qglBindTexture(GL_TEXTURE_2D, (GLuint) st->texture);
@@ -2167,6 +2184,12 @@ static void flush(void)
 	for (i = 0; i < N_cmds; i++) {
 		apply_state(&Cmds[i].st);
 		qglDrawArrays(GL_TRIANGLES, Cmds[i].first, Cmds[i].count);
+	}
+	// ASCENT: the passes after a batch (the ambient occlusion, the copies
+	// of the image) draw without blending
+	if (Cur_state_valid && Cur_state.blend) {
+		qglDisable(GL_BLEND);
+		Cur_state_valid = 0;
 	}
 	N_verts = 0;
 	N_cmds = 0;
@@ -2301,6 +2324,10 @@ void plat_gpu_draw(const plat_gpu_vertex *v, int n, const plat_gpu_material *m)
 		if (st.lit && m->dim > 0)
 			st.dim = m->dim > 15 ? 15 : m->dim;
 		st.tint = st.lit && m->tint == 0x40;
+		if (m->blend && View_rgb && !m->effects) {
+			st.blend = 1;
+			st.depth_write = 0;
+		}
 	} else
 		st.color = m->color & 255;
 	if (m->mode == PLAT_GPU_DARKEN && st.color >= Fade_levels)

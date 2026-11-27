@@ -187,6 +187,15 @@ THAC0 7, 15000 experience, fire immune, magic resistance 35 percent.
   texture of the model `burn.pof`, a full square with no transparent rim,
   so each flame was a square. A wall between her jaws and the player stops it
   (the door frames of the four doorways are the cover of the room).
+  The offset of a flame from the axis is a random point of a cube of
+  0.6 times the width of the cone, each component squared with its sign
+  (`flame_offset`), so the flames are denser near the axis. The version
+  before put each flame at a unit vector, on a sphere around the axis
+  point: from the front the stream was a ring of separate bursts with no
+  fire in the middle. The offset takes the same three `rand()` calls as
+  `make_random_vector`, so the rolls after the breath (the save) do not
+  change. In the GPU renderer with the upscaled set of version 8 the
+  flames have a soft edge (docs/hd_textures.md, "The fire flipbooks").
 
 ### Her AI
 
