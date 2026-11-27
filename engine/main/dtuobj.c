@@ -65,7 +65,7 @@
 #include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
 #include "dtustep.h"
-#include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
+#include "dtuopts.h"	// ASCENT: Dtu_improved_ai
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
 #include "text.h"		// ASCENT: Text_string, the names of the creatures
@@ -195,16 +195,16 @@ int Dtu_fix_kobold_weapon = 1;
 int Dtu_fix_scenery_restore = 1;
 int Dtu_fix_bane_texture = 1;
 
-// The option -origobj (or -noimprovedpaths, a test option that changes
-// nothing else): Dtu_improved_pathfinding has no effect.
+// The option -origobj (or -noimprovedai, a test option that changes
+// nothing else): Dtu_improved_ai has no effect.
 static int Orig_obj = 0;
 
-// Dtu_improved_pathfinding (dtuopts.h): paths for the body of a person and
+// Dtu_improved_ai (dtuopts.h): paths for the body of a person and
 // a body that stops at the reach of its weapon. See docs/re/ai.md,
-// "Improved pathfinding". (The corpse on the floor is Dtu_fix_corpse_floor.)
-int improved_paths(void)
+// "Improved AI". (The corpse on the floor is Dtu_fix_corpse_floor.)
+int improved_ai(void)
 {
-	return Dtu_improved_pathfinding && !Orig_obj;
+	return Dtu_improved_ai && !Orig_obj;
 }
 
 // The reach of the weapon of each model, see model_weapon_reach(). 0: not
@@ -686,9 +686,29 @@ static int corrected_speeds(object *obj,fix *walk,fix *run)
 {
 	const char *name;
 
-	if (!Dtu_fix_monster_speed || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
 		return 0;
 	name = Monster_info[obj->id].name;
+	// ASCENT: Dtu_improved_ai (a decision of the user, 2026-11-27): the
+	// spiders. "gSpider" and "sSpider" have speeds=10.0 3 20.0, the values
+	// of an orc, with a body of radius 27.0 (an orc: 6.6), so a spider moves
+	// less than half of its body in a second of its run. The method of
+	// Dtu_fix_monster_speed with the web rates of AD&D 2e (the game has no
+	// webs to walk on, and the ground rate 3 of the giant spider would be
+	// slower than the table): the giant spider (Wb 12) 15.0 and 30.0, the
+	// large spider (Wb 15) 18.75 and 37.5. Off with the setting.
+	if (improved_ai()) {
+		if (!stricmp(name,"gSpider")) {
+			*walk = i2f(15); *run = i2f(30);
+			return 1;
+		}
+		if (!stricmp(name,"sSpider")) {
+			*walk = i2f(75)/4; *run = i2f(75)/2;
+			return 1;
+		}
+	}
+	if (!Dtu_fix_monster_speed)
+		return 0;
 	if (!stricmp(name,"Ogre2") || !stricmp(name,"armOgre")) {
 		*walk = i2f(11); *run = i2f(22);
 		return 1;
@@ -1071,8 +1091,8 @@ void dtu_objects_init(void)
 		Dtu_fix_guild_peace = 0;
 	if (FindArg("-setuplog"))
 		Setup_log = 1;
-	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
-	if (FindArg("-origobj") || FindArg("-noimprovedpaths"))
+	// -origobj: the rules of the executable, also with Dtu_improved_ai
+	if (FindArg("-origobj") || FindArg("-noimprovedai") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
 	if (FindArg("-noattack"))
 		Dtu_creatures_attack = 0;
@@ -1694,7 +1714,7 @@ void log_corpse_height(object *obj,const char *what)
 		f2fl(hit.hit_pnt.y),hit.hit_side_seg,hit.hit_side,f2fl(hit.hit_wallnorm.y),f2fl(bottom - hit.hit_pnt.y));
 }
 
-// ASCENT: Dtu_improved_pathfinding. The height of the floor under the
+// ASCENT: Dtu_improved_ai. The height of the floor under the
 // point p of the body of obj: a ray of radius 0 straight down from a point
 // above p. The center of the body, raised by the same height, must see that
 // point, so that a floor behind a wall does not count. Returns 0 if no

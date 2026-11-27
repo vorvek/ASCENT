@@ -158,7 +158,7 @@ extern int Dtu_fix_npc_walk;
 // Corrected: a peaceful creature does not move nearer to the player than
 // its body radius plus that of the player. Option -orignpcbody (and
 // -origobj). A hostile creature stops at the distance of its weapon with
-// Dtu_improved_pathfinding (dtuobj_move.c, stop_at_player).
+// Dtu_improved_ai (dtuobj_move.c, stop_at_player).
 extern int Dtu_fix_npc_body;
 
 // The shot of a ranged creature. Original (0x13A2A): a shot in each game
@@ -686,7 +686,7 @@ extern int Dtu_fix_monster_speed;
 // path to the player (round a corner, to a door) at its walk speed.
 // Corrected: it runs on that path too. -origobj and -origchaserun clear it.
 extern int Dtu_fix_chase_run;
-// The top side in the move of a creature, with Dtu_improved_pathfinding
+// The top side in the move of a creature, with Dtu_improved_ai
 // (dtu_creature_physics_sim()). The move tests the top side at the top of
 // the body. An ogre is 23.0 high and stands in rooms that are 20.0 high
 // (CRYPTS, segments 73 to 80), so its body is in the top side from the
@@ -715,6 +715,16 @@ extern int Dtu_fix_fall_land;
 // The script of a creature (dtuhook.c): 1 if the script with this id has a
 // "say" statement, 0 if it has none, -1 if there is no script.
 int dtu_script_has_say(int id);
+// ASCENT: Dtu_improved_ai (creature_join_fight(), dtuobj_aware.c): 1 if
+// the script of the id has a statement that sets flag 2 of its own object
+// (the object turns hostile), 2 if that is the first statement of the first
+// block, 0 if it has none, -1 if there is no script
+int dtu_script_sets_hostile(int id);
+// ASCENT: Dtu_improved_ai (dtuobj_aware.c): 1 if a wall or a door that is
+// not open is between the body of the object "from" and the body of the
+// target (p: the center of the weapon). The swing of the player
+// (dtucombat.c) skips such a body.
+int dtu_attack_wall_between(vms_vector *p,object *from,object *target);
 
 // Values of the character for the use action and the scripts (weak
 // definitions in dtuhook.c): the skill "climb walls" in percent

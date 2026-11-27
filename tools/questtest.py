@@ -118,13 +118,15 @@ TESTS = [
     # The door is locked on the wall of the corridor only (wall 50, seg 347
     # side 4; trigger 45 opens it with MISC 59). Dtu_fix_door_pair: the
     # goblin stays in the cell. -origdoorpair: it opens the door from the
-    # unlocked wall of the cell (wall 51), as 1.3.
+    # unlocked wall of the cell (wall 51), as 1.3. With Improved AI the
+    # goblin does not notice the player through the closed door, so the
+    # cases that need it to do so run with -noimprovedai.
     T("prison_cell_locked", "PRISON", "5:goseg=344,900:obj=34",
       [r"f900 +obj 34: type 2 id 25 seg 589 "], [r"obj 34 \S+: opens the door"],
       frames=910, extra=["-noattack", "-objlog", "prison_cell_obj.log"]),
     T("prison_cell_locked_orig", "PRISON", "5:goseg=344,900:obj=34",
       [r"obj 34 \S+: opens the door seg 589 side 5"],
-      frames=910, extra=["-noattack", "-origdoorpair", "-objlog", "prison_cell_orig_obj.log"]),
+      frames=910, extra=["-noattack", "-origdoorpair", "-noimprovedai", "-objlog", "prison_cell_orig_obj.log"]),
     # The same goblin attacks the player in the corridor (seg 344) for 10
     # seconds through the closed door. Dtu_fix_melee_wall: the door stops
     # each swing and the player takes no damage. -origmeleewall: the sphere
@@ -133,10 +135,15 @@ TESTS = [
     T("prison_cell_melee", "PRISON", "5:goseg=344,300:obj=34",
       [r"obj 34 \S+: a wall or a closed door stops the weapon", r"f300 +obj 34: type 2 id 25 seg 589 "],
       [r"damage: the player takes", r"obj 34 \S+ swings at the player", r"obj 34 \S+: opens the door"],
-      frames=310, extra=["-objlog", "prison_melee_obj.log"]),
+      frames=310, extra=["-noimprovedai", "-objlog", "prison_melee_obj.log"]),
+    # Improved AI: the goblin does not notice the player behind its door
+    T("prison_cell_unaware", "PRISON", "5:goseg=344,300:obj=34",
+      [r"f300 +obj 34: type 2 id 25 seg 589 "],
+      [r"obj 34 \S+: sees the player", r"obj 34 \S+ swings at the player", r"obj 34 \S+: opens the door"],
+      frames=310, extra=["-objlog", "prison_unaware_obj.log"]),
     T("prison_cell_melee_orig", "PRISON", "5:goseg=344,300:obj=34",
       [r"attack: obj 34 \S+ swings at the player"], [r"obj 34 \S+: opens the door"],
-      frames=310, extra=["-origmeleewall", "-objlog", "prison_melee_orig_obj.log"]),
+      frames=310, extra=["-origmeleewall", "-noimprovedai", "-objlog", "prison_melee_orig_obj.log"]),
     # The NPCs of YPINN stay at their places after a load. The door opener
     # (0x14AF2) can leave objects 28 and 30 in mode 2 with the goal segment
     # 0, which is also their station; that is no walk of a script.

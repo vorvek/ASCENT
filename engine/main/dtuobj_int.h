@@ -29,7 +29,7 @@ typedef struct monster_ext {
 	int	weapon_type;			// -1 if the line has none (a natural weapon). Below 0: the spell with the number -weapon_type
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
-	int	person;					// ASCENT: a person by its model (dtu_model_is_person()), opens doors with Dtu_improved_pathfinding
+	int	person;					// ASCENT: a person by its model (dtu_model_is_person()), opens doors with Dtu_improved_ai
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
 	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), cast by the damage function (0x2A637)
 } monster_ext;
@@ -95,7 +95,7 @@ typedef struct dtu_ai_local {
 	// all creatures (0x13A79C, 0x13A790, 0x167184)
 	int		flee_counter;
 	vms_vector flee_pos, flee_dir;
-	// Dtu_improved_pathfinding: the point of the path that the creature
+	// Dtu_improved_ai: the point of the path that the creature
 	// walks to (see path_target()), the last progress to it, and the number
 	// of new plans since the last point that it reached.
 	short		path_tgt;
@@ -116,6 +116,12 @@ typedef struct dtu_ai_local {
 	fix		log_wall_time;			// the game time of the last wall hit (-testkill N,1)
 	short		log_hit_obj;			// the object of the last object hit
 	fix		chase_path_time;		// ASCENT: Dtu_fix_chase_run, the last time on a path to the player
+	// ASCENT: Dtu_improved_ai (dtuobj_aware.c). The last time the creature
+	// noticed the player (sight, hearing, a hit, an alarm), 0: never. Not in
+	// a saved game.
+	fix		combat_time;
+	fix		join_time;				// the next test of creature_join_fight()
+	ubyte		join_kind;				// 0 not known, 1 never joins, 2 joins its kind, 3 joins any hostile creature
 } dtu_ai_local;
 
 // A missile (object type OBJ_WEAPON that flies). The entry belongs to the
@@ -136,7 +142,7 @@ typedef struct dtu_missile {
 //------------------------------------------------------------------------
 // dtuobj.c
 
-int improved_paths(void);
+int improved_ai(void);
 extern fix Model_reach[MAX_POLYGON_MODELS];
 extern monster_ext Monster_ext[MAX_ROBOT_TYPES];
 extern dtu_ai_local Ail[MAX_OBJECTS];
@@ -167,6 +173,12 @@ fix creature_floor_dist(object *obj,fix radius,fix half_height);
 int ray_is_free(vms_vector *p0,int seg0,vms_vector *p1,int objnum);
 int brain_bit(int a,int b);
 int creature_ray_to_player(object *obj);
+// dtuobj_aware.c, Dtu_improved_ai
+int creature_senses_player(object *obj);
+void creature_combat_mark(object *obj);
+int creature_in_combat(object *obj);
+void creature_join_fight(object *obj);
+int attack_wall_between(vms_vector *p,int seg,object *target,int thisobjnum);
 int player_is_visible(object *obj);
 void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
 void sound_on_object(int sound,object *obj,fix volume);

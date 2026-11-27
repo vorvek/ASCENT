@@ -680,7 +680,7 @@ Settings (globals in dtuscript.c):
   the path with the walk animation (AI goal SRCH) at the walk speed of its
   model, also farther than 200.0 from the player and in each frame (not in
   the reduced frames of a far creature, 0x1498B). Another creature or the
-  player in the way gives a new path (improved pathfinding). At the end it
+  player in the way gives a new path (Improved AI). At the end it
   stops (AI mode 0, animation STAND) and its script runs in mode 2 with no
   charisma roll for flag 1: the block `CB E7 <segment>` of the segment.
   When the creature turns hostile the walk ends. 1.3 (`-origscriptwalk`):

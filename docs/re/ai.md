@@ -916,7 +916,7 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_caster_idle` | the choice of a spell (0x92D99) runs only when an event sets a bit of +0x15E (the wake, a hit, an alert), tries only the first entry that the tests let pass (0x92F82) and clears the bits: a caster that the player does not hit chooses one time at its wake (DROW1, two priestesses rffk5: 2 casts in 80 seconds; the wizard rmmk5 attacks with its touch) | a failed condition or roll goes to the next entry, and a hostile caster with no chosen spell gets the bit of the alert level 2 (0x04) after 0 to 10 seconds plus 4 seconds for each level of its last spell, the rule of the weapon spell 0x10040 (the same test: 9 casts; the wizard: 7 casts in 60 seconds, then no points). Options `-origobj`, `-origcasteridle` |
 | `Dtu_fix_monster_speed` | "Ogre2", "armOgre", "Troll" and "armTroll" have `speeds=8.0 3 15.0` in the tables and in the models, the values of the zombie (skeleton 15.0 and 30.0, orc 10.0 and 20.0; the player walks at 49.3). The run animation takes 1.0 second for all, so they show a run at the walk speed of a skeleton | `anim_speed` (0x74AA7) gives an ogre 11.0 and 22.0 and a troll 15.0 and 30.0: the movement rates of AD&D 2e (ogre 9, troll 12) with the skeleton (rate 12) as the reference. Measured in BEHOLDER (30 frames per second): the run of the ogre 12.4 before, 18.8 after; the troll 12.8 and 25.2. Options `-origobj`, `-origmonsterspeed` |
 | `Dtu_fix_chase_run` | a hostile melee creature farther than 30.0 runs only when it saw the player in the last 0.5 second (0x10148, 0x11018), so on the path of `Dtu_fix_path_follow` to a player that it does not see (a corner, a closed door) it walks | it runs on that path too (`chase_runs`, dtuobj_ai.c). BEHOLDER, an ogre 56 away behind the door of wall 100: at the player after 6.4 s before, 4.0 s with both settings. Options `-origobj`, `-origchaserun` |
-| `Dtu_fix_tall_body` | with `Dtu_improved_pathfinding` the move of a creature tests the top side at the top of the body. An ogre is 23.0 high (half height 11.48) and stands in rooms that are 20.0 high (CRYPTS, segments 73 to 80, floor -2.5, top side 17.5), so its body is in the top side from the start. The top side goes down from 17.55 to 17.47 between the segments 78 and 76, and the move took that as a hit: the Ogre2 (object 69) and the armOgre (object 70) stopped in the segments 77 and 76 in front of the door of wall 0 and lost the player | a body that is higher than the place where it stands tests the top side at the room that it has, less 0.5 (`dtu_creature_physics_sim()`). A top side that is lower by more than 0.5 stops it as before. CRYPTS, player from 325 to 145 in z through the door: before, no ogre came through the door in 43 s; with the setting the Ogre2 opens the door after 10.2 s. Options `-origobj`, `-origtallbody` |
+| `Dtu_fix_tall_body` | with `Dtu_improved_ai` the move of a creature tests the top side at the top of the body. An ogre is 23.0 high (half height 11.48) and stands in rooms that are 20.0 high (CRYPTS, segments 73 to 80, floor -2.5, top side 17.5), so its body is in the top side from the start. The top side goes down from 17.55 to 17.47 between the segments 78 and 76, and the move took that as a hit: the Ogre2 (object 69) and the armOgre (object 70) stopped in the segments 77 and 76 in front of the door of wall 0 and lost the player | a body that is higher than the place where it stands tests the top side at the room that it has, less 0.5 (`dtu_creature_physics_sim()`). A top side that is lower by more than 0.5 stops it as before. CRYPTS, player from 325 to 145 in z through the door: before, no ogre came through the door in 43 s; with the setting the Ogre2 opens the door after 10.2 s. Options `-origobj`, `-origtallbody` |
 | `Dtu_fix_far_chase` | a creature with an awareness below 3 that is farther than 100.0 from the player is processed each half second, farther than 150.0 each second (0x1498B). In the port a creature gets its move only in a processed frame and loses half of its velocity on each reference frame, so a creature that chases from farther than 100.0 moves at about 1 unit in a second (CRYPTS, the Ogre2 at 130 from the player: 26 units in 30 s). Not verified: the speed of such a creature in the executable | a hostile creature that is active (activity 2) is processed on each frame. CRYPTS, the same test: the Ogre2 is at the player after 19 s. Options `-origobj`, `-origfarchase` |
 
 | `Dtu_fix_revive` | the death clears the regeneration bit (0x2A1D0), so a regenerating creature never gets up | the bit stays unless fire or acid took it, and the corpse gets up (0x1440C); option `-origrevive` |
@@ -960,10 +960,10 @@ Hands (spell 4, 1d3 fire plus 2 per level) as a missile. Each hit does 4.
 skeleton (type 0) in segment 1. It kills the player in 6.1 s. The death
 music plays 3 s later and the level starts again at 13.3 s.
 
-### Improved pathfinding (Dtu_improved_pathfinding)
+### Improved AI (Dtu_improved_ai)
 
 The setting of `dtuopts.h`, on by default. Off (or `-origobj`, or the test
-option `-noimprovedpaths`, which changes nothing else) gives the rules above.
+option `-noimprovedai`, which changes nothing else) gives the rules above.
 The code is in `dtuobj.c`. The creatures of the target game do not use
 `aipath.c` or `ai.c`.
 
@@ -1047,7 +1047,7 @@ below it.
 By the code above the executable puts the dead Ghoul (torso_radius[0] 2.86)
 at the floor plus 0.1 minus 2.86, so it is drawn from 1.5 below the floor to
 1.6 above it (computed, not seen in the executable). An earlier rule of the
-port (Dtu_improved_pathfinding) put box1_min.y of the last frame on the
+port (Dtu_improved_ai) put box1_min.y of the last frame on the
 floor: the dead Ghoul was drawn 7.42 above the floor, the blackbat 1.15. With
 the setting off the port used body_half_height (4.35): the Ghoul 5.6 above
 the floor.
@@ -1070,6 +1070,233 @@ player each N frames (with 1: only one that hit a wall in the last 0.5 s) and
 logs the corpse height above the floor. The `-objlogpos` lines have the
 animation, sight, blocker and the wall, top, floor and object hits. A dying body has a `dying:` line with the height of its lowest drawn
 point, and a corpse of a loaded level a `loaded dead:` line.
+
+### Improved AI: senses, alarms, doors, attacks and groups (2026-11-27)
+
+The setting was "Improved pathfinding" until 2026-11-27 (the key
+`ImprovedPathfinding` of `ascent.cfg` is still read; the key is `ImprovedAI`
+now, the test option `-noimprovedai`, and `-noimprovedpaths` still works).
+The user played DROW1, DROW2 and CLAN1 on 2026-11-26 and found that creatures
+left the rooms of their encounters, noticed the player through walls, walked
+into the walls of their closets, walked back and forth in front of the
+player and watched fights. The rules below are decisions of the user. With
+the setting off, the object log of a run is the same byte for byte as before
+them (12 runs of 600 to 900 frames in BANE, BONES, CLAN1, CRYPTS, DROW1,
+DROW2, DROW4, MYRKUL and THIEF0, with fights, a trigger and a swing at a
+door). The code is in `dtuobj_aware.c` and `dtuobj_ai.c`.
+
+**Senses.** 1.3: the wake test (0x13CE0, 0x14230) needs the brain bit of the
+two segments and the ray 0x10815, and for a creature with a melee attack and
+no spell level that is nearer than 100.0 a blocked ray counts as free. The
+BRN builder (0x9786A) casts its rays with all doors open and all traps
+switched, and the port does the same for `Dtu_fix_brain`. So a melee
+creature notices the player through a closed door, and through a wall that
+a trigger opens later. With the setting (`creature_senses_player()`):
+
+- Sight: the ray from the eyes (5.0 above the center of a creature that
+  walks) to the center of the player hits no wall and no door that is not
+  open. An illusion wall does not stop it (fvi passes it).
+- Hearing, for the same creatures as the melee rule: a path from the segment
+  of the player to the segment of the creature through sides that a body can
+  pass (`WID_FLY_FLAG`: no wall, an open door, an illusion wall), with the
+  sum of the distances between the centers of its segments at most 100.0.
+  The map of these lengths is made one time for each frame.
+- The rest of the wake test stays: the player behind the creature is
+  noticed with the chance of `iq`, not with Move Silently, not by a deaf
+  creature.
+- A creature that noticed the player (the wake test, the sight of step 21,
+  a hit, an alarm, a script) in the last 30.0 seconds fights
+  (`creature_in_combat()`). Only a creature that fights keeps its path to
+  the segment of the player when the look of 0x14206 fails, so it follows
+  the player through a door that closes behind the player, and gives up 30
+  seconds after it noticed the player last.
+
+**Alarms.** The alert of the levels 3 to 5 (0x160AB) wakes a creature only
+when an open path of at most 150.0 goes from the segment of the caller to
+its segment, and when the creature sees or hears the player by the rules
+above (1.3 and the port before: the ray 0x10815 with the melee rule, D-114).
+A closed door is a wall for it and an illusion wall is not. The noise of the
+awareness events (0x162A1) had its wall test already (`Dtu_fix_noise_walls`).
+
+**Doors.** A creature opens a door only when its type can and when it
+fights the player (`opens_doors()`): the type has the door bit of 1.3
+(`door_opening=1` or the word HUMANOID: orcs, goblins, kobolds, Ogre2, the
+lich) or its model is a person (`dtu_model_is_person()`, the list of
+2026-11-24); the creature is hostile or flees, and it noticed the player in
+the last 30.0 seconds. The tables of 1.3 have no intelligence value (`iq` is
+the number of the sight and the morale), so the door bit and the model are
+the data used. The door opener 0x14AF2, which in 1.3 sends each active
+creature with the door bit to the doors (also a peaceful one), runs only for
+a hostile creature that fights. A creature never opens a door with a key or
+a lock on either wall (`Dtu_fix_door_pair`), so a prisoner stays in its
+cell. A creature on the path of its script opens doors as before, and the
+path of a script is planned through doors as in 1.3 (`create_script_path()`;
+KOBOLDS, the kobold obj 8 of script 21). The cases of `tools/questtest.py`
+that need the goblin of the PRISON cell (obj 34) to notice the player
+through its closed door (`Dtu_fix_door_pair`, `Dtu_fix_melee_wall`) run with
+`-noimprovedai`; the case `prison_cell_unaware` checks that it does not
+notice the player with the setting.
+
+**The attack decision.** Causes in 1.3, for a melee creature at the player:
+
+- 0x125B9: nearer than the circle distance (the size of the player, 4.5) the
+  creature walks away, nearer than two times that it walks across the line
+  to the player or turns its back and walks (0x12000). The stop distance of
+  the port (the reach of the weapon less 1.0) is in that range for most
+  creatures.
+- 0x11018: the goal state ATAK starts the attack only at the end of the
+  animation state, up to one walk cycle later; the creature walks on in that
+  time, and an attack that starts after the walk of 0x12000 swings with the
+  back to the player.
+- 0x15876: the goal state is chosen only while the awareness is above 0. It
+  goes down by 1 each 2.0 seconds and only a noise of the player raises it:
+  a melee creature in front of a player that does nothing stays in RECO and
+  looks at the player (DROW1, the Ghoul obj 10 at 4.7 from the player: no
+  attack after 10.1 s).
+- 0x12916: the attack starts at the size of the creature plus the size of
+  the player plus 2.0, farther than most weapons reach.
+
+With the setting, for a hostile creature that walks, has a melee attack and
+no mage or cleric level (`melee_fighter()`; the casters, the flyers and the
+dragon keep the rules of 1.3): it walks straight to a player that it sees
+and stands when the player is in the reach of its weapon less 0.5
+(`melee_in_reach()`, `model_weapon_reach()`); the goal ATAK ends a walk or
+stand state at once; at the start of an attack it turns to the player; and
+its awareness is 1 at least while it sees the player. The time between two
+attacks stays the ATTACK state plus the RECO state.
+
+Measured (DROW1, the player 6.0 in front of the fighter rmfg5 obj 1, healed
+each 0.2 s, 25 s at 30 frames per second, before and after): the first
+attack of obj 1 after it sees the player 2.70 s and 0.53 s; of obj 2 after
+it is in reach 1.53 s and 0.87 s; obj 1 walks or sidles 1.8 s and 0.0 s at
+the player; 8 attacks of 2 creatures in 47.5 s near the player, and 29
+attacks of 5 creatures in 59.0 s; the time between two attacks of one
+creature 2.17 s in both (rmfg5) and 1.67 s (gorcaaxe). The orcs of
+`-testpos 139.8,21,219.4`: the first attack 1.07 s and 0.07 to 0.10 s after
+they stand.
+
+**Attacks at a wall.** 1.3 takes the bodies that the weapon sphere touches
+with no wall test (0x6CFF8), and the missile query takes the bodies near its
+line up to the wall. A body is thicker than a door, so the sword of the
+player and an arrow reach a creature that stands at the other side of a
+closed door, and the weapon of a creature reaches the player.
+`Dtu_fix_melee_wall` tests only the way from the body to the center of the
+weapon. With the setting (`attack_wall_between()`): a body is not hit when
+the level line from the body of the attacker (the swing of the player), from
+the center of the weapon (the weapon of a creature) or from the hit point (a
+missile) to the axis of the body of the target, at the height of the start
+limited to the height of the body, hits a wall or a door that is not open.
+The area of a spell tests a ray already (`point_sees()`, dtuspell.c).
+Measured (DROW1, the skeleton obj 76 in segment 192 behind the closed door
+of wall 20, the player in segment 187 at 3.8, 8 swings with a long sword):
+before, the player hits and kills it; after, 8 swings at the air. 4 arrows
+of a short bow: before 1 arrow reaches the hit roll, after 4 arrows hit the
+wall.
+
+**Groups.** 1.3 makes a creature peaceful when its script has a "say"
+statement or its record has bit 9 (add_npc, 0xAC431) and runs a script only
+for a talk, a trigger, the end of a path or a call. A creature whose script
+only says its battle cry watches the fight of its room until the player
+talks to it. With the setting (`creature_join_fight()`), each half second: a
+creature that is not hostile and not fleeing (flag 3), whose script has a
+statement that sets flag 2 of its own object (`C5 02` with no object prefix:
+it turns hostile, `dtu_script_sets_hostile()`), turns hostile as its script
+would make it (0xA9418) when it sees the player and sees a creature of its
+group that is hostile, active and fights the player (free lines, at most
+150.0). A creature whose script never makes it hostile (a shop keeper, a
+quest giver, an ally) never joins. The group:
+
+- the statement is the first one of the first block of the script (the talk
+  makes it hostile with no choice): each hostile creature;
+- else: the creatures of its type (the same `$MONSTER` line) that have a
+  script too. With no other such creature in the level it never joins.
+
+The tables and the level files have no faction or allegiance value, and the
+group field of the segments is -1 in all level files, so the type, the
+script and the sight are the group. The creatures that the rule can change
+(the line `join: obj N NAME (script S, seg G) can join the fight of ...` of
+the object log at the level start):
+
+| Level | Creatures | Group |
+|---|---|---|
+| DROW1 | obj 55 rffk5, script 201 (the priestess of the meeting, with the wizard obj 56 and the orcs obj 57 and 58) | each hostile creature |
+| DROW2 | obj 43 rffk8b, script 212 | each hostile creature |
+| THIEF0 | obj 22 (the guard, script 50), 28 (script 51), 29 to 39 (script 52), all gbloser | the goblins with a script |
+| DROW3 | obj 59 flayer, script 221 | its type with a script |
+| DROW5 | obj 47 and 50 rffk8b, scripts 271 and 272 | its type with a script |
+| THIEF1 | obj 25 shmtd2 (script 62), obj 95 sfmtd2 (script 60) | its type with a script |
+| THIEF2 | obj 1 to 3 gbloser, script 71 | its type with a script |
+| KOBOLDS | obj 8 kob_swrd, script 21 | its type with a script |
+| BONES | obj 50 ske_swd, script 33 | its type with a script |
+| BEHOLDER | obj 2 Spectatr, script 252 | each hostile creature |
+| IBBALAR | obj 20 thashasa, script 295 | its type with a script |
+
+The quest givers of DROW1 (obj 59, script 200) and DROW2 (Kiyanda, obj 17,
+script 211), the wizard of DROW1 (obj 81) and the spider witch (obj 90,
+script 203, whose talk has a choice) do not join. The guard of THIEF0: label
+30 of script 50 makes it hostile (label 700), and label 900, which the
+trigger of segment 207 runs, makes the other goblins hostile (ANGER_NPCS
+critter 20 = 5) and clears flag 2 of the guard, so in 1.3 the guard stands
+while its camp fights.
+
+Measured: DROW1, the player 10.0 in front of the wizard obj 56: the
+priestess obj 55 joins after 0.57 s (before: never, she stays peaceful).
+THIEF0, the trigger of segment 207 side 3 and the goblin obj 31 next to the
+guard: the guard joins 0.43 s after the goblin sees the player and attacks
+10 times in 18 s (before: no attack).
+
+**Ambush.** DROW2, the hall of the four orcs gorcasci obj 8 to 11 in the
+closets of segments 752, 87, 97 and 462 behind the closed walls 4, 6, 2 and
+0: `-testpos 0,1,150,0`, the player walks forward. Before: obj 8 and 11 see
+the player at 0.03 s and obj 9 and 10 at 1.23 s, through the walls. After:
+obj 9 and 10 see the player at 2.27 s, when their walls open, and obj 8 and
+11, whose walls stay closed on this way, never.
+
+**Spiders.** "gSpider" and "sSpider" have `speeds=10.0 3 20.0`, the values of
+an orc, with a body of radius 27.0. With the setting `anim_speed()` gives
+the web rates of AD&D 2e by the method of `Dtu_fix_monster_speed` (rate 12
+is 15.0 and 30.0): the giant spider (Wb 12) 15.0 and 30.0, the large spider
+(Wb 15) 18.75 and 37.5. The ground rate of the giant spider is 3, which
+would be slower than the table. Measured (DROW1, gSpider obj 89, 30 frames
+per second): the run 16.5 before and 24.9 after.
+
+The walk and run speeds of the creatures (the model, then `anim_speed()`;
+the player walks at 49.3):
+
+| Creature | Body radius | Table | Before | After |
+|---|---|---|---|---|
+| gSpider | 27.0 | 10 / 20 | 10 / 20 | 15 / 30 |
+| sSpider | 27.0 | 10 / 20 | 10 / 20 | 18.75 / 37.5 |
+| Ogre2, armOgre | 8.6 | 8 / 15 | 11 / 22 (`Dtu_fix_monster_speed`) | same |
+| Troll, armTroll | 7.8 | 8 / 15 | 15 / 30 (`Dtu_fix_monster_speed`) | same |
+| Beetle, Scarab | 11.8 | 10 / 20 | 10 / 20 | same |
+| Dragon | 35.4 | 10 / 20 | 10 / 20 | same |
+| hatchlng (flies) | 20.3 | 20 / 40 | 20 / 40 | same |
+| avatar | 27.5 | 30 / 60 | 30 / 60 | same |
+| flayer, Lich3 | 4.5, 2.7 | 10 / 20 | 10 / 20 | same |
+| orcs (all) | 6.1 to 7.8 | 10 / 20 | 10 / 20 | same |
+| Zombie | 2.7 | 8 / 15 | 8 / 15 | same |
+| Ghoul, Ghast, Mummy | 2.7 | 15 / 25, 15 / 30, 15 / 30 | same as the table | same |
+| drow, humans, skeletons | 2.3 to 9.6 | 15 / 30 | 15 / 30 | same |
+| Banegard, Beholder | 2.8, 6.7 | 20 / 40 | 20 / 40 | same |
+| Gargoyle, gbscthxe | 8.1, 2.8 | 20 / 30 | 20 / 30 | same |
+| gskelpus, gskelsci | 4.8, 3.8 | 20 / 35 | 20 / 35 | same |
+| kobolds | 9.1 to 9.9 | 25 / 50 (kobaswrd 30 / 50) | same as the table | same |
+| goblins gbloser, gbscsswd, gobascim | 3.6 to 4.5 | 40 / 60 | 40 / 60 | same |
+
+The beetles, the dragon, the mind flayer and the orcs keep the values of the
+tables: the mind flayer (AD&D 2e rate 12) and the orcs (rate 9) would be
+15.0 / 30.0 and 11.25 / 22.5 by the same method. Not changed, not asked.
+
+`tools/check_improved_ai.py` runs six of these cases with the setting on and
+with `-noimprovedai` (the ambush, the orc behind the door, the blow at the
+door, the attack, the priestess and the guard).
+
+Not changed: the choice and the cast of spells of the casters
+(`dtuspell.c`), the dragon Tamaramagil. The hooks for them: `melee_fighter()`
+leaves out each creature with a mage or cleric level and each creature with
+a ranged attack, and `creature_in_combat()` and `creature_senses_player()`
+tell a caster whether it fights and whether it sees the player.
 
 ### The feet of a standing creature (Dtu_fix_creature_feet)
 
@@ -1227,8 +1454,8 @@ Causes found (`-objlogpos`, `-noattack`, 30 frames per second):
   (0x14CA9) did not attack the scenery (CLAN1 `-testpos -200,-4,150`: the
   Zombie obj 93 at the bench obj 15, 17.5 s).
 
-Changes (all with `Dtu_improved_pathfinding`, none with `-origobj` or
-`-noimprovedpaths`):
+Changes (all with `Dtu_improved_ai`, none with `-origobj` or
+`-noimprovedai`):
 
 - Move: a hit point behind the start keeps the body where it is (the
   "moved backwards" rule of Descent 1 physics). When the velocity does not
@@ -1243,7 +1470,9 @@ Changes (all with `Dtu_improved_pathfinding`, none with `-origobj` or
   pushes the scenery.
 - `body_line_free()` tests at least a fourth of the cylinder plus 0.25 (the
   walls add 1.0, as in the move).
-- People open doors (a decision of the project): a hostile creature whose
+- People open doors (a decision of the project; since 2026-11-27 only
+  while the creature fights the player, see "Improved AI: senses, alarms,
+  doors, attacks and groups"): a hostile creature whose
   model is a person opens a door as a type with the door bit does, with the
   same tests (no key, no lock flag on the side), for its paths
   (`door_is_openable()`) and when it walks into the door (0x25CAA). The door
@@ -1301,7 +1530,7 @@ closed door exists to the player; before and after):
 | KOBOLDS | 118.5, 80.5 | 38, 37 of 54 |
 | CLAN1 | 62.5, 30.0 | 46, 48 of 80 |
 
-With `-noimprovedpaths` and with `-origobj` the object logs of BONES
+With `-noimprovedai` and with `-origobj` the object logs of BONES
 `-testpos -50,-4,320` and of the ladder test below are the same before and
 after the change.
 
@@ -1332,7 +1561,7 @@ drow `rmfg5` obj 21 opens wall 28 (seg 234 side 5) at 2.3 s and stands at
 (76 stays at the closed door wall 16; the Ghoul obj 10 opens wall 20).
 THIEF1 `-testpos 15.6,-4,402.7`: the thieves `sfmtd2` obj 5 and 6 stay in
 seg 21 at the locked side of the door (wall 23), and no creature opens
-wall 23. With `-noimprovedpaths` and with `-origobj` the DROW1 log is the
+wall 23. With `-noimprovedai` and with `-origobj` the DROW1 log is the
 same as before (but the new fields of the start line).
 
 Gargoyles (`gar_gy.pof`, they fly) are in MYRKUL (obj 14, 24, 25, 43, 46)

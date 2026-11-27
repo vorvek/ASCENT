@@ -59,7 +59,7 @@
 #include "dtumusic.h"
 #include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
-#include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
+#include "dtuopts.h"	// ASCENT: Dtu_improved_ai
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
 #include "text.h"		// ASCENT: Text_string, the names of the creatures
@@ -470,7 +470,7 @@ static void move_relative_to_player(object *obj,fix dist,vms_vector *vec_to_play
 // with no door bit that walks for its script (Dtu_fix_script_walk)
 static int Script_walk_doors;
 
-// ASCENT: Dtu_improved_pathfinding (a decision of the project). In the
+// ASCENT: Dtu_improved_ai (a decision of the project). In the
 // executable only a type with the door bit opens doors: door_opening=1 or
 // the word "humanoid" of the monster line (0x1061B), which the tables give
 // to orcs, goblins, kobolds, ogres and liches only. The humans, drow,
@@ -510,15 +510,31 @@ int dtu_model_is_person(const char *pof)
 	return 0;
 }
 
+//
+// ASCENT: Dtu_improved_ai since 2026-11-27 (a decision of the user): a
+// creature opens a door only when its type can (the door bit of 1.3 or a
+// person by its model: the tables of 1.3 have no other value for it, "iq"
+// is the number of the sight and of the morale) and when it fights the
+// player: it is hostile or flees, and it noticed the player in the last
+// DTU_COMBAT_TIME seconds (creature_in_combat(), dtuobj_aware.c). In 1.3 the
+// door opener 0x14AF2 sends each active creature with the door bit to the
+// doors, also a peaceful one, and the creatures left the rooms of their
+// encounters. The lock rules stay (dtu_creature_door_unlocked()).
 static int person_opens_doors(object *obj)
 {
-	return improved_paths() && obj->type == OBJ_ROBOT && obj->id < N_robot_types && Monster_ext[obj->id].person && is_hostile(obj);
+	return improved_ai() && obj->type == OBJ_ROBOT && obj->id < N_robot_types && Monster_ext[obj->id].person && is_hostile(obj) &&
+		creature_in_combat(obj);
 }
 
 // 1 if the creature can open a door: the door bit, or a walk of its script
 int opens_doors(object *obj)
 {
-	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1 || person_opens_doors(obj);
+	if (Script_walk_doors || Ail[obj-Objects].script_walk == 1)
+		return 1;
+	if (improved_ai())
+		return (Monster_ext[obj->id].door_opening || Monster_ext[obj->id].person) &&
+			(obj->dtu.m_1b0 & (DTU_HOSTILE|DTU_FLEEING)) && creature_in_combat(obj);
+	return Monster_ext[obj->id].door_opening;
 }
 
 // ASCENT: Dtu_fix_door_pair (dtuobj.h). The executable tests the lock and
@@ -586,7 +602,7 @@ static int openable_door_in_segment(object *obj)
 // New in the executable: a segment with special 1 or 2 is never on a
 // path, and a creature with no door bit gets no path through a segment
 // that has a wall on any side (but for the first and the last segment).
-// Dtu_improved_pathfinding changes the last rule for a hostile creature
+// Dtu_improved_ai changes the last rule for a hostile creature
 // (side_filter below).
 // Returns the number of segments in out[], 0 if there is no path.
 static int find_path(object *obj,int start,int end,short *out,int max_out,int max_depth,int random_flag,int avoid_seg)
@@ -594,16 +610,17 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 	static ubyte visited[MAX_SEGMENTS];
 	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
 	int head = 0, tail = 0, found = -1, i, n, cur;
-	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors || person_opens_doors(obj);
-	int walker = improved_paths() && obj->type == OBJ_ROBOT && !is_flying(obj);
-	// Dtu_improved_pathfinding: a hostile creature with no door bit keeps
+	int has_door_bit = (obj->type != OBJ_ROBOT) || (improved_ai() ? opens_doors(obj) :
+		Monster_ext[obj->id].door_opening || Script_walk_doors || person_opens_doors(obj));
+	int walker = improved_ai() && obj->type == OBJ_ROBOT && !is_flying(obj);
+	// Dtu_improved_ai: a hostile creature with no door bit keeps
 	// out of the sides that its body cannot pass (a door that is not open,
 	// a closed wall), not out of each segment with a wall. The filter of
 	// the executable leaves out a segment with an open door, an illusion
 	// wall or a closed wall on any side, so in many rooms such a creature
 	// has no path to the player and walks straight into a wall. It still
 	// opens no door.
-	int side_filter = improved_paths() && obj->type == OBJ_ROBOT && is_hostile(obj);
+	int side_filter = improved_ai() && obj->type == OBJ_ROBOT && is_hostile(obj);
 
 	if (start < 0 || start > Highest_segment_index)
 		return 0;
@@ -662,7 +679,7 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 
 			if (child < 0 || visited[child])
 				continue;
-			// Dtu_improved_pathfinding: a creature that walks does not go
+			// Dtu_improved_ai: a creature that walks does not go
 			// up through the top side of a segment (an opening in the
 			// ceiling, side 1 in the levels of the game). The search of the
 			// executable is the one of the ships of Descent 1.
@@ -808,7 +825,7 @@ static void add_move(object *obj,vms_vector *dir);
 static void turn_towards_vector(vms_vector *goal,object *obj,fix rate);
 
 //------------------------------------------------------------------------
-// ASCENT: Dtu_improved_pathfinding, paths for the body of a person.
+// ASCENT: Dtu_improved_ai, paths for the body of a person.
 //
 // The path of the executable goes through the centers of the segments, and
 // the port of Dtu_fix_path_follow through the centers of the sides between
@@ -933,7 +950,7 @@ static void path_target(object *obj,int t,vms_vector *p)
 
 static int find_path(object *obj,int start,int end,short *out,int max_out,int max_depth,int random_flag,int avoid_seg);
 
-// path_advance() of Dtu_improved_pathfinding. Returns 0 at the end of the
+// path_advance() of Dtu_improved_ai. Returns 0 at the end of the
 // path, else 1 with the point to walk to in *goal.
 static int path_advance_body(object *obj,vms_vector *goal)
 {
@@ -1117,9 +1134,9 @@ static int path_advance(object *obj,vms_vector *goal)
 	fix threshold = fixmul(vm_vec_mag_quick(&obj->mtype.phys_info.velocity),FrameTime)*2 + i2f(2);
 	int tries = 0, k;
 
-	// Dtu_improved_pathfinding: the points of the body (not on the way back
+	// Dtu_improved_ai: the points of the body (not on the way back
 	// of a patrol)
-	if (improved_paths() && ail->path_dir > 0 && path_fix_applies(obj))
+	if (improved_ai() && ail->path_dir > 0 && path_fix_applies(obj))
 		return path_advance_body(obj,goal);
 
 	// A creature that is in a later segment of the path is past the
@@ -1375,7 +1392,7 @@ static int ai_to_anim_state(object *obj,int ai_state,fix dist);
 
 // The blocked move of do_ai_frame (0x14BA1). Returns 1: the mode switch
 // does not run in this frame.
-// Dtu_improved_pathfinding: a hostile creature on a path of the body
+// Dtu_improved_ai: a hostile creature on a path of the body
 // (path_advance_body()) slides along the wall and plans again by itself.
 // The blocked move would make a new path (which starts the path again) or
 // send it to a random side. Scenery in the way is still attacked.
@@ -1383,7 +1400,7 @@ static int body_path_handles_block(object *obj)
 {
 	dtu_ai_local *ail = &Ail[obj-Objects];
 
-	if (!improved_paths() || !path_fix_applies(obj) || ail->path_len < 2 || ail->path_dir <= 0)
+	if (!improved_ai() || !path_fix_applies(obj) || ail->path_len < 2 || ail->path_dir <= 0)
 		return 0;
 	if (ail->mode != DAIM_CHASE_OB && ail->mode != DAIM_FOL_PATH)
 		return 0;
@@ -1656,6 +1673,58 @@ int Dtu_fix_caster_melee = 1;
 int Dtu_fix_caster_cast = 1;
 int Dtu_fix_caster_idle = 1;
 
+// ASCENT: Dtu_improved_ai, the attack of a melee creature (a decision of the
+// user, 2026-11-27; docs/re/ai.md "The attack decision"). Causes in 1.3:
+// - 0x125B9: a creature nearer than the circle distance (the size of the
+//   player, 4.5, for a melee creature) walks away from the player, and one
+//   nearer than two times that walks across the line to the player or turns
+//   its back and walks (0x12000). The stop distance of the port (the reach
+//   of the weapon minus 1.0, dtuobj_move.c) is inside that range for most
+//   creatures, so a creature at the player sidles, walks off and comes back.
+// - 0x11018: the goal state ATAK starts the attack only at the end of the
+//   animation state, up to one walk cycle later, and the creature walks on
+//   in that time. An attack that starts after the walk of 0x12000 swings
+//   with the back to the player.
+// - 0x15876: the goal state is chosen only while the awareness is above 0.
+//   The awareness goes down by 1 each 2.0 seconds and only an awareness
+//   event (a noise of the player, a hit) raises it, so a melee creature in
+//   front of a player that does nothing stays in RECO and looks at the
+//   player.
+// - 0x12916: the attack starts at the size of the creature plus the size
+//   of the player plus 2.0, which is farther than most weapons reach.
+// With the setting, for a hostile creature that walks, has a melee attack
+// and no mage or cleric level (melee_fighter(); the casters, the flyers and
+// the dragon keep the rules of 1.3):
+// - it walks straight to a player that it sees and stands in the reach of
+//   its weapon (melee_in_reach()): no walk away, no walk around;
+// - the goal ATAK ends a walk or stand state at once (the time between two
+//   attacks stays the ATTACK state plus the RECO state);
+// - at the start of an attack it faces the player;
+// - while it sees the player its awareness is 1 at least.
+static int melee_fighter(object *obj)
+{
+	return improved_ai() && Robot_info[obj->id].attack_type == 1 && is_hostile(obj) && !is_flying(obj) &&
+		!dtu_spell_creature_caster(obj);
+}
+
+// 1 if the player is in the distance at which the creature starts an
+// attack. 1.3: the size of the creature plus the size of the player plus
+// 2.0 (0x12916). Dtu_improved_ai: also in the reach of the weapon of the
+// model less 0.5, in x and z (model_weapon_reach(), dtuobj_move.c).
+static int melee_in_reach(object *obj,fix dist)
+{
+	fix wr;
+	vms_vector d;
+
+	if (dist > obj->size + ConsoleObject->size + i2f(2))
+		return 0;
+	if (!melee_fighter(obj) || cloak_applies(obj) || (wr = model_weapon_reach(obj)) <= 0)
+		return 1;
+	vm_vec_sub(&d,&ConsoleObject->pos,&obj->pos);
+	d.y = 0;
+	return vm_vec_mag(&d) <= wr - F1_0/2;
+}
+
 // The choice of step 25 point 4 of do_ai_frame (docs/re/ai.md), also of
 // do_firing_stuff (0x12916): the goal state of a creature that wants to
 // attack. A melee creature, or one whose spell choice is -2 (ailp+0x2C: no
@@ -1671,7 +1740,10 @@ static void choose_attack_goal(object *obj,fix dist,int reco)
 	if (Robot_info[obj->id].attack_type == 1 || ((!reco || Dtu_fix_caster_melee) && dtu_spell_creature_melee(obj))) {
 		fix reach = obj->size + ConsoleObject->size + i2f(2);
 
-		aip->GOAL_STATE = (dist <= reach) ? DAIS_ATAK : DAIS_LOCK;
+		if (improved_ai())
+			aip->GOAL_STATE = melee_in_reach(obj,dist) ? DAIS_ATAK : DAIS_LOCK;
+		else
+			aip->GOAL_STATE = (dist <= reach) ? DAIS_ATAK : DAIS_LOCK;
 	}
 	else if (dtu_spell_creature_caster(obj)) {
 		if (dtu_spell_creature_take_ready(obj)) {
@@ -1683,7 +1755,7 @@ static void choose_attack_goal(object *obj,fix dist,int reco)
 		aip->GOAL_STATE = DAIS_ATAK;
 }
 
-// ASCENT: Dtu_improved_pathfinding. A creature that walks and fights in
+// ASCENT: Dtu_improved_ai. A creature that walks and fights in
 // melee and sees the player above it, out of the reach of its attack (on a
 // ladder, a ledge or a crate, where it cannot walk), backs away out of the
 // reach of the player and waits there, facing the player. The executable
@@ -1700,7 +1772,7 @@ static int keep_off_player(object *obj,fix dist,vms_vector *vec_to_player)
 	fix attack, r, hh, hd;
 	vms_vector d;
 
-	if (!improved_paths() || Robot_info[obj->id].attack_type != 1 || is_flying(obj) || ail->script_walk == 1)
+	if (!improved_ai() || Robot_info[obj->id].attack_type != 1 || is_flying(obj) || ail->script_walk == 1)
 		return 0;
 	// a jump or a fall of the player ends soon
 	if (Dtu_player_state & (DTU_PS_JUMPING|DTU_PS_FALLING))
@@ -1793,7 +1865,9 @@ static void ai_animation_step(object *obj,fix dist)
 	if (!ended) {
 		if (aip->CURRENT_STATE == aip->GOAL_STATE)
 			return;
-		if (aip->GOAL_STATE != DAIS_FLIN && !(ail->flags & AILF_HIT))
+		// Dtu_improved_ai: the goal ATAK ends the walk of a melee creature
+		if (aip->GOAL_STATE != DAIS_FLIN && !(ail->flags & AILF_HIT) &&
+			 !(aip->GOAL_STATE == DAIS_ATAK && (aip->CURRENT_STATE == DAIS_SRCH || aip->CURRENT_STATE == DAIS_LOCK) && melee_fighter(obj)))
 			return;
 	}
 
@@ -1825,6 +1899,18 @@ static void ai_animation_step(object *obj,fix dist)
 		hd = vm_vec_dist(&p,&obj->pos);
 		if (hd < 0x100 || fixdiv(dy,hd) > F1_0/2)
 			s = DAS_ATTACK2;
+		// Dtu_improved_ai: a melee creature faces the player that it sees
+		// at the start of its attack
+		if (melee_fighter(obj) && ail->previous_visibility && !cloak_applies(obj) && hd >= 0x100) {
+			vms_vector v;
+
+			vm_vec_sub(&v,&p,&obj->pos);
+			v.y = obj->orient.fvec.y;
+			if (vm_vec_normalize(&v) > 0x100) {
+				vm_vector_2_matrix(&obj->orient,&v,NULL,NULL);
+				check_and_fix_matrix(&obj->orient);
+			}
+		}
 	}
 	set_anim(obj,s);
 	ail->anim_start = GameTime;
@@ -1945,6 +2031,9 @@ static int wake_test(object *obj)
 			return 0;
 	}
 
+	// Dtu_improved_ai: sight along a free line, hearing along an open path
+	if (improved_ai())
+		return creature_senses_player(obj);
 	return creature_ray_to_player(obj);
 }
 
@@ -1965,6 +2054,9 @@ void dtu_do_ai_frame(object *obj)
 	// ASCENT: 0x13C8B, object flag 0x40 (FLAME object 35)
 	if (dtu_creature_frozen(obj))
 		return;
+	// Dtu_improved_ai: a creature joins the fight of its group
+	if (!is_hostile(obj))
+		creature_join_fight(obj);
 	ri = &Robot_info[obj->id];
 	mi = &Monster_info[obj->id];
 	A = mi->ai_values[0][Difficulty_level];
@@ -1978,6 +2070,7 @@ void dtu_do_ai_frame(object *obj)
 
 		// The test that makes the creature active (0x13CE0)
 		if (wake_test(obj)) {
+			creature_combat_mark(obj);
 			ail->target = is_hostile(obj) ? 0 : -1;
 			ail->activity = 2;
 			set_anim(obj,DAS_STAND);
@@ -2029,18 +2122,20 @@ void dtu_do_ai_frame(object *obj)
 	else if (ai_tick(objnum,20)) {
 		// 0x14206: an active creature looks for the player again
 		ail->activity = 0;
-		if (wake_test(obj))
+		if (wake_test(obj)) {
 			ail->activity = 2;
-		// Dtu_improved_pathfinding: a hostile creature that follows a path
+			creature_combat_mark(obj);
+		}
+		// Dtu_improved_ai: a hostile creature that follows a path
 		// to the segment of the player stays active. The test above fails at
 		// random when the player is behind the creature, which is often the
 		// case on a path around a wall, and the creature then stands for
 		// one animation before it sees the player again.
 		// ASCENT: not for a hidden player (C20: the creature does not know
 		// the segment of the player)
-		if (ail->activity == 0 && improved_paths() && is_hostile(obj) && ail->path_len >= 2 && !cloak_applies(obj) &&
+		if (ail->activity == 0 && improved_ai() && is_hostile(obj) && ail->path_len >= 2 && !cloak_applies(obj) &&
 			 ail->path[ail->path_len-1] == ConsoleObject->segnum && (ail->mode == DAIM_CHASE_OB || ail->mode == DAIM_FOL_PATH) &&
-			 ail->target != -1 && !Player_is_dead && !Dtu_player_dead)
+			 ail->target != -1 && !Player_is_dead && !Dtu_player_dead && creature_in_combat(obj))
 			ail->activity = 2;
 		// ASCENT: a creature on a path of statement E5 of its script stays
 		// active to the end of the path (a port decision: the wake test fails
@@ -2168,8 +2263,17 @@ void dtu_do_ai_frame(object *obj)
 	else
 		visible = player_is_visible(obj);
 	creature_sight_sound(obj,hidden ? 0 : visible,&vec_to_player);
-	if (visible)
+	if (visible) {
 		ail->time_player_seen = GameTime;
+		if (!hidden && is_hostile(obj))
+			creature_combat_mark(obj);
+		// Dtu_improved_ai: a melee creature that sees the player keeps the
+		// awareness 1, so that the choice of the goal state (0x15876) runs
+		if (!hidden && ail->awareness < 1 && ail->morale >= B && melee_fighter(obj)) {
+			ail->awareness = 1;
+			ail->awareness_time = i2f(3);
+		}
+	}
 
 	// The awareness of a creature goes up by the awareness events
 	// (awareness_events_frame, 0x16366). An earlier guess of the port in
@@ -2182,7 +2286,9 @@ void dtu_do_ai_frame(object *obj)
 	// path of its script (Dtu_fix_script_walk) is not sent to a door: the
 	// mode OPENDOOR would end the walk, and a door on its path opens when it
 	// walks into it.
-	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB && ail->script_walk != 1) {
+	// Dtu_improved_ai: only a hostile creature that fights the player
+	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB && ail->script_walk != 1 &&
+		 (!improved_ai() || (is_hostile(obj) && creature_in_combat(obj)))) {
 		if (ail->mode == DAIM_STILL) {
 			if (visible)
 				create_n_segment_path(obj,8+Difficulty_level,-1);
@@ -2265,18 +2371,18 @@ void dtu_do_ai_frame(object *obj)
 				circle = ri->turn_time[Difficulty_level] + ConsoleObject->size;		// the third group of $MONSTER_AI
 
 			if (!visible && dist > i2f(80) && aip->behavior != DAIB_STATION) {
-				// Dtu_improved_pathfinding: a hostile creature that knows
+				// Dtu_improved_ai: a hostile creature that knows
 				// where the player is walks to the player on a path. The
 				// executable makes a random path of 5 segments here on each
 				// frame and goes back to CHASE_OB on the next frame (the
 				// awareness is 1 or more), so the creature never moves.
 				// ASCENT: no path to the segment of a hidden player (C20)
-				if (!hidden && improved_paths() && Dtu_fix_path_follow && aip->behavior != DAIB_HOME && aip->behavior != DAIB_GUARD &&
+				if (!hidden && improved_ai() && Dtu_fix_path_follow && aip->behavior != DAIB_HOME && aip->behavior != DAIB_GUARD &&
 					 ail->morale >= B && chase_by_path(obj))
 					;
 				else if (aip->behavior == DAIB_HOME || aip->behavior == DAIB_GUARD)
 					create_path_to_station(obj,15);
-				else if (improved_paths() && Dtu_fix_path_follow) {
+				else if (improved_ai() && Dtu_fix_path_follow) {
 					// with no way to the player: the creature walks along
 					// the random path, and keeps it until its end
 					int k, on = 0;
@@ -2299,21 +2405,38 @@ void dtu_do_ai_frame(object *obj)
 					create_path_to_player(obj,10);
 			}
 			else if (aip->CURRENT_STATE != DAIS_REST && aip->GOAL_STATE != DAIS_REST) {
-				// Dtu_improved_pathfinding: also a creature that sees the
+				// Dtu_improved_ai: also a creature that sees the
 				// player but cannot walk to the player in a straight line
 				// (the line is not free for its body) takes the path.
 				// ASCENT: a hidden player: the line to the believed position,
 				// and no path (C20)
-				if (improved_paths() && Ref_ticks_now > 0)
+				if (improved_ai() && Ref_ticks_now > 0)
 					ail->body_line = hidden ? body_line_free(obj,believed) :
 						(obj->segnum == ConsoleObject->segnum) || body_line_free(obj,&ConsoleObject->pos);
-				if (!hidden && Dtu_fix_path_follow && (!visible || (improved_paths() && !ail->body_line)) && aip->behavior != DAIB_STATION && chase_by_path(obj)) {
+				if (!hidden && Dtu_fix_path_follow && (!visible || (improved_ai() && !ail->body_line)) && aip->behavior != DAIB_STATION && chase_by_path(obj)) {
 					// as in the mode FOL_PATH (0x153F0)
 					if (ail->morale >= B && aip->GOAL_STATE != DAIS_FLIN)
 						aip->GOAL_STATE = DAIS_LOCK;
 				}
-				else if (hidden || !visible || !keep_off_player(obj,dist,&vec_to_player))
-					move_relative_to_player(obj,dist,&vec_to_player,circle,0);
+				else if (hidden || !visible || !keep_off_player(obj,dist,&vec_to_player)) {
+					// Dtu_improved_ai: a melee creature walks straight to the
+					// player and stands in the reach of its weapon
+					if (!hidden && visible && melee_fighter(obj) && aip->behavior != DAIB_STATION && !(obj->dtu.m_88 & DTU_OF_HELD)) {
+						if (melee_in_reach(obj,dist)) {
+							turn_towards_vector(&vec_to_player,obj,ri->firing_wait[Difficulty_level]);
+							if (aip->CURRENT_STATE != DAIS_ATAK && DTU_ANIM_STATE(obj) >= DAS_WALK && DTU_ANIM_STATE(obj) <= DAS_RUN) {
+								set_anim(obj,DAS_STAND);
+								ail->anim_start = GameTime;
+							}
+						}
+						else {
+							move_towards(obj,&vec_to_player);
+							ail->flags = (ail->flags & ~(AILF_BACKWARD|AILF_TOWARD|AILF_AWAY|AILF_AROUND)) | AILF_TOWARD;
+						}
+					}
+					else
+						move_relative_to_player(obj,dist,&vec_to_player,circle,0);
+				}
 				if (ail->morale < B) {
 					// "Bad moralle (%d)"
 					ail->activity = 0;
@@ -2479,13 +2602,27 @@ void dtu_script_prison_guard(object *obj,int set_target)
 // makes the path to it, so the path of the last segment stays. 0xAA810
 // after the list: no target, AI mode 2 (follow the path), the bits 0x30 of
 // ai_local +0x05 and the morale (A + B) / 2.
+// ASCENT: Dtu_improved_ai: a type with the door bit plans a path through
+// doors only while it fights the player (opens_doors()). The path of its
+// script is made before the walk starts (script_walk is 0 still), so it is
+// planned as a walk of a script, with the doors of 1.3.
+static void create_script_path(object *obj)
+{
+	int save = Script_walk_doors;
+
+	if (improved_ai() && obj->id < N_robot_types && Monster_ext[obj->id].door_opening)
+		Script_walk_doors = 1;
+	create_path(obj);
+	Script_walk_doors = save;
+}
+
 void dtu_script_walk_segment(object *obj,int seg)
 {
 	if (obj->type != OBJ_ROBOT || seg < 0 || seg > Highest_segment_index)
 		return;
 	obj->ctype.ai_info.hide_segment = seg;
 	Ail[obj-Objects].goal_segment = seg;
-	create_path(obj);
+	create_script_path(obj);
 }
 
 // fix 1 (Dtu_fix_script_walk): the creature walks along the path with the
@@ -2702,7 +2839,10 @@ void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img)
 	if (al[0x03] == DAIM_FOL_PATH && ail->goal_segment >= 0 && ail->goal_segment <= Highest_segment_index &&
 		 DTU_ANIM_STATE(obj) != DAS_DIE) {
 		ail->mode = DAIM_FOL_PATH;
-		create_path(obj);
+		if (al[0x02] == 1)
+			create_script_path(obj);		// Dtu_improved_ai: the walk of a script
+		else
+			create_path(obj);
 		if (al[0x02] == 1 && aip->hide_segment == ail->goal_segment && (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) != 0) {
 			extern int Dtu_fix_script_walk;		// dtuscript.c
 

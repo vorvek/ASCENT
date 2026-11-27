@@ -59,7 +59,7 @@
 #include "dtumusic.h"
 #include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
-#include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
+#include "dtuopts.h"	// ASCENT: Dtu_improved_ai
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
 #include "text.h"		// ASCENT: Text_string, the names of the creatures
@@ -72,7 +72,7 @@
 #define MAX_IGNORE_OBJS 100		// as in physics.c
 
 //------------------------------------------------------------------------
-// ASCENT: Dtu_improved_pathfinding, the body of a creature at the player
+// ASCENT: Dtu_improved_ai, the body of a creature at the player
 
 // The reach of the melee weapon of a model: the largest distance from the
 // center of the creature to the center of the player, straight in front of
@@ -147,7 +147,7 @@ fix creature_stop_dist(object *obj)
 }
 
 // A hostile creature that sees the player does not walk nearer to the
-// player than creature_stop_dist() (Dtu_improved_pathfinding), and a
+// player than creature_stop_dist() (Dtu_improved_ai), and a
 // peaceful creature not nearer than its body radius plus that of the
 // player (Dtu_fix_npc_body, dtuobj.h): the part of its velocity toward the
 // player is cut so that it stops there. The test of a hit does not change,
@@ -163,7 +163,7 @@ static void stop_at_player(object *obj)
 	dtu_get_body_size(obj,&r,&hh);
 	if (is_hostile(obj)) {
 		// only a creature that sees the player (not one behind a door)
-		if (!improved_paths() || !Ail[obj-Objects].previous_visibility)
+		if (!improved_ai() || !Ail[obj-Objects].previous_visibility)
 			return;
 		if ((stop = creature_stop_dist(obj)) <= 0)
 			return;
@@ -332,7 +332,7 @@ static void creature_fall_damage(object *obj)
 	ail->falling = 0;
 }
 
-// ASCENT: Dtu_improved_pathfinding. The direction from the nearest point of
+// ASCENT: Dtu_improved_ai. The direction from the nearest point of
 // the edges of a side to p. fvi gives the normal of the face also when the
 // body touches an edge of the side (the corner of an opening, the rim of a
 // step), and a slide along the face does not leave the edge. For a body
@@ -546,9 +546,9 @@ void dtu_creature_physics_sim(object *obj)
 	int ignore_obj_list[MAX_IGNORE_OBJS], n_ignore_objs = 0;
 	fvi_query fq;
 	fvi_info hit;
-	// Dtu_improved_pathfinding: a body that hits a wall slides along it for
+	// Dtu_improved_ai: a body that hits a wall slides along it for
 	// the rest of the frame time (sim_time), as the ship of Descent 1 does.
-	int imp = improved_paths(), hits = 0;
+	int imp = improved_ai(), hits = 0;
 	fix sim_time = FrameTime, want = 0, moved = 0, floor_d;
 	int lava_seg = -1, lava_side = -1;		// the wall or floor of the last move query (dtu_lava_frame)
 
@@ -711,7 +711,7 @@ void dtu_creature_physics_sim(object *obj)
 
 		Fvi_dtu_body = 1;
 		Fvi_dtu_rad2 = half_height;
-		// Dtu_improved_pathfinding: the top side is tested at the top of the
+		// Dtu_improved_ai: the top side is tested at the top of the
 		// body (half height above the center). The executable tests it at
 		// 1.5 times the half height, so a tall creature (an ogre, 28.7 from
 		// the floor) cannot enter a corridor that its body fits in.
@@ -745,7 +745,7 @@ void dtu_creature_physics_sim(object *obj)
 
 		if (fate == HIT_WALL && hit.hit_side == WBOTTOM)
 			fate = 5;		// the floor
-		// Dtu_improved_pathfinding: a body that is in the radius of a side
+		// Dtu_improved_ai: a body that is in the radius of a side
 		// already (it gets there at the edge of a side of a segment below
 		// or above it) and moves away from the side: fvi takes the move as
 		// a hit behind the start, and the body did not leave the place.
@@ -841,7 +841,7 @@ void dtu_creature_physics_sim(object *obj)
 				Robot_info[obj->id].turn_time[Difficulty_level] = 0;
 
 			if (imp) {
-				// Dtu_improved_pathfinding: the body goes to the point where
+				// Dtu_improved_ai: the body goes to the point where
 				// it touches the wall (or the ceiling), loses the part of the
 				// velocity into the wall, and moves on with the rest of the
 				// frame time. The executable takes 1.75 times that part away
@@ -944,7 +944,7 @@ void dtu_creature_physics_sim(object *obj)
 				ignore_obj_list[n_ignore_objs++] = hit.hit_object;
 				continue;
 			}
-			// Dtu_improved_pathfinding: the body goes around scenery. It
+			// Dtu_improved_ai: the body goes around scenery. It
 			// loses the part of the velocity toward the center of the
 			// scenery and tries again.
 			if (imp && other->type == OBJ_DRESSING && !(other->flags & OF_SHOULD_BE_DEAD)) {

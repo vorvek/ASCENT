@@ -60,7 +60,7 @@
 #include "dtumusic.h"
 #include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
-#include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
+#include "dtuopts.h"	// ASCENT: Dtu_improved_ai
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
 #include "text.h"		// ASCENT: Text_string, the names of the creatures
@@ -1544,6 +1544,20 @@ static void weapon_sphere_test(object *obj)
 			if (vm_vec_dist_quick(&o->pos,&center) > i2f(40))
 				continue;
 			d = dtu_object_hit_test(&ip,&center,&p1,radius,o,obj);
+			// ASCENT: Dtu_improved_ai: not a body behind a wall or a door
+			// that is not open (attack_wall_between(), dtuobj_aware.c)
+			if (d > 0 && attack_wall_between(&center,seg,o,objnum)) {
+				static int log_obj = -1;
+				static fix log_time;
+
+				if (Obj_log_frames || log_obj != objnum || GameTime - log_time > F1_0 || GameTime < log_time) {
+					log_obj = objnum;
+					log_time = GameTime;
+					dtu_obj_log("attack: obj %d %s: a wall or a closed door is between the weapon and obj %d %s, frame %d",objnum,
+						dtu_object_name(obj),i,dtu_object_name(o),DTU_ANIM_FRAME(obj));
+				}
+				continue;
+			}
 			if (d > 0 && d < best_d) {
 				best_d = d;
 				best = i;
