@@ -86,7 +86,13 @@ line with no value is left out.
 - Armor, shield and worn items: armor class (body armor: the value, 10 plus
   the table value; other items: how much better), slot, classes, the effects
   while worn, the powers (abilities, skills, the rules of the rings and the
-  cloaks of protection).
+  cloaks of protection). The new gear (`Dtu_new_gear`, docs/re/objects.md,
+  "New gear") adds three power lines: the Mirror Shield (what it sends back
+  and what it does not), the Gloves of the Archer (+1 to hit and +2 damage
+  for arrows and bolts) and the Ring of Regeneration (1 hit point each 60
+  seconds). The Belt of Dwarvenkind uses the line of the constitution. The
+  gems (Bloodstone, Pearl, Star Sapphire) are "Item." as the Diamond and the
+  Ruby.
 - Potion, scroll and other usable items: count (charges for a Spider
   Piece; none for a scroll, whose count is the number of its text, and none
   for the Gem of Curing, the Cursed Scroll and the Orb of Insight, which are

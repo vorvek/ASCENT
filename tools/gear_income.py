@@ -90,7 +90,7 @@ def gem_expect(xp):
     return 0.9 * GEM_VALUE["Diamond"] + 0.1 * GEM_VALUE["Star Sapphire"]
 
 
-GEM_CHANCE = 0.25
+GEM_CHANCE = 0.5       # 1 in 2 (the approved table had 1 in 4; changed to reach the target)
 GOLD_CHANCE = 0.6
 
 
@@ -101,10 +101,11 @@ def old_gold(moola, f):
 
 
 def new_gold(moola, name):
-    # moola/2 + 1d(moola), 6 in 10
+    # moola + 1d(2 x moola), 6 in 10 (the approved table had moola/2 +
+    # 1d(moola); changed to reach the target)
     if moola <= 0 or name.lower() in NAMED:
         return 0.0
-    return GOLD_CHANCE * (moola // 2 + (moola + 1) / 2.0)
+    return GOLD_CHANCE * (moola + (2 * moola + 1) / 2.0)
 
 
 def main(argv):
@@ -143,12 +144,15 @@ def main(argv):
                 if c:
                     gem += GEM_CHANCE * gem_expect(xp)
         rows.append((gname, kills, og, ng, gem))
-    print("%-6s %6s %10s %10s %10s %10s" % ("group", "kills", "gold 1.3", "gold new", "gems new", "new total"))
+    # sold: the gold and 75 percent of the gem values (the market at
+    # Charisma 12); an item of the market costs 1.35 times its value
+    print("%-6s %6s %9s %9s %9s %9s %9s" % ("group", "kills", "gold 1.3", "gold new", "gems new", "total", "as gold"))
     tot = [0, 0, 0, 0]
     for g, k, og, ng, gem in rows:
-        print("%-6s %6d %10.0f %10.0f %10.0f %10.0f" % (g, k, og, ng, gem, ng + gem))
+        print("%-6s %6d %9.0f %9.0f %9.0f %9.0f %9.0f" % (g, k, og, ng, gem, ng + gem, ng + 0.75 * gem))
         tot = [tot[0] + k, tot[1] + og, tot[2] + ng, tot[3] + gem]
-    print("%-6s %6d %10.0f %10.0f %10.0f %10.0f" % ("all", tot[0], tot[1], tot[2], tot[3], tot[2] + tot[3]))
+    print("%-6s %6d %9.0f %9.0f %9.0f %9.0f %9.0f" % ("all", tot[0], tot[1], tot[2], tot[3], tot[2] + tot[3],
+                                                     tot[2] + 0.75 * tot[3]))
     if show:
         for c in ("undead", "intelligent", "none", "named"):
             print("\n%s: %s" % (c, ", ".join(sorted(classes[c], key=str.lower))))
