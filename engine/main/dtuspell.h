@@ -212,6 +212,20 @@ int dtu_dex_missile_adjust(void);
 // ends at once. Corrected: no wrap; a duration stops at 4 hours 33 minutes,
 // the longest timer of the port below DTU_FX_NO_END.
 extern int Dtu_fix_spell_hours;
+// ASCENT: the game time (GameTime, 0x13CD30) is a signed 16.16 number of
+// seconds: it wraps from +32767 to -32768 seconds after 9 hours 6 minutes
+// of play, and the save keeps it. 0x9002C and the other timer tests compare
+// the end with GameTime (end < GameTime), so an effect whose end passes the
+// wrap ends at once: a Potion of Freedom (50 to 80 minutes) drunk in the
+// last 80 minutes before the wrap shows "Free Action expired." in the next
+// frame. 1 (default): the tests of the effects, the potions, the casts and
+// the acid rounds compare the time left (end - GameTime, modulo 2^32), so a
+// time below 9 hours lasts in full across the wrap. 0 (-origcombat): 1.3.
+extern int Dtu_fix_time_wrap;
+// 1 when the game time has passed t (GameTime > t, Dtu_fix_time_wrap).
+int dtu_time_past(fix t);
+// The time left until t (t - GameTime, Dtu_fix_time_wrap).
+fix dtu_time_left(fix t);
 // A rest (0x360D5, 0x3E1F6) fills the hit points and the slots and ends no
 // effect: a buff cast before a rest lasts through it. The rule of the
 // port (2e: a rest is hours long): the rest ends the effects of the spells
@@ -264,6 +278,11 @@ void dtu_spell_armor_hit(object *obj, fix damage);
 // Ends an effect without a message (0xB0A98 with 1: a worn item is taken
 // off). The end action of 0x9002C does not run.
 void dtu_spell_clear_effect(object *obj, int mask);
+// ASCENT: the sleep of obj ends now, with the end action of 0x9002C (the
+// blindness ends too, "Sleep expired." for the player). Dtu_fix_sleep_wake.
+void dtu_spell_wake(object *obj);
+// ASCENT: test: one missile of the spell from the player at object objnum
+void dtu_spell_test_missile_at(int spell, int objnum);
 // 0x9002C with force: all effects of the object end (Dispel Magic, Potion
 // of Anti-Magic).
 void dtu_spell_dispel(object *obj);
@@ -398,6 +417,19 @@ int dtu_spell_learn(int spell);
 // list of the character (it goes to the item list), else the result of
 // dtu_spell_learn.
 int dtu_spell_insert(int spell);
+// ASCENT: Dtu_fix_learn_class. A spell with both class bits (40, Protection
+// From Fire, after the table fixup) goes in 1.3 to the mage list of a mage
+// (0xB69AD tests the mage bit first), but the cast check (0x35683) reads
+// it as a cleric spell: a mage with no cleric class has it and cannot cast
+// it. 1 (default): a spell goes only to the list that the cast check reads
+// for it, and only for a character of that class; otherwise it stays a
+// scroll in the item list. -origchar clears it (dtuchar.c).
+extern int Dtu_fix_learn_class;
+// Dtu_fix_learn_class for a save: takes one spell out of a list that the
+// cast check does not read for it (to the right list of the character, if
+// it has the class). Returns the spell that no list took (the caller puts
+// it into the item list), or -1 when nothing is left to do.
+int dtu_spell_unfit_take(void);
 // A cleric gets every cleric spell of the spell levels of the cleric level
 // (0x8BDB4 at the creation, 0xAF8F5 at each new level). Returns the count.
 int dtu_spell_grant_cleric(void);

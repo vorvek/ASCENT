@@ -275,6 +275,7 @@ static char rcsid[] = "$Id: gauges.c 2.7 1995/12/19 16:18:33 john Exp $";
 #include "render.h"
 #include "piggy.h"
 #include "dtuchar.h"		// ASCENT: the character of the target game
+#include "dtuhold.h"		// ASCENT: the view of a sleeping player
 
 bitmap_index Gauges[MAX_GAUGE_BMS];   // Array of all gauge bitmaps.
 
@@ -2120,7 +2121,8 @@ void draw_hud()
 		#endif
 		#endif
 		// ASCENT: see above, no reticle and no lives icon without bitmaps
-		if (Cockpit_mode != CM_LETTERBOX && (!Use_player_head_angles) && Gauges[RETICLE_CROSS].index != 0)
+		// ASCENT: no reticle on the black view of a sleeping player (dtuhold.h)
+		if (Cockpit_mode != CM_LETTERBOX && (!Use_player_head_angles) && Gauges[RETICLE_CROSS].index != 0 && !dtu_sleep_view_on())
 			show_reticle(0);
 		HUD_render_message_frame();
 

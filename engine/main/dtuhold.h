@@ -67,4 +67,36 @@ void dtu_hold_free_player(void);
 // each view; it moves the fade of the effect by the real time.
 float dtu_hold_view_amount(void);
 
+// ASCENT: the player under Sleep (the bit DTU_FX_SLEEP: the spell Sleep and
+// the unconsciousness of Color Spray, both with the blindness bit). 1.3
+// (0x8CFFF, case 46 and case 6) moves the eye of the player to the other
+// side of the center of the body (Player_eye_offset negated), puts the arms
+// into state 9 and clears the attack requests once; read_flying_controls
+// (0x2BFAE) and the physics do not test the bit, so the sleeping player
+// can move, turn and look, and nothing on the screen says that the player
+// sleeps (the port draws the normal view). A melee hit wakes the player
+// (0x2A839 sets the timer to 0); a missile, a spell or a trap does not.
+//
+// 1 (default): the whole 3D view is black, with "zzz" in its center, until
+// the sleep ends; the controls are blocked as by a hold
+// (dtu_hold_blocks_player: no move, turn, look up or down, jump, attack,
+// cast or item, the Potion of Freedom too). 0 with -origcombat or
+// -nosleepview: the view and the controls of 1.3.
+extern int Dtu_sleep_view;
+// AD&D 2nd edition (Sleep: "slapping or wounding awakens affected
+// creatures"): any damage to the player ends the sleep at once ("Sleep
+// expired.", the blindness of the sleep ends too). 1 (default); 0 with
+// -origcombat: only a melee hit wakes the player, as in 1.3.
+extern int Dtu_fix_sleep_wake;
+
+// 1 while the controls of the player are blocked by Dtu_sleep_view.
+int dtu_sleep_blocks_player(void);
+// 1 when the view of this frame is the black view of Dtu_sleep_view.
+int dtu_sleep_view_on(void);
+// Draws the black view with "zzz" on the canvas of the 3D view.
+void dtu_sleep_view_draw(void);
+// The player took damage: Dtu_fix_sleep_wake.
+struct object;
+void dtu_sleep_player_hurt(struct object *player);
+
 #endif

@@ -50,6 +50,7 @@
 #include "segment.h"
 #include "automap.h"		// ASCENT: the map of the map screen
 #include "dtucombat.h"		// ASCENT: the target hint of the cursor
+#include "dtuhold.h"		// ASCENT: the black view of a sleeping player
 #include "pcx.h"				// ASCENT: HRISBTN.PCH, the second images of SPELLS
 #include "timer.h"			// ASCENT: the repeat of a held scroll bar arrow
 #include "dtuopts.h"		// ASCENT: Dtu_fix_lowres_aspect, the shape of the shown pixel
@@ -2315,6 +2316,13 @@ static void cursor_copy(ubyte *buf, int to_screen)
 
 static void draw_cursor_main(int mx, int my);
 
+// ASCENT: the cursor is in the black view of a sleeping player (dtuhold.h)
+static int sleep_hides_cursor(int mx, int my)
+{
+	return dtu_sleep_view_on() && View_dest_set && mx >= View_dest[0] && mx < View_dest[0] + View_dest[2] &&
+		my >= View_dest[1] && my < View_dest[1] + View_dest[3];
+}
+
 // The cursor (dtumouse.c): the hot spot is the center of the picture.
 static void draw_cursor(int mx, int my)
 {
@@ -2952,11 +2960,12 @@ void dtu_display_frame(void)
 	}
 	// ASCENT: with the conversation window open, dtu_dlg_draw() draws the
 	// cursor after the window (dtu_display_draw_cursor)
-	if (!Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open() && !dtu_desc_is_open())
+	// ASCENT: no cursor on the black view of a sleeping player (dtuhold.h)
+	if (!Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open() && !dtu_desc_is_open() && !sleep_hides_cursor(mx, my))
 		draw_cursor(mx, my);
 	// ASCENT: immersive mode has no cursor. With the target hint, the tinted
 	// cursor shows at the center of the view while an attack can reach a
 	// hostile creature, and nothing shows at other times.
-	else if (Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open() && View_dest_set && dtu_combat_target_hint())
+	else if (Dtu_immersive && !dtu_dlg_is_open() && !dtu_scroll_is_open() && View_dest_set && dtu_combat_target_hint() && !dtu_sleep_view_on())
 		draw_cursor(View_dest[0] + View_dest[2] / 2, View_dest[1] + View_dest[3] / 2);
 }

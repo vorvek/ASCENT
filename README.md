@@ -57,6 +57,9 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 * Stone Skin no longer ends your other spells, and a cure no longer takes away the hit points of Aid. 
 * Strength and Infravision no longer end at once when cast at a high level.
 * Turn Undead no longer leaves an undead that can never be turned again.
+* A character learns a spell only when its classes can cast it: a mage no longer learns Protection From Fire, a priest spell, from a scroll.
+* Spells and potions keep their full time after nine hours of play; in 1.3 an effect that ends past that point ends at once (a Potion of Freedom showed "Free Action expired." right away).
+* Any damage wakes a sleeping character, not only a melee hit. While asleep, the view is black with "zzz" and the character cannot move, look around or act.
 
 **Items**
 
@@ -76,7 +79,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 **Creatures**
 
-* Trolls need fire (or a very thorough hacking while down!) to die. Otherwise, they'll keep standing up to fight. The code was already partially in the game.
+* Trolls need fire (or a very thorough hacking while down!) to die. Otherwise, they'll keep standing up to fight. The code was already partially in the game. Your spells hit a troll that is down: fire and acid (Fireball, Melf's Acid Arrow) end it for good.
 * Creatures take fall damage, and long falls always hurt, whatever the frame rate.
 * With Improved pathfinding, humanoid creatures open unlocked doors, and creatures handle corners and ladders better.
 

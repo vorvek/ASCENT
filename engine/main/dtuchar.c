@@ -269,7 +269,8 @@ static void read_options(void)
 		Dtu_fix_multiclass_thac0 = Dtu_fix_spell_save_repair = Dtu_fix_level_hit_points = Dtu_fix_secret_door_names =
 			Dtu_fix_thac0_row = Dtu_fix_new_thac0 = 0;
 	if (FindArg("-origchar"))
-		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = Dtu_fix_hot_key_refresh = 0;
+		Dtu_fix_save_seconds = Dtu_fix_endless_stack = Dtu_fix_level_thief = Dtu_fix_find_traps_skill = Dtu_fix_hot_key_refresh =
+			Dtu_fix_learn_class = 0;
 	if (FindArg("-origcombat"))
 		Dtu_fix_wizardry_ring = Dtu_fix_potion_frame = Dtu_fix_luck_coin = Dtu_fix_speed_items = Dtu_fix_cursed_scroll = Dtu_fix_creature_missile = Dtu_fix_potion_class = Dtu_fix_backstab =
 			Dtu_fix_creature_strength = Dtu_fix_shield_ac = Dtu_fix_bracers_ac = Dtu_fix_armoring_cap = Dtu_fix_ring_magic_armor =
@@ -1117,6 +1118,23 @@ static void ref_removed(dtu_item_ref *ref, int index)
 	if (ref->list != 0) return;
 	if (ref->n == index) ref->n = -1;
 	else if (ref->n > index) ref->n--;
+}
+
+// ASCENT: Dtu_fix_learn_class (dtu_spell_unfit_take): entry index of the
+// spell list (1 mage, 2 cleric) is gone
+static int Book_removed_list;
+
+static void ref_book_removed(dtu_item_ref *ref, int index)
+{
+	if (ref->list != Book_removed_list) return;
+	if (ref->n == index) { ref->list = 0; ref->n = -1; }
+	else if (ref->n > index) ref->n--;
+}
+
+void dtu_char_book_removed(int list, int index)
+{
+	Book_removed_list = list;
+	all_refs(ref_book_removed, index);
 }
 
 static void ref_check(dtu_item_ref *ref, int unused)
@@ -2008,7 +2026,7 @@ void dtu_char_potions_end(int force)
 
 	// ASCENT: the texts of 0x396B2 begin with "Potion of" (0x1246C1 to
 	// 0x124735)
-	if (Potion.intel_end && (force || GameTime > Potion.intel_end)) {
+	if (Potion.intel_end && (force || dtu_time_past(Potion.intel_end))) {
 		Potion.intel_end = 0;
 		// ASCENT: 0x396B2 sets the intelligence of word 0x187BB6 (the value
 		// without items) again; the port kept the potion value
@@ -2035,22 +2053,22 @@ void dtu_char_potions_end(int force)
 				dtu_char_log("potion: the intelligence potion makes the player forget parts of the map");
 			}
 	}
-	if (Potion.str_end && (force || GameTime > Potion.str_end)) {
+	if (Potion.str_end && (force || dtu_time_past(Potion.str_end))) {
 		Potion.str_end = 0;
 		HUD_init_message("Potion of Hill Giant Strength expired.");
 		changed = 1;
 	}
-	if (Potion.dragon_end && (force || GameTime > Potion.dragon_end)) {
+	if (Potion.dragon_end && (force || dtu_time_past(Potion.dragon_end))) {
 		Potion.dragon_end = 0;
 		HUD_init_message("Potion of Dragon's Blood expired.");
 		changed = 1;
 	}
-	if (Potion.dex_end && (force || GameTime > Potion.dex_end)) {
+	if (Potion.dex_end && (force || dtu_time_past(Potion.dex_end))) {
 		Potion.dex_end = 0;
 		HUD_init_message("Potion of Agility expired.");
 		changed = 1;
 	}
-	if (Potion.luck_end && (force || GameTime > Potion.luck_end)) {
+	if (Potion.luck_end && (force || dtu_time_past(Potion.luck_end))) {
 		Potion.luck_end = 0;
 		dtu_script_set_gflag(0x4D, 0);		// ASCENT: 0x39913, global flag 77
 		HUD_init_message("Your luck just ran out.");
@@ -3666,10 +3684,10 @@ void dtu_char_pack(ubyte *record)
 
 		t[0] = Potion.intel_end; t[1] = Potion.str_end; t[2] = Potion.dragon_end; t[3] = Potion.dex_end;
 		for (i = 0; i < 4; i++) {
-			s = (t[i] && t[i] > GameTime) ? f2i(t[i] - GameTime) : 0;
+			s = (t[i] && dtu_time_left(t[i]) > 0) ? f2i(dtu_time_left(t[i])) : 0;
 			// ASCENT: Dtu_fix_save_seconds, the nearest second
-			if (Dtu_fix_save_seconds && t[i] && t[i] > GameTime)
-				s = f2i(t[i] - GameTime + F1_0 / 2);
+			if (Dtu_fix_save_seconds && t[i] && dtu_time_left(t[i]) > 0)
+				s = f2i(dtu_time_left(t[i]) + F1_0 / 2);
 			if (!t[i] && Potion.load_left[i])
 				s = Potion.load_left[i];
 			put_s32(record + DTU_P_POTIONS + 4 * i, s);
@@ -4375,6 +4393,22 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "hotkeys"))	dump_hot_keys();		// ASCENT: test of the boxes (check_saveload.py)
 	else if (!strcmp(cmd, "rules"))		rules_test();		// ASCENT: test, docs/audit/character.md
 	else if (!strcmp(cmd, "setlevel"))	dtu_char_set_level(a);		// test: 0x8BA3A (script statement 9F)
+	else if (!strcmp(cmd, "spellat"))		dtu_spell_test_missile_at(a, b);	// ASCENT: test: spellat=SPELL.OBJ, a missile of the spell at object OBJ
+	else if (!strcmp(cmd, "gametime"))	GameTime = i2f(a);		// ASCENT: test: gametime=S, the game time (Dtu_fix_time_wrap)
+	else if (!strcmp(cmd, "fxstate"))		// ASCENT: test: the effect bits of the player
+		dtu_char_log("fx: bits 0x%08x, game time %.1f", (unsigned) ConsoleObject->dtu.m_88, f2fl(GameTime));
+	else if (!strcmp(cmd, "books")) {		// ASCENT: test: the spell lists (Dtu_fix_learn_class)
+		int bk, i;
+
+		for (bk = 0; bk < 2; bk++) {
+			char list[400], *q = list;
+
+			*q = 0;
+			for (i = 0; i < Dtu_spell_book_n[bk] && q < list + 380; i++)
+				q += sprintf(q, "%d ", Dtu_spell_book[bk][i]);
+			dtu_char_log("books: %s list: %s", bk ? "cleric" : "mage", list);
+		}
+	}
 	else
 		dtu_char_log("script: unknown command");
 	if (strcmp(cmd, "dump") && strcmp(cmd, "hotkeys"))
@@ -4416,6 +4450,19 @@ static void spell_save_repair(void)
 	if (!Spell_repair_pending)
 		return;
 	Spell_repair_pending = 0;
+	// ASCENT: Dtu_fix_learn_class: a spell that a list took and that the
+	// character cannot cast from it (Protection From Fire in the list of a
+	// mage) becomes a scroll of the item list again
+	{
+		int s, guard = 0;
+
+		while ((s = dtu_spell_unfit_take()) >= 0 && guard++ < 2 * DTU_SPELL_BOOK_MAX) {
+			int r = dtu_inventory_add(OBJ_SPELL, s, 1);
+
+			dtu_char_log("repair: spell %d leaves the spell lists (Dtu_fix_learn_class): %s", s,
+				r >= 0 ? "a scroll of the item list" : "the item list is full, lost");
+		}
+	}
 	if (!Dtu_fix_spell_save_repair)
 		return;
 	for (i = 0; i < Dtu_n_inventory; ) {

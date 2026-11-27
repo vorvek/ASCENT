@@ -478,6 +478,30 @@ void dtu_spell_level_start(void)
 	Level_started = 1;
 }
 
+// ASCENT: Dtu_fix_learn_class (dtuspell.h)
+int Dtu_fix_learn_class = 1;
+
+// The list (0 mage, 1 cleric) that takes a spell, or -1. 1.3 (0xB69AD,
+// 0xB65BB) tests the mage bit first, the cast check (0x35683, spell_book_of)
+// the cleric bit first: a spell with both bits (40, Protection From Fire,
+// after the table fixup) goes to the mage list of a mage, who cannot cast
+// it ("You are not a Cleric."). Dtu_fix_learn_class: the list of the cast
+// check, and only for a character with its class.
+static int learn_book(int spell)
+{
+	int b;
+
+	if (Dtu_fix_learn_class) {
+		b = spell_book_of(spell);
+		return (b >= 0 && char_is(b ? DTU_CLASS_CLERIC : DTU_CLASS_MAGE)) ? b : -1;
+	}
+	if (spell_flag(spell,"mage_use") && char_is(DTU_CLASS_MAGE))
+		return 0;
+	if (spell_flag(spell,"cleric_use") && char_is(DTU_CLASS_CLERIC))
+		return 1;
+	return -1;
+}
+
 // 0xB69AD
 int dtu_spell_learn(int spell)
 {
@@ -485,11 +509,7 @@ int dtu_spell_learn(int spell)
 
 	if (!spell_ok(spell))
 		return 1;
-	if (spell_flag(spell,"mage_use") && char_is(DTU_CLASS_MAGE))
-		b = 0;
-	else if (spell_flag(spell,"cleric_use") && char_is(DTU_CLASS_CLERIC))
-		b = 1;
-	else
+	if ((b = learn_book(spell)) < 0)
 		return 1;
 	for (i=0;i<Dtu_spell_book_n[b];i++)
 		if (Dtu_spell_book[b][i] == spell)
@@ -507,11 +527,41 @@ int dtu_spell_learn(int spell)
 // takes it, a scroll).
 int dtu_spell_insert(int spell)
 {
-	if (!spell_ok(spell))
-		return -1;
-	if (!(spell_flag(spell,"cleric_use") && char_is(DTU_CLASS_CLERIC)) && !(spell_flag(spell,"mage_use") && char_is(DTU_CLASS_MAGE)))
+	if (!spell_ok(spell) || learn_book(spell) < 0)
 		return -1;
 	return dtu_spell_learn(spell);
+}
+
+// ASCENT: Dtu_fix_learn_class for a save: a spell in a list that the cast
+// check does not read for it (spell_book_of) goes to the right list of the
+// character, else out of the list. The hot keys of the list follow.
+// Returns the number of the spell that left the lists, or -1 for none.
+int dtu_spell_unfit_take(void)
+{
+	int b, i, k;
+
+	if (!Dtu_fix_learn_class)
+		return -1;
+	for (b=0;b<2;b++)
+		for (i=0;i<Dtu_spell_book_n[b];i++) {
+			int s = Dtu_spell_book[b][i], r;
+
+			if (!spell_ok(s) || spell_book_of(s) == b)
+				continue;
+			for (k=i;k<Dtu_spell_book_n[b]-1;k++)
+				Dtu_spell_book[b][k] = Dtu_spell_book[b][k+1];
+			Dtu_spell_book_n[b]--;
+			dtu_char_book_removed(b + 1,i);
+			if (Dtu_spell_current == s)
+				Dtu_spell_current = -1;
+			r = dtu_spell_learn(s);
+			dtu_spell_log("spell: '%s' (%d) leaves the %s list (Dtu_fix_learn_class): %s",spell_name(s),s,b ? "cleric" : "mage",
+				r == 1 ? "no list of the character takes it" : "now in the right list");
+			if (r == 1)
+				return s;
+			i--;
+		}
+	return -1;
 }
 
 // 0xB75A8(L): every spell with the cleric bit and the level L + 1 (the
@@ -940,6 +990,23 @@ static void fx_end(object *obj,int b)
 	dtu_spell_log("spell: effect %s of obj %d %s ends at %.2f",Fx_name[b],(int)(obj-Objects),target_name(obj),f2fl(GameTime));
 }
 
+// ASCENT: Dtu_fix_time_wrap (dtuspell.h)
+int Dtu_fix_time_wrap = 1;
+
+int dtu_time_past(fix t)
+{
+	if (!Dtu_fix_time_wrap)
+		return t < GameTime;
+	return (int) ((unsigned int) GameTime - (unsigned int) t) > 0;
+}
+
+fix dtu_time_left(fix t)
+{
+	if (!Dtu_fix_time_wrap)
+		return t - GameTime;
+	return (fix) (int) ((unsigned int) t - (unsigned int) GameTime);
+}
+
 // 0x9002C: the timers of one object. force: all effects end (Dispel Magic).
 static void fx_expire(object *obj,int force)
 {
@@ -955,7 +1022,7 @@ static void fx_expire(object *obj,int force)
 		if (!end) {
 			if (Fx_timer[b]) {
 				fix t = *timer_ref(obj,Fx_timer[b]);
-				end = (t != DTU_FX_NO_END && t < GameTime);
+				end = (t != DTU_FX_NO_END && dtu_time_past(t));		// ASCENT: Dtu_fix_time_wrap
 			}
 			else if (b == 0)
 				end = obj->dtu.m_8c[1] <= 0;		// the Armor pool +0x90
@@ -1158,7 +1225,7 @@ static void attached_frame(void)
 			continue;
 		}
 		if (p->signature != Attached[i].parent_sig || p->type == OBJ_NONE || (p->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED)) ||
-			 (Attached[i].mode == ATTACH_ABOVE && GameTime > Attached[i].end)) {
+			 (Attached[i].mode == ATTACH_ABOVE && Attached[i].end != DTU_FX_NO_END && dtu_time_past(Attached[i].end))) {
 			v->lifeleft = 0;
 			v->flags |= OF_SHOULD_BE_DEAD;
 			Attached[i].signature = 0;
@@ -1946,7 +2013,7 @@ static void acid_frame(void)
 			a->used = 0;
 			continue;
 		}
-		if (GameTime < a->next)
+		if (dtu_time_left(a->next) > 0)
 			continue;
 		if (a->caster >= 0 && Objects[a->caster].signature == a->caster_sig &&
 			 (Objects[a->caster].type == OBJ_PLAYER || Objects[a->caster].type == OBJ_ROBOT))
@@ -3595,6 +3662,34 @@ static void player_missiles(int spell,int template_w,int L,int homing)
 	}
 }
 
+// ASCENT: test (-chartest spellat=SPELL.OBJ): one missile of the spell from
+// the player straight at the center of object OBJ, at the level of the
+// player (Dtu_fix_revive, the fallen body)
+void dtu_spell_test_missile_at(int spell,int objnum)
+{
+	object *player = ConsoleObject;
+	int L, o;
+	vms_vector d;
+
+	if (!player || !spell_ok(spell) || objnum < 0 || objnum > Highest_object_index) {
+		dtu_spell_log("spell: test missile of spell %d at obj %d: no such spell or object",spell,objnum);
+		return;
+	}
+	L = dtu_spell_player_level(spell);
+	vm_vec_sub(&d,&Objects[objnum].pos,&player->pos);
+	vm_vec_normalize_quick(&d);
+	o = find_point_seg(&player->pos,player->segnum);
+	o = dtu_create_missile(&d,&player->pos,o >= 0 ? o : player->segnum,player-Objects,spell_template(spell,0),spell,1);
+	if (o < 0) {
+		dtu_spell_log("spell: test missile of spell %d at obj %d: no missile object",spell,objnum);
+		return;
+	}
+	vm_vec_copy_scale(&Objects[o].mtype.phys_info.velocity,&d,spell_fix(spell,"speed",i2f(100)));
+	dtu_missile_set_life(o,spell_missile_life(spell,L));
+	track_missile(o,spell,L,-1);
+	dtu_spell_log("spell: test missile obj %d of '%s' level %d at obj %d",o,spell_name(spell),L,objnum);
+}
+
 // 0xB7084 for a spell of a book (0x35573: one slot of the level when the
 // sub uses of the entry are used up)
 static void use_slot(int spell)
@@ -3645,7 +3740,7 @@ int dtu_spell_fire(void)
 				f2fl(Cast_timer),msg);
 			return 0;
 		}
-		if (Cast_timer > GameTime)
+		if (dtu_time_left(Cast_timer) > 0)
 			return 0;
 		Cast_timer = DTU_FX_NO_END;
 		Cast_spell = -1;
@@ -3809,7 +3904,9 @@ int dtu_spell_set_effect(object *obj,int mask,fix duration,int keep_later,int me
 		return 0;
 	if (Fx_timer[b]) {
 		fix *t = timer_ref(obj,Fx_timer[b]);
-		if (!(keep_later && (obj->dtu.m_88 & mask) && (*t == DTU_FX_NO_END || *t > end)))
+		// ASCENT: Dtu_fix_time_wrap: the time left, not the end
+		if (!(keep_later && (obj->dtu.m_88 & mask) && (*t == DTU_FX_NO_END ||
+				(Dtu_fix_time_wrap ? dtu_time_left(*t) > duration : *t > end))))
 			*t = end;
 	}
 	obj->dtu.m_88 |= mask;
@@ -3824,6 +3921,12 @@ int dtu_spell_set_effect(object *obj,int mask,fix duration,int keep_later,int me
 	dtu_spell_log("spell: effect %s set on obj %d %s for %.1f seconds%s",Fx_name[b],(int)(obj-Objects),target_name(obj),
 		duration >= DTU_FX_NO_END ? -1.0 : f2fl(duration),keep_later ? " (the later end stays)" : "");
 	return 1;
+}
+
+void dtu_spell_wake(object *obj)
+{
+	if (obj && (obj->dtu.m_88 & DTU_FX_SLEEP))
+		fx_end(obj,26);
 }
 
 void dtu_spell_clear_effect(object *obj,int mask)
@@ -3916,7 +4019,7 @@ int dtu_spell_interrupt(object *obj,int hit)
 	if (obj == NULL)
 		return 0;
 	if (obj->type == OBJ_PLAYER) {
-		if (Cast_timer == DTU_FX_NO_END || Cast_timer <= GameTime || Cast_spell < 0)
+		if (Cast_timer == DTU_FX_NO_END || dtu_time_left(Cast_timer) <= 0 || Cast_spell < 0)
 			return 0;
 		Cast_timer = DTU_FX_NO_END;
 		dtu_combat_cast_stopped();
@@ -4158,7 +4261,7 @@ static int creature_interrupt(object *obj,int hit)
 {
 	int n = cspell_state(obj), e = Cspell[n].chosen;
 
-	if (Cspell[n].cast_time <= GameTime || e < 0)
+	if (dtu_time_left(Cspell[n].cast_time) <= 0 || e < 0)
 		return 0;
 	if (hit) {
 		int s = Cspell_table[e].spell, b = spell_flag(s,"mage_use") ? 0 : 1;
@@ -4519,7 +4622,7 @@ void dtu_spell_creature_frame(object *obj,fix dist,int active)
 	// chosen spell and no condition bit gets the bit of the alert level 2
 	// (0x16262) after its wait. The attack spells of the table 0x142084
 	// answer this bit; the spells that help the creature keep their events.
-	if (Dtu_fix_caster_idle && Cspell[n].cond == 0 && Cspell[n].chosen < 0 && Cspell[n].idle_time <= GameTime &&
+	if (Dtu_fix_caster_idle && Cspell[n].cond == 0 && Cspell[n].chosen < 0 && dtu_time_left(Cspell[n].idle_time) <= 0 &&
 		 dtu_creature_is_hostile(obj)) {
 		if (Cspell[n].idle_time == 0)
 			cspell_idle_wait(n,1);		// a creature that has not chosen yet: the wake event comes first
@@ -4533,10 +4636,10 @@ void dtu_spell_creature_frame(object *obj,fix dist,int active)
 	if (Cspell[n].cond == 0 && !(Dtu_fix_caster_cast && Cspell[n].chosen >= 0))
 		return;
 	if (Cspell[n].chosen < 0) {
-		if (Cspell[n].recharge_time <= GameTime)
+		if (dtu_time_left(Cspell[n].recharge_time) <= 0)
 			creature_choose(obj,dist);
 	}
-	else if (Cspell[n].cast_time <= GameTime)
+	else if (dtu_time_left(Cspell[n].cast_time) <= 0)
 		creature_cast(obj);
 }
 

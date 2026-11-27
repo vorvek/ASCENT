@@ -47,6 +47,7 @@
 #include "dtuobj.h"
 #include "dtutrig.h"
 #include "dtuspell.h"	// ASCENT: the spells of the creatures, the area of a missile
+#include "dtuhold.h"		// ASCENT: Dtu_fix_sleep_wake
 #include "dtuthief.h"	// ASCENT: Hide In Shadows and Move Silently in the AI
 #include "dtuscript.h"	// ASCENT: quest flag 67 in the creature setup
 #include "textures.h"	// ASCENT: the lava textures of BANE
@@ -1302,6 +1303,8 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 
 	if (damage <= 0)
 		return 0;
+	// ASCENT: Dtu_fix_sleep_wake (dtuhold.h): any damage wakes the player
+	dtu_sleep_player_hurt(player);
 
 	if (attacker && attacker != player)
 		HUD_init_message("%s hit You for %d damage.",dtu_object_display_name(attacker),f2i(damage));		// 0x2A54E: TEX 831 with TEX 70

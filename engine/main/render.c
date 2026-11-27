@@ -2290,6 +2290,16 @@ void render_frame(fix eye_offset)
 		return;
 	}
 
+	// ASCENT: Dtu_sleep_view (dtuhold.h): the view of a sleeping player is
+	// black, with "zzz" in its center (both renderers: the canvas has no
+	// transparent color, so no GPU image shows)
+	if (dtu_sleep_view_on()) {
+		dtu_sleep_view_draw();
+		if (!Dtu_step_running)
+			FrameCount++;
+		return;
+	}
+
 #ifdef NEWDEMO
 	if ( Newdemo_state == ND_STATE_RECORDING )	{
 		if (eye_offset >= 0 )	{
