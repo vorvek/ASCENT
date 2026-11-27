@@ -123,6 +123,83 @@ extern int Dtu_gear_loaded;
 #define DTU_GEAR_ROD_LEVEL		12
 #define DTU_GEAR_ROD_VALUE		50
 
+//------------------------------------------------------------------------
+// ASCENT: the class gear, the setting "Gear for single class mages and
+// thieves" (Dtu_class_gear, on by default; ClassGear of ascent.cfg;
+// -noclassgear, -noimprovements, -origitems and -origscript clear it for one
+// run). Not in 1.3. Aleena Paladinstar sells wands, scroll bundles, the
+// Pearls of Power and the Bracers of Defense AC2 to a single class mage;
+// Nalbas Oddpepper a Short Bow with Poisoned Arrows and Potions of
+// Invisibility, Mirt the Merchant old guild things (with the Bracers of
+// Archery and the Girdle of Hill Giant Strength) to a single class thief
+// (the script patches of dtuclassgear.c). No class power: only gear that
+// the other characters cannot buy, at a price. The new lines go in after
+// the other new lines when the new gear is loaded too:
+// The Poisoned Arrow: a new weapon line, the next free number after the
+// lines of the new gear (91 with the Rod of Kelemvor at 90;
+// dtu_gear_poison_arrow_line), a copy of the Arrow (7) with the poison of
+// the Dagger of Venom
+#define DTU_GEAR_ARROW_FROM		7
+#define DTU_GEAR_BOOTS_ELVEN	62		// armor 62: Boots of Elvenkind, Move Silently 95 while worn
+#define DTU_GEAR_ELVEN_MOVE		95
+#define DTU_GEAR_BRACERS_ARCHERY	63		// armor 63: Bracers of Archery, the gauntlet place, +2 to hit with arrows and bolts
+#define DTU_GEAR_BRACERS_HIT	2
+#define DTU_GEAR_PEARL_POWER	131		// misc 131 to 133: Pearl of Power I to III
+#define DTU_GEAR_N_PEARLS		3
+
+extern int Dtu_class_gear;
+// 1 if the class gear is on for this run (the setting, no option clears it)
+int dtu_class_gear_on(void);
+// 1 while the tables of the current level have the class gear lines (the
+// new gear is loaded and dtu_class_gear_on() was 1 at the load)
+extern int Dtu_class_gear_loaded;
+
+// The spell level (1 to 3) of a Pearl of Power, 0 for another misc number
+int dtu_gear_pearl_level(int misc);
+// dtuchar.c, the use of a misc item: a Pearl of Power gives back one spent
+// mage slot of its spell level, once in each dungeon level. Returns 1 if
+// the item is a Pearl of Power (used or not), 0 for another item.
+int dtu_gear_pearl_use(int misc);
+// The level start (not the start of a level of a loaded game) and the rest:
+// the Pearls of Power are ready again. The used state is in the global
+// flags, which the save keeps.
+void dtu_gear_pearl_recharge(const char *why);
+// dtufe.c: a game was loaded and its next level start is the level of the
+// save: the Pearls keep their state.
+void dtu_gear_pearl_keep(void);
+// 1 if weapon is the Poisoned Arrow (the tables have the class gear lines)
+int dtu_gear_poison_arrow(int weapon);
+// The weapon line of the Poisoned Arrow, -1 when the tables have none
+int dtu_gear_poison_arrow_line(void);
+// dtuobj_missile.c: a missile of the player hit a creature and did damage
+void dtu_gear_missile_hit(struct object *creature, struct object *attacker, int weapon);
+
+// The global flags of the class gear (dtu_script_gflag): 170 to 175 and 210
+// to 239. The scripts use flags up to 128 and 200, the port 129 to 160 and
+// 240 to 251.
+#define DTU_GEAR_GF_MM_WAND		210		// 210 to 218: the Wand of Magic Missiles of stage 0 to 8 is sold
+#define DTU_GEAR_GF_PARALYZE	219		// the Wand of Paralyzation of Aleena is sold
+#define DTU_GEAR_GF_FIREBALLS	220
+#define DTU_GEAR_GF_BRACERS		221
+#define DTU_GEAR_GF_PEARL_SOLD	222		// 222 to 224: the Pearl of Power I to III is sold
+#define DTU_GEAR_GF_PEARL_USED	225		// 225 to 227: the Pearl of Power I to III is used in this level
+#define DTU_GEAR_GF_ALEENA		228		// Aleena has said her first line of the class gear
+#define DTU_GEAR_GF_TMP_MM		229		// scratch flags of a talk: a Wand of Magic Missiles is for sale,
+#define DTU_GEAR_GF_TMP_PEARL	230		// a Pearl of Power,
+#define DTU_GEAR_GF_BOW			231		// the Short Bow of Nalbas is sold
+#define DTU_GEAR_GF_INVIS		232		// 232 to 234: the first, second and third Potion of Invisibility is sold
+#define DTU_GEAR_GF_LEATHER		235		// the goods of Mirt: Leather Armor +2,
+#define DTU_GEAR_GF_LOCKPICKS	236		// Master Lockpicks,
+#define DTU_GEAR_GF_BOOTS		237		// Boots of Elvenkind,
+#define DTU_GEAR_GF_ARCHERY		238		// Bracers of Archery,
+#define DTU_GEAR_GF_SWORD		239		// Short Sword of Quickness
+#define DTU_GEAR_GF_MIRT		170		// Mirt has said his first line of the class gear
+#define DTU_GEAR_GF_TMP_MIRT	171		// scratch: Mirt has a good for sale
+#define DTU_GEAR_GF_TMP_WAND	172		// scratch: Aleena has a wand for sale
+#define DTU_GEAR_GF_TMP_SCROLL	173		// scratch: Aleena has a scroll bundle for sale
+#define DTU_GEAR_GF_TMP_NALBAS	174		// scratch: Nalbas has a good for sale
+#define DTU_GEAR_GF_GIRDLE		175		// the Girdle of Hill Giant Strength of Mirt is sold
+
 // bmread.c, after the table fixup of 1.3: the wands and the values of the
 // weapon lines, and the text of the new lines, which bmread.c reads with
 // the reader of the tables (parse). Nothing when the setting is off or the
@@ -200,7 +277,8 @@ int dtu_gear_displace(struct object *player, struct object *attacker);
 // dtuchar.c, each frame: the message when the cloak is ready again
 void dtu_gear_displace_frame(void);
 
-// 1 if weapon is the Dagger of Venom, the Assassin's Dagger
+// 1 if weapon is the Dagger of Venom (or the Poisoned Arrow of the class
+// gear), the Assassin's Dagger
 int dtu_gear_venom(int weapon);
 int dtu_gear_assassin(int weapon);
 // 1 if the creature type cannot be poisoned (undead, extraplanar)

@@ -8,6 +8,7 @@ dispatch at 0xAAE3E). docs/re/scripts.md describes the byte code. The output
 is the reference for the C interpreter in engine/main/dtuscript.c.
 
   python -I tools/script.py dis GABx.RLH [ID ...]     disassemble (all records or the ids)
+  python -I tools/script.py disraw FILE [ID]          disassemble one decoded record (gab_ID.bin of -scriptdump)
   python -I tools/script.py check GAMEDIR             parse every record of every GABx file
   python -I tools/script.py stats GABx.RLH            counts of codes, flags, items, labels
 
@@ -230,6 +231,11 @@ class Script:
             n = self.num()
             self.st["test gflag %s" % n] += 1
             r = "gflag %s" % n
+        elif b == 0xFE:
+            # a term of the port (engine/main/dtuscript.c sc_term): the
+            # blocks of the class gear (dtuclassgear.c); no record of the game
+            # has it
+            r = "knows(SPELL %s)" % self.num()
         else:
             self.p -= 1
             r = "%s %s" % (self.num(), self.cmp())
@@ -534,6 +540,23 @@ def main(argv):
         return 2
     if argv[1] == "dis":
         return cmd_dis(argv[2], set(int(x, 0) for x in argv[3:])) or 0
+    if argv[1] == "disraw":
+        # a decoded record in a file (gab_ID.bin of the option -scriptdump
+        # of the game: the record with the patches of the port)
+        with open(argv[2], "rb") as f:
+            data = f.read()
+        s = Script(data, int(argv[3], 0) if len(argv) > 3 else 0)
+        print("; %s, %d bytes" % (argv[2], len(data)))
+        try:
+            s.parse()
+            err = None
+        except ParseError as e:
+            err = str(e)
+        print("\n".join(s.out))
+        if err:
+            print("; ERROR: %s" % err)
+            return 1
+        return 0
     if argv[1] == "check":
         return cmd_check(argv[2])
     if argv[1] == "stats":

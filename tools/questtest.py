@@ -961,6 +961,83 @@ TESTS = [
     T("myrkul_daland_orig", "MYRKUL", "8:goobj=3.20,10:face=3,12:talk=3,14:area=13.3,20:talk=3",
       [r"obj 3: status 3EA"], [r"held with no end, the hint", r"run script 160"],
       frames=60, dlg=DALAND_DLG, extra=["-noattack", "-origcombat"], known=MYRKUL_INT3),
+
+    # The class gear (Dtu_class_gear, engine/main/dtuclassgear.c). YPINN:
+    # Aleena Paladinstar (script 4) and a single class mage at mission 10
+    # who knows Magic Missile and Lightning Bolt. Her first talk, reply 5
+    # ("selling scrolls", label 25), then label 0x30 and her menu 0x31:
+    # the Wand of Magic Missiles (750), five scrolls of Magic Missile (250),
+    # the Pearl of Power I (2500) and the Bracers of Defense AC2 (5000).
+    T("class_aleena_mage", "YPINN",
+      "5:class=1,6:gold=20000,7:mission=10,8:give=17.33,9:give=17.32,10:talkscript=4,600:dump",
+      [r"script: goto 30\s+script: goto 31", r"dlg: speech \"A true wizard, with no sword arm",
+       r"take class 168 id 750 [^\n]*\n[^\n]*gold 20000 -> 19250\s+script: give class 5 id 55 E4[^\n]*\s+script: set global flag 210",
+       r"gold 19250 -> 19000(\s+script: give class 17 id 33 E4[^\n]*){5}",
+       r"gold 19000 -> 16500\s+script: give class 16 id 131 E4[^\n]*\s+script: set global flag 222",
+       r"gold 16500 -> 11500\s+script: give class 15 id 42 E4[^\n]*\s+script: set global flag 221",
+       r"entry \d+: type 5 id 55 'Wand of Magic Missiles'", r"entry \d+: type 17 id 33 'Magic Missile' count 5",
+       r"entry \d+: type 16 id 131 'Pearl of Power I' count 1", r"entry \d+: type 15 id 42 'Bracers of Defense AC2'"],
+      frames=620, dlg="5,1,2,1,1,1,1,3,1,1,1,4,1,1,1,5,1,1,esc,esc"),
+    # One Wand of Magic Missiles at the first stage (mission 0): after the
+    # sale her menu has no wand.
+    T("class_aleena_once", "YPINN", "5:class=1,6:gold=5000,10:talkscript=4",
+      [r"set global flag 210[\s\S]*Can I interest you in any of them\?\"\s+dlg: reply 1\) \"I\'d like to see your scrolls.\"\s+"
+       r"dlg: reply 2\) \"Nothing today.\"\s"],
+      [r"give class 5 id 55[\s\S]*give class 5 id 55"], frames=300, dlg="5,1,2,1,1,1,1,esc,esc"),
+    T("class_aleena_short", "YPINN", "5:class=1,6:gold=100,10:talkscript=4",
+      [r"dlg: speech \"I\'m afraid you don\'t have enough currency. I can\'t go any lower"], [r"take class 168"], frames=250, dlg="5,1,2,1,1,esc,esc"),
+    # A mage and thief: her list of 1.3 (label 30), no new reply
+    T("class_aleena_multiclass", "YPINN", "5:class=1,6:class2=3,7:gold=5000,10:talkscript=4",
+      [r"script: goto 30\s+script: goto 1E\s+dlg: speech"], [r"fellow student of the Art"], frames=150, dlg="5,1,esc,esc"),
+    # -noclassgear: the script of 1.3 (label 25 goes to label 30)
+    T("class_aleena_off", "YPINN", "5:class=1,6:gold=5000,10:talkscript=4",
+      [r"script: goto 1E\s+dlg: speech"], [r"fellow student of the Art", r"script: goto 30\s"], frames=150, dlg="5,1,esc,esc",
+      extra=["-noclassgear"]),
+    # Nalbas Oddpepper (script 5) and a single class thief at the first talk:
+    # reply 1 (label 1), then his offer (label 0x20): the Short Bow and 16
+    # Poisoned Arrows for 300, then his Potion of Healing of 1.3 (label 15).
+    T("class_nalbas_thief", "YPINN", "5:class=3,6:gold=1000,10:talkscript=5,250:dump",
+      [r"script: goto 0\s+script: goto 20", r"gold 1000 -> 700\s+script: give class 16 id 89 E4[^\n]*(\s+script: give class 5 id 91 E4[^\n]*){16}",
+       r"script: goto F\s+dlg: speech \"Wait, a minute, friend!", r"entry \d+: type 16 id 89 'Short Bow' count 1",
+       r"entry \d+: type 5 id 91 'Poisoned Arrow' count 16"], frames=270, dlg="1,1,1,1,1,2,esc,esc"),
+    # A later talk (the bow is sold, mission 7): 8 arrows for 160, then the
+    # three Potions of Invisibility (400 each); a fourth is not offered.
+    T("class_nalbas_later", "YPINN", "5:class=3,6:gold=5000,7:mission=7,8:gflag=231,10:talk=28,100:talkscript=5,600:dump",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 21", r"gold 5000 -> 4840(\s+script: give class 5 id 91 E4[^\n]*){8}",
+       r"gold 4840 -> 4440\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 232",
+       r"gold 4440 -> 4040\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 233",
+       r"gold 4040 -> 3640\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 234",
+       r"set global flag 234[\s\S]*my little stock\?\"\s+dlg: reply 1\) \"More of those arrows.\"\s+dlg: reply 2\) \"Just saying hello.\"\s",
+       r"entry \d+: type 5 id 91 'Poisoned Arrow' count 8"],
+      frames=620, dlg="esc,1,1,1,2,1,1,2,1,1,2,1,1,esc,esc"),
+    T("class_nalbas_short", "YPINN", "5:class=3,6:gold=100,10:talkscript=5",
+      [r"dlg: speech \"Alas, your purse is lighter"], [r"take class 168"], frames=200, dlg="1,1,1,1,esc,esc"),
+    T("class_nalbas_multiclass", "YPINN", "5:class=3,6:class2=2,7:gold=1000,10:talkscript=5",
+      [r"script: goto 0\s+script: goto F"], [r"Ah, a professional!"], frames=200, dlg="1,1,1,esc,esc"),
+    T("class_nalbas_mage", "YPINN", "5:class=1,7:gold=1000,10:talkscript=5",
+      [r"script: goto 0\s+script: goto F"], [r"Ah, a professional!"], frames=200, dlg="1,1,1,esc,esc"),
+    # Mirt the Merchant (script 2) and a single class thief at mission 14,
+    # at his second talk: his first line, then the six goods (the Bracers of
+    # Archery and the Girdle of Hill Giant Strength from mission 10 and 14).
+    T("class_mirt_thief", "YPINN", "5:class=3,6:gold=30000,7:mission=14,10:talkscript=2,100:talkscript=2,700:dump",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 40\s+script: set global flag 170\s+script: goto 41\s+dlg: speech \"So you work alone,",
+       r"gold 30000 -> 28000\s+script: give class 15 id 6 E4[^\n]*\s+script: set global flag 235",
+       r"gold 28000 -> 27400\s+script: give class 16 id 12 E4[^\n]*\s+script: set global flag 236",
+       r"gold 27400 -> 22400\s+script: give class 15 id 62 E4[^\n]*\s+script: set global flag 237",
+       r"gold 22400 -> 14900\s+script: give class 15 id 63 E4[^\n]*\s+script: set global flag 238",
+       r"gold 14900 -> 10400\s+script: give class 5 id 69 E4[^\n]*\s+script: set global flag 239",
+       r"gold 10400 -> 4400\s+script: give class 15 id 38 E4[^\n]*\s+script: set global flag 175",
+       r"set global flag 175[\s\S]*script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 6\s",
+       r"entry \d+: type 15 id 63 'Bracers of Archery'", r"entry \d+: type 15 id 38 'Girdle of Hill Giant Strength'",
+       r"entry \d+: type 15 id 62 'Boots of Elvenkind'", r"entry \d+: type 5 id 69 'Short Sword of Quickness'"],
+      frames=720, dlg="esc,esc,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,esc,esc,esc"),
+    T("class_mirt_short", "YPINN", "5:class=3,6:gold=100,7:mission=3,10:talkscript=2,100:talkscript=2",
+      [r"dlg: speech \"You're short, \w+. I gave up charity"], [r"take class 168"], frames=250, dlg="esc,esc,1,1,1,esc,esc"),
+    # before mission 3 and for a fighter: his talk of 1.3
+    T("class_mirt_early", "YPINN", "5:class=3,6:gold=30000,7:mission=2,10:talkscript=2,100:talkscript=2",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 6\s"], [r"So you work alone"], frames=200, dlg="esc,esc,esc,esc"),
+    T("class_mirt_fighter", "YPINN", "6:gold=30000,7:mission=14,10:talkscript=2,100:talkscript=2",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 6\s"], [r"So you work alone"], frames=200, dlg="esc,esc,esc,esc"),
 ]
 
 DIE = {0: 8, 1: 4, 2: 10, 3: 6}       # 0x13FDF3: cleric, mage, fighter, thief

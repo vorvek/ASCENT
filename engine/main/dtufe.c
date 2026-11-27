@@ -1708,6 +1708,7 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("The dragon Tamaramagil"), &Dtu_restored_dragon },	// dtudragon.h: DROW2, at the next load of the level
 	{ LN("New gear"),               &Dtu_new_gear },		// dtugear.h: the next level
 	{ LN("The phylactery of the lich"), &Dtu_lich_phylactery },	// dtulich.h: CLAN3, at the next load of the level
+	{ LN("Gear for single class mages and thieves"), &Dtu_class_gear },	// dtugear.h: at the next load of a level
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
 
@@ -2372,6 +2373,8 @@ int fe_load_game(int in_game)
 	Fe_khelben_mission = (int) get_u32(b + SG_KHELBEN);
 	Fe_khelben_blurb = (int) get_u32(b + SG_KHELBEN + 4);
 	dtu_mission_read_save(path);			// ASCENT: the mission and global flags (dtuscript.c)
+	if (!between)
+		dtu_gear_pearl_keep();				// ASCENT: the level of the save: the Pearls of Power keep their state (dtugear.h)
 	fe_market_check_rewards();			// ASCENT: the stock of the rewards (Dtu_fix_market_reward)
 	// 0xBBCF2: a save in a level has three lists after 7374 (the Descent 1
 	// triggers, the matcens and the fuel centers); the level start applies

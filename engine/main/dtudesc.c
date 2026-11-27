@@ -46,6 +46,7 @@
 #include "dtulang.h"
 #include "dtufile.h"		// dtu_find_file: the font of the front end for the test aid
 #include "dtudesc.h"
+#include "dtugear.h"		// ASCENT: the Pearls of Power of the class gear
 #include "dtuhold.h"		// ASCENT: the Potion of Freedom and a hold
 #include "dtugear.h"		// ASCENT: the Rod of Kelemvor
 
@@ -282,7 +283,12 @@ static void power_lines(int type, int id)
 				line(LT("A spell missile or an eye ray of a creature that hits you from the front (up to 60 degrees from where you look) flies back to the creature."));
 				line(LT("Area spells, arrows, bolts and thrown weapons hit you as before."));
 				break;
-			case DTU_IP_ARCHER:		line(LT("Arrows and bolts get +%d to hit and +%d damage."), p[i].value, p[i].value2); break;
+			case DTU_IP_ARCHER:
+				if (p[i].value2)
+					line(LT("Arrows and bolts get +%d to hit and +%d damage."), p[i].value, p[i].value2);
+				else
+					line(LT("Arrows and bolts get +%d to hit."), p[i].value);		// ASCENT: the Bracers of Archery
+				break;
 			case DTU_IP_REGEN:		line(LT("Heals 1 hit point each %d seconds."), p[i].value); break;
 			case DTU_IP_DISPLACE:
 				line(LT("You seem to stand beside your true place: the first weapon attack that would hit you misses."));
@@ -298,6 +304,7 @@ static void power_lines(int type, int id)
 				line(LT("Undead and extraplanar creatures are immune. A new hit starts the time again."));
 				break;
 			case DTU_IP_ASSASSIN:	line(LT("A backstab with it multiplies the damage by %d more."), p[i].value); break;
+			case DTU_IP_MOVE:		line(LT("Sets Move Silently to %d%%."), p[i].value); break;
 		}
 }
 
@@ -614,6 +621,14 @@ int dtu_desc_item_text(int type, int id, int count, int price, int sell, char *o
 		class_line(d.class_mask);
 		fx_line(type, id, 0);
 		power_lines(type, id);
+	}
+	else if (type == OBJ_MISC && dtu_gear_pearl_level(id) > 0) {
+		// ASCENT: the Pearls of Power of the class gear (dtugear.h)
+		if (count > 1)
+			line(LT("Count: %d"), count);
+		class_line(d.class_mask);
+		line(LT("Use: gives back one spent mage spell slot of spell level %d."), dtu_gear_pearl_level(id));
+		line(LT("Once in each dungeon level; ready again at the next level and after a rest."));
 	}
 	else if (u) {
 		if (count >= 0 && counted(u))

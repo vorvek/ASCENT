@@ -103,6 +103,7 @@ static dtu_opt Opts[] = {
 	{ "VerboseCombatLog",    &Dtu_verbose_combat,       0, 1 },		// dtuxp.h
 	{ "RestoredDragon",      &Dtu_restored_dragon,      0, 1 },		// dtudragon.h
 	{ "LichPhylactery",      &Dtu_lich_phylactery,      0, 1 },		// dtulich.h
+	{ "ClassGear",           &Dtu_class_gear,           0, 1 },		// dtugear.h
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 

@@ -998,6 +998,11 @@ void dtu_char_update(void)
 		else
 			sum += table_ac(e);
 	}
+	// ASCENT: the Boots of Elvenkind of the class gear (dtugear.h), as the
+	// Cloak of Elvenkind: Move Silently becomes 95, also in heavy armor
+	e = ref_entry(Dtu_char.slot[DTU_SLOT_BOOT]);
+	if (e && e->type == OBJ_ARMOR && e->id == DTU_GEAR_BOOTS_ELVEN && Dtu_class_gear_loaded)
+		pa->move_silently = DTU_GEAR_ELVEN_MOVE;
 
 	// rings. 0xAF9AB: the numbers 0, 14 and 15 are the Rings of Protection.
 	// No ring adds to magic armor. Of two rings of protection the better one
@@ -1324,6 +1329,8 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		ADD(DTU_IP_MIRROR, 0, 0);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, DTU_GEAR_ARCHER, DTU_GEAR_ARCHER))
 		ADD(DTU_IP_ARCHER, DTU_GEAR_ARCHER_HIT, DTU_GEAR_ARCHER_DAMAGE);
+	if (slot == DTU_SLOT_GAUNTLET && Dtu_class_gear_loaded && armor_is(&e, DTU_GEAR_BRACERS_ARCHERY, DTU_GEAR_BRACERS_ARCHERY))
+		ADD(DTU_IP_ARCHER, DTU_GEAR_BRACERS_HIT, 0);		// ASCENT: the class gear (dtugear.h)
 	if (slot == DTU_SLOT_RING1 && armor_is(&e, DTU_GEAR_RING_REGEN, DTU_GEAR_RING_REGEN))
 		ADD(DTU_IP_REGEN, DTU_GEAR_REGEN_TIME, 0);
 	if (slot == DTU_SLOT_CLOAK && armor_is(&e, DTU_GEAR_CLOAK_DISPLACE, DTU_GEAR_CLOAK_DISPLACE))
@@ -1354,6 +1361,8 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		ADD(DTU_IP_PROT_AMULET, 0, 0);
 	if (slot == DTU_SLOT_CLOAK && armor_is(&e, 43, 43))
 		ADD(DTU_IP_HIDE, DTU_ELVENKIND_HIDE, 0);
+	if (slot == DTU_SLOT_BOOT && Dtu_class_gear_loaded && armor_is(&e, DTU_GEAR_BOOTS_ELVEN, DTU_GEAR_BOOTS_ELVEN))
+		ADD(DTU_IP_MOVE, DTU_GEAR_ELVEN_MOVE, 0);		// ASCENT: the class gear (dtugear.h)
 	if (slot == DTU_SLOT_RING1 && type == OBJ_ARMOR) {
 		if (is_prot_ring(&e))
 			ADD(DTU_IP_PROT_RING, 0, 0);
@@ -2623,6 +2632,11 @@ int dtu_char_use(int index)
 		return 0;
 	}
 
+	// ASCENT: the Pearls of Power of the class gear (dtugear.h): not used up
+	if (dtu_gear_pearl_use(e->id)) {
+		dtu_char_update();
+		return 0;
+	}
 	r = use_misc(e);
 	if (r < 0) {
 		dtu_char_log("use: '%s' (misc %d) has no use", e->name, e->id);
@@ -2807,6 +2821,7 @@ int dtu_char_rest(void)
 		}
 	}
 	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
+	dtu_gear_pearl_recharge("rest");	// ASCENT: the class gear (dtugear.h)
 	dtu_gear_rod_rest();			// ASCENT: the Rod of Kelemvor of the new gear (dtugear.h)
 	dtu_creature_alert(player, 5);	// ASCENT: 0x3E2C1, the alert function 0x160AB
 	dtu_spell_rest_shuffle();		// 0x3E1F6 calls 0x92FF2
@@ -3102,11 +3117,17 @@ static int archer_bonus(int weapon, int thrown, int damage)
 	dtu_inv_item *g = ref_entry(Dtu_char.slot[DTU_SLOT_GAUNTLET]);
 	int r;
 
-	if (thrown || !armor_is(g, DTU_GEAR_ARCHER, DTU_GEAR_ARCHER) || weapon < 0 || weapon >= N_weapon_types)
+	// ASCENT: the Bracers of Archery of the class gear (dtugear.h) take the
+	// same place as the Gloves of the Archer, so the two never add up
+	int bracers = Dtu_class_gear_loaded && armor_is(g, DTU_GEAR_BRACERS_ARCHERY, DTU_GEAR_BRACERS_ARCHERY);
+
+	if (thrown || (!armor_is(g, DTU_GEAR_ARCHER, DTU_GEAR_ARCHER) && !bracers) || weapon < 0 || weapon >= N_weapon_types)
 		return 0;
 	r = Weapon_item_info[weapon].record;
 	if (!bm_tbl_has_flag(r, "arrow") && !bm_tbl_has_flag(r, "bolt"))
 		return 0;
+	if (bracers)
+		return damage ? 0 : DTU_GEAR_BRACERS_HIT;
 	return damage ? DTU_GEAR_ARCHER_DAMAGE : DTU_GEAR_ARCHER_HIT;
 }
 
@@ -4785,6 +4806,7 @@ void dtu_char_level_start(void)
 	spell_save_repair();
 	dtu_char_update();
 	dtu_spell_level_start();		// ASCENT: the slots left stay (dtuspell.c)
+	dtu_gear_pearl_recharge("level start");		// ASCENT: the class gear (dtugear.h)
 	dtu_char_log("level start: '%s', %d of %d hit points", Dtu_char.name, Dtu_char.pa.hit_points, Dtu_char.pa.max_hit_points);
 }
 

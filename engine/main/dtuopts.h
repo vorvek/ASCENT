@@ -213,6 +213,14 @@ extern int Dtu_restored_dragon;
 // -origobj and -nophylactery clear it for one run. The variable is in
 // dtulich.c.
 extern int Dtu_lich_phylactery;
+// "Gear for single class mages and thieves": Aleena Paladinstar sells
+// wands, scroll bundles, the Pearls of Power and bracers to a single class
+// mage, Nalbas and Mirt sell a poisoned bow, potions and old guild things
+// to a single class thief (dtugear.h, the script patches of
+// dtuclassgear.c). ClassGear of ascent.cfg; -noclassgear, -noimprovements,
+// -origitems and -origscript clear it for one run. The variable
+// Dtu_class_gear is declared in dtugear.h. The new item lines need the new
+// gear too; a change takes effect at the next load of a level.
 
 // Rulebook items: the values and the class limits of some item lines take
 // the value of the AD&D 2nd edition rulebooks (the table of dtuitemfix.c,

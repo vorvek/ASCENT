@@ -2082,6 +2082,7 @@ class Pages:
                 "</details>", ""]
         # the place for the dragon encounter of the dragon branch
         out += new_gear_dragon_section(gd)
+        out += class_gear_section()
         out += ["## Saved games", "",
                 "A game saved with new items loads again with the setting. With the setting off, the new "
                 "items of the save are gone and their effects end; the five new wands are the plain wands "
@@ -2317,6 +2318,56 @@ class Pages:
 
 NEW_GEAR_LINK = "New in ASCENT-DTU: [[New-Gear]]."
 NEW_GEAR_SETTING = "New gear"
+
+# The class gear (the setting "Gear for single class mages and thieves",
+# engine/main/dtuclassgear.c and dtugear.h): who sells what, the price and
+# the first mission. Keep it the same as the blocks of dtuclassgear.c.
+CLASS_GEAR_SETTING = "Gear for single class mages and thieves"
+CLASS_GEAR = [
+    ("mage", "Aleena Paladinstar", "Wand of Magic Missiles", "750", "the first visit; one more at each reward stage of Khelben"),
+    ("mage", "Aleena Paladinstar", "Wand of Paralyzation", "1000", "mission 7"),
+    ("mage", "Aleena Paladinstar", "Wand of Fireballs", "1500", "mission 10"),
+    ("mage", "Aleena Paladinstar", "5 scrolls of Magic Missile (if you know the spell)", "250", "any time"),
+    ("mage", "Aleena Paladinstar", "3 scrolls of Lightning Bolt (if you know the spell)", "1500", "mission 10"),
+    ("mage", "Aleena Paladinstar", "Pearl of Power I, II, III", "2500, 6000, 12000", "missions 3, 10, 16"),
+    ("mage", "Aleena Paladinstar", "Bracers of Defense AC2", "5000", "mission 10"),
+    ("thief", "Nalbas Oddpepper", "Short Bow and 16 Poisoned Arrows", "300", "the first talk"),
+    ("thief", "Nalbas Oddpepper", "8 more Poisoned Arrows", "160", "after the bow"),
+    ("thief", "Nalbas Oddpepper", "Potion of Invisibility (three in all)", "400 each", "mission 7"),
+    ("thief", "Mirt the Merchant", "Leather Armor +2", "2000", "mission 3"),
+    ("thief", "Mirt the Merchant", "Master Lockpicks", "600", "mission 3"),
+    ("thief", "Mirt the Merchant", "Boots of Elvenkind", "5000", "mission 7"),
+    ("thief", "Mirt the Merchant", "Bracers of Archery", "7500", "mission 10"),
+    ("thief", "Mirt the Merchant", "Short Sword of Quickness", "4500", "mission 14"),
+    ("thief", "Mirt the Merchant", "Girdle of Hill Giant Strength", "6000", "mission 14"),
+]
+
+
+def class_gear_section():
+    """The class offers on the page [[New-Gear]] (under its spoiler warning)."""
+    rows = [[who, item, price, when] for cls, who, item, price, when in CLASS_GEAR]
+    return ["## Gear for single class mages and thieves", "",
+            "The setting \"%s\" (Improvements menu, on by default) gives a character with one class, a "
+            "mage or a thief, offers that the other characters do not get. No new class power: only gear, "
+            "and it costs gold. A character with two classes, a fighter or a cleric sees none of them. "
+            "Each item is sold once; the arrows and the scrolls can be bought again, the potions three times. "
+            "The new items need the setting \"%s\" too." % (CLASS_GEAR_SETTING, NEW_GEAR_SETTING), "",
+            "- A mage: talk to Aleena Paladinstar in the Yawning Portal and ask for her scrolls. Her "
+            "first menu has the new reply lines.",
+            "- A thief: Nalbas Oddpepper makes his offer at the first talk, and has his little stock at "
+            "each later talk. Mirt the Merchant opens his old guild things at a talk after the first, "
+            "from mission 3.", "",
+            md_table(["Seller", "Item", "Gold", "From"], rows), "",
+            "- Poisoned Arrow: an Arrow (1d6) whose hit poisons a creature that fails a save against "
+            "poison: 1 hit point each second for 15 seconds. Undead and extraplanar creatures are immune.",
+            "- Pearl of Power I to III: use it (the item list or a hot key) to get back one spent mage spell "
+            "slot of spell level 1, 2 or 3. Once in each dungeon level; it is ready again at the next "
+            "level and after a rest. A saved game keeps its state.",
+            "- Boots of Elvenkind: Move Silently 95 while worn.",
+            "- Bracers of Archery: +2 to hit with arrows and bolts. They take the gauntlet place, so they "
+            "never add to the Gloves of the Archer.",
+            "- The market adds a Wand of Paralyzation (missions 7 and 8) and a Wand of Lightning Bolts "
+            "(mission 11) for any mage.", ""]
 
 # The market stages: the reward of Khelben that adds the goods (the mission
 # that the player gets, docs/re/scripts.md, section 8), in game terms

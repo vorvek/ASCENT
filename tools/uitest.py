@@ -1076,17 +1076,21 @@ def test_market_reward_repair(t):
     # it takes out of them (Gear_market_removed)
     g = gear_tables.read()
     gear = sum(1 for r in g["market"] if r[0] <= 6) - sum(1 for r in g["removed"] if r[0] <= 6)
+    gear += sum(1 for r in g["class_market"] if r[0] <= 6)  # the class gear (on by default)
     assert len(recs) == 2 + 50 + 7 + gear, "THESTORE.6 has %d records, expected %d" % (len(recs), 2 + 50 + 7 + gear)
 
 
 def gear_market_rows():
-    """The rows (stage, quantity, class, number, count) of Gear_market in
-    engine/main/dtugear.c."""
+    """The stages of the rows of Gear_market and of Class_market (the class
+    gear, on by default) in engine/main/dtugear.c."""
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "engine", "main", "dtugear.c"), encoding="utf-8", errors="replace") as f:
         text = f.read()
-    i = text.index("Gear_market[][5]")
-    block = text[i:text.index("};", i)]
-    return [int(m.group(1)) for m in re.finditer(r"^\s*\{\s*(\d+)\s*,", block, re.M)]
+    out = []
+    for name in ("Gear_market[][5]", "Class_market[][5]"):
+        i = text.index(name)
+        block = text[i:text.index("};", i)]
+        out += [int(m.group(1)) for m in re.finditer(r"^\s*\{\s*(\d+)\s*,", block, re.M)]
+    return out
 
 
 def test_market_reward_gear(t):

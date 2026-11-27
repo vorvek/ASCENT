@@ -92,7 +92,8 @@ class Runner:
             lines = f.read().split("\n")
         dumps = []
         for i, line in enumerate(lines):
-            if re.search(r"f\d+\s+character '", line):
+            # a dump, not the line of a load ("character 'NAME' from FILE")
+            if re.search(r"f\d+\s+character '[^']*': ", line):
                 block = [line]
                 for nxt in lines[i + 1:]:
                     if re.search(r"f\d+\s+  ", nxt) and ("str " in nxt or "effects " in nxt or "entry " in nxt
@@ -620,10 +621,115 @@ def test_gear_assassin(t):
     return "times %d with the Dagger +2, %d with the Assassin's Dagger" % tuple(mult)
 
 
+# ---------------------------------------------------------------------
+# The class gear (Dtu_class_gear, dtugear.h)
+
+def arrow_run(t, name, level, obj, seed, dist, shots=10, extra=()):
+    """Poisoned Arrows (weapon 91) from a Short Bow at object obj, a fighter
+    of level 9 (THAC0 12)."""
+    cmds = ["setlevel=9", "give=16.89.1", "equip=16.89", "give=5.91.40", "current=5.91", "goobj=%d.%d" % (obj, dist),
+            "face=%d" % obj, "heal=99", "seed=%d" % seed, "aim=%d" % obj]
+    _, obj_log, log = t.run(name, cmds, level=level, more_frames=40 + 20 * shots + 520,
+                            extra=["-noattack", "-testmove", "wait:40" + ",attack:1,wait:20" * shots] + list(extra))
+    return obj_log, log
+
+
+def test_class_arrow(t):
+    """The Poisoned Arrow (weapon 91) of Nalbas: an arrow that hits the troll
+    of MINE (object 1) poisons it unless it saves against poison, 1 hit
+    point each second, the damage of the player (the poison of the Dagger of
+    Venom); a skeleton of BAT (object 43, undead) is immune. With
+    -noclassgear the line is not there."""
+    seen = {}
+    for seed in range(1, 25):
+        obj_log, log = arrow_run(t, "class_arrow_%d" % seed, "MINE", 1, seed, 8)
+        if re.search(r"obj 1 Troll is poisoned for 15 seconds", obj_log):
+            seen.setdefault("poisoned", (seed, obj_log))
+        if re.search(r"obj 1 Troll saves against the poison", obj_log):
+            seen.setdefault("saved", (seed, obj_log))
+        if len(seen) == 2:
+            break
+    check("poisoned" in seen and "saved" in seen, "seeds 1 to 24: %s" % sorted(seen))
+    seed, obj_log = seen["poisoned"]
+    ticks = re.findall(r"the poison takes 1 hit point of obj 1 Troll, (\d+) seconds left", obj_log)
+    check(len(ticks) >= 10, "%d poison points" % len(ticks))
+    check(re.search(r"damage: obj 1 Troll takes 1 from player", obj_log), "the poison is not the damage of the player")
+    for k in range(1, 7):
+        obj_log, _ = arrow_run(t, "class_arrow_undead_%d" % k, "BAT", 43, k, 15, shots=6)
+        if re.search(r"obj 43 \S+ is immune to the poison of the Poisoned Arrow", obj_log):
+            break
+    check(re.search(r"obj 43 \S+ is immune to the poison of the Poisoned Arrow", obj_log), "the skeleton is not immune")
+    check(not re.search(r"obj 43 \S+ is poisoned", obj_log), "the skeleton is poisoned")
+    _, _, log = t.run("class_arrow_off", ["give=5.91.10", "dump"], extra=["-noclassgear"])
+    check(not re.search(r"type 5 id 91 ", log), "-noclassgear: the line is there")
+    return "seed %d: %d poison points; seed %d: saved; skeleton immune" % (seed, len(ticks), seen["saved"][0])
+
+
+def test_class_archery(t):
+    """The Bracers of Archery (armor 63) of Mirt at BAT: arrows from a short
+    bow at a skeleton (object 43) get +2 to the roll and no damage bonus.
+    They take the gauntlet place of the Gloves of the Archer: the gloves put
+    on after them replace them (+1 and +2 damage, not +3)."""
+    def shots(name, items):
+        cmds = ["give=16.89.1", "equip=16.89", "give=5.7.99", "current=5.7", "goobj=43.15", "face=43", "heal=99"]
+        for it in items:
+            cmds += ["give=15.%d.1" % it, "equip=15.%d" % it]
+        cmds += ["aim=43"]
+        _, _, log = t.run(name, cmds, level="BAT", more_frames=260,
+                          extra=["-noattack", "-testmove", "wait:40" + ",attack:1,wait:20" * 12])
+        rolls = [int(b) - int(a) for a, b in re.findall(r"attack roll: d20 (\d+), roll (-?\d+) against", log)]
+        return rolls, log
+    a, _ = shots("class_archery_no", [])
+    b, log_b = shots("class_archery", [63])
+    c, log_c = shots("class_archery_gloves", [63, 55])
+    check(a and b and c, "no attack rolls (%d, %d, %d)" % (len(a), len(b), len(c)))
+    check(set(b) == {a[0] + 2}, "roll bonus %s without, %s with the bracers" % (sorted(set(a)), sorted(set(b))))
+    check(not re.search(r"damage roll: the Gloves of the Archer add", log_b), "a damage bonus of the bracers")
+    check(set(c) == {a[0] + 1}, "bracers, then gloves: roll bonus %s" % sorted(set(c)))
+    return "roll bonus %d -> %d with the bracers, %d after the gloves replace them" % (a[0], b[0], c[0])
+
+
+def test_class_boots(t):
+    """The Boots of Elvenkind (armor 62) of Mirt: Move Silently 95 while
+    worn (as the Hide In Shadows 95 of the Cloak of Elvenkind), the value of
+    the thief without them."""
+    cmds = ["class=3", "skill=1.40", "dump", "give=15.62.1", "equip=15.62", "dump", "unequip=9", "dump"]
+    d, _, log = t.run("class_boots", cmds)
+    check(len(d) == 3, "%d dumps" % len(d))
+    check(d[0].move == 40, "Move Silently %d before" % d[0].move)
+    check(d[1].move == 95, "with the boots: %d" % d[1].move)
+    check(d[2].move == 40, "the boots off: %d" % d[2].move)
+    return "Move Silently %d -> %d -> %d" % (d[0].move, d[1].move, d[2].move)
+
+
+def test_class_pearl(t):
+    """The Pearl of Power I (misc 131) of Aleena: a mage of HUB1 spends the
+    slot of level 1 (Detect Magic), the pearl gives it back, a second use in
+    the level is refused, also after a save and a load; in BONES (a level
+    change) the pearl works again, and after a rest."""
+    cmds = ["5:class=1", "6:give=17.12.1", "7:mission=1", "8:give=16.131", "10:warp=1.136", "30:slots",
+            "32:gorest", "34:rest", "36:slots", "38:armspell=12", "40:fire", "80:fire", "90:slots",
+            "92:use=16.131", "94:slots", "96:use=16.131", "98:slots", "100:save=2", "110:load=2", "160:slots",
+            "162:use=16.131", "170:warp=3.376", "200:armspell=12", "202:fire", "240:fire", "260:slots",
+            "262:use=16.131", "264:slots", "266:armspell=12", "268:fire", "300:fire", "320:slots", "321:use=16.131",
+            "322:gorest", "324:restreset", "326:rest", "328:armspell=12", "330:fire", "370:fire", "390:slots",
+            "392:use=16.131", "394:slots"]
+    _, _, log = t.run("class_pearl", cmds)
+    slots = [int(m) for m in re.findall(r"spell slots: mage left (\d+) ", log)]
+    uses = re.findall(r"use: Pearl of Power 1:? ([^\n]*)", log)
+    want = ["mage slot", "refused", "refused", "mage slot", "refused", "mage slot"]
+    check(slots[:5] == [0, 1, 0, 1, 1], "slots in HUB1: %s" % slots[:5])
+    check(len(uses) == len(want) and all(u.startswith(w) for u, w in zip(uses, want)),
+          "the uses (HUB1 twice, after the load, BONES twice, after the rest): %s" % uses)
+    check(re.search(r"Pearls of Power ready again \(level start\), used 0x1", log), "no recharge at the level start")
+    check(re.search(r"Pearls of Power ready again \(rest\), used 0x1", log), "no recharge at the rest")
+    return "slot back, once in a level (also after a load), again in the next level and after a rest"
+
+
 TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc,
          test_gear_worn, test_gear_mirror, test_gear_archer, test_gear_regen, test_gear_wands, test_gear_drops,
          test_gear_market_items, test_gear_frost_brand, test_gear_displacement, test_gear_sash,
-         test_gear_venom, test_gear_assassin]
+         test_gear_venom, test_gear_assassin, test_class_arrow, test_class_archery, test_class_boots, test_class_pearl]
 
 
 def main():
