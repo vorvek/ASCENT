@@ -2807,6 +2807,7 @@ int dtu_char_rest(void)
 		}
 	}
 	dtu_spell_restore_slots();		// 0x36049 calls 0x3551B
+	dtu_gear_rod_rest();			// ASCENT: the Rod of Kelemvor of the new gear (dtugear.h)
 	dtu_creature_alert(player, 5);	// ASCENT: 0x3E2C1, the alert function 0x160AB
 	dtu_spell_rest_shuffle();		// 0x3E1F6 calls 0x92FF2
 	// The executable also calls 0x4D95D(player) (not read). This is not in
@@ -3919,6 +3920,7 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // str=STRENGTH.PERCENT, dex=DEXTERITY, cha=CHARISMA,
 // attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
+// rod=N (the Rod of Kelemvor, dtu_gear_rod_test: 0 log, 1 into the hand, 2 add one),
 // gold=N, goseg=N (the center of segment N),
 // priestcheck (the checks of the priest spells, dtu_spell_priest_check),
 // dump, hotkeys (the ten boxes), rules (the race and class test, rules_test()).
@@ -4258,6 +4260,7 @@ static void run_command(char *cmd, char *value)
 	}
 	else if (!strcmp(cmd, "xp"))			dtu_char_award_xp(a);
 	else if (!strcmp(cmd, "rest"))		dtu_char_rest();
+	else if (!strcmp(cmd, "rod"))			dtu_gear_rod_test(a);		// ASCENT: test: rod=N, the Rod of Kelemvor (dtugear.h)
 	else if (!strcmp(cmd, "mission"))	Fe_khelben_mission = a;		// test: the mission number MsnNum
 	else if (!strcmp(cmd, "khelben")) {	// ASCENT: test: the mission advance of a visit of Khelben (0x83E36), no screen
 		int blurb = 1;

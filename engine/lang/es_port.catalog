@@ -595,6 +595,18 @@ id: port.each_use_casts_s
 en: Each use casts %s.
 tr: Cada uso lanza %s.
 
+id: port.charges_d_of_1
+en: Charges: %d of 1
+tr: Cargas: %d de 1
+
+id: port.each_use_casts_s_at_caster_level_d
+en: Each use casts %s at caster level %d.
+tr: Cada uso lanza %s con nivel de lanzador %d.
+
+id: port.it_is_never_used_up_a_rest_charges_it_ag
+en: It is never used up: a rest charges it again.
+tr: Nunca se gasta: un descanso la vuelve a cargar.
+
 id: port.thac0_d
 en: THAC0: %d
 tr: GAC0: %d
@@ -2519,6 +2531,10 @@ id: port.some_magic_seems_to_hold_s_completely_pa
 en: Some magic seems to hold %s completely paralyzed. Perhaps it can be dispelled.
 tr: Parece que alguna magia mantiene a %s completamente paralizado. Quizá se pueda disipar.
 
+id: port.some_magic_seems_to_hold_s_completely_pa_2
+en: Some magic seems to hold %s completely paralyzed. Perhaps your Rod of Kelemvor can dispel it.
+tr: Parece que alguna magia mantiene a %s completamente paralizado. Quizá tu Vara de Kelemvor pueda disiparla.
+
 id: port.your_cloak_of_displacement_fools_s_the_b
 en: Your Cloak of Displacement fools %s: the blow misses.
 tr: Tu Capa de Desplazamiento engaña a %s: el golpe falla.
@@ -2526,6 +2542,14 @@ tr: Tu Capa de Desplazamiento engaña a %s: el golpe falla.
 id: port.your_cloak_of_displacement_shimmers_agai
 en: Your Cloak of Displacement shimmers again.
 tr: Tu Capa de Desplazamiento vuelve a titilar.
+
+id: port.the_rod_of_kelemvor_has_no_power_left_a_
+en: The Rod of Kelemvor has no power left. A rest will renew it.
+tr: A la Vara de Kelemvor no le queda poder. Un descanso lo renovará.
+
+id: port.the_rod_of_kelemvor_is_charged_again
+en: The Rod of Kelemvor is charged again.
+tr: La Vara de Kelemvor vuelve a estar cargada.
 
 id: port.the_attack
 en: the attack
@@ -2715,6 +2739,12 @@ en: Rod of Dispel Magic
 tr: Vara de Disipar Magia
 gender: f
 plural: Varas de Disipar Magia
+
+id: tbl.fix.rod_of_kelemvor
+en: Rod of Kelemvor
+tr: Vara de Kelemvor
+gender: f
+plural: Varas de Kelemvor
 
 id: tbl.fix.cloak_of_lathander
 en: Cloak of Lathander

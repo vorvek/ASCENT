@@ -2000,6 +2000,15 @@ class Pages:
                 "Five wands of the game files that had no spell now cast one. They work as the other "
                 "[[Wands]].", "",
                 md_table(self.icon_head(["Wand", "Spell", "Charges", "F/T/M/C", "Value", "Where"]), wrows), ""]
+        # the Rod of Kelemvor
+        rname, rspell, rlevel, rvalue, rlvl = gd.g["rod"]
+        out += ["## The %s" % rname, "",
+                "A rod that every class can use. Each use casts %s at caster level %d. It has one charge: a rest "
+                "at a rest place charges it again, and it is never used up. Value %d; the market does not sell "
+                "it. It lies at the feet of Daland in the hidden crypts of %s: use it on him to free him. Its "
+                "Dispel Magic also ends the protections of a spellcaster. Not the same item as the Rod of Dispel "
+                "Magic above (a mage only, its charges are used up)."
+                % (self.S[rspell].name(), rlevel, rvalue, GEAR_LEVEL_TEXT.get(rlvl, "the temple")), ""]
         # the items of 1.3
         script, potion, mace = gd.g["daland"]
         lvl, ft, _ = gd.g["flame"]
@@ -2010,7 +2019,8 @@ class Pages:
                 "- %s: Daland of %s gives it with the %s when the altar of Kelemvor is consecrated. "
                 "Value %d with the setting. How: Daland stands in hidden crypts, held by a curse that also "
                 "keeps him from talking. Cast Dispel Magic on him (the spell, a scroll, or a wand or rod "
-                "of it): he stays your friend and can talk. The tombs of Mulhorand have a scroll of the "
+                "of it; the Rod of Kelemvor at his feet works for every class): he stays your friend and "
+                "can talk. The tombs of Mulhorand have a scroll of the "
                 "spell for a mage. Hear his tale and take his flask of Dragon's Blood, pour it on the altar "
                 "of Kelemvor in the living quarters of the temple, then talk to him again."
                 % (mrow.name(), GEAR_LEVEL_TEXT.get(16, "the temple"), self.O[potion].name(), gd.value(5, mace)),
@@ -2342,7 +2352,8 @@ def gear_effect(name, d):
                                   "60 degrees from where you look) flies back to the creature with the power of its "
                                   "caster, and a kill is yours. The eye rays of a beholder are spell missiles. Area "
                                   "spells such as Fireball burst at the shield; arrows, bolts, thrown weapons and "
-                                  "traps hit you as before.",
+                                  "traps hit you as before. A Lightning Bolt that comes back from a wall to your "
+                                  "front, your own or one the shield turned, is turned again, as long as it flies.",
         "DTU_GEAR_BOOTS_FREE": "Free Action while worn: Hold Person, Hold Undead and the stun of Color Spray "
                                "do not work on you, and nothing slows your movement.",
         "DTU_GEAR_ARCHER": "Arrows and bolts get +%d to hit and +%d damage." % (d["DTU_GEAR_ARCHER_HIT"],

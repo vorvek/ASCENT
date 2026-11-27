@@ -102,6 +102,26 @@ extern int Dtu_gear_loaded;
 // The scripts use flags up to 128, the port up to 0xA0.
 #define DTU_GEAR_FLAG_FLAME		0xF0
 #define DTU_GEAR_FLAG_VENOM		0xF8		// the Dagger of Venom of DROW5 is placed
+#define DTU_GEAR_FLAG_ROD		249			// the Rod of Kelemvor of MYRKUL is placed
+#define DTU_GEAR_FLAG_ROD_SPENT	250			// the Rod of Kelemvor has no charge until the next rest
+
+// The Rod of Kelemvor, a decision of the user of 2026-11-27: a rod of
+// dispelling that each class can use (all_use), so that a fighter or a
+// thief can free Daland of MYRKUL (Dtu_fix_dispel_peace) and take away the
+// contingency of the lich of CLAN3. A new weapon line at the end of the
+// table (found by its name, DTU_GEAR_ROD_NAME), a copy of the Rod of Dispel
+// Magic (67) with one charge: each use casts Dispel Magic (13) at caster
+// level DTU_GEAR_ROD_LEVEL. It is never used up: a use spends the charge
+// (global flag DTU_GEAR_FLAG_ROD_SPENT of the player record, saved with
+// the game), and a rest that fills the spell slots (dtu_char_rest) charges
+// it again. A level start does not. One lies at the feet of Daland
+// (dtu_gear_place_rod). Its value is small (DTU_GEAR_ROD_VALUE), so it is
+// no source of gold, and the market does not sell it. The Rod of Dispel
+// Magic (67, mage only, 6 charges, used up) stays.
+#define DTU_GEAR_ROD_NAME		"Rod of Kelemvor"
+#define DTU_GEAR_ROD_SPELL		13
+#define DTU_GEAR_ROD_LEVEL		12
+#define DTU_GEAR_ROD_VALUE		50
 
 // bmread.c, after the table fixup of 1.3: the wands and the values of the
 // weapon lines, and the text of the new lines, which bmread.c reads with
@@ -149,9 +169,11 @@ int dtu_gear_dragon_treasure(void (*f)(int type, int id, int count));
 void dtu_gear_script_give(int script, int type, int id);
 
 // dtuobj_missile.c: a missile hits the player. 1 if a worn Mirror Shield
-// sends it back: the velocity of the missile is turned to its source.
-// spell: the spell of the missile or -1, weapon: its weapon line, source:
-// the creature that sent it or NULL.
+// sends it back: the velocity of the missile is turned to its source (a
+// creature), or reversed (a missile of the player: his Lightning Bolt back
+// from a wall, or one that the shield turned before). spell: the spell of
+// the missile or -1, weapon: its weapon line, source: its owner now (a
+// creature or the player) or NULL (a trap, a lost parent: not turned).
 int dtu_gear_mirror(struct object *missile, struct object *player, int spell, int weapon, struct object *source);
 
 // dtuchar.c: the Mirror Shield is in the shield place. Set by dtu_char_update.
@@ -196,5 +218,28 @@ void dtu_gear_place_venom(int has_state, int restore);
 // Flame Tongue of the dungeon (dtuobj_setup.c). restore: the setup after
 // the read of a saved level state.
 void dtu_gear_place_flame_tongue(int has_state, int restore);
+
+// The Rod of Kelemvor (DTU_GEAR_ROD_NAME above). The weapon line of the rod
+// in the tables of the level, -1: none.
+int dtu_gear_rod_weapon(void);
+// 1 if weapon is the rod
+int dtu_gear_rod(int weapon);
+// 1 if the rod has its charge
+int dtu_gear_rod_charged(void);
+// dtuspell.c, the fire of a wand in the hand: -1 if weapon is not the rod;
+// 0 if the rod has no charge (the message is shown, no cast); else the
+// caster level of the cast. dtu_gear_rod_spend after the cast.
+int dtu_gear_rod_fire(int weapon);
+void dtu_gear_rod_spend(void);
+// dtuchar.c, a rest that fills the spell slots: the rod is charged again
+void dtu_gear_rod_rest(void);
+// 1 if the rod is in the inventory
+int dtu_gear_rod_carried(void);
+// dtuobj.c, the setup of a level: the rod of MYRKUL, once in a game
+// (DTU_GEAR_FLAG_ROD), as the Flame Tongue (dtuobj_setup.c)
+void dtu_gear_place_rod(int has_state, int restore);
+// test command rod=N (dtuchar.c): 0 logs the state, 1 puts the rod of the
+// inventory into the hand, 2 adds a rod to the inventory
+void dtu_gear_rod_test(int what);
 
 #endif

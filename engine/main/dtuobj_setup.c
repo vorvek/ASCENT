@@ -812,6 +812,42 @@ void dtu_gear_place_venom(int has_state, int restore)
 		f2fl(Objects[n].pos.x),f2fl(Objects[n].pos.y),f2fl(Objects[n].pos.z));
 }
 
+// ASCENT, the new gear: the Rod of Kelemvor of MYRKUL (dtugear.h). Daland,
+// a priest of Kelemvor (object 3, segment 276), stands held in the hidden
+// crypts (trigger 24 of segment 17, message 18: "There is a lone person
+// standing here, still as a statue... or a corpse!"), and he faces the way
+// in from segment 17. The rod lies on the floor at his feet, 11 units in
+// front of him in segment 326: his own rod, out of his reach. So each
+// player who finds him finds the means to free him, whatever the way
+// through the temple. Once in a game (global flag DTU_GEAR_FLAG_ROD), as
+// the Flame Tongue above.
+#define ROD_LEVEL		16			// MYRKUL (Dtu_script_level, the line of DTU.MSN)
+static const vms_vector Rod_pos = { 109 * F1_0 + F1_0 / 2, 24 * F1_0, 579 * F1_0 };		// segment 326, floor at y 19
+
+void dtu_gear_place_rod(int has_state, int restore)
+{
+	vms_vector pos = Rod_pos;
+	int seg, n, w = dtu_gear_rod_weapon();
+
+	if (!Dtu_new_gear || !Dtu_gear_loaded || Dtu_script_level != ROD_LEVEL || w < 0)
+		return;
+	if (has_state && !restore)
+		return;
+	if (dtu_script_gflag(DTU_GEAR_FLAG_ROD))
+		return;
+	seg = find_point_seg(&pos,-1);
+	if (seg < 0) {
+		dtu_obj_log("new gear: no segment at the place of the Rod of Kelemvor");
+		return;
+	}
+	n = dtu_create_item(OBJ_WEAPON,w,1,seg,&pos);
+	if (n < 0)
+		return;
+	dtu_script_set_gflag(DTU_GEAR_FLAG_ROD,1);
+	dtu_obj_log("new gear: the Rod of Kelemvor (weapon %d) is obj %d in segment %d at %.2f %.2f %.2f",w,n,seg,
+		f2fl(Objects[n].pos.x),f2fl(Objects[n].pos.y),f2fl(Objects[n].pos.z));
+}
+
 // The hit points of scenery: the setup of the port gives each piece of
 // scenery 1.0 (as setup_object does before level_start), so the fixes of
 // the scenery hit points come after it.
