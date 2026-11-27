@@ -82,6 +82,12 @@ static const short Dr_hatch_pos[4][2] = { { 135, -88 }, { 165, -88 }, { 135, -11
 // The segments of her room where the level file has the four: they fly
 // there when the hatchery opens
 static const short Dr_hatch_goal[4] = { 430, 436, 471, 391 };
+// While she lives, this many hatchlings fight at her side at one time. The
+// others wait in the hatchery; one comes for each one that dies, and all
+// come when she is dead. Each casts Fireball at level 6 (6d6, radius 40):
+// four of them and her breath at one time leave no way to live.
+#define DR_HATCH_AT_ONCE	2
+static ubyte Dr_released[4];
 
 // The key of the alcove: on the floor of cell 407 (x 10 to 30, z -247.5 to
 // -227.5), in the corner that is far from the door of the cell room
@@ -472,6 +478,7 @@ void dtu_dragon_level_setup(int has_state)
 
 	memset(&D,0,sizeof(D));
 	D.objnum = -1;
+	memset(Dr_released,0,sizeof(Dr_released));
 	for (i=0;i<128;i++)
 		Dr_lift[i] = -1;
 	Polyobj_scale_model = -1;
@@ -687,19 +694,27 @@ void dtu_dragon_level_rules(int restore)
 	if (!restore && Dtu_level_has_state[DR_LEVEL])
 		return;
 
+	if (!restore) {
+		// a new level: its objects and walls are those of the level file
+		dtu_script_set_gflag(DR_GF_PLACED,0);
+		dtu_script_set_gflag(DR_GF_LEVER,0);
+	}
 	if (dtu_script_gflag(DR_GF_LEVER))
 		open_hatchery();
-
-	if (!restore)
-		dtu_script_set_gflag(DR_GF_PLACED,0);		// a new level: its objects are those of the level file
 	if (dtu_script_gflag(DR_GF_PLACED))
 		return;
 	dtu_script_set_gflag(DR_GF_PLACED,1);
 
-	// 1.3 after its lever (global flag 107): the hatchlings are gone and
-	// the level is as that game left it
-	if (dtu_script_gflag(107)) {
-		dtu_obj_log("dragon: global flag 107 is set (the lever of 1.3), no locks");
+	// A level state in which the lever is thrown already (1.3: global flag
+	// 107, the hatchlings are gone; an older port): no locks and no key,
+	// and the lever is not an event of this visit.
+	if (dtu_script_gflag(107) || (restore && Dtu_num_triggers > DR_LEVER_TRIGGER && Dtu_triggers[DR_LEVER_TRIGGER].fire_count > 0)) {
+		dtu_obj_log("dragon: the lever is thrown in this level state (global flag 107 %d, trigger %d fired %d): no locks, no key",
+			dtu_script_gflag(107),DR_LEVER_TRIGGER,Dtu_num_triggers > DR_LEVER_TRIGGER ? Dtu_triggers[DR_LEVER_TRIGGER].fire_count : 0);
+		if (!dtu_script_gflag(107)) {
+			dtu_script_set_gflag(DR_GF_LEVER,1);
+			open_hatchery();
+		}
 	}
 	else {
 		lock_door(Dr_alcove,1);
@@ -1316,16 +1331,43 @@ int dtu_dragon_ai_frame(object *obj)
 		dragon_ai(obj);
 		return 1;
 	}
+	for (k=0;k<4;k++)
+		if (obj-Objects == Dr_hatch[k] && hatchling(k))
+			break;
+	if (k == 4)
+		return 0;
 	// A hatchling behind the locked door of the hatchery does nothing:
 	// it does not sense the player and casts no spell through the door.
 	// (-dragonhatchai, test: the AI of the game runs for them, to see what
 	// its senses do behind the door)
-	if (!dtu_script_gflag(DR_GF_LEVER) && door_locked(Dr_hatchery) && !FindArg("-dragonhatchai"))
-		for (k=0;k<4;k++)
-			if (obj-Objects == Dr_hatch[k] && hatchling(k)) {
-				Ail[obj-Objects].activity = 0;
-				return 1;
-			}
+	if (!dtu_script_gflag(DR_GF_LEVER)) {
+		if (door_locked(Dr_hatchery) && !FindArg("-dragonhatchai")) {
+			Ail[obj-Objects].activity = 0;
+			return 1;
+		}
+		return 0;
+	}
+	// After the lever: DR_HATCH_AT_ONCE of them at one time while she lives
+	if (!Dr_released[k]) {
+		object *dr = dragon_object();
+		int i, n = 0;
+
+		for (i=0;i<k;i++)
+			if (hatchling(i))
+				n++;
+		if (dragon_alive(dr) && n >= DR_HATCH_AT_ONCE) {
+			Ail[obj-Objects].activity = 0;
+			return 1;
+		}
+		Dr_released[k] = 1;
+		dtu_obj_log("dragon: obj %d %s leaves the hatchery (%d before it, the dragon %s)",(int)(obj-Objects),dtu_object_name(obj),n,
+			dragon_alive(dr) ? "lives" : "is dead");
+		dtu_creature_wake(obj,1);
+		// into her room, by the path of a script walk (statement E5): the
+		// AI of the game takes over at its end, or when it senses the player
+		dtu_script_walk_segment(obj,Dr_hatch_goal[k]);
+		dtu_script_walk_start(obj,1);
+	}
 	return 0;
 }
 
@@ -1419,12 +1461,7 @@ static void lever_thrown(void)
 
 		if (!o)
 			continue;
-		n++;
-		dtu_creature_wake(o,1);
-		// into her room, by the path of a script walk (statement E5): the
-		// AI of the game takes over at its end, or when they sense the player
-		dtu_script_walk_segment(o,Dr_hatch_goal[k]);
-		dtu_script_walk_start(o,1);
+		n++;		// dtu_dragon_ai_frame sends them out
 	}
 	dtu_obj_log("dragon: the lever (trigger %d, fired %d): the hatchery (seg %d side %d) is open, %d hatchlings, the dragon %s",
 		DR_LEVER_TRIGGER,Dtu_triggers[DR_LEVER_TRIGGER].fire_count,Dr_hatchery[0][0],Dr_hatchery[0][1],n,

@@ -130,7 +130,9 @@ Flag 107 is the release of the red dragons: Tamaramagil (script 210) thanks the 
 the people of Waterdeep (scripts 1, 5, 7, 60, 510) talk about the dragons that burned
 the Castle Ward, and the market doubles its prices (0x86F5A). The level file has no
 script on object 42 and `object_num` 1 on trigger 20, so the code supplies the link the
-data misses: intended, the port keeps it. The rules of KOBOLDS and THIEF1 switch two
+data misses: intended, the port keeps it. With the encounter of the port with the
+dragon ([dragon.md](dragon.md), on by default) the lever opens the hatchery instead:
+trigger 20 keeps `object_num` 1 and has no trap, and flag 107 is not set. The rules of KOBOLDS and THIEF1 switch two
 triggers off for good; `Dtu_fix_keep_triggers` (section 9) leaves them on.
 Level 32 (flame): after trigger 33, 32 or 26 it calls 0xAC055(object 36, 0), that is
 `run_script(object 36, 0)` (the player talks to Lolth), when the 4-bit variable of the

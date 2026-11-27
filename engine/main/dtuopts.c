@@ -186,6 +186,7 @@ void dtu_opts_load(void)
 		Dtu_miss_sound = 0;
 		Dtu_rulebook_items = 0;
 		Dtu_kill_xp_message = 0;		// ASCENT: dtuxp.h
+		Dtu_restored_dragon = 0;		// ASCENT: dtudragon.h
 	}
 	// ASCENT: dtuxp.h. -killxpmessage and -nokillxpmessage set the kill line
 	// with the experience for one run, -maxhplevelup and -nomaxhplevelup

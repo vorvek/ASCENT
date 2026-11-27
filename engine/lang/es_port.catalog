@@ -2601,3 +2601,68 @@ id: port.d_d
 en: %d.%d
 tr: %d,%d
 
+id: port.restored_and_new_content
+en: Restored and new content
+tr: Contenido restaurado y nuevo
+
+id: port.the_dragon_tamaramagil
+en: The dragon Tamaramagil
+tr: La dragona Tamaramagil
+
+id: port.s_resists_s
+en: %s resists %s.
+tr: %s resiste %s.
+
+id: port.in_the_corridor_from_whence_you_came_the
+en: In the corridor from whence you came, there is a lever that will release my children. The drow keep it behind a locked door, and its key lies in the cells behind me, where they held the wretches they fed to me. Take the key, open that door and throw the lever, and I shall be grateful. I shall give you the key to my hoard, and let you have all my treasures. At my age, the wealth of life, and the immortality of one's offspring, is more important than gold or jewels and magic. My children must be free! Help me, please!
+tr: En el pasillo por el que viniste hay una palanca que liberará a mis hijos. Los drows la guardan tras una puerta cerrada con llave, y su llave está en las celdas que hay detrás de mí, donde encerraban a los desdichados que me daban de comer. Toma la llave, abre esa puerta y acciona la palanca, y te estaré agradecida. Te daré la llave de mi tesoro y te dejaré quedarte con todas mis riquezas. A mi edad, la riqueza de la vida y la inmortalidad de la prole importan más que el oro, las joyas y la magia. ¡Mis hijos deben ser libres! ¡Ayúdame, por favor!
+
+id: port.you_have_not_yet_thrown_the_lever_its_do
+en: You have not yet thrown the lever. Its door is locked, and the key lies in the cells behind me. Oh, that the fate of my loved ones should depend on the twist of a single piece of metal! Please help me, please! The drow will regret it, but you shall not, I promise you!
+tr: Aún no has accionado la palanca. Su puerta está cerrada con llave, y la llave está en las celdas que hay detrás de mí. ¡Ay, que el destino de mis seres queridos dependa del giro de un simple trozo de metal! ¡Ayúdame, por favor, te lo ruego! Los drows lo lamentarán, pero tú no, ¡te lo prometo!
+
+id: port.welcome_again_wanderer_champion_of_quest
+en: Welcome again, wanderer, Champion of Quests, slayer of drow. You have done so many great deeds, could you not do a small favor for me? Take the key from the cells behind me, find the lever to the cage that imprisons my offspring, and free them from the tyranny of the spider-worshippers!
+tr: Saludos de nuevo, errante, adalid de misiones, azote de los drows. Has hecho tantas grandes hazañas, ¿no podrías hacerme un pequeño favor? Toma la llave de las celdas que hay detrás de mí, encuentra la palanca de la jaula que aprisiona a mi prole y libérala de la tiranía de los adoradores de la araña.
+
+id: port.you_throw_yourself_aside_from_the_worst_
+en: You throw yourself aside from the worst of the dragon's fire.
+tr: Te apartas de lo peor del fuego de la dragona.
+
+id: port.the_dragon_s_fire_engulfs_you
+en: The dragon's fire engulfs you.
+tr: El fuego de la dragona te envuelve.
+
+id: port.your_protection_from_fire_takes_the_flam
+en: Your protection from fire takes the flames.
+tr: Tu protección contra el fuego absorbe las llamas.
+
+id: port.s_rears_and_draws_a_deep_breath
+en: %s rears and draws a deep breath.
+tr: %s se alza y toma aliento.
+
+id: port.a_heavy_door_grinds_open_far_down_the_ha
+en: A heavy door grinds open far down the hall, and a deep laugh rolls through the corridor: "Little fool! That was no cage, it was my hatchery, and you have opened it. The hoard stays mine. Come, my children, our dinner has let itself in!"
+tr: Una puerta pesada se abre con un chirrido al fondo del pasillo, y una risa grave recorre el corredor: "¡{sex:Pobre ingenuo|Pobre ingenua}! No era una jaula, era mi nido, y tú lo has abierto. El tesoro sigue siendo mío. ¡Venid, hijos míos, la cena ha entrado sola!"
+
+id: port.a_heavy_door_grinds_open_far_down_the_ha_2
+en: A heavy door grinds open far down the hall. You hear the beat of small wings.
+tr: Una puerta pesada se abre con un chirrido al fondo del pasillo. Oyes un batir de alas pequeñas.
+
+id: port.a_heavy_door_grinds_open_far_down_the_ha_3
+en: A heavy door grinds open far down the hall.
+tr: Una puerta pesada se abre con un chirrido al fondo del pasillo.
+
+id: port.you_use_the_jailer_s_key_to_unlock_the_d
+en: You use the jailer's key to unlock the door.
+tr: Usas la llave del carcelero para abrir la puerta.
+
+id: port.tamaramagil_s_roar_shakes_the_hall_thief
+en: Tamaramagil's roar shakes the hall: "THIEF! You dare open my hoard before my very eyes? My riches are MINE! You shall burn for this!"
+tr: El rugido de Tamaramagil sacude la sala: "¡{sex:LADRÓN|LADRONA}! ¿Te atreves a abrir mi tesoro ante mis propios ojos? ¡Mis riquezas son MÍAS! ¡Arderás por esto!"
+
+id: tbl.fix.jailer_s_key
+en: Jailer's Key
+tr: Llave del carcelero
+gender: f
+plural: Llaves del carcelero

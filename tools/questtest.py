@@ -235,6 +235,16 @@ TESTS = [
        r"f200 +wall 398\.4: type 2 flags 0x2 state", r"f201 +quest: level 21 .* gflags \[ 241 242 \]",
        r" 202 dragon: test 4: obj 64 Dragon hp 90 .* hostile 1 peaceful 0", r"f203 +obj 48: type 2 id 2 seg \d+ hp 50 "],
       [r"gflags \[[^\]]* 107 ", r"flapping of wings"], frames=220, extra=["-noattack", "-objlog", "dragon_lever_obj.log"]),
+    # While she lives two hatchlings fight at one time: objects 48 and 49
+    # leave the hatchery, 61 comes when 48 is dead, and all come when she
+    # is dead.
+    T("dragon_hatchlings", "DROW2", "6:goside=482.2,8:activate,60:obj=61,100:kill=48,160:obj=61,200:kill=64,260:obj=63",
+      [r" (\d+) dragon: obj 48 hatchlng leaves the hatchery \(0 before it, the dragon lives\)",
+       r"dragon: obj 49 hatchlng leaves the hatchery \(1 before it, the dragon lives\)",
+       r"f60 +obj 61: type 2 id 2 seg 792 [\s\S]* 10\d dragon: obj 61 hatchlng leaves the hatchery \(1 before it, the dragon lives\)",
+       r" 20\d dragon: obj 63 hatchlng leaves the hatchery \(2 before it, the dragon is dead\)",
+       r"obj 63 hatchlng: walks a path of \d+ segments to seg 391 for its script \(walk\)"],
+      frames=270, extra=["-noattack", "-objlog", "dragon_hatchlings_obj.log"]),
     # Her attacks, with the fixed seed. Claws: two attack rolls, 1d10
     # each. Bite: one roll, 3d10. The reach is measured from the weapon box
     # of the hit frame (the claw) and from the tip of her snout (the bite).

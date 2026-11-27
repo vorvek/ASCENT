@@ -679,22 +679,11 @@ The four hatchlings (objects 48, 49, 61, 63) stand in the arena. Trigger 27
 (the door of the hoard, segment 448) takes item 42 of class 16, the Dragon
 Key: no object of the game has it and no script gives it.
 
-`Dtu_fix_tamaramagil` (on; `-origobj` and `-origtamaramagil` clear it),
-`dtu_restore_tamaramagil` in `dtuobj_setup.c`. These are choices of the port,
-not rules of 1.3:
-
-- She stands at the center of the arena (0, -100, -102.5), peaceful, with
-  script 210. A saved level with no object with script 210 gets her at its
-  restore.
-- She carries the Dragon Key. It drops 5.0 above the floor, 60.0 in front
-  of her (`dtu_creature_drop_contents`).
-- The hatchlings that live start in the east room.
-- The body cylinder of `dragn2.pof` has radius 0 in the rest frame, and the
-  cylinder of the torso is above the head of the player. The setting gives
-  the model the radius 35.4 (half of the torso radius) and the half height
-  of the body (24.7) for the frames before the death. The use action tests
-  that cylinder when the torso test misses (`dtuhook.c`). The player walks
-  below her torso, as the data of the model has it.
+The port has an encounter with her: `engine/main/dtudragon.c`,
+[dragon.md](dragon.md). `Dtu_fix_tamaramagil` (on; `-origobj` and
+`-origtamaramagil` clear it) and the setting "The dragon Tamaramagil" of the
+Improvements menu turn it on. With one of them off the level has the objects
+of the level file.
 
 **Object flag 0x40** (verified, code). The object loop of `fvi_sub` skips an object with flag 2 or flag 0x40
 (0x3F380 to 0x3F392: `test dh,2`, `test dh,0x40`), before any shape test
