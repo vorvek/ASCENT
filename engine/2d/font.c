@@ -713,6 +713,16 @@ static const struct { ubyte code, base, accent, cp437; } Latin1_letters[] = {
 };
 #define N_LATIN1_LETTERS	((int) (sizeof(Latin1_letters) / sizeof(Latin1_letters[0])))
 
+int gr_latin1_drawn(int c)
+{
+	int i;
+
+	for (i = 0; i < N_LATIN1_LETTERS; i++)
+		if (Latin1_letters[i].code == c)
+			return 1;
+	return 0;
+}
+
 #define GL_EMPTY	255		// an empty pixel of a glyph in the work form
 
 // A glyph in the work form: one byte for each pixel, GL_EMPTY or a color

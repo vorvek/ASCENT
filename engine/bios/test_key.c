@@ -250,6 +250,53 @@ int main(void)
 	CHECK(key_to_ascii(KEY_F1) == 255);
 	CHECK(key_to_ascii(KEY_UP) == 255);
 
+	// ---- ASCENT: the text mode. Out of it a text event does nothing and a
+	// field types the US table of the original.
+	key_flush();
+	plat_input_text("a");
+	CHECK(key_inkey() == 0);
+	CHECK(key_typed_char(KEY_A | KEY_SHIFTED) == 'A');
+	CHECK(key_typed_char(KEY_F1) == 0);
+	// In it, the key code of the press comes first and types nothing; the
+	// character of the layout follows as KEY_TEXT plus its Latin-1 code.
+	key_text_mode(1);
+	CHECK(key_text_active());
+	press(KEY_SEMICOL);				// the key of n tilde on a Spanish layout
+	plat_input_text("\xC3\xB1");		// U+00F1 in UTF-8
+	release(KEY_SEMICOL);
+	k = key_inkey();
+	CHECK(k == KEY_SEMICOL);
+	CHECK(key_typed_char(k) == 0);
+	k = key_inkey();
+	CHECK(k == (KEY_TEXT | 0xF1));
+	CHECK(key_typed_char(k) == 0xF1);
+	CHECK(key_to_ascii(k) == (char) 255);
+	// "Peñíscola" (with an accent from a dead key), "@" (AltGr+2), the
+	// euro sign (outside Latin-1: dropped) and a control code (dropped)
+	plat_input_text("Pe\xC3\xB1\xC3\xADscola@\xE2\x82\xAC\x01");
+	{
+		static const int want[] = { 'P', 'e', 0xF1, 0xED, 's', 'c', 'o', 'l', 'a', '@' };
+		int i;
+		for (i = 0; i < 10; i++)
+			CHECK(key_typed_char(key_inkey()) == want[i]);
+		CHECK(key_inkey() == 0);
+	}
+	// The end of the text mode removes the characters that no field took
+	// and keeps the key codes in their order.
+	press(KEY_X);
+	plat_input_text("x");
+	press(KEY_Y);
+	plat_input_text("y");
+	key_text_mode(0);
+	CHECK(!key_text_active());
+	CHECK(key_inkey() == KEY_X);
+	CHECK(key_inkey() == KEY_Y);
+	CHECK(key_inkey() == 0);
+	release(KEY_X);
+	release(KEY_Y);
+	plat_input_text("x");
+	CHECK(key_inkey() == 0);
+
 	// ---- After key_close the events have no effect.
 	key_close();
 	press(KEY_Z);

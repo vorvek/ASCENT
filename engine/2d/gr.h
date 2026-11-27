@@ -481,6 +481,9 @@ void gr_uscanline( int x1, int x2, int y );
 // Reads in a font file... current font set to this one.
 grs_font * gr_init_font( char * fontfile );
 void gr_close_font( grs_font * font );
+// ASCENT: 1 if c (above 127) is one of the Latin-1 letters and marks that
+// gr_init_font adds to each font (docs/formats/lang.md, "Fonts")
+int gr_latin1_drawn(int c);
 
 // Writes a string using current font. Returns the next column after last char.
 void gr_set_fontcolor( int fg, int bg );

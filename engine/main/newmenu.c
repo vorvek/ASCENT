@@ -1111,24 +1111,43 @@ void draw_item( bkg * b, newmenu_item *item, int is_current )
 
 char *Newmenu_allowed_chars=NULL;
 
-//returns true if char is allowed
-char_allowed(char c)
+// ASCENT: the test of char_allowed with the ranges p (NULL: any). DTU 1.3
+// (0x63EE0) never allows '&'. A Latin-1 character above 127 is allowed
+// if the fonts draw it (gr_latin1_drawn) and p is NULL or p allows the
+// small letters (then only the letters, not the inverted ! and ?): 1.3
+// knew only the US keys, so its sets have no such character
+// (docs/re/controls.md, "Typed text").
+int nm_char_allowed(const char *p, int c)
 {
-	char *p = Newmenu_allowed_chars;
-
+	c &= 0xFF;
+	if (c == '&' || c < 32 || c == 127)
+		return 0;
+	if (c > 127) {
+		if (!gr_latin1_drawn(c))
+			return 0;
+		if (!p)
+			return 1;
+		return c != 0xA1 && c != 0xBF && nm_char_allowed(p, 'a');
+	}
 	if (!p)
 		return 1;
 
 	while (*p) {
 		Assert(p[1]);
 
-		if (c>=p[0] && c<=p[1])
+		if (c>=(unsigned char)p[0] && c<=(unsigned char)p[1])
 			return 1;
 
 		p += 2;
 	}
 
 	return 0;
+}
+
+//returns true if char is allowed
+char_allowed(char c)
+{
+	return nm_char_allowed(Newmenu_allowed_chars, (unsigned char) c);
 }
 
 void strip_end_whitespace( char * text )
@@ -1468,7 +1487,11 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 
 	while(!done)	{
 		//network_listen();
-	
+
+		// ASCENT: the text mode of the keys (key.h) while an input item
+		// takes the typed characters
+		key_text_mode( choice > -1 && (item[choice].type==NM_TYPE_INPUT ||
+			(item[choice].type==NM_TYPE_INPUT_MENU && item[choice].group==1)) );
 
 		k = key_inkey();
 
@@ -1703,15 +1726,17 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 			int ascii;
 
 			if ( ((item[choice].type==NM_TYPE_INPUT)||((item[choice].type==NM_TYPE_INPUT_MENU)&&(item[choice].group==1)) )&& (old_choice==choice) )	{
-				if ( k==KEY_LEFT || k==KEY_BACKSP || k==KEY_PAD4 )	{
+				// ASCENT: in the text mode the keypad 4 can type a 4, so it
+				// does not delete
+				if ( k==KEY_LEFT || k==KEY_BACKSP || (k==KEY_PAD4 && !key_text_active()) )	{
 					if (item[choice].value==-1) item[choice].value = strlen(item[choice].text);
 					if (item[choice].value > 0)
 						item[choice].value--;
 					item[choice].text[item[choice].value] = 0;
 					item[choice].redraw = 1;	
 				} else {
-					ascii = key_to_ascii(k);
-					if ((ascii < 255 ) && (item[choice].value < item[choice].text_len ))
+					ascii = key_typed_char(k);		// ASCENT: the layout of the user (key.h)
+					if (ascii && (item[choice].value < item[choice].text_len ))
 					{
 						int allowed;
 
@@ -1834,6 +1859,7 @@ int newmenu_do3( char * title, char * subtitle, int nitems, newmenu_item * item,
 	grd_curcanv->cv_font	= save_font;
 	gr_set_current_canvas( save_canvas );			
 	keyd_repeat = old_keyd_repeat;
+	key_text_mode(0);		// ASCENT
 
 	nm_pointer_end();		// ASCENT
 	game_flush_inputs();

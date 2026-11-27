@@ -73,7 +73,7 @@ class Runner:
         os.makedirs(os.path.join(d, "user"), exist_ok=True)
         script = os.path.join(d, "script.txt")
         shots = []
-        with open(script, "w") as f:
+        with open(script, "w", encoding="utf-8") as f:     # the command "text" takes UTF-8
             for line in lines:
                 if line.startswith("shot "):
                     shot = line[5:].strip()
@@ -1096,6 +1096,46 @@ def test_next_level_window(t):
         os.makedirs(t.args.shots, exist_ok=True)
         for name, img in shots.items():
             save_png(img, os.path.join(t.args.shots, "xp_window_%s.png" % name))
+
+
+def sg_texts(d, slot):
+    """The description (offset 8, 20 bytes) and the player name (offset 141,
+    16 bytes) of the save of a slot, as bytes up to the first 0."""
+    with open(os.path.join(d, "user", "SG%d.SG" % slot), "rb") as f:
+        b = f.read(160)
+    return b[8:28].split(b"\0")[0], b[141:157].split(b"\0")[0]
+
+
+def test_text_input_front_end(t):
+    """Typed text takes the keyboard layout of the user (key.h, the text
+    mode). The script types through plat_input_text, the function of the
+    text events of the system, as a Spanish layout gives them. A new
+    character (quick character, the name box of screen 4) is named
+    "Peñíscola": the name set of 1.3 (0x13CD1B) refuses "&", "@" and the
+    inverted question mark, and takes the Latin-1 letters. Then the Save
+    Game of the main menu (the front end menu) takes a description with
+    the set of newmenu (any but "&", 0x63EE0): the euro sign is not Latin-1
+    and is dropped. The save holds Latin-1 bytes."""
+    _, d = t.run("text_input_fe", ["wait 60", "key down", "wait 3", "key enter", "wait 60", "key r", "wait 60",
+                                   "key pgup", "wait 60", "key n", "wait 10", "text Pe&ñ@¿íscola", "wait 3",
+                                   "key enter", "wait 10", "click 588 443", "wait 150", "key esc", "wait 30",
+                                   "key enter", "wait 20", "key down", "wait 3", "key enter", "wait 5",
+                                   "text Peñíscola & ¿Jü@€", "wait 3", "key enter", "wait 30"],
+                 extra=["-fixedfps", "30"], level="")
+    desc, name = sg_texts(d, 1)
+    assert name == "Peñíscola".encode("latin-1"), "the name is %r" % name
+    assert desc == "Peñíscola  ¿Jü@".encode("latin-1"), "the description is %r" % desc
+    assert "Input: text input on" in session_log(d), "the text input of the system did not start"
+
+
+def test_text_input_game(t):
+    """The same in the save menu of the game (Alt+F2, newmenu): Enter opens
+    the slot for the text, the typed text in Latin-1 goes into the save."""
+    _, d = t.run("text_input_game", ["gamekeys", "wait 20", "hold lalt 4", "key f2", "wait 5", "key enter", "wait 3",
+                                     "text ¡Peñíscola!", "wait 3", "key enter", "wait 30"],
+                 extra=["-fixedfps", "30"])
+    desc, _ = sg_texts(d, 0)
+    assert desc == "¡Peñíscola!".encode("latin-1"), "the description is %r" % desc
 
 
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("test_")]

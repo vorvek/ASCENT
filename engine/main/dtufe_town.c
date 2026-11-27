@@ -1230,7 +1230,7 @@ static void mk_qty_enter(fe_screen *s, int id)		// 0x86F9C, 0x86FCB
 	int v;
 
 	sprintf(buf, "%d", Mk_trans_qty);
-	if (fe_input_box(LN("Enter Qty"), buf, 5) < 0)
+	if (fe_input_box(LN("Enter Qty"), buf, 5, FE_DIGIT_CHARS) < 0)
 		return;
 	v = atoi(buf);
 	if (v < 1) v = 1;

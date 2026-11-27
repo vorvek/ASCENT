@@ -194,6 +194,7 @@ int fe_frame_begin(void)
 
 	if (script_active()) {
 		script_frame();
+		script_text_deliver(1);		// ASCENT: a typed character through the platform
 		l = Script_btn != 0;
 		r = Script_rbtn;
 		key_flush();
@@ -1452,6 +1453,9 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 		fe_menu_item *it;
 		int k;
 
+		// ASCENT: the text mode of the keys (key.h) while an input item
+		// takes the typed characters
+		key_text_mode(items[cur].type == FE_MI_INPUT || editing >= 0);
 		if (!fe_frame_begin()) {
 			result = -1;
 			break;
@@ -1493,13 +1497,19 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 			it->value = !it->value;
 			if (it->changed) it->changed(it);
 		} else if ((it->type == FE_MI_INPUT || (it->type == FE_MI_INPUT_MENU && editing == cur)) && k) {
-			int len = (int) strlen(it->buf), c = key_to_ascii(k);
+			// ASCENT: the character of the layout of the user (key.h). The
+			// test is that of newmenu (0x63EE0) with the allowed set of the
+			// item, a space becomes '_' when only '_' is allowed.
+			int len = (int) strlen(it->buf), c = key_typed_char(k);
 			if (k == KEY_BACKSP) {
 				if (len > 0) it->buf[len - 1] = 0;
-			} else if (c != 255 && len < it->buf_len &&
-						(isalnum(c) || c == '-' || c == '_' || c == ' ')) {		// 0x13CD1B
-				it->buf[len] = (char) c;
-				it->buf[len + 1] = 0;
+			} else if (c && len < it->buf_len) {
+				if (c == ' ' && !nm_char_allowed(it->allowed, c) && nm_char_allowed(it->allowed, '_'))
+					c = '_';
+				if (nm_char_allowed(it->allowed, c)) {
+					it->buf[len] = (char) c;
+					it->buf[len + 1] = 0;
+				}
 			}
 		}
 		if (it->type == FE_MI_SLIDER) {
@@ -1614,6 +1624,7 @@ int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, in
 	}
 	if (box_bm)
 		gr_free_bitmap(box_bm);
+	key_text_mode(0);			// ASCENT
 	fe_input_clear();
 	return result;
 }
@@ -1629,7 +1640,7 @@ int fe_message_box(char *title, char *text, int n_choices, char *c0, char *c1)
 	return fe_menu(title, text, m, n_choices, 0, 1);
 }
 
-int fe_input_box(char *title, char *buf, int max_len)
+int fe_input_box(char *title, char *buf, int max_len, const char *allowed)
 {
 	fe_menu_item m[1];
 	char save[64];
@@ -1638,6 +1649,7 @@ int fe_input_box(char *title, char *buf, int max_len)
 	strncpy(save, buf, sizeof(save) - 1);
 	save[sizeof(save) - 1] = 0;
 	m[0].type = FE_MI_INPUT; m[0].text = ""; m[0].buf = buf; m[0].buf_len = max_len;
+	m[0].allowed = allowed;
 	if (fe_menu(NULL, title, m, 1, 0, 1) < 0) {
 		strcpy(buf, save);
 		return 0;

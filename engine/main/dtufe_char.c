@@ -1067,7 +1067,7 @@ static void s4_name(fe_screen *s, int id)			// 0x8B078
 	char buf[16];
 
 	strcpy(buf, Name);
-	if (fe_input_box(fe_text(422), buf, 15) && buf[0])
+	if (fe_input_box(fe_text(422), buf, 15, FE_NAME_CHARS) && buf[0])
 		strcpy(Name, buf);
 }
 

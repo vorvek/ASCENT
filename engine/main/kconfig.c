@@ -2979,6 +2979,34 @@ static char *dtu_key_name(int k)
 	return key_text[k];
 }
 
+// ASCENT: the name of a key on the screen. The names of the table are
+// those of the US keys (ascent.cfg keeps them). A key with a name of one
+// character shows the character of the keyboard layout of the user, in
+// the capital form, when the fonts draw it (a Spanish layout: N tilde in
+// place of ";"). A dead key or a character the fonts do not have keeps
+// the US name.
+static char *dtu_key_label(int k)
+{
+	static char buf[4][2];
+	static int next;
+	char *name = dtu_key_name(k);
+	uint32_t c;
+
+	if (strlen(name) != 1)
+		return name;
+	c = plat_key_layout_char(k);
+	if (c >= 'a' && c <= 'z')
+		c -= 32;
+	else if (c >= 0xE0 && c <= 0xFE && c != 0xF7)
+		c -= 32;					// the Latin-1 capital
+	if (!(c > 32 && c < 127) && !(c > 127 && c < 256 && gr_latin1_drawn((int) c)))
+		return name;
+	next = (next + 1) & 3;
+	buf[next][0] = (char) c;
+	buf[next][1] = 0;
+	return buf[next];
+}
+
 char *dtu_action_name(int act)
 {
 	if (act >= DTU_ACT_HOT_KEY_1 && act < DTU_N_ACTIONS)
@@ -2996,9 +3024,9 @@ char *dtu_action_key_names(int act, char *buf, int size, char *sep)
 
 	buf[0] = 0;
 	if (k0 != 255)
-		snprintf(buf, size, "%s", dtu_key_name(k0));
+		snprintf(buf, size, "%s", dtu_key_label(k0));
 	if (k1 != 255)
-		snprintf(buf + strlen(buf), size - strlen(buf), "%s%s", buf[0] ? sep : "", dtu_key_name(k1));
+		snprintf(buf + strlen(buf), size - strlen(buf), "%s%s", buf[0] ? sep : "", dtu_key_label(k1));
 	return buf;
 }
 
@@ -3140,7 +3168,7 @@ static void kc_draw_item(int i, int is_current)
 	btext[0] = 0;
 	if (v != 255) {
 		switch (it->type) {
-		case BT_KEY:				snprintf(btext, sizeof(btext), "%s", dtu_key_name(v)); break;
+		case BT_KEY:				snprintf(btext, sizeof(btext), "%s", dtu_key_label(v)); break;
 		case BT_MOUSE_BUTTON:	if (v < 3) snprintf(btext, sizeof(btext), "%s", Text_string[mousebutton_text[v]]); break;
 		case BT_MOUSE_AXIS:		if (v < 2) snprintf(btext, sizeof(btext), "%s", Text_string[mouseaxis_text[v]]); break;
 		case BT_JOY_BUTTON:

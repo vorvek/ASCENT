@@ -75,7 +75,9 @@
 //   release         release the left button
 //   key NAME        esc, enter, space, pgup, pgdn, left, right, up, down,
 //                   backsp, or one character
-//   text STRING     the characters of STRING, one in each frame
+//   text STRING     the characters of STRING, one in each frame. ASCENT:
+//                   STRING is UTF-8; in a text field each character goes
+//                   as a text event of the system (the layout of the user)
 //   shot FILE       write the frame to a PPM file
 //   quit            leave the program
 //   gamekeys        from now on the script also runs in the frames of the
@@ -195,6 +197,43 @@ static int script_key(char *name)
 	return ascii_to_key(name[0]);
 }
 
+// ASCENT: the command "text" takes UTF-8. In the text mode of the keys
+// (key.h) each character goes as a text event (script_text_deliver), as
+// the system sends the characters of the layout of the user; else it is
+// the key of the US table (an ASCII character only).
+static char Script_utf8[8];
+
+static void script_text_next(void)
+{
+	unsigned char c = (unsigned char) Script_text[Script_text_pos];
+	int n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+	int i;
+
+	for (i = 0; i < n && Script_text[Script_text_pos]; i++)
+		Script_utf8[i] = Script_text[Script_text_pos++];
+	Script_utf8[i] = 0;
+	if (key_text_active())
+		return;
+	Fe_key = n == 1 ? ascii_to_key(c) : 0;
+	Script_utf8[0] = 0;
+}
+
+void script_text_deliver(int to_fe)
+{
+	int k;
+
+	if (!Script_utf8[0])
+		return;
+	plat_input_text(Script_utf8);
+	Script_utf8[0] = 0;
+	if (to_fe)
+		while ((k = key_inkey()) != 0)
+			if (k & KEY_TEXT) {
+				Fe_key = k;
+				break;
+			}
+}
+
 // Sets the input of one frame from the script.
 void script_frame(void)
 {
@@ -210,7 +249,7 @@ void script_frame(void)
 		return;
 	}
 	if (Script_text[Script_text_pos]) {
-		Fe_key = ascii_to_key(Script_text[Script_text_pos++]);
+		script_text_next();
 		return;
 	}
 	if (Script_wait > 0) {
@@ -249,7 +288,7 @@ void script_frame(void)
 			strncpy(Script_text, arg, sizeof(Script_text) - 1);
 			Script_text_pos = 0;
 			if (Script_text[0])
-				Fe_key = ascii_to_key(Script_text[Script_text_pos++]);
+				script_text_next();
 			return;
 		} else if (!stricmp(cmd, "shot")) {
 			Script_shot = s + 5;
@@ -355,6 +394,7 @@ int dtufe_menu_script_frame(void)
 		plat_input_key(Script_hold_key, 0);
 	if (script_active()) {
 		script_frame();
+		script_text_deliver(0);		// ASCENT: into the key buffer of newmenu
 		if (Fe_key) {
 			if (Fe_key & KEY_CTRLED)		// ASCENT: Ctrl with the key
 				plat_input_key(KEY_LCTRL, 1);

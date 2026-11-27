@@ -108,6 +108,7 @@ typedef struct fe_menu_item {
 	int	value, min_value, max_value;
 	char	*buf;				// FE_MI_INPUT, FE_MI_INPUT_MENU
 	int	buf_len;			// most characters
+	const char *allowed;			// ASCENT: the characters that may be typed, as Newmenu_allowed_chars (NULL: any but '&')
 	void	(*changed)(struct fe_menu_item *item);
 	char	**labels;			// ASCENT: FE_MI_CHOICE: the names of the values, or NULL
 	int	disabled;			// ASCENT: FE_MI_CHOICE: drawn dark, the value does not change
@@ -179,7 +180,10 @@ void fe_run_screen(fe_screen *s);
 
 int fe_menu(char *title, char *subtitle, fe_menu_item *items, int n, int cur, int box);
 int fe_message_box(char *title, char *text, int n_choices, char *c0, char *c1);
-int fe_input_box(char *title, char *buf, int max_len);
+int fe_input_box(char *title, char *buf, int max_len, const char *allowed);
+// ASCENT: the allowed characters of DTU 1.3 (as Newmenu_allowed_chars)
+#define FE_NAME_CHARS	"azAZ09--__  \"\""	// the character name, 0x13CD1B (menu_input_name 0x592E8)
+#define FE_DIGIT_CHARS	"09"			// the quantity of the market, 0x13F37D (0x86FCB)
 
 int fe_rand(void);
 
@@ -244,5 +248,10 @@ extern int Script_in_game;
 int script_active(void);
 void script_load(void);
 void script_frame(void);
+// ASCENT: a character of the command "text" in the text mode of the keys
+// goes through plat_input_text, the function of the text events of the
+// system. to_fe: it becomes Fe_key (else it stays in the key buffer for
+// newmenu).
+void script_text_deliver(int to_fe);
 
 #endif
