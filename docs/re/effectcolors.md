@@ -148,22 +148,39 @@ and red edges on the water.
   dark red disk. The correction is the
   intent of the rule, a glass that shows what is around it, with a source
   that exists: on a face whose side the view does not see past (no
-  `WID_RENDPAST_FLAG`), each effect texel takes the rule with the color filled
+  `WID_RENDPAST_FLAG`), each effect texel shows the color filled into it
   from the texels around it (the mean of the filled 8 neighbors, ring after
-  ring, as `fill_colors` of gputex.c and step 1 of `textures_hd.py`) as the
-  screen pixel: `ramp | (f & 15)`, f the nearest palette color, for the six
-  ramp colors, f itself for 0x4E and 0xCF (no pulse). The texel is then lit
-  as the other texels. The software renderer draws a copy of the bitmap with
-  these colors and without the rule; the GPU renderer finds the same color in
-  its shader from the filled color of the texture (the 8-bit expansion or the
-  upscaled file) and lights it. The 8-bit form of the GPU renderer
-  (`ASCENT_GPU_8BIT=1`) draws the copy of the software renderer. The disk of
-  `glas02` is a dark copper glass with the light of the wall and a faint cross
-  from the fill. The glass doors, waterfalls and effect walls that the view
-  sees past do not change (BONES `-testpos 0,0,-296,180`, the door `glasdr1`:
-  the same screenshot with and without `-origfx` in both renderers). Tests
+  ring, as `fill_colors` of gputex.c and step 1 of `textures_hd.py`), lit as
+  the other texels. The software renderer draws a copy of the bitmap with
+  the nearest palette color (not 255, not an effect color) in these texels
+  and without the rule; the GPU renderer draws the face without the rule, so
+  it shows the filled colors of its texture: the same fill in the 8-bit
+  expansion, the smooth fill of the upscaled file. The 8-bit form of the GPU
+  renderer (`ASCENT_GPU_8BIT=1`) draws the copy of the software renderer.
+  The glass doors, waterfalls and effect walls that the view sees past do
+  not change (BONES `-testpos 0,0,-296,180`, the door `glasdr1`: the same
+  screenshot with and without `-origfx` in both renderers). Tests
   (`-testpos` at frame 60, both renderers, before with `-origfx`): DROW1
   `380,-3.5,1097.1,90`, CLAN1 `-137.8,0,700,0`.
+
+  The water slides of HUB3 (the hub of the drow levels: DROW1 is entered
+  from it in the logs of the stream). The sloped faces where the water runs
+  down are the overlay `wfal04` (the eclip of the waterfall, 8 frames, 881
+  texels of 0x4F in a dither with transparent texels) on a stone base:
+  segment 79 side 3 (base `113`), 108 side 5 (`175`), 149 side 3 (`175`),
+  159 side 3 (`168`), all with no segment behind. The flat water is `water`
+  with the overlay `wfal01` (segments 213 to 230, side 3), which has no
+  effect color. A slide is a merged bitmap with effect colors on a face
+  that the view does not see past, so with the rule of 1.3 its 0x4F texels
+  read the screen of earlier frames: the software renderer showed dark and
+  moving dots in the water, the GPU renderer (gpu.c `fxrgb`, one texel of
+  the 64 x 64 bitmap for each effect texel) dark blue squares of the darkest
+  step of the ramp over the whole slide. The upscaled files of `wfal04` and
+  the texture filter were not the cause: the texels between the squares
+  show the upscaled water. With the solid form the effect texels show the
+  water filled into them, and the GPU renderer shows the smooth upscaled
+  water up to the edge of the stone. Test: HUB3 `-testpos 85,5,80,90,30`
+  (the fifth value is the look pitch, new for this test), both renderers.
 - The upscaled textures: `tools/textures_hd.py` fills the effect texels with the
   colors around them before the upscale (`../hd_textures.md`). A set made before
   this has red around the effect texels; the game cannot remove that.

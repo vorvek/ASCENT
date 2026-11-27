@@ -234,13 +234,13 @@ int tmap_fx_next_below(tmap_fx_span *s)
 // docs/re/effectcolors.md). The solid form gives each effect texel a fixed
 // color from the texels around it: their mean color, filled ring after
 // ring into the area of the effect texels as plat_gpu_fx_mark and
-// fill_colors (platform/gputex.c) fill the RGB form; f is the palette
-// color nearest to it (the table of update_light in platform/gpu.c). The
-// texel gets the color of the rule with f as the screen pixel (behind and
-// below): ramp | (f & 15) for the six ramp colors, f itself for 0x4E and
-// 0xCF (no pulse). The face is then drawn as a texture without the rule,
-// lit like its other texels. The GPU renderer does the same in its shader
-// (u_fxsolid) with the filled colors of its texture.
+// fill_colors (platform/gputex.c) fill the RGB form, as the nearest
+// palette color that is not 255 or an effect color. The face is then drawn
+// as a texture without the rule, lit like its other texels: the glass and
+// the water edges look like the texture around them. The GPU renderer
+// draws the same face without the rule (G3_gpu_fx_solid, 3d/gpu3d.c), so
+// it shows the filled colors of its texture: the fill of the 8-bit
+// texture (the same fill as here) or the smooth fill of the upscaled file.
 
 #define SOLID_CACHE 16
 typedef struct solid_entry {
@@ -354,12 +354,7 @@ static void solid_make(solid_entry *e, const ubyte *pix, int w, int h)
 			rgb[i*3+1] = (int) (sum[1] / cnt);
 			rgb[i*3+2] = (int) (sum[2] / cnt);
 		}
-		switch (c) {
-			case 0xBF: case 0x6E:	f = 0x50 | (nearest_color(&rgb[i*3], 0) & 15); break;
-			case 0xBE: case 0x6D:	f = 0xA0 | (nearest_color(&rgb[i*3], 0) & 15); break;
-			case 0x6F: case 0x4F:	f = 0x20 | (nearest_color(&rgb[i*3], 0) & 15); break;
-			default:				f = nearest_color(&rgb[i*3], 1); break;	// 0x4E, 0xCF
-		}
+		f = nearest_color(&rgb[i*3], 1);
 		e->data[i] = (ubyte) f;
 	}
 	free(rgb);

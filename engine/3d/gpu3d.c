@@ -860,11 +860,11 @@ static void gpu_tmap(int nv,g3s_point **pointlist,grs_bitmap *bm,int special)
 	//under the face (texmap/tmapfx.c); the lit mappers of the original do it
 	m.effects = m.lit && (bm->bm_flags & BM_FLAG_DTU_EFFECTS) != 0;
 	//ASCENT: a face that the view does not see past (Dtu_fix_solid_effects,
-	//render.c): no image under it to read
-	if (G3_gpu_fx_solid && (bm->bm_flags & BM_FLAG_DTU_EFFECTS)) {
+	//render.c): no image under it to read. The effect texels show the color
+	//filled into them from the texels around them (plat_gpu_fx_mark, the
+	//smooth fill of the upscaled file), lit as the other texels
+	if (G3_gpu_fx_solid)
 		m.effects = 0;
-		m.fx_solid = 1;
-	}
 	m.fx_row = G3_gpu_fx_row;
 	m.fx_fine = G3_gpu_fx_fine;
 	//the dark view of the conversation window: every lit texture, the
