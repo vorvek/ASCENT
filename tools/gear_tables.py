@@ -48,6 +48,7 @@ def read():
     wands:    [(id, name of 1.3, new name, spell)]
     values:   [(id, name of 1.3, value)]
     market:   [(stage, quantity, class, number, count)]
+    class_market: the same for the class gear (Class_market)
     removed:  [(stage, class, number)]
     dragon:   [(class, number, count)]
     no_gold:  [names]
@@ -77,6 +78,10 @@ def read():
         return g["d"][tok] if tok in g["d"] else int(tok)
     g["market"] = [tuple(num(t) for t in m.group(1).split(","))
                    for m in re.finditer(r"\{([^{}]*)\}", _block(c, "Gear_market[][5]"))]
+    # the market rows of the class gear (the setting "Gear for single class
+    # mages and thieves", on by default)
+    g["class_market"] = [tuple(num(t) for t in m.group(1).split(","))
+                         for m in re.finditer(r"\{([^{}]*)\}", _block(c, "Class_market[][5]"))]
     g["removed"] = [tuple(num(t) for t in m.group(1).split(","))
                     for m in re.finditer(r"\{([^{}]*)\}", _block(c, "Gear_market_removed[][3]"))]
     g["dragon"] = [tuple(num(t) for t in m.group(1).split(","))
