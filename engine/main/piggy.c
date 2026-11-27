@@ -1005,6 +1005,62 @@ int piggy_load_egg( char * filename )
 	return Num_eggs++;
 }
 
+// ASCENT: one polygon model of an archive that is not loaded, for
+// Dtu_caster_ai (dtuopts.h): the drow priestess with a mace, dlf_fft.pof of
+// NETHER.EGG, an archive that no level of 1.3 loads. The model goes to the
+// end of the model table; its textures are the bitmaps of the loaded
+// archives that the caller names (bmread.c). Returns the model number, or
+// -1 if the file or the model is missing.
+int piggy_load_egg_model( char * filename, char * model_name )
+{
+	ubyte *data;
+	const ubyte *h;
+	int size, n_bitmaps, n_sounds, n_models, data_start, i, mn = -1;
+	int sound_header_size = DISK_SOUND_HEADER_SIZE;
+
+	data = dtu_load_file( filename, &size );
+	if ( data == NULL )
+		return -1;
+	if ( size < 12 ) {
+		free( data );
+		return -1;
+	}
+	n_bitmaps = egg_get_int( data );
+	n_sounds = egg_get_int( data+4 );
+	n_models = egg_get_int( data+8 );
+	if ( n_bitmaps < 0 || n_sounds < 0 || n_models < 0 ||
+		  n_bitmaps > MAX_BITMAP_FILES || n_sounds > MAX_SOUND_FILES || n_models > MAX_POLYGON_MODELS ) {
+		free( data );
+		return -1;
+	}
+	// the old sound headers, as piggy_load_egg()
+	if ( n_sounds > 0 && n_models > 0 &&
+		  !egg_is_model_header( data, size, 12 + n_bitmaps*DISK_BITMAP_HEADER_SIZE + n_sounds*DISK_SOUND_HEADER_SIZE ) &&
+		  egg_is_model_header( data, size, 12 + n_bitmaps*DISK_BITMAP_HEADER_SIZE + n_sounds*DISK_SOUND_HEADER_SIZE_OLD ) )
+		sound_header_size = DISK_SOUND_HEADER_SIZE_OLD;
+	data_start = 12 + n_bitmaps*DISK_BITMAP_HEADER_SIZE + n_sounds*sound_header_size + n_models*DISK_MODEL_HEADER_SIZE;
+	if ( data_start <= size ) {
+		h = data + 12 + n_bitmaps*DISK_BITMAP_HEADER_SIZE + n_sounds*sound_header_size;
+		for (i=0; i<n_models; i++, h += DISK_MODEL_HEADER_SIZE ) {
+			char name[13];
+			int offset = egg_get_int( h+0x38 ) + data_start;
+
+			memcpy( name, h+0x3D, 12 );
+			name[12] = 0;
+			if ( stricmp( name, model_name ) || offset < data_start || offset >= size )
+				continue;
+			mn = polyobj_load_dtu_model( h, data+offset, size-offset );
+			break;
+		}
+	}
+	free( data );
+	if ( mn >= 0 ) {
+		Piggy_generation++;
+		dtu_log( "EGG archive '%s': model '%s' loaded as model %d\n", filename, model_name, mn );
+	}
+	return mn;
+}
+
 int piggy_get_num_eggs()
 {
 	return Num_eggs;

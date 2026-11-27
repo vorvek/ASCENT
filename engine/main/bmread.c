@@ -816,6 +816,64 @@ static const dtu_tblfix_io Tblfix_io = {
 	tblfix_copy_line, tblfix_sync, tblfix_log
 };
 
+// ASCENT: Dtu_caster_ai (dtuopts.h, a decision of the user of 2026-11-27):
+// the drow priestesses hold a weapon. The data of 1.3 has two models of the
+// drow woman with the hands free, dlf_ffk.pof (rffk8, rffk8b, rffk9,
+// drowfem) and dlf_ffk5.pof (rffk5), in DROW.EGG, FLAME.EGG, NETHER.EGG and
+// PORTAL.EGG, and one with a mace in the right hand, dlf_fft.pof, the
+// model of the type rfft6 of the table NETHER.BIN. It is only in
+// NETHER.EGG, which no level of 1.3 loads (the disc has it as NETHER.COW;
+// a folder without the file keeps the models of 1.3). Its textures are the
+// ten of dlf_ffk.pof and the texture of the mace (m_a01.bbm), which the
+// level archives of the drow have, in the order of the line of rfft6. The
+// creature types with a spell list of a drow priestess (dtucaster.h) whose
+// line has one of the two models get dlf_fft.pof.
+grs_bitmap *load_polymodel_bitmap(char *name);
+static void line_models_start();
+static void line_model_add( char * name );
+static void line_models_load( int * model_nums, robot_info * r );
+int dtu_caster_ai(void);		// dtuobj.h
+
+static int priestess_line( int i )
+{
+	int mn = Robot_info[i].model_num;
+
+	if ( mn < 0 || mn >= N_polygon_models || ( stricmp( Pof_names[mn], "dlf_ffk.pof" ) && stricmp( Pof_names[mn], "dlf_ffk5.pof" ) ) )
+		return 0;
+	return !strnicmp( Monster_info[i].name, "rff", 3 ) || !stricmp( Monster_info[i].name, "drowfem" );
+}
+
+static void bm_port_priestess()
+{
+	static char *tex[13] = { "dlf_ff01.bbm", "dlf_ff02.bbm", "dlf_ff03.bbm", "dlf_ff02.bbm", "dlf_ff03.bbm", "dlf_ff04.bbm", "dlf_ff05.bbm",
+		"dlf_ff06.bbm", "dlf_ff07.bbm", "dlf_ff08.bbm", "m_a01.bbm", "dlf_ff09.bbm", "dlf_ff10.bbm" };
+	int i, k, any = 0, model_nums[MAX_PLAYER_MODELS];
+
+	if ( !dtu_caster_ai() )
+		return;
+	for (i=0; i<N_robot_types; i++ )
+		any |= priestess_line( i );
+	if ( !any )
+		return;
+	if ( polyobj_find_model( "dlf_fft.pof" ) < 0 && piggy_load_egg_model( "NETHER.EGG", "dlf_fft.pof" ) < 0 ) {
+		dtu_log( "The model dlf_fft.pof of NETHER.EGG is not there: the drow priestesses keep their model (Dtu_caster_ai)\n" );
+		return;
+	}
+	line_models_start();
+	line_model_add( "dlf_fft.pof" );
+	for (k=0; k<13; k++ )
+		load_polymodel_bitmap( tex[k] );
+	line_models_load( model_nums, NULL );
+	if ( model_nums[0] < 0 )
+		return;
+	for (i=0; i<N_robot_types; i++ )
+		if ( priestess_line( i ) ) {
+			dtu_log( "Monster '%s': the model dlf_fft.pof (a mace in the hand) in place of %s (Dtu_caster_ai)\n", Monster_info[i].name,
+				Pof_names[Robot_info[i].model_num] );
+			Robot_info[i].model_num = model_nums[0];
+		}
+}
+
 int bm_load_level_tables( char * level_name, char * player_name )
 {
 	char egg_name[16], player_egg_name[16];
@@ -918,6 +976,7 @@ int bm_load_level_tables( char * level_name, char * player_name )
 			bm_parse_line(buf);
 		}
 	}
+	bm_port_priestess();		// ASCENT: Dtu_caster_ai: the drow priestesses with a weapon
 	dtu_spell_table_read();		// ASCENT: the writes of the casts into the spell records end (D-104, D-105)
 
 	NumTextures = texture_count;

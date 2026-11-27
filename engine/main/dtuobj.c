@@ -214,12 +214,16 @@ int improved_ai(void)
 }
 
 // ASCENT: Dtu_caster_ai (dtuopts.h). -origobj and -origcasterai: the
-// casters of 1.3, also with the setting.
-static int Orig_caster_ai = 0;
-
+// casters of 1.3, also with the setting. The call tests the options
+// itself: the table reader calls it before the options of this file are
+// read.
 int dtu_caster_ai(void)
 {
-	return Dtu_caster_ai && !Orig_obj && !Orig_caster_ai;
+	static int orig = -1;
+
+	if (orig < 0)
+		orig = FindArg("-origobj") != 0 || FindArg("-origcasterai") != 0;
+	return Dtu_caster_ai && !orig;
 }
 
 // The reach of the weapon of each model, see model_weapon_reach(). 0: not
@@ -1114,8 +1118,6 @@ void dtu_objects_init(void)
 	// -origobj: the rules of the executable, also with Dtu_improved_ai
 	if (FindArg("-origobj") || FindArg("-noimprovedai") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
-	if (FindArg("-origcasterai"))
-		Orig_caster_ai = 1;
 	if (FindArg("-noattack"))
 		Dtu_creatures_attack = 0;
 	if (FindArg("-idleanim"))
@@ -1449,6 +1451,36 @@ void dtu_objects_level_setup(void)
 // Rendering
 
 // The normal case of draw_polygon_object (0x676ED to 0x67A1C).
+// ASCENT: Mirror Image on a creature (dtuspell.h): its images are more
+// draws of its model in the same frame, to its right and its left by turns
+// (the first two a body away, the next two two bodies), four at most. An
+// image whose place is behind a wall is not drawn. The images are only a
+// picture: the rule (dtu_spell_mirror_takes) counts them.
+#define MIRROR_IMAGES_DRAWN	4
+
+static void mirror_images_draw(object *obj,vms_vector *draw_pos,int frame,int next,fix frac,int show_hidden,fix light,fix *glow,
+	bitmap_index *alt_textures)
+{
+	int n, k;
+
+	if (obj->type != OBJ_ROBOT || (n = dtu_spell_images(obj)) <= 0)
+		return;
+	if (n > MIRROR_IMAGES_DRAWN)
+		n = MIRROR_IMAGES_DRAWN;
+	for (k=1;k<=n;k++) {
+		vms_vector p = *draw_pos;
+		fix d = ((k + 1) / 2) * (obj->size + obj->size / 4);
+
+		vm_vec_scale_add2(&p,&obj->orient.rvec,(k & 1) ? d : -d);
+		if (!ray_is_free(&obj->pos,obj->segnum,&p,obj-Objects))
+			continue;
+		if (next >= 0)
+			draw_polygon_model_frame_lerp(&p,&obj->orient,obj->rtype.pobj_info.model_num,frame,next,frac,show_hidden,light,glow,alt_textures);
+		else
+			draw_polygon_model_frame(&p,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
+	}
+}
+
 void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *alt_textures)
 {
 	polymodel *po = obj_model(obj);
@@ -1510,9 +1542,12 @@ void dtu_draw_polygon_object(object *obj, fix light, fix *glow, bitmap_index *al
 		}
 		draw_pos.y += creature_feet_lift(obj,frame,next,frac);
 		draw_polygon_model_frame_lerp(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,next,frac,show_hidden,light,glow,alt_textures);
+		mirror_images_draw(obj,&draw_pos,frame,next,frac,show_hidden,light,glow,alt_textures);
 	}
-	else
+	else {
 		draw_polygon_model_frame(&draw_pos,&obj->orient,obj->rtype.pobj_info.model_num,frame,show_hidden,light,glow,alt_textures);
+		mirror_images_draw(obj,&draw_pos,frame,-1,0,show_hidden,light,glow,alt_textures);
+	}
 
 	Interpolation_method = im_save;
 }
