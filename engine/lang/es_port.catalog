@@ -1819,6 +1819,10 @@ id: port.you_are_held_and_cannot_act
 en: You are held and cannot act.
 tr: Estás {sex:inmovilizado|inmovilizada} y no puedes actuar.
 
+id: port.you_are_asleep_and_cannot_act
+en: You are asleep and cannot act.
+tr: Estás {sex:dormido|dormida} y no puedes actuar.
+
 id: port.hold_person_cast_on_s_by_s_for_d_minutes
 en: Hold Person cast on %s by %s for %d minutes.
 tr: Inmovilizar Persona: objetivo %s, lanzador %s, %d minutos.

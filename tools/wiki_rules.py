@@ -612,6 +612,15 @@ FIXES = [
                                        "view; 1.3 draws it mostly on near ones."),
     ("Dtu_fix_spell_save_repair", "-origchar", "Saves of older ASCENT versions get their spells moved "
                                                "back from the item list to the spell lists."),
+    ("Dtu_fix_learn_class", "-origchar", "A character learns a spell only when its classes can cast it: "
+     "a mage keeps Protection From Fire (a priest spell) as a scroll; 1.3 puts it into the mage list, "
+     "where it cannot be cast."),
+    ("Dtu_fix_time_wrap", "-origcombat", "Spells and potions last their full time after 9 hours of play; "
+     "in 1.3 an effect that ends past that point ends at once."),
+    ("Dtu_fix_sleep_wake", "-origcombat", "Any damage wakes a sleeping character, as in AD&D 2nd edition; "
+     "in 1.3 only a melee hit does."),
+    ("Dtu_sleep_view", "-origcombat or -nosleepview", "While the character sleeps the view is black with "
+     "\"zzz\", and the character cannot move, look around or act; in 1.3 nothing shows the sleep."),
     ("Dtu_fix_stoneskin_word", "-origcombat", "Stone Skin keeps your other spell effects."),
     ("Dtu_fix_rary_manual", "-origcombat", "Rary's Mnemonic Enhancer follows the manual."),
     ("Dtu_fix_melf_acid", "-origcombat", "Melf's Acid Arrows makes an attack roll and burns 2d4 a "

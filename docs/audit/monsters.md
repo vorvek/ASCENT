@@ -239,6 +239,17 @@ its largest piece):
   swing of the Flame Tongue (+2 fire against a regenerating target) on the
   body (`dtu_creature_down_swing`). The swing of the player now reaches a
   fallen body that can get up, with no roll (the body is helpless).
+- A spell missile of the player (Magic Missile, Melf's Acid Arrows,
+  Fireball, Lightning Bolt and the others) hits the fallen body
+  (`missile_path_object`, `missile_hit_object` in dtuobj_missile.c): the
+  dice of the spell on the body (`dtu_creature_down_spell`), an area spell
+  its area at the body. Before 2026-11-27 the missile query skipped a body
+  with OF_DESTROYED or the DIE animation, so a spell missile flew through a
+  downed troll and only an area that burst behind it reached it. The
+  missiles of the creatures still pass the body. Test (MINE, `-chartest
+  6:kill=1,150:goseg=67,160:spellat=36.1`, the test command spellat): Melf's
+  Acid Arrows destroys the body ("cause fire or acid", 650 experience);
+  Magic Missile takes 3 to 5 of the regrown hit points; Fireball destroys it.
 - Other damage on the fallen body takes away the hit points that it regrew;
   damage equal to its full hit points while it is down (54 for a troll)
   cuts it apart for good. This is the way of a fighter or a thief with no

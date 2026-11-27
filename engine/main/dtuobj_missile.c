@@ -429,6 +429,23 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	if (m->parent >= 0 && Objects[m->parent].signature == m->parent_sig)
 		parent = &Objects[m->parent];
 
+	// ASCENT: Dtu_fix_revive: a spell missile on the fallen body of a
+	// creature that can get up (missile_path_object). An area spell has its
+	// area at the body (dtu_spell_area reaches the body), another spell its
+	// dice on the body; fire or acid destroys it (dtu_creature_down_spell).
+	if (m->spell >= 0 && !m->harmless && dtu_creature_down(other)) {
+		int L = parent ? dtu_spell_object_level(parent,m->spell) : 1;
+
+		dtu_obj_log("missile: obj %d of spell %d hits the fallen body of obj %d",(int)(obj-Objects),m->spell,(int)(other-Objects));
+		vclip_at(obj->segnum,point,wi->impact_size,f2i(spell_line_fix(m->spell,"wall_hit_vclip",-F1_0)));
+		missile_remove(obj);
+		if (dtu_spell_is_area(m->spell))
+			dtu_spell_area(m->spell,point,obj->segnum,parent,L);
+		else
+			dtu_creature_down_spell(other,parent,m->spell,L);
+		return;
+	}
+
 	if (other->type == OBJ_DRESSING) {
 		// 0x2641C: the missile casts its spell on the scenery (the spells
 		// decide whether it breaks); the weapon does no damage. The missile
@@ -528,10 +545,10 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 // hit point. The executable does this in the same query as the walls. The
 // port tests each body, see weapon_test(). step is the length of the move
 // in this frame. The missile can be a stand in object that is not in the
-// list (dtu_missile_path_target).
-static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,int parent_sig,int pass,int pass_sig,vms_vector *best_ip)
+// list (dtu_missile_path_target). spell: the spell of the missile or -1.
+static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,int parent_sig,int pass,int pass_sig,int spell,vms_vector *best_ip)
 {
-	int j, best = -1;
+	int j, best = -1, down;
 	fix best_d = 0x7fffffff, rad_h, rad_v;
 	vms_vector ip;
 
@@ -551,9 +568,16 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 			continue;
 		if (j == pass && o->signature == pass_sig)		// Dtu_fix_hit_keep
 			continue;
-		if (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED))
+		// ASCENT: Dtu_fix_revive: a spell missile of the player hits the
+		// fallen body of a creature that can get up (dtu_creature_down_spell),
+		// as the area of a spell and the swing do. The port let it fly through
+		// the body. The missiles of the creatures still pass it.
+		down = spell >= 0 && ConsoleObject && parent == ConsoleObject-Objects && dtu_creature_down(o);
+		if (o->flags & OF_SHOULD_BE_DEAD)
 			continue;
-		if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) == DAS_DIE)
+		if ((o->flags & OF_DESTROYED) && !down)
+			continue;
+		if (o->type == OBJ_ROBOT && DTU_ANIM_STATE(o) == DAS_DIE && !down)
 			continue;
 		if (o->type == OBJ_DRESSING && (o->id >= N_dressing_types || Dressing_info[o->id].pass_thru))
 			continue;
@@ -561,8 +585,12 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 			continue;
 		Fvi_dtu_player_attack = ConsoleObject && parent == ConsoleObject-Objects;	// ASCENT: Dtu_fix_rat_hit
 		if (o->type == OBJ_ROBOT) {
+			int dead = o->flags & OF_DESTROYED;
+
 			Fvi_dtu_missile = 1;		// Dtu_fix_body_ray
+			o->flags &= ~OF_DESTROYED;		// the fallen body (down)
 			d = dtu_body_query_test(&ip,&obj->pos,end,rad_h,rad_v,o);
+			o->flags |= dead;
 			Fvi_dtu_missile = 0;
 		}
 		else
@@ -621,7 +649,7 @@ int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int we
 	if (fate != HIT_NONE && fate != HIT_WALL)
 		return -1;
 	end = (fate == HIT_NONE) ? p1 : hit.hit_pnt;
-	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,-1,0,&ip);
+	return missile_path_object(&stand_in,&end,range,parent,Objects[parent].signature,-1,0,spell,&ip);
 }
 
 // The range of a missile weapon: its speed for its life.
@@ -711,7 +739,8 @@ void missiles_frame(void)
 
 		// ASCENT: with the parent signature cleared (m->unlinked) the
 		// missile is no longer related to its parent and can hit it
-		best = missile_path_object(obj,&end,step,m->parent,m->unlinked ? -1 : m->parent_sig,m->pass_obj,m->pass_sig,&best_ip);
+		best = missile_path_object(obj,&end,step,m->parent,m->unlinked ? -1 : m->parent_sig,m->pass_obj,m->pass_sig,
+			m->harmless ? -1 : m->spell,&best_ip);
 		if (best >= 0) {
 			missile_hit_object(obj,&Objects[best],&best_ip);
 			if (obj->flags & OF_SHOULD_BE_DEAD)

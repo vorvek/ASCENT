@@ -1623,6 +1623,7 @@ static void combat_init(void)
 		Dtu_fix_launcher_magic = 0;
 		Dtu_fix_thrown_str_hit = 0;
 		Dtu_fix_spell_hours = 0;
+		Dtu_fix_time_wrap = 0;
 		Dtu_fix_rest_effects = 0;
 		Dtu_fix_turn_undead = 0;
 		Dtu_fix_npc_list = 0;

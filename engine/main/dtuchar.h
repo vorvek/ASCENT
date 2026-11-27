@@ -348,6 +348,10 @@ void dtu_char_select_hot_key(int key);			// the keys 1 to 0: the item or the spe
 // the item or the spell in the hand (the border of 0x329CB).
 int dtu_char_hot_key_spell(int key);
 int dtu_char_hot_key_item(int key);
+// ASCENT: entry index of the spell list (1 mage, 2 cleric) was taken out:
+// the boxes and the hand that hold it are cleared, the later entries move
+// down (dtu_spell_unfit_take).
+void dtu_char_book_removed(int list, int index);
 int dtu_char_hot_key_in_hand(int key);
 // 0x43A5A with its tests (the keys 1 to 0, a click on a box, Cycle Weapon):
 // nothing in an attack state; sound 3000 while the attack key waits for its

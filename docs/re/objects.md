@@ -406,7 +406,7 @@ Results that a player sees:
   its missile. Chill Touch gets the cast on the caster.
 - Protection From Fire (40) gets class 0x27 (cleric and mage). The cast check 0x35683
   tests the cleric bit first, so 1.3 casts it as a cleric spell. A mage can learn it
-  (0xB65BB tests the mage bit) but cannot cast it.
+  (0xB65BB tests the mage bit) but cannot cast it. The port: `Dtu_fix_learn_class` (bugs.md D31).
 - Weapons 13 and 14 become copies of the Long Sword +2. The creatures with
   `weapon_type=13` (drowfem, thashasa, Mage Spirit, prstsprt) or 14 (flayer) fire
   this weapon in 1.3. Not checked in the game.
