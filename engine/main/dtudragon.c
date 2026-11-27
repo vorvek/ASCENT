@@ -60,13 +60,14 @@
 // The global flags of the port (the scripts of 1.3 use 1 to 160)
 #define DR_GF_PLACED		241		// the key and the treasure are in the level
 #define DR_GF_LEVER		242		// the lever is thrown: the hatchery is open
+#define DR_GF_HATCH		243		// 243 to 246: the hatchling 0 to 3 has left the hatchery (it fights)
 
 // The room: x -90 to 90, z -197.5 to -7.5, floor -110, ceiling -45
 #define DR_FLOOR			i2f(-110)
 #define DR_CENTER_X		0
 #define DR_CENTER_Z		fl2f(-102.5)
-#define DR_LEASH_X		i2f(18)		// her position stays this near to the middle
-#define DR_LEASH_Z		i2f(24)
+#define DR_LEASH_X		i2f(8)		// her position stays this near to the middle
+#define DR_LEASH_Z		i2f(14)
 
 #define DR_LEVER_TRIGGER	20
 #define DR_LEVER_TRAP		12			// opens the ceiling hatch (segment 445 side 1)
@@ -88,7 +89,10 @@ static const short Dr_hatch_goal[4] = { 430, 436, 471, 391 };
 // come when she is dead. Each casts Fireball at level 6 (6d6, radius 40):
 // four of them and her breath at one time leave no way to live.
 #define DR_HATCH_AT_ONCE	2
-static ubyte Dr_released[4];
+// A hatchling that waits is not helpless: it joins the fight at once, over
+// the number, when it is hurt or when the player comes this near with a
+// free line to it.
+#define DR_HATCH_NEAR	i2f(70)
 
 // The key of the alcove: on the floor of cell 407 (x 10 to 30, z -247.5 to
 // -227.5), in the corner that is far from the door of the cell room
@@ -140,10 +144,11 @@ static const struct { short type, id, count, x, z; } Dr_treasure[] = {
 #define DR_BREATH_BONUS	6
 
 // The model
-#define DR_SCALE			0x6666		// 0.4
-#define DR_CYL_RADIUS	i2f(21)		// her collision cylinder: from the hips to the tip of the snout
-#define DR_CYL_HALF		i2f(12)		// from the floor to 24 above it
-#define DR_CYL_AHEAD		i2f(11)		// its axis and her position, in front of the origin of the model
+#define DR_SCALE			0x8CCD		// 0.55
+#define DR_S(x)			fixmul(fl2f(x),DR_SCALE)	// a length of the model file at her size
+#define DR_CYL_RADIUS	DR_S(53.5)	// her collision cylinder: from the hips to the tip of the snout (29.4)
+#define DR_CYL_HALF		DR_S(30.0)	// from the floor to 33 above it
+#define DR_CYL_AHEAD		DR_S(27.5)	// its axis and her position, in front of the origin of the model (15.1)
 
 // The frames of the model (Dtu_anim_first: ATTACK 44 to 59, the swipe of
 // the right front claw, hit frame 56; ATTACK2 60 to 75, she rears and
@@ -166,19 +171,22 @@ static const struct { short type, id, count, x, z; } Dr_treasure[] = {
 #define DR_TURN_PEACE	0x1000		// fixang in a second: 22.5 degrees
 #define DR_TURN_FIGHT	0x5000		// 112.5 degrees
 #define DR_TURN_AIM		0x3000		// 67.5 degrees
-#define DR_WALK_SPEED	i2f(12)
+#define DR_WALK_SPEED	DR_S(30.0)	// 16.5 in a second
 
 // The reach of an attack, from the weapon box of the hit frame to the
 // axis of the body of the player: the radius of the box, the radius of the
 // player and this margin
-#define DR_CLAW_MARGIN	i2f(20)
-#define DR_BITE_MARGIN	i2f(10)
-#define DR_BITE_RADIUS	i2f(6)
+#define DR_CLAW_MARGIN	DR_S(50.0)
+#define DR_BITE_MARGIN	DR_S(25.0)
+#define DR_BITE_RADIUS	DR_S(15.0)
 
 // The breath: a cone from her jaws
 #define DR_BREATH_RANGE	i2f(120)
 #define DR_BREATH_TAN	0x5D00		// the half angle, 20 degrees (tan 0.364)
 #define DR_BREATH_MIN	i2f(8)
+#define DR_FLAMES			240		// flames of the stream in a second
+#define DR_FLAME_VCLIP	11			// a flame of the stream (the fire burst of a fire hit)
+#define DR_BALL_EACH		8			// one more flame in this many is a fire ball
 
 #define DM_REST		0		// peaceful
 #define DM_IDLE		1		// hostile: turns, walks, chooses
@@ -479,7 +487,6 @@ void dtu_dragon_level_setup(int has_state)
 
 	memset(&D,0,sizeof(D));
 	D.objnum = -1;
-	memset(Dr_released,0,sizeof(Dr_released));
 	for (i=0;i<128;i++)
 		Dr_lift[i] = -1;
 	Polyobj_scale_model = -1;
@@ -713,6 +720,8 @@ void dtu_dragon_level_rules(int restore)
 		// a new level: its objects and walls are those of the level file
 		dtu_script_set_gflag(DR_GF_PLACED,0);
 		dtu_script_set_gflag(DR_GF_LEVER,0);
+		for (i=0;i<4;i++)
+			dtu_script_set_gflag(DR_GF_HATCH + i,0);
 	}
 	if (dtu_script_gflag(DR_GF_LEVER))
 		open_hatchery();
@@ -928,34 +937,55 @@ static void breath_hit(object *obj, object *p)
 		HUD_init_message(LT("Your protection from fire takes the flames."));
 }
 
-// The flames of the stream: explosions of the vclip of Burning Hands
-// (spell 4, weapon_vclip) between her jaws and the end of the cone
-static int fire_vclip(void)
+// The flames of the stream: explosions between her jaws and the end of
+// the cone. Most are the fire burst of a fire hit (vclip 11, the
+// monster_hit_vclip of Burning Hands: a bright flame with a ragged,
+// transparent rim); one in DR_BALL_EACH is the fire ball of the Fireball
+// missile (spell 16, weapon_vclip 14). The weapon_vclip of Burning Hands
+// (108) is not a sprite: it is the texture of the model burn.pof and fills
+// its whole square, so a blob of it is a square of fire (the first
+// version of the breath).
+static int vclip_ok(int v)
 {
-	item_info *it = item_table_entry(OBJ_SPELL,4);
-	int v = it ? it->vclip_num : -1;
-
-	if (v < 0 || v >= VCLIP_MAXNUM || Vclip[v].num_frames <= 0 || Vclip[v].play_time <= 0) {
-		it = item_table_entry(OBJ_SPELL,16);		// Fireball
-		v = it ? it->vclip_num : -1;
-	}
-	if (v < 0 || v >= VCLIP_MAXNUM || Vclip[v].num_frames <= 0 || Vclip[v].play_time <= 0)
-		return -1;
-	return v;
+	return v >= 0 && v < VCLIP_MAXNUM && Vclip[v].num_frames > 0 && Vclip[v].play_time > 0 && !(Vclip[v].flags & VF_ROD);
 }
 
-static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r, fix size)
+static int ball_vclip(void)
+{
+	item_info *it = item_table_entry(OBJ_SPELL,16);
+	int v = it ? it->vclip_num : -1;
+
+	if (!vclip_ok(v)) {
+		it = item_table_entry(OBJ_SPELL,37);		// Melf's Minute Meteors, the weapon of her table line
+		v = it ? it->vclip_num : -1;
+	}
+	return vclip_ok(v) ? v : -1;
+}
+
+static int fire_vclip(void)
+{
+	int t;
+
+	// -dragonvclip N (test): another vclip
+	if ((t = FindArg("-dragonvclip")) != 0 && t + 1 < Num_args)
+		return atoi(Args[t + 1]);
+	return vclip_ok(DR_FLAME_VCLIP) ? DR_FLAME_VCLIP : ball_vclip();
+}
+
+// One flame at r along dir from a point, spread sideways by spread. A
+// flame that a wall stops burns in front of the wall.
+static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r, fix spread, fix size, int v)
 {
 	vms_vector p, j;
 	fvi_query fq;
 	fvi_info hit;
-	int v = fire_vclip();
+	int fate;
 
-	if (v < 0 || seg < 0)
+	if (!vclip_ok(v) || seg < 0)
 		return;
 	make_random_vector(&j);
 	vm_vec_scale_add(&p,from,dir,r);
-	vm_vec_scale_add2(&p,&j,fixmul(r,DR_BREATH_TAN) * 2 / 3);
+	vm_vec_scale_add2(&p,&j,spread);
 	fq.p0 = from;
 	fq.p1 = &p;
 	fq.startseg = seg;
@@ -963,9 +993,30 @@ static void flame(object *obj, vms_vector *from, int seg, vms_vector *dir, fix r
 	fq.thisobjnum = obj-Objects;
 	fq.ignore_obj_list = NULL;
 	fq.flags = 0;
-	if (find_vector_intersection(&fq,&hit) != HIT_NONE || hit.hit_seg < 0)
+	fate = find_vector_intersection(&fq,&hit);
+	if (hit.hit_seg < 0)
 		return;
+	if (fate != HIT_NONE) {
+		vms_vector back;
+
+		vm_vec_sub(&back,from,&hit.hit_pnt);
+		if (vm_vec_normalize(&back) < F1_0)
+			return;
+		vm_vec_scale_add(&p,&hit.hit_pnt,&back,size / 2 + F1_0);
+		if ((hit.hit_seg = find_point_seg(&p,hit.hit_seg)) < 0)
+			return;
+	}
 	object_create_explosion(hit.hit_seg,&p,size,v);
+}
+
+// The size of a flame where the cone is wide across: small at her jaws,
+// at most 6.0, so that the stream is many flames that overlap and not a
+// few large pictures
+static fix flame_size(fix wide)
+{
+	fix size = i2f(3)/2 + wide / 5;
+
+	return size > i2f(6) ? i2f(6) : size;
 }
 
 static int spell_sound(int spell, char *key)
@@ -1171,7 +1222,8 @@ static void dragon_ai(object *obj)
 	}
 
 	if (!hostile) {
-		// She rests (the rest pose of the model, dtu_dragon_draw_frame) and
+		// She stands still (the first frame of STAND, her head at the eyes
+		// of the player) and
 		// follows the player with a slow turn.
 		if (D.mode != DM_REST)
 			set_mode(obj,DM_REST);
@@ -1265,7 +1317,7 @@ static void dragon_ai(object *obj)
 
 				D.puff_acc = 0;
 				mouth_point(obj,frame,&m);
-				flame(obj,&m,find_point_seg(&m,obj->segnum),&up,F1_0,i2f(1) + t);
+				flame(obj,&m,find_point_seg(&m,obj->segnum),&up,F1_0,F1_0,i2f(1) + t,fire_vclip());
 			}
 			if (t >= DR_WIND_TIME) {
 				mouth_point(obj,DR_REAR_TOP,&D.mouth);
@@ -1287,12 +1339,18 @@ static void dragon_ai(object *obj)
 
 			set_frame(obj,DAS_ATTACK2,DR_REAR_TOP);
 			D.puff_acc += FrameTime;
-			while (D.puff_acc >= F1_0/40) {
+			// The stream: DR_FLAMES small flames in a second, each at a random
+			// place of the cone up to its front. A flame is as large as half
+			// of the cone there, so the flames overlap from her jaws to the
+			// front.
+			while (D.puff_acc >= F1_0/DR_FLAMES) {
 				fix r = fixmul(front,(rand() & 0x7fff) * 2);
+				fix wide = fixmul(r,DR_BREATH_TAN);
 
-				D.puff_acc -= F1_0/40;
-				if (r < DR_BREATH_MIN/2) r = DR_BREATH_MIN/2;
-				flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,i2f(2) + r / 16);
+				D.puff_acc -= F1_0/DR_FLAMES;
+				flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,wide * 6 / 10,flame_size(wide),fire_vclip());
+				if (rand() % DR_BALL_EACH == 0)
+					flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,wide * 6 / 10,flame_size(wide) * 2 / 3,ball_vclip());
 			}
 			// the fire reaches the player one time for a breath
 			if (!D.hit_done && p && D.mouth_seg >= 0 && in_breath(obj,p)) {
@@ -1335,9 +1393,11 @@ static void dragon_ai(object *obj)
 	}
 }
 
+static void hatchery_breached(void);
+
 int dtu_dragon_ai_frame(object *obj)
 {
-	int k;
+	int k, hurt;
 
 	if (!in_level() || !dtu_dragon_on() || Dr_type < 0 || obj->type != OBJ_ROBOT)
 		return 0;
@@ -1358,33 +1418,46 @@ int dtu_dragon_ai_frame(object *obj)
 	// it does not sense the player and casts no spell through the door.
 	// (-dragonhatchai, test: the AI of the game runs for them, to see what
 	// its senses do behind the door)
+	hurt = obj->shields < i2f(Monster_info[obj->id].max_hit_points);
 	if (!dtu_script_gflag(DR_GF_LEVER)) {
-		if (door_locked(Dr_hatchery) && !FindArg("-dragonhatchai")) {
+		// Hurt behind the closed door (an area spell at the door): the
+		// hatchery opens as by the lever, and she attacks.
+		if (hurt && door_locked(Dr_hatchery))
+			hatchery_breached();		// and it leaves the hatchery, below
+		else if (door_locked(Dr_hatchery) && !FindArg("-dragonhatchai")) {
 			Ail[obj-Objects].activity = 0;
 			return 1;
 		}
-		return 0;
+		else
+			return 0;
 	}
-	// After the lever: DR_HATCH_AT_ONCE of them at one time while she lives
-	if (!Dr_released[k]) {
-		object *dr = dragon_object();
-		int i, n = 0;
+	// After the lever: DR_HATCH_AT_ONCE of them at one time while she
+	// lives. The global flags DR_GF_HATCH keep who has left, so a save and
+	// a load in the fight change nothing.
+	if (!dtu_script_gflag(DR_GF_HATCH + k)) {
+		object *dr = dragon_object(), *p = ConsoleObject;
+		int i, n = 0, near;
 
-		for (i=0;i<k;i++)
-			if (hatchling(i))
+		for (i=0;i<4;i++)
+			if (i != k && hatchling(i) && dtu_script_gflag(DR_GF_HATCH + i))
 				n++;
-		if (dragon_alive(dr) && n >= DR_HATCH_AT_ONCE) {
+		near = p && p->type == OBJ_PLAYER && vm_vec_dist(&obj->pos,&p->pos) < DR_HATCH_NEAR &&
+			ray_is_free(&obj->pos,obj->segnum,&p->pos,obj-Objects);
+		if (dragon_alive(dr) && n >= DR_HATCH_AT_ONCE && !hurt && !near) {
 			Ail[obj-Objects].activity = 0;
 			return 1;
 		}
-		Dr_released[k] = 1;
-		dtu_obj_log("dragon: obj %d %s leaves the hatchery (%d before it, the dragon %s)",(int)(obj-Objects),dtu_object_name(obj),n,
-			dragon_alive(dr) ? "lives" : "is dead");
+		dtu_script_set_gflag(DR_GF_HATCH + k,1);
+		dtu_obj_log("dragon: obj %d %s leaves the hatchery (%d in the fight, the dragon %s%s%s)",(int)(obj-Objects),dtu_object_name(obj),n,
+			dragon_alive(dr) ? "lives" : "is dead",hurt ? ", it is hurt" : "",near ? ", the player is near" : "");
 		dtu_creature_wake(obj,1);
 		// into her room, by the path of a script walk (statement E5): the
-		// AI of the game takes over at its end, or when it senses the player
-		dtu_script_walk_segment(obj,Dr_hatch_goal[k]);
-		dtu_script_walk_start(obj,1);
+		// AI of the game takes over at its end, or when it senses the
+		// player. Not for one that the player has come to: it fights there.
+		if (!hurt && !near) {
+			dtu_script_walk_segment(obj,Dr_hatch_goal[k]);
+			dtu_script_walk_start(obj,1);
+		}
 	}
 	return 0;
 }
@@ -1396,8 +1469,11 @@ int dtu_dragon_no_physics(object *obj)
 
 int dtu_dragon_draw_frame(object *obj, int frame)
 {
-	if (frame >= 0 && dtu_dragon_is(obj) && Dr_type >= 0 && dragon_alive(obj) && !is_hostile(obj))
-		return -1;
+	// At peace she stands still in the first frame of STAND (dragon_ai):
+	// her head is at the height of the eyes of the player. The rest pose of
+	// the model (frame -1) has the head 27 above the floor, over the view of
+	// a player who stands in front of her.
+	(void) obj;
 	return frame;
 }
 
@@ -1409,8 +1485,8 @@ int dtu_dragon_drop_place(object *obj, vms_vector *pos, int *seg)
 	if (!dtu_dragon_is(obj))
 		return 0;
 	p = obj->pos;
-	p.x += fixmul(obj->orient.fvec.x,i2f(30));
-	p.z += fixmul(obj->orient.fvec.z,i2f(30));
+	p.x += fixmul(obj->orient.fvec.x,DR_S(100.0));
+	p.z += fixmul(obj->orient.fvec.z,DR_S(100.0));
 	p.y = DR_FLOOR + i2f(5);
 	if ((s = find_point_seg(&p,obj->segnum)) < 0) {
 		p = obj->pos;
@@ -1494,6 +1570,21 @@ static void lever_thrown(void)
 		say(LT("A heavy door grinds open far down the hall."));
 }
 
+// A hatchling is hurt before the lever: as the lever, with another line
+static void hatchery_breached(void)
+{
+	object *dr = dragon_object();
+
+	dtu_script_set_gflag(DR_GF_LEVER,1);
+	open_hatchery();
+	dtu_obj_log("dragon: a hatchling is hurt behind the door of the hatchery: the hatchery is open, the dragon %s",
+		dragon_alive(dr) ? "attacks" : "is dead");
+	if (dragon_alive(dr)) {
+		say(LT("Tamaramagil's roar shakes the hall: \"MY CHILDREN! You dare lay hands on my brood? Come out, little ones, and feed!\""));
+		become_hostile(dr,"a hatchling is hurt");
+	}
+}
+
 void dtu_dragon_frame(void)
 {
 	object *p = ConsoleObject, *dr;
@@ -1561,6 +1652,8 @@ void dtu_dragon_test(int what)
 	}
 	else if (what == 5)
 		become_hostile(dr,"test");
+	else if (what == 7 && hatchling(2))
+		hatchling(2)->shields -= F1_0;		// the third hatchling is hurt
 	dtu_obj_log("dragon: test %d: obj %d %s hp %d ac %d thac0 %d xp %d seg %d pos %.2f %.2f %.2f heading %d mode %s hostile %d peaceful %d frame %d",
 		what,(int)(dr-Objects),dtu_object_name(dr),f2i(dr->shields),Monster_info[dr->id].armor_class,Monster_info[dr->id].thaco,
 		Robot_info[dr->id].score_value,dr->segnum,f2fl(dr->pos.x),f2fl(dr->pos.y),f2fl(dr->pos.z),(int)(unsigned short)D.heading,

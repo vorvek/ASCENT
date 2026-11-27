@@ -15,6 +15,11 @@
 
 #include "object.h"
 
+// Her name in the messages of the game (the HUD lines of a hit, the kill
+// line): the type name of the text file is "Red Dragon". She says her name
+// in her first speech, and the lines show it from the start.
+#define DTU_DRAGON_NAME	"Tamaramagil"
+
 // 1 if the encounter is on (the menu setting and Dtu_fix_tamaramagil)
 int dtu_dragon_on(void);
 
@@ -45,9 +50,8 @@ int dtu_dragon_no_physics(object *obj);
 // door of the hoard, the stream of her breath.
 void dtu_dragon_frame(void);
 
-// dtu_draw_polygon_object(): the frame that is drawn. She rests in the
-// rest pose of the model (frame -1, the wings folded) while she is
-// peaceful.
+// dtu_draw_polygon_object(): the frame that is drawn. It is the frame of
+// the object: at peace she stands still in the first frame of STAND.
 int dtu_dragon_draw_frame(object *obj, int frame);
 
 // apply_spell() of dtuspell.c, before the effect of a spell on a creature:
@@ -64,7 +68,8 @@ const char *dtu_dragon_script_text(int script, int offset);
 int dtu_dragon_drop_place(object *obj, vms_vector *pos, int *seg);
 
 // Test (-chartest, command "dragon"): 1 claws, 2 bite, 3 breath as her
-// next action, 4 the log line of her state, 5 hostile now
+// next action, 4 the log line of her state, 5 hostile now, 7 the third
+// hatchling loses one hit point
 void dtu_dragon_test(int what);
 
 #endif

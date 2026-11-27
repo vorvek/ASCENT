@@ -598,6 +598,8 @@ char *dtu_object_display_name(object *obj)
 
 	if (obj->type != OBJ_ROBOT)
 		return dtu_tr_name(dtu_item_shown_name(obj->type, obj->id, name));		// ASCENT: the language (dtulang.h), the corrected item names
+	if (dtu_dragon_is(obj))		// ASCENT: her own name in the messages (dtudragon.c)
+		return DTU_DRAGON_NAME;
 	for (i = 0; i < (int) (sizeof(Creature_names) / sizeof(Creature_names[0])); i++)
 		if (!stricmp(Creature_names[i].name, name)) {
 			if (Creature_names[i].text < 0)
@@ -619,6 +621,8 @@ int dtu_object_name_gender(object *obj)
 
 	if (obj->type != OBJ_ROBOT)
 		return dtu_name_gender(dtu_item_shown_name(obj->type, obj->id, name));
+	if (dtu_dragon_is(obj))		// ASCENT: Tamaramagil, female
+		return 1;
 	for (i = 0; i < (int) (sizeof(Creature_names) / sizeof(Creature_names[0])); i++)
 		if (!stricmp(Creature_names[i].name, name))
 			return Creature_names[i].text < 0 ? 0 : dtu_text_gender(Creature_names[i].text);

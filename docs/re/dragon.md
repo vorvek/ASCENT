@@ -93,30 +93,59 @@ limit of the visibility matrix).
 
 ### The model
 
-She is drawn at 0.4 of the size of the file (`DR_SCALE`): 115 wide, 37 high
-and 90 long in the stand frame, 66 high in the frame of the claw attack with
-the wings up (the room is 65 high). At the full size the model is larger
-than the room in each direction. `Polyobj_scale_model` and `Polyobj_scale`
-(`polyobj.h`) scale the draw of one model in both renderers;
-`dtudragon.c` scales the arrays of the model (boxes, centers, radii, gun
-points) one time for a load.
+She is drawn at 0.55 of the size of the file (`DR_SCALE`). At the full size
+the model is larger than the room in each direction. The rule for the
+scale: her head stays below the ceiling (65 above the floor) in each frame
+that the port uses and is in the view of a player who stands in front of
+her; the wings may pass through the ceiling. The frame that sets the limit
+is the rear of ATTACK2 (the bite and the wind-up of the breath), head top
+109.7 in the file: 0.59 would touch the ceiling.
 
-Each frame gets one body center, 11 in front of the origin of the model, so
-the model does not jump when the animation changes. That point is her
-position and the axis of her collision cylinder: radius 21 (from the hips to
-the tip of the snout), from the floor to 24 above it. The swing of the
-player and the use ray test a cylinder about the position of an object
-(0x4F7D5), so the cylinder must stand there. The tail and the wing tips are
-outside of it.
+Heights above the floor and the half width at 0.55 (`tools/model.py`):
+
+| Frames | Head, lowest to highest | Wing top | Half width |
+|---|---|---|---|
+| STAND 0 to 3 (0 is the talk pose) | 11.7 to 19.8 | 50.9 | 79.3 |
+| WALK 4 to 19 | to 26.7 | 57.6 | 79.0 |
+| ATTACK 44 to 59 (claws) | 0.9 to 20.6 | 90.4 (frame 52) | 94.4 (frame 57) |
+| ATTACK2 60 to 75 (bite, breath) | 3.2 to 60.3 (frames 64 to 66) | 69.2 (frame 63) | 86.6 |
+
+What passes through the room at 0.55: the wing tops in the frames 48 to 54
+of the claw attack (up to 25 above the ceiling, about a third of a second)
+and in frame 63 of ATTACK2 (4); the wing tips in the frames 56 to 58 of the
+claw attack (4 beyond a side wall when she stands in the middle and faces
+north or south); the tail tip (97 behind her position, 107 in the rear)
+when she faces east or west. The head and the body do not.
+
+`Polyobj_scale_model` and `Polyobj_scale` (`polyobj.h`) scale the draw of
+one model in both renderers; `dtudragon.c` scales the arrays of the model
+(boxes, centers, radii, gun points) one time for a load. The lengths of the
+code that depend on her size are written in the units of the file
+(`DR_S()`).
+
+Each frame gets one body center, 27.5 of the file (15.1) in front of the
+origin of the model, so the model does not jump when the animation changes.
+That point is her position and the axis of her collision cylinder: radius
+29.4 (from the hips to the tip of the snout), from the floor to 33 above it.
+The swing of the player and the use ray test a cylinder about the position
+of an object (0x4F7D5), so the cylinder must stand there. The tail and the
+wings are outside of it; the wings are above the head of the player.
 
 The move of the player tests only the objects of the segments that it goes
 through, and she is in the list of one segment, so in the first version the
 player walked into her from most sides. Each frame a player whose axis is in
 the cylinder is moved out of it (`keep_player_out`).
 
-While she is peaceful she is drawn in the rest pose of the model (the wings
-folded, 25 high), the nearest thing to a resting pose that the model has.
-When she turns hostile she stands with the wings raised.
+While she is peaceful she stands still in the first frame of STAND: her
+head is 12 to 20 above the floor, at the eyes of the player (9.25), and
+looks at a player in front of her. The model has no sitting frame, and its
+rest pose (frame -1) has the head 19 to 27 above the floor, over the view
+of a player who stands at her chest. When she turns hostile the STAND
+animation runs.
+
+Her name in the messages (the hit lines, the kill line, the lines of this
+file) is "Tamaramagil" from the start (`DTU_DRAGON_NAME`), not the type name
+"Red Dragon" of the text file. She says the name in her first speech.
 
 ### Her values
 
@@ -126,17 +155,17 @@ THAC0 7, 15000 experience, fire immune, magic resistance 35 percent.
 - Magic resistance: a d100 roll against 35 for each spell that another
   object casts on her (`dtu_dragon_spell_resisted`, called by `apply_spell`
   before the effect). A roll of 35 or less: the spell has no effect, and the
-  player reads "Red Dragon resists NAME." Log: `dragon: magic resistance ...`.
+  player reads "Tamaramagil resists NAME." Log: `dragon: magic resistance ...`.
 - Two claws, 1d10 each, or one bite of 3d10. One melee action each 2 seconds
   (an attack of 1 second and a pause of 1 second). Each attack has its own
   attack roll. She bites in 30 percent of the actions in which both reach,
   and always when only the bite reaches.
 - The reach is not measured from her position. The claws: from the weapon
   box of frame 56 (the right front claw), the radius of the box (6), the
-  radius of the player (2.5) and 20. That is a player who touches her in the
-  front half, to about 5 beyond the touch in front. The bite: from the tip
-  of her snout in frame 72, 18.5. That is a player in front of her to about
-  9 beyond the touch.
+  radius of the player (2.5) and 27.5 (38.25 in all). That is a player who
+  touches her in the front half, to about 6 beyond the touch in front. The
+  bite: from the tip of her snout in frame 72, 24.5. That is a player in
+  front of her to about 12 beyond the touch.
 - The breath: 12d10+6 of fire in a cone from her jaws (half angle 20
   degrees, 120 long), a save against breath (category 3) for half, then the
   fire protections of the player as for each fire damage (Resist Fire, also
@@ -147,11 +176,16 @@ THAC0 7, 15000 experience, fire immune, magic resistance 35 percent.
   with no limit; the pause is the choice of the port for a fight in real
   time.
 - The wind-up of the breath is 2 seconds: she roars, rears (the frames 60 to
-  65 of ATTACK2), flames come from her jaws, and the player reads "Red
-  Dragon rears and draws a deep breath." She turns with the player for the first
+  65 of ATTACK2), flames come from her jaws, and the player reads "Tamaramagil rears and draws a deep breath." She turns with the player for the first
   second. Then the aim is fixed at the place of the player, and the player
   has one second to leave the cone or the line of sight. The stream lasts 1
-  second and hurts one time. A wall between her jaws and the player stops it
+  second and hurts one time. It is drawn as 240 small flames in a second
+  along the cone (the fire burst of a fire hit, vclip 11, and one fire ball
+  of the Fireball missile, vclip 14, for each 8), each at most 6.0 in size, so
+  that they overlap from her jaws to the front of the stream. The first
+  version used the `weapon_vclip` of Burning Hands (108): that is the
+  texture of the model `burn.pof`, a full square with no transparent rim,
+  so each flame was a square. A wall between her jaws and the player stops it
   (the door frames of the four doorways are the cover of the room).
 
 ### Her AI
@@ -162,12 +196,12 @@ death of the game.
 
 - Peaceful: she rests and turns slowly to the player.
 - Hostile: she turns to the player at 112 degrees in a second and walks
-  toward the player at 12.0 in a second while the claws do not reach. Her
-  position stays within 18 (x) and 24 (z) of the middle of the room, so the
-  tail and the wings stay in the room and she cannot leave it (each doorway
-  is 20 high, her cylinder is 24 high). From there her attacks reach about
-  53 (x) and 59 (z) of the 90 and 95 from the middle to the walls; the
-  breath reaches the rest.
+  toward the player at 16.5 in a second while the claws do not reach. Her
+  position stays within 8 (x) and 14 (z) of the middle of the room, so she
+  cannot leave it (each doorway is 20 high, her cylinder is 33 high and 59
+  wide). From there her attacks reach about 55 (x) and 61 (z) of the 90 and
+  95 from the middle to the walls; the breath reaches the rest. The player
+  has 52 or more between her cylinder and a side wall.
 - She does not turn or walk during an attack.
 - An effect that holds her (Hold Monster, Sleep) stops her.
 - Her state (the action, the time to the next breath) is not in a level
@@ -190,15 +224,30 @@ death of the game.
 - Her dialogue names the key: three strings of script 210 are replaced
   (`dtu_dragon_script_text`; the port catalog has the Spanish text).
 - The lever: the door of the hatchery opens and stays open (no automatic
-  close; the port opens it again if it is closed). The hatchlings fly to the
-  four segments of her room where the level file has them and attack: two of
-  them at one time while she lives (`DR_HATCH_AT_ONCE`), the next one when
-  one dies, all of them when she is dead. A hatchling casts Fireball at
-  level 6 (6d6, radius 40; 25 in a test); four of them and her breath at one
-  time would leave no way to live. She
-  laughs at the player (a message of the level) and is hostile. She does not
-  give the key. Global flag 107 is not set: the dragons do not leave, and
-  the market keeps its prices. Script 213 does not run.
+  close; the port opens it again if it is closed). She laughs at the player
+  (a message of the level) and is hostile. She does not give the key. Global
+  flag 107 is not set: the dragons do not leave, and the market keeps its
+  prices. Script 213 does not run. The same happens when she fights already.
+- The hatchlings fly to the four segments of her room where the level file
+  has them and attack: two of them at one time while she lives
+  (`DR_HATCH_AT_ONCE`), the next one when one dies, all of them when she is
+  dead. A hatchling casts Fireball at level 6 (6d6, radius 40; 25 in a
+  test); four of them and her breath at one time would leave no way to live.
+- How the two are held to two:
+  - Before the lever nothing reaches a hatchling. The door of the hatchery
+    is locked with a lock that no thief skill and no spell opens (keys 4),
+    no creature opens a locked door, a closed door stops sight, missiles and
+    the area of a spell (a Fireball at the door hurts none of them), and the
+    AI of the game does not run for them. If one is hurt all the same, the
+    hatchery opens as by the lever and she attacks, with a line of her own.
+  - After the lever the AI of the game does not run for a hatchling that
+    waits. It is not helpless: when it is hurt, or when the player comes
+    within 70 of it with a free line, it joins the fight at once, over the
+    two. So the player who runs into the hatchery fights the two that wait
+    as well.
+  - The global flags 243 to 246 say which hatchling has left the hatchery.
+    They are in the save game, so a save and a load, or a way out of the
+    level and back, in the middle of the fight change nothing.
 - The hatch of the ceiling stays closed. In 1.3 it is the way out for the
   hatchlings. Here they do not leave, the room above it has no other way
   out, and a flying caster in it would be out of the reach of a melee
