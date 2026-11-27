@@ -2677,3 +2677,23 @@ id: port.stuns_each_creature_in_a_cone_in_front_o
 en: Stuns each creature in a cone in front of the caster.
 tr: Aturde a cada criatura en un cono frente al lanzador.
 
+id: port.i_have_a_new_scroll_of_this_circle_mirro
+en: I have a new scroll of this circle: Mirror Image.
+tr: Tengo un pergamino nuevo de este círculo: Imagen Múltiple.
+
+id: port.the_mirror_image_please
+en: The Mirror Image, please.
+tr: La Imagen Múltiple, por favor.
+
+id: port.i_also_have_a_scroll_of_the_minor_globe
+en: I also have a scroll of the Minor Globe of Invulnerability.
+tr: También tengo un pergamino del Globo Menor de Invulnerabilidad.
+
+id: port.the_minor_globe_of_invulnerability_pleas
+en: The Minor Globe of Invulnerability, please.
+tr: El Globo Menor de Invulnerabilidad, por favor.
+
+id: port.show_me_the_others
+en: Show me the others.
+tr: Enséñame los demás.
+

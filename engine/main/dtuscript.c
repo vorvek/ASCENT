@@ -327,6 +327,67 @@ static ubyte *patch_devlin(int id, ubyte *p, int *size)
 	return q;
 }
 
+// ASCENT: Dtu_caster_ai (dtuopts.h, a decision of the user of 2026-11-27):
+// Aleena Paladinstar (script 4 of GABE 1.3, 16710 bytes) also sells the two
+// mage spells of the port (dtuspell.h): Mirror Image (56) with her spells
+// of level 2 for 1000 gold and Minor Globe of Invulnerability (57) with her
+// spells of level 4 for 5000 gold. Her lists are SAY statements with one
+// REPLY for each spell, the reply sets her variable, and the block of the
+// price gives the spell of the variable. No string moves (the translations
+// know a string by its offset): four GOTO statements get another label of
+// the same length, and six new blocks stand at the end of the record.
+//   0x28A4 GOTO 205 -> GOTO 250: "I have a new scroll ..." with the replies
+//          "The Mirror Image, please." (label 251: VAR = 7, GOTO 230, the
+//          price of 1000 gold) and "Show me the others." (label 205, her list)
+//   0x2C2A GOTO 950 -> GOTO 951: IF var == 7 GIVE SPELL 56, GOTO 950
+//   0x3718 GOTO 405 -> GOTO 406: the same for the Minor Globe (label 407:
+//          VAR = 5, GOTO 430, the price of 5000 gold; "others": label 405)
+//   0x3B23 GOTO 950 -> GOTO 952: IF var == 5 GIVE SPELL 57, GOTO 950
+// The new strings have no entry gab.4.OFFSET: text() takes their
+// translation by the English text (the catalog of the port). Another
+// record (the one of the disc of 1.0 has 16699 bytes) is kept as it is.
+#define AL_SAY2		"I have a new scroll of this circle: Mirror Image."
+#define AL_REPLY2	"The Mirror Image, please."
+#define AL_SAY4		"I also have a scroll of the Minor Globe of Invulnerability."
+#define AL_REPLY4	"The Minor Globe of Invulnerability, please."
+#define AL_OTHERS	"Show me the others."
+
+static ubyte *patch_aleena(int id, ubyte *p, int *size)
+{
+	static const ubyte go205[4] = { 0xC7, 'c', 'd', 0x00 }, go250[4] = { 0xC7, 'f', 'a', 0x00 };
+	static const ubyte go950[5] = { 0xC7, '3', 'b', '6', 0x00 }, go951[5] = { 0xC7, '3', 'b', '7', 0x00 }, go952[5] = { 0xC7, '3', 'b', '8', 0x00 };
+	static const ubyte go405[5] = { 0xC7, '1', '9', '5', 0x00 }, go406[5] = { 0xC7, '1', '9', '6', 0x00 };
+	// the blocks: LABEL (CB), SAY (CD), REPLY (CF label text), WAIT_REPLY (CE),
+	// VAR = n (E0 7E n), IF var == n (F2 E0 81 n F3), GIVE SPELL n from seg
+	// 65535 (BF A7 n E4 ffff), ENDIF (F9), GOTO (C7), ENDBLOCK (CC)
+	static const char blocks[] =
+		"\xCB" "fa\0" "\xCD" AL_SAY2 "\0" "\xCF" "fb\0" AL_REPLY2 "\0" "\xCF" "cd\0" AL_OTHERS "\0" "\xCE\xCC"
+		"\xCB" "fb\0" "\xE0\x7E" "7\0" "\xC7" "e6\0" "\xCC"
+		"\xCB" "3b7\0" "\xF2\xE0\x81" "7\0" "\xF3\xBF\xA7" "38\0" "\xE4" "ffff\0" "\xF9\xC7" "3b6\0" "\xCC"
+		"\xCB" "196\0" "\xCD" AL_SAY4 "\0" "\xCF" "197\0" AL_REPLY4 "\0" "\xCF" "195\0" AL_OTHERS "\0" "\xCE\xCC"
+		"\xCB" "197\0" "\xE0\x7E" "5\0" "\xC7" "1ae\0" "\xCC"
+		"\xCB" "3b8\0" "\xF2\xE0\x81" "5\0" "\xF3\xBF\xA7" "39\0" "\xE4" "ffff\0" "\xF9\xC7" "3b6\0" "\xCC";
+	const int n = *size, add = (int) sizeof(blocks) - 1;
+	ubyte *q;
+
+	if (!dtu_caster_ai() || id != 4 || n != 16710 || p[n - 1] != 0xCC || memcmp(p + 0x28A4, go205, sizeof(go205)) ||
+		 memcmp(p + 0x2C2A, go950, sizeof(go950)) || memcmp(p + 0x3718, go405, sizeof(go405)) || memcmp(p + 0x3B23, go950, sizeof(go950)))
+		return p;
+	if ((q = malloc(n + add + 1)) == NULL)
+		return p;
+	memcpy(q, p, n);
+	memcpy(q + 0x28A4, go250, sizeof(go250));
+	memcpy(q + 0x2C2A, go951, sizeof(go951));
+	memcpy(q + 0x3718, go406, sizeof(go406));
+	memcpy(q + 0x3B23, go952, sizeof(go952));
+	memcpy(q + n, blocks, add);
+	*size = n + add;
+	q[*size] = 0;
+	free(p);
+	slog("script 4: Aleena Paladinstar also sells Mirror Image (level 2) and Minor Globe of Invulnerability (level 4) (Dtu_caster_ai)");
+	return q;
+}
+
 // 0xAB9C9: the record of a script id, decoded (0xA74F8)
 static ubyte *script_data(int id, int *size)
 {
@@ -354,6 +415,7 @@ static ubyte *script_data(int id, int *size)
 				p[k] = Gab_dat[ofs + k] ^ Gab_key[k % 70] ^ Gab_key[(0xFFFFFFFFu - k) % 70];
 			p[sz] = 0;
 			p = patch_devlin(id, p, &sz);
+			p = patch_aleena(id, p, &sz);		// ASCENT: Dtu_caster_ai
 			Rec_data[id] = p;
 			Rec_size[id] = sz;
 			*size = sz;
@@ -1135,7 +1197,11 @@ static void text(sc_run *r, char *out)
 		const char *en = (const char *) r->s + k, *t;
 		snprintf(id, sizeof(id), "gab.%d.%d", r->id & SB_SCRIPT, k);
 		t = dtu_tr_id(id, en);
-		if (t == en)		// no translation: the English text (Dtu_fix_script_names)
+		// ASCENT: a string of a block that the port adds to a record
+		// (patch_aleena) has no id: its translation by the English text
+		if (t == en && Dtu_language != DTU_LANG_EN && dtu_tr(en) != en)
+			t = dtu_tr(en);
+		else if (t == en)		// no translation: the English text (Dtu_fix_script_names)
 			t = fix_names(en, fixed, sizeof(fixed));
 		expand(t, out);
 		dtu_lang_sex_text(out);		// the tokens {sex:} (the lookup resolved those of the catalog)
