@@ -32,6 +32,10 @@ DALAND_DLG = "1,1,2,1,2," + ",".join(["1"] * 20)
 # (object.c): an object of the level file has no segment. Not a case of the
 # Daland tests; it happens in main too.
 MYRKUL_INT3 = r"Int3: file [^\n]*object\.c, line \d+"
+# CLAN3: the lich (object 10) alone, a fight with him (tools/check_caster_ai.py)
+LICH_FIGHT = "2:seed=1,4:alone=10,5:setlevel=8,8:heal=500,10:goobjsee=10.20,15:spelltest=28.1.10.0"
+LICH_FULL = (r"caster: obj 10 Lich3 notices the player .*contingency: Stone Skin, Shield, Minor Globe of Invulnerability, "
+             r"Mirror Image")
 # The steps of the end sequence 0xA6786 (engine/main/dtuobj_scenery.c), in order
 END_SEQ = (r"end sequence: start \(0xA6786\), sword in seg 487, light obj \d+, spin 0x147\s+"
            r"[\s\S]*end sequence: 147 steps, light 441\.0, spin 0x269a\s+end sequence: sound -1 on the sword\s+"
@@ -808,6 +812,77 @@ TESTS = [
       frames=700, dlg=DALAND_DLG, extra=["-noattack", "-objlog", "myrkul_daland_obj.log"], known=MYRKUL_INT3),
     T("myrkul_daland_no_mace", "MYRKUL", "5:fxclear=3.14,10:goobj=3.20,12:face=3,14:talk=3,150:talk=3,300:goseg=460,330:goobj=3.20,332:face=3,334:talk=3,680:dump",
       [r"give class 16 id 75"], [r"type 5 id 70 "], frames=700, dlg=DALAND_DLG, extra=["-noattack", "-nonewgear"], known=MYRKUL_INT3),
+
+    # ASCENT: the phylactery of the lich of CLAN3 (Dtu_lich_phylactery,
+    # engine/main/dtulich.c, docs/re/lich.md). The altar of Velsharoon is
+    # object 61 in the cell of segment 557, the Dispel Magic scroll (spell
+    # 55) object 62. LICH_FIGHT makes Morik Stormhand (object 10) the only
+    # creature and starts a fight with him as tools/check_caster_ai.py
+    # does. "phylactery=N" is the test command of dtulich.h: 0 breaks it,
+    # 1 logs its state.
+    T("lich_phylactery_whole", "CLAN3", LICH_FIGHT + ",40:phylactery=1",
+      [r"lich: the phylactery is obj 61 in segment 557 at 289\.50 6\.00 305\.00",
+       r"lich: the scroll of Dispel Magic \(spell 55\) is obj 62 in segment 557", LICH_FULL,
+       r"lich: test: phylactery in the level, placed 1, broken 0, on 1, lich alive"],
+      frames=60, extra=["-objlog", "lich_whole_obj.log"]),
+    # Broken before the fight: no contingency
+    T("lich_phylactery_before", "CLAN3", "3:phylactery=0," + LICH_FIGHT,
+      [r"lich: obj 0 breaks the phylactery obj 61; the lich has no protections now",
+       r"lich: message \"The altar of Velsharoon cracks apart\. A thin scream rises",
+       r"caster: obj 10 Lich3 notices the player .*contingency: none"], [LICH_FULL],
+      frames=60, extra=["-objlog", "lich_before_obj.log"]),
+    # Broken during the fight: Stone Skin, Shield, the images and the globe
+    # end at once, and the effect word of the lich is empty
+    T("lich_phylactery_fight", "CLAN3", LICH_FIGHT + ",60:fxobj=10,70:phylactery=0,80:fxobj=10",
+      [LICH_FULL, r"f60 +fx: obj 10 bits 0x22000000", r"lich: obj 0 breaks the phylactery obj 61; the lich loses his protections",
+       r"effect Stoneskin of obj 10 Lich3 taken away", r"Mirror Image of obj 10 Lich3 ends",
+       r"Minor Globe of Invulnerability of obj 10 Lich3 ends", r"lich: message \"The altar of Velsharoon cracks apart\. With a howl",
+       r"f80 +fx: obj 10 bits 0x00000000"],
+      frames=90, extra=["-objlog", "lich_fight_obj.log"]),
+    # One blow of the attack key breaks it (the scenery rule of dtucombat.c)
+    T("lich_phylactery_blow", "CLAN3", "80:phylactery=1",
+      [r"combat: the weapon hits scenery obj 61 an altar of Velsharoon", r"lich: obj 0 breaks the phylactery obj 61",
+       r"lich: test: phylactery not in the level, placed 1, broken 1"],
+      frames=90, extra=["-objlog", "lich_blow_obj.log", "-testpos", "299,10,305,270,20", "-testmove", "wait:30,attack:40,wait:20"]),
+    # A save and a load: the flags 247 (broken) and 248 (placed) stay, the
+    # level state has no altar, no new one is made, and the lich starts his
+    # fight with no contingency. A whole altar stays one altar.
+    T("lich_phylactery_save_load", "CLAN3", "3:phylactery=0,30:save=3,60:load=3,100:phylactery=1,101:quest,"
+      "102:alone=10,103:setlevel=8,105:heal=500,110:goobjsee=10.20,115:spelltest=28.1.10.0",
+      [r"lich: test: phylactery not in the level, placed 1, broken 1, on 1, lich alive",
+       r"f101 +quest: level 19 .* gflags \[ (\d+ )*247 248 \]", r"caster: obj 10 Lich3 notices the player .*contingency: none"],
+      frames=140, extra=["-objlog", "lich_save_obj.log"]),
+    T("lich_phylactery_load_whole", "CLAN3", "30:save=3,60:load=3,100:phylactery=1",
+      [r"lich: test: phylactery in the level, placed 1, broken 0", r"lich: test: phylactery obj 61 seg 557"],
+      [r"(?s)lich: the phylactery is obj.*lich: the phylactery is obj"], frames=110, extra=["-objlog", "lich_load_obj.log"]),
+    # The setting off (-nophylactery): no altar, the full contingency
+    T("lich_phylactery_off", "CLAN3", LICH_FIGHT + ",40:phylactery=1",
+      [LICH_FULL, r"lich: test: phylactery not in the level, placed 0, broken 0, on 0"], [r"lich: the phylactery is obj"],
+      frames=60, extra=["-objlog", "lich_off_obj.log", "-nophylactery"]),
+    # A fighter (the default character) and a thief read the Dispel Magic
+    # scroll from a hot key box: the lich loses his protections. The paper
+    # doll does not take a spell item of another class (0x3533C), the hot
+    # key box does (dtuchar.c, dtu_char_set_hot_key).
+    T("lich_dispel_scroll_fighter", "CLAN3", LICH_FIGHT + ",40:give=17.55.1,42:sethot=3.17.55,44:presshot=3,50:fire,80:fxobj=10",
+      [LICH_FULL, r"the player casts 'Dispel Magic' \(55\)", r"'Dispel Magic' \(55\) level \d+ on obj 10 Lich3", r"f80 +fx: obj 10 bits 0x00000000"],
+      frames=90, extra=["-objlog", "lich_scroll_fighter_obj.log"]),
+    T("lich_dispel_scroll_thief", "CLAN3", "1:class=3," + LICH_FIGHT + ",40:give=17.55.1,42:sethot=3.17.55,44:presshot=3,50:fire,80:fxobj=10",
+      [LICH_FULL, r"the player casts 'Dispel Magic' \(55\)", r"'Dispel Magic' \(55\) level \d+ on obj 10 Lich3", r"f80 +fx: obj 10 bits 0x00000000"],
+      frames=90, extra=["-objlog", "lich_scroll_thief_obj.log"]),
+    # The texts: Barander (CLAN1 object 141, script 170) tells of the
+    # phylactery in his answer to "How can he be stopped?" (label 12; the
+    # replies 4, 1, 1 after his greeting); CLAN3 message 1 (trigger 0, seg
+    # 26) points to the east crypts; after the break the lich answers "Die,
+    # lich!" (reply 3, label 4) with the line of the port.
+    T("lich_barander_hint", "CLAN1", "20:talkscript=170",
+      [r"reply 1 -> label C\b", r"the text of the port for gab\.170\.3845",
+       r"dlg: speech \"Not by steel alone\. A lich binds his life to a phylactery"],
+      frames=900, dlg="1,4,1,1,1"),
+    T("lich_arrival_message", "CLAN3", "20:goseg=27,40:goseg=26",
+      [r"lich: the text of the port for message 1 of CLAN3"], frames=60, extra=["-objlog", "lich_message_obj.log"]),
+    T("lich_talk_after_break", "CLAN3", "6:phylactery=0,20:talkscript=190",
+      [r"reply 3 -> label 4\b", r"dlg: speech \"So you found my altar and broke it"],
+      frames=300, dlg="3,1,1"),
 ]
 
 DIE = {0: 8, 1: 4, 2: 10, 3: 6}       # 0x13FDF3: cleric, mage, fighter, thief

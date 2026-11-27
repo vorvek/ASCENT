@@ -62,6 +62,7 @@
 #include "dtudesc.h"		// ASCENT: dtu_desc_reset at a new level
 #include "dtuthiefpts.h"	// ASCENT: the thief skill point screen
 #include "dtudragon.h"
+#include "dtulich.h"
 #include "dtuscript.h"
 #include "dtumovie.h"
 #include "dtulog.h"		// ASCENT: the session log
@@ -1201,8 +1202,11 @@ static void text(sc_run *r, char *out)
 		char id[32], fixed[SC_TEXT_SIZE];
 		const char *en = (const char *) r->s + k, *t;
 		const char *dr = dtu_dragon_script_text(r->id & SB_SCRIPT, k);	// ASCENT: dtudragon.c
+		if (!dr)
+			dr = dtu_lich_script_text(r->id & SB_SCRIPT, k, en);		// ASCENT: dtulich.c
 		snprintf(id, sizeof(id), "gab.%d.%d", r->id & SB_SCRIPT, k);
 		if (dr) {		// a text of the port: the port catalog
+			slog("the text of the port for gab.%d.%d", r->id & SB_SCRIPT, k);
 			en = dr;
 			t = dtu_tr(dr);
 		}

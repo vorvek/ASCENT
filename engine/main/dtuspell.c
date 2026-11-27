@@ -44,6 +44,7 @@
 #include "dtuchar.h"
 #include "dtucombat.h"
 #include "dtudragon.h"
+#include "dtulich.h"		// ASCENT: the phylactery of the lich of CLAN3
 #include "dtuspell.h"
 #include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
 #include "dtuhold.h"		// ASCENT: Dtu_fix_player_hold
@@ -4431,6 +4432,19 @@ void dtu_spell_dispel(object *obj)
 		fx_expire(obj,1);
 }
 
+// ASCENT: the protections of the contingency of the caster AI end at once
+// (dtulich.c: the phylactery of the lich of CLAN3 breaks): Stone Skin,
+// Shield, Mirror Image and Minor Globe of Invulnerability. Its other
+// effects stay.
+void dtu_spell_end_contingency(object *obj)
+{
+	if (obj == NULL)
+		return;
+	dtu_spell_clear_effect(obj,DTU_FX_STONESKIN);
+	dtu_spell_clear_effect(obj,DTU_FX_SHIELD);
+	xfx_end(obj,3,0);
+}
+
 // ASCENT: Dtu_fix_rest_effects (dtuspell.h). The effects with a timer end,
 // Protection From Fire (a pool with the 2e limit of 1 turn per level) and
 // Invisibility (the spell has no timer here, 2e: 24 hours at most) too.
@@ -5313,7 +5327,7 @@ static void caster_fight_start(object *obj,int row,int L)
 	Cai[n].empty = caster_empty(obj,row,L);
 	names[0] = 0;
 	for (;e->spell != 255;e++)
-		if ((e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell)) {
+		if ((e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell) && !dtu_lich_no_contingency(obj)) {		// ASCENT: dtulich.h
 			caster_self_spell(obj,e->spell,L);
 			if (first < 0)
 				first = e->spell;

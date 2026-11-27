@@ -2886,3 +2886,31 @@ id: port.tamaramagil_s_roar_shakes_the_hall_my_ch
 en: Tamaramagil's roar shakes the hall: "MY CHILDREN! You dare lay hands on my brood? Come out, little ones, and feed!"
 tr: El rugido de Tamaramagil sacude la sala: "¡MIS HIJOS! ¿Te atreves a poner las manos sobre mi camada? ¡Salid, pequeños, y comed!"
 
+id: port.the_phylactery_of_the_lich
+en: The phylactery of the lich
+tr: La filacteria del liche
+
+id: port.the_altar_of_velsharoon_cracks_apart_wit
+en: The altar of Velsharoon cracks apart. With a howl of rage the wards of Morik Stormhand fail!
+tr: El altar de Velsharoon se resquebraja. ¡Con un aullido de rabia, las protecciones de Morik Stormhand se desvanecen!
+
+id: port.the_altar_of_velsharoon_cracks_apart_a_t
+en: The altar of Velsharoon cracks apart. A thin scream rises from the crypts far below.
+tr: El altar de Velsharoon se resquebraja. Un grito agudo se eleva desde las criptas, muy por debajo.
+
+id: port.not_by_steel_alone_a_lich_binds_his_life
+en: Not by steel alone. A lich binds his life to a phylactery, and Morik was a priest of Velsharoon: his will be an altar of his dark god, hidden in some crypt near his lair. While it stands, his wards rise at his call. Break it before you face him. As for me, I am attempting a ritual consecration of this chamber. Once completed, this room will be a strongpoint that I can use to remove undead influences from this place. But the ritual is a very, very long one. If you can keep the undead at bay, I would be grateful.
+tr: No solo con acero. Un liche ata su vida a una filacteria, y Morik era sacerdote de Velsharoon: la suya será un altar de su dios oscuro, escondido en alguna cripta cerca de su guarida. Mientras siga en pie, sus protecciones surgirán a su llamada. Rómpelo antes de enfrentarte a él. En cuanto a mí, estoy intentando una consagración ritual de esta cámara. Una vez completada, esta sala será un bastión desde el que podré eliminar las influencias de los muertos vivientes de este lugar. Pero el ritual es muy, muy largo. Si puedes mantener a raya a los muertos vivientes, te lo agradecería.
+
+id: port.so_you_found_my_altar_and_broke_it_you_m
+en: So you found my altar and broke it, you meddling worm. No matter. I shall raise another from your bones.
+tr: Así que encontraste mi altar y lo rompiste, gusano entrometido. No importa. Alzaré otro con tus huesos.
+
+id: port.the_air_here_is_a_bit_stale_and_musty_th
+en: The air here is a bit stale and musty. The floor is covered in dust that reveals the tracks of many different creatures that have passed here. One set of tracks, made by bare bone, leads again and again to the east crypts.
+tr: El aire está algo viciado y huele a humedad. El polvo del suelo revela las huellas de muchas criaturas distintas que han pasado por aquí. Un rastro de huellas, dejadas por hueso desnudo, va una y otra vez hacia las criptas del este.
+
+id: tbl.fix.dressing_altar_of_velsharoon
+en: an altar of Velsharoon
+tr: un altar de Velsharoon
+gender: m

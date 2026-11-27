@@ -359,6 +359,9 @@ void dtu_spell_test_missile_from(int spell, int from, int objnum);		// ASCENT: s
 // 0x9002C with force: all effects of the object end (Dispel Magic, Potion
 // of Anti-Magic).
 void dtu_spell_dispel(object *obj);
+// ASCENT: Stone Skin, Shield, Mirror Image and the globe of the object end
+// at once (the contingency of a caster, dtulich.c)
+void dtu_spell_end_contingency(object *obj);
 // 0x8CFFF(spell, target, caster) with the levels of 0x8CFFF (the player:
 // 0x91EC1, a creature: 0xAE3BB). An area spell has its area around the
 // target (0x90CEF).

@@ -1707,6 +1707,7 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Restored and new content"), NULL },				// the group of content that 1.3 does not have
 	{ LN("The dragon Tamaramagil"), &Dtu_restored_dragon },	// dtudragon.h: DROW2, at the next load of the level
 	{ LN("New gear"),               &Dtu_new_gear },		// dtugear.h: the next level
+	{ LN("The phylactery of the lich"), &Dtu_lich_phylactery },	// dtulich.h: CLAN3, at the next load of the level
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
 

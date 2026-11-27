@@ -100,6 +100,7 @@ static char rcsid[] = "$Id: bmread.c 2.4 1995/03/28 18:05:29 john Exp $";
 #include "dtugear.h"		// ASCENT: the new gear (Dtu_new_gear)
 #include "dtutblfix.h"	// ASCENT: the table fixup of 1.3 (0x1A344)
 #include "dtuspell.h"	// ASCENT: dtu_spell_table_read
+#include "dtulich.h"		// ASCENT: the phylactery of the lich of CLAN3
 #include "texmerge.h"	// ASCENT: texmerge_mark_wall_effects
 
 // ASCENT: from here on this file is changed in most places. Descent 1
@@ -983,6 +984,7 @@ int bm_load_level_tables( char * level_name, char * player_name )
 			bm_parse_line(buf);
 		}
 	}
+	dtu_lich_tables( level_name, N_dressing_types, bm_parse_line );	// ASCENT: the phylactery of the lich of CLAN3 (dtulich.h)
 	bm_port_priestess();		// ASCENT: Dtu_caster_ai: the drow priestesses with a weapon
 	dtu_spell_table_read();		// ASCENT: the writes of the casts into the spell records end (D-104, D-105)
 
