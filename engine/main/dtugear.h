@@ -5,9 +5,10 @@
  * clear it). It is not in DTUGAME.EXE 1.3. See docs/re/objects.md, "New
  * gear".
  *
- * With the setting the item tables of a level get seven new $ARMOR lines
- * (53 to 59) and three new $OBJECT lines (the gems 128 to 130), the unused
- * wand lines 63 to 67 of $WEAPON cast a spell, and the creatures leave more
+ * With the setting the item tables of a level get nine new $ARMOR lines
+ * (53 to 61) and three new $OBJECT lines (the gems 128 to 130), the unused
+ * wand lines 63 to 67 of $WEAPON cast a spell, line 68 is the Frost Brand,
+ * and the creatures leave more
  * gold and gems. The setting is read when the tables of a level are loaded
  * (bm_load_level_tables): a change takes effect at the next level. With the
  * setting off the tables, the drops and the market are those of 1.3 (with
