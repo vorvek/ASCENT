@@ -30,6 +30,7 @@ typedef struct monster_ext {
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
 	int	person;					// ASCENT: a person by its model (dtu_model_is_person()), opens doors with Dtu_improved_ai
+	int	family;					// ASCENT: the kind of the creature by its model (dtu_model_family()), for creature_join_fight()
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
 	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), cast by the damage function (0x2A637)
 } monster_ext;
@@ -116,6 +117,11 @@ typedef struct dtu_ai_local {
 	fix		log_wall_time;			// the game time of the last wall hit (-testkill N,1)
 	short		log_hit_obj;			// the object of the last object hit
 	fix		chase_path_time;		// ASCENT: Dtu_fix_chase_run, the last time on a path to the player
+	// ASCENT: Dtu_improved_ai (dtuobj_aware.c). The last time the creature
+	// noticed the player (sight, hearing, a hit, an alarm), 0: never. Not in
+	// a saved game.
+	fix		combat_time;
+	fix		join_time;				// the next test of creature_join_fight()
 } dtu_ai_local;
 
 // A missile (object type OBJ_WEAPON that flies). The entry belongs to the
@@ -167,6 +173,11 @@ fix creature_floor_dist(object *obj,fix radius,fix half_height);
 int ray_is_free(vms_vector *p0,int seg0,vms_vector *p1,int objnum);
 int brain_bit(int a,int b);
 int creature_ray_to_player(object *obj);
+// dtuobj_aware.c, Dtu_improved_ai
+int creature_senses_player(object *obj);
+void creature_combat_mark(object *obj);
+int creature_in_combat(object *obj);
+void creature_join_fight(object *obj);
 int player_is_visible(object *obj);
 void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
 void sound_on_object(int sound,object *obj,fix volume);

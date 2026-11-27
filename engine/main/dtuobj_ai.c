@@ -510,15 +510,31 @@ int dtu_model_is_person(const char *pof)
 	return 0;
 }
 
+//
+// ASCENT: Dtu_improved_ai since 2026-11-27 (a decision of the user): a
+// creature opens a door only when its type can (the door bit of 1.3 or a
+// person by its model: the tables of 1.3 have no other value for it, "iq"
+// is the number of the sight and of the morale) and when it fights the
+// player: it is hostile or flees, and it noticed the player in the last
+// DTU_COMBAT_TIME seconds (creature_in_combat(), dtuobj_aware.c). In 1.3 the
+// door opener 0x14AF2 sends each active creature with the door bit to the
+// doors, also a peaceful one, and the creatures left the rooms of their
+// encounters. The lock rules stay (dtu_creature_door_unlocked()).
 static int person_opens_doors(object *obj)
 {
-	return improved_ai() && obj->type == OBJ_ROBOT && obj->id < N_robot_types && Monster_ext[obj->id].person && is_hostile(obj);
+	return improved_ai() && obj->type == OBJ_ROBOT && obj->id < N_robot_types && Monster_ext[obj->id].person && is_hostile(obj) &&
+		creature_in_combat(obj);
 }
 
 // 1 if the creature can open a door: the door bit, or a walk of its script
 int opens_doors(object *obj)
 {
-	return Monster_ext[obj->id].door_opening || Script_walk_doors || Ail[obj-Objects].script_walk == 1 || person_opens_doors(obj);
+	if (Script_walk_doors || Ail[obj-Objects].script_walk == 1)
+		return 1;
+	if (improved_ai())
+		return (Monster_ext[obj->id].door_opening || Monster_ext[obj->id].person) &&
+			(obj->dtu.m_1b0 & (DTU_HOSTILE|DTU_FLEEING)) && creature_in_combat(obj);
+	return Monster_ext[obj->id].door_opening;
 }
 
 // ASCENT: Dtu_fix_door_pair (dtuobj.h). The executable tests the lock and
@@ -594,7 +610,8 @@ static int find_path(object *obj,int start,int end,short *out,int max_out,int ma
 	static ubyte visited[MAX_SEGMENTS];
 	static short parent[MAX_SEGMENTS], depth[MAX_SEGMENTS], queue[MAX_SEGMENTS];
 	int head = 0, tail = 0, found = -1, i, n, cur;
-	int has_door_bit = (obj->type != OBJ_ROBOT) || Monster_ext[obj->id].door_opening || Script_walk_doors || person_opens_doors(obj);
+	int has_door_bit = (obj->type != OBJ_ROBOT) || (improved_ai() ? opens_doors(obj) :
+		Monster_ext[obj->id].door_opening || Script_walk_doors || person_opens_doors(obj));
 	int walker = improved_ai() && obj->type == OBJ_ROBOT && !is_flying(obj);
 	// Dtu_improved_ai: a hostile creature with no door bit keeps
 	// out of the sides that its body cannot pass (a door that is not open,
@@ -1945,6 +1962,9 @@ static int wake_test(object *obj)
 			return 0;
 	}
 
+	// Dtu_improved_ai: sight along a free line, hearing along an open path
+	if (improved_ai())
+		return creature_senses_player(obj);
 	return creature_ray_to_player(obj);
 }
 
@@ -1978,6 +1998,7 @@ void dtu_do_ai_frame(object *obj)
 
 		// The test that makes the creature active (0x13CE0)
 		if (wake_test(obj)) {
+			creature_combat_mark(obj);
 			ail->target = is_hostile(obj) ? 0 : -1;
 			ail->activity = 2;
 			set_anim(obj,DAS_STAND);
@@ -2029,8 +2050,10 @@ void dtu_do_ai_frame(object *obj)
 	else if (ai_tick(objnum,20)) {
 		// 0x14206: an active creature looks for the player again
 		ail->activity = 0;
-		if (wake_test(obj))
+		if (wake_test(obj)) {
 			ail->activity = 2;
+			creature_combat_mark(obj);
+		}
 		// Dtu_improved_ai: a hostile creature that follows a path
 		// to the segment of the player stays active. The test above fails at
 		// random when the player is behind the creature, which is often the
@@ -2040,7 +2063,7 @@ void dtu_do_ai_frame(object *obj)
 		// the segment of the player)
 		if (ail->activity == 0 && improved_ai() && is_hostile(obj) && ail->path_len >= 2 && !cloak_applies(obj) &&
 			 ail->path[ail->path_len-1] == ConsoleObject->segnum && (ail->mode == DAIM_CHASE_OB || ail->mode == DAIM_FOL_PATH) &&
-			 ail->target != -1 && !Player_is_dead && !Dtu_player_dead)
+			 ail->target != -1 && !Player_is_dead && !Dtu_player_dead && creature_in_combat(obj))
 			ail->activity = 2;
 		// ASCENT: a creature on a path of statement E5 of its script stays
 		// active to the end of the path (a port decision: the wake test fails
@@ -2168,8 +2191,11 @@ void dtu_do_ai_frame(object *obj)
 	else
 		visible = player_is_visible(obj);
 	creature_sight_sound(obj,hidden ? 0 : visible,&vec_to_player);
-	if (visible)
+	if (visible) {
 		ail->time_player_seen = GameTime;
+		if (!hidden && is_hostile(obj))
+			creature_combat_mark(obj);
+	}
 
 	// The awareness of a creature goes up by the awareness events
 	// (awareness_events_frame, 0x16366). An earlier guess of the port in
@@ -2182,7 +2208,9 @@ void dtu_do_ai_frame(object *obj)
 	// path of its script (Dtu_fix_script_walk) is not sent to a door: the
 	// mode OPENDOOR would end the walk, and a door on its path opens when it
 	// walks into it.
-	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB && ail->script_walk != 1) {
+	// Dtu_improved_ai: only a hostile creature that fights the player
+	if (Monster_ext[obj->id].door_opening && aip->behavior != DAIB_STATION && ail->mode != DAIM_CHASE_OB && ail->script_walk != 1 &&
+		 (!improved_ai() || (is_hostile(obj) && creature_in_combat(obj)))) {
 		if (ail->mode == DAIM_STILL) {
 			if (visible)
 				create_n_segment_path(obj,8+Difficulty_level,-1);

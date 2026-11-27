@@ -201,15 +201,150 @@ void awareness_events_frame(void)
 	}
 }
 
+//------------------------------------------------------------------------
+// ASCENT: Dtu_improved_ai, the senses of a creature (a decision of the
+// project, docs/re/ai.md "Senses, alarms and doors"). In 1.3 a creature
+// notices the player by the brain bit of the two segments and the ray
+// 0x10815, and for a melee creature nearer than 100.0 a blocked ray counts
+// as free. The brain bit is built with all doors open and all traps
+// switched (0x9786A), so a melee creature behind a closed door or behind a
+// wall that a trigger opens later (the four orcs of DROW2 in the closets of
+// the walls 0, 2, 4 and 6) notices the player and walks into the wall, and
+// an alarm wakes the creatures of the room behind a closed door.
+// With the setting:
+// - Sight: the ray from the eyes of the creature (5.0 above the center of a
+//   creature that walks) to the center of the player hits no wall and no
+//   door that is not open. An illusion wall does not stop it.
+// - Hearing, for the creatures that have the melee rule in 1.3 (a melee
+//   attack and no spell level): a path from the segment of the player to
+//   the segment of the creature through sides that a body can pass (no
+//   wall, an open door, an illusion wall), with the sum of the distances
+//   between the centers of its segments at most DTU_HEAR_DIST (100.0, the
+//   distance of the melee rule).
+// - An alarm (the alert of the levels 3 to 5) reaches a creature along such
+//   a path from the caller of at most DTU_ALARM_DIST, and the creature must
+//   also see or hear the player (the rule of 1.3 for the ray, see above).
+// - A creature that noticed the player (sight, hearing, a hit, an alarm) in
+//   the last DTU_COMBAT_TIME seconds fights: it keeps its path to the
+//   player and, when its type can, opens doors (opens_doors(), dtuobj_ai.c).
+#define DTU_HEAR_DIST	i2f(100)
+#define DTU_ALARM_DIST	i2f(150)
+#define DTU_COMBAT_TIME	i2f(30)
+
+static fix Hear_map[MAX_SEGMENTS], Alarm_map[MAX_SEGMENTS];
+static int Hear_seg = -1;
+static fix Hear_time = -1;
+
+// The length of the shortest open path from the segment "start" to each
+// segment, -1 for a segment that no open path of the length "limit" reaches
+static void open_path_map(int start, fix limit, fix *dist)
+{
+	static short queue[MAX_SEGMENTS];
+	static ubyte queued[MAX_SEGMENTS], have[MAX_SEGMENTS];
+	static vms_vector center[MAX_SEGMENTS];
+	int head = 0, count = 0, i;
+
+	for (i=0;i<=Highest_segment_index;i++)
+		dist[i] = -1;
+	if (start < 0 || start > Highest_segment_index)
+		return;
+	memset(queued,0,Highest_segment_index+1);
+	memset(have,0,Highest_segment_index+1);
+	dist[start] = 0;
+	queue[0] = start;
+	queued[start] = 1;
+	count = 1;
+	while (count) {
+		int s = queue[head], side;
+
+		head = (head + 1) % MAX_SEGMENTS;
+		count--;
+		queued[s] = 0;
+		if (!have[s]) {
+			compute_segment_center(&center[s],&Segments[s]);
+			have[s] = 1;
+		}
+		for (side=0;side<MAX_SIDES_PER_SEGMENT;side++) {
+			int c = Segments[s].children[side];
+			fix d;
+
+			if (c < 0 || c > Highest_segment_index || !(WALL_IS_DOORWAY(&Segments[s],side) & WID_FLY_FLAG))
+				continue;
+			if (!have[c]) {
+				compute_segment_center(&center[c],&Segments[c]);
+				have[c] = 1;
+			}
+			d = dist[s] + vm_vec_dist(&center[s],&center[c]);
+			if (d > limit || (dist[c] >= 0 && dist[c] <= d))
+				continue;
+			dist[c] = d;
+			if (!queued[c]) {
+				queue[(head + count) % MAX_SEGMENTS] = c;
+				queued[c] = 1;
+				count++;
+			}
+		}
+	}
+}
+
+// The length of the open path from the player to a segment, -1 for none.
+// The map is made one time for each frame.
+static fix hear_dist(int segnum)
+{
+	if (segnum < 0 || segnum > Highest_segment_index)
+		return -1;
+	if (Hear_time != GameTime || Hear_seg != ConsoleObject->segnum) {
+		open_path_map(ConsoleObject->segnum,DTU_HEAR_DIST,Hear_map);
+		Hear_time = GameTime;
+		Hear_seg = ConsoleObject->segnum;
+	}
+	return Hear_map[segnum];
+}
+
+// Dtu_improved_ai, in place of creature_ray_to_player() (0x10815): 1 the
+// creature sees the player, 2 it hears the player, 0 neither
+int creature_senses_player(object *obj)
+{
+	vms_vector p0 = obj->pos;
+	int seg;
+
+	if (!is_flying(obj))
+		p0.y += i2f(5);
+	seg = find_point_seg(&p0,obj->segnum);
+	if (seg < 0) {
+		p0 = obj->pos;
+		seg = obj->segnum;
+	}
+	if (ray_is_free(&p0,seg,&ConsoleObject->pos,obj-Objects))
+		return 1;
+	if (Robot_info[obj->id].attack_type == 1 && Monster_ext[obj->id].spell_level == 0 && hear_dist(obj->segnum) >= 0)
+		return 2;
+	return 0;
+}
+
+void creature_combat_mark(object *obj)
+{
+	Ail[obj-Objects].combat_time = GameTime ? GameTime : 1;
+}
+
+int creature_in_combat(object *obj)
+{
+	fix t = Ail[obj-Objects].combat_time;
+
+	return t != 0 && GameTime >= t && GameTime - t <= DTU_COMBAT_TIME;
+}
+
 void dtu_creature_alert(object *caller, int level)
 {
-	int i;
+	int i, woken = 0, stopped = 0;
 
 	if (!Dtu_objects_enabled || caller == NULL || ConsoleObject == NULL)
 		return;
 	awareness_event(caller,level);
 	if (level < 3)
 		return;
+	if (improved_ai())
+		open_path_map(caller->segnum,DTU_ALARM_DIST,Alarm_map);
 	for (i=1;i<Highest_object_index + (Dtu_fix_alert_last ? 1 : 0);i++) {
 		object *obj = &Objects[i];
 		vms_vector v;
@@ -220,7 +355,19 @@ void dtu_creature_alert(object *caller, int level)
 			continue;
 		if (Ail[i].activity == 2 || (obj->dtu.m_1b0 & (DTU_PEACEFUL|DTU_FLEEING)))
 			continue;
-		if (!brain_bit(obj->segnum,caller->segnum) || !creature_ray_to_player(obj))
+		if (improved_ai()) {
+			// Dtu_improved_ai: the alarm goes along an open path, and the
+			// creature sees or hears the player
+			if (!brain_bit(obj->segnum,caller->segnum))
+				continue;
+			if (Alarm_map[obj->segnum] < 0) {
+				stopped++;
+				continue;
+			}
+			if (!creature_senses_player(obj))
+				continue;
+		}
+		else if (!brain_bit(obj->segnum,caller->segnum) || !creature_ray_to_player(obj))
 			continue;
 		vm_vec_sub(&v,&caller->pos,&obj->pos);
 		if ((obj->dtu.m_88 & DTU_FX_DEAF) && vm_vec_dot(&v,&obj->orient.fvec) <= 0)
@@ -233,7 +380,10 @@ void dtu_creature_alert(object *caller, int level)
 		obj->dtu.m_1b0 |= DTU_HOSTILE;
 		dtu_obj_log("alert: level %d from obj %d %s wakes obj %d %s",level,(int)(caller-Objects),dtu_object_name(caller),i,dtu_object_name(obj));
 		creature_wake(obj,0,i & 1);
+		woken++;
 	}
+	if (improved_ai() && (woken || stopped))
+		dtu_obj_log("alert: level %d from obj %d: %d creatures woken, %d with no open path from the caller",level,(int)(caller-Objects),woken,stopped);
 }
 
 static void creature_wake(object *obj, int make_hostile, int sound)
@@ -250,6 +400,8 @@ static void creature_wake(object *obj, int make_hostile, int sound)
 		obj->dtu.m_1b0 |= DTU_HOSTILE;
 		obj->dtu.m_1b0 &= ~(DTU_PEACEFUL|DTU_FLEEING);
 	}
+	// Dtu_improved_ai: a hit, an alarm or a script: the creature fights
+	creature_combat_mark(obj);
 	if (ail->activity == 2)
 		return;
 
