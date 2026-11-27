@@ -283,6 +283,15 @@ static void power_lines(int type, int id)
 				break;
 			case DTU_IP_ARCHER:		line(LT("Arrows and bolts get +%d to hit and +%d damage."), p[i].value, p[i].value2); break;
 			case DTU_IP_REGEN:		line(LT("Heals 1 hit point each %d seconds."), p[i].value); break;
+			case DTU_IP_DISPLACE:
+				line(LT("You seem to stand beside your true place: the first weapon attack that would hit you misses."));
+				line(LT("Ready again %d seconds later. Spells are not fooled."), p[i].value);
+				break;
+			case DTU_IP_SASH:
+				line(LT("%d more mage spell slot at each spell level that you can cast."), p[i].value);
+				line(LT("Saving throws against spells %d better."), p[i].value2);
+				break;
+			case DTU_IP_FROST:		line(LT("%d more to hit and damage against fire creatures."), p[i].value); break;
 		}
 }
 

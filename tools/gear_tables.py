@@ -61,6 +61,9 @@ def read():
     g["armor_ac"] = [int(v) for v in re.findall(r"-?\d+", _block(c, "Gear_armor_ac[DTU_GEAR_N_ARMOR]"))]
     g["wands"] = [(int(a), b, n, int(s)) for a, b, n, s in
                   re.findall(r'\{\s*(\d+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\s*\}', _block(c, "Gear_wands[DTU_GEAR_N_WANDS]"))]
+    m = re.search(r'Gear_frost\s*=\s*\{\s*(\w+),\s*"([^"]*)",\s*(\w+),\s*"([^"]*)",\s*"([^"]*)",\s*(\d+)\s*\}', c)
+    g["frost"] = (g["d"].get(m.group(1)) or int(m.group(1)), m.group(2),
+                  g["d"].get(m.group(3)) or int(m.group(3)), m.group(4), m.group(5), int(m.group(6)))
     g["values"] = [(int(a), b, int(v)) for a, b, v in
                    re.findall(r'\{\s*(\d+),\s*"([^"]*)",\s*(\d+)\s*\}', _block(c, "Gear_values[]"))]
 

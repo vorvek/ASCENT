@@ -179,6 +179,12 @@ extern int Dtu_fix_dispel_peace;
 // 1 if the spell of the caster on the target is the Dispel Magic of the
 // player on a creature that is not hostile (Dtu_fix_dispel_peace)
 int dtu_spell_peace(int spell, object *target, object *caster);
+
+// ASCENT: the Sash of the Magi of the new gear (dtugear.h): n more mage
+// slots at each spell level that the mage casts (its slot table has a slot
+// there), after the doublings of the Ring of Wizardry. 0: none. The slots
+// left are cut to the new maximum when it comes off, as with the ring.
+void dtu_spell_set_sash(int n);
 // ASCENT: Hold Undead (spell 23) lowers a budget of L levels for each held
 // undead (Spell_info+0x46) and never tests it: each undead of level L or
 // less can be held. 1 (default): the AD&D 2nd edition rule, the levels of

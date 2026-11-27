@@ -29,10 +29,14 @@
 #include "dtuspell.h"
 #include "dtutblfix.h"
 #include "dtugear.h"
+#include "gauges.h"		// HUD_init_message
+#include "dtulang.h"		// LN, LT
 
 int Dtu_new_gear = 1;
 int Dtu_gear_loaded = 0;
 int Dtu_gear_mirror_worn = 0;
+int Dtu_gear_displace_worn = 0;
+int Dtu_gear_sash_worn = 0;
 
 //------------------------------------------------------------------------
 // The table lines. The pictures and the icons are those of the items of the
@@ -51,6 +55,8 @@ static const char *Gear_lines[] = {
 	"$ARMOR name=\"Belt of Dwarvenkind\" picture=genbelt.bbm icon=155 value=7500 set_constitution=18 weight=.5 belt magic magic_ok thief_ok cleric_use fighter_use thief_use stackable stack_limit=10",
 	"$ARMOR name=\"Ring of Regeneration\" picture=genring.bbm icon=138 value=15000 weight=.5 ring magic magic_ok thief_ok stackable stack_limit=10 all_use",
 	"$ARMOR name=\"Plate Mail of Fire Resistance\" picture=genpmail.bbm icon=6 value=7500 armor_class_decrement=9 weight=15 armor magic stackable stack_limit=10 fighter_use cleric_use",
+	"$ARMOR name=\"Cloak of Displacement\" picture=gencloak.bbm icon=151 value=18000 weight=.5 cloak magic magic_ok thief_ok stackable stack_limit=10 all_use",
+	"$ARMOR name=\"Sash of the Magi\" picture=genbelt.bbm icon=153 value=22000 weight=.5 belt magic magic_ok stackable stack_limit=10 mage_use",
 	"$OBJECT name=\"Bloodstone\" mass=5 value=50 all_use icon=131 picture=gengem2.bbm stackable stack_limit=10 non_hotkey_item",
 	"$OBJECT name=\"Pearl\" mass=5 value=100 all_use icon=129 picture=gengem3.bbm stackable stack_limit=10 non_hotkey_item",
 	"$OBJECT name=\"Star Sapphire\" mass=5 value=5000 all_use icon=130 picture=gengem.bbm stackable stack_limit=10 non_hotkey_item",
@@ -58,7 +64,13 @@ static const char *Gear_lines[] = {
 #define N_GEAR_LINES	((int) (sizeof(Gear_lines) / sizeof(Gear_lines[0])))
 
 // The armor class of the new armor lines 53 to 59 (as Armor_ac of dtuchar.c)
-static const signed char Gear_armor_ac[DTU_GEAR_N_ARMOR] = { -2, 0, 0, 0, 0, 0, -9 };
+static const signed char Gear_armor_ac[DTU_GEAR_N_ARMOR] = { -2, 0, 0, 0, 0, 0, -9, 0, 0 };
+
+// The Frost Brand: the line of 1.3 (its name there), the line it copies
+// (the Longsword +3: picture, model, sounds, dice, classes), the new name
+// and the value
+static const struct { int id; const char *name13; int from; const char *from13, *name; int value; } Gear_frost = {
+	DTU_GEAR_FROST_BRAND, "Rod of Genericness", DTU_GEAR_FROST_FROM, "Longsword +3", "Frost Brand", 20000 };
 
 // The wands: weapons 63 to 67 are "Wand of Genericness" (63 to 65) and
 // "Rod of Genericness" (66, 67) in each mission table, with no spell
@@ -149,6 +161,9 @@ static const short Gear_market_removed[][3] = {
 
 // The treasury of Tamaramagil (DROW2): class, number, count
 static const short Gear_dragon[][3] = {
+	{ 5, DTU_GEAR_FROST_BRAND, 1 },
+	{ 15, DTU_GEAR_CLOAK_DISPLACE, 1 },
+	{ 15, DTU_GEAR_SASH_MAGI, 1 },
 	{ 15, DTU_GEAR_BELT_DWARF, 1 },
 	{ 15, DTU_GEAR_RING_REGEN, 1 },
 	{ 15, DTU_GEAR_PLATE_FIRE, 1 },
@@ -210,6 +225,30 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 				io->log("New gear: not this table (the generic wands)");
 			return;
 		}
+	if (Gear_frost.id >= io->count(DTU_TK_WEAPON) || !weapon_named(io, Gear_frost.id, Gear_frost.name13) ||
+			!weapon_named(io, Gear_frost.from, Gear_frost.from13)) {
+		if (io->log)
+			io->log("New gear: not this table (the lines of the Frost Brand)");
+		return;
+	}
+
+	// The Frost Brand: all decoded fields of the Longsword +3 (copy_line
+	// keeps the record and the name), then its text with the new name and
+	// value
+	{
+		char *name = io->name(DTU_TK_WEAPON, Gear_frost.id), *t;
+
+		io->copy_line(DTU_TK_WEAPON, Gear_frost.id, Gear_frost.from);
+		snprintf(buf, sizeof(buf), "\"%s\"", Gear_frost.name);
+		t = dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_frost.from), "weapon_name", buf);
+		put_text(io, DTU_TK_WEAPON, Gear_frost.id, t);
+		snprintf(buf, sizeof(buf), "%d", Gear_frost.value);
+		put_text(io, DTU_TK_WEAPON, Gear_frost.id, dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_frost.id), "value", buf));
+		if (name && io->name_size > 0) {
+			strncpy(name, Gear_frost.name, io->name_size - 1);
+			name[io->name_size - 1] = 0;
+		}
+	}
 
 	// Each write gives a new text or NULL (no change), as the writes of the
 	// fixup (dtutblfix.h).
@@ -255,7 +294,7 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 	}
 	Dtu_gear_loaded = 1;
 	if (io->log)
-		io->log("New gear: armor 53 to 59, misc 128 to 130, wands 63 to 67");
+		io->log("New gear: armor 53 to 61, misc 128 to 130, wands 63 to 67, the Frost Brand 68");
 }
 
 int dtu_gear_armor_ac(int id)
@@ -416,4 +455,60 @@ int dtu_gear_mirror(object *missile, object *player, int spell, int weapon, obje
 	dtu_obj_log("new gear: the Mirror Shield sends obj %d (weapon %d spell %d) back to obj %d %s", (int) (missile - Objects), weapon, spell,
 		(int) (source - Objects), dtu_object_name(source));
 	return 1;
+}
+
+//------------------------------------------------------------------------
+// The treasury items of Tamaramagil: the Frost Brand and the Cloak of
+// Displacement (the Sash of the Magi is in dtuchar.c and dtuspell.c)
+
+int dtu_gear_frost_brand(int weapon)
+{
+	return Dtu_gear_loaded && weapon == DTU_GEAR_FROST_BRAND;
+}
+
+int dtu_gear_fire_creature(int type)
+{
+	int rec, wt;
+	char v[32];
+
+	if (type < 0 || type >= N_robot_types)
+		return 0;
+	if (Monster_info[type].flags & (MONSTER_F_FIRE_IMMUNE | MONSTER_F_FIRE_RESISTANT))
+		return 1;
+	// a fire spell as the weapon: Burning Hands (4), Fireball (16), Produce
+	// Fire (17), Melf's Minute Meteors (37)
+	rec = Monster_info[type].record;
+	wt = (rec >= 0 && bm_tbl_get(rec, "weapon_type", v, sizeof(v))) ? atoi(v) : 0;
+	return wt == -4 || wt == -16 || wt == -17 || wt == -37;
+}
+
+// The time when the Cloak of Displacement is ready again (0: ready). It is
+// not saved: a loaded game starts with the cloak ready.
+static fix Displace_ready;
+static int Displace_waiting;
+
+int dtu_gear_displace(object *player, object *attacker)
+{
+	if (!Dtu_gear_loaded || !Dtu_gear_displace_worn || !player || player->type != OBJ_PLAYER)
+		return 0;
+	if (Displace_waiting && !dtu_time_past(Displace_ready))
+		return 0;
+	Displace_ready = GameTime + i2f(DTU_GEAR_DISPLACE_TIME);
+	Displace_waiting = 1;
+	HUD_init_message(LN("Your Cloak of Displacement fools %s: the blow misses."), attacker ? dtu_object_display_name(attacker) : LT("the attack"));
+	dtu_obj_log("new gear: the Cloak of Displacement makes the attack of %s miss, ready again at %.1f",
+		attacker ? dtu_object_name(attacker) : "a missile", f2fl(Displace_ready));
+	dtu_char_log("Cloak of Displacement: the attack of %s misses", attacker ? dtu_object_name(attacker) : "a missile");
+	return 1;
+}
+
+void dtu_gear_displace_frame(void)
+{
+	if (!Displace_waiting || !dtu_time_past(Displace_ready))
+		return;
+	Displace_waiting = 0;
+	if (Dtu_gear_displace_worn) {
+		HUD_init_message(LN("Your Cloak of Displacement shimmers again."));
+		dtu_char_log("Cloak of Displacement: ready again");
+	}
 }

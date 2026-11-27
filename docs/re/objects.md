@@ -1714,6 +1714,48 @@ weapons 81 to 88.
   Intelligence, Crossbow +3. The Arrows +1 and +2 are left out: their lines
   have no value.
 
+### The treasury of Tamaramagil
+
+`Gear_dragon` (dtugear.c) gives six items to the free places of
+`Dr_treasure` (dtudragon.c fills them in order; two free places were added
+at -126, -108 and -126, -96): the Frost Brand, the Cloak of Displacement,
+the Sash of the Magi, the Belt of Dwarvenkind, the Ring of Regeneration and
+the Plate Mail of Fire Resistance. The user's design: she is an optional
+challenge, and a player who wins early keeps these for the whole game.
+
+- Frost Brand (weapon 68, value 20000): the last "Rod of Genericness" line
+  of 1.3 becomes a copy of the Longsword +3 (line 14, `copy_line` of the
+  table fixup: picture, model, sounds, 1d8 +3, +3 to hit, fighter and
+  thief, as the long swords of the game) with the new name. Against a fire
+  creature (`dtu_gear_fire_creature`: fire immune or fire resistant, or a
+  fire spell as its weapon: the red dragon, the hatchlings, the fire
+  mephits) 3 more to hit and damage (+6 in all). Resist Fire while it is in
+  the hand (item bit 1 of the hand). Checked: the roll bonus against a
+  hatchling is 3 more than with the Longsword +3.
+- Cloak of Displacement (armor 60, value 18000, all classes): the user's
+  rule, not the one of AD&D 2e: the first weapon attack (melee, an arrow, a
+  bolt, a thrown weapon) whose attack roll hits the wearer misses
+  (`dtu_gear_displace`, called by `damage_player_w` after the roll), with a
+  message; the cloak is ready again 30 seconds later (`dtu_time_past`) and
+  says so ("Your Cloak of Displacement shimmers again."). Spell missiles
+  have no attack roll and are not fooled. The timer is not saved: a loaded
+  game starts with the cloak ready.
+- Sash of the Magi (armor 61, a belt, value 22000, mage only): one more
+  mage slot at each spell level that the slot table of the mage level has
+  (`dtu_spell_set_sash`, after the doublings of the Ring of Wizardry and
+  the bonus of Rary's Mnemonic Enhancer) and saving throws against spells 2
+  better (the save line "+2 (Sash of the Magi)"). As with the ring, the
+  slots left are cut to the new maximum when it comes off (a memorized
+  spell over the maximum is lost). The mage maximum of levels 1 to 3 for a
+  mage of level 5 (table 4 2 1; checked):
+
+| Worn | Levels 1 2 3 |
+|---|---|
+| none | 4 2 1 |
+| Sash | 5 3 2 |
+| Ring of Wizardry | 8 4 2 |
+| both | 9 5 3 |
+
 ### Saves
 
 An item is a type and a number in the save (16 byte entry,

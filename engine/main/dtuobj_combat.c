@@ -1333,6 +1333,10 @@ fix damage_player_w(object *player, object *attacker, fix damage, int weapon)
 		hit = to_hit_roll(player,attacker,weapon,&roll);
 		if (skin)
 			player->dtu.m_88 |= DTU_FX_STONESKIN;
+		// ASCENT: the Cloak of Displacement of the new gear (dtugear.h), before
+		// the Stone Skin takes the hit
+		if (hit > 0 && dtu_gear_displace(player,attacker))
+			return 0;
 		if (hit <= 0) {
 			dtu_obj_log("attack: %s misses the player (roll %d, result %d)",
 				attacker ? dtu_object_name(attacker) : "a missile",roll,hit);

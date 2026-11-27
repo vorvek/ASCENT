@@ -1966,6 +1966,8 @@ class Pages:
             ac = gd.g["armor_ac"][i - d["DTU_GEAR_FIRST_ARMOR"]]
             rows.append(self.icon_row([r.name(), gear_effect(i, d), signed(-ac) if ac else "0", classes_of(r),
                                        r.num("value", 0), gd.where(15, i)], r))
+        fr = gd.frost
+        rows.append(self.icon_row([fr.name(), frost_effect(d), "0", classes_of(fr), fr.num("value", 0), gd.where(5, gd.frost_id)], fr))
         out += ["## New magic items", "",
                 "- AC bonus: how much the item lowers your armor class.",
                 "- F/T/M/C: the classes that may wear it ([[Classes]]).",
@@ -2041,7 +2043,8 @@ class Pages:
         # the place for the spells of the caster branch
         out += new_gear_spells_section(gd)
         # the treasury
-        trows = [self.icon_row([gd.item(c, i).name(), gear_effect(i, d) if c == 15 else "", count], gd.item(c, i))
+        trows = [self.icon_row([gd.item(c, i).name(), gear_effect(i, d) if c == 15 else frost_effect(d) if i == gd.frost_id else "",
+                                count], gd.item(c, i))
                  for c, i, count in gd.g["dragon"]]
         out += ["## The treasury of the red dragon", "",
                 "> **Heavier spoiler.** This section names the treasure of the dragon of the drow city.", "",
@@ -2312,7 +2315,8 @@ def gear_effect(name, d):
     dtugear.h (the defines named for the line number)."""
     ids = dict((v, k) for k, v in d.items() if k in (
         "DTU_GEAR_MIRROR_SHIELD", "DTU_GEAR_BOOTS_FREE", "DTU_GEAR_ARCHER", "DTU_GEAR_CLOAK_FIRE",
-        "DTU_GEAR_BELT_DWARF", "DTU_GEAR_RING_REGEN", "DTU_GEAR_PLATE_FIRE"))
+        "DTU_GEAR_BELT_DWARF", "DTU_GEAR_RING_REGEN", "DTU_GEAR_PLATE_FIRE", "DTU_GEAR_CLOAK_DISPLACE",
+        "DTU_GEAR_SASH_MAGI"))
     return {
         "DTU_GEAR_MIRROR_SHIELD": "A shield +1. A spell missile of a creature that hits you from the front (up to "
                                   "60 degrees from where you look) flies back to the creature with the power of its "
@@ -2328,6 +2332,12 @@ def gear_effect(name, d):
                                "it)." % d["DTU_GEAR_DWARF_CON"],
         "DTU_GEAR_RING_REGEN": "Heals 1 hit point each %d seconds while worn." % d["DTU_GEAR_REGEN_TIME"],
         "DTU_GEAR_PLATE_FIRE": "Plate mail +2 (magic heavy armor) with Resist Fire: fire damage to you is halved.",
+        "DTU_GEAR_CLOAK_DISPLACE": "You seem to stand beside your true place: the first weapon attack that would hit "
+                                   "you misses (arrows and bolts too, not spells). The cloak is ready again %d seconds "
+                                   "later and shimmers to tell you." % d["DTU_GEAR_DISPLACE_TIME"],
+        "DTU_GEAR_SASH_MAGI": "For a mage: %d more spell slot at each spell level that you can cast (after the "
+                              "doubling of a Ring of Wizardry), and saving throws against spells %d better."
+                              % (d["DTU_GEAR_SASH_SLOTS"], d["DTU_GEAR_SASH_SAVE"]),
     }.get(ids.get(name), "")
 
 
@@ -2358,6 +2368,15 @@ class GearData:
             line = re.sub(r"\bvalue=\d+", "value=3000", line)
             self.wands[i] = (Record(line + " pc_spell=%d" % spell), spell)
         self.values = {i: v for i, _, v in g["values"]}
+        # the Frost Brand: the line it copies, with its name and value
+        fid, _, src, src13, fname, fvalue = g["frost"]
+        r = tab["$WEAPON"][src]
+        if r.name13() != src13:
+            raise SystemExit("dtugear.c: weapon %d is %r, not %r" % (src, r.name13(), src13))
+        line = re.sub(r'weapon_name="[^"]*"', 'weapon_name="%s"' % fname, r.line)
+        line = re.sub(r"\bvalue=\d+", "value=%d" % fvalue, line)
+        self.frost_id = fid
+        self.frost = Record(line)
 
     def item(self, cls, i):
         """The record of class 5, 15 or 16 number i, new or of 1.3."""
@@ -2365,6 +2384,8 @@ class GearData:
             return self.armor[i]
         if cls == 16 and i in self.misc:
             return self.misc[i]
+        if cls == 5 and i == self.frost_id:
+            return self.frost
         if cls == 5 and i in self.wands:
             return self.wands[i][0]
         return self.tab[{5: "$WEAPON", 15: "$ARMOR", 16: "$OBJECT"}[cls]][i]
@@ -2394,6 +2415,11 @@ class GearData:
         if cls == 16 and i in self.misc:
             out.append("left by slain creatures (below)")
         return "; ".join(out) if out else "-"
+
+
+def frost_effect(d):
+    return ("A long sword +3. Against fire creatures (the red dragon, her hatchlings, fire mephits) +%d to hit "
+            "and damage. While in your hand fire damage to you is halved." % (3 + d["DTU_GEAR_FROST_BONUS"]))
 
 
 def new_gear_spells_section(gd):

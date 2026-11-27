@@ -40,7 +40,20 @@ extern int Dtu_gear_loaded;
 #define DTU_GEAR_BELT_DWARF		57		// Belt of Dwarvenkind: Constitution 18, infravision
 #define DTU_GEAR_RING_REGEN		58		// Ring of Regeneration: 1 hit point each 60 seconds
 #define DTU_GEAR_PLATE_FIRE		59		// Plate Mail of Fire Resistance: Plate Mail +2, Resist Fire
-#define DTU_GEAR_N_ARMOR		7
+#define DTU_GEAR_CLOAK_DISPLACE	60		// Cloak of Displacement: one attack that hits misses, each 30 seconds
+#define DTU_GEAR_SASH_MAGI		61		// Sash of the Magi: a mage slot more at each level, +2 saves against spells
+#define DTU_GEAR_N_ARMOR		9
+
+// The Frost Brand: weapon line 68 (the last "Rod of Genericness" of 1.3)
+// becomes a copy of the Longsword +3 (14) with this name: +3, and 3 more
+// to hit and damage against a fire creature (dtu_gear_fire_creature),
+// Resist Fire while it is in the hand
+#define DTU_GEAR_FROST_BRAND	68
+#define DTU_GEAR_FROST_FROM		14
+#define DTU_GEAR_FROST_BONUS	3
+#define DTU_GEAR_DISPLACE_TIME	30		// seconds until the Cloak of Displacement is ready again
+#define DTU_GEAR_SASH_SLOTS		1		// mage slots more at each spell level that the wearer casts
+#define DTU_GEAR_SASH_SAVE		2		// saving throws against spells
 
 #define DTU_GEAR_FIRST_MISC		128
 #define DTU_GEAR_BLOODSTONE		128
@@ -126,6 +139,27 @@ int dtu_gear_mirror(struct object *missile, struct object *player, int spell, in
 
 // dtuchar.c: the Mirror Shield is in the shield place. Set by dtu_char_update.
 extern int Dtu_gear_mirror_worn;
+
+// dtuchar.c: the Cloak of Displacement is in the cloak place, and the Sash
+// of the Magi in the belt place. Set by dtu_char_update.
+extern int Dtu_gear_displace_worn, Dtu_gear_sash_worn;
+
+// 1 if weapon is the Frost Brand (the tables have the new lines)
+int dtu_gear_frost_brand(int weapon);
+
+// 1 if the creature type is a fire creature for the Frost Brand: fire
+// immune or fire resistant, or its weapon is a fire spell (Burning Hands,
+// Fireball, Produce Fire, Melf's Minute Meteors): the dragon, the
+// hatchlings, the fire mephits.
+int dtu_gear_fire_creature(int type);
+
+// dtuobj_combat.c, damage_player_w: an attack of attacker that hits the
+// player. 1 if the Cloak of Displacement makes it miss (once each
+// DTU_GEAR_DISPLACE_TIME seconds; a message). Spell missiles have no
+// attack roll and do not come here.
+int dtu_gear_displace(struct object *player, struct object *attacker);
+// dtuchar.c, each frame: the message when the cloak is ready again
+void dtu_gear_displace_frame(void);
 
 // dtuobj.c, the setup of a level (next to dtu_restore_tamaramagil): the
 // Flame Tongue of the dungeon (dtuobj_setup.c). restore: the setup after

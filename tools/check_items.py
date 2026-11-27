@@ -514,9 +514,66 @@ def test_gear_market_items(t):
     return "8 armor items and the Crossbow +3"
 
 
+# ---------------------------------------------------------------------
+# The treasury of Tamaramagil (dtugear.c Gear_dragon)
+
+def test_gear_frost_brand(t):
+    """The Frost Brand (weapon 68) at DROW2: Resist Fire in the hand, none
+    after; against a hatchling (object 48, a fire creature) its roll bonus
+    is 3 more than that of the Longsword +3 (14) and its damage 3 more."""
+    def rolls(name, weapon):
+        cmds = ["give=5.%d.1" % weapon, "current=5.%d" % weapon, "dump", "heal=99", "goobj=48.4", "face=48"]
+        # three swings: a kill would give a level and its window (the hatchling has 50 hit points)
+        cmds += ["swingat=48"] * 3 + ["current=-1", "dump"]
+        d, _, log = t.run(name, cmds, level="DROW2", extra=["-noattack"])
+        return [int(b) - int(a) for a, b in re.findall(r"attack roll: d20 (\d+), roll (-?\d+) against", log)], d, log
+    a, _, _ = rolls("gear_frost_ls3", 14)
+    b, d, log = rolls("gear_frost", 68)
+    check(a and b, "no attack rolls (%d, %d)" % (len(a), len(b)))
+    check(set(b) == {a[0] + 3}, "roll bonus %s with the Longsword +3, %s with the Frost Brand" % (sorted(set(a)), sorted(set(b))))
+    check(d[0].has("resist_fire") and not d[1].has("resist_fire"), "Resist Fire in the hand: 0x%x, after: 0x%x" % (d[0].fx, d[1].fx))
+    check(re.search(r"damage roll: the Frost Brand adds 3 against a fire creature", log) or not re.search(r"attack roll: .*: [12]\b", log),
+          "no damage bonus line on a hit")
+    return "roll bonus %d -> %d against a hatchling, Resist Fire in the hand" % (a[0], b[0])
+
+
+def test_gear_displacement(t):
+    """The Cloak of Displacement at BAT: of the attacks of a skeleton
+    (object 43) that hit, the first one misses; the cloak is ready again
+    30 seconds later, and the next hit misses again."""
+    cmds = ["give=15.60.1", "equip=15.60", "goobj=43", "heal=99"] + ["attackedby=43", "heal=99"] * 10
+    cmds += ["%d:%s" % (f, c) for f in range(1000, 1080, 4) for c in ("attackedby=43",)]
+    cmds += ["%d:heal=99" % (f + 2) for f in range(1000, 1080, 4)]
+    _, _, log = t.run("gear_displace", cmds, level="BAT", extra=["-noattack"])
+    misses = re.findall(r"f(\d+) +Cloak of Displacement: the attack of \S+ misses", log)
+    ready = re.findall(r"f(\d+) +Cloak of Displacement: ready again", log)
+    check(len(misses) == 2, "%d displaced attacks: %s" % (len(misses), misses))
+    check(ready and int(misses[0]) + 890 <= int(ready[0]) <= int(misses[0]) + 910, "ready again at %s after %s" % (ready, misses))
+    check(int(misses[1]) >= int(ready[0]), "the second miss before the cloak was ready")
+    return "misses at frames %s, ready again at %s" % (", ".join(misses), ready[0])
+
+
+def test_gear_sash(t):
+    """The Sash of the Magi on a mage of level 5 (mage slots 4 2 1): one
+    slot more at each level, with the Ring of Wizardry (27) the doubling
+    and then the slot; off again, the table of the level. A save against a
+    spell: +2 (Sash of the Magi)."""
+    cmds = ["class=1", "setlevel=5", "slots", "give=15.61.1", "equip=15.61", "slots", "give=15.27.1", "equip=15.27", "slots",
+            "unequip=8", "slots", "unequip=6", "slots", "equip=15.61", "castby=47.17"]
+    _, _, log = t.run("gear_sash", cmds)
+    maxes = [tuple(int(x) for x in m) for m in re.findall(r"spell slots: mage left \d+ \d+ \d+ max (\d+) (\d+) (\d+)", log)]
+    # the first line: before the first update of the character, no slots
+    maxes = maxes[1:]
+    want = [(5, 3, 2), (9, 5, 3), (8, 4, 2), (4, 2, 1)]
+    check(maxes == want, "mage maximum %s, expected %s" % (maxes, want))
+    saves = save_lines(t, "gear_sash")
+    check(saves and "+2 (Sash of the Magi)" in saves[-1], "save line: %s" % saves)
+    return "slots %s, %s" % (" / ".join("%d %d %d" % m for m in maxes), saves[-1].split("] ", 1)[-1][:80])
+
+
 TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc,
          test_gear_worn, test_gear_mirror, test_gear_archer, test_gear_regen, test_gear_wands, test_gear_drops,
-         test_gear_market_items]
+         test_gear_market_items, test_gear_frost_brand, test_gear_displacement, test_gear_sash]
 
 
 def main():

@@ -310,7 +310,7 @@ TESTS = [
     # after a save and a load (a level state has them).
     T("dragon_treasure_once", "DROW2", "30:items=784,31:items=409,32:items=407,40:save=3,60:load=3,150:items=784,151:items=409,152:items=407",
       [r"dragon: the key and the treasure are placed \(a new level\)",
-       r"f30 +items in seg 784: (.*15\.57.*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
+       r"f30 +items in seg 784: (.*5\.68.*)\n[\s\S]*f150 +items in seg 784: \1\n", r"f31 +items in seg 409: (.*15\.17.*)\n[\s\S]*f151 +items in seg 409: \1\n",
        r"f32 +items in seg 407: (16\.43 )\n[\s\S]*f152 +items in seg 407: \1\n"],
       [r"placed \(a level state without them\)"], frames=170, extra=["-noattack", "-objlog", "dragon_treasure_once_obj.log"]),
     # With the setting off (-origtamaramagil, or the line of the
