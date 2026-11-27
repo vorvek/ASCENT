@@ -163,6 +163,11 @@ int dtu_inventory_append(int type, int id, int count)
 
 	if (it == NULL || inventory_full(type,id))
 		return -1;
+	// ASCENT: the weapon line of Spiritual Hammer (dtuspell.h) is never an
+	// item. Without the new gear it has the number of the Dagger of Venom
+	// (dtugear.h), so a save with that dagger would give a hammer.
+	if (type == OBJ_WEAPON && id == dtu_spell_hammer_weapon())
+		return -1;
 
 	inv = &Dtu_inventory[Dtu_n_inventory];
 	memset(inv,0,sizeof(*inv));
