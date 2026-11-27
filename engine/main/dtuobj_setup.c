@@ -496,10 +496,48 @@ void lava_textures_lookup(void)
 // The changes of the objects: only at the load of the level, before the
 // restore of a state. They run after the setup of the objects (setup_object
 // at the load in the executable) and before the creature setup by name.
+// ASCENT: Dtu_caster_ai (dtuopts.h, a decision of the user of 2026-11-27):
+// scrolls of the mage spells of the port (dtuspell.h: 56 Mirror Image, 57
+// Minor Globe of Invulnerability) in place of four of the mage scrolls that
+// the levels have most often. The levels of 1.3 have a spell object of
+// Fireball (16) in six levels (BANE, MINE, MULHOR1, MULHOR2, CLAN1, THIEF1)
+// and of Melf's Acid Arrows (36) three times (two in MULHOR1); no other
+// mage spell lies more than three times. Three scrolls of Fireball and one
+// of the two of Melf's Acid Arrows of MULHOR1 change, in the levels of the
+// second and the third hub. Only with no state: a saved level keeps its
+// objects. The object number, the spell of 1.3 and the new spell:
+static const struct { ubyte level; short obj; ubyte old_spell, new_spell; } Port_scrolls[] = {
+	{ 11, 76, 16, DTU_SPELL_MIRROR_IMAGE },		// MINE, segment 309
+	{ 13, 69, 36, DTU_SPELL_MIRROR_IMAGE },		// MULHOR1, segment 684 (the other one, object 36, stays)
+	{ 14, 43, 16, DTU_SPELL_MINOR_GLOBE },		// MULHOR2, segment 411
+	{ 17, 137, 16, DTU_SPELL_MINOR_GLOBE },		// CLAN1, segment 657
+};
+
+static void level_fixes_port_scrolls(int has_state)
+{
+	int k;
+
+	if (has_state || !dtu_caster_ai())
+		return;
+	for (k=0;k<(int)(sizeof(Port_scrolls)/sizeof(Port_scrolls[0]));k++) {
+		object *o;
+
+		if (Port_scrolls[k].level != Dtu_script_level || Port_scrolls[k].new_spell >= N_spell_types ||
+			 Spell_info[Port_scrolls[k].new_spell].record < 0)
+			continue;
+		if ((o = fix_obj(Port_scrolls[k].obj,OBJ_SPELL,Port_scrolls[k].old_spell)) != NULL) {
+			o->id = Port_scrolls[k].new_spell;
+			dtu_obj_log("level fix (Dtu_caster_ai), level %d: obj %d spell %d '%s' in place of spell %d '%s'",Dtu_script_level,
+				Port_scrolls[k].obj,o->id,Spell_info[o->id].name,Port_scrolls[k].old_spell,Spell_info[Port_scrolls[k].old_spell].name);
+		}
+	}
+}
+
 void level_fixes_objects(int has_state)
 {
 	object *o;
 
+	level_fixes_port_scrolls(has_state);		// ASCENT: Dtu_caster_ai
 	switch (Dtu_script_level) {
 		case 0:		// ypinn (0xACD3B): the eight guests that are not dead
 			level_fixes_inn();
