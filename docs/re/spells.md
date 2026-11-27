@@ -772,7 +772,9 @@ the port. Protection From Evil gives its +2 to the save.
   and stored as color numbers in `dtuspellicons.h`. The icon sheets of the game
   (FEBGND 23 and 24) have 200 cells and no free one: the loaded sheet gets one more
   row (`port_icons_add`, `dtudisp.c`).
-- The texts are in the catalog of the port (`engine/lang/es_port.catalog`).
+- The texts are in the catalog of the port (`engine/lang/es_port.catalog`). The
+  five spell names are name entries (`tbl.fix.spell_*`, written by hand as the
+  item names of `dtuitemfix.c`, which `tools/lang_extract.py merge` keeps).
 - Save games: an entry of a spell list has the spell number in one byte and the
   icon in one byte (16 bytes for each entry), so the record does not change. The
   DOS game has no line 56 to 60: a save with one of the spells in a book, in the

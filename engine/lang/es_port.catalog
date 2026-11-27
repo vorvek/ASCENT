@@ -2605,23 +2605,23 @@ id: port.d_d
 en: %d.%d
 tr: %d,%d
 
-id: port.mirror_image
+id: tbl.fix.spell_mirror_image
 en: Mirror Image
 tr: Imagen Múltiple
 
-id: port.minor_globe_of_invulnerability
+id: tbl.fix.spell_minor_globe_of_invulnerability
 en: Minor Globe of Invulnerability
 tr: Globo Menor de Invulnerabilidad
 
-id: port.spiritual_hammer
+id: tbl.fix.spell_spiritual_hammer
 en: Spiritual Hammer
 tr: Martillo Espiritual
 
-id: port.flame_strike
+id: tbl.fix.spell_flame_strike
 en: Flame Strike
 tr: Columna de Llamas
 
-id: port.mind_blast
+id: tbl.fix.spell_mind_blast
 en: Mind Blast
 tr: Descarga Mental
 

@@ -1154,13 +1154,13 @@ static void xfx_end(object *obj,int what,int message)
 		Xfx[n].images_end = 0;
 		dtu_spell_log("spell: Mirror Image of obj %d %s ends",n,target_name(obj));
 		if (message && obj->type == OBJ_PLAYER)
-			HUD_init_message("%s expired.",dtu_tr(LN("Mirror Image")));
+			HUD_init_message("%s expired.",spell_name(DTU_SPELL_MIRROR_IMAGE));
 	}
 	if ((what & 2) && Xfx[n].globe_end != 0) {
 		Xfx[n].globe_end = 0;
 		dtu_spell_log("spell: Minor Globe of Invulnerability of obj %d %s ends",n,target_name(obj));
 		if (message && obj->type == OBJ_PLAYER)
-			HUD_init_message("%s expired.",dtu_tr(LN("Minor Globe of Invulnerability")));
+			HUD_init_message("%s expired.",spell_name(DTU_SPELL_MINOR_GLOBE));
 	}
 }
 
