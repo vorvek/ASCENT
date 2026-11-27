@@ -1687,6 +1687,8 @@ static void opt_reverse(fe_menu_item *it)
 // reads the globals each frame. The settings are written to the
 // configuration file when the menu closes.
 
+// An entry with no value is the heading of a group: a text line, with an
+// empty line above it.
 static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Improved physics"),       &Dtu_improved_physics },
 	{ LN("Improved jump controls"), &Dtu_improved_jump },
@@ -1699,12 +1701,15 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Rulebook items"),         &Dtu_rulebook_items },	// dtuitemfix.h: off by default
 	{ LN("Maximum HP on level up"), &Dtu_max_hp_level_up },	// dtuxp.h: off by default
 	{ LN("Verbose combat log"),     &Dtu_verbose_combat },	// dtuxp.h: off by default
+	{ "",                           NULL },
+	{ LN("Restored and new content"), NULL },				// the group of content that 1.3 does not have
+	{ LN("The dragon Tamaramagil"), &Dtu_restored_dragon },	// dtudragon.h: DROW2, at the next load of the level
 };
 #define N_IMPR	((int) (sizeof(Impr_switch) / sizeof(Impr_switch[0])))
 
 static void impr_changed(fe_menu_item *it)
 {
-	if (it->buf_len >= 0 && it->buf_len < N_IMPR)
+	if (it->buf_len >= 0 && it->buf_len < N_IMPR && Impr_switch[it->buf_len].value)
 		*Impr_switch[it->buf_len].value = it->value;
 }
 
@@ -1715,10 +1720,14 @@ static void fe_improvements(void)
 
 	memset(m, 0, sizeof(m));
 	for (i = 0; i < N_IMPR; i++) {
-		m[i].type = FE_MI_CHECK;
 		m[i].text = Impr_switch[i].text;
-		m[i].value = *Impr_switch[i].value;
 		m[i].buf_len = i;			// the index in Impr_switch
+		if (Impr_switch[i].value == NULL) {
+			m[i].type = FE_MI_TEXT;
+			continue;
+		}
+		m[i].type = FE_MI_CHECK;
+		m[i].value = *Impr_switch[i].value;
 		m[i].changed = impr_changed;
 	}
 	fe_menu(LN("Improvements"), NULL, m, N_IMPR, 0, 1);
@@ -1731,7 +1740,8 @@ static void impr_menuset(int nitems, newmenu_item *items, int *last_key, int cit
 	int i;
 
 	for (i = 0; i < N_IMPR && i < nitems; i++)
-		*Impr_switch[i].value = items[i].value;
+		if (Impr_switch[i].value)
+			*Impr_switch[i].value = items[i].value;
 }
 
 void dtufe_improvements_menu(void)
@@ -1741,13 +1751,18 @@ void dtufe_improvements_menu(void)
 
 	memset(m, 0, sizeof(m));
 	for (i = 0; i < N_IMPR; i++) {
-		m[i].type = NM_TYPE_CHECK;
 		m[i].text = Impr_switch[i].text;
+		if (Impr_switch[i].value == NULL) {
+			m[i].type = NM_TYPE_TEXT;
+			continue;
+		}
+		m[i].type = NM_TYPE_CHECK;
 		m[i].value = *Impr_switch[i].value;
 	}
 	newmenu_do1(NULL, LN("Improvements"), N_IMPR, m, impr_menuset, 0);
 	for (i = 0; i < N_IMPR; i++)
-		*Impr_switch[i].value = m[i].value;
+		if (Impr_switch[i].value)
+			*Impr_switch[i].value = m[i].value;
 	dtu_opts_save();
 }
 

@@ -178,6 +178,14 @@ extern int Dtu_safe_music;
 // -nomisssound turn it off for one run.
 extern int Dtu_miss_sound;
 
+// The group "Restored and new content" of the Improvements menu: content
+// that 1.3 does not have, or has in its data but not in its levels. Each
+// line is on by default; with a line off the level is as 1.3 ships it. A
+// change takes effect at the next load of the level.
+// "The dragon Tamaramagil": the encounter with the adult red dragon of
+// DROW2 (dtudragon.h, docs/re/dragon.md).
+extern int Dtu_restored_dragon;
+
 // Rulebook items: the values and the class limits of some item lines take
 // the value of the AD&D 2nd edition rulebooks (the table of dtuitemfix.c,
 // docs/audit/items.md). Off by default (unlike the other settings): it

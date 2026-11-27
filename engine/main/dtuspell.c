@@ -43,6 +43,7 @@
 #include "dtuobj.h"
 #include "dtuchar.h"
 #include "dtucombat.h"
+#include "dtudragon.h"
 #include "dtuspell.h"
 #include "dtuxp.h"		// ASCENT: the cause of a kill in the session log
 #include "dtuhold.h"		// ASCENT: Dtu_fix_player_hold
@@ -2468,6 +2469,10 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 		dtu_creature_wake(target,1);
 
 	dtu_spell_log("spell: '%s' (%d) level %d on obj %d %s (level %d)",spell_name(spell),spell,L,(int)(target-Objects),target_name(target),T);
+
+	// ASCENT: the magic resistance of the dragon of DROW2 (dtudragon.c)
+	if (target->type == OBJ_ROBOT && dtu_dragon_spell_resisted(target,caster,spell))
+		return 0;
 
 	// The names, the verbs and 0x8CEAE, before the switch as in 0x8CFFF
 	msg_setup(target,caster);

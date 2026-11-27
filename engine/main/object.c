@@ -373,6 +373,7 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 #include "newmenu.h"
 #include "gauges.h"
 #include "dtugame.h"		// ASCENT: Dtu_objects_enabled
+#include "dtudragon.h"
 #include "dtuobj.h"		// ASCENT: the objects of the target game
 #include "dtuinfra.h"		// ASCENT: the heat of an object (improved infravision)
 #include "dtuxp.h"		// ASCENT: the session log line of a creature that goes away
@@ -2025,8 +2026,10 @@ void object_move_one( object * obj )
 			if (print_object_info>1) mprintf( (0, "AI: Moving robot object #%d\n",obj-Objects ));
 			#endif
 			// ASCENT: the AI of the target game (0x13BF4)
-			if (Dtu_objects_enabled)
-				dtu_do_ai_frame(obj);
+			if (Dtu_objects_enabled) {
+				if (!dtu_dragon_ai_frame(obj))		// ASCENT: Tamaramagil has her own AI (dtudragon.c)
+					dtu_do_ai_frame(obj);
+			}
 			else
 				do_ai_frame(obj);
 			break;
@@ -2096,8 +2099,10 @@ void object_move_one( object * obj )
 		case MT_PHYSICS:
 			if (Dtu_player_walk && obj->type == OBJ_PLAYER && obj == ConsoleObject && obj->control_type == CT_FLYING && !Player_is_dead)
 				dtu_player_physics_sim(obj);
-			else if (Dtu_objects_enabled && obj->type == OBJ_ROBOT)
-				dtu_creature_physics_sim(obj);		// ASCENT: pmon.c (0x9F153)
+			else if (Dtu_objects_enabled && obj->type == OBJ_ROBOT) {
+				if (!dtu_dragon_no_physics(obj))		// ASCENT: dtudragon.c moves her
+					dtu_creature_physics_sim(obj);		// ASCENT: pmon.c (0x9F153)
+			}
 			else
 				do_physics_sim(obj);
 			break;	//move by physics

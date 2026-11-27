@@ -238,6 +238,14 @@ typedef struct polymodel {
 // flag DTU_SUBMODEL_F_HIDDEN.
 void draw_polygon_model_frame(vms_vector *pos,vms_matrix *orient,int model_num,int frame,int show_hidden,fix light,fix *glow_values,bitmap_index alt_textures[]);
 
+// ASCENT: the draw scale of one model, not in 1.3. The model with the
+// number Polyobj_scale_model is drawn at Polyobj_scale (16.16) of its size
+// around its origin, and polyobj_frame_points_box() gives the box of the
+// scaled points. The owner of the scale (dtudragon.c) scales the arrays of
+// the model (boxes, centers, radii, gun points) itself. -1: no model.
+extern int Polyobj_scale_model;
+extern fix Polyobj_scale;
+
 // ASCENT: animation interpolation (Dtu_anim_interp, dtuopts.h). The same
 // draw with the joint angles and the body center between the frames
 // "frame" and "next", frac (0 to 1.0) of the way to "next". Each angle

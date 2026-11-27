@@ -41,6 +41,7 @@
 #include "dtugame.h"
 #include "dtudisp.h"
 #include "dtuobj.h"
+#include "dtudragon.h"
 #include "dtutrig.h"
 #include "dtustate.h"
 #include "dtulog.h"		// ASCENT: the session log
@@ -1276,6 +1277,9 @@ void dtu_trig_state_rules(int level_index, int restore)
 		case 21:
 			if (Dtu_num_triggers > 20)
 				Dtu_triggers[20].object_num = 42;
+			// ASCENT: the dragon of DROW2 (dtudragon.c): the lever, the
+			// doors, the key and the treasure
+			dtu_dragon_level_rules(restore);
 			break;
 		case 32:
 			if (Dtu_num_triggers > 33)

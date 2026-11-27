@@ -69,6 +69,7 @@
 #include "dtulog.h"		// ASCENT: the session log
 #include "dtuxp.h"		// ASCENT: the kill line, the death lines of the session log
 #include "dtumiss.h"		// ASCENT: the miss sound of a creature
+#include "dtudragon.h"
 #include "dtuobj_int.h"
 
 static void player_dies(object *player,object *attacker);
@@ -302,6 +303,12 @@ static int fire_part(object *target,int fire)
 			target->dtu.m_82 = 0;
 	}
 	return fire;
+}
+
+// ASCENT: the fire part for a caller of another file (dtudragon.c)
+int dtu_fire_part(object *target,int fire)
+{
+	return fire_part(target,fire);
 }
 
 // 0xAE3BB: the level of a creature, max hit points / 8, 1 to 18
@@ -726,29 +733,10 @@ void dtu_creature_drop_contents(object *obj)
 			vms_vector pos = obj->pos;
 			int seg = obj->segnum;
 
-			// ASCENT, Dtu_fix_tamaramagil: the center of the dragon of
-			// DROW2 is 24.7 above the floor, out of the reach of the
-			// player, and her body lies on it. Her key drops 5.0 above the
-			// floor, 60.0 in front of her.
-			if (Dtu_fix_tamaramagil && Dtu_script_level == 21 && (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) == 210) {
-				fix r, hh;
-				vms_vector p;
-				int s2;
-
-				dtu_get_body_size(obj,&r,&hh);
-				pos.y -= hh - i2f(5);
-				p = pos;
-				vm_vec_scale_add2(&p,&obj->orient.fvec,i2f(60));
-				p.y = pos.y;
-				if ((s2 = find_point_seg(&p,obj->segnum)) >= 0) {
-					pos = p;
-					seg = s2;
-				}
-				else if ((s2 = find_point_seg(&pos,obj->segnum)) >= 0)
-					seg = s2;
-				else
-					pos = obj->pos;
-			}
+			// ASCENT: the dragon of DROW2 (dtudragon.c): her center is out
+			// of the reach of the player and her body lies on it. Her key
+			// drops on the floor in front of her.
+			dtu_dragon_drop_place(obj,&pos,&seg);
 			n = dtu_create_item(type,id,count,seg,&pos);
 		}
 		dtu_obj_log("drop: obj %d %s leaves type %d id %d count %d (obj %d) at %.2f %.2f %.2f",(int)(obj-Objects),dtu_object_name(obj),type,id,count,n,

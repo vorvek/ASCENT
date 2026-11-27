@@ -1293,7 +1293,8 @@ with `-noimprovedai` (the ambush, the orc behind the door, the blow at the
 door, the attack, the priestess and the guard).
 
 Not changed: the choice and the cast of spells of the casters
-(`dtuspell.c`), the dragon Tamaramagil. The hooks for them: `melee_fighter()`
+(`dtuspell.c`). The dragon Tamaramagil has her own AI (`dtudragon.c`,
+[dragon.md](dragon.md)). The hooks for them: `melee_fighter()`
 leaves out each creature with a mage or cleric level and each creature with
 a ranged attack, and `creature_in_combat()` and `creature_senses_player()`
 tell a caster whether it fights and whether it sees the player.

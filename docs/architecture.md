@@ -75,6 +75,7 @@ comments.
 | `dtudisp.c` | The in-game interface: play screen, buttons, cursor, message box, the screens that open during play. Replaces the cockpit and HUD. | `re/ingame-ui.md` |
 | `dtuscroll.c` | The text screen of the Scroll. | `re/ingame-ui.md` |
 | `dtudesc.c` | The description window of items and spells (right click). New in the port. | `description_window.md` |
+| `dtudragon.c` | The encounter with the dragon Tamaramagil of DROW2: the scale of her model, her AI and attacks, the lever, the keys and the treasure. New in the port. | `re/dragon.md` |
 | `dtuxp.c` | The experience of the player: the kill line, the next level window, the verbose combat log, the session log lines of deaths, awards and levels. New in the port. | `debug_logs.md` |
 | `dtuinfra.c` | Infravision in the 3D view. | `re/infravision.md` |
 | `dtufe.c` | The front end: frame, input, art, menus, main menu, options, credits, death screen. | `re/frontend.md` |
@@ -172,6 +173,13 @@ settings, and others). They are in `ascent.cfg`, the menus change them, and
 `-noimprovements` turns them all off. To add one, add the variable to
 `dtuopts.c` and `dtuopts.h` and a line to the table `Opts[]` of
 `dtuopts.c`.
+
+Content that 1.3 does not have, or has in its data but not in its levels,
+is in the group "Restored and new content" of the Improvements menu
+(`Impr_switch` of `dtufe.c`: a line with no value is the heading of a
+group). Each line is a setting of `dtuopts.h`, on by default, and with the
+line off the level is as 1.3 ships it. The first one is "The dragon
+Tamaramagil" (`Dtu_restored_dragon`, `dtudragon.c`, `re/dragon.md`).
 
 The experience and combat log improvements (`dtuxp.h`):
 

@@ -218,6 +218,7 @@ void pick_up_item(object *player,object *item);
 
 extern int Hit_by_missile;
 int damage_dice(object *attacker,object *target,int weapon);
+int dtu_fire_part(object *target,int fire);		// ASCENT: fire_part() of dtuobj_combat.c
 void creature_is_corpse(object *obj);
 fix spell_hit(int spell,object *target,object *attacker);
 fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon);

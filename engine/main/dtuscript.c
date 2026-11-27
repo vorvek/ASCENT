@@ -61,6 +61,7 @@
 #include "dtuscroll.h"		// ASCENT: dtu_scroll_reset at a new level
 #include "dtudesc.h"		// ASCENT: dtu_desc_reset at a new level
 #include "dtuthiefpts.h"	// ASCENT: the thief skill point screen
+#include "dtudragon.h"
 #include "dtuscript.h"
 #include "dtumovie.h"
 #include "dtulog.h"		// ASCENT: the session log
@@ -1136,8 +1137,14 @@ static void text(sc_run *r, char *out)
 		int k = starts[rand() % n];
 		char id[32], fixed[SC_TEXT_SIZE];
 		const char *en = (const char *) r->s + k, *t;
+		const char *dr = dtu_dragon_script_text(r->id & SB_SCRIPT, k);	// ASCENT: dtudragon.c
 		snprintf(id, sizeof(id), "gab.%d.%d", r->id & SB_SCRIPT, k);
-		t = dtu_tr_id(id, en);
+		if (dr) {		// a text of the port: the port catalog
+			en = dr;
+			t = dtu_tr(dr);
+		}
+		else
+			t = dtu_tr_id(id, en);
 		if (t == en)		// no translation: the English text (Dtu_fix_script_names)
 			t = fix_names(en, fixed, sizeof(fixed));
 		expand(t, out);

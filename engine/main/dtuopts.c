@@ -43,6 +43,7 @@ int Dtu_anim_interp = 1;
 int Dtu_improved_infravision = 1;
 int Dtu_target_hint = 1;
 int Dtu_miss_sound = 1;			// ASCENT: dtumiss.c
+int Dtu_restored_dragon = 1;		// ASCENT: dtudragon.c, the group "Restored and new content"
 int Dtu_fix_lowres_aspect = 0;		// ASCENT: 1: the 320x200 frame at 4:3 (dtuopts.h)
 
 #define DTU_OPTS_FILE	"ascent.cfg"
@@ -95,6 +96,7 @@ static dtu_opt Opts[] = {
 	{ "KillXpMessage",       &Dtu_kill_xp_message,      0, 1 },		// dtuxp.h
 	{ "MaxHpOnLevelUp",      &Dtu_max_hp_level_up,      0, 1 },		// dtuxp.h
 	{ "VerboseCombatLog",    &Dtu_verbose_combat,       0, 1 },		// dtuxp.h
+	{ "RestoredDragon",      &Dtu_restored_dragon,      0, 1 },		// dtudragon.h
 };
 #define N_OPTS	((int) (sizeof(Opts) / sizeof(Opts[0])))
 
@@ -184,6 +186,7 @@ void dtu_opts_load(void)
 		Dtu_miss_sound = 0;
 		Dtu_rulebook_items = 0;
 		Dtu_kill_xp_message = 0;		// ASCENT: dtuxp.h
+		Dtu_restored_dragon = 0;		// ASCENT: dtudragon.h
 	}
 	// ASCENT: dtuxp.h. -killxpmessage and -nokillxpmessage set the kill line
 	// with the experience for one run, -maxhplevelup and -nomaxhplevelup
