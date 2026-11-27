@@ -543,7 +543,9 @@ static gputex_result *run_job(job_item *it)
 	plat_gpu_hd_job *j = &it->job;
 	int scale = j->scale > 0 ? j->scale : 1, from_base = 0, from_top = 0;
 	int w = j->base.w * scale, h = j->base.h * scale;
-	uint8_t *img = load_layer(&j->base, scale, &from_base, 0);
+	// ASCENT: a soft sprite (the fire flipbooks of tools/textures_hd.py)
+	// keeps the alpha of its file: the renderer blends it
+	uint8_t *img = load_layer(&j->base, scale, &from_base, j->soft && !j->top.rgba && !j->fx_index);
 	gputex_result *r;
 
 	if (!img)

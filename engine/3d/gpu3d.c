@@ -51,11 +51,14 @@ int G3_gpu_tint;			//3d.h
 
 // ---------------------------------------------------------------------
 // The index of the upscaled set: <hd>/textures/<egg>/index.txt, one line
-// "name w h" for each file (the original size).
+// "name w h" for each file (the original size). ASCENT: a 4th field "soft"
+// marks a file with a soft alpha (the fire flipbooks of tools/textures_hd.py):
+// the texture keeps that alpha and a sprite of it is blended.
 
 typedef struct hd_name {
 	char name[20];
 	short w,h;
+	short soft;
 } hd_name;
 
 typedef struct hd_index {
@@ -108,11 +111,14 @@ static hd_index *hd_index_get(const char *egg)
 	while (fgets(line,sizeof(line),f)) {
 		hd_name hn;
 		int w,h;
+		char flag[16];
 		memset(&hn,0,sizeof(hn));
-		if (sscanf(line,"%19s %d %d",hn.name,&w,&h) != 3)
+		flag[0] = 0;
+		if (sscanf(line,"%19s %d %d %15s",hn.name,&w,&h,flag) < 3)
 			continue;
 		hn.w = (short) w;
 		hn.h = (short) h;
+		hn.soft = !strcmp(flag,"soft");
 		//the index can give the name of the archive ("flame19#0"): the
 		//file name has '_' and lower case
 		{
@@ -138,11 +144,14 @@ static hd_index *hd_index_get(const char *egg)
 }
 
 //The path of the file of the set for the bitmap egg/name of size w*h, or
-//0 if the set does not have it.
-static int hd_path(const char *egg,const char *name,int w,int h,char *path,int size)
+//0 if the set does not have it. *soft (if not NULL): the file has a soft
+//alpha (index.txt).
+static int hd_path(const char *egg,const char *name,int w,int h,char *path,int size,int *soft)
 {
 	hd_index *x;
 
+	if (soft)
+		*soft = 0;
 	if (!Opt_hd_dir[0] || !egg[0] || !name[0])
 		return 0;
 	x = hd_index_get(egg);
@@ -154,7 +163,11 @@ static int hd_path(const char *egg,const char *name,int w,int h,char *path,int s
 		memset(&key,0,sizeof(key));
 		strncpy(key.name,name,sizeof(key.name)-1);
 		hn = (hd_name *) bsearch(&key,x->names,x->n,sizeof(hd_name),cmp_name);
-		return hn && hn->w == w && hn->h == h;
+		if (!hn || hn->w != w || hn->h != h)
+			return 0;
+		if (soft)
+			*soft = hn->soft;
+		return 1;
 	} else {
 		//no index: the file decides
 		FILE *f = fopen(path,"rb");
@@ -183,6 +196,7 @@ typedef struct tex_entry {
 	int tex_rgb;		//RGB form
 	int rgb_gen;
 	ubyte merge;		//RGB form: 1 a bitmap of the cache of texmerge.c, 2 not, 0 not known
+	ubyte soft;			//RGB form: the upscaled file has a soft alpha (a sprite of it is blended)
 } tex_entry;
 
 #define TC_SIZE 4096		//power of 2
@@ -416,13 +430,13 @@ static void tc_sweep(int keep_frames,int rgb_only)
 
 //A layer of an upscaled texture job: the path of the file (if the set
 //has it) and the original pixels. The buffers are allocated (free them).
-static int make_layer(grs_bitmap *bm,const g3_gpu_source *src,plat_gpu_hd_layer *l,char *path,int path_size)
+static int make_layer(grs_bitmap *bm,const g3_gpu_source *src,plat_gpu_hd_layer *l,char *path,int path_size,int *soft)
 {
 	ubyte *pix,*rgba;
 	int n = bm->bm_w * bm->bm_h,has;
 
 	memset(l,0,sizeof(*l));
-	has = src->kind == 1 && hd_path(src->egg,src->name,bm->bm_w,bm->bm_h,path,path_size);
+	has = src->kind == 1 && hd_path(src->egg,src->name,bm->bm_w,bm->bm_h,path,path_size,soft);
 	pix = bitmap_pixels(bm);
 	if (!pix)
 		return 0;
@@ -448,30 +462,31 @@ static void free_layer(plat_gpu_hd_layer *l)
 	memset(l,0,sizeof(*l));
 }
 
-//Ask for the upscaled form of the bitmap (if the set has it).
-static void request_hd(grs_bitmap *bm,int tex)
+//Ask for the upscaled form of the bitmap (if the set has it). Returns 1 if
+//the file has a soft alpha (the texture keeps it).
+static int request_hd(grs_bitmap *bm,int tex)
 {
 	g3_gpu_source src,sb,st;
 	plat_gpu_hd_job job;
 	char path_b[700],path_t[700];
 
 	if (!Opt.upscaled || !Opt_hd_dir[0] || !Opt.source)
-		return;
+		return 0;
 	memset(&src,0,sizeof(src));
 	if (!Opt.source(bm,&src)) {
 		if (Hd_log)
 			printf("GPU hd: no source for a bitmap of %dx%d\n",bm->bm_w,bm->bm_h);
-		return;
+		return 0;
 	}
-	if (Hd_log && src.kind == 1 && !hd_path(src.egg,src.name,bm->bm_w,bm->bm_h,path_b,sizeof(path_b)))
+	if (Hd_log && src.kind == 1 && !hd_path(src.egg,src.name,bm->bm_w,bm->bm_h,path_b,sizeof(path_b),NULL))
 		printf("GPU hd: not in the set: %s/%s %dx%d\n",src.egg,src.name,bm->bm_w,bm->bm_h);
 	memset(&job,0,sizeof(job));
 	job.scale = HD_SCALE;
 	job.max_size = HD_MAX_SIZE;
 	if (src.kind == 1) {
-		if (!make_layer(bm,&src,&job.base,path_b,sizeof(path_b)) || !job.base.path) {
+		if (!make_layer(bm,&src,&job.base,path_b,sizeof(path_b),&job.soft) || !job.base.path) {
 			free_layer(&job.base);
-			return;
+			return 0;
 		}
 		//a wall texture without an overlay with effect colors
 		//(Dtu_fix_wall_effects, main/texmerge.c)
@@ -484,13 +499,13 @@ static void request_hd(grs_bitmap *bm,int tex)
 		memset(&sb,0,sizeof(sb));
 		memset(&st,0,sizeof(st));
 		if (!Opt.source(src.bottom,&sb) || !Opt.source(src.top,&st))
-			return;
-		if (!make_layer(src.bottom,&sb,&job.base,path_b,sizeof(path_b))
-				|| !make_layer(src.top,&st,&job.top,path_t,sizeof(path_t))
+			return 0;
+		if (!make_layer(src.bottom,&sb,&job.base,path_b,sizeof(path_b),NULL)
+				|| !make_layer(src.top,&st,&job.top,path_t,sizeof(path_t),NULL)
 				|| (!job.base.path && !job.top.path)) {
 			free_layer(&job.base);
 			free_layer(&job.top);
-			return;
+			return 0;
 		}
 		job.orient = src.orient & 3;
 		job.super = (src.top->bm_flags & BM_FLAG_SUPER_TRANSPARENT) != 0;
@@ -502,13 +517,18 @@ static void request_hd(grs_bitmap *bm,int tex)
 			job.fx_h = bm->bm_h;
 		}
 	} else
-		return;
+		return 0;
 	if (Hd_log)
 		printf("GPU hd: %s %s/%s%s%s\n",src.kind == 2 ? "merge" : "bitmap",src.kind == 2 ? sb.egg : src.egg,
 			src.kind == 2 ? sb.name : src.name,src.kind == 2 ? " + " : "",src.kind == 2 ? st.name : "");
+	//a bitmap with effect colors keeps the cut alpha: the effect codes are
+	//in the alpha (plat_gpu_fx_mark)
+	if (job.fx_index)
+		job.soft = 0;
 	plat_gpu_texture_load_hd(tex,&job);
 	free_layer(&job.base);
 	free_layer(&job.top);
+	return job.soft;
 }
 
 //The texture entry of a bitmap, with a checked sum, or NULL.
@@ -695,8 +715,9 @@ static int bitmap_texture(grs_bitmap *bm)
 		plat_gpu_fx_mark(rgba,bm->bm_w,bm->bm_h,pix,bm->bm_w,bm->bm_h);
 	e->tex_rgb = plat_gpu_texture_create_rgba(bm->bm_w,bm->bm_h,rgba,0);
 	e->rgb_gen = Rgb_gen;
+	e->soft = 0;
 	if (e->tex_rgb)
-		request_hd(bm,e->tex_rgb);
+		e->soft = (ubyte) request_hd(bm,e->tex_rgb);
 	return e->tex_rgb;
 }
 
@@ -906,6 +927,12 @@ static void gpu_bitmap(g3s_point *pnt,fix w,fix h,grs_bitmap *bm)
 	m.no_ao = 1;		//ASCENT: a flat picture at one depth
 	if (!m.texture)
 		return;
+	//ASCENT: an upscaled file with a soft alpha (the fire flipbooks,
+	//docs/hd_textures.md): the sprite is blended, so that its edge is soft
+	if (Opt.rgb) {
+		tex_entry *e = bitmap_entry(bm);
+		m.blend = e && e->soft && e->tex_rgb == m.texture;
+	}
 	memset(v,0,sizeof(v));
 	for (i=0;i<4;i++) {
 		v[i].z = z;
