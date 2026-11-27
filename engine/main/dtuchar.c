@@ -1329,6 +1329,10 @@ int dtu_char_item_powers(int type, int id, dtu_item_power *p, int n)
 		ADD(DTU_IP_SASH, DTU_GEAR_SASH_SLOTS, DTU_GEAR_SASH_SAVE);
 	if (slot == DTU_N_SLOTS && type == OBJ_WEAPON && dtu_gear_frost_brand(id))
 		ADD(DTU_IP_FROST, DTU_GEAR_FROST_BONUS, 0);
+	if (slot == DTU_N_SLOTS && type == OBJ_WEAPON && dtu_gear_venom(id))
+		ADD(DTU_IP_VENOM, DTU_GEAR_POISON_TIME, 0);
+	if (slot == DTU_N_SLOTS && type == OBJ_WEAPON && dtu_gear_assassin(id))
+		ADD(DTU_IP_ASSASSIN, DTU_GEAR_ASSASSIN_STEP, 0);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 52, 52))
 		ADD(DTU_IP_STRENGTH, DTU_OGRE_STRENGTH, 100);
 	if (slot == DTU_SLOT_GAUNTLET && armor_is(&e, 50, 50)) {
@@ -3376,6 +3380,10 @@ int dtu_char_weapon_damage(int weapon, object *target)
 			int lvl = (Dtu_char.pa.class1 == DTU_CLASS_THIEF) ? Dtu_char.pa.class1_level : Dtu_char.pa.class2_level;
 			int mult = (lvl + 1 + 7) >> 2;
 
+			// ASCENT: the Assassin's Dagger of the new gear (dtugear.h)
+			if (dtu_gear_assassin(a.weapon_id))
+				mult += DTU_GEAR_ASSASSIN_STEP;
+
 			sum *= mult;
 			dtu_xp_dmg_mult(mult, LN("backstab"));
 			if (a.weapon_id == 45 && Dtu_last_attack_roll >= 19) {
@@ -4480,6 +4488,11 @@ static void run_command(char *cmd, char *value)
 	else if (!strcmp(cmd, "seed"))		srand(a);						// ASCENT: test: seed=N, the random numbers from here on
 	else if (!strcmp(cmd, "dragon"))		dtu_dragon_test(a);		// test: dragon=N (dtudragon.h)
 	else if (!strcmp(cmd, "picklock"))	dtu_thief_open_locks();	// ASCENT: test: the Open Locks key
+	else if (!strcmp(cmd, "backstabroll")) {	// ASCENT: test: backstabroll=W, the damage roll of a backstab with weapon W (the Assassin's Dagger, dtugear.h)
+		Dtu_backstab = 1;
+		dtu_char_weapon_damage(a, NULL);
+		Dtu_backstab = 0;
+	}
 	else if (!strcmp(cmd, "gflag"))		dtu_script_set_gflag(a, value && strchr(value, '.') ? b : 1);		// test: gflag=N[.VALUE]
 	else if (!strcmp(cmd, "mflag"))		dtu_mission_set_flag(a, value && strchr(value, '.') ? b : 1);		// test: mflag=K[.VALUE]
 	else if (!strcmp(cmd, "talk") && a > 0 && a <= Highest_object_index)		// test: talk=N, the use action on object N
@@ -4787,6 +4800,7 @@ void dtu_char_frame(void)
 	dtu_char_potions_end(0);		// 0x396B2 from the frame 0x435A6
 	regen_frame();				// ASCENT: the Ring of Regeneration (dtugear.h)
 	dtu_gear_displace_frame();	// ASCENT: the Cloak of Displacement (dtugear.h)
+	dtu_gear_poison_frame();		// ASCENT: the Dagger of Venom (dtugear.h)
 	if (Gear_lost)
 		gear_lost_effects();		// ASCENT: dtugear.h
 	dtu_thief_frame();

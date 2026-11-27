@@ -1109,6 +1109,10 @@ fix spell_hit(int spell,object *target,object *attacker)
 // 0x29A9C for a creature as the target. damage is used if there is no
 // roll. With an attacker or a weapon the function throws the dice.
 // Returns the damage that was done.
+// ASCENT: 1 while the poison of the Dagger of Venom deals its damage
+// (dtugear.h): no "You hit" line
+int Dtu_damage_quiet = 0;
+
 fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon)
 {
 	dtu_ai_local *ail = &Ail[creature-Objects];
@@ -1159,7 +1163,8 @@ fix damage_creature_w(object *creature, object *attacker, fix damage, int weapon
 		ail->anim_start = GameTime + FrameTime;
 	}
 	if (attacker && attacker->type == OBJ_PLAYER) {
-		HUD_init_message("You hit %s for %d damage.",dtu_object_display_name(creature),f2i(damage));		// 0x2A05F: TEX 831 with TEX 70
+		if (!Dtu_damage_quiet)
+			HUD_init_message("You hit %s for %d damage.",dtu_object_display_name(creature),f2i(damage));		// 0x2A05F: TEX 831 with TEX 70
 		// A creature that is hit knows where the player is, and a creature
 		// that was not hostile is hostile now. (guess: the executable does
 		// this in the script code 0xA94AD and in the alert function)

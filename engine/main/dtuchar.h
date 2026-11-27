@@ -683,6 +683,8 @@ int dtu_char_spider_turn_level(void);
 #define DTU_IP_DISPLACE		23		// ASCENT: one attack that hits misses, each value seconds (dtugear.h)
 #define DTU_IP_SASH			24		// ASCENT: value mage slots more at each level, value2 better saves against spells (dtugear.h)
 #define DTU_IP_FROST			25		// ASCENT: value more to hit and damage against fire creatures, Resist Fire (dtugear.h)
+#define DTU_IP_VENOM			26		// ASCENT: a hit poisons, 1 hit point each second for value seconds (dtugear.h)
+#define DTU_IP_ASSASSIN		27		// ASCENT: the backstab multiplier value more (dtugear.h)
 typedef struct dtu_item_power {
 	int		kind, value, value2;
 } dtu_item_power;

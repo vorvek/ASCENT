@@ -571,9 +571,59 @@ def test_gear_sash(t):
     return "slots %s, %s" % (" / ".join("%d %d %d" % m for m in maxes), saves[-1].split("] ", 1)[-1][:80])
 
 
+# ---------------------------------------------------------------------
+# The daggers for thieves (dtugear.h)
+
+def venom_run(t, name, level, obj, seed, swings=4, frames=600):
+    cmds = ["give=5.89.1", "current=5.89", "heal=99", "goobj=%d.4" % obj, "face=%d" % obj, "seed=%d" % seed]
+    cmds += ["swingat=%d" % obj] * swings + ["fxobj=%d" % obj]
+    cmds += ["%d:fxobj=%d" % (5 + 2 * (len(cmds) + 1) + 300, obj)]
+    _, obj_log, log = t.run(name, cmds, level=level, extra=["-noattack"], more_frames=frames)
+    return obj_log, log
+
+
+def test_gear_venom(t):
+    """The Dagger of Venom +2 (weapon 89) on the troll of MINE (object 1):
+    a hit poisons it unless it saves against poison (category 0); 1 hit point
+    each second, the damage of the player, no more than 15 points for the
+    poison of one hit (a second hit starts the 15 seconds again); the troll
+    keeps its regeneration (poison does not stop it). On a skeleton of BONES
+    (object 5, undead): immune. With another seed the troll saves."""
+    seen = {}
+    for seed in range(1, 9):
+        obj_log, log = venom_run(t, "gear_venom_%d" % seed, "MINE", 1, seed)
+        if re.search(r"obj 1 Troll is poisoned for 15 seconds", obj_log):
+            seen.setdefault("poisoned", (seed, obj_log, log))
+        if re.search(r"obj 1 Troll saves against the poison", obj_log) and not re.search(r"is poisoned", obj_log):
+            seen.setdefault("saved", (seed, obj_log, log))
+        if len(seen) == 2:
+            break
+    check("poisoned" in seen and "saved" in seen, "seeds 1 to 8: %s" % sorted(seen))
+    seed, obj_log, log = seen["poisoned"]
+    ticks = re.findall(r"the poison takes 1 hit point of obj 1 Troll, (\d+) seconds left", obj_log)
+    check(len(ticks) >= 10, "%d poison points" % len(ticks))
+    check(re.search(r"damage: obj 1 Troll takes 1 from player", obj_log), "the poison is not the damage of the player")
+    fx = [int(v, 16) for v in re.findall(r"fx: obj 1 bits 0x([0-9a-f]+)", log)]
+    check(fx and all(v & 0x01000000 for v in fx), "the troll lost its regeneration: %s" % [hex(v) for v in fx])
+    obj_log, _ = venom_run(t, "gear_venom_undead", "BONES", 5, 1, swings=2, frames=60)
+    check(re.search(r"obj 5 ske_swd is immune to the poison", obj_log), "the skeleton is not immune")
+    return "seed %d: %d poison points; seed %d: saved; skeleton immune" % (seed, len(ticks), seen["saved"][0])
+
+
+def test_gear_assassin(t):
+    """The Assassin's Dagger +3 (weapon 76): the backstab of a thief of level
+    1 multiplies by 2 with the Dagger +2 (44) and by 3 with it."""
+    cmds = ["class=3", "give=5.44.1", "give=5.76.1", "backstabroll=44", "backstabroll=76", "give=5.76.1", "dump"]
+    d, _, log = t.run("gear_assassin", cmds)
+    mult = [int(m) for m in re.findall(r"damage roll: backstab, times (\d+)", log)]
+    check(mult == [2, 3], "backstab multipliers %s" % mult)
+    return "times %d with the Dagger +2, %d with the Assassin's Dagger" % tuple(mult)
+
+
 TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc,
          test_gear_worn, test_gear_mirror, test_gear_archer, test_gear_regen, test_gear_wands, test_gear_drops,
-         test_gear_market_items, test_gear_frost_brand, test_gear_displacement, test_gear_sash]
+         test_gear_market_items, test_gear_frost_brand, test_gear_displacement, test_gear_sash,
+         test_gear_venom, test_gear_assassin]
 
 
 def main():

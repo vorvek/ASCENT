@@ -52,6 +52,21 @@ extern int Dtu_gear_loaded;
 #define DTU_GEAR_FROST_BRAND	68
 #define DTU_GEAR_FROST_FROM		14
 #define DTU_GEAR_FROST_BONUS	3
+
+// The daggers for thieves. The Dagger of Venom +2: a new weapon line 89 (the
+// last place of the weapon table, 90 lines), a copy of the Dagger +2 (44)
+// with its name. A hit poisons a creature that is not immune (undead and
+// extraplanar types) and fails a save against poison (category 0): 1 hit
+// point each second for 15 seconds, the damage of the player; a hit while
+// the poison runs starts the 15 seconds again. The Assassin's Dagger +3:
+// line 76 ("Temp" of 1.3, a test line that nothing uses) as a copy of the
+// Dagger +2 with +3 and thieves only; a backstab with it multiplies by one
+// more.
+#define DTU_GEAR_VENOM			89
+#define DTU_GEAR_ASSASSIN		76
+#define DTU_GEAR_DAGGER_FROM	44
+#define DTU_GEAR_POISON_TIME	15		// seconds, 1 hit point each second
+#define DTU_GEAR_ASSASSIN_STEP	1		// the backstab multiplier: one more
 #define DTU_GEAR_DISPLACE_TIME	30		// seconds until the Cloak of Displacement is ready again
 #define DTU_GEAR_SASH_SLOTS		1		// mage slots more at each spell level that the wearer casts
 #define DTU_GEAR_SASH_SAVE		2		// saving throws against spells
@@ -86,6 +101,7 @@ extern int Dtu_gear_loaded;
 // the Flame Tongue of the dungeon is placed (dtu_gear_place_flame_tongue).
 // The scripts use flags up to 128, the port up to 0xA0.
 #define DTU_GEAR_FLAG_FLAME		0xF0
+#define DTU_GEAR_FLAG_VENOM		0xF8		// the Dagger of Venom of DROW5 is placed
 
 // bmread.c, after the table fixup of 1.3: the wands and the values of the
 // weapon lines, and the text of the new lines, which bmread.c reads with
@@ -161,6 +177,20 @@ int dtu_gear_fire_creature(int type);
 int dtu_gear_displace(struct object *player, struct object *attacker);
 // dtuchar.c, each frame: the message when the cloak is ready again
 void dtu_gear_displace_frame(void);
+
+// 1 if weapon is the Dagger of Venom, the Assassin's Dagger
+int dtu_gear_venom(int weapon);
+int dtu_gear_assassin(int weapon);
+// 1 if the creature type cannot be poisoned (undead, extraplanar)
+int dtu_gear_poison_immune(int type);
+// dtucombat.c, the melee hit of the player that did damage. The
+// Dagger of Venom of the player poisons the creature (a save).
+void dtu_gear_poison_hit(struct object *creature, struct object *attacker, int weapon);
+// dtuchar.c, each frame: the poison damage. The state is per object (its
+// signature) and not saved: a load or a level change ends the poison.
+void dtu_gear_poison_frame(void);
+// dtuobj.c, the setup of a level: the Dagger of Venom of DROW5
+void dtu_gear_place_venom(int has_state, int restore);
 
 // dtuobj.c, the setup of a level (next to dtu_restore_tamaramagil): the
 // Flame Tongue of the dungeon (dtuobj_setup.c). restore: the setup after

@@ -92,7 +92,7 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 * Seven new magic items (Mirror Shield, Boots of Free Action, Gloves of the Archer, Cloak of Fire Resistance, Belt of Dwarvenkind, Ring of Regeneration, Plate Mail of Fire Resistance), five new wands, and the magic items that 1.3 has rules for but never gives you, in the market of Waterdeep as the missions go on, in the dungeon and in a treasure.
 * Creatures leave more gold, and undead and intelligent creatures leave gems (Bloodstone, Pearl, Ruby, Diamond, Star Sapphire) that the market buys.
-* Daland gives the Mace of Disruption for the altar of Kelemvor, and a Flame Tongue waits in DROW2 for the troll fights. See [docs/re/objects.md](docs/re/objects.md), "New gear".
+* Daland gives the Mace of Disruption for the altar of Kelemvor, a Flame Tongue waits in DROW2 for the troll fights, a Dagger of Venom waits behind a lock in DROW5, and the red dragon guards a treasure. See [docs/re/objects.md](docs/re/objects.md), "New gear".
 
 **Controls**
 

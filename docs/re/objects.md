@@ -1756,6 +1756,43 @@ challenge, and a player who wins early keeps these for the whole game.
 | Ring of Wizardry | 8 4 2 |
 | both | 9 5 3 |
 
+### The daggers for thieves
+
+The weapon table holds 90 lines (MAX_WEAPON_TYPES); the mission tables have
+89. Free or unused: line 89 (the last place), 68 (the last "Rod of
+Genericness", now the Frost Brand) and 76 ("Temp", value 4500, a test line:
+no creature type has it as weapon_type, no level file places it, and no
+code reads it). Line 10 ("DO NOT USE") stays: KOBOLDS and THIEF2 creatures
+carry it in their `contains`.
+
+- Dagger of Venom +2 (line 89, a new line, value 9000; classes of the
+  Dagger: fighter, thief, mage): a copy of the Dagger +2 (44: the line is
+  read by the table reader, then `copy_line` gives it the picture and the
+  fields of 44). A melee hit of the player that does damage
+  (`dtu_gear_poison_hit`, from the hit of dtucombat.c) poisons the
+  creature unless it is immune or saves against poison (category 0,
+  paralyzation, poison and death; `dtu_spell_save_from`): 1 hit point each
+  second for 15 seconds (`dtu_gear_poison_frame`, the clock helpers), the
+  damage of the player with no "You hit" line (`Dtu_damage_quiet`), so a
+  kill gives the experience; the first hit already made the creature
+  hostile, so the poison wakes nothing more. A hit while it runs starts the
+  15 seconds again (no second poison). Immune: undead and extraplanar types
+  (the data has no poison flag; AD&D 2e: undead; the extraplanar types of
+  the tables are undead too): Banegard, Ghast, Ghoul, gskelpus, gskelsci,
+  Lich3, Mummy, prstsprt, the skeletons, Zombie. The game has no golems,
+  elementals or oozes. Poison does not stop the regeneration of a troll
+  (only fire and acid do, 0x2B5D4). The state is per object and not saved:
+  a load or a level change ends the poison. Place: DROW5, the closet of
+  segment 676 (-90, 0, 347.5) behind the locked door of segment 675 side 4
+  (wall 95, flags 0x8, no key): a thief opens it with Open Locks (the key
+  O), the other classes with Knock or the Gloves of Dexterity (Open Locks
+  for other classes). The closet holds a glowing ankh of the level. Once in
+  a game (global flag 0xF8).
+- Assassin's Dagger +3 (line 76, value 15000, thieves only): a copy of the
+  Dagger +2 with +3. A backstab multiplies the damage by one more: (thief
+  level + 7) / 4 + 1 (a thief of level 1: 3 instead of 2). In the market at
+  reward stage 7 (the beholder caves).
+
 ### Saves
 
 An item is a type and a number in the save (16 byte entry,

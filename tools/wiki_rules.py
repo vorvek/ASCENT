@@ -1968,6 +1968,9 @@ class Pages:
                                        r.num("value", 0), gd.where(15, i)], r))
         fr = gd.frost
         rows.append(self.icon_row([fr.name(), frost_effect(d), "0", classes_of(fr), fr.num("value", 0), gd.where(5, gd.frost_id)], fr))
+        for did, dr in sorted(gd.daggers.items(), key=lambda x: x[0] != gd.venom_id):
+            rows.append(self.icon_row([dr.name(), dagger_effect(d, did == gd.venom_id), "0", classes_of(dr), dr.num("value", 0),
+                                       gd.where(5, did)], dr))
         out += ["## New magic items", "",
                 "- AC bonus: how much the item lowers your armor class.",
                 "- F/T/M/C: the classes that may wear it ([[Classes]]).",
@@ -2005,11 +2008,13 @@ class Pages:
                 "does not: the market sells it later (above). A market that already has it keeps it.", ""]
         old = [(row, gd.item(row[2], row[3])) for row in gd.g["market"]
                if not (row[2] == 15 and row[3] in gd.armor) and not (row[2] == 5 and row[3] in gd.wands)
-               and not (row[2] == 5 and row[3] == ft)]
+               and not (row[2] == 5 and row[3] == ft) and not (row[2] == 5 and row[3] in gd.daggers)]
         orows = [self.icon_row([r.name(), GEAR_STAGES[row[0]], str(row[1]), gd.value(row[2], row[3])], r) for row, r in old]
         out += ["The original game has rules for these magic items but never gives them to you. The market "
                 "sells them, weaker ones first. Their rules are on the other pages.", "",
-                md_table(self.icon_head(["Item", "In the market", "Quantity", "Value"]), orows), ""]
+                md_table(self.icon_head(["Item", "In the market", "Quantity", "Value"]), orows), "",
+                "A scroll is read by a character of its class: the Scroll of Dispel Magic by a mage. It frees "
+                "Daland and ends the protections of a spellcaster.", ""]
         # the market by stage
         srows = []
         for s in sorted(set(row[0] for row in gd.g["market"])):
@@ -2307,6 +2312,7 @@ GEAR_STAGES = {
 GEAR_LEVEL_TEXT = {
     16: "the temple of Myrkul",
     21: "the second level of the drow city",
+    27: "the drow stronghold of the Crystal Rose",
 }
 
 
@@ -2385,6 +2391,20 @@ class GearData:
         line = re.sub(r"\bvalue=\d+", "value=%d" % fvalue, line)
         self.frost_id = fid
         self.frost = Record(line)
+        # the daggers: copies of the Dagger +2 with their name, value and bonus
+        self.daggers = {}
+        for did, _, src, src13, dname, dvalue, bonus, thief in g["daggers"]:
+            r = tab["$WEAPON"][src]
+            if r.name13() != src13:
+                raise SystemExit("dtugear.c: weapon %d is %r, not %r" % (src, r.name13(), src13))
+            line = re.sub(r'weapon_name="[^"]*"', 'weapon_name="%s"' % dname, r.line)
+            line = re.sub(r"\bvalue=\d+", "value=%d" % dvalue, line)
+            line = re.sub(r"\bto_hit_bonus=\d+", "to_hit_bonus=%d" % bonus, line)
+            line = re.sub(r"\bdamage_bonus=\d+", "damage_bonus=%d" % bonus, line)
+            if thief:
+                line = re.sub(r"\b(Fighter_use|mage_use)\b", "", line, flags=re.I)
+            self.daggers[did] = Record(line)
+        self.venom_id = g["d"]["DTU_GEAR_VENOM"]
 
     def item(self, cls, i):
         """The record of class 5, 15 or 16 number i, new or of 1.3."""
@@ -2394,6 +2414,8 @@ class GearData:
             return self.misc[i]
         if cls == 5 and i == self.frost_id:
             return self.frost
+        if cls == 5 and i in self.daggers:
+            return self.daggers[i]
         if cls == 5 and i in self.wands:
             return self.wands[i][0]
         if cls == 17:       # a spell scroll of the market
@@ -2418,6 +2440,9 @@ class GearData:
             out.append("Daland gives it in %s when the altar of Kelemvor is consecrated" % GEAR_LEVEL_TEXT.get(16, "the temple"))
         if cls == 5 and i == ft:
             out.append("found in %s, in a prison cell of the troll wing" % GEAR_LEVEL_TEXT.get(lvl, "a drow level"))
+        if cls == 5 and i == self.venom_id:
+            out.append("found in %s, in a locked closet: a thief picks the lock, a Knock spell or the Gloves of "
+                       "Dexterity open it for the other classes" % GEAR_LEVEL_TEXT.get(self.g["venom"][0], "a drow level"))
         if any(row[0] == cls and row[1] == i for row in self.g["dragon"]):
             out.append("a treasure (the last section of this page)")
         for s in self.stages_of(cls, i):
@@ -2430,6 +2455,15 @@ class GearData:
 def frost_effect(d):
     return ("A long sword +3. Against fire creatures (the red dragon, her hatchlings, fire mephits) +%d to hit "
             "and damage. While in your hand fire damage to you is halved." % (3 + d["DTU_GEAR_FROST_BONUS"]))
+
+
+def dagger_effect(d, venom):
+    if venom:
+        return ("A dagger +2. A hit poisons the creature unless it saves against poison: 1 hit point each second for "
+                "%d seconds (a new hit starts the time again). Undead and extraplanar creatures are immune; the poison "
+                "does not stop the regeneration of a troll." % d["DTU_GEAR_POISON_TIME"])
+    return ("A dagger +3 for thieves. A backstab with it multiplies the damage by %d more (a thief of level 1: times 3 "
+            "instead of 2)." % d["DTU_GEAR_ASSASSIN_STEP"])
 
 
 def new_gear_spells_section(gd):

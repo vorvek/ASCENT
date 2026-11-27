@@ -779,6 +779,39 @@ void dtu_gear_place_flame_tongue(int has_state, int restore)
 		f2fl(Objects[n].pos.x),f2fl(Objects[n].pos.y),f2fl(Objects[n].pos.z));
 }
 
+// ASCENT, the new gear: the Dagger of Venom of DROW5. The drow use poison.
+// It lies in the closet of segment 676 (-90, 0, 347.5), behind the locked
+// door of segment 675 side 4 (wall 95, no key: a thief picks the lock with
+// Open Locks; a Knock spell or the Gloves of Dexterity open it for the other
+// classes). Once in a game (global flag DTU_GEAR_FLAG_VENOM), as the Flame
+// Tongue above.
+#define VENOM_LEVEL		27			// DROW5 (Dtu_script_level, the line of DTU.MSN)
+static const vms_vector Venom_pos = { -90 * F1_0, 0, 347 * F1_0 + F1_0 / 2 };		// the center of segment 676
+
+void dtu_gear_place_venom(int has_state, int restore)
+{
+	vms_vector pos = Venom_pos;
+	int seg, n;
+
+	if (!Dtu_new_gear || !Dtu_gear_loaded || Dtu_script_level != VENOM_LEVEL || DTU_GEAR_VENOM >= N_weapon_types)
+		return;
+	if (has_state && !restore)
+		return;
+	if (dtu_script_gflag(DTU_GEAR_FLAG_VENOM))
+		return;
+	seg = find_point_seg(&pos,-1);
+	if (seg < 0) {
+		dtu_obj_log("new gear: no segment at the place of the Dagger of Venom");
+		return;
+	}
+	n = dtu_create_item(OBJ_WEAPON,DTU_GEAR_VENOM,1,seg,&pos);
+	if (n < 0)
+		return;
+	dtu_script_set_gflag(DTU_GEAR_FLAG_VENOM,1);
+	dtu_obj_log("new gear: the Dagger of Venom is obj %d in segment %d at %.2f %.2f %.2f",n,seg,
+		f2fl(Objects[n].pos.x),f2fl(Objects[n].pos.y),f2fl(Objects[n].pos.z));
+}
+
 // The hit points of scenery: the setup of the port gives each piece of
 // scenery 1.0 (as setup_object does before level_start), so the fixes of
 // the scenery hit points come after it.

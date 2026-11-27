@@ -292,6 +292,11 @@ static void power_lines(int type, int id)
 				line(LT("Saving throws against spells %d better."), p[i].value2);
 				break;
 			case DTU_IP_FROST:		line(LT("%d more to hit and damage against fire creatures."), p[i].value); break;
+			case DTU_IP_VENOM:
+				line(LT("A hit poisons the creature unless it saves against poison: 1 hit point each second for %d seconds."), p[i].value);
+				line(LT("Undead and extraplanar creatures are immune. A new hit starts the time again."));
+				break;
+			case DTU_IP_ASSASSIN:	line(LT("A backstab with it multiplies the damage by %d more."), p[i].value); break;
 		}
 }
 

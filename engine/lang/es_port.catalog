@@ -2569,6 +2569,34 @@ tr: Fajín de los Magos
 gender: m
 plural: Fajines de los Magos
 
+id: port.s_is_poisoned
+en: %s is poisoned.
+tr: %s está envenenado.
+
+id: port.a_hit_poisons_the_creature_unless_it_sav
+en: A hit poisons the creature unless it saves against poison: 1 hit point each second for %d seconds.
+tr: Un golpe envenena a la criatura si no salva contra veneno: 1 punto de golpe cada segundo durante %d segundos.
+
+id: port.undead_and_extraplanar_creatures_are_imm
+en: Undead and extraplanar creatures are immune. A new hit starts the time again.
+tr: Los muertos vivientes y las criaturas extraplanares son inmunes. Un golpe nuevo vuelve a empezar el tiempo.
+
+id: port.a_backstab_with_it_multiplies_the_damage
+en: A backstab with it multiplies the damage by %d more.
+tr: Una puñalada por la espalda con ella multiplica el daño por %d más.
+
+id: tbl.fix.dagger_of_venom_2
+en: Dagger of Venom +2
+tr: Daga de Veneno +2
+gender: f
+plural: Dagas de Veneno +2
+
+id: tbl.fix.assassin_s_dagger_3
+en: Assassin's Dagger +3
+tr: Daga del Asesino +3
+gender: f
+plural: Dagas del Asesino +3
+
 # ASCENT: the new gear (engine/main/dtugear.c, Dtu_new_gear): the texts and the names of the new items
 id: port.new_gear
 en: New gear
