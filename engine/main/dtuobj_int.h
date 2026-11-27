@@ -29,7 +29,7 @@ typedef struct monster_ext {
 	int	weapon_type;			// -1 if the line has none (a natural weapon). Below 0: the spell with the number -weapon_type
 	int	spell_level;
 	int	door_opening;			// +0x63 bit 0, set for each HUMANOID too (0x1061B)
-	int	person;					// ASCENT: a person by its model (dtu_model_is_person()), opens doors with Dtu_improved_pathfinding
+	int	person;					// ASCENT: a person by its model (dtu_model_is_person()), opens doors with Dtu_improved_ai
 	int	blood_vclip;			// monster_hit_vclip, +0xDA
 	int	touch_spell;			// +0x7C: the spell of a hit on the player, -1 for none. Set by the creature setup 0xAC7B2 (lich), cast by the damage function (0x2A637)
 } monster_ext;
@@ -95,7 +95,7 @@ typedef struct dtu_ai_local {
 	// all creatures (0x13A79C, 0x13A790, 0x167184)
 	int		flee_counter;
 	vms_vector flee_pos, flee_dir;
-	// Dtu_improved_pathfinding: the point of the path that the creature
+	// Dtu_improved_ai: the point of the path that the creature
 	// walks to (see path_target()), the last progress to it, and the number
 	// of new plans since the last point that it reached.
 	short		path_tgt;
@@ -136,7 +136,7 @@ typedef struct dtu_missile {
 //------------------------------------------------------------------------
 // dtuobj.c
 
-int improved_paths(void);
+int improved_ai(void);
 extern fix Model_reach[MAX_POLYGON_MODELS];
 extern monster_ext Monster_ext[MAX_ROBOT_TYPES];
 extern dtu_ai_local Ail[MAX_OBJECTS];

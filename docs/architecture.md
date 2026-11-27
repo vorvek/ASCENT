@@ -165,7 +165,7 @@ To add a correction:
 
 Changes that go beyond the original are not corrections. They are the
 Improvements settings of `dtuopts.h` (`Dtu_improved_physics`,
-`Dtu_improved_jump`, `Dtu_improved_pathfinding`, the GPU and upscale
+`Dtu_improved_jump`, `Dtu_improved_ai`, the GPU and upscale
 settings, and others). They are in `ascent.cfg`, the menus change them, and
 `-noimprovements` turns them all off. To add one, add the variable to
 `dtuopts.c` and `dtuopts.h` and a line to the table `Opts[]` of

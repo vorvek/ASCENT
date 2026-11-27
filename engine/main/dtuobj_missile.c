@@ -58,7 +58,7 @@
 #include "dtumusic.h"
 #include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
-#include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
+#include "dtuopts.h"	// ASCENT: Dtu_improved_ai
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
 #include "text.h"		// ASCENT: Text_string, the names of the creatures

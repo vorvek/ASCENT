@@ -158,7 +158,7 @@ extern int Dtu_fix_npc_walk;
 // Corrected: a peaceful creature does not move nearer to the player than
 // its body radius plus that of the player. Option -orignpcbody (and
 // -origobj). A hostile creature stops at the distance of its weapon with
-// Dtu_improved_pathfinding (dtuobj_move.c, stop_at_player).
+// Dtu_improved_ai (dtuobj_move.c, stop_at_player).
 extern int Dtu_fix_npc_body;
 
 // The shot of a ranged creature. Original (0x13A2A): a shot in each game
@@ -686,7 +686,7 @@ extern int Dtu_fix_monster_speed;
 // path to the player (round a corner, to a door) at its walk speed.
 // Corrected: it runs on that path too. -origobj and -origchaserun clear it.
 extern int Dtu_fix_chase_run;
-// The top side in the move of a creature, with Dtu_improved_pathfinding
+// The top side in the move of a creature, with Dtu_improved_ai
 // (dtu_creature_physics_sim()). The move tests the top side at the top of
 // the body. An ogre is 23.0 high and stands in rooms that are 20.0 high
 // (CRYPTS, segments 73 to 80), so its body is in the top side from the

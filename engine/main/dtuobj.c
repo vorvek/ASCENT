@@ -65,7 +65,7 @@
 #include "key.h"		// ASCENT: the key that ends the wait of the death
 #include "dtuchar.h"
 #include "dtustep.h"
-#include "dtuopts.h"	// ASCENT: Dtu_improved_pathfinding
+#include "dtuopts.h"	// ASCENT: Dtu_improved_ai
 #include "dtucombat.h"	// ASCENT: the frame of the player for its body
 #include "dtumovie.h"
 #include "text.h"		// ASCENT: Text_string, the names of the creatures
@@ -195,16 +195,16 @@ int Dtu_fix_kobold_weapon = 1;
 int Dtu_fix_scenery_restore = 1;
 int Dtu_fix_bane_texture = 1;
 
-// The option -origobj (or -noimprovedpaths, a test option that changes
-// nothing else): Dtu_improved_pathfinding has no effect.
+// The option -origobj (or -noimprovedai, a test option that changes
+// nothing else): Dtu_improved_ai has no effect.
 static int Orig_obj = 0;
 
-// Dtu_improved_pathfinding (dtuopts.h): paths for the body of a person and
+// Dtu_improved_ai (dtuopts.h): paths for the body of a person and
 // a body that stops at the reach of its weapon. See docs/re/ai.md,
-// "Improved pathfinding". (The corpse on the floor is Dtu_fix_corpse_floor.)
-int improved_paths(void)
+// "Improved AI". (The corpse on the floor is Dtu_fix_corpse_floor.)
+int improved_ai(void)
 {
-	return Dtu_improved_pathfinding && !Orig_obj;
+	return Dtu_improved_ai && !Orig_obj;
 }
 
 // The reach of the weapon of each model, see model_weapon_reach(). 0: not
@@ -1071,8 +1071,8 @@ void dtu_objects_init(void)
 		Dtu_fix_guild_peace = 0;
 	if (FindArg("-setuplog"))
 		Setup_log = 1;
-	// -origobj: the rules of the executable, also with Dtu_improved_pathfinding
-	if (FindArg("-origobj") || FindArg("-noimprovedpaths"))
+	// -origobj: the rules of the executable, also with Dtu_improved_ai
+	if (FindArg("-origobj") || FindArg("-noimprovedai") || FindArg("-noimprovedpaths"))
 		Orig_obj = 1;
 	if (FindArg("-noattack"))
 		Dtu_creatures_attack = 0;
@@ -1694,7 +1694,7 @@ void log_corpse_height(object *obj,const char *what)
 		f2fl(hit.hit_pnt.y),hit.hit_side_seg,hit.hit_side,f2fl(hit.hit_wallnorm.y),f2fl(bottom - hit.hit_pnt.y));
 }
 
-// ASCENT: Dtu_improved_pathfinding. The height of the floor under the
+// ASCENT: Dtu_improved_ai. The height of the floor under the
 // point p of the body of obj: a ray of radius 0 straight down from a point
 // above p. The center of the body, raised by the same height, must see that
 // point, so that a floor behind a wall does not count. Returns 0 if no

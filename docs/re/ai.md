@@ -916,7 +916,7 @@ default, the option `-origobj` clears them):
 | `Dtu_fix_caster_idle` | the choice of a spell (0x92D99) runs only when an event sets a bit of +0x15E (the wake, a hit, an alert), tries only the first entry that the tests let pass (0x92F82) and clears the bits: a caster that the player does not hit chooses one time at its wake (DROW1, two priestesses rffk5: 2 casts in 80 seconds; the wizard rmmk5 attacks with its touch) | a failed condition or roll goes to the next entry, and a hostile caster with no chosen spell gets the bit of the alert level 2 (0x04) after 0 to 10 seconds plus 4 seconds for each level of its last spell, the rule of the weapon spell 0x10040 (the same test: 9 casts; the wizard: 7 casts in 60 seconds, then no points). Options `-origobj`, `-origcasteridle` |
 | `Dtu_fix_monster_speed` | "Ogre2", "armOgre", "Troll" and "armTroll" have `speeds=8.0 3 15.0` in the tables and in the models, the values of the zombie (skeleton 15.0 and 30.0, orc 10.0 and 20.0; the player walks at 49.3). The run animation takes 1.0 second for all, so they show a run at the walk speed of a skeleton | `anim_speed` (0x74AA7) gives an ogre 11.0 and 22.0 and a troll 15.0 and 30.0: the movement rates of AD&D 2e (ogre 9, troll 12) with the skeleton (rate 12) as the reference. Measured in BEHOLDER (30 frames per second): the run of the ogre 12.4 before, 18.8 after; the troll 12.8 and 25.2. Options `-origobj`, `-origmonsterspeed` |
 | `Dtu_fix_chase_run` | a hostile melee creature farther than 30.0 runs only when it saw the player in the last 0.5 second (0x10148, 0x11018), so on the path of `Dtu_fix_path_follow` to a player that it does not see (a corner, a closed door) it walks | it runs on that path too (`chase_runs`, dtuobj_ai.c). BEHOLDER, an ogre 56 away behind the door of wall 100: at the player after 6.4 s before, 4.0 s with both settings. Options `-origobj`, `-origchaserun` |
-| `Dtu_fix_tall_body` | with `Dtu_improved_pathfinding` the move of a creature tests the top side at the top of the body. An ogre is 23.0 high (half height 11.48) and stands in rooms that are 20.0 high (CRYPTS, segments 73 to 80, floor -2.5, top side 17.5), so its body is in the top side from the start. The top side goes down from 17.55 to 17.47 between the segments 78 and 76, and the move took that as a hit: the Ogre2 (object 69) and the armOgre (object 70) stopped in the segments 77 and 76 in front of the door of wall 0 and lost the player | a body that is higher than the place where it stands tests the top side at the room that it has, less 0.5 (`dtu_creature_physics_sim()`). A top side that is lower by more than 0.5 stops it as before. CRYPTS, player from 325 to 145 in z through the door: before, no ogre came through the door in 43 s; with the setting the Ogre2 opens the door after 10.2 s. Options `-origobj`, `-origtallbody` |
+| `Dtu_fix_tall_body` | with `Dtu_improved_ai` the move of a creature tests the top side at the top of the body. An ogre is 23.0 high (half height 11.48) and stands in rooms that are 20.0 high (CRYPTS, segments 73 to 80, floor -2.5, top side 17.5), so its body is in the top side from the start. The top side goes down from 17.55 to 17.47 between the segments 78 and 76, and the move took that as a hit: the Ogre2 (object 69) and the armOgre (object 70) stopped in the segments 77 and 76 in front of the door of wall 0 and lost the player | a body that is higher than the place where it stands tests the top side at the room that it has, less 0.5 (`dtu_creature_physics_sim()`). A top side that is lower by more than 0.5 stops it as before. CRYPTS, player from 325 to 145 in z through the door: before, no ogre came through the door in 43 s; with the setting the Ogre2 opens the door after 10.2 s. Options `-origobj`, `-origtallbody` |
 | `Dtu_fix_far_chase` | a creature with an awareness below 3 that is farther than 100.0 from the player is processed each half second, farther than 150.0 each second (0x1498B). In the port a creature gets its move only in a processed frame and loses half of its velocity on each reference frame, so a creature that chases from farther than 100.0 moves at about 1 unit in a second (CRYPTS, the Ogre2 at 130 from the player: 26 units in 30 s). Not verified: the speed of such a creature in the executable | a hostile creature that is active (activity 2) is processed on each frame. CRYPTS, the same test: the Ogre2 is at the player after 19 s. Options `-origobj`, `-origfarchase` |
 
 | `Dtu_fix_revive` | the death clears the regeneration bit (0x2A1D0), so a regenerating creature never gets up | the bit stays unless fire or acid took it, and the corpse gets up (0x1440C); option `-origrevive` |
@@ -960,10 +960,10 @@ Hands (spell 4, 1d3 fire plus 2 per level) as a missile. Each hit does 4.
 skeleton (type 0) in segment 1. It kills the player in 6.1 s. The death
 music plays 3 s later and the level starts again at 13.3 s.
 
-### Improved pathfinding (Dtu_improved_pathfinding)
+### Improved AI (Dtu_improved_ai)
 
 The setting of `dtuopts.h`, on by default. Off (or `-origobj`, or the test
-option `-noimprovedpaths`, which changes nothing else) gives the rules above.
+option `-noimprovedai`, which changes nothing else) gives the rules above.
 The code is in `dtuobj.c`. The creatures of the target game do not use
 `aipath.c` or `ai.c`.
 
@@ -1047,7 +1047,7 @@ below it.
 By the code above the executable puts the dead Ghoul (torso_radius[0] 2.86)
 at the floor plus 0.1 minus 2.86, so it is drawn from 1.5 below the floor to
 1.6 above it (computed, not seen in the executable). An earlier rule of the
-port (Dtu_improved_pathfinding) put box1_min.y of the last frame on the
+port (Dtu_improved_ai) put box1_min.y of the last frame on the
 floor: the dead Ghoul was drawn 7.42 above the floor, the blackbat 1.15. With
 the setting off the port used body_half_height (4.35): the Ghoul 5.6 above
 the floor.
@@ -1227,8 +1227,8 @@ Causes found (`-objlogpos`, `-noattack`, 30 frames per second):
   (0x14CA9) did not attack the scenery (CLAN1 `-testpos -200,-4,150`: the
   Zombie obj 93 at the bench obj 15, 17.5 s).
 
-Changes (all with `Dtu_improved_pathfinding`, none with `-origobj` or
-`-noimprovedpaths`):
+Changes (all with `Dtu_improved_ai`, none with `-origobj` or
+`-noimprovedai`):
 
 - Move: a hit point behind the start keeps the body where it is (the
   "moved backwards" rule of Descent 1 physics). When the velocity does not
@@ -1301,7 +1301,7 @@ closed door exists to the player; before and after):
 | KOBOLDS | 118.5, 80.5 | 38, 37 of 54 |
 | CLAN1 | 62.5, 30.0 | 46, 48 of 80 |
 
-With `-noimprovedpaths` and with `-origobj` the object logs of BONES
+With `-noimprovedai` and with `-origobj` the object logs of BONES
 `-testpos -50,-4,320` and of the ladder test below are the same before and
 after the change.
 
@@ -1332,7 +1332,7 @@ drow `rmfg5` obj 21 opens wall 28 (seg 234 side 5) at 2.3 s and stands at
 (76 stays at the closed door wall 16; the Ghoul obj 10 opens wall 20).
 THIEF1 `-testpos 15.6,-4,402.7`: the thieves `sfmtd2` obj 5 and 6 stay in
 seg 21 at the locked side of the door (wall 23), and no creature opens
-wall 23. With `-noimprovedpaths` and with `-origobj` the DROW1 log is the
+wall 23. With `-noimprovedai` and with `-origobj` the DROW1 log is the
 same as before (but the new fields of the start line).
 
 Gargoyles (`gar_gy.pof`, they fly) are in MYRKUL (obj 14, 24, 25, 43, 46)

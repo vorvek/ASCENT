@@ -1139,9 +1139,9 @@ id: port.improved_jump_controls
 en: Improved jump controls
 tr: Control de salto mejorado
 
-id: port.improved_pathfinding
-en: Improved pathfinding
-tr: Búsqueda de rutas mejorada
+id: port.improved_ai
+en: Improved AI
+tr: IA mejorada
 
 id: port.improved_3d_body
 en: Improved 3D body

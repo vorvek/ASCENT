@@ -78,14 +78,14 @@ On Windows, run the setup program; on Linux, unpack the release tarball and run 
 
 * Trolls need fire (or a very thorough hacking while down!) to die. Otherwise, they'll keep standing up to fight. The code was already partially in the game.
 * Creatures take fall damage, and long falls always hurt, whatever the frame rate.
-* With Improved pathfinding, humanoid creatures open unlocked doors, and creatures handle corners and ladders better.
+* With Improved AI (the setting that was Improved pathfinding), creatures handle corners and ladders better, and they notice you only along an open way: a wall or a closed door hides you, and an alarm stops at a closed door. Humanoid creatures open unlocked doors, but only once they fight you. A closed door stops blows in both directions. Creatures that would attack after a talk join their friends when a fight starts in front of them.
 
 **Controls**
 
 * A separate Climb Wall key, so Activate no longer tries to climb a wall when you pull a lever.
 * Walking into a lever, a button or a sign no longer works it (and no longer fills the log with its message): use Activate.
 
-Each fix can be turned off with an `-orig` command line option to compare with version 1.3 (the pathfinding changes with the Improved pathfinding setting), and [docs/audit/defects-1.3.md](docs/audit/defects-1.3.md) has the full list.
+Each fix can be turned off with an `-orig` command line option to compare with version 1.3 (the AI changes with the Improved AI setting), and [docs/audit/defects-1.3.md](docs/audit/defects-1.3.md) has the full list.
 
 ## Game files
 

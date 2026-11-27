@@ -1679,7 +1679,7 @@ static struct { char *text; int *value; } Impr_switch[] = {
 	{ LN("Improved physics"),       &Dtu_improved_physics },
 	{ LN("Improved jump controls"), &Dtu_improved_jump },
 	{ LN("Crouch"),                 &Dtu_crouch },			// physics.c
-	{ LN("Improved pathfinding"),   &Dtu_improved_pathfinding },
+	{ LN("Improved AI"),            &Dtu_improved_ai },
 	{ LN("Improved 3D body"),       &Dtu_improved_body },
 	{ LN("Target hint"),            &Dtu_target_hint },		// dtucombat.c
 	{ LN("Streaming safe music"),   &Dtu_safe_music },		// dtumusic.c

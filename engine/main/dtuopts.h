@@ -38,13 +38,27 @@ extern int Dtu_improved_jump;
 // dtu_crouch_frame.
 extern int Dtu_crouch;
 
-// Paths for creatures of the size of a person: no stop at the openings of
-// corridors or at corners, paths through open doors for a creature that
-// cannot open doors, people (humans, drow, Banegards, ghouls) that open
-// doors with no key and no lock, a larger body so that creatures stay at the distance
-// of their weapon, and a melee creature that keeps out of the reach of a
-// player above it (see docs/re/ai.md, "Improved pathfinding").
-extern int Dtu_improved_pathfinding;
+// The AI of the creatures beyond 1.3 (the menu line "Improved AI"; until
+// 2026-11-27 "Improved pathfinding", the key ImprovedPathfinding of the
+// configuration file is still read). Off: the AI of 1.3 with the Dtu_fix_*
+// corrections. On (see docs/re/ai.md, "Improved AI"):
+// - Paths for creatures of the size of a person: no stop at the openings
+//   of corridors or at corners, paths through open doors for a creature
+//   that cannot open doors, a larger body so that creatures stay at the
+//   distance of their weapon, and a melee creature that keeps out of the
+//   reach of a player above it.
+// - Senses: a creature sees the player along a free line and hears the
+//   player along an open path (no wall, no closed door). An alarm goes
+//   along an open path only.
+// - Doors: only a creature that can open doors (the door bit of 1.3, or a
+//   person by its model) and that fights the player opens a door, and never
+//   a locked one.
+// - The attack: a creature in reach attacks at once and faces its target.
+// - A closed door or a wall stops an attack of the player and of a
+//   creature.
+// - A creature that its script can make hostile joins the fight of its
+//   group when it sees the player fight it.
+extern int Dtu_improved_ai;
 
 // The 3D view is rendered at this multiple of the original view size,
 // from 1 to 6. The interface is not scaled by it. Default 3. ASCENT: 0 is
