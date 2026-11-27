@@ -36,6 +36,7 @@
 #include "dtuchar.h"
 #include "dtudesc.h"		// ASCENT: the description window of the market
 #include "dtugear.h"		// ASCENT: the new gear of the rewards
+#include "dtuclassgear.h"	// ASCENT: the price limit of the wands of Aleena
 #include "dtuspell.h"	// ASCENT: dtu_spell_hammer_weapon()
 
 
@@ -720,6 +721,16 @@ static item_info *mk_item(int type, int id)
 	return NULL;
 }
 
+// ASCENT: test (-testmarketitem, tools/uitest.py): the price that the
+// market pays for an item, with the charisma of the character
+static int mk_price(int type, int id, int cond, int sell);
+
+int fe_market_test_sell_price(int type, int id, int cond)
+{
+	Mk_charisma = Dtu_char.pa.charisma;
+	return mk_price(type, id, cond, 1);
+}
+
 // The list of a class: 0x873EE (the stock) and 0x876ED (the player) put a
 // spell (class 17, a scroll) into the misc list (0x8770C: cmp al,0x11).
 static int mk_category(int type)
@@ -753,7 +764,7 @@ static int mk_plot_item(int type, int id)
 static int mk_price(int type, int id, int cond, int sell)
 {
 	item_info *it = mk_item(type, id);
-	int value, max, fixed, d, price, cha;
+	int value, max, fixed, d, price, cha, part = 100;
 
 	if (!it) {
 		dtu_log("Player is purchasing something wierd in the market!!\n");
@@ -781,7 +792,8 @@ static int mk_price(int type, int id, int cond, int sell)
 		if (cond < 0 || cond > 0xffff)
 			cond = 0xffff;
 		d = cond <= max ? cond : max;
-		value = value * (d * 100 / max) / 100;
+		part = d * 100 / max;
+		value = value * part / 100;
 	}
 	cha = Mk_charisma < 0 ? 0 : Mk_charisma > 19 ? 19 : Mk_charisma;	// 0x86F75
 	price = value * (sell ? Mk_sell_percent[cha] : Mk_buy_percent[cha]) / 100;
@@ -789,6 +801,14 @@ static int mk_price(int type, int id, int cond, int sell)
 		price = 1;
 	if (dtu_script_gflag(107))		// 0x86F5F
 		price *= 2;
+	// ASCENT: Dtu_class_gear: the market does not pay more for a wand than
+	// Aleena asks of a single class mage (dtuclassgear.h)
+	if (sell) {
+		int cap = dtu_class_gear_resale_cap(type, id) * part / 100;
+
+		if (cap > 0 && price > cap)
+			price = cap;
+	}
 	return price;
 }
 

@@ -1149,6 +1149,20 @@ def test_market_sell_scroll(t):
     assert (1, 17, 16, 1) in recs, "the stock has no scroll: %s" % recs
 
 
+def test_market_wand_resale(t):
+    """Dtu_class_gear: the market pays a single class mage no more for a
+    full Wand of Magic Missiles (weapon 55, value 1500, 15 charges) than
+    Aleena asks of that mage (750). A mage/thief and a run with
+    -noclassgear get the price of 1.3: 75 percent at charisma 12 (1125)."""
+    for tag, extra, want in (("mage", ["-testmarketclass", "1.-1"], 750), ("magethief", ["-testmarketclass", "1.3"], 1125),
+                             ("off", ["-testmarketclass", "1.-1", "-noclassgear"], 1125)):
+        os.makedirs(os.path.join(t.tmp, "mk_wand_" + tag, "user"), exist_ok=True)
+        _, d = t.run("mk_wand_" + tag, ["wait 40", "key escape", "wait 10"],
+                     extra=["-testmarket", "-testmarketcha", "12", "-testmarketitem", "5.55.15"] + extra, level="")
+        m = re.search(r"Market: test: the market pays (\d+) for item 5\.55 count 15", session_log(d))
+        assert m and int(m.group(1)) == want, "%s: %s, expected %d" % (tag, m.group(0) if m else "no line", want)
+
+
 def save_png(img, path):
     """Writes a screenshot as PNG (to look at it), if Pillow is there."""
     try:

@@ -31,6 +31,8 @@
 #include "dtufile.h"		// dtu_log
 #include "dtugear.h"
 #include "dtuclassgear.h"
+#include "object.h"		// OBJ_WEAPON
+#include "dtuchar.h"	// the classes of the character
 #include "mem.h"			// the records are allocated by mem_malloc (dtuscript.c): free() must be mem_free()
 
 //------------------------------------------------------------------------
@@ -709,4 +711,21 @@ ubyte *dtu_class_gear_patch(int id, ubyte *p, int *size)
 int dtu_class_gear_key(void)
 {
 	return dtu_class_gear_on() | (Dtu_class_gear_loaded << 1);
+}
+
+// The wands of Aleena (label 0x40 to 0x42 above) and her prices
+int dtu_class_gear_resale_cap(int type, int id)
+{
+	static const int wand[][2] = { { 55, 750 }, { 61, 1000 }, { 58, 1500 } };
+	int i;
+
+	if (!dtu_class_gear_on() || type != OBJ_WEAPON)
+		return 0;
+	// a single class mage only: no other character buys from her
+	if (Dtu_char.pa.class1 != DTU_CLASS_MAGE || (Dtu_char.pa.class2 >= 0 && Dtu_char.pa.class2 <= 3))
+		return 0;
+	for (i = 0; i < (int) (sizeof(wand) / sizeof(wand[0])); i++)
+		if (wand[i][0] == id)
+			return wand[i][1];
+	return 0;
 }

@@ -223,6 +223,7 @@ void fe_market_store(int s, int write);
 void fe_market_new_character(void);
 // 0x879A7: reward n (0 to 8) of Khelben adds its goods to geldor.dat.
 int fe_market_reward(int n);
+int fe_market_test_sell_price(int type, int id, int cond);		// ASCENT: test (-testmarketitem)
 // ASCENT: Dtu_fix_market_reward: the stock gets the goods of the rewards
 // that the mission has passed and that it does not hold (a loaded game,
 // the market). docs/formats/misc.md has the trailer of the stock file.

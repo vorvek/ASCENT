@@ -17,5 +17,10 @@ ubyte *dtu_class_gear_aleena(ubyte *p, int *size, int orig);
 // The state that the patches read (the setting, the class gear lines): a
 // record decoded with another state is decoded again (dtuscript.c).
 int dtu_class_gear_key(void);
+// dtufe_town.c, the price that the market pays: the most it pays for a
+// full item that Aleena sells to a single class mage below the price of
+// the market (her wands), or 0 for no limit. Without the limit the mage
+// buys a wand from her and sells it to the market for more.
+int dtu_class_gear_resale_cap(int type, int id);
 
 #endif

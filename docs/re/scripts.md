@@ -805,6 +805,14 @@ no script runs. `-scriptdump` writes the patched records 2, 4 and 5 to
 | 5, Nalbas | 6055 | 0x254, 0x3B1, 0x57B `C7 "f"` (labels 1, 2, 3: GOTO 15) and 0x141 `C7 "4"` (label 999: GOTO 4) now go to 0 | 0, 0x20 to 0x2F |
 | 2, Mirt | 10877 | 0x1D8 `C7 "6"` (label 999: GOTO 6) now goes to 0 | 0, 0x40 to 0x51 |
 
+Aleena sells her wands (Magic Missiles 750, Paralyzation 1000, Fireballs
+1500) below the price that the market pays for them (75 percent of the value
+at charisma 12: 1125, 1500 and 2250). With the setting, the market pays a
+single class mage at most her price for these three wands, scaled by the
+charges left (`dtu_class_gear_resale_cap`, `mk_price` of dtufe_town.c), so a
+wand that is bought from her and sold gives no gold. Another character and a
+run with the setting off get the price of 1.3.
+
 Label 0 is free in records 2 and 5 and is a valid target of `sc_goto` (the
 hex number 0). Label 0x30 of record 4 tests "mage AND NOT cleric AND NOT
 fighter AND NOT thief" (each class test 8B to 8E is true when either class

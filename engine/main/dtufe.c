@@ -2796,6 +2796,14 @@ int dtufe_run(void)
 			Dtu_char.pa.charisma = atoi(Args[t + 1]);
 		if (FindArg("-testmarketdouble"))
 			dtu_script_set_gflag(107, 1);
+		// -testmarketclass C1.C2: the classes of the player (C2 -1: one class)
+		if ((t = FindArg("-testmarketclass")) != 0 && t + 1 < Num_args) {
+			int c1 = 0, c2 = -1;
+
+			sscanf(Args[t + 1], "%d.%d", &c1, &c2);
+			Dtu_char.pa.class1 = (byte) c1;
+			Dtu_char.pa.class2 = (byte) c2;
+		}
 		// -testmarketgold N: the gold of the player
 		if ((t = FindArg("-testmarketgold")) != 0 && t + 1 < Num_args)
 			Dtu_gold = Dtu_char.pa.gold = atoi(Args[t + 1]);
@@ -2806,6 +2814,7 @@ int dtufe_run(void)
 
 			sscanf(Args[t + 1], "%d.%d.%d", &c, &n, &k);
 			dtu_inventory_append(c, n, k);
+			dtu_log("Market: test: the market pays %d for item %d.%d count %d\n", fe_market_test_sell_price(c, n, k), c, n, k);
 		}
 	}
 	if (FindArg("-testblackstaff")) {		// ASCENT: test option, the front end starts at Khelben (the first visit)
