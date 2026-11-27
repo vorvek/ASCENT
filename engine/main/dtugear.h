@@ -123,23 +123,90 @@ extern int Dtu_gear_loaded;
 #define DTU_GEAR_ROD_LEVEL		12
 #define DTU_GEAR_ROD_VALUE		50
 
+// The bows and arrows, decisions of the user of 2026-11-27 (docs/re/combat.md,
+// "Bows and arrows of the new gear"):
+// - To hit: the bonus of the bow (or crossbow) and the bonus of the arrow (or
+//   bolt) add. The Arrows +1 and +2 (74, 75) get to_hit_bonus 1 and 2 in
+//   their text (1.3 gives them none; the setting "Rulebook items" gives the
+//   same values by the DMG at the lookup, dtuitemfix.c, so with both settings
+//   the value is read once, never added twice).
+// - Damage: the larger of the damage bonus of the launcher (its damage_bonus
+//   key, else its to_hit_bonus) and the damage bonus of the missile counts;
+//   they do not add (dtuchar.c launcher_damage). A thrown weapon keeps the
+//   rule of 1.3.
+// - Magic: the game knows only "magic" or not (the word magic of the line,
+//   0x29D9D). Each arrow but the plain Arrow has it; the plus that it counts
+//   as (dtu_gear_arrow_plus) is for the description window only.
+// The four new arrow lines come after the Rod of Kelemvor (90), the Venom
+// Arrows of the class gear after them, then the Spiritual Hammer.
+#define DTU_GEAR_ARROWS3		91		// Arrows +3: +3 to hit, +3 damage
+#define DTU_GEAR_ARROW_FIRE		92		// Fire Arrows: 1d6 and 1d6 fire
+#define DTU_GEAR_ARROW_ACID		93		// Acid Arrows: 1d6 and 1d6 acid
+#define DTU_GEAR_ARROW_DISPEL	94		// Dispelling Arrows: a hit casts Dispel Magic on the creature
+#define DTU_GEAR_N_ARROWS		4
+#define DTU_GEAR_ACID_DICE		6		// 1d6 acid (sides)
+#define DTU_GEAR_ARROW_PLUS_1	74		// the Arrows +1 and +2 of 1.3
+#define DTU_GEAR_ARROW_PLUS_2	75
+// The Short Bow of Lightning +3 of the class gear (Mirt): a misc line after
+// the Pearls of Power, +3 to hit, damage bonus 0 (damage_bonus=0 of its line),
+// and each arrow shot from it does DTU_GEAR_LIGHTNING_N d DTU_GEAR_LIGHTNING_SIDES
+// electric damage more on a hit (none to a creature with electricity_immune).
+// 2d4: the dice wait for the confirmation of the user (he wrote 2d4 and then
+// 2d6).
+#define DTU_GEAR_BOW_LIGHTNING	134
+#define DTU_GEAR_LIGHTNING_N	2
+#define DTU_GEAR_LIGHTNING_SIDES	4
+// The icons of the arrows and of the bow: copies of icons of the sheet in
+// another tint, made when the sheet is loaded (dtudisp.c), after the icons of
+// the spells of the port (200 to 203)
+#define DTU_GEAR_ICON_ARROWS3	204		// icon 12 (Arrows +1, +2), gold
+#define DTU_GEAR_ICON_FIRE		205		// icon 12, red
+#define DTU_GEAR_ICON_ACID		206		// icon 12, green
+#define DTU_GEAR_ICON_DISPEL	207		// icon 12, silver white
+#define DTU_GEAR_ICON_VENOM		208		// icon 11 (Arrow), purple
+#define DTU_GEAR_ICON_LIGHTNING	209		// icon 20 (Short Bow +1, +2), blue
+#define DTU_GEAR_N_ICONS		6
+// The source icon and the tint (red, green, blue 0 to 63) of icon
+// DTU_GEAR_ICON_ARROWS3 + k, 0 for k out of range
+int dtu_gear_icon_tint(int k, int *rgb);
+
+// 1 while the rule of the bows and arrows above applies (the tables have
+// the new lines)
+int dtu_gear_launcher_rule(void);
+// The plus that an arrow or a bolt of the player counts as for the
+// description (0: none, or not an arrow of the new gear)
+int dtu_gear_arrow_plus(int weapon);
+// 1 if weapon is a new arrow line of DTU_GEAR_ARROW_* (the tables have it)
+int dtu_gear_arrow(int weapon, int line);
+// 1 if the misc item is the Short Bow of Lightning (the tables have it)
+int dtu_gear_lightning_bow(int misc);
+// dtuchar.c, the damage roll of a missile of the player on target: the acid
+// of the Acid Arrows and the lightning of the Short Bow of Lightning (bow:
+// the misc number in the bow slot, -1 none). Fire or acid ends the
+// regeneration of the target (as 0x2B5D4 for fire). Returns the damage;
+// *acid and *elec get the parts (for the log).
+int dtu_gear_missile_extra(struct object *target, int weapon, int bow, int *acid, int *elec);
+
 //------------------------------------------------------------------------
 // ASCENT: the class gear, the setting "Gear for single class mages and
 // thieves" (Dtu_class_gear, on by default; ClassGear of ascent.cfg;
 // -noclassgear, -noimprovements, -origitems and -origscript clear it for one
 // run). Not in 1.3. Aleena Paladinstar sells wands, scroll bundles, the
 // Pearls of Power and the Bracers of Defense AC2 to a single class mage;
-// Nalbas Oddpepper a Short Bow with Poisoned Arrows and Potions of
+// Nalbas Oddpepper a Short Bow with Venom Arrows and Potions of
 // Invisibility, Mirt the Merchant old guild things (with the Bracers of
 // Archery and the Girdle of Hill Giant Strength) to a single class thief
 // (the script patches of dtuclassgear.c). No class power: only gear that
 // the other characters cannot buy, at a price. The new lines go in after
 // the other new lines when the new gear is loaded too:
-// The Poisoned Arrow: a new weapon line, the next free number after the
-// lines of the new gear (91 with the Rod of Kelemvor at 90;
-// dtu_gear_poison_arrow_line), a copy of the Arrow (7) with the poison of
-// the Dagger of Venom
+// The Venom Arrows (the "Poisoned Arrow" before 2026-11-27): a new weapon
+// line, the next free number after the lines of the new gear (95, after the
+// arrows 91 to 94; dtu_gear_poison_arrow_line), a copy of the Arrow (7) with
+// the poison of the Dagger of Venom and the word magic (it counts as +1, no
+// bonus). The Short Bow of Lightning +3 (DTU_GEAR_BOW_LIGHTNING) is a misc
+// line of the class gear too.
 #define DTU_GEAR_ARROW_FROM		7
+#define DTU_GEAR_VENOM_ARROWS	95
 #define DTU_GEAR_BOOTS_ELVEN	62		// armor 62: Boots of Elvenkind, Move Silently 95 while worn
 #define DTU_GEAR_ELVEN_MOVE		95
 #define DTU_GEAR_BRACERS_ARCHERY	63		// armor 63: Bracers of Archery, the gauntlet place, +2 to hit with arrows and bolts
@@ -167,9 +234,9 @@ void dtu_gear_pearl_recharge(const char *why);
 // dtufe.c: a game was loaded and its next level start is the level of the
 // save: the Pearls keep their state.
 void dtu_gear_pearl_keep(void);
-// 1 if weapon is the Poisoned Arrow (the tables have the class gear lines)
+// 1 if weapon is the Venom Arrows (the tables have the class gear lines)
 int dtu_gear_poison_arrow(int weapon);
-// The weapon line of the Poisoned Arrow, -1 when the tables have none
+// The weapon line of the Venom Arrows, -1 when the tables have none
 int dtu_gear_poison_arrow_line(void);
 // dtuobj_missile.c: a missile of the player hit a creature and did damage
 void dtu_gear_missile_hit(struct object *creature, struct object *attacker, int weapon);
@@ -199,6 +266,7 @@ void dtu_gear_missile_hit(struct object *creature, struct object *attacker, int 
 #define DTU_GEAR_GF_TMP_SCROLL	173		// scratch: Aleena has a scroll bundle for sale
 #define DTU_GEAR_GF_TMP_NALBAS	174		// scratch: Nalbas has a good for sale
 #define DTU_GEAR_GF_GIRDLE		175		// the Girdle of Hill Giant Strength of Mirt is sold
+#define DTU_GEAR_GF_LIGHTNING	176		// the Short Bow of Lightning +3 of Mirt is sold
 
 // bmread.c, after the table fixup of 1.3: the wands and the values of the
 // weapon lines, and the text of the new lines, which bmread.c reads with
@@ -277,7 +345,7 @@ int dtu_gear_displace(struct object *player, struct object *attacker);
 // dtuchar.c, each frame: the message when the cloak is ready again
 void dtu_gear_displace_frame(void);
 
-// 1 if weapon is the Dagger of Venom (or the Poisoned Arrow of the class
+// 1 if weapon is the Dagger of Venom (or the Venom Arrows of the class
 // gear), the Assassin's Dagger
 int dtu_gear_venom(int weapon);
 int dtu_gear_assassin(int weapon);

@@ -119,23 +119,78 @@ static int febgnd_open(void)
 // of dtuspellicons.h (new art of tools/spell_icons.py); 255 is the
 // transparent color of the sheet. A sheet of another size stays as it is.
 #include "dtuspellicons.h"
+#include "dtugear.h"		// ASCENT: the tinted icons of the new gear
 
-static grs_bitmap *port_icons_add(grs_bitmap *bm, int hi)
+// ASCENT: the bows and arrows of the new gear (dtugear.h DTU_GEAR_ICON_*):
+// after the icons of the port, copies of icons of the sheet in another
+// tint. Each pixel keeps its brightness (one and a half times, the icons
+// are dark) in the palette of the entry and takes the nearest color of that
+// palette to the tint at that brightness. Nothing of the game
+// art is stored: the copies are made from the loaded sheet.
+#define TINT_ROWS	((DTU_PORT_ICON_COUNT + DTU_GEAR_N_ICONS + 7) / 8)
+
+static void tint_icons(grs_bitmap *nb, int cell, const ubyte *pal)
 {
-	int cell = hi ? 32 : 16, k, y;
+	ubyte map[256];
+	int k, c, j, x, y, rgb[3];
+
+	for (k = 0; k < DTU_GEAR_N_ICONS; k++) {
+		int src = dtu_gear_icon_tint(k, rgb), dst = DTU_GEAR_ICON_ARROWS3 + k;
+
+		if (src <= 0 || dst < DTU_PORT_ICON_FIRST + DTU_PORT_ICON_COUNT || (dst / 8 + 1) * cell > nb->bm_h)
+			continue;
+		for (c = 0; c < 256; c++) {
+			int l = (pal[c * 3] * 30 + pal[c * 3 + 1] * 59 + pal[c * 3 + 2] * 11) / 100, best = c, bd = 1 << 30;
+			int want[3];
+
+			for (j = 0; j < 3; j++)
+				want[j] = rgb[j] * (l * 3 / 2 > 63 ? 63 : l * 3 / 2) / 63;
+			for (j = 0; j < 254; j++) {		// 254 and 255 are never used (255 is transparent)
+				int dr = want[0] - pal[j * 3], dg = want[1] - pal[j * 3 + 1], db = want[2] - pal[j * 3 + 2], d = dr * dr + dg * dg + db * db;
+
+				if (d < bd) {
+					bd = d;
+					best = j;
+				}
+			}
+			map[c] = (ubyte) best;
+		}
+		map[255] = 255;
+		for (y = 0; y < cell; y++) {
+			ubyte *s = nb->bm_data + ((src / 8) * cell + y) * nb->bm_rowsize + (src & 7) * cell;
+			ubyte *d = nb->bm_data + ((dst / 8) * cell + y) * nb->bm_rowsize + (dst & 7) * cell;
+
+			for (x = 0; x < cell; x++)
+				d[x] = map[s[x]];
+		}
+	}
+}
+
+static grs_bitmap *port_icons_add(grs_bitmap *bm, int hi, int n)
+{
+	int cell = hi ? 32 : 16, k, y, tint = 0;
 	grs_bitmap *nb;
+	ubyte pal[768];
+	FILE *f;
 
 	if (!bm || !bm->bm_data || bm->bm_w != 8 * cell || bm->bm_h != (DTU_PORT_ICON_FIRST / 8) * cell || bm->bm_rowsize != bm->bm_w)
 		return bm;
-	nb = gr_create_bitmap(bm->bm_w, bm->bm_h + cell);
+	// the palette of the entry, for the tints
+	if ((f = fopen(Febgnd_dat_path, "rb")) != NULL) {
+		tint = fseek(f, Febgnd[n].offset, SEEK_SET) == 0 && fread(pal, 1, 768, f) == 768;
+		fclose(f);
+	}
+	nb = gr_create_bitmap(bm->bm_w, bm->bm_h + (tint ? TINT_ROWS : 1) * cell);
 	if (!nb || !nb->bm_data)
 		return bm;
 	memcpy(nb->bm_data, bm->bm_data, bm->bm_w * bm->bm_h);
-	memset(nb->bm_data + bm->bm_w * bm->bm_h, 255, bm->bm_w * cell);
+	memset(nb->bm_data + bm->bm_w * bm->bm_h, 255, bm->bm_w * (nb->bm_h - bm->bm_h));
 	for (k = 0; k < DTU_PORT_ICON_COUNT && k < 8; k++)
 		for (y = 0; y < cell; y++)
 			memcpy(nb->bm_data + (bm->bm_h + y) * nb->bm_rowsize + k * cell,
 				(hi ? Dtu_port_icons_hi[k] : Dtu_port_icons_lo[k]) + y * cell, cell);
+	if (tint)
+		tint_icons(nb, cell, pal);
 	nb->bm_flags = bm->bm_flags;
 	gr_free_bitmap(bm);
 	return nb;
@@ -203,8 +258,10 @@ static grs_bitmap *febgnd_load(int n)
 		bit++;
 	}
 	free(src);
-	if (n == 23 || n == 24)
-		bm = port_icons_add(bm, n == 24);		// ASCENT: the icons of the spells of the port
+	// ASCENT: the icons of the spells of the port and the tinted icons of the
+	// new gear; 22 is the 32x32 sheet of the market (the same icons)
+	if (n == 22 || n == 23 || n == 24)
+		bm = port_icons_add(bm, n != 23, n);
 	dtu_lang_art_febgnd(bm, n);		// ASCENT: the picture of the language (dtulangart.h)
 	dtu_hdui_loaded(bm, n);		// ASCENT: the reference of the upscaled picture
 	return bm;

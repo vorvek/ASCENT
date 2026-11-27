@@ -681,7 +681,7 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		dealt =(m->spell >= 0) ? spell_dealt : damage_creature_w(other,parent,0,weapon);
 		Hit_by_missile = 0;
 		if (dealt > 0 && m->spell < 0)
-			dtu_gear_missile_hit(other,parent,weapon);		// ASCENT: the Poisoned Arrow of the class gear (dtugear.h)
+			dtu_gear_missile_hit(other,parent,weapon);		// ASCENT: the Venom Arrows of the class gear and the Dispelling Arrows of the new gear (dtugear.h)
 		hp = other->shields;
 		if (dealt > 0) {
 			blood(other);

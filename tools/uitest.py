@@ -1112,6 +1112,72 @@ def test_market_reward_gear(t):
     assert len(recs) == 2 + 50 + 7 - 1 + new, "THESTORE.5 has %d records, %d new goods" % (len(recs), new)
 
 
+def arrow_stock(t, name, mission, start=None, more=()):
+    """A game at the mission with the stock start (records, mask of the
+    trailer or None), saved, loaded and saved again (the repair of the load,
+    fe_market_check_rewards). Returns the records and the trailer of the last
+    THESTORE file, and the session log."""
+    user = os.path.join(t.tmp, name, "user")
+    os.makedirs(user, exist_ok=True)
+    recs, mask = start if start else ([(-1, 16, 79, 1)], None)
+    with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
+        for r in recs:
+            f.write(struct.pack("<iBBi", *r))
+        if mask is not None:
+            f.write(b"ASRW" + struct.pack("<HH", mask, 0))
+    script = "20:mission=%d,30:save=3,60:load=3,200:save=4" % mission
+    _, d = t.run(name, ["gamekeys", "wait 240"], extra=["-fixedfps", "30", "-chartest", script] + list(more))
+    out, m = read_store(os.path.join(user, "THESTORE.5"), swapped=True)
+    return out, m, session_log(d)
+
+
+def arrows_of(recs, num):
+    return [r[0] for r in recs if r[1] == 5 and r[2] == num]
+
+
+def test_market_arrow_stock(t):
+    """The arrows of the new gear by reward stage (dtugear.c Gear_market): at
+    mission 7 (reward 2) 50 Arrows +1 (74) and no Arrows +2 (75); at mission
+    11 (reward 4) a record "many" (-1) of the Arrows +1 and 50 Arrows +2; a
+    market visit with that stock makes one line of the Arrows +1 with no
+    limit. A stock that holds rewards 0 to 2 (the trailer) with its 50 Arrows
+    +1 gets the rewards 3 and 4 at the load of a game at mission 11, once (the
+    second save adds nothing). At mission 29 the Arrows +3 (91) are many and
+    the Dispelling Arrows (94) are 20 (two rewards of 10), never many."""
+    r7, m7, _ = arrow_stock(t, "mk_arrows_7", 7)
+    assert m7 == 0x07, "mission 7: trailer %r" % m7
+    assert arrows_of(r7, 74) == [50] and not arrows_of(r7, 75), "mission 7: Arrows +1 %s, +2 %s" % (arrows_of(r7, 74), arrows_of(r7, 75))
+    r11, m11, _ = arrow_stock(t, "mk_arrows_11", 11)
+    assert m11 == 0x1F, "mission 11: trailer %r" % m11
+    assert sorted(arrows_of(r11, 74)) == [-1, 50] and arrows_of(r11, 75) == [50], \
+        "mission 11: Arrows +1 %s, +2 %s" % (arrows_of(r11, 74), arrows_of(r11, 75))
+    # the market reads the records and writes one line of each good
+    user = os.path.join(t.tmp, "mk_arrows_visit", "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
+        for r in r11:
+            f.write(struct.pack("<iBBi", *r))
+        f.write(b"ASRW" + struct.pack("<HH", m11, 0))
+    t.run("mk_arrows_visit", ["wait 60", "key w", "wait 5", "shot weapons", "key escape", "wait 20"],
+          extra=["-testmarket", "-testmarketgold", "5000", "-testmarketcha", "13"], level="")
+    rv, mv = read_store(os.path.join(user, "GELDOR.DAT"))
+    assert arrows_of(rv, 74) == [-1] and arrows_of(rv, 75) == [50], "after the visit: Arrows +1 %s, +2 %s" % (arrows_of(rv, 74), arrows_of(rv, 75))
+    assert mv == 0x1F, "after the visit: trailer %r" % mv
+    # the repair: a stock with rewards 0 to 2 and 50 Arrows +1 (bought 10 of them)
+    old = ([(-1, 16, 79, 1), (40, 5, 74, 1)], 0x07)
+    rr, mr, text = arrow_stock(t, "mk_arrows_repair", 11, old)
+    added = re.findall(r"Market: stock of reward (\d) \(mission \d+\) is added for mission 11", text)
+    assert added == ["3", "4"], "the repair added %s" % added
+    assert mr == 0x1F and sorted(arrows_of(rr, 74)) == [-1, 40], "the repair: trailer %r, Arrows +1 %s" % (mr, arrows_of(rr, 74))
+    r29, m29, _ = arrow_stock(t, "mk_arrows_29", 29)
+    assert m29 == 0x1FF, "mission 29: trailer %r" % m29
+    assert sorted(arrows_of(r29, 91)) == [-1, 50] and arrows_of(r29, 94) == [10, 10], \
+        "mission 29: Arrows +3 %s, Dispelling %s" % (arrows_of(r29, 91), arrows_of(r29, 94))
+    assert sorted(arrows_of(r29, 92)) == [-1, 20] and sorted(arrows_of(r29, 93)) == [-1, 20], "mission 29: fire and acid"
+    r0, _, _ = arrow_stock(t, "mk_arrows_off", 29, more=["-nonewgear"])
+    assert not [r for r in r0 if r[1] == 5 and r[2] in (74, 75, 91, 92, 93, 94)], "-nonewgear: arrows in the stock"
+
+
 def test_market_buy_dispel_scroll(t):
     """The scrolls of Dispel Magic of the new gear (stock class 17, spell 13,
     rewards 4 and 6) are in the misc list of the market and a fighter (the

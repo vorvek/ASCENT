@@ -995,20 +995,20 @@ TESTS = [
       extra=["-noclassgear"]),
     # Nalbas Oddpepper (script 5) and a single class thief at the first talk:
     # reply 1 (label 1), then his offer (label 0x20): the Short Bow and 16
-    # Poisoned Arrows for 300, then his Potion of Healing of 1.3 (label 15).
+    # Venom Arrows for 300, then his Potion of Healing of 1.3 (label 15).
     T("class_nalbas_thief", "YPINN", "5:class=3,6:gold=1000,10:talkscript=5,250:dump",
-      [r"script: goto 0\s+script: goto 20", r"gold 1000 -> 700\s+script: give class 16 id 89 E4[^\n]*(\s+script: give class 5 id 91 E4[^\n]*){16}",
+      [r"script: goto 0\s+script: goto 20", r"gold 1000 -> 700\s+script: give class 16 id 89 E4[^\n]*(\s+script: give class 5 id 95 E4[^\n]*){16}",
        r"script: goto F\s+dlg: speech \"Wait, a minute, friend!", r"entry \d+: type 16 id 89 'Short Bow' count 1",
-       r"entry \d+: type 5 id 91 'Poisoned Arrow' count 16"], frames=270, dlg="1,1,1,1,1,2,esc,esc"),
+       r"entry \d+: type 5 id 95 'Venom Arrows' count 16"], frames=270, dlg="1,1,1,1,1,2,esc,esc"),
     # A later talk (the bow is sold, mission 7): 8 arrows for 160, then the
     # three Potions of Invisibility (400 each); a fourth is not offered.
     T("class_nalbas_later", "YPINN", "5:class=3,6:gold=5000,7:mission=7,8:gflag=231,10:talk=28,100:talkscript=5,600:dump",
-      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 21", r"gold 5000 -> 4840(\s+script: give class 5 id 91 E4[^\n]*){8}",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 21", r"gold 5000 -> 4840(\s+script: give class 5 id 95 E4[^\n]*){8}",
        r"gold 4840 -> 4440\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 232",
        r"gold 4440 -> 4040\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 233",
        r"gold 4040 -> 3640\s+script: give class 16 id 83 E4[^\n]*\s+script: set global flag 234",
        r"set global flag 234[\s\S]*my little stock\?\"\s+dlg: reply 1\) \"More of those arrows.\"\s+dlg: reply 2\) \"Just saying hello.\"\s",
-       r"entry \d+: type 5 id 91 'Poisoned Arrow' count 8"],
+       r"entry \d+: type 5 id 95 'Venom Arrows' count 8"],
       frames=620, dlg="esc,1,1,1,2,1,1,2,1,1,2,1,1,esc,esc"),
     T("class_nalbas_short", "YPINN", "5:class=3,6:gold=100,10:talkscript=5",
       [r"dlg: speech \"Alas, your purse is lighter"], [r"take class 168"], frames=200, dlg="1,1,1,1,esc,esc"),
@@ -1027,10 +1027,32 @@ TESTS = [
        r"gold 22400 -> 14900\s+script: give class 15 id 63 E4[^\n]*\s+script: set global flag 238",
        r"gold 14900 -> 10400\s+script: give class 5 id 69 E4[^\n]*\s+script: set global flag 239",
        r"gold 10400 -> 4400\s+script: give class 15 id 38 E4[^\n]*\s+script: set global flag 175",
-       r"set global flag 175[\s\S]*script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 6\s",
+       # the Venom Arrows (from mission 3, no limit) keep his menu
+       r"set global flag 175[\s\S]*script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 40\s+script: goto 42\s",
        r"entry \d+: type 15 id 63 'Bracers of Archery'", r"entry \d+: type 15 id 38 'Girdle of Hill Giant Strength'",
        r"entry \d+: type 15 id 62 'Boots of Elvenkind'", r"entry \d+: type 5 id 69 'Short Sword of Quickness'"],
       frames=720, dlg="esc,esc,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,esc,esc,esc"),
+    # The bows and arrows (dtugear.h): at mission 20 (after the beholder
+    # caves) the Short Bow of Lightning +3 (misc 134) for 15000, once, and
+    # the Venom Arrows (weapon 95), 20 for 400 (the other goods are sold).
+    T("class_mirt_bow", "YPINN",
+      "5:class=3,6:gold=30000,7:mission=20,8:gflag=170,9:gflag=235,10:gflag=236,11:gflag=237,12:gflag=238,13:gflag=239,14:gflag=175,"
+      "20:talkscript=2,100:talkscript=2,600:dump",
+      [r"dlg: reply 1\) \"The arrows with the dark tips.\"\s+dlg: reply 2\) \"The bow that hums.\"",
+       r"dlg: speech \"You came back from the beholder caves",
+       r"gold 30000 -> 15000\s+script: give class 16 id 134 E4[^\n]*\s+script: set global flag 176",
+       r"gold 15000 -> 14600(\s+script: give class 5 id 95 E4[^\n]*){20}",
+       r"set global flag 176[\s\S]*Durnan has big ears.\"\s+dlg: reply 1\) \"The arrows with the dark tips.\"\s+dlg: reply 2\) \"Any news",
+       r"entry \d+: type 16 id 134 'Short Bow of Lightning \+3' count 1", r"entry \d+: type 5 id 95 'Venom Arrows' count 20"],
+      [r"give class 16 id 134[\s\S]*give class 16 id 134"],
+      frames=620, dlg="esc,esc,2,1,1,1,1,1,esc,esc"),
+    # mission 19: the arrows, no bow
+    T("class_mirt_bow_early", "YPINN", "5:class=3,6:gold=30000,7:mission=19,8:gflag=170,20:talkscript=2,100:talkscript=2",
+      [r"dlg: reply \d\) \"The arrows with the dark tips.\""], [r"The bow that hums"], frames=200, dlg="esc,esc,esc,esc"),
+    # a thief and fighter at mission 20: his talk of 1.3, neither
+    T("class_mirt_bow_multiclass", "YPINN", "5:class=3,6:class2=2,7:gold=30000,8:mission=20,20:talkscript=2,100:talkscript=2",
+      [r"script: goto 0\s+(?:script: \w+ global flag \d+\s+)*script: goto 6\s"], [r"The bow that hums", r"dark tips"],
+      frames=200, dlg="esc,esc,esc,esc"),
     T("class_mirt_short", "YPINN", "5:class=3,6:gold=100,7:mission=3,10:talkscript=2,100:talkscript=2",
       [r"dlg: speech \"You're short, \w+. I gave up charity"], [r"take class 168"], frames=250, dlg="esc,esc,1,1,1,esc,esc"),
     # before mission 3 and for a fighter: his talk of 1.3

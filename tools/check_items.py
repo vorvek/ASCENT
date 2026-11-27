@@ -625,9 +625,9 @@ def test_gear_assassin(t):
 # The class gear (Dtu_class_gear, dtugear.h)
 
 def arrow_run(t, name, level, obj, seed, dist, shots=10, extra=()):
-    """Poisoned Arrows (weapon 91) from a Short Bow at object obj, a fighter
+    """Venom Arrows (weapon 95) from a Short Bow at object obj, a fighter
     of level 9 (THAC0 12)."""
-    cmds = ["setlevel=9", "give=16.89.1", "equip=16.89", "give=5.91.40", "current=5.91", "goobj=%d.%d" % (obj, dist),
+    cmds = ["setlevel=9", "give=16.89.1", "equip=16.89", "give=5.95.40", "current=5.95", "goobj=%d.%d" % (obj, dist),
             "face=%d" % obj, "heal=99", "seed=%d" % seed, "aim=%d" % obj]
     _, obj_log, log = t.run(name, cmds, level=level, more_frames=40 + 20 * shots + 520,
                             extra=["-noattack", "-testmove", "wait:40" + ",attack:1,wait:20" * shots] + list(extra))
@@ -635,7 +635,7 @@ def arrow_run(t, name, level, obj, seed, dist, shots=10, extra=()):
 
 
 def test_class_arrow(t):
-    """The Poisoned Arrow (weapon 91) of Nalbas: an arrow that hits the troll
+    """The Venom Arrows (weapon 95) of Nalbas and Mirt: an arrow that hits the troll
     of MINE (object 1) poisons it unless it saves against poison, 1 hit
     point each second, the damage of the player (the poison of the Dagger of
     Venom); a skeleton of BAT (object 43, undead) is immune. With
@@ -656,13 +656,127 @@ def test_class_arrow(t):
     check(re.search(r"damage: obj 1 Troll takes 1 from player", obj_log), "the poison is not the damage of the player")
     for k in range(1, 7):
         obj_log, _ = arrow_run(t, "class_arrow_undead_%d" % k, "BAT", 43, k, 15, shots=6)
-        if re.search(r"obj 43 \S+ is immune to the poison of the Poisoned Arrow", obj_log):
+        if re.search(r"obj 43 \S+ is immune to the poison of the Venom Arrows", obj_log):
             break
-    check(re.search(r"obj 43 \S+ is immune to the poison of the Poisoned Arrow", obj_log), "the skeleton is not immune")
+    check(re.search(r"obj 43 \S+ is immune to the poison of the Venom Arrows", obj_log), "the skeleton is not immune")
     check(not re.search(r"obj 43 \S+ is poisoned", obj_log), "the skeleton is poisoned")
-    _, _, log = t.run("class_arrow_off", ["give=5.91.10", "dump"], extra=["-noclassgear"])
-    check(not re.search(r"type 5 id 91 ", log), "-noclassgear: the line is there")
+    _, _, log = t.run("class_arrow_off", ["give=5.95.10", "dump"], extra=["-noclassgear"])
+    check(not re.search(r"type 5 id 95 ", log), "-noclassgear: the line is there")
     return "seed %d: %d poison points; seed %d: saved; skeleton immune" % (seed, len(ticks), seen["saved"][0])
+
+
+# ---------------------------------------------------------------------
+# The bows and arrows of the new gear (dtugear.h, 2026-11-27)
+
+DMG_LINE = re.compile(r"damage roll: (\d+)d(\d+) \+ (-?\d+): (-?\d+), fire (\d+), acid (\d+), electric (\d+) "
+                      r"\(launcher (-?\d+), missile (-?\d+), gloves (-?\d+)\)")
+
+
+def bow_run(t, name, bow, arrow, shots=8, before=(), after=(), extra=(), level="MINE", obj=1, dist=8, seed=1):
+    """Arrows of weapon line arrow from the bow (misc number) at object obj
+    (the troll of MINE), a fighter of level 9 (THAC0 12). Returns the roll
+    bonus of each attack roll, the damage lines (tuples of DMG_LINE), the
+    -charlog and the -objlog."""
+    cmds = ["setlevel=9", "give=16.%d.1" % bow, "equip=16.%d" % bow, "give=5.%d.60" % arrow, "current=5.%d" % arrow]
+    cmds += list(before) + ["goobj=%d.%d" % (obj, dist), "face=%d" % obj, "heal=99", "seed=%d" % seed, "aim=%d" % obj]
+    tail = ["%d:%s" % (60 + 40 + 30 * shots + 4 * i, c) for i, c in enumerate(after)]
+    _, obj_log, log = t.run(name, cmds + tail, level=level, more_frames=40 + 30 * shots + 200,
+                            extra=["-noattack", "-testmove", "wait:40" + ",attack:1,wait:30" * shots] + list(extra))
+    rolls = [int(b) - int(a) for a, b in re.findall(r"attack roll: d20 (\d+), roll (-?\d+) against", log)]
+    dmg = [tuple(int(x) for x in m) for m in DMG_LINE.findall(log)]
+    return rolls, dmg, log, obj_log
+
+
+def test_arrow_rule(t):
+    """The rule of the bows and arrows: to hit, the bonus of the bow and of
+    the arrow add; for the damage the larger of the two counts. At the troll
+    of MINE (fighter of level 9): the Short Bow of Speed +2 (misc 100) with
+    Arrows (7) +2 to hit and +2 damage (the bow), with Arrows +3 (91) +5 and
+    +3 (the arrow); the Short Bow of Lightning +3 (134) with Arrows +3 to hit
+    and +0 damage plus the electric dice, with Arrows +2 (75) +5 and +2 plus
+    the electric dice, with Arrows +3 +6 and +3. -nonewgear: the rule of 1.3,
+    the Bow of Speed with Arrows +2 (75) +2 to hit and 2 + 2 damage."""
+    out = []
+    want = {  # (bow, arrow): (roll bonus, launcher part, missile part, electric)
+        (100, 7): (2, 2, 0, False), (100, 91): (5, 0, 3, False),
+        (134, 7): (3, 0, 0, True), (134, 75): (5, 0, 2, True), (134, 91): (6, 0, 3, True),
+    }
+    for (bow, arrow), (hit, lp, mp, elec) in want.items():
+        rolls, dmg, _, _ = bow_run(t, "arrow_rule_%d_%d" % (bow, arrow), bow, arrow)
+        check(rolls, "bow %d arrow %d: no attack rolls" % (bow, arrow))
+        check(set(rolls) == {hit}, "bow %d arrow %d: roll bonus %s, expected %d" % (bow, arrow, sorted(set(rolls)), hit))
+        check(dmg, "bow %d arrow %d: no damage line" % (bow, arrow))
+        for d in dmg:
+            check(d[7] == lp and d[8] == mp and d[2] == lp + mp, "bow %d arrow %d: damage parts %s" % (bow, arrow, d))
+            check((d[6] >= 2 and d[6] <= 8) if elec else d[6] == 0, "bow %d arrow %d: electric %d" % (bow, arrow, d[6]))
+        out.append("%d/%d: +%d hit, +%d dmg%s" % (bow, arrow, hit, lp + mp, " +2d4 elec" if elec else ""))
+    rolls, dmg, log, _ = bow_run(t, "arrow_rule_off", 100, 75, extra=["-nonewgear"])
+    check(rolls and set(rolls) == {2}, "-nonewgear: roll bonus %s" % sorted(set(rolls)))
+    check(not dmg and re.search(r"damage roll: 1d6 \+ 4: \d+, fire 0\n", log), "-nonewgear: the damage line of 1.3")
+    out.append("off: +2 hit, 2 + 2 dmg")
+    return "; ".join(out)
+
+
+def test_arrow_rulebook(t):
+    """With "Rulebook items" (-rulebookitems) and the new gear the Arrows +1
+    (74) have +1 to hit once, not twice; with the rulebook alone (-nonewgear)
+    also +1 (the DMG)."""
+    a, _, _, _ = bow_run(t, "arrow_rulebook", 89, 74, shots=4, extra=["-rulebookitems"])
+    b, _, _, _ = bow_run(t, "arrow_rulebook_off", 89, 74, shots=4, extra=["-rulebookitems", "-nonewgear"])
+    c, _, _, _ = bow_run(t, "arrow_rulebook_gear", 89, 74, shots=4)
+    check(a and b and c, "no attack rolls (%d, %d, %d)" % (len(a), len(b), len(c)))
+    check(set(a) == {1} and set(b) == {1} and set(c) == {1}, "roll bonus %s, %s, %s" % (sorted(set(a)), sorted(set(b)), sorted(set(c))))
+    return "Arrows +1 from a Short Bow: +1 to hit with both settings, the rulebook alone and the new gear alone"
+
+
+def test_arrow_fire_acid(t):
+    """Fire Arrows (92) and Acid Arrows (93) at the troll of MINE: the damage
+    line has 1d6 fire (or acid), and the troll loses its regeneration (bit
+    24); the Arrows +3 (91) leave it."""
+    out = []
+    for arrow, part in ((92, 4), (93, 5), (91, None)):
+        _, dmg, log, _ = bow_run(t, "arrow_elem_%d" % arrow, 89, arrow, after=["fxobj=1"])
+        check(dmg, "arrow %d: no damage line" % arrow)
+        fx = [int(v, 16) for v in re.findall(r"fx: obj 1 bits 0x([0-9a-f]+)", log)]
+        check(fx, "arrow %d: no fx line" % arrow)
+        if part is None:
+            check(all(d[4] == 0 and d[5] == 0 for d in dmg), "Arrows +3: fire or acid %s" % dmg)
+            check(fx[-1] & 0x01000000, "Arrows +3: the troll lost its regeneration")
+            out.append("Arrows +3: regeneration stays")
+        else:
+            check(all(1 <= d[part] <= 6 for d in dmg), "arrow %d: the parts %s" % (arrow, dmg))
+            check(not fx[-1] & 0x01000000, "arrow %d: the troll keeps its regeneration (0x%08x)" % (arrow, fx[-1]))
+            out.append("%s %s, regeneration ends" % ("fire" if part == 4 else "acid", [d[part] for d in dmg]))
+    return "; ".join(out)
+
+
+def test_arrow_dispel(t):
+    """Dispelling Arrows (94): the troll of MINE with Bless (bit 1) and
+    Haste (bit 13): a hit ends both (Dispel Magic); its regeneration stays."""
+    _, dmg, log, obj_log = bow_run(t, "arrow_dispel", 89, 94, shots=4, before=["fxset=1.1", "fxset=1.13", "fxobj=1"],
+                                   after=["fxobj=1"])
+    check(dmg, "no damage line")
+    m = re.search(r"the Dispelling Arrow dispels obj 1 \S+, effect bits 0x([0-9a-f]+)", obj_log)
+    check(m and int(m.group(1), 16) & 0x2002 == 0x2002, "no dispel line with Bless and Haste: %s" % (m.group(0) if m else None))
+    fx = [int(v, 16) for v in re.findall(r"fx: obj 1 bits 0x([0-9a-f]+)", log)]
+    check(fx[0] & 0x2002 == 0x2002 and not fx[-1] & 0x2002, "bits before 0x%08x, after 0x%08x" % (fx[0], fx[-1]))
+    check(fx[-1] & 0x01000000, "the regeneration ended")
+    return "bits 0x%08x -> 0x%08x" % (fx[0], fx[-1])
+
+
+def test_arrow_lines(t):
+    """The new lines: Arrows +3 (91), Fire Arrows (92), Acid Arrows (93),
+    Dispelling Arrows (94), Venom Arrows (95), Short Bow of Lightning +3
+    (misc 134). -nonewgear: none of them."""
+    give = ["give=5.%d.5" % w for w in range(91, 96)] + ["give=16.134.1", "dump"]
+    d, _, _ = t.run("arrow_lines", give)
+    names = {(5, 91): "Arrows +3", (5, 92): "Fire Arrows", (5, 93): "Acid Arrows", (5, 94): "Dispelling Arrows",
+             (5, 95): "Venom Arrows", (16, 134): "Short Bow of Lightning +3"}
+    for k in names:
+        check(d[0].count(*k) > 0, "%s %s missing" % (k, names[k]))
+    d2, _, _ = t.run("arrow_lines_off", give, extra=["-nonewgear"])
+    check(all(d2[0].count(*k) == 0 for k in names), "-nonewgear: a new line is there")
+    return "6 lines; none with -nonewgear"
 
 
 def test_class_archery(t):
@@ -729,7 +843,8 @@ def test_class_pearl(t):
 TESTS = [test_potions, test_potion_class, test_wands, test_rings, test_armoring_bracers, test_armor_set, test_protection, test_saves, test_whin, test_misc,
          test_gear_worn, test_gear_mirror, test_gear_archer, test_gear_regen, test_gear_wands, test_gear_drops,
          test_gear_market_items, test_gear_frost_brand, test_gear_displacement, test_gear_sash,
-         test_gear_venom, test_gear_assassin, test_class_arrow, test_class_archery, test_class_boots, test_class_pearl]
+         test_gear_venom, test_gear_assassin, test_arrow_lines, test_arrow_rule, test_arrow_rulebook, test_arrow_fire_acid,
+         test_arrow_dispel, test_class_arrow, test_class_archery, test_class_boots, test_class_pearl]
 
 
 def main():

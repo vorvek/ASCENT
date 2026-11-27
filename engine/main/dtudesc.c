@@ -511,6 +511,9 @@ static void weapon_text(int id, dtu_item_data *d, int count, int r)
 	// dtu_weapon_extra_damage (dtuobj.c, 0x2B327)
 	if (tbl_int(r, "fire_damage_dice", 0) > 0 && tbl_int(r, "#fire_damage_dice", 0) > 0)
 		line(LT("Fire damage: %s"), dice(buf, tbl_int(r, "#fire_damage_dice", 0), tbl_int(r, "fire_damage_dice", 0), 0));
+	// ASCENT: the bows and arrows of the new gear (dtugear.h)
+	if (dtu_gear_arrow(id, DTU_GEAR_ARROW_ACID))
+		line(LT("Acid damage: %s"), dice(buf, 1, DTU_GEAR_ACID_DICE, 0));
 	sprintf(buf, "%+d", d->to_hit_bonus);
 	line(LT("To hit: %s"), buf);
 	// the Haste or the Slow that the weapon itself gives in the hand
@@ -548,7 +551,17 @@ static void weapon_text(int id, dtu_item_data *d, int count, int r)
 		if (count >= 0 && d->stackable)
 			line(LT("Count: %d"), count);
 	}
-	line(bm_tbl_has_flag(r, "magic") ? LT("Magic.") : LT("Not magic."));
+	// ASCENT: an arrow of the new gear says the plus it counts as (the game
+	// knows only magic or not, dtugear.h)
+	if (bm_tbl_has_flag(r, "magic") && dtu_gear_arrow_plus(id) > 0)
+		line(LT("Magic: it hurts what a +%d weapon hurts."), dtu_gear_arrow_plus(id));
+	else
+		line(bm_tbl_has_flag(r, "magic") ? LT("Magic.") : LT("Not magic."));
+	if (!d->melee && tbl_int(r, "thrown", 0) != 1 && dtu_gear_launcher_rule() && (bm_tbl_has_flag(r, "arrow") || bm_tbl_has_flag(r, "bolt")))
+		line(bm_tbl_has_flag(r, "arrow") ? LT("With a bow the bonuses to hit add; the higher damage bonus of the two counts.") :
+			LT("With a crossbow the bonuses to hit add; the higher damage bonus of the two counts."));
+	if (dtu_gear_arrow(id, DTU_GEAR_ARROW_DISPEL))
+		line(LT("A hit casts Dispel Magic on the creature: all its spell effects end."));
 	// a line with no class is a weapon of the creatures
 	if (d->class_mask & 0xff)
 		class_line(d->class_mask);
@@ -603,8 +616,31 @@ int dtu_desc_item_text(int type, int id, int count, int price, int sell, char *o
 		// launcher_bonus (dtuchar.c, 0x2AB0A): the bow for a weapon with the
 		// flag arrow, the crossbow for each other missile weapon. No code
 		// reads the flag magic of a misc line.
-		line(slot == DTU_SLOT_BOW ? LT("Arrows get %s to hit and damage.") :
-			LT("Bolts and thrown weapons get %s to hit and damage."), buf);
+		if (dtu_gear_launcher_rule()) {
+			// ASCENT: the bows and arrows of the new gear (dtugear.h,
+			// dtuchar.c launcher_damage): to hit adds, the larger damage
+			// bonus counts
+			char v[16], b3[16];
+			int dmg = (r >= 0 && bm_tbl_get(r, "damage_bonus", v, sizeof(v))) ? atoi(v) : d.to_hit_bonus;
+
+			sprintf(b3, "%+d", dmg);
+			line(slot == DTU_SLOT_BOW ? LT("Arrows get %s to hit, added to the bonus of the arrow.") :
+				LT("Bolts get %s to hit, added to the bonus of the bolt."), buf);
+			if (dmg > 0)
+				line(slot == DTU_SLOT_BOW ? LT("Damage of an arrow: %s, or the bonus of the arrow if it is higher.") :
+					LT("Damage of a bolt: %s, or the bonus of the bolt if it is higher."), b3);
+			else
+				line(slot == DTU_SLOT_BOW ? LT("No damage bonus of its own: an arrow does its own damage.") :
+					LT("No damage bonus of its own: a bolt does its own damage."));
+			if (type == OBJ_MISC && dtu_gear_lightning_bow(id))
+				line(LT("A hit with an arrow from it deals %s electric damage more."), dice(b3, DTU_GEAR_LIGHTNING_N, DTU_GEAR_LIGHTNING_SIDES, 0));
+			if (slot == DTU_SLOT_CROSSBOW && !Dtu_fix_thrown_launcher)
+				line(LT("Thrown weapons get %s to hit and damage."), buf);
+		}
+		else {
+			line(slot == DTU_SLOT_BOW ? LT("Arrows get %s to hit and damage.") :
+				LT("Bolts and thrown weapons get %s to hit and damage."), buf);
+		}
 		line(LT("Slot: %s"), slot_name(slot));
 		class_line(d.class_mask);
 		fx_line(type, id, 0);

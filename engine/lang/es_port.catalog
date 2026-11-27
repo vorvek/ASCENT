@@ -3340,11 +3340,11 @@ id: port.gear_for_single_class_mages_and_thieves
 en: Gear for single class mages and thieves
 tr: Equipo para magos y ladrones de una clase
 
-id: tbl.fix.poisoned_arrow
-en: Poisoned Arrow
-tr: Flecha envenenada
+id: tbl.fix.venom_arrows
+en: Venom Arrows
+tr: Flechas de veneno
 gender: f
-plural: Flechas envenenadas
+plural: Flechas de veneno
 
 id: tbl.fix.boots_of_elvenkind
 en: Boots of Elvenkind
@@ -3375,3 +3375,110 @@ en: Pearl of Power III
 tr: Perla de poder III
 gender: f
 plural: Perlas de poder III
+
+# ASCENT: the bows and arrows of the new gear (engine/main/dtugear.h, 2026-11-27)
+id: port.acid
+en: acid
+tr: ácido
+
+id: port.electric
+en: electric
+tr: eléctrico
+
+id: port.arrows_get_s_to_hit_added_to_the_bonus_o
+en: Arrows get %s to hit, added to the bonus of the arrow.
+tr: Las flechas tienen %s al ataque, que se suma al bonificador de la flecha.
+
+id: port.bolts_get_s_to_hit_added_to_the_bonus_of
+en: Bolts get %s to hit, added to the bonus of the bolt.
+tr: Los virotes tienen %s al ataque, que se suma al bonificador del virote.
+
+id: port.damage_of_an_arrow_s_or_the_bonus_of_the
+en: Damage of an arrow: %s, or the bonus of the arrow if it is higher.
+tr: Daño de una flecha: %s, o el bonificador de la flecha si es mayor.
+
+id: port.damage_of_a_bolt_s_or_the_bonus_of_the_b
+en: Damage of a bolt: %s, or the bonus of the bolt if it is higher.
+tr: Daño de un virote: %s, o el bonificador del virote si es mayor.
+
+id: port.no_damage_bonus_of_its_own_an_arrow_does
+en: No damage bonus of its own: an arrow does its own damage.
+tr: Sin bonificador de daño propio: una flecha hace su propio daño.
+
+id: port.no_damage_bonus_of_its_own_a_bolt_does_i
+en: No damage bonus of its own: a bolt does its own damage.
+tr: Sin bonificador de daño propio: un virote hace su propio daño.
+
+id: port.a_hit_with_an_arrow_from_it_deals_s_elec
+en: A hit with an arrow from it deals %s electric damage more.
+tr: Cada flecha que acierta disparada con él hace %s de daño eléctrico más.
+
+id: port.thrown_weapons_get_s_to_hit_and_damage
+en: Thrown weapons get %s to hit and damage.
+tr: Las armas arrojadizas tienen %s al ataque y al daño.
+
+id: port.acid_damage_s
+en: Acid damage: %s
+tr: Daño por ácido: %s
+
+id: port.magic_it_hurts_what_a_d_weapon_hurts
+en: Magic: it hurts what a +%d weapon hurts.
+tr: Mágica: hiere lo que hiere un arma +%d.
+
+id: port.with_a_bow_the_bonuses_to_hit_add_the_hi
+en: With a bow the bonuses to hit add; the higher damage bonus of the two counts.
+tr: Con un arco los bonificadores al ataque se suman; del daño cuenta el mayor de los dos.
+
+id: port.with_a_crossbow_the_bonuses_to_hit_add_t
+en: With a crossbow the bonuses to hit add; the higher damage bonus of the two counts.
+tr: Con una ballesta los bonificadores al ataque se suman; del daño cuenta el mayor de los dos.
+
+id: port.a_hit_casts_dispel_magic_on_the_creature
+en: A hit casts Dispel Magic on the creature: all its spell effects end.
+tr: Un acierto lanza Disipar magia sobre la criatura: terminan todos sus efectos de conjuro.
+
+id: port.the_arrows_with_the_dark_tips
+en: The arrows with the dark tips.
+tr: Las flechas de punta oscura.
+
+id: port.the_bow_that_hums
+en: The bow that hums.
+tr: El arco que zumba.
+
+id: port.venom_arrows_the_shadow_thieves_buy_them
+en: Venom arrows. The Shadow Thieves buy them from the same drow they swear they never deal with. I buy them from the same Shadow Thieves. Twenty for four hundred gold, and wash your hands after.
+tr: Flechas de veneno. Los Ladrones de las Sombras se las compran a los mismos drow con los que juran no tratar nunca. Yo se las compro a esos mismos Ladrones de las Sombras. Veinte por cuatrocientas de oro, y lávate las manos después.
+
+id: port.you_came_back_from_the_beholder_caves_so
+en: You came back from the beholder caves, so you've earned a look at this. A storm wizard of Luskan paid a gambling debt with it. Every arrow you loose from it carries a bit of the storm. Fifteen thousand gold, and that's the price between friends.
+tr: Volviste de las cuevas del contemplador, así que te has ganado ver esto. Un mago de las tormentas de Luskan pagó con él una deuda de juego. Cada flecha que sueltas con él lleva un poco de la tormenta. Quince mil de oro, y es precio de amigos.
+
+id: tbl.fix.arrows_3
+en: Arrows +3
+tr: Flechas +3
+gender: f
+plural: Flechas +3
+
+id: tbl.fix.fire_arrows
+en: Fire Arrows
+tr: Flechas de fuego
+gender: f
+plural: Flechas de fuego
+
+id: tbl.fix.acid_arrows
+en: Acid Arrows
+tr: Flechas de ácido
+gender: f
+plural: Flechas de ácido
+
+id: tbl.fix.dispelling_arrows
+en: Dispelling Arrows
+tr: Flechas disipadoras
+gender: f
+plural: Flechas disipadoras
+
+id: tbl.fix.short_bow_of_lightning_3
+en: Short Bow of Lightning +3
+tr: Arco corto del relámpago +3
+gender: m
+plural: Arcos cortos del relámpago +3

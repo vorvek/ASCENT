@@ -102,8 +102,43 @@ static const struct { int id; const char *name13, *name; int spell; } Gear_wands
 static const struct { int id; const char *name13; int value; } Gear_values[] = {
 	{ 70, "Mace of Disruption", 4500 },
 	{ 71, "Flame Tongue", 6000 },
+	{ 74, "Arrows +1", 25 },			// the bows and arrows (dtugear.h): 1.3 has no value, so the
+	{ 75, "Arrows +2", 60 },			// market would sell them for 1 gold
 };
 #define N_GEAR_VALUES	((int) (sizeof(Gear_values) / sizeof(Gear_values[0])))
+
+// The bows and arrows (dtugear.h): the to_hit_bonus of the Arrows +1 and +2
+// of 1.3 (they have damage_bonus only), the plus of the arrow
+static const struct { int id; const char *name13; int hit; } Gear_arrow_hits[] = {
+	{ DTU_GEAR_ARROW_PLUS_1, "Arrows +1", 1 },
+	{ DTU_GEAR_ARROW_PLUS_2, "Arrows +2", 2 },
+};
+#define N_ARROW_HITS	((int) (sizeof(Gear_arrow_hits) / sizeof(Gear_arrow_hits[0])))
+
+// The new arrow lines 91 to 94: a copy of a line of 1.3 (the Arrows +2 for
+// the Arrows +3, the Arrows +1 for the others: model, sounds, speed,
+// fire_wait 1.0 and 1.5) with this name, value, bonus to hit and to the
+// damage, icon, fire dice (sides, 1 die) and the plus that it counts as (the
+// description; the game knows only the word magic). The acid of the Acid
+// Arrows (DTU_GEAR_ACID_DICE) and the dispel of the Dispelling Arrows are in
+// dtu_gear_missile_extra and dtu_gear_missile_hit.
+static const struct { int id; const char *name; int from; const char *from13; int value, hit, damage, icon, fire, plus; } Gear_arrows[DTU_GEAR_N_ARROWS] = {
+	{ DTU_GEAR_ARROWS3, "Arrows +3", 75, "Arrows +2", 150, 3, 3, DTU_GEAR_ICON_ARROWS3, 0, 3 },
+	{ DTU_GEAR_ARROW_FIRE, "Fire Arrows", 74, "Arrows +1", 60, 0, 0, DTU_GEAR_ICON_FIRE, 6, 1 },
+	{ DTU_GEAR_ARROW_ACID, "Acid Arrows", 74, "Arrows +1", 80, 0, 0, DTU_GEAR_ICON_ACID, 0, 1 },
+	{ DTU_GEAR_ARROW_DISPEL, "Dispelling Arrows", 74, "Arrows +1", 500, 0, 0, DTU_GEAR_ICON_DISPEL, 0, 3 },
+};
+
+// The tinted icons (dtugear.h DTU_GEAR_ICON_*): the icon of the sheet that
+// each copies and the tint (red, green, blue, 0 to 63)
+static const short Gear_icon_tints[DTU_GEAR_N_ICONS][4] = {
+	{ 12, 63, 54, 0 },		// Arrows +3: gold
+	{ 12, 63, 16, 0 },		// Fire Arrows: red
+	{ 12, 8, 63, 8 },		// Acid Arrows: green
+	{ 12, 63, 63, 63 },		// Dispelling Arrows: silver white
+	{ 11, 50, 4, 63 },		// Venom Arrows: purple
+	{ 20, 16, 40, 63 },		// Short Bow of Lightning: blue
+};
 
 //------------------------------------------------------------------------
 // The market: the goods that a reward of Khelben adds (stage 0 to 8, as
@@ -115,8 +150,17 @@ static const struct { int id; const char *name13; int value; } Gear_values[] = {
 //
 // The new items of the user's table, and the magic items of 1.3 that have
 // rules in the code but that no level places and no stage sells, weaker
-// ones first. Left out: the Arrows +1 and +2 (74, 75): their lines have no
-// value, so the market would give them away.
+// ones first.
+//
+// The arrows (the user's design of 2026-11-27, dtugear.h): each tier comes
+// in a number (quantity 50, 20 or 10), and when the next tier comes the
+// one before has no limit ("many", quantity -1). A row of quantity -1 of a
+// good that the stock has already makes its line "many": the market adds
+// the quantities of two records of one good (mk_insert, -1 stays -1), so
+// the reward needs no change of the records before it, and a stock that
+// took the reward once (the trailer of the file) never takes it again. The
+// Dispelling Arrows never have "many". The bolts the same way (Bolt +1 of
+// reward 2 of 1.3, Bolts +2 of stage 3 here).
 
 static const short Gear_market[][5] = {
 	// stage 1
@@ -129,6 +173,7 @@ static const short Gear_market[][5] = {
 	{ 2, 1, 15, 22, -1 },				// Ring of Infravision
 	{ 2, 2, 16, 83, -1 },				// Potion of Invisibility
 	{ 2, 1, 16, 81, -1 },				// Potion of Hill Giant Intelligence
+	{ 2, 50, 5, DTU_GEAR_ARROW_PLUS_1, 1 },	// Arrows +1 (the tombs of MULHOR1 and MULHOR2: weapon resistant mummies and spirits)
 	// stage 3
 	{ 3, 1, 5, 64, -1 },				// Wand of Slow
 	{ 3, 10, 5, 51, 1 },				// Darts +2
@@ -136,6 +181,7 @@ static const short Gear_market[][5] = {
 	{ 3, 1, 15, 51, -1 },				// Glim-Gauntlet
 	{ 3, 1, 5, 60, -1 },				// Wand of Magic Detection
 	{ 3, 1, 16, 73, -1 },				// Potion of Anti-Magic
+	{ 3, 20, 5, DTU_GEAR_ARROW_FIRE, 1 },	// Fire Arrows (the troll of MINE)
 	// stage 4
 	{ 4, 1, 15, DTU_GEAR_BOOTS_FREE, -1 },
 	{ 4, 1, 15, DTU_GEAR_CLOAK_FIRE, -1 },
@@ -143,16 +189,24 @@ static const short Gear_market[][5] = {
 	{ 4, 1, 15, 25, -1 },				// Ring of Quickness
 	{ 4, 1, 5, 56, -1 },				// Wand of Confusion
 	{ 4, 3, 17, 13, 1 },				// scrolls of Dispel Magic (the hold of Daland, the protections of the lich of CLAN3)
+	{ 4, 50, 5, DTU_GEAR_ARROW_PLUS_2, 1 },	// Arrows +2 (the gargoyles of MYRKUL)
+	{ 4, -1, 5, DTU_GEAR_ARROW_PLUS_1, 1 },	// Arrows +1: many
+	{ 4, -1, 5, 47, 1 },				// Bolt +1: many
 	// stage 5
 	{ 5, 1, 15, 20, -1 },				// Ring of Free Action
 	{ 5, 1, 15, 30, -1 },				// Amulet of Protection +3
 	{ 5, 1, 15, 44, -1 },				// Chameleon Cloak
+	{ 5, -1, 5, DTU_GEAR_ARROW_FIRE, 1 },	// Fire Arrows: many (the trolls of DROW2 and DROW3)
+	{ 5, 20, 5, DTU_GEAR_ARROW_ACID, 1 },	// Acid Arrows
 	// stage 6
 	{ 6, 1, 15, DTU_GEAR_MIRROR_SHIELD, -1 },
 	{ 6, 1, 5, 66, -1 },				// Rod of Minute Meteors
 	{ 6, 1, 15, 15, -1 },				// Ring of Protection +3
 	{ 6, 1, 16, 99, -1 },				// Crossbow +3
 	{ 6, 3, 17, 13, 1 },				// scrolls of Dispel Magic
+	{ 6, 50, 5, DTU_GEAR_ARROWS3, 1 },	// Arrows +3 (the drow, armor class -2)
+	{ 6, -1, 5, DTU_GEAR_ARROW_PLUS_2, 1 },	// Arrows +2: many
+	{ 6, -1, 5, 48, 1 },				// Bolts +2: many
 	// stage 7
 	{ 7, 1, 5, 67, -1 },				// Rod of Dispel Magic
 	{ 7, 1, 5, 71, -1 },				// Flame Tongue (stage 5 in 1.3, Gear_market_removed)
@@ -160,9 +214,13 @@ static const short Gear_market[][5] = {
 	{ 7, 1, 15, 43, -1 },				// Cloak of Elvenkind
 	{ 7, 1, 15, 46, -1 },				// Elven Cloak
 	{ 7, 1, 5, DTU_GEAR_ASSASSIN, -1 },	// Assassin's Dagger +3
+	{ 7, -1, 5, DTU_GEAR_ARROW_ACID, 1 },	// Acid Arrows: many (the armored trolls of the beholder caves)
+	{ 7, 10, 5, DTU_GEAR_ARROW_DISPEL, 1 },	// Dispelling Arrows, never many
 	// stage 8
 	{ 8, 1, 15, DTU_GEAR_RING_REGEN, -1 },
 	{ 8, 1, 15, 36, -1 },				// Boots of Levitation
+	{ 8, -1, 5, DTU_GEAR_ARROWS3, 1 },	// Arrows +3: many
+	{ 8, 10, 5, DTU_GEAR_ARROW_DISPEL, 1 },	// Dispelling Arrows
 };
 #define N_GEAR_MARKET	((int) (sizeof(Gear_market) / sizeof(Gear_market[0])))
 
@@ -208,13 +266,17 @@ static const char *Class_lines[] = {
 	"$OBJECT name=\"Pearl of Power I\" mass=5 value=2500 mage_use icon=203 picture=gengem.bbm stackable stack_limit=10",
 	"$OBJECT name=\"Pearl of Power II\" mass=5 value=6000 mage_use icon=203 picture=gengem.bbm stackable stack_limit=10",
 	"$OBJECT name=\"Pearl of Power III\" mass=5 value=12000 mage_use icon=203 picture=gengem.bbm stackable stack_limit=10",
+	// misc 134, the Short Bow of Lightning +3 of Mirt (dtugear.h): the line of the Short Bow +2 (93)
+	// with +3 to hit and damage_bonus=0
+	"$OBJECT name=\"Short Bow of Lightning +3\" mass=5 value=15000 fighter_use thief_use icon=209 picture=genbow.bbm stackable stack_limit=10 bow to_hit_bonus=3 damage_bonus=0 non_hotkey_item",
 };
 #define N_CLASS_LINES	((int) (sizeof(Class_lines) / sizeof(Class_lines[0])))
 
-// The Poisoned Arrow: the Arrow (7) with this name and value (the price of
-// Nalbas, 160 gold for 8)
+// The Venom Arrows (the Poisoned Arrow before 2026-11-27, renamed after the
+// Dagger of Venom): the Arrow (7) with this name, value (the price of
+// Nalbas, 160 gold for 8), icon and the word magic
 static const struct { int from; const char *from13, *name; int value; } Class_arrow = {
-	DTU_GEAR_ARROW_FROM, "Arrow", "Poisoned Arrow", 20 };
+	DTU_GEAR_ARROW_FROM, "Arrow", "Venom Arrows", 20 };
 
 // The goods of the market that the class gear adds (as Gear_market): any
 // mage can buy them
@@ -270,7 +332,7 @@ static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text));
 // The weapon line of the Rod of Kelemvor in the tables of the level, -1:
 // none (dtugear.h)
 static int Rod_weapon = -1;
-// The weapon line of the Poisoned Arrow of the class gear, -1: none
+// The weapon line of the Venom Arrows of the class gear, -1: none
 static int Arrow_weapon = -1;
 
 // The Rod of Kelemvor: a new line at the end of the weapon table, a copy of
@@ -317,6 +379,79 @@ static void rod_line(const dtu_tblfix_io *io, void (*parse)(char *text))
 		dtu_tblfix_free(u);
 }
 
+// A new weapon line at the end of the table: the text u (it is freed) goes
+// through the reader of the tables, then the decoded fields of line from,
+// the text and the name (as the Dagger of Venom). Returns 1 if the line has
+// the number id.
+static int append_weapon(const dtu_tblfix_io *io, void (*parse)(char *text), char *u, int id, int from, const char *name_text)
+{
+	char *line, *name;
+
+	if (!u)
+		return 0;
+	if (io->count(DTU_TK_WEAPON) != id) {
+		dtu_tblfix_free(u);
+		return 0;
+	}
+	if ((line = malloc(strlen(u) + 12)) != NULL) {
+		sprintf(line, "$WEAPON %s\n", u);
+		parse(line);
+		free(line);
+	}
+	if (io->count(DTU_TK_WEAPON) != id + 1) {
+		dtu_tblfix_free(u);
+		return 0;
+	}
+	io->copy_line(DTU_TK_WEAPON, id, from);
+	put_text(io, DTU_TK_WEAPON, id, u);
+	name = io->name(DTU_TK_WEAPON, id);
+	if (name && io->name_size > 0) {
+		strncpy(name, name_text, io->name_size - 1);
+		name[io->name_size - 1] = 0;
+	}
+	return 1;
+}
+
+// 1 while the arrow lines are in the tables of the level
+static int Arrows_loaded = 0;
+
+// The bows and arrows (dtugear.h): the arrow lines 91 to 94, copies of the
+// Arrows +1 and +2 (after their writes above)
+static void arrow_lines(const dtu_tblfix_io *io, void (*parse)(char *text))
+{
+	char buf[64], *u;
+	int i;
+
+	for (i = 0; i < DTU_GEAR_N_ARROWS; i++) {
+		if (!weapon_named(io, Gear_arrows[i].from, Gear_arrows[i].from13))
+			break;
+		snprintf(buf, sizeof(buf), "\"%s\"", Gear_arrows[i].name);
+		u = dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_arrows[i].from), "weapon_name", buf);
+		if (!u)
+			break;
+		u = chain(u, dtu_tblfix_set(u, "name", buf));
+		snprintf(buf, sizeof(buf), "%d", Gear_arrows[i].value);
+		u = chain(u, dtu_tblfix_set(u, "value", buf));
+		snprintf(buf, sizeof(buf), "%d", Gear_arrows[i].hit);
+		u = chain(u, dtu_tblfix_set(u, "to_hit_bonus", buf));
+		snprintf(buf, sizeof(buf), "%d", Gear_arrows[i].damage);
+		u = chain(u, dtu_tblfix_set(u, "damage_bonus", buf));
+		snprintf(buf, sizeof(buf), "%d", Gear_arrows[i].icon);
+		u = chain(u, dtu_tblfix_set(u, "icon", buf));
+		if (Gear_arrows[i].fire > 0) {
+			snprintf(buf, sizeof(buf), "%d", Gear_arrows[i].fire);
+			u = chain(u, dtu_tblfix_set(u, "fire_damage_dice", buf));
+			u = chain(u, dtu_tblfix_set(u, "#fire_damage_dice", "1"));
+		}
+		u = chain(u, dtu_tblfix_word(u, "magic", 1));
+		if (!append_weapon(io, parse, u, Gear_arrows[i].id, Gear_arrows[i].from, Gear_arrows[i].name))
+			break;
+	}
+	Arrows_loaded = i == DTU_GEAR_N_ARROWS;
+	if (io->log)
+		io->log(Arrows_loaded ? "New gear: the arrows are weapons 91 to 94" : "New gear: the arrow lines did not go in");
+}
+
 void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 {
 	char buf[64];
@@ -326,6 +461,7 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 	Dtu_class_gear_loaded = 0;
 	Arrow_weapon = -1;
 	Rod_weapon = -1;
+	Arrows_loaded = 0;
 	if (!Dtu_new_gear)
 		return;
 	// the mission tables: 53 armor lines, 128 misc lines, the generic wands
@@ -451,6 +587,13 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 			snprintf(buf, sizeof(buf), "%d", Gear_values[i].value);
 			put_text(io, DTU_TK_WEAPON, Gear_values[i].id, dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_values[i].id), "value", buf));
 		}
+	// the bows and arrows (dtugear.h): the Arrows +1 and +2 get their plus to hit
+	for (i = 0; i < N_ARROW_HITS; i++)
+		if (Gear_arrow_hits[i].id < io->count(DTU_TK_WEAPON) && weapon_named(io, Gear_arrow_hits[i].id, Gear_arrow_hits[i].name13)) {
+			snprintf(buf, sizeof(buf), "%d", Gear_arrow_hits[i].hit);
+			put_text(io, DTU_TK_WEAPON, Gear_arrow_hits[i].id,
+				dtu_tblfix_set(io->text(DTU_TK_WEAPON, Gear_arrow_hits[i].id), "to_hit_bonus", buf));
+		}
 
 	// The new lines go through the reader of the tables (bm_parse_text),
 	// one line at a time: armor 53 to 59, misc 128 to 130.
@@ -473,18 +616,19 @@ void dtu_gear_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 	if (io->log)
 		io->log("New gear: armor 53 to 61, misc 128 to 130, wands 63 to 67, the Frost Brand 68");
 	rod_line(io, parse);
+	arrow_lines(io, parse);		// the bows and arrows: weapons 91 to 94
 	class_tables(io, parse);		// ASCENT: the class gear: the next free lines
 }
 
 // The lines of the class gear, after the lines of the new gear
 static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 {
-	char buf[64], *u, *line, *name;
+	char buf[128], *u, *line, *name;
 	int i, id;
 
 	if (!dtu_class_gear_on() || !weapon_named(io, Class_arrow.from, Class_arrow.from13))
 		return;
-	// the Poisoned Arrow: a new line at the end of the weapon table (as the
+	// the Venom Arrows: a new line at the end of the weapon table (as the
 	// Dagger of Venom and the Rod of Kelemvor), its number the next free one,
 	// then the decoded fields, the text and the name
 	id = io->count(DTU_TK_WEAPON);
@@ -494,6 +638,11 @@ static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 	u = chain(u, dtu_tblfix_set(u, "name", buf));
 	snprintf(buf, sizeof(buf), "%d", Class_arrow.value);
 	u = chain(u, dtu_tblfix_set(u, "value", buf));
+	// the bows and arrows (dtugear.h): magic (it counts as +1, no bonus) and
+	// its own icon
+	snprintf(buf, sizeof(buf), "%d", DTU_GEAR_ICON_VENOM);
+	u = chain(u, dtu_tblfix_set(u, "icon", buf));
+	u = chain(u, dtu_tblfix_word(u, "magic", 1));
 	if ((line = malloc(strlen(u) + 12)) != NULL) {
 		sprintf(line, "$WEAPON %s\n", u);
 		parse(line);
@@ -502,7 +651,7 @@ static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 	if (io->count(DTU_TK_WEAPON) != id + 1) {
 		dtu_tblfix_free(u);
 		if (io->log)
-			io->log("Class gear: the line of the Poisoned Arrow did not go in");
+			io->log("Class gear: the line of the Venom Arrows did not go in");
 		return;
 	}
 	io->copy_line(DTU_TK_WEAPON, id, Class_arrow.from);
@@ -520,14 +669,14 @@ static void class_tables(const dtu_tblfix_io *io, void (*parse)(char *text))
 		parse(line);
 		free(line);
 	}
-	if (io->count(DTU_TK_ARMOR) != DTU_GEAR_BRACERS_ARCHERY + 1 || io->count(DTU_TK_MISC) != DTU_GEAR_PEARL_POWER + DTU_GEAR_N_PEARLS) {
+	if (io->count(DTU_TK_ARMOR) != DTU_GEAR_BRACERS_ARCHERY + 1 || io->count(DTU_TK_MISC) != DTU_GEAR_BOW_LIGHTNING + 1) {
 		if (io->log)
 			io->log("Class gear: the new lines did not go in");
 		return;
 	}
 	Dtu_class_gear_loaded = 1;
 	if (io->log) {
-		snprintf(buf, sizeof(buf), "Class gear: weapon %d (Poisoned Arrow), armor 62 and 63, misc 131 to 133", id);
+		snprintf(buf, sizeof(buf), "Class gear: weapon %d (Venom Arrows), armor 62 and 63, misc 131 to 134", id);
 		io->log(buf);
 	}
 }
@@ -891,7 +1040,7 @@ void dtu_gear_poison_hit(object *creature, object *attacker, int weapon)
 	n = creature - Objects;
 	if (dtu_gear_poison_immune(creature->id)) {
 		dtu_obj_log("new gear: obj %d %s is immune to the poison of %s", n, dtu_object_name(creature),
-			dtu_gear_poison_arrow(weapon) ? "the Poisoned Arrow" : "the Dagger of Venom");
+			dtu_gear_poison_arrow(weapon) ? "the Venom Arrows" : "the Dagger of Venom");
 		return;
 	}
 	if (Poison[n].sig == creature->signature && Poison[n].left > 0) {
@@ -939,13 +1088,92 @@ void dtu_gear_poison_frame(void)
 }
 
 //------------------------------------------------------------------------
-// The class gear (Dtu_class_gear): the Poisoned Arrow and the Pearls of
+// The class gear (Dtu_class_gear): the Venom Arrows and the Pearls of
 // Power
 
 void dtu_gear_missile_hit(object *creature, object *attacker, int weapon)
 {
 	if (dtu_gear_poison_arrow(weapon))
 		dtu_gear_poison_hit(creature, attacker, weapon);
+	// The Dispelling Arrows (dtugear.h): the rule of Dispel Magic (13) on a
+	// creature, all its effects end with no save (dtu_spell_dispel, as case
+	// 13 of the casts). The arrow is an attack: its damage made the creature
+	// hostile before this (the alert of the missile hit, dtuobj_missile.c);
+	// Dtu_fix_dispel_peace is for the spell only.
+	if (dtu_gear_arrow(weapon, DTU_GEAR_ARROW_DISPEL) && creature && creature->type == OBJ_ROBOT && attacker &&
+			attacker->type == OBJ_PLAYER && !(creature->flags & (OF_EXPLODING | OF_SHOULD_BE_DEAD | OF_DESTROYED))) {
+		dtu_obj_log("new gear: the Dispelling Arrow dispels obj %d %s, effect bits 0x%08x", (int) (creature - Objects),
+			dtu_object_name(creature), (unsigned) creature->dtu.m_88);
+		dtu_spell_dispel(creature);
+		dtu_obj_log("new gear: obj %d %s effect bits now 0x%08x", (int) (creature - Objects), dtu_object_name(creature),
+			(unsigned) creature->dtu.m_88);
+	}
+}
+
+//------------------------------------------------------------------------
+// The bows and arrows (dtugear.h)
+
+int dtu_gear_launcher_rule(void)
+{
+	return Dtu_gear_loaded;
+}
+
+int dtu_gear_arrow(int weapon, int line)
+{
+	return Arrows_loaded && Dtu_gear_loaded && weapon >= 0 && weapon == line && weapon < N_weapon_types;
+}
+
+int dtu_gear_arrow_plus(int weapon)
+{
+	int i;
+
+	if (!Dtu_gear_loaded || weapon < 0)
+		return 0;
+	for (i = 0; i < N_ARROW_HITS; i++)
+		if (weapon == Gear_arrow_hits[i].id)
+			return Gear_arrow_hits[i].hit;
+	for (i = 0; i < DTU_GEAR_N_ARROWS; i++)
+		if (dtu_gear_arrow(weapon, Gear_arrows[i].id))
+			return Gear_arrows[i].plus;
+	return dtu_gear_poison_arrow(weapon) ? 1 : 0;
+}
+
+int dtu_gear_lightning_bow(int misc)
+{
+	return Dtu_class_gear_loaded && misc == DTU_GEAR_BOW_LIGHTNING && misc < N_misc_types;
+}
+
+int dtu_gear_missile_extra(object *target, int weapon, int bow, int *acid, int *elec)
+{
+	int i;
+
+	*acid = *elec = 0;
+	if (!target || weapon < 0 || weapon >= N_weapon_types)
+		return 0;
+	if (dtu_gear_arrow(weapon, DTU_GEAR_ARROW_ACID))
+		*acid = rand() % DTU_GEAR_ACID_DICE + 1;
+	if (dtu_gear_lightning_bow(bow) && Weapon_item_info[weapon].record >= 0 && bm_tbl_has_flag(Weapon_item_info[weapon].record, "arrow")) {
+		for (i = 0; i < DTU_GEAR_LIGHTNING_N; i++)
+			*elec += rand() % DTU_GEAR_LIGHTNING_SIDES + 1;
+		// electricity_immune, as the dice of a spell (0x91BC3)
+		if (target->type == OBJ_ROBOT && target->id < N_robot_types && (Monster_info[target->id].flags & MONSTER_F_ELECTRICITY_IMMUNE))
+			*elec = 0;
+	}
+	// acid ends the regeneration (bit 24), as fire (0x2B5D4) and the acid of
+	// a spell (0x91BC3)
+	if (*acid > 0)
+		target->dtu.m_88 &= ~DTU_FX_REGENERATE;
+	return *acid + *elec;
+}
+
+int dtu_gear_icon_tint(int k, int *rgb)
+{
+	if (k < 0 || k >= DTU_GEAR_N_ICONS)
+		return 0;
+	rgb[0] = Gear_icon_tints[k][1];
+	rgb[1] = Gear_icon_tints[k][2];
+	rgb[2] = Gear_icon_tints[k][3];
+	return Gear_icon_tints[k][0];
 }
 
 int dtu_gear_pearl_level(int misc)
