@@ -2602,13 +2602,27 @@ void dtu_script_prison_guard(object *obj,int set_target)
 // makes the path to it, so the path of the last segment stays. 0xAA810
 // after the list: no target, AI mode 2 (follow the path), the bits 0x30 of
 // ai_local +0x05 and the morale (A + B) / 2.
+// ASCENT: Dtu_improved_ai: a type with the door bit plans a path through
+// doors only while it fights the player (opens_doors()). The path of its
+// script is made before the walk starts (script_walk is 0 still), so it is
+// planned as a walk of a script, with the doors of 1.3.
+static void create_script_path(object *obj)
+{
+	int save = Script_walk_doors;
+
+	if (improved_ai() && obj->id < N_robot_types && Monster_ext[obj->id].door_opening)
+		Script_walk_doors = 1;
+	create_path(obj);
+	Script_walk_doors = save;
+}
+
 void dtu_script_walk_segment(object *obj,int seg)
 {
 	if (obj->type != OBJ_ROBOT || seg < 0 || seg > Highest_segment_index)
 		return;
 	obj->ctype.ai_info.hide_segment = seg;
 	Ail[obj-Objects].goal_segment = seg;
-	create_path(obj);
+	create_script_path(obj);
 }
 
 // fix 1 (Dtu_fix_script_walk): the creature walks along the path with the
@@ -2825,7 +2839,10 @@ void dtu_ai_from_image(int objnum, const ubyte *al, const ubyte *img)
 	if (al[0x03] == DAIM_FOL_PATH && ail->goal_segment >= 0 && ail->goal_segment <= Highest_segment_index &&
 		 DTU_ANIM_STATE(obj) != DAS_DIE) {
 		ail->mode = DAIM_FOL_PATH;
-		create_path(obj);
+		if (al[0x02] == 1)
+			create_script_path(obj);		// Dtu_improved_ai: the walk of a script
+		else
+			create_path(obj);
 		if (al[0x02] == 1 && aip->hide_segment == ail->goal_segment && (obj->dtu.m_1b0 & DTU_SCRIPT_MASK) != 0) {
 			extern int Dtu_fix_script_walk;		// dtuscript.c
 
