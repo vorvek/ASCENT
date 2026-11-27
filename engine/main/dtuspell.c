@@ -5507,6 +5507,13 @@ int dtu_caster_profile(object *obj)
 	return caster_row(obj) >= 0;
 }
 
+int dtu_caster_touches(object *obj)
+{
+	int r = caster_row(obj);
+
+	return r >= 0 && !(Caster_types[r].flags & CF_MOVE13);
+}
+
 int dtu_caster_fire(object *obj,fix dist)
 {
 	int n;
@@ -5682,6 +5689,9 @@ void dtu_spell_frame(void)
 		memset(Attached,0,sizeof(Attached));
 		acid_clear();
 		memset(Xfx,0,sizeof(Xfx));		// ASCENT: Mirror Image and the globe end with the level
+		// ASCENT: Dtu_caster_ai: the fights of the casters start again (a
+		// loaded save has another game time than the times of the loop)
+		memset(Cai,0,sizeof(Cai));
 		// Test options: -testslots N gives N slots for each spell level,
 		// -testspell N puts spell N into the book and into the hand.
 		if ((t = FindArg("-testslots")) != 0 && t+1 < Num_args) {

@@ -36,7 +36,10 @@ The checks (the exit status is 1 when one fails):
     seconds. Then the player stands in the room: the mage notices the
     player and casts;
   - allies: DROW1, the player in front of the priestess obj 59 with the drow
-    around her: no spell of a drow acts on a drow;
+    around her: no spell of a drow acts on a drow. And the player 10.0 from
+    the priestess obj 55 while the mage obj 56 next to her casts Hold Person
+    and Slow on the player (the test command castby): the area spares the
+    priestess; with -origcasterai Slow takes her too;
   - player: Mirror Image and Minor Globe of Invulnerability on the player
     against the mage obj 13 of DROW1: an image takes an attack, the globe
     stops a spell of level 1 to 3;
@@ -265,6 +268,18 @@ def main():
         casts = len(re.findall(r"caster: obj \d+ \w+ casts", text))
         check("allies", bool(text) and casts > 0 and not held, "%d casts of the drow, %d effects on a drow (%s), %d times an ally was spared" % (
             casts, len(held), ", ".join("%s on %s" % (h[0], h[2]) for h in held) or "none", spared))
+        cmds = script(["2:seed=1", "5:setlevel=8", "10:goobjsee=55.10", "20:castby=22.56", "22:castby=22.56", "26:castby=47.56"], 60, heal=False)
+        res = {}
+        for mode, extra in (("on", []), ("off", ["-origcasterai"])):
+            d = os.path.join(work, "allies_area_" + mode)
+            os.makedirs(d)
+            text = run(a, d, "DROW1", 60, cmds, ["-noattack"] + extra)
+            res[mode] = (len(re.findall(r"does not act on its ally obj 55 rffk5", text)),
+                         len(re.findall(r"spell: '(?:Hold Person|Slow)' \(\d+\) level \d+ on obj 55 rffk5", text)),
+                         len(re.findall(r"spell: effect (?:Hold Person|Slow) on obj 55 ", text)))
+        check("allies", res["on"][0] == 3 and res["on"][1] == 0 and res["off"][0] == 0 and res["off"][1] == 3,
+              "Hold Person and Slow of the mage next to the priestess: spared %d times, on her %d times; with -origcasterai on her %d times (%d effects)" % (
+                  res["on"][0], res["on"][1], res["off"][1], res["off"][2]))
 
     if not only or "player" in only:
         d = os.path.join(work, "player")

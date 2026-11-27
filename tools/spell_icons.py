@@ -9,7 +9,8 @@ and copies these icons into it (engine/main/dtudisp.c).
 
 The icons are new art: this script draws each one from shapes (PIL), four
 times the size of the 32x32 icon, reduces it and maps each pixel to the
-nearest color of the game palette. Nothing is taken from the pictures of the
+nearest color of the game palette; the pixels around the art are
+transparent (index 255), as in the icons of the game. Nothing is taken from the pictures of the
 game. The palette (PALETTE.256 of the game, 256 colors of 6 bits) is read
 only to choose the color numbers; index 255 (transparent) and 254 are never
 used. The output holds color numbers only.
@@ -99,7 +100,7 @@ def figure(color, dark, cx, top, scale):
 
 
 def icon_mirror_image():
-    base = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    base = layer()
     blue, blue_dark = (60, 110, 215), (14, 30, 90)
     for cx, top, scale in ((24, 34, 0.86), (104, 34, 0.86)):
         f = figure(blue, blue_dark, cx, top, scale)
@@ -116,7 +117,7 @@ def icon_mirror_image():
 
 
 def icon_minor_globe():
-    base = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    base = layer()
     cx = cy = S // 2
     R = 54
     px = base.load()
@@ -127,7 +128,7 @@ def icon_minor_globe():
                 continue
             if dist > 1.0:                       # the halo
                 k = (1.12 - dist) / 0.12
-                px[x, y] = (int(40 * k), int(70 * k), int(170 * k), 255)
+                px[x, y] = (40, 70, 170, int(255 * k))
                 continue
             rim = dist ** 5                      # the shell: bright at the edge
             hx, hy = (x - (cx - 22)) / 26.0, (y - (cy - 26)) / 18.0
@@ -151,7 +152,7 @@ def icon_minor_globe():
 
 
 def icon_spiritual_hammer():
-    base = Image.new("RGBA", (S, S), (0, 0, 0, 255))
+    base = layer()
     h = layer()
     d = ImageDraw.Draw(h)
     # the handle, from the lower left to the upper right
@@ -198,9 +199,20 @@ def nearest_table(pal):
     return find
 
 
+TRANSPARENT = 255      # the transparent color of the icon sheets
+
+
 def quantize(img, size, find):
-    small = img.convert("RGB").resize((size, size), Image.LANCZOS)
-    return [find(small.getpixel((x, y))) for y in range(size) for x in range(size)]
+    """Reduce the drawing; a pixel that the art covers less than about a
+    third is transparent, the others get the color of the art over black."""
+    small = img.convert("RGBa").resize((size, size), Image.LANCZOS).convert("RGBA")
+    over = Image.new("RGBA", (size, size), (0, 0, 0, 255))
+    over.alpha_composite(small)
+    out = []
+    for y in range(size):
+        for x in range(size):
+            out.append(TRANSPARENT if small.getpixel((x, y))[3] < 88 else find(over.getpixel((x, y))[:3]))
+    return out
 
 
 def c_array(name, size, icons):
@@ -254,7 +266,7 @@ def main():
         for k, name in enumerate(NAMES):
             for size, pix, y0 in ((32, hi[k], 8), (16, lo[k], 8 + 264)):
                 im = Image.new("RGB", (size, size))
-                im.putdata([pal[v] for v in pix])
+                im.putdata([(96, 74, 30) if v == TRANSPARENT else pal[v] for v in pix])      # transparent: the color of a panel
                 big = im.resize((size * 8, size * 8), Image.NEAREST)
                 big.save(os.path.join(a.preview, "icon_%s_%d.png" % (name, size)))
                 sheet.paste(big, (8 + k * 264, y0))

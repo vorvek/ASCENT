@@ -80,7 +80,7 @@ static const caster_spell Caster_lists[CL_COUNT][CASTER_LIST_MAX] = {
 // The flags of a type
 #define CF_POWER		0x02		// not a caster of 1.3 (no mage or cleric level): its list is a power of the creature
 #define CF_MELEE		0x04		// it walks to the player also with spells: the blast and the hold on its way, then its touch
-#define CF_MOVE13	0x08		// it keeps the move of 1.3 (a creature that flies)
+#define CF_MOVE13	0x08		// a beholder: it keeps the move of 1.3 (it flies) and does not touch between its casts
 
 // The types by the name of the $MONSTER line. level: the caster level (AD&D
 // 2e, the number of the type name for the drow and the humans); 0: the

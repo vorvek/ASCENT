@@ -231,7 +231,7 @@ static void ai_fire_body(object *obj,fix dist)
 	if (dtu_caster_profile(obj)) {
 		if (dtu_caster_fire(obj,dist))
 			return;
-		if (dist <= reach && !Dtu_player_dead && !Player_is_dead) {
+		if (dist <= reach && dtu_caster_touches(obj) && !Dtu_player_dead && !Player_is_dead) {
 			dtu_obj_log("attack: obj %d %s (a caster) touches the player",objnum,dtu_object_name(obj));
 			melee_hit(target,obj);
 		}
@@ -1767,7 +1767,7 @@ static void choose_attack_goal(object *obj,fix dist,int reco)
 			dtu_obj_log("obj %d %s: the cast is due, attacks",(int)(obj-Objects),dtu_object_name(obj));
 		}
 		else
-			aip->GOAL_STATE = (dist <= caster_touch_reach(obj)) ? DAIS_ATAK : DAIS_LOCK;
+			aip->GOAL_STATE = (dist <= caster_touch_reach(obj) && dtu_caster_touches(obj)) ? DAIS_ATAK : DAIS_LOCK;
 		return;
 	}
 

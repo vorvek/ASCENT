@@ -362,6 +362,11 @@ int dtu_caster_profile(object *obj);
 // The fire frame of the attack animation of the creature: the cast that is
 // due. Returns 1 if the creature cast (it does not attack in this frame).
 int dtu_caster_fire(object *obj, fix dist);
+// 1 if the caster touches a player in its reach between two casts. Not a
+// beholder: its touch in the tables is its weapon Beholder Burn (4d6 from
+// 10 feet with its wide body), which 1.3 gives it only in the attack state
+// of a cast.
+int dtu_caster_touches(object *obj);
 // How a caster that does not fight in melee moves: 0 as in 1.3, 1 it keeps
 // its distance (it has spells), 2 it closes in (no spell points left, or a
 // type that fights in melee), 3 it steps to the side (no spell of it

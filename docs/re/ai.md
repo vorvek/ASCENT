@@ -1464,8 +1464,8 @@ seconds from the first notice):
 | Ibbalar | 3 | 4 | 0.0 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 10 | 38 | 1.5 | 29.6 |
 | Halaster | 0 | 0 | 0.0 | none | 0 | 0 | - | 0.0 |
 | Thashasa | 0 | 0 | 0.0 | Shield, Mirror Image, Protection From Evil | 0 | 0 | - | 0.0 |
-| Xabash | 4 | 4 | 0.8 | none | 10 | 35 | 1.7 | 64.2 |
-| beholder | 0 | 0 | 0.0 | none | 9 | 10 | 5.5 | 11.6 |
+| Xabash | 4 | 4 | 0.8 | none | 9 | 9 | 6.5 | 11.0 |
+| beholder | 0 | 0 | 0.0 | none | 10 | 10 | 5.9 | 16.0 |
 | avatar of Lolth | 4 | 38 | 24.5 | Stone Skin, Minor Globe of Invulnerability, Protection From Evil | 8 | 43 | 1.3 | 32.6 |
 | priest spirit (prstsprt) | 2 | 2 | 0.0 | Protection From Evil, Prayer | 9 | 9 | 6.4 | 3.4 |
 | Mage Spirit | 4 | 4 | 4.7 | Shield, Mirror Image | 10 | 10 | 6.3 | 12.3 |
