@@ -351,6 +351,31 @@ int dtu_spell_interrupt(object *obj, int hit);
 // The AI step of a creature that casts (0x1490B: 0x92D99 chooses, 0x91FDC
 // casts). active: the creature is active (+0x1CC == 2).
 void dtu_spell_creature_frame(object *obj, fix dist, int active);
+// ASCENT: Dtu_caster_ai (dtuopts.h; docs/re/ai.md, "Caster AI"). The casts
+// of a creature whose type has a spell list (dtucaster.h) come from the
+// decision loop of the port (caster_frame in dtuspell.c) in place of the
+// choice of 1.3 (0x92D99): the contingency at the first notice of the
+// player, one cast each round (6.0 seconds) plus the cast time, the choice
+// by the situation, a pool of spell points for each fight.
+// 1 if the setting is in effect and the type of the creature has a list
+int dtu_caster_profile(object *obj);
+// 1 if the type fires its weapon between its casts (a beholder, an
+// illithid); the other casters touch a player in their reach
+int dtu_caster_weapon(object *obj);
+// The fire frame of the attack animation of the creature: the cast that is
+// due. Returns 1 if the creature cast (it does not attack in this frame).
+int dtu_caster_fire(object *obj, fix dist);
+// How a caster that does not fight in melee moves: 0 as in 1.3, 1 it keeps
+// its distance (it has spells), 2 it closes in (no spell points left), 3 it
+// steps to the side (no spell of it reaches the player from its place)
+int dtu_caster_move(object *obj);
+// The distances of mode 1 in units: it backs away from a player that is
+// nearer than the first and walks to a player farther away than the second
+#define DTU_CASTER_KEEP_NEAR	i2f(40)
+#define DTU_CASTER_KEEP_FAR	i2f(80)
+// The caster level of a creature for its spells: the level of its type
+// with Dtu_caster_ai (dtucaster.h), else max hit points / 8 (0xAE3BB)
+int dtu_caster_level(object *obj);
 // The condition bits of a creature (+0x15E) that make it cast (0x92D99).
 #define DTU_CSC_FIRE		0x0001		// a fire hit
 #define DTU_CSC_ALERT		0x001C		// alerted (0x160AB levels 2 to 4)

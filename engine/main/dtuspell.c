@@ -251,9 +251,12 @@ static int spell_flag(int spell,char *flag)
 	return spell_ok(spell) && bm_tbl_has_flag(Spell_info[spell].record,flag);
 }
 
+static void caster_table_read(void);		// ASCENT: Dtu_caster_ai
+
 void dtu_spell_table_read(void)
 {
 	Prayer_written = 0;
+	caster_table_read();
 	dtu_spell_dice_clear();
 }
 
@@ -364,6 +367,8 @@ static int creature_level(object *obj)
 	return l;
 }
 
+int dtu_caster_level(object *obj);		// ASCENT: Dtu_caster_ai, below
+
 static int object_level(object *obj,int spell)
 {
 	if (obj == NULL) return 1;
@@ -376,6 +381,57 @@ static int object_level(object *obj,int spell)
 // the object of the script as the caster, dtuscript.c)
 int dtu_spell_object_level(object *obj,int spell)
 {
+	if (obj && obj->type == OBJ_ROBOT)
+		return dtu_caster_level(obj);		// ASCENT: Dtu_caster_ai
+	return object_level(obj,spell);
+}
+
+//------------------------------------------------------------------------
+// ASCENT: Dtu_caster_ai: the type table (dtucaster.h) and the caster level
+
+#include "dtucaster.h"
+
+#define N_CASTER_TYPES	((int)(sizeof(Caster_types) / sizeof(Caster_types[0])))
+
+// The row of Caster_types of each monster line: 0 not looked up, -1 none,
+// else the row + 1. A table read clears it (dtu_spell_table_read).
+static short Caster_row_of[MAX_ROBOT_TYPES];
+
+// The row of the type of a creature, -1: none, or the setting is off
+static int caster_row(object *obj)
+{
+	int id, i;
+
+	if (obj == NULL || obj->type != OBJ_ROBOT || obj->id >= N_robot_types || obj->id >= MAX_ROBOT_TYPES || !dtu_caster_ai())
+		return -1;
+	id = obj->id;
+	if (Caster_row_of[id] == 0) {
+		Caster_row_of[id] = -1;
+		for (i=0;i<N_CASTER_TYPES;i++)
+			if (!stricmp(Caster_types[i].name,Monster_info[id].name)) {
+				Caster_row_of[id] = (short) (i + 1);
+				break;
+			}
+	}
+	return Caster_row_of[id] > 0 ? Caster_row_of[id] - 1 : -1;
+}
+
+// The caster level of a creature (dtuspell.h)
+int dtu_caster_level(object *obj)
+{
+	int r = caster_row(obj);
+
+	if (r >= 0 && Caster_types[r].level)
+		return Caster_types[r].level;
+	return creature_level(obj);
+}
+
+// The level of the caster of a spell: as object_level, a creature with the
+// level of its type (Dtu_caster_ai)
+static int cast_level(object *obj,int spell)
+{
+	if (obj && obj->type == OBJ_ROBOT)
+		return dtu_caster_level(obj);
 	return object_level(obj,spell);
 }
 
@@ -1276,6 +1332,9 @@ int dtu_spell_save_from(object *obj,int cat,object *source)
 		need = 10;		// the default of 0xAE596 for other types (a missile, a light)
 	if (Dtu_fix_prot_evil && source && source != obj && source->type == OBJ_ROBOT && (obj->type == OBJ_PLAYER || obj->type == OBJ_ROBOT) &&
 		 (obj->dtu.m_88 & DTU_FX_PROT_EVIL))
+		need -= evil = PROT_EVIL_SAVE;
+	// ASCENT: Dtu_caster_ai: the same for a creature against the player
+	else if (source && source->type == OBJ_PLAYER && obj->type == OBJ_ROBOT && (obj->dtu.m_88 & DTU_FX_PROT_EVIL) && dtu_caster_ai())
 		need -= evil = PROT_EVIL_SAVE;
 	// ASCENT: the penalty of the attack (Mind Blast: -4, Save_mod)
 	if (Save_mod) {
@@ -2610,6 +2669,18 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 	mf = monster_flags(target);
 	if (L < 1) L = 1;
 
+	// ASCENT: Dtu_caster_ai: a harmful spell of a creature does not act on a
+	// creature of its side. The area of a damage spell does (Fireball,
+	// Burning Hands): the caster looks for allies before it casts one.
+	if (!self && caster && caster->type == OBJ_ROBOT && target->type == OBJ_ROBOT && spell < N_SPELL_RULES && dtu_caster_ai() &&
+		 ((Spell_rule[spell].flags & DTU_SR_SPARES_CASTER) || Spell_rule[spell].kind == DTU_SK_DAMAGE) &&
+		 !(Area_depth && Spell_rule[spell].kind == DTU_SK_DAMAGE && spell_area(spell)) &&
+		 !dtu_creature_is_hostile(caster) == !dtu_creature_is_hostile(target)) {
+		dtu_spell_log("spell: '%s' of obj %d %s does not act on its ally obj %d %s (Dtu_caster_ai)",spell_name(spell),
+			(int)(caster-Objects),target_name(caster),(int)(target-Objects),target_name(target));
+		return 0;
+	}
+
 	// A creature that is the target of the player wakes and is hostile
 	// (0xA6505 with 1, then 0x12AD9)
 	// ASCENT: Dtu_fix_haste_friends: a friend that Haste reaches stays a friend
@@ -3586,7 +3657,7 @@ fix dtu_spell_hit(int spell, object *target, object *caster, int level)
 	// 0x8CFFF computes the caster level itself (0x3A6540): the player
 	// 0x91EC1, a creature 0xAE3BB (max hit points / 8)
 	if (caster && (caster->type == OBJ_PLAYER || caster->type == OBJ_ROBOT))
-		level = object_level(caster,spell);
+		level = cast_level(caster,spell);		// ASCENT: the level of the type (Dtu_caster_ai)
 	if (spell_area(spell)) {
 		fix hp = (target->type == OBJ_ROBOT) ? target->shields : 0;
 
@@ -4164,6 +4235,12 @@ int dtu_spell_creature_ac_vs(object *c,int ac,int missile)
 		ac += 4;
 		if (ac > 10) ac = 10;
 	}
+	// ASCENT: Dtu_caster_ai: Protection From Evil of a creature (for the
+	// drow it is the reverse, Protection From Good, AD&D 2e): -2 to the
+	// attack rolls against it. 1.3 has the effect on a creature only against
+	// other creatures (0x2AD36).
+	if ((w & DTU_FX_PROT_EVIL) && dtu_caster_ai())
+		ac -= PROT_EVIL_SAVE;
 	return ac;
 }
 
@@ -4279,7 +4356,7 @@ void dtu_spell_touch_counter(int spell)
 
 fix dtu_spell_cast_on(int spell,object *target,object *caster)
 {
-	int L = object_level(caster,spell);
+	int L = cast_level(caster,spell);
 
 	if (!spell_ok(spell) || target == NULL)
 		return 0;
@@ -4302,7 +4379,7 @@ fix dtu_spell_touch(int spell,object *target,object *caster)
 {
 	if (!spell_ok(spell) || target == NULL)
 		return 0;
-	return apply_spell(spell,target,caster,object_level(caster,spell));
+	return apply_spell(spell,target,caster,cast_level(caster,spell));
 }
 
 // 0x9305D
@@ -4549,9 +4626,15 @@ void dtu_spell_creature_weapon_cast(object *obj,int active)
 }
 
 // 0x9305D for a creature: the cast that waits is lost
+static int caster_interrupt(object *obj,int hit);		// ASCENT: Dtu_caster_ai
+static void caster_frame(object *obj,int row,fix dist);
+
 static int creature_interrupt(object *obj,int hit)
 {
 	int n = cspell_state(obj), e = Cspell[n].chosen;
+
+	if (caster_row(obj) >= 0)
+		return caster_interrupt(obj,hit);
 
 	if (dtu_time_left(Cspell[n].cast_time) <= 0 || e < 0)
 		return 0;
@@ -4712,16 +4795,39 @@ static int cspell_weight(object *obj,int e,fix dist)
 	return -1;		// "bad spell"
 }
 
-// 0x91FDC: the cast
-static void creature_cast(object *obj)
+// ASCENT: Dtu_caster_ai: 1 if a missile of spell s from the creature (from
+// 2.0 above its center, as 0x91FDC) meets the player first: no wall, no
+// scenery and no creature of the other side on its way (the missile passes
+// the allies of its caster). *pass: a piece of scenery that touches the
+// body of the caster and that the missile would start in (a caster with its
+// back at a bed), -1 none: its missiles pass it.
+static int caster_missile_free(object *obj,int s,int *pass)
 {
-	int n = obj-Objects, e = Cspell[n].chosen, s, L = creature_level(obj), b;
+	vms_vector pos = obj->pos, dir;
+	int n = obj-Objects, seg, t;
+	fix range;
 
-	if (e < 0)
-		return;
-	s = Cspell_table[e].spell;
-	dtu_spell_log("cspell: obj %d %s casts '%s' (%d) at level %d, points %d %d",n,target_name(obj),spell_name(s),s,L,
-		Cspell[n].points[0],Cspell[n].points[1]);
+	*pass = -1;
+	pos.y += i2f(2);
+	seg = find_point_seg(&pos,obj->segnum);
+	if (seg < 0) { pos = obj->pos; seg = obj->segnum; }
+	vm_vec_sub(&dir,&ConsoleObject->pos,&pos);
+	range = vm_vec_normalize_quick(&dir) + ConsoleObject->size;
+	t = dtu_missile_path_target_pass(&pos,seg,&dir,3 < N_weapon_types ? 3 : 0,s,n,range,-1);
+	if (t >= 0 && Objects[t].type == OBJ_DRESSING && vm_vec_dist(&Objects[t].pos,&obj->pos) < obj->size + Objects[t].size) {
+		*pass = t;
+		t = dtu_missile_path_target_pass(&pos,seg,&dir,3 < N_weapon_types ? 3 : 0,s,n,range,t);
+	}
+	return ConsoleObject != NULL && t == ConsoleObject-Objects;
+}
+
+// 0x91FDC, the part that sends the spell out: on the creature itself,
+// the cone of Burning Hands, or the missiles to the player. ASCENT: a
+// function, for the loop of 1.3 (creature_cast) and Dtu_caster_ai.
+static void creature_spell_out(object *obj,int s,int L)
+{
+	int n = obj-Objects;
+
 	// 0x92104: +0x37 bit 0 (self_cast_ok, cast_in_front, or set by the
 	// choice of Dispel Magic): on the creature itself, an AREA line
 	// around it (0x90CEF), else 0x8CFFF. No case of Prayer here: as TARGET
@@ -4749,10 +4855,12 @@ static void creature_cast(object *obj)
 		// creature to the player (guess: the facing of the creature, which
 		// turns to the player in the attack)
 		vms_vector dir, pos = obj->pos;
-		int seg, m, k, count = missile_count(s,L);
+		int seg, m, k, count = missile_count(s,L), pass = -1;
 
 		if (s == 6)
 			color_spray_begin(obj);		// ASCENT: Dtu_fix_color_spray
+		if (caster_row(obj) >= 0)
+			caster_missile_free(obj,s,&pass);		// ASCENT: Dtu_caster_ai
 
 		pos.y += i2f(2);
 		seg = find_point_seg(&pos,obj->segnum);
@@ -4766,8 +4874,22 @@ static void creature_cast(object *obj)
 				break;
 			vm_vec_copy_scale(&Objects[m].mtype.phys_info.velocity,&dir,spell_fix(s,"speed",i2f(100)));
 			dtu_missile_set_life(m,spell_missile_life(s,L));		// ASCENT: the same values (Dtu_fix_spell_range)
+			dtu_missile_set_pass(m,pass);		// ASCENT: Dtu_caster_ai
 		}
 	}
+}
+
+// 0x91FDC: the cast
+static void creature_cast(object *obj)
+{
+	int n = obj-Objects, e = Cspell[n].chosen, s, L = creature_level(obj), b;
+
+	if (e < 0)
+		return;
+	s = Cspell_table[e].spell;
+	dtu_spell_log("cspell: obj %d %s casts '%s' (%d) at level %d, points %d %d",n,target_name(obj),spell_name(s),s,L,
+		Cspell[n].points[0],Cspell[n].points[1]);
+	creature_spell_out(obj,s,L);
 	b = spell_flag(s,"mage_use") ? 0 : 1;
 	Cspell[n].points[b] -= spell_level(s);
 	cspell_idle_wait(n,spell_level(s));		// ASCENT: Dtu_fix_caster_idle
@@ -4866,6 +4988,518 @@ static void creature_choose(object *obj,fix dist)
 	dtu_spell_log("cspell: obj %d %s chooses no spell: melee (-2)",n,target_name(obj));
 }
 
+//------------------------------------------------------------------------
+// ASCENT: Dtu_caster_ai (dtuopts.h; docs/re/ai.md, "Caster AI"): the
+// decision loop of a creature whose type has a spell list (dtucaster.h).
+//
+// - The senses: nothing before the creature is hostile, active and in a
+//   fight (dtu_creature_in_fight, dtuobj_ai.c: with Dtu_improved_ai it has
+//   seen or heard the player along an open path in the last 30 seconds).
+// - The fight: it starts at the first notice and ends when the creature has
+//   not sensed the player for CAI_FIGHT_END. At its start the creature gets
+//   its spell points (the points of the NPC table, and CAI_POOL_LEVEL for
+//   each caster level at least) and its contingency: each CS_BUFF spell of
+//   its list at once, with no cast time and no points. 1.3 fills the points
+//   (9 - levels) minutes after the last cast.
+// - The casts: one in each round of AD&D 2e (CAI_ROUND, 6.0 seconds): a
+//   choice, then the cast time of the spell (CAI_CAST_MAX at most), then
+//   the cast; the next choice one round after the choice, and CAI_REST
+//   after the cast at least. A ranged type starts its attack animation
+//   CAI_ANIM_LEAD before the cast and casts at the fire frame of the model
+//   if it has one, else at the cast time. A hit that takes hit points in
+//   the cast time stops the cast and takes its points (0x9305D).
+// - The choice (caster_weight): only a spell that reaches the player along
+//   a free line, no missile through an ally, no Fireball on itself or on an
+//   ally, nothing that a protection of the player stops (Shield against
+//   Magic Missile, Free Action, a hold or a fear that runs, a Minor Globe),
+//   a cure on itself below half of its hit points.
+// - With no points for a spell of its list it fights in melee
+//   (dtu_caster_move 2); between two casts it touches a player in its reach
+//   (choose_attack_goal, dtuobj_ai.c).
+
+#define CAI_ROUND		i2f(6)		// one cast each round: from a choice to the next
+#define CAI_REST		i2f(2)		// from a cast to the next choice at least
+#define CAI_CAST_MAX		6			// the longest cast time in seconds (one round)
+#define CAI_FIGHT_END	i2f(120)	// a fight ends after this time without the player
+#define CAI_ANIM_LEAD	F1_0		// the attack animation starts this long before the cast
+#define CAI_RETRY		F1_0		// the next choice after a choice with no usable spell
+#define CAI_HOLD_WAIT	i2f(30)		// between two Hold Person of one caster
+#define CAI_POWER_WAIT	i2f(18)		// the recharge of a power (Mind Blast): 3 rounds
+#define CAI_INTERRUPT	i2f(3)		// the next choice after a cast that a hit stopped
+#define CAI_POOL_LEVEL	4			// the points of a fight: this many for each caster level at least
+#define CAI_SHIFT		i2f(2)		// a step to the side: after 2 choices with a free line and no usable spell
+#define MIND_BLAST_REACH	i2f(120)	// 60 feet
+#define MIND_BLAST_COS		61000		// the cone: about 21 degrees to each side of its axis
+
+static struct {
+	int		signature;
+	int		fight;			// 1 while a fight runs
+	fix		fight_seen;		// the last time in the fight
+	int		pool[2];		// the points left: mage, cleric
+	int		spell;			// the spell that is cast, -1 none
+	int		flags;			// the CS_ flags of its entry
+	fix		cast_at;		// the time of its cast
+	fix		chosen_at;		// the time of its choice
+	int		anim;			// the attack animation was asked for
+	fix		next;			// the time of the next choice
+	int		empty;			// no points for a spell of the list
+	fix		hold_time, power_time;
+	fix		last_cast;
+	int		blocked;		// choices in a row with a line to the player and no usable spell
+	fix		shift_end;		// it steps to the side until this time
+} Cai[MAX_OBJECTS];
+
+static void caster_table_read(void)
+{
+	memset(Caster_row_of,0,sizeof(Caster_row_of));
+}
+
+static int cai_state(object *obj)
+{
+	int n = obj-Objects;
+
+	if (Cai[n].signature != obj->signature) {
+		memset(&Cai[n],0,sizeof(Cai[n]));
+		Cai[n].signature = obj->signature;
+		Cai[n].spell = -1;
+	}
+	return n;
+}
+
+// The book of the points of a spell: 0 mage, 1 cleric
+static int caster_book(int s)
+{
+	if (s == DTU_SPELL_FLAME_STRIKE)
+		return 1;
+	return spell_flag(s,"cleric_use") && !spell_flag(s,"mage_use") ? 1 : 0;
+}
+
+// 1 if the caster of level L has the entry
+static int caster_has(const caster_spell *e,int L)
+{
+	return L >= (e->min_level ? e->min_level : 2 * spell_level(e->spell) - 1);
+}
+
+static int caster_cost(const caster_spell *e)
+{
+	return (e->flags & CS_FREE) ? 0 : spell_level(e->spell);
+}
+
+// 1 if the points pay for no attack spell of the list
+static int caster_empty(object *obj,int row,int L)
+{
+	const caster_spell *e = Caster_lists[Caster_types[row].list];
+	int n = obj-Objects;
+
+	for (;e->spell != 255;e++)
+		if (!(e->flags & (CS_BUFF|CS_HEAL)) && caster_has(e,L) && caster_cost(e) <= Cai[n].pool[caster_book(e->spell)])
+			return 0;
+	return 1;
+}
+
+// The hostile creatures other than obj whose body is within radius of pos
+static int allies_near(object *obj,vms_vector *pos,fix radius)
+{
+	int i, k = 0;
+
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+
+		if (o == obj || o->type != OBJ_ROBOT || (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED|OF_EXPLODING)) || o->shields < F1_0 ||
+			 DTU_ANIM_STATE(o) == DAS_DIE || !dtu_creature_is_hostile(o))
+			continue;
+		if (vm_vec_dist(&o->pos,pos) <= radius + o->size)
+			k++;
+	}
+	return k;
+}
+
+// A spell on the caster itself (a protection, a cure). Prayer also
+// blesses the allies that the caster sees within 60 feet (AD&D 2e).
+static void caster_self_spell(object *obj,int s,int L)
+{
+	if (s == 21)
+		self_cast_counters(s,L);
+	apply_spell(s,obj,obj,L);
+	if (s == 38) {
+		int i;
+
+		for (i=0;i<=Highest_object_index;i++) {
+			object *o = &Objects[i];
+
+			if (o != obj && o->type == OBJ_ROBOT && !(o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED|OF_EXPLODING)) && o->shields >= F1_0 &&
+				 DTU_ANIM_STATE(o) != DAS_DIE && dtu_creature_is_hostile(o) && vm_vec_dist(&o->pos,&obj->pos) <= i2f(120) &&
+				 point_sees(&obj->pos,obj->segnum,o))
+				apply_spell(s,o,obj,L);
+		}
+	}
+}
+
+// The start of a fight: the points and the contingency
+static void caster_fight_start(object *obj,int row,int L)
+{
+	const caster_spell *e = Caster_lists[Caster_types[row].list];
+	int n = obj-Objects, b, first = -1;
+	char names[200];
+
+	for (b=0;b<2;b++) {
+		int p = creature_points(obj,b), level = b ? creature_cleric_level(obj) : creature_mage_level(obj);
+
+		if ((level > 0 || (Caster_types[row].flags & CF_POWER)) && p < CAI_POOL_LEVEL * L)
+			p = CAI_POOL_LEVEL * L;
+		Cai[n].pool[b] = p;
+	}
+	Cai[n].fight = 1;
+	Cai[n].spell = -1;
+	Cai[n].anim = 0;
+	Cai[n].next = GameTime + F1_0/2 + (rand() % 16) * (F1_0/16);
+	Cai[n].empty = caster_empty(obj,row,L);
+	names[0] = 0;
+	for (;e->spell != 255;e++)
+		if ((e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell)) {
+			caster_self_spell(obj,e->spell,L);
+			if (first < 0)
+				first = e->spell;
+			snprintf(names + strlen(names),sizeof(names) - strlen(names),"%s%s",names[0] ? ", " : "",Spell_info[e->spell].name);
+		}
+	if (first >= 0)
+		cast_effects(first,obj);
+	dtu_spell_log("caster: obj %d %s notices the player at %.2f: a fight starts, level %d, points %d %d, contingency: %s",n,target_name(obj),
+		f2fl(GameTime),L,Cai[n].pool[0],Cai[n].pool[1],names[0] ? names : "none");
+}
+
+// The weight of an entry for the choice, 0: not now. dist: the distance to
+// the player, sees: a free line to the player.
+static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int sees)
+{
+	object *pl = ConsoleObject;
+	int n = obj-Objects, s = e->spell, w = e->weight, pw = pl->dtu.m_88, reach;
+	int hp = f2i(obj->shields), max = obj->id < N_robot_types ? Monster_info[obj->id].max_hit_points : 1;
+	fix gap = dist - obj->size - pl->size;
+
+	if (e->flags & CS_HEAL) {
+		// below half of its hit points; Cure Serious Wounds below a third
+		if (monster_flags(obj) & (MONSTER_F_UNDEAD|MONSTER_F_EXTRAPLANAR))
+			return 0;
+		if (hp * (s == 11 ? 3 : 2) >= max)
+			return 0;
+		return w + 100 - 100 * hp / (max > 0 ? max : 1);
+	}
+	if (!sees)
+		return 0;
+	if (dtu_spell_globe(pl) && globe_stops(s,0))
+		return 0;
+	reach = (s == DTU_SPELL_MIND_BLAST) ? f2i(MIND_BLAST_REACH) : (s == DTU_SPELL_FLAME_STRIKE) ? spell_int(s,"range",360) : spell_reach(s,L);
+	if (reach > 0 && gap > i2f(reach))
+		return 0;
+	if ((e->flags & CS_CLOSE) && gap > BURNING_HANDS_REACH)
+		return 0;
+	switch (s) {
+		case 16: {		// Fireball: not on itself, not on an ally
+			fix radius = i2f(spell_int(s,"radius",0) + L * spell_int(s,"level_radius",0));
+
+			if (dist <= radius + obj->size && !(monster_flags(obj) & MONSTER_F_FIRE_IMMUNE))
+				return 0;
+			if (allies_near(obj,&pl->pos,radius))
+				return 0;
+			if (pw & (DTU_FX_PROT_FIRE|DTU_FX_RESIST_FIRE))
+				w /= 3;
+			break;
+		}
+		case DTU_SPELL_FLAME_STRIKE:
+			if (pw & (DTU_FX_PROT_FIRE|DTU_FX_RESIST_FIRE))
+				w /= 3;
+			break;
+		case 4:
+			if (pw & (DTU_FX_PROT_FIRE|DTU_FX_RESIST_FIRE))
+				w /= 3;
+			break;
+		case 33:		// Magic Missile: Shield stops it
+			if (pw & Spell_rule[33].stopped_by)
+				return 0;
+			break;
+		case 22: case 52:		// Hold Person
+			if ((pw & (DTU_FX_HOLD|DTU_FX_FREE_ACTION)) || (Dtu_fix_prot_evil && (pw & DTU_FX_PROT_EVIL)) || !dtu_time_past(Cai[n].hold_time))
+				return 0;
+			break;
+		case 47:
+			if (pw & DTU_FX_SLOW)
+				return 0;
+			break;
+		case 14:
+			if ((pw & DTU_FX_FEAR) || (Dtu_fix_prot_evil && (pw & DTU_FX_PROT_EVIL)))
+				return 0;
+			break;
+		case DTU_SPELL_MIND_BLAST:
+			if ((pw & DTU_FX_HOLD) || !dtu_time_past(Cai[n].power_time))
+				return 0;
+			break;
+	}
+	// a spell that flies as a missile: the player must be the first body on
+	// its way
+	if (!(e->flags & CS_CLOSE) && s != DTU_SPELL_MIND_BLAST && s != DTU_SPELL_FLAME_STRIKE && !spell_self(s)) {
+		int pass;
+
+		if (!caster_missile_free(obj,s,&pass))
+			return 0;
+	}
+	// a held player cannot dodge: damage first
+	if ((pw & DTU_FX_HOLD) && s < N_SPELL_RULES && Spell_rule[s].kind == DTU_SK_DAMAGE)
+		w *= 2;
+	// the images of the player: an area is not fooled
+	if (dtu_spell_images(pl) && (s == 16 || s == 4 || s == DTU_SPELL_FLAME_STRIKE || s == DTU_SPELL_MIND_BLAST))
+		w *= 2;
+	return w < 1 ? 1 : w;
+}
+
+static void caster_choose(object *obj,int row,int L,fix dist,int sees)
+{
+	const caster_spell *list = Caster_lists[Caster_types[row].list], *e, *pick = NULL;
+	int n = obj-Objects, total = 0, r, t;
+
+	Cai[n].empty = caster_empty(obj,row,L);
+	for (e=list;e->spell != 255;e++)
+		if (!(e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell) && caster_cost(e) <= Cai[n].pool[caster_book(e->spell)])
+			total += caster_weight(obj,e,L,dist,sees);
+	if (total <= 0) {
+		Cai[n].next = GameTime + CAI_RETRY;
+		// a free line and points, but no spell reaches the player (scenery or
+		// a creature in the way of each missile): a step to the side
+		if (sees && !Cai[n].empty && ++Cai[n].blocked >= 2) {
+			Cai[n].blocked = 0;
+			Cai[n].shift_end = GameTime + CAI_SHIFT;
+			dtu_spell_log("caster: obj %d %s has no spell that reaches the player: it steps to the side",n,target_name(obj));
+		}
+		return;
+	}
+	Cai[n].blocked = 0;
+	r = rand() % total;
+	for (e=list;e->spell != 255;e++)
+		if (!(e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell) && caster_cost(e) <= Cai[n].pool[caster_book(e->spell)]) {
+			int w = caster_weight(obj,e,L,dist,sees);
+
+			if (r < w) {
+				pick = e;
+				break;
+			}
+			r -= w;
+		}
+	if (pick == NULL) {		// the weights changed between the two passes (a ray): the next frame
+		Cai[n].next = GameTime + CAI_RETRY;
+		return;
+	}
+	t = spell_cast_time(pick->spell);
+	if (t > CAI_CAST_MAX)
+		t = CAI_CAST_MAX;
+	Cai[n].spell = pick->spell;
+	Cai[n].flags = pick->flags;
+	Cai[n].cast_at = GameTime + i2f(t);
+	Cai[n].chosen_at = GameTime;
+	Cai[n].anim = 0;
+	dtu_spell_log("caster: obj %d %s chooses '%s' (%d), distance %.1f, cast at %.2f",n,target_name(obj),spell_name(pick->spell),pick->spell,
+		f2fl(dist),f2fl(Cai[n].cast_at));
+}
+
+// Flame Strike (dtuspell.h): a column of fire on the target
+static void flame_strike(object *caster,object *target,int L)
+{
+	int k, vclip = spell_int(DTU_SPELL_FLAME_STRIKE,"weapon_vclip",-1);
+
+	sound_at(spell_int(DTU_SPELL_FLAME_STRIKE,"cast_sound",10),target->segnum,&target->pos,F1_0/2);
+	for (k=-1;k<=2;k++) {
+		vms_vector p = target->pos;
+		int seg;
+
+		p.y += k * i2f(5);
+		if ((seg = find_point_seg(&p,target->segnum)) >= 0)
+			vclip_at(seg,&p,i2f(7),vclip);
+	}
+	Area_depth++;		// a column: Mirror Image does not fool it
+	apply_spell(DTU_SPELL_FLAME_STRIKE,target,caster,L);
+	Area_depth--;
+}
+
+// Mind Blast (dtuspell.h): each creature of the other side in a cone 60
+// feet long in front of the caster, aimed at the player
+static void mind_blast_cone(object *caster,int L)
+{
+	vms_vector axis;
+	int i, k, hit = 0, vclip = spell_int(DTU_SPELL_MIND_BLAST,"weapon_vclip",-1);
+
+	vm_vec_sub(&axis,&ConsoleObject->pos,&caster->pos);
+	if (vm_vec_normalize_quick(&axis) == 0)
+		axis = caster->orient.fvec;
+	sound_at(spell_int(DTU_SPELL_MIND_BLAST,"cast_sound",10),caster->segnum,&caster->pos,F1_0/2);
+	for (k=1;k<=4;k++) {
+		vms_vector p;
+		int seg;
+
+		vm_vec_scale_add(&p,&caster->pos,&axis,caster->size + k * (MIND_BLAST_REACH / 5));
+		if ((seg = find_point_seg(&p,caster->segnum)) >= 0)
+			vclip_at(seg,&p,i2f(2) + k * i2f(2),vclip);
+	}
+	for (i=0;i<=Highest_object_index;i++) {
+		object *o = &Objects[i];
+		vms_vector v;
+		fix d;
+
+		if (o == caster || (o->type != OBJ_ROBOT && o != ConsoleObject) || (o->flags & (OF_SHOULD_BE_DEAD|OF_DESTROYED|OF_EXPLODING)))
+			continue;
+		if (o->type == OBJ_ROBOT && !dtu_creature_is_hostile(o) == !dtu_creature_is_hostile(caster))
+			continue;
+		vm_vec_sub(&v,&o->pos,&caster->pos);
+		d = vm_vec_normalize_quick(&v);
+		if (d - o->size - caster->size > MIND_BLAST_REACH)
+			continue;
+		if (d > o->size + caster->size + i2f(4) && vm_vec_dot(&v,&axis) < MIND_BLAST_COS)
+			continue;
+		if (!point_sees(&caster->pos,caster->segnum,o))
+			continue;
+		Area_depth++;
+		apply_spell(DTU_SPELL_MIND_BLAST,o,caster,L);
+		Area_depth--;
+		hit++;
+	}
+	dtu_spell_log("spell: Mind Blast of obj %d reaches %d creatures",(int)(caster-Objects),hit);
+}
+
+// The cast of the chosen spell
+static void caster_cast(object *obj,fix dist,int sees)
+{
+	int n = obj-Objects, s = Cai[n].spell, flags = Cai[n].flags, L = dtu_caster_level(obj), book = caster_book(s);
+	int cost = (flags & CS_FREE) ? 0 : spell_level(s);
+
+	Cai[n].spell = -1;
+	Cai[n].anim = 0;
+	Cspell[n].ready = 0;
+	if (!(flags & CS_HEAL) && !sees) {
+		// the line to the player is gone: no cast, the points stay
+		Cai[n].next = GameTime + CAI_RETRY;
+		dtu_spell_log("caster: obj %d %s does not cast '%s': no free line to the player",n,target_name(obj),spell_name(s));
+		return;
+	}
+	Cai[n].pool[book] -= cost;
+	Cai[n].next = Cai[n].chosen_at + CAI_ROUND;
+	if (dtu_time_left(Cai[n].next) < CAI_REST)
+		Cai[n].next = GameTime + CAI_REST;
+	dtu_spell_log("caster: obj %d %s casts '%s' (%d) at level %d at %.2f, distance %.1f, %.1f seconds after its last cast, points left %d %d",
+		n,target_name(obj),spell_name(s),s,L,f2fl(GameTime),f2fl(dist),Cai[n].last_cast ? f2fl(GameTime - Cai[n].last_cast) : 0.0,
+		Cai[n].pool[0],Cai[n].pool[1]);
+	Cai[n].last_cast = GameTime ? GameTime : 1;
+	if (s == 22 || s == 52)
+		Cai[n].hold_time = GameTime + CAI_HOLD_WAIT;
+	if (flags & CS_HEAL) {
+		caster_self_spell(obj,s,L);
+		cast_effects(s,obj);
+	}
+	else if (s == DTU_SPELL_MIND_BLAST) {
+		Cai[n].power_time = GameTime + CAI_POWER_WAIT;
+		mind_blast_cone(obj,L);
+	}
+	else if (s == DTU_SPELL_FLAME_STRIKE)
+		flame_strike(obj,ConsoleObject,L);
+	else
+		creature_spell_out(obj,s,L);
+	Cai[n].empty = caster_empty(obj,Caster_row_of[obj->id] - 1,L);
+	if (Cai[n].empty)
+		dtu_spell_log("caster: obj %d %s has no points for a spell of its list: it fights in melee",n,target_name(obj));
+}
+
+// 0x9305D for a creature of Dtu_caster_ai: a hit stops the cast that runs
+static int caster_interrupt(object *obj,int hit)
+{
+	int n = cai_state(obj), s = Cai[n].spell;
+
+	if (s < 0 || !hit)
+		return 0;
+	if (!(Cai[n].flags & CS_FREE))
+		Cai[n].pool[caster_book(s)] -= spell_level(s);
+	Cai[n].spell = -1;
+	Cai[n].anim = 0;
+	Cspell[n].ready = 0;
+	Cai[n].next = GameTime + CAI_INTERRUPT;
+	dtu_spell_log("caster: obj %d %s: the cast of '%s' is interrupted, points left %d %d",n,target_name(obj),spell_name(s),
+		Cai[n].pool[0],Cai[n].pool[1]);
+	return 1;
+}
+
+static void caster_frame(object *obj,int row,fix dist)
+{
+	int n, L, sees, ranged;
+
+	cspell_state(obj);
+	n = cai_state(obj);
+	if (!dtu_creature_is_hostile(obj) || (obj->dtu.m_1b0 & DTU_FLEEING))
+		return;
+	if (Cai[n].fight && dtu_time_past(Cai[n].fight_seen + CAI_FIGHT_END)) {
+		Cai[n].fight = 0;
+		Cai[n].spell = -1;
+		dtu_spell_log("caster: obj %d %s: the fight is over",n,target_name(obj));
+	}
+	if (!dtu_creature_in_fight(obj))
+		return;
+	L = dtu_caster_level(obj);
+	Cai[n].fight_seen = GameTime;
+	if (!Cai[n].fight)
+		caster_fight_start(obj,row,L);
+	sees = dtu_creature_sees_player(obj);
+	ranged = obj->id < N_robot_types && Robot_info[obj->id].attack_type != 1;
+	if (Cai[n].spell >= 0) {
+		// the attack animation of a ranged type: the cast is at its fire
+		// frame (dtu_caster_fire), or at the cast time (the models of the
+		// drow casters have no fire frame)
+		if (ranged && !Cai[n].anim && dtu_time_left(Cai[n].cast_at) <= CAI_ANIM_LEAD) {
+			Cai[n].anim = 1;
+			Cspell[n].ready = 1;
+		}
+		if (dtu_time_past(Cai[n].cast_at))
+			caster_cast(obj,dist,sees);
+		return;
+	}
+	if (!dtu_time_past(Cai[n].next))
+		return;
+	caster_choose(obj,row,L,dist,sees);
+}
+
+int dtu_caster_profile(object *obj)
+{
+	return caster_row(obj) >= 0;
+}
+
+int dtu_caster_weapon(object *obj)
+{
+	int r = caster_row(obj);
+
+	return r >= 0 && (Caster_types[r].flags & CF_WEAPON) != 0;
+}
+
+int dtu_caster_fire(object *obj,fix dist)
+{
+	int n;
+
+	if (caster_row(obj) < 0)
+		return 0;
+	n = cai_state(obj);
+	if (Cai[n].spell < 0 || dtu_time_left(Cai[n].cast_at) > CAI_ANIM_LEAD)
+		return 0;
+	caster_cast(obj,dist,dtu_creature_sees_player(obj));
+	return 1;
+}
+
+int dtu_caster_move(object *obj)
+{
+	int r = caster_row(obj), n;
+
+	if (r < 0 || (Caster_types[r].flags & CF_WEAPON) || Robot_info[obj->id].attack_type == 1)
+		return 0;
+	n = cai_state(obj);
+	if (!Cai[n].fight)
+		return 0;
+	if (Cai[n].empty)
+		return 2;
+	return (Cai[n].shift_end && dtu_time_left(Cai[n].shift_end) > 0) ? 3 : 1;
+}
+
 void dtu_spell_rest_shuffle(void)
 {
 	int i;
@@ -4907,6 +5541,11 @@ void dtu_spell_creature_frame(object *obj,fix dist,int active)
 		return;
 	if (!active || obj->shields < F1_0 || DTU_ANIM_STATE(obj) == DAS_DIE)
 		return;
+	// ASCENT: Dtu_caster_ai: the loop of the port for a type with a list
+	if (caster_row(obj) >= 0) {
+		caster_frame(obj,caster_row(obj),dist);
+		return;
+	}
 	if (creature_mage_level(obj) <= 0 && creature_cleric_level(obj) <= 0)
 		return;
 	n = cspell_state(obj);

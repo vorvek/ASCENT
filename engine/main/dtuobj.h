@@ -616,6 +616,10 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 // missile movement: the walls, then the bodies on the line), or -1. range
 // is the length of its flight. Nothing is created.
 int dtu_missile_path_target(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range);
+// ASCENT: Dtu_caster_ai: the same with an object that the missile passes (-1:
+// none), and the call that makes a missile pass an object
+int dtu_missile_path_target_pass(vms_vector *pos, int segnum, vms_vector *dir, int weapon_type, int spell, int parent, fix range, int pass);
+void dtu_missile_set_pass(int objnum, int pass);
 // The length of the flight of a missile weapon: its speed for its life.
 fix dtu_missile_weapon_range(int weapon_type);
 // 1 if the object is a creature that is hostile to the player.
@@ -693,6 +697,15 @@ extern int Dtu_fix_caster_idle;
 // ASCENT: 1 when the setting Dtu_caster_ai (dtuopts.h) is in effect: on,
 // and none of -origobj and -origcasterai
 int dtu_caster_ai(void);
+// ASCENT: for Dtu_caster_ai (dtuspell.c). 1 if the creature fights the
+// player: it is hostile and active, and with Dtu_improved_ai it has sensed
+// the player along an open path in the last 30 seconds (creature_in_combat):
+// a caster behind a closed door casts nothing.
+int dtu_creature_in_fight(object *obj);
+// 1 if the creature has a free line from its eye to the player (0x10815
+// without the melee rule), and the player is not hidden from it and it is
+// not blind
+int dtu_creature_sees_player(object *obj);
 // The speeds of the ogres and the trolls (0x74AA7, speeds= of the monster
 // table and of the model). Original: "Ogre2", "armOgre", "Troll" and
 // "armTroll" walk at 8.0 and run at 15.0, the values of the zombie; a
