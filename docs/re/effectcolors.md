@@ -181,6 +181,49 @@ and red edges on the water.
   water filled into them, and the GPU renderer shows the smooth upscaled
   water up to the edge of the stone. Test: HUB3 `-testpos 85,5,80,90,30`
   (the fifth value is the look pitch, new for this test), both renderers.
+- `Dtu_fix_glass_windows` (texmerge.c, render.c `render_wid`; `-origfx` clears
+  it). The glass `glas02` is a one way window. Wall data (**V**, `lvl.py`):
+
+  | Level | Glass side (seg/side, base + overlay, wall) | Other side (seg/side, base + overlay, wall) |
+  |---|---|---|
+  | DROW1 | 679/2, `misc1` + `glas02`, wall 61 closed | 680/5, `misc1` + `well2`, wall 60 closed |
+  | DROW1 | 683/0, `misc1` + `glas02`, wall 63 closed | 682/5, `misc1` + `well2`, wall 62 closed |
+  | DROW2 | 205/2, `zroc39` + `glas02`, wall 117 closed | 294/5, `stone223` + `well2`, wall 116 closed |
+  | DROW4 | 94/2, `wall1` + `glas02`, wall 5 closed | 100/5, `misc1` + `well1`, wall 4 closed |
+  | DROW4 | 208/0, `wall1` + `glas02`, wall 7 closed | 209/5, `misc1` + `well1`, wall 6 closed |
+  | CLAN1 | 717/4, `eroc43` + `glas02`, no wall | no segment behind |
+
+  All walls have flags 0, no trigger, no clip, `keys` 1. `well1` and `well2`
+  (flags 0x0B) are a stone ring with a hole of color 254 (845 and 818
+  texels; the glass of `glas02` is 845 texels of 0x6D). The render traversal
+  of 1.3 (0x7CFEE, `wall_is_doorway`; 0x7CFA3, `check_transparency`, **V** in
+  the pseudocode) passes a closed wall with an overlay only when the overlay
+  has the super transparent flag 0x02, as Descent 1 does; the port has the
+  same rule (wall.c `check_transparency`, render.c). So from the room of
+  `well2` the wall is see-through (the hole shows the room behind; the glass
+  face is a back face and is not drawn), and from the other side `glas02`
+  (flags 0x09, no 0x02) is a closed wall: the room behind is not drawn and
+  the 0x6D texels show earlier frames. **G** (inference): the design is a
+  window that looks out of the room of the drow wizard (DROW1) and shows the
+  room tinted from outside, the use of 0x6D on the glass of doors
+  (`glasdr1`); the traversal rule of Descent 1 does not know the effect
+  colors. With the correction the render traversal passes a closed wall
+  whose overlay has an effect color other than 0xCF when the side has a
+  segment behind it, so the room behind is drawn first and the glass shows
+  it in the warm ramp in both renderers. Movement, sight, sound, missiles
+  and the use ray keep `WALL_IS_DOORWAY`. The segments seen through the
+  glass are rendered segments, so the automap marks them as seen.
+  `Dtu_fix_solid_effects` stays for the faces with no room behind (CLAN1
+  717/4, the slides of HUB3). The software renderer keeps the pointer walk
+  of 1.3 for `below` (the next row from the left edge of the view, 2 pixels
+  for each effect pixel), so its tinted view is a stretched copy of the left
+  part of the view; the GPU renderer reads the pixel one row lower, so its
+  view through the glass is the room behind. Tests: DROW1 `-testpos
+  380,-3.5,1097.1,90` (outside) and `412,-3.5,1098.3,270` (the room of
+  `well2`), frame 60, both renderers, before with `-origfx`: outside, the
+  GPU renderer showed a dark red disk and the software renderer a smear;
+  after, both show the room behind and the creature in it in the warm ramp (the
+  software one stretched); inside, no change.
 - The upscaled textures: `tools/textures_hd.py` fills the effect texels with the
   colors around them before the upscale (`../hd_textures.md`). A set made before
   this has red around the effect texels; the game cannot remove that.

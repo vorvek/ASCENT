@@ -480,6 +480,24 @@ int Dtu_fix_wall_effects = 1;
 // texels around it. -origfx gives the rule of 1.3.
 int Dtu_fix_solid_effects = 1;
 
+// ASCENT: Dtu_fix_glass_windows. The porthole glass glas02 (845 texels of
+// 0x6D) is the overlay of closed walls with a segment behind (DROW1, DROW2,
+// DROW4). The other side of each of these walls has the overlay well1 or
+// well2, a ring with a super transparent hole of the same disk, so from
+// that room the wall is a see-through window. 0x6D shows the screen under
+// the glass in the warm ramp, a tinted view of the room behind; but 1.3
+// passes a closed wall in the render traversal only for a super
+// transparent overlay (0x7CFA3), so from the glass side the room behind is
+// not drawn and the glass shows earlier frames. With the correction the
+// traversal passes such a wall (render.c render_wid). -origfx clears it.
+int Dtu_fix_glass_windows = 1;
+static ubyte Texture_glass[MAX_TEXTURES];
+
+int texmerge_texture_is_glass(int t)
+{
+	return t >= 0 && t < MAX_TEXTURES && Texture_glass[t];
+}
+
 // 1 if the bitmap has an effect color other than 0xCF
 static int bitmap_has_red_effect(grs_bitmap *bm)
 {
@@ -531,9 +549,11 @@ void texmerge_mark_wall_effects(void)
 	int i, j;
 
 	if (FindArg("-origfx"))
-		Dtu_fix_wall_effects = Dtu_fix_solid_effects = 0;
-	for (i=0; i<NumTextures; i++)
+		Dtu_fix_wall_effects = Dtu_fix_solid_effects = Dtu_fix_glass_windows = 0;
+	for (i=0; i<NumTextures; i++) {
+		Texture_glass[i] = (ubyte) bitmap_has_red_effect(&GameBitmaps[Textures[i].index]);
 		mark_wall_bitmap(&GameBitmaps[Textures[i].index]);
+	}
 	for (i=0; i<MAX_EFFECTS; i++)
 		if (Effects[i].changing_wall_texture != -1)
 			for (j=0; j<Effects[i].vc.num_frames && j<VCLIP_MAX_FRAMES; j++)

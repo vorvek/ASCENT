@@ -654,6 +654,26 @@ static void light_log_frame(void)
 	Ll_frame++;
 }
 
+// ASCENT: Dtu_fix_glass_windows (texmerge.c). WALL_IS_DOORWAY for the render
+// traversal. A closed wall with an overlay that has effect colors (the glass
+// glas02) and a segment behind it is a window: the effect colors show the
+// screen under the face, so the segment behind is drawn first, as for a
+// see-through wall. 1.3 (0x7CFEE, 0x7CFA3) passes a side with an overlay
+// only when the overlay has the super transparent flag (0x02), as Descent
+// 1 check_transparency. Only the picture changes: movement, sight, sound,
+// missiles and the use ray keep WALL_IS_DOORWAY.
+static int render_wid(segment *seg, int side)
+{
+	int wid = WALL_IS_DOORWAY(seg, side), t2;
+
+	if (wid != WID_WALL || !Dtu_fix_glass_windows || !IS_CHILD(seg->children[side]))
+		return wid;
+	t2 = seg->sides[side].tmap_num2 & 0x3FFF;
+	if (t2 && t2 < NumTextures && texmerge_texture_is_glass(t2))
+		return wid | WID_RENDPAST_FLAG;
+	return wid;
+}
+
 // -----------------------------------------------------------------------------------
 //	Render a face.
 //	It would be nice to not have to pass in segnum and sidenum, but they are used for our
@@ -785,7 +805,7 @@ void render_face(int segnum, int sidenum, int nv, short *vp, int tmap1, int tmap
 		// upscaled texture); the software renderer and the 8-bit form draw
 		// the solid form of the bitmap.
 		if (Dtu_fix_solid_effects && (bm->bm_flags & BM_FLAG_DTU_EFFECTS)
-				&& !(WALL_IS_DOORWAY(&Segments[segnum], sidenum) & WID_RENDPAST_FLAG)) {
+				&& !(render_wid(&Segments[segnum], sidenum) & WID_RENDPAST_FLAG)) {
 			if (Render_gpu_view && Render_gpu_rgb)
 				G3_gpu_fx_solid = 1;
 			else
@@ -2590,7 +2610,7 @@ build_segment_list(int start_seg_num)
 			for (c=n_children=0;c<MAX_SIDES_PER_SEGMENT;c++) {		//build list of sides
 				int wid;
 
-				wid = WALL_IS_DOORWAY(seg, c);
+				wid = render_wid(seg, c);		// ASCENT: Dtu_fix_glass_windows
 
 				ch=seg->children[c];
 
