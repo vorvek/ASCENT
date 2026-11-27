@@ -1060,7 +1060,8 @@ def test_market_reward_repair(t):
     with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
         f.write(struct.pack("<iBBi", -1, 16, 79, 1) + struct.pack("<iBBi", 2, 15, 0, 1))
     script = "20:mission=17,30:save=3,60:load=3,200:save=4,230:load=4,300:save=5"
-    _, d = t.run("mk_repair", ["gamekeys", "wait 330"], extra=["-fixedfps", "30", "-chartest", script])
+    # -nonewgear: the goods of 1.3 only (test_market_reward_gear has the new gear)
+    _, d = t.run("mk_repair", ["gamekeys", "wait 330"], extra=["-fixedfps", "30", "-nonewgear", "-chartest", script])
     text = session_log(d)
     added = re.findall(r"Market: stock of reward (\d) \(mission \d+\) is added for mission 17", text)
     assert added == [str(n) for n in range(7)], "rewards added: %s" % added
@@ -1069,6 +1070,35 @@ def test_market_reward_repair(t):
     assert mask == 0x7F, "the trailer of THESTORE.6 is %r" % mask
     # 2 records, the goods of rewards 0 to 6 (50) and 7 records of Potions of Freedom
     assert len(recs) == 2 + 50 + 7, "THESTORE.6 has %d records" % len(recs)
+
+
+def gear_market_rows():
+    """The rows (stage, quantity, class, number, count) of Gear_market in
+    engine/main/dtugear.c."""
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "engine", "main", "dtugear.c"), encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    i = text.index("Gear_market[][5]")
+    block = text[i:text.index("};", i)]
+    return [int(m.group(1)) for m in re.finditer(r"^\s*\{\s*(\d+)\s*,", block, re.M)]
+
+
+def test_market_reward_gear(t):
+    """The same save with the new gear (dtugear.h): the rewards 0 to 6 have
+    their new goods too, and the Flame Tongue of reward 5 is not added (it
+    goes to reward 7)."""
+    user = os.path.join(t.tmp, "mk_gear", "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "GELDOR.DAT"), "wb") as f:
+        f.write(struct.pack("<iBBi", -1, 16, 79, 1) + struct.pack("<iBBi", 2, 15, 0, 1))
+    script = "20:mission=17,30:save=3,60:load=3,200:save=4"
+    t.run("mk_gear", ["gamekeys", "wait 240"], extra=["-fixedfps", "30", "-newgear", "-chartest", script])
+    recs, mask = read_store(os.path.join(user, "THESTORE.5"), swapped=True)
+    assert mask == 0x7F, "the trailer of THESTORE.5 is %r" % mask
+    assert not any(r[1] == 5 and r[2] == 71 for r in recs), "the Flame Tongue of reward 5 is in the stock"
+    new = len([s for s in gear_market_rows() if s <= 6])
+    assert new > 0, "no rows of Gear_market for the rewards 0 to 6"
+    # test_market_reward_repair has 2 + 50 + 7 records; one less (the Flame Tongue) and the new goods
+    assert len(recs) == 2 + 50 + 7 - 1 + new, "THESTORE.5 has %d records, %d new goods" % (len(recs), new)
 
 
 def test_market_sell_scroll(t):

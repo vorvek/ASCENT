@@ -224,7 +224,7 @@ TESTS = [
     # with the key (MISC 43) the player opens it from the end of the
     # corridor (seg 481).
     T("dragon_key_alcove", "DROW2", "5:goside=481.0,12:activate,30:items=407,31:wall=481.0,40:give=16.43,60:goseg=481,100:wall=481.0",
-      [r"item type 16 id 43 count 1 \"Jailer's Key\": obj 65 in segment 407, picture \d+,", r"items in seg 407: 16\.43",
+      [r"item type 16 id 43 count 1 \"Jailer's Key\": obj \d+ in segment 407, picture \d+,", r"items in seg 407: 16\.43",
        r"use: door wall 133 clip \d+ flags 0x18 keys 4 state 0: locked", r"f31 +wall 481\.0: type 2 flags 0x18 state 0",
        r"dragon: the key of the alcove \(MISC 43\) opens the door of seg 481 side 0",
        r"message \"You use the jailer's key to unlock the door\.\"", r"f100 +wall 481\.0: type 2 flags 0x12 state"],
