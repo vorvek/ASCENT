@@ -1032,7 +1032,7 @@ Per spell (missile count n, default 1; L = caster level):
 | 7 Confusion | n = 1d4 + L |
 | 22, 52 Hold Person | counter +0x49 = 1d4 |
 | 23 Hold Undead | counter = 1d3, HD pool +0x76 = L |
-| 32 Lightning Bolt | lifetime 2.0, W+0x0A = 1 |
+| 32 Lightning Bolt | lifetime 2.0, W+0x0A = 1 (the bounce; the first body ends the bolt, the port goes on with `Dtu_fix_bolt_pass`, C3) |
 | 33 Magic Missile | n = min(L / 2 + 1, 5); homing: finds a target (0x55D91) and fires n homing missiles at it (0x56F3A); for the player homing only if 0x35A2B() (is a mage) |
 | 34 Magical Stone | n = 1d3 |
 | 36 Melf's Acid Arrow | lifetime = (L / 3 + 1) * 60.0 |
@@ -2339,6 +2339,7 @@ All are global variables, 1 by default; the option `-origcombat` clears them.
 | `Dtu_fix_cursed_scroll` | dtuchar.c | the Cursed Scroll does rand() % (hit points as a fix) damage, below half a point (0x38159) | rand() % hit points, whole points |
 | `Dtu_fix_creature_missile` | dtuchar.c, dtuobj.c | a creature missile adds the bow or crossbow bonus of the player and can use up the Potion of Luck of the player (0x2B0AE, 0x2B107) | only the missiles of the player |
 | `Dtu_fix_sword_view` | dtucombat.c | the arms of a long sword stand in the middle of the view (C1, "The long sword in the middle of the view") | at rest the arms move right until the middle of the weapon is as far right of the eye as that of the broad sword; out in the first 3/16 of a swing |
+| `Dtu_fix_bolt_pass` | dtucombat.c, dtuobj_missile.c, dtuspell.c | Lightning Bolt bounces at a wall but the first creature or player that it hits ends it (0x272DD, 0x284E0; D-195) | AD&D 2e: the bolt goes on through each body until its life ends, each body takes the spell once on each leg between two walls with its own save, a body crossed again on a later leg saves again (the other half on a failed save), the caster AI casts no bolt that a near wall would send back to it (docs/re/spells.md section 14) |
 
 With the option `-origobj` (dtuobj.c, 1 by default):
 

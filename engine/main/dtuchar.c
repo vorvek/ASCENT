@@ -4488,6 +4488,23 @@ static void run_command(char *cmd, char *value)
 		Objects[a].last_pos = Objects[a].pos;
 		obj_relink(a, b);
 	}
+	else if (!strcmp(cmd, "objfront") && a > 0 && a <= Highest_object_index && ConsoleObject) {	// ASCENT: test: objfront=N.D, object N D units in front of the player (level view), facing the player (Dtu_fix_bolt_pass)
+		object *o = &Objects[a];
+		vms_vector f = ConsoleObject->orient.fvec, p;
+		int seg;
+
+		f.y = 0;
+		if (vm_vec_normalize(&f) > 0) {
+			vm_vec_scale_add(&p, &ConsoleObject->pos, &f, i2f(b));
+			if ((seg = find_point_seg(&p, ConsoleObject->segnum)) >= 0) {
+				o->pos = o->last_pos = p;
+				vm_vec_negate(&f);
+				vm_vector_2_matrix(&o->orient, &f, NULL, NULL);
+				obj_relink(a, seg);
+			}
+			dtu_char_log("objfront: obj %d at %d in front of the player, seg %d", a, b, seg);
+		}
+	}
 	else if (!strcmp(cmd, "cpoints") && a >= 0 && a <= Highest_object_index) {	// test: cpoints=N[.MAGE], the spell points of creature N (MAGE: set them, cleric 0; D-134)
 		int m, c;
 

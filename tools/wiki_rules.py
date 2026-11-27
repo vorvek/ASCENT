@@ -409,12 +409,19 @@ SPELLS = {
                  "in the area, except you and the blind, is blind for the duration unless it saves. A "
                  "light-sensitive creature that fails also takes 1d6 damage.",
              tech="Light 20.0 (player_light of the table fixup)."),
-    32: dict(src="0x8EE76, 0x91BC3", dur="Instant", save="Half", target="The creature the missile hits",
-             eff="1d6 electric damage per level, at most 10d6. No damage to creatures immune to "
-                 "electricity. Scenery that it hits can break.",
+    32: dict(src="0x8EE76, 0x91BC3", dur="Instant", save="Half", target="Each creature on its line",
+             eff="1d6 electric damage per level, at most 10d6, to each creature on its line, each "
+                 "with its own saving throw for half. No damage to creatures immune to electricity. "
+                 "Scenery that it hits can break. The bolt goes on through the creatures until its "
+                 "range ends and comes back from a wall toward you, so it can hit you. A creature "
+                 "that it crosses again saves again: full damage if one save fails, half if all are "
+                 "made. The original 1.3 game ends the bolt at the first creature it hits; ASCENT "
+                 "follows AD&D 2nd edition.",
              tech="The table fixup (0x1AABA) writes elec_damage_dice=6, #1, level 0 and flags "
                   "0x802; the case sets #elec_damage_dice = min(L, 10): 1d6 per level, at most "
-                  "10d6. The missile lives 2 s."),
+                  "10d6. The missile lives 2 s in 1.3 and bounces at a wall (0x571C5, 0xA0731); "
+                  "0x272DD removes it at the first body. Dtu_fix_bolt_pass (dtuobj_missile.c) "
+                  "lets it go on."),
     33: dict(src="0x8EED5, 0x56FF6", dur="Instant", save="Half",
              target="1 missile, +1 at levels 2, 4, 6 and 8 (at most 5)",
              eff="1d4 + 1 damage per missile. The missiles home in on the target when a mage casts "
@@ -629,6 +636,9 @@ FIXES = [
     ("Dtu_fix_melf_acid", "-origcombat", "Melf's Acid Arrows makes an attack roll and burns 2d4 a "
                                          "round for 1 round + 1 per 3 levels, as in AD&D 2nd edition; "
                                          "1.3 does 4 per level in one hit, save for half."),
+    ("Dtu_fix_bolt_pass", "-origcombat", "Lightning Bolt goes on through each creature on its line, and "
+                                         "comes back from a wall, until its range ends, as in AD&D 2nd "
+                                         "edition; in 1.3 the first creature or the player ends it."),
     ("Dtu_fix_burning_hands", "-origcombat", "Burning Hands burns each creature within 5 feet in an arc "
                                              "of 120 degrees in front of you, one roll each, as in AD&D 2nd "
                                              "edition; 1.3 fires 6 missiles that fly far and burn where they land."),

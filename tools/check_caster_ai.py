@@ -43,6 +43,9 @@ The checks (the exit status is 1 when one fails):
   - player: Mirror Image and Minor Globe of Invulnerability on the player
     against the mage obj 13 of DROW1: an image takes an attack, the globe
     stops a spell of level 1 to 3;
+  - bolt: FLAME, the player 20.0 from the drow mage obj 19 with a wall just
+    behind: the mage casts, but not Lightning Bolt, which would go on
+    through the player and come back to it (Dtu_fix_bolt_pass);
   - off: with -origcasterai no line of the loop ("caster:") is in the log.
 
 --table prints the measures as a Markdown table (docs/re/ai.md). --jobs N
@@ -310,6 +313,25 @@ def main():
                                                "15:spelltest=28.1.13.0"] + ["%d:spelltest=33.8.13.0" % f for f in range(60, 600, 30)], 600), [])
         own = len(re.findall(r"Mirror Image of obj 13 rmmk5: an image takes the attack", text))
         check("player", own > 0, "the images of the drow mage took %d Magic Missiles of the player" % own)
+
+    if not only or "bolt" in only:
+        # Dtu_fix_bolt_pass: the Lightning Bolt goes on through the player and
+        # comes back from a wall. FLAME: the player 20.0 from the drow mage obj
+        # 19 has a wall about 7.0 behind: the mage does not cast Lightning Bolt
+        # (its bolt would come back to it). -origcombat: the bolt ends at the
+        # player, so the test does not apply.
+        res = {}
+        cmds = script(["2:seed=1", "4:alone=19", "5:setlevel=8", "8:heal=500", "10:goobjsee=19.20", "15:spelltest=28.1.19.0"], 900)
+        for mode, extra in (("on", []), ("off", ["-origcombat"])):
+            d = os.path.join(work, "bolt_" + mode)
+            os.makedirs(d)
+            text = run(a, d, "FLAME", 900, cmds, extra)
+            res[mode] = (len(re.findall(r"obj 19 rmmk9: its Lightning Bolt would come back from the wall", text)),
+                         len(re.findall(r"caster: obj 19 rmmk9 casts 'Lightning Bolt'", text)),
+                         len(re.findall(r"caster: obj 19 rmmk9 casts", text)))
+        check("bolt", res["on"][0] > 0 and res["on"][1] == 0 and res["on"][2] > 0 and res["off"][0] == 0,
+              "the drow mage with a wall behind the player: %d times no Lightning Bolt, %d bolts of %d casts; "
+              "with -origcombat %d such tests" % (res["on"][0], res["on"][1], res["on"][2], res["off"][0]))
 
     if a.table:
         print()

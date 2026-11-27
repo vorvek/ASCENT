@@ -142,7 +142,10 @@ its 2.0 seconds and bounces (the 2e bolt bounces too). In 0x272DD a bouncing wea
 turns back after a creature hit (LAB_00027763), so it can hit again (G: the physics
 flag that the bounce byte sets was not traced). The port removes the bolt at the
 first wall (`dtuobj_missile.c:320`) and at the first body (`:423`), so it hits one
-target.
+target. Later (2026-11-25, docs/re/spells.md section 14): the bounce is ported; the
+bytes show that 0x272DD turns back only a missile with flag 0x80 and removes the bolt
+(a model) at the first body. Later (2026-11-27, D-195): `Dtu_fix_bolt_pass` lets the
+bolt go on through the bodies, by the 2e rule.
 
 **R2. The counters of Haste, Slow and Hold Undead are missing (port bug).** V:
 0x56A0D stores the caster level in the counter `S+0x49` of Haste before the cast on

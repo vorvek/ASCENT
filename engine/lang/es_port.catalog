@@ -1038,6 +1038,10 @@ id: port.the_first_creature_it_hits
 en: The first creature it hits
 tr: La primera criatura que alcanza
 
+id: port.each_creature_on_its_line
+en: Each creature on its line
+tr: Cada criatura en su línea
+
 id: port.bounces_off_walls_after_a_bounce_it_can_hit_you
 en: Bounces off walls. After a bounce it can hit you.
 tr: Rebota en las paredes. Tras un rebote puede alcanzarte.

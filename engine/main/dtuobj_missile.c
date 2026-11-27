@@ -83,6 +83,85 @@ static void missile_remove(object *obj)
 
 static fix Missile_life[MAX_OBJECTS];		// lifeleft (object +0x84)
 
+// ASCENT: Dtu_fix_bolt_pass (dtucombat.h, D-195): the bodies that one
+// Lightning Bolt has crossed. leg counts the walls (and Mirror Shields) that
+// turned the bolt back; the bolt crosses a body once on each leg. full and
+// saved: the damage of the first crossing and its save. AD&D 2e: a creature
+// that the bolt crosses again saves again, and it takes the full damage when
+// one save fails, half when all are made.
+#define BOLT_LISTS	16
+#define BOLT_HITS		32
+
+typedef struct bolt_hit {
+	short		obj;
+	int		sig;
+	ubyte		leg, saved;
+	short		full;
+} bolt_hit;
+
+typedef struct bolt_list {
+	int		used, missile, sig;
+	ubyte		leg;
+	short		n;
+	bolt_hit	hit[BOLT_HITS];
+} bolt_list;
+
+static bolt_list Bolt[BOLT_LISTS];
+
+// 1 for a Lightning Bolt that goes on through the bodies
+static int bolt_passes(object *obj)
+{
+	int n = obj-Objects;
+
+	return Dtu_fix_bolt_pass && obj >= Objects && obj < Objects + MAX_OBJECTS && Missile[n].signature == obj->signature &&
+		Missile[n].spell == 32 && !Missile[n].harmless;
+}
+
+// The list of the bolt, a new one with make. NULL: none (all lists in use:
+// the bolt ends at its next body, as in 1.3).
+static bolt_list *bolt_get(object *obj,int make)
+{
+	int i, n = obj-Objects, free_i = -1;
+
+	for (i=0;i<BOLT_LISTS;i++) {
+		bolt_list *b = &Bolt[i];
+
+		if (b->used && b->missile == n && b->sig == obj->signature)
+			return b;
+		if (free_i < 0 && (!b->used || Objects[b->missile].signature != b->sig || Objects[b->missile].type != OBJ_WEAPON ||
+				(Objects[b->missile].flags & OF_SHOULD_BE_DEAD)))
+			free_i = i;
+	}
+	if (!make || free_i < 0)
+		return NULL;
+	memset(&Bolt[free_i],0,sizeof(Bolt[free_i]));
+	Bolt[free_i].used = 1;
+	Bolt[free_i].missile = n;
+	Bolt[free_i].sig = obj->signature;
+	return &Bolt[free_i];
+}
+
+static bolt_hit *bolt_find(bolt_list *b,object *o)
+{
+	int i;
+
+	for (i=0;b && i<b->n;i++)
+		if (b->hit[i].obj == o-Objects && b->hit[i].sig == o->signature)
+			return &b->hit[i];
+	return NULL;
+}
+
+// 1 if the bolt crossed the body on this leg: it passes it
+static int bolt_crossed(object *obj,object *o)
+{
+	bolt_list *b;
+	bolt_hit *h;
+
+	if (!bolt_passes(obj) || !(b = bolt_get(obj,0)) || !(h = bolt_find(b,o)))
+		return 0;
+	return h->leg == b->leg;
+}
+
 // A value of the $SPELL line of a spell missile, or def
 static fix spell_line_fix(int spell,char *key,fix def)
 {
@@ -230,6 +309,12 @@ int dtu_create_missile(vms_vector *dir, vms_vector *pos, int segnum, int parent,
 		dtu_spell_template_used(weapon_type);		// 0x571B2: the template is magic
 	m->bounce = bounce;
 	m->pass_obj = -1;
+	{	// ASCENT: Dtu_fix_bolt_pass: no list of an earlier object with this number
+		bolt_list *b = bolt_get(obj,0);
+
+		if (b)
+			b->used = 0;
+	}
 	// ASCENT: 0x56FF6 writes player_light of the spell (0 when the line has
 	// none, 0x242F6) to lightcast of the template, which 0x577FE adds to
 	// the light of the segment. The port kept the light of the template
@@ -395,6 +480,8 @@ static void missile_hit_wall(object *obj,vms_vector *point,vms_vector *wallnorm,
 		}
 		vm_vec_negate(&obj->mtype.phys_info.velocity);
 		dtu_obj_log("missile: Lightning Bolt obj %d bounces at %.1f %.1f %.1f",(int)(obj-Objects),f2fl(point->x),f2fl(point->y),f2fl(point->z));
+		if (bolt_passes(obj) && bolt_get(obj,1))
+			bolt_get(obj,1)->leg++;		// ASCENT: Dtu_fix_bolt_pass: it can cross each body again
 		return;
 	}
 	if (m->bounce == 1 && wallnorm) {
@@ -436,9 +523,13 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	int weapon = obj->id, spell, sound;
 	object *parent = NULL;
 	fix dealt = 0, hp, spell_dealt;
+	bolt_list *bolt = bolt_passes(obj) ? bolt_get(obj,1) : NULL;		// ASCENT: Dtu_fix_bolt_pass
+	bolt_hit *again = NULL;
 
 	if (m->parent >= 0 && Objects[m->parent].signature == m->parent_sig)
 		parent = &Objects[m->parent];
+	if (bolt && (again = bolt_find(bolt,other)) == NULL && bolt->n >= BOLT_HITS)
+		bolt = NULL;		// the list is full: the bolt ends here, as in 1.3
 
 	// ASCENT: Dtu_fix_revive: a spell missile on the fallen body of a
 	// creature that can get up (missile_path_object). An area spell has its
@@ -449,7 +540,19 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 
 		dtu_obj_log("missile: obj %d of spell %d hits the fallen body of obj %d",(int)(obj-Objects),m->spell,(int)(other-Objects));
 		vclip_at(obj->segnum,point,wi->impact_size,f2i(spell_line_fix(m->spell,"wall_hit_vclip",-F1_0)));
-		missile_remove(obj);
+		if (again)
+			return;		// ASCENT: Dtu_fix_bolt_pass: once for each bolt
+		if (bolt) {
+			bolt_hit *h = &bolt->hit[bolt->n++];
+
+			h->obj = other-Objects;
+			h->sig = other->signature;
+			h->leg = bolt->leg;
+			h->saved = 0;
+			h->full = 0;
+		}
+		else
+			missile_remove(obj);
 		if (dtu_spell_is_area(m->spell))
 			dtu_spell_area(m->spell,point,obj->segnum,parent,L);
 		else
@@ -490,6 +593,8 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		m->parent = other-Objects;
 		m->parent_sig = other->signature;
 		m->unlinked = 0;
+		if (bolt)
+			bolt->leg++;		// ASCENT: Dtu_fix_bolt_pass: the bolt can cross each body again
 		return;
 	}
 
@@ -500,7 +605,34 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 	// ASCENT: the cause of a death for the session log (dtuxp.h)
 	if (other->type == OBJ_ROBOT)
 		dtu_xp_cause(!parent ? "missile with no source (a trap or a lost parent)" : parent->type == OBJ_ROBOT ? "creature missile" : "missile of the player");
-	spell_dealt = (spell >= 0) ? (m->level > 0 ? dtu_spell_hit_level(spell,other,parent,m->level) : spell_hit(spell,other,parent)) : 0;
+	// ASCENT: Dtu_fix_bolt_pass: the bolt crosses the body again (a new leg):
+	// a new save when the earlier ones were made, else nothing
+	Dtu_spell_deal_full = -1;
+	Dtu_spell_deal_saved = 0;
+	if (again) {
+		again->leg = bolt->leg;
+		spell_dealt = again->saved ? dtu_spell_bolt_again(spell,other,parent,
+			m->level > 0 ? m->level : parent ? dtu_spell_object_level(parent,spell) : 1,again->full) : 0;
+		if (!Dtu_spell_deal_saved)
+			again->saved = 0;
+		if (spell_dealt <= 0) {
+			dtu_xp_cause(NULL);
+			return;
+		}
+	}
+	else
+		spell_dealt = (spell >= 0) ? (m->level > 0 ? dtu_spell_hit_level(spell,other,parent,m->level) : spell_hit(spell,other,parent)) : 0;
+	if (bolt && !again) {
+		bolt_hit *h = &bolt->hit[bolt->n++];
+
+		h->obj = other-Objects;
+		h->sig = other->signature;
+		h->leg = bolt->leg;
+		h->full = Dtu_spell_deal_full > 0 ? Dtu_spell_deal_full : 0;
+		h->saved = h->full > 0 && Dtu_spell_deal_saved;
+		dtu_obj_log("missile: Lightning Bolt obj %d crosses obj %d %s (leg %d): damage roll %d, %s",(int)(obj-Objects),(int)(other-Objects),
+			dtu_object_name(other),bolt->leg,Dtu_spell_deal_full,h->saved ? "save made" : "no save made");
+	}
 
 	if (other->type == OBJ_PLAYER) {
 		Hit_by_missile = 1;		// ASCENT: Dtu_fix_shield_ac
@@ -560,6 +692,8 @@ static void missile_hit_object(object *obj,object *other,vms_vector *point)
 		dtu_obj_log("missile: obj %d goes on after the hit of obj %d (no monster_hit_vclip, Dtu_fix_hit_keep 0)",(int)(obj-Objects),m->pass_obj);
 		return;
 	}
+	if (bolt)
+		return;		// ASCENT: Dtu_fix_bolt_pass: the bolt goes on
 	missile_remove(obj);
 }
 
@@ -591,10 +725,14 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 			continue;
 		if (j == pass && o->signature == pass_sig)		// Dtu_fix_hit_keep
 			continue;
+		if (bolt_crossed(obj,o))		// ASCENT: Dtu_fix_bolt_pass
+			continue;
 		// ASCENT: Dtu_caster_ai (dtuopts.h): the spell missile of a creature
 		// passes the creatures of its side (its spell does not act on them,
 		// apply_spell of dtuspell.c)
-		if (spell >= 0 && o->type == OBJ_ROBOT && parent > 0 && parent <= Highest_object_index && Objects[parent].type == OBJ_ROBOT &&
+		// (not the caster itself: a Lightning Bolt that came back from a wall
+		// can hit it, as in 1.3 and AD&D 2e)
+		if (spell >= 0 && o->type == OBJ_ROBOT && j != parent && parent > 0 && parent <= Highest_object_index && Objects[parent].type == OBJ_ROBOT &&
 			 Objects[parent].signature == parent_sig && dtu_caster_ai() &&
 			 !dtu_creature_is_hostile(&Objects[parent]) == !dtu_creature_is_hostile(o))
 			continue;
@@ -808,7 +946,15 @@ void missiles_frame(void)
 		best = missile_path_object(obj,&end,step,m->parent,m->unlinked ? -1 : m->parent_sig,m->pass_obj,m->pass_sig,
 			m->harmless ? -1 : m->spell,&best_ip);
 		if (best >= 0) {
+			int k = 0, from = m->parent;
+
 			missile_hit_object(obj,&Objects[best],&best_ip);
+			// ASCENT: Dtu_fix_bolt_pass: the bolt goes on to the next body on
+			// the way of this frame (not after a Mirror Shield turned it)
+			while (!(obj->flags & OF_SHOULD_BE_DEAD) && bolt_passes(obj) && m->parent == from && ++k < BOLT_HITS &&
+					(best = missile_path_object(obj,&end,step,m->parent,m->unlinked ? -1 : m->parent_sig,m->pass_obj,m->pass_sig,
+						m->harmless ? -1 : m->spell,&best_ip)) >= 0)
+				missile_hit_object(obj,&Objects[best],&best_ip);
 			if (obj->flags & OF_SHOULD_BE_DEAD)
 				continue;
 		}

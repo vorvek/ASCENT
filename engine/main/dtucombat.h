@@ -207,6 +207,12 @@ extern int Dtu_fix_kill_sound;
 // swords stand in the middle in 1.3: 0x43A5A, 0x67C5A, 0x4450C). 0
 // (-origcombat): the place of 1.3.
 extern int Dtu_fix_sword_view;
+// ASCENT: D-195. 1 (default): Lightning Bolt (spell 32) goes on through each
+// creature and the player on its line until its life ends, as in AD&D 2e;
+// each target takes its damage once, with its own save, and a target that
+// the bolt crosses again after a wall rolls a new save (dtuobj_missile.c).
+// 0 (-origcombat): 1.3, the first body ends the bolt (0x272DD, 0x284E0).
+extern int Dtu_fix_bolt_pass;
 
 // The blindness of Fireball within 6.0 of the point (dtu_fireball_blind_deaf):
 // 1.3 blinds also on a made save (0x90E22 jumps to 0x90F73) and blinds a

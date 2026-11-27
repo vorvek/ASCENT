@@ -249,6 +249,7 @@ static int Slow_stuck = 0;
 // killing blow is silent at the hit point. 1 (default): the hit sound
 // plays on that blow too. 0 (-origcombat): the rule of 1.3.
 int Dtu_fix_kill_sound = 1;
+int Dtu_fix_bolt_pass = 1;		// ASCENT: D-195, dtucombat.h
 
 // The effects and the Haste rule for the attack rate (dtuatk.c)
 static int rate_effects(void)
@@ -1648,6 +1649,7 @@ static void combat_init(void)
 		Dtu_fix_hold_undead_hd = 0;
 		Dtu_fix_haste_count = 0;
 		Dtu_fix_sword_view = 0;
+		Dtu_fix_bolt_pass = 0;
 	}
 }
 
