@@ -686,9 +686,29 @@ static int corrected_speeds(object *obj,fix *walk,fix *run)
 {
 	const char *name;
 
-	if (!Dtu_fix_monster_speed || obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
+	if (obj->type != OBJ_ROBOT || obj->id >= N_robot_types)
 		return 0;
 	name = Monster_info[obj->id].name;
+	// ASCENT: Dtu_improved_ai (a decision of the user, 2026-11-27): the
+	// spiders. "gSpider" and "sSpider" have speeds=10.0 3 20.0, the values
+	// of an orc, with a body of radius 27.0 (an orc: 6.6), so a spider moves
+	// less than half of its body in a second of its run. The method of
+	// Dtu_fix_monster_speed with the web rates of AD&D 2e (the game has no
+	// webs to walk on, and the ground rate 3 of the giant spider would be
+	// slower than the table): the giant spider (Wb 12) 15.0 and 30.0, the
+	// large spider (Wb 15) 18.75 and 37.5. Off with the setting.
+	if (improved_ai()) {
+		if (!stricmp(name,"gSpider")) {
+			*walk = i2f(15); *run = i2f(30);
+			return 1;
+		}
+		if (!stricmp(name,"sSpider")) {
+			*walk = i2f(75)/4; *run = i2f(75)/2;
+			return 1;
+		}
+	}
+	if (!Dtu_fix_monster_speed)
+		return 0;
 	if (!stricmp(name,"Ogre2") || !stricmp(name,"armOgre")) {
 		*walk = i2f(11); *run = i2f(22);
 		return 1;
