@@ -382,7 +382,7 @@ void dtu_creature_alert(object *caller, int level)
 		creature_wake(obj,0,i & 1);
 		woken++;
 	}
-	if (improved_ai() && (woken || stopped))
+	if (improved_ai() && woken)
 		dtu_obj_log("alert: level %d from obj %d: %d creatures woken, %d with no open path from the caller",level,(int)(caller-Objects),woken,stopped);
 }
 
