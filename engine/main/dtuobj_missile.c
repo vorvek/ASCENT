@@ -568,6 +568,13 @@ static int missile_path_object(object *obj,vms_vector *end,fix step,int parent,i
 		else
 			d = dtu_object_hit_test(&ip,&obj->pos,end,obj->size,o,obj);
 		Fvi_dtu_player_attack = 0;
+		// ASCENT: Dtu_improved_ai: not a body behind a wall or a door that
+		// is not open (attack_wall_between(), dtuobj_aware.c)
+		if (d > 0 && attack_wall_between(&ip,find_point_seg(&ip,obj->segnum),o,-1)) {
+			if (obj >= Objects && obj < Objects + MAX_OBJECTS)		// not the stand in of the target hint
+				dtu_obj_log("missile: a wall or a closed door is between the missile and obj %d %s",j,dtu_object_name(o));
+			continue;
+		}
 		if (d > 0 && d < best_d) {
 			best_d = d;
 			best = j;

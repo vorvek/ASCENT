@@ -715,6 +715,11 @@ extern int Dtu_fix_fall_land;
 // The script of a creature (dtuhook.c): 1 if the script with this id has a
 // "say" statement, 0 if it has none, -1 if there is no script.
 int dtu_script_has_say(int id);
+// ASCENT: Dtu_improved_ai (dtuobj_aware.c): 1 if a wall or a door that is
+// not open is between the body of the object "from" and the body of the
+// target (p: the center of the weapon). The swing of the player
+// (dtucombat.c) skips such a body.
+int dtu_attack_wall_between(vms_vector *p,object *from,object *target);
 
 // Values of the character for the use action and the scripts (weak
 // definitions in dtuhook.c): the skill "climb walls" in percent

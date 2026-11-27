@@ -334,6 +334,45 @@ int creature_in_combat(object *obj)
 	return t != 0 && GameTime >= t && GameTime - t <= DTU_COMBAT_TIME;
 }
 
+// ASCENT: Dtu_improved_ai (a decision of the user, 2026-11-27): a wall or a
+// door that is not open stops an attack in both directions. The weapon test
+// of 1.3 (0x6CFF8) takes the bodies that the sphere of the weapon touches
+// with no wall test, and the missile query takes the bodies near its line
+// up to the wall, so a blow or a missile reaches a body that stands at the
+// other side of a closed door (the body is thicker than the door).
+// Dtu_fix_melee_wall (dtuobj_combat.c) tests only the way from the attacker
+// to the center of its weapon. Here: 1 if the level line from the point p
+// (in the segment seg) to the axis of the body of the target, at the height
+// of p limited to the height of the body, hits a wall or a closed door.
+int attack_wall_between(vms_vector *p,int seg,object *target,int thisobjnum)
+{
+	vms_vector q = target->pos;
+	fix r, hh;
+
+	if (!improved_ai() || seg < 0 || seg > Highest_segment_index)
+		return 0;
+	dtu_get_body_size(target,&r,&hh);
+	hh -= F1_0/4;
+	if (hh < 0)
+		hh = 0;
+	q.y = p->y;
+	if (q.y > target->pos.y + hh)
+		q.y = target->pos.y + hh;
+	if (q.y < target->pos.y - hh)
+		q.y = target->pos.y - hh;
+	return !ray_is_free(p,seg,&q,thisobjnum);
+}
+
+int dtu_attack_wall_between(vms_vector *p,object *from,object *target)
+{
+	if (!improved_ai())
+		return 0;
+	// the center of the weapon of the player can be behind a thin door
+	// already: the line goes from the body of the attacker
+	(void)p;
+	return attack_wall_between(&from->pos,from->segnum,target,from-Objects);
+}
+
 void dtu_creature_alert(object *caller, int level)
 {
 	int i, woken = 0, stopped = 0;

@@ -749,6 +749,10 @@ static int swing_objects(object *obj,vms_vector *p0,vms_vector *p1,fix rad_v,vms
 			o->flags |= dead;
 		}
 		Fvi_dtu_player_attack = 0;
+		// ASCENT: Dtu_improved_ai: not a body behind a wall or a door that
+		// is not open (dtuobj_aware.c)
+		if (d > 0 && dtu_attack_wall_between(p0,obj,o))
+			continue;
 		if (d > 0 && d < best_d) {
 			best_d = d;
 			best = i;

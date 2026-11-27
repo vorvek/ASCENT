@@ -178,6 +178,7 @@ int creature_senses_player(object *obj);
 void creature_combat_mark(object *obj);
 int creature_in_combat(object *obj);
 void creature_join_fight(object *obj);
+int attack_wall_between(vms_vector *p,int seg,object *target,int thisobjnum);
 int player_is_visible(object *obj);
 void sound_at(int sound,int segnum,vms_vector *pos,fix volume);
 void sound_on_object(int sound,object *obj,fix volume);
