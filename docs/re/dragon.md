@@ -180,8 +180,10 @@ THAC0 7, 15000 experience, fire immune, magic resistance 35 percent.
   second. Then the aim is fixed at the place of the player, and the player
   has one second to leave the cone or the line of sight. The stream lasts 1
   second and hurts one time. It is drawn as 240 small flames in a second
-  along the cone (the fire burst of a fire hit, vclip 11, and one fire ball
-  of the Fireball missile, vclip 14, for each 8), each at most 6.0 in size, so
+  along the cone (the fire burst of a fire hit, vclip 11, and one more,
+  smaller flame for each 8; the fire ball of the Fireball missile that was
+  there filled the view as a dark rock, so the user chose flames only), each
+  at most 6.0 in size, so
   that they overlap from her jaws to the front of the stream. The first
   version used the `weapon_vclip` of Burning Hands (108): that is the
   texture of the model `burn.pof`, a full square with no transparent rim,

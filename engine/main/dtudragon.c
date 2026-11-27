@@ -188,7 +188,7 @@ static const struct { short type, id, count, x, z; } Dr_treasure[] = {
 #define DR_BREATH_MIN	i2f(8)
 #define DR_FLAMES			240		// flames of the stream in a second
 #define DR_FLAME_VCLIP	11			// a flame of the stream (the fire burst of a fire hit)
-#define DR_BALL_EACH		8			// one more flame in this many is a fire ball
+#define DR_BALL_EACH		8			// one more, smaller flame in this many (it was a fire ball)
 
 #define DM_REST		0		// peaceful
 #define DM_IDLE		1		// hostile: turns, walks, chooses
@@ -942,8 +942,9 @@ static void breath_hit(object *obj, object *p)
 // The flames of the stream: explosions between her jaws and the end of
 // the cone. Most are the fire burst of a fire hit (vclip 11, the
 // monster_hit_vclip of Burning Hands: a bright flame with a ragged,
-// transparent rim); one in DR_BALL_EACH is the fire ball of the Fireball
-// missile (spell 16, weapon_vclip 14). The weapon_vclip of Burning Hands
+// transparent rim). The fire ball of the Fireball missile (spell 16,
+// weapon_vclip 14) is only the fallback when a table has no vclip 11. The
+// weapon_vclip of Burning Hands
 // (108) is not a sprite: it is the texture of the model burn.pof and fills
 // its whole square, so a blob of it is a square of fire (the first
 // version of the breath).
@@ -1371,8 +1372,12 @@ static void dragon_ai(object *obj)
 
 				D.puff_acc -= F1_0/DR_FLAMES;
 				flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,wide * 6 / 10,flame_size(wide),fire_vclip());
+				// One more, smaller flame in DR_BALL_EACH. It was the fire ball
+				// of the Fireball missile: a dark rock with cracks that filled
+				// the view of a player near her. The user chose flames only.
+				// The rand() calls are as before, so the rolls of a seed stay.
 				if (rand() % DR_BALL_EACH == 0)
-					flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,wide * 6 / 10,flame_size(wide) * 2 / 3,ball_vclip());
+					flame(obj,&D.mouth,D.mouth_seg,&D.dir,r,wide * 6 / 10,flame_size(wide) * 2 / 3,fire_vclip());
 			}
 			// the fire reaches the player one time for a breath
 			if (!D.hit_done && p && D.mouth_seg >= 0 && in_breath(obj,p)) {
