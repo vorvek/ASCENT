@@ -322,9 +322,9 @@ before and after are in `docs/re/ai.md`, "Caster AI"; the spells are in
 
 | Creature | With the setting | 1.3 |
 |---|---|---|
-| Lich | Stone Skin, Shield, Minor Globe, Mirror Image at the first notice; Fireball, Lightning Bolt, Hold Person, Magic Missile, Slow at level 12 | the table of 44 entries at level 11 (88 hit points / 8) |
+| Lich | Stone Skin, Shield, Minor Globe, Mirror Image at the first notice; Fireball, Lightning Bolt and Magic Missile with the dice of level 5 for Lich3 (a boss of the middle of the game, `Caster_limits`), Hold Person and Slow at level 12; the contingency has one test point for the phylactery (ai.md, rules 12 and 13) | the table of 44 entries at level 11 (88 hit points / 8) |
 | Drow mages (rmm*) | Shield, Mirror Image (Minor Globe at level 9); Magic Missile, Burning Hands, Melf's Acid Arrows, Hold Person (Lightning Bolt, Fireball at level 9), at the level of the type name | the same table at hit points / 8: rmmk5 level 2, rmmk9 level 4 |
-| Drow priestesses (rff*, rmf*) | Protection From Evil, Prayer; Spiritual Hammer, Hold Person, Magical Stone; Flame Strike for rffk8, rffk8b, rffk9, rfft9, drowfem and priestes; the model with a mace (dlf_fft.pof) when NETHER.EGG is there | the same table; the models dlf_ffk.pof and dlf_ffk5.pof, which have no fire frame, so no touch |
+| Drow priestesses (rff*, rmf*) | Protection From Evil, Prayer; Spiritual Hammer (a conjured throwing hammer: one cast, then throws between the casts), Hold Person (10 seconds at most on the player), Magical Stone; Flame Strike for rffk8, rffk8b, rffk9, rfft9, drowfem and priestes; the model with a mace (dlf_fft.pof) when NETHER.EGG is there | the same table; the models dlf_ffk.pof and dlf_ffk5.pof, which have no fire frame, so no touch |
 | Illithid (flayer) | Mind Blast (a cone of 60 feet, a save against wands at -4 or a stun), Hold Person, then its touch of 2d4; it walks to the player | the weapon spell Hold Person (weapon -22, 0xAC7B2) at its fire frames |
 | Human clerics (hmft*, hfft*) | Bless at the first notice, Hold Person, a cure on themselves below half of their hit points, melee as a fighter of Improved AI | the same table; melee only in the reach test of 0x12916 |
 | Beholder, Xabash | Slow, Fear, Hold Person, and the weapon (Beholder Burn) between the casts | the same table; a caster never fires its weapon (0x11DE9) |

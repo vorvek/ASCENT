@@ -141,6 +141,7 @@ static char rcsid[] = "$Id: polyobj.c 2.1 1995/05/26 16:10:37 john Exp $";
 #include "dataio.h"		// ASCENT: little endian field reads
 #include "dtuopts.h"
 #include "dtufile.h"		// ASCENT: dtu_log()
+#include "dtuobj.h"		// ASCENT: dtu_set_tint()
 
 polymodel Polygon_models[MAX_POLYGON_MODELS];	// = {&bot11,&bot17,&robot_s2,&robot_b2,&bot11,&bot17,&robot_s2,&robot_b2};
 
@@ -1274,6 +1275,12 @@ static int sorted_draw_compare(const void *a,const void *b)
 	return (int)*(const ubyte *)a - (int)*(const ubyte *)b;
 }
 
+// ASCENT: the tint (Tmap_tint: 0x40 is the blue of Detect Magic) of the
+// submodels with DTU_SUBMODEL_F_HIDDEN, "the missile in the hand", of the
+// next model. 0: none. The view of the player sets it for the conjured
+// hammer of Spiritual Hammer (dtuspell.h).
+int Polyobj_hidden_tint = 0;
+
 static void draw_model_sorted(polymodel *po,vms_angvec *angles,fix light,fix *glow_values,int show_hidden)
 {
 	ubyte order[MAX_POLYMODEL_SUBMODELS];
@@ -1296,6 +1303,14 @@ static void draw_model_sorted(polymodel *po,vms_angvec *angles,fix light,fix *gl
 		if ((po->submodel_flags[s] & DTU_SUBMODEL_F_HIDDEN) && !show_hidden)
 			continue;
 		g3_set_instance_state(&Sorted_saved[s]);
+		if (Polyobj_hidden_tint && (po->submodel_flags[s] & DTU_SUBMODEL_F_HIDDEN)) {
+			int old = dtu_get_tint();
+
+			dtu_set_tint(Polyobj_hidden_tint);
+			g3_draw_polygon_model(&po->model_data[po->submodel_ptrs[s]],texture_list,angles,light,glow_values);
+			dtu_set_tint(old);
+			continue;
+		}
 		g3_draw_polygon_model(&po->model_data[po->submodel_ptrs[s]],texture_list,angles,light,glow_values);
 	}
 	g3_set_instance_state(&save);

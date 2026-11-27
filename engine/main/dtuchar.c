@@ -439,6 +439,8 @@ static dtu_inv_item *ref_entry(dtu_item_ref ref)
 	return &Dtu_inventory[ref.n];
 }
 
+static void auto_fight_start(int objnum, int mode);
+
 static int find_entry(int type, int id)
 {
 	int i;
@@ -3135,6 +3137,9 @@ static void weapon_attack(int weapon, dtu_attack *a)
 			a->to_hit_bonus += archer_bonus(weapon, a->thrown, 0);
 			a->damage_bonus += archer_bonus(weapon, a->thrown, 1);
 		}
+		// ASCENT: Spiritual Hammer: +1 for each 6 caster levels (dtuspell.h)
+		a->to_hit_bonus += dtu_spell_hammer_bonus(ConsoleObject, weapon);
+		a->damage_bonus += dtu_spell_hammer_bonus(ConsoleObject, weapon);
 	}
 	else {
 		// 0x2AC13 and 0x2AF75: the empty hand
@@ -3150,6 +3155,8 @@ static int hand_weapon_id(void)
 {
 	dtu_inv_item *e = ref_entry(Dtu_char.current);
 
+	if (dtu_spell_hammer_held())		// ASCENT: the conjured hammer (dtuspell.h)
+		return dtu_spell_hammer_weapon();
 	return (e && e->type == OBJ_WEAPON) ? e->id : -1;
 }
 
@@ -3243,7 +3250,10 @@ int dtu_char_attack_roll(object *target, int weapon)
 		if (r2 > Dtu_char.pa.dexterity) {
 			// 0x2A93F: a second d20 above the dexterity: the weapon falls
 			dtu_char_log("attack roll: fumble, d20 %d above dexterity %d: the weapon falls", r2, Dtu_char.pa.dexterity);
-			dtu_char_drop_weapon();
+			if (dtu_spell_hammer_held())		// ASCENT: the conjured hammer ends, the item of the inventory stays
+				dtu_spell_hammer_end();
+			else
+				dtu_char_drop_weapon();
 		}
 		else {
 			// 0x2A949: one of three texts; the arms go to state 10 and the
@@ -3860,6 +3870,9 @@ int dtu_hook_player_masks_ok(int player_num, int mask_a, int mask_b)
 // gosecret=N, goside=SEG.SIDE, goobj=N, move=N, break=N, castby=SPELL.OBJ,
 // spelltest=SPELL.LEVEL.OBJ.TRIALS, activate, alone=OBJ[.OBJ2] (removes the
 // other creatures), goobjsee=OBJ.D (a place with a free line to the object),
+// attack (the attack key), autofight=OBJ.MODE (auto_fight_frame), fillslots,
+// savefail=1, holdrules=0, contingency=0, contingencyend=OBJ (the balance
+// runs of tools/caster_balance.py and the checks of tools/check_caster_ai.py),
 // str=STRENGTH.PERCENT, dex=DEXTERITY, cha=CHARISMA,
 // attackedby=OBJNUM, kill=OBJNUM,
 // gorest (puts the player into the first rest place of the level), mode=N,
@@ -4115,12 +4128,18 @@ static void run_command(char *cmd, char *value)
 		else if (a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_DRESSING)	// scenery breaks (tools/questtest.py)
 			dtu_break_dressing(&Objects[a], NULL, 0);
 	}
-	else if (!strcmp(cmd, "alone")) {		// ASCENT: test: alone=OBJ[.OBJ2], each other creature of the level is removed (tools/check_caster_ai.py)
-		int i;
+	else if (!strcmp(cmd, "alone")) {		// ASCENT: test: alone=OBJ[.OBJ2 ...], each other creature of the level is removed (tools/check_caster_ai.py)
+		int i, k, keep[8], n;
 
-		for (i = 1; i <= Highest_object_index; i++)
-			if (i != a && !(b > 0 && i == b) && Objects[i].type == OBJ_ROBOT)
+		for (k = 0; k < 8; k++)
+			keep[k] = -1;
+		n = sscanf(value ? value : "", "%d.%d.%d.%d.%d.%d.%d.%d", &keep[0], &keep[1], &keep[2], &keep[3], &keep[4], &keep[5], &keep[6], &keep[7]);
+		for (i = 1; i <= Highest_object_index; i++) {
+			for (k = 0; k < n && keep[k] != i; k++)
+				;
+			if (k >= n && Objects[i].type == OBJ_ROBOT)
 				dtu_creature_remove(&Objects[i], "the test command alone");
+		}
 	}
 	else if (!strcmp(cmd, "dropcontents") && a > 0 && a <= Highest_object_index && Objects[a].type == OBJ_ROBOT)
 		// ASCENT: test: dropcontents=OBJNUM, the creature leaves what it carries as at its death
@@ -4381,6 +4400,17 @@ static void run_command(char *cmd, char *value)
 			dtu_char_log("script: the level has no rest place");
 	}
 	else if (!strcmp(cmd, "fire"))		dtu_spell_fire();		// test: the spell, scroll or wand in the hand
+	else if (!strcmp(cmd, "attack"))	dtu_combat_player_attack();		// ASCENT: test: the attack key (the weapon in the hand)
+	else if (!strcmp(cmd, "autofight"))	auto_fight_start(a, b);			// ASCENT: test: autofight=OBJ.MODE, see auto_fight_frame()
+	else if (!strcmp(cmd, "fillslots")) {		// ASCENT: test: the spell slots of the level, all filled (after setlevel)
+		dtu_spell_compute_slots();
+		dtu_spell_fill_slots();
+	}
+	else if (!strcmp(cmd, "holdrules"))	dtu_caster_test_hold_rules(a);		// ASCENT: test: holdrules=0 (tools/caster_balance.py --before)
+	else if (!strcmp(cmd, "savefail"))	dtu_spell_test_save_fail(a);		// ASCENT: test: savefail=1 (tools/caster_balance.py)
+	else if (!strcmp(cmd, "contingency"))	dtu_caster_test_contingency(a);		// ASCENT: test: contingency=0, the casters start with none
+	else if (!strcmp(cmd, "contingencyend") && a > 0 && a <= Highest_object_index)		// ASCENT: test: the protections of creature N end
+		dtu_caster_contingency_end(&Objects[a]);
 	else if (!strcmp(cmd, "slots"))		// ASCENT: test: the spell slots left and the maximum (tools/check_saveload.py)
 		dtu_char_log("spell slots: mage left %d %d %d max %d %d %d, cleric left %d %d %d max %d %d %d",
 			Dtu_spell_slots_left[0][0], Dtu_spell_slots_left[0][1], Dtu_spell_slots_left[0][2],
@@ -4737,6 +4767,176 @@ static void regen_frame(void)
 		dtu_char_log("Ring of Regeneration: 1 hit point, %d of %d", dtu_char_hit_points(), dtu_char_max_hit_points());
 }
 
+// ASCENT: test: autofight=OBJ.MODE, a scripted fight of the player with
+// creature OBJ (tools/check_caster_ai.py, the balance runs). In each frame
+// the player turns to the creature, walks to it (AUTO_SPEED, no faster) and
+// presses the attack key: the weapon in the hand, or a scroll. It drinks a
+// Potion of Extra-Healing or of Healing at half of its hit points (one
+// each AUTO_POTION_WAIT). MODE bits: 1 it reads its Dispel Magic scroll
+// when the creature has images, a globe or a Stone Skin; 2 it reads its Lightning Bolt and Magic Missile scrolls from a
+// distance while the creature has no Minor Globe; 4 it drinks a Potion of
+// Freedom when it is held. The rules of the game decide all results. The
+// log says how the fight ends.
+#define AUTO_SPEED			i2f(20)
+#define AUTO_POTION_WAIT	i2f(2)
+#define AUTO_SPELL_RANGE	i2f(35)
+
+#define AUTO_PICK_UP		i2f(3)		// a fumble dropped the weapon: the time to take it up again
+
+static int Auto_obj = -1, Auto_sig, Auto_mode, Auto_weapon = -1, Auto_weapon_id = -1, Auto_potions;
+static fix Auto_potion_next, Auto_start, Auto_pick_up;
+
+static void auto_fight_start(int objnum, int mode)
+{
+	if (objnum <= 0 || objnum > Highest_object_index || Objects[objnum].type != OBJ_ROBOT) {
+		Auto_obj = -1;
+		return;
+	}
+	Auto_obj = objnum;
+	Auto_sig = Objects[objnum].signature;
+	Auto_mode = mode;
+	Auto_weapon = Dtu_char.current.n;
+	Auto_weapon_id = (Auto_weapon >= 0 && Dtu_inventory[Auto_weapon].type == OBJ_WEAPON) ? Dtu_inventory[Auto_weapon].id : -1;
+	Auto_pick_up = 0;
+	Auto_potion_next = Auto_start = GameTime;
+	Auto_potions = 0;
+	dtu_char_log("autofight: starts against obj %d, mode %d, hit points %d of %d", objnum, mode, dtu_char_hit_points(),
+		Dtu_char.pa.max_hit_points);
+}
+
+// 1 if the spell is in a list of the character and a slot of its level is left
+static int auto_can_cast(int spell)
+{
+	int list, index, level = dtu_spell_level(spell);
+
+	if (!dtu_spell_book_ref(spell, &list, &index) || level < 1 || level > 9)
+		return 0;
+	return Dtu_spell_slots_left[list == 2 ? 1 : 0][level - 1] > 0;
+}
+
+static void auto_fight_frame(void)
+{
+	object *pl = ConsoleObject, *t = &Objects[Auto_obj];
+	vms_vector to;
+	fix dist, want;
+	int i, hp = dtu_char_hit_points(), held, action = -1, spell = -1;
+
+	if (pl == NULL || Dtu_player_dead || hp <= 0) {
+		dtu_char_log("autofight: ends at %.1f s: the player is dead, obj %d has %d hit points, %d potions drunk",
+			f2fl(GameTime - Auto_start), Auto_obj, f2i(t->shields), Auto_potions);
+		Dtu_combat_test_key = 0;
+		Auto_obj = -1;
+		return;
+	}
+	if (t->type != OBJ_ROBOT || t->signature != Auto_sig || t->shields <= 0 || (t->flags & OF_SHOULD_BE_DEAD)) {
+		dtu_char_log("autofight: ends at %.1f s: obj %d is dead, the player has %d of %d hit points, %d potions drunk",
+			f2fl(GameTime - Auto_start), Auto_obj, hp, Dtu_char.pa.max_hit_points, Auto_potions);
+		Dtu_combat_test_key = 0;
+		Auto_obj = -1;
+		return;
+	}
+	held = (pl->dtu.m_88 & DTU_FX_HOLD) != 0;
+	if (held) {
+		if ((Auto_mode & 4) && (i = find_entry(OBJ_MISC, 78)) >= 0) {
+			dtu_char_log("autofight: held, drinks a Potion of Freedom");
+			dtu_char_use(i);
+		}
+		Dtu_combat_test_key = 0;
+		return;
+	}
+	if (hp * 2 <= Dtu_char.pa.max_hit_points && dtu_time_past(Auto_potion_next)) {
+		if ((i = find_entry(OBJ_MISC, 75)) >= 0 || (i = find_entry(OBJ_MISC, 79)) >= 0) {
+			dtu_char_log("autofight: %d of %d hit points, drinks '%s'", hp, Dtu_char.pa.max_hit_points, Dtu_inventory[i].name);
+			if (dtu_char_use(i))
+				Auto_potions++;
+			Auto_potion_next = GameTime + AUTO_POTION_WAIT;
+		}
+	}
+	// the scroll or the weapon
+	// Dispel Magic (13 mage, 55 cleric: a scroll of the item list, or a
+	// spell of its list with a slot) when the creature has a protection
+	// that the player sees: images, a globe, a Stone Skin
+	if ((Auto_mode & 1) && (dtu_spell_images(t) || dtu_spell_globe(t) || (t->dtu.m_88 & DTU_FX_STONESKIN))) {
+		if ((i = find_entry(OBJ_SPELL, 13)) >= 0 || (i = find_entry(OBJ_SPELL, 55)) >= 0)
+			action = i;
+		else if (auto_can_cast(55))
+			spell = 55;
+		else if (auto_can_cast(13))
+			spell = 13;
+	}
+	if (action < 0 && spell < 0 && (Auto_mode & 2) && !dtu_spell_globe(t)) {
+		if ((i = find_entry(OBJ_SPELL, 32)) >= 0 || (i = find_entry(OBJ_SPELL, 33)) >= 0)
+			action = i;
+		else if (auto_can_cast(32))
+			spell = 32;
+		else if (auto_can_cast(33))
+			spell = 33;
+	}
+	if (spell >= 0) {
+		if (Dtu_spell_current != spell) {
+			dtu_spell_put_away();
+			dtu_spell_take(spell);
+		}
+		want = AUTO_SPELL_RANGE;
+	}
+	else if (action >= 0) {
+		if (Dtu_spell_current >= 0)
+			dtu_spell_put_away();
+		if (Dtu_char.current.n != action)
+			dtu_char_set_current(action);
+		want = AUTO_SPELL_RANGE;
+	}
+	else {
+		if (Dtu_spell_current >= 0)
+			dtu_spell_put_away();
+		// its weapon: a fumble may have dropped it (the player takes it up
+		// again: the weapon is in the item list AUTO_PICK_UP later)
+		if (Auto_weapon_id >= 0) {
+			Auto_weapon = find_entry(OBJ_WEAPON, Auto_weapon_id);
+			if (Auto_weapon < 0) {
+				if (!Auto_pick_up)
+					Auto_pick_up = GameTime + AUTO_PICK_UP;
+				else if (dtu_time_past(Auto_pick_up)) {
+					dtu_char_log("autofight: takes its weapon up again");
+					dtu_inventory_add(OBJ_WEAPON, Auto_weapon_id, 1);
+					Auto_weapon = find_entry(OBJ_WEAPON, Auto_weapon_id);
+					Auto_pick_up = 0;
+				}
+			}
+		}
+		if (Auto_weapon >= 0 && Dtu_char.current.n != Auto_weapon && Dtu_inventory[Auto_weapon].type == OBJ_WEAPON && !dtu_spell_in_hand())
+			dtu_char_set_current(Auto_weapon);
+		want = t->size + pl->size + F1_0;
+	}
+	vm_vec_sub(&to, &t->pos, &pl->pos);
+	dist = vm_vec_normalize(&to);
+	if (dist > 0x100)
+		vm_vector_2_matrix(&pl->orient, &to, NULL, NULL);
+	if (dist > want) {
+		vms_vector p, flat = to;
+		fix step = fixmul(AUTO_SPEED, FrameTime);
+		int seg;
+
+		flat.y = 0;
+		if (vm_vec_normalize(&flat) > 0x100) {
+			if (step > dist - want)
+				step = dist - want;
+			vm_vec_scale_add(&p, &pl->pos, &flat, step);
+			seg = find_point_seg(&p, pl->segnum);
+			if (seg >= 0) {
+				pl->pos = p;
+				obj_relink(pl - Objects, seg);
+			}
+		}
+	}
+	Dtu_combat_test_key = dist <= want + i2f(2);
+	if (Dtu_combat_test_key)
+		dtu_combat_player_attack();
+	if (Char_frame % 90 == 0)
+		dtu_char_log("autofight: distance %.1f, wanted %.1f, hit points %d, obj %d has %d", f2fl(dist), f2fl(want), hp, Auto_obj,
+			f2i(t->shields));
+}
+
 void dtu_char_frame(void)
 {
 	fix max;
@@ -4760,4 +4960,6 @@ void dtu_char_frame(void)
 	sync_inventory();
 	if (Char_script)
 		run_script();
+	if (Auto_obj >= 0)		// ASCENT: test: autofight
+		auto_fight_frame();
 }

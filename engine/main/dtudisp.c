@@ -640,6 +640,8 @@ static int current_item_icon(void)
 {
 	if (Dtu_spell_current >= 0)
 		return dtu_spell_icon(Dtu_spell_current);
+	if (dtu_spell_hammer_held())		// ASCENT: the conjured hammer (dtuspell.h)
+		return dtu_spell_icon(DTU_SPELL_SPIRITUAL_HAMMER);
 	return entry_icon(Dtu_char.current.n);
 }
 

@@ -2878,3 +2878,27 @@ id: port.show_me_the_others
 en: Show me the others.
 tr: Enséñame los demás.
 
+id: port.s_s_a_spiritual_hammer_for_d_minutes
+en: %s %s a Spiritual Hammer for %d minutes.
+tr: %s %s un Martillo Espiritual durante %d minutos.
+
+id: port.puts_a_throwing_hammer_of_force_into_you
+en: Puts a throwing hammer of force into your hand. Your attack throws it, and it is in your hand again.
+tr: Pone en tu mano un martillo arrojadizo de fuerza. Tu ataque lo lanza, y vuelve a estar en tu mano.
+
+id: port.a_hit_deals_s_damage_it_is_a_magic_weapo
+en: A hit deals %s damage. It is a magic weapon.
+tr: Un impacto causa %s de daño. Es un arma mágica.
+
+id: port.d_to_hit
+en: %+d to hit.
+tr: %+d al ataque.
+
+id: port.it_ends_when_you_take_another_item_or_a
+en: It ends when you take another item or a spell into your hand.
+tr: Termina cuando tomas otro objeto o un conjuro en la mano.
+
+id: port.you_hold_it_now_d_minutes_and_d_seconds
+en: You hold it now: %d minutes and %d seconds are left.
+tr: Lo empuñas ahora: quedan %d minutos y %d segundos.
+

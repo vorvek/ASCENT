@@ -375,6 +375,7 @@ static char rcsid[] = "$Id: object.c 2.3 1995/06/15 12:30:51 john Exp $";
 #include "dtugame.h"		// ASCENT: Dtu_objects_enabled
 #include "dtudragon.h"
 #include "dtuobj.h"		// ASCENT: the objects of the target game
+#include "dtuspell.h"	// ASCENT: dtu_spell_hammer_object()
 #include "dtuinfra.h"		// ASCENT: the heat of an object (improved infravision)
 #include "dtuxp.h"		// ASCENT: the session log line of a creature that goes away
 #include "arcade.h"
@@ -674,7 +675,8 @@ void draw_polygon_object(object *obj)
 		// ASCENT: Detect Magic: a magic object (0x670D4 returns 1) is drawn
 		// with the tint 0x40 (0x67995), and the tint is 0 after the model
 		// (0x67A0A), also when an object before it left the tint on.
-		if (dtu_magic_look(obj) == 1)
+		// ASCENT: the flying hammer of Spiritual Hammer has this tint too
+		if (dtu_magic_look(obj) == 1 || dtu_spell_hammer_object(obj))
 			dtu_set_tint(0x40);
 		dtu_draw_polygon_object(obj,light,&engine_glow_value,NULL);
 		dtu_set_tint(0);

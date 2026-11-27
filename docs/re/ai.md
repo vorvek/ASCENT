@@ -1445,6 +1445,51 @@ it; `dtucaster.h`: the lists; `dtuobj_ai.c`: `caster_move`, `choose_attack_goal`
    model. Its attack state is the swing of the mace, which the cast and the touch
    now show.
 
+10. **Spiritual Hammer of a creature** (spells.md, section 15.6). The priest lists
+    have the spell with `CS_SELF`: the creature casts it once on itself when it
+    does not have it, and then throws the hammer at the player between its casts
+    (`dtu_caster_throws` gives the goal state ATAK, `dtu_caster_throw` runs at the
+    fire point of the attack): when no cast runs, the player is seen, the hammer
+    would meet the player first, and `CAI_THROW` (3 seconds) passed since the last
+    throw. Measured: one throw between two casts while the points last (a cast
+    each 6 to 8 seconds), a throw each 3 seconds after them. The throw is a
+    missile of the weapon line "Spiritual Hammer": the attack roll 0x2A7F3 with the
+    THAC0 of the creature, 1d4 + 1, and +1 to hit and to the damage for each 6
+    caster levels.
+
+11. **The hold of a creature on the player.** `Dtu_fix_hold_hit` (combat.md)
+    lets each attack hit a held target with no roll, and the stun of the Mind
+    Blast is the Hold effect. Two rules of the creature side keep a failed save
+    from being the death of a character with full hit points against one caster
+    (measured, below): Hold Person of a creature of the lists holds the player
+    for `CASTER_HOLD_MAX` (10 seconds) at most (`Dtu_fix_player_hold` alone: 6 to
+    18), and no creature of the lists casts Hold Person or the Mind Blast on the
+    player before `CASTER_HOLD_REST` (12 seconds) after a hold of the player ended
+    (`Hold_rest_until`, `caster_weight`). The rule of the hit itself is not
+    changed. A held player was already no target of a second Hold Person.
+
+12. **The lich of CLAN3** (Lich3, missions 12 and 13) is a boss of the middle of
+    the game (a decision of the user of 2026-11-27). `Caster_limits` of
+    `dtucaster.h` gives the type the level 5 for its damage spells
+    (`caster_spell_level`): Fireball and Lightning Bolt 5d6 (level 12: 10d6),
+    Magic Missile 3 missiles (level 12: 5). His caster level stays 12 for the
+    rest: the protections of his contingency (Stone Skin 1d4 + 6 hits, Mirror
+    Image 1d4 + 4 images, the Minor Globe, Shield), which Dispel Magic or the
+    phylactery takes away, Hold Person, Slow and the points. A first try with
+    fewer Stone Skin hits (1d4 + 2) and images (1d4 + 1) made the fight without
+    Dispel Magic too easy (a fighter won 6 of 10), so the protections keep
+    level 12. lich1 and lich2 are not limited.
+
+13. **The contingency has one test point**: `caster_contingency()` of
+    `dtuspell.c`, called by `caster_fight_start()`, the only place that gives
+    the protections. `Dtu_caster_contingency_off` (`dtuspell.h`) is a function
+    pointer, NULL by default: a function that returns 1 for a creature switches
+    its contingency off (the phylactery of the lich, planned in `dtulich.c`: it
+    tests the type there). `dtu_caster_contingency_end(obj)` ends at once all
+    spell effects of the creature, as Dispel Magic does (the phylactery is
+    destroyed during the fight). The test commands `contingency=0` and
+    `contingencyend=OBJ` of `-chartest` use both.
+
 The measures of `tools/check_caster_ai.py --table` (the player is a fighter of
 level 8 with armor class 10 who stands in front of the caster for 60 seconds and
 does not fight; seed 1; "before" is `-origcasterai`; damage for each round of 6
@@ -1452,28 +1497,28 @@ seconds from the first notice):
 
 | Type | Before: casts | attacks | damage per round | After: contingency | casts | attacks | seconds between attacks | damage per round |
 |---|---|---|---|---|---|---|---|---|
-| lich | 4 | 4 | 3.3 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 10 | 10 | 5.8 | 14.9 |
+| lich | 4 | 4 | 3.3 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 10 | 10 | 5.8 | 7.8 |
 | drow mage 5 (rmmk5) | 6 | 6 | 0.2 | Shield, Mirror Image | 10 | 10 | 6.0 | 9.2 |
 | drow mage 7 (rmmk7) | 5 | 5 | 0.0 | Shield, Mirror Image | 10 | 10 | 6.0 | 13.0 |
 | drow mage 9 (rmmk9) | 4 | 4 | 1.5 | Shield, Mirror Image, Minor Globe of Invulnerability | 10 | 10 | 6.0 | 11.2 |
-| drow priestess 5 (rffk5) | 2 | 2 | 0.0 | Protection From Evil, Prayer | 9 | 9 | 6.7 | 3.6 |
-| drow priestess 8 (rffk8b) | 3 | 3 | 0.0 | Protection From Evil, Prayer | 8 | 8 | 7.5 | 10.8 |
-| illithid (flayer) | 0 | 2 | 0.0 | none | 5 | 38 | 1.5 | 15.9 |
-| human cleric 4 (hmft4) | 4 | 9 | 15.6 | Bless | 2 | 36 | 1.6 | 23.4 |
-| human cleric 7 (hmft7) | 0 | 5 | 2.0 | Bless | 2 | 37 | 1.6 | 14.7 |
+| drow priestess 5 (rffk5) | 2 | 2 | 0.0 | Protection From Evil, Prayer | 9 | 9 | 6.3 | 5.5 |
+| drow priestess 8 (rffk8b) | 3 | 3 | 0.0 | Protection From Evil, Prayer | 7 | 7 | 7.6 | 13.3 |
+| illithid (flayer) | 0 | 2 | 0.0 | none | 4 | 36 | 1.6 | 14.2 |
+| human cleric 4 (hmft4) | 4 | 9 | 15.6 | Bless | 2 | 36 | 1.6 | 23.2 |
+| human cleric 7 (hmft7) | 0 | 5 | 2.0 | Bless | 2 | 37 | 1.6 | 15.2 |
 | kobold shaman (kob_spel) | 0 | 0 | 0.0 | Shield | 8 | 8 | 6.0 | 4.2 |
-| Ibbalar | 3 | 4 | 0.0 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 10 | 38 | 1.5 | 29.6 |
+| Ibbalar | 3 | 4 | 0.0 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 10 | 39 | 1.5 | 37.5 |
 | Halaster | 0 | 0 | 0.0 | none | 0 | 0 | - | 0.0 |
 | Thashasa | 0 | 0 | 0.0 | Shield, Mirror Image, Protection From Evil | 0 | 0 | - | 0.0 |
 | Xabash | 4 | 4 | 0.8 | none | 9 | 9 | 6.5 | 11.0 |
 | beholder | 0 | 0 | 0.0 | none | 10 | 10 | 5.9 | 16.0 |
 | avatar of Lolth | 4 | 38 | 24.5 | Stone Skin, Minor Globe of Invulnerability, Protection From Evil | 8 | 43 | 1.3 | 32.6 |
-| priest spirit (prstsprt) | 2 | 2 | 0.0 | Protection From Evil, Prayer | 9 | 9 | 6.4 | 3.4 |
+| priest spirit (prstsprt) | 2 | 2 | 0.0 | Protection From Evil, Prayer | 9 | 9 | 6.2 | 5.8 |
 | Mage Spirit | 4 | 4 | 4.7 | Shield, Mirror Image | 10 | 10 | 6.3 | 12.3 |
 | Aleena Paladinstar | 5 | 5 | 2.2 | Stone Skin, Shield, Minor Globe of Invulnerability, Mirror Image | 6 | 6 | 5.8 | 8.1 |
-| drow priestess of the inn (drowfem) | 3 | 3 | 0.0 | Protection From Evil, Prayer | 7 | 8 | 7.2 | 9.0 |
-| priestess of the inn (priestes) | 4 | 4 | 0.4 | Protection From Evil, Prayer | 7 | 7 | 8.1 | 15.3 |
-| dragon hatchling (hatchlng), not in the list | 2 | 3 | 0.1 | none | 2 | 3 | 7.5 | 1.8 |
+| drow priestess of the inn (drowfem) | 3 | 3 | 0.0 | Protection From Evil, Prayer | 7 | 8 | 7.0 | 12.0 |
+| priestess of the inn (priestes) | 4 | 4 | 0.4 | Protection From Evil, Prayer | 7 | 7 | 8.1 | 10.4 |
+| dragon hatchling (hatchlng), not in the list | 0 | 0 | 0.0 | none | 0 | 0 | - | 0.0 |
 
 The damage of the bosses with a touch (Ibbalar, the avatar) is mostly their touch
 (a Long Sword +2 by the creature setup), which they now use in each attack cycle
@@ -1489,14 +1534,99 @@ hit points in a round to a character with armor class 10 who only stands there
 (before: 0.2), so they need 5 to 6 rounds. The mage has 20 hit points and 2 to 5
 images, the priestess 40 hit points; a hit in the cast time stops a cast, and the
 points of the mage are gone after about 12 casts. Hold Person (6 to 18 seconds on
-the player) is the danger. The lich deals 15 in a round (before: 3.3) behind
-Stone Skin (7 to 10 hits), 5 to 8 images and a Minor Globe: a fighter needs about
-25 hits, 9 rounds or more, and takes about 135 hit points in that time. Dispel
-Magic (a scroll lies in CLAN3, object 30) ends the protections.
+the player, 10 at most from a creature of the lists) is the danger. The lich is
+behind Stone Skin (7 to 10 hits), 5 to 8 images and a Minor Globe; his damage
+spells have the dice of level 5 (rule 12). Dispel Magic (a scroll lies in CLAN3,
+object 30, segment 372; the lich is in segment 443) ends the protections. The
+texts of 1.3 do not say it: Barander (GAB scripts, "I seek to end the existence
+of Morik Stormhand, a lich most foul. He is the master of ghouls in this place")
+names the lich, and no text of the scripts names Dispel Magic for him. The
+measured fights are below.
+
+#### The lich and the holds, measured (2026-11-27)
+
+`tools/caster_balance.py` plays the character with the test command `autofight`
+of `-chartest` (`auto_fight_frame`, `dtuchar.c`): it walks to the creature (20
+units a second), attacks with the weapon in the hand, drinks a Potion of
+Extra-Healing or of Healing at half of its hit points, drinks a Potion of Freedom
+when it is held, takes its weapon up again 3 seconds after a fumble dropped it,
+and casts or reads Dispel Magic when the creature has images, a globe or a Stone
+Skin. The rules of the game decide all results.
+
+The levels: the creatures of the levels before CLAN3 give about 53000 experience
+points (`score_value` of the level files; the inn is not counted), before DROW1
+about 68000, before DROW3 about 85000. With the tables 0x146048 that is a fighter
+6, a cleric 6, a thief 7 or a mage 6 in CLAN3 (a thief/mage with the points
+shared: 5/5 to 6/5), and level 7 for each class in DROW1 and DROW3 (a thief 8 in
+DROW3). The hit points are the mean of the level rolls (half of the die to the
+die, 0xAF694): the test command `setlevel` gives the full die, and the script
+takes the difference away at the start.
+
+The lich (CLAN3, object 10, alone), 10 seeds for each case. Each character has 3
+Potions of Healing, 1 of Extra-Healing and 2 of Freedom. The fighter: Plate Mail,
+Shield +1, Long Sword +1 (armor class 1, THAC0 14, 60 hit points). The cleric:
+Chain Mail +1, Shield, Mace +1 (armor class 3, THAC0 16, 50 hit points); his
+Dispel Magic is the spell of his list (cast time 6 seconds). The thief/mage:
+Bracers of Defense AC 6, Ring of Protection +1, Short Sword +1, dexterity 17
+(armor class 2, THAC0 18, 30 hit points), Lightning Bolt and Magic Missile in the
+list, and Mirror Image and the Minor Globe (the scrolls of MULHOR1 and CLAN1) cast
+before the fight; its Dispel Magic is the cleric scroll of CLAN3 (object 30),
+read from the item list. "Before" is the lich with level 12 for all spells and
+without the hold rules (the test command `holdrules=0`).
+
+| Character | Case | Wins before | Wins after |
+|---|---|---|---|
+| fighter 6 | nothing | 0 of 10 | 3 of 10 |
+| fighter 6 | Dispel Magic | 9 of 10 | 10 of 10 |
+| fighter 6 | phylactery destroyed (no contingency) | 10 of 10 | 10 of 10 |
+| cleric 6 | nothing | 1 of 10 | 3 of 10 |
+| cleric 6 | Dispel Magic (his spell) | 3 of 10 | 5 of 10 |
+| cleric 6 | phylactery destroyed | 6 of 10 | 9 of 10 |
+| thief/mage 5/5 | nothing | 0 of 10 | 0 of 10 |
+| thief/mage 5/5 | Dispel Magic (the scroll) | 5 of 10 | 10 of 10 |
+| thief/mage 5/5 | phylactery destroyed | 9 of 10 | 9 of 10 |
+
+A win takes 33 to 48 seconds with a preparation and 56 to 73 seconds without. The
+cleric is the weakest in melee (he needs 14 on the die against the lich), and his
+own Dispel Magic takes 6 seconds in which a hit stops it.
+
+A failed save against Hold Person or the Mind Blast (the saves of the player
+fail until its first hold, the test command `savefail`; the character stands in
+front of the casters, does not fight and drinks nothing; 6 seeds; the damage from
+the start of the first hold to its end):
+
+| Place | Character, hit points | Before: hold time, damage (mean, most), deaths | After: hold time, damage (mean, most), deaths |
+|---|---|---|---|
+| one drow priestess (rffk5, DROW1 object 55) | fighter 7, 69 | 9 s; 7, 9; 0 | 9 s; 7, 9; 0 |
+| | cleric 7, 58 | 9 s; 7, 9; 0 | 9 s; 7, 9; 0 |
+| | thief/mage 6/6, 36 | 12 s; 8, 19; 0 | 10 s; 6, 10; 0 |
+| the priestess and the drow mage of the meeting room (DROW1, objects 55 and 56) | fighter 7, 69 | 11 s; 7, 10; 0 | 9 s; 6, 10; 0 |
+| | cleric 7, 58 | 11 s; 8, 12; 0 | 9 s; 7, 10; 0 |
+| | thief/mage 6/6, 36 | 11 s; 7, 12; 0 | 10 s; 7, 10; 0 |
+| one illithid (DROW3 object 59) | fighter 7, 69 | 9 s; 28, 45; 0 | 8 s; 25, 31; 0 |
+| | cleric 7, 58 | 9 s; 28, 45; 0 | 8 s; 25, 31; 0 |
+| | thief/mage 6/6, 36 | 8 s; 23, 35; 0 | 8 s; 22, 33; 0 |
+| the illithid and its four trolls (DROW3, objects 59, 105 to 108) | fighter 7, 69 | 9 s; 27, 47; 0 | 8 s; 24, 29; 0 |
+| | cleric 7, 58 | 9 s; 27, 47; 0 | 8 s; 24, 29; 0 |
+| | thief/mage 6/6, 36 | 10 s; 28, 39; 2 of 6 | 8 s; 25, 34; 0 |
+
+The priestess of level 5 hurts little in a hold (two throws of her hammer); a
+priestess with Flame Strike (level 8 and more) can add one strike, 6d8 with a
+save for half. The illithid touches each 1.7 seconds for 2d4. Before the rules a
+hold of 18 seconds of the illithid cost 45 hit points, and its Mind Blast came
+1.6 seconds after the end of its Hold Person (measured in one run: the fighter
+died in the second hold); with the rules the second hold comes 12 seconds later
+at the earliest. In the room of the illithid the trolls did not reach the player
+in these runs (they stand 40 to 70 units away and did not come). A troll next to
+a held player hits each 1.7 seconds for 1d8 + 2: 42 hit points in a hold of 8
+seconds in one run. A character that is held with the illithid and a troll in
+reach loses about 65 hit points in a hold and dies or nearly dies; that room is
+not safe for a held character, and the rules above do not change it.
 
 Not verified: a fight of a whole group played by hand; the casters of the levels
 that the check does not start (the list goes by the type name, so they use the
-same code).
+same code); the lich fight with the other creatures of his room (the runs remove
+them); a player who retreats, rests or uses the doors.
 
 ### The feet of a standing creature (Dtu_fix_creature_feet)
 

@@ -99,20 +99,24 @@ def script(cmds, frames, heal=True):
     return ",".join(out)
 
 
-def run(a, d, level, frames, cmds, extra):
+def run(a, d, level, frames, cmds, extra, char=False):
     os.makedirs(os.path.join(d, "user"), exist_ok=True)
     log = os.path.join(d, "obj.log")
+    clog = os.path.join(d, "char.log")
     cmd = [os.path.abspath(a.exe)]
     for dd in a.datadir:
         cmd += ["-datadir", dd]
     cmd += ["-nomovies", "-mute", "-hidden", "-nolog", "-userdir", os.path.join(d, "user"), "-level", level,
-            "-frames", str(frames), "-fixedfps", str(FPS), "-objlog", log, "-chartest", cmds] + extra
+            "-frames", str(frames), "-fixedfps", str(FPS), "-objlog", log, "-charlog", clog, "-chartest", cmds] + extra
     subprocess.run(cmd, capture_output=True, timeout=a.timeout, cwd=d)
-    try:
-        with open(log, encoding="latin-1") as f:
-            return f.read()
-    except OSError:
-        return ""
+    out = []
+    for f in (log, clog):
+        try:
+            with open(f, encoding="latin-1") as h:
+                out.append(h.read())
+        except OSError:
+            out.append("")
+    return tuple(out) if char else out[0]
 
 
 LINE = re.compile(r"^\s*(\d+\.\d+)\s+(\d+) (.*)$")
@@ -310,6 +314,181 @@ def main():
                                                "15:spelltest=28.1.13.0"] + ["%d:spelltest=33.8.13.0" % f for f in range(60, 600, 30)], 600), [])
         own = len(re.findall(r"Mirror Image of obj 13 rmmk5: an image takes the attack", text))
         check("player", own > 0, "the images of the drow mage took %d Magic Missiles of the player" % own)
+
+    if not only or "hammer" in only:
+        # Spiritual Hammer of the player (a cleric of level 12: +2): the cast,
+        # the throws with their rolls, a save and a load in the middle (the
+        # hammer is gone, the sword is in the hand), Dispel Magic, a rest,
+        # another item in the hand, and the end of the time (level 1: 1 minute)
+        d = os.path.join(work, "hammer_player")
+        os.makedirs(d)
+        cmds = ["2:seed=1", "3:class=0", "4:alone=59", "5:setlevel=12", "8:heal=500", "20:cast=58", "25:descspell=58"]
+        for f in (40, 100, 160, 220, 280, 340):
+            cmds += ["%d:goobjsee=59.8" % (f - 3), "%d:aim=59" % (f - 2), "%d:attack" % f]
+        cmds += ["400:dump", "410:save=3", "440:load=3", "480:dump", "500:spelltest=58.1.0.0", "520:cast=13",
+                 "580:spelltest=58.1.0.0", "590:current=16.79", "620:current=5.20", "630:spelltest=58.1.0.0", "2500:dump"]
+        text, char = run(a, d, "DROW1", 2520, script(cmds, 2520, heal=False), ["-noattack"], char=True)
+        thrown = len(re.findall(r"the player fires weapon \d+ 'Spiritual Hammer'", text))
+        rolls = re.findall(r"attack roll: d20 (\d+), roll (\d+) against", char)
+        dmg = re.findall(r"damage roll: 1d4 \+ 3: (\d+)", char)
+        bonus_ok = bool(rolls) and all(int(r) - int(d20) >= 2 for d20, r in rolls)
+        # 1d4 + 1 of the line + 2 of the level, and + 1 of the strength 17 of the test character
+        check("hammer", "Spiritual Hammer on obj 0 you: level 12, bonus +2" in text and thrown >= 6 and len(rolls) >= 3 and len(dmg) >= 2 and
+              bonus_ok and all(5 <= int(x) <= 8 for x in dmg),
+              "the cleric of level 12 casts it (+2): %d throws, %d attack rolls, each with the bonus (%s), %d hits with 1d4 + 3 and the "
+              "strength (%s)" % (thrown, len(rolls), bonus_ok, len(dmg), ", ".join(dmg)))
+        hands = re.findall(r"f(\d+)\s+entry \d+: type 5 id 20 'Broad Sword' count 1 \(in the hand\)", char)
+        models = re.findall(r"\s(\d+) combat: player model hmc(\w)_p\.pof", text)
+        after_load = [l for f, l in models if 440 <= int(f) < 500]
+        check("hammer", len(hands) >= 2 and "left" in char and after_load[-1:] == ["h"],
+              "the Broad Sword stays the item of the hand in the inventory (%d dumps); the description has the time left (%s); "
+              "after the save and the load the arm model is the one of the sword (%s)" % (
+                  len(hands), "are left" in char, ", ".join(after_load) or "none"))
+        ends = [int(f) for f in re.findall(r"\s(\d+) spell: Spiritual Hammer of obj 0 you ends", text)]
+        check("hammer", any(520 <= f <= 525 for f in ends) and any(590 <= f <= 595 for f in ends) and any(2400 <= f <= 2460 for f in ends),
+              "it ends at Dispel Magic, with another item in the hand, and after 1 minute at level 1 (frames %s)" % ends)
+        # a rest (the inn has a rest place)
+        d = os.path.join(work, "hammer_rest")
+        os.makedirs(d)
+        text, char = run(a, d, "YPINN", 120, script(["3:class=0", "5:setlevel=12", "7:mission=1", "10:warp=1.136", "40:gorest", "50:cast=58", "70:rest", "100:dump"], 120,
+                                                    heal=False), ["-noattack"], char=True)
+        check("hammer", "Spiritual Hammer on obj 0 you" in text and "Spiritual Hammer of obj 0 you ends" in text,
+              "a rest ends it (%s)" % ("rest: not here" in char and "no rest place" or "rested"))
+        # the priestess: one cast, then the throws between her casts
+        d = os.path.join(work, "hammer_priestess")
+        os.makedirs(d)
+        text = run(a, d, "DROW1", FRAMES, case_cmds(59, 14), [])
+        casts = len(re.findall(r"caster: obj 59 rffk8b casts 'Spiritual Hammer'", text))
+        throws = len(re.findall(r"caster: obj 59 rffk8b throws its Spiritual Hammer", text))
+        others = len(re.findall(r"caster: obj 59 rffk8b casts '(?!Spiritual Hammer)", text))
+        hits = re.findall(r"damage: the player takes (\d+) from rffk8b, weapon Spiritual Hammer", text)
+        check("hammer", casts == 1 and throws >= 4 and others >= 3 and len(hits) > 0 and all(3 <= int(h) <= 12 for h in hits),
+              "the priestess of level 8 casts it %d time, throws it %d times (%d hits: %s), and casts %d other spells in 60 s" % (
+                  casts, throws, len(hits), ", ".join(hits), others))
+
+    if not only or "holdhit" in only:
+        # Dtu_fix_hold_hit: a held player (plate mail +3 and a shield +2) is
+        # hit by each attack of a drow fighter, and the hold stays; without
+        # the hold some attacks miss
+        res = {}
+        for mode in ("held", "free"):
+            d = os.path.join(work, "holdhit_player_" + mode)
+            os.makedirs(d)
+            cmds = ["2:seed=1", "3:class=2", "4:alone=1", "5:setlevel=8", "6:give=15.11", "6:give=15.13", "7:equip=15.11", "7:equip=15.13",
+                    "8:heal=500", "10:goobjsee=1.12"] + (["20:fx=14.60"] if mode == "held" else [])
+            for k in range(20):
+                cmds += ["%d:attackedby=1" % (30 + 4 * k), "%d:heal=500" % (32 + 4 * k)]
+            cmds += ["120:fxstate"]
+            text, char = run(a, d, "DROW1", 130, script(cmds, 130, heal=False), ["-noattack"], char=True)
+            res[mode] = (len(re.findall(r"attack: obj 0 \w+ is held: hit with no roll", text)),
+                         len(re.findall(r"misses the player", text)),
+                         len(re.findall(r"damage: the player takes \d+ from rmfg5", text)),
+                         bool(re.search(r"fx: bits 0x[0-9a-f]{4}[4-7cdef][0-9a-f]{3}", char)))
+        h, f = res["held"], res["free"]
+        check("holdhit", h[0] == 20 and h[1] == 0 and h[2] == 20 and h[3] and f[1] > 0 and f[0] == 0,
+              "20 attacks of a drow fighter on the held player: %d hits with no roll, %d misses, %d times damage, the hold stays (%s); "
+              "not held: %d misses, %d times damage" % (h[0], h[1], h[2], h[3], f[1], f[2]))
+        # a held creature: each swing and each thrown dagger of the player hits
+        res = {}
+        for mode in ("held", "free"):
+            d = os.path.join(work, "holdhit_creature_" + mode)
+            os.makedirs(d)
+            cmds = ["2:seed=1", "3:class=2", "3:contingency=0", "4:alone=10", "5:setlevel=1", "6:give=5.22.30", "7:current=5.20",
+                    "10:goobjsee=10.14"] + (["20:fxset=10.14"] if mode == "held" else [])
+            for k in range(12):
+                cmds += ["%d:swingat=10" % (30 + 3 * k)]
+            cmds += ["70:current=5.22"]
+            for k in range(6):
+                f = 100 + 60 * k
+                cmds += ["%d:goobjsee=10.14" % (f - 3), "%d:aim=10" % (f - 2), "%d:attack" % f]
+            text, char = run(a, d, "CLAN3", 470, script(cmds, 470, heal=False), ["-noattack"], char=True)
+            res[mode] = (len(re.findall(r"combat: obj 10 Lich3 is held: hit with no roll", text)),
+                         len(re.findall(r"attack: obj 10 Lich3 is held: hit with no roll", text)),
+                         len(re.findall(r"attack roll: d20 \d+, roll -?\d+ against THAC0 \d+ and armor class -?\d+: (?:0|-1)", char)),
+                         len(re.findall(r"the player fires weapon 22", text)))
+        h, f = res["held"], res["free"]
+        check("holdhit", h[0] == 12 and h[1] >= 4 and h[2] == 0 and f[2] > 0 and f[0] == 0 and f[1] == 0,
+              "a fighter of level 1 against the held lich: %d of 12 swings and %d of %d thrown daggers hit with no roll, %d misses; "
+              "not held: %d misses" % (h[0], h[1], h[3], h[2], f[2]))
+
+    if not only or "lich" in only:
+        # the lower spell levels of the lich of CLAN3 (Caster_limits), and the
+        # one test point of the contingency with its end function
+        d = os.path.join(work, "lich_limits")
+        os.makedirs(d)
+        text = run(a, d, "CLAN3", FRAMES, case_cmds(10, 30, ["900:contingencyend=10", "905:fxobj=10"]), [])
+        levels = {}
+        for name, lv in re.findall(r"caster: obj 10 Lich3 casts '([^']+)' \(\d+\) at level (\d+)", text):
+            levels.setdefault(name, set()).add(int(lv))
+        dmg_ok = all(levels.get(n, {5}) == {5} for n in ("Lightning Bolt", "Fireball", "Magic Missile"))
+        other_ok = all(v == {12} for n, v in levels.items() if n not in ("Lightning Bolt", "Fireball", "Magic Missile"))
+        skin = re.search(r"'Stone Skin' \(49\) level (\d+) on obj 10 Lich3", text)
+        check("lich", bool(levels) and dmg_ok and other_ok and skin is not None and skin.group(1) == "12",
+              "the lich casts %s; his Stone Skin has level %s" % (
+                  ", ".join("%s at level %s" % (n, "/".join(str(x) for x in sorted(v))) for n, v in sorted(levels.items())) or "nothing",
+                  skin.group(1) if skin else "?"))
+        ended = "caster: the protections of obj 10 Lich3 end" in text
+        gone = len(re.findall(r"\s90\d spell: (?:Mirror Image|Minor Globe of Invulnerability) of obj 10 Lich3 ends|"
+                              r"\s90\d spell: effect (?:Stone Skin|Shield) of obj 10 Lich3 ends", text))
+        check("lich", ended and gone >= 3, "contingencyend at frame 900: the protections end (%s), %d of them logged" % (ended, gone))
+        d = os.path.join(work, "lich_no_contingency")
+        os.makedirs(d)
+        text = run(a, d, "CLAN3", 600, script(["2:seed=1", "3:contingency=0", "4:alone=10", "5:setlevel=8", "8:heal=500", "10:goobjsee=10.20",
+                                               "15:spelltest=28.1.10.0"], 600), [])
+        off = "caster: obj 10 Lich3 has no contingency (switched off)" in text
+        m = re.search(r"caster: obj 10 Lich3 notices the player.*contingency: (.*)", text)
+        casts = len(re.findall(r"caster: obj 10 Lich3 casts", text))
+        check("lich", off and m is not None and m.group(1).strip() == "none" and casts > 0,
+              "contingency=0 (the test point caster_contingency): switched off (%s), the fight starts with: %s, %d casts" % (
+                  off, m.group(1).strip() if m else "?", casts))
+
+    if not only or "holdrules" in only:
+        # the hold of a creature on the player: 10 seconds at most, and no
+        # Hold Person or Mind Blast before 12 seconds after its end. The
+        # illithid of DROW3 against a player whose saves fail until the first hold.
+        d = os.path.join(work, "holdrules")
+        os.makedirs(d)
+        cmds = ["2:seed=1", "4:alone=59", "5:setlevel=8", "8:heal=500", "10:goobjsee=59.20", "13:savefail=1", "15:spelltest=28.1.59.0"]
+        text = run(a, d, "DROW3", 2700, script(cmds, 2700), [])
+        holds, ends, casts = [], [], []
+        for line in text.split("\n"):
+            m = re.match(r"\s*([\d.]+)\s+\d+ (.*)", line)
+            if not m:
+                continue
+            t, s = float(m.group(1)), m.group(2)
+            k = re.search(r"spell: effect Hold Person on obj 0 you for ([\d.]+) seconds", s)
+            if k:
+                holds.append((t, float(k.group(1))))
+            elif re.search(r"spell: effect Hold Person of obj 0 you (ends|taken away)", s):
+                ends.append(t)
+            elif re.search(r"caster: obj 59 flayer casts '(Hold Person|Mind Blast)'", s):
+                casts.append(t)
+        early = [c for c in casts if any(0 <= c - e < 12.0 for e in ends)]
+        longest = max([h[1] for h in holds], default=0)
+        check("holdrules", len(holds) >= 2 and longest <= 10.0 and not early,
+              "the illithid in 90 s: %d holds of the player, the longest %.0f s (10 at most), %d casts of Hold Person or the Mind Blast, "
+              "%d of them before 12 s after the end of a hold" % (len(holds), longest, len(casts), len(early)))
+
+    if not only or "stoneskin" in only:
+        # Dtu_fix_stoneskin_hit: a miss of a creature does not use a Stone
+        # Skin of the player, a hit and a natural 20 use one
+        d = os.path.join(work, "stoneskin")
+        os.makedirs(d)
+        cmds = ["2:seed=1", "3:class=2", "4:alone=1", "5:setlevel=8", "6:give=15.11", "6:give=15.13", "7:equip=15.11", "7:equip=15.13",
+                "8:heal=500", "10:goobjsee=1.12"]
+        for k in range(60):
+            cmds += ["%d:spelltest=49.20.0.0" % (28 + 4 * k), "%d:attackedby=1" % (30 + 4 * k)]
+        text = run(a, d, "DROW1", 280, script(cmds, 280, heal=False), ["-noattack"])
+        misses = len(re.findall(r"attack: rmfg5 misses the player", text))
+        skins = re.findall(r"the stone skin of the player takes the hit of rmfg5 \(roll \d+, result (\d)\), (\d+) left", text)
+        old = len(re.findall(r"the stone skin of the player takes the attack of rmfg5", text))
+        dmg = len(re.findall(r"damage: the player takes \d+ from rmfg5", text))
+        nat20 = sum(1 for r, _ in skins if r == "2")
+        lefts = sorted(set(int(n) for _, n in skins))
+        check("stoneskin", misses > 0 and len(skins) > 0 and nat20 > 0 and old == 0 and dmg == 0 and misses + len(skins) == 60,
+              "60 attacks of a drow fighter on the player with a Stone Skin: %d misses that use none, %d hits that use one "
+              "(%d of them a natural 20), %d times damage, %d uses before the roll; hits left after a use: %s" % (
+                  misses, len(skins), nat20, dmg, old, lefts))
 
     if a.table:
         print()

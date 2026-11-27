@@ -194,9 +194,9 @@ const char *dtu_spell_port_line(int k)
 		"$SPELL 57 name=\"Minor Globe of Invulnerability\" picture=genscrol.bbm level=4 mage_use range=0 type=TARGET icon=201 uses=1 "
 			"radius=16 weapon_vclip=121 value=1200 player_light=8 size=3 modifier=1.0 cast_sound=2126 stackable stack_limit=10 "
 			"cast_with_hands self_cast_ok inv_icon=143",
-		"$SPELL 58 name=\"Spiritual Hammer\" picture=genscrol.bbm level=2 cleric_use range=180 type=TARGET icon=202 uses=1 radius=0 "
-			"weapon_pof=y_a.pof y_a01.bbm x_a01.bbm value=300 damage_dice=4 #damage_dice=1 player_light=8 size=3 modifier=1.0 "
-			"monster_hit_vclip=101 wall_hit_vclip=101 cast_sound=2132 stackable stack_limit=10 cast_with_hands inv_icon=142",
+		"$SPELL 58 name=\"Spiritual Hammer\" picture=genscrol.bbm level=2 cleric_use range=0 type=TARGET icon=202 uses=1 radius=16 "
+			"weapon_vclip=86 value=300 player_light=8 size=3 modifier=1.0 cast_sound=2132 stackable stack_limit=10 cast_with_hands "
+			"self_cast_ok inv_icon=142",
 		"$SPELL 59 name=\"Flame Strike\" level=5 range=360 type=TARGET radius=0 weapon_vclip=14 weapon_vclip_size=3 "
 			"fire_damage_dice=8 #fire_damage_dice=6 cast_sound=2115 monster_hit_vclip=111 size=3 modifier=1.0",
 		"$SPELL 60 name=\"Mind Blast\" level=4 range=120 type=TARGET radius=0 weapon_vclip=24 cast_sound=2104 cast_on_top=133 "
@@ -204,6 +204,36 @@ const char *dtu_spell_port_line(int k)
 	};
 
 	return (k >= 0 && k < (int)(sizeof(lines) / sizeof(lines[0]))) ? lines[k] : NULL;
+}
+
+// ASCENT: the weapon of Spiritual Hammer (dtuspell.h): the line of the
+// Throwing Hammer of the tables (model y_a.pof, 1d4 + 1, fire_wait 1.2,
+// thrown) with the word magic, no class word and no value. The reader adds
+// it after the lines of the table.
+#define HAMMER_WEAPON_NAME	"Spiritual Hammer"
+
+const char *dtu_spell_port_weapon_line(void)
+{
+	return "$WEAPON weapon_name=\"" HAMMER_WEAPON_NAME "\" mass=0 picture=genham.bbm icon=202 weapon_pof=y_a.pof y_a01.bbm x_a01.bbm "
+		"lifetime=3 player_light=0 lw_ratio=4.8 gravity=.0 fire_delay=5.0 matter=0 drag=0.0 size=3.0 damage_percent=25 thrown=1 "
+		"modifier=1 speed=30 40 50 60 80 lighted=0 lightcast=0 all_use attack_type=PROJECTILE weapon_char=y uses=1 value=0 "
+		"damage_dice=4 #Damage_dice=1 fire_wait=1.2 damage_bonus=1 magic flash_sound=2420 armor_hit_sound=2424 wall_hit_sound=2434 "
+		"monster_hit_sound=2428";
+}
+
+static int Hammer_weapon = -2;		// -2: not looked up since the table read
+
+int dtu_spell_hammer_weapon(void)
+{
+	int i;
+
+	if (Hammer_weapon == -2) {
+		Hammer_weapon = -1;
+		for (i=0;i<N_weapon_types;i++)
+			if (!stricmp(Weapon_item_info[i].name,HAMMER_WEAPON_NAME))
+				Hammer_weapon = i;
+	}
+	return Hammer_weapon;
 }
 
 static int spell_cast_time(int spell)
@@ -252,11 +282,13 @@ static int spell_flag(int spell,char *flag)
 	return spell_ok(spell) && bm_tbl_has_flag(Spell_info[spell].record,flag);
 }
 
+static int Hammer_weapon;		// ASCENT: Spiritual Hammer, below
 static void caster_table_read(void);		// ASCENT: Dtu_caster_ai
 
 void dtu_spell_table_read(void)
 {
 	Prayer_written = 0;
+	Hammer_weapon = -2;
 	caster_table_read();
 	dtu_spell_dice_clear();
 }
@@ -370,6 +402,8 @@ static int creature_level(object *obj)
 
 int dtu_caster_level(object *obj);		// ASCENT: Dtu_caster_ai, below
 
+static int caster_spell_level(object *obj,int spell);
+
 static int object_level(object *obj,int spell)
 {
 	if (obj == NULL) return 1;
@@ -383,7 +417,7 @@ static int object_level(object *obj,int spell)
 int dtu_spell_object_level(object *obj,int spell)
 {
 	if (obj && obj->type == OBJ_ROBOT)
-		return dtu_caster_level(obj);		// ASCENT: Dtu_caster_ai
+		return caster_spell_level(obj,spell);		// ASCENT: Dtu_caster_ai
 	return object_level(obj,spell);
 }
 
@@ -427,12 +461,28 @@ int dtu_caster_level(object *obj)
 	return creature_level(obj);
 }
 
+static int Test_limits;		// test, below
+
+// The level at which a creature casts a spell: its caster level, or the
+// lower level of Caster_limits (dtucaster.h)
+static int caster_spell_level(object *obj,int spell)
+{
+	int r = caster_row(obj), L = dtu_caster_level(obj), i;
+
+	if (r < 0 || !Test_limits)
+		return L;
+	for (i=0;i<(int)(sizeof(Caster_limits) / sizeof(Caster_limits[0]));i++)
+		if (Caster_limits[i].spell == spell && Caster_limits[i].level < L && !stricmp(Caster_limits[i].name,Caster_types[r].name))
+			return Caster_limits[i].level;
+	return L;
+}
+
 // The level of the caster of a spell: as object_level, a creature with the
 // level of its type (Dtu_caster_ai)
 static int cast_level(object *obj,int spell)
 {
 	if (obj && obj->type == OBJ_ROBOT)
-		return dtu_caster_level(obj);
+		return caster_spell_level(obj,spell);
 	return object_level(obj,spell);
 }
 
@@ -1172,7 +1222,28 @@ void dtu_spell_log_timers(object *obj)
 // ASCENT: Mirror Image and Minor Globe of Invulnerability (dtuspell.h). The
 // effect word of an object has no free bit, so the two effects are kept
 // here by the object number and its signature.
-static struct { int signature; int images; fix images_end, globe_end; } Xfx[MAX_OBJECTS];
+static struct { int signature; int images; fix images_end, globe_end; fix hammer_end; int hammer_level; } Xfx[MAX_OBJECTS];
+static int Hammer_hand = -1, Hammer_hand_type, Hammer_hand_id;		// the item in the hand when the player got the hammer
+
+static int hammer_hand_same(void)
+{
+	int n = Dtu_char.current.n;
+
+	if (n != Hammer_hand)
+		return 0;
+	if (n < 0 || n >= Dtu_n_inventory)
+		return 1;
+	return Dtu_inventory[n].type == Hammer_hand_type && Dtu_inventory[n].id == Hammer_hand_id;
+}
+
+static void hammer_hand_take(void)
+{
+	int n = Dtu_char.current.n;
+
+	Hammer_hand = n;
+	Hammer_hand_type = (n >= 0 && n < Dtu_n_inventory) ? Dtu_inventory[n].type : 0;
+	Hammer_hand_id = (n >= 0 && n < Dtu_n_inventory) ? Dtu_inventory[n].id : 0;
+}
 
 static int xfx_n(object *obj)
 {
@@ -1216,6 +1287,13 @@ static void xfx_end(object *obj,int what,int message)
 		if (message && obj->type == OBJ_PLAYER)
 			HUD_init_message("%s expired.",spell_name(DTU_SPELL_MIRROR_IMAGE));
 	}
+	if ((what & 4) && Xfx[n].hammer_end != 0) {
+		Xfx[n].hammer_end = 0;
+		dtu_spell_log("spell: Spiritual Hammer of obj %d %s ends%s",n,target_name(obj),
+			obj->type == OBJ_PLAYER ? ": the item of the inventory is in the hand again" : "");
+		if (message && obj->type == OBJ_PLAYER)
+			HUD_init_message("%s expired.",spell_name(DTU_SPELL_SPIRITUAL_HAMMER));
+	}
 	if ((what & 2) && Xfx[n].globe_end != 0) {
 		Xfx[n].globe_end = 0;
 		dtu_spell_log("spell: Minor Globe of Invulnerability of obj %d %s ends",n,target_name(obj));
@@ -1250,9 +1328,36 @@ int dtu_spell_mirror_takes(object *target,object *attacker)
 }
 
 // One time in each frame: the two effects end at their time
+static int Test_save_fail = 0;		// test: savefail of -chartest
+
+// ASCENT: Dtu_caster_ai and Dtu_fix_hold_hit (each attack hits a held
+// player): the hold of a creature on the player is CASTER_HOLD_MAX seconds
+// at most (Dtu_fix_player_hold alone: 6 to 18), and no creature of the
+// lists casts Hold Person or the Mind Blast on the player before
+// CASTER_HOLD_REST seconds after its hold ended (caster_weight). The
+// numbers are measured by tools/caster_balance.py hold: a failed save
+// against one caster leaves a character with full hit points alive.
+#define CASTER_HOLD_MAX		i2f(10)
+#define CASTER_HOLD_REST	i2f(12)
+
+static fix Hold_rest_until = 0;		// the game time until which the player is not held again
+static int Test_hold_rules = 1;		// test: holdrules=0 of -chartest: the two rules off (the measure before them)
+
+static int Test_limits = 1;			// test: holdrules=0 also takes the lower levels of Caster_limits away
+
+void dtu_caster_test_hold_rules(int on)
+{
+	Test_hold_rules = Test_limits = on;
+}
+
 static void xfx_frame(void)
 {
 	int i;
+
+	if (ConsoleObject && ConsoleObject->type == OBJ_PLAYER && (ConsoleObject->dtu.m_88 & DTU_FX_HOLD)) {
+		Hold_rest_until = Test_hold_rules ? GameTime + CASTER_HOLD_REST : 0;
+		Test_save_fail = 0;		// test: savefail of -chartest
+	}
 
 	for (i=0;i<=Highest_object_index;i++) {
 		object *o = &Objects[i];
@@ -1263,7 +1368,58 @@ static void xfx_frame(void)
 			xfx_end(o,1,1);
 		if (Xfx[i].globe_end != 0 && dtu_time_past(Xfx[i].globe_end))
 			xfx_end(o,2,1);
+		if (Xfx[i].hammer_end != 0 && dtu_time_past(Xfx[i].hammer_end))
+			xfx_end(o,4,1);
 	}
+	// Spiritual Hammer of the player: the spell stays in the hand after its
+	// cast (0x56A0D): it is put away, the hammer is the weapon. Another item
+	// or a spell in the hand ends the hammer.
+	if (ConsoleObject && ConsoleObject->type == OBJ_PLAYER && dtu_spell_hammer_on(ConsoleObject)) {
+		if (Dtu_spell_current == DTU_SPELL_SPIRITUAL_HAMMER)
+			dtu_spell_put_away();
+		else if (Dtu_spell_current >= 0 || !hammer_hand_same()) {
+			dtu_spell_log("spell: the player takes another item or a spell into the hand");
+			xfx_end(ConsoleObject,4,1);
+		}
+	}
+}
+
+int dtu_spell_hammer_on(object *obj)
+{
+	int n = xfx_n(obj);
+
+	return n >= 0 && Xfx[n].hammer_end != 0;
+}
+
+int dtu_spell_hammer_held(void)
+{
+	return ConsoleObject != NULL && ConsoleObject->type == OBJ_PLAYER && Dtu_spell_current < 0 && dtu_spell_hammer_weapon() >= 0 &&
+		dtu_spell_hammer_on(ConsoleObject);
+}
+
+int dtu_spell_hammer_seconds(object *obj)
+{
+	return dtu_spell_hammer_on(obj) ? f2i(dtu_time_left(Xfx[xfx_n(obj)].hammer_end)) : 0;
+}
+
+static int hammer_bonus(int L);
+
+int dtu_spell_hammer_bonus(object *attacker,int weapon)
+{
+	if (attacker == NULL || weapon < 0 || weapon != dtu_spell_hammer_weapon() || !dtu_spell_hammer_on(attacker))
+		return 0;
+	return hammer_bonus(Xfx[xfx_n(attacker)].hammer_level);
+}
+
+int dtu_spell_hammer_object(object *obj)
+{
+	return obj != NULL && obj->type == OBJ_WEAPON && dtu_spell_hammer_weapon() >= 0 && obj->id == dtu_spell_hammer_weapon();
+}
+
+void dtu_spell_hammer_end(void)
+{
+	if (ConsoleObject)
+		xfx_end(ConsoleObject,4,1);
 }
 
 static void fx_expire(object *obj,int force)
@@ -1271,7 +1427,7 @@ static void fx_expire(object *obj,int force)
 	int b, w = obj->dtu.m_88;
 
 	if (force)
-		xfx_end(obj,3,1);		// ASCENT: Dispel Magic ends Mirror Image and the globe
+		xfx_end(obj,7,1);		// ASCENT: Dispel Magic ends Mirror Image, the globe and the Spiritual Hammer
 	if (w == 0)
 		return;
 	for (b=0;b<32;b++) {
@@ -1353,12 +1509,27 @@ int dtu_spell_save(object *obj,int cat)
 // sets it around its save
 static int Save_mod = 0;
 
+void dtu_spell_test_save_fail(int on)
+{
+	Test_save_fail = on;
+}
+
 int dtu_spell_save_from(object *obj,int cat,object *source)
 {
 	int need = 20, roll = rand() % 20 + 1, level, resist = 0, evil = 0;
 
 	if (Priest_force_save >= 0)
 		return Priest_force_save;
+	// test: savefail=1 of -chartest: the saves of the player fail until it
+	// is held (tools/caster_balance.py)
+	if (Test_save_fail && obj->type == OBJ_PLAYER) {
+		if (obj->dtu.m_88 & DTU_FX_HOLD)
+			Test_save_fail = 0;
+		else {
+			dtu_spell_log("save: obj 0 you: failed (the test command savefail)");
+			return 0;
+		}
+	}
 	if ((cat < 0 || cat > 4) && obj->type != OBJ_DRESSING)
 		cat = 4;
 	if (obj->type == OBJ_PLAYER) {
@@ -1768,7 +1939,7 @@ static fix spell_damage(int spell,object *target,object *caster,int level,int gr
 		dtu_xp_hit_keep();
 	}
 	dmg = (group >= 0 ? dtu_spell_damage_roll_count(spell,target,level,group,count) : dtu_spell_damage_roll(spell,target,level)) + extra;
-	dtu_xp_dmg_mod(extra,spell == DTU_SPELL_SPIRITUAL_HAMMER ? LN("spell") : LN("undead"));		// ASCENT: the die of Magical Stone against undead (verbose combat log)
+	dtu_xp_dmg_mod(extra,LN("undead"));		// ASCENT: the die of Magical Stone against undead (verbose combat log)
 	return spell_deal(spell,target,caster,level,dmg,rule_half(spell));
 }
 
@@ -2379,6 +2550,7 @@ static fix spell_time(int spell,int L,int mode)
 		// ASCENT: the spells of the port (dtuspell.h)
 		case DTU_SPELL_MIRROR_IMAGE:	return 3*L*MINUTE;		// 3 rounds a level
 		case DTU_SPELL_MINOR_GLOBE:		return L*MINUTE;		// 1 round a level
+		case DTU_SPELL_SPIRITUAL_HAMMER:	return L*MINUTE;	// 1 minute a level (a decision of the user; 2e: 3 rounds + 1 a level)
 		case DTU_SPELL_MIND_BLAST:		// the stun: 3d4, in seconds on the player (mind_blast_time)
 			return i2f(mode == LOW ? 3 : mode == HIGH ? 12 : die(4,ROLL) + die(4,ROLL) + die(4,ROLL));
 	}
@@ -2544,7 +2716,7 @@ static const struct { ubyte kind, save; ushort flags; int fx, stopped_by; } Spel
 	// ASCENT: the spells of the port (dtuspell.h)
 	{ DTU_SK_MIRROR, DTU_SS_NONE, 0, 0 },						// 56 Mirror Image
 	{ DTU_SK_GLOBE, DTU_SS_NONE, 0, 0 },						// 57 Minor Globe of Invulnerability
-	{ DTU_SK_DAMAGE, DTU_SS_NONE, SR_OTHERS|DTU_SR_ATTACK_ROLL, 0 },	// 58 Spiritual Hammer: an attack roll, no save
+	{ DTU_SK_HAMMER, DTU_SS_NONE, 0, 0 },						// 58 Spiritual Hammer: a conjured weapon
 	{ DTU_SK_DAMAGE, DTU_SS_HALF, SR_OTHERS, 0 },				// 59 Flame Strike
 	{ DTU_SK_STUN, DTU_SS_NEGATES, SR_OTHERS, DTU_FX_HOLD },	// 60 Mind Blast: a save against wands at -4
 };
@@ -2615,11 +2787,9 @@ static int hammer_bonus(int L)
 	return L / 6 > 3 ? 3 : L / 6;
 }
 
-#define HAMMER_DAMAGE_ADD	1		// 1d4 + 1
-
 static int rule_attack_bonus(int spell,int L)
 {
-	if (spell == DTU_SPELL_SPIRITUAL_HAMMER)
+	if (spell == DTU_SPELL_SPIRITUAL_HAMMER)		// the bonus of the conjured hammer, for the description
 		return hammer_bonus(L);
 	return spell == 37 ? METEOR_HIT_BONUS : 0;
 }
@@ -3074,6 +3244,9 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 				// the player
 				if (target->type == OBJ_PLAYER && dtu_hold_fix_on())
 					d = dtu_hold_player_time();
+				// ASCENT: the hold of a creature of the caster lists (above)
+				if (Test_hold_rules && target->type == OBJ_PLAYER && caster && caster->type == OBJ_ROBOT && caster_row(caster) >= 0 && d > CASTER_HOLD_MAX)
+					d = CASTER_HOLD_MAX;
 				// ASCENT: 0x8E8C5: the counter of the cast must be above 0
 				if (Hold_count[spell == 52] <= 0) {
 					dtu_spell_log("spell: Hold Person counter is 0: no effect");
@@ -3357,9 +3530,17 @@ static fix apply_spell(int spell,object *target,object *caster,int L)
 					f2fl(GameTime + dur));
 			}
 			break;
-		case DTU_SPELL_SPIRITUAL_HAMMER:		// 1d4 + 1 and the bonus of the level, an attack roll
-			if (rule_reaches(spell,target,self,T,L,mf))
-				dealt = spell_damage(spell,target,caster,L,GROUP_NONE,0,HAMMER_DAMAGE_ADD + hammer_bonus(L));
+		case DTU_SPELL_SPIRITUAL_HAMMER:		// the conjured hammer in the hand of the caster
+			if (self && xfx_n(target) >= 0 && dtu_spell_hammer_weapon() >= 0) {
+				dur = spell_time(spell,L,ROLL);
+				Xfx[xfx_n(target)].hammer_end = GameTime + dur ? GameTime + dur : 1;
+				Xfx[xfx_n(target)].hammer_level = L;
+				if (target->type == OBJ_PLAYER)
+					hammer_hand_take();
+				say("%s %s a Spiritual Hammer for %d minutes.",Msg_ts,Msg_have,MINUTES(dur));
+				dtu_spell_log("spell: Spiritual Hammer on obj %d %s: level %d, bonus %+d, until %.1f",(int)(target-Objects),
+					target_name(target),L,hammer_bonus(L),f2fl(GameTime + dur));
+			}
 			break;
 		case DTU_SPELL_FLAME_STRIKE:			// 6d8 fire, a save for half
 			if (rule_reaches(spell,target,self,T,L,mf))
@@ -3956,7 +4137,6 @@ static const struct { short spell, feet, feet_level; } Spell_range[] = {
 	{ 47, 270, 30 },	// Slow: 90 yards + 10 yards a level
 	{ 52, 360, 0 },		// Hold Person (cleric): 120 yards
 	{ 55, 180, 0 },		// Dispel Magic (cleric): 60 yards
-	{ DTU_SPELL_SPIRITUAL_HAMMER, 0, 30 },	// ASCENT: Spiritual Hammer: 10 yards a level
 };
 
 // The range in units of a spell missile at caster level L, -1 the range
@@ -4407,7 +4587,7 @@ void dtu_spell_rest_effects(object *obj,int keep)
 
 	if (!Dtu_fix_rest_effects || obj == NULL)
 		return;
-	xfx_end(obj,3,0);		// ASCENT: Mirror Image and the globe
+	xfx_end(obj,7,0);		// ASCENT: Mirror Image, the globe and the Spiritual Hammer
 	for (b=0;b<32;b++) {
 		int mask = (b == 31) ? DTU_FX_VESTMENT : (1 << b), end = 0;
 
@@ -5109,6 +5289,7 @@ static void creature_choose(object *obj,fix dist)
 #define CAI_POWER_WAIT	i2f(18)		// the recharge of a power (Mind Blast): 3 rounds
 #define CAI_INTERRUPT	i2f(3)		// the next choice after a cast that a hit stopped
 #define CAI_POOL_LEVEL	4			// the points of a fight: this many for each caster level at least
+#define CAI_THROW		i2f(3)		// Spiritual Hammer of a creature: from a throw to the next (two in a round)
 #define CAI_SHIFT		i2f(2)		// a step to the side: after 2 choices with a free line and no usable spell
 #define MIND_BLAST_REACH	i2f(120)	// 60 feet
 #define MIND_BLAST_COS		61000		// the cone: about 21 degrees to each side of its axis
@@ -5126,6 +5307,7 @@ static struct {
 	fix		next;			// the time of the next choice
 	int		empty;			// no points for a spell of the list
 	fix		hold_time, power_time;
+	fix		throw_next;		// Spiritual Hammer: the time of the next throw
 	fix		last_cast;
 	int		blocked;		// choices in a row with a line to the player and no free way for a missile
 	int		globed;			// a Minor Globe of the player stops each spell that the caster could cast
@@ -5219,10 +5401,42 @@ static void caster_self_spell(object *obj,int s,int L)
 }
 
 // The start of a fight: the points and the contingency
+// The contingency of a caster (dtuspell.h): the one place that gives it is
+// caster_fight_start(), and caster_contingency() is its one test.
+int (*Dtu_caster_contingency_off)(object *obj) = NULL;
+
+static int caster_contingency(object *obj)
+{
+	if (Dtu_caster_contingency_off && Dtu_caster_contingency_off(obj)) {
+		dtu_spell_log("caster: obj %d %s has no contingency (switched off)",(int)(obj-Objects),target_name(obj));
+		return 0;
+	}
+	return 1;
+}
+
+static int test_contingency_off(object *obj)
+{
+	return obj != NULL;
+}
+
+// test: contingency=0 of -chartest
+void dtu_caster_test_contingency(int on)
+{
+	Dtu_caster_contingency_off = on ? NULL : test_contingency_off;
+}
+
+void dtu_caster_contingency_end(object *obj)
+{
+	if (obj == NULL || obj->type != OBJ_ROBOT || caster_row(obj) < 0)
+		return;
+	dtu_spell_log("caster: the protections of obj %d %s end",(int)(obj-Objects),target_name(obj));
+	fx_expire(obj,1);
+}
+
 static void caster_fight_start(object *obj,int row,int L)
 {
 	const caster_spell *e = Caster_lists[Caster_types[row].list];
-	int n = obj-Objects, b, first = -1;
+	int n = obj-Objects, b, first = -1, contingency = caster_contingency(obj);
 	char names[200];
 
 	for (b=0;b<2;b++) {
@@ -5239,8 +5453,8 @@ static void caster_fight_start(object *obj,int row,int L)
 	Cai[n].empty = caster_empty(obj,row,L);
 	names[0] = 0;
 	for (;e->spell != 255;e++)
-		if ((e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell)) {
-			caster_self_spell(obj,e->spell,L);
+		if (contingency && (e->flags & CS_BUFF) && caster_has(e,L) && spell_ok(e->spell)) {
+			caster_self_spell(obj,e->spell,caster_spell_level(obj,e->spell));
 			if (first < 0)
 				first = e->spell;
 			snprintf(names + strlen(names),sizeof(names) - strlen(names),"%s%s",names[0] ? ", " : "",Spell_info[e->spell].name);
@@ -5275,6 +5489,8 @@ static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int se
 	}
 	if (!sees)
 		return 0;
+	if (e->flags & CS_SELF)		// Spiritual Hammer: one cast, then the throws
+		return dtu_spell_hammer_on(obj) ? 0 : w;
 	if (dtu_spell_globe(pl) && globe_stops(s,0)) {
 		Weight_globe = 1;
 		return 0;
@@ -5315,6 +5531,8 @@ static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int se
 		case 22: case 52:		// Hold Person
 			if ((pw & (DTU_FX_HOLD|DTU_FX_FREE_ACTION)) || (Dtu_fix_prot_evil && (pw & DTU_FX_PROT_EVIL)) || !dtu_time_past(Cai[n].hold_time))
 				return 0;
+			if (Hold_rest_until && !dtu_time_past(Hold_rest_until))		// the rest after a hold of the player
+				return 0;
 			break;
 		case 47:
 			if (pw & DTU_FX_SLOW)
@@ -5326,6 +5544,8 @@ static int caster_weight(object *obj,const caster_spell *e,int L,fix dist,int se
 			break;
 		case DTU_SPELL_MIND_BLAST:
 			if ((pw & DTU_FX_HOLD) || !dtu_time_past(Cai[n].power_time))
+				return 0;
+			if (Hold_rest_until && !dtu_time_past(Hold_rest_until))		// the rest after a hold of the player
 				return 0;
 			break;
 	}
@@ -5498,6 +5718,7 @@ static void caster_cast(object *obj,fix dist,int sees)
 			return;
 		}
 	}
+	L = caster_spell_level(obj,s);		// the lower level of Caster_limits
 	Cai[n].pool[book] -= cost;
 	Cai[n].next = Cai[n].chosen_at + CAI_ROUND;
 	if (dtu_time_left(Cai[n].next) < CAI_REST)
@@ -5508,7 +5729,7 @@ static void caster_cast(object *obj,fix dist,int sees)
 	Cai[n].last_cast = GameTime ? GameTime : 1;
 	if (s == 22 || s == 52)
 		Cai[n].hold_time = GameTime + CAI_HOLD_WAIT;
-	if (flags & CS_HEAL) {
+	if (flags & (CS_HEAL|CS_SELF)) {
 		caster_self_spell(obj,s,L);
 		cast_effects(s,obj);
 	}
@@ -5585,6 +5806,52 @@ static void caster_frame(object *obj,int row,fix dist)
 int dtu_caster_profile(object *obj)
 {
 	return caster_row(obj) >= 0;
+}
+
+// Spiritual Hammer of a creature (dtuspell.h): between its casts it throws
+// the hammer at the player, each CAI_THROW seconds, when the hammer would
+// meet the player first. The throw is a missile of the weapon line: the
+// attack roll with the THAC0 of the creature (0x2A7F3), 1d4 + 1, and the
+// bonus of its caster level (dtu_spell_hammer_bonus).
+static int caster_throw_way(object *obj,vms_vector *pos,vms_vector *dir,int *seg)
+{
+	int n = obj-Objects, w = dtu_spell_hammer_weapon();
+	fix range;
+
+	*pos = obj->pos;
+	pos->y += i2f(2);
+	if ((*seg = find_point_seg(pos,obj->segnum)) < 0) { *pos = obj->pos; *seg = obj->segnum; }
+	vm_vec_sub(dir,&ConsoleObject->pos,pos);
+	range = vm_vec_normalize_quick(dir) + ConsoleObject->size;
+	return dtu_missile_path_target_step(pos,*seg,dir,w,-1,n,range,-1,CAI_WAY_STEP) == ConsoleObject-Objects;
+}
+
+int dtu_caster_throws(object *obj)
+{
+	vms_vector pos, dir;
+	int n, seg;
+
+	if (caster_row(obj) < 0 || !Dtu_creatures_attack || !dtu_spell_hammer_on(obj) || dtu_spell_hammer_weapon() < 0)
+		return 0;
+	n = cai_state(obj);
+	if (!Cai[n].fight || Cai[n].spell >= 0 || !dtu_time_past(Cai[n].throw_next) || !dtu_creature_sees_player(obj))
+		return 0;
+	return caster_throw_way(obj,&pos,&dir,&seg);
+}
+
+int dtu_caster_throw(object *obj,fix dist)
+{
+	vms_vector pos, dir;
+	int n, seg, m;
+
+	if (!dtu_caster_throws(obj) || !caster_throw_way(obj,&pos,&dir,&seg))
+		return 0;
+	n = cai_state(obj);
+	m = dtu_create_missile(&dir,&pos,seg,n,dtu_spell_hammer_weapon(),-1,1);
+	Cai[n].throw_next = GameTime + CAI_THROW;
+	dtu_spell_log("caster: obj %d %s throws its Spiritual Hammer at %.2f, distance %.1f, bonus %+d, missile obj %d",n,target_name(obj),
+		f2fl(GameTime),f2fl(dist),dtu_spell_hammer_bonus(obj,dtu_spell_hammer_weapon()),m);
+	return m >= 0;
 }
 
 int dtu_caster_touches(object *obj)
@@ -5772,6 +6039,7 @@ void dtu_spell_frame(void)
 		// ASCENT: Dtu_caster_ai: the fights of the casters start again (a
 		// loaded save has another game time than the times of the loop)
 		memset(Cai,0,sizeof(Cai));
+		Hold_rest_until = 0;
 		// Test options: -testslots N gives N slots for each spell level,
 		// -testspell N puts spell N into the book and into the hand.
 		if ((t = FindArg("-testslots")) != 0 && t+1 < Num_args) {
@@ -6229,7 +6497,7 @@ int dtu_spell_rule_check(void)
 			k == DTU_SK_RARY || k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH || k == DTU_SK_STUN;
 		int timed = k == DTU_SK_GIVE || k == DTU_SK_CAUSE || k == DTU_SK_AC || k == DTU_SK_BLIND || k == DTU_SK_HOLD ||
 			k == DTU_SK_HOLD_UNDEAD || k == DTU_SK_FEAR || k == DTU_SK_AID || k == DTU_SK_COLOR || k == DTU_SK_MIRROR ||
-			k == DTU_SK_GLOBE || k == DTU_SK_STUN;
+			k == DTU_SK_GLOBE || k == DTU_SK_STUN || k == DTU_SK_HAMMER;
 		int amount = k == DTU_SK_HEAL || k == DTU_SK_AID || k == DTU_SK_ARMOR || k == DTU_SK_FIRE_POOL ||
 			k == DTU_SK_STONESKIN || k == DTU_SK_STRENGTH || k == DTU_SK_HOLD || k == DTU_SK_MIRROR;
 		dtu_spell_facts f;
@@ -6380,8 +6648,6 @@ int dtu_spell_get_facts(int spell,int L,dtu_spell_facts *f)
 			f->dice_n[g] = (g == group) ? count : spell_int(spell,keys[g][1],0);
 			f->dice_add[g] = spell_int(spell,keys[g][2],0) * level;
 		}
-		if (spell == DTU_SPELL_SPIRITUAL_HAMMER)		// ASCENT: 1d4 + 1 and the bonus of the level
-			f->dice_add[0] += HAMMER_DAMAGE_ADD + hammer_bonus(L);
 		f->undead_die = spell_undead_die(spell);
 		// the area of Fireball (dtu_spell_area, dtu_fireball_blind_deaf)
 		if ((f->flags & DTU_SR_BURST_BLINDS) && f->area) {

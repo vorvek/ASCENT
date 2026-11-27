@@ -717,7 +717,7 @@ Aleena Paladinstar and the spell lists of the creatures (ai.md, "Caster AI").
 |---|---|---|---|---|
 | 56 | Mirror Image | mage 2 | 2 s | On the caster. 1d4 images and one for each 3 caster levels, 8 at most, for 3 rounds (minutes) a level. An attack that would hit the caster, or a spell aimed at the caster alone, takes an image with the chance images / (images + 1); the image is gone. A miss removes no image. An area is not fooled (Fireball, Burning Hands, Flame Strike, Mind Blast, Lightning Bolt). |
 | 57 | Minor Globe of Invulnerability | mage 4 | 4 s | On the caster, 1 round a level. No spell of level 1 to 3 acts on the one inside. A spell that it casts on itself works; its own damage spell is stopped. Dispel Magic ends the globe. Mind Blast is not a spell and is not stopped. |
-| 58 | Spiritual Hammer | cleric 2 | 5 s | A hammer of force flies to the target (the model of the Throwing Hammer, `y_a.pof`): an attack roll with the THAC0 of the caster against the armor class against missiles, 1d4 + 1 damage, and +1 to hit and to the damage for each 6 caster levels (+3 at most). No save. Range 10 yards a level. |
+| 58 | Spiritual Hammer | cleric 2 | 5 s | A conjured weapon, as in Baldur's Gate (a decision of the user of 2026-11-27, section 15.6): on the caster, 1 minute a caster level. A throwing hammer of force is the weapon in the hand: the normal attack throws it (1d4 + 1, the rate of the Throwing Hammer), with no count. A magic weapon, +1 to hit and to the damage for each 6 caster levels (+3 at most). |
 | 59 | Flame Strike | priest 5, creatures only | 8 s (a creature: 6 s) | A column of fire on the target: 6d8 fire damage, a save for half. The fire dice of 0x91BC3: Resist Fire halves, Protection From Fire takes it from its pool, the fire resistance of items applies. |
 | 60 | Mind Blast | the illithids only | 1 s | A cone 60 feet (120 units) long, about 21 degrees to each side. Each creature of the other side in it saves against wands (category 1) at -4, or is stunned. |
 
@@ -735,13 +735,14 @@ the later rounds of an acid arrow that hit before the globe.
 
 The images are asked in two places: in the hit test of an attack roll
 (`dtu_hit_test_vs`, before Stone Skin: a melee attack, a weapon missile, the spells
-with an attack roll: Magical Stone, Minute Meteors, Spiritual Hammer, the acid
-arrow) and in `apply_spell` for a spell without an attack roll that spares its
+with an attack roll: Magical Stone, Minute Meteors, the acid arrow, and the
+thrown hammer of Spiritual Hammer, which is a weapon missile) and in `apply_spell` for a spell without an attack roll that spares its
 caster (`DTU_SR_SPARES_CASTER`: Magic Missile and the like) when no area applies
 it. Hold Person is an area in 1.3 (radius 40 after the table fixup), so the images
 do not take it.
 
-The effect word of an object (+0x88) has no free bit, so the two effects are kept
+The effect word of an object (+0x88) has no free bit, so the two effects (and the
+Spiritual Hammer, section 15.6) are kept
 in `dtuspell.c` by object number and signature (`Xfx`). They are not in a save game
 and end at a level change, at a rest and by Dispel Magic. The player sees the count
 of the images in the message box ("A mirror image takes the attack. Images left:
@@ -825,3 +826,52 @@ Not built. AD&D 2e spells that the code could take at a low cost:
 | Call Lightning | cleric 3 | Outdoors only: no place in Undermountain. |
 | Neutralize Poison, Slow Poison | cleric 4 and 2 | The game has no poison state. |
 | Cure Critical Wounds | cleric 5 | Outside of the levels 1 to 4. |
+
+### 15.6 Spiritual Hammer, a conjured weapon
+
+A decision of the user of 2026-11-27: the spell works as in Baldur's Gate, and the
+hammer is a throwing hammer. AD&D 2e has a hammer that the priest directs at a
+range; the duration there is 3 rounds + 1 a level.
+
+- **The weapon line.** The port adds one `$WEAPON` line after the lines of each
+  table, "Spiritual Hammer" (`dtu_spell_port_weapon_line`): the line of the
+  Throwing Hammer (line 24: `weapon_pof=y_a.pof`, `thrown=1`, `damage_dice=4
+  #Damage_dice=1 damage_bonus=1`, `fire_wait=1.2`, `weapon_char=y`, the sounds
+  2420, 2424, 2434, 2428) with the word `magic`, `all_use`, no value, no stack and
+  icon 202. With the 89 lines of 1.3 it is weapon 89; `MAX_WEAPON_TYPES` is 90. The
+  trap that fires a spell "as a missile of the last weapon entry" (0x0E,
+  `dtu_hook_trap_spawn_object`) takes the last line of 1.3, not this one.
+- **The cast.** On the caster (`self_cast_ok`, `DTU_SK_HAMMER`), 1 minute a caster
+  level. The state is in `Xfx` (the end time and the level). The message has the
+  time; the description window of the spell has the rule, and the time left while
+  the hammer is held (the port has no list of the running effects).
+- **The player.** While the spell lasts and no spell is in the hand, the weapon in
+  the hand is the hammer line: `hand_weapon()` (`dtucombat.c`) and
+  `hand_weapon_id()` (`dtuchar.c`) return it. The item of the inventory that was in
+  the hand stays where it is and is the weapon again when the spell ends. The
+  attack throws the hammer as a thrown weapon (the arms `hmcy_p.pof` and the like,
+  letter y); nothing is used up, and the hand is not emptied after the throw. The
+  bonus of the level is added in `weapon_attack` (to hit and damage). The word
+  `magic` of the line lets it hurt a creature with `weapon_resistant` (0x29D9D).
+  The hand box shows icon 202.
+- **The end.** The time, Dispel Magic (`fx_expire` with force), a rest
+  (`dtu_spell_rest_effects`), a level change and a load (`Xfx` is cleared at each
+  level start and is not in a save game: after a load the hammer is gone and the
+  item of the inventory is in the hand), a fumble that would drop the weapon (the
+  hammer ends, the item stays), and when the player takes another item or a spell
+  into the hand (a decision: the hammer does not wait). The hammer is no item: it
+  cannot be dropped, sold or put into a hot key box. A thrown hammer that misses
+  is removed, as each missile of the port.
+- **The look.** The flying hammer (`dtu_spell_hammer_object`, `object.c`) and the
+  hammer in the hand of the view (the submodels with `DTU_SUBMODEL_F_HIDDEN` of the
+  arm model, `Polyobj_hidden_tint` of `polyobj.c`) are drawn with the tint 0x40,
+  the blue of Detect Magic, in both renderers. No new model.
+- **A creature** with the spell in its list (the drow priestesses and priests,
+  `CS_SELF` of `dtucaster.h`) casts it once on itself and then throws the hammer at
+  the player between its casts, one throw each 3 seconds at most
+  (`dtu_caster_throws`, `dtu_caster_throw`, `CAI_THROW`): a missile of the weapon
+  line with the THAC0 of the creature and the bonus of its caster level
+  (`dtu_spell_hammer_bonus` in `to_hit_roll` and `damage_dice`). The weapon in the
+  hand of its model is not tinted (the model has no submodel with the flag).
+- **Tests.** `tools/check_caster_ai.py`, part `hammer`.
+

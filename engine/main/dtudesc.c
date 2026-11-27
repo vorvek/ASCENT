@@ -763,6 +763,19 @@ static void spell_effect(int spell, dtu_spell_facts *f)
 			line(LT("Dispel Magic ends it."));
 			break;
 		case DTU_SK_STUN:		line(LT("Stuns each creature in a cone in front of the caster.")); break;
+		// the conjured hammer: 1d4 + 1 of the weapon line and the bonus of the level
+		case DTU_SK_HAMMER:
+			line(LT("Puts a throwing hammer of force into your hand. Your attack throws it, and it is in your hand again."));
+			line(LT("A hit deals %s damage. It is a magic weapon."), dice(a, 1, 4, 1 + f->attack_bonus));
+			if (f->attack_bonus)
+				line(LT("%+d to hit."), f->attack_bonus);
+			line(LT("It ends when you take another item or a spell into your hand."));
+			if (dtu_spell_hammer_on(ConsoleObject)) {
+				int s = dtu_spell_hammer_seconds(ConsoleObject);
+
+				line(LT("You hold it now: %d minutes and %d seconds are left."), s / 60, s % 60);
+			}
+			break;
 		default:					line(LT("It has no effect in this game.")); break;
 	}
 }
