@@ -54,6 +54,15 @@ int texmerge_get_sources( grs_bitmap *bm, grs_bitmap **bottom, grs_bitmap **top,
 // ASCENT: Dtu_fix_wall_effects: the effect colors of a wall texture without
 // an overlay (texmerge.c). -origfx clears it.
 extern int Dtu_fix_wall_effects;
+// ASCENT: Dtu_fix_solid_effects: the effect colors of a face that the view
+// does not see past (texmerge.c, render.c). -origfx clears it.
+extern int Dtu_fix_solid_effects;
+// ASCENT: Dtu_fix_glass_windows: the render traversal passes a closed wall
+// whose overlay has effect colors (render.c render_wid). -origfx clears it.
+extern int Dtu_fix_glass_windows;
+// 1 when texture t (an index of Textures) has an effect color other than
+// 0xCF in its bitmap (texmerge_mark_wall_effects).
+int texmerge_texture_is_glass(int t);
 void texmerge_mark_wall_effects(void);
 
 

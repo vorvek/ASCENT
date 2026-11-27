@@ -458,6 +458,64 @@ The method and the region are in the cache key of these bitmaps; version 6
 marks every archive directory as stale, so a run links every file again and
 upscales only these 7 bitmaps.
 
+## The water flipbooks (version 7)
+
+The report of the stream of 2026-11-26: the running water had a pixelated
+texture, while the flat water of version 6 looked clean. All water and liquid
+flipbooks of the archives (each in 19 archives: the 18 level archives and
+`PORTAL.EGG`, 64 x 64, all wall textures of the tables except `lava02`):
+
+| Flipbook | Frames | Use | Before | After |
+|---|---|---|---|---|
+| `water` | 6 | flat water, floors | UltraSharp (version 6) | the same |
+| `wfal01` | 8 | running water: the overlay of the streams (HUB3, 7 sides), the base of sides in 11 levels | detail, foam streaks, 0.99 to 1.14 | UltraSharp, 0.84 to 0.88 |
+| `wfal02` | 8 | waterfall (BEHOLDR2, IBBALAR1) | detail, 0.34 to 0.40 | UltraSharp, 0.29 to 0.31 |
+| `wfal04` | 8 | waterfall with see-through edges (0x4F, transparent) | detail, 0.17 to 0.20 | UltraSharp, 0.17 to 0.21 |
+| `water2` | 6 | see-through water (0x6F, BEHOLDR2) | detail, 0.09 to 0.13 | UltraSharp, 0.10 to 0.14 |
+| `water1` | 8 | brown water (no rendered side in the levels) | detail, 0.51 to 0.63 | UltraSharp, 0.54 to 0.64 |
+| `lava`, `lavaflo`, `magma` | 6, 15, 6 | lava | detail | the same |
+| `lava02` | 12 | lava (IBBALAR2) | x4plus | the same |
+
+The numbers are the high frequency of each frame: the mean absolute step
+between neighbor pixels of the file reduced to the original size (mean of
+4 x 4 blocks), divided by that of the original frame (RGB of the palette).
+Above 1 the file has detail that the original does not have. `water2` and
+`wfal04` are low because most of their texels are effect colors or
+transparent (filled before the upscale).
+
+`NAME_METHOD` gives the five other water flipbooks the model of the flat
+water. The foam of `wfal01` is gone and its frames agree (spread 0.04
+against 0.15), as the frames of `water` did in version 6. The lava keeps its
+method: UltraSharp made a grain on `lava` and `magma` and stair steps along
+the smooth bands of `lava02` (the step across the edges of the 4 x 4 source
+cells against the steps inside them: 1.10 to 1.31 against 1.04 to 1.16).
+The cache key has the method, so a run upscales only the 38 frames of these
+five flipbooks again (the test run of DROW with `water` and the lava: 83 files in 10 s).
+
+Test sheets (frame 0, the original at 4 times next to the file, before and
+after) were made in a scratch directory with `--out DIR --only drow --names
+...`; the set in `gamedata/hd` was made again with one run.
+
+The place of the report (a screenshot of the user with the set of the content
+pack, version 6): HUB3, the room of the waterfall `wfal04` (segments 212
+and 213, side 5) and the sign of the temple of Clangeddin. The floor had two
+styles. The rapids, the sloped and flat floor faces where the water runs
+(segments 213, 214, 215, 217, 227, 228, 230, side 3: base `water`,
+overlay `wfal01`, an opaque eclip that covers the base), had sharp bright
+streaks: the merged texture takes the upscaled file of `wfal01`
+(`ASCENT_GPU_HDLOG=1` lists `merge portal/water_N + wfal01_N`), made with
+the method `detail` in version 6. The rest of the floor (base `water` with
+no overlay or with the transparent overlay `empty`) is the file of `water`,
+UltraSharp since version 6: soft dark blotches. The small green specks are
+in both originals: palette 55 to 59, a dark green ramp (RGB 1 13 9 to 7 25
+19 of 63), 78 texels in `water#0` and 89 in `wfal01#0`. With version 7 both
+are UltraSharp: the rapids keep their streaks along the flow, with the same
+grain and specks as the water around them. Test: HUB3 `-testpos
+-62.5,-30,5,180,15`, frame 200 (after the upscaled loads), GPU renderer with
+`-hddir` at the set of the content pack and at the new set; the mean
+difference in the floor area is 2.9 of 255. The content pack `textures` still
+has version 6 until it is made again and uploaded.
+
 ## Making a set of version 5
 
 One run: `python -I tools/textures_hd.py`. Version 5 marks every archive

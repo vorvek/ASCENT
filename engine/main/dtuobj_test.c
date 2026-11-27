@@ -70,22 +70,24 @@
 
 static void test_place_objects(void);
 
-// The option -testpos X,Y,Z[,HEADING]: puts the player at a position of the
-// level at the first frame, for tests and screenshots. The heading is in
-// degrees, 0 looks along +z, 90 along +x.
+// The option -testpos X,Y,Z[,HEADING[,PITCH]]: puts the player at a position
+// of the level at the first frame, for tests and screenshots. The heading is
+// in degrees, 0 looks along +z, 90 along +x. The pitch is the look pitch in
+// degrees, positive down, limited as the look keys limit it (about -67 to
+// 67).
 void test_place_player(void)
 {
 	int t = FindArg("-testpos");
-	float x, y, z, h = 0;
+	float x, y, z, h = 0, p = 0;
 	vms_vector pos;
 	vms_angvec a;
-	int seg;
+	int seg, n;
 
 	Test_pos_pending = 0;
 	test_place_objects();
 	if (!t || t+1 >= Num_args)
 		return;
-	if (sscanf(Args[t+1],"%f,%f,%f,%f",&x,&y,&z,&h) < 3)
+	if ((n = sscanf(Args[t+1],"%f,%f,%f,%f,%f",&x,&y,&z,&h,&p)) < 3)
 		return;
 	pos.x = fl2f(x); pos.y = fl2f(y); pos.z = fl2f(z);
 	seg = find_point_seg(&pos,-1);
@@ -99,6 +101,12 @@ void test_place_player(void)
 	a.h = (fixang)(int)(h * 65536.0 / 360.0);
 	vm_angles_2_matrix(&ConsoleObject->orient,&a);
 	vm_vec_zero(&ConsoleObject->mtype.phys_info.velocity);
+	if (n >= 5) {
+		int lp = (int) (p * 65536.0 / 360.0);
+		if (lp < DTU_LOOK_MIN) lp = DTU_LOOK_MIN;
+		if (lp > DTU_LOOK_MAX) lp = DTU_LOOK_MAX;
+		Dtu_look_pitch = (fixang) lp;
+	}
 	// the new segment is not a move into it: no warp or floor trigger
 	dtu_trig_player_placed();
 }

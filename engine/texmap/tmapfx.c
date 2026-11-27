@@ -36,6 +36,7 @@
  * table (Tmap_dim_fade) that the mappers use for the lit polygons.
  */
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -44,6 +45,7 @@
 #include "texmap.h"
 #include "texmapl.h"
 #include "tmapfx.h"
+#include "rle.h"
 
 int Tmap_fx;					// the bitmap of draw_tmap has BM_FLAG_DTU_EFFECTS
 int Tmap_fx_row = 25;		// 0x14C4E1
@@ -222,6 +224,185 @@ int tmap_fx_next_below(tmap_fx_span *s)
 	if (s->below >= s->below_end)
 		s->below = s->below_start;
 	return v;
+}
+
+// ASCENT: the solid form of a bitmap with effect colors (Dtu_fix_solid_effects,
+// main/texmerge.c). On a face that the view does not see past (a closed
+// wall, a side with no segment behind it), nothing is drawn under the face
+// in the frame, so the screen pixels that the rule reads hold the picture
+// of an earlier frame (DTUGAME.EXE reads them all the same, see
+// docs/re/effectcolors.md). The solid form gives each effect texel a fixed
+// color from the texels around it: their mean color, filled ring after
+// ring into the area of the effect texels as plat_gpu_fx_mark and
+// fill_colors (platform/gputex.c) fill the RGB form, as the nearest
+// palette color that is not 255 or an effect color. The face is then drawn
+// as a texture without the rule, lit like its other texels: the glass and
+// the water edges look like the texture around them. The GPU renderer
+// draws the same face without the rule (G3_gpu_fx_solid, 3d/gpu3d.c), so
+// it shows the filled colors of its texture: the fill of the 8-bit
+// texture (the same fill as here) or the smooth fill of the upscaled file.
+
+#define SOLID_CACHE 16
+typedef struct solid_entry {
+	const grs_bitmap *src;
+	uint32_t hash;
+	int used;
+	grs_bitmap bm;
+	ubyte *data;
+	int size;
+} solid_entry;
+static solid_entry Solid[SOLID_CACHE];
+static int Solid_clock;
+
+static int expand6(int v)
+{
+	v &= 63;
+	return (v << 2) | (v >> 4);
+}
+
+// the nearest palette color (not 255) of an RGB color, as update_light of
+// gpu.c; no_fx: not an effect color either
+static int nearest_color(const int *rgb, int no_fx)
+{
+	int c, best = 0, bd = 1 << 30, r = rgb[0] >> 2, g = rgb[1] >> 2, b = rgb[2] >> 2;
+
+	for (c = 0; c < 255; c++) {
+		int dr, dg, db, d;
+		if (no_fx && tmap_fx_color_code(c))
+			continue;
+		dr = r - gr_palette[c*3];
+		dg = g - gr_palette[c*3+1];
+		db = b - gr_palette[c*3+2];
+		d = 3*dr*dr + 4*dg*dg + 2*db*db;
+		if (d < bd) {
+			bd = d;
+			best = c;
+			if (!d)
+				break;
+		}
+	}
+	return best;
+}
+
+static void solid_make(solid_entry *e, const ubyte *pix, int w, int h)
+{
+	int n = w * h, i, x, y, pass, left;
+	int *rgb = (int *) malloc(sizeof(int) * 3 * n);
+	ubyte *done = (ubyte *) malloc(n);
+	long sum[3] = { 0, 0, 0 }, cnt = 0;
+
+	memcpy(e->data, pix, n);
+	if (!rgb || !done) {
+		free(rgb);
+		free(done);
+		return;
+	}
+	// done: 1 a source (not an effect color, not 255), 0 a target or 255
+	for (i = 0; i < n; i++) {
+		int c = pix[i];
+		rgb[i*3] = expand6(gr_palette[c*3]);
+		rgb[i*3+1] = expand6(gr_palette[c*3+1]);
+		rgb[i*3+2] = expand6(gr_palette[c*3+2]);
+		done[i] = c != 255 && !tmap_fx_color_code(c);
+		if (done[i]) {
+			sum[0] += rgb[i*3];
+			sum[1] += rgb[i*3+1];
+			sum[2] += rgb[i*3+2];
+			cnt++;
+		}
+	}
+	for (pass = 0; pass < 16; pass++) {
+		left = 0;
+		for (y = 0; y < h; y++)
+			for (x = 0; x < w; x++) {
+				int j = y * w + x, dx, dy, c = 0, r = 0, g = 0, b = 0;
+				if (done[j] || !tmap_fx_color_code(pix[j]))
+					continue;
+				for (dy = -1; dy <= 1; dy++)
+					for (dx = -1; dx <= 1; dx++) {
+						int xx = x + dx, yy = y + dy, k;
+						if ((dx | dy) == 0 || xx < 0 || yy < 0 || xx >= w || yy >= h)
+							continue;
+						k = yy * w + xx;
+						if (done[k] == 1) {
+							r += rgb[k*3];
+							g += rgb[k*3+1];
+							b += rgb[k*3+2];
+							c++;
+						}
+					}
+				if (c) {
+					rgb[j*3] = r / c;
+					rgb[j*3+1] = g / c;
+					rgb[j*3+2] = b / c;
+					done[j] = 2;
+				} else
+					left++;
+			}
+		for (i = 0; i < n; i++)
+			if (done[i] == 2)
+				done[i] = 1;
+		if (!left)
+			break;
+	}
+	for (i = 0; i < n; i++) {
+		int c = pix[i], f;
+		if (!tmap_fx_color_code(c))
+			continue;
+		if (!done[i] && cnt) {
+			rgb[i*3] = (int) (sum[0] / cnt);
+			rgb[i*3+1] = (int) (sum[1] / cnt);
+			rgb[i*3+2] = (int) (sum[2] / cnt);
+		}
+		f = nearest_color(&rgb[i*3], 1);
+		e->data[i] = (ubyte) f;
+	}
+	free(rgb);
+	free(done);
+}
+
+grs_bitmap *tmap_fx_solid_bitmap(grs_bitmap *bp)
+{
+	grs_bitmap *src = bp;
+	solid_entry *e = NULL;
+	uint32_t hash = 2166136261u;
+	int i, n;
+
+	if (!bp || !bp->bm_data || bp->bm_w <= 0 || bp->bm_h <= 0)
+		return bp;
+	if (bp->bm_flags & BM_FLAG_RLE)
+		bp = rle_expand_texture(bp);
+	if (!bp || !bp->bm_data || bp->bm_rowsize != bp->bm_w)
+		return src;
+	n = bp->bm_w * bp->bm_h;
+	for (i = 0; i < n; i++)
+		hash = (hash ^ bp->bm_data[i]) * 16777619u;
+	Solid_clock++;
+	for (i = 0; i < SOLID_CACHE; i++)
+		if (Solid[i].data && Solid[i].src == src && Solid[i].hash == hash
+				&& Solid[i].bm.bm_w == bp->bm_w && Solid[i].bm.bm_h == bp->bm_h) {
+			Solid[i].used = Solid_clock;
+			return &Solid[i].bm;
+		}
+	for (i = 0; i < SOLID_CACHE; i++)
+		if (!e || Solid[i].used < e->used)
+			e = &Solid[i];
+	if (e->size < n) {
+		ubyte *d = (ubyte *) realloc(e->data, n);
+		if (!d)
+			return src;
+		e->data = d;
+		e->size = n;
+	}
+	e->src = src;
+	e->hash = hash;
+	e->used = Solid_clock;
+	e->bm = *bp;
+	e->bm.bm_data = e->data;
+	e->bm.bm_rowsize = (short) bp->bm_w;
+	e->bm.bm_flags = bp->bm_flags & ~(BM_FLAG_RLE | BM_FLAG_DTU_EFFECTS);
+	solid_make(e, bp->bm_data, bp->bm_w, bp->bm_h);
+	return &e->bm;
 }
 
 // The perspective mapper: dest[0..n-1] holds the lit span, raw[] the
